@@ -1,6 +1,6 @@
-"""Pipeline-aware archival of outputs to Zenodo.
+"""Recipe-aware archival of outputs to Zenodo.
 
-After a pipeline run, identifies new or changed outputs via the
+After a recipe run, identifies new or changed outputs via the
 provenance tracker and uploads them to Zenodo through the client.
 """
 
@@ -22,34 +22,34 @@ from vaibcask.reproducibility.zenodoClient import (
 # ------------------------------------------------------------------
 
 
-def fnArchiveOutputs(config, dictScript, sWorkdir):
+def fnArchiveOutputs(config, dictRecipe, sWorkdir):
     """Identify changed outputs and upload them to Zenodo.
 
     Parameters
     ----------
     config : dict
         Project configuration (must contain "sZenodoService" key).
-    dictScript : dict
-        Parsed script.json with scene definitions.
+    dictRecipe : dict
+        Parsed recipe.json with step definitions.
     sWorkdir : str
-        Working directory for the pipeline.
+        Working directory for the recipe.
     """
     dictProvenance = _fdictLoadOrCreateProvenance(sWorkdir)
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictScript)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
     if not listChanged:
         return
     fnUploadToZenodo(config, listChanged)
-    fnUpdateProvenance(dictProvenance, dictScript, sWorkdir)
+    fnUpdateProvenance(dictProvenance, dictRecipe, sWorkdir)
     _fnSaveProvenanceFile(dictProvenance, sWorkdir)
 
 
-def fdictCollectOutputFiles(dictScript, sWorkdir):
-    """Collect all output file paths from script.json scenes.
+def fdictCollectOutputFiles(dictRecipe, sWorkdir):
+    """Collect all output file paths from recipe.json steps.
 
     Parameters
     ----------
-    dictScript : dict
-        Parsed script.json with scene definitions.
+    dictRecipe : dict
+        Parsed recipe.json with step definitions.
     sWorkdir : str
         Working directory (used for resolving relative paths).
 
@@ -60,8 +60,8 @@ def fdictCollectOutputFiles(dictScript, sWorkdir):
         output file.
     """
     dictOutputs = {}
-    for dictScene in dictScript.get("listScenes", []):
-        _fnCollectSceneOutputs(dictScene, sWorkdir, dictOutputs)
+    for dictStep in dictRecipe.get("listSteps", []):
+        _fnCollectStepOutputs(dictStep, sWorkdir, dictOutputs)
     return dictOutputs
 
 
@@ -119,7 +119,7 @@ def _fdictLoadOrCreateProvenance(sWorkdir):
             fdictLoadProvenance,
         )
         return fdictLoadProvenance(str(pathProvenance))
-    return {"saScenes": [], "dictFileHashes": {}, "sTimestamp": ""}
+    return {"saSteps": [], "dictFileHashes": {}, "sTimestamp": ""}
 
 
 def _fnSaveProvenanceFile(dictProvenance, sWorkdir):
@@ -131,9 +131,9 @@ def _fnSaveProvenanceFile(dictProvenance, sWorkdir):
     fnSaveProvenance(dictProvenance, sPath)
 
 
-def _fnCollectSceneOutputs(dictScene, sWorkdir, dictOutputs):
-    """Hash each output file in a scene and add to dictOutputs."""
-    for sOutputPath in dictScene.get("saOutputFiles", []):
+def _fnCollectStepOutputs(dictStep, sWorkdir, dictOutputs):
+    """Hash each output file in a step and add to dictOutputs."""
+    for sOutputPath in dictStep.get("saOutputFiles", []):
         pathFile = _fpathResolveOutput(sOutputPath, sWorkdir)
         if pathFile.is_file():
             dictOutputs[str(pathFile)] = fsComputeFileHash(

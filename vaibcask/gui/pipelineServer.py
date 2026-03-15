@@ -1,4 +1,4 @@
-"""FastAPI application with REST and WebSocket routes for pipeline viewing."""
+"""FastAPI application with REST and WebSocket routes for recipe viewing."""
 
 import asyncio
 import json
@@ -11,12 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 
-from . import sceneManager
+from . import recipeManager
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
-    fnRunAllScenes,
-    fnRunFromScene,
-    fnRunSelectedScenes,
+    fnRunAllSteps,
+    fnRunFromStep,
+    fnRunSelectedSteps,
     fnVerifyOnly,
 )
 from .resourceMonitor import fdictGetContainerStats
@@ -28,7 +28,7 @@ STATIC_DIRECTORY = os.path.join(os.path.dirname(__file__), "static")
 sTerminalUser = None
 
 
-class SceneCreateRequest(BaseModel):
+class StepCreateRequest(BaseModel):
     sName: str
     sDirectory: str
     bPlotOnly: bool = True
@@ -37,7 +37,7 @@ class SceneCreateRequest(BaseModel):
     saOutputFiles: List[str] = []
 
 
-class SceneUpdateRequest(BaseModel):
+class StepUpdateRequest(BaseModel):
     sName: Optional[str] = None
     sDirectory: Optional[str] = None
     bPlotOnly: Optional[bool] = None
@@ -52,23 +52,23 @@ class ReorderRequest(BaseModel):
     iToIndex: int
 
 
-class ScriptSettingsRequest(BaseModel):
+class RecipeSettingsRequest(BaseModel):
     sPlotDirectory: Optional[str] = None
     sFigureType: Optional[str] = None
     iNumberOfCores: Optional[int] = None
 
 
 class RunRequest(BaseModel):
-    listSceneIndices: List[int] = []
-    iStartScene: Optional[int] = None
+    listStepIndices: List[int] = []
+    iStartStep: Optional[int] = None
 
 
-def fdictExtractSettings(dictScript):
-    """Return the settings subset from a script dict."""
+def fdictExtractSettings(dictRecipe):
+    """Return the settings subset from a recipe dict."""
     return {
-        "sPlotDirectory": dictScript.get("sPlotDirectory", "Plot"),
-        "sFigureType": dictScript.get("sFigureType", "pdf"),
-        "iNumberOfCores": dictScript.get("iNumberOfCores", -1),
+        "sPlotDirectory": dictRecipe.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictRecipe.get("sFigureType", "pdf"),
+        "iNumberOfCores": dictRecipe.get("iNumberOfCores", -1),
     }
 
 
@@ -77,9 +77,9 @@ def fdictFilterNonNone(dictSource):
     return {k: v for k, v in dictSource.items() if v is not None}
 
 
-def fdictSceneFromRequest(request):
-    """Build a scene dict from a SceneCreateRequest."""
-    return sceneManager.fdictCreateScene(
+def fdictStepFromRequest(request):
+    """Build a step dict from a StepCreateRequest."""
+    return recipeManager.fdictCreateStep(
         sName=request.sName,
         sDirectory=request.sDirectory,
         bPlotOnly=request.bPlotOnly,
@@ -89,34 +89,34 @@ def fdictSceneFromRequest(request):
     )
 
 
-def fdictRequireScript(dictScriptCache, sContainerId):
-    """Return cached script or raise 404."""
-    dictScript = dictScriptCache.get(sContainerId)
-    if not dictScript:
+def fdictRequireRecipe(dictRecipeCache, sContainerId):
+    """Return cached recipe or raise 404."""
+    dictRecipe = dictRecipeCache.get(sContainerId)
+    if not dictRecipe:
         raise HTTPException(404, "Not connected to container")
-    return dictScript
+    return dictRecipe
 
 
-def fsResolveScriptPath(connectionDocker, sContainerId, sScriptPath):
-    """Resolve script path via discovery if not provided."""
-    if sScriptPath is not None:
-        return sScriptPath
-    listPaths = sceneManager.flistFindScriptsInContainer(
+def fsResolveRecipePath(connectionDocker, sContainerId, sRecipePath):
+    """Resolve recipe path via discovery if not provided."""
+    if sRecipePath is not None:
+        return sRecipePath
+    listPaths = recipeManager.flistFindRecipesInContainer(
         connectionDocker, sContainerId
     )
     return listPaths[0] if listPaths else None
 
 
-def fsResolveFigurePath(sScriptDirectory, sFilePath):
+def fsResolveFigurePath(sRecipeDirectory, sFilePath):
     """Return absolute path for a figure file."""
     if sFilePath.startswith("/"):
         return sFilePath
-    return posixpath.join(sScriptDirectory, sFilePath)
+    return posixpath.join(sRecipeDirectory, sFilePath)
 
 
 def fbaFetchFigureWithFallback(
     connectionDocker, sContainerId, sAbsPath,
-    sScriptDirectory, sWorkdir, sFilePath,
+    sRecipeDirectory, sWorkdir, sFilePath,
 ):
     """Try primary path, then fallback with sWorkdir prefix."""
     try:
@@ -126,17 +126,17 @@ def fbaFetchFigureWithFallback(
     if sWorkdir and not sFilePath.startswith("/"):
         return _fbaFetchFallback(
             connectionDocker, sContainerId,
-            sScriptDirectory, sWorkdir, sFilePath,
+            sRecipeDirectory, sWorkdir, sFilePath,
         )
     raise HTTPException(404, f"Figure not found: {sAbsPath}")
 
 
 def _fbaFetchFallback(
     connectionDocker, sContainerId,
-    sScriptDirectory, sWorkdir, sFilePath,
+    sRecipeDirectory, sWorkdir, sFilePath,
 ):
     """Attempt to fetch figure from workdir-relative path."""
-    sFallback = posixpath.join(sScriptDirectory, sWorkdir, sFilePath)
+    sFallback = posixpath.join(sRecipeDirectory, sWorkdir, sFilePath)
     try:
         return connectionDocker.fbaFetchFile(sContainerId, sFallback)
     except Exception as error:
@@ -180,49 +180,49 @@ def flistQueryDirectory(connectionDocker, sContainerId, sAbsPath):
 
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
-    sScriptDirectory, fnCallback,
+    sRecipeDirectory, fnCallback,
 ):
-    """Dispatch runFrom with the start scene from the request."""
-    await fnRunFromScene(
+    """Dispatch runFrom with the start step from the request."""
+    await fnRunFromStep(
         connectionDocker, sContainerId,
-        dictRequest.get("iStartScene", 1),
-        sScriptDirectory, fnCallback,
+        dictRequest.get("iStartStep", 1),
+        sRecipeDirectory, fnCallback,
     )
 
 
 async def fnDispatchAction(
     sAction, dictRequest, connectionDocker,
-    sContainerId, dictScript, dictScriptPathCache,
-    sScriptDirectory, fnCallback,
+    sContainerId, dictRecipe, dictRecipePathCache,
+    sRecipeDirectory, fnCallback,
 ):
     """Route a WebSocket pipeline action to the correct runner."""
     if sAction == "runAll":
-        await fnRunAllScenes(
-            connectionDocker, sContainerId, sScriptDirectory, fnCallback)
+        await fnRunAllSteps(
+            connectionDocker, sContainerId, sRecipeDirectory, fnCallback)
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
-            sScriptDirectory, fnCallback)
+            sRecipeDirectory, fnCallback)
     elif sAction == "verify":
         await fnVerifyOnly(
-            connectionDocker, sContainerId, sScriptDirectory, fnCallback)
+            connectionDocker, sContainerId, sRecipeDirectory, fnCallback)
     elif sAction == "runSelected":
         await _fnDispatchSelected(
             connectionDocker, sContainerId, dictRequest,
-            dictScript, dictScriptPathCache, sScriptDirectory, fnCallback)
+            dictRecipe, dictRecipePathCache, sRecipeDirectory, fnCallback)
 
 
 async def _fnDispatchSelected(
     connectionDocker, sContainerId, dictRequest,
-    dictScript, dictScriptPathCache,
-    sScriptDirectory, fnCallback,
+    dictRecipe, dictRecipePathCache,
+    sRecipeDirectory, fnCallback,
 ):
     """Dispatch the runSelected action."""
-    await fnRunSelectedScenes(
+    await fnRunSelectedSteps(
         connectionDocker, sContainerId,
-        dictRequest.get("listSceneIndices", []),
-        dictScript, dictScriptPathCache.get(sContainerId),
-        sScriptDirectory, fnCallback,
+        dictRequest.get("listStepIndices", []),
+        dictRecipe, dictRecipePathCache.get(sContainerId),
+        sRecipeDirectory, fnCallback,
     )
 
 
@@ -276,7 +276,7 @@ async def fnRejectNotConnected(websocket):
 
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
-    dictScript, dictScriptPathCache, sScriptDirectory,
+    dictRecipe, dictRecipePathCache, sRecipeDirectory,
 ):
     """Receive and dispatch pipeline WebSocket messages."""
     while True:
@@ -288,8 +288,8 @@ async def fnPipelineMessageLoop(
         await fnDispatchAction(
             dictRequest.get("sAction", "runAll"),
             dictRequest, connectionDocker, sContainerId,
-            dictScript, dictScriptPathCache,
-            sScriptDirectory, fnCallback,
+            dictRecipe, dictRecipePathCache,
+            sRecipeDirectory, fnCallback,
         )
 
 
@@ -315,25 +315,25 @@ async def fnRunTerminalSession(
         dictTerminalSessions.pop(sSessionId, None)
 
 
-def fdictHandleConnect(dictCtx, sContainerId, sScriptPath):
-    """Load script, cache it, return connection response."""
+def fdictHandleConnect(dictCtx, sContainerId, sRecipePath):
+    """Load recipe, cache it, return connection response."""
     try:
-        dictScript = sceneManager.fdictLoadScriptFromContainer(
-            dictCtx["docker"], sContainerId, sScriptPath
+        dictRecipe = recipeManager.fdictLoadRecipeFromContainer(
+            dictCtx["docker"], sContainerId, sRecipePath
         )
-        dictCtx["scripts"][sContainerId] = dictScript
-        sResolved = fsResolveScriptPath(
-            dictCtx["docker"], sContainerId, sScriptPath
+        dictCtx["recipes"][sContainerId] = dictRecipe
+        sResolved = fsResolveRecipePath(
+            dictCtx["docker"], sContainerId, sRecipePath
         )
         dictCtx["paths"][sContainerId] = sResolved
         return {
             "sContainerId": sContainerId,
-            "sScriptPath": sResolved,
-            "dictScript": dictScript,
+            "sRecipePath": sResolved,
+            "dictRecipe": dictRecipe,
         }
     except Exception as error:
         raise HTTPException(
-            400, f"Failed to load script.json: {error}"
+            400, f"Failed to load recipe.json: {error}"
         )
 
 
@@ -349,14 +349,14 @@ def _fnRegisterContainers(app, dictCtx):
             raise HTTPException(500, f"Docker error: {error}")
 
 
-def _fnRegisterScriptSearch(app, dictCtx):
-    """Register GET /api/scripts route."""
+def _fnRegisterRecipeSearch(app, dictCtx):
+    """Register GET /api/recipes route."""
 
-    @app.get("/api/scripts/{sContainerId}")
-    async def fnFindScripts(sContainerId: str):
+    @app.get("/api/recipes/{sContainerId}")
+    async def fnFindRecipes(sContainerId: str):
         dictCtx["require"]()
         try:
-            return sceneManager.flistFindScriptsInContainer(
+            return recipeManager.flistFindRecipesInContainer(
                 dictCtx["docker"], sContainerId
             )
         except Exception as error:
@@ -368,10 +368,10 @@ def _fnRegisterConnect(app, dictCtx):
 
     @app.post("/api/connect/{sContainerId}")
     async def fnConnect(
-        sContainerId: str, sScriptPath: Optional[str] = None
+        sContainerId: str, sRecipePath: Optional[str] = None
     ):
         dictCtx["require"]()
-        return fdictHandleConnect(dictCtx, sContainerId, sScriptPath)
+        return fdictHandleConnect(dictCtx, sContainerId, sRecipePath)
 
 
 def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
@@ -423,7 +423,7 @@ def _fnRegisterSettingsGet(app, dictCtx):
     @app.get("/api/settings/{sContainerId}")
     async def fnGetSettings(sContainerId: str):
         return fdictExtractSettings(
-            fdictRequireScript(dictCtx["scripts"], sContainerId)
+            fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         )
 
 
@@ -432,148 +432,148 @@ def _fnRegisterSettingsPut(app, dictCtx):
 
     @app.put("/api/settings/{sContainerId}")
     async def fnUpdateSettings(
-        sContainerId: str, request: ScriptSettingsRequest
+        sContainerId: str, request: RecipeSettingsRequest
     ):
         dictCtx["require"]()
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         for sKey, value in fdictFilterNonNone(
             request.model_dump()
         ).items():
-            dictScript[sKey] = value
-        dictCtx["save"](sContainerId, dictScript)
-        return fdictExtractSettings(dictScript)
+            dictRecipe[sKey] = value
+        dictCtx["save"](sContainerId, dictRecipe)
+        return fdictExtractSettings(dictRecipe)
 
 
-def _fnRegisterScenesList(app, dictCtx):
-    """Register GET /api/scenes and validate routes."""
+def _fnRegisterStepsList(app, dictCtx):
+    """Register GET /api/steps and validate routes."""
 
-    @app.get("/api/scenes/{sContainerId}")
-    async def fnGetScenes(sContainerId: str):
-        return sceneManager.flistExtractSceneNames(
-            fdictRequireScript(dictCtx["scripts"], sContainerId)
+    @app.get("/api/steps/{sContainerId}")
+    async def fnGetSteps(sContainerId: str):
+        return recipeManager.flistExtractStepNames(
+            fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         )
 
-    @app.get("/api/scenes/{sContainerId}/validate")
+    @app.get("/api/steps/{sContainerId}/validate")
     async def fnValidateReferences(sContainerId: str):
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         return {
-            "listWarnings": sceneManager.flistValidateReferences(
-                dictScript
+            "listWarnings": recipeManager.flistValidateReferences(
+                dictRecipe
             )
         }
 
 
-def _fnRegisterSceneGet(app, dictCtx):
-    """Register GET /api/scenes/{id}/{index} route."""
+def _fnRegisterStepGet(app, dictCtx):
+    """Register GET /api/steps/{id}/{index} route."""
 
-    @app.get("/api/scenes/{sContainerId}/{iSceneIndex}")
-    async def fnGetScene(sContainerId: str, iSceneIndex: int):
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
+    @app.get("/api/steps/{sContainerId}/{iStepIndex}")
+    async def fnGetStep(sContainerId: str, iStepIndex: int):
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         try:
-            dictScene = sceneManager.fdictGetScene(
-                dictScript, iSceneIndex
+            dictStep = recipeManager.fdictGetStep(
+                dictRecipe, iStepIndex
             )
-            dictScene["saResolvedOutputFiles"] = (
-                sceneManager.flistResolveOutputFiles(
-                    dictScene, dictCtx["variables"](sContainerId)
+            dictStep["saResolvedOutputFiles"] = (
+                recipeManager.flistResolveOutputFiles(
+                    dictStep, dictCtx["variables"](sContainerId)
                 )
             )
-            return dictScene
+            return dictStep
         except IndexError as error:
             raise HTTPException(404, str(error))
 
 
-def _fnRegisterSceneCreate(app, dictCtx):
-    """Register POST /api/scenes/{id}/create route."""
+def _fnRegisterStepCreate(app, dictCtx):
+    """Register POST /api/steps/{id}/create route."""
 
-    @app.post("/api/scenes/{sContainerId}/create")
-    async def fnCreateScene(
-        sContainerId: str, request: SceneCreateRequest
+    @app.post("/api/steps/{sContainerId}/create")
+    async def fnCreateStep(
+        sContainerId: str, request: StepCreateRequest
     ):
         dictCtx["require"]()
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
-        dictScene = fdictSceneFromRequest(request)
-        dictScript["listScenes"].append(dictScene)
-        dictCtx["save"](sContainerId, dictScript)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
+        dictStep = fdictStepFromRequest(request)
+        dictRecipe["listSteps"].append(dictStep)
+        dictCtx["save"](sContainerId, dictRecipe)
         return {
-            "iIndex": len(dictScript["listScenes"]) - 1,
-            "dictScene": dictScene,
+            "iIndex": len(dictRecipe["listSteps"]) - 1,
+            "dictStep": dictStep,
         }
 
 
-def _fnRegisterSceneInsert(app, dictCtx):
-    """Register POST /api/scenes/{id}/insert route."""
+def _fnRegisterStepInsert(app, dictCtx):
+    """Register POST /api/steps/{id}/insert route."""
 
-    @app.post("/api/scenes/{sContainerId}/insert/{iPosition}")
-    async def fnInsertScene(
+    @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
+    async def fnInsertStep(
         sContainerId: str, iPosition: int,
-        request: SceneCreateRequest,
+        request: StepCreateRequest,
     ):
         dictCtx["require"]()
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
-        dictScene = fdictSceneFromRequest(request)
-        sceneManager.fnInsertScene(dictScript, iPosition, dictScene)
-        dictCtx["save"](sContainerId, dictScript)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
+        dictStep = fdictStepFromRequest(request)
+        recipeManager.fnInsertStep(dictRecipe, iPosition, dictStep)
+        dictCtx["save"](sContainerId, dictRecipe)
         return {
             "iIndex": iPosition,
-            "dictScene": dictScene,
-            "listScenes": dictScript["listScenes"],
+            "dictStep": dictStep,
+            "listSteps": dictRecipe["listSteps"],
         }
 
 
-def _fnRegisterSceneUpdate(app, dictCtx):
-    """Register PUT /api/scenes/{id}/{index} route."""
+def _fnRegisterStepUpdate(app, dictCtx):
+    """Register PUT /api/steps/{id}/{index} route."""
 
-    @app.put("/api/scenes/{sContainerId}/{iSceneIndex}")
-    async def fnUpdateScene(
-        sContainerId: str, iSceneIndex: int,
-        request: SceneUpdateRequest,
+    @app.put("/api/steps/{sContainerId}/{iStepIndex}")
+    async def fnUpdateStep(
+        sContainerId: str, iStepIndex: int,
+        request: StepUpdateRequest,
     ):
         dictCtx["require"]()
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         try:
-            sceneManager.fnUpdateScene(
-                dictScript, iSceneIndex,
+            recipeManager.fnUpdateStep(
+                dictRecipe, iStepIndex,
                 fdictFilterNonNone(request.model_dump()),
             )
         except IndexError as error:
             raise HTTPException(404, str(error))
-        dictCtx["save"](sContainerId, dictScript)
-        return dictScript["listScenes"][iSceneIndex]
+        dictCtx["save"](sContainerId, dictRecipe)
+        return dictRecipe["listSteps"][iStepIndex]
 
 
-def _fnRegisterSceneDelete(app, dictCtx):
-    """Register DELETE /api/scenes/{id}/{index} route."""
+def _fnRegisterStepDelete(app, dictCtx):
+    """Register DELETE /api/steps/{id}/{index} route."""
 
-    @app.delete("/api/scenes/{sContainerId}/{iSceneIndex}")
-    async def fnDeleteScene(sContainerId: str, iSceneIndex: int):
+    @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
+    async def fnDeleteStep(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         try:
-            sceneManager.fnDeleteScene(dictScript, iSceneIndex)
+            recipeManager.fnDeleteStep(dictRecipe, iStepIndex)
         except IndexError as error:
             raise HTTPException(404, str(error))
-        dictCtx["save"](sContainerId, dictScript)
-        return {"bSuccess": True, "listScenes": dictScript["listScenes"]}
+        dictCtx["save"](sContainerId, dictRecipe)
+        return {"bSuccess": True, "listSteps": dictRecipe["listSteps"]}
 
 
-def _fnRegisterSceneReorder(app, dictCtx):
-    """Register POST /api/scenes/{id}/reorder route."""
+def _fnRegisterStepReorder(app, dictCtx):
+    """Register POST /api/steps/{id}/reorder route."""
 
-    @app.post("/api/scenes/{sContainerId}/reorder")
-    async def fnReorderScenes(
+    @app.post("/api/steps/{sContainerId}/reorder")
+    async def fnReorderSteps(
         sContainerId: str, request: ReorderRequest
     ):
         dictCtx["require"]()
-        dictScript = fdictRequireScript(dictCtx["scripts"], sContainerId)
+        dictRecipe = fdictRequireRecipe(dictCtx["recipes"], sContainerId)
         try:
-            sceneManager.fnReorderScene(
-                dictScript, request.iFromIndex, request.iToIndex
+            recipeManager.fnReorderStep(
+                dictRecipe, request.iFromIndex, request.iToIndex
             )
         except IndexError as error:
             raise HTTPException(400, str(error))
-        dictCtx["save"](sContainerId, dictScript)
-        return {"listScenes": dictScript["listScenes"]}
+        dictCtx["save"](sContainerId, dictRecipe)
+        return {"listSteps": dictRecipe["listSteps"]}
 
 
 def _fnRegisterFigure(app, dictCtx):
@@ -584,7 +584,7 @@ def _fnRegisterFigure(app, dictCtx):
         sContainerId: str, sFilePath: str, sWorkdir: str = ""
     ):
         dictCtx["require"]()
-        sDir = dictCtx["scriptDir"](sContainerId)
+        sDir = dictCtx["recipeDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         baContent = fbaFetchFigureWithFallback(
             dictCtx["docker"], sContainerId, sAbsPath,
@@ -599,15 +599,15 @@ def _fnRegisterFigure(app, dictCtx):
 async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
     """Accept and run the pipeline WebSocket session."""
     await websocket.accept()
-    dictScript = dictCtx["scripts"].get(sContainerId)
-    if not dictScript:
+    dictRecipe = dictCtx["recipes"].get(sContainerId)
+    if not dictRecipe:
         await fnRejectNotConnected(websocket)
         return
     sDir = posixpath.dirname(dictCtx["paths"].get(sContainerId, ""))
     try:
         await fnPipelineMessageLoop(
             websocket, dictCtx["docker"], sContainerId,
-            dictScript, dictCtx["paths"], sDir,
+            dictRecipe, dictCtx["paths"], sDir,
         )
     except WebSocketDisconnect:
         pass
@@ -665,61 +665,61 @@ def _fnRequireDocker(connectionDocker):
         raise HTTPException(503, "Docker support is not available")
 
 
-def fsRequireScriptPath(dictPaths, sContainerId):
-    """Return script path or raise 404."""
+def fsRequireRecipePath(dictPaths, sContainerId):
+    """Return recipe path or raise 404."""
     sPath = dictPaths.get(sContainerId)
     if not sPath:
         raise HTTPException(404, "Not connected to container")
     return sPath
 
 
-def fdictResolveVariables(dictScripts, dictPaths, sContainerId):
+def fdictResolveVariables(dictRecipes, dictPaths, sContainerId):
     """Build resolved variable dict for a container."""
-    dictScript = dictScripts.get(sContainerId)
+    dictRecipe = dictRecipes.get(sContainerId)
     sPath = dictPaths.get(sContainerId)
-    if not dictScript or not sPath:
+    if not dictRecipe or not sPath:
         return {}
-    return sceneManager.fdictBuildGlobalVariables(dictScript, sPath)
+    return recipeManager.fdictBuildGlobalVariables(dictRecipe, sPath)
 
 
-def _ftupleBuildHelpers(connectionDocker, dictScripts, dictPaths):
+def _ftupleBuildHelpers(connectionDocker, dictRecipes, dictPaths):
     """Build closure-based helper functions for the context."""
 
     def fnRequire():
         _fnRequireDocker(connectionDocker)
 
-    def fnSave(sContainerId, dictScript):
-        sPath = fsRequireScriptPath(dictPaths, sContainerId)
-        sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript, sPath)
+    def fnSave(sContainerId, dictRecipe):
+        sPath = fsRequireRecipePath(dictPaths, sContainerId)
+        recipeManager.fnSaveRecipeToContainer(
+            connectionDocker, sContainerId, dictRecipe, sPath)
 
     def fnVariables(sContainerId):
-        return fdictResolveVariables(dictScripts, dictPaths, sContainerId)
+        return fdictResolveVariables(dictRecipes, dictPaths, sContainerId)
 
-    def fnScriptDir(sContainerId):
+    def fnRecipeDir(sContainerId):
         return posixpath.dirname(
-            fsRequireScriptPath(dictPaths, sContainerId))
+            fsRequireRecipePath(dictPaths, sContainerId))
 
-    return fnRequire, fnSave, fnVariables, fnScriptDir
+    return fnRequire, fnSave, fnVariables, fnRecipeDir
 
 
 def fdictBuildContext(connectionDocker):
     """Build the shared context dict for route handlers."""
-    dictScripts = {}
+    dictRecipes = {}
     dictPaths = {}
     dictTerminals = {}
-    fnRequire, fnSave, fnVariables, fnScriptDir = _ftupleBuildHelpers(
-        connectionDocker, dictScripts, dictPaths
+    fnRequire, fnSave, fnVariables, fnRecipeDir = _ftupleBuildHelpers(
+        connectionDocker, dictRecipes, dictPaths
     )
     return {
         "docker": connectionDocker,
-        "scripts": dictScripts,
+        "recipes": dictRecipes,
         "paths": dictPaths,
         "terminals": dictTerminals,
         "require": fnRequire,
         "save": fnSave,
         "variables": fnVariables,
-        "scriptDir": fnScriptDir,
+        "recipeDir": fnRecipeDir,
     }
 
 
@@ -735,7 +735,7 @@ def _fconnectionCreateDocker():
 def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     """Register container, file, monitor, and stub routes."""
     _fnRegisterContainers(app, dictCtx)
-    _fnRegisterScriptSearch(app, dictCtx)
+    _fnRegisterRecipeSearch(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
     _fnRegisterMonitor(app)
@@ -744,21 +744,21 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterSettingsPut(app, dictCtx)
 
 
-def _fnRegisterSceneRoutes(app, dictCtx):
-    """Register all scene CRUD routes."""
-    _fnRegisterScenesList(app, dictCtx)
-    _fnRegisterSceneGet(app, dictCtx)
-    _fnRegisterSceneCreate(app, dictCtx)
-    _fnRegisterSceneInsert(app, dictCtx)
-    _fnRegisterSceneUpdate(app, dictCtx)
-    _fnRegisterSceneDelete(app, dictCtx)
-    _fnRegisterSceneReorder(app, dictCtx)
+def _fnRegisterStepRoutes(app, dictCtx):
+    """Register all step CRUD routes."""
+    _fnRegisterStepsList(app, dictCtx)
+    _fnRegisterStepGet(app, dictCtx)
+    _fnRegisterStepCreate(app, dictCtx)
+    _fnRegisterStepInsert(app, dictCtx)
+    _fnRegisterStepUpdate(app, dictCtx)
+    _fnRegisterStepDelete(app, dictCtx)
+    _fnRegisterStepReorder(app, dictCtx)
 
 
 def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     """Register all API routes on the app."""
     _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot)
-    _fnRegisterSceneRoutes(app, dictCtx)
+    _fnRegisterStepRoutes(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterTerminalWs(app, dictCtx)
@@ -767,7 +767,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
 
 def fappCreateApplication(sWorkspaceRoot="/workspace"):
     """Build and return the configured FastAPI application."""
-    app = FastAPI(title="VaibCask Pipeline Viewer")
+    app = FastAPI(title="VaibCask Recipe Viewer")
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
     return app

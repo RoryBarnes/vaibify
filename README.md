@@ -10,7 +10,7 @@ Data scientists increasingly rely on AI coding agents to build and iterate on an
 
 - **Safety** — AI agents need broad permissions to be effective, but broad permissions on your host are dangerous. VaibCask runs everything inside an isolated Docker container with no access to your host filesystem, network, or credentials beyond what you explicitly grant.
 - **Reproducibility** — VaibCask tracks provenance (SHA-256 hashes of every input and output), archives results to Zenodo with a DOI, syncs figures to Overleaf, and generates GitHub Actions workflows so anyone can reproduce your pipeline.
-- **Iteration** — Decompose your project into scenes (steps), run them in parallel, inspect the outputs in the pipeline viewer GUI, and re-run individual steps until you're satisfied. The AI agent and you iterate together.
+- **Iteration** — Decompose your project into steps, run them in parallel, inspect the outputs in the recipe viewer GUI, and re-run individual steps until you're satisfied. The AI agent and you iterate together.
 - **Generality** — VaibCask is not tied to any specific domain. Configure your repositories, packages, languages (Python, R, Julia), and secrets in a single YAML file. Templates get you started fast.
 
 ## Quick Start
@@ -30,7 +30,7 @@ vaibcask build
 # Start the environment
 vaibcask start
 
-# Open the pipeline viewer
+# Open the recipe viewer
 vaibcask gui
 ```
 
@@ -104,7 +104,7 @@ vaibcask stop                       Stop the container
 vaibcask status                     Show environment status
 vaibcask connect                    Shell into the container
 vaibcask verify                     Run the isolation security audit
-vaibcask gui                        Launch the pipeline viewer
+vaibcask gui                        Launch the recipe viewer
 vaibcask push <src> <dest>          Copy files into the container
 vaibcask pull <src> <dest>          Copy files out of the container
 vaibcask config export <file>       Export configuration
@@ -166,12 +166,12 @@ VaibCask integrates reproducibility into the pipeline workflow:
 - **LaTeX generation** — Auto-generate `\includegraphics` commands and margin icons linking to commits and DOIs
 - **GitHub Actions** — Generate a CI workflow that rebuilds your pipeline in a fresh container
 
-## Pipeline Viewer
+## Recipe Viewer
 
 The built-in GUI (`vaibcask gui`) provides:
 
-- Visual pipeline editor for `script.json` scenes
-- One-click execution of individual scenes or the full pipeline
+- Visual pipeline editor for `recipe.json` steps
+- One-click execution of individual steps or the full pipeline
 - Live figure preview with automatic refresh
 - Integrated terminal session
 - Real-time CPU/memory/disk monitoring

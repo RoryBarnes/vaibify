@@ -4,10 +4,10 @@ const PipeleyenApp = (function () {
     "use strict";
 
     let sContainerId = null;
-    let dictScript = null;
-    let sScriptPath = null;
-    let iSelectedSceneIndex = -1;
-    let setExpandedScenes = new Set();
+    let dictRecipe = null;
+    let sRecipePath = null;
+    let iSelectedStepIndex = -1;
+    let setExpandedSteps = new Set();
     var listUndoStack = [];
     var I_MAX_UNDO = 50;
     var SET_BINARY_EXTENSIONS = new Set([
@@ -21,7 +21,7 @@ const PipeleyenApp = (function () {
         ".out", ".py", ".c", ".h", ".js", ".css", ".html",
     ]);
     let wsPipeline = null;
-    let dictSceneStatus = {};
+    let dictStepStatus = {};
 
     /* --- Initialization --- */
 
@@ -85,27 +85,27 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainer(sId) {
         try {
-            var responseScripts = await fetch("/api/scripts/" + sId);
-            var listScripts = await responseScripts.json();
+            var responseRecipes = await fetch("/api/recipes/" + sId);
+            var listRecipes = await responseRecipes.json();
             var sChosenPath = null;
-            if (listScripts.length === 0) {
-                fnShowToast("No script.json found in container", "error");
+            if (listRecipes.length === 0) {
+                fnShowToast("No recipe.json found in container", "error");
                 return;
-            } else if (listScripts.length === 1) {
-                sChosenPath = listScripts[0];
+            } else if (listRecipes.length === 1) {
+                sChosenPath = listRecipes[0];
             } else {
                 sChosenPath = prompt(
-                    "Multiple script.json files found:\n\n" +
-                    listScripts.map(function (s, i) {
+                    "Multiple recipe.json files found:\n\n" +
+                    listRecipes.map(function (s, i) {
                         return (i + 1) + ") " + s;
                     }).join("\n") + "\n\nEnter the full path:",
-                    listScripts[0]
+                    listRecipes[0]
                 );
                 if (!sChosenPath) return;
             }
             var response = await fetch(
                 "/api/connect/" + sId +
-                "?sScriptPath=" + encodeURIComponent(sChosenPath),
+                "?sRecipePath=" + encodeURIComponent(sChosenPath),
                 { method: "POST" }
             );
             if (!response.ok) {
@@ -115,10 +115,10 @@ const PipeleyenApp = (function () {
             }
             var data = await response.json();
             sContainerId = sId;
-            dictScript = data.dictScript;
-            sScriptPath = data.sScriptPath;
+            dictRecipe = data.dictRecipe;
+            sRecipePath = data.sRecipePath;
             fnShowMainLayout();
-            fnRenderSceneList();
+            fnRenderStepList();
             PipeleyenTerminal.fnCreateTab();
         } catch (error) {
             fnShowToast("Connection failed: " + error.message, "error");
@@ -132,11 +132,11 @@ const PipeleyenApp = (function () {
 
     function fnDisconnect() {
         sContainerId = null;
-        dictScript = null;
-        sScriptPath = null;
-        iSelectedSceneIndex = -1;
-        setExpandedScenes.clear();
-        dictSceneStatus = {};
+        dictRecipe = null;
+        sRecipePath = null;
+        iSelectedStepIndex = -1;
+        setExpandedSteps.clear();
+        dictStepStatus = {};
         if (wsPipeline) {
             wsPipeline.close();
             wsPipeline = null;
@@ -150,13 +150,13 @@ const PipeleyenApp = (function () {
     /* --- Template Resolution --- */
 
     function fdictBuildClientVariables() {
-        if (!dictScript) return {};
-        var sScriptDir = fsGetScriptDirectory();
+        if (!dictRecipe) return {};
+        var sRecipeDir = fsGetRecipeDirectory();
         return {
-            sPlotDirectory: dictScript.sPlotDirectory || "Plot",
-            sRepoRoot: sScriptDir,
-            iNumberOfCores: dictScript.iNumberOfCores || -1,
-            sFigureType: (dictScript.sFigureType || "pdf").toLowerCase(),
+            sPlotDirectory: dictRecipe.sPlotDirectory || "Plot",
+            sRepoRoot: sRecipeDir,
+            iNumberOfCores: dictRecipe.iNumberOfCores || -1,
+            sFigureType: (dictRecipe.sFigureType || "pdf").toLowerCase(),
         };
     }
 
@@ -179,23 +179,23 @@ const PipeleyenApp = (function () {
                 });
                 el.classList.add("active");
                 var sPanel = el.dataset.panel;
-                document.getElementById("panelScenes").classList.toggle(
-                    "active", sPanel === "scenes"
+                document.getElementById("panelSteps").classList.toggle(
+                    "active", sPanel === "steps"
                 );
                 document.getElementById("panelFiles").classList.toggle(
                     "active", sPanel === "files"
                 );
                 if (sPanel === "files") {
-                    PipeleyenFiles.fnLoadDirectory(fsGetScriptDirectory());
+                    PipeleyenFiles.fnLoadDirectory(fsGetRecipeDirectory());
                 }
             });
         });
     }
 
-    function fsGetScriptDirectory() {
-        if (!sScriptPath) return "/workspace";
-        var iLastSlash = sScriptPath.lastIndexOf("/");
-        return iLastSlash > 0 ? sScriptPath.substring(0, iLastSlash) : "/workspace";
+    function fsGetRecipeDirectory() {
+        if (!sRecipePath) return "/workspace";
+        var iLastSlash = sRecipePath.lastIndexOf("/");
+        return iLastSlash > 0 ? sRecipePath.substring(0, iLastSlash) : "/workspace";
     }
 
     /* --- Global Settings --- */
@@ -211,23 +211,23 @@ const PipeleyenApp = (function () {
     }
 
     function fnRenderGlobalSettings() {
-        if (!dictScript) return;
+        if (!dictRecipe) return;
         var el = document.getElementById("globalSettingsPanel");
         el.innerHTML =
             '<div class="gs-row">' +
             '<span class="gs-label">Plot Dir</span>' +
             '<input class="gs-input" id="gsPlotDirectory" value="' +
-            fnEscapeHtml(dictScript.sPlotDirectory || "Plot") + '">' +
+            fnEscapeHtml(dictRecipe.sPlotDirectory || "Plot") + '">' +
             '</div>' +
             '<div class="gs-row">' +
             '<span class="gs-label">Figure Type</span>' +
             '<input class="gs-input" id="gsFigureType" value="' +
-            fnEscapeHtml(dictScript.sFigureType || "pdf") + '">' +
+            fnEscapeHtml(dictRecipe.sFigureType || "pdf") + '">' +
             '</div>' +
             '<div class="gs-row">' +
             '<span class="gs-label">Cores</span>' +
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
-            (dictScript.iNumberOfCores || -1) + '">' +
+            (dictRecipe.iNumberOfCores || -1) + '">' +
             '</div>';
         el.querySelectorAll(".gs-input").forEach(function (inp) {
             inp.addEventListener("change", fnSaveGlobalSettings);
@@ -253,73 +253,73 @@ const PipeleyenApp = (function () {
             );
             if (response.ok) {
                 var result = await response.json();
-                dictScript.sPlotDirectory = result.sPlotDirectory;
-                dictScript.sFigureType = result.sFigureType;
-                dictScript.iNumberOfCores = result.iNumberOfCores;
+                dictRecipe.sPlotDirectory = result.sPlotDirectory;
+                dictRecipe.sFigureType = result.sFigureType;
+                dictRecipe.iNumberOfCores = result.iNumberOfCores;
                 fnShowToast("Settings saved", "success");
-                fnRenderSceneList();
+                fnRenderStepList();
             }
         } catch (error) {
             fnShowToast("Failed to save settings", "error");
         }
     }
 
-    /* --- Scene List --- */
+    /* --- Step List --- */
 
-    function fnRenderSceneList() {
-        var elList = document.getElementById("listScenes");
-        if (!dictScript || !dictScript.listScenes) {
+    function fnRenderStepList() {
+        var elList = document.getElementById("listSteps");
+        if (!dictRecipe || !dictRecipe.listSteps) {
             elList.innerHTML = "";
             return;
         }
         var dictVars = fdictBuildClientVariables();
         var sHtml = "";
-        dictScript.listScenes.forEach(function (scene, iIndex) {
-            sHtml += fsRenderSceneItem(scene, iIndex, dictVars);
+        dictRecipe.listSteps.forEach(function (step, iIndex) {
+            sHtml += fsRenderStepItem(step, iIndex, dictVars);
         });
         elList.innerHTML = sHtml;
-        fnBindSceneEvents();
+        fnBindStepEvents();
     }
 
-    function fsRenderSceneItem(scene, iIndex, dictVars) {
-        var sStatusClass = dictSceneStatus[iIndex] || "";
-        var bEnabled = scene.bEnabled !== false;
-        var bSelected = iIndex === iSelectedSceneIndex;
-        var bExpanded = setExpandedScenes.has(iIndex);
+    function fsRenderStepItem(step, iIndex, dictVars) {
+        var sStatusClass = dictStepStatus[iIndex] || "";
+        var bEnabled = step.bEnabled !== false;
+        var bSelected = iIndex === iSelectedStepIndex;
+        var bExpanded = setExpandedSteps.has(iIndex);
 
         var sHtml =
-            '<div class="scene-item' + (bSelected ? " selected" : "") +
+            '<div class="step-item' + (bSelected ? " selected" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
-            '<input type="checkbox" class="scene-checkbox"' +
+            '<input type="checkbox" class="step-checkbox"' +
             (bEnabled ? " checked" : "") + ">" +
-            '<span class="scene-number">' +
+            '<span class="step-number">' +
             String(iIndex + 1).padStart(2, "0") + "</span>" +
-            '<span class="scene-name" title="' +
-            fnEscapeHtml(scene.sName) + '">' +
-            fnEscapeHtml(scene.sName) + "</span>" +
-            '<span class="scene-status ' + sStatusClass + '"></span>' +
-            '<span class="scene-actions">' +
-            '<button class="btn-icon scene-edit" title="Edit">&#9998;</button>' +
+            '<span class="step-name" title="' +
+            fnEscapeHtml(step.sName) + '">' +
+            fnEscapeHtml(step.sName) + "</span>" +
+            '<span class="step-status ' + sStatusClass + '"></span>' +
+            '<span class="step-actions">' +
+            '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
             "</span></div>";
 
-        sHtml += '<div class="scene-detail' +
+        sHtml += '<div class="step-detail' +
             (bExpanded ? " expanded" : "") +
             '" data-index="' + iIndex + '">';
 
         /* Directory */
-        var sResolvedDir = fsResolveTemplate(scene.sDirectory, dictVars);
+        var sResolvedDir = fsResolveTemplate(step.sDirectory, dictVars);
         sHtml += '<div class="detail-label">Directory</div>';
         sHtml += '<div class="detail-field" data-view="field">' +
             fnEscapeHtml(sResolvedDir) + "</div>";
         sHtml += '<div class="detail-label">Plot Only: ' +
-            (scene.bPlotOnly !== false ? "Yes" : "No") + "</div>";
+            (step.bPlotOnly !== false ? "Yes" : "No") + "</div>";
 
         /* Setup Commands */
         sHtml += fsRenderSectionLabel(
             "Setup Commands", iIndex, "saSetupCommands"
         );
-        if (scene.saSetupCommands) {
-            scene.saSetupCommands.forEach(function (sCmd, iCmdIdx) {
+        if (step.saSetupCommands) {
+            step.saSetupCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
                     sCmd, dictVars, "command", "saSetupCommands",
                     iIndex, iCmdIdx
@@ -329,8 +329,8 @@ const PipeleyenApp = (function () {
 
         /* Commands */
         sHtml += fsRenderSectionLabel("Commands", iIndex, "saCommands");
-        if (scene.saCommands) {
-            scene.saCommands.forEach(function (sCmd, iCmdIdx) {
+        if (step.saCommands) {
+            step.saCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
                     sCmd, dictVars, "command", "saCommands",
                     iIndex, iCmdIdx
@@ -342,8 +342,8 @@ const PipeleyenApp = (function () {
         sHtml += fsRenderSectionLabel(
             "Output Files", iIndex, "saOutputFiles"
         );
-        if (scene.saOutputFiles) {
-            scene.saOutputFiles.forEach(function (sFile, iFileIdx) {
+        if (step.saOutputFiles) {
+            step.saOutputFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
                     sFile, dictVars, "output", "saOutputFiles",
                     iIndex, iFileIdx, sResolvedDir
@@ -355,17 +355,17 @@ const PipeleyenApp = (function () {
         return sHtml;
     }
 
-    function fsRenderSectionLabel(sLabel, iSceneIdx, sArrayKey) {
+    function fsRenderSectionLabel(sLabel, iStepIdx, sArrayKey) {
         return '<div class="detail-label">' +
             '<span>' + sLabel + '</span>' +
-            '<button class="section-add" data-scene="' + iSceneIdx +
+            '<button class="section-add" data-step="' + iStepIdx +
             '" data-array="' + sArrayKey +
             '" title="Add item">+</button>' +
             '</div>';
     }
 
     function fsRenderDetailItem(
-        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx,
+        sRaw, dictVars, sType, sArrayKey, iStepIdx, iItemIdx,
         sWorkdir
     ) {
         var sResolved = fsResolveTemplate(sRaw, dictVars);
@@ -375,7 +375,7 @@ const PipeleyenApp = (function () {
         }
 
         var sHtml = '<div class="detail-item ' + sType +
-            '" data-scene="' + iSceneIdx +
+            '" data-step="' + iStepIdx +
             '" data-array="' + sArrayKey +
             '" data-idx="' + iItemIdx +
             '" data-resolved="' + fnEscapeHtml(sResolved) +
@@ -418,20 +418,20 @@ const PipeleyenApp = (function () {
         );
     }
 
-    /* --- Scene Event Binding --- */
+    /* --- Step Event Binding --- */
 
-    function fnBindSceneEvents() {
-        var elList = document.getElementById("listScenes");
+    function fnBindStepEvents() {
+        var elList = document.getElementById("listSteps");
 
-        elList.querySelectorAll(".scene-item").forEach(function (el) {
+        elList.querySelectorAll(".step-item").forEach(function (el) {
             var iIndex = parseInt(el.dataset.index);
 
             el.addEventListener("click", function (event) {
-                if (event.target.classList.contains("scene-checkbox") ||
-                    event.target.classList.contains("scene-edit")) {
+                if (event.target.classList.contains("step-checkbox") ||
+                    event.target.classList.contains("step-edit")) {
                     return;
                 }
-                fnToggleSceneExpand(iIndex);
+                fnToggleStepExpand(iIndex);
             });
 
             el.addEventListener("contextmenu", function (event) {
@@ -439,23 +439,23 @@ const PipeleyenApp = (function () {
                 fnShowContextMenu(event.pageX, event.pageY, iIndex);
             });
 
-            el.querySelector(".scene-checkbox").addEventListener(
+            el.querySelector(".step-checkbox").addEventListener(
                 "change", function (event) {
-                    fnToggleSceneEnabled(iIndex, event.target.checked);
+                    fnToggleStepEnabled(iIndex, event.target.checked);
                 }
             );
 
-            var btnEdit = el.querySelector(".scene-edit");
+            var btnEdit = el.querySelector(".step-edit");
             if (btnEdit) {
                 btnEdit.addEventListener("click", function () {
-                    PipeleyenSceneEditor.fnOpenEditModal(iIndex);
+                    PipeleyenStepEditor.fnOpenEditModal(iIndex);
                 });
             }
 
-            /* Scene header drag: reorder scenes */
+            /* Step header drag: reorder steps */
             el.addEventListener("dragstart", function (event) {
                 event.dataTransfer.setData("text/plain", String(iIndex));
-                event.dataTransfer.setData("pipeleyen/scene", String(iIndex));
+                event.dataTransfer.setData("pipeleyen/step", String(iIndex));
                 el.classList.add("dragging");
             });
             el.addEventListener("dragend", function () {
@@ -478,11 +478,11 @@ const PipeleyenApp = (function () {
                     fnHandleDetailDrop(sDetailData, iIndex);
                     return;
                 }
-                var sSceneData = event.dataTransfer.getData("text/plain");
-                if (sSceneData !== "") {
-                    var iFromIndex = parseInt(sSceneData);
+                var sStepData = event.dataTransfer.getData("text/plain");
+                if (sStepData !== "") {
+                    var iFromIndex = parseInt(sStepData);
                     if (iFromIndex !== iIndex) {
-                        fnReorderScene(iFromIndex, iIndex);
+                        fnReorderStep(iFromIndex, iIndex);
                     }
                 }
             });
@@ -498,13 +498,13 @@ const PipeleyenApp = (function () {
             el.addEventListener("click", function (event) {
                 event.stopPropagation();
                 fnAddNewItem(
-                    parseInt(el.dataset.scene), el.dataset.array
+                    parseInt(el.dataset.step), el.dataset.array
                 );
             });
         });
 
         /* Bind drop targets on detail sections */
-        elList.querySelectorAll(".scene-detail").forEach(function (el) {
+        elList.querySelectorAll(".step-detail").forEach(function (el) {
             el.addEventListener("dragover", function (event) {
                 event.preventDefault();
             });
@@ -515,15 +515,15 @@ const PipeleyenApp = (function () {
                 if (sDetailData) {
                     event.preventDefault();
                     event.stopPropagation();
-                    var iTargetScene = parseInt(el.dataset.index);
-                    fnHandleDetailDrop(sDetailData, iTargetScene);
+                    var iTargetStep = parseInt(el.dataset.index);
+                    fnHandleDetailDrop(sDetailData, iTargetStep);
                 }
             });
         });
     }
 
     function fnBindDetailItemEvents(el) {
-        var iScene = parseInt(el.dataset.scene);
+        var iStep = parseInt(el.dataset.step);
         var sArray = el.dataset.array;
         var iIdx = parseInt(el.dataset.idx);
         var sResolved = el.dataset.resolved;
@@ -545,11 +545,11 @@ const PipeleyenApp = (function () {
             });
         }
 
-        /* Drag detail items — carry source info for cross-scene drops */
+        /* Drag detail items — carry source info for cross-step drops */
         el.addEventListener("dragstart", function (event) {
             event.stopPropagation();
             var dictDragData = {
-                iScene: iScene,
+                iStep: iStep,
                 sArray: sArray,
                 iIdx: iIdx,
             };
@@ -565,7 +565,7 @@ const PipeleyenApp = (function () {
         if (btnEdit) {
             btnEdit.addEventListener("click", function (event) {
                 event.stopPropagation();
-                fnInlineEditItem(el, iScene, sArray, iIdx);
+                fnInlineEditItem(el, iStep, sArray, iIdx);
             });
         }
 
@@ -585,15 +585,15 @@ const PipeleyenApp = (function () {
         if (btnDelete) {
             btnDelete.addEventListener("click", function (event) {
                 event.stopPropagation();
-                fnDeleteDetailItem(iScene, sArray, iIdx);
+                fnDeleteDetailItem(iStep, sArray, iIdx);
             });
         }
     }
 
     /* --- Detail Item Actions --- */
 
-    function fnInlineEditItem(el, iScene, sArray, iIdx) {
-        var sRaw = dictScript.listScenes[iScene][sArray][iIdx];
+    function fnInlineEditItem(el, iStep, sArray, iIdx) {
+        var sRaw = dictRecipe.listSteps[iStep][sArray][iIdx];
         var elText = el.querySelector(".detail-text");
         var elActions = el.querySelector(".detail-actions");
         elActions.style.display = "none";
@@ -610,13 +610,13 @@ const PipeleyenApp = (function () {
         function fnFinishEdit() {
             var sNewValue = elInput.value.trim();
             if (sNewValue && sNewValue !== sRaw) {
-                dictScript.listScenes[iScene][sArray][iIdx] = sNewValue;
-                fnSaveSceneArray(iScene, sArray);
+                dictRecipe.listSteps[iStep][sArray][iIdx] = sNewValue;
+                fnSaveStepArray(iStep, sArray);
             }
             elInput.remove();
             elText.style.display = "";
             elActions.style.display = "";
-            fnRenderSceneList();
+            fnRenderStepList();
         }
 
         elInput.addEventListener("keydown", function (event) {
@@ -630,73 +630,73 @@ const PipeleyenApp = (function () {
         elInput.addEventListener("blur", fnFinishEdit);
     }
 
-    async function fnDeleteDetailItem(iScene, sArray, iIdx) {
-        var sValue = dictScript.listScenes[iScene][sArray][iIdx];
+    async function fnDeleteDetailItem(iStep, sArray, iIdx) {
+        var sValue = dictRecipe.listSteps[iStep][sArray][iIdx];
         if (!confirm("Delete this item?\n\n" + sValue)) return;
-        dictScript.listScenes[iScene][sArray].splice(iIdx, 1);
+        dictRecipe.listSteps[iStep][sArray].splice(iIdx, 1);
         fnPushUndo({
             sAction: "delete",
-            iScene: iScene,
+            iStep: iStep,
             sArray: sArray,
             iIdx: iIdx,
             sValue: sValue,
         });
-        await fnSaveSceneArray(iScene, sArray);
-        fnRenderSceneList();
+        await fnSaveStepArray(iStep, sArray);
+        fnRenderStepList();
     }
 
-    async function fnHandleDetailDrop(sDetailData, iTargetScene) {
+    async function fnHandleDetailDrop(sDetailData, iTargetStep) {
         var dictDrag = JSON.parse(sDetailData);
-        var iSource = dictDrag.iScene;
+        var iSource = dictDrag.iStep;
         var sArray = dictDrag.sArray;
         var iIdx = dictDrag.iIdx;
-        if (iSource === iTargetScene) return;
+        if (iSource === iTargetStep) return;
 
         if (!confirm(
             "WARNING: Moving a command may break dependencies " +
-            "in later scenes.\n\nProceed?"
+            "in later steps.\n\nProceed?"
         )) {
             return;
         }
 
-        var sValue = dictScript.listScenes[iSource][sArray].splice(
+        var sValue = dictRecipe.listSteps[iSource][sArray].splice(
             iIdx, 1
         )[0];
         var sTargetArray = sArray;
-        if (!dictScript.listScenes[iTargetScene][sTargetArray]) {
-            dictScript.listScenes[iTargetScene][sTargetArray] = [];
+        if (!dictRecipe.listSteps[iTargetStep][sTargetArray]) {
+            dictRecipe.listSteps[iTargetStep][sTargetArray] = [];
         }
-        dictScript.listScenes[iTargetScene][sTargetArray].unshift(sValue);
+        dictRecipe.listSteps[iTargetStep][sTargetArray].unshift(sValue);
         fnPushUndo({
             sAction: "move",
-            iScene: iSource,
+            iStep: iSource,
             sArray: sArray,
             iIdx: iIdx,
-            iTargetScene: iTargetScene,
+            iTargetStep: iTargetStep,
             iTargetIdx: 0,
             sValue: sValue,
         });
-        await fnSaveSceneArray(iSource, sArray);
-        await fnSaveSceneArray(iTargetScene, sTargetArray);
+        await fnSaveStepArray(iSource, sArray);
+        await fnSaveStepArray(iTargetStep, sTargetArray);
 
         /* Expand target and highlight */
-        setExpandedScenes.add(iTargetScene);
-        fnRenderSceneList();
-        fnHighlightItem(iTargetScene, sTargetArray, 0);
+        setExpandedSteps.add(iTargetStep);
+        fnRenderStepList();
+        fnHighlightItem(iTargetStep, sTargetArray, 0);
         fnShowToast(
-            "Moved to " + dictScript.listScenes[iTargetScene].sName,
+            "Moved to " + dictRecipe.listSteps[iTargetStep].sName,
             "success"
         );
 
         alert(
             "Modifying pipeline. Ensure that all subsequent " +
-            "scenes properly reference the new pipeline."
+            "steps properly reference the new pipeline."
         );
     }
 
-    function fnHighlightItem(iScene, sArray, iIdx) {
+    function fnHighlightItem(iStep, sArray, iIdx) {
         var elItem = document.querySelector(
-            '.detail-item[data-scene="' + iScene +
+            '.detail-item[data-step="' + iStep +
             '"][data-array="' + sArray +
             '"][data-idx="' + iIdx + '"]'
         );
@@ -708,15 +708,15 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnAddNewItem(iScene, sArrayKey) {
+    function fnAddNewItem(iStep, sArrayKey) {
         var sPlaceholder = sArrayKey === "saOutputFiles" ?
             "File path..." : "Command...";
-        fnShowInlineInput(iScene, sArrayKey, sPlaceholder);
+        fnShowInlineInput(iStep, sArrayKey, sPlaceholder);
     }
 
-    function fnShowInlineInput(iScene, sArrayKey, sPlaceholder) {
+    function fnShowInlineInput(iStep, sArrayKey, sPlaceholder) {
         var elSection = document.querySelector(
-            '.section-add[data-scene="' + iScene +
+            '.section-add[data-step="' + iStep +
             '"][data-array="' + sArrayKey + '"]'
         );
         if (!elSection) return;
@@ -741,7 +741,7 @@ const PipeleyenApp = (function () {
         function fnConfirm() {
             var sValue = elInput.value.trim();
             if (sValue) {
-                fnCommitNewItem(iScene, sArrayKey, sValue);
+                fnCommitNewItem(iStep, sArrayKey, sValue);
             }
             elRow.remove();
         }
@@ -761,20 +761,20 @@ const PipeleyenApp = (function () {
         });
     }
 
-    async function fnCommitNewItem(iScene, sArrayKey, sValue) {
-        if (!dictScript.listScenes[iScene][sArrayKey]) {
-            dictScript.listScenes[iScene][sArrayKey] = [];
+    async function fnCommitNewItem(iStep, sArrayKey, sValue) {
+        if (!dictRecipe.listSteps[iStep][sArrayKey]) {
+            dictRecipe.listSteps[iStep][sArrayKey] = [];
         }
-        dictScript.listScenes[iScene][sArrayKey].push(sValue);
+        dictRecipe.listSteps[iStep][sArrayKey].push(sValue);
         fnPushUndo({
             sAction: "add",
-            iScene: iScene,
+            iStep: iStep,
             sArray: sArrayKey,
-            iIdx: dictScript.listScenes[iScene][sArrayKey].length - 1,
+            iIdx: dictRecipe.listSteps[iStep][sArrayKey].length - 1,
             sValue: sValue,
         });
-        await fnSaveSceneArray(iScene, sArrayKey);
-        fnRenderSceneList();
+        await fnSaveStepArray(iStep, sArrayKey);
+        fnRenderStepList();
         fnShowToast("Item added", "success");
     }
 
@@ -794,37 +794,37 @@ const PipeleyenApp = (function () {
         }
         var dictAction = listUndoStack.pop();
         if (dictAction.sAction === "add") {
-            dictScript.listScenes[dictAction.iScene][dictAction.sArray]
+            dictRecipe.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 1);
-            await fnSaveSceneArray(dictAction.iScene, dictAction.sArray);
+            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
         } else if (dictAction.sAction === "delete") {
-            dictScript.listScenes[dictAction.iScene][dictAction.sArray]
+            dictRecipe.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, dictAction.sValue);
-            await fnSaveSceneArray(dictAction.iScene, dictAction.sArray);
+            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
         } else if (dictAction.sAction === "move") {
-            var sValue = dictScript.listScenes[dictAction.iTargetScene][
+            var sValue = dictRecipe.listSteps[dictAction.iTargetStep][
                 dictAction.sArray
             ].splice(dictAction.iTargetIdx, 1)[0];
-            if (!dictScript.listScenes[dictAction.iScene][dictAction.sArray]) {
-                dictScript.listScenes[dictAction.iScene][dictAction.sArray] = [];
+            if (!dictRecipe.listSteps[dictAction.iStep][dictAction.sArray]) {
+                dictRecipe.listSteps[dictAction.iStep][dictAction.sArray] = [];
             }
-            dictScript.listScenes[dictAction.iScene][dictAction.sArray]
+            dictRecipe.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, sValue);
-            await fnSaveSceneArray(dictAction.iScene, dictAction.sArray);
-            await fnSaveSceneArray(
-                dictAction.iTargetScene, dictAction.sArray
+            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
+            await fnSaveStepArray(
+                dictAction.iTargetStep, dictAction.sArray
             );
         }
-        fnRenderSceneList();
+        fnRenderStepList();
         fnShowToast("Undone", "success");
     }
 
-    async function fnSaveSceneArray(iScene, sArray) {
+    async function fnSaveStepArray(iStep, sArray) {
         var dictUpdate = {};
-        dictUpdate[sArray] = dictScript.listScenes[iScene][sArray];
+        dictUpdate[sArray] = dictRecipe.listSteps[iStep][sArray];
         try {
             await fetch(
-                "/api/scenes/" + sContainerId + "/" + iScene,
+                "/api/steps/" + sContainerId + "/" + iStep,
                 {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
@@ -836,38 +836,38 @@ const PipeleyenApp = (function () {
         }
     }
 
-    /* --- Scene Expand/Collapse --- */
+    /* --- Step Expand/Collapse --- */
 
-    function fnToggleSceneExpand(iIndex) {
-        if (setExpandedScenes.has(iIndex)) {
-            setExpandedScenes.delete(iIndex);
+    function fnToggleStepExpand(iIndex) {
+        if (setExpandedSteps.has(iIndex)) {
+            setExpandedSteps.delete(iIndex);
         } else {
-            setExpandedScenes.add(iIndex);
+            setExpandedSteps.add(iIndex);
         }
-        iSelectedSceneIndex = iIndex;
-        fnRenderSceneList();
+        iSelectedStepIndex = iIndex;
+        fnRenderStepList();
     }
 
-    async function fnToggleSceneEnabled(iIndex, bEnabled) {
+    async function fnToggleStepEnabled(iIndex, bEnabled) {
         try {
             await fetch(
-                "/api/scenes/" + sContainerId + "/" + iIndex,
+                "/api/steps/" + sContainerId + "/" + iIndex,
                 {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ bEnabled: bEnabled }),
                 }
             );
-            dictScript.listScenes[iIndex].bEnabled = bEnabled;
+            dictRecipe.listSteps[iIndex].bEnabled = bEnabled;
         } catch (error) {
-            fnShowToast("Failed to update scene", "error");
+            fnShowToast("Failed to update step", "error");
         }
     }
 
-    async function fnReorderScene(iFromIndex, iToIndex) {
+    async function fnReorderStep(iFromIndex, iToIndex) {
         try {
             var response = await fetch(
-                "/api/scenes/" + sContainerId + "/reorder",
+                "/api/steps/" + sContainerId + "/reorder",
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -879,10 +879,10 @@ const PipeleyenApp = (function () {
             );
             if (response.ok) {
                 var result = await response.json();
-                dictScript.listScenes = result.listScenes;
-                fnRenderSceneList();
+                dictRecipe.listSteps = result.listSteps;
+                fnRenderStepList();
                 fnShowToast(
-                    "Scene reordered (references renumbered)",
+                    "Step reordered (references renumbered)",
                     "success"
                 );
             }
@@ -1005,12 +1005,12 @@ const PipeleyenApp = (function () {
     }
 
     function fnHandlePipelineEvent(dictEvent) {
-        if (dictEvent.sType === "scenePass") {
-            dictSceneStatus[dictEvent.iSceneNumber - 1] = "pass";
-            fnRenderSceneList();
-        } else if (dictEvent.sType === "sceneFail") {
-            dictSceneStatus[dictEvent.iSceneNumber - 1] = "fail";
-            fnRenderSceneList();
+        if (dictEvent.sType === "stepPass") {
+            dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
+            fnRenderStepList();
+        } else if (dictEvent.sType === "stepFail") {
+            dictStepStatus[dictEvent.iStepNumber - 1] = "fail";
+            fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             fnShowToast("Pipeline started", "success");
         } else if (dictEvent.sType === "completed") {
@@ -1035,26 +1035,26 @@ const PipeleyenApp = (function () {
 
     function fnRunSelected() {
         var listIndices = [];
-        document.querySelectorAll(".scene-checkbox:checked")
+        document.querySelectorAll(".step-checkbox:checked")
             .forEach(function (el) {
                 var iIndex = parseInt(
-                    el.closest(".scene-item").dataset.index
+                    el.closest(".step-item").dataset.index
                 );
                 listIndices.push(iIndex);
-                dictSceneStatus[iIndex] = "running";
+                dictStepStatus[iIndex] = "running";
             });
-        fnRenderSceneList();
+        fnRenderStepList();
         fnSendPipelineAction({
             sAction: "runSelected",
-            listSceneIndices: listIndices,
+            listStepIndices: listIndices,
         });
     }
 
     function fnRunAll() {
-        dictScript.listScenes.forEach(function (_, iIndex) {
-            dictSceneStatus[iIndex] = "running";
+        dictRecipe.listSteps.forEach(function (_, iIndex) {
+            dictStepStatus[iIndex] = "running";
         });
-        fnRenderSceneList();
+        fnRenderStepList();
         fnSendPipelineAction({ sAction: "runAll" });
     }
 
@@ -1066,13 +1066,13 @@ const PipeleyenApp = (function () {
         if (!sContainerId) return;
         try {
             var response = await fetch(
-                "/api/scenes/" + sContainerId + "/validate"
+                "/api/steps/" + sContainerId + "/validate"
             );
             var result = await response.json();
             var listWarnings = result.listWarnings;
             if (listWarnings.length === 0) {
                 fnShowToast(
-                    "All cross-scene references are valid",
+                    "All cross-step references are valid",
                     "success"
                 );
             } else {
@@ -1096,10 +1096,10 @@ const PipeleyenApp = (function () {
 
     /* --- Context Menu --- */
 
-    var iContextSceneIndex = -1;
+    var iContextStepIndex = -1;
 
     function fnShowContextMenu(iX, iY, iIndex) {
-        iContextSceneIndex = iIndex;
+        iContextStepIndex = iIndex;
         var el = document.getElementById("contextMenu");
         el.style.left = iX + "px";
         el.style.top = iY + "px";
@@ -1115,7 +1115,7 @@ const PipeleyenApp = (function () {
             .forEach(function (el) {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
-                    fnHandleContextAction(el.dataset.action, iContextSceneIndex);
+                    fnHandleContextAction(el.dataset.action, iContextStepIndex);
                     fnHideContextMenu();
                 });
             });
@@ -1123,37 +1123,37 @@ const PipeleyenApp = (function () {
 
     function fnHandleContextAction(sAction, iIndex) {
         if (sAction === "edit") {
-            PipeleyenSceneEditor.fnOpenEditModal(iIndex);
+            PipeleyenStepEditor.fnOpenEditModal(iIndex);
         } else if (sAction === "runFrom") {
             fnSendPipelineAction({
                 sAction: "runFrom",
-                iStartScene: iIndex + 1,
+                iStartStep: iIndex + 1,
             });
         } else if (sAction === "insertBefore") {
-            PipeleyenSceneEditor.fnOpenInsertModal(iIndex);
+            PipeleyenStepEditor.fnOpenInsertModal(iIndex);
         } else if (sAction === "insertAfter") {
-            PipeleyenSceneEditor.fnOpenInsertModal(iIndex + 1);
+            PipeleyenStepEditor.fnOpenInsertModal(iIndex + 1);
         } else if (sAction === "delete") {
-            fnDeleteScene(iIndex);
+            fnDeleteStep(iIndex);
         }
     }
 
-    async function fnDeleteScene(iIndex) {
-        var sName = dictScript.listScenes[iIndex].sName;
-        if (!confirm('Delete scene "' + sName + '"?')) return;
+    async function fnDeleteStep(iIndex) {
+        var sName = dictRecipe.listSteps[iIndex].sName;
+        if (!confirm('Delete step "' + sName + '"?')) return;
         try {
             var response = await fetch(
-                "/api/scenes/" + sContainerId + "/" + iIndex,
+                "/api/steps/" + sContainerId + "/" + iIndex,
                 { method: "DELETE" }
             );
             if (response.ok) {
                 var result = await response.json();
-                dictScript.listScenes = result.listScenes;
-                if (iSelectedSceneIndex === iIndex) iSelectedSceneIndex = -1;
-                setExpandedScenes.delete(iIndex);
-                fnRenderSceneList();
+                dictRecipe.listSteps = result.listSteps;
+                if (iSelectedStepIndex === iIndex) iSelectedStepIndex = -1;
+                setExpandedSteps.delete(iIndex);
+                fnRenderStepList();
                 fnShowToast(
-                    "Scene deleted (references renumbered)",
+                    "Step deleted (references renumbered)",
                     "success"
                 );
             }
@@ -1185,12 +1185,12 @@ const PipeleyenApp = (function () {
     return {
         fnInitialize: fnInitialize,
         fnShowToast: fnShowToast,
-        fnRenderSceneList: fnRenderSceneList,
+        fnRenderStepList: fnRenderStepList,
         fnEscapeHtml: fnEscapeHtml,
         fsGetContainerId: function () { return sContainerId; },
-        fdictGetScript: function () { return dictScript; },
-        fsGetScriptPath: function () { return sScriptPath; },
-        fiGetSelectedSceneIndex: function () { return iSelectedSceneIndex; },
+        fdictGetRecipe: function () { return dictRecipe; },
+        fsGetRecipePath: function () { return sRecipePath; },
+        fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },
         fdictBuildClientVariables: fdictBuildClientVariables,
         fsResolveTemplate: fsResolveTemplate,
     };

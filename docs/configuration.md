@@ -126,7 +126,7 @@ mycode|git@github.com:user/mycode.git|main|pip_editable
 data-utils|git@github.com:user/data-utils.git|develop|pip_no_deps
 ```
 
-## script.json
+## recipe.json
 
 Defines the execution pipeline. See [Pipelines](pipelines.md) for full
 documentation.

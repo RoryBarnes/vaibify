@@ -2,5 +2,5 @@
     "sPlotDirectory": "Plot",
     "sFigureType": "pdf",
     "iNumberOfCores": -1,
-    "listScenes": []
+    "listSteps": []
 }

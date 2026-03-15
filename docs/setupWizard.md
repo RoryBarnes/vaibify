@@ -41,7 +41,7 @@ Select template [1]:
 ```
 
 The template populates `container.conf` with an initial set of repositories
-and creates a `script.json` with example pipeline scenes.
+and creates a `recipe.json` with example pipeline steps.
 
 ### 3. Python Version
 
@@ -89,12 +89,12 @@ directory:
 |-----------------------|------------------------------------------|
 | `vaibcask.yml`   | Project configuration                    |
 | `container.conf`      | Repository list                          |
-| `script.json`         | Pipeline scene definitions               |
+| `recipe.json`         | Pipeline step definitions                |
 
 ## Editing After Setup
 
 All generated files are plain text. Edit them directly to add repositories,
-change settings, or define new pipeline scenes. Run `vaibcask build`
+change settings, or define new pipeline steps. Run `vaibcask build`
 after making changes to rebuild the image.
 
 ## Importing and Exporting Configuration

@@ -1,12 +1,12 @@
 # Pipelines
 
-A pipeline defines a sequence of scenes to execute inside the VaibCask.
-Scenes are self-contained units of work -- each one runs a series of
+A pipeline defines a sequence of steps to execute inside the VaibCask.
+Steps are self-contained units of work -- each one runs a series of
 commands in order and produces output files such as figures or data products.
 
-## Script File
+## Recipe File
 
-Pipelines are defined in `script.json` at the project root. The file has
+Pipelines are defined in `recipe.json` at the project root. The file has
 four top-level fields:
 
 | Field              | Type    | Description                              |
@@ -14,16 +14,16 @@ four top-level fields:
 | `sPlotDirectory`   | string  | Directory where figures are collected    |
 | `sFigureType`      | string  | Default figure format (`pdf`, `png`)     |
 | `iNumberOfCores`   | integer | Cores to use (`-1` = all minus one)      |
-| `listScenes`       | array   | Ordered list of scene objects            |
+| `listSteps`        | array   | Ordered list of step objects             |
 
-## Scene Object
+## Step Object
 
-Each scene in `listScenes` has the following required fields:
+Each step in `listSteps` has the following required fields:
 
 | Field              | Type         | Description                         |
 |--------------------|--------------|-------------------------------------|
-| `sName`            | string       | Unique scene identifier             |
-| `sDirectory`       | string       | Working directory for the scene     |
+| `sName`            | string       | Unique step identifier              |
+| `sDirectory`       | string       | Working directory for the step      |
 | `saCommands`       | string array | Shell commands to execute in order  |
 | `saOutputFiles`    | string array | Output file paths produced          |
 
@@ -31,8 +31,8 @@ And these optional fields:
 
 | Field              | Type         | Default | Description                    |
 |--------------------|--------------|---------|--------------------------------|
-| `bEnabled`         | boolean      | `true`  | Whether the scene should run   |
-| `bPlotOnly`        | boolean      | `true`  | Scene produces only plots      |
+| `bEnabled`         | boolean      | `true`  | Whether the step should run    |
+| `bPlotOnly`        | boolean      | `true`  | Step produces only plots       |
 | `saSetupCommands`  | string array | `[]`    | Commands to run before saCommands |
 
 ## Example
@@ -42,7 +42,7 @@ And these optional fields:
     "sPlotDirectory": "Plot",
     "sFigureType": "pdf",
     "iNumberOfCores": -1,
-    "listScenes": [
+    "listSteps": [
         {
             "sName": "RunSimulation",
             "sDirectory": "examples/EarthWater",
@@ -86,19 +86,19 @@ Start the container and execute the pipeline:
 vaibcask start
 ```
 
-The pipeline runs all scenes in order. Each scene runs its commands
-sequentially. Scenes themselves execute one at a time by default; future
-versions may support parallel scene execution for independent scenes.
+The pipeline runs all steps in order. Each step runs its commands
+sequentially. Steps themselves execute one at a time by default; future
+versions may support parallel step execution for independent steps.
 
 ## Pipeline Output
 
-Figures produced by scene commands are copied to the `sPlotDirectory`
-after each scene completes. The directory is created automatically if it
+Figures produced by step commands are copied to the `sPlotDirectory`
+after each step completes. The directory is created automatically if it
 does not exist.
 
 ## Integration with GitHub Actions
 
 Use `vaibcask publish workflow` to generate a GitHub Actions workflow
-from `script.json`. The generated workflow builds the Docker image and
-runs each scene inside the container. See [Reproducibility](reproducibility.md)
+from `recipe.json`. The generated workflow builds the Docker image and
+runs each step inside the container. See [Reproducibility](reproducibility.md)
 for details.

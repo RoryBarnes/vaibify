@@ -12,7 +12,7 @@ A VaibCask project captures four layers of provenance:
    system libraries, Python version, and all package versions.
 2. **Code** -- `container.conf` lists every repository with its branch or
    tag, so the exact source code is recorded.
-3. **Pipeline** -- `script.json` defines the commands to run and their
+3. **Pipeline** -- `recipe.json` defines the commands to run and their
    order, removing ambiguity about how results were produced.
 4. **Configuration** -- `vaibcask.yml` records all settings, so a
    collaborator can rebuild the identical environment.
@@ -29,7 +29,7 @@ Generate a GitHub Actions workflow that automates the entire pipeline:
 vaibcask publish workflow
 ```
 
-This reads `script.json` and `vaibcask.yml`, renders the Jinja2
+This reads `recipe.json` and `vaibcask.yml`, renders the Jinja2
 template at `templates/workflow.yml.j2`, and writes the result to
 `.github/workflows/vaibcask.yml`.
 
@@ -38,7 +38,7 @@ The generated workflow:
 1. Checks out the repository.
 2. Installs VaibCask.
 3. Builds the Docker image.
-4. Runs each pipeline scene inside the container.
+4. Runs each pipeline step inside the container.
 5. Uploads artifacts (figures, data products) to GitHub Actions.
 
 ## Archiving to Zenodo
@@ -81,7 +81,7 @@ are captured in the image.
 
 The recommended workflow for sharing reproducible results:
 
-1. Commit `vaibcask.yml`, `container.conf`, and `script.json` to
+1. Commit `vaibcask.yml`, `container.conf`, and `recipe.json` to
    your repository.
 2. Run `vaibcask publish workflow` to add CI automation.
 3. Tag a release when results are final.

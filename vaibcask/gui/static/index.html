@@ -13,7 +13,7 @@
 <!-- Container Picker -->
 <div id="containerPicker">
     <h1>VAIBCASK</h1>
-    <p class="subtitle">Pipeline Viewer</p>
+    <p class="subtitle">Recipe Viewer</p>
     <div id="listContainers">
         <p style="color: var(--text-muted); text-align: center;">
             Loading containers...
@@ -27,13 +27,13 @@
     <div id="toolbar">
         <span class="toolbar-title">VAIBCASK</span>
         <button class="btn btn-primary" id="btnRunSelected"
-                title="Run checked scenes">Run Selected</button>
+                title="Run checked steps">Run Selected</button>
         <button class="btn" id="btnRunAll"
-                title="Run all scenes">Run All</button>
+                title="Run all steps">Run All</button>
         <button class="btn" id="btnVerify"
                 title="Verify outputs only">Verify</button>
         <button class="btn" id="btnValidateReferences"
-                title="Check cross-scene references">Validate</button>
+                title="Check cross-step references">Validate</button>
         <button class="btn" id="btnMonitor"
                 title="Resource monitor">Monitor</button>
         <button class="btn" id="btnOverleafPush"
@@ -49,20 +49,20 @@
     <!-- Left Panel -->
     <div id="panelLeft">
         <div id="leftPanelTabs">
-            <div class="left-tab active" data-panel="scenes">Scenes</div>
+            <div class="left-tab active" data-panel="steps">Steps</div>
             <div class="left-tab" data-panel="files">Files</div>
         </div>
 
-        <!-- Scenes sub-panel -->
-        <div id="panelScenes" class="active">
+        <!-- Steps sub-panel -->
+        <div id="panelSteps" class="active">
             <div class="panel-header">
                 <button class="btn-icon" id="btnGlobalSettings"
-                        title="Script settings">&#9881;</button>
-                <button class="btn-icon" id="btnNewScene"
-                        title="Create new scene">+</button>
+                        title="Recipe settings">&#9881;</button>
+                <button class="btn-icon" id="btnNewStep"
+                        title="Create new step">+</button>
             </div>
             <div id="globalSettingsPanel" class="global-settings"></div>
-            <div id="listScenes"></div>
+            <div id="listSteps"></div>
         </div>
 
         <!-- Files sub-panel -->
@@ -93,7 +93,7 @@
                 </div>
                 <div class="viewer-viewport" id="viewportA">
                     <span class="placeholder">
-                        Drop a file here or select a scene
+                        Drop a file here or select a step
                     </span>
                 </div>
             </div>
@@ -142,18 +142,18 @@
     </div>
 </div>
 
-<!-- Scene Editor Modal -->
-<div class="modal-overlay" id="modalSceneEditor">
+<!-- Step Editor Modal -->
+<div class="modal-overlay" id="modalStepEditor">
     <div class="modal">
-        <h2 id="modalTitle">New Scene</h2>
+        <h2 id="modalTitle">New Step</h2>
         <div class="form-group">
-            <label>Scene Name</label>
-            <input type="text" id="inputSceneName"
+            <label>Step Name</label>
+            <input type="text" id="inputStepName"
                    placeholder="e.g. Maximum Likelihood Estimation">
         </div>
         <div class="form-group">
             <label>Working Directory</label>
-            <input type="text" id="inputSceneDirectory"
+            <input type="text" id="inputStepDirectory"
                    placeholder="e.g. XUV/Distributions/Ribas/LXUV">
         </div>
         <div class="form-group">
@@ -188,16 +188,16 @@
 
 <!-- Context Menu -->
 <div class="context-menu" id="contextMenu">
-    <div class="context-menu-item" data-action="edit">Edit Scene</div>
+    <div class="context-menu-item" data-action="edit">Edit Step</div>
     <div class="context-menu-item" data-action="runFrom">
         Run From Here</div>
     <div class="context-menu-item" data-action="insertBefore">
-        Insert Scene Before</div>
+        Insert Step Before</div>
     <div class="context-menu-item" data-action="insertAfter">
-        Insert Scene After</div>
+        Insert Step After</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item danger" data-action="delete">
-        Delete Scene</div>
+        Delete Step</div>
 </div>
 
 <!-- Toast Container -->
@@ -209,7 +209,7 @@
 <script src="/static/scriptApplication.js"></script>
 <script src="/static/scriptFigureViewer.js"></script>
 <script src="/static/scriptTerminal.js"></script>
-<script src="/static/scriptSceneEditor.js"></script>
+<script src="/static/scriptStepEditor.js"></script>
 <script src="/static/scriptResourceMonitor.js"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
     "sPlotDirectory": "src/tex/figures",
     "sFigureType": "pdf",
     "iNumberOfCores": -1,
-    "listScenes": [
+    "listSteps": [
         {
             "sName": "GenerateFigures",
             "sDirectory": ".",

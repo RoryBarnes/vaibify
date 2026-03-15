@@ -1,6 +1,6 @@
-/* Pipeleyen — Scene CRUD modal forms */
+/* Pipeleyen — Step CRUD modal forms */
 
-const PipeleyenSceneEditor = (function () {
+const PipeleyenStepEditor = (function () {
     "use strict";
 
     let sMode = "create";  /* "create", "edit", or "insert" */
@@ -12,7 +12,7 @@ const PipeleyenSceneEditor = (function () {
         iEditIndex = -1;
         iInsertPosition = -1;
         fnClearForm();
-        document.getElementById("modalTitle").textContent = "New Scene";
+        document.getElementById("modalTitle").textContent = "New Step";
         fnShowModal();
     }
 
@@ -22,7 +22,7 @@ const PipeleyenSceneEditor = (function () {
         iInsertPosition = iPosition;
         fnClearForm();
         document.getElementById("modalTitle").textContent =
-            "Insert Scene at Position " + (iPosition + 1);
+            "Insert Step at Position " + (iPosition + 1);
         fnShowModal();
     }
 
@@ -31,30 +31,30 @@ const PipeleyenSceneEditor = (function () {
         iEditIndex = iIndex;
         iInsertPosition = -1;
 
-        const dictScript = PipeleyenApp.fdictGetScript();
-        const dictScene = dictScript.listScenes[iIndex];
+        const dictRecipe = PipeleyenApp.fdictGetRecipe();
+        const dictStep = dictRecipe.listSteps[iIndex];
 
-        document.getElementById("inputSceneName").value =
-            dictScene.sName || "";
-        document.getElementById("inputSceneDirectory").value =
-            dictScene.sDirectory || "";
+        document.getElementById("inputStepName").value =
+            dictStep.sName || "";
+        document.getElementById("inputStepDirectory").value =
+            dictStep.sDirectory || "";
         document.getElementById("inputPlotOnly").checked =
-            dictScene.bPlotOnly !== false;
+            dictStep.bPlotOnly !== false;
         document.getElementById("inputSetupCommands").value =
-            (dictScene.saSetupCommands || []).join("\n");
+            (dictStep.saSetupCommands || []).join("\n");
         document.getElementById("inputCommands").value =
-            (dictScene.saCommands || []).join("\n");
+            (dictStep.saCommands || []).join("\n");
         document.getElementById("inputOutputFiles").value =
-            (dictScene.saOutputFiles || []).join("\n");
+            (dictStep.saOutputFiles || []).join("\n");
 
         document.getElementById("modalTitle").textContent =
-            "Edit Scene: " + dictScene.sName;
+            "Edit Step: " + dictStep.sName;
         fnShowModal();
     }
 
     function fnClearForm() {
-        document.getElementById("inputSceneName").value = "";
-        document.getElementById("inputSceneDirectory").value = "";
+        document.getElementById("inputStepName").value = "";
+        document.getElementById("inputStepDirectory").value = "";
         document.getElementById("inputPlotOnly").checked = true;
         document.getElementById("inputSetupCommands").value = "";
         document.getElementById("inputCommands").value = "";
@@ -62,16 +62,16 @@ const PipeleyenSceneEditor = (function () {
     }
 
     function fnShowModal() {
-        var elOverlay = document.getElementById("modalSceneEditor");
+        var elOverlay = document.getElementById("modalStepEditor");
         var elModal = elOverlay.querySelector(".modal");
         elModal.style.transform = "";
         elOverlay.classList.remove("modal-displaced");
         elOverlay.classList.add("active");
-        document.getElementById("inputSceneName").focus();
+        document.getElementById("inputStepName").focus();
     }
 
     function fnHideModal() {
-        var elOverlay = document.getElementById("modalSceneEditor");
+        var elOverlay = document.getElementById("modalStepEditor");
         elOverlay.classList.remove("active", "modal-displaced");
         var elModal = elOverlay.querySelector(".modal");
         elModal.style.transform = "";
@@ -86,13 +86,13 @@ const PipeleyenSceneEditor = (function () {
         });
     }
 
-    function fdictBuildSceneFromForm() {
+    function fdictBuildStepFromForm() {
         return {
             sName: document
-                .getElementById("inputSceneName")
+                .getElementById("inputStepName")
                 .value.trim(),
             sDirectory: document
-                .getElementById("inputSceneDirectory")
+                .getElementById("inputStepDirectory")
                 .value.trim(),
             bPlotOnly: document.getElementById("inputPlotOnly")
                 .checked,
@@ -105,22 +105,22 @@ const PipeleyenSceneEditor = (function () {
     }
 
     async function fnSave() {
-        const dictData = fdictBuildSceneFromForm();
+        const dictData = fdictBuildStepFromForm();
         if (!dictData.sName) {
             PipeleyenApp.fnShowToast(
-                "Scene name is required",
+                "Step name is required",
                 "error"
             );
             return;
         }
 
         const sContainerId = PipeleyenApp.fsGetContainerId();
-        const dictScript = PipeleyenApp.fdictGetScript();
+        const dictRecipe = PipeleyenApp.fdictGetRecipe();
 
         try {
             if (sMode === "edit") {
                 const response = await fetch(
-                    "/api/scenes/" +
+                    "/api/steps/" +
                         sContainerId +
                         "/" +
                         iEditIndex,
@@ -134,9 +134,9 @@ const PipeleyenSceneEditor = (function () {
                 );
                 if (response.ok) {
                     const dictUpdated = await response.json();
-                    dictScript.listScenes[iEditIndex] = dictUpdated;
+                    dictRecipe.listSteps[iEditIndex] = dictUpdated;
                     PipeleyenApp.fnShowToast(
-                        "Scene updated",
+                        "Step updated",
                         "success"
                     );
                 } else {
@@ -144,7 +144,7 @@ const PipeleyenSceneEditor = (function () {
                 }
             } else if (sMode === "insert") {
                 const response = await fetch(
-                    "/api/scenes/" +
+                    "/api/steps/" +
                         sContainerId +
                         "/insert/" +
                         iInsertPosition,
@@ -158,9 +158,9 @@ const PipeleyenSceneEditor = (function () {
                 );
                 if (response.ok) {
                     const result = await response.json();
-                    dictScript.listScenes = result.listScenes;
+                    dictRecipe.listSteps = result.listSteps;
                     PipeleyenApp.fnShowToast(
-                        "Scene inserted (references renumbered)",
+                        "Step inserted (references renumbered)",
                         "success"
                     );
                 } else {
@@ -168,7 +168,7 @@ const PipeleyenSceneEditor = (function () {
                 }
             } else {
                 const response = await fetch(
-                    "/api/scenes/" +
+                    "/api/steps/" +
                         sContainerId +
                         "/create",
                     {
@@ -181,16 +181,16 @@ const PipeleyenSceneEditor = (function () {
                 );
                 if (response.ok) {
                     const result = await response.json();
-                    dictScript.listScenes.push(result.dictScene);
+                    dictRecipe.listSteps.push(result.dictStep);
                     PipeleyenApp.fnShowToast(
-                        "Scene created",
+                        "Step created",
                         "success"
                     );
                 } else {
                     throw new Error("Create failed");
                 }
             }
-            PipeleyenApp.fnRenderSceneList();
+            PipeleyenApp.fnRenderStepList();
             fnHideModal();
         } catch (error) {
             PipeleyenApp.fnShowToast(
@@ -203,7 +203,7 @@ const PipeleyenSceneEditor = (function () {
     function fnBindModalDrag() {
         var elTitle = document.getElementById("modalTitle");
         var elModal = elTitle.closest(".modal");
-        var elOverlay = document.getElementById("modalSceneEditor");
+        var elOverlay = document.getElementById("modalStepEditor");
         var iOffsetX = 0;
         var iOffsetY = 0;
         var iStartX = 0;
@@ -237,7 +237,7 @@ const PipeleyenSceneEditor = (function () {
     /* Bind modal events */
     document.addEventListener("DOMContentLoaded", function () {
         document
-            .getElementById("btnNewScene")
+            .getElementById("btnNewStep")
             .addEventListener("click", fnOpenCreateModal);
         document
             .getElementById("btnModalCancel")
@@ -248,7 +248,7 @@ const PipeleyenSceneEditor = (function () {
 
         /* Close modal on overlay click */
         document
-            .getElementById("modalSceneEditor")
+            .getElementById("modalStepEditor")
             .addEventListener("click", function (event) {
                 if (event.target === this) {
                     fnHideModal();

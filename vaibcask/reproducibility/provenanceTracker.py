@@ -101,16 +101,16 @@ def _fsHashFileContents(pathFile):
 # ------------------------------------------------------------------
 
 
-def fdictBuildDagFromScript(dictScript):
-    """Build a dependency graph from a script.json structure.
+def fdictBuildDagFromRecipe(dictRecipe):
+    """Build a dependency graph from a recipe.json structure.
 
-    Each scene declares inputs and outputs; edges flow from inputs
-    through the scene to its outputs.
+    Each step declares inputs and outputs; edges flow from inputs
+    through the step to its outputs.
 
     Parameters
     ----------
-    dictScript : dict
-        Parsed script.json with a "listScenes" key.
+    dictRecipe : dict
+        Parsed recipe.json with a "listSteps" key.
 
     Returns
     -------
@@ -119,19 +119,19 @@ def fdictBuildDagFromScript(dictScript):
     """
     listNodes = []
     listEdges = []
-    for dictScene in dictScript.get("listScenes", []):
-        _fnAddSceneToDag(dictScene, listNodes, listEdges)
+    for dictStep in dictRecipe.get("listSteps", []):
+        _fnAddStepToDag(dictStep, listNodes, listEdges)
     return {"listNodes": listNodes, "listEdges": listEdges}
 
 
-def _fnAddSceneToDag(dictScene, listNodes, listEdges):
-    """Append nodes and edges for a single scene."""
-    sSceneName = dictScene.get("sName", "unknown")
-    listNodes.append(sSceneName)
-    for sInput in dictScene.get("saInputFiles", []):
-        listEdges.append({"sFrom": sInput, "sTo": sSceneName})
-    for sOutput in dictScene.get("saOutputFiles", []):
-        listEdges.append({"sFrom": sSceneName, "sTo": sOutput})
+def _fnAddStepToDag(dictStep, listNodes, listEdges):
+    """Append nodes and edges for a single step."""
+    sStepName = dictStep.get("sName", "unknown")
+    listNodes.append(sStepName)
+    for sInput in dictStep.get("saInputFiles", []):
+        listEdges.append({"sFrom": sInput, "sTo": sStepName})
+    for sOutput in dictStep.get("saOutputFiles", []):
+        listEdges.append({"sFrom": sStepName, "sTo": sOutput})
 
 
 # ------------------------------------------------------------------
@@ -139,15 +139,15 @@ def _fnAddSceneToDag(dictScene, listNodes, listEdges):
 # ------------------------------------------------------------------
 
 
-def flistDetectChangedOutputs(dictProvenance, dictScript):
+def flistDetectChangedOutputs(dictProvenance, dictRecipe):
     """Compare current file hashes to stored hashes.
 
     Parameters
     ----------
     dictProvenance : dict
         Previously stored provenance data.
-    dictScript : dict
-        Parsed script.json with scene definitions.
+    dictRecipe : dict
+        Parsed recipe.json with step definitions.
 
     Returns
     -------
@@ -156,14 +156,14 @@ def flistDetectChangedOutputs(dictProvenance, dictScript):
     """
     dictStoredHashes = dictProvenance.get("dictFileHashes", {})
     listChanged = []
-    for dictScene in dictScript.get("listScenes", []):
-        _fnCheckSceneOutputs(dictScene, dictStoredHashes, listChanged)
+    for dictStep in dictRecipe.get("listSteps", []):
+        _fnCheckStepOutputs(dictStep, dictStoredHashes, listChanged)
     return listChanged
 
 
-def _fnCheckSceneOutputs(dictScene, dictStoredHashes, listChanged):
-    """Check each output of a scene for hash changes."""
-    for sOutputPath in dictScene.get("saOutputFiles", []):
+def _fnCheckStepOutputs(dictStep, dictStoredHashes, listChanged):
+    """Check each output of a step for hash changes."""
+    for sOutputPath in dictStep.get("saOutputFiles", []):
         if _fbFileHashChanged(sOutputPath, dictStoredHashes):
             listChanged.append(sOutputPath)
 
@@ -183,31 +183,31 @@ def _fbFileHashChanged(sFilePath, dictStoredHashes):
 # ------------------------------------------------------------------
 
 
-def fnUpdateProvenance(dictProvenance, dictScript, sWorkdir):
+def fnUpdateProvenance(dictProvenance, dictRecipe, sWorkdir):
     """Recompute hashes for all outputs and update provenance.
 
     Parameters
     ----------
     dictProvenance : dict
         Provenance dictionary to update in place.
-    dictScript : dict
-        Parsed script.json with scene definitions.
+    dictRecipe : dict
+        Parsed recipe.json with step definitions.
     sWorkdir : str
         Working directory (currently unused but reserved).
     """
     dictHashes = {}
-    saScenes = []
-    for dictScene in dictScript.get("listScenes", []):
-        saScenes.append(dictScene.get("sName", "unknown"))
-        _fnHashSceneOutputs(dictScene, dictHashes)
-    dictProvenance["saScenes"] = saScenes
+    saSteps = []
+    for dictStep in dictRecipe.get("listSteps", []):
+        saSteps.append(dictStep.get("sName", "unknown"))
+        _fnHashStepOutputs(dictStep, dictHashes)
+    dictProvenance["saSteps"] = saSteps
     dictProvenance["dictFileHashes"] = dictHashes
     dictProvenance["sTimestamp"] = _fsCurrentTimestamp()
 
 
-def _fnHashSceneOutputs(dictScene, dictHashes):
-    """Hash every output file in a scene and store in dictHashes."""
-    for sOutputPath in dictScene.get("saOutputFiles", []):
+def _fnHashStepOutputs(dictStep, dictHashes):
+    """Hash every output file in a step and store in dictHashes."""
+    for sOutputPath in dictStep.get("saOutputFiles", []):
         if Path(sOutputPath).is_file():
             dictHashes[sOutputPath] = fsComputeFileHash(sOutputPath)
 
@@ -242,8 +242,8 @@ def fnGenerateDotFile(dictProvenance, sOutputPath):
 def _flistBuildDotLines(dictProvenance):
     """Assemble the lines of a DOT digraph from provenance data."""
     listLines = ["digraph provenance {", "  rankdir=LR;"]
-    for sScene in dictProvenance.get("saScenes", []):
-        sLabel = sScene.replace('"', '\\"')
+    for sStep in dictProvenance.get("saSteps", []):
+        sLabel = sStep.replace('"', '\\"')
         listLines.append(f'  "{sLabel}";')
     for sFile in dictProvenance.get("dictFileHashes", {}):
         sLabel = sFile.replace('"', '\\"')

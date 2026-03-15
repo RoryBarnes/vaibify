@@ -1,46 +1,46 @@
-"""Execute pipeline scenes by running commands directly in containers."""
+"""Execute recipe steps by running commands directly in containers."""
 
 import json
 import re
 
 
-PATTERN_SCENE_LABEL = re.compile(
-    r"\[Scene(\d+)\]|Scene(\d+):|=+\s*\n\s*Scene(\d+)"
+PATTERN_STEP_LABEL = re.compile(
+    r"\[Step(\d+)\]|Step(\d+):|=+\s*\n\s*Step(\d+)"
 )
-PATTERN_SCENE_SUCCESS = re.compile(r"SUCCESS:\s*Scene(\d+)")
-PATTERN_SCENE_FAILED = re.compile(r"FAILED:\s*Scene(\d+)")
+PATTERN_STEP_SUCCESS = re.compile(r"SUCCESS:\s*Step(\d+)")
+PATTERN_STEP_FAILED = re.compile(r"FAILED:\s*Step(\d+)")
 
 
 async def _fnRunSetupIfNeeded(
-    connectionDocker, sContainerId, dictScene,
-    sSceneDirectory, fnStatusCallback,
+    connectionDocker, sContainerId, dictStep,
+    sStepDirectory, fnStatusCallback,
 ):
     """Run setup commands unless bPlotOnly is True."""
-    if dictScene.get("bPlotOnly", True):
+    if dictStep.get("bPlotOnly", True):
         return 0
     return await _fnRunCommandList(
         connectionDocker, sContainerId,
-        dictScene.get("saSetupCommands", []),
-        sSceneDirectory, fnStatusCallback,
+        dictStep.get("saSetupCommands", []),
+        sStepDirectory, fnStatusCallback,
     )
 
 
-async def fnRunSceneCommands(
-    connectionDocker, sContainerId, dictScene,
+async def fnRunStepCommands(
+    connectionDocker, sContainerId, dictStep,
     sWorkdir, fnStatusCallback,
 ):
-    """Run a single scene's commands sequentially in its directory."""
-    sSceneDirectory = dictScene.get("sDirectory", sWorkdir)
+    """Run a single step's commands sequentially in its directory."""
+    sStepDirectory = dictStep.get("sDirectory", sWorkdir)
     iExitCode = await _fnRunSetupIfNeeded(
-        connectionDocker, sContainerId, dictScene,
-        sSceneDirectory, fnStatusCallback,
+        connectionDocker, sContainerId, dictStep,
+        sStepDirectory, fnStatusCallback,
     )
     if iExitCode != 0:
         return iExitCode
     return await _fnRunCommandList(
         connectionDocker, sContainerId,
-        dictScene.get("saCommands", []),
-        sSceneDirectory, fnStatusCallback,
+        dictStep.get("saCommands", []),
+        sStepDirectory, fnStatusCallback,
     )
 
 
@@ -75,11 +75,11 @@ async def _fnRunSingleCommand(
     return iExitCode
 
 
-async def _fnEmitSceneResult(fnStatusCallback, iSceneNumber, iExitCode):
-    """Send a scenePass or sceneFail event based on exit code."""
-    sType = "scenePass" if iExitCode == 0 else "sceneFail"
+async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
+    """Send a stepPass or stepFail event based on exit code."""
+    sType = "stepPass" if iExitCode == 0 else "stepFail"
     await fnStatusCallback(
-        {"sType": sType, "iSceneNumber": iSceneNumber}
+        {"sType": sType, "iStepNumber": iStepNumber}
     )
 
 
@@ -91,113 +91,113 @@ async def _fnEmitCompletion(fnStatusCallback, iExitCode):
     )
 
 
-async def _fdictLoadScript(connectionDocker, sContainerId, fnStatusCallback):
-    """Load script.json from the container, returning None on failure."""
-    from . import sceneManager
+async def _fdictLoadRecipe(connectionDocker, sContainerId, fnStatusCallback):
+    """Load recipe.json from the container, returning None on failure."""
+    from . import recipeManager
 
-    listPaths = sceneManager.flistFindScriptsInContainer(
+    listPaths = recipeManager.flistFindRecipesInContainer(
         connectionDocker, sContainerId
     )
     if not listPaths:
         await fnStatusCallback(
-            {"sType": "error", "sMessage": "No script.json found"}
+            {"sType": "error", "sMessage": "No recipe.json found"}
         )
         return None
-    return sceneManager.fdictLoadScriptFromContainer(
+    return recipeManager.fdictLoadRecipeFromContainer(
         connectionDocker, sContainerId, listPaths[0]
     )
 
 
-async def fnRunAllScenes(
+async def fnRunAllSteps(
     connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
 ):
-    """Run all enabled scenes from the cached script."""
-    dictScript = await _fdictLoadScript(
+    """Run all enabled steps from the cached recipe."""
+    dictRecipe = await _fdictLoadRecipe(
         connectionDocker, sContainerId, fnStatusCallback
     )
-    if dictScript is None:
+    if dictRecipe is None:
         return 1
     await fnStatusCallback({"sType": "started", "sCommand": "runAll"})
-    iResult = await _fnRunSceneList(
+    iResult = await _fnRunStepList(
         connectionDocker, sContainerId,
-        dictScript, sWorkdir, fnStatusCallback,
+        dictRecipe, sWorkdir, fnStatusCallback,
     )
     await _fnEmitCompletion(fnStatusCallback, iResult)
     return iResult
 
 
-def _fbShouldRunScene(dictScene, iSceneNumber, iStartScene):
-    """Return True if this scene should be executed."""
-    if iSceneNumber < iStartScene:
+def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
+    """Return True if this step should be executed."""
+    if iStepNumber < iStartStep:
         return False
-    return dictScene.get("bEnabled", True)
+    return dictStep.get("bEnabled", True)
 
 
-async def _fnRunOneScene(
-    connectionDocker, sContainerId, dictScene,
-    iSceneNumber, sWorkdir, fnStatusCallback,
+async def _fnRunOneStep(
+    connectionDocker, sContainerId, dictStep,
+    iStepNumber, sWorkdir, fnStatusCallback,
 ):
-    """Run a single scene and emit its result event."""
-    iExitCode = await fnRunSceneCommands(
+    """Run a single step and emit its result event."""
+    iExitCode = await fnRunStepCommands(
         connectionDocker, sContainerId,
-        dictScene, sWorkdir, fnStatusCallback,
+        dictStep, sWorkdir, fnStatusCallback,
     )
-    await _fnEmitSceneResult(fnStatusCallback, iSceneNumber, iExitCode)
+    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
 
 
-async def _fnRunSceneList(
+async def _fnRunStepList(
     connectionDocker, sContainerId,
-    dictScript, sWorkdir, fnStatusCallback,
-    iStartScene=1,
+    dictRecipe, sWorkdir, fnStatusCallback,
+    iStartStep=1,
 ):
-    """Iterate scenes and run each eligible one from iStartScene."""
+    """Iterate steps and run each eligible one from iStartStep."""
     iFinalExitCode = 0
-    for iIndex, dictScene in enumerate(dictScript["listScenes"]):
-        iSceneNumber = iIndex + 1
-        if not _fbShouldRunScene(dictScene, iSceneNumber, iStartScene):
+    for iIndex, dictStep in enumerate(dictRecipe["listSteps"]):
+        iStepNumber = iIndex + 1
+        if not _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
             continue
-        iExitCode = await _fnRunOneScene(
-            connectionDocker, sContainerId, dictScene,
-            iSceneNumber, sWorkdir, fnStatusCallback,
+        iExitCode = await _fnRunOneStep(
+            connectionDocker, sContainerId, dictStep,
+            iStepNumber, sWorkdir, fnStatusCallback,
         )
         if iExitCode != 0:
             iFinalExitCode = iExitCode
     return iFinalExitCode
 
 
-async def fnRunFromScene(
-    connectionDocker, sContainerId, iStartScene,
+async def fnRunFromStep(
+    connectionDocker, sContainerId, iStartStep,
     sWorkdir, fnStatusCallback,
 ):
-    """Run scenes starting from iStartScene (1-based)."""
-    dictScript = await _fdictLoadScript(
+    """Run steps starting from iStartStep (1-based)."""
+    dictRecipe = await _fdictLoadRecipe(
         connectionDocker, sContainerId, fnStatusCallback
     )
-    if dictScript is None:
+    if dictRecipe is None:
         return 1
     await fnStatusCallback(
-        {"sType": "started", "sCommand": f"runFrom:{iStartScene}"}
+        {"sType": "started", "sCommand": f"runFrom:{iStartStep}"}
     )
-    iFinalExitCode = await _fnRunSceneList(
+    iFinalExitCode = await _fnRunStepList(
         connectionDocker, sContainerId,
-        dictScript, sWorkdir, fnStatusCallback,
-        iStartScene=iStartScene,
+        dictRecipe, sWorkdir, fnStatusCallback,
+        iStartStep=iStartStep,
     )
     await _fnEmitCompletion(fnStatusCallback, iFinalExitCode)
     return iFinalExitCode
 
 
-async def _fbVerifySceneOutputs(
+async def _fbVerifyStepOutputs(
     connectionDocker, sContainerId,
-    dictScene, sWorkdir, fnStatusCallback,
+    dictStep, sWorkdir, fnStatusCallback,
 ):
-    """Return True if all output files for a scene exist."""
-    sSceneDirectory = dictScene.get("sDirectory", sWorkdir)
-    for sOutputFile in dictScene.get("saOutputFiles", []):
+    """Return True if all output files for a step exist."""
+    sStepDirectory = dictStep.get("sDirectory", sWorkdir)
+    for sOutputFile in dictStep.get("saOutputFiles", []):
         sCheckCommand = f"test -f {sOutputFile}"
         iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-            sContainerId, sCheckCommand, sWorkdir=sSceneDirectory
+            sContainerId, sCheckCommand, sWorkdir=sStepDirectory
         )
         if iExitCode != 0:
             await fnStatusCallback(
@@ -207,21 +207,21 @@ async def _fbVerifySceneOutputs(
     return True
 
 
-async def _fnVerifySceneList(
-    connectionDocker, sContainerId, dictScript,
+async def _fnVerifyStepList(
+    connectionDocker, sContainerId, dictRecipe,
     sWorkdir, fnStatusCallback,
 ):
-    """Verify outputs for every scene, returning True if all present."""
+    """Verify outputs for every step, returning True if all present."""
     bAllPresent = True
-    for iIndex, dictScene in enumerate(dictScript["listScenes"]):
-        bSceneOk = await _fbVerifySceneOutputs(
+    for iIndex, dictStep in enumerate(dictRecipe["listSteps"]):
+        bStepOk = await _fbVerifyStepOutputs(
             connectionDocker, sContainerId,
-            dictScene, sWorkdir, fnStatusCallback,
+            dictStep, sWorkdir, fnStatusCallback,
         )
-        await _fnEmitSceneResult(
-            fnStatusCallback, iIndex + 1, 0 if bSceneOk else 1
+        await _fnEmitStepResult(
+            fnStatusCallback, iIndex + 1, 0 if bStepOk else 1
         )
-        if not bSceneOk:
+        if not bStepOk:
             bAllPresent = False
     return bAllPresent
 
@@ -229,17 +229,17 @@ async def _fnVerifySceneList(
 async def fnVerifyOnly(
     connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
 ):
-    """Check that each scene's output files exist without running."""
-    dictScript = await _fdictLoadScript(
+    """Check that each step's output files exist without running."""
+    dictRecipe = await _fdictLoadRecipe(
         connectionDocker, sContainerId, fnStatusCallback
     )
-    if dictScript is None:
+    if dictRecipe is None:
         return 1
     await fnStatusCallback(
         {"sType": "started", "sCommand": "verify"}
     )
-    bAllPresent = await _fnVerifySceneList(
-        connectionDocker, sContainerId, dictScript,
+    bAllPresent = await _fnVerifyStepList(
+        connectionDocker, sContainerId, dictRecipe,
         sWorkdir, fnStatusCallback,
     )
     iExitCode = 0 if bAllPresent else 1
@@ -247,52 +247,52 @@ async def fnVerifyOnly(
     return iExitCode
 
 
-def _fnToggleSelectedScenes(dictScript, listSceneIndices):
-    """Set bEnabled only for scenes whose indices are in the list."""
-    setSelected = set(listSceneIndices)
-    for iIndex in range(len(dictScript["listScenes"])):
-        dictScript["listScenes"][iIndex]["bEnabled"] = (
+def _fnToggleSelectedSteps(dictRecipe, listStepIndices):
+    """Set bEnabled only for steps whose indices are in the list."""
+    setSelected = set(listStepIndices)
+    for iIndex in range(len(dictRecipe["listSteps"])):
+        dictRecipe["listSteps"][iIndex]["bEnabled"] = (
             iIndex in setSelected
         )
 
 
-async def _fnExecuteSelectedScenes(
-    connectionDocker, sContainerId, listSceneIndices,
-    dictScript, sScriptPath, sWorkdir, fnStatusCallback,
+async def _fnExecuteSelectedSteps(
+    connectionDocker, sContainerId, listStepIndices,
+    dictRecipe, sRecipePath, sWorkdir, fnStatusCallback,
 ):
-    """Toggle scenes, save, run, and emit completion."""
-    from . import sceneManager
+    """Toggle steps, save, run, and emit completion."""
+    from . import recipeManager
 
-    _fnToggleSelectedScenes(dictScript, listSceneIndices)
-    sceneManager.fnSaveScriptToContainer(
-        connectionDocker, sContainerId, dictScript, sScriptPath,
+    _fnToggleSelectedSteps(dictRecipe, listStepIndices)
+    recipeManager.fnSaveRecipeToContainer(
+        connectionDocker, sContainerId, dictRecipe, sRecipePath,
     )
     await fnStatusCallback(
         {"sType": "started", "sCommand": "runSelected"}
     )
-    iResult = await _fnRunSceneList(
+    iResult = await _fnRunStepList(
         connectionDocker, sContainerId,
-        dictScript, sWorkdir, fnStatusCallback,
+        dictRecipe, sWorkdir, fnStatusCallback,
     )
     await _fnEmitCompletion(fnStatusCallback, iResult)
     return iResult
 
 
-async def fnRunSelectedScenes(
-    connectionDocker, sContainerId, listSceneIndices,
-    dictScript, sScriptPath, sWorkdir, fnStatusCallback,
+async def fnRunSelectedSteps(
+    connectionDocker, sContainerId, listStepIndices,
+    dictRecipe, sRecipePath, sWorkdir, fnStatusCallback,
 ):
-    """Run only selected scenes by toggling bEnabled."""
-    from . import sceneManager
+    """Run only selected steps by toggling bEnabled."""
+    from . import recipeManager
 
-    dictBackup = json.loads(json.dumps(dictScript))
+    dictBackup = json.loads(json.dumps(dictRecipe))
     try:
-        iResult = await _fnExecuteSelectedScenes(
-            connectionDocker, sContainerId, listSceneIndices,
-            dictScript, sScriptPath, sWorkdir, fnStatusCallback,
+        iResult = await _fnExecuteSelectedSteps(
+            connectionDocker, sContainerId, listStepIndices,
+            dictRecipe, sRecipePath, sWorkdir, fnStatusCallback,
         )
     finally:
-        sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictBackup, sScriptPath,
+        recipeManager.fnSaveRecipeToContainer(
+            connectionDocker, sContainerId, dictBackup, sRecipePath,
         )
     return iResult
