@@ -1,0 +1,107 @@
+#!/bin/sh
+# dc_push - Copy files from the host into the running DataContainer.
+#
+# Container paths are relative to the workspace root defined in
+# datacontainer.yml. A leading slash is stripped before prepending the
+# workspace root, so "/myrepo" and "myrepo" both resolve to
+# <workspace>/myrepo.
+#
+# Usage:
+#   dc_push [options] <host_source>... <container_destination>
+#
+# Examples:
+#   dc_push file.txt .                    Copy to workspace root
+#   dc_push *.in /examples/               Copy matching files
+#   dc_push -r results/ project/          Copy dir into container
+
+set -e
+
+# shellcheck source=bin/dcTransferCommon.sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "${SCRIPT_DIR}/dcTransferCommon.sh"
+
+# ---------------------------------------------------------------------------
+# fnPrintUsage: Display help text
+# ---------------------------------------------------------------------------
+fnPrintUsage() {
+    echo "Usage: dc_push [options] <host_source>... <container_destination>"
+    echo ""
+    echo "Copy files from the host into the running DataContainer."
+    echo "Container paths are relative to the workspace root."
+    echo ""
+    echo "Options:"
+    echo "  -a          Archive mode (preserve uid/gid information)"
+    echo "  -L          Follow symbolic links in source"
+    echo "  -r, -R      Copy directories recursively (required for directories)"
+    echo "  --help      Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  dc_push file.txt .                     Copy to workspace root"
+    echo "  dc_push *.in /examples/                Copy matching files"
+    echo "  dc_push -r results/ project/           Copy dir into container"
+}
+
+# ===========================================================================
+# Main
+# ===========================================================================
+
+sDockerFlags=""
+bRecursive=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h)
+            fnPrintUsage
+            exit 0
+            ;;
+        -a)
+            sDockerFlags="${sDockerFlags} -a"
+            ;;
+        -L)
+            sDockerFlags="${sDockerFlags} -L"
+            ;;
+        -aL|-La)
+            sDockerFlags="${sDockerFlags} -a -L"
+            ;;
+        -r|-R)
+            bRecursive=true
+            ;;
+        -*)
+            fnPrintError "Unknown option: $1"
+            fnPrintUsage >&2
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
+
+if [ $# -lt 2 ]; then
+    fnPrintError "Both source and destination are required."
+    fnPrintUsage >&2
+    exit 1
+fi
+
+fnCheckContainer
+
+# Last argument is the container destination
+for sContainerDest in "$@"; do :; done
+sResolvedDest=$(fsResolveContainerPath "${sContainerDest}")
+
+# Copy each source (all arguments except the last)
+while [ $# -gt 1 ]; do
+    sHostSource="$1"
+
+    if [ "${bRecursive}" = false ] && [ -d "${sHostSource}" ]; then
+        if ! fbConfirmRecursive "${sHostSource}"; then
+            shift
+            continue
+        fi
+    fi
+
+    # shellcheck disable=SC2086
+    docker cp ${sDockerFlags} "${sHostSource}" "${DC_CONTAINER}:${sResolvedDest}"
+    shift
+done

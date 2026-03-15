@@ -1,0 +1,188 @@
+"""Container lifecycle management using subprocess Docker CLI calls."""
+
+import os
+import subprocess
+import sys
+
+from .volumeManager import fsGetVolumeName
+
+
+def fnStartContainer(config, sDockerDir, saCommand=None):
+    """Start a container with run args derived from config."""
+    listCleanupFiles = []
+    try:
+        saRunArgs = flistBuildRunArgs(config)
+        fnMountSecrets(config, saRunArgs, listCleanupFiles)
+        saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
+        _fnRunDockerCommand(saFullCommand)
+    finally:
+        _fnCleanupTempFiles(listCleanupFiles)
+
+
+def _flistAssembleRunCommand(config, saRunArgs, saCommand):
+    """Combine docker run prefix, args, image tag, and user command."""
+    sImageTag = f"{config.sProjectName}:latest"
+    saFullCommand = ["docker", "run"] + saRunArgs + [sImageTag]
+    if saCommand is not None:
+        saFullCommand.extend(saCommand)
+    return saFullCommand
+
+
+def flistBuildRunArgs(config):
+    """Build list of docker run arguments from project config."""
+    saRunArgs = ["--rm", "-it"]
+    saRunArgs.extend(["--name", config.sProjectName])
+    saRunArgs.extend(["--hostname", config.sProjectName])
+    _fnAddCpuAllocation(saRunArgs)
+    _fnAddVolumeMount(config, saRunArgs)
+    _fnAddPortForwarding(config, saRunArgs)
+    _fnAddBindMounts(config, saRunArgs)
+    _fnAddGpuPassthrough(config, saRunArgs)
+    _fnAddNetworkIsolation(config, saRunArgs)
+    return saRunArgs
+
+
+def _fnAddCpuAllocation(saRunArgs):
+    """Add CPU limit to run args (total cores minus one)."""
+    iCpuCount = max(1, (os.cpu_count() or 2) - 1)
+    saRunArgs.extend(["--cpus", str(iCpuCount)])
+
+
+def _fnAddVolumeMount(config, saRunArgs):
+    """Add the workspace volume mount to run args."""
+    sVolumeName = fsGetVolumeName(config)
+    sWorkspaceRoot = config.sWorkspaceRoot
+    saRunArgs.extend(["-v", f"{sVolumeName}:{sWorkspaceRoot}"])
+
+
+def _fnAddPortForwarding(config, saRunArgs):
+    """Add port forwarding flags from config.listPorts."""
+    for dictPort in config.listPorts:
+        sHost = str(dictPort.get("host", dictPort.get("container")))
+        sContainer = str(dictPort.get("container"))
+        saRunArgs.extend(["-p", f"{sHost}:{sContainer}"])
+
+
+def _fnAddBindMounts(config, saRunArgs):
+    """Add bind mount flags from config.listBindMounts."""
+    for dictMount in config.listBindMounts:
+        sMountSpec = f"{dictMount['host']}:{dictMount['container']}"
+        if dictMount.get("readOnly", False):
+            sMountSpec += ":ro"
+        saRunArgs.extend(["-v", sMountSpec])
+
+
+def _fnAddGpuPassthrough(config, saRunArgs):
+    """Add GPU passthrough flag if GPU feature is enabled."""
+    if config.features.bGpu:
+        saRunArgs.extend(["--gpus", "all"])
+
+
+def _fnAddNetworkIsolation(config, saRunArgs):
+    """Add network isolation flag if enabled in config."""
+    if config.bNetworkIsolation:
+        saRunArgs.extend(["--network", "none"])
+
+
+def fnMountSecrets(config, saRunArgs, listCleanupFiles):
+    """Mount each secret as a read-only temp file with mode 600."""
+    from vaibcask.config.secretManager import fsMountSecret
+    for dictSecret in config.listSecrets:
+        _fnMountSingleSecret(
+            dictSecret, saRunArgs, listCleanupFiles, fsMountSecret,
+        )
+
+
+def _fnMountSingleSecret(
+    dictSecret, saRunArgs, listCleanupFiles, fnMount,
+):
+    """Retrieve one secret via secretManager and add its mount arg."""
+    sName = dictSecret["name"]
+    sMethod = dictSecret["method"]
+    sTempPath = fnMount(sName, sMethod)
+    listCleanupFiles.append(sTempPath)
+    sContainerPath = f"/run/secrets/{sName}"
+    saRunArgs.extend(["-v", f"{sTempPath}:{sContainerPath}:ro"])
+
+
+def _fnCleanupTempFiles(listCleanupFiles):
+    """Remove temporary secret files, ignoring errors."""
+    for sPath in listCleanupFiles:
+        try:
+            os.unlink(sPath)
+        except OSError:
+            pass
+
+
+def fnStopContainer(sProjectName):
+    """Stop a running container by project name.
+
+    Parameters
+    ----------
+    sProjectName : str
+        Name of the container to stop.
+    """
+    saCommand = ["docker", "stop", sProjectName]
+    _fnRunDockerCommand(saCommand)
+
+
+def fbContainerIsRunning(sProjectName):
+    """Check if a container with the given name is currently running.
+
+    Parameters
+    ----------
+    sProjectName : str
+        Container name to check.
+
+    Returns
+    -------
+    bool
+        True if the container is running.
+    """
+    resultProcess = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", sProjectName],
+        capture_output=True,
+        text=True,
+    )
+    return resultProcess.stdout.strip() == "true"
+
+
+def fdictGetContainerStatus(sProjectName):
+    """Return status dict with keys: bExists, bRunning, sStatus."""
+    sRawStatus = _fsInspectContainerState(sProjectName)
+    return _fdictParseContainerState(sRawStatus)
+
+
+def _fsInspectContainerState(sProjectName):
+    """Query docker inspect for the container state, or empty string."""
+    resultProcess = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Status}}", sProjectName],
+        capture_output=True,
+        text=True,
+    )
+    if resultProcess.returncode != 0:
+        return ""
+    return resultProcess.stdout.strip()
+
+
+def _fdictParseContainerState(sRawStatus):
+    """Parse raw status string into a structured status dict."""
+    bExists = len(sRawStatus) > 0
+    sStatus = sRawStatus if bExists else "not found"
+    bRunning = sStatus == "running"
+    return {"bExists": bExists, "bRunning": bRunning, "sStatus": sStatus}
+
+
+def _fnRunDockerCommand(saCommand):
+    """Execute a docker command, raising on failure."""
+    resultProcess = subprocess.run(
+        saCommand,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    if resultProcess.returncode != 0:
+        sCommandStr = " ".join(saCommand)
+        raise RuntimeError(
+            f"Docker command failed (exit {resultProcess.returncode}): "
+            f"{sCommandStr}"
+        )

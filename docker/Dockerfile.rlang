@@ -1,0 +1,24 @@
+# VaibCask — R language overlay
+#
+# Adds R from the CRAN repository and installs IRkernel for Jupyter.
+
+ARG BASE_IMAGE=vaibcask:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install R from CRAN repository
+RUN curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+        | gpg --dearmor -o /usr/share/keyrings/cran-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cran-archive-keyring.gpg] \
+        https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" \
+        > /etc/apt/sources.list.d/cran.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install IRkernel for Jupyter integration
+RUN Rscript -e "install.packages('IRkernel', repos='https://cloud.r-project.org')" \
+    && Rscript -e "IRkernel::installspec(user = FALSE)"

@@ -1,0 +1,1 @@
+"""VaibCask CLI package."""

@@ -1,0 +1,24 @@
+# VaibCask — Julia overlay
+#
+# Adds Julia from official binaries.
+
+ARG BASE_IMAGE=vaibcask:latest
+FROM ${BASE_IMAGE}
+
+ARG JULIA_VERSION=1.11.3
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install Julia from official tarball
+RUN ARCH="$(uname -m)" \
+    && if [ "${ARCH}" = "x86_64" ]; then JULIA_ARCH="x86_64"; \
+       elif [ "${ARCH}" = "aarch64" ]; then JULIA_ARCH="aarch64"; \
+       else echo "Unsupported architecture: ${ARCH}" && exit 1; fi \
+    && JULIA_MAJOR_MINOR="$(echo ${JULIA_VERSION} | cut -d. -f1-2)" \
+    && curl -fsSL \
+        "https://julialang-s3.julialang.org/bin/linux/${JULIA_ARCH}/${JULIA_MAJOR_MINOR}/julia-${JULIA_VERSION}-linux-${JULIA_ARCH}.tar.gz" \
+        | tar -xz -C /opt \
+    && ln -s /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia
+
+# Install IJulia kernel for Jupyter integration
+RUN julia -e 'using Pkg; Pkg.add("IJulia")'

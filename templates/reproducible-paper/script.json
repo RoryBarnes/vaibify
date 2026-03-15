@@ -1,0 +1,29 @@
+{
+    "sPlotDirectory": "src/tex/figures",
+    "sFigureType": "pdf",
+    "iNumberOfCores": -1,
+    "listScenes": [
+        {
+            "sName": "GenerateFigures",
+            "sDirectory": ".",
+            "bEnabled": true,
+            "bPlotOnly": true,
+            "saSetupCommands": [],
+            "saCommands": [
+                "python src/scripts/makeFigures.py"
+            ],
+            "saOutputFiles": []
+        },
+        {
+            "sName": "CompileManuscript",
+            "sDirectory": "src/tex",
+            "bEnabled": true,
+            "bPlotOnly": false,
+            "saSetupCommands": [],
+            "saCommands": [
+                "latexmk -pdf manuscript.tex"
+            ],
+            "saOutputFiles": []
+        }
+    ]
+}

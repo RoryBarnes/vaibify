@@ -1,0 +1,13 @@
+# VaibCask — Claude Code overlay
+#
+# Adds Node.js and the Claude Code CLI on top of the base image.
+
+ARG BASE_IMAGE=vaibcask:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @anthropic-ai/claude-code \
+    && rm -rf /var/lib/apt/lists/*

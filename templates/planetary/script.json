@@ -1,0 +1,20 @@
+{
+    "sPlotDirectory": "Plot",
+    "sFigureType": "pdf",
+    "iNumberOfCores": -1,
+    "listScenes": [
+        {
+            "sName": "VPLanetExample",
+            "sDirectory": "examples/VPLanetExample",
+            "bEnabled": true,
+            "bPlotOnly": false,
+            "saSetupCommands": [
+                "vplanet vpl.in"
+            ],
+            "saCommands": [
+                "python makePlot.py"
+            ],
+            "saOutputFiles": []
+        }
+    ]
+}

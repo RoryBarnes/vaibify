@@ -1,0 +1,51 @@
+#!/bin/sh
+# connect_dc - Open a new shell session in the running DataContainer.
+#
+# Reads the project name and container user from datacontainer.yml in the
+# current directory, then opens an interactive bash session inside the
+# corresponding Docker container.
+#
+# Usage:
+#   connect_dc
+
+set -e
+
+# ---------------------------------------------------------------------------
+fnPrintError() { echo "Error: $1" >&2; }
+
+# ---------------------------------------------------------------------------
+# fsReadYamlField: Extract a single field from datacontainer.yml via Python
+# Arguments: sFieldExpression - Python expression to evaluate
+# Prints: the field value, or empty string on failure
+# ---------------------------------------------------------------------------
+fsReadYamlField() {
+    python3 -c "import yaml; print($1)" 2>/dev/null || true
+}
+
+# ===========================================================================
+# Main
+# ===========================================================================
+
+sVcProject=$(fsReadYamlField "yaml.safe_load(open('datacontainer.yml'))['projectName']")
+sVcUser=$(fsReadYamlField "yaml.safe_load(open('datacontainer.yml')).get('containerUser','researcher')")
+
+if [ -z "${sVcProject}" ]; then
+    fnPrintError "No datacontainer.yml found in current directory."
+    exit 1
+fi
+
+if [ -z "${sVcUser}" ]; then
+    sVcUser="researcher"
+fi
+
+if ! command -v docker > /dev/null 2>&1; then
+    fnPrintError "docker not found on PATH."
+    exit 1
+fi
+
+if ! docker container inspect "${sVcProject}" > /dev/null 2>&1; then
+    fnPrintError "Container '${sVcProject}' is not running. Start it with: datacontainer start"
+    exit 1
+fi
+
+docker exec -it -u "${sVcUser}" "${sVcProject}" bash
