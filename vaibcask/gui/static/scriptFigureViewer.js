@@ -131,19 +131,19 @@ const PipeleyenFigureViewer = (function () {
 
     /* --- Public entry points --- */
 
-    function fnLoadSceneFigures(iSceneIndex) {
+    function fnLoadStepFigures(iStepIndex) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId || iSceneIndex < 0) return;
+        if (!sContainerId || iStepIndex < 0) return;
 
-        fnFetchResolvedScene(iSceneIndex, function (dictScene) {
+        fnFetchResolvedStep(iStepIndex, function (dictStep) {
             var listOutputFiles =
-                dictScene.saResolvedOutputFiles ||
-                dictScene.saOutputFiles || [];
+                dictStep.saResolvedOutputFiles ||
+                dictStep.saOutputFiles || [];
             var listFigures = listOutputFiles.filter(fbIsFigureFile);
 
             if (listFigures.length > 0) {
                 fnNavigateToPath(
-                    dictViewerA, listFigures[0], dictScene.sDirectory
+                    dictViewerA, listFigures[0], dictStep.sDirectory
                 );
             }
         });
@@ -161,33 +161,33 @@ const PipeleyenFigureViewer = (function () {
 
     function fnDisplayFigureByTemplate(sTemplatePath) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
-        var iSceneIndex = PipeleyenApp.fiGetSelectedSceneIndex();
-        if (!sContainerId || iSceneIndex < 0) return;
+        var iStepIndex = PipeleyenApp.fiGetSelectedStepIndex();
+        if (!sContainerId || iStepIndex < 0) return;
 
-        fnFetchResolvedScene(iSceneIndex, function (dictScene) {
-            var listRaw = dictScene.saOutputFiles || [];
+        fnFetchResolvedStep(iStepIndex, function (dictStep) {
+            var listRaw = dictStep.saOutputFiles || [];
             var listResolved =
-                dictScene.saResolvedOutputFiles || listRaw;
+                dictStep.saResolvedOutputFiles || listRaw;
             var sResolvedPath = sTemplatePath;
             var iMatch = listRaw.indexOf(sTemplatePath);
             if (iMatch >= 0 && iMatch < listResolved.length) {
                 sResolvedPath = listResolved[iMatch];
             }
-            fnDisplayInNextViewer(sResolvedPath, dictScene.sDirectory);
+            fnDisplayInNextViewer(sResolvedPath, dictStep.sDirectory);
         });
     }
 
     /* --- Internal --- */
 
-    function fnFetchResolvedScene(iSceneIndex, fnCallback) {
+    function fnFetchResolvedStep(iStepIndex, fnCallback) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
-        fetch("/api/scenes/" + sContainerId + "/" + iSceneIndex)
+        fetch("/api/steps/" + sContainerId + "/" + iStepIndex)
             .then(function (r) { return r.json(); })
             .then(fnCallback)
             .catch(function () {
-                var dictScript = PipeleyenApp.fdictGetScript();
-                if (dictScript && dictScript.listScenes[iSceneIndex]) {
-                    fnCallback(dictScript.listScenes[iSceneIndex]);
+                var dictRecipe = PipeleyenApp.fdictGetRecipe();
+                if (dictRecipe && dictRecipe.listSteps[iStepIndex]) {
+                    fnCallback(dictRecipe.listSteps[iStepIndex]);
                 }
             });
     }
@@ -393,7 +393,7 @@ const PipeleyenFigureViewer = (function () {
     });
 
     return {
-        fnLoadSceneFigures: fnLoadSceneFigures,
+        fnLoadStepFigures: fnLoadStepFigures,
         fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
         fnDisplayFileFromContainer: fnDisplayFileFromContainer,
         fnDisplayInNextViewer: fnDisplayInNextViewer,

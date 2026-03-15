@@ -7,7 +7,7 @@ import pytest
 
 from vaibcask.reproducibility.provenanceTracker import (
     fsComputeFileHash,
-    fdictBuildDagFromScript,
+    fdictBuildDagFromRecipe,
     flistDetectChangedOutputs,
     fnGenerateDotFile,
     fnSaveProvenance,
@@ -37,9 +37,9 @@ def test_fsComputeFileHash_raises_on_missing_file(tmp_path):
         fsComputeFileHash(sMissingPath)
 
 
-def test_fdictBuildDagFromScript():
-    dictScript = {
-        "listScenes": [
+def test_fdictBuildDagFromRecipe():
+    dictRecipe = {
+        "listSteps": [
             {
                 "sName": "Generate Data",
                 "saInputFiles": [],
@@ -53,7 +53,7 @@ def test_fdictBuildDagFromScript():
         ],
     }
 
-    dictDag = fdictBuildDagFromScript(dictScript)
+    dictDag = fdictBuildDagFromRecipe(dictRecipe)
 
     assert "listNodes" in dictDag
     assert "listEdges" in dictDag
@@ -75,10 +75,10 @@ def test_fdictBuildDagFromScript():
     assert bFoundDataEdgeIn
 
 
-def test_fdictBuildDagFromScript_empty():
-    dictScript = {"listScenes": []}
+def test_fdictBuildDagFromRecipe_empty():
+    dictRecipe = {"listSteps": []}
 
-    dictDag = fdictBuildDagFromScript(dictScript)
+    dictDag = fdictBuildDagFromRecipe(dictRecipe)
 
     assert dictDag["listNodes"] == []
     assert dictDag["listEdges"] == []
@@ -98,8 +98,8 @@ def test_flistDetectChangedOutputs(tmp_path):
             str(pathOutput): sOriginalHash,
         },
     }
-    dictScript = {
-        "listScenes": [
+    dictRecipe = {
+        "listSteps": [
             {
                 "sName": "Compute",
                 "saInputFiles": [],
@@ -108,12 +108,12 @@ def test_flistDetectChangedOutputs(tmp_path):
         ],
     }
 
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictScript)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
     assert listChanged == []
 
     pathOutput.write_text("x,y\n1,2\n3,999\n")
 
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictScript)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
     assert str(pathOutput) in listChanged
 
 
@@ -125,8 +125,8 @@ def test_flistDetectChangedOutputs_missing_file(tmp_path):
             sMissingPath: "abc123",
         },
     }
-    dictScript = {
-        "listScenes": [
+    dictRecipe = {
+        "listSteps": [
             {
                 "sName": "Gone",
                 "saInputFiles": [],
@@ -135,14 +135,14 @@ def test_flistDetectChangedOutputs_missing_file(tmp_path):
         ],
     }
 
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictScript)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
 
     assert sMissingPath in listChanged
 
 
 def test_fnGenerateDotFile_creates_valid_dot(tmp_path):
     dictProvenance = {
-        "saScenes": ["Generate", "Plot"],
+        "saSteps": ["Generate", "Plot"],
         "dictFileHashes": {
             "data.csv": "aaa",
             "figure.pdf": "bbb",
@@ -165,7 +165,7 @@ def test_fnGenerateDotFile_creates_valid_dot(tmp_path):
 
 def test_roundtrip_save_load(tmp_path):
     dictOriginal = {
-        "saScenes": ["SceneA", "SceneB"],
+        "saSteps": ["StepA", "StepB"],
         "dictFileHashes": {
             "/workspace/output/a.pdf": "hash_a",
             "/workspace/output/b.csv": "hash_b",
@@ -177,7 +177,7 @@ def test_roundtrip_save_load(tmp_path):
     fnSaveProvenance(dictOriginal, sFilePath)
     dictLoaded = fdictLoadProvenance(sFilePath)
 
-    assert dictLoaded["saScenes"] == dictOriginal["saScenes"]
+    assert dictLoaded["saSteps"] == dictOriginal["saSteps"]
     assert (
         dictLoaded["dictFileHashes"]
         == dictOriginal["dictFileHashes"]

@@ -27,8 +27,8 @@ def _fnStartContainer(config, sDockerDir, sCommand):
 
 
 def fnLaunchGui(config):
-    """Launch the pipeline viewer GUI."""
-    click.echo("Launching pipeline viewer ...")
+    """Launch the recipe viewer GUI."""
+    click.echo("Launching recipe viewer ...")
     from vaibcask.gui.pipelineServer import (
         fappCreateApplication,
     )
@@ -44,7 +44,7 @@ def fnLaunchGui(config):
     "bGui",
     is_flag=True,
     default=False,
-    help="Also launch the pipeline viewer GUI.",
+    help="Also launch the recipe viewer GUI.",
 )
 @click.option(
     "--jupyter",
