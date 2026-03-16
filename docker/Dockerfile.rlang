@@ -1,8 +1,8 @@
-# VaibCask — R language overlay
+# Vaibify — R language overlay
 #
 # Adds R from the CRAN repository and installs IRkernel for Jupyter.
 
-ARG BASE_IMAGE=vaibcask:latest
+ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

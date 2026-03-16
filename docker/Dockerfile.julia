@@ -1,8 +1,8 @@
-# VaibCask — Julia overlay
+# Vaibify — Julia overlay
 #
 # Adds Julia from official binaries.
 
-ARG BASE_IMAGE=vaibcask:latest
+ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
 
 ARG JULIA_VERSION=1.11.3

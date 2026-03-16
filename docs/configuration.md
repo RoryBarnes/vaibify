@@ -1,9 +1,9 @@
 # Configuration Reference
 
-VaibCask projects are configured through three files in the project
+Vaibify projects are configured through three files in the project
 root directory. This page documents every field and option.
 
-## vaibcask.yml
+## vaibify.yml
 
 The primary configuration file. All fields use camelCase keys in the YAML
 file; the Python dataclass uses Hungarian notation internally.
@@ -126,7 +126,7 @@ mycode|git@github.com:user/mycode.git|main|pip_editable
 data-utils|git@github.com:user/data-utils.git|develop|pip_no_deps
 ```
 
-## recipe.json
+## workflow.json
 
 Defines the execution pipeline. See [Pipelines](pipelines.md) for full
 documentation.
@@ -134,8 +134,8 @@ documentation.
 ## Security
 
 Secrets are never stored in configuration files. The `secrets` field in
-`vaibcask.yml` lists secret *references* (names), not values. At
-build time, VaibCask delegates to the host's credential manager
+`vaibify.yml` lists secret *references* (names), not values. At
+build time, Vaibify delegates to the host's credential manager
 (e.g., `gh auth`, OS keychain) to resolve secrets. See the
 [Reproducibility](reproducibility.md) page for details on how secrets
 interact with published workflows.

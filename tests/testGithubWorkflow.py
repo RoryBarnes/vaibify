@@ -1,10 +1,10 @@
-"""Tests for vaibcask.reproducibility.githubWorkflow generation."""
+"""Tests for vaibify.reproducibility.githubWorkflow generation."""
 
 from pathlib import Path
 
 import pytest
 
-from vaibcask.reproducibility.githubWorkflow import (
+from vaibify.reproducibility.githubWorkflow import (
     fsGenerateWorkflow,
     fnWriteWorkflow,
     fsGetWorkflowTemplate,
@@ -28,7 +28,7 @@ def test_fsGenerateWorkflow_contains_required_steps(dictConfigDefault):
 
     assert "Checkout repository" in sYamlContent
     assert "Set up Python" in sYamlContent
-    assert "Install VaibCask" in sYamlContent
+    assert "Install Vaibify" in sYamlContent
     assert "Docker image" in sYamlContent or "Build" in sYamlContent
     assert "pipeline" in sYamlContent.lower() or "Run" in sYamlContent
 
@@ -46,7 +46,7 @@ def test_fsGenerateWorkflow_embedded_template_includes_upload():
     }
 
     with patch(
-        "vaibcask.reproducibility.githubWorkflow."
+        "vaibify.reproducibility.githubWorkflow."
         "_fpathLocateTemplateFile",
         return_value=None,
     ):

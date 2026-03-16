@@ -1,4 +1,4 @@
-"""Tests for vaibcask.reproducibility.overleafSync (all git/subprocess mocked)."""
+"""Tests for vaibify.reproducibility.overleafSync (all git/subprocess mocked)."""
 
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock, call
 
 import pytest
 
-from vaibcask.reproducibility.overleafSync import (
+from vaibify.reproducibility.overleafSync import (
     fnPushFiguresToOverleaf,
     fnPullTexFromOverleaf,
     _COMMIT_MARKER,
@@ -40,11 +40,11 @@ def test_fnPushFiguresToOverleaf_calls_git_with_credential_helper(
         return mockResult
 
     with patch(
-        "vaibcask.reproducibility.overleafSync.subprocess.run",
+        "vaibify.reproducibility.overleafSync.subprocess.run",
         side_effect=fnFakeSubprocess,
     ):
         with patch(
-            "vaibcask.reproducibility.overleafSync."
+            "vaibify.reproducibility.overleafSync."
             "_fbHasUncommittedChanges",
             return_value=True,
         ):
@@ -94,7 +94,7 @@ def test_fnPullTexFromOverleaf_copies_specified_files(tmp_path):
         return mockResult
 
     with patch(
-        "vaibcask.reproducibility.overleafSync.subprocess.run",
+        "vaibify.reproducibility.overleafSync.subprocess.run",
         side_effect=fnFakeSubprocess,
     ):
         fnPullTexFromOverleaf(
@@ -108,11 +108,11 @@ def test_fnPullTexFromOverleaf_copies_specified_files(tmp_path):
 
 
 def test_commit_marker_detection():
-    assert _COMMIT_MARKER == "[vaibcask]"
+    assert _COMMIT_MARKER == "[vaibify]"
 
     sCommitMessage = f"{_COMMIT_MARKER} Update figures"
     assert _COMMIT_MARKER in sCommitMessage
-    assert sCommitMessage.startswith("[vaibcask]")
+    assert sCommitMessage.startswith("[vaibify]")
 
 
 def test_credential_helper_does_not_embed_token():

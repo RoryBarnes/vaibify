@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
 
-project = "VaibCask"
+project = "Vaibify"
 copyright = "2025, Rory Barnes"
 author = "Rory Barnes"
 

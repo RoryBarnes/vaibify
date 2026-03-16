@@ -8,12 +8,12 @@ import subprocess
 
 import pytest
 
-from vaibcask.docker.imageBuilder import (
+from vaibify.docker.imageBuilder import (
     fnBuildBase,
     fnApplyOverlay,
     fbImageExists,
 )
-from vaibcask.config.projectConfig import (
+from vaibify.config.projectConfig import (
     ProjectConfig,
     FeaturesConfig,
 )

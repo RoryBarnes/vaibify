@@ -3,7 +3,7 @@
 #
 # Sourced by vc_push and vc_pull to avoid duplicating container
 # verification, path resolution, and user confirmation logic.
-# Reads VC_CONTAINER and VC_WORKSPACE from vaibcask.yml in the
+# Reads VC_CONTAINER and VC_WORKSPACE from vaibify.yml in the
 # current directory.
 
 # ---------------------------------------------------------------------------
@@ -11,14 +11,14 @@
 # ---------------------------------------------------------------------------
 fnReadContainerConfig() {
     VC_CONTAINER=$(python3 -c \
-        "import yaml; print(yaml.safe_load(open('vaibcask.yml'))['projectName'])" \
+        "import yaml; print(yaml.safe_load(open('vaibify.yml'))['projectName'])" \
         2>/dev/null || true)
     VC_WORKSPACE=$(python3 -c \
-        "import yaml; print(yaml.safe_load(open('vaibcask.yml')).get('workspaceRoot','/workspace'))" \
+        "import yaml; print(yaml.safe_load(open('vaibify.yml')).get('workspaceRoot','/workspace'))" \
         2>/dev/null || true)
 
     if [ -z "${VC_CONTAINER}" ]; then
-        fnPrintError "No vaibcask.yml found in current directory."
+        fnPrintError "No vaibify.yml found in current directory."
         exit 1
     fi
     if [ -z "${VC_WORKSPACE}" ]; then
@@ -30,7 +30,7 @@ fnReadContainerConfig() {
 fnPrintError() { echo "Error: $1" >&2; }
 
 # ---------------------------------------------------------------------------
-# fnCheckContainer: Verify the VaibCask is running
+# fnCheckContainer: Verify the Vaibify is running
 # ---------------------------------------------------------------------------
 fnCheckContainer() {
     if ! command -v docker > /dev/null 2>&1; then
@@ -39,7 +39,7 @@ fnCheckContainer() {
     fi
     fnReadContainerConfig
     if ! docker container inspect "${VC_CONTAINER}" > /dev/null 2>&1; then
-        fnPrintError "VaibCask '${VC_CONTAINER}' is not running. Start it with: vaibcask start"
+        fnPrintError "Vaibify '${VC_CONTAINER}' is not running. Start it with: vaibify start"
         exit 1
     fi
 }

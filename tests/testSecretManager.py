@@ -1,4 +1,4 @@
-"""Tests for vaibcask.config.secretManager credential abstraction."""
+"""Tests for vaibify.config.secretManager credential abstraction."""
 
 import os
 import stat
@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from vaibcask.config.secretManager import (
+from vaibify.config.secretManager import (
     fsRetrieveSecret,
     fsMountSecret,
     fnCleanupSecretFiles,
@@ -23,7 +23,7 @@ def test_fsRetrieveSecret_docker_secret_method(tmp_path):
     pathFakeSecret.write_text(f"  {sSecretValue}  \n")
 
     with patch(
-        "vaibcask.config.secretManager._fsRetrieveViaDockerSecret"
+        "vaibify.config.secretManager._fsRetrieveViaDockerSecret"
     ) as mockRetrieve:
         mockRetrieve.return_value = sSecretValue
 
@@ -37,7 +37,7 @@ def test_fsRetrieveSecret_gh_auth_method():
     sExpectedToken = "gho_abc123xyz"
 
     with patch(
-        "vaibcask.config.secretManager._fsRetrieveViaGhAuth"
+        "vaibify.config.secretManager._fsRetrieveViaGhAuth"
     ) as mockGhAuth:
         mockGhAuth.return_value = sExpectedToken
 
@@ -51,7 +51,7 @@ def test_fsMountSecret_creates_file_with_correct_permissions():
     sSecretValue = "supersecretvalue"
 
     with patch(
-        "vaibcask.config.secretManager.fsRetrieveSecret"
+        "vaibify.config.secretManager.fsRetrieveSecret"
     ) as mockRetrieve:
         mockRetrieve.return_value = sSecretValue
 
@@ -99,7 +99,7 @@ def test_flistPrepareDockerSecretArgs():
     ]
 
     with patch(
-        "vaibcask.config.secretManager.fsMountSecret"
+        "vaibify.config.secretManager.fsMountSecret"
     ) as mockMount:
         mockMount.side_effect = [
             "/tmp/vc_secret_github_token_abc.tmp",

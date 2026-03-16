@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide walks through the minimal steps to get a VaibCask project
+This guide walks through the minimal steps to get a Vaibify project
 running on your machine. For a more detailed walkthrough of the interactive
 setup process, see [Setup Wizard](setupWizard.md).
 
@@ -10,24 +10,24 @@ setup process, see [Setup Wizard](setupWizard.md).
 - **Python 3.9+** with `pip`
 - **Git**
 
-## Install VaibCask
+## Install Vaibify
 
 ```bash
-pip install vaibcask
+pip install vaibify
 ```
 
 Or clone and install in editable mode:
 
 ```bash
-git clone https://github.com/RoryBarnes/VaibCask.git
-cd VaibCask
+git clone https://github.com/RoryBarnes/Vaibify.git
+cd Vaibify
 pip install -e .
 ```
 
 The installer script handles Docker and shell configuration automatically:
 
 ```bash
-sh vaibcask/install/installVaibCask.sh
+sh vaibify/install/installVaibify.sh
 ```
 
 ## Initialize a Project
@@ -35,10 +35,10 @@ sh vaibcask/install/installVaibCask.sh
 Navigate to your project directory and run:
 
 ```bash
-vaibcask init
+vaibify init
 ```
 
-This creates a `vaibcask.yml` configuration file and a `container.conf`
+This creates a `vaibify.yml` configuration file and a `container.conf`
 repository list. Choose a template when prompted:
 
 | Template              | Description                              |
@@ -50,29 +50,29 @@ repository list. Choose a template when prompted:
 Or specify a template directly:
 
 ```bash
-vaibcask init --template planetary
+vaibify init --template planetary
 ```
 
 ## Build the Image
 
 ```bash
-vaibcask build
+vaibify build
 ```
 
 On first run this installs the base image, system packages, Python
 dependencies, and clones all repositories listed in `container.conf`. A
-rebuild is only required when `vaibcask.yml` or `container.conf` change.
+rebuild is only required when `vaibify.yml` or `container.conf` change.
 
 ## Start and Connect
 
 ```bash
-vaibcask start
+vaibify start
 ```
 
 This launches the container in the background. To open a shell inside it:
 
 ```bash
-vaibcask connect
+vaibify connect
 ```
 
 Or use the standalone script:
@@ -100,16 +100,16 @@ vc_pull -r project/results/ ./backup/
 ## Stop the Container
 
 ```bash
-vaibcask stop
+vaibify stop
 ```
 
-The workspace volume persists between sessions. Use `vaibcask destroy`
+The workspace volume persists between sessions. Use `vaibify destroy`
 to remove the container and optionally delete the volume.
 
 ## Check Status
 
 ```bash
-vaibcask status
+vaibify status
 ```
 
 This reports whether the container is running, lists installed repositories,

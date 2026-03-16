@@ -1,11 +1,11 @@
-"""Tests for vaibcask.gui.resourceMonitor."""
+"""Tests for vaibify.gui.resourceMonitor."""
 
 import json
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-from vaibcask.gui.resourceMonitor import fdictGetContainerStats
+from vaibify.gui.resourceMonitor import fdictGetContainerStats
 
 
 def _fmockCompletedProcess(sStdout="", iReturncode=0):
@@ -26,7 +26,7 @@ def test_fdictGetContainerStats_parses_json_output():
     sJsonOutput = json.dumps(dictDockerOutput)
 
     with patch(
-        "vaibcask.gui.resourceMonitor.subprocess.run"
+        "vaibify.gui.resourceMonitor.subprocess.run"
     ) as mockRun:
         mockRun.return_value = _fmockCompletedProcess(
             sStdout=sJsonOutput, iReturncode=0,
@@ -42,7 +42,7 @@ def test_fdictGetContainerStats_parses_json_output():
 
 def test_fdictGetContainerStats_handles_error():
     with patch(
-        "vaibcask.gui.resourceMonitor.subprocess.run"
+        "vaibify.gui.resourceMonitor.subprocess.run"
     ) as mockRun:
         mockRun.return_value = _fmockCompletedProcess(
             sStdout="", iReturncode=1,
@@ -60,7 +60,7 @@ def test_fdictGetContainerStats_handles_timeout():
     import subprocess
 
     with patch(
-        "vaibcask.gui.resourceMonitor.subprocess.run"
+        "vaibify.gui.resourceMonitor.subprocess.run"
     ) as mockRun:
         mockRun.side_effect = subprocess.TimeoutExpired(
             cmd="docker stats", timeout=10,
@@ -74,7 +74,7 @@ def test_fdictGetContainerStats_handles_timeout():
 
 def test_fdictGetContainerStats_handles_malformed_json():
     with patch(
-        "vaibcask.gui.resourceMonitor.subprocess.run"
+        "vaibify.gui.resourceMonitor.subprocess.run"
     ) as mockRun:
         mockRun.return_value = _fmockCompletedProcess(
             sStdout="not valid json{{{", iReturncode=0,

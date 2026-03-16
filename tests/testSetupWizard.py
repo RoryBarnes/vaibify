@@ -1,10 +1,10 @@
-"""Tests for vaibcask.install.setupServer setup wizard API routes."""
+"""Tests for vaibify.install.setupServer setup wizard API routes."""
 
 import yaml
 import pytest
 from fastapi.testclient import TestClient
 
-from vaibcask.install.setupServer import fappCreateSetupWizard
+from vaibify.install.setupServer import fappCreateSetupWizard
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def test_save_writes_yaml_file(tmp_path):
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
 
-    sExpectedPath = tmp_path / "vaibcask.yml"
+    sExpectedPath = tmp_path / "vaibify.yml"
     assert sExpectedPath.exists()
 
     with open(sExpectedPath, "r") as fileHandle:

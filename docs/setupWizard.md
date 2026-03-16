@@ -1,20 +1,20 @@
 # Setup Wizard
 
-The setup wizard guides you through creating a `vaibcask.yml`
+The setup wizard guides you through creating a `vaibify.yml`
 configuration file interactively. It runs automatically when you execute
-`vaibcask init` without specifying a template.
+`vaibify init` without specifying a template.
 
 ## Starting the Wizard
 
 ```bash
-vaibcask init
+vaibify init
 ```
 
-If a `vaibcask.yml` already exists, the wizard will warn you and ask
+If a `vaibify.yml` already exists, the wizard will warn you and ask
 for confirmation before overwriting. Use `--force` to skip the prompt:
 
 ```bash
-vaibcask init --force
+vaibify init --force
 ```
 
 ## Wizard Steps
@@ -41,7 +41,7 @@ Select template [1]:
 ```
 
 The template populates `container.conf` with an initial set of repositories
-and creates a `recipe.json` with example pipeline steps.
+and creates a `workflow.json` with example pipeline steps.
 
 ### 3. Python Version
 
@@ -87,14 +87,14 @@ directory:
 
 | File                  | Purpose                                  |
 |-----------------------|------------------------------------------|
-| `vaibcask.yml`   | Project configuration                    |
+| `vaibify.yml`   | Project configuration                    |
 | `container.conf`      | Repository list                          |
-| `recipe.json`         | Pipeline step definitions                |
+| `workflow.json`         | Pipeline step definitions                |
 
 ## Editing After Setup
 
 All generated files are plain text. Edit them directly to add repositories,
-change settings, or define new pipeline steps. Run `vaibcask build`
+change settings, or define new pipeline steps. Run `vaibify build`
 after making changes to rebuild the image.
 
 ## Importing and Exporting Configuration
@@ -102,11 +102,11 @@ after making changes to rebuild the image.
 Export the current configuration for sharing:
 
 ```bash
-vaibcask config export > my-config.yml
+vaibify config export > my-config.yml
 ```
 
 Import a configuration:
 
 ```bash
-vaibcask config import shared-config.yml
+vaibify config import shared-config.yml
 ```

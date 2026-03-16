@@ -3,7 +3,7 @@ requires = ["setuptools>=65", "setuptools_scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vaibcask"
+name = "vaibify"
 dynamic = ["version"]
 description = "Vibe boldly. Verify everything."
 readme = "README.md"
@@ -46,24 +46,24 @@ dev = [
     "pytest-asyncio",
     "httpx",
 ]
-all = ["vaibcask[docker,keyring,dev]"]
+all = ["vaibify[docker,keyring,dev]"]
 
 [project.scripts]
-vaibcask = "vaibcask.cli.main:main"
-vc = "vaibcask.cli.main:main"
+vaibify = "vaibify.cli.main:main"
+vc = "vaibify.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/RoryBarnes/VaibCask"
-Documentation = "https://vaibcask.readthedocs.io"
+Homepage = "https://github.com/RoryBarnes/Vaibify"
+Documentation = "https://vaibify.readthedocs.io"
 
 [tool.setuptools_scm]
-write_to = "vaibcask/_version.py"
+write_to = "vaibify/_version.py"
 
 [tool.setuptools.packages.find]
-include = ["vaibcask*"]
+include = ["vaibify*"]
 
 [tool.setuptools.package-data]
-"vaibcask.gui" = ["static/*"]
+"vaibify.gui" = ["static/*"]
 
 [tool.black]
 line-length = 79

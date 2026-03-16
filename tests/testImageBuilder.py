@@ -1,15 +1,15 @@
-"""Tests for vaibcask.docker.imageBuilder overlay ordering and build logic."""
+"""Tests for vaibify.docker.imageBuilder overlay ordering and build logic."""
 
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-from vaibcask.docker.imageBuilder import (
+from vaibify.docker.imageBuilder import (
     flistDetermineOverlays,
     fbImageExists,
     _OVERLAY_ORDER,
 )
-from vaibcask.config.projectConfig import FeaturesConfig
+from vaibify.config.projectConfig import FeaturesConfig
 
 
 class MockFeatures:
@@ -99,10 +99,10 @@ def test_flistDetermineOverlays_gpu_comes_first():
 
 def test_fbImageExists_returns_false_when_subprocess_fails():
     with patch(
-        "vaibcask.config.secretManager.subprocess.run"
+        "vaibify.config.secretManager.subprocess.run"
     ):
         with patch(
-            "vaibcask.docker.imageBuilder.subprocess.run"
+            "vaibify.docker.imageBuilder.subprocess.run"
         ) as mockRun:
             mockResult = MagicMock()
             mockResult.returncode = 1
@@ -121,7 +121,7 @@ def test_fbImageExists_returns_false_when_subprocess_fails():
 
 def test_fbImageExists_returns_true_when_subprocess_succeeds():
     with patch(
-        "vaibcask.docker.imageBuilder.subprocess.run"
+        "vaibify.docker.imageBuilder.subprocess.run"
     ) as mockRun:
         mockResult = MagicMock()
         mockResult.returncode = 0

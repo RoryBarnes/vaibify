@@ -1,12 +1,12 @@
 # Pipelines
 
-A pipeline defines a sequence of steps to execute inside the VaibCask.
+A pipeline defines a sequence of steps to execute inside the Vaibify.
 Steps are self-contained units of work -- each one runs a series of
 commands in order and produces output files such as figures or data products.
 
-## Recipe File
+## Workflow File
 
-Pipelines are defined in `recipe.json` at the project root. The file has
+Pipelines are defined in `workflow.json` at the project root. The file has
 four top-level fields:
 
 | Field              | Type    | Description                              |
@@ -83,7 +83,7 @@ fix the core count explicitly.
 Start the container and execute the pipeline:
 
 ```bash
-vaibcask start
+vaibify start
 ```
 
 The pipeline runs all steps in order. Each step runs its commands
@@ -98,7 +98,7 @@ does not exist.
 
 ## Integration with GitHub Actions
 
-Use `vaibcask publish workflow` to generate a GitHub Actions workflow
-from `recipe.json`. The generated workflow builds the Docker image and
+Use `vaibify publish workflow` to generate a GitHub Actions workflow
+from `workflow.json`. The generated workflow builds the Docker image and
 runs each step inside the container. See [Reproducibility](reproducibility.md)
 for details.

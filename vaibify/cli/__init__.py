@@ -1,0 +1,1 @@
+"""Vaibify CLI package."""

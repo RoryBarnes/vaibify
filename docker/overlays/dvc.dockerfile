@@ -1,8 +1,8 @@
-# VaibCask — Data Version Control overlay
+# Vaibify — Data Version Control overlay
 #
 # Adds DVC for versioning datasets and ML models alongside code.
 
-ARG BASE_IMAGE=vaibcask:latest
+ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

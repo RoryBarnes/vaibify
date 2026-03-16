@@ -1,10 +1,10 @@
-"""Tests for vaibcask.reproducibility.zenodoClient (all HTTP mocked)."""
+"""Tests for vaibify.reproducibility.zenodoClient (all HTTP mocked)."""
 
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-from vaibcask.reproducibility.zenodoClient import (
+from vaibify.reproducibility.zenodoClient import (
     ZenodoClient,
     ZenodoError,
     ZenodoAuthError,

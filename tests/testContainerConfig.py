@@ -1,8 +1,8 @@
-"""Tests for vaibcask.config.containerConfig pipe-delimited I/O."""
+"""Tests for vaibify.config.containerConfig pipe-delimited I/O."""
 
 import pytest
 
-from vaibcask.config.containerConfig import (
+from vaibify.config.containerConfig import (
     flistParseContainerConf,
     fnWriteContainerConf,
     flistConvertFromProjectConfig,

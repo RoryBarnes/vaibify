@@ -1,8 +1,8 @@
-# VaibCask — PostgreSQL/SQLite client overlay
+# Vaibify — PostgreSQL/SQLite client overlay
 #
 # Adds database client tools and Python database packages.
 
-ARG BASE_IMAGE=vaibcask:latest
+ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

@@ -1,8 +1,8 @@
-# VaibCask — Jupyter overlay
+# Vaibify — Jupyter overlay
 #
 # Adds JupyterLab on top of the base image.
 
-ARG BASE_IMAGE=vaibcask:latest
+ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

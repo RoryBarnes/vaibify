@@ -1,13 +1,13 @@
-"""Tests for vaibcask.reproducibility.provenanceTracker."""
+"""Tests for vaibify.reproducibility.provenanceTracker."""
 
 import hashlib
 import json
 
 import pytest
 
-from vaibcask.reproducibility.provenanceTracker import (
+from vaibify.reproducibility.provenanceTracker import (
     fsComputeFileHash,
-    fdictBuildDagFromRecipe,
+    fdictBuildDagFromWorkflow,
     flistDetectChangedOutputs,
     fnGenerateDotFile,
     fnSaveProvenance,
@@ -37,8 +37,8 @@ def test_fsComputeFileHash_raises_on_missing_file(tmp_path):
         fsComputeFileHash(sMissingPath)
 
 
-def test_fdictBuildDagFromRecipe():
-    dictRecipe = {
+def test_fdictBuildDagFromWorkflow():
+    dictWorkflow = {
         "listSteps": [
             {
                 "sName": "Generate Data",
@@ -53,7 +53,7 @@ def test_fdictBuildDagFromRecipe():
         ],
     }
 
-    dictDag = fdictBuildDagFromRecipe(dictRecipe)
+    dictDag = fdictBuildDagFromWorkflow(dictWorkflow)
 
     assert "listNodes" in dictDag
     assert "listEdges" in dictDag
@@ -75,10 +75,10 @@ def test_fdictBuildDagFromRecipe():
     assert bFoundDataEdgeIn
 
 
-def test_fdictBuildDagFromRecipe_empty():
-    dictRecipe = {"listSteps": []}
+def test_fdictBuildDagFromWorkflow_empty():
+    dictWorkflow = {"listSteps": []}
 
-    dictDag = fdictBuildDagFromRecipe(dictRecipe)
+    dictDag = fdictBuildDagFromWorkflow(dictWorkflow)
 
     assert dictDag["listNodes"] == []
     assert dictDag["listEdges"] == []
@@ -98,7 +98,7 @@ def test_flistDetectChangedOutputs(tmp_path):
             str(pathOutput): sOriginalHash,
         },
     }
-    dictRecipe = {
+    dictWorkflow = {
         "listSteps": [
             {
                 "sName": "Compute",
@@ -108,12 +108,12 @@ def test_flistDetectChangedOutputs(tmp_path):
         ],
     }
 
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictWorkflow)
     assert listChanged == []
 
     pathOutput.write_text("x,y\n1,2\n3,999\n")
 
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictWorkflow)
     assert str(pathOutput) in listChanged
 
 
@@ -125,7 +125,7 @@ def test_flistDetectChangedOutputs_missing_file(tmp_path):
             sMissingPath: "abc123",
         },
     }
-    dictRecipe = {
+    dictWorkflow = {
         "listSteps": [
             {
                 "sName": "Gone",
@@ -135,7 +135,7 @@ def test_flistDetectChangedOutputs_missing_file(tmp_path):
         ],
     }
 
-    listChanged = flistDetectChangedOutputs(dictProvenance, dictRecipe)
+    listChanged = flistDetectChangedOutputs(dictProvenance, dictWorkflow)
 
     assert sMissingPath in listChanged
 

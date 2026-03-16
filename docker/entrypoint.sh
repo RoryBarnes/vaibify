@@ -1,17 +1,17 @@
 #!/bin/bash
 
 WORKSPACE="${WORKSPACE:-/workspace}"
-REPOS_CONF="${REPOS_CONF:-/etc/vaibcask/container.conf}"
+REPOS_CONF="${REPOS_CONF:-/etc/vaibify/container.conf}"
 CONTAINER_USER="${CONTAINER_USER:-researcher}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-pip}"
-VC_PROJECT_NAME="${VC_PROJECT_NAME:-VaibCask}"
+VC_PROJECT_NAME="${VC_PROJECT_NAME:-Vaibify}"
 
 # ---------------------------------------------------------------------------
 # fnPrintBanner: Display startup header
 # ---------------------------------------------------------------------------
 fnPrintBanner() {
     echo "=========================================="
-    echo "  VaibCask - ${VC_PROJECT_NAME}"
+    echo "  Vaibify - ${VC_PROJECT_NAME}"
     echo "=========================================="
     echo ""
 }
