@@ -220,6 +220,20 @@
         Delete Step</div>
 </div>
 
+<!-- Error Modal -->
+<div class="modal-overlay" id="modalError" style="display: none;">
+    <div class="modal">
+        <h2 style="color: var(--color-red, #e74c3c);">Pipeline Error</h2>
+        <pre id="modalErrorContent"
+             style="max-height: 400px; overflow: auto; white-space: pre-wrap;
+                    font-size: 12px; background: var(--bg-secondary);
+                    padding: 12px; border-radius: 4px;"></pre>
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="btnModalErrorClose">Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div id="toastContainer"></div>
 

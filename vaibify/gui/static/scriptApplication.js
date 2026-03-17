@@ -29,6 +29,7 @@ const PipeleyenApp = (function () {
         fnLoadContainers();
         fnBindToolbarEvents();
         fnBindWorkflowPickerEvents();
+        fnBindErrorModal();
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
         fnBindResizeHandles();
@@ -1172,10 +1173,16 @@ const PipeleyenApp = (function () {
         if (dictEvent.sType === "output") {
             fnAppendPipelineOutput(dictEvent.sLine);
         } else if (dictEvent.sType === "commandFailed") {
-            fnAppendPipelineOutput(
+            var sMessage =
                 "FAILED: " + dictEvent.sCommand +
-                " (in " + dictEvent.sDirectory +
-                ", exit " + dictEvent.iExitCode + ")"
+                "\n  Directory: " + dictEvent.sDirectory +
+                "\n  Exit code: " + dictEvent.iExitCode;
+            fnAppendPipelineOutput(sMessage);
+            fnShowErrorModal(sMessage);
+        } else if (dictEvent.sType === "preflightFailed") {
+            var sErrors = dictEvent.listErrors.join("\n");
+            fnShowErrorModal(
+                "Pre-flight validation failed:\n\n" + sErrors
             );
         } else if (dictEvent.sType === "stepPass") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
@@ -1193,6 +1200,21 @@ const PipeleyenApp = (function () {
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
             );
         }
+    }
+
+    function fnShowErrorModal(sMessage) {
+        var elModal = document.getElementById("modalError");
+        var elContent = document.getElementById("modalErrorContent");
+        elContent.textContent = sMessage;
+        elModal.style.display = "flex";
+    }
+
+    function fnBindErrorModal() {
+        document.getElementById("btnModalErrorClose").addEventListener(
+            "click", function () {
+                document.getElementById("modalError").style.display = "none";
+            }
+        );
     }
 
     function fnInitPipelineOutput() {

@@ -7,8 +7,6 @@ const PipeleyenFigureViewer = (function () {
         ".pdf", ".png", ".jpg", ".jpeg", ".svg",
     ]);
 
-    var I_MAX_HISTORY = 100;
-
     /* Unified shared history: list of {sPath, sWorkdir, iViewCount, iLastViewed} */
     var listHistory = [];
     var iHistoryCounter = 0;
@@ -61,9 +59,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnTrimHistory() {
-        if (listHistory.length <= I_MAX_HISTORY) return;
-        listHistory.sort(fdCompareHistoryScore);
-        listHistory = listHistory.slice(0, I_MAX_HISTORY);
+        /* History is permanent — no trimming. */
     }
 
     function fdCompareHistoryScore(a, b) {
