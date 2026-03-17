@@ -59,7 +59,6 @@ html, body {
 
 #containerPicker .subtitle {
     color: var(--text-secondary);
-    font-size: 13px;
     margin-top: -12px;
 }
 
@@ -128,13 +127,13 @@ html, body {
 }
 
 .vaibify-logo-large {
-    height: 100px;
+    height: 200px;
     width: auto;
     margin-bottom: 12px;
 }
 
 .tagline {
-    font-size: 20px;
+    font-size: 40px;
     letter-spacing: 1px;
 }
 
