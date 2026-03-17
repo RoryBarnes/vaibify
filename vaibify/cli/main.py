@@ -69,9 +69,17 @@ def verify():
 def setup():
     """Launch the setup wizard to create or edit configuration."""
     from vaibify.install.setupServer import fappCreateSetupWizard
+    import threading
+    import time
     import uvicorn
-    click.echo("Starting setup wizard at http://127.0.0.1:8051")
+    import webbrowser
+    sUrl = "http://127.0.0.1:8051"
+    click.echo(f"Starting setup wizard at {sUrl}")
     app = fappCreateSetupWizard()
+    threading.Thread(
+        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+        daemon=True,
+    ).start()
     uvicorn.run(app, host="127.0.0.1", port=8051)
 
 
@@ -82,30 +90,38 @@ def gui():
     from vaibify.gui.pipelineServer import (
         fappCreateApplication,
     )
+    import threading
+    import time
     import uvicorn
+    import webbrowser
     sRoot = config.sWorkspaceRoot
-    click.echo("Starting pipeline viewer at http://127.0.0.1:8050")
+    sUrl = "http://127.0.0.1:8050"
+    click.echo(f"Starting pipeline viewer at {sUrl}")
     app = fappCreateApplication(sWorkspaceRoot=sRoot)
+    threading.Thread(
+        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+        daemon=True,
+    ).start()
     uvicorn.run(app, host="127.0.0.1", port=8050)
 
 
 @main.command("push")
-@click.argument("sSource")
-@click.argument("sDestination")
-def push(sSource, sDestination):
+@click.argument("source")
+@click.argument("destination")
+def push(source, destination):
     """Push files from the host into the container workspace."""
     config = fconfigLoad()
     from vaibify.docker.fileTransfer import fnPushToContainer
-    fnPushToContainer(config.sProjectName, sSource, sDestination)
-    click.echo(f"Pushed {sSource} -> {sDestination}")
+    fnPushToContainer(config.sProjectName, source, destination)
+    click.echo(f"Pushed {source} -> {destination}")
 
 
 @main.command("pull")
-@click.argument("sSource")
-@click.argument("sDestination")
-def pull(sSource, sDestination):
+@click.argument("source")
+@click.argument("destination")
+def pull(source, destination):
     """Pull files from the container workspace to the host."""
     config = fconfigLoad()
     from vaibify.docker.fileTransfer import fnPullFromContainer
-    fnPullFromContainer(config.sProjectName, sSource, sDestination)
-    click.echo(f"Pulled {sSource} -> {sDestination}")
+    fnPullFromContainer(config.sProjectName, source, destination)
+    click.echo(f"Pulled {source} -> {destination}")
