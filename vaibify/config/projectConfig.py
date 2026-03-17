@@ -55,6 +55,7 @@ class ProjectConfig:
         ]
     )
     listPythonPackages: List[str] = field(default_factory=list)
+    sPipInstallFlags: str = ""
     listCondaPackages: List[str] = field(default_factory=list)
     features: FeaturesConfig = field(
         default_factory=FeaturesConfig
@@ -88,6 +89,7 @@ _YAML_TO_HUNGARIAN = {
     "repositories": "listRepositories",
     "systemPackages": "listSystemPackages",
     "pythonPackages": "listPythonPackages",
+    "pipInstallFlags": "sPipInstallFlags",
     "condaPackages": "listCondaPackages",
     "features": "features",
     "binaries": "listBinaries",
@@ -355,6 +357,7 @@ def _fdictScalarFieldsToYaml(config):
         "repositories": config.listRepositories,
         "systemPackages": config.listSystemPackages,
         "pythonPackages": config.listPythonPackages,
+        "pipInstallFlags": config.sPipInstallFlags,
         "condaPackages": config.listCondaPackages,
         "binaries": config.listBinaries,
         "ports": config.listPorts,

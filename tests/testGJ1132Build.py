@@ -189,12 +189,10 @@ class TestImageBuild:
         config = fconfigLoadFromFile(_sConfigPath)
         sDockerDir = fsDockerDir()
 
-        from vaibify.config.containerConfig import (
-            fnGenerateContainerConf,
+        from vaibify.cli.commandBuild import (
+            fnPrepareBuildContext,
         )
-        import os
-        sConfPath = os.path.join(sDockerDir, "container.conf")
-        fnGenerateContainerConf(config, sConfPath)
+        fnPrepareBuildContext(config, sDockerDir)
 
         fnBuildImage(config, sDockerDir, bNoCache=False)
         yield

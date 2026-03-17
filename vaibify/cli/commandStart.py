@@ -53,12 +53,12 @@ def fnLaunchGui(config):
     default=False,
     help="Enable Jupyter overlay with port forwarding.",
 )
-@click.argument("sCommand", required=False, default=None)
-def start(bGui, bJupyter, sCommand):
+@click.argument("command", required=False, default=None)
+def start(bGui, bJupyter, command):
     """Start the Vaibify environment."""
     config = fconfigLoad()
     sDockerDir = fsDockerDir()
     click.echo(f"Starting container {config.sProjectName} ...")
-    _fnStartContainer(config, sDockerDir, sCommand)
+    _fnStartContainer(config, sDockerDir, command)
     if bGui:
         fnLaunchGui(config)

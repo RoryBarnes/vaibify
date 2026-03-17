@@ -1,5 +1,6 @@
 """CLI subcommand: vaibify build."""
 
+import os
 import sys
 
 import click
@@ -20,18 +21,61 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
             "Install with: pip install vaibify[docker]"
         )
         sys.exit(1)
-    fnPrepareContainerConf(config, sDockerDir)
+    fnPrepareBuildContext(config, sDockerDir)
     fnBuildImage(config, sDockerDir, bNoCache=bNoCache)
 
 
-def fnPrepareContainerConf(config, sDockerDir):
-    """Generate container.conf in the Docker build context."""
+def fnPrepareBuildContext(config, sDockerDir):
+    """Generate all config-derived files in the Docker build context."""
     from vaibify.config.containerConfig import (
         fnGenerateContainerConf,
     )
-    import os
-    sConfPath = os.path.join(sDockerDir, "container.conf")
-    fnGenerateContainerConf(config, sConfPath)
+    fnGenerateContainerConf(
+        config, os.path.join(sDockerDir, "container.conf")
+    )
+    fnWriteSystemPackages(config, sDockerDir)
+    fnWritePythonPackages(config, sDockerDir)
+    fnWritePipInstallFlags(config, sDockerDir)
+    fnWriteBinariesEnv(config, sDockerDir)
+
+
+def fnWriteSystemPackages(config, sDockerDir):
+    """Write listSystemPackages to system-packages.txt."""
+    sPath = os.path.join(sDockerDir, "system-packages.txt")
+    sContent = "\n".join(config.listSystemPackages) + "\n"
+    _fnWriteFile(sPath, sContent)
+
+
+def fnWritePythonPackages(config, sDockerDir):
+    """Write listPythonPackages to requirements.txt."""
+    sPath = os.path.join(sDockerDir, "requirements.txt")
+    sContent = "\n".join(config.listPythonPackages) + "\n"
+    _fnWriteFile(sPath, sContent)
+
+
+def fnWritePipInstallFlags(config, sDockerDir):
+    """Write sPipInstallFlags to pip-flags.txt."""
+    sPath = os.path.join(sDockerDir, "pip-flags.txt")
+    _fnWriteFile(sPath, config.sPipInstallFlags.strip() + "\n")
+
+
+def fnWriteBinariesEnv(config, sDockerDir):
+    """Write listBinaries to binaries.env as KEY=VALUE lines."""
+    sPath = os.path.join(sDockerDir, "binaries.env")
+    listLines = []
+    for dictBinary in config.listBinaries:
+        sName = dictBinary.get("name", "")
+        sBinPath = dictBinary.get("path", "")
+        if sName and sBinPath:
+            listLines.append(f"{sName}={sBinPath}")
+    sContent = "\n".join(listLines) + "\n"
+    _fnWriteFile(sPath, sContent)
+
+
+def _fnWriteFile(sPath, sContent):
+    """Write string content to a file."""
+    with open(sPath, "w") as fileHandle:
+        fileHandle.write(sContent)
 
 
 @click.command("build")
