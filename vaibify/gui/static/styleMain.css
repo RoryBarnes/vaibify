@@ -122,11 +122,15 @@ html, body {
     gap: 8px;
 }
 
-#toolbar .toolbar-title {
-    font-weight: 600;
-    color: var(--color-pale-blue);
-    font-size: 15px;
-    letter-spacing: 1px;
+#toolbar .toolbar-logo {
+    height: 24px;
+    width: auto;
+}
+
+.vaibify-logo-large {
+    height: 60px;
+    width: auto;
+    margin-bottom: 8px;
 }
 
 #toolbar .toolbar-workflow {
