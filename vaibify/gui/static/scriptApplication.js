@@ -506,94 +506,76 @@ const PipeleyenApp = (function () {
         return "file-text";
     }
 
-    var SET_FIGURE_EXTENSIONS = new Set([
-        ".pdf", ".png", ".jpg", ".jpeg", ".svg",
-    ]);
-
-    function fbIsFigureFile(sPath) {
-        var iDot = sPath.lastIndexOf(".");
-        if (iDot === -1) return false;
-        return SET_FIGURE_EXTENSIONS.has(
-            sPath.substring(iDot).toLowerCase()
-        );
-    }
+    var SET_FIGURE_EXTENSIONS = VaibifyUtilities.SET_FIGURE_EXTENSIONS;
+    var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
 
     /* --- Step Event Binding --- */
 
-    function fnBindStepEvents() {
-        var elList = document.getElementById("listSteps");
-
-        elList.querySelectorAll(".step-item").forEach(function (el) {
-            var iIndex = parseInt(el.dataset.index);
-
-            el.addEventListener("click", function (event) {
-                if (event.target.classList.contains("step-checkbox") ||
-                    event.target.classList.contains("step-edit")) {
-                    return;
-                }
-                fnToggleStepExpand(iIndex);
-            });
-
-            el.addEventListener("contextmenu", function (event) {
-                event.preventDefault();
-                fnShowContextMenu(event.pageX, event.pageY, iIndex);
-            });
-
-            el.querySelector(".step-checkbox").addEventListener(
-                "change", function (event) {
-                    fnToggleStepEnabled(iIndex, event.target.checked);
-                }
-            );
-
-            var btnEdit = el.querySelector(".step-edit");
-            if (btnEdit) {
-                btnEdit.addEventListener("click", function () {
-                    PipeleyenStepEditor.fnOpenEditModal(iIndex);
-                });
+    function fnBindStepClickEvents(el, iIndex) {
+        el.addEventListener("click", function (event) {
+            if (event.target.classList.contains("step-checkbox") ||
+                event.target.classList.contains("step-edit")) {
+                return;
             }
-
-            /* Step header drag: reorder steps */
-            el.addEventListener("dragstart", function (event) {
-                event.dataTransfer.setData("text/plain", String(iIndex));
-                event.dataTransfer.setData("pipeleyen/step", String(iIndex));
-                el.classList.add("dragging");
-            });
-            el.addEventListener("dragend", function () {
-                el.classList.remove("dragging");
-            });
-            el.addEventListener("dragover", function (event) {
-                event.preventDefault();
-                el.classList.add("drop-target");
-            });
-            el.addEventListener("dragleave", function () {
-                el.classList.remove("drop-target");
-            });
-            el.addEventListener("drop", function (event) {
-                event.preventDefault();
-                el.classList.remove("drop-target");
-                var sDetailData = event.dataTransfer.getData(
-                    "pipeleyen/detail"
-                );
-                if (sDetailData) {
-                    fnHandleDetailDrop(sDetailData, iIndex);
-                    return;
-                }
-                var sStepData = event.dataTransfer.getData("text/plain");
-                if (sStepData !== "") {
-                    var iFromIndex = parseInt(sStepData);
-                    if (iFromIndex !== iIndex) {
-                        fnReorderStep(iFromIndex, iIndex);
-                    }
-                }
-            });
+            fnToggleStepExpand(iIndex);
         });
+        el.addEventListener("contextmenu", function (event) {
+            event.preventDefault();
+            fnShowContextMenu(event.pageX, event.pageY, iIndex);
+        });
+        el.querySelector(".step-checkbox").addEventListener(
+            "change", function (event) {
+                fnToggleStepEnabled(iIndex, event.target.checked);
+            }
+        );
+        var btnEdit = el.querySelector(".step-edit");
+        if (btnEdit) {
+            btnEdit.addEventListener("click", function () {
+                PipeleyenStepEditor.fnOpenEditModal(iIndex);
+            });
+        }
+    }
 
-        /* Bind detail item clicks and actions */
+    function fnBindStepDragEvents(el, iIndex) {
+        el.addEventListener("dragstart", function (event) {
+            event.dataTransfer.setData("text/plain", String(iIndex));
+            event.dataTransfer.setData("pipeleyen/step", String(iIndex));
+            el.classList.add("dragging");
+        });
+        el.addEventListener("dragend", function () {
+            el.classList.remove("dragging");
+        });
+        el.addEventListener("dragover", function (event) {
+            event.preventDefault();
+            el.classList.add("drop-target");
+        });
+        el.addEventListener("dragleave", function () {
+            el.classList.remove("drop-target");
+        });
+        el.addEventListener("drop", function (event) {
+            event.preventDefault();
+            el.classList.remove("drop-target");
+            var sDetailData = event.dataTransfer.getData(
+                "pipeleyen/detail"
+            );
+            if (sDetailData) {
+                fnHandleDetailDrop(sDetailData, iIndex);
+                return;
+            }
+            var sStepData = event.dataTransfer.getData("text/plain");
+            if (sStepData !== "") {
+                var iFromIndex = parseInt(sStepData);
+                if (iFromIndex !== iIndex) {
+                    fnReorderStep(iFromIndex, iIndex);
+                }
+            }
+        });
+    }
+
+    function fnBindDetailSectionEvents(elList) {
         elList.querySelectorAll(".detail-item").forEach(function (el) {
             fnBindDetailItemEvents(el);
         });
-
-        /* Bind section add buttons */
         elList.querySelectorAll(".section-add").forEach(function (el) {
             el.addEventListener("click", function (event) {
                 event.stopPropagation();
@@ -602,8 +584,6 @@ const PipeleyenApp = (function () {
                 );
             });
         });
-
-        /* Bind drop targets on detail sections */
         elList.querySelectorAll(".step-detail").forEach(function (el) {
             el.addEventListener("dragover", function (event) {
                 event.preventDefault();
@@ -620,6 +600,16 @@ const PipeleyenApp = (function () {
                 }
             });
         });
+    }
+
+    function fnBindStepEvents() {
+        var elList = document.getElementById("listSteps");
+        elList.querySelectorAll(".step-item").forEach(function (el) {
+            var iIndex = parseInt(el.dataset.index);
+            fnBindStepClickEvents(el, iIndex);
+            fnBindStepDragEvents(el, iIndex);
+        });
+        fnBindDetailSectionEvents(elList);
     }
 
     function fnBindDetailItemEvents(el) {
@@ -745,49 +735,47 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    async function fnHandleDetailDrop(sDetailData, iTargetStep) {
-        var dictDrag = JSON.parse(sDetailData);
+    function fnMoveDetailToStep(dictDrag, iTargetStep) {
         var iSource = dictDrag.iStep;
         var sArray = dictDrag.sArray;
-        var iIdx = dictDrag.iIdx;
-        if (iSource === iTargetStep) return;
+        var sValue = dictWorkflow.listSteps[iSource][sArray].splice(
+            dictDrag.iIdx, 1
+        )[0];
+        if (!dictWorkflow.listSteps[iTargetStep][sArray]) {
+            dictWorkflow.listSteps[iTargetStep][sArray] = [];
+        }
+        dictWorkflow.listSteps[iTargetStep][sArray].unshift(sValue);
+        fnPushUndo({
+            sAction: "move",
+            iStep: iSource,
+            sArray: sArray,
+            iIdx: dictDrag.iIdx,
+            iTargetStep: iTargetStep,
+            iTargetIdx: 0,
+            sValue: sValue,
+        });
+        return sArray;
+    }
 
+    async function fnHandleDetailDrop(sDetailData, iTargetStep) {
+        var dictDrag = JSON.parse(sDetailData);
+        if (dictDrag.iStep === iTargetStep) return;
         if (!confirm(
             "WARNING: Moving a command may break dependencies " +
             "in later steps.\n\nProceed?"
         )) {
             return;
         }
-
-        var sValue = dictWorkflow.listSteps[iSource][sArray].splice(
-            iIdx, 1
-        )[0];
-        var sTargetArray = sArray;
-        if (!dictWorkflow.listSteps[iTargetStep][sTargetArray]) {
-            dictWorkflow.listSteps[iTargetStep][sTargetArray] = [];
-        }
-        dictWorkflow.listSteps[iTargetStep][sTargetArray].unshift(sValue);
-        fnPushUndo({
-            sAction: "move",
-            iStep: iSource,
-            sArray: sArray,
-            iIdx: iIdx,
-            iTargetStep: iTargetStep,
-            iTargetIdx: 0,
-            sValue: sValue,
-        });
-        await fnSaveStepArray(iSource, sArray);
-        await fnSaveStepArray(iTargetStep, sTargetArray);
-
-        /* Expand target and highlight */
+        var sArray = fnMoveDetailToStep(dictDrag, iTargetStep);
+        await fnSaveStepArray(dictDrag.iStep, sArray);
+        await fnSaveStepArray(iTargetStep, sArray);
         setExpandedSteps.add(iTargetStep);
         fnRenderStepList();
-        fnHighlightItem(iTargetStep, sTargetArray, 0);
+        fnHighlightItem(iTargetStep, sArray, 0);
         fnShowToast(
             "Moved to " + dictWorkflow.listSteps[iTargetStep].sName,
             "success"
         );
-
         alert(
             "Modifying pipeline. Ensure that all subsequent " +
             "steps properly reference the new pipeline."
@@ -1391,13 +1379,7 @@ const PipeleyenApp = (function () {
         setTimeout(function () { el.remove(); }, 4000);
     }
 
-    /* --- Utilities --- */
-
-    function fnEscapeHtml(sText) {
-        var el = document.createElement("span");
-        el.textContent = sText;
-        return el.innerHTML;
-    }
+    var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
     /* --- Public API --- */
 

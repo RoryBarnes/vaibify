@@ -1,10 +1,11 @@
-"""Tests for pre-flight validation in pipelineRunner."""
+"""Tests for pre-flight validation and shell quoting in pipelineRunner."""
 
 import pytest
 
 from vaibify.gui.pipelineRunner import (
     _flistPreflightValidate,
     _fsExtractScriptPath,
+    fsShellQuote,
 )
 
 
@@ -84,7 +85,7 @@ async def test_preflight_missing_directory():
                             ["python test.py"]),
     ])
     mockConnection = MockDockerConnection({
-        "test -d /nonexistent/dir": 1,
+        "test -d '/nonexistent/dir'": 1,
     })
     dictVariables = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
 
@@ -103,9 +104,9 @@ async def test_preflight_not_writable_directory():
                             ["python test.py"]),
     ])
     mockConnection = MockDockerConnection({
-        "test -d /readonly/dir": 0,
-        "test -w /readonly/dir": 1,
-        "test -f test.py": 0,
+        "test -d '/readonly/dir'": 0,
+        "test -w '/readonly/dir'": 1,
+        "test -f 'test.py'": 0,
     })
     dictVariables = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
 
@@ -124,10 +125,10 @@ async def test_preflight_missing_script():
                             ["python missing_script.py"]),
     ])
     mockConnection = MockDockerConnection({
-        "test -d /workspace/project": 0,
-        "test -w /workspace/project": 0,
-        "test -f missing_script.py": 1,
-        "which missing_script.py": 1,
+        "test -d '/workspace/project'": 0,
+        "test -w '/workspace/project'": 0,
+        "test -f 'missing_script.py'": 1,
+        "which 'missing_script.py'": 1,
     })
     dictVariables = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
 
@@ -215,3 +216,50 @@ async def test_preflight_respects_start_step():
 
     assert len(listErrors) == 1
     assert "Step 2" in listErrors[0]
+
+
+# --- fsShellQuote tests ---
+
+
+def test_fsShellQuote_plain_path():
+    assert fsShellQuote("/workspace/project") == "'/workspace/project'"
+
+
+def test_fsShellQuote_path_with_spaces():
+    assert fsShellQuote("/path/with spaces") == "'/path/with spaces'"
+
+
+def test_fsShellQuote_injection_semicolon():
+    sInput = "/dir; rm -rf /"
+    sQuoted = fsShellQuote(sInput)
+    assert sQuoted == "'/dir; rm -rf /'"
+    assert ";" not in sQuoted.strip("'")  or "'" in sQuoted
+
+
+def test_fsShellQuote_injection_backtick():
+    sInput = "/dir$(whoami)"
+    sQuoted = fsShellQuote(sInput)
+    assert sQuoted == "'/dir$(whoami)'"
+
+
+def test_fsShellQuote_embedded_single_quote():
+    sInput = "/dir/it's"
+    sQuoted = fsShellQuote(sInput)
+    assert sQuoted == "'/dir/it'\\''s'"
+
+
+def test_fsShellQuote_empty_string():
+    assert fsShellQuote("") == "''"
+
+
+def test_fsShellQuote_prevents_injection_in_commands():
+    """Verify quoting is applied in actual command construction."""
+    mockConnection = MockDockerConnection({})
+    from vaibify.gui.pipelineRunner import _fnValidateStepDirectory
+    listErrors = []
+    _fnValidateStepDirectory(
+        mockConnection, "c1", "/workspace; rm -rf /",
+        1, "Malicious", listErrors,
+    )
+    for sCommand in mockConnection.listCommands:
+        assert "'/workspace; rm -rf /'" in sCommand

@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 
+WORKSPACE_ROOT = "/workspace"
+
 from . import workflowManager
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
@@ -18,6 +20,7 @@ from .pipelineRunner import (
     fnRunFromStep,
     fnRunSelectedSteps,
     fnVerifyOnly,
+    fsShellQuote,
 )
 from .resourceMonitor import fdictGetContainerStats
 from .terminalSession import TerminalSession
@@ -61,6 +64,17 @@ class WorkflowSettingsRequest(BaseModel):
 class RunRequest(BaseModel):
     listStepIndices: List[int] = []
     iStartStep: Optional[int] = None
+
+
+def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
+    """Raise 403 if sResolvedPath escapes sAllowedRoot via traversal."""
+    sNormalized = posixpath.normpath(sResolvedPath)
+    sRoot = posixpath.normpath(sAllowedRoot)
+    if not sNormalized.startswith(sRoot + "/") and sNormalized != sRoot:
+        raise HTTPException(
+            403, "Path traversal is not permitted"
+        )
+    return sNormalized
 
 
 def fdictExtractSettings(dictWorkflow):
@@ -146,7 +160,7 @@ def _fbaFetchFallback(
 def flistDirectoryEntries(connectionDocker, sContainerId, sAbsPath):
     """Run find command and return stripped output lines."""
     sCommand = (
-        f"find {sAbsPath} -maxdepth 1 -mindepth 1 "
+        f"find {fsShellQuote(sAbsPath)} -maxdepth 1 -mindepth 1 "
         f"\\( -type f -o -type d \\) 2>/dev/null | sort"
     )
     _, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -158,7 +172,8 @@ def flistDirectoryEntries(connectionDocker, sContainerId, sAbsPath):
 def fdictEntryFromPath(connectionDocker, sContainerId, sPath):
     """Build a directory entry dict for a single path."""
     _, sTypeOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"test -d {sPath} && echo d || echo f",
+        sContainerId,
+        f"test -d {fsShellQuote(sPath)} && echo d || echo f",
     )
     return {
         "sName": posixpath.basename(sPath),
@@ -391,7 +406,7 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
             "/workspace", workflowManager.VAIBIFY_WORKFLOWS_DIR
         )
         dictCtx["docker"].ftResultExecuteCommand(
-            sContainerId, f"mkdir -p {sWorkflowDir}"
+            sContainerId, f"mkdir -p {fsShellQuote(sWorkflowDir)}"
         )
         sFullPath = posixpath.join(sWorkflowDir, sFileName)
         dictCtx["docker"].fnWriteFile(
@@ -425,6 +440,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
             sDirectoryPath if sDirectoryPath.startswith("/")
             else f"{sWorkspaceRoot}/{sDirectoryPath}"
         )
+        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         return flistQueryDirectory(
             dictCtx["docker"], sContainerId, sAbsPath
         )
@@ -465,7 +481,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
     async def fnListLogs(sContainerId: str):
         dictCtx["require"]()
         sLogsDir = posixpath.join(
-            "/workspace", workflowManager.VAIBIFY_LOGS_DIR
+            WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
         )
         listEntries = flistDirectoryEntries(
             dictCtx["docker"], sContainerId, sLogsDir
@@ -480,9 +496,10 @@ def _fnRegisterLogRoutes(app, dictCtx):
     async def fnGetLogContent(sContainerId: str, sLogFilename: str):
         dictCtx["require"]()
         sLogsDir = posixpath.join(
-            "/workspace", workflowManager.VAIBIFY_LOGS_DIR
+            WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
         )
         sLogPath = posixpath.join(sLogsDir, sLogFilename)
+        fnValidatePathWithinRoot(sLogPath, sLogsDir)
         try:
             baContent = dictCtx["docker"].fbaFetchFile(
                 sContainerId, sLogPath

@@ -406,7 +406,7 @@ def flistFilterFigureFiles(listOutputPaths):
     setFigureExtensions = {".pdf", ".png", ".jpg", ".jpeg", ".svg"}
     listFigures = []
     for sPath in listOutputPaths:
-        sExtension = os.path.splitext(sPath)[1].lower()
+        sExtension = posixpath.splitext(sPath)[1].lower()
         if sExtension in setFigureExtensions:
             listFigures.append(sPath)
     return listFigures

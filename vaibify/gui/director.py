@@ -166,6 +166,19 @@ def fnStreamPrefixedOutput(stream, sPrefix):
     stream.close()
 
 
+def fnStreamAndWait(process, sPrefix):
+    """Spawn reader threads for stdout/stderr and wait for completion."""
+    threadOut = threading.Thread(
+        target=fnStreamPrefixedOutput, args=(process.stdout, sPrefix))
+    threadErr = threading.Thread(
+        target=fnStreamPrefixedOutput, args=(process.stderr, sPrefix))
+    threadOut.start()
+    threadErr.start()
+    threadOut.join()
+    threadErr.join()
+    process.wait()
+
+
 def fnExecuteCommand(sCommand, sWorkingDirectory, sStepName):
     """Run sCommand via shell, streaming prefixed output."""
     if not os.path.isdir(sWorkingDirectory):
@@ -182,16 +195,7 @@ def fnExecuteCommand(sCommand, sWorkingDirectory, sStepName):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, env=dictEnv,
     )
-    threadOut = threading.Thread(
-        target=fnStreamPrefixedOutput, args=(process.stdout, sPrefix))
-    threadErr = threading.Thread(
-        target=fnStreamPrefixedOutput, args=(process.stderr, sPrefix))
-    threadOut.start()
-    threadErr.start()
-    threadOut.join()
-    threadErr.join()
-    process.wait()
-
+    fnStreamAndWait(process, sPrefix)
     if process.returncode != 0:
         raise RuntimeError(
             f"Exit code {process.returncode}: {sCommand}")
@@ -301,6 +305,45 @@ def fnRunVerifyOnly(dictWorkflow, dictVariables, sWorkflowRoot):
     return all(bOk for _, _, bOk, _ in listResults)
 
 
+def _fbSkipAndRegisterStep(
+    dictStep, dictVariables, sLabel, sWorkflowRoot, listResults,
+):
+    """Register outputs for a skipped step, returning True on success."""
+    try:
+        fnRegisterStepOutputs(
+            dictStep, dictVariables, sLabel, sWorkflowRoot
+        )
+        print(f"  SKIPPED (--start-step): {sLabel} {dictStep['sName']}")
+        listResults.append((sLabel, dictStep["sName"], True, ""))
+        return True
+    except FileNotFoundError as error:
+        print(f"  FAILED: {sLabel} — outputs missing "
+              f"for skipped step: {error}")
+        listResults.append(
+            (sLabel, dictStep["sName"], False, str(error)))
+        return False
+
+
+def _fbExecuteOneStep(
+    dictStep, dictVariables, sLabel, sWorkflowRoot, listResults,
+):
+    """Execute a single step and record its result."""
+    fnPrintStepBanner(sLabel, dictStep, dictVariables)
+    try:
+        fnExecuteStep(dictStep, dictVariables, sWorkflowRoot)
+        fnRegisterStepOutputs(
+            dictStep, dictVariables, sLabel, sWorkflowRoot
+        )
+        listResults.append((sLabel, dictStep["sName"], True, ""))
+        print(f"  SUCCESS: {sLabel}")
+        return True
+    except Exception as error:
+        listResults.append(
+            (sLabel, dictStep["sName"], False, str(error)))
+        print(f"  FAILED: {sLabel} \u2014 {error}")
+        return False
+
+
 def fnRunPipeline(dictWorkflow, dictVariables, sWorkflowRoot, iStartStep=1):
     """Execute all enabled steps, halting on first failure."""
     listResults = []
@@ -315,35 +358,18 @@ def fnRunPipeline(dictWorkflow, dictVariables, sWorkflowRoot, iStartStep=1):
         ).lower()
 
         if iStepNumber < iStartStep:
-            try:
-                fnRegisterStepOutputs(
-                    dictStep, dictVariables, sLabel, sWorkflowRoot
-                )
-                print(f"  SKIPPED (--start-step): {sLabel} "
-                      f"{dictStep['sName']}")
-                listResults.append(
-                    (sLabel, dictStep["sName"], True, ""))
-            except FileNotFoundError as error:
-                print(f"  FAILED: {sLabel} — outputs missing "
-                      f"for skipped step: {error}")
-                listResults.append(
-                    (sLabel, dictStep["sName"], False, str(error)))
+            if not _fbSkipAndRegisterStep(
+                dictStep, dictVariables, sLabel, sWorkflowRoot,
+                listResults,
+            ):
                 fnPrintSummary(listResults)
                 return False
             continue
 
-        fnPrintStepBanner(sLabel, dictStep, dictVariables)
-        try:
-            fnExecuteStep(dictStep, dictVariables, sWorkflowRoot)
-            fnRegisterStepOutputs(
-                dictStep, dictVariables, sLabel, sWorkflowRoot
-            )
-            listResults.append((sLabel, dictStep["sName"], True, ""))
-            print(f"  SUCCESS: {sLabel}")
-        except Exception as error:
-            listResults.append(
-                (sLabel, dictStep["sName"], False, str(error)))
-            print(f"  FAILED: {sLabel} \u2014 {error}")
+        if not _fbExecuteOneStep(
+            dictStep, dictVariables, sLabel, sWorkflowRoot,
+            listResults,
+        ):
             fnPrintSummary(listResults)
             return False
     fnPrintSummary(listResults)
@@ -377,8 +403,8 @@ def fnConfigureEnvironment(dictWorkflow, sWorkflowRoot):
         )
 
 
-def main():
-    """Parse arguments and run the pipeline."""
+def fdictParseArguments():
+    """Parse and return command-line arguments as a namespace."""
     parser = argparse.ArgumentParser(
         description="Vaibify pipeline director.")
     parser.add_argument(
@@ -394,8 +420,12 @@ def main():
         "--log-dir",
         default=os.path.join("/workspace", ".vaibify", "logs"),
         help="Directory for log files.")
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def main():
+    """Parse arguments and run the pipeline."""
+    args = fdictParseArguments()
     sWorkflowPath = os.path.abspath(args.config)
     sWorkflowRoot = os.path.dirname(sWorkflowPath)
     dictWorkflow = fdictLoadWorkflow(sWorkflowPath)
@@ -406,21 +436,18 @@ def main():
 
     print(f"Vaibify Director - {sWorkflowName}")
     print(f"Workflow: {sWorkflowPath}")
-    print(f"Log: {sLogPath}")
-    print()
+    print(f"Log: {sLogPath}\n")
 
     fnConfigureEnvironment(dictWorkflow, sWorkflowRoot)
     dictVariables = fdictBuildGlobalVariables(dictWorkflow, sWorkflowRoot)
 
     if args.verify_only:
         bSuccess = fnRunVerifyOnly(
-            dictWorkflow, dictVariables, sWorkflowRoot
-        )
+            dictWorkflow, dictVariables, sWorkflowRoot)
     else:
         bSuccess = fnRunPipeline(
             dictWorkflow, dictVariables, sWorkflowRoot,
-            args.start_step,
-        )
+            args.start_step)
     fileLog.close()
     sys.exit(0 if bSuccess else 1)
 

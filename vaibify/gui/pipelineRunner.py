@@ -6,6 +6,15 @@ import re
 from datetime import datetime, timezone
 
 
+def fsShellQuote(sValue):
+    """Safely quote a value for use in a shell command.
+
+    Wraps the value in single quotes and escapes any embedded single
+    quotes with the standard '\'' idiom, preventing shell injection.
+    """
+    return "'" + sValue.replace("'", "'\\''") + "'"
+
+
 PATTERN_STEP_LABEL = re.compile(
     r"\[Step(\d+)\]|Step(\d+):|=+\s*\n\s*Step(\d+)"
 )
@@ -35,7 +44,7 @@ def fsGenerateLogFilename(sWorkflowName):
     return f"{sCleanName}_{sTimestamp}.log"
 
 
-def fnBuildLoggingCallback(fnOriginalCallback, listLogLines):
+def ffBuildLoggingCallback(fnOriginalCallback, listLogLines):
     """Return a callback that logs output lines and forwards events."""
     async def fnLoggingCallback(dictEvent):
         await fnOriginalCallback(dictEvent)
@@ -68,7 +77,7 @@ async def _fnEnsureLogsDirectory(connectionDocker, sContainerId):
         workflowManager.VAIBIFY_LOGS_DIR,
     )
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"mkdir -p {sLogsDir}"
+        sContainerId, f"mkdir -p {fsShellQuote(sLogsDir)}"
     )
     return sLogsDir
 
@@ -104,7 +113,8 @@ def _fnValidateStepDirectory(
     iStepNumber, sStepName, listErrors,
 ):
     """Check that a step's working directory exists and is writable."""
-    sCheckDir = f"test -d {sStepDirectory}"
+    sQuoted = fsShellQuote(sStepDirectory)
+    sCheckDir = f"test -d {sQuoted}"
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCheckDir
     )
@@ -114,7 +124,7 @@ def _fnValidateStepDirectory(
             f"directory does not exist: {sStepDirectory}"
         )
         return
-    sCheckWrite = f"test -w {sStepDirectory}"
+    sCheckWrite = f"test -w {sQuoted}"
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCheckWrite
     )
@@ -153,8 +163,9 @@ def _fnValidateSingleCommand(
     if not sScript:
         return
     sCheckCommand = (
-        f"cd {sStepDirectory} 2>/dev/null && "
-        f"test -f {sScript} || which {sScript} >/dev/null 2>&1"
+        f"cd {fsShellQuote(sStepDirectory)} 2>/dev/null && "
+        f"test -f {fsShellQuote(sScript)} || "
+        f"which {fsShellQuote(sScript)} >/dev/null 2>&1"
     )
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCheckCommand
@@ -179,45 +190,34 @@ def _fsExtractScriptPath(sCommand):
     return listTokens[0]
 
 
-async def _fnRunWithLogging(
-    connectionDocker, sContainerId, dictWorkflow,
-    sWorkdir, fnStatusCallback, sAction, iStartStep=1,
+async def _fiReportPreflightFailure(
+    fnLogging, fnStatusCallback, connectionDocker,
+    sContainerId, sLogPath, listLogLines, listErrors, sAction,
 ):
-    """Run steps with logging wrapper, writing log file on completion."""
-    from . import workflowManager
-
-    sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
-    sLogsDir = await _fnEnsureLogsDirectory(
-        connectionDocker, sContainerId
-    )
-    sLogFilename = fsGenerateLogFilename(sWorkflowName)
-    sLogPath = posixpath.join(sLogsDir, sLogFilename)
-    listLogLines = []
-    fnLogging = fnBuildLoggingCallback(fnStatusCallback, listLogLines)
-    dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
-
-    listPreflightErrors = await _flistPreflightValidate(
-        connectionDocker, sContainerId, dictWorkflow,
-        dictVariables, iStartStep,
-    )
-    if listPreflightErrors:
-        await fnLogging({"sType": "started", "sCommand": sAction})
-        for sError in listPreflightErrors:
-            await fnLogging({"sType": "output", "sLine": f"ERROR: {sError}"})
-        await fnStatusCallback({
-            "sType": "preflightFailed",
-            "listErrors": listPreflightErrors,
-        })
-        await fnWriteLogToContainer(
-            connectionDocker, sContainerId, sLogPath, listLogLines
-        )
-        await fnStatusCallback({
-            "sType": "failed", "iExitCode": 1, "sLogPath": sLogPath,
-        })
-        return 1
-
+    """Emit preflight errors, write log, and return exit code 1."""
     await fnLogging({"sType": "started", "sCommand": sAction})
-    iResult = await _fnRunStepList(
+    for sError in listErrors:
+        await fnLogging({"sType": "output", "sLine": f"ERROR: {sError}"})
+    await fnStatusCallback({
+        "sType": "preflightFailed", "listErrors": listErrors,
+    })
+    await fnWriteLogToContainer(
+        connectionDocker, sContainerId, sLogPath, listLogLines
+    )
+    await fnStatusCallback({
+        "sType": "failed", "iExitCode": 1, "sLogPath": sLogPath,
+    })
+    return 1
+
+
+async def _fiRunStepsAndLog(
+    connectionDocker, sContainerId, dictWorkflow, sWorkdir,
+    dictVariables, fnLogging, fnStatusCallback,
+    sLogPath, listLogLines, sAction, iStartStep,
+):
+    """Execute steps, write log, and emit final status."""
+    await fnLogging({"sType": "started", "sCommand": sAction})
+    iResult = await _fiRunStepList(
         connectionDocker, sContainerId,
         dictWorkflow, sWorkdir, dictVariables, fnLogging,
         iStartStep=iStartStep,
@@ -230,6 +230,38 @@ async def _fnRunWithLogging(
          "iExitCode": iResult, "sLogPath": sLogPath}
     )
     return iResult
+
+
+async def _fiRunWithLogging(
+    connectionDocker, sContainerId, dictWorkflow,
+    sWorkdir, fnStatusCallback, sAction, iStartStep=1,
+):
+    """Run steps with logging wrapper, writing log file on completion."""
+    sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
+    sLogsDir = await _fnEnsureLogsDirectory(
+        connectionDocker, sContainerId
+    )
+    sLogFilename = fsGenerateLogFilename(sWorkflowName)
+    sLogPath = posixpath.join(sLogsDir, sLogFilename)
+    listLogLines = []
+    fnLogging = ffBuildLoggingCallback(fnStatusCallback, listLogLines)
+    dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
+
+    listPreflightErrors = await _flistPreflightValidate(
+        connectionDocker, sContainerId, dictWorkflow,
+        dictVariables, iStartStep,
+    )
+    if listPreflightErrors:
+        return await _fiReportPreflightFailure(
+            fnLogging, fnStatusCallback, connectionDocker,
+            sContainerId, sLogPath, listLogLines,
+            listPreflightErrors, sAction,
+        )
+    return await _fiRunStepsAndLog(
+        connectionDocker, sContainerId, dictWorkflow, sWorkdir,
+        dictVariables, fnLogging, fnStatusCallback,
+        sLogPath, listLogLines, sAction, iStartStep,
+    )
 
 
 async def _fnRunSetupIfNeeded(
@@ -246,7 +278,7 @@ async def _fnRunSetupIfNeeded(
     )
 
 
-async def fnRunStepCommands(
+async def fiRunStepCommands(
     connectionDocker, sContainerId, dictStep,
     sWorkdir, dictVariables, fnStatusCallback,
 ):
@@ -361,7 +393,7 @@ async def fnRunAllSteps(
     )
     if dictWorkflow is None:
         return 1
-    return await _fnRunWithLogging(
+    return await _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback, "runAll",
     )
@@ -379,7 +411,7 @@ async def _fnRunOneStep(
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Run a single step and emit its result event."""
-    iExitCode = await fnRunStepCommands(
+    iExitCode = await fiRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
     )
@@ -387,7 +419,7 @@ async def _fnRunOneStep(
     return iExitCode
 
 
-async def _fnRunStepList(
+async def _fiRunStepList(
     connectionDocker, sContainerId,
     dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
     iStartStep=1,
@@ -417,7 +449,7 @@ async def fnRunFromStep(
     )
     if dictWorkflow is None:
         return 1
-    return await _fnRunWithLogging(
+    return await _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback,
         f"runFrom:{iStartStep}", iStartStep=iStartStep,
@@ -431,7 +463,7 @@ async def _fbVerifyStepOutputs(
     """Return True if all output files for a step exist."""
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
     for sOutputFile in dictStep.get("saOutputFiles", []):
-        sCheckCommand = f"test -f {sOutputFile}"
+        sCheckCommand = f"test -f {fsShellQuote(sOutputFile)}"
         iExitCode, _ = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCheckCommand, sWorkdir=sStepDirectory
         )
@@ -503,7 +535,7 @@ async def _fnExecuteSelectedSteps(
     workflowManager.fnSaveWorkflowToContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     )
-    return await _fnRunWithLogging(
+    return await _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback, "runSelected",
     )

@@ -153,6 +153,38 @@ fnSyncAllRepos() {
 # ---------------------------------------------------------------------------
 # fnBuildBinaries: Compile native C binaries for repos using c_and_pip method
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# fnBuildSingleBinary: Compile one C repo and add its bin/ to PATH
+# Arguments: sName sRepoPath
+# Returns: 0 if binary was built, 1 otherwise
+# ---------------------------------------------------------------------------
+fnBuildSingleBinary() {
+    local sName="$1"
+    local sRepoPath="$2"
+
+    if [ ! -d "${sRepoPath}" ]; then
+        echo "[vc]   ${sName} not found. Skipping build."
+        return 1
+    fi
+    echo "[vc]   Building ${sName}..."
+    cd "${sRepoPath}"
+    if make opt; then
+        local sBinaryPath="${sRepoPath}/bin/${sName}"
+        if [ -x "${sBinaryPath}" ]; then
+            export PATH="${sRepoPath}/bin:${PATH}"
+            echo "[vc]   ${sName} binary ready: ${sBinaryPath}"
+            cd "${WORKSPACE}"
+            return 0
+        fi
+        echo "[vc]   WARNING: Expected binary not found at ${sBinaryPath}."
+    else
+        echo "[vc]   WARNING: Build failed for ${sName}. You can retry manually:"
+        echo "[vc]     cd ${sRepoPath} && make opt"
+    fi
+    cd "${WORKSPACE}"
+    return 1
+}
+
 fnBuildBinaries() {
     echo "[vc] Building native binaries..."
 
@@ -160,30 +192,10 @@ fnBuildBinaries() {
     local bBuiltAny=false
     for (( i=0; i<iCount; i++ )); do
         if [ "${saRepoMethods[$i]}" = "c_and_pip" ]; then
-            local sName="${saRepoNames[$i]}"
-            local sRepoPath="${WORKSPACE}/${sName}"
-
-            if [ ! -d "${sRepoPath}" ]; then
-                echo "[vc]   ${sName} not found. Skipping build."
-                continue
+            if fnBuildSingleBinary "${saRepoNames[$i]}" \
+                "${WORKSPACE}/${saRepoNames[$i]}"; then
+                bBuiltAny=true
             fi
-
-            echo "[vc]   Building ${sName}..."
-            cd "${sRepoPath}"
-            if make opt; then
-                local sBinaryPath="${sRepoPath}/bin/${sName}"
-                if [ -x "${sBinaryPath}" ]; then
-                    export PATH="${sRepoPath}/bin:${PATH}"
-                    echo "[vc]   ${sName} binary ready: ${sBinaryPath}"
-                    bBuiltAny=true
-                else
-                    echo "[vc]   WARNING: Expected binary not found at ${sBinaryPath}."
-                fi
-            else
-                echo "[vc]   WARNING: Build failed for ${sName}. You can retry manually:"
-                echo "[vc]     cd ${sRepoPath} && make opt"
-            fi
-            cd "${WORKSPACE}"
         fi
     done
 

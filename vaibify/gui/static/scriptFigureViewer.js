@@ -3,9 +3,8 @@
 const PipeleyenFigureViewer = (function () {
     "use strict";
 
-    var SET_FIGURE_EXTENSIONS = new Set([
-        ".pdf", ".png", ".jpg", ".jpeg", ".svg",
-    ]);
+    var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
+    var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
     /* Unified shared history: list of {sPath, sWorkdir, iViewCount, iLastViewed} */
     var listHistory = [];
@@ -23,14 +22,6 @@ const PipeleyenFigureViewer = (function () {
         iNavIndex: -1,
     };
     var sNextViewer = "A";
-
-    function fbIsFigureFile(sPath) {
-        var iDot = sPath.lastIndexOf(".");
-        if (iDot === -1) return false;
-        return SET_FIGURE_EXTENSIONS.has(
-            sPath.substring(iDot).toLowerCase()
-        );
-    }
 
     /* --- Shared History --- */
 
@@ -321,12 +312,6 @@ const PipeleyenFigureViewer = (function () {
                 elViewport.innerHTML =
                     '<span class="placeholder">Cannot display file</span>';
             });
-    }
-
-    function fnEscapeHtml(sText) {
-        var el = document.createElement("span");
-        el.textContent = sText;
-        return el.innerHTML;
     }
 
     /* --- Drag and Drop --- */
