@@ -248,34 +248,37 @@ def test_flistValidateReferences_clean_workflow():
     assert listWarnings == []
 
 
-def test_flistFindWorkflowsInContainer_uses_search_root():
-    """Verify that flistFindWorkflowsInContainer defaults to DEFAULT_SEARCH_ROOT."""
+def test_flistFindWorkflowsInContainer_returns_legacy_dicts():
+    """Verify legacy workflow.json files are returned as dicts."""
 
     class MockDockerConnection:
         def __init__(self):
-            self.sCapturedCommand = None
+            self.listCommands = []
 
         def ftResultExecuteCommand(self, sContainerId, sCommand):
-            self.sCapturedCommand = sCommand
-            return (0, "/workspace/project/workflow.json\n")
+            self.listCommands.append(sCommand)
+            if "workflow.json" in sCommand:
+                return (0, "/workspace/project/workflow.json\n")
+            return (0, "")
 
     mockConnection = MockDockerConnection()
 
-    listPaths = flistFindWorkflowsInContainer(
+    listResults = flistFindWorkflowsInContainer(
         mockConnection, "abc123"
     )
 
-    assert DEFAULT_SEARCH_ROOT in mockConnection.sCapturedCommand
-    assert "/workspace/project/workflow.json" in listPaths
+    assert len(listResults) == 1
+    assert listResults[0]["sPath"] == "/workspace/project/workflow.json"
+    assert listResults[0]["sSource"] == "legacy"
 
 
 def test_flistFindWorkflowsInContainer_custom_search_root():
     class MockDockerConnection:
         def __init__(self):
-            self.sCapturedCommand = None
+            self.listCommands = []
 
         def ftResultExecuteCommand(self, sContainerId, sCommand):
-            self.sCapturedCommand = sCommand
+            self.listCommands.append(sCommand)
             return (0, "")
 
     mockConnection = MockDockerConnection()
@@ -284,4 +287,7 @@ def test_flistFindWorkflowsInContainer_custom_search_root():
         mockConnection, "abc123", sSearchRoot="/custom/root"
     )
 
-    assert "/custom/root" in mockConnection.sCapturedCommand
+    bFoundCustomRoot = any(
+        "/custom/root" in s for s in mockConnection.listCommands
+    )
+    assert bFoundCustomRoot

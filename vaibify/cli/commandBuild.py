@@ -37,6 +37,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePythonPackages(config, sDockerDir)
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
+    fnCopyDirectorScript(sDockerDir)
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -70,6 +71,18 @@ def fnWriteBinariesEnv(config, sDockerDir):
             listLines.append(f"{sName}={sBinPath}")
     sContent = "\n".join(listLines) + "\n"
     _fnWriteFile(sPath, sContent)
+
+
+def fnCopyDirectorScript(sDockerDir):
+    """Copy director.py into the Docker build context."""
+    import shutil
+    import pathlib
+    sSourcePath = str(
+        pathlib.Path(__file__).resolve().parents[1]
+        / "gui" / "director.py"
+    )
+    sDestPath = os.path.join(sDockerDir, "director.py")
+    shutil.copy2(sSourcePath, sDestPath)
 
 
 def _fnWriteFile(sPath, sContent):

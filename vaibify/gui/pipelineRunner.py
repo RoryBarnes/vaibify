@@ -1,7 +1,9 @@
 """Execute workflow steps by running commands directly in containers."""
 
 import json
+import posixpath
 import re
+from datetime import datetime, timezone
 
 
 PATTERN_STEP_LABEL = re.compile(
@@ -11,9 +13,99 @@ PATTERN_STEP_SUCCESS = re.compile(r"SUCCESS:\s*Step(\d+)")
 PATTERN_STEP_FAILED = re.compile(r"FAILED:\s*Step(\d+)")
 
 
+def _fdictBuildVariables(dictWorkflow, sWorkdir):
+    """Build merged global + step variable dict for resolution."""
+    from . import workflowManager
+
+    dictGlobalVars = workflowManager.fdictBuildGlobalVariables(
+        dictWorkflow, sWorkdir
+    )
+    dictStepVars = workflowManager.fdictBuildStepVariables(
+        dictWorkflow, dictGlobalVars
+    )
+    dictMerged = dict(dictGlobalVars)
+    dictMerged.update(dictStepVars)
+    return dictMerged
+
+
+def fsGenerateLogFilename(sWorkflowName):
+    """Return a log filename with workflow name and UTC timestamp."""
+    sTimestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    sCleanName = re.sub(r"[^a-zA-Z0-9_-]", "_", sWorkflowName)
+    return f"{sCleanName}_{sTimestamp}.log"
+
+
+def fnBuildLoggingCallback(fnOriginalCallback, listLogLines):
+    """Return a callback that logs output lines and forwards events."""
+    async def fnLoggingCallback(dictEvent):
+        await fnOriginalCallback(dictEvent)
+        if dictEvent.get("sType") == "output":
+            listLogLines.append(dictEvent.get("sLine", ""))
+        elif dictEvent.get("sType") == "commandFailed":
+            listLogLines.append(
+                f"FAILED: {dictEvent.get('sCommand', '')} "
+                f"(exit {dictEvent.get('iExitCode', '?')})"
+            )
+    return fnLoggingCallback
+
+
+async def fnWriteLogToContainer(
+    connectionDocker, sContainerId, sLogPath, listLogLines,
+):
+    """Write accumulated log lines to a file in the container."""
+    sContent = "\n".join(listLogLines) + "\n"
+    connectionDocker.fnWriteFile(
+        sContainerId, sLogPath, sContent.encode("utf-8")
+    )
+
+
+async def _fnEnsureLogsDirectory(connectionDocker, sContainerId, sWorkdir):
+    """Create .vaibify/logs/ directory if it does not exist."""
+    from . import workflowManager
+
+    sLogsDir = posixpath.join(sWorkdir, workflowManager.VAIBIFY_LOGS_DIR)
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"mkdir -p {sLogsDir}"
+    )
+    return sLogsDir
+
+
+async def _fnRunWithLogging(
+    connectionDocker, sContainerId, dictWorkflow,
+    sWorkdir, fnStatusCallback, sAction, iStartStep=1,
+):
+    """Run steps with logging wrapper, writing log file on completion."""
+    from . import workflowManager
+
+    sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
+    sLogsDir = await _fnEnsureLogsDirectory(
+        connectionDocker, sContainerId, sWorkdir
+    )
+    sLogFilename = fsGenerateLogFilename(sWorkflowName)
+    sLogPath = posixpath.join(sLogsDir, sLogFilename)
+    listLogLines = []
+    fnLogging = fnBuildLoggingCallback(fnStatusCallback, listLogLines)
+    dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
+
+    await fnLogging({"sType": "started", "sCommand": sAction})
+    iResult = await _fnRunStepList(
+        connectionDocker, sContainerId,
+        dictWorkflow, sWorkdir, dictVariables, fnLogging,
+        iStartStep=iStartStep,
+    )
+    await fnWriteLogToContainer(
+        connectionDocker, sContainerId, sLogPath, listLogLines
+    )
+    await fnStatusCallback(
+        {"sType": "completed" if iResult == 0 else "failed",
+         "iExitCode": iResult, "sLogPath": sLogPath}
+    )
+    return iResult
+
+
 async def _fnRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
-    sStepDirectory, fnStatusCallback,
+    sStepDirectory, dictVariables, fnStatusCallback,
 ):
     """Run setup commands unless bPlotOnly is True."""
     if dictStep.get("bPlotOnly", True):
@@ -21,38 +113,43 @@ async def _fnRunSetupIfNeeded(
     return await _fnRunCommandList(
         connectionDocker, sContainerId,
         dictStep.get("saSetupCommands", []),
-        sStepDirectory, fnStatusCallback,
+        sStepDirectory, dictVariables, fnStatusCallback,
     )
 
 
 async def fnRunStepCommands(
     connectionDocker, sContainerId, dictStep,
-    sWorkdir, fnStatusCallback,
+    sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Run a single step's commands sequentially in its directory."""
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
     iExitCode = await _fnRunSetupIfNeeded(
         connectionDocker, sContainerId, dictStep,
-        sStepDirectory, fnStatusCallback,
+        sStepDirectory, dictVariables, fnStatusCallback,
     )
     if iExitCode != 0:
         return iExitCode
     return await _fnRunCommandList(
         connectionDocker, sContainerId,
         dictStep.get("saCommands", []),
-        sStepDirectory, fnStatusCallback,
+        sStepDirectory, dictVariables, fnStatusCallback,
     )
 
 
 async def _fnRunCommandList(
     connectionDocker, sContainerId, listCommands,
-    sWorkdir, fnStatusCallback,
+    sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Execute a list of commands, returning first non-zero exit code."""
+    from . import workflowManager
+
     for sCommand in listCommands:
+        sResolved = workflowManager.fsResolveCommand(
+            sCommand, dictVariables
+        )
         iExitCode = await _fnRunSingleCommand(
             connectionDocker, sContainerId,
-            sCommand, sWorkdir, fnStatusCallback,
+            sCommand, sResolved, sWorkdir, fnStatusCallback,
         )
         if iExitCode != 0:
             return iExitCode
@@ -61,18 +158,36 @@ async def _fnRunCommandList(
 
 async def _fnRunSingleCommand(
     connectionDocker, sContainerId,
-    sCommand, sWorkdir, fnStatusCallback,
+    sOriginal, sResolved, sWorkdir, fnStatusCallback,
 ):
     """Execute one command and stream its output lines."""
-    await fnStatusCallback(
-        {"sType": "output", "sLine": f"$ {sCommand}"}
+    await _fnEmitCommandHeader(
+        fnStatusCallback, sOriginal, sResolved
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand, sWorkdir=sWorkdir
+        sContainerId, sResolved, sWorkdir=sWorkdir
     )
     for sLine in sOutput.splitlines():
         await fnStatusCallback({"sType": "output", "sLine": sLine})
+    if iExitCode != 0:
+        await fnStatusCallback({
+            "sType": "commandFailed",
+            "sCommand": sResolved,
+            "sDirectory": sWorkdir,
+            "iExitCode": iExitCode,
+        })
     return iExitCode
+
+
+async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
+    """Emit the command being run, showing resolution if different."""
+    await fnStatusCallback(
+        {"sType": "output", "sLine": f"$ {sOriginal}"}
+    )
+    if sResolved != sOriginal:
+        await fnStatusCallback(
+            {"sType": "output", "sLine": f"  => {sResolved}"}
+        )
 
 
 async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
@@ -95,35 +210,32 @@ async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
     """Load workflow.json from the container, returning None on failure."""
     from . import workflowManager
 
-    listPaths = workflowManager.flistFindWorkflowsInContainer(
+    listWorkflows = workflowManager.flistFindWorkflowsInContainer(
         connectionDocker, sContainerId
     )
-    if not listPaths:
+    if not listWorkflows:
         await fnStatusCallback(
-            {"sType": "error", "sMessage": "No workflow.json found"}
+            {"sType": "error", "sMessage": "No workflow found"}
         )
         return None
     return workflowManager.fdictLoadWorkflowFromContainer(
-        connectionDocker, sContainerId, listPaths[0]
+        connectionDocker, sContainerId, listWorkflows[0]["sPath"]
     )
 
 
 async def fnRunAllSteps(
     connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
 ):
-    """Run all enabled steps from the cached workflow."""
+    """Run all enabled steps with logging."""
     dictWorkflow = await _fdictLoadWorkflow(
         connectionDocker, sContainerId, fnStatusCallback
     )
     if dictWorkflow is None:
         return 1
-    await fnStatusCallback({"sType": "started", "sCommand": "runAll"})
-    iResult = await _fnRunStepList(
-        connectionDocker, sContainerId,
-        dictWorkflow, sWorkdir, fnStatusCallback,
+    return await _fnRunWithLogging(
+        connectionDocker, sContainerId, dictWorkflow,
+        sWorkdir, fnStatusCallback, "runAll",
     )
-    await _fnEmitCompletion(fnStatusCallback, iResult)
-    return iResult
 
 
 def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
@@ -135,12 +247,12 @@ def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
 
 async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
-    iStepNumber, sWorkdir, fnStatusCallback,
+    iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Run a single step and emit its result event."""
     iExitCode = await fnRunStepCommands(
         connectionDocker, sContainerId,
-        dictStep, sWorkdir, fnStatusCallback,
+        dictStep, sWorkdir, dictVariables, fnStatusCallback,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
@@ -148,7 +260,7 @@ async def _fnRunOneStep(
 
 async def _fnRunStepList(
     connectionDocker, sContainerId,
-    dictWorkflow, sWorkdir, fnStatusCallback,
+    dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
     iStartStep=1,
 ):
     """Iterate steps and run each eligible one from iStartStep."""
@@ -159,7 +271,7 @@ async def _fnRunStepList(
             continue
         iExitCode = await _fnRunOneStep(
             connectionDocker, sContainerId, dictStep,
-            iStepNumber, sWorkdir, fnStatusCallback,
+            iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
         )
         if iExitCode != 0:
             iFinalExitCode = iExitCode
@@ -170,22 +282,17 @@ async def fnRunFromStep(
     connectionDocker, sContainerId, iStartStep,
     sWorkdir, fnStatusCallback,
 ):
-    """Run steps starting from iStartStep (1-based)."""
+    """Run steps starting from iStartStep (1-based) with logging."""
     dictWorkflow = await _fdictLoadWorkflow(
         connectionDocker, sContainerId, fnStatusCallback
     )
     if dictWorkflow is None:
         return 1
-    await fnStatusCallback(
-        {"sType": "started", "sCommand": f"runFrom:{iStartStep}"}
+    return await _fnRunWithLogging(
+        connectionDocker, sContainerId, dictWorkflow,
+        sWorkdir, fnStatusCallback,
+        f"runFrom:{iStartStep}", iStartStep=iStartStep,
     )
-    iFinalExitCode = await _fnRunStepList(
-        connectionDocker, sContainerId,
-        dictWorkflow, sWorkdir, fnStatusCallback,
-        iStartStep=iStartStep,
-    )
-    await _fnEmitCompletion(fnStatusCallback, iFinalExitCode)
-    return iFinalExitCode
 
 
 async def _fbVerifyStepOutputs(
@@ -260,22 +367,17 @@ async def _fnExecuteSelectedSteps(
     connectionDocker, sContainerId, listStepIndices,
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
 ):
-    """Toggle steps, save, run, and emit completion."""
+    """Toggle steps, save, run with logging, and emit completion."""
     from . import workflowManager
 
     _fnToggleSelectedSteps(dictWorkflow, listStepIndices)
     workflowManager.fnSaveWorkflowToContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     )
-    await fnStatusCallback(
-        {"sType": "started", "sCommand": "runSelected"}
+    return await _fnRunWithLogging(
+        connectionDocker, sContainerId, dictWorkflow,
+        sWorkdir, fnStatusCallback, "runSelected",
     )
-    iResult = await _fnRunStepList(
-        connectionDocker, sContainerId,
-        dictWorkflow, sWorkdir, fnStatusCallback,
-    )
-    await _fnEmitCompletion(fnStatusCallback, iResult)
-    return iResult
 
 
 async def fnRunSelectedSteps(

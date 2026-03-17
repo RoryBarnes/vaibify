@@ -376,12 +376,25 @@ fnPrintSummary() {
     echo ""
 }
 
+# ---------------------------------------------------------------------------
+# fnCreateVaibifyDirectory: Create .vaibify structure in workspace
+# ---------------------------------------------------------------------------
+fnCreateVaibifyDirectory() {
+    mkdir -p "${WORKSPACE}/.vaibify/workflows"
+    mkdir -p "${WORKSPACE}/.vaibify/logs"
+    if [ -f /usr/share/vaibify/director.py ]; then
+        cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
+        chmod +x "${WORKSPACE}/.vaibify/director.py"
+    fi
+}
+
 # ===========================================================================
 # Main — only runs when executed directly (not when sourced by tests)
 # ===========================================================================
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     set -euo pipefail
     fnPrintBanner
+    fnCreateVaibifyDirectory
     fnPersistGitConfig
     if command -v claude > /dev/null 2>&1; then
         fnPersistClaudeConfig

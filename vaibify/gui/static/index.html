@@ -21,11 +21,22 @@
     </div>
 </div>
 
+<!-- Workflow Selector -->
+<div id="workflowPicker" style="display: none;">
+    <h1>VAIBIFY</h1>
+    <p class="subtitle" id="workflowPickerSubtitle">Select Workflow</p>
+    <div id="listWorkflows"></div>
+    <button class="btn" id="btnWorkflowBack"
+            style="margin-top: 16px;">Back</button>
+</div>
+
 <!-- Main Layout -->
 <div id="mainLayout">
     <!-- Toolbar -->
     <div id="toolbar">
         <span class="toolbar-title">VAIBIFY</span>
+        <span id="activeWorkflowName" class="toolbar-workflow"
+              title="Click to switch workflow"></span>
         <button class="btn btn-primary" id="btnRunSelected"
                 title="Run checked steps">Run Selected</button>
         <button class="btn" id="btnRunAll"
@@ -51,6 +62,7 @@
         <div id="leftPanelTabs">
             <div class="left-tab active" data-panel="steps">Steps</div>
             <div class="left-tab" data-panel="files">Files</div>
+            <div class="left-tab" data-panel="logs">Logs</div>
         </div>
 
         <!-- Steps sub-panel -->
@@ -69,6 +81,11 @@
         <div id="panelFiles">
             <div id="fileBreadcrumb"></div>
             <div id="listFiles"></div>
+        </div>
+
+        <!-- Logs sub-panel -->
+        <div id="panelLogs">
+            <div id="listLogs"></div>
         </div>
 
         <div class="resize-handle-horizontal"></div>

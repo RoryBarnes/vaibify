@@ -101,10 +101,10 @@ def fsResolveWorkflowPath(connectionDocker, sContainerId, sWorkflowPath):
     """Resolve workflow path via discovery if not provided."""
     if sWorkflowPath is not None:
         return sWorkflowPath
-    listPaths = workflowManager.flistFindWorkflowsInContainer(
+    listWorkflows = workflowManager.flistFindWorkflowsInContainer(
         connectionDocker, sContainerId
     )
-    return listPaths[0] if listPaths else None
+    return listWorkflows[0]["sPath"] if listWorkflows else None
 
 
 def fsResolveFigurePath(sWorkflowDirectory, sFilePath):
@@ -415,6 +415,42 @@ def _fnRegisterReproStubs(app):
     @app.post("/api/latex/{sContainerId}/generate")
     async def fnLatexGenerate(sContainerId: str):
         raise HTTPException(501, "Not Implemented")
+
+
+def _fnRegisterLogRoutes(app, dictCtx):
+    """Register log listing and fetching routes."""
+
+    @app.get("/api/logs/{sContainerId}")
+    async def fnListLogs(sContainerId: str):
+        dictCtx["require"]()
+        sLogsDir = posixpath.join(
+            "/workspace", workflowManager.VAIBIFY_LOGS_DIR
+        )
+        listEntries = flistDirectoryEntries(
+            dictCtx["docker"], sContainerId, sLogsDir
+        )
+        listLogs = [
+            posixpath.basename(s) for s in listEntries
+            if s.endswith(".log")
+        ]
+        return sorted(listLogs, reverse=True)
+
+    @app.get("/api/logs/{sContainerId}/{sLogFilename}")
+    async def fnGetLogContent(sContainerId: str, sLogFilename: str):
+        dictCtx["require"]()
+        sLogsDir = posixpath.join(
+            "/workspace", workflowManager.VAIBIFY_LOGS_DIR
+        )
+        sLogPath = posixpath.join(sLogsDir, sLogFilename)
+        try:
+            baContent = dictCtx["docker"].fbaFetchFile(
+                sContainerId, sLogPath
+            )
+            return Response(
+                content=baContent, media_type="text/plain"
+            )
+        except Exception as error:
+            raise HTTPException(404, f"Log not found: {error}")
 
 
 def _fnRegisterSettingsGet(app, dictCtx):
@@ -740,6 +776,7 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
     _fnRegisterMonitor(app)
     _fnRegisterReproStubs(app)
+    _fnRegisterLogRoutes(app, dictCtx)
     _fnRegisterSettingsGet(app, dictCtx)
     _fnRegisterSettingsPut(app, dictCtx)
 

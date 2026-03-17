@@ -28,6 +28,7 @@ const PipeleyenApp = (function () {
     function fnInitialize() {
         fnLoadContainers();
         fnBindToolbarEvents();
+        fnBindWorkflowPickerEvents();
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
         fnBindResizeHandles();
@@ -83,29 +84,64 @@ const PipeleyenApp = (function () {
         });
     }
 
+    var _sSelectedContainerId = null;
+    var _sSelectedContainerName = null;
+
     async function fnConnectToContainer(sId) {
         try {
             var responseWorkflows = await fetch("/api/workflows/" + sId);
             var listWorkflows = await responseWorkflows.json();
-            var sChosenPath = null;
             if (listWorkflows.length === 0) {
-                fnShowToast("No workflow.json found in container", "error");
+                fnShowToast("No workflows found in container", "error");
                 return;
-            } else if (listWorkflows.length === 1) {
-                sChosenPath = listWorkflows[0];
-            } else {
-                sChosenPath = prompt(
-                    "Multiple workflow.json files found:\n\n" +
-                    listWorkflows.map(function (s, i) {
-                        return (i + 1) + ") " + s;
-                    }).join("\n") + "\n\nEnter the full path:",
-                    listWorkflows[0]
-                );
-                if (!sChosenPath) return;
             }
+            _sSelectedContainerId = sId;
+            _sSelectedContainerName = _fsContainerNameById(sId);
+            if (listWorkflows.length === 1) {
+                fnSelectWorkflow(sId, listWorkflows[0].sPath,
+                    listWorkflows[0].sName);
+            } else {
+                fnShowWorkflowPicker(_sSelectedContainerName);
+                fnRenderWorkflowList(listWorkflows, sId);
+            }
+        } catch (error) {
+            fnShowToast("Connection failed: " + error.message, "error");
+        }
+    }
+
+    function _fsContainerNameById(sId) {
+        var el = document.querySelector(
+            '.container-card[data-id="' + sId + '"] .name'
+        );
+        return el ? el.textContent : sId.substring(0, 12);
+    }
+
+    function fnRenderWorkflowList(listWorkflows, sId) {
+        var elList = document.getElementById("listWorkflows");
+        elList.innerHTML = listWorkflows.map(function (dictWf) {
+            return (
+                '<div class="container-card" data-path="' +
+                fnEscapeHtml(dictWf.sPath) + '">' +
+                '<span class="name">' +
+                fnEscapeHtml(dictWf.sName) + '</span>' +
+                '<span class="image">' +
+                fnEscapeHtml(dictWf.sPath) + '</span></div>'
+            );
+        }).join("");
+        elList.querySelectorAll(".container-card").forEach(function (el) {
+            el.addEventListener("click", function () {
+                var sPath = el.dataset.path;
+                var sName = el.querySelector(".name").textContent;
+                fnSelectWorkflow(sId, sPath, sName);
+            });
+        });
+    }
+
+    async function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
+        try {
             var response = await fetch(
                 "/api/connect/" + sId +
-                "?sWorkflowPath=" + encodeURIComponent(sChosenPath),
+                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPathArg),
                 { method: "POST" }
             );
             if (!response.ok) {
@@ -117,6 +153,8 @@ const PipeleyenApp = (function () {
             sContainerId = sId;
             dictWorkflow = data.dictWorkflow;
             sWorkflowPath = data.sWorkflowPath;
+            var elWorkflowName = document.getElementById("activeWorkflowName");
+            elWorkflowName.textContent = sWorkflowName || "";
             fnShowMainLayout();
             fnRenderStepList();
             PipeleyenTerminal.fnCreateTab();
@@ -125,8 +163,23 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnShowContainerPicker() {
+        document.getElementById("containerPicker").style.display = "flex";
+        document.getElementById("workflowPicker").style.display = "none";
+        document.getElementById("mainLayout").classList.remove("active");
+    }
+
+    function fnShowWorkflowPicker(sContainerName) {
+        document.getElementById("containerPicker").style.display = "none";
+        document.getElementById("workflowPicker").style.display = "flex";
+        document.getElementById("mainLayout").classList.remove("active");
+        document.getElementById("workflowPickerSubtitle").textContent =
+            "Select Workflow \u2014 " + sContainerName;
+    }
+
     function fnShowMainLayout() {
         document.getElementById("containerPicker").style.display = "none";
+        document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.add("active");
     }
 
@@ -142,8 +195,7 @@ const PipeleyenApp = (function () {
             wsPipeline = null;
         }
         PipeleyenTerminal.fnCloseAll();
-        document.getElementById("mainLayout").classList.remove("active");
-        document.getElementById("containerPicker").style.display = "flex";
+        fnShowContainerPicker();
         fnLoadContainers();
     }
 
@@ -185,8 +237,13 @@ const PipeleyenApp = (function () {
                 document.getElementById("panelFiles").classList.toggle(
                     "active", sPanel === "files"
                 );
+                document.getElementById("panelLogs").classList.toggle(
+                    "active", sPanel === "logs"
+                );
                 if (sPanel === "files") {
                     PipeleyenFiles.fnLoadDirectory(fsGetWorkflowDirectory());
+                } else if (sPanel === "logs") {
+                    fnLoadLogs();
                 }
             });
         });
@@ -986,6 +1043,68 @@ const PipeleyenApp = (function () {
         );
     }
 
+    function fnBindWorkflowPickerEvents() {
+        document.getElementById("btnWorkflowBack").addEventListener(
+            "click", function () {
+                fnShowContainerPicker();
+                fnLoadContainers();
+            }
+        );
+        document.getElementById("activeWorkflowName").addEventListener(
+            "click", function () {
+                if (_sSelectedContainerId) {
+                    fnConnectToContainer(_sSelectedContainerId);
+                }
+            }
+        );
+    }
+
+    async function fnLoadLogs() {
+        if (!sContainerId) return;
+        var elList = document.getElementById("listLogs");
+        try {
+            var response = await fetch("/api/logs/" + sContainerId);
+            var listLogs = await response.json();
+            if (listLogs.length === 0) {
+                elList.innerHTML =
+                    '<p class="muted-text">No log files yet.</p>';
+                return;
+            }
+            elList.innerHTML = listLogs.map(function (sFilename) {
+                return (
+                    '<div class="file-entry" data-log="' +
+                    fnEscapeHtml(sFilename) + '">' +
+                    fnEscapeHtml(sFilename) + '</div>'
+                );
+            }).join("");
+            elList.querySelectorAll(".file-entry").forEach(function (el) {
+                el.addEventListener("click", function () {
+                    fnViewLogFile(el.dataset.log);
+                });
+            });
+        } catch (error) {
+            elList.innerHTML =
+                '<p class="muted-text">Could not load logs.</p>';
+        }
+    }
+
+    async function fnViewLogFile(sFilename) {
+        if (!sContainerId) return;
+        try {
+            var response = await fetch(
+                "/api/logs/" + sContainerId + "/" +
+                encodeURIComponent(sFilename)
+            );
+            var sContent = await response.text();
+            var elViewport = document.getElementById("viewportA");
+            elViewport.innerHTML =
+                '<pre class="pipeline-output">' +
+                fnEscapeHtml(sContent) + '</pre>';
+        } catch (error) {
+            fnShowToast("Could not load log: " + error.message, "error");
+        }
+    }
+
     function fnConnectPipelineWebSocket() {
         if (wsPipeline && wsPipeline.readyState === WebSocket.OPEN) {
             return wsPipeline;
@@ -1005,13 +1124,22 @@ const PipeleyenApp = (function () {
     }
 
     function fnHandlePipelineEvent(dictEvent) {
-        if (dictEvent.sType === "stepPass") {
+        if (dictEvent.sType === "output") {
+            fnAppendPipelineOutput(dictEvent.sLine);
+        } else if (dictEvent.sType === "commandFailed") {
+            fnAppendPipelineOutput(
+                "FAILED: " + dictEvent.sCommand +
+                " (in " + dictEvent.sDirectory +
+                ", exit " + dictEvent.iExitCode + ")"
+            );
+        } else if (dictEvent.sType === "stepPass") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
             fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "fail";
             fnRenderStepList();
         } else if (dictEvent.sType === "started") {
+            fnInitPipelineOutput();
             fnShowToast("Pipeline started", "success");
         } else if (dictEvent.sType === "completed") {
             fnShowToast("Pipeline completed", "success");
@@ -1020,6 +1148,30 @@ const PipeleyenApp = (function () {
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
             );
         }
+    }
+
+    function fnInitPipelineOutput() {
+        var elViewport = document.getElementById("viewportA");
+        elViewport.innerHTML =
+            '<pre id="pipelineOutput" class="pipeline-output"></pre>';
+        elViewport.scrollTop = 0;
+    }
+
+    function fnAppendPipelineOutput(sLine) {
+        var elOutput = document.getElementById("pipelineOutput");
+        if (!elOutput) {
+            fnInitPipelineOutput();
+            elOutput = document.getElementById("pipelineOutput");
+        }
+        var elLine = document.createElement("span");
+        elLine.textContent = sLine + "\n";
+        if (sLine.startsWith("FAILED:")) {
+            elLine.style.color = "var(--color-red, #e74c3c)";
+        } else if (sLine.startsWith("$")) {
+            elLine.style.color = "var(--color-blue, #3498db)";
+        }
+        elOutput.appendChild(elLine);
+        elOutput.scrollTop = elOutput.scrollHeight;
     }
 
     function fnSendPipelineAction(dictAction) {

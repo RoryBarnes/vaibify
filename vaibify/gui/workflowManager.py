@@ -8,6 +8,10 @@ import re
 
 DEFAULT_SEARCH_ROOT = "/workspace"
 
+VAIBIFY_DIRECTORY = ".vaibify"
+VAIBIFY_WORKFLOWS_DIR = ".vaibify/workflows"
+VAIBIFY_LOGS_DIR = ".vaibify/logs"
+
 REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
 REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saCommands", "saOutputFiles")
 
@@ -15,22 +19,72 @@ REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saCommands", "saOutputFiles")
 def flistFindWorkflowsInContainer(
     connectionDocker, sContainerId, sSearchRoot=None
 ):
-    """Search for workflow.json files under sSearchRoot and return paths."""
+    """Search for workflow JSON files and return list of info dicts."""
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
+    listVaibify = _flistFindVaibifyWorkflows(
+        connectionDocker, sContainerId, sSearchRoot
+    )
+    listLegacy = _flistFindLegacyWorkflows(
+        connectionDocker, sContainerId, sSearchRoot
+    )
+    return listVaibify + listLegacy
+
+
+def _flistFindVaibifyWorkflows(connectionDocker, sContainerId, sSearchRoot):
+    """Find *.json files in .vaibify/workflows/ and read their names."""
+    sVaibifyDir = posixpath.join(sSearchRoot, VAIBIFY_WORKFLOWS_DIR)
     sCommand = (
-        f"find {sSearchRoot} -maxdepth 3 -name workflow.json"
+        f"find {sVaibifyDir} -maxdepth 1 -name '*.json'"
         f" -type f 2>/dev/null"
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
-    listPaths = [
-        sLine.strip()
-        for sLine in sOutput.splitlines()
-        if sLine.strip().endswith("workflow.json")
-    ]
-    return sorted(listPaths)
+    listResults = []
+    for sLine in sOutput.splitlines():
+        sPath = sLine.strip()
+        if sPath.endswith(".json"):
+            sName = _fsReadWorkflowName(
+                connectionDocker, sContainerId, sPath
+            )
+            listResults.append(
+                {"sPath": sPath, "sName": sName, "sSource": "vaibify"}
+            )
+    return sorted(listResults, key=lambda d: d["sName"])
+
+
+def _flistFindLegacyWorkflows(connectionDocker, sContainerId, sSearchRoot):
+    """Find legacy workflow.json files outside .vaibify/."""
+    sCommand = (
+        f"find {sSearchRoot} -maxdepth 3 -name workflow.json"
+        f" -type f -not -path '*/.vaibify/*' 2>/dev/null"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    listResults = []
+    for sLine in sOutput.splitlines():
+        sPath = sLine.strip()
+        if sPath.endswith("workflow.json"):
+            listResults.append({
+                "sPath": sPath,
+                "sName": f"{sPath} (legacy)",
+                "sSource": "legacy",
+            })
+    return sorted(listResults, key=lambda d: d["sPath"])
+
+
+def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
+    """Read sWorkflowName from a workflow JSON file in the container."""
+    try:
+        baContent = connectionDocker.fbaFetchFile(sContainerId, sPath)
+        dictWorkflow = json.loads(baContent.decode("utf-8"))
+        return dictWorkflow.get(
+            "sWorkflowName", posixpath.basename(sPath)
+        )
+    except Exception:
+        return posixpath.basename(sPath)
 
 
 def fdictLoadWorkflowFromContainer(
@@ -38,14 +92,14 @@ def fdictLoadWorkflowFromContainer(
 ):
     """Fetch and parse workflow.json from a Docker container."""
     if sWorkflowPath is None:
-        listPaths = flistFindWorkflowsInContainer(
+        listWorkflows = flistFindWorkflowsInContainer(
             connectionDocker, sContainerId
         )
-        if not listPaths:
+        if not listWorkflows:
             raise FileNotFoundError(
                 "No workflow.json found under search root"
             )
-        sWorkflowPath = listPaths[0]
+        sWorkflowPath = listWorkflows[0]["sPath"]
     baContent = connectionDocker.fbaFetchFile(sContainerId, sWorkflowPath)
     dictWorkflow = json.loads(baContent.decode("utf-8"))
     if not fbValidateWorkflow(dictWorkflow):
@@ -314,6 +368,37 @@ def _fnCheckCommandReferences(
             listWarnings.append(
                 f"{sStepLabel}: reference {{{sRefKey}}} {sSuffix}"
             )
+
+
+def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
+    """Map StepNN.stem to resolved absolute output paths."""
+    dictStepVars = {}
+    for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
+        iNumber = iIndex + 1
+        sStepDirectory = dictStep.get("sDirectory", "")
+        for sOutputFile in dictStep.get("saOutputFiles", []):
+            sResolved = fsResolveVariables(sOutputFile, dictGlobalVars)
+            sAbsPath = _fsResolveStepOutputPath(
+                sResolved, sStepDirectory, dictGlobalVars
+            )
+            sStem = posixpath.splitext(posixpath.basename(sAbsPath))[0]
+            sKey = f"Step{iNumber:02d}.{sStem}"
+            dictStepVars[sKey] = sAbsPath
+    return dictStepVars
+
+
+def _fsResolveStepOutputPath(sResolvedFile, sStepDirectory, dictGlobalVars):
+    """Return an absolute path for a step output file."""
+    if posixpath.isabs(sResolvedFile):
+        return sResolvedFile
+    sResolvedDir = fsResolveVariables(sStepDirectory, dictGlobalVars)
+    sRepoRoot = dictGlobalVars.get("sRepoRoot", "")
+    return posixpath.join(sRepoRoot, sResolvedDir, sResolvedFile)
+
+
+def fsResolveCommand(sCommand, dictVariables):
+    """Resolve template variables in a command string."""
+    return fsResolveVariables(sCommand, dictVariables)
 
 
 def flistFilterFigureFiles(listOutputPaths):

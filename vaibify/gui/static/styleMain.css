@@ -125,9 +125,45 @@ html, body {
 #toolbar .toolbar-title {
     font-weight: 600;
     color: var(--color-pale-blue);
-    margin-right: auto;
     font-size: 15px;
     letter-spacing: 1px;
+}
+
+#toolbar .toolbar-workflow {
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    margin-right: auto;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+#toolbar .toolbar-workflow:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+#workflowPicker {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px;
+}
+
+#workflowPicker h1,
+#workflowPicker .subtitle {
+    text-align: center;
+}
+
+#listWorkflows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 500px;
+    margin-top: 16px;
 }
 
 /* --- Buttons --- */
