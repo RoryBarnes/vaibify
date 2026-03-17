@@ -363,6 +363,47 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
             raise HTTPException(500, f"Search failed: {error}")
 
 
+class CreateWorkflowRequest(BaseModel):
+    sWorkflowName: str
+    sFileName: str
+
+
+def _fnRegisterWorkflowCreate(app, dictCtx):
+    """Register POST /api/workflows/{id}/create route."""
+
+    @app.post("/api/workflows/{sContainerId}/create")
+    async def fnCreateWorkflow(
+        sContainerId: str, request: CreateWorkflowRequest
+    ):
+        dictCtx["require"]()
+        sFileName = request.sFileName.strip()
+        if not sFileName.endswith(".json"):
+            sFileName += ".json"
+        dictBlank = {
+            "sWorkflowName": request.sWorkflowName,
+            "sPlotDirectory": "Plot",
+            "sFigureType": "pdf",
+            "iNumberOfCores": -1,
+            "listSteps": [],
+        }
+        sContent = json.dumps(dictBlank, indent=2) + "\n"
+        sWorkflowDir = posixpath.join(
+            "/workspace", workflowManager.VAIBIFY_WORKFLOWS_DIR
+        )
+        dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, f"mkdir -p {sWorkflowDir}"
+        )
+        sFullPath = posixpath.join(sWorkflowDir, sFileName)
+        dictCtx["docker"].fnWriteFile(
+            sContainerId, sFullPath, sContent.encode("utf-8")
+        )
+        return {
+            "sPath": sFullPath,
+            "sName": request.sWorkflowName,
+            "sSource": "vaibify",
+        }
+
+
 def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
@@ -772,6 +813,7 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     """Register container, file, monitor, and stub routes."""
     _fnRegisterContainers(app, dictCtx)
     _fnRegisterWorkflowSearch(app, dictCtx)
+    _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
     _fnRegisterMonitor(app)

@@ -91,10 +91,6 @@ const PipeleyenApp = (function () {
         try {
             var responseWorkflows = await fetch("/api/workflows/" + sId);
             var listWorkflows = await responseWorkflows.json();
-            if (listWorkflows.length === 0) {
-                fnShowToast("No workflows found in container", "error");
-                return;
-            }
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
             if (listWorkflows.length === 1) {
@@ -118,16 +114,24 @@ const PipeleyenApp = (function () {
 
     function fnRenderWorkflowList(listWorkflows, sId) {
         var elList = document.getElementById("listWorkflows");
-        elList.innerHTML = listWorkflows.map(function (dictWf) {
-            return (
-                '<div class="container-card" data-path="' +
-                fnEscapeHtml(dictWf.sPath) + '">' +
-                '<span class="name">' +
-                fnEscapeHtml(dictWf.sName) + '</span>' +
-                '<span class="image">' +
-                fnEscapeHtml(dictWf.sPath) + '</span></div>'
-            );
-        }).join("");
+        var sCardsHtml = "";
+        if (listWorkflows.length === 0) {
+            sCardsHtml =
+                '<p style="color: var(--text-muted); text-align: center;">' +
+                'No workflows found. Create one to get started.</p>';
+        } else {
+            sCardsHtml = listWorkflows.map(function (dictWf) {
+                return (
+                    '<div class="container-card" data-path="' +
+                    fnEscapeHtml(dictWf.sPath) + '">' +
+                    '<span class="name">' +
+                    fnEscapeHtml(dictWf.sName) + '</span>' +
+                    '<span class="image">' +
+                    fnEscapeHtml(dictWf.sPath) + '</span></div>'
+                );
+            }).join("");
+        }
+        elList.innerHTML = sCardsHtml;
         elList.querySelectorAll(".container-card").forEach(function (el) {
             el.addEventListener("click", function () {
                 var sPath = el.dataset.path;
@@ -135,6 +139,44 @@ const PipeleyenApp = (function () {
                 fnSelectWorkflow(sId, sPath, sName);
             });
         });
+    }
+
+    async function fnCreateNewWorkflow() {
+        if (!_sSelectedContainerId) return;
+        var sName = prompt("Workflow display name:", "My Workflow");
+        if (!sName) return;
+        var sFileName = prompt(
+            "Filename (no spaces, .json added automatically):",
+            sName.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        );
+        if (!sFileName) return;
+        try {
+            var response = await fetch(
+                "/api/workflows/" + _sSelectedContainerId + "/create",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        sWorkflowName: sName,
+                        sFileName: sFileName,
+                    }),
+                }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(
+                    detail.detail || "Create failed", "error"
+                );
+                return;
+            }
+            var dictResult = await response.json();
+            fnShowToast("Workflow created", "success");
+            fnSelectWorkflow(
+                _sSelectedContainerId, dictResult.sPath, dictResult.sName
+            );
+        } catch (error) {
+            fnShowToast("Create failed: " + error.message, "error");
+        }
     }
 
     async function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
@@ -1049,6 +1091,9 @@ const PipeleyenApp = (function () {
                 fnShowContainerPicker();
                 fnLoadContainers();
             }
+        );
+        document.getElementById("btnNewWorkflow").addEventListener(
+            "click", fnCreateNewWorkflow
         );
         document.getElementById("activeWorkflowName").addEventListener(
             "click", function () {
