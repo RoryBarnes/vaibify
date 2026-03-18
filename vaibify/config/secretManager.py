@@ -106,6 +106,7 @@ def _fsWriteEphemeralFile(sName, sValue):
     """Write a value to a temp file with restrictive permissions."""
     iFileDescriptor, sFilePath = tempfile.mkstemp(
         prefix=f"vc_secret_{sName}_", suffix=".tmp",
+        dir="/tmp",
     )
     try:
         os.fchmod(iFileDescriptor, stat.S_IRUSR | stat.S_IWUSR)

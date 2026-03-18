@@ -248,30 +248,6 @@ def test_flistValidateReferences_clean_workflow():
     assert listWarnings == []
 
 
-def test_flistFindWorkflowsInContainer_returns_legacy_dicts():
-    """Verify legacy workflow.json files are returned as dicts."""
-
-    class MockDockerConnection:
-        def __init__(self):
-            self.listCommands = []
-
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
-            self.listCommands.append(sCommand)
-            if "workflow.json" in sCommand:
-                return (0, "/workspace/project/workflow.json\n")
-            return (0, "")
-
-    mockConnection = MockDockerConnection()
-
-    listResults = flistFindWorkflowsInContainer(
-        mockConnection, "abc123"
-    )
-
-    assert len(listResults) == 1
-    assert listResults[0]["sPath"] == "/workspace/project/workflow.json"
-    assert listResults[0]["sSource"] == "legacy"
-
-
 def test_flistFindWorkflowsInContainer_custom_search_root():
     class MockDockerConnection:
         def __init__(self):

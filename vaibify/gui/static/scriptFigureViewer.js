@@ -253,6 +253,10 @@ const PipeleyenFigureViewer = (function () {
         var elImg = document.createElement("img");
         elImg.src = sUrl;
         elImg.alt = "Figure";
+        var dScale = 1.0;
+        elImg.onload = function () {
+            fnRenderImageWithZoom(elImg, sUrl, elViewport, dScale);
+        };
         elImg.onerror = function () {
             elViewport.innerHTML =
                 '<span class="placeholder output-missing-message">' +
@@ -260,6 +264,36 @@ const PipeleyenFigureViewer = (function () {
                 '</span>';
         };
         elViewport.appendChild(elImg);
+    }
+
+    function fnRenderImageWithZoom(
+        elImg, sUrl, elViewport, dScale
+    ) {
+        var iNativeWidth = elImg.naturalWidth;
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        if (dScale === "fit") {
+            dScale = (elViewport.clientWidth - 32) / iNativeWidth;
+        }
+        var elToolbar = fnCreateZoomToolbar(
+            dScale, function (dNewScale) {
+                fnRenderImageWithZoom(
+                    elImg, sUrl, elViewport, dNewScale
+                );
+            }
+        );
+        elImg.style.width = Math.round(iNativeWidth * dScale) + "px";
+        elImg.style.height = "auto";
+        elViewport.appendChild(elToolbar);
+        var elContent = document.createElement("div");
+        elContent.style.overflow = "auto";
+        elContent.style.flex = "1";
+        elContent.style.display = "flex";
+        elContent.style.justifyContent = "center";
+        elContent.style.padding = "16px";
+        elContent.appendChild(elImg);
+        elViewport.appendChild(elContent);
     }
 
     function fnRenderPdf(sUrl, elViewport) {
@@ -282,6 +316,40 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
+    function fnCreateZoomToolbar(dCurrentScale, fnOnZoom) {
+        var elToolbar = document.createElement("div");
+        elToolbar.className = "editor-toolbar zoom-toolbar";
+        var elZoomOut = document.createElement("button");
+        elZoomOut.className = "btn-icon";
+        elZoomOut.title = "Zoom out";
+        elZoomOut.textContent = "\u2212";
+        var elZoomLevel = document.createElement("span");
+        elZoomLevel.className = "zoom-level";
+        elZoomLevel.textContent = Math.round(dCurrentScale * 100) + "%";
+        var elZoomIn = document.createElement("button");
+        elZoomIn.className = "btn-icon";
+        elZoomIn.title = "Zoom in";
+        elZoomIn.textContent = "+";
+        var elFit = document.createElement("button");
+        elFit.className = "btn-icon";
+        elFit.title = "Fit to window";
+        elFit.textContent = "\u2922";
+        elZoomOut.addEventListener("click", function () {
+            fnOnZoom(Math.max(0.25, dCurrentScale - 0.25));
+        });
+        elZoomIn.addEventListener("click", function () {
+            fnOnZoom(Math.min(4.0, dCurrentScale + 0.25));
+        });
+        elFit.addEventListener("click", function () {
+            fnOnZoom("fit");
+        });
+        elToolbar.appendChild(elZoomOut);
+        elToolbar.appendChild(elZoomLevel);
+        elToolbar.appendChild(elZoomIn);
+        elToolbar.appendChild(elFit);
+        return elToolbar;
+    }
+
     function fnRenderPdfDocument(sUrl, elViewport) {
         if (typeof pdfjsLib === "undefined") {
             elViewport.innerHTML =
@@ -292,25 +360,49 @@ const PipeleyenFigureViewer = (function () {
             "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
         pdfjsLib.getDocument(sUrl).promise.then(function (pdfDoc) {
             pdfDoc.getPage(1).then(function (page) {
-                var dScale = 2.0;
-                var viewport = page.getViewport({ scale: dScale });
-                var elCanvas = document.createElement("canvas");
-                elCanvas.width = viewport.width;
-                elCanvas.height = viewport.height;
-                elCanvas.style.width = viewport.width / dScale + "px";
-                elCanvas.style.height = viewport.height / dScale + "px";
-                elViewport.innerHTML = "";
-                elViewport.appendChild(elCanvas);
-                page.render({
-                    canvasContext: elCanvas.getContext("2d"),
-                    viewport: viewport,
-                });
+                fnRenderPdfPage(page, elViewport, 1.0);
             });
-        }).catch(function (error) {
+        }).catch(function () {
             elViewport.innerHTML =
                 '<span class="placeholder output-missing-message">' +
                 'Output not available. Run the step to generate.' +
                 '</span>';
+        });
+    }
+
+    function fnRenderPdfPage(page, elViewport, dDisplayScale) {
+        var dNativeViewport = page.getViewport({ scale: 1.0 });
+        if (dDisplayScale === "fit") {
+            var dFitWidth = elViewport.clientWidth - 32;
+            dDisplayScale = dFitWidth / dNativeViewport.width;
+        }
+        var dRenderScale = dDisplayScale * 2;
+        var viewport = page.getViewport({ scale: dRenderScale });
+        var elCanvas = document.createElement("canvas");
+        elCanvas.width = viewport.width;
+        elCanvas.height = viewport.height;
+        elCanvas.style.width = viewport.width / 2 + "px";
+        elCanvas.style.height = viewport.height / 2 + "px";
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        var elToolbar = fnCreateZoomToolbar(
+            dDisplayScale, function (dNewScale) {
+                fnRenderPdfPage(page, elViewport, dNewScale);
+            }
+        );
+        elViewport.appendChild(elToolbar);
+        var elContent = document.createElement("div");
+        elContent.style.overflow = "auto";
+        elContent.style.flex = "1";
+        elContent.style.display = "flex";
+        elContent.style.justifyContent = "center";
+        elContent.style.padding = "16px";
+        elContent.appendChild(elCanvas);
+        elViewport.appendChild(elContent);
+        page.render({
+            canvasContext: elCanvas.getContext("2d"),
+            viewport: viewport,
         });
     }
 

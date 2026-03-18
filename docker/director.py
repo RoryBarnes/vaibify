@@ -3,8 +3,8 @@
 Vaibify pipeline director — execute workflow steps inside a container.
 
 Reads a workflow JSON file defining a sequence of steps. Each step has
-a working directory, setup commands (heavy computation), always-run
-commands (plotting), and expected output files. Output files from
+a working directory, data analysis commands (heavy computation),
+plot commands (visualization), and expected output files. Output files from
 earlier steps are available as {StepNN.stem} variables in later steps.
 
 Usage:
@@ -231,13 +231,9 @@ def fsResolveOutputPath(sOutputFile, dictVariables, sAbsDirectory):
     return os.path.join(sAbsDirectory, sResolvedPath)
 
 
-def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
-    """Verify output files exist and register them as variables."""
-    sDirectory = fsResolveVariables(
-        dictStep["sDirectory"], dictVariables)
-    sAbsDirectory = os.path.join(sWorkflowRoot, sDirectory)
-
-    for sOutputFile in dictStep["saPlotFiles"]:
+def _fnRegisterFiles(listFiles, dictVariables, sStepLabel, sAbsDirectory):
+    """Verify files exist and register them as {sStepLabel.stem} variables."""
+    for sOutputFile in listFiles:
         sAbsPath = fsResolveOutputPath(
             sOutputFile, dictVariables, sAbsDirectory)
         if not os.path.exists(sAbsPath):
@@ -250,6 +246,20 @@ def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
         sKey = f"{sStepLabel}.{sStem}"
         dictVariables[sKey] = sAbsPath
         print(f"  Registered: {{{sKey}}} -> {sAbsPath}")
+
+
+def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
+    """Verify output files exist and register them as variables."""
+    sDirectory = fsResolveVariables(
+        dictStep["sDirectory"], dictVariables)
+    sAbsDirectory = os.path.join(sWorkflowRoot, sDirectory)
+
+    _fnRegisterFiles(
+        dictStep.get("saDataFiles", []),
+        dictVariables, sStepLabel, sAbsDirectory)
+    _fnRegisterFiles(
+        dictStep["saPlotFiles"],
+        dictVariables, sStepLabel, sAbsDirectory)
 
 
 # ---------------------------------------------------------------------------

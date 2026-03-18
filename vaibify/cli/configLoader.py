@@ -7,10 +7,19 @@ import click
 import yaml
 
 _sConfigFileName = "vaibify.yml"
+_sConfigOverride = None
+
+
+def fnSetConfigPath(sPath):
+    """Override the default config file path."""
+    global _sConfigOverride
+    _sConfigOverride = sPath
 
 
 def fsConfigPath():
-    """Return the absolute path to vaibify.yml in the current directory."""
+    """Return the absolute path to the config file."""
+    if _sConfigOverride:
+        return str(pathlib.Path(_sConfigOverride).resolve())
     return str(pathlib.Path.cwd() / _sConfigFileName)
 
 
@@ -29,10 +38,7 @@ def fconfigLoad():
     """
     sPath = fsConfigPath()
     if not pathlib.Path(sPath).is_file():
-        click.echo(
-            f"Error: {_sConfigFileName} not found in the "
-            "current directory."
-        )
+        click.echo(f"Error: Config file not found: {sPath}")
         click.echo("Run 'vaibify init' to create one.")
         sys.exit(1)
     return _fconfigParse(sPath)

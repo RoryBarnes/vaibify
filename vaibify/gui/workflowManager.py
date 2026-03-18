@@ -22,17 +22,6 @@ def flistFindWorkflowsInContainer(
     """Search for workflow JSON files and return list of info dicts."""
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
-    listVaibify = _flistFindVaibifyWorkflows(
-        connectionDocker, sContainerId, sSearchRoot
-    )
-    listLegacy = _flistFindLegacyWorkflows(
-        connectionDocker, sContainerId, sSearchRoot
-    )
-    return listVaibify + listLegacy
-
-
-def _flistFindVaibifyWorkflows(connectionDocker, sContainerId, sSearchRoot):
-    """Find *.json files in .vaibify/workflows/ and read their names."""
     sVaibifyDir = posixpath.join(sSearchRoot, VAIBIFY_WORKFLOWS_DIR)
     sCommand = (
         f"find {sVaibifyDir} -maxdepth 1 -name '*.json'"
@@ -52,27 +41,6 @@ def _flistFindVaibifyWorkflows(connectionDocker, sContainerId, sSearchRoot):
                 {"sPath": sPath, "sName": sName, "sSource": "vaibify"}
             )
     return sorted(listResults, key=lambda d: d["sName"])
-
-
-def _flistFindLegacyWorkflows(connectionDocker, sContainerId, sSearchRoot):
-    """Find legacy workflow.json files outside .vaibify/."""
-    sCommand = (
-        f"find {sSearchRoot} -maxdepth 3 -name workflow.json"
-        f" -type f -not -path '*/.vaibify/*' 2>/dev/null"
-    )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    listResults = []
-    for sLine in sOutput.splitlines():
-        sPath = sLine.strip()
-        if sPath.endswith("workflow.json"):
-            listResults.append({
-                "sPath": sPath,
-                "sName": f"{sPath} (legacy)",
-                "sSource": "legacy",
-            })
-    return sorted(listResults, key=lambda d: d["sPath"])
 
 
 def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):

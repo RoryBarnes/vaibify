@@ -19,9 +19,16 @@ from .configLoader import fconfigLoad
 
 @click.group()
 @click.version_option(package_name="vaibify")
-def main():
+@click.option(
+    "--config", "sConfigPath", default=None,
+    type=click.Path(exists=True),
+    help="Path to vaibify.yml (default: ./vaibify.yml).",
+)
+def main(sConfigPath):
     """Vaibify - Vibe boldly. Verify everything."""
-    pass
+    if sConfigPath:
+        from .configLoader import fnSetConfigPath
+        fnSetConfigPath(sConfigPath)
 
 
 main.add_command(init)

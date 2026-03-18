@@ -31,6 +31,7 @@ const PipeleyenApp = (function () {
         fnBindToolbarEvents();
         fnBindWorkflowPickerEvents();
         fnBindUnconfiguredToggle();
+        fnBindRefreshButton();
         fnBindErrorModal();
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
@@ -481,8 +482,11 @@ const PipeleyenApp = (function () {
     }
 
     function fsRenderStepItem(step, iIndex, dictVars) {
-        var sStatusClass = dictStepStatus[iIndex] || "";
-        if (!sStatusClass) {
+        var sRunStatus = dictStepStatus[iIndex] || "";
+        var sStatusClass = "";
+        if (sRunStatus === "running") {
+            sStatusClass = "running";
+        } else {
             sStatusClass = fsComputeStepDotState(step);
         }
         var bEnabled = step.bEnabled !== false;
@@ -519,8 +523,12 @@ const PipeleyenApp = (function () {
         sHtml += '<div class="detail-label">Directory</div>';
         sHtml += '<div class="detail-field" data-view="field">' +
             fnEscapeHtml(sResolvedDir) + "</div>";
-        sHtml += '<div class="detail-label">Plot Only: ' +
-            (step.bPlotOnly !== false ? "Yes" : "No") + "</div>";
+        sHtml += '<div class="detail-label plot-only-row">' +
+            '<label class="plot-only-toggle">' +
+            '<input type="checkbox" class="plot-only-checkbox"' +
+            ' data-step="' + iIndex + '"' +
+            (step.bPlotOnly !== false ? " checked" : "") + '>' +
+            ' Plot only (skip data analysis)</label></div>';
 
         /* Data Analysis Commands */
         sHtml += fsRenderSectionLabel(
@@ -827,7 +835,34 @@ const PipeleyenApp = (function () {
             fnBindStepDragEvents(el, iIndex);
         });
         fnBindDetailSectionEvents(elList);
+        fnBindPlotOnlyCheckboxes(elList);
         fnBindVerificationEvents(elList);
+    }
+
+    function fnBindPlotOnlyCheckboxes(elList) {
+        elList.querySelectorAll(".plot-only-checkbox")
+            .forEach(function (el) {
+                el.addEventListener("change", function () {
+                    var iStep = parseInt(el.dataset.step);
+                    fnTogglePlotOnly(iStep, el.checked);
+                });
+            });
+    }
+
+    async function fnTogglePlotOnly(iStep, bPlotOnly) {
+        dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
+        try {
+            await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep,
+                {
+                    method: "PUT",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({bPlotOnly: bPlotOnly}),
+                }
+            );
+        } catch (error) {
+            fnShowToast("Save failed", "error");
+        }
     }
 
     function fnBindVerificationEvents(elList) {
@@ -1256,17 +1291,19 @@ const PipeleyenApp = (function () {
             fnMakeDraggable(elHandleH, function (iDeltaX) {
                 var iWidth = elLeft.offsetWidth + iDeltaX;
                 iWidth = Math.max(180, Math.min(iWidth, 600));
-                document.getElementById("mainLayout").style.gridTemplateColumns =
-                    iWidth + "px 1fr";
+                document.getElementById("mainLayout")
+                    .style.gridTemplateColumns = iWidth + "px 1fr";
             });
         }
 
         var elHandleV = document.getElementById("resizeHandleVertical");
         if (elHandleV) {
             var elViewerDual = document.getElementById("panelViewerDual");
+            var elRight = document.getElementById("panelRight");
             fnMakeDraggableVertical(elHandleV, function (iDeltaY) {
                 var iHeight = elViewerDual.offsetHeight + iDeltaY;
-                iHeight = Math.max(80, iHeight);
+                var iMaxHeight = elRight.offsetHeight - 120;
+                iHeight = Math.max(80, Math.min(iHeight, iMaxHeight));
                 elViewerDual.style.flex = "0 0 " + iHeight + "px";
             });
         }
@@ -1274,12 +1311,23 @@ const PipeleyenApp = (function () {
         var elHandleViewer = document.getElementById("resizeHandleViewer");
         if (elHandleViewer) {
             var elViewerA = document.getElementById("viewerA");
+            var elDual = document.getElementById("panelViewerDual");
             fnMakeDraggable(elHandleViewer, function (iDeltaX) {
                 var iWidth = elViewerA.offsetWidth + iDeltaX;
-                iWidth = Math.max(100, iWidth);
+                var iMaxWidth = elDual.offsetWidth - 120;
+                iWidth = Math.max(100, Math.min(iWidth, iMaxWidth));
                 elViewerA.style.flex = "0 0 " + iWidth + "px";
             });
         }
+    }
+
+    function fnResetLayout() {
+        document.getElementById("mainLayout")
+            .style.gridTemplateColumns = "280px 1fr";
+        document.getElementById("panelViewerDual")
+            .style.flex = "1";
+        document.getElementById("viewerA")
+            .style.flex = "1";
     }
 
     function fnMakeDraggable(elHandle, fnOnMove) {
@@ -1337,6 +1385,9 @@ const PipeleyenApp = (function () {
         document.getElementById("btnVsCode").addEventListener(
             "click", fnOpenVsCode
         );
+        document.getElementById("btnResetLayout").addEventListener(
+            "click", fnResetLayout
+        );
         document.getElementById("btnDisconnect").addEventListener(
             "click", fnDisconnect
         );
@@ -1351,6 +1402,13 @@ const PipeleyenApp = (function () {
         );
         document.getElementById("btnNewWorkflow").addEventListener(
             "click", fnCreateNewWorkflow
+        );
+        document.getElementById("btnRefreshWorkflows").addEventListener(
+            "click", function () {
+                if (_sSelectedContainerId) {
+                    fnConnectToContainer(_sSelectedContainerId);
+                }
+            }
         );
         document.getElementById("activeWorkflowName").addEventListener(
             "click", function (event) {
@@ -1446,6 +1504,14 @@ const PipeleyenApp = (function () {
         } catch (error) {
             fnShowToast("Could not save workflow", "error");
         }
+    }
+
+    function fnBindRefreshButton() {
+        document.getElementById("btnRefreshContainers").addEventListener(
+            "click", function () {
+                fnLoadContainers();
+            }
+        );
     }
 
     function fnBindUnconfiguredToggle() {
@@ -1766,9 +1832,17 @@ const PipeleyenApp = (function () {
     function fnShowToast(sMessage, sType) {
         var el = document.createElement("div");
         el.className = "toast " + (sType || "");
-        el.textContent = sMessage;
+        if (sType === "error") {
+            el.innerHTML = fnEscapeHtml(sMessage) +
+                '<button class="toast-close">&times;</button>';
+            el.querySelector(".toast-close").addEventListener(
+                "click", function () { el.remove(); }
+            );
+        } else {
+            el.textContent = sMessage;
+            setTimeout(function () { el.remove(); }, 4000);
+        }
         document.getElementById("toastContainer").appendChild(el);
-        setTimeout(function () { el.remove(); }, 4000);
     }
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;

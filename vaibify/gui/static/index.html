@@ -16,8 +16,12 @@
          class="vaibify-logo-large">
     <p class="subtitle tagline">Vibe boldly. Verify everything.</p>
     <div class="picker-content">
-        <h3 class="picker-section-label" id="labelConfigured">
-            Available Containers:</h3>
+        <div class="picker-section-header">
+            <h3 class="picker-section-label" id="labelConfigured">
+                Available Containers:</h3>
+            <button class="btn-icon picker-refresh" id="btnRefreshContainers"
+                    title="Refresh">&#x21bb;</button>
+        </div>
         <div id="listContainers">
             <p class="muted-text" style="text-align: center;">
                 Loading containers...
@@ -37,7 +41,11 @@
     <img src="/static/vaibify_logo_paleblue_dark.png" alt="Vaibify"
          class="vaibify-logo-large">
     <div class="picker-content">
-        <h3 class="picker-section-label">Available Workflows:</h3>
+        <div class="picker-section-header">
+            <h3 class="picker-section-label">Available Workflows:</h3>
+            <button class="btn-icon picker-refresh" id="btnRefreshWorkflows"
+                    title="Refresh">&#x21bb;</button>
+        </div>
         <div id="listWorkflows"></div>
         <div style="margin-top: 16px; display: flex; gap: 8px;">
             <button class="btn" id="btnWorkflowBack">Back</button>
@@ -74,6 +82,8 @@
                 title="Archive to Zenodo">Archive to Zenodo</button>
         <button class="btn" id="btnVsCode"
                 title="Open in VS Code">VS Code</button>
+        <button class="btn-icon" id="btnResetLayout"
+                title="Reset layout">&#9638;</button>
         <button class="btn" id="btnDisconnect"
                 title="Disconnect from container">Disconnect</button>
     </div>

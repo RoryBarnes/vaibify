@@ -47,6 +47,7 @@ fnConfigureGit() {
         echo "[vc]   To access private repos, run on host: gh auth login"
         git config --system url."https://github.com/".insteadOf \
             "git@github.com:"
+        export GIT_TERMINAL_PROMPT=0
     fi
 }
 
@@ -451,7 +452,7 @@ fnWriteClaudeMd() {
     cat > "${sClaudeMd}" << 'CLAUDEMD'
 # Vaibify Container Environment
 
-You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted scientific data analysis.
+You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted data analysis and reproducible research.
 
 ## Key Paths
 
@@ -459,30 +460,26 @@ You are running inside a **Vaibify container** — a secure, isolated environmen
 - `/workspace/.vaibify/workflows/` — Workflow JSON files defining pipeline steps
 - `/workspace/.vaibify/logs/` — Pipeline execution logs
 - `/workspace/.vaibify/director.py` — Standalone pipeline executor
+- `~/.claude/` — Your Claude Code configuration (if present)
 
 ## Workflow System
 
-Each project uses a `workflow.json` file that defines a sequence of steps. Read the workflow file in `.vaibify/workflows/` to understand the current project's pipeline. Each step has:
+Each project uses a workflow JSON file that defines a sequence of steps. Read the workflow file in `.vaibify/workflows/` to understand the current project's pipeline. Each step has:
 
-- **Data Analysis Commands** (`saDataCommands`): Heavy computation, only runs when `bPlotOnly` is false
+- **Data Analysis Commands** (`saDataCommands`): Computation that generates data, only runs when `bPlotOnly` is false
 - **Data Files** (`saDataFiles`): Output files from data analysis
 - **Plot Commands** (`saPlotCommands`): Visualization commands that always run
-- **Plot Files** (`saOutputFiles`): Expected figure outputs
+- **Plot Files** (`saPlotFiles`): Expected figure outputs
+
+Cross-step references use `{StepNN.stem}` syntax, where NN is the zero-padded step number and stem is the output filename without extension.
 
 Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>`
 
-## Conventions
-
-- Scientific Python code follows Hungarian notation (see the user's CLAUDE.md in `~/.claude/`)
-- Output figures go in a `Plot/` subdirectory
-- Cross-step references use `{StepNN.stem}` syntax for output file stems
-- The `vplanet` binary is available on PATH for planetary simulations
-
 ## Important
 
-- Do not modify scientific calculations without explicit direction
-- Test changes with `pytest` before committing
-- All repositories are public or will be — never embed secrets in code
+- Read the user's personal CLAUDE.md in `~/.claude/` if present — it contains project-specific coding conventions and preferences
+- Do not modify scientific calculations without explicit direction from the user
+- Never embed secrets, tokens, or credentials in source code
 CLAUDEMD
     echo "[vc] Generated CLAUDE.md for container awareness."
 }
