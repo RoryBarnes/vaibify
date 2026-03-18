@@ -13,7 +13,7 @@ VAIBIFY_WORKFLOWS_DIR = ".vaibify/workflows"
 VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
 REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
-REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saCommands", "saOutputFiles")
+REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 
 
 def flistFindWorkflowsInContainer(
@@ -145,7 +145,7 @@ def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
 def flistResolveOutputFiles(dictStep, dictVariables):
     """Return output file paths with template variables resolved."""
     listResolved = []
-    for sPath in dictStep.get("saOutputFiles", []):
+    for sPath in dictStep.get("saPlotFiles", []):
         listResolved.append(fsResolveVariables(sPath, dictVariables))
     return listResolved
 
@@ -167,13 +167,17 @@ def flistExtractStepNames(dictWorkflow):
     return listSteps
 
 
+VERIFICATION_STATES = ("untested", "passed", "failed", "error")
+
+
 def fdictCreateStep(
     sName,
     sDirectory,
     bPlotOnly=True,
-    saSetupCommands=None,
-    saCommands=None,
-    saOutputFiles=None,
+    saDataCommands=None,
+    saDataFiles=None,
+    saPlotCommands=None,
+    saPlotFiles=None,
 ):
     """Return a new step dictionary with validated fields."""
     return {
@@ -181,9 +185,14 @@ def fdictCreateStep(
         "sDirectory": sDirectory,
         "bEnabled": True,
         "bPlotOnly": bPlotOnly,
-        "saSetupCommands": saSetupCommands if saSetupCommands else [],
-        "saCommands": saCommands if saCommands else [],
-        "saOutputFiles": saOutputFiles if saOutputFiles else [],
+        "saDataCommands": saDataCommands if saDataCommands else [],
+        "saDataFiles": saDataFiles if saDataFiles else [],
+        "saPlotCommands": saPlotCommands if saPlotCommands else [],
+        "saPlotFiles": saPlotFiles if saPlotFiles else [],
+        "dictVerification": {
+            "sUnitTest": "untested",
+            "sUser": "untested",
+        },
     }
 
 
@@ -211,7 +220,7 @@ def fsRemapStepReferences(sText, fnRemap):
 def fnRenumberAllReferences(dictWorkflow, fnRemap):
     """Update all {StepNN.*} references in every step per fnRemap."""
     for dictStep in dictWorkflow["listSteps"]:
-        for sKey in ("saSetupCommands", "saCommands", "saOutputFiles"):
+        for sKey in ("saDataCommands", "saPlotCommands", "saPlotFiles"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
                     fsRemapStepReferences(sItem, fnRemap)
@@ -314,7 +323,11 @@ def fdictBuildStemRegistry(dictWorkflow):
     dictRegistry = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
-        for sOutputFile in dictStep.get("saOutputFiles", []):
+        listAllOutputs = (
+            dictStep.get("saDataFiles", [])
+            + dictStep.get("saPlotFiles", [])
+        )
+        for sOutputFile in listAllOutputs:
             sBasename = posixpath.basename(sOutputFile)
             sStem = posixpath.splitext(sBasename)[0]
             sKey = f"Step{iNumber:02d}.{sStem}"
@@ -331,7 +344,7 @@ def flistValidateReferences(dictWorkflow):
         iNumber = iIndex + 1
         sStepLabel = f"Step{iNumber:02d}"
 
-        for sKey in ("saSetupCommands", "saCommands"):
+        for sKey in ("saDataCommands", "saPlotCommands"):
             for sCommand in dictStep.get(sKey, []):
                 _fnCheckCommandReferences(
                     sCommand, sStepLabel, iNumber,
@@ -376,7 +389,11 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
         sStepDirectory = dictStep.get("sDirectory", "")
-        for sOutputFile in dictStep.get("saOutputFiles", []):
+        listAllOutputs = (
+            dictStep.get("saDataFiles", [])
+            + dictStep.get("saPlotFiles", [])
+        )
+        for sOutputFile in listAllOutputs:
             sResolved = fsResolveVariables(sOutputFile, dictGlobalVars)
             sAbsPath = _fsResolveStepOutputPath(
                 sResolved, sStepDirectory, dictGlobalVars
@@ -414,4 +431,4 @@ def flistFilterFigureFiles(listOutputPaths):
 
 def flistExtractOutputFiles(dictStep):
     """Return list of output file paths for a step."""
-    return list(dictStep.get("saOutputFiles", []))
+    return list(dictStep.get("saPlotFiles", []))

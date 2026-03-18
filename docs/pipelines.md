@@ -24,8 +24,8 @@ Each step in `listSteps` has the following required fields:
 |--------------------|--------------|-------------------------------------|
 | `sName`            | string       | Unique step identifier              |
 | `sDirectory`       | string       | Working directory for the step      |
-| `saCommands`       | string array | Shell commands to execute in order  |
-| `saOutputFiles`    | string array | Output file paths produced          |
+| `saPlotCommands`       | string array | Shell commands to execute in order  |
+| `saPlotFiles`    | string array | Output file paths produced          |
 
 And these optional fields:
 
@@ -33,7 +33,7 @@ And these optional fields:
 |--------------------|--------------|---------|--------------------------------|
 | `bEnabled`         | boolean      | `true`  | Whether the step should run    |
 | `bPlotOnly`        | boolean      | `true`  | Step produces only plots       |
-| `saSetupCommands`  | string array | `[]`    | Commands to run before saCommands |
+| `saDataCommands`  | string array | `[]`    | Commands to run before saPlotCommands |
 
 ## Example
 
@@ -48,24 +48,24 @@ And these optional fields:
             "sDirectory": "examples/EarthWater",
             "bEnabled": true,
             "bPlotOnly": false,
-            "saSetupCommands": [
+            "saDataCommands": [
                 "vplanet vpl.in"
             ],
-            "saCommands": [
+            "saPlotCommands": [
                 "python makePlot.py"
             ],
-            "saOutputFiles": []
+            "saPlotFiles": []
         },
         {
             "sName": "PlotResults",
             "sDirectory": "examples/EarthWater",
             "bEnabled": true,
             "bPlotOnly": true,
-            "saSetupCommands": [],
-            "saCommands": [
+            "saDataCommands": [],
+            "saPlotCommands": [
                 "python makePlot.py"
             ],
-            "saOutputFiles": []
+            "saPlotFiles": []
         }
     ]
 }

@@ -5,7 +5,7 @@ from pathlib import Path
 
 _CONTAINER_CONF_HEADER = (
     "# Vaibify Repository Configuration\n"
-    "# Format: name|url|branch|install_method\n"
+    "# Format: name|url|branch|install_method[|destination]\n"
     "#\n"
     "# Install methods:\n"
     "#   c_and_pip    - make opt then pip install -e . --no-deps\n"
@@ -15,12 +15,16 @@ _CONTAINER_CONF_HEADER = (
     "#   scripts_only - add to PYTHONPATH and PATH only\n"
     "#   reference    - clone for reference, do not install\n"
     "#\n"
+    "# destination (optional): move the repo to this path\n"
+    "#   after cloning (e.g. .claude to create a dot-directory)\n"
+    "#\n"
     "# Order matters: repos are cloned and installed "
     "in this order.\n"
     "# Lines starting with # are comments.\n"
 )
 
-_REQUIRED_FIELDS = 4
+_MIN_FIELDS = 4
+_MAX_FIELDS = 5
 
 
 def flistParseContainerConf(sFilePath):
@@ -61,9 +65,9 @@ def _flistParsePipeLines(listLines, sFilePath):
     listRepos = []
     for iLineIndex, sLine in enumerate(listLines):
         listParts = sLine.split("|")
-        if len(listParts) != _REQUIRED_FIELDS:
+        if len(listParts) < _MIN_FIELDS or len(listParts) > _MAX_FIELDS:
             raise ValueError(
-                f"Expected {_REQUIRED_FIELDS} pipe-delimited "
+                f"Expected {_MIN_FIELDS}-{_MAX_FIELDS} pipe-delimited "
                 f"fields in '{sFilePath}', line {iLineIndex + 1}: "
                 f"'{sLine}'"
             )
@@ -73,11 +77,15 @@ def _flistParsePipeLines(listLines, sFilePath):
 
 def _fdictBuildRepoEntry(listParts):
     """Build a repo dict from a list of pipe-split fields."""
+    sDestination = ""
+    if len(listParts) >= 5:
+        sDestination = listParts[4].strip()
     return {
         "sName": listParts[0].strip(),
         "sUrl": listParts[1].strip(),
         "sBranch": listParts[2].strip(),
         "sInstallMethod": listParts[3].strip(),
+        "sDestination": sDestination,
     }
 
 
@@ -108,6 +116,9 @@ def _flistFormatRepoLines(listRepos):
             f"{dictRepo['sName']}|{dictRepo['sUrl']}|"
             f"{dictRepo['sBranch']}|{dictRepo['sInstallMethod']}"
         )
+        sDestination = dictRepo.get("sDestination", "")
+        if sDestination:
+            sLine += f"|{sDestination}"
         listLines.append(sLine)
     return listLines
 
@@ -134,14 +145,16 @@ def flistConvertFromProjectConfig(config):
 
 def _fdictConvertRepoEntry(dictRepo):
     """Convert a single YAML-style repo dict to Hungarian notation."""
-    return {
+    dictResult = {
         "sName": dictRepo.get("name", ""),
         "sUrl": dictRepo.get("url", ""),
         "sBranch": dictRepo.get("branch", "main"),
         "sInstallMethod": dictRepo.get(
             "installMethod", "pip_editable"
         ),
+        "sDestination": dictRepo.get("destination", ""),
     }
+    return dictResult
 
 
 def fnGenerateContainerConf(config, sOutputPath):

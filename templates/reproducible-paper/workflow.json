@@ -8,22 +8,24 @@
             "sDirectory": ".",
             "bEnabled": true,
             "bPlotOnly": true,
-            "saSetupCommands": [],
-            "saCommands": [
+            "saDataCommands": [],
+            "saDataFiles": [],
+            "saPlotCommands": [
                 "python src/scripts/makeFigures.py"
             ],
-            "saOutputFiles": []
+            "saPlotFiles": []
         },
         {
             "sName": "CompileManuscript",
             "sDirectory": "src/tex",
             "bEnabled": true,
             "bPlotOnly": false,
-            "saSetupCommands": [],
-            "saCommands": [
+            "saDataCommands": [],
+            "saDataFiles": [],
+            "saPlotCommands": [
                 "latexmk -pdf manuscript.tex"
             ],
-            "saOutputFiles": []
+            "saPlotFiles": []
         }
     ]
 }

@@ -130,7 +130,7 @@ def _fnAddStepToDag(dictStep, listNodes, listEdges):
     listNodes.append(sStepName)
     for sInput in dictStep.get("saInputFiles", []):
         listEdges.append({"sFrom": sInput, "sTo": sStepName})
-    for sOutput in dictStep.get("saOutputFiles", []):
+    for sOutput in dictStep.get("saPlotFiles", []):
         listEdges.append({"sFrom": sStepName, "sTo": sOutput})
 
 
@@ -163,7 +163,7 @@ def flistDetectChangedOutputs(dictProvenance, dictWorkflow):
 
 def _fnCheckStepOutputs(dictStep, dictStoredHashes, listChanged):
     """Check each output of a step for hash changes."""
-    for sOutputPath in dictStep.get("saOutputFiles", []):
+    for sOutputPath in dictStep.get("saPlotFiles", []):
         if _fbFileHashChanged(sOutputPath, dictStoredHashes):
             listChanged.append(sOutputPath)
 
@@ -207,7 +207,7 @@ def fnUpdateProvenance(dictProvenance, dictWorkflow, sWorkdir):
 
 def _fnHashStepOutputs(dictStep, dictHashes):
     """Hash every output file in a step and store in dictHashes."""
-    for sOutputPath in dictStep.get("saOutputFiles", []):
+    for sOutputPath in dictStep.get("saPlotFiles", []):
         if Path(sOutputPath).is_file():
             dictHashes[sOutputPath] = fsComputeFileHash(sOutputPath)
 

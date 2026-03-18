@@ -35,9 +35,10 @@ class StepCreateRequest(BaseModel):
     sName: str
     sDirectory: str
     bPlotOnly: bool = True
-    saSetupCommands: List[str] = []
-    saCommands: List[str] = []
-    saOutputFiles: List[str] = []
+    saDataCommands: List[str] = []
+    saDataFiles: List[str] = []
+    saPlotCommands: List[str] = []
+    saPlotFiles: List[str] = []
 
 
 class StepUpdateRequest(BaseModel):
@@ -45,9 +46,11 @@ class StepUpdateRequest(BaseModel):
     sDirectory: Optional[str] = None
     bPlotOnly: Optional[bool] = None
     bEnabled: Optional[bool] = None
-    saSetupCommands: Optional[List[str]] = None
-    saCommands: Optional[List[str]] = None
-    saOutputFiles: Optional[List[str]] = None
+    saDataCommands: Optional[List[str]] = None
+    saDataFiles: Optional[List[str]] = None
+    saPlotCommands: Optional[List[str]] = None
+    saPlotFiles: Optional[List[str]] = None
+    dictVerification: Optional[dict] = None
 
 
 class ReorderRequest(BaseModel):
@@ -64,6 +67,10 @@ class WorkflowSettingsRequest(BaseModel):
 class RunRequest(BaseModel):
     listStepIndices: List[int] = []
     iStartStep: Optional[int] = None
+
+
+class FileWriteRequest(BaseModel):
+    sContent: str
 
 
 def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
@@ -97,9 +104,10 @@ def fdictStepFromRequest(request):
         sName=request.sName,
         sDirectory=request.sDirectory,
         bPlotOnly=request.bPlotOnly,
-        saSetupCommands=request.saSetupCommands,
-        saCommands=request.saCommands,
-        saOutputFiles=request.saOutputFiles,
+        saDataCommands=request.saDataCommands,
+        saDataFiles=request.saDataFiles,
+        saPlotCommands=request.saPlotCommands,
+        saPlotFiles=request.saPlotFiles,
     )
 
 
@@ -352,6 +360,15 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         )
 
 
+def _fbContainerHasVaibify(connectionDocker, sContainerId):
+    """Return True if the container has a .vaibify directory."""
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        f"test -d {fsShellQuote(WORKSPACE_ROOT + '/.vaibify')}",
+    )
+    return iExitCode == 0
+
+
 def _fnRegisterContainers(app, dictCtx):
     """Register GET /api/containers route."""
 
@@ -359,7 +376,12 @@ def _fnRegisterContainers(app, dictCtx):
     async def fnGetContainers():
         dictCtx["require"]()
         try:
-            return dictCtx["docker"].flistGetRunningContainers()
+            listContainers = dictCtx["docker"].flistGetRunningContainers()
+            for dictContainer in listContainers:
+                dictContainer["bConfigured"] = _fbContainerHasVaibify(
+                    dictCtx["docker"], dictContainer["sContainerId"],
+                )
+            return listContainers
         except Exception as error:
             raise HTTPException(500, f"Docker error: {error}")
 
@@ -472,6 +494,27 @@ def _fnRegisterReproStubs(app):
     @app.post("/api/latex/{sContainerId}/generate")
     async def fnLatexGenerate(sContainerId: str):
         raise HTTPException(501, "Not Implemented")
+
+
+def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
+    """Register PUT /api/file route for saving edited text files."""
+
+    @app.put("/api/file/{sContainerId}/{sFilePath:path}")
+    async def fnWriteFile(
+        sContainerId: str, sFilePath: str,
+        request: FileWriteRequest,
+    ):
+        dictCtx["require"]()
+        sAbsPath = (
+            sFilePath if sFilePath.startswith("/")
+            else posixpath.join(sWorkspaceRoot, sFilePath)
+        )
+        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        baContent = request.sContent.encode("utf-8")
+        dictCtx["docker"].fnWriteFile(
+            sContainerId, sAbsPath, baContent
+        )
+        return {"bSuccess": True, "sPath": sAbsPath}
 
 
 def _fnRegisterLogRoutes(app, dictCtx):
@@ -671,7 +714,23 @@ def _fnRegisterStepReorder(app, dictCtx):
 
 
 def _fnRegisterFigure(app, dictCtx):
-    """Register GET /api/figure route."""
+    """Register GET and HEAD /api/figure routes."""
+
+    @app.head("/api/figure/{sContainerId}/{sFilePath:path}")
+    async def fnCheckFigure(
+        sContainerId: str, sFilePath: str, sWorkdir: str = ""
+    ):
+        dictCtx["require"]()
+        sDir = dictCtx["workflowDir"](sContainerId)
+        sAbsPath = fsResolveFigurePath(sDir, sFilePath)
+        try:
+            fbaFetchFigureWithFallback(
+                dictCtx["docker"], sContainerId, sAbsPath,
+                sDir, sWorkdir, sFilePath,
+            )
+            return Response(status_code=200)
+        except HTTPException:
+            raise
 
     @app.get("/api/figure/{sContainerId}/{sFilePath:path}")
     async def fnServeFigure(
@@ -734,6 +793,14 @@ def _fnRegisterTerminalWs(app, dictCtx):
         await fnRunTerminalSession(
             session, websocket, dictCtx["terminals"]
         )
+
+
+def _fnRegisterUserInfo(app):
+    """Register GET /api/user route."""
+
+    @app.get("/api/user")
+    async def fnGetUser():
+        return {"sUserName": sTerminalUser or "User"}
 
 
 def _fnRegisterStaticFiles(app):
@@ -833,6 +900,7 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
+    _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot)
     _fnRegisterMonitor(app)
     _fnRegisterReproStubs(app)
     _fnRegisterLogRoutes(app, dictCtx)
@@ -856,13 +924,18 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot)
     _fnRegisterStepRoutes(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
+    _fnRegisterUserInfo(app)
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterTerminalWs(app, dictCtx)
     _fnRegisterStaticFiles(app)
 
 
-def fappCreateApplication(sWorkspaceRoot="/workspace"):
+def fappCreateApplication(
+    sWorkspaceRoot="/workspace", sTerminalUserArg=None,
+):
     """Build and return the configured FastAPI application."""
+    global sTerminalUser
+    sTerminalUser = sTerminalUserArg
     app = FastAPI(title="Vaibify Workflow Viewer")
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)

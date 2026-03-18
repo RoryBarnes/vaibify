@@ -84,20 +84,25 @@ def setup():
 
 
 @main.command("gui")
-def gui():
+@click.option(
+    "--user", "sUser", default=None,
+    help="Terminal user inside the container (default: from config).",
+)
+def gui(sUser):
     """Launch the Vaibify pipeline viewer GUI."""
     config = fconfigLoad()
-    from vaibify.gui.pipelineServer import (
-        fappCreateApplication,
-    )
+    from vaibify.gui.pipelineServer import fappCreateApplication
     import threading
     import time
     import uvicorn
     import webbrowser
     sRoot = config.sWorkspaceRoot
+    sTerminalUser = sUser or config.sContainerUser
     sUrl = "http://127.0.0.1:8050"
     click.echo(f"Starting pipeline viewer at {sUrl}")
-    app = fappCreateApplication(sWorkspaceRoot=sRoot)
+    app = fappCreateApplication(
+        sWorkspaceRoot=sRoot, sTerminalUserArg=sTerminalUser,
+    )
     threading.Thread(
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
         daemon=True,

@@ -15,10 +15,20 @@
     <img src="/static/vaibify_logo_paleblue_dark.png" alt="Vaibify"
          class="vaibify-logo-large">
     <p class="subtitle tagline">Vibe boldly. Verify everything.</p>
-    <div id="listContainers">
-        <p style="color: var(--text-muted); text-align: center;">
-            Loading containers...
-        </p>
+    <div class="picker-content">
+        <h3 class="picker-section-label" id="labelConfigured">
+            Available Containers:</h3>
+        <div id="listContainers">
+            <p class="muted-text" style="text-align: center;">
+                Loading containers...
+            </p>
+        </div>
+        <div id="unconfiguredSection" style="display: none;">
+            <button class="btn btn-unconfigured-toggle"
+                    id="btnShowUnconfigured">
+                See unconfigured containers</button>
+            <div id="listUnconfigured" style="display: none;"></div>
+        </div>
     </div>
 </div>
 
@@ -26,12 +36,14 @@
 <div id="workflowPicker" style="display: none;">
     <img src="/static/vaibify_logo_paleblue_dark.png" alt="Vaibify"
          class="vaibify-logo-large">
-    <p class="subtitle" id="workflowPickerSubtitle">Select Workflow</p>
-    <div id="listWorkflows"></div>
-    <div style="margin-top: 16px; display: flex; gap: 8px;">
-        <button class="btn" id="btnWorkflowBack">Back</button>
-        <button class="btn btn-primary" id="btnNewWorkflow">
-            New Workflow</button>
+    <div class="picker-content">
+        <h3 class="picker-section-label">Available Workflows:</h3>
+        <div id="listWorkflows"></div>
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+            <button class="btn" id="btnWorkflowBack">Back</button>
+            <button class="btn btn-primary" id="btnNewWorkflow">
+                New Workflow</button>
+        </div>
     </div>
 </div>
 
@@ -41,8 +53,11 @@
     <div id="toolbar">
         <img src="/static/vaibify_logo_paleblue.png" alt="Vaibify"
              class="toolbar-logo">
-        <span id="activeWorkflowName" class="toolbar-workflow"
-              title="Click to switch workflow"></span>
+        <div id="workflowSwitcher" class="workflow-switcher">
+            <span id="activeWorkflowName" class="toolbar-workflow"
+                  title="Click to switch workflow"></span>
+            <div id="workflowDropdown" class="workflow-dropdown"></div>
+        </div>
         <button class="btn btn-primary" id="btnRunSelected"
                 title="Run checked steps">Run Selected</button>
         <button class="btn" id="btnRunAll"
@@ -183,24 +198,29 @@
             <div class="toggle-row">
                 <input type="checkbox" id="inputPlotOnly" checked>
                 <label style="margin-bottom:0; text-transform:none;">
-                    Plot only (skip setup commands)
+                    Plot only (skip data analysis commands)
                 </label>
             </div>
         </div>
         <div class="form-group">
-            <label>Setup Commands (one per line)</label>
+            <label>Data Analysis Commands (one per line)</label>
             <textarea id="inputSetupCommands"
-                      placeholder="Heavy computation commands..."></textarea>
+                      placeholder="Commands that generate raw data..."></textarea>
         </div>
         <div class="form-group">
-            <label>Commands (one per line)</label>
+            <label>Data Files (one per line)</label>
+            <textarea id="inputDataFiles"
+                      placeholder="Output data files from analysis..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Plot Commands (one per line)</label>
             <textarea id="inputCommands"
-                      placeholder="Plotting / analysis commands..."></textarea>
+                      placeholder="Commands that generate figures..."></textarea>
         </div>
         <div class="form-group">
-            <label>Output Files (one per line)</label>
+            <label>Plot Files (one per line)</label>
             <textarea id="inputOutputFiles"
-                      placeholder="Expected output file paths..."></textarea>
+                      placeholder="Expected figure file paths..."></textarea>
         </div>
         <div class="modal-actions">
             <button class="btn" id="btnModalCancel">Cancel</button>

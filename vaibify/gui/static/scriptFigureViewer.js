@@ -125,7 +125,7 @@ const PipeleyenFigureViewer = (function () {
         fnFetchResolvedStep(iStepIndex, function (dictStep) {
             var listOutputFiles =
                 dictStep.saResolvedOutputFiles ||
-                dictStep.saOutputFiles || [];
+                dictStep.saPlotFiles || [];
             var listFigures = listOutputFiles.filter(fbIsFigureFile);
 
             if (listFigures.length > 0) {
@@ -152,7 +152,7 @@ const PipeleyenFigureViewer = (function () {
         if (!sContainerId || iStepIndex < 0) return;
 
         fnFetchResolvedStep(iStepIndex, function (dictStep) {
-            var listRaw = dictStep.saOutputFiles || [];
+            var listRaw = dictStep.saPlotFiles || [];
             var listResolved =
                 dictStep.saResolvedOutputFiles || listRaw;
             var sResolvedPath = sTemplatePath;
@@ -255,7 +255,9 @@ const PipeleyenFigureViewer = (function () {
         elImg.alt = "Figure";
         elImg.onerror = function () {
             elViewport.innerHTML =
-                '<span class="placeholder">Failed to load figure</span>';
+                '<span class="placeholder output-missing-message">' +
+                'Output not available. Run the step to generate.' +
+                '</span>';
         };
         elViewport.appendChild(elImg);
     }
@@ -263,12 +265,27 @@ const PipeleyenFigureViewer = (function () {
     function fnRenderPdf(sUrl, elViewport) {
         elViewport.innerHTML =
             '<span class="placeholder">Loading PDF...</span>';
+        fetch(sUrl, { method: "HEAD" }).then(function (r) {
+            if (!r.ok) {
+                elViewport.innerHTML =
+                    '<span class="placeholder output-missing-message">' +
+                    'Output not available. Run the step to generate.' +
+                    '</span>';
+                return;
+            }
+            fnRenderPdfDocument(sUrl, elViewport);
+        }).catch(function () {
+            elViewport.innerHTML =
+                '<span class="placeholder output-missing-message">' +
+                'Output not available. Run the step to generate.' +
+                '</span>';
+        });
+    }
+
+    function fnRenderPdfDocument(sUrl, elViewport) {
         if (typeof pdfjsLib === "undefined") {
             elViewport.innerHTML =
-                '<span class="placeholder">PDF.js not loaded</span>' +
-                '<br><a href="' + sUrl +
-                '" target="_blank" style="color:var(--color-pale-blue)">' +
-                "Download PDF</a>";
+                '<span class="placeholder">PDF.js not loaded</span>';
             return;
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -291,8 +308,9 @@ const PipeleyenFigureViewer = (function () {
             });
         }).catch(function (error) {
             elViewport.innerHTML =
-                '<span class="placeholder">PDF error: ' +
-                error.message + "</span>";
+                '<span class="placeholder output-missing-message">' +
+                'Output not available. Run the step to generate.' +
+                '</span>';
         });
     }
 
@@ -305,13 +323,117 @@ const PipeleyenFigureViewer = (function () {
                 return r.text();
             })
             .then(function (sText) {
-                elViewport.innerHTML =
-                    '<pre>' + fnEscapeHtml(sText) + '</pre>';
+                fnRenderTextWithToolbar(sText, sUrl, elViewport);
             })
             .catch(function () {
                 elViewport.innerHTML =
-                    '<span class="placeholder">Cannot display file</span>';
+                    '<span class="placeholder output-missing-message">' +
+                    'Output not available. Run the step to generate.' +
+                    '</span>';
             });
+    }
+
+    function fnRenderTextWithToolbar(sText, sUrl, elViewport) {
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        var elToolbar = document.createElement("div");
+        elToolbar.className = "editor-toolbar";
+        var elEditBtn = document.createElement("button");
+        elEditBtn.className = "btn-icon";
+        elEditBtn.title = "Edit";
+        elEditBtn.innerHTML = "&#9998;";
+        elEditBtn.addEventListener("click", function () {
+            fnEnterEditMode(sText, sUrl, elViewport);
+        });
+        elToolbar.appendChild(elEditBtn);
+        var elPre = document.createElement("pre");
+        elPre.textContent = sText;
+        elViewport.appendChild(elToolbar);
+        elViewport.appendChild(elPre);
+    }
+
+    function fnEnterEditMode(sText, sUrl, elViewport) {
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        var elToolbar = document.createElement("div");
+        elToolbar.className = "editor-toolbar";
+
+        var elFind = document.createElement("input");
+        elFind.type = "text";
+        elFind.placeholder = "Find...";
+        elFind.className = "editor-find-input";
+
+        var elSave = document.createElement("button");
+        elSave.className = "btn btn-primary";
+        elSave.textContent = "Save";
+
+        var elCancel = document.createElement("button");
+        elCancel.className = "btn";
+        elCancel.textContent = "Cancel";
+
+        elToolbar.appendChild(elFind);
+        elToolbar.appendChild(elSave);
+        elToolbar.appendChild(elCancel);
+
+        var elTextarea = document.createElement("textarea");
+        elTextarea.className = "editor-textarea";
+        elTextarea.value = sText;
+        elTextarea.spellcheck = false;
+
+        elViewport.appendChild(elToolbar);
+        elViewport.appendChild(elTextarea);
+        elTextarea.focus();
+
+        fnBindEditorFind(elFind, elTextarea);
+        elSave.addEventListener("click", function () {
+            fnSaveEditedFile(sUrl, elTextarea.value, elViewport);
+        });
+        elCancel.addEventListener("click", function () {
+            fnRenderTextWithToolbar(sText, sUrl, elViewport);
+        });
+    }
+
+    function fnSaveEditedFile(sUrl, sContent, elViewport) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sPrefix = "/api/figure/" + sContainerId + "/";
+        var sFilePath = sUrl.split(sPrefix)[1] || "";
+        if (sFilePath.includes("?")) {
+            sFilePath = sFilePath.split("?")[0];
+        }
+        fetch("/api/file/" + sContainerId + "/" + sFilePath, {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({sContent: sContent}),
+        }).then(function (r) {
+            if (!r.ok) throw new Error("Save failed");
+            PipeleyenApp.fnShowToast("File saved", "success");
+            fnRenderTextWithToolbar(sContent, sUrl, elViewport);
+        }).catch(function (error) {
+            PipeleyenApp.fnShowToast(
+                "Save failed: " + error.message, "error"
+            );
+        });
+    }
+
+    function fnBindEditorFind(elFind, elTextarea) {
+        elFind.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            var sQuery = elFind.value;
+            if (!sQuery) return;
+            var iStart = elTextarea.selectionEnd;
+            var iFound = elTextarea.value.indexOf(sQuery, iStart);
+            if (iFound === -1) {
+                iFound = elTextarea.value.indexOf(sQuery);
+            }
+            if (iFound >= 0) {
+                elTextarea.focus();
+                elTextarea.setSelectionRange(
+                    iFound, iFound + sQuery.length
+                );
+            }
+        });
     }
 
     /* --- Drag and Drop --- */

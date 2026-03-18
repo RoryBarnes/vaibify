@@ -1,5 +1,7 @@
 /* Vaibify — Setup Wizard dark theme */
 
+@import url("https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap");
+
 :root {
     --color-red: #c91111;
     --color-orange: #e09401;
@@ -33,8 +35,7 @@ html, body {
     min-height: 100%;
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        Helvetica, Arial, sans-serif;
+    font-family: "STIX Two Text", "STIXGeneral", Georgia, serif;
     font-size: 14px;
 }
 

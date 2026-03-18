@@ -26,9 +26,11 @@ const PipeleyenApp = (function () {
     /* --- Initialization --- */
 
     function fnInitialize() {
+        fnLoadUserName();
         fnLoadContainers();
         fnBindToolbarEvents();
         fnBindWorkflowPickerEvents();
+        fnBindUnconfiguredToggle();
         fnBindErrorModal();
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
@@ -45,6 +47,16 @@ const PipeleyenApp = (function () {
         });
     }
 
+    async function fnLoadUserName() {
+        try {
+            var response = await fetch("/api/user");
+            var dictUser = await response.json();
+            fnSetVerificationUserName(dictUser.sUserName);
+        } catch (error) {
+            fnSetVerificationUserName("User");
+        }
+    }
+
     /* --- Container Picker --- */
 
     async function fnLoadContainers() {
@@ -58,31 +70,73 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnRenderContainerList(listContainers) {
-        var elList = document.getElementById("listContainers");
-        if (listContainers.length === 0) {
-            elList.innerHTML =
-                '<p style="color: var(--text-muted); text-align: center;">' +
-                "No running containers found</p>";
-            return;
-        }
-        elList.innerHTML = listContainers
-            .map(function (container) {
-                return (
-                    '<div class="container-card" data-id="' +
-                    container.sContainerId + '">' +
-                    '<span class="name">' +
-                    fnEscapeHtml(container.sName) + "</span>" +
-                    '<span class="image">' +
-                    fnEscapeHtml(container.sImage) + "</span></div>"
-                );
-            })
-            .join("");
-        elList.querySelectorAll(".container-card").forEach(function (el) {
+    function fsRenderContainerCard(container, sExtraClass) {
+        return (
+            '<div class="container-card' +
+            (sExtraClass ? " " + sExtraClass : "") +
+            '" data-id="' + container.sContainerId + '">' +
+            '<span class="name">' +
+            fnEscapeHtml(container.sName) + "</span>" +
+            '<span class="image">' +
+            fnEscapeHtml(container.sImage) + "</span></div>"
+        );
+    }
+
+    function fnBindContainerCards(elParent) {
+        elParent.querySelectorAll(".container-card").forEach(function (el) {
             el.addEventListener("click", function () {
                 fnConnectToContainer(el.dataset.id);
             });
         });
+    }
+
+    function fnRenderContainerList(listContainers) {
+        var elList = document.getElementById("listContainers");
+        var elUnconfiguredSection = document.getElementById(
+            "unconfiguredSection"
+        );
+        var elUnconfiguredList = document.getElementById("listUnconfigured");
+        var elLabel = document.getElementById("labelConfigured");
+
+        var listConfigured = listContainers.filter(function (c) {
+            return c.bConfigured;
+        });
+        var listUnconfigured = listContainers.filter(function (c) {
+            return !c.bConfigured;
+        });
+
+        if (listContainers.length === 0) {
+            elLabel.style.display = "none";
+            elList.innerHTML =
+                '<p class="muted-text" style="text-align: center;">' +
+                "No running containers found</p>";
+            elUnconfiguredSection.style.display = "none";
+            return;
+        }
+
+        elLabel.style.display = "";
+        if (listConfigured.length === 0) {
+            elList.innerHTML =
+                '<p class="muted-text" style="text-align: center;">' +
+                "No configured containers found</p>";
+        } else {
+            elList.innerHTML = listConfigured.map(function (c) {
+                return fsRenderContainerCard(c, "");
+            }).join("");
+            fnBindContainerCards(elList);
+        }
+
+        if (listUnconfigured.length > 0) {
+            elUnconfiguredSection.style.display = "";
+            elUnconfiguredList.innerHTML = listUnconfigured.map(
+                function (c) {
+                    return fsRenderContainerCard(c, "unconfigured");
+                }
+            ).join("");
+            fnBindContainerCards(elUnconfiguredList);
+        } else {
+            elUnconfiguredSection.style.display = "none";
+        }
     }
 
     var _sSelectedContainerId = null;
@@ -216,8 +270,6 @@ const PipeleyenApp = (function () {
         document.getElementById("containerPicker").style.display = "none";
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
-        document.getElementById("workflowPickerSubtitle").textContent =
-            "Select Workflow \u2014 " + sContainerName;
     }
 
     function fnShowMainLayout() {
@@ -284,7 +336,7 @@ const PipeleyenApp = (function () {
                     "active", sPanel === "logs"
                 );
                 if (sPanel === "files") {
-                    PipeleyenFiles.fnLoadDirectory(fsGetWorkflowDirectory());
+                    PipeleyenFiles.fnLoadDirectory("/workspace");
                 } else if (sPanel === "logs") {
                     fnLoadLogs();
                 }
@@ -379,13 +431,68 @@ const PipeleyenApp = (function () {
         });
         elList.innerHTML = sHtml;
         fnBindStepEvents();
+        fnCheckOutputFileExistence();
+    }
+
+    function fnCheckOutputFileExistence() {
+        if (!sContainerId) return;
+        document.querySelectorAll(
+            '.detail-item.output'
+        ).forEach(function (el) {
+            var elText = el.querySelector(".detail-text");
+            if (!elText || elText.classList.contains("file-invalid")) {
+                return;
+            }
+            var sResolved = el.dataset.resolved;
+            var sWorkdir = el.dataset.workdir || "";
+            var sUrl = "/api/figure/" + sContainerId + "/" +
+                sResolved;
+            if (sWorkdir) {
+                sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
+            }
+            fetch(sUrl, { method: "HEAD" }).then(function (r) {
+                if (r.ok) {
+                    fnMarkOutputPresent(el);
+                } else {
+                    fnMarkOutputMissing(el);
+                }
+            }).catch(function () {
+                fnMarkOutputMissing(el);
+            });
+        });
+    }
+
+    function fnMarkOutputPresent(el) {
+        var elText = el.querySelector(".detail-text");
+        if (!elText) return;
+        var sResolved = el.dataset.resolved;
+        elText.classList.remove("file-missing");
+        elText.classList.add(fsFileTypeClass(sResolved));
+    }
+
+    function fnMarkOutputMissing(el) {
+        var elText = el.querySelector(".detail-text");
+        if (elText) {
+            elText.classList.remove(
+                "file-figure", "file-text", "file-binary"
+            );
+            elText.classList.add("file-missing");
+        }
     }
 
     function fsRenderStepItem(step, iIndex, dictVars) {
         var sStatusClass = dictStepStatus[iIndex] || "";
+        if (!sStatusClass) {
+            sStatusClass = fsComputeStepDotState(step);
+        }
         var bEnabled = step.bEnabled !== false;
         var bSelected = iIndex === iSelectedStepIndex;
         var bExpanded = setExpandedSteps.has(iIndex);
+
+        var sStatusContent = "";
+        if (sStatusClass === "verified") {
+            sStatusContent = "&#10003;";
+        }
 
         var sHtml =
             '<div class="step-item' + (bSelected ? " selected" : "") +
@@ -397,7 +504,8 @@ const PipeleyenApp = (function () {
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
-            '<span class="step-status ' + sStatusClass + '"></span>' +
+            '<span class="step-status ' + sStatusClass + '">' +
+            sStatusContent + '</span>' +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
             "</span></div>";
@@ -414,45 +522,139 @@ const PipeleyenApp = (function () {
         sHtml += '<div class="detail-label">Plot Only: ' +
             (step.bPlotOnly !== false ? "Yes" : "No") + "</div>";
 
-        /* Setup Commands */
+        /* Data Analysis Commands */
         sHtml += fsRenderSectionLabel(
-            "Setup Commands", iIndex, "saSetupCommands"
+            "Data Analysis Commands", iIndex, "saDataCommands"
         );
-        if (step.saSetupCommands) {
-            step.saSetupCommands.forEach(function (sCmd, iCmdIdx) {
+        if (step.saDataCommands) {
+            step.saDataCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
-                    sCmd, dictVars, "command", "saSetupCommands",
+                    sCmd, dictVars, "command", "saDataCommands",
                     iIndex, iCmdIdx
                 );
             });
         }
 
-        /* Commands */
-        sHtml += fsRenderSectionLabel("Commands", iIndex, "saCommands");
-        if (step.saCommands) {
-            step.saCommands.forEach(function (sCmd, iCmdIdx) {
-                sHtml += fsRenderDetailItem(
-                    sCmd, dictVars, "command", "saCommands",
-                    iIndex, iCmdIdx
-                );
-            });
-        }
-
-        /* Output Files */
+        /* Data Files */
         sHtml += fsRenderSectionLabel(
-            "Output Files", iIndex, "saOutputFiles"
+            "Data Files", iIndex, "saDataFiles"
         );
-        if (step.saOutputFiles) {
-            step.saOutputFiles.forEach(function (sFile, iFileIdx) {
+        if (step.saDataFiles) {
+            step.saDataFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
-                    sFile, dictVars, "output", "saOutputFiles",
+                    sFile, dictVars, "output", "saDataFiles",
                     iIndex, iFileIdx, sResolvedDir
                 );
             });
         }
 
+        /* Plot Commands */
+        sHtml += fsRenderSectionLabel(
+            "Plot Commands", iIndex, "saPlotCommands"
+        );
+        if (step.saPlotCommands) {
+            step.saPlotCommands.forEach(function (sCmd, iCmdIdx) {
+                sHtml += fsRenderDetailItem(
+                    sCmd, dictVars, "command", "saPlotCommands",
+                    iIndex, iCmdIdx
+                );
+            });
+        }
+
+        /* Plot Files */
+        sHtml += fsRenderSectionLabel(
+            "Plot Files", iIndex, "saPlotFiles"
+        );
+        if (step.saPlotFiles) {
+            step.saPlotFiles.forEach(function (sFile, iFileIdx) {
+                sHtml += fsRenderDetailItem(
+                    sFile, dictVars, "output", "saPlotFiles",
+                    iIndex, iFileIdx, sResolvedDir
+                );
+            });
+        }
+
+        /* Verification */
+        sHtml += fsRenderVerificationBlock(step, iIndex);
+
         sHtml += "</div>";
         return sHtml;
+    }
+
+    function fdictGetVerification(step) {
+        return step.dictVerification || {
+            sUnitTest: "untested", sUser: "untested",
+        };
+    }
+
+    function fsVerificationStateLabel(sState) {
+        var dictLabels = {
+            passed: "Passed", failed: "Failed",
+            untested: "Untested", error: "Error",
+        };
+        return dictLabels[sState] || "Untested";
+    }
+
+    function fsVerificationStateIcon(sState) {
+        var dictIcons = {
+            passed: "\u2713", failed: "\u2717",
+            untested: "\u2014", error: "\u2717",
+        };
+        return dictIcons[sState] || "\u2014";
+    }
+
+    function fsRenderVerificationBlock(step, iIndex) {
+        var dictVerify = fdictGetVerification(step);
+        var sHtml = '<div class="detail-label">Verification</div>';
+        sHtml += '<div class="verification-block" data-step="' +
+            iIndex + '">';
+        sHtml += fsRenderVerificationRow(
+            "Unit Tests", dictVerify.sUnitTest, "unitTest", iIndex
+        );
+        sHtml += fsRenderVerificationRow(
+            sUserName, dictVerify.sUser, "user", iIndex
+        );
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderVerificationRow(
+        sLabel, sState, sApprover, iIndex
+    ) {
+        var bClickable = sApprover === "user";
+        return '<div class="verification-row' +
+            (bClickable ? " clickable" : "") +
+            '" data-step="' + iIndex +
+            '" data-approver="' + sApprover + '">' +
+            '<span class="verification-label">' +
+            fnEscapeHtml(sLabel) + '</span>' +
+            '<span class="verification-badge state-' + sState + '">' +
+            fsVerificationStateIcon(sState) + ' ' +
+            fsVerificationStateLabel(sState) + '</span></div>';
+    }
+
+    var sUserName = "User";
+
+    function fnSetVerificationUserName(sName) {
+        sUserName = sName || "User";
+    }
+
+    function fsComputeStepDotState(step) {
+        var dictVerify = fdictGetVerification(step);
+        var sUnit = dictVerify.sUnitTest;
+        var sUser = dictVerify.sUser;
+        if (sUnit === "failed" || sUnit === "error" ||
+            sUser === "failed" || sUser === "error") {
+            return "fail";
+        }
+        if (sUnit === "passed" && sUser === "passed") {
+            return "verified";
+        }
+        if ((sUnit === "passed" && sUser === "untested") ||
+            (sUnit === "untested" && sUser === "passed")) {
+            return "partial";
+        }
+        return "";
     }
 
     function fsRenderSectionLabel(sLabel, iStepIdx, sArrayKey) {
@@ -464,14 +666,24 @@ const PipeleyenApp = (function () {
             '</div>';
     }
 
+    function fbIsInvalidOutputPath(sRaw, sResolved) {
+        if (!sResolved || sResolved.length === 0) return true;
+        if (sRaw.includes("{")) return false;
+        return !sResolved.startsWith("/");
+    }
+
     function fsRenderDetailItem(
         sRaw, dictVars, sType, sArrayKey, iStepIdx, iItemIdx,
         sWorkdir
     ) {
         var sResolved = fsResolveTemplate(sRaw, dictVars);
         var sFileClass = "";
+        var bInvalid = false;
         if (sType === "output") {
-            sFileClass = " " + fsFileTypeClass(sResolved);
+            if (fbIsInvalidOutputPath(sRaw, sResolved)) {
+                sFileClass = " file-invalid";
+                bInvalid = true;
+            }
         }
 
         var sHtml = '<div class="detail-item ' + sType +
@@ -482,9 +694,14 @@ const PipeleyenApp = (function () {
             '" data-workdir="' + fnEscapeHtml(sWorkdir || "") +
             '" draggable="true">';
 
-        sHtml += '<div class="detail-text' + sFileClass + '">' +
-            fnEscapeHtml(sResolved) +
-            '</div>';
+        if (bInvalid) {
+            sHtml += '<div class="detail-text' + sFileClass +
+                '" title="Output path is not absolute">' +
+                '<em>' + fnEscapeHtml(sResolved) + '</em></div>';
+        } else {
+            sHtml += '<div class="detail-text' + sFileClass + '">' +
+                fnEscapeHtml(sResolved) + '</div>';
+        }
 
         sHtml += '<div class="detail-actions">' +
             '<button class="action-edit" title="Edit">&#9998;</button>' +
@@ -610,6 +827,55 @@ const PipeleyenApp = (function () {
             fnBindStepDragEvents(el, iIndex);
         });
         fnBindDetailSectionEvents(elList);
+        fnBindVerificationEvents(elList);
+    }
+
+    function fnBindVerificationEvents(elList) {
+        elList.querySelectorAll(".verification-row.clickable")
+            .forEach(function (el) {
+                el.addEventListener("click", function () {
+                    var iStep = parseInt(el.dataset.step);
+                    fnCycleUserVerification(iStep);
+                });
+            });
+        elList.querySelectorAll(
+            '.verification-row[data-approver="unitTest"]'
+        ).forEach(function (el) {
+            el.addEventListener("click", function () {
+                fnShowToast(
+                    "Unit test results will be shown here " +
+                    "when test infrastructure is configured.",
+                    "success"
+                );
+            });
+        });
+    }
+
+    async function fnCycleUserVerification(iStep) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictVerify = fdictGetVerification(dictStep);
+        var listStates = [
+            "untested", "passed", "failed", "error"
+        ];
+        var iCurrent = listStates.indexOf(dictVerify.sUser);
+        var iNext = (iCurrent + 1) % listStates.length;
+        dictVerify.sUser = listStates[iNext];
+        dictStep.dictVerification = dictVerify;
+        try {
+            await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep,
+                {
+                    method: "PUT",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        dictVerification: dictVerify,
+                    }),
+                }
+            );
+        } catch (error) {
+            fnShowToast("Save failed", "error");
+        }
+        fnRenderStepList();
     }
 
     function fnBindDetailItemEvents(el) {
@@ -625,7 +891,9 @@ const PipeleyenApp = (function () {
             elText.addEventListener("click", function () {
                 if (el.classList.contains("output")) {
                     if (elText.classList.contains("file-binary")) {
-                        fnShowToast("File cannot be viewed", "error");
+                        fnShowBinaryNotViewable();
+                    } else if (elText.classList.contains("file-missing")) {
+                        fnShowOutputNotAvailable();
                     } else {
                         PipeleyenFigureViewer.fnDisplayInNextViewer(
                             sResolved, sWorkdir
@@ -797,7 +1065,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnAddNewItem(iStep, sArrayKey) {
-        var sPlaceholder = sArrayKey === "saOutputFiles" ?
+        var sPlaceholder = sArrayKey === "saPlotFiles" ?
             "File path..." : "Command...";
         fnShowInlineInput(iStep, sArrayKey, sPlaceholder);
     }
@@ -1085,10 +1353,110 @@ const PipeleyenApp = (function () {
             "click", fnCreateNewWorkflow
         );
         document.getElementById("activeWorkflowName").addEventListener(
+            "click", function (event) {
+                event.stopPropagation();
+                fnToggleWorkflowDropdown();
+            }
+        );
+        document.addEventListener("click", function () {
+            fnHideWorkflowDropdown();
+        });
+    }
+
+    async function fnToggleWorkflowDropdown() {
+        var elDropdown = document.getElementById("workflowDropdown");
+        if (elDropdown.classList.contains("active")) {
+            elDropdown.classList.remove("active");
+            return;
+        }
+        if (!sContainerId) return;
+        try {
+            var response = await fetch("/api/workflows/" + sContainerId);
+            var listWorkflows = await response.json();
+            fnRenderWorkflowDropdown(listWorkflows);
+            elDropdown.classList.add("active");
+        } catch (error) {
+            fnShowToast("Could not load workflows", "error");
+        }
+    }
+
+    function fnHideWorkflowDropdown() {
+        document.getElementById("workflowDropdown")
+            .classList.remove("active");
+    }
+
+    function fnRenderWorkflowDropdown(listWorkflows) {
+        var elDropdown = document.getElementById("workflowDropdown");
+        if (listWorkflows.length === 0) {
+            elDropdown.innerHTML =
+                '<div class="workflow-dropdown-item">' +
+                '<span class="wf-name muted-text">' +
+                'No other workflows</span></div>';
+            return;
+        }
+        elDropdown.innerHTML = listWorkflows.map(function (dictWf) {
+            var bCurrent = dictWf.sPath === sWorkflowPath;
+            return (
+                '<div class="workflow-dropdown-item' +
+                (bCurrent ? " current" : "") +
+                '" data-path="' + fnEscapeHtml(dictWf.sPath) +
+                '" data-name="' + fnEscapeHtml(dictWf.sName) + '">' +
+                '<span class="wf-name">' +
+                fnEscapeHtml(dictWf.sName) + '</span>' +
+                '<span class="wf-path">' +
+                fnEscapeHtml(dictWf.sPath) + '</span></div>'
+            );
+        }).join("");
+        fnBindWorkflowDropdownItems(elDropdown);
+    }
+
+    function fnBindWorkflowDropdownItems(elDropdown) {
+        elDropdown.querySelectorAll(".workflow-dropdown-item")
+            .forEach(function (el) {
+                el.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                    fnHideWorkflowDropdown();
+                    var sPath = el.dataset.path;
+                    var sName = el.dataset.name;
+                    if (sPath === sWorkflowPath) return;
+                    fnConfirmWorkflowSwitch(sPath, sName);
+                });
+            });
+    }
+
+    async function fnConfirmWorkflowSwitch(sNewPath, sNewName) {
+        if (!confirm(
+            "Switch to workflow \"" + sNewName + "\"?\n\n" +
+            "Current workflow state will be saved."
+        )) {
+            return;
+        }
+        await fnSaveCurrentWorkflow();
+        fnSelectWorkflow(sContainerId, sNewPath, sNewName);
+    }
+
+    async function fnSaveCurrentWorkflow() {
+        if (!sContainerId || !dictWorkflow || !sWorkflowPath) return;
+        try {
+            await fetch(
+                "/api/connect/" + sContainerId +
+                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPath),
+                { method: "POST" }
+            );
+        } catch (error) {
+            fnShowToast("Could not save workflow", "error");
+        }
+    }
+
+    function fnBindUnconfiguredToggle() {
+        document.getElementById("btnShowUnconfigured").addEventListener(
             "click", function () {
-                if (_sSelectedContainerId) {
-                    fnConnectToContainer(_sSelectedContainerId);
-                }
+                var elList = document.getElementById("listUnconfigured");
+                var bVisible = elList.style.display !== "none";
+                elList.style.display = bVisible ? "none" : "";
+                this.textContent = bVisible
+                    ? "See unconfigured containers"
+                    : "Hide unconfigured containers";
             }
         );
     }
@@ -1183,11 +1551,21 @@ const PipeleyenApp = (function () {
             fnShowToast("Pipeline started", "success");
         } else if (dictEvent.sType === "completed") {
             fnShowToast("Pipeline completed", "success");
+            if (dictEvent.sLogPath) {
+                fnDisplayLogInViewer(dictEvent.sLogPath);
+            }
         } else if (dictEvent.sType === "failed") {
             fnShowToast(
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
             );
+            if (dictEvent.sLogPath) {
+                fnDisplayLogInViewer(dictEvent.sLogPath);
+            }
         }
+    }
+
+    function fnDisplayLogInViewer(sLogPath) {
+        PipeleyenFigureViewer.fnDisplayFileFromContainer(sLogPath);
     }
 
     function fnShowErrorModal(sMessage) {
@@ -1370,6 +1748,20 @@ const PipeleyenApp = (function () {
     }
 
     /* --- Toast Notifications --- */
+
+    function fnShowOutputNotAvailable() {
+        var elViewport = document.getElementById("viewportA");
+        elViewport.innerHTML =
+            '<span class="placeholder output-missing-message">' +
+            'Output not available. Run the step to generate.</span>';
+    }
+
+    function fnShowBinaryNotViewable() {
+        var elViewport = document.getElementById("viewportA");
+        elViewport.innerHTML =
+            '<span class="placeholder">' +
+            'File cannot be viewed.</span>';
+    }
 
     function fnShowToast(sMessage, sType) {
         var el = document.createElement("div");

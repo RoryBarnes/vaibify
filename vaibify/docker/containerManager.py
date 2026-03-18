@@ -115,7 +115,7 @@ def _fnCleanupTempFiles(listCleanupFiles):
 
 
 def fnStopContainer(sProjectName):
-    """Stop a running container by project name.
+    """Stop and remove a container by project name.
 
     Parameters
     ----------
@@ -124,6 +124,18 @@ def fnStopContainer(sProjectName):
     """
     saCommand = ["docker", "stop", sProjectName]
     _fnRunDockerCommand(saCommand)
+    fnRemoveStopped(sProjectName)
+
+
+def fnRemoveStopped(sProjectName):
+    """Remove a stopped container if it still exists."""
+    saCommand = ["docker", "rm", sProjectName]
+    try:
+        subprocess.run(
+            saCommand, capture_output=True, text=True, check=False,
+        )
+    except Exception:
+        pass
 
 
 def fbContainerIsRunning(sProjectName):

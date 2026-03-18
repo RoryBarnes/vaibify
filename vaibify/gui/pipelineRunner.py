@@ -142,7 +142,7 @@ def _fnValidateStepCommands(
     """Check that command scripts exist in the step directory."""
     from . import workflowManager
 
-    for sKey in ("saSetupCommands", "saCommands"):
+    for sKey in ("saDataCommands", "saPlotCommands"):
         for sCommand in dictStep.get(sKey, []):
             sResolved = workflowManager.fsResolveCommand(
                 sCommand, dictVariables
@@ -268,12 +268,12 @@ async def _fnRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
 ):
-    """Run setup commands unless bPlotOnly is True."""
+    """Run data analysis commands unless bPlotOnly is True."""
     if dictStep.get("bPlotOnly", True):
         return 0
     return await _fnRunCommandList(
         connectionDocker, sContainerId,
-        dictStep.get("saSetupCommands", []),
+        dictStep.get("saDataCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
     )
 
@@ -292,7 +292,7 @@ async def fiRunStepCommands(
         return iExitCode
     return await _fnRunCommandList(
         connectionDocker, sContainerId,
-        dictStep.get("saCommands", []),
+        dictStep.get("saPlotCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
     )
 
@@ -462,7 +462,7 @@ async def _fbVerifyStepOutputs(
 ):
     """Return True if all output files for a step exist."""
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
-    for sOutputFile in dictStep.get("saOutputFiles", []):
+    for sOutputFile in dictStep.get("saPlotFiles", []):
         sCheckCommand = f"test -f {fsShellQuote(sOutputFile)}"
         iExitCode, _ = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCheckCommand, sWorkdir=sStepDirectory

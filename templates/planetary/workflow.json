@@ -8,13 +8,14 @@
             "sDirectory": "examples/VPLanetExample",
             "bEnabled": true,
             "bPlotOnly": false,
-            "saSetupCommands": [
+            "saDataCommands": [
                 "vplanet vpl.in"
             ],
-            "saCommands": [
+            "saDataFiles": [],
+            "saPlotCommands": [
                 "python makePlot.py"
             ],
-            "saOutputFiles": []
+            "saPlotFiles": []
         }
     ]
 }

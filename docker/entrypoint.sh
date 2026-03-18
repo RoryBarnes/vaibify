@@ -58,19 +58,21 @@ fnParseReposConf() {
     saRepoUrls=()
     saRepoBranches=()
     saRepoMethods=()
+    saRepoDestinations=()
 
     if [ ! -f "${REPOS_CONF}" ]; then
         echo "[vc] No container.conf found at ${REPOS_CONF}. Skipping repo sync."
         return
     fi
 
-    while IFS='|' read -r sName sUrl sBranch sMethod; do
+    while IFS='|' read -r sName sUrl sBranch sMethod sDestination; do
         [[ "${sName}" =~ ^#.*$ ]] && continue
         [[ -z "${sName}" ]] && continue
         saRepoNames+=("${sName}")
         saRepoUrls+=("${sUrl}")
         saRepoBranches+=("${sBranch}")
         saRepoMethods+=("${sMethod}")
+        saRepoDestinations+=("${sDestination}")
     done < "${REPOS_CONF}"
 }
 
@@ -146,8 +148,46 @@ fnSyncAllRepos() {
         fnCloneOrPull "${saRepoNames[$i]}" "${saRepoUrls[$i]}" "${saRepoBranches[$i]}"
     done
 
+    fnRelocateRepos
+
     echo ""
     echo "[vc] All repositories synced."
+}
+
+# ---------------------------------------------------------------------------
+# fnRelocateRepo: Move a cloned repo to a different workspace path
+# Arguments: sName sDestination
+# ---------------------------------------------------------------------------
+fnRelocateRepo() {
+    local sName="$1"
+    local sDestination="$2"
+    local sSourcePath="${WORKSPACE}/${sName}"
+    local sDestPath="${WORKSPACE}/${sDestination}"
+
+    if [ ! -d "${sSourcePath}" ]; then
+        return
+    fi
+    if [ -d "${sDestPath}" ] && [ -d "${sDestPath}/.git" ]; then
+        echo "[vc]   ${sDestination} already exists, skipping relocation."
+        return
+    fi
+    rm -rf "${sDestPath}"
+    mv "${sSourcePath}" "${sDestPath}"
+    echo "[vc]   Relocated ${sName} -> ${sDestination}"
+}
+
+# ---------------------------------------------------------------------------
+# fnRelocateRepos: Move repos that have a destination override
+# ---------------------------------------------------------------------------
+fnRelocateRepos() {
+    local iCount=${#saRepoNames[@]}
+    for (( i=0; i<iCount; i++ )); do
+        local sDestination="${saRepoDestinations[$i]}"
+        if [ -n "${sDestination}" ] && \
+           [ "${sDestination}" != "${saRepoNames[$i]}" ]; then
+            fnRelocateRepo "${saRepoNames[$i]}" "${sDestination}"
+        fi
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -400,6 +440,53 @@ fnCreateVaibifyDirectory() {
     fi
 }
 
+# ---------------------------------------------------------------------------
+# fnWriteClaudeMd: Generate CLAUDE.md so Claude knows the environment
+# ---------------------------------------------------------------------------
+fnWriteClaudeMd() {
+    local sClaudeMd="${WORKSPACE}/CLAUDE.md"
+    if [ -f "${sClaudeMd}" ]; then
+        return
+    fi
+    cat > "${sClaudeMd}" << 'CLAUDEMD'
+# Vaibify Container Environment
+
+You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted scientific data analysis.
+
+## Key Paths
+
+- `/workspace/` — All repositories and working files live here
+- `/workspace/.vaibify/workflows/` — Workflow JSON files defining pipeline steps
+- `/workspace/.vaibify/logs/` — Pipeline execution logs
+- `/workspace/.vaibify/director.py` — Standalone pipeline executor
+
+## Workflow System
+
+Each project uses a `workflow.json` file that defines a sequence of steps. Read the workflow file in `.vaibify/workflows/` to understand the current project's pipeline. Each step has:
+
+- **Data Analysis Commands** (`saDataCommands`): Heavy computation, only runs when `bPlotOnly` is false
+- **Data Files** (`saDataFiles`): Output files from data analysis
+- **Plot Commands** (`saPlotCommands`): Visualization commands that always run
+- **Plot Files** (`saOutputFiles`): Expected figure outputs
+
+Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>`
+
+## Conventions
+
+- Scientific Python code follows Hungarian notation (see the user's CLAUDE.md in `~/.claude/`)
+- Output figures go in a `Plot/` subdirectory
+- Cross-step references use `{StepNN.stem}` syntax for output file stems
+- The `vplanet` binary is available on PATH for planetary simulations
+
+## Important
+
+- Do not modify scientific calculations without explicit direction
+- Test changes with `pytest` before committing
+- All repositories are public or will be — never embed secrets in code
+CLAUDEMD
+    echo "[vc] Generated CLAUDE.md for container awareness."
+}
+
 # ===========================================================================
 # Main — only runs when executed directly (not when sourced by tests)
 # ===========================================================================
@@ -407,13 +494,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     set -euo pipefail
     fnPrintBanner
     fnCreateVaibifyDirectory
+    fnWriteClaudeMd
     fnPersistGitConfig
-    if command -v claude > /dev/null 2>&1; then
-        fnPersistClaudeConfig
-    fi
     fnConfigureGit
     fnParseReposConf
     fnSyncAllRepos
+    if command -v claude > /dev/null 2>&1; then
+        fnPersistClaudeConfig
+    fi
     fnBuildBinaries
     fnLoadBinariesEnv
     fnSourceBinariesInBashrc

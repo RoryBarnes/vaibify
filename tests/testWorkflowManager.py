@@ -22,8 +22,8 @@ def _fdictBuildMinimalWorkflow(iStepCount=2):
         listSteps.append({
             "sName": f"Step {iIndex + 1}",
             "sDirectory": f"/workspace/step{iIndex + 1}",
-            "saCommands": [f"python run{iIndex + 1}.py"],
-            "saOutputFiles": [
+            "saPlotCommands": [f"python run{iIndex + 1}.py"],
+            "saPlotFiles": [
                 f"/workspace/step{iIndex + 1}/output.pdf"
             ],
         })
@@ -51,7 +51,7 @@ def test_fbValidateWorkflow_missing_keys():
             {
                 "sName": "A",
                 "sDirectory": "/tmp",
-                "saCommands": ["echo hi"],
+                "saPlotCommands": ["echo hi"],
             }
         ],
     }
@@ -84,18 +84,18 @@ def test_fdictCreateStep_returns_valid_dict():
         sName="TestStep",
         sDirectory="/workspace/test",
         bPlotOnly=False,
-        saSetupCommands=["make"],
-        saCommands=["python plot.py"],
-        saOutputFiles=["output.pdf"],
+        saDataCommands=["make"],
+        saPlotCommands=["python plot.py"],
+        saPlotFiles=["output.pdf"],
     )
 
     assert dictStep["sName"] == "TestStep"
     assert dictStep["sDirectory"] == "/workspace/test"
     assert dictStep["bEnabled"] is True
     assert dictStep["bPlotOnly"] is False
-    assert dictStep["saSetupCommands"] == ["make"]
-    assert dictStep["saCommands"] == ["python plot.py"]
-    assert dictStep["saOutputFiles"] == ["output.pdf"]
+    assert dictStep["saDataCommands"] == ["make"]
+    assert dictStep["saPlotCommands"] == ["python plot.py"]
+    assert dictStep["saPlotFiles"] == ["output.pdf"]
 
 
 def test_fdictCreateStep_defaults():
@@ -105,9 +105,9 @@ def test_fdictCreateStep_defaults():
     )
 
     assert dictStep["bPlotOnly"] is True
-    assert dictStep["saSetupCommands"] == []
-    assert dictStep["saCommands"] == []
-    assert dictStep["saOutputFiles"] == []
+    assert dictStep["saDataCommands"] == []
+    assert dictStep["saPlotCommands"] == []
+    assert dictStep["saPlotFiles"] == []
 
 
 def test_fnInsertStep_renumbers_references():
@@ -117,16 +117,16 @@ def test_fnInsertStep_renumbers_references():
             {
                 "sName": "Step 1",
                 "sDirectory": "/workspace/s1",
-                "saCommands": ["python s1.py"],
-                "saOutputFiles": ["/workspace/s1/out.pdf"],
+                "saPlotCommands": ["python s1.py"],
+                "saPlotFiles": ["/workspace/s1/out.pdf"],
             },
             {
                 "sName": "Step 2",
                 "sDirectory": "/workspace/s2",
-                "saCommands": [
+                "saPlotCommands": [
                     "cp {Step01.out} /workspace/s2/input.pdf"
                 ],
-                "saOutputFiles": ["/workspace/s2/result.pdf"],
+                "saPlotFiles": ["/workspace/s2/result.pdf"],
             },
         ],
     }
@@ -134,8 +134,8 @@ def test_fnInsertStep_renumbers_references():
     dictNewStep = fdictCreateStep(
         sName="Inserted",
         sDirectory="/workspace/inserted",
-        saCommands=["echo inserted"],
-        saOutputFiles=["/workspace/inserted/new.pdf"],
+        saPlotCommands=["echo inserted"],
+        saPlotFiles=["/workspace/inserted/new.pdf"],
     )
 
     fnInsertStep(dictWorkflow, 1, dictNewStep)
@@ -143,7 +143,7 @@ def test_fnInsertStep_renumbers_references():
     assert len(dictWorkflow["listSteps"]) == 3
     assert dictWorkflow["listSteps"][1]["sName"] == "Inserted"
 
-    sUpdatedCommand = dictWorkflow["listSteps"][2]["saCommands"][0]
+    sUpdatedCommand = dictWorkflow["listSteps"][2]["saPlotCommands"][0]
     assert "Step01" in sUpdatedCommand
 
 
@@ -154,22 +154,22 @@ def test_fnDeleteStep_renumbers_references():
             {
                 "sName": "Step 1",
                 "sDirectory": "/workspace/s1",
-                "saCommands": ["echo s1"],
-                "saOutputFiles": ["/workspace/s1/out.pdf"],
+                "saPlotCommands": ["echo s1"],
+                "saPlotFiles": ["/workspace/s1/out.pdf"],
             },
             {
                 "sName": "Step 2",
                 "sDirectory": "/workspace/s2",
-                "saCommands": ["echo s2"],
-                "saOutputFiles": ["/workspace/s2/out.pdf"],
+                "saPlotCommands": ["echo s2"],
+                "saPlotFiles": ["/workspace/s2/out.pdf"],
             },
             {
                 "sName": "Step 3",
                 "sDirectory": "/workspace/s3",
-                "saCommands": [
+                "saPlotCommands": [
                     "cp {Step02.out} /workspace/s3/"
                 ],
-                "saOutputFiles": ["/workspace/s3/result.pdf"],
+                "saPlotFiles": ["/workspace/s3/result.pdf"],
             },
         ],
     }
@@ -179,7 +179,7 @@ def test_fnDeleteStep_renumbers_references():
     assert len(dictWorkflow["listSteps"]) == 2
     assert dictWorkflow["listSteps"][0]["sName"] == "Step 2"
 
-    sUpdatedCommand = dictWorkflow["listSteps"][1]["saCommands"][0]
+    sUpdatedCommand = dictWorkflow["listSteps"][1]["saPlotCommands"][0]
     assert "Step01" in sUpdatedCommand
 
 
@@ -190,22 +190,22 @@ def test_fnReorderStep_updates_references():
             {
                 "sName": "A",
                 "sDirectory": "/workspace/a",
-                "saCommands": ["echo a"],
-                "saOutputFiles": ["/workspace/a/a.pdf"],
+                "saPlotCommands": ["echo a"],
+                "saPlotFiles": ["/workspace/a/a.pdf"],
             },
             {
                 "sName": "B",
                 "sDirectory": "/workspace/b",
-                "saCommands": ["echo b"],
-                "saOutputFiles": ["/workspace/b/b.pdf"],
+                "saPlotCommands": ["echo b"],
+                "saPlotFiles": ["/workspace/b/b.pdf"],
             },
             {
                 "sName": "C",
                 "sDirectory": "/workspace/c",
-                "saCommands": [
+                "saPlotCommands": [
                     "cp {Step01.a} /workspace/c/"
                 ],
-                "saOutputFiles": ["/workspace/c/c.pdf"],
+                "saPlotFiles": ["/workspace/c/c.pdf"],
             },
         ],
     }
@@ -223,10 +223,10 @@ def test_flistValidateReferences_detects_broken_refs():
             {
                 "sName": "Step 1",
                 "sDirectory": "/workspace/s1",
-                "saCommands": [
+                "saPlotCommands": [
                     "cp {Step05.nonexistent} /tmp/"
                 ],
-                "saOutputFiles": ["/workspace/s1/out.pdf"],
+                "saPlotFiles": ["/workspace/s1/out.pdf"],
             },
         ],
     }

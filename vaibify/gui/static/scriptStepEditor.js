@@ -41,11 +41,13 @@ const PipeleyenStepEditor = (function () {
         document.getElementById("inputPlotOnly").checked =
             dictStep.bPlotOnly !== false;
         document.getElementById("inputSetupCommands").value =
-            (dictStep.saSetupCommands || []).join("\n");
+            (dictStep.saDataCommands || []).join("\n");
+        document.getElementById("inputDataFiles").value =
+            (dictStep.saDataFiles || []).join("\n");
         document.getElementById("inputCommands").value =
-            (dictStep.saCommands || []).join("\n");
+            (dictStep.saPlotCommands || []).join("\n");
         document.getElementById("inputOutputFiles").value =
-            (dictStep.saOutputFiles || []).join("\n");
+            (dictStep.saPlotFiles || []).join("\n");
 
         document.getElementById("modalTitle").textContent =
             "Edit Step: " + dictStep.sName;
@@ -57,6 +59,7 @@ const PipeleyenStepEditor = (function () {
         document.getElementById("inputStepDirectory").value = "";
         document.getElementById("inputPlotOnly").checked = true;
         document.getElementById("inputSetupCommands").value = "";
+        document.getElementById("inputDataFiles").value = "";
         document.getElementById("inputCommands").value = "";
         document.getElementById("inputOutputFiles").value = "";
     }
@@ -96,11 +99,12 @@ const PipeleyenStepEditor = (function () {
                 .value.trim(),
             bPlotOnly: document.getElementById("inputPlotOnly")
                 .checked,
-            saSetupCommands: flistParseTextarea(
+            saDataCommands: flistParseTextarea(
                 "inputSetupCommands"
             ),
-            saCommands: flistParseTextarea("inputCommands"),
-            saOutputFiles: flistParseTextarea("inputOutputFiles"),
+            saDataFiles: flistParseTextarea("inputDataFiles"),
+            saPlotCommands: flistParseTextarea("inputCommands"),
+            saPlotFiles: flistParseTextarea("inputOutputFiles"),
         };
     }
 

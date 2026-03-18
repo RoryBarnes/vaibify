@@ -133,7 +133,7 @@ def _fnSaveProvenanceFile(dictProvenance, sWorkdir):
 
 def _fnCollectStepOutputs(dictStep, sWorkdir, dictOutputs):
     """Hash each output file in a step and add to dictOutputs."""
-    for sOutputPath in dictStep.get("saOutputFiles", []):
+    for sOutputPath in dictStep.get("saPlotFiles", []):
         pathFile = _fpathResolveOutput(sOutputPath, sWorkdir)
         if pathFile.is_file():
             dictOutputs[str(pathFile)] = fsComputeFileHash(

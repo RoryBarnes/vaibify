@@ -44,9 +44,9 @@ def _fdictBuildTestStep(sName, sDirectory, listCommands=None):
         "sDirectory": sDirectory,
         "bEnabled": True,
         "bPlotOnly": True,
-        "saSetupCommands": [],
-        "saCommands": listCommands or [],
-        "saOutputFiles": [],
+        "saDataCommands": [],
+        "saPlotCommands": listCommands or [],
+        "saPlotFiles": [],
     }
 
 
