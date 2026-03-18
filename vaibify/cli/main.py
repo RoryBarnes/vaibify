@@ -4,6 +4,7 @@ Registers all subcommands with the top-level Click group.
 """
 
 import subprocess
+import sys
 
 import click
 
@@ -45,9 +46,14 @@ def stop():
     """Stop the running Vaibify environment."""
     configProject = fconfigLoad()
     from vaibify.docker.containerManager import fnStopContainer
-    click.echo(f"Stopping container {configProject.sProjectName} ...")
-    fnStopContainer(configProject.sProjectName)
-    click.echo("Stopped.")
+    sName = configProject.sProjectName
+    try:
+        click.echo(f"Stopping container {sName} ...")
+        fnStopContainer(sName)
+        click.echo("Stopped.")
+    except RuntimeError:
+        click.echo(f"ERROR: vaibify container {sName} is not active.")
+        sys.exit(1)
 
 
 @main.command("connect")

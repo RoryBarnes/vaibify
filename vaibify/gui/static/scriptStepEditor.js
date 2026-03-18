@@ -46,8 +46,6 @@ const PipeleyenStepEditor = (function () {
             (dictStep.saDataFiles || []).join("\n");
         document.getElementById("inputTestCommands").value =
             (dictStep.saTestCommands || []).join("\n");
-        document.getElementById("inputTestFiles").value =
-            (dictStep.saTestFiles || []).join("\n");
         document.getElementById("inputCommands").value =
             (dictStep.saPlotCommands || []).join("\n");
         document.getElementById("inputOutputFiles").value =
@@ -65,7 +63,6 @@ const PipeleyenStepEditor = (function () {
         document.getElementById("inputSetupCommands").value = "";
         document.getElementById("inputDataFiles").value = "";
         document.getElementById("inputTestCommands").value = "";
-        document.getElementById("inputTestFiles").value = "";
         document.getElementById("inputCommands").value = "";
         document.getElementById("inputOutputFiles").value = "";
     }
@@ -110,7 +107,6 @@ const PipeleyenStepEditor = (function () {
             ),
             saDataFiles: flistParseTextarea("inputDataFiles"),
             saTestCommands: flistParseTextarea("inputTestCommands"),
-            saTestFiles: flistParseTextarea("inputTestFiles"),
             saPlotCommands: flistParseTextarea("inputCommands"),
             saPlotFiles: flistParseTextarea("inputOutputFiles"),
         };

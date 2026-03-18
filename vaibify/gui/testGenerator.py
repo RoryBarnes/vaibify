@@ -227,7 +227,6 @@ def _fdictBuildTestResult(
         "sFilePath": sFilePath,
         "sContent": sCode,
         "saTestCommands": [f"pytest {sFilename}"],
-        "saTestFiles": [sFilePath],
     }
 
 

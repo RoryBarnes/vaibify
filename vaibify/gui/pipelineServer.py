@@ -38,7 +38,6 @@ class StepCreateRequest(BaseModel):
     saDataCommands: List[str] = []
     saDataFiles: List[str] = []
     saTestCommands: List[str] = []
-    saTestFiles: List[str] = []
     saPlotCommands: List[str] = []
     saPlotFiles: List[str] = []
 
@@ -51,7 +50,6 @@ class StepUpdateRequest(BaseModel):
     saDataCommands: Optional[List[str]] = None
     saDataFiles: Optional[List[str]] = None
     saTestCommands: Optional[List[str]] = None
-    saTestFiles: Optional[List[str]] = None
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
     dictVerification: Optional[dict] = None
@@ -116,7 +114,6 @@ def fdictStepFromRequest(request):
         saDataCommands=request.saDataCommands,
         saDataFiles=request.saDataFiles,
         saTestCommands=request.saTestCommands,
-        saTestFiles=request.saTestFiles,
         saPlotCommands=request.saPlotCommands,
         saPlotFiles=request.saPlotFiles,
     )
@@ -952,7 +949,6 @@ def _fnRegisterTestGenerate(app, dictCtx):
             raise HTTPException(500, f"Generation failed: {error}")
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         dictStep["saTestCommands"] = dictResult["saTestCommands"]
-        dictStep["saTestFiles"] = dictResult["saTestFiles"]
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bGenerated": True,
@@ -972,22 +968,25 @@ def _fnRegisterTestGenerate(app, dictCtx):
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         _fnRemoveTestFiles(
-            dictCtx["docker"], sContainerId, dictStep
+            dictCtx["docker"], sContainerId, dictStep, iStepIndex
         )
         dictStep["saTestCommands"] = []
-        dictStep["saTestFiles"] = []
         dictCtx["save"](sContainerId, dictWorkflow)
         return {"bSuccess": True}
 
 
-def _fnRemoveTestFiles(connectionDocker, sContainerId, dictStep):
-    """Remove test files from the container."""
+def _fnRemoveTestFiles(
+    connectionDocker, sContainerId, dictStep, iStepIndex,
+):
+    """Remove generated test file from the container."""
     from .pipelineRunner import fsShellQuote
+    from .testGenerator import fsTestFilePath
 
-    for sPath in dictStep.get("saTestFiles", []):
-        connectionDocker.ftResultExecuteCommand(
-            sContainerId, f"rm -f {fsShellQuote(sPath)}"
-        )
+    sDirectory = dictStep.get("sDirectory", "")
+    sPath = fsTestFilePath(sDirectory, iStepIndex)
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"rm -f {fsShellQuote(sPath)}"
+    )
 
 
 def _fnRegisterStepRoutes(app, dictCtx):

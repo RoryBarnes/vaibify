@@ -434,6 +434,32 @@ const PipeleyenApp = (function () {
         elList.innerHTML = sHtml;
         fnBindStepEvents();
         fnCheckOutputFileExistence();
+        fnCheckDataFileExistence();
+    }
+
+    function fnCheckDataFileExistence() {
+        if (!sContainerId || !dictWorkflow) return;
+        dictWorkflow.listSteps.forEach(function (step, iStep) {
+            var listData = step.saDataFiles || [];
+            if (listData.length === 0) return;
+            var iPresent = 0;
+            var iTotal = listData.length;
+            listData.forEach(function (sFile) {
+                var sDir = step.sDirectory || "";
+                var sUrl = "/api/figure/" + sContainerId + "/" +
+                    sFile + "?sWorkdir=" +
+                    encodeURIComponent(sDir);
+                fetch(sUrl, { method: "HEAD" }).then(function (r) {
+                    if (r.ok) {
+                        iPresent++;
+                        if (iPresent >= iTotal) {
+                            setStepsWithData.add(iStep);
+                            fnUpdateGenerateButton(iStep);
+                        }
+                    }
+                }).catch(function () {});
+            });
+        });
     }
 
     function fnCheckOutputFileExistence() {
@@ -564,6 +590,9 @@ const PipeleyenApp = (function () {
             (step.bPlotOnly !== false ? " checked" : "") + '>' +
             ' Plot only (skip data analysis)</label></div>';
 
+        /* Run Stats */
+        sHtml += fsRenderRunStats(step);
+
         /* Data Analysis Commands */
         sHtml += fsRenderSectionLabel(
             "Data Analysis Commands", iIndex, "saDataCommands"
@@ -684,11 +713,17 @@ const PipeleyenApp = (function () {
     ) {
         var sClickClass = sApprover === "user" ? " clickable" :
             " expandable";
+        var sTriangle = "";
+        if (sApprover === "unitTest") {
+            var bExpanded = setExpandedUnitTests.has(iIndex);
+            sTriangle = '<span class="expand-triangle">' +
+                (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
+        }
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
             '" data-approver="' + sApprover + '">' +
             '<span class="verification-label">' +
-            fnEscapeHtml(sLabel) + '</span>' +
+            sTriangle + fnEscapeHtml(sLabel) + '</span>' +
             '<span class="verification-badge state-' + sState + '">' +
             fsVerificationStateIcon(sState) + ' ' +
             fsVerificationStateLabel(sState) + '</span></div>';
@@ -700,23 +735,27 @@ const PipeleyenApp = (function () {
             "Test Commands", step.saTestCommands, iIndex, "command"
         );
         sHtml += fsRenderTestSection(
-            "Test Files", step.saTestFiles, iIndex, "file"
+            "Data Files", step.saDataFiles, iIndex, "file"
         );
         var sLogPath = (fdictGetVerification(step)).sTestLogPath;
         if (sLogPath) {
             sHtml += '<div class="test-last-run" data-log="' +
                 fnEscapeHtml(sLogPath) + '">Last Run: view log</div>';
         }
-        if ((step.saDataCommands || []).length > 0 &&
-            (step.saTestCommands || []).length === 0) {
-            var bDisabled = !setStepsWithData.has(iIndex);
-            sHtml += '<button class="btn-generate-test" data-step="' +
-                iIndex + '"' +
-                (bDisabled ? " disabled" : "") +
-                '>Generate Tests</button>';
-        }
+        sHtml += fsRenderGenerateButton(step, iIndex);
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderGenerateButton(step, iIndex) {
+        if ((step.saDataCommands || []).length === 0) return "";
+        if ((step.saTestCommands || []).length > 0) return "";
+        var bDisabled = !setStepsWithData.has(iIndex);
+        return '<button class="btn-generate-test" data-step="' +
+            iIndex + '"' +
+            (bDisabled ? " disabled" : "") +
+            ' id="btnGenTest' + iIndex + '">' +
+            'Generate Tests</button>';
     }
 
     function fsRenderTestSection(sLabel, listItems, iIndex, sType) {
@@ -757,6 +796,30 @@ const PipeleyenApp = (function () {
             return "partial";
         }
         return "";
+    }
+
+    function fsRenderRunStats(step) {
+        var dictStats = step.dictRunStats || {};
+        if (!dictStats.sLastRun) return "";
+        var sHtml = '<div class="run-stats">';
+        sHtml += '<span class="run-stat">Last run: ' +
+            fnEscapeHtml(dictStats.sLastRun) + '</span>';
+        if (dictStats.fWallClock !== undefined) {
+            sHtml += '<span class="run-stat">Wall-clock: ' +
+                fsFormatDuration(dictStats.fWallClock) + '</span>';
+        }
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsFormatDuration(fSeconds) {
+        if (fSeconds < 60) return fSeconds.toFixed(1) + "s";
+        var iMinutes = Math.floor(fSeconds / 60);
+        var fRemainder = (fSeconds % 60).toFixed(0);
+        if (iMinutes < 60) return iMinutes + "m " + fRemainder + "s";
+        var iHours = Math.floor(iMinutes / 60);
+        iMinutes = iMinutes % 60;
+        return iHours + "h " + iMinutes + "m";
     }
 
     function fsRenderSectionLabel(sLabel, iStepIdx, sArrayKey) {
@@ -1025,7 +1088,12 @@ const PipeleyenApp = (function () {
     }
 
     async function fnGenerateTests(iStep) {
-        fnShowToast("Generating tests...", "success");
+        var elBtn = document.getElementById("btnGenTest" + iStep);
+        if (elBtn) {
+            elBtn.disabled = true;
+            elBtn.innerHTML =
+                '<span class="spinner"></span> Building Tests';
+        }
         try {
             var response = await fetch(
                 "/api/steps/" + sContainerId + "/" + iStep +

@@ -152,7 +152,6 @@ def fdictCreateStep(
     saDataCommands=None,
     saDataFiles=None,
     saTestCommands=None,
-    saTestFiles=None,
     saPlotCommands=None,
     saPlotFiles=None,
 ):
@@ -165,13 +164,13 @@ def fdictCreateStep(
         "saDataCommands": saDataCommands if saDataCommands else [],
         "saDataFiles": saDataFiles if saDataFiles else [],
         "saTestCommands": saTestCommands if saTestCommands else [],
-        "saTestFiles": saTestFiles if saTestFiles else [],
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
         "dictVerification": {
             "sUnitTest": "untested",
             "sUser": "untested",
         },
+        "dictRunStats": {},
     }
 
 

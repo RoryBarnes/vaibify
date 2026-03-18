@@ -276,9 +276,8 @@ def test_flistFindWorkflowsInContainer_custom_search_root():
 def test_fdictCreateStep_includes_test_fields():
     dictStep = fdictCreateStep(sName="Test", sDirectory="/workspace")
     assert "saTestCommands" in dictStep
-    assert "saTestFiles" in dictStep
     assert dictStep["saTestCommands"] == []
-    assert dictStep["saTestFiles"] == []
+    assert "dictRunStats" in dictStep
 
 
 def test_fbStepRequiresTests_true_when_data_no_tests():

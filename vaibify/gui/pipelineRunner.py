@@ -464,12 +464,22 @@ async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
-    """Run a single step and emit its result event."""
+    """Run a single step, record timing, and emit result."""
+    import time
+    fStartTime = time.time()
+    sStartTimestamp = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    )
     iExitCode = await fiRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber,
     )
+    fWallClock = time.time() - fStartTime
+    dictStep["dictRunStats"] = {
+        "sLastRun": sStartTimestamp,
+        "fWallClock": round(fWallClock, 1),
+    }
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
 

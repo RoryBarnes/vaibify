@@ -434,6 +434,14 @@ const PipeleyenFigureViewer = (function () {
         elEditBtn.title = "Edit";
         elEditBtn.innerHTML = "&#9998;";
         elEditBtn.addEventListener("click", function () {
+            if (fbIsOutputFile(sUrl)) {
+                if (!confirm(
+                    "This file is pipeline output that may be " +
+                    "used for verification. Edit anyway?"
+                )) {
+                    return;
+                }
+            }
             fnEnterEditMode(sText, sUrl, elViewport);
         });
         elToolbar.appendChild(elEditBtn);
@@ -499,6 +507,7 @@ const PipeleyenFigureViewer = (function () {
         }).then(function (r) {
             if (!r.ok) throw new Error("Save failed");
             PipeleyenApp.fnShowToast("File saved", "success");
+            fnRevertTestStateForFile(sUrl);
             fnRenderTextWithToolbar(sContent, sUrl, elViewport);
         }).catch(function (error) {
             PipeleyenApp.fnShowToast(
@@ -524,6 +533,44 @@ const PipeleyenFigureViewer = (function () {
                 );
             }
         });
+    }
+
+    function fbIsOutputFile(sUrl) {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        if (!dictWorkflow || !dictWorkflow.listSteps) return false;
+        var sBasename = sUrl.split("/").pop().split("?")[0];
+        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            if (fbPathBelongsToStep(
+                sBasename, dictWorkflow.listSteps[i]
+            )) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function fnRevertTestStateForFile(sUrl) {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        if (!dictWorkflow || !dictWorkflow.listSteps) return;
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sBasename = sUrl.split("/").pop().split("?")[0];
+        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            var dictStep = dictWorkflow.listSteps[i];
+            if (fbPathBelongsToStep(sBasename, dictStep)) {
+                if (dictStep.dictVerification) {
+                    dictStep.dictVerification.sUnitTest = "untested";
+                    fetch("/api/steps/" + sContainerId + "/" + i, {
+                        method: "PUT",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            dictVerification: dictStep.dictVerification
+                        }),
+                    });
+                }
+                PipeleyenApp.fnRenderStepList();
+                return;
+            }
+        }
     }
 
     /* --- Test Failure Outline --- */
