@@ -37,6 +37,8 @@ class StepCreateRequest(BaseModel):
     bPlotOnly: bool = True
     saDataCommands: List[str] = []
     saDataFiles: List[str] = []
+    saTestCommands: List[str] = []
+    saTestFiles: List[str] = []
     saPlotCommands: List[str] = []
     saPlotFiles: List[str] = []
 
@@ -48,6 +50,8 @@ class StepUpdateRequest(BaseModel):
     bEnabled: Optional[bool] = None
     saDataCommands: Optional[List[str]] = None
     saDataFiles: Optional[List[str]] = None
+    saTestCommands: Optional[List[str]] = None
+    saTestFiles: Optional[List[str]] = None
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
     dictVerification: Optional[dict] = None
@@ -71,6 +75,11 @@ class RunRequest(BaseModel):
 
 class FileWriteRequest(BaseModel):
     sContent: str
+
+
+class TestGenerateRequest(BaseModel):
+    bUseApi: bool = False
+    sApiKey: Optional[str] = None
 
 
 def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
@@ -106,6 +115,8 @@ def fdictStepFromRequest(request):
         bPlotOnly=request.bPlotOnly,
         saDataCommands=request.saDataCommands,
         saDataFiles=request.saDataFiles,
+        saTestCommands=request.saTestCommands,
+        saTestFiles=request.saTestFiles,
         saPlotCommands=request.saPlotCommands,
         saPlotFiles=request.saPlotFiles,
     )
@@ -908,6 +919,77 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterSettingsPut(app, dictCtx)
 
 
+def _fnRegisterTestGenerate(app, dictCtx):
+    """Register test generation and deletion routes."""
+
+    @app.post("/api/steps/{sContainerId}/{iStepIndex}/generate-test")
+    async def fnGenerateTest(
+        sContainerId: str, iStepIndex: int,
+        request: TestGenerateRequest,
+    ):
+        dictCtx["require"]()
+        from .testGenerator import (
+            fbContainerHasClaude, fdictGenerateTest,
+        )
+        if not request.bUseApi:
+            bHasClaude = fbContainerHasClaude(
+                dictCtx["docker"], sContainerId
+            )
+            if not bHasClaude:
+                return {"bNeedsFallback": True}
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId
+        )
+        dictVars = dictCtx["variables"](sContainerId)
+        try:
+            dictResult = await asyncio.to_thread(
+                fdictGenerateTest,
+                dictCtx["docker"], sContainerId, iStepIndex,
+                dictWorkflow, dictVars,
+                request.bUseApi, request.sApiKey,
+            )
+        except Exception as error:
+            raise HTTPException(500, f"Generation failed: {error}")
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        dictStep["saTestCommands"] = dictResult["saTestCommands"]
+        dictStep["saTestFiles"] = dictResult["saTestFiles"]
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {
+            "bGenerated": True,
+            "sFilePath": dictResult["sFilePath"],
+            "sContent": dictResult["sContent"],
+        }
+
+    @app.delete(
+        "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
+    )
+    async def fnDeleteGeneratedTest(
+        sContainerId: str, iStepIndex: int,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId
+        )
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        _fnRemoveTestFiles(
+            dictCtx["docker"], sContainerId, dictStep
+        )
+        dictStep["saTestCommands"] = []
+        dictStep["saTestFiles"] = []
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"bSuccess": True}
+
+
+def _fnRemoveTestFiles(connectionDocker, sContainerId, dictStep):
+    """Remove test files from the container."""
+    from .pipelineRunner import fsShellQuote
+
+    for sPath in dictStep.get("saTestFiles", []):
+        connectionDocker.ftResultExecuteCommand(
+            sContainerId, f"rm -f {fsShellQuote(sPath)}"
+        )
+
+
 def _fnRegisterStepRoutes(app, dictCtx):
     """Register all step CRUD routes."""
     _fnRegisterStepsList(app, dictCtx)
@@ -923,6 +1005,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     """Register all API routes on the app."""
     _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot)
     _fnRegisterStepRoutes(app, dictCtx)
+    _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterPipelineWs(app, dictCtx)

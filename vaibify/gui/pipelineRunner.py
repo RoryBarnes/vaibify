@@ -142,7 +142,7 @@ def _fnValidateStepCommands(
     """Check that command scripts exist in the step directory."""
     from . import workflowManager
 
-    for sKey in ("saDataCommands", "saPlotCommands"):
+    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands"):
         for sCommand in dictStep.get(sKey, []):
             sResolved = workflowManager.fsResolveCommand(
                 sCommand, dictVariables
@@ -264,40 +264,94 @@ async def _fiRunWithLogging(
     )
 
 
-async def _fnRunSetupIfNeeded(
+async def _fiRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
 ):
     """Run data analysis commands unless bPlotOnly is True."""
     if dictStep.get("bPlotOnly", True):
         return 0
-    return await _fnRunCommandList(
+    return await _fiRunCommandList(
         connectionDocker, sContainerId,
         dictStep.get("saDataCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
     )
 
 
+async def _fiRunTestCommands(
+    connectionDocker, sContainerId, dictStep,
+    sStepDirectory, dictVariables, fnStatusCallback,
+    iStepNumber,
+):
+    """Run test commands and emit result. Does not abort on failure."""
+    listTestCommands = dictStep.get("saTestCommands", [])
+    if not listTestCommands:
+        return 0
+    await fnStatusCallback(
+        {"sType": "output", "sLine": "--- Running unit tests ---"}
+    )
+    listTestLog = []
+    fnTestLog = ffBuildLoggingCallback(fnStatusCallback, listTestLog)
+    iExitCode = await _fiRunCommandList(
+        connectionDocker, sContainerId, listTestCommands,
+        sStepDirectory, dictVariables, fnTestLog,
+    )
+    await _fnWriteTestLog(
+        connectionDocker, sContainerId, iStepNumber, listTestLog
+    )
+    sResult = "passed" if iExitCode == 0 else "failed"
+    await fnStatusCallback({
+        "sType": "testResult",
+        "iStepNumber": iStepNumber,
+        "sResult": sResult,
+    })
+    return iExitCode
+
+
+async def _fnWriteTestLog(
+    connectionDocker, sContainerId, iStepNumber, listLogLines,
+):
+    """Write test output to a separate log file."""
+    from . import workflowManager
+
+    sLogsDir = posixpath.join(
+        workflowManager.DEFAULT_SEARCH_ROOT,
+        workflowManager.VAIBIFY_LOGS_DIR,
+    )
+    sTimestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    sFilename = f"test_Step{iStepNumber:02d}_{sTimestamp}.log"
+    sLogPath = posixpath.join(sLogsDir, sFilename)
+    await fnWriteLogToContainer(
+        connectionDocker, sContainerId, sLogPath, listLogLines
+    )
+
+
 async def fiRunStepCommands(
     connectionDocker, sContainerId, dictStep,
     sWorkdir, dictVariables, fnStatusCallback,
+    iStepNumber=0,
 ):
     """Run a single step's commands sequentially in its directory."""
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
-    iExitCode = await _fnRunSetupIfNeeded(
+    iExitCode = await _fiRunSetupIfNeeded(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,
     )
     if iExitCode != 0:
         return iExitCode
-    return await _fnRunCommandList(
+    await _fiRunTestCommands(
+        connectionDocker, sContainerId, dictStep,
+        sStepDirectory, dictVariables, fnStatusCallback,
+        iStepNumber,
+    )
+    return await _fiRunCommandList(
         connectionDocker, sContainerId,
         dictStep.get("saPlotCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
     )
 
 
-async def _fnRunCommandList(
+async def _fiRunCommandList(
     connectionDocker, sContainerId, listCommands,
     sWorkdir, dictVariables, fnStatusCallback,
 ):
@@ -308,7 +362,7 @@ async def _fnRunCommandList(
         sResolved = workflowManager.fsResolveCommand(
             sCommand, dictVariables
         )
-        iExitCode = await _fnRunSingleCommand(
+        iExitCode = await _fiRunSingleCommand(
             connectionDocker, sContainerId,
             sCommand, sResolved, sWorkdir, fnStatusCallback,
         )
@@ -317,7 +371,7 @@ async def _fnRunCommandList(
     return 0
 
 
-async def _fnRunSingleCommand(
+async def _fiRunSingleCommand(
     connectionDocker, sContainerId,
     sOriginal, sResolved, sWorkdir, fnStatusCallback,
 ):
@@ -414,6 +468,7 @@ async def _fnRunOneStep(
     iExitCode = await fiRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
+        iStepNumber=iStepNumber,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode

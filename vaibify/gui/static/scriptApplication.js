@@ -33,6 +33,7 @@ const PipeleyenApp = (function () {
         fnBindUnconfiguredToggle();
         fnBindRefreshButton();
         fnBindErrorModal();
+        fnBindApiConfirmModal();
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
         fnBindResizeHandles();
@@ -437,6 +438,9 @@ const PipeleyenApp = (function () {
 
     function fnCheckOutputFileExistence() {
         if (!sContainerId) return;
+        setStepsWithData.clear();
+        var dictDataCounts = {};
+        var dictDataPresent = {};
         document.querySelectorAll(
             '.detail-item.output'
         ).forEach(function (el) {
@@ -444,6 +448,8 @@ const PipeleyenApp = (function () {
             if (!elText || elText.classList.contains("file-invalid")) {
                 return;
             }
+            var iStep = parseInt(el.dataset.step);
+            var sArray = el.dataset.array;
             var sResolved = el.dataset.resolved;
             var sWorkdir = el.dataset.workdir || "";
             var sUrl = "/api/figure/" + sContainerId + "/" +
@@ -451,9 +457,17 @@ const PipeleyenApp = (function () {
             if (sWorkdir) {
                 sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
             }
+            if (sArray === "saDataFiles") {
+                dictDataCounts[iStep] =
+                    (dictDataCounts[iStep] || 0) + 1;
+            }
             fetch(sUrl, { method: "HEAD" }).then(function (r) {
                 if (r.ok) {
                     fnMarkOutputPresent(el);
+                    fnTrackDataPresence(
+                        iStep, sArray, dictDataCounts,
+                        dictDataPresent
+                    );
                 } else {
                     fnMarkOutputMissing(el);
                 }
@@ -461,6 +475,26 @@ const PipeleyenApp = (function () {
                 fnMarkOutputMissing(el);
             });
         });
+    }
+
+    function fnTrackDataPresence(
+        iStep, sArray, dictCounts, dictPresent
+    ) {
+        if (sArray !== "saDataFiles") return;
+        dictPresent[iStep] = (dictPresent[iStep] || 0) + 1;
+        if (dictPresent[iStep] >= (dictCounts[iStep] || 0)) {
+            setStepsWithData.add(iStep);
+            fnUpdateGenerateButton(iStep);
+        }
+    }
+
+    function fnUpdateGenerateButton(iStep) {
+        var elBtn = document.querySelector(
+            '.btn-generate-test[data-step="' + iStep + '"]'
+        );
+        if (elBtn) {
+            elBtn.disabled = false;
+        }
     }
 
     function fnMarkOutputPresent(el) {
@@ -611,14 +645,33 @@ const PipeleyenApp = (function () {
         return dictIcons[sState] || "\u2014";
     }
 
+    var setExpandedUnitTests = new Set();
+    var setStepsWithData = new Set();
+    var setGeneratedTestsPending = new Set();
+
+    function fsEffectiveTestState(step) {
+        var dictVerify = fdictGetVerification(step);
+        var sState = dictVerify.sUnitTest;
+        if (sState === "untested" &&
+            (step.saDataCommands || []).length > 0 &&
+            (step.saTestCommands || []).length === 0) {
+            return "error";
+        }
+        return sState;
+    }
+
     function fsRenderVerificationBlock(step, iIndex) {
+        var sTestState = fsEffectiveTestState(step);
         var dictVerify = fdictGetVerification(step);
         var sHtml = '<div class="detail-label">Verification</div>';
         sHtml += '<div class="verification-block" data-step="' +
             iIndex + '">';
         sHtml += fsRenderVerificationRow(
-            "Unit Tests", dictVerify.sUnitTest, "unitTest", iIndex
+            "Unit Tests", sTestState, "unitTest", iIndex
         );
+        if (setExpandedUnitTests.has(iIndex)) {
+            sHtml += fsRenderUnitTestExpanded(step, iIndex);
+        }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
         );
@@ -629,9 +682,9 @@ const PipeleyenApp = (function () {
     function fsRenderVerificationRow(
         sLabel, sState, sApprover, iIndex
     ) {
-        var bClickable = sApprover === "user";
-        return '<div class="verification-row' +
-            (bClickable ? " clickable" : "") +
+        var sClickClass = sApprover === "user" ? " clickable" :
+            " expandable";
+        return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
             '" data-approver="' + sApprover + '">' +
             '<span class="verification-label">' +
@@ -639,6 +692,47 @@ const PipeleyenApp = (function () {
             '<span class="verification-badge state-' + sState + '">' +
             fsVerificationStateIcon(sState) + ' ' +
             fsVerificationStateLabel(sState) + '</span></div>';
+    }
+
+    function fsRenderUnitTestExpanded(step, iIndex) {
+        var sHtml = '<div class="unit-test-expanded">';
+        sHtml += fsRenderTestSection(
+            "Test Commands", step.saTestCommands, iIndex, "command"
+        );
+        sHtml += fsRenderTestSection(
+            "Test Files", step.saTestFiles, iIndex, "file"
+        );
+        var sLogPath = (fdictGetVerification(step)).sTestLogPath;
+        if (sLogPath) {
+            sHtml += '<div class="test-last-run" data-log="' +
+                fnEscapeHtml(sLogPath) + '">Last Run: view log</div>';
+        }
+        if ((step.saDataCommands || []).length > 0 &&
+            (step.saTestCommands || []).length === 0) {
+            var bDisabled = !setStepsWithData.has(iIndex);
+            sHtml += '<button class="btn-generate-test" data-step="' +
+                iIndex + '"' +
+                (bDisabled ? " disabled" : "") +
+                '>Generate Tests</button>';
+        }
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderTestSection(sLabel, listItems, iIndex, sType) {
+        var sHtml = '<div class="test-section-label">' + sLabel +
+            ' <button class="section-add test-add" data-step="' +
+            iIndex + '" data-test-type="' + sType +
+            '" title="Add">+</button></div>';
+        if (!listItems || listItems.length === 0) return sHtml;
+        for (var i = 0; i < listItems.length; i++) {
+            var sCls = sType === "file" ?
+                "test-file-item" : "test-command-item";
+            sHtml += '<div class="' + sCls + '" data-step="' +
+                iIndex + '" data-idx="' + i + '">' +
+                fnEscapeHtml(listItems[i]) + '</div>';
+        }
+        return sHtml;
     }
 
     var sUserName = "User";
@@ -649,7 +743,7 @@ const PipeleyenApp = (function () {
 
     function fsComputeStepDotState(step) {
         var dictVerify = fdictGetVerification(step);
-        var sUnit = dictVerify.sUnitTest;
+        var sUnit = fsEffectiveTestState(step);
         var sUser = dictVerify.sUser;
         if (sUnit === "failed" || sUnit === "error" ||
             sUser === "failed" || sUser === "error") {
@@ -877,13 +971,163 @@ const PipeleyenApp = (function () {
             '.verification-row[data-approver="unitTest"]'
         ).forEach(function (el) {
             el.addEventListener("click", function () {
-                fnShowToast(
-                    "Unit test results will be shown here " +
-                    "when test infrastructure is configured.",
-                    "success"
-                );
+                var iStep = parseInt(el.dataset.step);
+                fnToggleUnitTestExpand(iStep);
             });
         });
+        fnBindUnitTestDetailEvents(elList);
+    }
+
+    function fnToggleUnitTestExpand(iStep) {
+        if (setExpandedUnitTests.has(iStep)) {
+            setExpandedUnitTests.delete(iStep);
+        } else {
+            setExpandedUnitTests.add(iStep);
+        }
+        fnRenderStepList();
+    }
+
+    function fnBindUnitTestDetailEvents(elList) {
+        elList.querySelectorAll(".test-file-item").forEach(
+            function (el) {
+                el.addEventListener("click", function () {
+                    PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                        el.textContent.trim()
+                    );
+                });
+            }
+        );
+        elList.querySelectorAll(".test-last-run").forEach(
+            function (el) {
+                el.addEventListener("click", function () {
+                    PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                        el.dataset.log
+                    );
+                });
+            }
+        );
+        elList.querySelectorAll(".test-add").forEach(function (el) {
+            el.addEventListener("click", function (event) {
+                event.stopPropagation();
+                var iStep = parseInt(el.dataset.step);
+                var sType = el.dataset.testType;
+                fnAddTestItem(iStep, sType);
+            });
+        });
+        elList.querySelectorAll(".btn-generate-test").forEach(
+            function (el) {
+                el.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                    fnGenerateTests(parseInt(el.dataset.step));
+                });
+            }
+        );
+    }
+
+    async function fnGenerateTests(iStep) {
+        fnShowToast("Generating tests...", "success");
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep +
+                "/generate-test",
+                { method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({}) }
+            );
+            var dictResult = await response.json();
+            if (dictResult.bNeedsFallback) {
+                fnShowApiKeyDialog(iStep);
+                return;
+            }
+            if (!dictResult.bGenerated) {
+                fnShowToast("Generation failed", "error");
+                return;
+            }
+            fnHandleGeneratedTest(iStep, dictResult);
+        } catch (error) {
+            fnShowToast("Generation failed: " + error.message, "error");
+        }
+    }
+
+    function fnHandleGeneratedTest(iStep, dictResult) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        dictStep.saTestCommands = ["pytest " +
+            dictResult.sFilePath.split("/").pop()];
+        dictStep.saTestFiles = [dictResult.sFilePath];
+        setGeneratedTestsPending.add(iStep);
+        fnRenderStepList();
+        PipeleyenFigureViewer.fnDisplayGeneratedTest(
+            dictResult.sFilePath, dictResult.sContent, iStep
+        );
+    }
+
+    function fnShowApiKeyDialog(iStep) {
+        var elModal = document.getElementById("modalApiConfirm");
+        elModal.style.display = "flex";
+        elModal.dataset.step = iStep;
+    }
+
+    function fnFinalizeGeneratedTest(iStep) {
+        setGeneratedTestsPending.delete(iStep);
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (!dictStep.dictVerification) {
+            dictStep.dictVerification = {
+                sUnitTest: "untested", sUser: "untested",
+            };
+        }
+        dictStep.dictVerification.sUnitTest = "passed";
+        fnSaveStepUpdate(iStep, {
+            dictVerification: dictStep.dictVerification,
+        });
+        fnRenderStepList();
+    }
+
+    async function fnCancelGeneratedTest(iStep) {
+        setGeneratedTestsPending.delete(iStep);
+        try {
+            await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep +
+                "/generated-test",
+                { method: "DELETE" }
+            );
+        } catch (error) {
+            fnShowToast("Delete failed", "error");
+        }
+        var dictStep = dictWorkflow.listSteps[iStep];
+        dictStep.saTestCommands = [];
+        dictStep.saTestFiles = [];
+        fnRenderStepList();
+    }
+
+    async function fnAddTestItem(iStep, sType) {
+        var sPrompt = sType === "file" ?
+            "Test file path:" : "Test command:";
+        var sValue = prompt(sPrompt);
+        if (!sValue || !sValue.trim()) return;
+        var dictStep = dictWorkflow.listSteps[iStep];
+        var sKey = sType === "file" ?
+            "saTestFiles" : "saTestCommands";
+        if (!dictStep[sKey]) dictStep[sKey] = [];
+        dictStep[sKey].push(sValue.trim());
+        var dictUpdate = {};
+        dictUpdate[sKey] = dictStep[sKey];
+        await fnSaveStepUpdate(iStep, dictUpdate);
+        fnRenderStepList();
+    }
+
+    async function fnSaveStepUpdate(iStep, dictUpdate) {
+        try {
+            await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep,
+                {
+                    method: "PUT",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(dictUpdate),
+                }
+            );
+        } catch (error) {
+            fnShowToast("Save failed", "error");
+        }
     }
 
     async function fnCycleUserVerification(iStep) {
@@ -1606,6 +1850,8 @@ const PipeleyenApp = (function () {
             fnShowErrorModal(
                 "Pre-flight validation failed:\n\n" + sErrors
             );
+        } else if (dictEvent.sType === "testResult") {
+            fnHandleTestResult(dictEvent);
         } else if (dictEvent.sType === "stepPass") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
             fnRenderStepList();
@@ -1630,6 +1876,22 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnHandleTestResult(dictEvent) {
+        var iStep = dictEvent.iStepNumber - 1;
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (!dictStep.dictVerification) {
+            dictStep.dictVerification = {
+                sUnitTest: "untested", sUser: "untested",
+            };
+        }
+        dictStep.dictVerification.sUnitTest = dictEvent.sResult;
+        fnRenderStepList();
+        var sLabel = dictEvent.sResult === "passed" ?
+            "Tests passed" : "Tests FAILED";
+        fnShowToast("Step " + (iStep + 1) + ": " + sLabel,
+            dictEvent.sResult === "passed" ? "success" : "error");
+    }
+
     function fnDisplayLogInViewer(sLogPath) {
         PipeleyenFigureViewer.fnDisplayFileFromContainer(sLogPath);
     }
@@ -1647,6 +1909,55 @@ const PipeleyenApp = (function () {
                 document.getElementById("modalError").style.display = "none";
             }
         );
+    }
+
+    function fnBindApiConfirmModal() {
+        document.getElementById("btnApiCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalApiConfirm")
+                    .style.display = "none";
+            }
+        );
+        document.getElementById("btnApiConfirm").addEventListener(
+            "click", function () {
+                var elModal = document.getElementById("modalApiConfirm");
+                var iStep = parseInt(elModal.dataset.step);
+                var sApiKey = document.getElementById(
+                    "inputApiKey"
+                ).value.trim();
+                if (!sApiKey) {
+                    fnShowToast("API key is required", "error");
+                    return;
+                }
+                elModal.style.display = "none";
+                fnGenerateTestsWithApi(iStep, sApiKey);
+            }
+        );
+    }
+
+    async function fnGenerateTestsWithApi(iStep, sApiKey) {
+        fnShowToast("Generating tests via API...", "success");
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep +
+                "/generate-test",
+                { method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({
+                      bUseApi: true, sApiKey: sApiKey,
+                  }) }
+            );
+            var dictResult = await response.json();
+            if (!response.ok) {
+                fnShowToast(
+                    dictResult.detail || "Generation failed", "error"
+                );
+                return;
+            }
+            fnHandleGeneratedTest(iStep, dictResult);
+        } catch (error) {
+            fnShowToast("Generation failed: " + error.message, "error");
+        }
     }
 
     function fnInitPipelineOutput() {
@@ -1860,6 +2171,11 @@ const PipeleyenApp = (function () {
         fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },
         fdictBuildClientVariables: fdictBuildClientVariables,
         fsResolveTemplate: fsResolveTemplate,
+        fnFinalizeGeneratedTest: fnFinalizeGeneratedTest,
+        fnCancelGeneratedTest: fnCancelGeneratedTest,
+        fbIsTestPending: function (iStep) {
+            return setGeneratedTestsPending.has(iStep);
+        },
     };
 })();
 

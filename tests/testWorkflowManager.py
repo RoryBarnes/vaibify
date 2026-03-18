@@ -6,6 +6,7 @@ from vaibify.gui.workflowManager import (
     fbValidateWorkflow,
     fsResolveVariables,
     fdictCreateStep,
+    fbStepRequiresTests,
     fnInsertStep,
     fnDeleteStep,
     fnReorderStep,
@@ -267,3 +268,38 @@ def test_flistFindWorkflowsInContainer_custom_search_root():
         "/custom/root" in s for s in mockConnection.listCommands
     )
     assert bFoundCustomRoot
+
+
+# --- Unit test field tests ---
+
+
+def test_fdictCreateStep_includes_test_fields():
+    dictStep = fdictCreateStep(sName="Test", sDirectory="/workspace")
+    assert "saTestCommands" in dictStep
+    assert "saTestFiles" in dictStep
+    assert dictStep["saTestCommands"] == []
+    assert dictStep["saTestFiles"] == []
+
+
+def test_fbStepRequiresTests_true_when_data_no_tests():
+    dictStep = fdictCreateStep(
+        sName="Test", sDirectory="/workspace",
+        saDataCommands=["python analyze.py"],
+    )
+    assert fbStepRequiresTests(dictStep) is True
+
+
+def test_fbStepRequiresTests_false_when_tests_present():
+    dictStep = fdictCreateStep(
+        sName="Test", sDirectory="/workspace",
+        saDataCommands=["python analyze.py"],
+        saTestCommands=["pytest test_analyze.py"],
+    )
+    assert fbStepRequiresTests(dictStep) is False
+
+
+def test_fbStepRequiresTests_false_when_no_data():
+    dictStep = fdictCreateStep(
+        sName="Test", sDirectory="/workspace",
+    )
+    assert fbStepRequiresTests(dictStep) is False

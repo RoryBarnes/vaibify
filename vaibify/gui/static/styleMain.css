@@ -1537,6 +1537,119 @@ html, body {
     tab-size: 4;
 }
 
+/* --- Unit Test Expanded --- */
+
+.unit-test-expanded {
+    padding: 4px 6px 4px 16px;
+    font-size: 11px;
+}
+
+.test-section-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.test-section-label .test-add {
+    padding: 0 5px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 1;
+}
+
+.test-section-label .test-add:hover {
+    color: var(--color-pale-blue);
+    background: rgba(19, 174, 213, 0.15);
+}
+
+.test-file-item {
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: color var(--transition-speed);
+}
+
+.test-file-item:hover {
+    color: var(--color-pale-blue);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.test-command-item {
+    color: var(--text-primary);
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 10px;
+    padding: 1px 4px;
+    background: rgba(60, 60, 100, 0.35);
+    border: 1px solid rgba(80, 80, 120, 0.3);
+    border-radius: 3px;
+    margin: 2px 0;
+}
+
+.test-last-run {
+    color: var(--color-pale-blue);
+    cursor: pointer;
+    font-size: 10px;
+    margin-top: 4px;
+}
+
+.test-last-run:hover {
+    text-decoration: underline;
+}
+
+.verification-row.expandable {
+    cursor: pointer;
+}
+
+.verification-row.expandable:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+/* --- Viewer Test Failure --- */
+
+.viewer-viewport.viewport-test-failed {
+    outline: 3px solid var(--color-red);
+    outline-offset: -3px;
+}
+
+.viewer-viewport.viewport-test-generated {
+    outline: 3px solid var(--color-orange);
+    outline-offset: -3px;
+}
+
+.btn-generate-test {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    border: none;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 6px;
+    transition: filter var(--transition-speed);
+}
+
+.btn-generate-test:hover {
+    filter: brightness(1.1);
+}
+
+.btn-generate-test:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: none;
+}
+
 /* --- Zoom Controls --- */
 
 .zoom-toolbar {

@@ -138,12 +138,21 @@ def flistExtractStepNames(dictWorkflow):
 VERIFICATION_STATES = ("untested", "passed", "failed", "error")
 
 
+def fbStepRequiresTests(dictStep):
+    """Return True when data commands exist but no test commands."""
+    bHasData = len(dictStep.get("saDataCommands", [])) > 0
+    bHasTests = len(dictStep.get("saTestCommands", [])) > 0
+    return bHasData and not bHasTests
+
+
 def fdictCreateStep(
     sName,
     sDirectory,
     bPlotOnly=True,
     saDataCommands=None,
     saDataFiles=None,
+    saTestCommands=None,
+    saTestFiles=None,
     saPlotCommands=None,
     saPlotFiles=None,
 ):
@@ -155,6 +164,8 @@ def fdictCreateStep(
         "bPlotOnly": bPlotOnly,
         "saDataCommands": saDataCommands if saDataCommands else [],
         "saDataFiles": saDataFiles if saDataFiles else [],
+        "saTestCommands": saTestCommands if saTestCommands else [],
+        "saTestFiles": saTestFiles if saTestFiles else [],
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
         "dictVerification": {
@@ -188,7 +199,8 @@ def fsRemapStepReferences(sText, fnRemap):
 def fnRenumberAllReferences(dictWorkflow, fnRemap):
     """Update all {StepNN.*} references in every step per fnRemap."""
     for dictStep in dictWorkflow["listSteps"]:
-        for sKey in ("saDataCommands", "saPlotCommands", "saPlotFiles"):
+        for sKey in ("saDataCommands", "saTestCommands",
+                     "saPlotCommands", "saPlotFiles"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
                     fsRemapStepReferences(sItem, fnRemap)
@@ -312,7 +324,8 @@ def flistValidateReferences(dictWorkflow):
         iNumber = iIndex + 1
         sStepLabel = f"Step{iNumber:02d}"
 
-        for sKey in ("saDataCommands", "saPlotCommands"):
+        for sKey in ("saDataCommands", "saTestCommands",
+                     "saPlotCommands"):
             for sCommand in dictStep.get(sKey, []):
                 _fnCheckCommandReferences(
                     sCommand, sStepLabel, iNumber,

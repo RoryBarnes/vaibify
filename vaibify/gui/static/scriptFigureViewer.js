@@ -5,6 +5,8 @@ const PipeleyenFigureViewer = (function () {
 
     var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
+    var S_OUTPUT_MISSING = '<span class="placeholder output-missing-message">' +
+        'Output not available. Run the step to generate.</span>';
 
     /* Unified shared history: list of {sPath, sWorkdir, iViewCount, iLastViewed} */
     var listHistory = [];
@@ -239,6 +241,8 @@ const PipeleyenFigureViewer = (function () {
         var sExtension = iDot >= 0 ?
             sPath.substring(iDot).toLowerCase() : "";
 
+        fnApplyTestFailureOutline(elViewport, sPath);
+
         if (sExtension === ".pdf") {
             fnRenderPdf(sUrl, elViewport);
         } else if (fbIsFigureFile(sPath)) {
@@ -259,9 +263,7 @@ const PipeleyenFigureViewer = (function () {
         };
         elImg.onerror = function () {
             elViewport.innerHTML =
-                '<span class="placeholder output-missing-message">' +
-                'Output not available. Run the step to generate.' +
-                '</span>';
+                S_OUTPUT_MISSING;
         };
         elViewport.appendChild(elImg);
     }
@@ -310,9 +312,7 @@ const PipeleyenFigureViewer = (function () {
             fnRenderPdfDocument(sUrl, elViewport);
         }).catch(function () {
             elViewport.innerHTML =
-                '<span class="placeholder output-missing-message">' +
-                'Output not available. Run the step to generate.' +
-                '</span>';
+                S_OUTPUT_MISSING;
         });
     }
 
@@ -364,9 +364,7 @@ const PipeleyenFigureViewer = (function () {
             });
         }).catch(function () {
             elViewport.innerHTML =
-                '<span class="placeholder output-missing-message">' +
-                'Output not available. Run the step to generate.' +
-                '</span>';
+                S_OUTPUT_MISSING;
         });
     }
 
@@ -528,6 +526,38 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
+    /* --- Test Failure Outline --- */
+
+    function fnApplyTestFailureOutline(elViewport, sPath) {
+        elViewport.classList.remove("viewport-test-failed");
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        if (!dictWorkflow || !dictWorkflow.listSteps) return;
+        var sBasename = sPath.split("/").pop();
+        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            if (fbPathBelongsToStep(sBasename, dictWorkflow.listSteps[i])) {
+                var dictVerify = dictWorkflow.listSteps[i].dictVerification;
+                if (dictVerify) {
+                    var sState = dictVerify.sUnitTest;
+                    if (sState === "failed" || sState === "error") {
+                        elViewport.classList.add("viewport-test-failed");
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    function fbPathBelongsToStep(sBasename, dictStep) {
+        var listFiles = (dictStep.saPlotFiles || []).concat(
+            dictStep.saDataFiles || []
+        );
+        for (var i = 0; i < listFiles.length; i++) {
+            var sStepBase = listFiles[i].split("/").pop();
+            if (sStepBase === sBasename) return true;
+        }
+        return false;
+    }
+
     /* --- Drag and Drop --- */
 
     function fnBindDropTargets() {
@@ -587,10 +617,91 @@ const PipeleyenFigureViewer = (function () {
             });
     });
 
+    function fnDisplayGeneratedTest(sPath, sContent, iStep) {
+        var elViewport = document.getElementById("viewportA");
+        elViewport.classList.add("viewport-test-generated");
+        elViewport.classList.remove("viewport-test-failed");
+        fnRenderGeneratedTestEditor(
+            sContent, sPath, elViewport, iStep
+        );
+    }
+
+    function fnRenderGeneratedTestEditor(
+        sText, sPath, elViewport, iStep
+    ) {
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+
+        var elToolbar = document.createElement("div");
+        elToolbar.className = "editor-toolbar";
+
+        var elSave = document.createElement("button");
+        elSave.className = "btn btn-primary";
+        elSave.textContent = "Save Test";
+        var elCancel = document.createElement("button");
+        elCancel.className = "btn btn-danger";
+        elCancel.textContent = "Cancel";
+        var elEdit = document.createElement("button");
+        elEdit.className = "btn-icon";
+        elEdit.title = "Edit";
+        elEdit.innerHTML = "&#9998;";
+
+        elToolbar.appendChild(elEdit);
+        elToolbar.appendChild(elSave);
+        elToolbar.appendChild(elCancel);
+
+        var elPre = document.createElement("pre");
+        elPre.textContent = sText;
+        elViewport.appendChild(elToolbar);
+        elViewport.appendChild(elPre);
+
+        elEdit.addEventListener("click", function () {
+            fnEnterEditMode(sText, "", elViewport);
+        });
+        elSave.addEventListener("click", function () {
+            fnSaveGeneratedTest(sPath, elViewport, iStep);
+        });
+        elCancel.addEventListener("click", function () {
+            fnCancelGeneratedTestViewer(elViewport, iStep);
+        });
+    }
+
+    function fnSaveGeneratedTest(sPath, elViewport, iStep) {
+        var elTextarea = elViewport.querySelector("textarea");
+        var sContent = elTextarea ?
+            elTextarea.value :
+            elViewport.querySelector("pre").textContent;
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        fetch("/api/file/" + sContainerId + "/" + sPath, {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({sContent: sContent}),
+        }).then(function (r) {
+            if (!r.ok) throw new Error("Save failed");
+            elViewport.classList.remove("viewport-test-generated");
+            PipeleyenApp.fnFinalizeGeneratedTest(iStep);
+            PipeleyenApp.fnShowToast("Test saved", "success");
+            fnRenderTextWithToolbar(sContent, "", elViewport);
+        }).catch(function (error) {
+            PipeleyenApp.fnShowToast(
+                "Save failed: " + error.message, "error"
+            );
+        });
+    }
+
+    function fnCancelGeneratedTestViewer(elViewport, iStep) {
+        elViewport.classList.remove("viewport-test-generated");
+        elViewport.innerHTML =
+            '<span class="placeholder">Test generation cancelled</span>';
+        PipeleyenApp.fnCancelGeneratedTest(iStep);
+    }
+
     return {
         fnLoadStepFigures: fnLoadStepFigures,
         fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
         fnDisplayFileFromContainer: fnDisplayFileFromContainer,
         fnDisplayInNextViewer: fnDisplayInNextViewer,
+        fnDisplayGeneratedTest: fnDisplayGeneratedTest,
     };
 })();

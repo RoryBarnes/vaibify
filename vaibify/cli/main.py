@@ -43,19 +43,19 @@ main.add_command(publish)
 @main.command("stop")
 def stop():
     """Stop the running Vaibify environment."""
-    config = fconfigLoad()
+    configProject = fconfigLoad()
     from vaibify.docker.containerManager import fnStopContainer
-    click.echo(f"Stopping container {config.sProjectName} ...")
-    fnStopContainer(config.sProjectName)
+    click.echo(f"Stopping container {configProject.sProjectName} ...")
+    fnStopContainer(configProject.sProjectName)
     click.echo("Stopped.")
 
 
 @main.command("connect")
 def connect():
     """Open a shell inside the running container."""
-    config = fconfigLoad()
-    sUser = config.sContainerUser
-    sName = config.sProjectName
+    configProject = fconfigLoad()
+    sUser = configProject.sContainerUser
+    sName = configProject.sProjectName
     subprocess.run(
         ["docker", "exec", "-it", "-u", sUser, sName, "bash"]
     )
@@ -64,11 +64,11 @@ def connect():
 @main.command("verify")
 def verify():
     """Run the isolation check script inside the container."""
-    config = fconfigLoad()
-    sUser = config.sContainerUser
+    configProject = fconfigLoad()
+    sUser = configProject.sContainerUser
     sScript = f"/home/{sUser}/checkIsolation.sh"
     subprocess.run(
-        ["docker", "exec", "-it", config.sProjectName, sScript]
+        ["docker", "exec", "-it", configProject.sProjectName, sScript]
     )
 
 
@@ -97,14 +97,14 @@ def setup():
 )
 def gui(sUser):
     """Launch the Vaibify pipeline viewer GUI."""
-    config = fconfigLoad()
+    configProject = fconfigLoad()
     from vaibify.gui.pipelineServer import fappCreateApplication
     import threading
     import time
     import uvicorn
     import webbrowser
-    sRoot = config.sWorkspaceRoot
-    sTerminalUser = sUser or config.sContainerUser
+    sRoot = configProject.sWorkspaceRoot
+    sTerminalUser = sUser or configProject.sContainerUser
     sUrl = "http://127.0.0.1:8050"
     click.echo(f"Starting pipeline viewer at {sUrl}")
     app = fappCreateApplication(
@@ -122,9 +122,9 @@ def gui(sUser):
 @click.argument("destination")
 def push(source, destination):
     """Push files from the host into the container workspace."""
-    config = fconfigLoad()
+    configProject = fconfigLoad()
     from vaibify.docker.fileTransfer import fnPushToContainer
-    fnPushToContainer(config.sProjectName, source, destination)
+    fnPushToContainer(configProject.sProjectName, source, destination)
     click.echo(f"Pushed {source} -> {destination}")
 
 
@@ -133,7 +133,7 @@ def push(source, destination):
 @click.argument("destination")
 def pull(source, destination):
     """Pull files from the container workspace to the host."""
-    config = fconfigLoad()
+    configProject = fconfigLoad()
     from vaibify.docker.fileTransfer import fnPullFromContainer
-    fnPullFromContainer(config.sProjectName, source, destination)
+    fnPullFromContainer(configProject.sProjectName, source, destination)
     click.echo(f"Pulled {source} -> {destination}")

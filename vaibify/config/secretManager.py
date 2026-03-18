@@ -102,11 +102,19 @@ def fsMountSecret(sName, sMethod):
     return _fsWriteEphemeralFile(sName, sValue)
 
 
+def _fsGetTempDirectory():
+    """Return a temp directory that Docker can reliably bind-mount."""
+    import platform
+    if platform.system() == "Darwin":
+        return "/tmp"
+    return None
+
+
 def _fsWriteEphemeralFile(sName, sValue):
     """Write a value to a temp file with restrictive permissions."""
     iFileDescriptor, sFilePath = tempfile.mkstemp(
         prefix=f"vc_secret_{sName}_", suffix=".tmp",
-        dir="/tmp",
+        dir=_fsGetTempDirectory(),
     )
     try:
         os.fchmod(iFileDescriptor, stat.S_IRUSR | stat.S_IWUSR)

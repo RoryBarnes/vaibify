@@ -206,6 +206,22 @@ def fnExecuteCommand(sCommand, sWorkingDirectory, sStepName):
 # ---------------------------------------------------------------------------
 
 
+def _fnRunTestsIfPresent(dictStep, dictVariables, sAbsDirectory):
+    """Run test commands, printing results without aborting on failure."""
+    for sCommand in dictStep.get("saTestCommands", []):
+        sResolved = fsResolveVariables(sCommand, dictVariables)
+        try:
+            fnExecuteCommand(
+                sResolved, sAbsDirectory, dictStep["sName"]
+            )
+        except RuntimeError as error:
+            print(f"  TEST FAILED: {error}")
+            return False
+    if dictStep.get("saTestCommands"):
+        print("  TESTS PASSED")
+    return True
+
+
 def fnExecuteStep(dictStep, dictVariables, sWorkflowRoot):
     """Execute all commands in a step, respecting bPlotOnly."""
     sDirectory = fsResolveVariables(
@@ -217,6 +233,8 @@ def fnExecuteStep(dictStep, dictVariables, sWorkflowRoot):
         for sCommand in dictStep.get("saDataCommands", []):
             sResolved = fsResolveVariables(sCommand, dictVariables)
             fnExecuteCommand(sResolved, sAbsDirectory, dictStep["sName"])
+
+    _fnRunTestsIfPresent(dictStep, dictVariables, sAbsDirectory)
 
     for sCommand in dictStep["saPlotCommands"]:
         sResolved = fsResolveVariables(sCommand, dictVariables)
@@ -413,7 +431,7 @@ def fnConfigureEnvironment(dictWorkflow, sWorkflowRoot):
         )
 
 
-def fdictParseArguments():
+def fnsParseArguments():
     """Parse and return command-line arguments as a namespace."""
     parser = argparse.ArgumentParser(
         description="Vaibify pipeline director.")
@@ -435,7 +453,7 @@ def fdictParseArguments():
 
 def main():
     """Parse arguments and run the pipeline."""
-    args = fdictParseArguments()
+    args = fnsParseArguments()
     sWorkflowPath = os.path.abspath(args.config)
     sWorkflowRoot = os.path.dirname(sWorkflowPath)
     dictWorkflow = fdictLoadWorkflow(sWorkflowPath)

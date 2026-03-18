@@ -223,6 +223,16 @@
                       placeholder="Output data files from analysis..."></textarea>
         </div>
         <div class="form-group">
+            <label>Test Commands (one per line)</label>
+            <textarea id="inputTestCommands"
+                      placeholder="e.g. pytest test_kepler_ffd.py"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Test Files (one per line)</label>
+            <textarea id="inputTestFiles"
+                      placeholder="Test file paths for viewing..."></textarea>
+        </div>
+        <div class="form-group">
             <label>Plot Commands (one per line)</label>
             <textarea id="inputCommands"
                       placeholder="Commands that generate figures..."></textarea>
@@ -263,6 +273,28 @@
                     padding: 12px; border-radius: 4px;"></pre>
         <div class="modal-actions">
             <button class="btn btn-primary" id="btnModalErrorClose">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- API Key Confirmation Modal -->
+<div class="modal-overlay" id="modalApiConfirm" style="display: none;">
+    <div class="modal modal-small">
+        <h2 style="color: var(--color-orange);">API Key Required</h2>
+        <p style="font-size: 13px; color: var(--text-secondary);
+                  margin-bottom: 16px;">
+            Claude Code is not installed in this container.
+            Test generation will use the Anthropic API directly,
+            which may incur charges.
+        </p>
+        <div class="form-group">
+            <input type="password" id="inputApiKey"
+                   placeholder="Anthropic API Key (sk-ant-...)">
+        </div>
+        <div class="modal-actions">
+            <button class="btn" id="btnApiCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnApiConfirm">
+                Generate</button>
         </div>
     </div>
 </div>
