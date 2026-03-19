@@ -1266,6 +1266,18 @@ const PipeleyenApp = (function () {
     }
 
     function fnHandleDelegatedContextMenu(event) {
+        var elFile = event.target.closest(".detail-item.output");
+        if (elFile) {
+            event.preventDefault();
+            event.stopPropagation();
+            fnShowFileContextMenu(
+                event.pageX, event.pageY,
+                elFile.dataset.resolved,
+                elFile.dataset.workdir || "",
+                parseInt(elFile.dataset.step)
+            );
+            return;
+        }
         var elStep = event.target.closest(".step-item");
         if (elStep) {
             event.preventDefault();
@@ -1963,7 +1975,6 @@ const PipeleyenApp = (function () {
             btnOverleafPush: function () { fnOpenPushModal("overleaf"); },
             btnGithubPush: function () { fnOpenPushModal("github"); },
             btnZenodoArchive: function () { fnOpenPushModal("zenodo"); },
-            btnGenerateActions: fnGenerateActions,
             btnShowDag: fnShowDag,
             btnVsCode: fnOpenVsCode,
             btnMonitor: function () {},
@@ -2000,25 +2011,6 @@ const PipeleyenApp = (function () {
             elViewport.appendChild(elImg);
         } catch (error) {
             fnShowToast("DAG: " + error.message, "error");
-        }
-    }
-
-    async function fnGenerateActions() {
-        if (!sContainerId) return;
-        fnShowToast("Generating GitHub Actions...", "success");
-        try {
-            var response = await fetch(
-                "/api/github/" + sContainerId + "/generate-actions",
-                { method: "POST" }
-            );
-            if (!response.ok) throw new Error("Generation failed");
-            var sContent = await response.text();
-            PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                ".github/workflows/vaibify.yml"
-            );
-            fnShowToast("CI workflow generated", "success");
-        } catch (error) {
-            fnShowToast(error.message, "error");
         }
     }
 
@@ -2121,10 +2113,9 @@ const PipeleyenApp = (function () {
                     }),
                 }
             );
-            if (!response.ok) {
-                var dictError = await response.json();
-                fnShowToast(
-                    dictError.detail || "Push failed", "error");
+            var dictResult = await response.json();
+            if (!response.ok || !dictResult.bSuccess) {
+                fnShowSyncError(dictResult, sPushService);
                 return;
             }
             fnShowToast("Push complete!", "success");
@@ -2133,6 +2124,25 @@ const PipeleyenApp = (function () {
         } catch (error) {
             fnShowToast("Push failed: " + error.message, "error");
         }
+    }
+
+    var dictSyncErrorMessages = {
+        auth: "Authentication failed. Check your credentials " +
+            "in Sync > Setup.",
+        rateLimit: "Rate limited. Try again in a few minutes.",
+        notFound: "Resource not found. Check your project ID " +
+            "or DOI.",
+        network: "Network error. Check your container's " +
+            "internet connection.",
+    };
+
+    function fnShowSyncError(dictResult, sService) {
+        var sErrorType = dictResult.sErrorType || "unknown";
+        var sMessage = dictSyncErrorMessages[sErrorType] ||
+            dictResult.sMessage || "Unknown error";
+        var sTitle = (sService || "Sync") + " failed: " +
+            sErrorType;
+        fnShowErrorModal(sTitle + "\n\n" + sMessage);
     }
 
     function _fsServiceEndpoint(sService) {
@@ -2174,6 +2184,18 @@ const PipeleyenApp = (function () {
         elToken.style.display = "none";
         if (sService === "overleaf") {
             elProjectId.style.display = "";
+            elToken.style.display = "";
+            var elLabel = document.getElementById("labelSetupToken");
+            var elHelp = document.getElementById("helpSetupToken");
+            elLabel.textContent = "Overleaf Password ";
+            if (elHelp) {
+                elHelp.setAttribute("title",
+                    "Enter your Overleaf account password. " +
+                    "Overleaf uses this as the git password " +
+                    "for its git bridge. Go to Account > " +
+                    "Password to set or reset it.");
+                elLabel.appendChild(elHelp);
+            }
             document.getElementById("modalConnectionTitle")
                 .textContent = "Connect to Overleaf";
         } else if (sService === "zenodo") {
@@ -2203,6 +2225,31 @@ const PipeleyenApp = (function () {
         );
         document.getElementById("btnSetupSave").addEventListener(
             "click", fnHandleSetupSave
+        );
+        document.addEventListener("click", function (event) {
+            var elHelp = event.target.closest(".help-icon");
+            if (!elHelp) return;
+            var sText = elHelp.getAttribute("title");
+            if (!sText) return;
+            event.preventDefault();
+            event.stopPropagation();
+            fnShowHelpPopup(sText);
+        });
+    }
+
+    function fnShowHelpPopup(sText) {
+        var elExisting = document.getElementById("popupHelp");
+        if (elExisting) elExisting.remove();
+        var elPopup = document.createElement("div");
+        elPopup.id = "popupHelp";
+        elPopup.className = "help-popup";
+        elPopup.innerHTML =
+            '<div class="help-popup-content">' +
+            '<span class="help-popup-close">&times;</span>' +
+            '<p>' + fnEscapeHtml(sText) + '</p></div>';
+        document.body.appendChild(elPopup);
+        elPopup.querySelector(".help-popup-close").addEventListener(
+            "click", function () { elPopup.remove(); }
         );
     }
 
@@ -2737,19 +2784,115 @@ const PipeleyenApp = (function () {
         el.classList.add("active");
     }
 
+    var sContextFilePath = "";
+    var sContextFileWorkdir = "";
+    var iContextFileStepIndex = -1;
+
+    function fnShowFileContextMenu(
+        iX, iY, sFilePath, sWorkdir, iStepIndex
+    ) {
+        fnHideContextMenu();
+        sContextFilePath = sFilePath;
+        sContextFileWorkdir = sWorkdir;
+        iContextFileStepIndex = iStepIndex;
+        var el = document.getElementById("fileContextMenu");
+        el.style.left = iX + "px";
+        el.style.top = iY + "px";
+        el.classList.add("active");
+    }
+
     function fnHideContextMenu() {
-        document.getElementById("contextMenu").classList.remove("active");
+        document.getElementById("contextMenu")
+            .classList.remove("active");
+        document.getElementById("fileContextMenu")
+            .classList.remove("active");
     }
 
     function fnBindContextMenuEvents() {
-        document.querySelectorAll(".context-menu-item")
+        document.getElementById("contextMenu")
+            .querySelectorAll(".context-menu-item")
             .forEach(function (el) {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
-                    fnHandleContextAction(el.dataset.action, iContextStepIndex);
+                    fnHandleContextAction(
+                        el.dataset.action, iContextStepIndex);
                     fnHideContextMenu();
                 });
             });
+        document.getElementById("fileContextMenu")
+            .querySelectorAll(".context-menu-item")
+            .forEach(function (el) {
+                el.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                    fnHandleFileContextAction(el.dataset.action);
+                    fnHideContextMenu();
+                });
+            });
+    }
+
+    async function fnHandleFileContextAction(sAction) {
+        if (sAction === "copyPath") {
+            navigator.clipboard.writeText(sContextFilePath)
+                .then(function () {
+                    fnShowToast("Copied to clipboard", "success");
+                });
+            return;
+        }
+        if (sAction === "addToGit") {
+            fnShowToast("Adding to Git...", "success");
+            try {
+                var response = await fetch(
+                    "/api/github/" + sContainerId + "/add-file",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            sFilePath: sContextFilePath,
+                        }),
+                    }
+                );
+                var dictResult = await response.json();
+                if (dictResult.bSuccess) {
+                    fnShowToast("Added to Git", "success");
+                    await fnLoadSyncStatus();
+                    fnRenderStepList();
+                } else {
+                    fnShowSyncError(dictResult, "GitHub");
+                }
+            } catch (error) {
+                fnShowToast(error.message, "error");
+            }
+            return;
+        }
+        if (sAction === "archiveToZenodo") {
+            fnShowToast("Archiving to Zenodo...", "success");
+            try {
+                var zenodoResponse = await fetch(
+                    "/api/zenodo/" + sContainerId + "/archive",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            listFilePaths: [sContextFilePath],
+                        }),
+                    }
+                );
+                var dictZenodoResult = await zenodoResponse.json();
+                if (dictZenodoResult.bSuccess) {
+                    fnShowToast("Archived to Zenodo", "success");
+                    await fnLoadSyncStatus();
+                    fnRenderStepList();
+                } else {
+                    fnShowSyncError(dictZenodoResult, "Zenodo");
+                }
+            } catch (error) {
+                fnShowToast(error.message, "error");
+            }
+        }
     }
 
     function fnHandleContextAction(sAction, iIndex) {

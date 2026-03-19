@@ -415,6 +415,49 @@ def flistExtractOutputFiles(dictStep):
 
 
 # ---------------------------------------------------------------------------
+# Step-to-directory mapping
+# ---------------------------------------------------------------------------
+
+
+def fsCamelCaseDirectory(sStepName):
+    """Convert a step name to a camelCase directory name."""
+    import re
+    listWords = sStepName.split()
+    listCapitalized = [
+        sWord.capitalize() for sWord in listWords
+    ]
+    sJoined = "".join(listCapitalized)
+    return re.sub(r"[^a-zA-Z0-9]", "", sJoined)
+
+
+def flistExtractStepScripts(dictStep):
+    """Extract .py script paths from data and plot commands."""
+    listScripts = []
+    for sKey in ("saDataCommands", "saPlotCommands"):
+        for sCommand in dictStep.get(sKey, []):
+            listTokens = sCommand.split()
+            if not listTokens:
+                continue
+            if listTokens[0] in ("python", "python3"):
+                if len(listTokens) > 1:
+                    listScripts.append(listTokens[1])
+            elif listTokens[0].endswith(".py"):
+                listScripts.append(listTokens[0])
+    return listScripts
+
+
+def fdictBuildStepDirectoryMap(dictWorkflow):
+    """Map step indices to camelCase directory names."""
+    dictMap = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sName = dictStep.get("sName", f"Step{iIndex + 1}")
+        dictMap[iIndex] = fsCamelCaseDirectory(sName)
+    return dictMap
+
+
+# ---------------------------------------------------------------------------
 # Sync status tracking
 # ---------------------------------------------------------------------------
 

@@ -80,6 +80,47 @@ def fnPullTexFromOverleaf(
         shutil.rmtree(sTmpDir, ignore_errors=True)
 
 
+def fnPushAnnotatedToOverleaf(
+    listFigurePaths, sOverleafId, sTargetDirectory,
+    dictWorkflow, sGithubBaseUrl, sDoi,
+    sTexFilename="main.tex",
+):
+    """Push figures and annotate the TeX file with source links."""
+    sTmpDir = tempfile.mkdtemp(prefix="vc_overleaf_annotate_")
+    try:
+        fnConfigureGitCredentials(sOverleafId)
+        _fnCloneOverleafRepo(sOverleafId, sTmpDir)
+        _fnCopyFiguresToRepo(
+            listFigurePaths, sTmpDir, sTargetDirectory)
+        _fnAnnotateTexInRepo(
+            sTmpDir, sTexFilename, dictWorkflow,
+            sGithubBaseUrl, sDoi)
+        _fnCommitAndPush(sTmpDir)
+    finally:
+        shutil.rmtree(sTmpDir, ignore_errors=True)
+
+
+def _fnAnnotateTexInRepo(
+    sRepoDir, sTexFilename, dictWorkflow,
+    sGithubBaseUrl, sDoi,
+):
+    """Read, annotate, and write back the TeX file."""
+    from vaibify.reproducibility.latexConnector import (
+        fsAnnotateTexFile,
+    )
+    pathTex = Path(sRepoDir) / sTexFilename
+    if not pathTex.exists():
+        raise OverleafError(
+            f"TeX file not found in Overleaf: {sTexFilename}"
+        )
+    sOriginal = pathTex.read_text(encoding="utf-8")
+    sAnnotated = fsAnnotateTexFile(
+        sOriginal, dictWorkflow, sGithubBaseUrl, sDoi
+    )
+    if sAnnotated != sOriginal:
+        pathTex.write_text(sAnnotated, encoding="utf-8")
+
+
 def fnConfigureGitCredentials(sOverleafId):
     """Configure a git credential helper for the Overleaf host.
 

@@ -12,6 +12,9 @@ from vaibify.gui.workflowManager import (
     fnReorderStep,
     flistValidateReferences,
     flistFindWorkflowsInContainer,
+    fsCamelCaseDirectory,
+    flistExtractStepScripts,
+    fdictBuildStepDirectoryMap,
     DEFAULT_SEARCH_ROOT,
 )
 
@@ -302,3 +305,56 @@ def test_fbStepRequiresTests_false_when_no_data():
         sName="Test", sDirectory="/workspace",
     )
     assert fbStepRequiresTests(dictStep) is False
+
+
+# ---------------------------------------------------------------------------
+# CamelCase directory mapping
+# ---------------------------------------------------------------------------
+
+
+def test_fsCamelCaseDirectory_multiple_words():
+    assert fsCamelCaseDirectory("Flare MCMC Analysis") == (
+        "FlareMcmcAnalysis"
+    )
+
+
+def test_fsCamelCaseDirectory_single_word():
+    assert fsCamelCaseDirectory("Overview") == "Overview"
+
+
+def test_fsCamelCaseDirectory_with_punctuation():
+    assert fsCamelCaseDirectory("Step-01: Intro!") == "Step01Intro"
+
+
+def test_fsCamelCaseDirectory_empty():
+    assert fsCamelCaseDirectory("") == ""
+
+
+def test_flistExtractStepScripts_python_commands():
+    dictStep = {
+        "saDataCommands": ["python kepler_ffd.py"],
+        "saPlotCommands": ["python plotCorner.py Plot/out.pdf"],
+    }
+    listScripts = flistExtractStepScripts(dictStep)
+    assert "kepler_ffd.py" in listScripts
+    assert "plotCorner.py" in listScripts
+
+
+def test_flistExtractStepScripts_no_scripts():
+    dictStep = {
+        "saDataCommands": ["maxlev config.json"],
+        "saPlotCommands": [],
+    }
+    assert flistExtractStepScripts(dictStep) == []
+
+
+def test_fdictBuildStepDirectoryMap():
+    dictWorkflow = {
+        "listSteps": [
+            {"sName": "Kepler FFD Corner"},
+            {"sName": "FFD Age Comparison"},
+        ],
+    }
+    dictMap = fdictBuildStepDirectoryMap(dictWorkflow)
+    assert dictMap[0] == "KeplerFfdCorner"
+    assert dictMap[1] == "FfdAgeComparison"

@@ -484,6 +484,24 @@ CLAUDEMD
     echo "[vaib] Generated CLAUDE.md for container awareness."
 }
 
+# ---------------------------------------------------------------------------
+# fnConfigureClaudeTheme: Set Claude Code to dark theme for container terminal
+# ---------------------------------------------------------------------------
+fnConfigureClaudeTheme() {
+    local sConfigDir="${HOME}/.claude"
+    local sSettingsFile="${sConfigDir}/settings.json"
+    if [ -f "${sSettingsFile}" ]; then
+        return
+    fi
+    mkdir -p "${sConfigDir}"
+    cat > "${sSettingsFile}" << 'SETTINGS'
+{
+  "theme": "dark"
+}
+SETTINGS
+    echo "[vaib] Set Claude Code theme to dark for container terminal."
+}
+
 # ===========================================================================
 # Main — only runs when executed directly (not when sourced by tests)
 # ===========================================================================
@@ -492,6 +510,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnPrintBanner
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
+    fnConfigureClaudeTheme
     fnPersistGitConfig
     fnConfigureGit
     fnParseReposConf

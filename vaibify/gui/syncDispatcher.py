@@ -10,6 +10,45 @@ VALID_SERVICES = {"github", "overleaf", "zenodo"}
 VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
 
 
+_AUTH_PATTERNS = [
+    "authentication", "401", "403", "forbidden",
+    "invalid credentials", "bad credentials",
+]
+_RATE_LIMIT_PATTERNS = ["rate limit", "429", "too many requests"]
+_NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
+_NETWORK_PATTERNS = [
+    "timeout", "connection refused", "network",
+    "could not resolve", "no route",
+]
+
+
+def fdictClassifyError(iExitCode, sOutput):
+    """Classify a sync command failure by scanning output text."""
+    sLower = sOutput.lower()
+    for sPattern in _AUTH_PATTERNS:
+        if sPattern in sLower:
+            return {"sErrorType": "auth", "sMessage": sOutput}
+    for sPattern in _RATE_LIMIT_PATTERNS:
+        if sPattern in sLower:
+            return {"sErrorType": "rateLimit", "sMessage": sOutput}
+    for sPattern in _NOT_FOUND_PATTERNS:
+        if sPattern in sLower:
+            return {"sErrorType": "notFound", "sMessage": sOutput}
+    for sPattern in _NETWORK_PATTERNS:
+        if sPattern in sLower:
+            return {"sErrorType": "network", "sMessage": sOutput}
+    return {"sErrorType": "unknown", "sMessage": sOutput}
+
+
+def fdictSyncResult(iExitCode, sOutput):
+    """Build a structured sync result from an exit code and output."""
+    if iExitCode == 0:
+        return {"bSuccess": True, "sOutput": sOutput.strip()}
+    dictError = fdictClassifyError(iExitCode, sOutput)
+    dictError["bSuccess"] = False
+    return dictError
+
+
 def fnValidateServiceName(sService):
     """Raise ValueError if sService is not a known service."""
     if sService not in VALID_SERVICES:
@@ -24,9 +63,28 @@ def fsPythonCommand(sImportLine, sFunctionCall):
 def ftResultPushToOverleaf(
     connectionDocker, sContainerId,
     listFilePaths, sProjectId, sTargetDirectory,
+    dictWorkflow=None, sGithubBaseUrl="", sDoi="",
+    sTexFilename="main.tex",
 ):
-    """Push figure files to Overleaf inside the container."""
+    """Push figures to Overleaf, optionally annotating the TeX."""
     fnValidateOverleafProjectId(sProjectId)
+    if dictWorkflow and sGithubBaseUrl:
+        return _ftResultAnnotatedPush(
+            connectionDocker, sContainerId, listFilePaths,
+            sProjectId, sTargetDirectory, dictWorkflow,
+            sGithubBaseUrl, sDoi, sTexFilename,
+        )
+    return _ftResultPlainPush(
+        connectionDocker, sContainerId, listFilePaths,
+        sProjectId, sTargetDirectory,
+    )
+
+
+def _ftResultPlainPush(
+    connectionDocker, sContainerId,
+    listFilePaths, sProjectId, sTargetDirectory,
+):
+    """Push figures without TeX annotation."""
     sImport = (
         "from vaibify.reproducibility.overleafSync "
         "import fnPushFiguresToOverleaf"
@@ -36,6 +94,34 @@ def ftResultPushToOverleaf(
         f"{repr(listFilePaths)}, "
         f"{repr(sProjectId)}, "
         f"{repr(sTargetDirectory)})"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, fsPythonCommand(sImport, sCall)
+    )
+
+
+def _ftResultAnnotatedPush(
+    connectionDocker, sContainerId, listFilePaths,
+    sProjectId, sTargetDirectory, dictWorkflow,
+    sGithubBaseUrl, sDoi, sTexFilename,
+):
+    """Push figures and annotate the TeX with source links."""
+    import json
+    sWorkflowJson = json.dumps(dictWorkflow)
+    sImport = (
+        "import json; "
+        "from vaibify.reproducibility.overleafSync "
+        "import fnPushAnnotatedToOverleaf"
+    )
+    sCall = (
+        f"fnPushAnnotatedToOverleaf("
+        f"{repr(listFilePaths)}, "
+        f"{repr(sProjectId)}, "
+        f"{repr(sTargetDirectory)}, "
+        f"json.loads({repr(sWorkflowJson)}), "
+        f"{repr(sGithubBaseUrl)}, "
+        f"{repr(sDoi)}, "
+        f"{repr(sTexFilename)})"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, fsPythonCommand(sImport, sCall)
@@ -96,6 +182,72 @@ def ftResultPushToGithub(
         f"git commit -m {fsShellQuote(sCommitMessage)} && "
         f"git push && "
         f"git rev-parse --short HEAD"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+
+
+def ftResultPushScriptsToGithub(
+    connectionDocker, sContainerId,
+    dictWorkflow, sCommitMessage, sWorkdir,
+):
+    """Organize scripts into camelCase dirs and push to GitHub."""
+    from .workflowManager import (
+        fdictBuildStepDirectoryMap, flistExtractStepScripts,
+    )
+    dictDirMap = fdictBuildStepDirectoryMap(dictWorkflow)
+    listCommands = []
+    for iStep, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sCamelDir = dictDirMap.get(iStep, "")
+        if not sCamelDir:
+            continue
+        listScripts = flistExtractStepScripts(dictStep)
+        if not listScripts:
+            continue
+        sStepDir = dictStep.get("sDirectory", "")
+        listCommands.append(
+            _fsBuildCopyCommands(sStepDir, sCamelDir, listScripts)
+        )
+    if not listCommands:
+        return (1, "No scripts found to push")
+    sSetup = " && ".join(listCommands)
+    sGitCommand = (
+        f"cd {fsShellQuote(sWorkdir)} && {sSetup} && "
+        f"git add -A && "
+        f"git commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git push && git rev-parse --short HEAD"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sGitCommand
+    )
+
+
+def _fsBuildCopyCommands(sStepDir, sCamelDir, listScripts):
+    """Build shell commands to copy scripts into a camelCase dir."""
+    sMkdir = f"mkdir -p {fsShellQuote(sCamelDir)}"
+    listCopy = []
+    for sScript in listScripts:
+        sSrc = f"{sStepDir}/{sScript}" if sStepDir else sScript
+        sDest = f"{sCamelDir}/{posixpath.basename(sScript)}"
+        listCopy.append(
+            f"cp {fsShellQuote(sSrc)} {fsShellQuote(sDest)}"
+        )
+    return sMkdir + " && " + " && ".join(listCopy)
+
+
+def ftResultAddFileToGithub(
+    connectionDocker, sContainerId,
+    sFilePath, sCommitMessage, sWorkdir,
+):
+    """Git add, commit, push a single file inside the container."""
+    sCommand = (
+        f"cd {fsShellQuote(sWorkdir)} && "
+        f"git add {fsShellQuote(sFilePath)} && "
+        f"git commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git push && git rev-parse --short HEAD"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -197,6 +349,36 @@ def fnStoreCredentialInContainer(
         )
 
 
+def fbValidateOverleafCredentials(
+    connectionDocker, sContainerId, sProjectId,
+):
+    """Test Overleaf credentials with git ls-remote."""
+    fnValidateOverleafProjectId(sProjectId)
+    sCommand = (
+        f"git ls-remote "
+        f"https://git.overleaf.com/{sProjectId} "
+        f"HEAD >/dev/null 2>&1"
+    )
+    iExit, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    return iExit == 0
+
+
+def fbValidateZenodoToken(connectionDocker, sContainerId):
+    """Test Zenodo token with a lightweight API call."""
+    sCommand = fsPythonCommand(
+        "from vaibify.reproducibility.zenodoClient "
+        "import ZenodoClient",
+        "c=ZenodoClient('sandbox'); "
+        "c.fdictListDepositions(iSize=1); print('ok')",
+    )
+    iExit, sOut = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    return iExit == 0 and "ok" in sOut
+
+
 def fnValidateOverleafProjectId(sProjectId):
     """Raise ValueError if the Overleaf project ID is malformed."""
     if not re.match(r"^[a-zA-Z0-9_-]+$", sProjectId):
@@ -256,20 +438,6 @@ def ftResultGenerateDagSvg(
         return (iExitCode, sOutput)
     baSvg = connectionDocker.fbaFetchFile(sContainerId, sSvgPath)
     return (0, baSvg)
-
-
-def ftResultGenerateActions(
-    connectionDocker, sContainerId, sOutputPath,
-):
-    """Generate GitHub Actions workflow YAML inside the container."""
-    sImport = (
-        "from vaibify.reproducibility.githubWorkflow "
-        "import fnWriteWorkflow"
-    )
-    sCall = f"fnWriteWorkflow({{}}, {repr(sOutputPath)})"
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
-    )
 
 
 def _fsHashFileCommand(sPath):

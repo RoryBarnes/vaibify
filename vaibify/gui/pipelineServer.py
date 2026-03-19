@@ -490,6 +490,11 @@ class SyncPushRequest(BaseModel):
     sCommitMessage: str = "[vaibify] Update outputs"
 
 
+class GitAddFileRequest(BaseModel):
+    sFilePath: str
+    sCommitMessage: str = "[vaibify] Add data file"
+
+
 class SyncSetupRequest(BaseModel):
     sService: str
     sProjectId: Optional[str] = None
@@ -507,17 +512,28 @@ def _fnRegisterOverleafPush(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        sFigureDir = dictWorkflow.get(
+            "sOverleafFigureDirectory", "figures")
+        sProjectId = dictWorkflow.get("sOverleafProjectId", "")
+        sGithubUrl = dictWorkflow.get("sGithubBaseUrl", "")
+        sDoi = dictWorkflow.get("sZenodoDoi", "")
+        sTexFile = dictWorkflow.get("sTexFilename", "main.tex")
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultPushToOverleaf,
             dictCtx["docker"], sContainerId,
-            request.listFilePaths, "", "figures",
+            request.listFilePaths, sProjectId, sFigureDir,
+            dictWorkflow=dictWorkflow,
+            sGithubBaseUrl=sGithubUrl,
+            sDoi=sDoi,
+            sTexFilename=sTexFile,
         )
-        if iExit != 0:
-            raise HTTPException(500, f"Push failed: {sOut}")
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+        if not dictResult["bSuccess"]:
+            return dictResult
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, request.listFilePaths, "Overleaf")
         dictCtx["save"](sContainerId, dictWorkflow)
-        return {"bSuccess": True}
+        return dictResult
 
 
 def _fnRegisterZenodoArchive(app, dictCtx):
@@ -536,12 +552,13 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             dictCtx["docker"], sContainerId,
             "sandbox", request.listFilePaths,
         )
-        if iExit != 0:
-            raise HTTPException(500, f"Archive failed: {sOut}")
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+        if not dictResult["bSuccess"]:
+            return dictResult
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, request.listFilePaths, "Zenodo")
         dictCtx["save"](sContainerId, dictWorkflow)
-        return {"bSuccess": True}
+        return dictResult
 
 
 def _fnRegisterGithubPush(app, dictCtx):
@@ -563,15 +580,67 @@ def _fnRegisterGithubPush(app, dictCtx):
             request.listFilePaths, request.sCommitMessage,
             sWorkdir,
         )
-        if iExit != 0:
-            raise HTTPException(500, f"Push failed: {sOut}")
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+        if not dictResult["bSuccess"]:
+            return dictResult
         sCommitHash = sOut.strip().splitlines()[-1] if sOut else ""
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, request.listFilePaths, "Github")
         _fnStoreCommitHash(
             dictWorkflow, request.listFilePaths, sCommitHash)
         dictCtx["save"](sContainerId, dictWorkflow)
-        return {"bSuccess": True, "sCommitHash": sCommitHash}
+        dictResult["sCommitHash"] = sCommitHash
+        return dictResult
+
+
+    @app.post("/api/github/{sContainerId}/add-file")
+    async def fnGithubAddFile(
+        sContainerId: str, request: GitAddFileRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        sWorkdir = posixpath.dirname(
+            dictCtx["paths"].get(sContainerId, ""))
+        fnValidatePathWithinRoot(
+            posixpath.normpath(
+                posixpath.join(sWorkdir, request.sFilePath)
+            ),
+            sWorkspaceRoot,
+        )
+        iExit, sOut = await asyncio.to_thread(
+            syncDispatcher.ftResultAddFileToGithub,
+            dictCtx["docker"], sContainerId,
+            request.sFilePath, request.sCommitMessage,
+            sWorkdir,
+        )
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+        if dictResult["bSuccess"]:
+            sHash = sOut.strip().splitlines()[-1] if sOut else ""
+            dictResult["sCommitHash"] = sHash
+        return dictResult
+
+    @app.get("/api/sync/{sContainerId}/scripts")
+    async def fnGetScripts(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictDirMap = workflowManager.fdictBuildStepDirectoryMap(
+            dictWorkflow)
+        listGroups = []
+        for iStep, dictStep in enumerate(
+            dictWorkflow.get("listSteps", [])
+        ):
+            listScripts = (
+                workflowManager.flistExtractStepScripts(dictStep)
+            )
+            if listScripts:
+                listGroups.append({
+                    "sStepName": dictStep.get("sName", ""),
+                    "sCamelCaseDir": dictDirMap.get(iStep, ""),
+                    "listScripts": listScripts,
+                })
+        return listGroups
 
 
 def _fnStoreCommitHash(dictWorkflow, listFilePaths, sCommitHash):
@@ -608,12 +677,30 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         syncDispatcher.fnValidateServiceName(request.sService)
         if request.sToken:
             sTokenName = f"{request.sService}_token"
-            syncDispatcher.fnStoreCredentialInContainer(
-                dictCtx["docker"], sContainerId,
-                sTokenName, request.sToken,
-            )
-        return syncDispatcher.fdictCheckConnectivity(
+            try:
+                syncDispatcher.fnStoreCredentialInContainer(
+                    dictCtx["docker"], sContainerId,
+                    sTokenName, request.sToken,
+                )
+            except Exception as error:
+                return {
+                    "bConnected": False,
+                    "sMessage": f"Failed to store credentials: {error}",
+                }
+        dictResult = syncDispatcher.fdictCheckConnectivity(
             dictCtx["docker"], sContainerId, request.sService)
+        if dictResult["bConnected"] and request.sService == "zenodo":
+            bValid = await asyncio.to_thread(
+                syncDispatcher.fbValidateZenodoToken,
+                dictCtx["docker"], sContainerId,
+            )
+            if not bValid:
+                dictResult["bConnected"] = False
+                dictResult["sMessage"] = (
+                    "Token stored but validation failed. "
+                    "Check that the token has deposit scopes."
+                )
+        return dictResult
 
     @app.get("/api/sync/{sContainerId}/check/{sService}")
     async def fnCheckConnection(
@@ -642,28 +729,6 @@ def _fnRegisterDag(app, dictCtx):
         if iExit != 0:
             raise HTTPException(500, f"DAG failed: {result}")
         return Response(content=result, media_type="image/svg+xml")
-
-
-def _fnRegisterGithubActions(app, dictCtx):
-    """Register GitHub Actions generation endpoint."""
-    from . import syncDispatcher
-
-    @app.post("/api/github/{sContainerId}/generate-actions")
-    async def fnGenerateActions(sContainerId: str):
-        dictCtx["require"]()
-        sPath = ".github/workflows/vaibify.yml"
-        iExit, sOut = await asyncio.to_thread(
-            syncDispatcher.ftResultGenerateActions,
-            dictCtx["docker"], sContainerId, sPath,
-        )
-        if iExit != 0:
-            raise HTTPException(500, f"Generation failed: {sOut}")
-        baContent = dictCtx["docker"].fbaFetchFile(
-            sContainerId, sPath
-        )
-        return Response(
-            content=baContent, media_type="text/plain"
-        )
 
 
 class DatasetDownloadRequest(BaseModel):
@@ -1114,7 +1179,6 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterMonitor(app)
     _fnRegisterReproEndpoints(app, dictCtx)
     _fnRegisterDag(app, dictCtx)
-    _fnRegisterGithubActions(app, dictCtx)
     _fnRegisterDatasetDownload(app, dictCtx)
     _fnRegisterLogRoutes(app, dictCtx)
     _fnRegisterSettingsGet(app, dictCtx)

@@ -2,7 +2,11 @@
 
 Generates includegraphics commands, margin icons, DOI badges, and
 writes assembled include files for use in reproducible papers.
+Annotates TeX files with GitHub source links and Zenodo DOI badges.
 """
+
+import os
+import re
 
 from pathlib import Path
 
@@ -126,6 +130,132 @@ def _fnWriteTexFile(sOutputPath, sContent):
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
     with open(pathOutput, "w") as fileHandle:
         fileHandle.write(sContent)
+
+
+# ------------------------------------------------------------------
+# TeX annotation — parse, match, and insert links
+# ------------------------------------------------------------------
+
+
+def flistParseIncludeGraphics(sTexContent):
+    """Extract figure filenames from includegraphics commands."""
+    listMatches = re.findall(
+        r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}",
+        sTexContent,
+    )
+    return [os.path.basename(s) for s in listMatches]
+
+
+def fdictMatchFiguresToSteps(listFigureNames, dictWorkflow):
+    """Map figure basenames to step camelCase directory names."""
+    from vaibify.gui.workflowManager import (
+        fsCamelCaseDirectory,
+    )
+    dictMatches = {}
+    for iStep, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sStepName = dictStep.get("sName", "")
+        sCamelDir = fsCamelCaseDirectory(sStepName)
+        for sKey in ("saPlotFiles", "saDataFiles"):
+            for sFile in dictStep.get(sKey, []):
+                sBasename = os.path.basename(sFile)
+                if sBasename in listFigureNames:
+                    dictMatches[sBasename] = {
+                        "sCamelCaseDir": sCamelDir,
+                        "iStepIndex": iStep,
+                    }
+    return dictMatches
+
+
+_SOURCE_CODE_MARKER = "[Source Code]"
+
+
+def fsInsertGithubLinks(sTexContent, dictMatches, sGithubBaseUrl):
+    """Insert Source Code href after each matched figure caption."""
+    for sBasename, dictInfo in dictMatches.items():
+        sTexContent = _fsInsertLinkForFigure(
+            sTexContent, sBasename,
+            dictInfo["sCamelCaseDir"], sGithubBaseUrl,
+        )
+    return sTexContent
+
+
+def _fsInsertLinkForFigure(
+    sTexContent, sBasename, sCamelDir, sGithubBaseUrl,
+):
+    """Insert or replace a Source Code link near a figure."""
+    sUrl = f"{sGithubBaseUrl}/{sCamelDir}"
+    sLink = f"\\href{{{sUrl}}}{{{_SOURCE_CODE_MARKER}}}"
+    sOldMarker = sCamelDir + "}" + "{" + _SOURCE_CODE_MARKER + "}"
+    if sOldMarker in sTexContent:
+        iStart = sTexContent.index(sOldMarker)
+        iHrefStart = sTexContent.rfind("\\href{", 0, iStart)
+        if iHrefStart >= 0:
+            iEnd = iStart + len(sOldMarker)
+            return sTexContent[:iHrefStart] + sLink + sTexContent[iEnd:]
+    sEscaped = re.escape(sBasename)
+    sFigurePattern = (
+        r"(\\includegraphics(?:\[[^\]]*\])?\{[^}]*"
+        + sEscaped + r"[^}]*\})"
+    )
+    sCaption = r"(\\caption\{(?:[^{}]|\{[^{}]*\})*\})"
+    sCombined = sFigurePattern + r"(.*?)" + sCaption
+    match = re.search(sCombined, sTexContent, re.DOTALL)
+    if not match:
+        return sTexContent
+    sOrigCaption = match.group(3)
+    sNewCaption = sOrigCaption[:-1] + " " + sLink + "}"
+    return sTexContent.replace(sOrigCaption, sNewCaption, 1)
+
+
+def fsInsertZenodoDoi(sTexContent, sDoi):
+    """Insert a Zenodo DOI link in the acknowledgments section."""
+    if not sDoi:
+        return sTexContent
+    sDoiLink = fsGenerateZenodoBadge(sDoi)
+    sDoiSentence = (
+        "The data products associated with this work are "
+        f"archived at {sDoiLink}."
+    )
+    sExistingDoi = re.escape(sDoi)
+    if re.search(sExistingDoi, sTexContent):
+        return sTexContent
+    sAckPattern = (
+        r"(\\begin\{acknowledgments\}|"
+        r"\\section\*?\{[Aa]cknowledg[e]?ments?\})"
+    )
+    match = re.search(sAckPattern, sTexContent)
+    if match:
+        iInsertPos = match.end()
+        return (
+            sTexContent[:iInsertPos] + "\n" + sDoiSentence
+            + "\n" + sTexContent[iInsertPos:]
+        )
+    sEndDoc = r"\\end\{document\}"
+    match = re.search(sEndDoc, sTexContent)
+    if match:
+        return (
+            sTexContent[:match.start()]
+            + "% Zenodo archive\n" + sDoiSentence + "\n\n"
+            + sTexContent[match.start():]
+        )
+    return sTexContent
+
+
+def fsAnnotateTexFile(
+    sTexContent, dictWorkflow, sGithubBaseUrl, sDoi,
+):
+    """Annotate a TeX file with GitHub links and Zenodo DOI."""
+    listFigureNames = flistParseIncludeGraphics(sTexContent)
+    dictMatches = fdictMatchFiguresToSteps(
+        listFigureNames, dictWorkflow
+    )
+    sTexContent = fsInsertGithubLinks(
+        sTexContent, dictMatches, sGithubBaseUrl
+    )
+    sTexContent = fsInsertZenodoDoi(sTexContent, sDoi)
+    return sTexContent
 
 
 # ------------------------------------------------------------------
