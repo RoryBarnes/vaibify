@@ -358,7 +358,9 @@ const PipeleyenFigureViewer = (function () {
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc =
             "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-        pdfjsLib.getDocument(sUrl).promise.then(function (pdfDoc) {
+        pdfjsLib.getDocument({
+            url: sUrl, isEvalSupported: false,
+        }).promise.then(function (pdfDoc) {
             pdfDoc.getPage(1).then(function (page) {
                 fnRenderPdfPage(page, elViewport, 1.0);
             });

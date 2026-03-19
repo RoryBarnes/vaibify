@@ -83,7 +83,8 @@ def _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath):
 
 def _fsPreviewText(connectionDocker, sContainerId, sAbsPath):
     """Preview first 10 lines of a text file."""
-    sCommand = f"head -10 '{sAbsPath}' 2>/dev/null"
+    from .pipelineRunner import fsShellQuote
+    sCommand = f"head -10 {fsShellQuote(sAbsPath)} 2>/dev/null"
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )

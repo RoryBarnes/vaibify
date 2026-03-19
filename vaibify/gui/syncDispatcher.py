@@ -1,8 +1,19 @@
 """Dispatch sync operations to run inside Docker containers."""
 
 import posixpath
+import re
+import uuid
 
 from .pipelineRunner import fsShellQuote
+
+VALID_SERVICES = {"github", "overleaf", "zenodo"}
+VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
+
+
+def fnValidateServiceName(sService):
+    """Raise ValueError if sService is not a known service."""
+    if sService not in VALID_SERVICES:
+        raise ValueError(f"Invalid service: {sService}")
 
 
 def fsPythonCommand(sImportLine, sFunctionCall):
@@ -15,6 +26,7 @@ def ftResultPushToOverleaf(
     listFilePaths, sProjectId, sTargetDirectory,
 ):
     """Push figure files to Overleaf inside the container."""
+    fnValidateOverleafProjectId(sProjectId)
     sImport = (
         "from vaibify.reproducibility.overleafSync "
         "import fnPushFiguresToOverleaf"
@@ -35,6 +47,7 @@ def ftResultPullFromOverleaf(
     sProjectId, listPullPaths, sTargetDirectory,
 ):
     """Pull TeX files from Overleaf inside the container."""
+    fnValidateOverleafProjectId(sProjectId)
     sImport = (
         "from vaibify.reproducibility.overleafSync "
         "import fnPullTexFromOverleaf"
@@ -54,6 +67,7 @@ def ftResultArchiveToZenodo(
     connectionDocker, sContainerId, sService, listFilePaths,
 ):
     """Upload files to Zenodo inside the container."""
+    fnValidateServiceName(sService)
     sImport = (
         "from vaibify.reproducibility.zenodoClient "
         "import ZenodoClient"
@@ -109,6 +123,7 @@ def fdictCheckConnectivity(
     connectionDocker, sContainerId, sService,
 ):
     """Check if credentials are available for a service."""
+    fnValidateServiceName(sService)
     if sService == "github":
         return _fdictCheckGithub(connectionDocker, sContainerId)
     if sService == "overleaf":
@@ -140,9 +155,11 @@ def _fdictCheckKeyring(
     connectionDocker, sContainerId, sTokenName,
 ):
     """Check if a keyring token exists inside the container."""
+    if sTokenName not in VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sTokenName}")
     sCommand = fsPythonCommand(
         "import keyring",
-        f"t=keyring.get_password('vaibify','{sTokenName}'); "
+        f"t=keyring.get_password('vaibify',{repr(sTokenName)}); "
         f"print('ok' if t else 'missing')",
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -159,24 +176,37 @@ def fnStoreCredentialInContainer(
     connectionDocker, sContainerId, sName, sValue,
 ):
     """Store a credential in the container's keyring via temp file."""
+    if sName not in VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sName}")
+    sTempPath = f"/tmp/_vc_cred_{uuid.uuid4().hex[:12]}"
     sCommand = fsPythonCommand(
         "import keyring",
-        f"keyring.set_password('vaibify', '{sName}', "
-        f"open('/tmp/_vc_cred').read().strip())",
+        f"keyring.set_password('vaibify', {repr(sName)}, "
+        f"open({repr(sTempPath)}).read().strip())",
     )
     connectionDocker.fnWriteFile(
-        sContainerId, "/tmp/_vc_cred", sValue.encode("utf-8")
+        sContainerId, sTempPath, sValue.encode("utf-8")
     )
-    connectionDocker.ftResultExecuteCommand(sContainerId, sCommand)
-    connectionDocker.ftResultExecuteCommand(
-        sContainerId, "rm -f /tmp/_vc_cred"
-    )
+    try:
+        connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand
+        )
+    finally:
+        connectionDocker.ftResultExecuteCommand(
+            sContainerId, f"rm -f {fsShellQuote(sTempPath)}"
+        )
+
+
+def fnValidateOverleafProjectId(sProjectId):
+    """Raise ValueError if the Overleaf project ID is malformed."""
+    if not re.match(r"^[a-zA-Z0-9_-]+$", sProjectId):
+        raise ValueError(
+            f"Invalid Overleaf project ID: {sProjectId}"
+        )
 
 
 def fsBuildDagDot(dictWorkflow):
     """Build a Graphviz DOT string from workflow step references."""
-    import re
-
     listLines = [
         "digraph workflow {",
         "  rankdir=LR;",
@@ -188,9 +218,9 @@ def fsBuildDagDot(dictWorkflow):
     for iIndex, dictStep in enumerate(listSteps):
         sLabel = dictStep.get("sName", f"Step {iIndex + 1}")
         sNodeId = f"step{iIndex + 1}"
-        listLines.append(
-            f'  {sNodeId} [label="{sLabel}"];'
-        )
+        sSafeLabel = sLabel.replace('"', '\\"')
+        listLines.append(f'  {sNodeId} [label="{sSafeLabel}"];')
+    setEdges = set()
     for iIndex, dictStep in enumerate(listSteps):
         sTarget = f"step{iIndex + 1}"
         for sKey in ("saDataCommands", "saPlotCommands",
@@ -200,9 +230,10 @@ def fsBuildDagDot(dictWorkflow):
                     r"\{Step(\d+)\.\w+\}", sCmd
                 ):
                     iSource = int(match.group(1))
-                    listLines.append(
-                        f"  step{iSource} -> {sTarget};"
-                    )
+                    sEdge = f"  step{iSource} -> {sTarget};"
+                    if sEdge not in setEdges:
+                        setEdges.add(sEdge)
+                        listLines.append(sEdge)
     listLines.append("}")
     return "\n".join(listLines)
 
@@ -241,6 +272,23 @@ def ftResultGenerateActions(
     )
 
 
+def _fsHashFileCommand(sPath):
+    """Build a shell-safe hash command for a file path."""
+    return (
+        f"python3 -c \"import hashlib; "
+        f"print(hashlib.sha256("
+        f"open({repr(sPath)},'rb').read()).hexdigest())\""
+    )
+
+
+def _fsNormalizePath(sDirectory, sScript):
+    """Normalize a script path relative to a directory."""
+    if sScript.startswith("/"):
+        return sScript
+    sJoined = posixpath.join(sDirectory, sScript)
+    return posixpath.normpath(sJoined)
+
+
 def fbStepInputsUnchanged(
     connectionDocker, sContainerId, dictStep, iStepNumber,
 ):
@@ -252,14 +300,8 @@ def fbStepInputsUnchanged(
         return False
     listScripts = _flistExtractScripts(dictStep)
     for sScript in listScripts:
-        sPath = sScript if sScript.startswith("/") else (
-            f"{sDirectory}/{sScript}"
-        )
-        sCommand = (
-            f"python3 -c \"import hashlib; "
-            f"print(hashlib.sha256(open('{sPath}','rb').read())"
-            f".hexdigest())\""
-        )
+        sPath = _fsNormalizePath(sDirectory, sScript)
+        sCommand = _fsHashFileCommand(sPath)
         iExit, sHash = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCommand
         )
@@ -291,55 +333,11 @@ def fdictComputeInputHashes(
     sDirectory = dictStep.get("sDirectory", "")
     dictHashes = {}
     for sScript in _flistExtractScripts(dictStep):
-        sPath = sScript if sScript.startswith("/") else (
-            f"{sDirectory}/{sScript}"
-        )
-        sCommand = (
-            f"python3 -c \"import hashlib; "
-            f"print(hashlib.sha256(open('{sPath}','rb').read())"
-            f".hexdigest())\""
-        )
+        sPath = _fsNormalizePath(sDirectory, sScript)
+        sCommand = _fsHashFileCommand(sPath)
         iExit, sHash = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCommand
         )
         if iExit == 0:
             dictHashes[sPath] = sHash.strip()
     return dictHashes
-
-
-def ftResultDownloadDataset(
-    connectionDocker, sContainerId,
-    sService, iRecordId, sFileName, sDestination,
-):
-    """Download a dataset from Zenodo inside the container."""
-    sImport = (
-        "from vaibify.reproducibility.zenodoClient "
-        "import ZenodoClient"
-    )
-    sCall = (
-        f"c=ZenodoClient({repr(sService)}); "
-        f"c.fnDownloadFile({iRecordId}, "
-        f"{repr(sFileName)}, {repr(sDestination)}); "
-        f"print('Downloaded:', {repr(sFileName)})"
-    )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
-    )
-
-
-def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
-    """Return all output file paths with their sync status."""
-    listFiles = []
-    for dictStep in dictWorkflow.get("listSteps", []):
-        for sKey in ("saDataFiles", "saPlotFiles"):
-            for sFile in dictStep.get(sKey, []):
-                dictSync = dictSyncStatus.get(
-                    sFile, {"bOverleaf": False,
-                            "bGithub": False, "bZenodo": False}
-                )
-                listFiles.append({
-                    "sPath": sFile,
-                    "sStepName": dictStep.get("sName", ""),
-                    "dictSync": dictSync,
-                })
-    return listFiles

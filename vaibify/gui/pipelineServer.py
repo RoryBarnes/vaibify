@@ -5,10 +5,11 @@ import json
 import os
 import posixpath
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 from typing import List, Optional
 
 WORKSPACE_ROOT = "/workspace"
@@ -604,6 +605,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         sContainerId: str, request: SyncSetupRequest,
     ):
         dictCtx["require"]()
+        syncDispatcher.fnValidateServiceName(request.sService)
         if request.sToken:
             sTokenName = f"{request.sService}_token"
             syncDispatcher.fnStoreCredentialInContainer(
@@ -618,6 +620,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         sContainerId: str, sService: str,
     ):
         dictCtx["require"]()
+        syncDispatcher.fnValidateServiceName(sService)
         return syncDispatcher.fdictCheckConnectivity(
             dictCtx["docker"], sContainerId, sService)
 
@@ -972,6 +975,9 @@ def _fnRegisterPipelineWs(app, dictCtx):
 
     @app.websocket("/ws/pipeline/{sContainerId}")
     async def fnPipelineWs(websocket: WebSocket, sContainerId: str):
+        if not fbValidateWebSocketOrigin(websocket):
+            await websocket.close(code=4003)
+            return
         dictCtx["require"]()
         await fnHandlePipelineWs(websocket, dictCtx, sContainerId)
 
@@ -981,6 +987,9 @@ def _fnRegisterTerminalWs(app, dictCtx):
 
     @app.websocket("/ws/terminal/{sContainerId}")
     async def fnTerminalWs(websocket: WebSocket, sContainerId: str):
+        if not fbValidateWebSocketOrigin(websocket):
+            await websocket.close(code=4003)
+            return
         dictCtx["require"]()
         await websocket.accept()
         session = TerminalSession(
@@ -1208,6 +1217,48 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterStaticFiles(app)
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all HTTP responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = (
+            "strict-origin-when-cross-origin"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://cdnjs.cloudflare.com "
+            "https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' "
+            "https://cdn.jsdelivr.net; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:*; "
+            "frame-ancestors 'none'"
+        )
+        return response
+
+
+def fbValidateWebSocketOrigin(websocket: WebSocket):
+    """Return True only if the WebSocket origin is localhost."""
+    sOrigin = ""
+    for sKey, sVal in websocket.headers.items():
+        if sKey.lower() == "origin":
+            sOrigin = sVal
+            break
+    if not sOrigin:
+        return True
+    listAllowed = [
+        "http://127.0.0.1", "http://localhost",
+        "https://127.0.0.1", "https://localhost",
+    ]
+    for sAllowed in listAllowed:
+        if sOrigin.startswith(sAllowed):
+            return True
+    return False
+
+
 def fappCreateApplication(
     sWorkspaceRoot="/workspace", sTerminalUserArg=None,
 ):
@@ -1215,6 +1266,7 @@ def fappCreateApplication(
     global sTerminalUser
     sTerminalUser = sTerminalUserArg
     app = FastAPI(title="Vaibify Workflow Viewer")
+    app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
     return app
