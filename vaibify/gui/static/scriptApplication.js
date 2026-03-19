@@ -301,6 +301,8 @@ const PipeleyenApp = (function () {
         sWorkflowPath = null;
         iSelectedStepIndex = -1;
         setExpandedSteps.clear();
+        setExpandedDeps.clear();
+        setExpandedUnitTests.clear();
         dictStepStatus = {};
         if (wsPipeline) {
             wsPipeline.close();
@@ -629,7 +631,7 @@ const PipeleyenApp = (function () {
         if (sRunStatus === "running" || sRunStatus === "queued") {
             sStatusClass = sRunStatus;
         } else {
-            sStatusClass = fsComputeStepDotState(step);
+            sStatusClass = fsComputeStepDotState(step, iIndex);
         }
         var bEnabled = step.bEnabled !== false;
         var bSelected = iIndex === iSelectedStepIndex;
@@ -759,6 +761,7 @@ const PipeleyenApp = (function () {
         return dictIcons[sState] || "\u2014";
     }
 
+    var setExpandedDeps = new Set();
     var setExpandedUnitTests = new Set();
     var setStepsWithData = new Set();
     var setGeneratedTestsPending = new Set();
@@ -772,6 +775,63 @@ const PipeleyenApp = (function () {
             return "error";
         }
         return sState;
+    }
+
+    function flistGetStepDependencies(iStep) {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return [];
+        var step = dictWorkflow.listSteps[iStep];
+        var setDeps = {};
+        var listArrays = ["saDataCommands", "saPlotCommands",
+            "saTestCommands", "saDataFiles", "saPlotFiles"];
+        var rRef = /\{Step(\d+)\.\w+\}/g;
+        listArrays.forEach(function (sKey) {
+            (step[sKey] || []).forEach(function (sVal) {
+                var match;
+                while ((match = rRef.exec(sVal)) !== null) {
+                    var iDep = parseInt(match[1]) - 1;
+                    if (iDep !== iStep) setDeps[iDep] = true;
+                }
+            });
+        });
+        return Object.keys(setDeps).map(Number).sort(
+            function (a, b) { return a - b; }
+        );
+    }
+
+    function fbStepFullyPassing(iStep, dictVisited) {
+        if (!dictWorkflow || !dictWorkflow.listSteps[iStep]) {
+            return false;
+        }
+        if (dictVisited[iStep]) return dictVisited[iStep] === "pass";
+        dictVisited[iStep] = "checking";
+        var step = dictWorkflow.listSteps[iStep];
+        var sTestState = fsEffectiveTestState(step);
+        var dictVerify = fdictGetVerification(step);
+        if (sTestState !== "passed" || dictVerify.sUser !== "passed") {
+            dictVisited[iStep] = "fail";
+            return false;
+        }
+        var listDeps = flistGetStepDependencies(iStep);
+        for (var i = 0; i < listDeps.length; i++) {
+            if (!fbStepFullyPassing(listDeps[i], dictVisited)) {
+                dictVisited[iStep] = "fail";
+                return false;
+            }
+        }
+        dictVisited[iStep] = "pass";
+        return true;
+    }
+
+    function fsComputeDepsState(iStep) {
+        var listDeps = flistGetStepDependencies(iStep);
+        if (listDeps.length === 0) return "none";
+        var dictVisited = {};
+        for (var i = 0; i < listDeps.length; i++) {
+            if (!fbStepFullyPassing(listDeps[i], dictVisited)) {
+                return "failed";
+            }
+        }
+        return "passed";
     }
 
     function fsRenderVerificationBlock(step, iIndex) {
@@ -789,6 +849,39 @@ const PipeleyenApp = (function () {
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
         );
+        var sDepsState = fsComputeDepsState(iIndex);
+        if (sDepsState !== "none") {
+            sHtml += fsRenderVerificationRow(
+                "Dependencies", sDepsState, "deps", iIndex
+            );
+            if (setExpandedDeps.has(iIndex)) {
+                sHtml += fsRenderDepsExpanded(iIndex);
+            }
+        }
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderDepsExpanded(iIndex) {
+        var listDeps = flistGetStepDependencies(iIndex);
+        var sHtml = '<div class="deps-expanded">';
+        var dictVisited = {};
+        for (var i = 0; i < listDeps.length; i++) {
+            var iDep = listDeps[i];
+            var depStep = dictWorkflow.listSteps[iDep];
+            if (!depStep) continue;
+            var bPassing = fbStepFullyPassing(iDep, dictVisited);
+            var sState = bPassing ? "passed" : "failed";
+            var sNum = String(iDep + 1).padStart(2, "0");
+            sHtml += '<div class="dep-item">' +
+                '<span class="dep-label">' + sNum + ' ' +
+                fnEscapeHtml(depStep.sName) + '</span>' +
+                '<span class="verification-badge state-' +
+                sState + '">' +
+                fsVerificationStateIcon(sState) + ' ' +
+                fsVerificationStateLabel(sState) +
+                '</span></div>';
+        }
         sHtml += '</div>';
         return sHtml;
     }
@@ -803,6 +896,11 @@ const PipeleyenApp = (function () {
             var bExpanded = setExpandedUnitTests.has(iIndex);
             sTriangle = '<span class="expand-triangle">' +
                 (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
+        }
+        if (sApprover === "deps") {
+            var bDepsExpanded = setExpandedDeps.has(iIndex);
+            sTriangle = '<span class="expand-triangle">' +
+                (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
         }
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
@@ -865,7 +963,7 @@ const PipeleyenApp = (function () {
         sUserName = sName || "User";
     }
 
-    function fsComputeStepDotState(step) {
+    function fsComputeStepDotState(step, iIndex) {
         var dictVerify = fdictGetVerification(step);
         var sUnit = fsEffectiveTestState(step);
         var sUser = dictVerify.sUser;
@@ -873,7 +971,12 @@ const PipeleyenApp = (function () {
             sUser === "failed" || sUser === "error") {
             return "fail";
         }
-        if (sUnit === "passed" && sUser === "passed") {
+        var sDeps = fsComputeDepsState(iIndex);
+        if (sDeps === "failed") {
+            return "fail";
+        }
+        if (sUnit === "passed" && sUser === "passed" &&
+            sDeps !== "failed") {
             return "verified";
         }
         if ((sUnit === "passed" && sUser === "untested") ||
@@ -1098,6 +1201,15 @@ const PipeleyenApp = (function () {
             );
             return;
         }
+        var elVerifDeps = elTarget.closest(
+            '.verification-row[data-approver="deps"]'
+        );
+        if (elVerifDeps) {
+            fnToggleDepsExpand(
+                parseInt(elVerifDeps.dataset.step)
+            );
+            return;
+        }
         if (elTarget.closest(".test-file-item")) {
             PipeleyenFigureViewer.fnDisplayFileFromContainer(
                 elTarget.closest(".test-file-item")
@@ -1256,6 +1368,15 @@ const PipeleyenApp = (function () {
         } catch (error) {
             fnShowToast("Save failed", "error");
         }
+    }
+
+    function fnToggleDepsExpand(iStep) {
+        if (setExpandedDeps.has(iStep)) {
+            setExpandedDeps.delete(iStep);
+        } else {
+            setExpandedDeps.add(iStep);
+        }
+        fnRenderStepList();
     }
 
     function fnToggleUnitTestExpand(iStep) {
