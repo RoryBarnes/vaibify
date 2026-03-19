@@ -460,11 +460,43 @@ def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
     return dictStep.get("bEnabled", True)
 
 
+async def _fbShouldSkipStep(
+    connectionDocker, sContainerId, dictStep, iStepNumber,
+):
+    """Return True if the step's inputs are unchanged."""
+    from . import syncDispatcher
+
+    return syncDispatcher.fbStepInputsUnchanged(
+        connectionDocker, sContainerId, dictStep, iStepNumber
+    )
+
+
+async def _fnRecordInputHashes(
+    connectionDocker, sContainerId, dictStep,
+):
+    """Compute and store input hashes after a step runs."""
+    from . import syncDispatcher
+
+    dictHashes = syncDispatcher.fdictComputeInputHashes(
+        connectionDocker, sContainerId, dictStep
+    )
+    if "dictRunStats" not in dictStep:
+        dictStep["dictRunStats"] = {}
+    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
+
+
 async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Run a single step, record timing, and emit result."""
+    if await _fbShouldSkipStep(
+        connectionDocker, sContainerId, dictStep, iStepNumber
+    ):
+        await fnStatusCallback({
+            "sType": "stepSkipped", "iStepNumber": iStepNumber,
+        })
+        return 0
     import time
     fStartTime = time.time()
     sStartTimestamp = datetime.now(timezone.utc).strftime(
@@ -480,6 +512,9 @@ async def _fnRunOneStep(
         "sLastRun": sStartTimestamp,
         "fWallClock": round(fWallClock, 1),
     }
+    await _fnRecordInputHashes(
+        connectionDocker, sContainerId, dictStep
+    )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
 

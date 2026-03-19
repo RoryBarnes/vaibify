@@ -412,3 +412,42 @@ def flistFilterFigureFiles(listOutputPaths):
 def flistExtractOutputFiles(dictStep):
     """Return list of output file paths for a step."""
     return list(dictStep.get("saPlotFiles", []))
+
+
+# ---------------------------------------------------------------------------
+# Sync status tracking
+# ---------------------------------------------------------------------------
+
+
+def fdictGetSyncStatus(dictWorkflow):
+    """Return the sync status dict, defaulting to empty."""
+    return dictWorkflow.get("dictSyncStatus", {})
+
+
+def fdictInitializeSyncEntry():
+    """Return a fresh sync entry with all services unsynced."""
+    return {
+        "bOverleaf": False, "sOverleafTimestamp": "",
+        "bGithub": False, "sGithubTimestamp": "",
+        "bZenodo": False, "sZenodoTimestamp": "",
+    }
+
+
+def fnUpdateSyncStatus(dictWorkflow, listFilePaths, sService):
+    """Mark files as synced to sService with current timestamp."""
+    from datetime import datetime, timezone
+
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    sTimestamp = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    sBoolKey = f"b{sService}"
+    sTimeKey = f"s{sService}Timestamp"
+    for sPath in listFilePaths:
+        if sPath not in dictWorkflow["dictSyncStatus"]:
+            dictWorkflow["dictSyncStatus"][sPath] = (
+                fdictInitializeSyncEntry()
+            )
+        dictWorkflow["dictSyncStatus"][sPath][sBoolKey] = True
+        dictWorkflow["dictSyncStatus"][sPath][sTimeKey] = sTimestamp

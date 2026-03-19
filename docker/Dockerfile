@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nano \
     vim \
     pkg-config \
+    graphviz \
     && rm -rf /var/lib/apt/lists/*
 
 # Project-specific system packages from vaibify.yml systemPackages

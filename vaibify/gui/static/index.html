@@ -66,26 +66,65 @@
                   title="Click to switch workflow"></span>
             <div id="workflowDropdown" class="workflow-dropdown"></div>
         </div>
-        <button class="btn btn-primary" id="btnRunSelected"
-                title="Run checked steps">Run Selected</button>
-        <button class="btn" id="btnRunAll"
-                title="Run all steps">Run All</button>
-        <button class="btn" id="btnVerify"
-                title="Verify outputs only">Verify</button>
-        <button class="btn" id="btnValidateReferences"
-                title="Check cross-step references">Validate</button>
-        <button class="btn" id="btnMonitor"
-                title="Resource monitor">Monitor</button>
-        <button class="btn" id="btnOverleafPush"
-                title="Push to Overleaf">Push to Overleaf</button>
-        <button class="btn" id="btnZenodoArchive"
-                title="Archive to Zenodo">Archive to Zenodo</button>
-        <button class="btn" id="btnVsCode"
-                title="Open in VS Code">VS Code</button>
-        <button class="btn-icon" id="btnResetLayout"
-                title="Reset layout">&#9638;</button>
-        <button class="btn" id="btnDisconnect"
-                title="Disconnect from container">Disconnect</button>
+        <!-- Run Menu -->
+        <div class="toolbar-menu">
+            <button class="btn toolbar-menu-trigger">Run</button>
+            <div class="toolbar-menu-dropdown">
+                <div class="toolbar-menu-item" id="btnRunSelected">
+                    Run Selected Steps</div>
+                <div class="toolbar-menu-item" id="btnRunAll">
+                    Run All Steps</div>
+                <div class="toolbar-menu-separator"></div>
+                <div class="toolbar-menu-item" id="btnVerify">
+                    Verify Outputs</div>
+                <div class="toolbar-menu-item" id="btnValidateReferences">
+                    Validate References</div>
+            </div>
+        </div>
+
+        <!-- Sync Menu -->
+        <div class="toolbar-menu">
+            <button class="btn toolbar-menu-trigger">Sync</button>
+            <div class="toolbar-menu-dropdown">
+                <div class="toolbar-menu-item" id="btnOverleafPush">
+                    Push to Overleaf</div>
+                <div class="toolbar-menu-item" id="btnGithubPush">
+                    Push to GitHub</div>
+                <div class="toolbar-menu-item" id="btnZenodoArchive">
+                    Archive to Zenodo</div>
+                <div class="toolbar-menu-separator"></div>
+                <div class="toolbar-menu-item" id="btnGenerateActions">
+                    Generate CI Workflow</div>
+            </div>
+        </div>
+
+        <!-- View Menu -->
+        <div class="toolbar-menu">
+            <button class="btn toolbar-menu-trigger">View</button>
+            <div class="toolbar-menu-dropdown">
+                <div class="toolbar-menu-item" id="btnShowDag">
+                    Dependency Graph</div>
+                <div class="toolbar-menu-item" id="btnVsCode">
+                    Open in VS Code</div>
+                <div class="toolbar-menu-item" id="btnMonitor">
+                    Resource Monitor</div>
+                <div class="toolbar-menu-separator"></div>
+                <div class="toolbar-menu-item" id="btnResetLayout">
+                    Default Layout</div>
+            </div>
+        </div>
+
+        <!-- Admin Menu -->
+        <div class="toolbar-menu">
+            <button class="btn toolbar-menu-trigger">Admin</button>
+            <div class="toolbar-menu-dropdown">
+                <div class="toolbar-menu-item" id="btnNewWorkflowToolbar">
+                    New Workflow</div>
+                <div class="toolbar-menu-separator"></div>
+                <div class="toolbar-menu-item" id="btnDisconnect">
+                    Disconnect</div>
+            </div>
+        </div>
     </div>
 
     <!-- Left Panel -->
@@ -290,6 +329,49 @@
             <button class="btn" id="btnApiCancel">Cancel</button>
             <button class="btn btn-primary" id="btnApiConfirm">
                 Generate</button>
+        </div>
+    </div>
+</div>
+
+<!-- Push Modal -->
+<div class="modal-overlay" id="modalPush" style="display: none;">
+    <div class="modal">
+        <h2 id="modalPushTitle">Push Files</h2>
+        <div id="modalPushFileList" class="push-file-list"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnPushCancel">Cancel</button>
+            <button class="btn" id="btnPushSelectAll">Select All</button>
+            <button class="btn btn-primary" id="btnPushConfirm">
+                Push Selected</button>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Setup Modal -->
+<div class="modal-overlay" id="modalConnectionSetup" style="display: none;">
+    <div class="modal modal-small">
+        <h2 id="modalConnectionTitle" style="color: var(--color-pale-blue);">
+            Setup Connection</h2>
+        <div class="form-group" id="groupSetupProjectId"
+             style="display: none;">
+            <label>Overleaf Project ID
+                <span class="help-icon" title="Open your project on overleaf.com. The project ID is the alphanumeric string in the URL after /project/. Example: overleaf.com/project/abc123def456 → ID is abc123def456">?</span>
+            </label>
+            <input type="text" id="inputSetupProjectId"
+                   placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1">
+        </div>
+        <div class="form-group" id="groupSetupToken"
+             style="display: none;">
+            <label id="labelSetupToken">API Token
+                <span class="help-icon" id="helpSetupToken" title="Go to zenodo.org → Account → Settings → Applications → Personal access tokens → New Token. Enable deposit:actions and deposit:write scopes.">?</span>
+            </label>
+            <input type="password" id="inputSetupToken"
+                   placeholder="Paste your token here">
+        </div>
+        <div class="modal-actions">
+            <button class="btn" id="btnSetupCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnSetupSave">
+                Connect</button>
         </div>
     </div>
 </div>

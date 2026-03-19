@@ -255,6 +255,7 @@ const PipeleyenApp = (function () {
             var elWorkflowName = document.getElementById("activeWorkflowName");
             elWorkflowName.textContent = sWorkflowName || "";
             fnShowMainLayout();
+            fnLoadSyncStatus();
             fnRenderStepList();
             PipeleyenTerminal.fnCreateTab();
         } catch (error) {
@@ -798,6 +799,20 @@ const PipeleyenApp = (function () {
         return "";
     }
 
+    function fsRenderFileSyncBadges(sResolved) {
+        var dictSync = dictCachedSyncStatus[sResolved] || {};
+        var sGithubTitle = dictSync.bGithub ?
+            "Commit: " + (dictSync.sGithubCommit || "unknown") :
+            "Not synced";
+        return '<span class="sync-badges">' +
+            fsRenderOneBadge("overleaf", dictSync.bOverleaf) +
+            '<span class="sync-badge sync-badge-github ' +
+            (dictSync.bGithub ? "sync-active" : "sync-inactive") +
+            '" title="' + sGithubTitle + '"></span>' +
+            fsRenderOneBadge("zenodo", dictSync.bZenodo) +
+            '</span>';
+    }
+
     function fsRenderRunStats(step) {
         var dictStats = step.dictRunStats || {};
         if (!dictStats.sLastRun) return "";
@@ -868,6 +883,9 @@ const PipeleyenApp = (function () {
                 fnEscapeHtml(sResolved) + '</div>';
         }
 
+        if (sType === "output") {
+            sHtml += fsRenderFileSyncBadges(sResolved);
+        }
         sHtml += '<div class="detail-actions">' +
             '<button class="action-edit" title="Edit">&#9998;</button>' +
             '<button class="action-copy" title="Copy">&#9112;</button>' +
@@ -1682,27 +1700,326 @@ const PipeleyenApp = (function () {
     /* --- Toolbar Events --- */
 
     function fnBindToolbarEvents() {
-        document.getElementById("btnRunSelected").addEventListener(
-            "click", fnRunSelected
+        fnBindToolbarMenus();
+        fnBindMenuItemActions();
+        fnBindPushModalEvents();
+    }
+
+    function fnBindToolbarMenus() {
+        fnBindMenuItemCloseOnClick();
+        document.querySelectorAll(".toolbar-menu-trigger")
+            .forEach(function (el) {
+                el.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                    var elDropdown = el.parentElement.querySelector(
+                        ".toolbar-menu-dropdown"
+                    );
+                    fnCloseAllToolbarMenus();
+                    elDropdown.classList.toggle("active");
+                });
+            });
+        document.addEventListener("click", fnCloseAllToolbarMenus);
+    }
+
+    function fnCloseAllToolbarMenus() {
+        document.querySelectorAll(".toolbar-menu-dropdown")
+            .forEach(function (el) {
+                el.classList.remove("active");
+            });
+    }
+
+    function fnBindMenuItemCloseOnClick() {
+        document.querySelectorAll(".toolbar-menu-item")
+            .forEach(function (el) {
+                el.addEventListener("click", fnCloseAllToolbarMenus);
+            });
+    }
+
+    function fnBindMenuItemActions() {
+        var dictActions = {
+            btnRunSelected: fnRunSelected,
+            btnRunAll: fnRunAll,
+            btnVerify: fnVerify,
+            btnValidateReferences: fnValidateReferences,
+            btnOverleafPush: function () { fnOpenPushModal("overleaf"); },
+            btnGithubPush: function () { fnOpenPushModal("github"); },
+            btnZenodoArchive: function () { fnOpenPushModal("zenodo"); },
+            btnGenerateActions: fnGenerateActions,
+            btnShowDag: fnShowDag,
+            btnVsCode: fnOpenVsCode,
+            btnMonitor: function () {},
+            btnResetLayout: fnResetLayout,
+            btnDisconnect: fnDisconnect,
+            btnNewWorkflowToolbar: fnCreateNewWorkflow,
+        };
+        for (var sId in dictActions) {
+            var el = document.getElementById(sId);
+            if (el) {
+                el.addEventListener("click", dictActions[sId]);
+            }
+        }
+    }
+
+    /* --- Sync Push Modal --- */
+
+    async function fnShowDag() {
+        if (!sContainerId) return;
+        var sUrl = "/api/workflow/" + sContainerId + "/dag";
+        var elViewport = document.getElementById("viewportA");
+        elViewport.innerHTML =
+            '<span class="placeholder">Generating DAG...</span>';
+        try {
+            var response = await fetch(sUrl);
+            if (!response.ok) throw new Error("DAG generation failed");
+            var blob = await response.blob();
+            var sObjectUrl = URL.createObjectURL(blob);
+            var elImg = document.createElement("img");
+            elImg.src = sObjectUrl;
+            elImg.alt = "Workflow DAG";
+            elImg.style.maxWidth = "100%";
+            elViewport.innerHTML = "";
+            elViewport.appendChild(elImg);
+        } catch (error) {
+            fnShowToast("DAG: " + error.message, "error");
+        }
+    }
+
+    async function fnGenerateActions() {
+        if (!sContainerId) return;
+        fnShowToast("Generating GitHub Actions...", "success");
+        try {
+            var response = await fetch(
+                "/api/github/" + sContainerId + "/generate-actions",
+                { method: "POST" }
+            );
+            if (!response.ok) throw new Error("Generation failed");
+            var sContent = await response.text();
+            PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                ".github/workflows/vaibify.yml"
+            );
+            fnShowToast("CI workflow generated", "success");
+        } catch (error) {
+            fnShowToast(error.message, "error");
+        }
+    }
+
+    var dictCachedSyncStatus = {};
+    var sPushService = "";
+
+    async function fnLoadSyncStatus() {
+        if (!sContainerId) return;
+        try {
+            var response = await fetch(
+                "/api/sync/" + sContainerId + "/status"
+            );
+            dictCachedSyncStatus = await response.json();
+        } catch (error) {
+            dictCachedSyncStatus = {};
+        }
+    }
+
+    async function fnOpenPushModal(sService) {
+        if (!sContainerId) return;
+        var response = await fetch(
+            "/api/sync/" + sContainerId + "/check/" + sService
         );
-        document.getElementById("btnRunAll").addEventListener(
-            "click", fnRunAll
+        var dictResult = await response.json();
+        if (!dictResult.bConnected) {
+            fnShowConnectionSetup(sService);
+            return;
+        }
+        sPushService = sService;
+        fnPopulatePushModal(sService);
+    }
+
+    async function fnPopulatePushModal(sService) {
+        var response = await fetch(
+            "/api/sync/" + sContainerId + "/files"
         );
-        document.getElementById("btnVerify").addEventListener(
-            "click", fnVerify
+        var listFiles = await response.json();
+        var dictNames = {
+            overleaf: "Overleaf", zenodo: "Zenodo",
+            github: "GitHub",
+        };
+        document.getElementById("modalPushTitle").textContent =
+            "Push to " + dictNames[sService];
+        fnRenderPushFileList(listFiles);
+        document.getElementById("modalPush").style.display = "flex";
+    }
+
+    function fnRenderPushFileList(listFiles) {
+        var elList = document.getElementById("modalPushFileList");
+        elList.innerHTML = listFiles.map(function (dictFile) {
+            return '<div class="push-file-row">' +
+                '<input type="checkbox" class="push-file-checkbox" ' +
+                'data-path="' + fnEscapeHtml(dictFile.sPath) +
+                '" checked>' +
+                '<span class="push-file-name">' +
+                fnEscapeHtml(dictFile.sPath) + '</span>' +
+                '<span class="push-file-sync">' +
+                fsRenderSyncBadges(dictFile.dictSync) +
+                '</span></div>';
+        }).join("");
+    }
+
+    function fsRenderSyncBadges(dictSync) {
+        return fsRenderOneBadge("overleaf", dictSync.bOverleaf) +
+            fsRenderOneBadge("github", dictSync.bGithub) +
+            fsRenderOneBadge("zenodo", dictSync.bZenodo);
+    }
+
+    function fsRenderOneBadge(sService, bActive) {
+        var sClass = bActive ? "sync-active" : "sync-inactive";
+        return '<span class="sync-badge sync-badge-' + sService +
+            ' ' + sClass + '" title="' +
+            (bActive ? "Synced" : "Not synced") + '"></span>';
+    }
+
+    async function fnHandlePushConfirm() {
+        var listPaths = [];
+        document.querySelectorAll(
+            ".push-file-checkbox:checked"
+        ).forEach(function (el) {
+            listPaths.push(el.dataset.path);
+        });
+        if (listPaths.length === 0) {
+            fnShowToast("No files selected", "error");
+            return;
+        }
+        document.getElementById("modalPush").style.display = "none";
+        fnShowToast("Pushing " + listPaths.length + " files...",
+            "success");
+        var sEndpoint = _fsServiceEndpoint(sPushService);
+        var sAction = _fsServiceAction(sPushService);
+        try {
+            var response = await fetch(
+                sEndpoint + sContainerId + "/" + sAction,
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        listFilePaths: listPaths,
+                    }),
+                }
+            );
+            if (!response.ok) {
+                var dictError = await response.json();
+                fnShowToast(
+                    dictError.detail || "Push failed", "error");
+                return;
+            }
+            fnShowToast("Push complete!", "success");
+            await fnLoadSyncStatus();
+            fnRenderStepList();
+        } catch (error) {
+            fnShowToast("Push failed: " + error.message, "error");
+        }
+    }
+
+    function _fsServiceEndpoint(sService) {
+        if (sService === "overleaf") return "/api/overleaf/";
+        if (sService === "zenodo") return "/api/zenodo/";
+        return "/api/github/";
+    }
+
+    function _fsServiceAction(sService) {
+        if (sService === "zenodo") return "archive";
+        return "push";
+    }
+
+    function fnBindPushModalEvents() {
+        document.getElementById("btnPushCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalPush")
+                    .style.display = "none";
+            }
         );
-        document.getElementById("btnValidateReferences").addEventListener(
-            "click", fnValidateReferences
+        document.getElementById("btnPushConfirm").addEventListener(
+            "click", fnHandlePushConfirm
         );
-        document.getElementById("btnVsCode").addEventListener(
-            "click", fnOpenVsCode
+        document.getElementById("btnPushSelectAll").addEventListener(
+            "click", function () {
+                document.querySelectorAll(".push-file-checkbox")
+                    .forEach(function (el) { el.checked = true; });
+            }
         );
-        document.getElementById("btnResetLayout").addEventListener(
-            "click", fnResetLayout
+        fnBindConnectionSetupEvents();
+    }
+
+    function fnShowConnectionSetup(sService) {
+        var elModal = document.getElementById("modalConnectionSetup");
+        elModal.dataset.service = sService;
+        var elProjectId = document.getElementById("groupSetupProjectId");
+        var elToken = document.getElementById("groupSetupToken");
+        elProjectId.style.display = "none";
+        elToken.style.display = "none";
+        if (sService === "overleaf") {
+            elProjectId.style.display = "";
+            document.getElementById("modalConnectionTitle")
+                .textContent = "Connect to Overleaf";
+        } else if (sService === "zenodo") {
+            elToken.style.display = "";
+            var elLabel = document.getElementById("labelSetupToken");
+            var elHelp = document.getElementById("helpSetupToken");
+            elLabel.textContent = "Zenodo API Token ";
+            if (elHelp) elLabel.appendChild(elHelp);
+            document.getElementById("modalConnectionTitle")
+                .textContent = "Connect to Zenodo";
+        } else {
+            fnShowToast(
+                "GitHub uses gh auth. Run 'gh auth login' " +
+                "on your host machine.", "error"
+            );
+            return;
+        }
+        elModal.style.display = "flex";
+    }
+
+    function fnBindConnectionSetupEvents() {
+        document.getElementById("btnSetupCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalConnectionSetup")
+                    .style.display = "none";
+            }
         );
-        document.getElementById("btnDisconnect").addEventListener(
-            "click", fnDisconnect
+        document.getElementById("btnSetupSave").addEventListener(
+            "click", fnHandleSetupSave
         );
+    }
+
+    async function fnHandleSetupSave() {
+        var elModal = document.getElementById("modalConnectionSetup");
+        var sService = elModal.dataset.service;
+        var dictBody = { sService: sService };
+        var sProjectId = document.getElementById(
+            "inputSetupProjectId").value.trim();
+        var sToken = document.getElementById(
+            "inputSetupToken").value.trim();
+        if (sProjectId) dictBody.sProjectId = sProjectId;
+        if (sToken) dictBody.sToken = sToken;
+        try {
+            var response = await fetch(
+                "/api/sync/" + sContainerId + "/setup",
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(dictBody),
+                }
+            );
+            var dictResult = await response.json();
+            elModal.style.display = "none";
+            if (dictResult.bConnected) {
+                fnShowToast("Connected!", "success");
+                fnOpenPushModal(sService);
+            } else {
+                fnShowToast(
+                    dictResult.sMessage || "Connection failed",
+                    "error"
+                );
+            }
+        } catch (error) {
+            fnShowToast("Setup failed: " + error.message, "error");
+        }
     }
 
     function fnBindWorkflowPickerEvents() {
@@ -1920,6 +2237,12 @@ const PipeleyenApp = (function () {
             );
         } else if (dictEvent.sType === "testResult") {
             fnHandleTestResult(dictEvent);
+        } else if (dictEvent.sType === "stepSkipped") {
+            dictStepStatus[dictEvent.iStepNumber - 1] = "skipped";
+            fnAppendPipelineOutput(
+                "Step " + dictEvent.iStepNumber +
+                ": SKIPPED (inputs unchanged)");
+            fnRenderStepList();
         } else if (dictEvent.sType === "stepPass") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
             fnRenderStepList();
