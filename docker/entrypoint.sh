@@ -37,14 +37,14 @@ fnConfigureGit() {
     local sToken
     sToken=$(fsReadGitHubToken)
     if [ -n "${sToken}" ]; then
-        echo "[vc] GitHub credentials detected."
+        echo "[vaib] GitHub credentials detected."
         git config --system url."https://github.com/".insteadOf \
             "git@github.com:"
         git config --system credential.https://github.com.helper \
             "!f() { echo \"protocol=https\"; echo \"host=github.com\"; echo \"username=x-access-token\"; echo \"password=\$(cat /run/secrets/gh_token 2>/dev/null || gh auth token 2>/dev/null)\"; }; f"
     else
-        echo "[vc] No GitHub credentials found. Public repos only."
-        echo "[vc]   To access private repos, run on host: gh auth login"
+        echo "[vaib] No GitHub credentials found. Public repos only."
+        echo "[vaib]   To access private repos, run on host: gh auth login"
         git config --system url."https://github.com/".insteadOf \
             "git@github.com:"
         export GIT_TERMINAL_PROMPT=0
@@ -62,7 +62,7 @@ fnParseReposConf() {
     saRepoDestinations=()
 
     if [ ! -f "${REPOS_CONF}" ]; then
-        echo "[vc] No container.conf found at ${REPOS_CONF}. Skipping repo sync."
+        echo "[vaib] No container.conf found at ${REPOS_CONF}. Skipping repo sync."
         return
     fi
 
@@ -87,9 +87,9 @@ fnCloneRepo() {
     local sBranch="$3"
     local sRepoPath="${WORKSPACE}/${sName}"
 
-    echo "[vc] Cloning ${sName} (branch: ${sBranch})..."
+    echo "[vaib] Cloning ${sName} (branch: ${sBranch})..."
     if ! git clone --branch "${sBranch}" "${sUrl}" "${sRepoPath}" 2>&1; then
-        echo "[vc]   Clone failed for ${sName} (may require authentication)."
+        echo "[vaib]   Clone failed for ${sName} (may require authentication)."
         return 0
     fi
     cd "${sRepoPath}"
@@ -106,17 +106,17 @@ fnUpdateRepo() {
     local sBranch="$2"
     local sRepoPath="${WORKSPACE}/${sName}"
 
-    echo "[vc] Updating ${sName}..."
+    echo "[vaib] Updating ${sName}..."
     cd "${sRepoPath}"
     git fetch origin --tags 2>/dev/null || \
-        echo "[vc]   Fetch skipped for ${sName} (may require authentication)."
+        echo "[vaib]   Fetch skipped for ${sName} (may require authentication)."
     local sCurrentBranch
     sCurrentBranch=$(git rev-parse --abbrev-ref HEAD)
     if [ "${sCurrentBranch}" = "${sBranch}" ]; then
         git pull --ff-only origin "${sBranch}" 2>/dev/null || \
-            echo "[vc]   Pull skipped for ${sName} (local changes or diverged)."
+            echo "[vaib]   Pull skipped for ${sName} (local changes or diverged)."
     else
-        echo "[vc]   ${sName} on branch '${sCurrentBranch}', not '${sBranch}'. Skipping pull."
+        echo "[vaib]   ${sName} on branch '${sCurrentBranch}', not '${sBranch}'. Skipping pull."
     fi
     cd "${WORKSPACE}"
 }
@@ -141,7 +141,7 @@ fnCloneOrPull() {
 # fnSyncAllRepos: Clone or pull every repo in container.conf
 # ---------------------------------------------------------------------------
 fnSyncAllRepos() {
-    echo "[vc] Syncing repositories..."
+    echo "[vaib] Syncing repositories..."
     echo ""
 
     local iCount=${#saRepoNames[@]}
@@ -152,7 +152,7 @@ fnSyncAllRepos() {
     fnRelocateRepos
 
     echo ""
-    echo "[vc] All repositories synced."
+    echo "[vaib] All repositories synced."
 }
 
 # ---------------------------------------------------------------------------
@@ -169,12 +169,12 @@ fnRelocateRepo() {
         return
     fi
     if [ -d "${sDestPath}" ] && [ -d "${sDestPath}/.git" ]; then
-        echo "[vc]   ${sDestination} already exists, skipping relocation."
+        echo "[vaib]   ${sDestination} already exists, skipping relocation."
         return
     fi
     rm -rf "${sDestPath}"
     mv "${sSourcePath}" "${sDestPath}"
-    echo "[vc]   Relocated ${sName} -> ${sDestination}"
+    echo "[vaib]   Relocated ${sName} -> ${sDestination}"
 }
 
 # ---------------------------------------------------------------------------
@@ -204,30 +204,30 @@ fnBuildSingleBinary() {
     local sRepoPath="$2"
 
     if [ ! -d "${sRepoPath}" ]; then
-        echo "[vc]   ${sName} not found. Skipping build."
+        echo "[vaib]   ${sName} not found. Skipping build."
         return 1
     fi
-    echo "[vc]   Building ${sName}..."
+    echo "[vaib]   Building ${sName}..."
     cd "${sRepoPath}"
     if make opt; then
         local sBinaryPath="${sRepoPath}/bin/${sName}"
         if [ -x "${sBinaryPath}" ]; then
             export PATH="${sRepoPath}/bin:${PATH}"
-            echo "[vc]   ${sName} binary ready: ${sBinaryPath}"
+            echo "[vaib]   ${sName} binary ready: ${sBinaryPath}"
             cd "${WORKSPACE}"
             return 0
         fi
-        echo "[vc]   WARNING: Expected binary not found at ${sBinaryPath}."
+        echo "[vaib]   WARNING: Expected binary not found at ${sBinaryPath}."
     else
-        echo "[vc]   WARNING: Build failed for ${sName}. You can retry manually:"
-        echo "[vc]     cd ${sRepoPath} && make opt"
+        echo "[vaib]   WARNING: Build failed for ${sName}. You can retry manually:"
+        echo "[vaib]     cd ${sRepoPath} && make opt"
     fi
     cd "${WORKSPACE}"
     return 1
 }
 
 fnBuildBinaries() {
-    echo "[vc] Building native binaries..."
+    echo "[vaib] Building native binaries..."
 
     local iCount=${#saRepoNames[@]}
     local bBuiltAny=false
@@ -241,7 +241,7 @@ fnBuildBinaries() {
     done
 
     if [ "${bBuiltAny}" = false ]; then
-        echo "[vc]   No C binaries to build."
+        echo "[vaib]   No C binaries to build."
     fi
 }
 
@@ -253,7 +253,7 @@ fnPipInstall() {
     local sRepoPath="$1"
     local sName="$2"
     shift 2
-    echo "[vc] Installing ${sName}..."
+    echo "[vaib] Installing ${sName}..."
     pip install -e "${sRepoPath}" "$@" -q
 }
 
@@ -264,7 +264,7 @@ fnPipInstall() {
 fnCondaInstall() {
     local sRepoPath="$1"
     local sName="$2"
-    echo "[vc] Installing ${sName} via conda..."
+    echo "[vaib] Installing ${sName} via conda..."
     if command -v mamba > /dev/null 2>&1; then
         mamba install -y -c conda-forge "${sName}" 2>/dev/null || \
             pip install -e "${sRepoPath}" -q
@@ -272,7 +272,7 @@ fnCondaInstall() {
         conda install -y -c conda-forge "${sName}" 2>/dev/null || \
             pip install -e "${sRepoPath}" -q
     else
-        echo "[vc]   WARNING: conda/mamba not found. Falling back to pip."
+        echo "[vaib]   WARNING: conda/mamba not found. Falling back to pip."
         pip install -e "${sRepoPath}" -q
     fi
 }
@@ -297,11 +297,11 @@ fnInstallRepo() {
         pip_editable)
             fnPipInstall "${sRepoPath}" "${sName}" --no-build-isolation ;;
         scripts_only)
-            echo "[vc] ${sName} available via PYTHONPATH and PATH." ;;
+            echo "[vaib] ${sName} available via PYTHONPATH and PATH." ;;
         reference)
-            echo "[vc] ${sName} cloned for reference (not installed)." ;;
+            echo "[vaib] ${sName} cloned for reference (not installed)." ;;
         *)
-            echo "[vc] WARNING: Unknown install method '${sMethod}' for ${sName}." ;;
+            echo "[vaib] WARNING: Unknown install method '${sMethod}' for ${sName}." ;;
     esac
 }
 
@@ -310,7 +310,7 @@ fnInstallRepo() {
 # ---------------------------------------------------------------------------
 fnInstallAllRepos() {
     echo ""
-    echo "[vc] Installing Python packages..."
+    echo "[vaib] Installing Python packages..."
 
     local iCount=${#saRepoNames[@]}
     for (( i=0; i<iCount; i++ )); do
@@ -320,7 +320,7 @@ fnInstallAllRepos() {
     done
 
     echo ""
-    echo "[vc] All packages installed."
+    echo "[vaib] All packages installed."
 }
 
 # ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ fnLoadBinariesEnv() {
         return
     fi
 
-    echo "[vc] Loading binary environment from binaries.env..."
+    echo "[vaib] Loading binary environment from binaries.env..."
     local sProfilePath="/etc/profile.d/vaibify-binaries.sh"
     echo "# Generated by Vaibify entrypoint" > "${sProfilePath}"
     while IFS='=' read -r sVarName sBinPath; do
@@ -378,7 +378,7 @@ fnLoadBinariesEnv() {
             *) export PATH="${sBinDir}:${PATH}"
                echo "export PATH=\"${sBinDir}:\${PATH}\"" >> "${sProfilePath}" ;;
         esac
-        echo "[vc]   ${sVarName}=${sBinPath}"
+        echo "[vaib]   ${sVarName}=${sBinPath}"
     done < "${sBinEnv}"
     chmod 644 "${sProfilePath}"
 }
@@ -481,7 +481,7 @@ Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>
 - Do not modify scientific calculations without explicit direction from the user
 - Never embed secrets, tokens, or credentials in source code
 CLAUDEMD
-    echo "[vc] Generated CLAUDE.md for container awareness."
+    echo "[vaib] Generated CLAUDE.md for container awareness."
 }
 
 # ===========================================================================

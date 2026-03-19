@@ -252,6 +252,20 @@ const PipeleyenApp = (function () {
             sContainerId = sId;
             dictWorkflow = data.dictWorkflow;
             sWorkflowPath = data.sWorkflowPath;
+            dictStepStatus = {};
+            dictFileExistenceCache = {};
+            setStepsWithData.clear();
+            bFileCheckInProgress = false;
+            bDelegatedEventsInitialized = false;
+            var iStepCount = (dictWorkflow.listSteps || []).length;
+            if (iStepCount > 500) {
+                fnShowToast(
+                    "This workflow has " + iStepCount + " steps. " +
+                    "Large workflows may use significant memory. " +
+                    "Avoid expanding many steps simultaneously.",
+                    "error"
+                );
+            }
             var elWorkflowName = document.getElementById("activeWorkflowName");
             elWorkflowName.textContent = sWorkflowName || "";
             fnShowMainLayout();
@@ -434,38 +448,87 @@ const PipeleyenApp = (function () {
         });
         elList.innerHTML = sHtml;
         fnBindStepEvents();
-        fnCheckOutputFileExistence();
-        fnCheckDataFileExistence();
+        fnScheduleFileExistenceCheck();
+    }
+
+    var dictFileExistenceCache = {};
+    var iFileCheckTimer = null;
+    var bFileCheckInProgress = false;
+    var iInflightRequests = 0;
+
+    function fnScheduleFileExistenceCheck() {
+        if (iFileCheckTimer) return;
+        iFileCheckTimer = setTimeout(function () {
+            iFileCheckTimer = null;
+            if (bFileCheckInProgress) return;
+            bFileCheckInProgress = true;
+            iInflightRequests = 0;
+            fnCheckOutputFileExistence();
+            fnCheckDataFileExistence();
+            if (iInflightRequests === 0) {
+                bFileCheckInProgress = false;
+            }
+        }, 200);
+    }
+
+    function fnFileCheckComplete() {
+        iInflightRequests--;
+        if (iInflightRequests <= 0) {
+            bFileCheckInProgress = false;
+        }
+    }
+
+    function fnInvalidateStepFileCache(iStep) {
+        var sPrefix = iStep + ":";
+        Object.keys(dictFileExistenceCache).forEach(function (sKey) {
+            if (sKey.indexOf(sPrefix) === 0) {
+                delete dictFileExistenceCache[sKey];
+            }
+        });
+        setStepsWithData.delete(iStep);
     }
 
     function fnCheckDataFileExistence() {
         if (!sContainerId || !dictWorkflow) return;
         dictWorkflow.listSteps.forEach(function (step, iStep) {
+            if (!setExpandedSteps.has(iStep)) return;
+            if (setStepsWithData.has(iStep)) return;
             var listData = step.saDataFiles || [];
             if (listData.length === 0) return;
             var iPresent = 0;
             var iTotal = listData.length;
             listData.forEach(function (sFile) {
                 var sDir = step.sDirectory || "";
+                var sCacheKey = iStep + ":" + sFile;
+                if (dictFileExistenceCache[sCacheKey]) {
+                    iPresent++;
+                    if (iPresent >= iTotal) {
+                        setStepsWithData.add(iStep);
+                        fnUpdateGenerateButton(iStep);
+                    }
+                    return;
+                }
                 var sUrl = "/api/figure/" + sContainerId + "/" +
                     sFile + "?sWorkdir=" +
                     encodeURIComponent(sDir);
+                iInflightRequests++;
                 fetch(sUrl, { method: "HEAD" }).then(function (r) {
                     if (r.ok) {
+                        dictFileExistenceCache[sCacheKey] = true;
                         iPresent++;
                         if (iPresent >= iTotal) {
                             setStepsWithData.add(iStep);
                             fnUpdateGenerateButton(iStep);
                         }
                     }
-                }).catch(function () {});
+                    fnFileCheckComplete();
+                }).catch(function () { fnFileCheckComplete(); });
             });
         });
     }
 
     function fnCheckOutputFileExistence() {
         if (!sContainerId) return;
-        setStepsWithData.clear();
         var dictDataCounts = {};
         var dictDataPresent = {};
         document.querySelectorAll(
@@ -479,27 +542,45 @@ const PipeleyenApp = (function () {
             var sArray = el.dataset.array;
             var sResolved = el.dataset.resolved;
             var sWorkdir = el.dataset.workdir || "";
+            var sCacheKey = iStep + ":" + sResolved + ":" + sWorkdir;
+            if (sArray === "saDataFiles") {
+                dictDataCounts[iStep] =
+                    (dictDataCounts[iStep] || 0) + 1;
+            }
+            if (dictFileExistenceCache[sCacheKey] === true) {
+                fnMarkOutputPresent(el);
+                fnTrackDataPresence(
+                    iStep, sArray, dictDataCounts, dictDataPresent
+                );
+                return;
+            }
+            if (dictFileExistenceCache[sCacheKey] === false) {
+                fnMarkOutputMissing(el);
+                return;
+            }
             var sUrl = "/api/figure/" + sContainerId + "/" +
                 sResolved;
             if (sWorkdir) {
                 sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
             }
-            if (sArray === "saDataFiles") {
-                dictDataCounts[iStep] =
-                    (dictDataCounts[iStep] || 0) + 1;
-            }
+            iInflightRequests++;
             fetch(sUrl, { method: "HEAD" }).then(function (r) {
                 if (r.ok) {
+                    dictFileExistenceCache[sCacheKey] = true;
                     fnMarkOutputPresent(el);
                     fnTrackDataPresence(
                         iStep, sArray, dictDataCounts,
                         dictDataPresent
                     );
                 } else {
+                    dictFileExistenceCache[sCacheKey] = false;
                     fnMarkOutputMissing(el);
                 }
+                fnFileCheckComplete();
             }).catch(function () {
+                dictFileExistenceCache[sCacheKey] = false;
                 fnMarkOutputMissing(el);
+                fnFileCheckComplete();
             });
         });
     }
@@ -545,8 +626,8 @@ const PipeleyenApp = (function () {
     function fsRenderStepItem(step, iIndex, dictVars) {
         var sRunStatus = dictStepStatus[iIndex] || "";
         var sStatusClass = "";
-        if (sRunStatus === "running") {
-            sStatusClass = "running";
+        if (sRunStatus === "running" || sRunStatus === "queued") {
+            sStatusClass = sRunStatus;
         } else {
             sStatusClass = fsComputeStepDotState(step);
         }
@@ -575,8 +656,11 @@ const PipeleyenApp = (function () {
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
             "</span></div>";
 
-        sHtml += '<div class="step-detail' +
-            (bExpanded ? " expanded" : "") +
+        if (!bExpanded) {
+            return sHtml;
+        }
+
+        sHtml += '<div class="step-detail expanded' +
             '" data-index="' + iIndex + '">';
 
         /* Directory */
@@ -907,121 +991,255 @@ const PipeleyenApp = (function () {
     }
 
     var SET_FIGURE_EXTENSIONS = VaibifyUtilities.SET_FIGURE_EXTENSIONS;
-    var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
 
-    /* --- Step Event Binding --- */
+    /* --- Step Event Binding (delegated) --- */
 
-    function fnBindStepClickEvents(el, iIndex) {
-        el.addEventListener("click", function (event) {
-            if (event.target.classList.contains("step-checkbox") ||
-                event.target.classList.contains("step-edit")) {
-                return;
+    var bDelegatedEventsInitialized = false;
+
+    function fnBindStepEvents() {
+        if (bDelegatedEventsInitialized) return;
+        bDelegatedEventsInitialized = true;
+        var elList = document.getElementById("listSteps");
+        fnSetupDelegatedEvents(elList);
+    }
+
+    function fnSetupDelegatedEvents(elList) {
+        elList.addEventListener("click", fnHandleDelegatedClick);
+        elList.addEventListener("change", fnHandleDelegatedChange);
+        elList.addEventListener("contextmenu",
+            fnHandleDelegatedContextMenu);
+        elList.addEventListener("dragstart",
+            fnHandleDelegatedDragStart);
+        elList.addEventListener("dragend", fnHandleDelegatedDragEnd);
+        elList.addEventListener("dragover",
+            fnHandleDelegatedDragOver);
+        elList.addEventListener("dragleave",
+            fnHandleDelegatedDragLeave);
+        elList.addEventListener("drop", fnHandleDelegatedDrop);
+    }
+
+    function fnHandleDelegatedClick(event) {
+        var elTarget = event.target;
+        var elDetailItem = elTarget.closest(".detail-item");
+        var elStepItem = elTarget.closest(".step-item");
+
+        if (elTarget.closest(".action-edit")) {
+            event.stopPropagation();
+            if (elDetailItem) {
+                fnInlineEditItem(
+                    elDetailItem,
+                    parseInt(elDetailItem.dataset.step),
+                    elDetailItem.dataset.array,
+                    parseInt(elDetailItem.dataset.idx)
+                );
             }
-            fnToggleStepExpand(iIndex);
-        });
-        el.addEventListener("contextmenu", function (event) {
-            event.preventDefault();
-            fnShowContextMenu(event.pageX, event.pageY, iIndex);
-        });
-        el.querySelector(".step-checkbox").addEventListener(
-            "change", function (event) {
-                fnToggleStepEnabled(iIndex, event.target.checked);
+            return;
+        }
+        if (elTarget.closest(".action-copy")) {
+            event.stopPropagation();
+            if (elDetailItem) {
+                navigator.clipboard.writeText(
+                    elDetailItem.dataset.resolved
+                ).then(function () {
+                    fnShowToast("Copied to clipboard", "success");
+                });
             }
+            return;
+        }
+        if (elTarget.closest(".action-delete")) {
+            event.stopPropagation();
+            if (elDetailItem) {
+                fnDeleteDetailItem(
+                    parseInt(elDetailItem.dataset.step),
+                    elDetailItem.dataset.array,
+                    parseInt(elDetailItem.dataset.idx)
+                );
+            }
+            return;
+        }
+        if (elTarget.closest(".section-add")) {
+            event.stopPropagation();
+            var elAdd = elTarget.closest(".section-add");
+            fnAddNewItem(
+                parseInt(elAdd.dataset.step), elAdd.dataset.array
+            );
+            return;
+        }
+        if (elTarget.closest(".detail-text") && elDetailItem &&
+            elDetailItem.classList.contains("output")) {
+            var elText = elTarget.closest(".detail-text");
+            if (elText.classList.contains("file-binary")) {
+                fnShowBinaryNotViewable();
+            } else if (elText.classList.contains("file-missing")) {
+                fnShowOutputNotAvailable();
+            } else {
+                PipeleyenFigureViewer.fnDisplayInNextViewer(
+                    elDetailItem.dataset.resolved,
+                    elDetailItem.dataset.workdir || ""
+                );
+            }
+            return;
+        }
+        var elVerifClickable = elTarget.closest(
+            ".verification-row.clickable"
         );
-        var btnEdit = el.querySelector(".step-edit");
-        if (btnEdit) {
-            btnEdit.addEventListener("click", function () {
-                PipeleyenStepEditor.fnOpenEditModal(iIndex);
-            });
+        if (elVerifClickable) {
+            fnCycleUserVerification(
+                parseInt(elVerifClickable.dataset.step)
+            );
+            return;
+        }
+        var elVerifUnitTest = elTarget.closest(
+            '.verification-row[data-approver="unitTest"]'
+        );
+        if (elVerifUnitTest) {
+            fnToggleUnitTestExpand(
+                parseInt(elVerifUnitTest.dataset.step)
+            );
+            return;
+        }
+        if (elTarget.closest(".test-file-item")) {
+            PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                elTarget.closest(".test-file-item")
+                    .textContent.trim()
+            );
+            return;
+        }
+        if (elTarget.closest(".test-last-run")) {
+            var elLog = elTarget.closest(".test-last-run");
+            PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                elLog.dataset.log
+            );
+            return;
+        }
+        if (elTarget.closest(".test-add")) {
+            event.stopPropagation();
+            var elTestAdd = elTarget.closest(".test-add");
+            fnAddTestItem(
+                parseInt(elTestAdd.dataset.step),
+                elTestAdd.dataset.testType
+            );
+            return;
+        }
+        if (elTarget.closest(".btn-generate-test")) {
+            var elBtn = elTarget.closest(".btn-generate-test");
+            fnGenerateTests(parseInt(elBtn.dataset.step));
+            return;
+        }
+        if (elTarget.closest(".step-edit")) {
+            PipeleyenStepEditor.fnOpenEditModal(
+                parseInt(elStepItem.dataset.index)
+            );
+            return;
+        }
+        if (elStepItem &&
+            !elTarget.classList.contains("step-checkbox")) {
+            fnToggleStepExpand(parseInt(elStepItem.dataset.index));
         }
     }
 
-    function fnBindStepDragEvents(el, iIndex) {
-        el.addEventListener("dragstart", function (event) {
-            event.dataTransfer.setData("text/plain", String(iIndex));
-            event.dataTransfer.setData("pipeleyen/step", String(iIndex));
-            el.classList.add("dragging");
-        });
-        el.addEventListener("dragend", function () {
-            el.classList.remove("dragging");
-        });
-        el.addEventListener("dragover", function (event) {
-            event.preventDefault();
-            el.classList.add("drop-target");
-        });
-        el.addEventListener("dragleave", function () {
-            el.classList.remove("drop-target");
-        });
-        el.addEventListener("drop", function (event) {
-            event.preventDefault();
-            el.classList.remove("drop-target");
-            var sDetailData = event.dataTransfer.getData(
-                "pipeleyen/detail"
+    function fnHandleDelegatedChange(event) {
+        var elTarget = event.target;
+        if (elTarget.classList.contains("step-checkbox")) {
+            var elStep = elTarget.closest(".step-item");
+            fnToggleStepEnabled(
+                parseInt(elStep.dataset.index), elTarget.checked
             );
-            if (sDetailData) {
-                fnHandleDetailDrop(sDetailData, iIndex);
-                return;
-            }
+        }
+        if (elTarget.classList.contains("plot-only-checkbox")) {
+            fnTogglePlotOnly(
+                parseInt(elTarget.dataset.step), elTarget.checked
+            );
+        }
+    }
+
+    function fnHandleDelegatedContextMenu(event) {
+        var elStep = event.target.closest(".step-item");
+        if (elStep) {
+            event.preventDefault();
+            fnShowContextMenu(
+                event.pageX, event.pageY,
+                parseInt(elStep.dataset.index)
+            );
+        }
+    }
+
+    function fnHandleDelegatedDragStart(event) {
+        var elDetail = event.target.closest(".detail-item");
+        if (elDetail) {
+            event.stopPropagation();
+            var dictDragData = {
+                iStep: parseInt(elDetail.dataset.step),
+                sArray: elDetail.dataset.array,
+                iIdx: parseInt(elDetail.dataset.idx),
+            };
+            event.dataTransfer.setData(
+                "pipeleyen/detail", JSON.stringify(dictDragData)
+            );
+            event.dataTransfer.setData(
+                "pipeleyen/filepath", elDetail.dataset.resolved
+            );
+            event.dataTransfer.setData(
+                "pipeleyen/workdir", elDetail.dataset.workdir || ""
+            );
+            return;
+        }
+        var elStep = event.target.closest(".step-item");
+        if (elStep) {
+            var iIdx = parseInt(elStep.dataset.index);
+            event.dataTransfer.setData("text/plain", String(iIdx));
+            event.dataTransfer.setData(
+                "pipeleyen/step", String(iIdx)
+            );
+            elStep.classList.add("dragging");
+        }
+    }
+
+    function fnHandleDelegatedDragEnd(event) {
+        var elStep = event.target.closest(".step-item");
+        if (elStep) elStep.classList.remove("dragging");
+    }
+
+    function fnHandleDelegatedDragOver(event) {
+        var elStep = event.target.closest(".step-item");
+        var elDetail = event.target.closest(".step-detail");
+        if (elStep || elDetail) {
+            event.preventDefault();
+            if (elStep) elStep.classList.add("drop-target");
+        }
+    }
+
+    function fnHandleDelegatedDragLeave(event) {
+        var elStep = event.target.closest(".step-item");
+        if (elStep) elStep.classList.remove("drop-target");
+    }
+
+    function fnHandleDelegatedDrop(event) {
+        var elStep = event.target.closest(".step-item");
+        var elDetail = event.target.closest(".step-detail");
+        if (elStep) elStep.classList.remove("drop-target");
+
+        var sDetailData = event.dataTransfer.getData(
+            "pipeleyen/detail"
+        );
+        if (sDetailData) {
+            event.preventDefault();
+            event.stopPropagation();
+            var iTarget = parseInt(
+                (elDetail || elStep).dataset.index
+            );
+            fnHandleDetailDrop(sDetailData, iTarget);
+            return;
+        }
+        if (elStep) {
+            event.preventDefault();
             var sStepData = event.dataTransfer.getData("text/plain");
             if (sStepData !== "") {
-                var iFromIndex = parseInt(sStepData);
-                if (iFromIndex !== iIndex) {
-                    fnReorderStep(iFromIndex, iIndex);
-                }
+                var iFrom = parseInt(sStepData);
+                var iTo = parseInt(elStep.dataset.index);
+                if (iFrom !== iTo) fnReorderStep(iFrom, iTo);
             }
-        });
-    }
-
-    function fnBindDetailSectionEvents(elList) {
-        elList.querySelectorAll(".detail-item").forEach(function (el) {
-            fnBindDetailItemEvents(el);
-        });
-        elList.querySelectorAll(".section-add").forEach(function (el) {
-            el.addEventListener("click", function (event) {
-                event.stopPropagation();
-                fnAddNewItem(
-                    parseInt(el.dataset.step), el.dataset.array
-                );
-            });
-        });
-        elList.querySelectorAll(".step-detail").forEach(function (el) {
-            el.addEventListener("dragover", function (event) {
-                event.preventDefault();
-            });
-            el.addEventListener("drop", function (event) {
-                var sDetailData = event.dataTransfer.getData(
-                    "pipeleyen/detail"
-                );
-                if (sDetailData) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    var iTargetStep = parseInt(el.dataset.index);
-                    fnHandleDetailDrop(sDetailData, iTargetStep);
-                }
-            });
-        });
-    }
-
-    function fnBindStepEvents() {
-        var elList = document.getElementById("listSteps");
-        elList.querySelectorAll(".step-item").forEach(function (el) {
-            var iIndex = parseInt(el.dataset.index);
-            fnBindStepClickEvents(el, iIndex);
-            fnBindStepDragEvents(el, iIndex);
-        });
-        fnBindDetailSectionEvents(elList);
-        fnBindPlotOnlyCheckboxes(elList);
-        fnBindVerificationEvents(elList);
-    }
-
-    function fnBindPlotOnlyCheckboxes(elList) {
-        elList.querySelectorAll(".plot-only-checkbox")
-            .forEach(function (el) {
-                el.addEventListener("change", function () {
-                    var iStep = parseInt(el.dataset.step);
-                    fnTogglePlotOnly(iStep, el.checked);
-                });
-            });
+        }
     }
 
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
@@ -1040,25 +1258,6 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnBindVerificationEvents(elList) {
-        elList.querySelectorAll(".verification-row.clickable")
-            .forEach(function (el) {
-                el.addEventListener("click", function () {
-                    var iStep = parseInt(el.dataset.step);
-                    fnCycleUserVerification(iStep);
-                });
-            });
-        elList.querySelectorAll(
-            '.verification-row[data-approver="unitTest"]'
-        ).forEach(function (el) {
-            el.addEventListener("click", function () {
-                var iStep = parseInt(el.dataset.step);
-                fnToggleUnitTestExpand(iStep);
-            });
-        });
-        fnBindUnitTestDetailEvents(elList);
-    }
-
     function fnToggleUnitTestExpand(iStep) {
         if (setExpandedUnitTests.has(iStep)) {
             setExpandedUnitTests.delete(iStep);
@@ -1066,43 +1265,6 @@ const PipeleyenApp = (function () {
             setExpandedUnitTests.add(iStep);
         }
         fnRenderStepList();
-    }
-
-    function fnBindUnitTestDetailEvents(elList) {
-        elList.querySelectorAll(".test-file-item").forEach(
-            function (el) {
-                el.addEventListener("click", function () {
-                    PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                        el.textContent.trim()
-                    );
-                });
-            }
-        );
-        elList.querySelectorAll(".test-last-run").forEach(
-            function (el) {
-                el.addEventListener("click", function () {
-                    PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                        el.dataset.log
-                    );
-                });
-            }
-        );
-        elList.querySelectorAll(".test-add").forEach(function (el) {
-            el.addEventListener("click", function (event) {
-                event.stopPropagation();
-                var iStep = parseInt(el.dataset.step);
-                var sType = el.dataset.testType;
-                fnAddTestItem(iStep, sType);
-            });
-        });
-        elList.querySelectorAll(".btn-generate-test").forEach(
-            function (el) {
-                el.addEventListener("click", function (event) {
-                    event.stopPropagation();
-                    fnGenerateTests(parseInt(el.dataset.step));
-                });
-            }
-        );
     }
 
     async function fnGenerateTests(iStep) {
@@ -1243,76 +1405,6 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnBindDetailItemEvents(el) {
-        var iStep = parseInt(el.dataset.step);
-        var sArray = el.dataset.array;
-        var iIdx = parseInt(el.dataset.idx);
-        var sResolved = el.dataset.resolved;
-        var sWorkdir = el.dataset.workdir || "";
-
-        /* Click on text to view */
-        var elText = el.querySelector(".detail-text");
-        if (elText) {
-            elText.addEventListener("click", function () {
-                if (el.classList.contains("output")) {
-                    if (elText.classList.contains("file-binary")) {
-                        fnShowBinaryNotViewable();
-                    } else if (elText.classList.contains("file-missing")) {
-                        fnShowOutputNotAvailable();
-                    } else {
-                        PipeleyenFigureViewer.fnDisplayInNextViewer(
-                            sResolved, sWorkdir
-                        );
-                    }
-                }
-            });
-        }
-
-        /* Drag detail items — carry source info for cross-step drops */
-        el.addEventListener("dragstart", function (event) {
-            event.stopPropagation();
-            var dictDragData = {
-                iStep: iStep,
-                sArray: sArray,
-                iIdx: iIdx,
-            };
-            event.dataTransfer.setData(
-                "pipeleyen/detail", JSON.stringify(dictDragData)
-            );
-            event.dataTransfer.setData("pipeleyen/filepath", sResolved);
-            event.dataTransfer.setData("pipeleyen/workdir", sWorkdir);
-        });
-
-        /* Action: Edit */
-        var btnEdit = el.querySelector(".action-edit");
-        if (btnEdit) {
-            btnEdit.addEventListener("click", function (event) {
-                event.stopPropagation();
-                fnInlineEditItem(el, iStep, sArray, iIdx);
-            });
-        }
-
-        /* Action: Copy */
-        var btnCopy = el.querySelector(".action-copy");
-        if (btnCopy) {
-            btnCopy.addEventListener("click", function (event) {
-                event.stopPropagation();
-                navigator.clipboard.writeText(sResolved).then(function () {
-                    fnShowToast("Copied to clipboard", "success");
-                });
-            });
-        }
-
-        /* Action: Delete */
-        var btnDelete = el.querySelector(".action-delete");
-        if (btnDelete) {
-            btnDelete.addEventListener("click", function (event) {
-                event.stopPropagation();
-                fnDeleteDetailItem(iStep, sArray, iIdx);
-            });
-        }
-    }
-
     /* --- Detail Item Actions --- */
 
     function fnInlineEditItem(el, iStep, sArray, iIdx) {
@@ -1330,12 +1422,16 @@ const PipeleyenApp = (function () {
         elInput.focus();
         elInput.select();
 
+        var bFinished = false;
         function fnFinishEdit() {
+            if (bFinished) return;
+            bFinished = true;
             var sNewValue = elInput.value.trim();
             if (sNewValue && sNewValue !== sRaw) {
                 dictWorkflow.listSteps[iStep][sArray][iIdx] = sNewValue;
                 fnSaveStepArray(iStep, sArray);
             }
+            elInput.removeEventListener("blur", fnFinishEdit);
             elInput.remove();
             elText.style.display = "";
             elActions.style.display = "";
@@ -1345,6 +1441,8 @@ const PipeleyenApp = (function () {
         elInput.addEventListener("keydown", function (event) {
             if (event.key === "Enter") fnFinishEdit();
             if (event.key === "Escape") {
+                bFinished = true;
+                elInput.removeEventListener("blur", fnFinishEdit);
                 elInput.remove();
                 elText.style.display = "";
                 elActions.style.display = "";
@@ -2203,7 +2301,10 @@ const PipeleyenApp = (function () {
     }
 
     function fnConnectPipelineWebSocket() {
-        if (wsPipeline && wsPipeline.readyState === WebSocket.OPEN) {
+        if (wsPipeline && (
+            wsPipeline.readyState === WebSocket.OPEN ||
+            wsPipeline.readyState === WebSocket.CONNECTING
+        )) {
             return wsPipeline;
         }
         var sProtocol =
@@ -2237,6 +2338,9 @@ const PipeleyenApp = (function () {
             );
         } else if (dictEvent.sType === "testResult") {
             fnHandleTestResult(dictEvent);
+        } else if (dictEvent.sType === "stepStarted") {
+            dictStepStatus[dictEvent.iStepNumber - 1] = "running";
+            fnRenderStepList();
         } else if (dictEvent.sType === "stepSkipped") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "skipped";
             fnAppendPipelineOutput(
@@ -2245,9 +2349,11 @@ const PipeleyenApp = (function () {
             fnRenderStepList();
         } else if (dictEvent.sType === "stepPass") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
+            fnInvalidateStepFileCache(dictEvent.iStepNumber - 1);
             fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "fail";
+            fnInvalidateStepFileCache(dictEvent.iStepNumber - 1);
             fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             fnInitPipelineOutput();
@@ -2358,6 +2464,8 @@ const PipeleyenApp = (function () {
         elViewport.scrollTop = 0;
     }
 
+    var MAX_PIPELINE_OUTPUT_LINES = 5000;
+
     function fnAppendPipelineOutput(sLine) {
         var elOutput = document.getElementById("pipelineOutput");
         if (!elOutput) {
@@ -2372,6 +2480,9 @@ const PipeleyenApp = (function () {
             elLine.style.color = "var(--color-blue, #3498db)";
         }
         elOutput.appendChild(elLine);
+        while (elOutput.childNodes.length > MAX_PIPELINE_OUTPUT_LINES) {
+            elOutput.removeChild(elOutput.firstChild);
+        }
         elOutput.scrollTop = elOutput.scrollHeight;
     }
 
@@ -2394,7 +2505,7 @@ const PipeleyenApp = (function () {
                     el.closest(".step-item").dataset.index
                 );
                 listIndices.push(iIndex);
-                dictStepStatus[iIndex] = "running";
+                dictStepStatus[iIndex] = "queued";
             });
         fnRenderStepList();
         fnSendPipelineAction({
@@ -2404,11 +2515,57 @@ const PipeleyenApp = (function () {
     }
 
     function fnRunAll() {
+        var sEstimate = fsEstimateRunTime();
+        var sMessage = "Run all enabled steps?";
+        if (sEstimate) {
+            sMessage += "\n\n" + sEstimate;
+        }
+        if (!confirm(sMessage)) return;
         dictWorkflow.listSteps.forEach(function (_, iIndex) {
-            dictStepStatus[iIndex] = "running";
+            dictStepStatus[iIndex] = "queued";
         });
         fnRenderStepList();
         fnSendPipelineAction({ sAction: "runAll" });
+    }
+
+    function fsEstimateRunTime() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return "";
+        var fTotalSeconds = 0;
+        var iStepsWithTime = 0;
+        var iEnabledSteps = 0;
+        dictWorkflow.listSteps.forEach(function (step) {
+            if (step.bEnabled === false) return;
+            iEnabledSteps++;
+            var dictStats = step.dictRunStats || {};
+            if (dictStats.fWallClock) {
+                fTotalSeconds += dictStats.fWallClock;
+                iStepsWithTime++;
+            }
+        });
+        if (iStepsWithTime === 0) return "";
+        var sTime = fsFormatDurationLong(fTotalSeconds);
+        if (iStepsWithTime < iEnabledSteps) {
+            return "This workflow will require at least " + sTime +
+                " (based on " + iStepsWithTime + " of " +
+                iEnabledSteps + " steps).";
+        }
+        return "This workflow will require at least " + sTime + ".";
+    }
+
+    function fsFormatDurationLong(fSeconds) {
+        var iDays = Math.floor(fSeconds / 86400);
+        var iHours = Math.floor((fSeconds % 86400) / 3600);
+        var iMinutes = Math.floor((fSeconds % 3600) / 60);
+        var listParts = [];
+        if (iDays > 0) listParts.push(iDays + " day" +
+            (iDays > 1 ? "s" : ""));
+        if (iHours > 0) listParts.push(iHours + " hour" +
+            (iHours > 1 ? "s" : ""));
+        if (iMinutes > 0 || listParts.length === 0) {
+            listParts.push(iMinutes + " minute" +
+                (iMinutes !== 1 ? "s" : ""));
+        }
+        return listParts.join(", ");
     }
 
     function fnVerify() {

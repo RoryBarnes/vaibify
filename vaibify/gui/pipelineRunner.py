@@ -497,6 +497,9 @@ async def _fnRunOneStep(
             "sType": "stepSkipped", "iStepNumber": iStepNumber,
         })
         return 0
+    await fnStatusCallback({
+        "sType": "stepStarted", "iStepNumber": iStepNumber,
+    })
     import time
     fStartTime = time.time()
     sStartTimestamp = datetime.now(timezone.utc).strftime(

@@ -93,7 +93,7 @@ def setup():
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
         daemon=True,
     ).start()
-    uvicorn.run(app, host="127.0.0.1", port=8051)
+    uvicorn.run(app, host="127.0.0.1", port=8051, log_level="warning")
 
 
 @main.command("gui")
@@ -120,7 +120,7 @@ def gui(sUser):
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
         daemon=True,
     ).start()
-    uvicorn.run(app, host="127.0.0.1", port=8050)
+    uvicorn.run(app, host="127.0.0.1", port=8050, log_level="warning")
 
 
 @main.command("push")

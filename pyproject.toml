@@ -50,7 +50,7 @@ all = ["vaibify[docker,keyring,dev]"]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"
-vc = "vaibify.cli.main:main"
+vaib = "vaibify.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/RoryBarnes/Vaibify"
