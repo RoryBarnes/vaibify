@@ -1353,6 +1353,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "default-src 'self'; "
             "script-src 'self' https://cdnjs.cloudflare.com "
             "https://cdn.jsdelivr.net; "
+            "worker-src 'self' blob: "
+            "https://cdnjs.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' "
             "https://cdn.jsdelivr.net; "
             "img-src 'self' data: blob:; "

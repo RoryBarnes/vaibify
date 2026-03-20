@@ -3318,9 +3318,12 @@ var PipeleyenFiles = (function () {
         fnRenderBreadcrumb(sCurrentPath);
 
         try {
+            var sApiPath = sCurrentPath;
+            if (sApiPath.startsWith("/")) {
+                sApiPath = sApiPath.substring(1);
+            }
             var response = await fetch(
-                "/api/files/" + sContainerId + "/" +
-                encodeURIComponent(sCurrentPath)
+                "/api/files/" + sContainerId + "/" + sApiPath
             );
             var listEntries = await response.json();
             fnRenderFileList(listEntries);
