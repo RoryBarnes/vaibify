@@ -415,6 +415,37 @@ def flistExtractOutputFiles(dictStep):
 
 
 # ---------------------------------------------------------------------------
+# Figure categorization — archive vs. supporting
+# ---------------------------------------------------------------------------
+
+
+def fsGetPlotCategory(dictStep, sFilePath):
+    """Return 'archive' or 'supporting' for a plot file."""
+    dictCategories = dictStep.get("dictPlotFileCategories", {})
+    return dictCategories.get(sFilePath, "archive")
+
+
+def flistCollectArchivePlots(dictWorkflow):
+    """Return all plot files categorized as archive."""
+    listArchive = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        for sFile in dictStep.get("saPlotFiles", []):
+            if fsGetPlotCategory(dictStep, sFile) == "archive":
+                listArchive.append(sFile)
+    return listArchive
+
+
+def flistCollectSupportingPlots(dictWorkflow):
+    """Return all plot files categorized as supporting."""
+    listSupporting = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        for sFile in dictStep.get("saPlotFiles", []):
+            if fsGetPlotCategory(dictStep, sFile) == "supporting":
+                listSupporting.append(sFile)
+    return listSupporting
+
+
+# ---------------------------------------------------------------------------
 # Step-to-directory mapping
 # ---------------------------------------------------------------------------
 
@@ -444,6 +475,25 @@ def flistExtractStepScripts(dictStep):
             elif listTokens[0].endswith(".py"):
                 listScripts.append(listTokens[0])
     return listScripts
+
+
+def fdictAutoDetectScripts(listFileNames):
+    """Classify files by data*/plot* prefix convention."""
+    listDataScripts = []
+    listPlotScripts = []
+    for sName in listFileNames:
+        sLower = sName.lower()
+        if not sLower.endswith(".py"):
+            continue
+        sBase = os.path.basename(sName)
+        if sBase.lower().startswith("data"):
+            listDataScripts.append(sName)
+        elif sBase.lower().startswith("plot"):
+            listPlotScripts.append(sName)
+    return {
+        "listDataScripts": listDataScripts,
+        "listPlotScripts": listPlotScripts,
+    }
 
 
 def fdictBuildStepDirectoryMap(dictWorkflow):

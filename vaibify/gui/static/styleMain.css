@@ -723,6 +723,53 @@ html, body {
     background: rgba(0, 0, 0, 0.2);
 }
 
+.discovered-label {
+    color: var(--color-orange) !important;
+}
+
+.discovered-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.discovered-file {
+    flex: 1;
+    color: var(--color-orange);
+}
+
+.btn-discovered {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 1px 6px;
+    cursor: pointer;
+}
+
+.btn-discovered:hover {
+    border-color: var(--color-pale-blue);
+    color: var(--color-pale-blue);
+}
+
+.archive-star {
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 4px;
+    user-select: none;
+}
+
+.archive-star.active {
+    color: #d4a017;
+}
+
+.archive-star.inactive {
+    color: var(--text-muted);
+}
+
 .detail-item .detail-text {
     flex: 1;
     padding: 2px 6px;
@@ -1900,6 +1947,14 @@ html, body {
 
 .push-file-row:hover {
     background: var(--bg-hover);
+}
+
+.push-file-supporting {
+    opacity: 0.5;
+}
+
+.push-file-supporting .push-file-name {
+    font-style: italic;
 }
 
 .push-file-checkbox {

@@ -730,6 +730,9 @@ const PipeleyenApp = (function () {
         /* Verification */
         sHtml += fsRenderVerificationBlock(step, iIndex);
 
+        /* Discovered outputs */
+        sHtml += fsRenderDiscoveredOutputs(iIndex);
+
         sHtml += "</div>";
         return sHtml;
     }
@@ -1056,6 +1059,18 @@ const PipeleyenApp = (function () {
         if (sType === "output" && !bInvalid) {
             sFileClass = " " + fsFileTypeClass(sResolved);
         }
+        if (sArrayKey === "saPlotFiles" && !bInvalid) {
+            var sCategory = fsGetPlotCategory(iStepIdx, sRaw);
+            var bArchive = sCategory === "archive";
+            sHtml += '<span class="archive-star ' +
+                (bArchive ? "active" : "inactive") +
+                '" data-step="' + iStepIdx +
+                '" data-file="' + fnEscapeHtml(sRaw) +
+                '" title="' +
+                (bArchive ? "Archive plot" : "Supporting plot") +
+                '">' + (bArchive ? "\u2605" : "\u2606") +
+                '</span>';
+        }
         if (bInvalid) {
             sHtml += '<div class="detail-text file-invalid' +
                 '" title="Output path is not absolute">' +
@@ -1076,6 +1091,27 @@ const PipeleyenApp = (function () {
 
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsGetPlotCategory(iStep, sFilePath) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictCategories = dictStep.dictPlotFileCategories || {};
+        return dictCategories[sFilePath] || "archive";
+    }
+
+    async function fnToggleArchiveCategory(iStep, sFilePath) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (!dictStep.dictPlotFileCategories) {
+            dictStep.dictPlotFileCategories = {};
+        }
+        var sCurrentCategory = fsGetPlotCategory(iStep, sFilePath);
+        var sNewCategory = sCurrentCategory === "archive" ?
+            "supporting" : "archive";
+        dictStep.dictPlotFileCategories[sFilePath] = sNewCategory;
+        await fnSaveStepUpdate(iStep, {
+            dictPlotFileCategories: dictStep.dictPlotFileCategories,
+        });
+        fnRenderStepList();
     }
 
     function fsFileTypeClass(sPath) {
@@ -1153,6 +1189,26 @@ const PipeleyenApp = (function () {
                     parseInt(elDetailItem.dataset.idx)
                 );
             }
+            return;
+        }
+        if (elTarget.closest(".btn-discovered")) {
+            event.stopPropagation();
+            var elDiscBtn = elTarget.closest(".btn-discovered");
+            var elDiscItem = elDiscBtn.closest(".discovered-item");
+            fnAddDiscoveredOutput(
+                parseInt(elDiscItem.dataset.step),
+                elDiscItem.dataset.file,
+                elDiscBtn.dataset.target
+            );
+            return;
+        }
+        if (elTarget.closest(".archive-star")) {
+            event.stopPropagation();
+            var elStar = elTarget.closest(".archive-star");
+            fnToggleArchiveCategory(
+                parseInt(elStar.dataset.step),
+                elStar.dataset.file
+            );
             return;
         }
         if (elTarget.closest(".test-add")) {
@@ -1441,6 +1497,56 @@ const PipeleyenApp = (function () {
                 "Test generation failed:\n\n" + error.message
             );
         }
+    }
+
+    var dictDiscoveredOutputs = {};
+
+    function fnHandleDiscoveredOutputs(dictEvent) {
+        var iStep = dictEvent.iStepNumber - 1;
+        dictDiscoveredOutputs[iStep] = dictEvent.listDiscovered;
+        fnRenderStepList();
+        fnShowToast(
+            "Step " + dictEvent.iStepNumber +
+            ": " + dictEvent.listDiscovered.length +
+            " new output(s) discovered", "success"
+        );
+    }
+
+    function fsRenderDiscoveredOutputs(iStep) {
+        var listDiscovered = dictDiscoveredOutputs[iStep];
+        if (!listDiscovered || listDiscovered.length === 0) return "";
+        var sHtml = '<div class="detail-label discovered-label">' +
+            'Discovered Outputs</div>';
+        for (var i = 0; i < listDiscovered.length; i++) {
+            var sFile = listDiscovered[i].sFilePath;
+            sHtml += '<div class="discovered-item" data-step="' +
+                iStep + '" data-file="' +
+                fnEscapeHtml(sFile) + '">' +
+                '<span class="discovered-file">[+] ' +
+                fnEscapeHtml(sFile) + '</span>' +
+                '<button class="btn-discovered" ' +
+                'data-target="saDataFiles">Add as data</button>' +
+                '<button class="btn-discovered" ' +
+                'data-target="saPlotFiles">Add as plot</button>' +
+                '</div>';
+        }
+        return sHtml;
+    }
+
+    async function fnAddDiscoveredOutput(
+        iStep, sFile, sTargetArray
+    ) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (!dictStep[sTargetArray]) dictStep[sTargetArray] = [];
+        dictStep[sTargetArray].push(sFile);
+        var dictUpdate = {};
+        dictUpdate[sTargetArray] = dictStep[sTargetArray];
+        await fnSaveStepUpdate(iStep, dictUpdate);
+        var listDisc = dictDiscoveredOutputs[iStep] || [];
+        dictDiscoveredOutputs[iStep] = listDisc.filter(
+            function (d) { return d.sFilePath !== sFile; }
+        );
+        fnRenderStepList();
     }
 
     function fnResetGenerateButton(iStep) {
@@ -2118,13 +2224,21 @@ const PipeleyenApp = (function () {
 
     function fnRenderPushFileList(listFiles) {
         var elList = document.getElementById("modalPushFileList");
+        var bOverleaf = sPushService === "overleaf";
         elList.innerHTML = listFiles.map(function (dictFile) {
-            return '<div class="push-file-row">' +
+            var bSupporting = bOverleaf &&
+                dictFile.sCategory === "supporting";
+            return '<div class="push-file-row' +
+                (bSupporting ? " push-file-supporting" : "") +
+                '">' +
                 '<input type="checkbox" class="push-file-checkbox" ' +
                 'data-path="' + fnEscapeHtml(dictFile.sPath) +
-                '" checked>' +
+                '"' + (bSupporting ? "" : " checked") +
+                (bSupporting ? " disabled" : "") + '>' +
                 '<span class="push-file-name">' +
-                fnEscapeHtml(dictFile.sPath) + '</span>' +
+                fnEscapeHtml(dictFile.sPath) +
+                (bSupporting ? " (supporting)" : "") +
+                '</span>' +
                 '<span class="push-file-sync">' +
                 fsRenderSyncBadges(dictFile.dictSync) +
                 '</span></div>';
@@ -2573,6 +2687,8 @@ const PipeleyenApp = (function () {
                 "Step " + dictEvent.iStepNumber +
                 ": SKIPPED (inputs unchanged)");
             fnRenderStepList();
+        } else if (dictEvent.sType === "discoveredOutputs") {
+            fnHandleDiscoveredOutputs(dictEvent);
         } else if (dictEvent.sType === "stepPass") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
             fnInvalidateStepFileCache(dictEvent.iStepNumber - 1);

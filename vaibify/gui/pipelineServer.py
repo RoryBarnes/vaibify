@@ -642,6 +642,27 @@ def _fnRegisterGithubPush(app, dictCtx):
                 })
         return listGroups
 
+    @app.post("/api/steps/{sContainerId}/{iStepIndex}/scan-scripts")
+    async def fnScanScripts(sContainerId: str, iStepIndex: int):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        sDirectory = dictStep.get("sDirectory", "")
+        iExit, sOutput = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId,
+            f"find {sDirectory} -maxdepth 1 -name '*.py' "
+            f"-printf '%f\\n' 2>/dev/null || "
+            f"ls {sDirectory}/*.py 2>/dev/null | "
+            f"xargs -n1 basename 2>/dev/null",
+        )
+        listFiles = [
+            s.strip() for s in sOutput.strip().splitlines()
+            if s.strip()
+        ] if iExit == 0 and sOutput.strip() else []
+        return workflowManager.fdictAutoDetectScripts(listFiles)
+
 
 def _fnStoreCommitHash(dictWorkflow, listFilePaths, sCommitHash):
     """Store the git commit hash in sync status for each file."""

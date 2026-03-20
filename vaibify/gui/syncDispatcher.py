@@ -452,6 +452,25 @@ def ftResultGenerateDagSvg(
     return (0, baSvg)
 
 
+def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
+    """Collect all output files with their sync and category info."""
+    from .workflowManager import fsGetPlotCategory
+    listFiles = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        for sKey in ("saDataFiles", "saPlotFiles"):
+            for sFile in dictStep.get(sKey, []):
+                dictSync = dictSyncStatus.get(sFile, {})
+                sCategory = "archive"
+                if sKey == "saPlotFiles":
+                    sCategory = fsGetPlotCategory(dictStep, sFile)
+                listFiles.append({
+                    "sPath": sFile,
+                    "sCategory": sCategory,
+                    "dictSync": dictSync,
+                })
+    return listFiles
+
+
 def _fsHashFileCommand(sPath):
     """Build a shell-safe hash command for a file path."""
     return (

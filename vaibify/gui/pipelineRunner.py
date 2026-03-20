@@ -405,6 +405,55 @@ async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
         )
 
 
+async def _fsetSnapshotDirectory(
+    connectionDocker, sContainerId, sDirectory,
+):
+    """Return a set of file paths in a directory."""
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        f"find {fsShellQuote(sDirectory)} -type f 2>/dev/null",
+    )
+    if iExit != 0 or not sOutput.strip():
+        return set()
+    return set(sOutput.strip().splitlines())
+
+
+async def _fnEmitDiscoveredOutputs(
+    connectionDocker, sContainerId, sDirectory,
+    setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
+):
+    """Diff directory and emit discovered output files."""
+    setFilesAfter = await _fsetSnapshotDirectory(
+        connectionDocker, sContainerId, sDirectory
+    )
+    setNewFiles = setFilesAfter - setFilesBefore
+    if not setNewFiles:
+        return
+    setExpected = set()
+    for sKey in ("saDataFiles", "saPlotFiles"):
+        for sFile in dictStep.get(sKey, []):
+            setExpected.add(sFile)
+    listDiscovered = []
+    for sFile in sorted(setNewFiles):
+        sRelative = sFile
+        if sFile.startswith(sDirectory + "/"):
+            sRelative = sFile[len(sDirectory) + 1:]
+        bExpected = sRelative in setExpected or sFile in setExpected
+        listDiscovered.append({
+            "sFilePath": sRelative,
+            "bExpected": bExpected,
+        })
+    listUnexpected = [
+        d for d in listDiscovered if not d["bExpected"]
+    ]
+    if listUnexpected:
+        await fnStatusCallback({
+            "sType": "discoveredOutputs",
+            "iStepNumber": iStepNumber,
+            "listDiscovered": listUnexpected,
+        })
+
+
 async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
     """Send a stepPass or stepFail event based on exit code."""
     sType = "stepPass" if iExitCode == 0 else "stepFail"
@@ -505,6 +554,10 @@ async def _fnRunOneStep(
     sStartTimestamp = datetime.now(timezone.utc).strftime(
         "%Y-%m-%d %H:%M:%S UTC"
     )
+    sStepDir = dictStep.get("sDirectory", sWorkdir)
+    setFilesBefore = await _fsetSnapshotDirectory(
+        connectionDocker, sContainerId, sStepDir
+    )
     iExitCode = await fiRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
@@ -517,6 +570,10 @@ async def _fnRunOneStep(
     }
     await _fnRecordInputHashes(
         connectionDocker, sContainerId, dictStep
+    )
+    await _fnEmitDiscoveredOutputs(
+        connectionDocker, sContainerId, sStepDir,
+        setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
