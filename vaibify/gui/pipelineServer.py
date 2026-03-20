@@ -1085,23 +1085,37 @@ def _fnRegisterPipelineKill(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listPatterns = _flistExtractKillPatterns(dictWorkflow)
-        iKilled = 0
-        for sPattern in listPatterns:
-            sCheck = f"pgrep -f {sPattern} 2>/dev/null"
-            iExit, sPids = await asyncio.to_thread(
-                dictCtx["docker"].ftResultExecuteCommand,
-                sContainerId, sCheck,
-            )
-            if iExit == 0 and sPids.strip():
-                sKill = f"pkill -9 -f {sPattern} 2>/dev/null"
+        sGrepPattern = "\\|".join(listPatterns) if listPatterns else ""
+        if not sGrepPattern:
+            return {"bSuccess": True, "iProcessesKilled": 0}
+        sCountCommand = (
+            f"ps aux | grep -E '{sGrepPattern}' "
+            f"| grep -v grep | wc -l"
+        )
+        _, sCountBefore = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, sCountCommand,
+        )
+        iCountBefore = 0
+        try:
+            iCountBefore = int(sCountBefore.strip())
+        except ValueError:
+            pass
+        if iCountBefore > 0:
+            for sPattern in listPatterns:
+                sBracket = "[" + sPattern[0] + "]" + sPattern[1:]
+                sKill = (
+                    f"ps aux | grep '{sBracket}' "
+                    f"| awk '{{print $2}}' "
+                    f"| xargs kill -9 2>/dev/null"
+                )
                 await asyncio.to_thread(
                     dictCtx["docker"].ftResultExecuteCommand,
                     sContainerId, sKill,
                 )
-                iKilled += len(sPids.strip().splitlines())
         return {
             "bSuccess": True,
-            "iProcessesKilled": iKilled,
+            "iProcessesKilled": iCountBefore,
         }
 
 
