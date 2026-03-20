@@ -2927,14 +2927,19 @@ const PipeleyenApp = (function () {
         if (sEstimate) {
             sMessage += "\n\n" + sEstimate;
         }
-        fnShowConfirmModal("Run All", sMessage, function () {
+        fnShowConfirmModal("Run All", sMessage, async function () {
+            var listEnablePromises = [];
             dictWorkflow.listSteps.forEach(function (step, iIndex) {
-                if (step.bEnabled !== false) {
-                    dictStepStatus[iIndex] = "queued";
+                if (step.bEnabled === false) {
+                    listEnablePromises.push(
+                        fnToggleStepEnabled(iIndex, true)
+                    );
                 }
+                dictStepStatus[iIndex] = "queued";
             });
-            document.querySelectorAll(".step-checkbox")
-                .forEach(function (el) { el.checked = true; });
+            if (listEnablePromises.length > 0) {
+                await Promise.all(listEnablePromises);
+            }
             fnRenderStepList();
             fnSendPipelineAction({ sAction: "runAll" });
         });
