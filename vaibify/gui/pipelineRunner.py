@@ -216,21 +216,70 @@ async def _fiRunStepsAndLog(
     sLogPath, listLogLines, sAction, iStartStep,
 ):
     """Execute steps, write log, and emit final status."""
+    from . import pipelineState
+
+    iStepCount = len(dictWorkflow.get("listSteps", []))
+    dictState = pipelineState.fdictBuildInitialState(
+        sAction, sLogPath, iStepCount
+    )
+    pipelineState.fnWriteState(
+        connectionDocker, sContainerId, dictState
+    )
     await fnLogging({"sType": "started", "sCommand": sAction})
 
     async def fnLoggingWithFlush(dictEvent):
         await fnLogging(dictEvent)
         sEventType = dictEvent.get("sType", "")
-        if sEventType in ("stepPass", "stepFail", "stepSkipped"):
+        if sEventType == "output":
+            pipelineState.fnAppendOutput(
+                dictState, dictEvent.get("sLine", "")
+            )
+        if sEventType == "stepStarted":
+            pipelineState.fnUpdateState(
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildStepStarted(
+                    dictEvent["iStepNumber"]
+                ),
+            )
+        elif sEventType == "stepPass":
+            pipelineState.fnRecordStepResult(
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildStepResult(
+                    dictEvent["iStepNumber"], "passed"
+                ),
+            )
             await fnWriteLogToContainer(
                 connectionDocker, sContainerId, sLogPath,
                 listLogLines,
+            )
+        elif sEventType == "stepFail":
+            pipelineState.fnRecordStepResult(
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildStepResult(
+                    dictEvent["iStepNumber"], "failed",
+                    dictEvent.get("iExitCode", 1),
+                ),
+            )
+            await fnWriteLogToContainer(
+                connectionDocker, sContainerId, sLogPath,
+                listLogLines,
+            )
+        elif sEventType == "stepSkipped":
+            pipelineState.fnRecordStepResult(
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildStepResult(
+                    dictEvent["iStepNumber"], "skipped"
+                ),
             )
 
     iResult = await _fiRunStepList(
         connectionDocker, sContainerId,
         dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
         iStartStep=iStartStep,
+    )
+    pipelineState.fnUpdateState(
+        connectionDocker, sContainerId, dictState,
+        pipelineState.fdictBuildCompletedState(iResult),
     )
     await fnWriteLogToContainer(
         connectionDocker, sContainerId, sLogPath, listLogLines
@@ -535,6 +584,7 @@ async def _fsMissingDependencyFile(
     connectionDocker, sContainerId, dictStep, dictVariables,
 ):
     """Return the first missing dependency path, or empty string."""
+    import asyncio
     import re
     listAllCommands = (
         dictStep.get("saDataCommands", [])
@@ -550,7 +600,8 @@ async def _fsMissingDependencyFile(
             if not sPath:
                 continue
             sQuoted = fsShellQuote(sPath)
-            iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+            iExitCode, _ = await asyncio.to_thread(
+                connectionDocker.ftResultExecuteCommand,
                 sContainerId, f"test -f {sQuoted}"
             )
             if iExitCode != 0:

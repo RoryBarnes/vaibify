@@ -472,10 +472,12 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
 
     @app.get("/api/files/{sContainerId}/{sDirectoryPath:path}")
     async def fnListDirectory(sContainerId: str, sDirectoryPath: str):
+        import asyncio
         dictCtx["require"]()
         sAbsPath = f"/{sDirectoryPath}" if not sDirectoryPath.startswith("/") else sDirectoryPath
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
-        return flistQueryDirectory(
+        return await asyncio.to_thread(
+            flistQueryDirectory,
             dictCtx["docker"], sContainerId, sAbsPath
         )
 
@@ -1013,11 +1015,13 @@ def _fnRegisterFigure(app, dictCtx):
     async def fnCheckFigure(
         sContainerId: str, sFilePath: str, sWorkdir: str = ""
     ):
+        import asyncio
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         try:
-            fbaFetchFigureWithFallback(
+            await asyncio.to_thread(
+                fbaFetchFigureWithFallback,
                 dictCtx["docker"], sContainerId, sAbsPath,
                 sDir, sWorkdir, sFilePath,
             )
@@ -1029,10 +1033,12 @@ def _fnRegisterFigure(app, dictCtx):
     async def fnServeFigure(
         sContainerId: str, sFilePath: str, sWorkdir: str = ""
     ):
+        import asyncio
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
-        baContent = fbaFetchFigureWithFallback(
+        baContent = await asyncio.to_thread(
+            fbaFetchFigureWithFallback,
             dictCtx["docker"], sContainerId, sAbsPath,
             sDir, sWorkdir, sFilePath,
         )
@@ -1076,6 +1082,22 @@ def _flistExtractKillPatterns(dictWorkflow):
                 ):
                     setPatterns.add(listTokens[0])
     return sorted(setPatterns)
+
+
+def _fnRegisterPipelineState(app, dictCtx):
+    """Register GET /api/pipeline/{id}/state endpoint."""
+
+    @app.get("/api/pipeline/{sContainerId}/state")
+    async def fnGetPipelineState(sContainerId: str):
+        import asyncio
+        from .pipelineState import fdictReadState
+        dictCtx["require"]()
+        dictState = await asyncio.to_thread(
+            fdictReadState, dictCtx["docker"], sContainerId
+        )
+        if dictState is None:
+            return {"bRunning": False}
+        return dictState
 
 
 def _fnRegisterPipelineKill(app, dictCtx):
@@ -1394,6 +1416,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
+    _fnRegisterPipelineState(app, dictCtx)
     _fnRegisterPipelineKill(app, dictCtx)
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)

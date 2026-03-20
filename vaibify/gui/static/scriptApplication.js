@@ -272,6 +272,7 @@ const PipeleyenApp = (function () {
             fnLoadSyncStatus();
             fnRenderStepList();
             PipeleyenTerminal.fnCreateTab();
+            fnRecoverPipelineState(sId);
         } catch (error) {
             fnShowToast("Connection failed: " + error.message, "error");
         }
@@ -2907,6 +2908,76 @@ const PipeleyenApp = (function () {
             "Tests passed" : "Tests FAILED";
         fnShowToast("Step " + (iStep + 1) + ": " + sLabel,
             dictEvent.sResult === "passed" ? "success" : "error");
+    }
+
+    async function fnRecoverPipelineState(sId) {
+        try {
+            var response = await fetch(
+                "/api/pipeline/" + sId + "/state"
+            );
+            var dictState = await response.json();
+            if (!dictState || !dictState.bRunning) {
+                if (dictState && dictState.sLogPath &&
+                    dictState.iExitCode >= 0) {
+                    fnApplyCompletedState(dictState);
+                }
+                return;
+            }
+            fnApplyRunningState(dictState);
+        } catch (error) {
+            /* State endpoint not available — no recovery needed */
+        }
+    }
+
+    function fnApplyRunningState(dictState) {
+        fnInitPipelineOutput();
+        fnShowToast("Reconnected to running pipeline", "success");
+        var dictResults = dictState.dictStepResults || {};
+        for (var sKey in dictResults) {
+            var iStep = parseInt(sKey) - 1;
+            var sStatus = dictResults[sKey].sStatus;
+            if (sStatus === "passed") {
+                dictStepStatus[iStep] = "";
+            } else if (sStatus === "failed") {
+                dictStepStatus[iStep] = "fail";
+            } else if (sStatus === "skipped") {
+                dictStepStatus[iStep] = "";
+            }
+        }
+        if (dictState.iActiveStep > 0) {
+            dictStepStatus[dictState.iActiveStep - 1] = "running";
+        }
+        var iStepCount = dictState.iStepCount || 0;
+        for (var i = 0; i < iStepCount; i++) {
+            var sIdx = String(i + 1);
+            if (!dictResults[sIdx] &&
+                i !== dictState.iActiveStep - 1) {
+                dictStepStatus[i] = "queued";
+            }
+        }
+        var listOutput = dictState.listRecentOutput || [];
+        var elOutput = document.getElementById("panelOutput");
+        if (elOutput) {
+            listOutput.forEach(function (sLine) {
+                var elLine = document.createElement("div");
+                elLine.textContent = sLine;
+                elOutput.appendChild(elLine);
+            });
+            elOutput.scrollTop = elOutput.scrollHeight;
+        }
+        fnRenderStepList();
+    }
+
+    function fnApplyCompletedState(dictState) {
+        var dictResults = dictState.dictStepResults || {};
+        for (var sKey in dictResults) {
+            var iStep = parseInt(sKey) - 1;
+            var sStatus = dictResults[sKey].sStatus;
+            if (sStatus === "failed") {
+                dictStepStatus[iStep] = "fail";
+            }
+        }
+        fnRenderStepList();
     }
 
     function fnDisplayLogInViewer(sLogPath) {
