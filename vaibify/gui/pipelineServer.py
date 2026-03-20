@@ -231,6 +231,10 @@ async def fnDispatchAction(
     if sAction == "runAll":
         await fnRunAllSteps(
             connectionDocker, sContainerId, sWorkflowDirectory, fnCallback)
+    elif sAction == "forceRunAll":
+        await fnRunAllSteps(
+            connectionDocker, sContainerId, sWorkflowDirectory,
+            fnCallback, bForceRun=True)
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
@@ -1056,6 +1060,38 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
         pass
 
 
+def _fnRegisterPipelineClean(app, dictCtx):
+    """Register POST /api/pipeline/{id}/clean endpoint."""
+
+    @app.post("/api/pipeline/{sContainerId}/clean")
+    async def fnCleanOutputs(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listCleanCommands = []
+        for dictStep in dictWorkflow.get("listSteps", []):
+            sDir = dictStep.get("sDirectory", "")
+            for sKey in ("saDataFiles", "saPlotFiles"):
+                for sFile in dictStep.get(sKey, []):
+                    if sFile.startswith("{"):
+                        continue
+                    sPath = sFile if sFile.startswith("/") else (
+                        posixpath.join(sDir, sFile) if sDir
+                        else sFile)
+                    listCleanCommands.append(
+                        f"rm -f {sPath} 2>/dev/null")
+            dictStep["dictRunStats"] = {}
+            dictStep["dictVerification"] = {
+                "sUnitTest": "untested", "sUser": "untested"}
+        if listCleanCommands:
+            sCommand = " ; ".join(listCleanCommands)
+            await asyncio.to_thread(
+                dictCtx["docker"].ftResultExecuteCommand,
+                sContainerId, sCommand)
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"bSuccess": True}
+
+
 def _fnRegisterPipelineWs(app, dictCtx):
     """Register pipeline WebSocket endpoint."""
 
@@ -1297,6 +1333,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
+    _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterTerminalWs(app, dictCtx)
     _fnRegisterStaticFiles(app)

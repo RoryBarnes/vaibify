@@ -2199,6 +2199,7 @@ const PipeleyenApp = (function () {
         var dictActions = {
             btnRunSelected: fnRunSelected,
             btnRunAll: fnRunAll,
+            btnForceRunAll: fnForceRunAll,
             btnVerify: fnVerify,
             btnValidateReferences: fnValidateReferences,
             btnOverleafPush: function () { fnOpenPushModal("overleaf"); },
@@ -2947,6 +2948,57 @@ const PipeleyenApp = (function () {
             fnRenderStepList();
             fnSendPipelineAction({ sAction: "runAll" });
         });
+    }
+
+    function fnForceRunAll() {
+        fnShowConfirmModal(
+            "Force Run All",
+            "This will DELETE all existing data and plot " +
+            "outputs, clear input hashes, and re-run every " +
+            "step from scratch.\n\n" +
+            "All verification states will be reset to untested.",
+            function () {
+                var sEstimate = fsEstimateRunTime();
+                var sTimeMsg = sEstimate ?
+                    "\n\n" + sEstimate : "";
+                fnShowConfirmModal(
+                    "Confirm Clean Rebuild",
+                    "Are you sure? This cannot be undone." +
+                    sTimeMsg,
+                    async function () {
+                        await _fnExecuteForceRunAll();
+                    }
+                );
+            }
+        );
+    }
+
+    async function _fnExecuteForceRunAll() {
+        fnShowToast("Cleaning outputs...", "success");
+        try {
+            await fetch(
+                "/api/pipeline/" + sContainerId + "/clean",
+                { method: "POST" }
+            );
+        } catch (error) {
+            fnShowToast("Clean failed: " + error.message, "error");
+            return;
+        }
+        var listEnablePromises = [];
+        dictWorkflow.listSteps.forEach(function (step, iIndex) {
+            if (step.bEnabled === false) {
+                listEnablePromises.push(
+                    fnToggleStepEnabled(iIndex, true)
+                );
+            }
+            dictStepStatus[iIndex] = "queued";
+        });
+        if (listEnablePromises.length > 0) {
+            await Promise.all(listEnablePromises);
+        }
+        dictFileExistenceCache = {};
+        fnRenderStepList();
+        fnSendPipelineAction({ sAction: "forceRunAll" });
     }
 
     function fsEstimateRunTime() {

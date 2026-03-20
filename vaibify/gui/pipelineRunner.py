@@ -494,6 +494,7 @@ async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
 
 async def fnRunAllSteps(
     connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
+    bForceRun=False,
 ):
     """Run all enabled steps with logging."""
     dictWorkflow = await _fdictLoadWorkflow(
@@ -501,9 +502,13 @@ async def fnRunAllSteps(
     )
     if dictWorkflow is None:
         return 1
+    if bForceRun:
+        for dictStep in dictWorkflow.get("listSteps", []):
+            dictStep["dictRunStats"] = {}
     return await _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow,
-        sWorkdir, fnStatusCallback, "runAll",
+        sWorkdir, fnStatusCallback,
+        "forceRunAll" if bForceRun else "runAll",
     )
 
 
