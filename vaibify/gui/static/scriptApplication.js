@@ -488,12 +488,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnClearRunningStatuses() {
-        Object.keys(dictStepStatus).forEach(function (sKey) {
-            var sStatus = dictStepStatus[sKey];
-            if (sStatus === "queued" || sStatus === "running") {
-                delete dictStepStatus[sKey];
-            }
-        });
+        dictStepStatus = {};
     }
 
     function fnInvalidateStepFileCache(iStep) {
@@ -3318,12 +3313,8 @@ var PipeleyenFiles = (function () {
         fnRenderBreadcrumb(sCurrentPath);
 
         try {
-            var sApiPath = sCurrentPath;
-            if (sApiPath.startsWith("/")) {
-                sApiPath = sApiPath.substring(1);
-            }
             var response = await fetch(
-                "/api/files/" + sContainerId + "/" + sApiPath
+                "/api/files/" + sContainerId + sCurrentPath
             );
             var listEntries = await response.json();
             fnRenderFileList(listEntries);

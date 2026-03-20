@@ -471,10 +471,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
     @app.get("/api/files/{sContainerId}/{sDirectoryPath:path}")
     async def fnListDirectory(sContainerId: str, sDirectoryPath: str):
         dictCtx["require"]()
-        sAbsPath = (
-            sDirectoryPath if sDirectoryPath.startswith("/")
-            else f"{sWorkspaceRoot}/{sDirectoryPath}"
-        )
+        sAbsPath = f"/{sDirectoryPath}" if not sDirectoryPath.startswith("/") else sDirectoryPath
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         return flistQueryDirectory(
             dictCtx["docker"], sContainerId, sAbsPath
