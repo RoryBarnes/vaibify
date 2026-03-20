@@ -556,10 +556,6 @@ const PipeleyenApp = (function () {
                 );
                 return;
             }
-            if (dictFileExistenceCache[sCacheKey] === false) {
-                fnMarkOutputMissing(el);
-                return;
-            }
             var sUrl = "/api/figure/" + sContainerId + "/" +
                 sResolved;
             if (sWorkdir) {
@@ -575,7 +571,6 @@ const PipeleyenApp = (function () {
                         dictDataPresent
                     );
                 } else {
-                    dictFileExistenceCache[sCacheKey] = false;
                     fnMarkOutputMissing(el);
                 }
                 fnFileCheckComplete();
@@ -917,9 +912,6 @@ const PipeleyenApp = (function () {
         sHtml += fsRenderTestSection(
             "Test Commands", step.saTestCommands, iIndex, "command"
         );
-        sHtml += fsRenderTestSection(
-            "Data Files", step.saDataFiles, iIndex, "file"
-        );
         var sLogPath = (fdictGetVerification(step)).sTestLogPath;
         if (sLogPath) {
             sHtml += '<div class="test-last-run" data-log="' +
@@ -1061,8 +1053,11 @@ const PipeleyenApp = (function () {
             '" data-workdir="' + fnEscapeHtml(sWorkdir || "") +
             '" draggable="true">';
 
+        if (sType === "output" && !bInvalid) {
+            sFileClass = " " + fsFileTypeClass(sResolved);
+        }
         if (bInvalid) {
-            sHtml += '<div class="detail-text' + sFileClass +
+            sHtml += '<div class="detail-text file-invalid' +
                 '" title="Output path is not absolute">' +
                 '<em>' + fnEscapeHtml(sResolved) + '</em></div>';
         } else {
@@ -1160,6 +1155,15 @@ const PipeleyenApp = (function () {
             }
             return;
         }
+        if (elTarget.closest(".test-add")) {
+            event.stopPropagation();
+            var elTestAdd2 = elTarget.closest(".test-add");
+            fnAddTestItem(
+                parseInt(elTestAdd2.dataset.step),
+                elTestAdd2.dataset.testType
+            );
+            return;
+        }
         if (elTarget.closest(".section-add")) {
             event.stopPropagation();
             var elAdd = elTarget.closest(".section-add");
@@ -1221,15 +1225,6 @@ const PipeleyenApp = (function () {
             var elLog = elTarget.closest(".test-last-run");
             PipeleyenFigureViewer.fnDisplayFileFromContainer(
                 elLog.dataset.log
-            );
-            return;
-        }
-        if (elTarget.closest(".test-add")) {
-            event.stopPropagation();
-            var elTestAdd = elTarget.closest(".test-add");
-            fnAddTestItem(
-                parseInt(elTestAdd.dataset.step),
-                elTestAdd.dataset.testType
             );
             return;
         }
@@ -1403,6 +1398,7 @@ const PipeleyenApp = (function () {
     async function fnGenerateTests(iStep) {
         var elBtn = document.getElementById("btnGenTest" + iStep);
         if (elBtn) {
+            if (elBtn.disabled) return;
             elBtn.disabled = true;
             elBtn.innerHTML =
                 '<span class="spinner"></span> Building Tests';
@@ -1417,16 +1413,41 @@ const PipeleyenApp = (function () {
             );
             var dictResult = await response.json();
             if (dictResult.bNeedsFallback) {
+                fnResetGenerateButton(iStep);
                 fnShowApiKeyDialog(iStep);
                 return;
             }
+            if (!response.ok) {
+                fnResetGenerateButton(iStep);
+                var sDetail = dictResult.detail ||
+                    "Unknown error";
+                fnShowErrorModal(
+                    "Test generation failed:\n\n" + sDetail
+                );
+                return;
+            }
             if (!dictResult.bGenerated) {
-                fnShowToast("Generation failed", "error");
+                fnResetGenerateButton(iStep);
+                fnShowErrorModal(
+                    "Test generation failed:\n\n" +
+                    (dictResult.sMessage || "No tests generated")
+                );
                 return;
             }
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
-            fnShowToast("Generation failed: " + error.message, "error");
+            fnResetGenerateButton(iStep);
+            fnShowErrorModal(
+                "Test generation failed:\n\n" + error.message
+            );
+        }
+    }
+
+    function fnResetGenerateButton(iStep) {
+        var elBtn = document.getElementById("btnGenTest" + iStep);
+        if (elBtn) {
+            elBtn.disabled = false;
+            elBtn.innerHTML = "Generate Tests";
         }
     }
 
@@ -1480,11 +1501,17 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    async function fnAddTestItem(iStep, sType) {
-        var sPrompt = sType === "file" ?
-            "Test file path:" : "Test command:";
-        var sValue = prompt(sPrompt);
-        if (!sValue || !sValue.trim()) return;
+    function fnAddTestItem(iStep, sType) {
+        var sLabel = sType === "file" ?
+            "Test file path" : "Test command";
+        var sPlaceholder = sType === "file" ?
+            "e.g. test_step01.py" : "e.g. pytest test_step01.py";
+        fnShowInputModal(sLabel, sPlaceholder, function (sValue) {
+            _fnSaveTestItem(iStep, sType, sValue);
+        });
+    }
+
+    async function _fnSaveTestItem(iStep, sType, sValue) {
         var dictStep = dictWorkflow.listSteps[iStep];
         var sKey = sType === "file" ?
             "saTestFiles" : "saTestCommands";
@@ -1494,6 +1521,43 @@ const PipeleyenApp = (function () {
         dictUpdate[sKey] = dictStep[sKey];
         await fnSaveStepUpdate(iStep, dictUpdate);
         fnRenderStepList();
+    }
+
+    function fnShowInputModal(sLabel, sPlaceholder, fnCallback) {
+        var elExisting = document.getElementById("modalInput");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalInput";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>' + fnEscapeHtml(sLabel) + '</h2>' +
+            '<input type="text" class="input-modal-field" ' +
+            'placeholder="' + fnEscapeHtml(sPlaceholder) + '">' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnInputCancel">Cancel</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnInputConfirm">Add</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        var elInput = elModal.querySelector(".input-modal-field");
+        elInput.focus();
+        elInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") fnConfirmInput();
+            if (e.key === "Escape") elModal.remove();
+        });
+        document.getElementById("btnInputCancel").addEventListener(
+            "click", function () { elModal.remove(); }
+        );
+        document.getElementById("btnInputConfirm").addEventListener(
+            "click", fnConfirmInput
+        );
+        function fnConfirmInput() {
+            var sValue = elInput.value.trim();
+            elModal.remove();
+            if (sValue) fnCallback(sValue);
+        }
     }
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
@@ -1994,21 +2058,15 @@ const PipeleyenApp = (function () {
 
     async function fnShowDag() {
         if (!sContainerId) return;
-        var sUrl = "/api/workflow/" + sContainerId + "/dag";
-        var elViewport = document.getElementById("viewportA");
-        elViewport.innerHTML =
-            '<span class="placeholder">Generating DAG...</span>';
+        fnShowToast("Generating dependency graph...", "success");
         try {
-            var response = await fetch(sUrl);
-            if (!response.ok) throw new Error("DAG generation failed");
-            var blob = await response.blob();
-            var sObjectUrl = URL.createObjectURL(blob);
-            var elImg = document.createElement("img");
-            elImg.src = sObjectUrl;
-            elImg.alt = "Workflow DAG";
-            elImg.style.maxWidth = "100%";
-            elViewport.innerHTML = "";
-            elViewport.appendChild(elImg);
+            var response = await fetch(
+                "/api/workflow/" + sContainerId + "/dag"
+            );
+            if (!response.ok) throw new Error("DAG failed");
+            PipeleyenFigureViewer.fnDisplayInNextViewer(
+                ".vaibify/dag.svg", ""
+            );
         } catch (error) {
             fnShowToast("DAG: " + error.message, "error");
         }

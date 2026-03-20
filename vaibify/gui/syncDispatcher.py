@@ -290,17 +290,25 @@ def fdictCheckConnectivity(
 
 
 def _fdictCheckGithub(connectionDocker, sContainerId):
-    """Check GitHub auth via credential helper, token, or gh CLI."""
-    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        "git config --get credential.https://github.com.helper "
-        ">/dev/null 2>&1 || "
-        "test -f /run/secrets/gh_token || "
-        "gh auth status >/dev/null 2>&1"
+    """Check GitHub connectivity by testing a git remote."""
+    sTestCommand = (
+        "for sDir in /workspace/*/; do "
+        "  if [ -d \"$sDir/.git\" ]; then "
+        "    cd \"$sDir\" && "
+        "    git ls-remote --exit-code origin HEAD "
+        "    >/dev/null 2>&1 && exit 0; "
+        "  fi; "
+        "done; exit 1"
     )
-    bConnected = iExitCode == 0
-    sMessage = "Connected" if bConnected else "No GitHub credentials"
-    return {"bConnected": bConnected, "sMessage": sMessage}
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sTestCommand
+    )
+    if iExitCode == 0:
+        return {"bConnected": True, "sMessage": "Connected"}
+    return {
+        "bConnected": False,
+        "sMessage": "Cannot reach GitHub from container",
+    }
 
 
 def _fdictCheckKeyring(
@@ -430,7 +438,11 @@ def ftResultGenerateDagSvg(
     connectionDocker.fnWriteFile(
         sContainerId, sDotPath, sDotContent.encode("utf-8")
     )
-    sConvert = f"dot -Tsvg {sDotPath} -o {sSvgPath}"
+    sPersistPath = "/workspace/.vaibify/dag.svg"
+    sConvert = (
+        f"dot -Tsvg {sDotPath} -o {sSvgPath} && "
+        f"cp {sSvgPath} {sPersistPath}"
+    )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sConvert
     )

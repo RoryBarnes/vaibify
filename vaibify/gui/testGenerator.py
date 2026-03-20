@@ -264,5 +264,15 @@ def _fsInvokeLlm(
         connectionDocker, sContainerId, sPrompt
     )
     if iExitCode != 0:
-        raise RuntimeError(f"Claude CLI failed (exit {iExitCode})")
+        sHint = ""
+        sLower = sOutput.lower()
+        if "not logged in" in sLower or "/login" in sLower:
+            sHint = (
+                "\n\nClaude Code is not authenticated. "
+                "Open a terminal and run 'claude' to log in."
+            )
+        raise RuntimeError(
+            f"Claude CLI failed (exit {iExitCode}): "
+            f"{sOutput.strip()}{sHint}"
+        )
     return sOutput

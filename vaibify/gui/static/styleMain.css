@@ -1424,6 +1424,24 @@ html, body {
     user-select: none;
 }
 
+.input-modal-field {
+    width: 100%;
+    padding: 8px 12px;
+    margin-bottom: 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.input-modal-field:focus {
+    outline: none;
+    border-color: var(--color-pale-blue);
+}
+
 .modal .form-group {
     margin-bottom: 16px;
 }
@@ -1922,6 +1940,7 @@ html, body {
     opacity: 1;
     pointer-events: auto;
 }
+
 
 .zoom-level {
     font-size: 12px;
