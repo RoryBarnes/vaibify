@@ -102,9 +102,12 @@ def fsResolveVariables(sTemplate, dictVariables):
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
     """Build the global variable dict from workflow.json top-level keys."""
     sWorkflowDirectory = posixpath.dirname(sWorkflowPath)
+    sRepoRoot = sWorkflowDirectory
+    if "/.vaibify" in sRepoRoot:
+        sRepoRoot = sRepoRoot[:sRepoRoot.index("/.vaibify")]
     return {
         "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
-        "sRepoRoot": sWorkflowDirectory,
+        "sRepoRoot": sRepoRoot,
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf").lower(),
     }
