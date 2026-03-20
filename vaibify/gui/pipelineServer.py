@@ -1100,6 +1100,64 @@ def _fnRegisterPipelineState(app, dictCtx):
         return dictState
 
 
+def _fnRegisterFileStatus(app, dictCtx):
+    """Register GET /api/pipeline/{id}/file-status endpoint."""
+
+    @app.get("/api/pipeline/{sContainerId}/file-status")
+    async def fnGetFileStatus(sContainerId: str):
+        import asyncio
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listPaths = _flistCollectOutputPaths(dictWorkflow)
+        dictModTimes = await asyncio.to_thread(
+            _fdictGetModTimes,
+            dictCtx["docker"], sContainerId, listPaths,
+        )
+        return {"dictModTimes": dictModTimes}
+
+
+def _flistCollectOutputPaths(dictWorkflow):
+    """Collect all resolved output file paths from the workflow."""
+    from .workflowManager import fsResolveVariables
+    dictGlobalVars = {
+        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
+    listPaths = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sStepDir = dictStep.get("sDirectory", "")
+        for sFile in (dictStep.get("saDataFiles", [])
+                      + dictStep.get("saPlotFiles", [])):
+            sResolved = fsResolveVariables(sFile, dictGlobalVars)
+            if not sResolved.startswith("/"):
+                sResolved = sStepDir + "/" + sResolved
+            listPaths.append(sResolved)
+    return listPaths
+
+
+def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
+    """Return {path: mtime_string} for each file that exists."""
+    if not listPaths:
+        return {}
+    sPathArgs = " ".join(
+        fsShellQuote(s) for s in listPaths[:200]
+    )
+    sCmd = f"stat -c '%n %Y' {sPathArgs} 2>/dev/null || true"
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCmd
+    )
+    dictResult = {}
+    for sLine in (sOutput or "").strip().split("\n"):
+        sLine = sLine.strip()
+        if not sLine:
+            continue
+        listParts = sLine.rsplit(" ", 1)
+        if len(listParts) == 2:
+            dictResult[listParts[0]] = listParts[1]
+    return dictResult
+
+
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
@@ -1417,6 +1475,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterPipelineState(app, dictCtx)
+    _fnRegisterFileStatus(app, dictCtx)
     _fnRegisterPipelineKill(app, dictCtx)
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)

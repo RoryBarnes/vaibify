@@ -254,9 +254,13 @@ const PipeleyenApp = (function () {
             sWorkflowPath = data.sWorkflowPath;
             dictStepStatus = {};
             dictFileExistenceCache = {};
+            dictFileModTimes = {};
             setStepsWithData.clear();
             bFileCheckInProgress = false;
             bDelegatedEventsInitialized = false;
+            iPreviousOutputCount = 0;
+            fnStopPipelinePolling();
+            fnStopFileChangePolling();
             var iStepCount = (dictWorkflow.listSteps || []).length;
             if (iStepCount > 500) {
                 fnShowToast(
@@ -2873,10 +2877,13 @@ const PipeleyenApp = (function () {
             fnInvalidateStepFileCache(dictEvent.iStepNumber - 1);
             fnRenderStepList();
         } else if (dictEvent.sType === "started") {
+            fnStopPipelinePolling();
+            fnStopFileChangePolling();
             fnInitPipelineOutput();
             fnShowToast("Pipeline started", "success");
         } else if (dictEvent.sType === "completed") {
             fnClearRunningStatuses();
+            fnStartFileChangePolling();
             fnShowToast("Pipeline completed", "success");
             fnRenderStepList();
             if (dictEvent.sLogPath) {
@@ -2884,6 +2891,7 @@ const PipeleyenApp = (function () {
             }
         } else if (dictEvent.sType === "failed") {
             fnClearRunningStatuses();
+            fnStartFileChangePolling();
             fnShowToast(
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
             );
@@ -2910,6 +2918,11 @@ const PipeleyenApp = (function () {
             dictEvent.sResult === "passed" ? "success" : "error");
     }
 
+    var iPipelinePollTimer = null;
+    var iPreviousOutputCount = 0;
+    var iFileChangePollTimer = null;
+    var dictFileModTimes = {};
+
     async function fnRecoverPipelineState(sId) {
         try {
             var response = await fetch(
@@ -2921,17 +2934,67 @@ const PipeleyenApp = (function () {
                     dictState.iExitCode >= 0) {
                     fnApplyCompletedState(dictState);
                 }
+                fnStartFileChangePolling();
                 return;
             }
-            fnApplyRunningState(dictState);
+            fnApplyRunningState(dictState, true);
+            fnStartPipelinePolling(sId);
         } catch (error) {
-            /* State endpoint not available — no recovery needed */
+            fnStartFileChangePolling();
         }
     }
 
-    function fnApplyRunningState(dictState) {
-        fnInitPipelineOutput();
-        fnShowToast("Reconnected to running pipeline", "success");
+    function fnStartPipelinePolling(sId) {
+        fnStopPipelinePolling();
+        iPipelinePollTimer = setInterval(function () {
+            fnPollPipelineState(sId);
+        }, 10000);
+    }
+
+    function fnStopPipelinePolling() {
+        if (iPipelinePollTimer) {
+            clearInterval(iPipelinePollTimer);
+            iPipelinePollTimer = null;
+        }
+    }
+
+    async function fnPollPipelineState(sId) {
+        try {
+            var response = await fetch(
+                "/api/pipeline/" + sId + "/state"
+            );
+            var dictState = await response.json();
+            if (!dictState) return;
+            if (!dictState.bRunning) {
+                fnStopPipelinePolling();
+                fnApplyCompletedState(dictState);
+                if (dictState.sLogPath) {
+                    fnDisplayLogInViewer(dictState.sLogPath);
+                }
+                fnShowToast(
+                    dictState.iExitCode === 0 ?
+                        "Pipeline completed" :
+                        "Pipeline failed (exit " +
+                        dictState.iExitCode + ")",
+                    dictState.iExitCode === 0 ? "success" : "error"
+                );
+                fnStartFileChangePolling();
+                return;
+            }
+            fnApplyRunningState(dictState, false);
+        } catch (error) {
+            /* poll failed, try again next interval */
+        }
+    }
+
+    function fnApplyRunningState(dictState, bInitial) {
+        if (bInitial) {
+            fnInitPipelineOutput();
+            fnShowToast(
+                "Reconnected to running pipeline", "success"
+            );
+            iPreviousOutputCount = 0;
+        }
         var dictResults = dictState.dictStepResults || {};
         for (var sKey in dictResults) {
             var iStep = parseInt(sKey) - 1;
@@ -2952,23 +3015,34 @@ const PipeleyenApp = (function () {
             var sIdx = String(i + 1);
             if (!dictResults[sIdx] &&
                 i !== dictState.iActiveStep - 1) {
-                dictStepStatus[i] = "queued";
+                if (!dictResults[sIdx]) {
+                    dictStepStatus[i] = "queued";
+                }
             }
         }
         var listOutput = dictState.listRecentOutput || [];
         var elOutput = document.getElementById("panelOutput");
-        if (elOutput) {
-            listOutput.forEach(function (sLine) {
+        if (elOutput && listOutput.length > iPreviousOutputCount) {
+            var listNew = listOutput.slice(iPreviousOutputCount);
+            listNew.forEach(function (sLine) {
                 var elLine = document.createElement("div");
                 elLine.textContent = sLine;
+                if (sLine.indexOf("FAILED") >= 0) {
+                    elLine.style.color = "var(--color-red)";
+                } else if (sLine.startsWith("$")) {
+                    elLine.style.color =
+                        "var(--color-blue, #3498db)";
+                }
                 elOutput.appendChild(elLine);
             });
             elOutput.scrollTop = elOutput.scrollHeight;
+            iPreviousOutputCount = listOutput.length;
         }
         fnRenderStepList();
     }
 
     function fnApplyCompletedState(dictState) {
+        fnClearRunningStatuses();
         var dictResults = dictState.dictStepResults || {};
         for (var sKey in dictResults) {
             var iStep = parseInt(sKey) - 1;
@@ -2978,6 +3052,46 @@ const PipeleyenApp = (function () {
             }
         }
         fnRenderStepList();
+    }
+
+    function fnStartFileChangePolling() {
+        fnStopFileChangePolling();
+        iFileChangePollTimer = setInterval(function () {
+            fnPollFileChanges();
+        }, 15000);
+    }
+
+    function fnStopFileChangePolling() {
+        if (iFileChangePollTimer) {
+            clearInterval(iFileChangePollTimer);
+            iFileChangePollTimer = null;
+        }
+    }
+
+    async function fnPollFileChanges() {
+        if (!sContainerId || !dictWorkflow) return;
+        try {
+            var response = await fetch(
+                "/api/pipeline/" + sContainerId + "/file-status"
+            );
+            var dictStatus = await response.json();
+            var bChanged = false;
+            var dictNewMods = dictStatus.dictModTimes || {};
+            for (var sPath in dictNewMods) {
+                if (dictFileModTimes[sPath] !== dictNewMods[sPath]) {
+                    bChanged = true;
+                    break;
+                }
+            }
+            if (bChanged) {
+                dictFileModTimes = dictNewMods;
+                dictFileExistenceCache = {};
+                fnScheduleFileExistenceCheck();
+                fnRenderStepList();
+            }
+        } catch (error) {
+            /* poll failed, try again next interval */
+        }
     }
 
     function fnDisplayLogInViewer(sLogPath) {
