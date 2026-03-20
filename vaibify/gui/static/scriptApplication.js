@@ -2195,6 +2195,7 @@ const PipeleyenApp = (function () {
             btnRunSelected: fnRunSelected,
             btnRunAll: fnRunAll,
             btnForceRunAll: fnForceRunAll,
+            btnKillPipeline: fnKillPipeline,
             btnVerify: fnVerify,
             btnValidateReferences: fnValidateReferences,
             btnOverleafPush: function () { fnOpenPushModal("overleaf"); },
@@ -2968,7 +2969,43 @@ const PipeleyenApp = (function () {
         );
     }
 
+    function fnKillPipeline() {
+        fnShowConfirmModal(
+            "Stop All Tasks",
+            "This will kill all running Python, vconverge, " +
+            "and maxlev processes in the container.\n\n" +
+            "Any in-progress computations will be lost.",
+            async function () {
+                try {
+                    var response = await fetch(
+                        "/api/pipeline/" + sContainerId + "/kill",
+                        { method: "POST" }
+                    );
+                    var dictResult = await response.json();
+                    if (dictResult.bSuccess) {
+                        dictStepStatus = {};
+                        fnRenderStepList();
+                        fnShowToast(
+                            "Killed " + dictResult.iProcessesKilled +
+                            " process(es)", "success");
+                    } else {
+                        fnShowToast("Kill failed", "error");
+                    }
+                } catch (error) {
+                    fnShowToast(error.message, "error");
+                }
+            }
+        );
+    }
+
     async function _fnExecuteForceRunAll() {
+        fnShowToast("Stopping running tasks...", "success");
+        try {
+            await fetch(
+                "/api/pipeline/" + sContainerId + "/kill",
+                { method: "POST" }
+            );
+        } catch (error) { /* continue even if kill fails */ }
         fnShowToast("Cleaning outputs...", "success");
         try {
             await fetch(

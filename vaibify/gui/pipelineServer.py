@@ -1057,6 +1057,43 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
         pass
 
 
+def _fnRegisterPipelineKill(app, dictCtx):
+    """Register POST /api/pipeline/{id}/kill endpoint."""
+
+    @app.post("/api/pipeline/{sContainerId}/kill")
+    async def fnKillRunningTasks(sContainerId: str):
+        dictCtx["require"]()
+        sKillCommand = (
+            "pkill -f 'python.*data\\|python.*plot\\|"
+            "vconverge\\|maxlev\\|emcee\\|dynesty' "
+            "2>/dev/null; "
+            "iKilled=$(pgrep -c -f "
+            "'python.*\\.py' 2>/dev/null || echo 0); "
+            "echo $iKilled"
+        )
+        iExit, sOutput = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, sKillCommand,
+        )
+        sKillAll = (
+            "pkill -9 -f 'python.*\\.py' 2>/dev/null; "
+            "echo done"
+        )
+        await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, sKillAll,
+        )
+        iRemaining = 0
+        try:
+            iRemaining = int(sOutput.strip())
+        except ValueError:
+            pass
+        return {
+            "bSuccess": True,
+            "iProcessesKilled": iRemaining,
+        }
+
+
 def _fnRegisterPipelineClean(app, dictCtx):
     """Register POST /api/pipeline/{id}/clean endpoint."""
 
@@ -1330,6 +1367,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
+    _fnRegisterPipelineKill(app, dictCtx)
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterTerminalWs(app, dictCtx)
