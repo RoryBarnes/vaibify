@@ -594,6 +594,17 @@ html, body {
     font-style: italic;
 }
 
+.step-section-header {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    padding: 8px 10px 4px;
+    border-bottom: 1px solid var(--border-color);
+    margin-top: 2px;
+}
+
 .interactive-run-section {
     padding: 8px 0;
 }

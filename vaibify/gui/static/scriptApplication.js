@@ -486,7 +486,17 @@ const PipeleyenApp = (function () {
                 sPipelineHtml += sItem;
             }
         });
-        var sHtml = sInteractiveHtml + sPipelineHtml;
+        var sHtml = "";
+        if (sInteractiveHtml) {
+            sHtml += '<div class="step-section-header">' +
+                'Interactive Steps</div>';
+            sHtml += sInteractiveHtml;
+        }
+        if (sPipelineHtml) {
+            sHtml += '<div class="step-section-header">' +
+                'Pipeline Steps</div>';
+            sHtml += sPipelineHtml;
+        }
         elList.innerHTML = sHtml;
         fnBindStepEvents();
         fnScheduleFileExistenceCheck();
