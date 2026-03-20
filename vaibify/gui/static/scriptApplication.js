@@ -318,9 +318,16 @@ const PipeleyenApp = (function () {
     function fdictBuildClientVariables() {
         if (!dictWorkflow) return {};
         var sWorkflowDir = fsGetWorkflowDirectory();
+        var sRepoRoot = sWorkflowDir;
+        if (sRepoRoot.endsWith("/.vaibify/workflows")) {
+            sRepoRoot = sRepoRoot.replace(
+                "/.vaibify/workflows", "");
+        } else if (sRepoRoot.endsWith("/.vaibify")) {
+            sRepoRoot = sRepoRoot.replace("/.vaibify", "");
+        }
         return {
             sPlotDirectory: dictWorkflow.sPlotDirectory || "Plot",
-            sRepoRoot: sWorkflowDir,
+            sRepoRoot: sRepoRoot,
             iNumberOfCores: dictWorkflow.iNumberOfCores || -1,
             sFigureType: (dictWorkflow.sFigureType || "pdf").toLowerCase(),
         };
@@ -478,6 +485,15 @@ const PipeleyenApp = (function () {
         if (iInflightRequests <= 0) {
             bFileCheckInProgress = false;
         }
+    }
+
+    function fnClearRunningStatuses() {
+        Object.keys(dictStepStatus).forEach(function (sKey) {
+            var sStatus = dictStepStatus[sKey];
+            if (sStatus === "queued" || sStatus === "running") {
+                delete dictStepStatus[sKey];
+            }
+        });
     }
 
     function fnInvalidateStepFileCache(iStep) {
@@ -1629,6 +1645,35 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
+    function fnShowConfirmModal(sTitle, sMessage, fnOnConfirm) {
+        var elExisting = document.getElementById("modalConfirm");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalConfirm";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
+            '<p style="white-space:pre-wrap;margin-bottom:16px">' +
+            fnEscapeHtml(sMessage) + '</p>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnConfirmCancel">Cancel</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnConfirmOk">Confirm</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        document.getElementById("btnConfirmCancel").addEventListener(
+            "click", function () { elModal.remove(); }
+        );
+        document.getElementById("btnConfirmOk").addEventListener(
+            "click", function () {
+                elModal.remove();
+                fnOnConfirm();
+            }
+        );
+    }
+
     function fnShowInputModal(sLabel, sPlaceholder, fnCallback) {
         var elExisting = document.getElementById("modalInput");
         if (elExisting) elExisting.remove();
@@ -1754,9 +1799,14 @@ const PipeleyenApp = (function () {
         elInput.addEventListener("blur", fnFinishEdit);
     }
 
-    async function fnDeleteDetailItem(iStep, sArray, iIdx) {
+    function fnDeleteDetailItem(iStep, sArray, iIdx) {
         var sValue = dictWorkflow.listSteps[iStep][sArray][iIdx];
-        if (!confirm("Delete this item?\n\n" + sValue)) return;
+        fnShowConfirmModal("Delete Item", sValue, function () {
+            _fnExecuteDeleteItem(iStep, sArray, iIdx, sValue);
+        });
+    }
+
+    async function _fnExecuteDeleteItem(iStep, sArray, iIdx, sValue) {
         dictWorkflow.listSteps[iStep][sArray].splice(iIdx, 1);
         fnPushUndo({
             sAction: "delete",
@@ -1791,15 +1841,20 @@ const PipeleyenApp = (function () {
         return sArray;
     }
 
-    async function fnHandleDetailDrop(sDetailData, iTargetStep) {
+    function fnHandleDetailDrop(sDetailData, iTargetStep) {
         var dictDrag = JSON.parse(sDetailData);
         if (dictDrag.iStep === iTargetStep) return;
-        if (!confirm(
-            "WARNING: Moving a command may break dependencies " +
-            "in later steps.\n\nProceed?"
-        )) {
-            return;
-        }
+        fnShowConfirmModal(
+            "Move Item",
+            "Moving a command may break dependencies " +
+            "in later steps.\n\nProceed?",
+            function () {
+                _fnExecuteDetailDrop(dictDrag, iTargetStep);
+            }
+        );
+    }
+
+    async function _fnExecuteDetailDrop(dictDrag, iTargetStep) {
         var sArray = fnMoveDetailToStep(dictDrag, iTargetStep);
         await fnSaveStepArray(dictDrag.iStep, sArray);
         await fnSaveStepArray(iTargetStep, sArray);
@@ -2549,15 +2604,16 @@ const PipeleyenApp = (function () {
             });
     }
 
-    async function fnConfirmWorkflowSwitch(sNewPath, sNewName) {
-        if (!confirm(
-            "Switch to workflow \"" + sNewName + "\"?\n\n" +
-            "Current workflow state will be saved."
-        )) {
-            return;
-        }
-        await fnSaveCurrentWorkflow();
-        fnSelectWorkflow(sContainerId, sNewPath, sNewName);
+    function fnConfirmWorkflowSwitch(sNewPath, sNewName) {
+        fnShowConfirmModal(
+            "Switch Workflow",
+            "Switch to \"" + sNewName + "\"?\n\n" +
+            "Current workflow state will be saved.",
+            async function () {
+                await fnSaveCurrentWorkflow();
+                fnSelectWorkflow(sContainerId, sNewPath, sNewName);
+            }
+        );
     }
 
     async function fnSaveCurrentWorkflow() {
@@ -2657,6 +2713,11 @@ const PipeleyenApp = (function () {
         };
         wsPipeline.onclose = function () {
             wsPipeline = null;
+            fnClearRunningStatuses();
+            fnRenderStepList();
+        };
+        wsPipeline.onerror = function () {
+            wsPipeline = null;
         };
         return wsPipeline;
     }
@@ -2701,14 +2762,18 @@ const PipeleyenApp = (function () {
             fnInitPipelineOutput();
             fnShowToast("Pipeline started", "success");
         } else if (dictEvent.sType === "completed") {
+            fnClearRunningStatuses();
             fnShowToast("Pipeline completed", "success");
+            fnRenderStepList();
             if (dictEvent.sLogPath) {
                 fnDisplayLogInViewer(dictEvent.sLogPath);
             }
         } else if (dictEvent.sType === "failed") {
+            fnClearRunningStatuses();
             fnShowToast(
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
             );
+            fnRenderStepList();
             if (dictEvent.sLogPath) {
                 fnDisplayLogInViewer(dictEvent.sLogPath);
             }
@@ -2862,12 +2927,17 @@ const PipeleyenApp = (function () {
         if (sEstimate) {
             sMessage += "\n\n" + sEstimate;
         }
-        if (!confirm(sMessage)) return;
-        dictWorkflow.listSteps.forEach(function (_, iIndex) {
-            dictStepStatus[iIndex] = "queued";
+        fnShowConfirmModal("Run All", sMessage, function () {
+            dictWorkflow.listSteps.forEach(function (step, iIndex) {
+                if (step.bEnabled !== false) {
+                    dictStepStatus[iIndex] = "queued";
+                }
+            });
+            document.querySelectorAll(".step-checkbox")
+                .forEach(function (el) { el.checked = true; });
+            fnRenderStepList();
+            fnSendPipelineAction({ sAction: "runAll" });
         });
-        fnRenderStepList();
-        fnSendPipelineAction({ sAction: "runAll" });
     }
 
     function fsEstimateRunTime() {
@@ -3086,9 +3156,16 @@ const PipeleyenApp = (function () {
         }
     }
 
-    async function fnDeleteStep(iIndex) {
+    function fnDeleteStep(iIndex) {
         var sName = dictWorkflow.listSteps[iIndex].sName;
-        if (!confirm('Delete step "' + sName + '"?')) return;
+        fnShowConfirmModal(
+            "Delete Step",
+            'Delete step "' + sName + '"?',
+            function () { _fnExecuteDeleteStep(iIndex); }
+        );
+    }
+
+    async function _fnExecuteDeleteStep(iIndex) {
         try {
             var response = await fetch(
                 "/api/steps/" + sContainerId + "/" + iIndex,

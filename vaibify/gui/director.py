@@ -125,9 +125,14 @@ def fdictBuildGlobalVariables(dictWorkflow, sWorkflowRoot):
         sWorkflowRoot, dictWorkflow.get("sPlotDirectory", "Plot")
     )
     os.makedirs(sPlotDirectory, exist_ok=True)
+    sRepoRoot = sWorkflowRoot
+    if sRepoRoot.endswith("/.vaibify/workflows"):
+        sRepoRoot = sRepoRoot[:-len("/.vaibify/workflows")]
+    elif sRepoRoot.endswith("/.vaibify"):
+        sRepoRoot = sRepoRoot[:-len("/.vaibify")]
     return {
         "sPlotDirectory": sPlotDirectory,
-        "sRepoRoot": sWorkflowRoot,
+        "sRepoRoot": sRepoRoot,
         "iNumberOfCores": fiResolveCoreCount(
             dictWorkflow.get("iNumberOfCores", -1)),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf").lower(),
