@@ -142,6 +142,8 @@ def fsResolveFigurePath(sWorkflowDirectory, sFilePath):
     """Return absolute path for a figure file."""
     if sFilePath.startswith("/"):
         return sFilePath
+    if sFilePath.startswith("workspace/"):
+        return "/" + sFilePath
     return posixpath.join(sWorkflowDirectory, sFilePath)
 
 

@@ -638,8 +638,6 @@ const PipeleyenApp = (function () {
             sStatusClass = sRunStatus;
         } else if (sRunStatus === "fail") {
             sStatusClass = "fail";
-        } else if (sRunStatus === "pass") {
-            sStatusClass = "pass";
         } else {
             sStatusClass = fsComputeStepDotState(step, iIndex);
         }

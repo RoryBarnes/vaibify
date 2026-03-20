@@ -217,9 +217,19 @@ async def _fiRunStepsAndLog(
 ):
     """Execute steps, write log, and emit final status."""
     await fnLogging({"sType": "started", "sCommand": sAction})
+
+    async def fnLoggingWithFlush(dictEvent):
+        await fnLogging(dictEvent)
+        sEventType = dictEvent.get("sType", "")
+        if sEventType in ("stepPass", "stepFail", "stepSkipped"):
+            await fnWriteLogToContainer(
+                connectionDocker, sContainerId, sLogPath,
+                listLogLines,
+            )
+
     iResult = await _fiRunStepList(
         connectionDocker, sContainerId,
-        dictWorkflow, sWorkdir, dictVariables, fnLogging,
+        dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
         iStartStep=iStartStep,
     )
     await fnWriteLogToContainer(
