@@ -1057,40 +1057,51 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
         pass
 
 
+def _flistExtractKillPatterns(dictWorkflow):
+    """Extract unique command patterns from workflow steps."""
+    setPatterns = set()
+    for dictStep in dictWorkflow.get("listSteps", []):
+        for sKey in ("saDataCommands", "saPlotCommands"):
+            for sCommand in dictStep.get(sKey, []):
+                listTokens = sCommand.split()
+                if not listTokens:
+                    continue
+                if listTokens[0] in ("python", "python3"):
+                    if len(listTokens) > 1:
+                        setPatterns.add(listTokens[1])
+                elif listTokens[0] not in (
+                    "cp", "cd", "echo", "rm", "mkdir",
+                ):
+                    setPatterns.add(listTokens[0])
+    return sorted(setPatterns)
+
+
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
     @app.post("/api/pipeline/{sContainerId}/kill")
     async def fnKillRunningTasks(sContainerId: str):
         dictCtx["require"]()
-        sKillCommand = (
-            "pkill -f 'python.*data\\|python.*plot\\|"
-            "vconverge\\|maxlev\\|emcee\\|dynesty' "
-            "2>/dev/null; "
-            "iKilled=$(pgrep -c -f "
-            "'python.*\\.py' 2>/dev/null || echo 0); "
-            "echo $iKilled"
-        )
-        iExit, sOutput = await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
-            sContainerId, sKillCommand,
-        )
-        sKillAll = (
-            "pkill -9 -f 'python.*\\.py' 2>/dev/null; "
-            "echo done"
-        )
-        await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
-            sContainerId, sKillAll,
-        )
-        iRemaining = 0
-        try:
-            iRemaining = int(sOutput.strip())
-        except ValueError:
-            pass
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listPatterns = _flistExtractKillPatterns(dictWorkflow)
+        iKilled = 0
+        for sPattern in listPatterns:
+            sCheck = f"pgrep -f {sPattern} 2>/dev/null"
+            iExit, sPids = await asyncio.to_thread(
+                dictCtx["docker"].ftResultExecuteCommand,
+                sContainerId, sCheck,
+            )
+            if iExit == 0 and sPids.strip():
+                sKill = f"pkill -9 -f {sPattern} 2>/dev/null"
+                await asyncio.to_thread(
+                    dictCtx["docker"].ftResultExecuteCommand,
+                    sContainerId, sKill,
+                )
+                iKilled += len(sPids.strip().splitlines())
         return {
             "bSuccess": True,
-            "iProcessesKilled": iRemaining,
+            "iProcessesKilled": iKilled,
         }
 
 
