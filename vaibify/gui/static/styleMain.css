@@ -594,6 +594,45 @@ html, body {
     font-style: italic;
 }
 
+.interactive-run-section {
+    padding: 8px 0;
+}
+
+.btn-interactive-run {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.btn-interactive-run:hover,
+.btn-interactive-plots:hover {
+    filter: brightness(1.15);
+}
+
+.btn-interactive-plots {
+    background: var(--color-pale-blue);
+    color: var(--bg-primary);
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.interactive-run-section .detail-note {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-top: 4px;
+}
+
 .step-item .step-name {
     flex: 1;
     font-size: 13px;

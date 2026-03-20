@@ -531,6 +531,33 @@ def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
     return dictStep.get("bEnabled", True)
 
 
+async def _fsMissingDependencyFile(
+    connectionDocker, sContainerId, dictStep, dictVariables,
+):
+    """Return the first missing dependency path, or empty string."""
+    import re
+    listAllCommands = (
+        dictStep.get("saDataCommands", [])
+        + dictStep.get("saPlotCommands", [])
+    )
+    setChecked = set()
+    for sCmd in listAllCommands:
+        for sMatch in re.findall(r"\{(Step\d+\.\w+)\}", sCmd):
+            if sMatch in setChecked:
+                continue
+            setChecked.add(sMatch)
+            sPath = dictVariables.get(sMatch, "")
+            if not sPath:
+                continue
+            sQuoted = fsShellQuote(sPath)
+            iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+                sContainerId, f"test -f {sQuoted}"
+            )
+            if iExitCode != 0:
+                return sPath
+    return ""
+
+
 async def _fbShouldSkipStep(
     connectionDocker, sContainerId, dictStep, iStepNumber,
 ):
@@ -561,6 +588,24 @@ async def _fnRunOneStep(
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Run a single step, record timing, and emit result."""
+    if dictStep.get("bInteractive", False):
+        return 0
+    sStepMissing = await _fsMissingDependencyFile(
+        connectionDocker, sContainerId, dictStep, dictVariables
+    )
+    if sStepMissing:
+        sStepName = dictStep.get("sName", f"Step {iStepNumber}")
+        await fnStatusCallback({
+            "sType": "output",
+            "sLine": f"SKIPPED: Step {iStepNumber:02d} - "
+                     f"{sStepName} (dependency not found: "
+                     f"{sStepMissing})",
+        })
+        await fnStatusCallback({
+            "sType": "stepFail", "iStepNumber": iStepNumber,
+            "iExitCode": 1,
+        })
+        return 1
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
     sBanner = f"Step {iStepNumber:02d} - {sStepName}"
     sLine = "=" * len(sBanner)

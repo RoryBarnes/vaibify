@@ -438,5 +438,25 @@ const PipeleyenTerminal = (function () {
         fnCreatePane: fnCreatePane,
         fnCloseAll: fnCloseAll,
         fnFitActiveTerminal: fnFitActiveTerminal,
+        fnSendCommand: function (sCommand) {
+            if (listPanes.length === 0) {
+                fnCreatePane();
+            }
+            var dictPane = listPanes[0];
+            var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
+            if (!dictTab || !dictTab.websocket) return;
+            var ws = dictTab.websocket;
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(new TextEncoder().encode(sCommand + "\r"));
+            } else if (ws.readyState === WebSocket.CONNECTING) {
+                var sPending = sCommand;
+                ws.addEventListener("open", function () {
+                    setTimeout(function () {
+                        ws.send(new TextEncoder().encode(
+                            sPending + "\r"));
+                    }, 200);
+                }, { once: true });
+            }
+        },
     };
 })();

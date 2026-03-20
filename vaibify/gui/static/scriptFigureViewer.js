@@ -232,7 +232,8 @@ const PipeleyenFigureViewer = (function () {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         var sPath = dictEntry.sPath;
         var sWorkdir = dictEntry.sWorkdir || "";
-        var sUrl = "/api/figure/" + sContainerId + "/" + sPath;
+        var sCleanPath = sPath.replace(/^\/+/, "");
+        var sUrl = "/api/figure/" + sContainerId + "/" + sCleanPath;
         if (sWorkdir) {
             sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
         }

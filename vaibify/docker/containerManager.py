@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from .volumeManager import fsGetVolumeName
+from .x11Forwarding import flistConfigureX11Args
 
 
 def fnStartContainer(config, sDockerDir, saCommand=None):
@@ -39,6 +40,7 @@ def flistBuildRunArgs(config):
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
+    saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
 
 

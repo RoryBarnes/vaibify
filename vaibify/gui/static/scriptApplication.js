@@ -325,12 +325,32 @@ const PipeleyenApp = (function () {
         } else if (sRepoRoot.endsWith("/.vaibify")) {
             sRepoRoot = sRepoRoot.replace("/.vaibify", "");
         }
-        return {
+        var dictVars = {
             sPlotDirectory: dictWorkflow.sPlotDirectory || "Plot",
             sRepoRoot: sRepoRoot,
             iNumberOfCores: dictWorkflow.iNumberOfCores || -1,
             sFigureType: (dictWorkflow.sFigureType || "pdf").toLowerCase(),
         };
+        dictWorkflow.listSteps.forEach(function (step, iIdx) {
+            var sStepDir = step.sDirectory || "";
+            var iNum = iIdx + 1;
+            var sPrefix = "Step" + String(iNum).padStart(2, "0");
+            var listFiles = (step.saDataFiles || []).concat(
+                step.saPlotFiles || []);
+            listFiles.forEach(function (sFile) {
+                var sResolved = sFile.replace(
+                    /\{([^}]+)\}/g, function (m, t) {
+                        return dictVars[t] || m;
+                    });
+                if (sResolved.charAt(0) !== "/") {
+                    sResolved = sStepDir + "/" + sResolved;
+                }
+                var sBase = sResolved.split("/").pop();
+                var sStem = sBase.replace(/\.[^.]+$/, "");
+                dictVars[sPrefix + "." + sStem] = sResolved;
+            });
+        });
+        return dictVars;
     }
 
     function fsResolveTemplate(sTemplate, dictVariables) {
@@ -716,15 +736,33 @@ const PipeleyenApp = (function () {
         sHtml += '<div class="detail-label">Directory</div>';
         sHtml += '<div class="detail-field" data-view="field">' +
             fnEscapeHtml(sResolvedDir) + "</div>";
-        sHtml += '<div class="detail-label plot-only-row">' +
-            '<label class="plot-only-toggle">' +
-            '<input type="checkbox" class="plot-only-checkbox"' +
-            ' data-step="' + iIndex + '"' +
-            (step.bPlotOnly !== false ? " checked" : "") + '>' +
-            ' Plot only (skip data analysis)</label></div>';
+        if (!bInteractive) {
+            sHtml += '<div class="detail-label plot-only-row">' +
+                '<label class="plot-only-toggle">' +
+                '<input type="checkbox" class="plot-only-checkbox"' +
+                ' data-step="' + iIndex + '"' +
+                (step.bPlotOnly !== false ? " checked" : "") + '>' +
+                ' Plot only (skip data analysis)</label></div>';
+        }
 
         /* Run Stats */
         sHtml += fsRenderRunStats(step);
+
+        if (bInteractive) {
+            var bHasPlots = (step.saPlotCommands || []).length > 0;
+            sHtml += '<div class="interactive-run-section">' +
+                '<button class="btn btn-interactive-run" ' +
+                'data-index="' + iIndex + '">' +
+                '&#9654; Run in Terminal</button>';
+            if (bHasPlots) {
+                sHtml += ' <button class="btn btn-interactive-plots" ' +
+                    'data-index="' + iIndex + '">' +
+                    '&#9654; Run Plots</button>';
+            }
+            sHtml += '<div class="detail-note">This step requires ' +
+                'human judgment. It will run in the terminal ' +
+                'with X11 display forwarding.</div></div>';
+        }
 
         /* Data Analysis Commands */
         sHtml += fsRenderSectionLabel(
@@ -1359,6 +1397,28 @@ const PipeleyenApp = (function () {
         if (elTarget.closest(".step-edit")) {
             PipeleyenStepEditor.fnOpenEditModal(
                 parseInt(elStepItem.dataset.index)
+            );
+            return;
+        }
+        if (elTarget.closest(".btn-interactive-run")) {
+            fnRunInteractiveStep(
+                parseInt(elTarget.closest(
+                    ".btn-interactive-run").dataset.index)
+            );
+            return;
+        }
+        if (elTarget.closest(".archive-star")) {
+            var elStar = elTarget.closest(".archive-star");
+            fnToggleArchiveCategory(
+                parseInt(elStar.dataset.step),
+                elStar.dataset.file
+            );
+            return;
+        }
+        if (elTarget.closest(".btn-interactive-plots")) {
+            fnRunInteractivePlots(
+                parseInt(elTarget.closest(
+                    ".btn-interactive-plots").dataset.index)
             );
             return;
         }
@@ -2957,6 +3017,38 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnRunInteractiveStep(iIndex) {
+        var step = dictWorkflow.listSteps[iIndex];
+        if (!step) return;
+        var dictVars = fdictBuildClientVariables();
+        var listCmds = step.saDataCommands || [];
+        if (listCmds.length === 0) return;
+        var sDir = fsResolveTemplate(step.sDirectory, dictVars);
+        var sFullCmd = "cd " + sDir + " && " +
+            listCmds.map(function (c) {
+                return fsResolveTemplate(c, dictVars);
+            }).join(" && ");
+        PipeleyenTerminal.fnSendCommand(sFullCmd);
+        var elStrip = document.getElementById("terminalStrip");
+        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function fnRunInteractivePlots(iIndex) {
+        var step = dictWorkflow.listSteps[iIndex];
+        if (!step) return;
+        var dictVars = fdictBuildClientVariables();
+        var listCmds = step.saPlotCommands || [];
+        if (listCmds.length === 0) return;
+        var sDir = fsResolveTemplate(step.sDirectory, dictVars);
+        var sFullCmd = "cd " + sDir + " && " +
+            listCmds.map(function (c) {
+                return fsResolveTemplate(c, dictVars);
+            }).join(" && ");
+        PipeleyenTerminal.fnSendCommand(sFullCmd);
+        var elStrip = document.getElementById("terminalStrip");
+        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+    }
+
     function fnRunSelected() {
         var listIndices = [];
         document.querySelectorAll(".step-checkbox:checked")
@@ -3023,9 +3115,9 @@ const PipeleyenApp = (function () {
     function fnForceRunAll() {
         fnShowConfirmModal(
             "Force Run All",
-            "This will DELETE all existing data and plot " +
-            "outputs, clear input hashes, and re-run every " +
-            "step from scratch.\n\n" +
+            "This will clear input hashes and re-run every " +
+            "pipeline step from scratch. Interactive step " +
+            "outputs are preserved.\n\n" +
             "All verification states will be reset to untested.",
             function () {
                 var sEstimate = fsEstimateRunTime();
