@@ -2972,8 +2972,8 @@ const PipeleyenApp = (function () {
     function fnKillPipeline() {
         fnShowConfirmModal(
             "Stop All Tasks",
-            "This will kill all running Python, vconverge, " +
-            "and maxlev processes in the container.\n\n" +
+            "This will kill all running pipeline processes " +
+            "in the container.\n\n" +
             "Any in-progress computations will be lost.",
             async function () {
                 try {

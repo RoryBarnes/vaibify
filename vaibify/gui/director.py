@@ -424,9 +424,12 @@ def fsGenerateLogPath(sLogDir, sWorkflowName):
 def fnConfigureEnvironment(dictWorkflow, sWorkflowRoot):
     """Set PATH from workflow configuration."""
     sUserBinDir = os.path.join(os.path.expanduser("~"), ".local", "bin")
-    sVplanetDir = dictWorkflow.get("sVplanetBinaryDirectory", "")
+    listExtraPaths = dictWorkflow.get("listBinaryDirectories", [])
+    sSingleDir = dictWorkflow.get("sVplanetBinaryDirectory", "")
+    if sSingleDir and sSingleDir not in listExtraPaths:
+        listExtraPaths.append(sSingleDir)
     listPrependPaths = [
-        sDir for sDir in [sVplanetDir, sUserBinDir]
+        sDir for sDir in listExtraPaths + [sUserBinDir]
         if sDir and os.path.isdir(sDir)
     ]
     if listPrependPaths:
