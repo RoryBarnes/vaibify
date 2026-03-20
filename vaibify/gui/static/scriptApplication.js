@@ -631,7 +631,28 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fiComputeInteractiveNumber(iIndex) {
+        var iInteractive = 0;
+        for (var i = 0; i <= iIndex; i++) {
+            if (dictWorkflow.listSteps[i].bInteractive) {
+                iInteractive++;
+            }
+        }
+        return iInteractive;
+    }
+
+    function fiComputePipelineNumber(iIndex) {
+        var iPipeline = 0;
+        for (var i = 0; i <= iIndex; i++) {
+            if (!dictWorkflow.listSteps[i].bInteractive) {
+                iPipeline++;
+            }
+        }
+        return iPipeline;
+    }
+
     function fsRenderStepItem(step, iIndex, dictVars) {
+        var bInteractive = step.bInteractive === true;
         var sRunStatus = dictStepStatus[iIndex] || "";
         var sStatusClass = "";
         if (sRunStatus === "running" || sRunStatus === "queued") {
@@ -650,13 +671,23 @@ const PipeleyenApp = (function () {
             sStatusContent = "&#10003;";
         }
 
+        var sStepNumber;
+        if (bInteractive) {
+            sStepNumber = "-" + String(
+                fiComputeInteractiveNumber(iIndex)).padStart(2, "0");
+        } else {
+            sStepNumber = String(
+                fiComputePipelineNumber(iIndex)).padStart(2, "0");
+        }
+
         var sHtml =
             '<div class="step-item' + (bSelected ? " selected" : "") +
+            (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
             '<input type="checkbox" class="step-checkbox"' +
             (bEnabled ? " checked" : "") + ">" +
             '<span class="step-number">' +
-            String(iIndex + 1).padStart(2, "0") + "</span>" +
+            sStepNumber + "</span>" +
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
@@ -2920,9 +2951,31 @@ const PipeleyenApp = (function () {
         });
     }
 
+    function fsInteractiveWarning() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return "";
+        var listIncomplete = [];
+        dictWorkflow.listSteps.forEach(function (step, iIndex) {
+            if (!step.bInteractive) return;
+            var dictVerify = step.dictVerification || {};
+            if (dictVerify.sUser !== "passed") {
+                listIncomplete.push(step.sName);
+            }
+        });
+        if (listIncomplete.length === 0) return "";
+        return "\n\nInteractive steps not yet verified:\n" +
+            listIncomplete.map(function (s) {
+                return "  \u2022 " + s;
+            }).join("\n") +
+            "\n\nThe pipeline may produce incomplete results.";
+    }
+
     function fnRunAll() {
         var sEstimate = fsEstimateRunTime();
+        var sInteractiveWarn = fsInteractiveWarning();
         var sMessage = "Run all enabled steps?";
+        if (sInteractiveWarn) {
+            sMessage += sInteractiveWarn;
+        }
         if (sEstimate) {
             sMessage += "\n\n" + sEstimate;
         }

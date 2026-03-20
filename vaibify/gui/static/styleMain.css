@@ -584,6 +584,16 @@ html, body {
     font-weight: 700;
 }
 
+.step-item.interactive .step-number {
+    background: rgba(255, 165, 0, 0.15);
+    color: var(--color-orange);
+}
+
+.step-item.interactive .step-name {
+    color: var(--color-orange);
+    font-style: italic;
+}
+
 .step-item .step-name {
     flex: 1;
     font-size: 13px;

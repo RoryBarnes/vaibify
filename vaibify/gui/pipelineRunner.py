@@ -524,6 +524,8 @@ async def fnRunAllSteps(
 
 def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
     """Return True if this step should be executed."""
+    if dictStep.get("bInteractive", False):
+        return False
     if iStepNumber < iStartStep:
         return False
     return dictStep.get("bEnabled", True)
