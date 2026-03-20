@@ -62,6 +62,12 @@ class ZenodoClient:
         dictPayload = {"metadata": _fdictEmptyMetadata()}
         return self._fdictRequest("POST", sUrl, json=dictPayload)
 
+    def fnSetMetadata(self, iDepositId, dictMetadata):
+        """Update deposit metadata before publishing."""
+        sUrl = f"{self._sBaseUrl}/deposit/depositions/{iDepositId}"
+        dictPayload = {"metadata": dictMetadata}
+        self._fdictRequest("PUT", sUrl, json=dictPayload)
+
     def fnPublishDraft(self, iDepositId):
         """Publish an existing draft deposit."""
         sUrl = (

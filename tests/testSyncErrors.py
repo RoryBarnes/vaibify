@@ -94,3 +94,49 @@ class TestSyncResult:
         dictResult = fdictSyncResult(1, "oops")
         assert dictResult["bSuccess"] is False
         assert dictResult["sErrorType"] == "unknown"
+
+
+class TestCollectOutputFiles:
+    """Test flistCollectOutputFiles file collection."""
+
+    def test_fbCollectsAllFiles(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": ["data.h5"],
+                    "saPlotFiles": ["fig.pdf"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(dictWorkflow, {})
+        assert len(listFiles) == 2
+        listPaths = [d["sPath"] for d in listFiles]
+        assert "data.h5" in listPaths
+        assert "fig.pdf" in listPaths
+
+    def test_fbIncludesCategory(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": [],
+                    "saPlotFiles": ["fig.pdf"],
+                    "dictPlotFileCategories": {
+                        "fig.pdf": "supporting",
+                    },
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(dictWorkflow, {})
+        assert listFiles[0]["sCategory"] == "supporting"
+
+    def test_fbDataFilesAlwaysArchive(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {"saDataFiles": ["data.h5"], "saPlotFiles": []},
+            ],
+        }
+        listFiles = flistCollectOutputFiles(dictWorkflow, {})
+        assert listFiles[0]["sCategory"] == "archive"

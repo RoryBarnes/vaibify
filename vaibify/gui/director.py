@@ -431,6 +431,52 @@ def fnConfigureEnvironment(dictWorkflow, sWorkflowRoot):
         )
 
 
+def fnDownloadDatasets(dictWorkflow, sWorkflowRoot):
+    """Download missing datasets from Zenodo before running."""
+    listDatasets = dictWorkflow.get("listDatasets", [])
+    if not listDatasets:
+        return
+    for dictDataset in listDatasets:
+        sDoi = dictDataset.get("sDoi", "")
+        sFileName = dictDataset.get("sFileName", "")
+        sDestination = dictDataset.get("sDestination", "")
+        if not sDoi or not sFileName:
+            continue
+        sDestPath = os.path.join(sWorkflowRoot, sDestination, sFileName)
+        if os.path.isfile(sDestPath):
+            print(f"  Dataset exists: {sDestPath}")
+            continue
+        print(f"  Downloading: {sFileName} from {sDoi}")
+        _fnDownloadFromZenodo(sDoi, sFileName, sDestPath)
+
+
+def _fnDownloadFromZenodo(sDoi, sFileName, sDestPath):
+    """Download a single file from a Zenodo deposit by DOI."""
+    try:
+        import requests
+        sRecordId = sDoi.split(".")[-1]
+        sApiUrl = (
+            f"https://zenodo.org/api/records/{sRecordId}"
+        )
+        dictRecord = requests.get(sApiUrl, timeout=30).json()
+        for dictFile in dictRecord.get("files", []):
+            if dictFile.get("key") == sFileName:
+                sFileUrl = dictFile["links"]["self"]
+                os.makedirs(
+                    os.path.dirname(sDestPath), exist_ok=True)
+                response = requests.get(
+                    sFileUrl, stream=True, timeout=300)
+                response.raise_for_status()
+                with open(sDestPath, "wb") as fileHandle:
+                    for baChunk in response.iter_content(65536):
+                        fileHandle.write(baChunk)
+                print(f"  Downloaded: {sDestPath}")
+                return
+        print(f"  WARNING: {sFileName} not found in {sDoi}")
+    except Exception as error:
+        print(f"  WARNING: Download failed: {error}")
+
+
 def fnsParseArguments():
     """Parse and return command-line arguments as a namespace."""
     parser = argparse.ArgumentParser(
@@ -467,6 +513,7 @@ def main():
     print(f"Log: {sLogPath}\n")
 
     fnConfigureEnvironment(dictWorkflow, sWorkflowRoot)
+    fnDownloadDatasets(dictWorkflow, sWorkflowRoot)
     dictVariables = fdictBuildGlobalVariables(dictWorkflow, sWorkflowRoot)
 
     if args.verify_only:
