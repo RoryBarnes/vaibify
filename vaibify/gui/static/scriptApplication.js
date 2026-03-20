@@ -711,10 +711,10 @@ const PipeleyenApp = (function () {
         var sStatusContent = "";
         if (sStatusClass === "verified") {
             sStatusContent = '<svg viewBox="0 0 32 32" ' +
-                'class="vaib-check"><path d="M8 6 L11 6 ' +
-                'L13 22 L24 6" stroke="currentColor" ' +
-                'stroke-width="3.5" stroke-linecap="round" ' +
-                'stroke-linejoin="round" fill="none"/></svg>';
+                'class="vaib-check"><path d="M6 8 L6 24 ' +
+                'L10 24 L10 16 L26 2" stroke="currentColor" ' +
+                'stroke-width="2" stroke-linejoin="round" ' +
+                'fill="currentColor"/></svg>';
         }
 
         var sStepNumber;
