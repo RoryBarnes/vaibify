@@ -561,6 +561,24 @@ async def _fnRunOneStep(
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Run a single step, record timing, and emit result."""
+    sStepName = dictStep.get("sName", f"Step {iStepNumber}")
+    sBanner = f"Step {iStepNumber:02d} - {sStepName}"
+    sLine = "=" * len(sBanner)
+    await fnStatusCallback({
+        "sType": "output", "sLine": "",
+    })
+    await fnStatusCallback({
+        "sType": "output", "sLine": sLine,
+    })
+    await fnStatusCallback({
+        "sType": "output", "sLine": sBanner,
+    })
+    await fnStatusCallback({
+        "sType": "output", "sLine": sLine,
+    })
+    await fnStatusCallback({
+        "sType": "output", "sLine": "",
+    })
     if await _fbShouldSkipStep(
         connectionDocker, sContainerId, dictStep, iStepNumber
     ):

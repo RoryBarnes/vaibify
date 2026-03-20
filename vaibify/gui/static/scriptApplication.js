@@ -451,10 +451,17 @@ const PipeleyenApp = (function () {
             return;
         }
         var dictVars = fdictBuildClientVariables();
-        var sHtml = "";
+        var sInteractiveHtml = "";
+        var sPipelineHtml = "";
         dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            sHtml += fsRenderStepItem(step, iIndex, dictVars);
+            var sItem = fsRenderStepItem(step, iIndex, dictVars);
+            if (step.bInteractive) {
+                sInteractiveHtml += sItem;
+            } else {
+                sPipelineHtml += sItem;
+            }
         });
+        var sHtml = sInteractiveHtml + sPipelineHtml;
         elList.innerHTML = sHtml;
         fnBindStepEvents();
         fnScheduleFileExistenceCheck();
@@ -877,16 +884,20 @@ const PipeleyenApp = (function () {
     }
 
     function fsRenderVerificationBlock(step, iIndex) {
-        var sTestState = fsEffectiveTestState(step);
+        var bInteractive = step.bInteractive === true;
+        var bPlotOnly = (step.saDataCommands || []).length === 0;
         var dictVerify = fdictGetVerification(step);
         var sHtml = '<div class="detail-label">Verification</div>';
         sHtml += '<div class="verification-block" data-step="' +
             iIndex + '">';
-        sHtml += fsRenderVerificationRow(
-            "Unit Tests", sTestState, "unitTest", iIndex
-        );
-        if (setExpandedUnitTests.has(iIndex)) {
-            sHtml += fsRenderUnitTestExpanded(step, iIndex);
+        if (!bInteractive && !bPlotOnly) {
+            var sTestState = fsEffectiveTestState(step);
+            sHtml += fsRenderVerificationRow(
+                "Unit Tests", sTestState, "unitTest", iIndex
+            );
+            if (setExpandedUnitTests.has(iIndex)) {
+                sHtml += fsRenderUnitTestExpanded(step, iIndex);
+            }
         }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
@@ -1003,9 +1014,21 @@ const PipeleyenApp = (function () {
     }
 
     function fsComputeStepDotState(step, iIndex) {
+        var bInteractive = step.bInteractive === true;
         var dictVerify = fdictGetVerification(step);
-        var sUnit = fsEffectiveTestState(step);
         var sUser = dictVerify.sUser;
+
+        if (bInteractive) {
+            if (sUser === "passed") return "verified";
+            return "fail";
+        }
+
+        var sUnit = fsEffectiveTestState(step);
+        var bPlotOnly = (step.saDataCommands || []).length === 0;
+        if (bPlotOnly) {
+            sUnit = "passed";
+        }
+
         if (sUnit === "failed" || sUnit === "error" ||
             sUser === "failed" || sUser === "error") {
             return "fail";
