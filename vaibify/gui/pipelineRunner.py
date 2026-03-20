@@ -333,6 +333,11 @@ async def fiRunStepCommands(
 ):
     """Run a single step's commands sequentially in its directory."""
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
+    sPlotDir = dictVariables.get("sPlotDirectory", "Plot")
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        f"mkdir -p {fsShellQuote(sStepDirectory + '/' + sPlotDir)}"
+    )
     iExitCode = await _fiRunSetupIfNeeded(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,

@@ -641,6 +641,10 @@ const PipeleyenApp = (function () {
         var sStatusClass = "";
         if (sRunStatus === "running" || sRunStatus === "queued") {
             sStatusClass = sRunStatus;
+        } else if (sRunStatus === "fail") {
+            sStatusClass = "fail";
+        } else if (sRunStatus === "pass") {
+            sStatusClass = "pass";
         } else {
             sStatusClass = fsComputeStepDotState(step, iIndex);
         }
