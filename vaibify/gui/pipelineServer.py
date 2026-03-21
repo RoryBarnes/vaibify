@@ -1583,6 +1583,39 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         }
 
 
+def _fnRegisterTestRun(app, dictCtx):
+    """Register POST /api/steps/{id}/{step}/run-tests."""
+
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
+    )
+    async def fnRunTests(sContainerId: str, iStepIndex: int):
+        import asyncio
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        listCmds = dictStep.get("saTestCommands", [])
+        if not listCmds:
+            raise HTTPException(400, "No test commands")
+        sDir = dictStep.get("sDirectory", "/workspace")
+        sFullCmd = " && ".join(
+            [f"cd {sDir}"] + listCmds)
+        iExitCode, sOutput = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, sFullCmd,
+        )
+        bPassed = iExitCode == 0
+        dictStep.setdefault("dictVerification", {})
+        dictStep["dictVerification"]["sUnitTest"] = (
+            "passed" if bPassed else "failed")
+        return {
+            "bPassed": bPassed,
+            "sOutput": sOutput,
+            "iExitCode": iExitCode,
+        }
+
+
 def _fnRemoveTestFiles(
     connectionDocker, sContainerId, dictStep, iStepIndex,
 ):
@@ -1614,6 +1647,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterStepRoutes(app, dictCtx)
     _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterTestSaveAndRun(app, dictCtx)
+    _fnRegisterTestRun(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterPipelineState(app, dictCtx)

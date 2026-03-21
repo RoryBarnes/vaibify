@@ -760,8 +760,9 @@ const PipeleyenApp = (function () {
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
-            '<span class="step-status ' + sStatusClass + '">' +
-            '</span>' +
+            (sStatusClass === "verified" ? "" :
+                '<span class="step-status ' + sStatusClass +
+                '"></span>') +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
             sVerifiedBadge +
@@ -1016,7 +1017,16 @@ const PipeleyenApp = (function () {
             if (!depStep) continue;
             var bPassing = fbStepFullyPassing(iDep, dictVisited);
             var sState = bPassing ? "passed" : "failed";
-            var sNum = String(iDep + 1).padStart(2, "0");
+            var sNum;
+            if (depStep.bInteractive) {
+                sNum = "-" + String(
+                    fiComputeInteractiveNumber(iDep)
+                ).padStart(2, "0");
+            } else {
+                sNum = String(
+                    fiComputePipelineNumber(iDep)
+                ).padStart(2, "0");
+            }
             sHtml += '<div class="dep-item">' +
                 '<span class="dep-label">' + sNum + ' ' +
                 fnEscapeHtml(depStep.sName) + '</span>' +
@@ -1061,6 +1071,10 @@ const PipeleyenApp = (function () {
         sHtml += fsRenderTestSection(
             "Test Commands", step.saTestCommands, iIndex, "command"
         );
+        if ((step.saTestCommands || []).length > 0) {
+            sHtml += '<button class="btn btn-run-tests" ' +
+                'data-step="' + iIndex + '">Run Tests</button>';
+        }
         var sLogPath = (fdictGetVerification(step)).sTestLogPath;
         if (sLogPath) {
             sHtml += '<div class="test-last-run" data-log="' +
@@ -1073,7 +1087,6 @@ const PipeleyenApp = (function () {
 
     function fsRenderGenerateButton(step, iIndex) {
         if ((step.saDataCommands || []).length === 0) return "";
-        if ((step.saTestCommands || []).length > 0) return "";
         var bDisabled = !setStepsWithData.has(iIndex);
         return '<button class="btn-generate-test" data-step="' +
             iIndex + '"' +
@@ -1477,6 +1490,12 @@ const PipeleyenApp = (function () {
                 parseInt(elTarget.closest(
                     ".btn-interactive-plots").dataset.index)
             );
+            return;
+        }
+        if (elTarget.closest(".btn-run-tests")) {
+            fnRunStepTests(
+                parseInt(elTarget.closest(
+                    ".btn-run-tests").dataset.step));
             return;
         }
         if (elStepItem &&
@@ -3259,6 +3278,39 @@ const PipeleyenApp = (function () {
             ws.addEventListener("open", function () {
                 ws.send(JSON.stringify(dictAction));
             }, { once: true });
+        }
+    }
+
+    async function fnRunStepTests(iStepIndex) {
+        if (!sContainerId) return;
+        var step = dictWorkflow.listSteps[iStepIndex];
+        if (!step || !step.saTestCommands ||
+            step.saTestCommands.length === 0) return;
+        fnShowToast("Running tests for Step " +
+            (iStepIndex + 1) + "...", "success");
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" +
+                iStepIndex + "/run-tests",
+                { method: "POST" }
+            );
+            var dictResult = await response.json();
+            step.dictVerification = step.dictVerification || {};
+            step.dictVerification.sUnitTest =
+                dictResult.bPassed ? "passed" : "failed";
+            fnRenderStepList();
+            fnShowToast(
+                dictResult.bPassed ?
+                    "Tests passed" : "Tests FAILED",
+                dictResult.bPassed ? "success" : "error"
+            );
+            if (dictResult.sOutput) {
+                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                    dictResult.sLogPath || "");
+            }
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
         }
     }
 

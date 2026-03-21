@@ -1946,6 +1946,23 @@ html, body {
     margin-right: 4px;
 }
 
+.btn-run-tests {
+    background: var(--color-pale-blue);
+    color: var(--bg-primary);
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 4px 0;
+}
+
+.btn-run-tests:hover {
+    filter: brightness(1.15);
+}
+
 .btn-generate-test {
     background: var(--color-orange);
     color: var(--bg-primary);
