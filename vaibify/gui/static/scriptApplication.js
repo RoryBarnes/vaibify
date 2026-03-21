@@ -1121,7 +1121,16 @@ const PipeleyenApp = (function () {
                 "test-file-item" : "test-command-item";
             sHtml += '<div class="' + sCls + '" data-step="' +
                 iIndex + '" data-idx="' + i + '">' +
-                fnEscapeHtml(listItems[i]) + '</div>';
+                '<span class="test-item-text">' +
+                fnEscapeHtml(listItems[i]) + '</span>' +
+                '<span class="test-item-actions">' +
+                '<button class="btn-icon test-edit-cmd" ' +
+                'data-step="' + iIndex + '" data-idx="' + i +
+                '" title="Edit test file">&#9998;</button>' +
+                '<button class="btn-icon test-delete-cmd" ' +
+                'data-step="' + iIndex + '" data-idx="' + i +
+                '" title="Delete test">&times;</button>' +
+                '</span></div>';
         }
         return sHtml;
     }
@@ -1511,6 +1520,20 @@ const PipeleyenApp = (function () {
             fnRunStepTests(
                 parseInt(elTarget.closest(
                     ".btn-run-tests").dataset.step));
+            return;
+        }
+        if (elTarget.closest(".test-edit-cmd")) {
+            var elEditCmd = elTarget.closest(".test-edit-cmd");
+            fnEditTestFile(
+                parseInt(elEditCmd.dataset.step),
+                parseInt(elEditCmd.dataset.idx));
+            return;
+        }
+        if (elTarget.closest(".test-delete-cmd")) {
+            var elDelCmd = elTarget.closest(".test-delete-cmd");
+            fnDeleteTestCommand(
+                parseInt(elDelCmd.dataset.step),
+                parseInt(elDelCmd.dataset.idx));
             return;
         }
         if (elStepItem &&
@@ -3307,6 +3330,38 @@ const PipeleyenApp = (function () {
                 ws.send(JSON.stringify(dictAction));
             }, { once: true });
         }
+    }
+
+    function fnEditTestFile(iStepIndex, iCmdIdx) {
+        var step = dictWorkflow.listSteps[iStepIndex];
+        if (!step) return;
+        var sCmd = (step.saTestCommands || [])[iCmdIdx];
+        if (!sCmd) return;
+        var sFilePath = sCmd.replace(
+            /^python\s+-m\s+pytest\s+/, "").replace(/\s+-v$/, "");
+        PipeleyenFigureViewer.fnDisplayFileFromContainer(sFilePath);
+    }
+
+    function fnDeleteTestCommand(iStepIndex, iCmdIdx) {
+        fnShowConfirmModal(
+            "Delete Test",
+            "Delete this test command and its test file? " +
+            "This cannot be undone.",
+            async function () {
+                var step = dictWorkflow.listSteps[iStepIndex];
+                if (!step) return;
+                var listCmds = step.saTestCommands || [];
+                if (iCmdIdx >= listCmds.length) return;
+                listCmds.splice(iCmdIdx, 1);
+                step.dictVerification = step.dictVerification || {};
+                step.dictVerification.sUnitTest = "untested";
+                await fnSaveStepUpdate(iStepIndex, {
+                    saTestCommands: listCmds,
+                    dictVerification: step.dictVerification,
+                });
+                fnRenderStepList();
+            }
+        );
     }
 
     async function fnRunStepTests(iStepIndex) {

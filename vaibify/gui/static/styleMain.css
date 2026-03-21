@@ -1884,6 +1884,39 @@ html, body {
     border: 1px solid rgba(80, 80, 120, 0.3);
     border-radius: 3px;
     margin: 2px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.test-item-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.test-item-actions {
+    display: none;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.test-command-item:hover .test-item-actions {
+    display: flex;
+}
+
+.test-edit-cmd, .test-delete-cmd {
+    font-size: 12px;
+    padding: 0 3px;
+    opacity: 0.6;
+}
+
+.test-edit-cmd:hover, .test-delete-cmd:hover {
+    opacity: 1;
+}
+
+.test-delete-cmd {
+    color: var(--color-red);
 }
 
 .test-last-run {
