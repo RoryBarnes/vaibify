@@ -692,18 +692,21 @@ html, body {
 }
 
 .step-item .step-status.verified {
-    background: var(--color-pale-blue);
+    background: transparent;
     color: #fff;
     font-size: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
+    padding: 0;
+    overflow: hidden;
 }
 
 .vaib-check {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
 }
 
 @keyframes pulse {

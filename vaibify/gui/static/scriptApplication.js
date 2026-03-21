@@ -736,11 +736,8 @@ const PipeleyenApp = (function () {
 
         var sStatusContent = "";
         if (sStatusClass === "verified") {
-            sStatusContent = '<svg viewBox="0 0 32 32" ' +
-                'class="vaib-check"><path d="M6 8 L6 24 ' +
-                'L10 24 L10 16 L26 2" stroke="currentColor" ' +
-                'stroke-width="2" stroke-linejoin="round" ' +
-                'fill="currentColor"/></svg>';
+            sStatusContent = '<img src="/static/favicon.png" ' +
+                'class="vaib-check" alt="">';
         }
 
         var sStepNumber;
@@ -915,9 +912,9 @@ const PipeleyenApp = (function () {
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
             "saTestCommands", "saDataFiles", "saPlotFiles"];
-        var rRef = /\{Step(\d+)\.\w+\}/g;
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
+                var rRef = /\{Step(\d+)\.\w+\}/g;
                 var match;
                 while ((match = rRef.exec(sVal)) !== null) {
                     var iDep = parseInt(match[1]) - 1;
@@ -3254,7 +3251,7 @@ const PipeleyenApp = (function () {
             listCmds.map(function (c) {
                 return fsResolveTemplate(c, dictVars);
             }).join(" && ");
-        PipeleyenTerminal.fnSendCommand(sFullCmd);
+        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
@@ -3270,7 +3267,7 @@ const PipeleyenApp = (function () {
             listCmds.map(function (c) {
                 return fsResolveTemplate(c, dictVars);
             }).join(" && ");
-        PipeleyenTerminal.fnSendCommand(sFullCmd);
+        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }

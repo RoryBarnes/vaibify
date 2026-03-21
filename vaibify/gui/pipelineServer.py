@@ -1503,6 +1503,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
                 dictCtx["docker"], sContainerId, iStepIndex,
                 dictWorkflow, dictVars,
                 request.bUseApi, request.sApiKey,
+                sUser=sTerminalUser,
             )
         except Exception as error:
             raise HTTPException(500, f"Generation failed: {error}")

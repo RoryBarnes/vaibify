@@ -163,14 +163,14 @@ def fsBuildPrompt(sDirectory, dictStep, sScriptContents, sPreviews):
 
 
 def ftResultGenerateViaClaude(
-    connectionDocker, sContainerId, sPrompt,
+    connectionDocker, sContainerId, sPrompt, sUser=None,
 ):
     """Run claude --print inside the container, return (exitCode, output)."""
     from .pipelineRunner import fsShellQuote
 
     sCommand = f"CLAUDECODE= claude --print {fsShellQuote(sPrompt)}"
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
+        sContainerId, sCommand, sUser=sUser
     )
 
 
@@ -228,6 +228,7 @@ def _fdictBuildTestResult(
 def fdictGenerateTest(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
+    sUser=None,
 ):
     """Orchestrate test generation: gather context, call LLM, save."""
     dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -239,7 +240,8 @@ def fdictGenerateTest(
         sDirectory, dictStep, sScripts, sPreviews
     )
     sRawOutput = _fsInvokeLlm(
-        connectionDocker, sContainerId, sPrompt, bUseApi, sApiKey
+        connectionDocker, sContainerId, sPrompt, bUseApi, sApiKey,
+        sUser=sUser,
     )
     sCode = fsParseGeneratedCode(sRawOutput)
     sFilePath = fsTestFilePath(sDirectory, iStepIndex)
@@ -250,12 +252,13 @@ def fdictGenerateTest(
 
 def _fsInvokeLlm(
     connectionDocker, sContainerId, sPrompt, bUseApi, sApiKey,
+    sUser=None,
 ):
     """Call the appropriate LLM provider and return raw text."""
     if bUseApi:
         return fsGenerateViaApi(sPrompt, sApiKey)
     iExitCode, sOutput = ftResultGenerateViaClaude(
-        connectionDocker, sContainerId, sPrompt
+        connectionDocker, sContainerId, sPrompt, sUser=sUser
     )
     if iExitCode != 0:
         sHint = ""
