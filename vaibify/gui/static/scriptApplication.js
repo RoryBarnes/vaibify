@@ -1724,7 +1724,14 @@ const PipeleyenApp = (function () {
             var dictResult = await response.json();
             if (dictResult.bNeedsFallback) {
                 fnResetGenerateButton(iStep);
-                fnShowApiKeyDialog(iStep);
+                fnShowConfirmModal(
+                    "Claude Code Not Found",
+                    "Test generation requires Claude Code, " +
+                    "which is not installed in this container. " +
+                    "You can use the Anthropic API instead " +
+                    "(requires an API key, may incur charges).",
+                    function () { fnShowApiKeyDialog(iStep); }
+                );
                 return;
             }
             if (!response.ok) {
@@ -3338,8 +3345,13 @@ const PipeleyenApp = (function () {
         var sCmd = (step.saTestCommands || [])[iCmdIdx];
         if (!sCmd) return;
         var sFilePath = sCmd.replace(
-            /^python\s+-m\s+pytest\s+/, "").replace(/\s+-v$/, "");
-        PipeleyenFigureViewer.fnDisplayFileFromContainer(sFilePath);
+            /^python\s+-m\s+pytest\s+/, "").replace(/\s+-v$/, "")
+            .trim();
+        var sDir = step.sDirectory || "";
+        if (sFilePath.charAt(0) !== "/" && sDir) {
+            sFilePath = sDir + "/" + sFilePath;
+        }
+        PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
     }
 
     function fnDeleteTestCommand(iStepIndex, iCmdIdx) {
