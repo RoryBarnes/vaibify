@@ -23,7 +23,7 @@ def flistFindWorkflowsInContainer(
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
     sCommand = (
-        f"find {sSearchRoot} -maxdepth 3"
+        f"find {sSearchRoot} -maxdepth 4"
         f" -path '*/.vaibify/workflows/*.json'"
         f" -type f 2>/dev/null"
     )
