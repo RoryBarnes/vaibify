@@ -861,13 +861,11 @@ const PipeleyenApp = (function () {
         }
 
         /* Plot Timing */
-        var dictStats = step.dictRunStats || {};
-        if (dictStats.sLastRun) {
-            sHtml += '<div class="run-stats">' +
-                '<span class="run-stat">Plots created: ' +
-                fnEscapeHtml(dictStats.sLastRun) +
-                '</span></div>';
-        }
+        var dictPlotStats = step.dictRunStats || {};
+        sHtml += '<div class="run-stats">' +
+            '<span class="run-stat">Plots created: ' +
+            (dictPlotStats.sLastRun || "—") +
+            '</span></div>';
 
         /* Verification */
         sHtml += fsRenderVerificationBlock(step, iIndex);
@@ -1192,20 +1190,18 @@ const PipeleyenApp = (function () {
 
     function fsRenderRunStats(step) {
         var dictStats = step.dictRunStats || {};
-        if (!dictStats.sLastRun) return "";
-        var sHtml = '<div class="run-stats">';
-        sHtml += '<span class="run-stat">Last run: ' +
-            fnEscapeHtml(dictStats.sLastRun) + '</span>';
-        if (dictStats.fWallClock !== undefined) {
-            sHtml += '<span class="run-stat">Wall-clock: ' +
-                fsFormatDuration(dictStats.fWallClock) + '</span>';
-        }
-        if (dictStats.fCpuTime !== undefined) {
-            sHtml += '<span class="run-stat">CPU time: ' +
-                fsFormatDuration(dictStats.fCpuTime) + '</span>';
-        }
-        sHtml += '</div>';
-        return sHtml;
+        var sLastRun = dictStats.sLastRun || "";
+        var sWallClock = dictStats.fWallClock !== undefined ?
+            fsFormatDuration(dictStats.fWallClock) : "";
+        var sCpuTime = dictStats.fCpuTime !== undefined ?
+            fsFormatDuration(dictStats.fCpuTime) : "";
+        return '<div class="run-stats">' +
+            '<span class="run-stat">Last run: ' +
+            (sLastRun || "—") + '</span>' +
+            '<span class="run-stat">Wall-clock: ' +
+            (sWallClock || "—") + '</span>' +
+            '<span class="run-stat">CPU time: ' +
+            (sCpuTime || "—") + '</span></div>';
     }
 
     function fsFormatDuration(fSeconds) {
