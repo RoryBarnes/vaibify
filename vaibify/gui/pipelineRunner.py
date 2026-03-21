@@ -239,6 +239,29 @@ def _fnUpdatePipelineState(
                 dictEvent.get("iExitCode", 0)))
 
 
+def _fnSaveWorkflowStats(
+    connectionDocker, sContainerId, dictWorkflow, sLogPath,
+):
+    """Save updated workflow (with run stats) back to container."""
+    import json
+    import posixpath
+    sLogsDir = posixpath.dirname(sLogPath)
+    sWorkflowsDir = sLogsDir.replace("/logs", "/workflows")
+    try:
+        iExit, sListing = connectionDocker.ftResultExecuteCommand(
+            sContainerId, f"ls {sWorkflowsDir}/*.json 2>/dev/null"
+        )
+        if iExit == 0 and sListing.strip():
+            sWorkflowPath = sListing.strip().split("\n")[0]
+            sContent = json.dumps(dictWorkflow, indent=2)
+            connectionDocker.fnWriteFile(
+                sContainerId, sWorkflowPath,
+                sContent.encode("utf-8"),
+            )
+    except Exception:
+        pass
+
+
 async def _fiRunStepsAndLog(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
     dictVariables, fnLogging, fnStatusCallback,
@@ -279,6 +302,9 @@ async def _fiRunStepsAndLog(
     )
     await fnWriteLogToContainer(
         connectionDocker, sContainerId, sLogPath, listLogLines
+    )
+    _fnSaveWorkflowStats(
+        connectionDocker, sContainerId, dictWorkflow, sLogPath
     )
     await fnStatusCallback(
         {"sType": "completed" if iResult == 0 else "failed",
@@ -716,6 +742,10 @@ async def _fiExecuteAndRecord(
         "sLastRun": sStartTimestamp,
         "fWallClock": round(time.time() - fStartTime, 1),
     }
+    await fnStatusCallback({
+        "sType": "stepStats", "iStepNumber": iStepNumber,
+        "dictRunStats": dictStep["dictRunStats"],
+    })
     await _fnRecordInputHashes(
         connectionDocker, sContainerId, dictStep
     )

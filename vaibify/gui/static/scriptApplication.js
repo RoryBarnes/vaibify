@@ -736,8 +736,7 @@ const PipeleyenApp = (function () {
 
         var sStatusContent = "";
         if (sStatusClass === "verified") {
-            sStatusContent = '<img src="/static/favicon.png" ' +
-                'class="vaib-check" alt="">';
+            sStatusContent = '<span class="vaib-check"></span>';
         }
 
         var sStepNumber;
@@ -2911,6 +2910,13 @@ const PipeleyenApp = (function () {
         } else if (dictEvent.sType === "stepStarted") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "running";
             fnRenderStepList();
+        } else if (dictEvent.sType === "stepStats") {
+            var iStepIdx = dictEvent.iStepNumber - 1;
+            if (dictWorkflow && dictWorkflow.listSteps[iStepIdx]) {
+                dictWorkflow.listSteps[iStepIdx].dictRunStats =
+                    dictEvent.dictRunStats;
+                fnRenderStepList();
+            }
         } else if (dictEvent.sType === "stepSkipped") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "skipped";
             fnAppendPipelineOutput(

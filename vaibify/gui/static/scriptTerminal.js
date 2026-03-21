@@ -73,11 +73,10 @@ const PipeleyenTerminal = (function () {
         };
         listPanes.push(dictPane);
 
-        elPane.querySelector(".terminal-pane-add").addEventListener(
-            "click", function () {
-                fnCreateTab(iPaneId);
-            }
-        );
+        var elAdd = elPane.querySelector(".terminal-pane-add");
+        elAdd.onclick = function () {
+            fnCreateTab(iPaneId);
+        };
 
         fnCreateTab(iPaneId);
         fnUpdateAddPaneButton();

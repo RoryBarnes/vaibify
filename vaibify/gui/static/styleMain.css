@@ -692,21 +692,23 @@ html, body {
 }
 
 .step-item .step-status.verified {
-    background: transparent;
+    background: var(--color-pale-blue);
     color: #fff;
     font-size: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    padding: 0;
-    overflow: hidden;
 }
 
 .vaib-check {
-    width: 12px;
-    height: 12px;
-    object-fit: contain;
+    display: inline-block;
+    width: 4px;
+    height: 7px;
+    border-bottom: 2px solid #fff;
+    border-left: 2px solid #fff;
+    transform: rotate(-45deg);
+    margin-bottom: 1px;
 }
 
 @keyframes pulse {
@@ -1500,18 +1502,17 @@ html, body {
 .terminal-kill-overlay {
     position: absolute;
     top: 4px;
-    right: 4px;
+    right: 20px;
     z-index: 10;
     background: var(--color-red);
     color: #fff;
     border: none;
-    padding: 2px 10px;
-    border-radius: 3px;
-    font-size: 0.7rem;
-    font-weight: 700;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    font-size: 0;
     cursor: pointer;
     opacity: 0.85;
-    font-family: inherit;
 }
 
 .terminal-kill-overlay:hover {
