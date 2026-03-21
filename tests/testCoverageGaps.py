@@ -1117,13 +1117,13 @@ def test_fiExecuteAndRecord_records_timing(
        new_callable=AsyncMock)
 def test_fnVerifyOnly_verifies_all_steps(mockLoad):
     from vaibify.gui.pipelineRunner import fnVerifyOnly
-    mockLoad.return_value = {
+    mockLoad.return_value = ({
         "sWorkflowName": "Test",
         "listSteps": [
             {"sDirectory": "/w", "saPlotFiles": ["a.pdf"]},
             {"sDirectory": "/w", "saPlotFiles": ["b.pdf"]},
         ],
-    }
+    }, "/w/test.json")
     mockDocker = _fMockDocker(0, "")
     fnCallback, listCaptured = _fMockCallback()
     iResult = _fnRunAsync(fnVerifyOnly(

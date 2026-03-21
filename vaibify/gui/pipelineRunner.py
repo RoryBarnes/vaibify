@@ -240,32 +240,27 @@ def _fnUpdatePipelineState(
 
 
 def _fnSaveWorkflowStats(
-    connectionDocker, sContainerId, dictWorkflow, sLogPath,
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
 ):
     """Save updated workflow (with run stats) back to container."""
     import json
-    import posixpath
-    sLogsDir = posixpath.dirname(sLogPath)
-    sWorkflowsDir = sLogsDir.replace("/logs", "/workflows")
     try:
-        iExit, sListing = connectionDocker.ftResultExecuteCommand(
-            sContainerId, f"ls {sWorkflowsDir}/*.json 2>/dev/null"
+        sContent = json.dumps(dictWorkflow, indent=2)
+        connectionDocker.fnWriteFile(
+            sContainerId, sWorkflowPath,
+            sContent.encode("utf-8"),
         )
-        if iExit == 0 and sListing.strip():
-            sWorkflowPath = sListing.strip().split("\n")[0]
-            sContent = json.dumps(dictWorkflow, indent=2)
-            connectionDocker.fnWriteFile(
-                sContainerId, sWorkflowPath,
-                sContent.encode("utf-8"),
-            )
-    except Exception:
-        pass
+    except Exception as error:
+        import logging
+        logging.getLogger("vaibify").error(
+            "Failed to save workflow stats: %s", error)
 
 
 async def _fiRunStepsAndLog(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
     dictVariables, fnLogging, fnStatusCallback,
     sLogPath, listLogLines, sAction, iStartStep,
+    sWorkflowPath="",
 ):
     """Execute steps, write log, and emit final status."""
     from . import pipelineState  # noqa: E402
@@ -303,9 +298,11 @@ async def _fiRunStepsAndLog(
     await fnWriteLogToContainer(
         connectionDocker, sContainerId, sLogPath, listLogLines
     )
-    _fnSaveWorkflowStats(
-        connectionDocker, sContainerId, dictWorkflow, sLogPath
-    )
+    if sWorkflowPath:
+        _fnSaveWorkflowStats(
+            connectionDocker, sContainerId, dictWorkflow,
+            sWorkflowPath,
+        )
     await fnStatusCallback(
         {"sType": "completed" if iResult == 0 else "failed",
          "iExitCode": iResult, "sLogPath": sLogPath}
@@ -316,6 +313,7 @@ async def _fiRunStepsAndLog(
 async def _fiRunWithLogging(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
+    sWorkflowPath="",
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
@@ -342,6 +340,7 @@ async def _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow, sWorkdir,
         dictVariables, fnLogging, fnStatusCallback,
         sLogPath, listLogLines, sAction, iStartStep,
+        sWorkflowPath=sWorkflowPath,
     )
 
 
@@ -557,7 +556,7 @@ async def _fnEmitCompletion(fnStatusCallback, iExitCode):
 
 
 async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
-    """Load workflow.json from the container, returning None on failure."""
+    """Load workflow.json from the container, returning (dict, path)."""
     from . import workflowManager
 
     listWorkflows = workflowManager.flistFindWorkflowsInContainer(
@@ -567,10 +566,12 @@ async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
         await fnStatusCallback(
             {"sType": "error", "sMessage": "No workflow found"}
         )
-        return None
-    return workflowManager.fdictLoadWorkflowFromContainer(
-        connectionDocker, sContainerId, listWorkflows[0]["sPath"]
+        return None, ""
+    sPath = listWorkflows[0]["sPath"]
+    dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
+        connectionDocker, sContainerId, sPath
     )
+    return dictWorkflow, sPath
 
 
 async def fnRunAllSteps(
@@ -578,7 +579,7 @@ async def fnRunAllSteps(
     bForceRun=False,
 ):
     """Run all enabled steps with logging."""
-    dictWorkflow = await _fdictLoadWorkflow(
+    dictWorkflow, sWorkflowPath = await _fdictLoadWorkflow(
         connectionDocker, sContainerId, fnStatusCallback
     )
     if dictWorkflow is None:
@@ -590,6 +591,7 @@ async def fnRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback,
         "forceRunAll" if bForceRun else "runAll",
+        sWorkflowPath=sWorkflowPath,
     )
 
 
@@ -782,7 +784,7 @@ async def fnRunFromStep(
     sWorkdir, fnStatusCallback,
 ):
     """Run steps starting from iStartStep (1-based) with logging."""
-    dictWorkflow = await _fdictLoadWorkflow(
+    dictWorkflow, sWorkflowPath = await _fdictLoadWorkflow(
         connectionDocker, sContainerId, fnStatusCallback
     )
     if dictWorkflow is None:
@@ -791,6 +793,7 @@ async def fnRunFromStep(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback,
         f"runFrom:{iStartStep}", iStartStep=iStartStep,
+        sWorkflowPath=sWorkflowPath,
     )
 
 
@@ -836,7 +839,7 @@ async def fnVerifyOnly(
     connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
 ):
     """Check that each step's output files exist without running."""
-    dictWorkflow = await _fdictLoadWorkflow(
+    dictWorkflow, _sPath = await _fdictLoadWorkflow(
         connectionDocker, sContainerId, fnStatusCallback
     )
     if dictWorkflow is None:
