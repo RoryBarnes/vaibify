@@ -685,21 +685,22 @@ const PipeleyenFigureViewer = (function () {
 
         var elToolbar = document.createElement("div");
         elToolbar.className = "editor-toolbar";
+        var sCurrentText = sText;
 
-        var elSave = document.createElement("button");
-        elSave.className = "btn btn-primary";
-        elSave.textContent = "Save Test";
-        var elCancel = document.createElement("button");
-        elCancel.className = "btn btn-danger";
-        elCancel.textContent = "Cancel";
+        var elAccept = document.createElement("button");
+        elAccept.className = "btn btn-primary";
+        elAccept.textContent = "Accept";
         var elEdit = document.createElement("button");
         elEdit.className = "btn-icon";
         elEdit.title = "Edit";
         elEdit.innerHTML = "&#9998;";
+        var elDelete = document.createElement("button");
+        elDelete.className = "btn btn-danger";
+        elDelete.textContent = "Delete";
 
         elToolbar.appendChild(elEdit);
-        elToolbar.appendChild(elSave);
-        elToolbar.appendChild(elCancel);
+        elToolbar.appendChild(elAccept);
+        elToolbar.appendChild(elDelete);
 
         var elPre = document.createElement("pre");
         elPre.textContent = sText;
@@ -707,13 +708,101 @@ const PipeleyenFigureViewer = (function () {
         elViewport.appendChild(elPre);
 
         elEdit.addEventListener("click", function () {
-            fnEnterEditMode(sText, "", elViewport);
+            _fnEnterTestEditMode(
+                sCurrentText, sPath, elViewport, iStep,
+                elToolbar, elPre,
+                function (sNewText) { sCurrentText = sNewText; }
+            );
         });
+        elAccept.addEventListener("click", function () {
+            fnAcceptAndRunTest(sPath, sCurrentText, iStep);
+        });
+        elDelete.addEventListener("click", function () {
+            fnCancelGeneratedTestViewer(elViewport, iStep);
+        });
+    }
+
+    function _fnEnterTestEditMode(
+        sText, sPath, elViewport, iStep, elToolbar, elPre,
+        fnUpdateText
+    ) {
+        elToolbar.innerHTML = "";
+        var elSave = document.createElement("button");
+        elSave.className = "btn btn-primary";
+        elSave.textContent = "Save";
+        var elCancel = document.createElement("button");
+        elCancel.className = "btn";
+        elCancel.textContent = "Cancel";
+        elToolbar.appendChild(elSave);
+        elToolbar.appendChild(elCancel);
+
+        var elTextarea = document.createElement("textarea");
+        elTextarea.className = "editor-textarea";
+        elTextarea.value = sText;
+        elPre.replaceWith(elTextarea);
+
         elSave.addEventListener("click", function () {
-            fnSaveGeneratedTest(sPath, elViewport, iStep);
+            var sNewText = elTextarea.value;
+            fnUpdateText(sNewText);
+            var elNewPre = document.createElement("pre");
+            elNewPre.textContent = sNewText;
+            elTextarea.replaceWith(elNewPre);
+            fnRenderGeneratedTestEditor(
+                sNewText, sPath, elViewport, iStep);
         });
         elCancel.addEventListener("click", function () {
-            fnCancelGeneratedTestViewer(elViewport, iStep);
+            fnRenderGeneratedTestEditor(
+                sText, sPath, elViewport, iStep);
+        });
+    }
+
+    function fnAcceptAndRunTest(sPath, sContent, iStep) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        var elViewportB = document.getElementById("viewportB");
+        var elViewportA = document.getElementById("viewportA");
+
+        elViewportA.innerHTML =
+            '<div class="test-progress">' +
+            '<p>Performing tests...</p></div>';
+        elViewportA.classList.remove("viewport-test-generated");
+
+        fetch("/api/steps/" + sContainerId + "/" + iStep +
+            "/save-and-run-test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                sContent: sContent, sFilePath: sPath,
+            }),
+        })
+        .then(function (response) { return response.json(); })
+        .then(function (dictResult) {
+            var bPassed = dictResult.bPassed === true;
+            var elProgress = elViewportA.querySelector(
+                ".test-progress");
+            if (!elProgress) return;
+            elProgress.querySelector("p").textContent +=
+                " done.";
+            var elResult = document.createElement("p");
+            elResult.className = bPassed ?
+                "test-result-pass" : "test-result-fail";
+            elResult.innerHTML = bPassed ?
+                '<img src="/static/favicon.png" ' +
+                'class="vaib-verified-badge"> All tests pass!' :
+                '<span class="test-fail-x">&#10007;</span> ' +
+                'Some tests failed.';
+            elProgress.appendChild(elResult);
+            if (dictResult.sOutput) {
+                elViewportB.innerHTML = "";
+                var elTestPre = document.createElement("pre");
+                elTestPre.textContent = dictResult.sOutput;
+                elViewportB.appendChild(elTestPre);
+            }
+        })
+        .catch(function (error) {
+            elViewportA.innerHTML =
+                '<p class="test-result-fail">Test execution ' +
+                'failed: ' + error.message + '</p>';
         });
     }
 

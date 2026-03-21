@@ -1535,6 +1535,54 @@ def _fnRegisterTestGenerate(app, dictCtx):
         return {"bSuccess": True}
 
 
+class SaveAndRunTestRequest(BaseModel):
+    sContent: str
+    sFilePath: str
+
+
+def _fnRegisterTestSaveAndRun(app, dictCtx):
+    """Register POST /api/steps/{id}/{step}/save-and-run-test."""
+
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/save-and-run-test"
+    )
+    async def fnSaveAndRunTest(
+        sContainerId: str, iStepIndex: int,
+        request: SaveAndRunTestRequest,
+    ):
+        import asyncio
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        dictCtx["docker"].fnWriteFile(
+            sContainerId, request.sFilePath,
+            request.sContent.encode("utf-8"),
+        )
+        sTestCmd = f"cd {dictStep.get('sDirectory', '/workspace')}"
+        sTestCmd += f" && python -m pytest {request.sFilePath} -v"
+        iExitCode, sOutput = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, sTestCmd,
+        )
+        bPassed = iExitCode == 0
+        if bPassed:
+            dictStep.setdefault("dictVerification", {})
+            dictStep["dictVerification"]["sUnitTest"] = "passed"
+            dictStep.setdefault("saTestCommands", [])
+            sRunCmd = f"python -m pytest {request.sFilePath} -v"
+            if sRunCmd not in dictStep["saTestCommands"]:
+                dictStep["saTestCommands"].append(sRunCmd)
+        else:
+            dictStep.setdefault("dictVerification", {})
+            dictStep["dictVerification"]["sUnitTest"] = "failed"
+        return {
+            "bPassed": bPassed,
+            "sOutput": sOutput,
+            "iExitCode": iExitCode,
+        }
+
+
 def _fnRemoveTestFiles(
     connectionDocker, sContainerId, dictStep, iStepIndex,
 ):
@@ -1565,6 +1613,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot)
     _fnRegisterStepRoutes(app, dictCtx)
     _fnRegisterTestGenerate(app, dictCtx)
+    _fnRegisterTestSaveAndRun(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterPipelineState(app, dictCtx)

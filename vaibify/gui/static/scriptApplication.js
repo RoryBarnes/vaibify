@@ -734,9 +734,10 @@ const PipeleyenApp = (function () {
         var bSelected = iIndex === iSelectedStepIndex;
         var bExpanded = setExpandedSteps.has(iIndex);
 
-        var sStatusContent = "";
+        var sVerifiedBadge = "";
         if (sStatusClass === "verified") {
-            sStatusContent = '<span class="vaib-check"></span>';
+            sVerifiedBadge = '<img src="/static/favicon.png" ' +
+                'class="vaib-verified-badge" alt="verified">';
         }
 
         var sStepNumber;
@@ -760,9 +761,10 @@ const PipeleyenApp = (function () {
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
             '<span class="step-status ' + sStatusClass + '">' +
-            sStatusContent + '</span>' +
+            '</span>' +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
+            sVerifiedBadge +
             "</span></div>";
 
         if (!bExpanded) {
@@ -1009,6 +1011,7 @@ const PipeleyenApp = (function () {
         var dictVisited = {};
         for (var i = 0; i < listDeps.length; i++) {
             var iDep = listDeps[i];
+            if (iDep === iIndex) continue;
             var depStep = dictWorkflow.listSteps[iDep];
             if (!depStep) continue;
             var bPassing = fbStepFullyPassing(iDep, dictVisited);

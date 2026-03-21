@@ -661,7 +661,7 @@ html, body {
 }
 
 .step-item .step-status.pass {
-    background: #2ecc71;
+    background: var(--color-pale-blue);
 }
 
 .step-item .step-status.fail {
@@ -693,22 +693,13 @@ html, body {
 
 .step-item .step-status.verified {
     background: var(--color-pale-blue);
-    color: #fff;
-    font-size: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
 }
 
-.vaib-check {
-    display: inline-block;
-    width: 4px;
-    height: 7px;
-    border-bottom: 2px solid #fff;
-    border-left: 2px solid #fff;
-    transform: rotate(-45deg);
-    margin-bottom: 1px;
+.vaib-verified-badge {
+    width: 14px;
+    height: 14px;
+    margin-left: 4px;
+    vertical-align: middle;
 }
 
 @keyframes pulse {
@@ -974,7 +965,7 @@ html, body {
 
 .verification-badge.state-passed {
     background: rgba(46, 204, 113, 0.2);
-    color: #2ecc71;
+    color: var(--color-pale-blue);
 }
 
 .verification-badge.state-failed {
@@ -1068,7 +1059,7 @@ html, body {
 }
 
 .inline-add-confirm {
-    color: #2ecc71;
+    color: var(--color-pale-blue);
 }
 
 .inline-add-confirm:hover {
@@ -1482,23 +1473,6 @@ html, body {
     opacity: 0.6;
 }
 
-.terminal-tab .kill-tab {
-    font-size: 8px;
-    color: var(--color-red);
-    opacity: 0;
-    margin-right: 2px;
-    cursor: pointer;
-    transition: opacity var(--transition-speed);
-}
-
-.terminal-tab:hover .kill-tab {
-    opacity: 0.6;
-}
-
-.terminal-tab .kill-tab:hover {
-    opacity: 1;
-}
-
 .terminal-kill-overlay {
     position: absolute;
     top: 4px;
@@ -1744,7 +1718,7 @@ html, body {
 }
 
 .toast.success {
-    border-color: #2ecc71;
+    border-color: var(--color-pale-blue);
 }
 
 @keyframes slideIn {
@@ -1941,6 +1915,35 @@ html, body {
 .viewer-viewport.viewport-test-generated {
     outline: 3px solid var(--color-orange);
     outline-offset: -3px;
+}
+
+.test-progress {
+    padding: 20px;
+    font-size: 0.9rem;
+}
+
+.test-result-pass {
+    color: var(--color-pale-blue);
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+.test-result-pass .vaib-verified-badge {
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.test-result-fail {
+    color: var(--color-red);
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+.test-fail-x {
+    font-size: 1.1em;
+    margin-right: 4px;
 }
 
 .btn-generate-test {

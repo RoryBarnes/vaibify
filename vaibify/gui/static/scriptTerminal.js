@@ -185,16 +185,12 @@ const PipeleyenTerminal = (function () {
                 (iTabIndex === dictPane.iActiveTabIndex ? " active" : "");
             elTab.innerHTML =
                 "<span>" + dictTab.sLabel + "</span>" +
-                '<span class="kill-tab" title="Kill process">' +
-                '&#9632;</span>' +
                 '<span class="close-tab">&times;</span>';
             var iCapturedPane = iPaneId;
             var iCapturedTab = iTabIndex;
             elTab.addEventListener("click", function (event) {
                 if (event.target.classList.contains("close-tab")) {
                     fnCloseTabInPane(iCapturedPane, iCapturedTab);
-                } else if (event.target.classList.contains("kill-tab")) {
-                    fnKillTabProcess(iCapturedPane, iCapturedTab);
                 } else {
                     fnActivateTabInPane(iCapturedPane, iCapturedTab);
                 }
