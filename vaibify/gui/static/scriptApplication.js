@@ -819,7 +819,9 @@ const PipeleyenApp = (function () {
         }
 
         /* Data Analysis Timing */
-        sHtml += fsRenderRunStats(step);
+        if ((step.saDataCommands || []).length > 0) {
+            sHtml += fsRenderRunStats(step);
+        }
 
         /* Data Files */
         sHtml += fsRenderSectionLabel(
@@ -861,11 +863,13 @@ const PipeleyenApp = (function () {
         }
 
         /* Plot Timing */
-        var dictPlotStats = step.dictRunStats || {};
-        sHtml += '<div class="run-stats">' +
-            '<span class="run-stat">Plots created: ' +
-            (dictPlotStats.sLastRun || "—") +
-            '</span></div>';
+        if ((step.saPlotFiles || []).length > 0) {
+            var dictPlotStats = step.dictRunStats || {};
+            sHtml += '<div class="run-stats">' +
+                '<span class="run-stat">Plots created: ' +
+                (dictPlotStats.sLastRun || "—") +
+                '</span></div>';
+        }
 
         /* Verification */
         sHtml += fsRenderVerificationBlock(step, iIndex);
@@ -3372,6 +3376,21 @@ const PipeleyenApp = (function () {
         );
     }
 
+    function fnRunSingleStep(iIndex) {
+        var step = dictWorkflow.listSteps[iIndex];
+        if (!step) return;
+        if (step.bInteractive) {
+            fnRunInteractiveStep(iIndex);
+            return;
+        }
+        dictStepStatus[iIndex] = "queued";
+        fnRenderStepList();
+        fnSendPipelineAction({
+            sAction: "runSelected",
+            listStepIndices: [iIndex],
+        });
+    }
+
     async function fnRunStepTests(iStepIndex) {
         if (!sContainerId) return;
         var step = dictWorkflow.listSteps[iStepIndex];
@@ -3813,7 +3832,9 @@ const PipeleyenApp = (function () {
     }
 
     function fnHandleContextAction(sAction, iIndex) {
-        if (sAction === "edit") {
+        if (sAction === "runStep") {
+            fnRunSingleStep(iIndex);
+        } else if (sAction === "edit") {
             PipeleyenStepEditor.fnOpenEditModal(iIndex);
         } else if (sAction === "runFrom") {
             fnSendPipelineAction({
