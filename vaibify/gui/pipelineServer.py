@@ -1370,7 +1370,8 @@ def _fnRegisterStaticFiles(app, dictCtx):
     @app.get("/")
     async def fnServeIndex():
         return FileResponse(
-            os.path.join(STATIC_DIRECTORY, "index.html")
+            os.path.join(STATIC_DIRECTORY, "index.html"),
+            headers={"Cache-Control": "no-cache, no-store"},
         )
 
     @app.get("/api/session-token")
