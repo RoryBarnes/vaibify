@@ -582,7 +582,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultArchiveToZenodo,
             dictCtx["docker"], sContainerId,
-            "sandbox", request.listFilePaths,
+            "zenodo", request.listFilePaths,
         )
         dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
         if not dictResult["bSuccess"]:
@@ -638,7 +638,7 @@ def _fnRegisterGithubPush(app, dictCtx):
             posixpath.normpath(
                 posixpath.join(sWorkdir, request.sFilePath)
             ),
-            sWorkspaceRoot,
+            WORKSPACE_ROOT,
         )
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultAddFileToGithub,
