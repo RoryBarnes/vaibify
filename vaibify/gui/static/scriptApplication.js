@@ -763,9 +763,9 @@ const PipeleyenApp = (function () {
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
+            sVerifiedBadge +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
-            sVerifiedBadge +
             "</span></div>";
 
         if (!bExpanded) {
@@ -945,11 +945,26 @@ const PipeleyenApp = (function () {
         if (dictVisited[iStep]) return dictVisited[iStep] === "pass";
         dictVisited[iStep] = "checking";
         var step = dictWorkflow.listSteps[iStep];
-        var sTestState = fsEffectiveTestState(step);
         var dictVerify = fdictGetVerification(step);
-        if (sTestState !== "passed" || dictVerify.sUser !== "passed") {
-            dictVisited[iStep] = "fail";
-            return false;
+        var bInteractive = step.bInteractive === true;
+        var bPlotOnly = (step.saDataCommands || []).length === 0;
+        if (bInteractive) {
+            if (dictVerify.sUser !== "passed") {
+                dictVisited[iStep] = "fail";
+                return false;
+            }
+        } else if (bPlotOnly) {
+            if (dictVerify.sUser !== "passed") {
+                dictVisited[iStep] = "fail";
+                return false;
+            }
+        } else {
+            var sTestState = fsEffectiveTestState(step);
+            if (sTestState !== "passed" ||
+                dictVerify.sUser !== "passed") {
+                dictVisited[iStep] = "fail";
+                return false;
+            }
         }
         var listDeps = flistGetStepDependencies(iStep);
         for (var i = 0; i < listDeps.length; i++) {
@@ -1655,6 +1670,19 @@ const PipeleyenApp = (function () {
     }
 
     async function fnGenerateTests(iStep) {
+        var step = dictWorkflow.listSteps[iStep];
+        if (step && (step.saTestCommands || []).length > 0) {
+            var bConfirmed = await new Promise(function (resolve) {
+                fnShowConfirmModal(
+                    "Overwrite Tests",
+                    "Tests already exist for this step. " +
+                    "Generate new tests will overwrite them.",
+                    function () { resolve(true); },
+                    function () { resolve(false); }
+                );
+            });
+            if (!bConfirmed) return;
+        }
         var elBtn = document.getElementById("btnGenTest" + iStep);
         if (elBtn) {
             if (elBtn.disabled) return;
@@ -3835,6 +3863,7 @@ const PipeleyenApp = (function () {
         fnEscapeHtml: fnEscapeHtml,
         fsGetContainerId: function () { return sContainerId; },
         fsGetSessionToken: function () { return sSessionToken; },
+        fnRenderStepList: fnRenderStepList,
         fdictGetWorkflow: function () { return dictWorkflow; },
         fsGetWorkflowPath: function () { return sWorkflowPath; },
         fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },

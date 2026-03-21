@@ -694,13 +694,13 @@ const PipeleyenFigureViewer = (function () {
         elEdit.className = "btn-icon";
         elEdit.title = "Edit";
         elEdit.innerHTML = "&#9998;";
-        var elDelete = document.createElement("button");
-        elDelete.className = "btn btn-danger";
-        elDelete.textContent = "Delete";
+        var elDiscard = document.createElement("button");
+        elDiscard.className = "btn";
+        elDiscard.textContent = "Discard";
 
         elToolbar.appendChild(elEdit);
         elToolbar.appendChild(elAccept);
-        elToolbar.appendChild(elDelete);
+        elToolbar.appendChild(elDiscard);
 
         var elPre = document.createElement("pre");
         elPre.textContent = sText;
@@ -717,8 +717,8 @@ const PipeleyenFigureViewer = (function () {
         elAccept.addEventListener("click", function () {
             fnAcceptAndRunTest(sPath, sCurrentText, iStep);
         });
-        elDelete.addEventListener("click", function () {
-            fnCancelGeneratedTestViewer(elViewport, iStep);
+        elDiscard.addEventListener("click", function () {
+            fnDiscardProposedTest(elViewport);
         });
     }
 
@@ -792,6 +792,15 @@ const PipeleyenFigureViewer = (function () {
                 '<span class="test-fail-x">&#10007;</span> ' +
                 'Some tests failed.';
             elProgress.appendChild(elResult);
+            var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+            if (dictWorkflow && dictWorkflow.listSteps[iStep]) {
+                var dictV = dictWorkflow.listSteps[iStep]
+                    .dictVerification || {};
+                dictV.sUnitTest = bPassed ? "passed" : "failed";
+                dictWorkflow.listSteps[iStep].dictVerification =
+                    dictV;
+                PipeleyenApp.fnRenderStepList();
+            }
             if (dictResult.sOutput) {
                 elViewportB.innerHTML = "";
                 var elTestPre = document.createElement("pre");
@@ -827,6 +836,12 @@ const PipeleyenFigureViewer = (function () {
                 "Save failed: " + error.message, "error"
             );
         });
+    }
+
+    function fnDiscardProposedTest(elViewport) {
+        elViewport.classList.remove("viewport-test-generated");
+        elViewport.innerHTML =
+            '<span class="placeholder">Proposed test discarded</span>';
     }
 
     function fnCancelGeneratedTestViewer(elViewport, iStep) {
