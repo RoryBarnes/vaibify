@@ -19,12 +19,12 @@ REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 def flistFindWorkflowsInContainer(
     connectionDocker, sContainerId, sSearchRoot=None
 ):
-    """Search for workflow JSON files and return list of info dicts."""
+    """Search all repos in workspace for workflow JSON files."""
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
-    sVaibifyDir = posixpath.join(sSearchRoot, VAIBIFY_WORKFLOWS_DIR)
     sCommand = (
-        f"find {sVaibifyDir} -maxdepth 1 -name '*.json'"
+        f"find {sSearchRoot} -maxdepth 3"
+        f" -path '*/.vaibify/workflows/*.json'"
         f" -type f 2>/dev/null"
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -34,13 +34,25 @@ def flistFindWorkflowsInContainer(
     for sLine in sOutput.splitlines():
         sPath = sLine.strip()
         if sPath.endswith(".json"):
+            sRepoName = _fsExtractRepoName(sPath, sSearchRoot)
             sName = _fsReadWorkflowName(
                 connectionDocker, sContainerId, sPath
             )
-            listResults.append(
-                {"sPath": sPath, "sName": sName, "sSource": "vaibify"}
-            )
+            listResults.append({
+                "sPath": sPath,
+                "sName": sName,
+                "sRepoName": sRepoName,
+            })
     return sorted(listResults, key=lambda d: d["sName"])
+
+
+def _fsExtractRepoName(sWorkflowPath, sSearchRoot):
+    """Extract the repo directory name from a workflow path."""
+    sRelative = sWorkflowPath.replace(sSearchRoot + "/", "", 1)
+    listParts = sRelative.split("/")
+    if listParts[0] == ".vaibify":
+        return "(container root)"
+    return listParts[0]
 
 
 def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):

@@ -175,13 +175,8 @@ const PipeleyenApp = (function () {
             var listWorkflows = await responseWorkflows.json();
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
-            if (listWorkflows.length === 1) {
-                fnSelectWorkflow(sId, listWorkflows[0].sPath,
-                    listWorkflows[0].sName);
-            } else {
-                fnShowWorkflowPicker(_sSelectedContainerName);
-                fnRenderWorkflowList(listWorkflows, sId);
-            }
+            fnShowWorkflowPicker(_sSelectedContainerName);
+            fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
@@ -203,13 +198,14 @@ const PipeleyenApp = (function () {
                 'No workflows found. Create one to get started.</p>';
         } else {
             sCardsHtml = listWorkflows.map(function (dictWf) {
+                var sRepo = dictWf.sRepoName || "";
                 return (
                     '<div class="container-card" data-path="' +
                     fnEscapeHtml(dictWf.sPath) + '">' +
                     '<span class="name">' +
                     fnEscapeHtml(dictWf.sName) + '</span>' +
                     '<span class="image">' +
-                    fnEscapeHtml(dictWf.sPath) + '</span></div>'
+                    fnEscapeHtml(sRepo) + '</span></div>'
                 );
             }).join("");
         }
