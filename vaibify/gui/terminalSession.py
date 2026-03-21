@@ -59,6 +59,16 @@ class TerminalSession:
                 self._sExecId, iRows, iColumns
             )
 
+    def fnKillForeground(self):
+        """Kill the foreground process by sending SIGINT then SIGQUIT."""
+        if not self._bRunning:
+            return
+        try:
+            self._socketExec._sock.sendall(b"\x03")
+            self._socketExec._sock.sendall(b"\x1c")
+        except Exception:
+            pass
+
     def fnClose(self):
         """Clean up the exec session."""
         self._bRunning = False

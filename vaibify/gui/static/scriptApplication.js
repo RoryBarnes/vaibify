@@ -3,6 +3,12 @@
 const PipeleyenApp = (function () {
     "use strict";
 
+    function fbIsTerminalFocused() {
+        var elActive = document.activeElement;
+        if (!elActive) return false;
+        return !!elActive.closest("#terminalStrip, .xterm");
+    }
+
     let sContainerId = null;
     let dictWorkflow = null;
     let sWorkflowPath = null;
@@ -41,8 +47,15 @@ const PipeleyenApp = (function () {
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
+        /*
+         * TERMINAL SAFETY: When the terminal pane is focused, ALL
+         * keystrokes must pass through to the container PTY
+         * unmodified. Before adding any new global keybinding,
+         * check fbIsTerminalFocused() and skip if true.
+         */
         document.addEventListener("keydown", function (event) {
             if ((event.ctrlKey || event.metaKey) && event.key === "z") {
+                if (fbIsTerminalFocused()) return;
                 event.preventDefault();
                 fnUndo();
             }

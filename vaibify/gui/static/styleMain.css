@@ -1477,6 +1477,65 @@ html, body {
     opacity: 0.6;
 }
 
+.terminal-tab .kill-tab {
+    font-size: 8px;
+    color: var(--color-red);
+    opacity: 0;
+    margin-right: 2px;
+    cursor: pointer;
+    transition: opacity var(--transition-speed);
+}
+
+.terminal-tab:hover .kill-tab {
+    opacity: 0.6;
+}
+
+.terminal-tab .kill-tab:hover {
+    opacity: 1;
+}
+
+.btn-terminal-help {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.help-popup {
+    position: fixed;
+    bottom: 60px;
+    right: 16px;
+    z-index: 1000;
+}
+
+.help-popup-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 14px 18px;
+    max-width: 340px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.help-popup-content h3 {
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+}
+
+.help-popup-content p {
+    margin: 6px 0;
+    line-height: 1.4;
+}
+
+.help-popup-close {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+}
+
 .terminal-tab .close-tab:hover {
     opacity: 1;
     color: var(--color-red);

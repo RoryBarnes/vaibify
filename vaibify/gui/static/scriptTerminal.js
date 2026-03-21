@@ -186,12 +186,16 @@ const PipeleyenTerminal = (function () {
                 (iTabIndex === dictPane.iActiveTabIndex ? " active" : "");
             elTab.innerHTML =
                 "<span>" + dictTab.sLabel + "</span>" +
+                '<span class="kill-tab" title="Kill process">' +
+                '&#9632;</span>' +
                 '<span class="close-tab">&times;</span>';
             var iCapturedPane = iPaneId;
             var iCapturedTab = iTabIndex;
             elTab.addEventListener("click", function (event) {
                 if (event.target.classList.contains("close-tab")) {
                     fnCloseTabInPane(iCapturedPane, iCapturedTab);
+                } else if (event.target.classList.contains("kill-tab")) {
+                    fnKillTabProcess(iCapturedPane, iCapturedTab);
                 } else {
                     fnActivateTabInPane(iCapturedPane, iCapturedTab);
                 }
@@ -425,7 +429,35 @@ const PipeleyenTerminal = (function () {
         document.getElementById("btnAddTerminalPane").addEventListener(
             "click", fnCreatePane
         );
+        var elHelp = document.getElementById("btnTerminalHelp");
+        var elPopup = document.getElementById("terminalHelpPopup");
+        if (elHelp && elPopup) {
+            elHelp.addEventListener("click", function () {
+                elPopup.style.display =
+                    elPopup.style.display === "none" ? "" : "none";
+            });
+            elPopup.querySelector(".help-popup-close")
+                .addEventListener("click", function () {
+                    elPopup.style.display = "none";
+                });
+        }
     });
+
+    function fnKillTabProcess(iPaneId, iTabIndex) {
+        var dictPane = listPanes[iPaneId];
+        if (!dictPane) return;
+        var dictTab = dictPane.listTabs[iTabIndex];
+        if (!dictTab || !dictTab.websocket) return;
+        var ws = dictTab.websocket;
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ sType: "kill" }));
+            if (dictTab.terminal) {
+                dictTab.terminal.write(
+                    "\r\n\x1b[31m[Process killed]\x1b[0m\r\n"
+                );
+            }
+        }
+    }
 
     return {
         fnCreateTab: function () {

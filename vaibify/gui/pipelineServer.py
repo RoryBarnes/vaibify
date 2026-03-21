@@ -290,10 +290,12 @@ async def fnTerminalInputLoop(session, websocket):
 
 
 def _fnHandleTerminalText(session, sText):
-    """Parse a JSON text message and resize if requested."""
+    """Parse a JSON text message and handle resize or kill."""
     dictData = json.loads(sText)
     if dictData.get("sType") == "resize":
         session.fnResize(dictData["iRows"], dictData["iColumns"])
+    elif dictData.get("sType") == "kill":
+        session.fnKillForeground()
 
 
 async def fnRejectTerminalStart(websocket, error):

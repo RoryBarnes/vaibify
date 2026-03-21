@@ -228,6 +228,22 @@
         <div id="terminalStripToolbar">
             <button class="btn-icon" id="btnAddTerminalPane"
                     title="Add terminal pane (max 3)">+ Pane</button>
+            <button class="btn-icon btn-terminal-help"
+                    id="btnTerminalHelp" title="Terminal help">?</button>
+        </div>
+        <div id="terminalHelpPopup" class="help-popup" style="display:none">
+            <div class="help-popup-content">
+                <button class="help-popup-close">&times;</button>
+                <h3>Terminal</h3>
+                <p>The terminal behaves like a native terminal.
+                All keystrokes are passed directly to the container.</p>
+                <p><strong>Kill button</strong> (red square on tab):
+                Kills the foreground process if Ctrl+C is unresponsive.</p>
+                <p><strong>Ctrl+Z / Cmd+Z</strong> is reserved by
+                vaibify for undo when the terminal is not focused.
+                Inside the terminal, Ctrl+Z suspends the process
+                as expected.</p>
+            </div>
         </div>
     </div>
 </div>
