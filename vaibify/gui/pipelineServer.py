@@ -1100,6 +1100,53 @@ def _fnRegisterPipelineState(app, dictCtx):
         return dictState
 
 
+def _fnRegisterRuntimeInfo(app, dictCtx):
+    """Register GET /api/runtime endpoint."""
+
+    @app.get("/api/runtime")
+    async def fnGetRuntimeInfo():
+        import asyncio
+        return await asyncio.to_thread(fsDetectDockerRuntime)
+
+
+def fsDetectDockerRuntime():
+    """Detect the Docker runtime (colima, desktop, orbstack, etc.)."""
+    import subprocess
+    try:
+        resultContext = subprocess.run(
+            ["docker", "context", "ls", "--format", "{{.Name}}:{{.Current}}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for sLine in resultContext.stdout.strip().split("\n"):
+            if ":true" in sLine.lower():
+                sContext = sLine.split(":")[0].strip().lower()
+                if "colima" in sContext:
+                    return {"sRuntime": "colima", "sSleepWarning":
+                        "Your Docker runtime (Colima) does not "
+                        "sleep automatically. Use 'caffeinate -s' "
+                        "to prevent macOS from sleeping during "
+                        "long pipeline runs."}
+                if "desktop" in sContext or "default" == sContext:
+                    return {"sRuntime": "desktop", "sSleepWarning":
+                        "Ensure Docker Desktop is configured to "
+                        "not sleep idle VMs (Settings > Resources "
+                        "> Advanced). Also consider running "
+                        "'caffeinate -s' to prevent macOS sleep."}
+                if "orbstack" in sContext:
+                    return {"sRuntime": "orbstack", "sSleepWarning":
+                        "OrbStack VMs survive sleep. Use "
+                        "'caffeinate -s' to prevent macOS from "
+                        "sleeping during long pipeline runs."}
+                return {"sRuntime": sContext, "sSleepWarning":
+                    "Use 'caffeinate -s' to prevent macOS from "
+                    "sleeping during long pipeline runs."}
+    except Exception:
+        pass
+    return {"sRuntime": "unknown", "sSleepWarning":
+        "Use 'caffeinate -s' to prevent your computer from "
+        "sleeping during long pipeline runs."}
+
+
 def _fnRegisterFileStatus(app, dictCtx):
     """Register GET /api/pipeline/{id}/file-status endpoint."""
 
@@ -1475,6 +1522,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterPipelineState(app, dictCtx)
+    _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterFileStatus(app, dictCtx)
     _fnRegisterPipelineKill(app, dictCtx)
     _fnRegisterPipelineClean(app, dictCtx)

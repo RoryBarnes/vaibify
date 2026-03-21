@@ -3283,9 +3283,33 @@ const PipeleyenApp = (function () {
             "\n\nThe pipeline may produce incomplete results.";
     }
 
-    function fnRunAll() {
+    async function fsGetSleepWarning() {
+        var fTotalSeconds = fsEstimateRunTimeSeconds();
+        if (fTotalSeconds < 3600) return "";
+        try {
+            var response = await fetch("/api/runtime");
+            var dictRuntime = await response.json();
+            return "\n\n" + (dictRuntime.sSleepWarning || "");
+        } catch (e) {
+            return "";
+        }
+    }
+
+    function fsEstimateRunTimeSeconds() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
+        var fTotal = 0;
+        dictWorkflow.listSteps.forEach(function (step) {
+            if (step.bEnabled === false) return;
+            var dictStats = step.dictRunStats || {};
+            if (dictStats.fWallClock) fTotal += dictStats.fWallClock;
+        });
+        return fTotal;
+    }
+
+    async function fnRunAll() {
         var sEstimate = fsEstimateRunTime();
         var sInteractiveWarn = fsInteractiveWarning();
+        var sSleepWarn = await fsGetSleepWarning();
         var sMessage = "Run all enabled steps?";
         if (sInteractiveWarn) {
             sMessage += sInteractiveWarn;
@@ -3293,6 +3317,7 @@ const PipeleyenApp = (function () {
         if (sEstimate) {
             sMessage += "\n\n" + sEstimate;
         }
+        sMessage += sSleepWarn;
         fnShowConfirmModal("Run All", sMessage, async function () {
             var listEnablePromises = [];
             dictWorkflow.listSteps.forEach(function (step, iIndex) {
@@ -3311,7 +3336,8 @@ const PipeleyenApp = (function () {
         });
     }
 
-    function fnForceRunAll() {
+    async function fnForceRunAll() {
+        var sSleepWarn = await fsGetSleepWarning();
         fnShowConfirmModal(
             "Force Run All",
             "This will clear input hashes and re-run every " +
@@ -3325,7 +3351,7 @@ const PipeleyenApp = (function () {
                 fnShowConfirmModal(
                     "Confirm Clean Rebuild",
                     "Are you sure? This cannot be undone." +
-                    sTimeMsg,
+                    sTimeMsg + sSleepWarn,
                     async function () {
                         await _fnExecuteForceRunAll();
                     }
