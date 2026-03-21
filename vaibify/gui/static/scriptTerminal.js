@@ -262,8 +262,10 @@ const PipeleyenTerminal = (function () {
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
         var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sToken = PipeleyenApp.fsGetSessionToken();
         var sUrl = sProtocol + "//" + window.location.host +
-            "/ws/terminal/" + sContainerId;
+            "/ws/terminal/" + sContainerId +
+            "?sToken=" + encodeURIComponent(sToken);
         var ws = new WebSocket(sUrl);
         dictTab.websocket = ws;
         ws.binaryType = "arraybuffer";

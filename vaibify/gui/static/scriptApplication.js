@@ -9,6 +9,7 @@ const PipeleyenApp = (function () {
         return !!elActive.closest("#terminalStrip, .xterm");
     }
 
+    var sSessionToken = "";
     let sContainerId = null;
     let dictWorkflow = null;
     let sWorkflowPath = null;
@@ -29,9 +30,20 @@ const PipeleyenApp = (function () {
     let wsPipeline = null;
     let dictStepStatus = {};
 
+    async function fnFetchSessionToken() {
+        try {
+            var response = await fetch("/api/session-token");
+            var data = await response.json();
+            sSessionToken = data.sToken || "";
+        } catch (e) {
+            sSessionToken = "";
+        }
+    }
+
     /* --- Initialization --- */
 
-    function fnInitialize() {
+    async function fnInitialize() {
+        await fnFetchSessionToken();
         fnLoadUserName();
         fnLoadContainers();
         fnBindToolbarEvents();
@@ -2851,7 +2863,8 @@ const PipeleyenApp = (function () {
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
         var sUrl = sProtocol + "//" + window.location.host +
-            "/ws/pipeline/" + sContainerId;
+            "/ws/pipeline/" + sContainerId +
+            "?sToken=" + encodeURIComponent(sSessionToken);
         wsPipeline = new WebSocket(sUrl);
         wsPipeline.onmessage = function (event) {
             fnHandlePipelineEvent(JSON.parse(event.data));
@@ -3726,6 +3739,7 @@ const PipeleyenApp = (function () {
         fnRenderStepList: fnRenderStepList,
         fnEscapeHtml: fnEscapeHtml,
         fsGetContainerId: function () { return sContainerId; },
+        fsGetSessionToken: function () { return sSessionToken; },
         fdictGetWorkflow: function () { return dictWorkflow; },
         fsGetWorkflowPath: function () { return sWorkflowPath; },
         fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },

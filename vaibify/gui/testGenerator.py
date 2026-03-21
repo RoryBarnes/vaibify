@@ -128,14 +128,8 @@ def _fsBuildScriptContents(
 
 def _fsExtractScriptFromCommand(sCommand):
     """Extract the Python script path from a command string."""
-    listTokens = sCommand.split()
-    if not listTokens:
-        return None
-    if listTokens[0] in ("python", "python3") and len(listTokens) > 1:
-        return listTokens[1]
-    if listTokens[0].endswith(".py"):
-        return listTokens[0]
-    return None
+    from .commandUtilities import fsExtractScriptPath
+    return fsExtractScriptPath(sCommand) or None
 
 
 def _fsBuildDataPreviews(

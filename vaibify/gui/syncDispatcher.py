@@ -602,17 +602,8 @@ def fbStepInputsUnchanged(
 
 def _flistExtractScripts(dictStep):
     """Extract script paths from data analysis commands."""
-    listScripts = []
-    for sCommand in dictStep.get("saDataCommands", []):
-        listTokens = sCommand.split()
-        if not listTokens:
-            continue
-        if listTokens[0] in ("python", "python3"):
-            if len(listTokens) > 1:
-                listScripts.append(listTokens[1])
-        elif listTokens[0].endswith(".py"):
-            listScripts.append(listTokens[0])
-    return listScripts
+    from .commandUtilities import flistExtractScripts
+    return flistExtractScripts(dictStep.get("saDataCommands", []))
 
 
 def fdictComputeInputHashes(

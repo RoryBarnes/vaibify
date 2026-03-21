@@ -180,11 +180,13 @@ def _fnValidateSingleCommand(
 
 def _fsExtractScriptPath(sCommand):
     """Extract the script/executable path from a command string."""
+    from .commandUtilities import fsExtractScriptPath
+    sScript = fsExtractScriptPath(sCommand)
+    if sScript:
+        return sScript
     listTokens = sCommand.split()
     if not listTokens:
         return None
-    if listTokens[0] in ("python", "python3") and len(listTokens) > 1:
-        return listTokens[1]
     if listTokens[0] in ("cd", "cp", "echo", "rm", "mkdir", "bash"):
         return None
     return listTokens[0]
@@ -210,13 +212,40 @@ async def _fiReportPreflightFailure(
     return 1
 
 
+def _fnUpdatePipelineState(
+    connectionDocker, sContainerId, dictState, dictEvent,
+):
+    """Update pipeline state based on a step event."""
+    from . import pipelineState
+    sEventType = dictEvent.get("sType", "")
+    if sEventType == "output":
+        pipelineState.fnAppendOutput(
+            dictState, dictEvent.get("sLine", ""))
+    elif sEventType == "stepStarted":
+        pipelineState.fnUpdateState(
+            connectionDocker, sContainerId, dictState,
+            pipelineState.fdictBuildStepStarted(
+                dictEvent["iStepNumber"]))
+    elif sEventType in ("stepPass", "stepFail", "stepSkipped"):
+        dictStepStatusMap = {
+            "stepPass": "passed", "stepFail": "failed",
+            "stepSkipped": "skipped",
+        }
+        pipelineState.fnRecordStepResult(
+            connectionDocker, sContainerId, dictState,
+            pipelineState.fdictBuildStepResult(
+                dictEvent["iStepNumber"],
+                dictStepStatusMap[sEventType],
+                dictEvent.get("iExitCode", 0)))
+
+
 async def _fiRunStepsAndLog(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
     dictVariables, fnLogging, fnStatusCallback,
     sLogPath, listLogLines, sAction, iStartStep,
 ):
     """Execute steps, write log, and emit final status."""
-    from . import pipelineState
+    from . import pipelineState  # noqa: E402
 
     iStepCount = len(dictWorkflow.get("listSteps", []))
     dictState = pipelineState.fdictBuildInitialState(
@@ -229,47 +258,14 @@ async def _fiRunStepsAndLog(
 
     async def fnLoggingWithFlush(dictEvent):
         await fnLogging(dictEvent)
+        _fnUpdatePipelineState(
+            connectionDocker, sContainerId, dictState, dictEvent
+        )
         sEventType = dictEvent.get("sType", "")
-        if sEventType == "output":
-            pipelineState.fnAppendOutput(
-                dictState, dictEvent.get("sLine", "")
-            )
-        if sEventType == "stepStarted":
-            pipelineState.fnUpdateState(
-                connectionDocker, sContainerId, dictState,
-                pipelineState.fdictBuildStepStarted(
-                    dictEvent["iStepNumber"]
-                ),
-            )
-        elif sEventType == "stepPass":
-            pipelineState.fnRecordStepResult(
-                connectionDocker, sContainerId, dictState,
-                pipelineState.fdictBuildStepResult(
-                    dictEvent["iStepNumber"], "passed"
-                ),
-            )
+        if sEventType in ("stepPass", "stepFail"):
             await fnWriteLogToContainer(
                 connectionDocker, sContainerId, sLogPath,
                 listLogLines,
-            )
-        elif sEventType == "stepFail":
-            pipelineState.fnRecordStepResult(
-                connectionDocker, sContainerId, dictState,
-                pipelineState.fdictBuildStepResult(
-                    dictEvent["iStepNumber"], "failed",
-                    dictEvent.get("iExitCode", 1),
-                ),
-            )
-            await fnWriteLogToContainer(
-                connectionDocker, sContainerId, sLogPath,
-                listLogLines,
-            )
-        elif sEventType == "stepSkipped":
-            pipelineState.fnRecordStepResult(
-                connectionDocker, sContainerId, dictState,
-                pipelineState.fdictBuildStepResult(
-                    dictEvent["iStepNumber"], "skipped"
-                ),
             )
 
     iResult = await _fiRunStepList(
@@ -634,6 +630,38 @@ async def _fnRecordInputHashes(
     dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
 
 
+async def _fnEmitBanner(fnStatusCallback, iStepNumber, sStepName):
+    """Emit step banner lines to the status callback."""
+    sBanner = f"Step {iStepNumber:02d} - {sStepName}"
+    sLine = "=" * len(sBanner)
+    for sText in ["", sLine, sBanner, sLine, ""]:
+        await fnStatusCallback({"sType": "output", "sLine": sText})
+
+
+async def _fiCheckDependencies(
+    connectionDocker, sContainerId, dictStep,
+    dictVariables, iStepNumber, fnStatusCallback,
+):
+    """Return 1 if dependencies are missing, 0 otherwise."""
+    sStepMissing = await _fsMissingDependencyFile(
+        connectionDocker, sContainerId, dictStep, dictVariables
+    )
+    if not sStepMissing:
+        return 0
+    sStepName = dictStep.get("sName", f"Step {iStepNumber}")
+    await fnStatusCallback({
+        "sType": "output",
+        "sLine": f"SKIPPED: Step {iStepNumber:02d} - "
+                 f"{sStepName} (dependency not found: "
+                 f"{sStepMissing})",
+    })
+    await fnStatusCallback({
+        "sType": "stepFail", "iStepNumber": iStepNumber,
+        "iExitCode": 1,
+    })
+    return 1
+
+
 async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
@@ -641,40 +669,14 @@ async def _fnRunOneStep(
     """Run a single step, record timing, and emit result."""
     if dictStep.get("bInteractive", False):
         return 0
-    sStepMissing = await _fsMissingDependencyFile(
-        connectionDocker, sContainerId, dictStep, dictVariables
+    iDepResult = await _fiCheckDependencies(
+        connectionDocker, sContainerId, dictStep,
+        dictVariables, iStepNumber, fnStatusCallback,
     )
-    if sStepMissing:
-        sStepName = dictStep.get("sName", f"Step {iStepNumber}")
-        await fnStatusCallback({
-            "sType": "output",
-            "sLine": f"SKIPPED: Step {iStepNumber:02d} - "
-                     f"{sStepName} (dependency not found: "
-                     f"{sStepMissing})",
-        })
-        await fnStatusCallback({
-            "sType": "stepFail", "iStepNumber": iStepNumber,
-            "iExitCode": 1,
-        })
-        return 1
+    if iDepResult != 0:
+        return iDepResult
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
-    sBanner = f"Step {iStepNumber:02d} - {sStepName}"
-    sLine = "=" * len(sBanner)
-    await fnStatusCallback({
-        "sType": "output", "sLine": "",
-    })
-    await fnStatusCallback({
-        "sType": "output", "sLine": sLine,
-    })
-    await fnStatusCallback({
-        "sType": "output", "sLine": sBanner,
-    })
-    await fnStatusCallback({
-        "sType": "output", "sLine": sLine,
-    })
-    await fnStatusCallback({
-        "sType": "output", "sLine": "",
-    })
+    await _fnEmitBanner(fnStatusCallback, iStepNumber, sStepName)
     if await _fbShouldSkipStep(
         connectionDocker, sContainerId, dictStep, iStepNumber
     ):
@@ -685,6 +687,17 @@ async def _fnRunOneStep(
     await fnStatusCallback({
         "sType": "stepStarted", "iStepNumber": iStepNumber,
     })
+    return await _fiExecuteAndRecord(
+        connectionDocker, sContainerId, dictStep,
+        iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
+    )
+
+
+async def _fiExecuteAndRecord(
+    connectionDocker, sContainerId, dictStep,
+    iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
+):
+    """Execute step commands, record timing, emit results."""
     import time
     fStartTime = time.time()
     sStartTimestamp = datetime.now(timezone.utc).strftime(
@@ -699,10 +712,9 @@ async def _fnRunOneStep(
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber,
     )
-    fWallClock = time.time() - fStartTime
     dictStep["dictRunStats"] = {
         "sLastRun": sStartTimestamp,
-        "fWallClock": round(fWallClock, 1),
+        "fWallClock": round(time.time() - fStartTime, 1),
     }
     await _fnRecordInputHashes(
         connectionDocker, sContainerId, dictStep

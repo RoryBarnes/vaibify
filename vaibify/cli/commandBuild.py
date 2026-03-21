@@ -1,6 +1,7 @@
 """CLI subcommand: vaibify build."""
 
 import os
+import subprocess
 import sys
 
 import click
@@ -23,6 +24,23 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
         sys.exit(1)
     fnPrepareBuildContext(config, sDockerDir)
     fnBuildImage(config, sDockerDir, bNoCache=bNoCache)
+    fnPruneDanglingImages()
+
+
+def fnPruneDanglingImages():
+    """Remove dangling Docker images left by previous builds."""
+    try:
+        resultPrune = subprocess.run(
+            ["docker", "image", "prune", "-f"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if resultPrune.returncode == 0:
+            listLines = resultPrune.stdout.strip().split("\n")
+            sLastLine = listLines[-1] if listLines else ""
+            if "reclaimed" in sLastLine.lower():
+                click.echo(f"[vaib] {sLastLine}")
+    except Exception:
+        pass
 
 
 def fnPrepareBuildContext(config, sDockerDir):

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import posixpath
+import secrets
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
@@ -291,9 +292,14 @@ async def fnTerminalInputLoop(session, websocket):
 
 def _fnHandleTerminalText(session, sText):
     """Parse a JSON text message and handle resize or kill."""
-    dictData = json.loads(sText)
+    try:
+        dictData = json.loads(sText)
+    except (json.JSONDecodeError, ValueError):
+        return
     if dictData.get("sType") == "resize":
-        session.fnResize(dictData["iRows"], dictData["iColumns"])
+        iRows = max(1, min(500, int(dictData.get("iRows", 24))))
+        iColumns = max(1, min(1000, int(dictData.get("iColumns", 80))))
+        session.fnResize(iRows, iColumns)
     elif dictData.get("sType") == "kill":
         session.fnKillForeground()
 
@@ -362,6 +368,7 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["workflows"][sContainerId] = dictWorkflow
+        dictCtx["setAllowedContainers"].add(sContainerId)
         sResolved = fsResolveWorkflowPath(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
@@ -1290,6 +1297,13 @@ def _fnRegisterPipelineWs(app, dictCtx):
         if not fbValidateWebSocketOrigin(websocket):
             await websocket.close(code=4003)
             return
+        sToken = websocket.query_params.get("sToken", "")
+        if sToken != dictCtx["sSessionToken"]:
+            await websocket.close(code=4401)
+            return
+        if sContainerId not in dictCtx["setAllowedContainers"]:
+            await websocket.close(code=4403)
+            return
         dictCtx["require"]()
         await fnHandlePipelineWs(websocket, dictCtx, sContainerId)
 
@@ -1301,6 +1315,13 @@ def _fnRegisterTerminalWs(app, dictCtx):
     async def fnTerminalWs(websocket: WebSocket, sContainerId: str):
         if not fbValidateWebSocketOrigin(websocket):
             await websocket.close(code=4003)
+            return
+        sToken = websocket.query_params.get("sToken", "")
+        if sToken != dictCtx["sSessionToken"]:
+            await websocket.close(code=4401)
+            return
+        if sContainerId not in dictCtx["setAllowedContainers"]:
+            await websocket.close(code=4403)
             return
         dictCtx["require"]()
         await websocket.accept()
@@ -1325,14 +1346,18 @@ def _fnRegisterUserInfo(app):
         return {"sUserName": sTerminalUser or "User"}
 
 
-def _fnRegisterStaticFiles(app):
-    """Register index page and static file mount."""
+def _fnRegisterStaticFiles(app, dictCtx):
+    """Register index page, token endpoint, and static file mount."""
 
     @app.get("/")
     async def fnServeIndex():
         return FileResponse(
             os.path.join(STATIC_DIRECTORY, "index.html")
         )
+
+    @app.get("/api/session-token")
+    async def fnGetSessionToken():
+        return {"sToken": dictCtx["sSessionToken"]}
 
     if os.path.isdir(STATIC_DIRECTORY):
         app.mount(
@@ -1530,7 +1555,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterTerminalWs(app, dictCtx)
-    _fnRegisterStaticFiles(app)
+    _fnRegisterStaticFiles(app, dictCtx)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -1552,7 +1577,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' "
             "https://cdn.jsdelivr.net; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:*; "
+            "connect-src 'self' "
+            "ws://127.0.0.1:* wss://127.0.0.1:* "
+            "ws://localhost:* wss://localhost:*; "
             "frame-ancestors 'none'"
         )
         return response
@@ -1566,7 +1593,7 @@ def fbValidateWebSocketOrigin(websocket: WebSocket):
             sOrigin = sVal
             break
     if not sOrigin:
-        return True
+        return False
     listAllowed = [
         "http://127.0.0.1", "http://localhost",
         "https://127.0.0.1", "https://localhost",
@@ -1584,7 +1611,12 @@ def fappCreateApplication(
     global sTerminalUser
     sTerminalUser = sTerminalUserArg
     app = FastAPI(title="Vaibify Workflow Viewer")
+    sSessionToken = secrets.token_urlsafe(32)
+    app.state.sSessionToken = sSessionToken
+    app.state.setAllowedContainers = set()
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
+    dictCtx["sSessionToken"] = sSessionToken
+    dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
     return app
