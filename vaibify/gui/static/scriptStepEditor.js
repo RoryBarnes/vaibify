@@ -1,4 +1,4 @@
-/* Pipeleyen — Step CRUD modal forms */
+/* Vaibify — Step CRUD modal forms */
 
 const PipeleyenStepEditor = (function () {
     "use strict";

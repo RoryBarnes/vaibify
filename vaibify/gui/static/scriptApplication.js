@@ -1,4 +1,4 @@
-/* Pipeleyen — Main application logic */
+/* Vaibify — Main application logic */
 
 const PipeleyenApp = (function () {
     "use strict";
@@ -787,9 +787,6 @@ const PipeleyenApp = (function () {
                 ' Plot only (skip data analysis)</label></div>';
         }
 
-        /* Run Stats */
-        sHtml += fsRenderRunStats(step);
-
         if (bInteractive) {
             var bHasPlots = (step.saPlotCommands || []).length > 0;
             sHtml += '<div class="interactive-run-section">' +
@@ -818,6 +815,9 @@ const PipeleyenApp = (function () {
                 );
             });
         }
+
+        /* Data Analysis Timing */
+        sHtml += fsRenderRunStats(step);
 
         /* Data Files */
         sHtml += fsRenderSectionLabel(
@@ -856,6 +856,15 @@ const PipeleyenApp = (function () {
                     iIndex, iFileIdx, sResolvedDir
                 );
             });
+        }
+
+        /* Plot Timing */
+        var dictStats = step.dictRunStats || {};
+        if (dictStats.sLastRun) {
+            sHtml += '<div class="run-stats">' +
+                '<span class="run-stat">Plots created: ' +
+                fnEscapeHtml(dictStats.sLastRun) +
+                '</span></div>';
         }
 
         /* Verification */
@@ -1151,6 +1160,10 @@ const PipeleyenApp = (function () {
         if (dictStats.fWallClock !== undefined) {
             sHtml += '<span class="run-stat">Wall-clock: ' +
                 fsFormatDuration(dictStats.fWallClock) + '</span>';
+        }
+        if (dictStats.fCpuTime !== undefined) {
+            sHtml += '<span class="run-stat">CPU time: ' +
+                fsFormatDuration(dictStats.fCpuTime) + '</span>';
         }
         sHtml += '</div>';
         return sHtml;
@@ -1518,13 +1531,13 @@ const PipeleyenApp = (function () {
                 iIdx: parseInt(elDetail.dataset.idx),
             };
             event.dataTransfer.setData(
-                "pipeleyen/detail", JSON.stringify(dictDragData)
+                "vaibify/detail", JSON.stringify(dictDragData)
             );
             event.dataTransfer.setData(
-                "pipeleyen/filepath", elDetail.dataset.resolved
+                "vaibify/filepath", elDetail.dataset.resolved
             );
             event.dataTransfer.setData(
-                "pipeleyen/workdir", elDetail.dataset.workdir || ""
+                "vaibify/workdir", elDetail.dataset.workdir || ""
             );
             return;
         }
@@ -1533,7 +1546,7 @@ const PipeleyenApp = (function () {
             var iIdx = parseInt(elStep.dataset.index);
             event.dataTransfer.setData("text/plain", String(iIdx));
             event.dataTransfer.setData(
-                "pipeleyen/step", String(iIdx)
+                "vaibify/step", String(iIdx)
             );
             elStep.classList.add("dragging");
         }
@@ -1564,7 +1577,7 @@ const PipeleyenApp = (function () {
         if (elStep) elStep.classList.remove("drop-target");
 
         var sDetailData = event.dataTransfer.getData(
-            "pipeleyen/detail"
+            "vaibify/detail"
         );
         if (sDetailData) {
             event.preventDefault();
@@ -3865,7 +3878,7 @@ var PipeleyenFiles = (function () {
             });
             el.addEventListener("dragstart", function (event) {
                 event.dataTransfer.setData(
-                    "pipeleyen/filepath", el.dataset.path
+                    "vaibify/filepath", el.dataset.path
                 );
             });
         });

@@ -1,9 +1,9 @@
-/* Pipeleyen — Multi-pane terminal management with xterm.js */
+/* Vaibify — Multi-pane terminal management with xterm.js */
 
 const PipeleyenTerminal = (function () {
     "use strict";
 
-    var I_MAX_PANES = 3;
+    var I_MAX_PANES = 5;
     var iTabCounter = 0;
 
     /*
@@ -249,6 +249,16 @@ const PipeleyenTerminal = (function () {
         terminal.open(elContainer);
         fitAddon.fit();
 
+        var elKillButton = document.createElement("button");
+        elKillButton.className = "terminal-kill-overlay";
+        elKillButton.title = "Kill foreground process";
+        elKillButton.textContent = "Kill";
+        elContainer.style.position = "relative";
+        elContainer.appendChild(elKillButton);
+        elKillButton.addEventListener("click", function () {
+            fnKillTabDirect(dictTab);
+        });
+
         dictTab.terminal = terminal;
         dictTab.fitAddon = fitAddon;
 
@@ -444,6 +454,19 @@ const PipeleyenTerminal = (function () {
                 });
         }
     });
+
+    function fnKillTabDirect(dictTab) {
+        if (!dictTab || !dictTab.websocket) return;
+        var ws = dictTab.websocket;
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ sType: "kill" }));
+            if (dictTab.terminal) {
+                dictTab.terminal.write(
+                    "\r\n\x1b[31m[Process killed]\x1b[0m\r\n"
+                );
+            }
+        }
+    }
 
     function fnKillTabProcess(iPaneId, iTabIndex) {
         var dictPane = listPanes[iPaneId];

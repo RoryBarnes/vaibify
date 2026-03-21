@@ -1497,6 +1497,27 @@ html, body {
     opacity: 1;
 }
 
+.terminal-kill-overlay {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 10;
+    background: var(--color-red);
+    color: #fff;
+    border: none;
+    padding: 2px 10px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    opacity: 0.85;
+    font-family: inherit;
+}
+
+.terminal-kill-overlay:hover {
+    opacity: 1;
+}
+
 .btn-terminal-help {
     font-size: 0.75rem;
     color: var(--text-secondary);
@@ -1510,7 +1531,7 @@ html, body {
 }
 
 .help-popup-content {
-    background: var(--bg-secondary);
+    background: #1e1e2e;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 14px 18px;
@@ -1996,7 +2017,7 @@ html, body {
 }
 
 .help-popup-content {
-    background: var(--bg-secondary);
+    background: #1e1e2e;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 20px 24px;

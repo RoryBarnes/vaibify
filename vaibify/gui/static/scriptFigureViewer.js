@@ -1,4 +1,4 @@
-/* Pipeleyen — Dual figure viewer with unified shared history */
+/* Vaibify — Dual figure viewer with unified shared history */
 
 const PipeleyenFigureViewer = (function () {
     "use strict";
