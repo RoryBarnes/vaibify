@@ -1697,18 +1697,21 @@ html, body {
 .toast.error {
     border-color: var(--color-red);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
+    max-height: 120px;
+    overflow: hidden;
 }
 
 .toast-close {
     background: none;
     border: none;
-    color: var(--text-muted);
-    font-size: 18px;
+    color: #fff;
+    font-size: 20px;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 2px 6px;
     flex-shrink: 0;
+    line-height: 1;
 }
 
 .toast-close:hover {

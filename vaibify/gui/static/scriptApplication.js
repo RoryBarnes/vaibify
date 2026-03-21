@@ -183,7 +183,7 @@ const PipeleyenApp = (function () {
                 fnRenderWorkflowList(listWorkflows, sId);
             }
         } catch (error) {
-            fnShowToast("Connection failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -257,7 +257,7 @@ const PipeleyenApp = (function () {
                 _sSelectedContainerId, dictResult.sPath, dictResult.sName
             );
         } catch (error) {
-            fnShowToast("Create failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -270,7 +270,8 @@ const PipeleyenApp = (function () {
             );
             if (!response.ok) {
                 var detail = await response.json();
-                fnShowToast(detail.detail || "Connection failed", "error");
+                fnShowToast(fsSanitizeErrorForUser(
+                    detail.detail || "Connection failed"), "error");
                 return;
             }
             var data = await response.json();
@@ -303,7 +304,7 @@ const PipeleyenApp = (function () {
             PipeleyenTerminal.fnCreateTab();
             fnRecoverPipelineState(sId);
         } catch (error) {
-            fnShowToast("Connection failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -2386,7 +2387,7 @@ const PipeleyenApp = (function () {
                 ".vaibify/dag.svg", ""
             );
         } catch (error) {
-            fnShowToast("DAG: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -2506,7 +2507,7 @@ const PipeleyenApp = (function () {
             await fnLoadSyncStatus();
             fnRenderStepList();
         } catch (error) {
-            fnShowToast("Push failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -2668,7 +2669,7 @@ const PipeleyenApp = (function () {
                 );
             }
         } catch (error) {
-            fnShowToast("Setup failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -2849,7 +2850,7 @@ const PipeleyenApp = (function () {
                 '<pre class="pipeline-output">' +
                 fnEscapeHtml(sContent) + '</pre>';
         } catch (error) {
-            fnShowToast("Could not load log: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -3141,7 +3142,7 @@ const PipeleyenApp = (function () {
     function fnShowErrorModal(sMessage) {
         var elModal = document.getElementById("modalError");
         var elContent = document.getElementById("modalErrorContent");
-        elContent.textContent = sMessage;
+        elContent.textContent = fsSanitizeErrorForUser(sMessage);
         elModal.style.display = "flex";
     }
 
@@ -3198,7 +3199,7 @@ const PipeleyenApp = (function () {
             }
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
-            fnShowToast("Generation failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -3409,7 +3410,7 @@ const PipeleyenApp = (function () {
                         fnShowToast("Kill failed", "error");
                     }
                 } catch (error) {
-                    fnShowToast(error.message, "error");
+                    fnShowToast(fsSanitizeErrorForUser(error.message), "error");
                 }
             }
         );
@@ -3430,7 +3431,7 @@ const PipeleyenApp = (function () {
                 { method: "POST" }
             );
         } catch (error) {
-            fnShowToast("Clean failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
             return;
         }
         var listEnablePromises = [];
@@ -3513,7 +3514,7 @@ const PipeleyenApp = (function () {
                 });
             }
         } catch (error) {
-            fnShowToast("Validation failed: " + error.message, "error");
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -3616,7 +3617,7 @@ const PipeleyenApp = (function () {
                     fnShowSyncError(dictResult, "GitHub");
                 }
             } catch (error) {
-                fnShowToast(error.message, "error");
+                fnShowToast(fsSanitizeErrorForUser(error.message), "error");
             }
             return;
         }
@@ -3644,7 +3645,7 @@ const PipeleyenApp = (function () {
                     fnShowSyncError(dictZenodoResult, "Zenodo");
                 }
             } catch (error) {
-                fnShowToast(error.message, "error");
+                fnShowToast(fsSanitizeErrorForUser(error.message), "error");
             }
         }
     }
@@ -3711,6 +3712,29 @@ const PipeleyenApp = (function () {
         elViewport.innerHTML =
             '<span class="placeholder">' +
             'File cannot be viewed.</span>';
+    }
+
+    function fsSanitizeErrorForUser(sRawError) {
+        if (!sRawError) return "An error occurred.";
+        console.error("[vaibify]", sRawError);
+        if (sRawError.indexOf("no space left on device") >= 0) {
+            return "Docker disk is full. Run 'docker image " +
+                "prune -f' to free space.";
+        }
+        if (sRawError.indexOf("No such container") >= 0) {
+            return "Container not found. It may have stopped.";
+        }
+        if (sRawError.indexOf("connection refused") >= 0 ||
+            sRawError.indexOf("Cannot connect") >= 0) {
+            return "Cannot connect to Docker. Is it running?";
+        }
+        if (sRawError.indexOf("permission denied") >= 0) {
+            return "Permission denied. Check Docker access.";
+        }
+        if (sRawError.length > 200) {
+            return sRawError.substring(0, 200) + "...";
+        }
+        return sRawError;
     }
 
     function fnShowToast(sMessage, sType) {

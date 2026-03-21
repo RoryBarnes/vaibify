@@ -3,10 +3,25 @@
 Registers all subcommands with the top-level Click group.
 """
 
+import logging
+import os
 import subprocess
 import sys
 
 import click
+
+
+def _fnConfigureErrorLogging():
+    """Write vaibify errors to ~/.vaibify/error.log."""
+    sLogDir = os.path.expanduser("~/.vaibify")
+    os.makedirs(sLogDir, exist_ok=True)
+    sLogPath = os.path.join(sLogDir, "error.log")
+    fileHandler = logging.FileHandler(sLogPath)
+    fileHandler.setLevel(logging.ERROR)
+    fileHandler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s %(message)s"
+    ))
+    logging.getLogger("vaibify").addHandler(fileHandler)
 
 from .commandBuild import build
 from .commandConfig import config
@@ -105,10 +120,12 @@ def gui(sUser):
     """Launch the Vaibify pipeline viewer GUI."""
     configProject = fconfigLoad()
     from vaibify.gui.pipelineServer import fappCreateApplication
+    import logging
     import threading
     import time
     import uvicorn
     import webbrowser
+    _fnConfigureErrorLogging()
     sRoot = configProject.sWorkspaceRoot
     sTerminalUser = sUser or configProject.sContainerUser
     sUrl = "http://127.0.0.1:8050"

@@ -2,9 +2,12 @@
 
 import asyncio
 import json
+import logging
 import os
 import posixpath
 import secrets
+
+logger = logging.getLogger("vaibify")
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
@@ -361,6 +364,21 @@ async def fnRunTerminalSession(
         dictTerminalSessions.pop(sSessionId, None)
 
 
+def _fsSanitizeServerError(sRawError):
+    """Return a user-friendly error message, log the raw error."""
+    if "no space left on device" in sRawError.lower():
+        return "Docker disk full. Run: docker image prune -f"
+    if "no such container" in sRawError.lower():
+        return "Container not found. It may have stopped."
+    if "connection refused" in sRawError.lower():
+        return "Cannot connect to Docker. Is it running?"
+    if "permission denied" in sRawError.lower():
+        return "Permission denied. Check Docker access."
+    if len(sRawError) > 200:
+        return sRawError[:200] + "..."
+    return sRawError
+
+
 def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response."""
     try:
@@ -379,9 +397,9 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             "dictWorkflow": dictWorkflow,
         }
     except Exception as error:
-        raise HTTPException(
-            400, f"Failed to load workflow.json: {error}"
-        )
+        logger.error("Workflow load failed: %s", error)
+        sUserMessage = _fsSanitizeServerError(str(error))
+        raise HTTPException(400, sUserMessage)
 
 
 def _fbContainerHasVaibify(connectionDocker, sContainerId):
