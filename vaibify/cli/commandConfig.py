@@ -42,20 +42,20 @@ def config():
 
 
 @config.command("export")
-@click.argument("sFilePath", metavar="FILE")
-def configExport(sFilePath):
+@click.argument("sfilepath", metavar="FILE")
+def configExport(sfilepath):
     """Export the current configuration to a YAML file."""
     from vaibify.config.projectConfig import fnSaveToFile
-    config = fconfigLoad()
-    fnSaveToFile(config, sFilePath)
-    click.echo(f"Configuration exported to {sFilePath}")
+    configProject = fconfigLoad()
+    fnSaveToFile(configProject, sfilepath)
+    click.echo(f"Configuration exported to {sfilepath}")
 
 
 @config.command("import")
-@click.argument("sFilePath", metavar="FILE")
-def configImport(sFilePath):
+@click.argument("sfilepath", metavar="FILE")
+def configImport(sfilepath):
     """Import configuration from a YAML file and overwrite the current config."""
-    dictNewConfig = fdictLoadYamlFile(sFilePath)
+    dictNewConfig = fdictLoadYamlFile(sfilepath)
     sConfigPath = fsConfigPath()
     bExists = pathlib.Path(sConfigPath).is_file()
     if bExists and not click.confirm(
@@ -64,7 +64,7 @@ def configImport(sFilePath):
         click.echo("Aborted.")
         return
     fnWriteYaml(dictNewConfig, sConfigPath)
-    click.echo(f"Configuration imported from {sFilePath}")
+    click.echo(f"Configuration imported from {sfilepath}")
 
 
 @config.command("edit")
