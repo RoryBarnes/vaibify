@@ -451,6 +451,22 @@ const PipeleyenTerminal = (function () {
         }
     });
 
+    function _fnSendWhenReady(dictPane, sCommand) {
+        var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
+        if (!dictTab || !dictTab.websocket) return;
+        var ws = dictTab.websocket;
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(new TextEncoder().encode(sCommand + "\r"));
+        } else {
+            ws.addEventListener("open", function () {
+                setTimeout(function () {
+                    ws.send(
+                        new TextEncoder().encode(sCommand + "\r"));
+                }, 500);
+            }, { once: true });
+        }
+    }
+
     function fnKillTabDirect(dictTab) {
         if (!dictTab || !dictTab.websocket) return;
         var ws = dictTab.websocket;
@@ -494,24 +510,19 @@ const PipeleyenTerminal = (function () {
         fnSendCommandInFreshTab: function (sCommand) {
             if (listPanes.length === 0) {
                 fnCreatePane();
-            } else {
-                fnCreateTab(0);
+                _fnSendWhenReady(listPanes[0], sCommand);
+                return;
             }
             var dictPane = listPanes[0];
             var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
-            if (!dictTab || !dictTab.websocket) return;
-            var ws = dictTab.websocket;
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(new TextEncoder().encode(sCommand + "\r"));
-            } else if (ws.readyState === WebSocket.CONNECTING) {
-                var sPending = sCommand;
-                ws.addEventListener("open", function () {
-                    setTimeout(function () {
-                        ws.send(new TextEncoder().encode(
-                            sPending + "\r"));
-                    }, 200);
-                }, { once: true });
+            if (dictTab && dictTab.websocket &&
+                dictTab.websocket.readyState === WebSocket.OPEN) {
+                dictTab.websocket.send(
+                    new TextEncoder().encode(sCommand + "\r"));
+                return;
             }
+            fnCreateTab(0);
+            _fnSendWhenReady(listPanes[0], sCommand);
         },
         fnSendCommand: function (sCommand) {
             if (listPanes.length === 0) {
