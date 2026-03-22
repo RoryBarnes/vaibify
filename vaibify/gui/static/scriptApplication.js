@@ -1101,11 +1101,12 @@ const PipeleyenApp = (function () {
     function fsRenderGenerateButton(step, iIndex) {
         if ((step.saDataCommands || []).length === 0) return "";
         var bDisabled = !setStepsWithData.has(iIndex);
+        var sLabel = bDisabled ? "No Data for Tests" : "Generate Tests";
         return '<button class="btn-generate-test" data-step="' +
             iIndex + '"' +
             (bDisabled ? " disabled" : "") +
             ' id="btnGenTest' + iIndex + '">' +
-            'Generate Tests</button>';
+            sLabel + '</button>';
     }
 
     function fsRenderTestSection(sLabel, listItems, iIndex, sType) {
