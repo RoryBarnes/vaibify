@@ -1050,15 +1050,23 @@ def _fnRegisterFigure(app, dictCtx):
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
-        try:
-            await asyncio.to_thread(
-                fbaFetchFigureWithFallback,
-                dictCtx["docker"], sContainerId, sAbsPath,
-                sDir, sWorkdir, sFilePath,
-            )
+        listPaths = [sAbsPath]
+        if sWorkdir and not sFilePath.startswith("/"):
+            if sWorkdir.startswith("/"):
+                listPaths.append(
+                    posixpath.join(sWorkdir, sFilePath))
+            else:
+                listPaths.append(
+                    posixpath.join(sDir, sWorkdir, sFilePath))
+        sTestCmd = " || ".join(
+            f"test -f {p}" for p in listPaths)
+        iExitCode, _ = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, sTestCmd,
+        )
+        if iExitCode == 0:
             return Response(status_code=200)
-        except HTTPException:
-            raise
+        raise HTTPException(404, "Not found")
 
     @app.get("/api/figure/{sContainerId}/{sFilePath:path}")
     async def fnServeFigure(
