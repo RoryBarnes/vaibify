@@ -869,9 +869,8 @@ html, body {
     cursor: pointer;
 }
 
-.detail-item.output .detail-text.file-figure:hover,
-.detail-item.output .detail-text.file-text:hover {
-    color: var(--color-pale-blue);
+.detail-item.output .detail-text:hover {
+    color: var(--color-pale-blue) !important;
     filter: brightness(1.3);
 }
 
