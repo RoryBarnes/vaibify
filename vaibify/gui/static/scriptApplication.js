@@ -646,10 +646,14 @@ const PipeleyenApp = (function () {
                         dictDataPresent
                     );
                 } else {
+                    console.warn("[vaibify] HEAD " +
+                        r.status + " " + sUrl);
                     fnMarkOutputMissing(el);
                 }
                 fnFileCheckComplete();
-            }).catch(function () {
+            }).catch(function (err) {
+                console.warn("[vaibify] HEAD error: " +
+                    err.message + " " + sUrl);
                 dictFileExistenceCache[sCacheKey] = false;
                 fnMarkOutputMissing(el);
                 fnFileCheckComplete();

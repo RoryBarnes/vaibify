@@ -869,6 +869,12 @@ html, body {
     cursor: pointer;
 }
 
+.detail-item.output .detail-text.file-figure:hover,
+.detail-item.output .detail-text.file-text:hover {
+    color: var(--color-pale-blue);
+    filter: brightness(1.3);
+}
+
 .detail-item.output .detail-text.file-invalid {
     color: var(--color-orange);
     cursor: pointer;
