@@ -70,9 +70,15 @@ class TerminalSession:
             pass
 
     def fnClose(self):
-        """Clean up the exec session."""
+        """Clean up the exec session and kill the shell."""
         self._bRunning = False
         if self._socketExec:
+            try:
+                self._socketExec._sock.sendall(b"\x03")
+                self._socketExec._sock.sendall(b"\x04")
+                self._socketExec._sock.sendall(b"exit\n")
+            except Exception:
+                pass
             try:
                 self._socketExec.close()
             except Exception:
