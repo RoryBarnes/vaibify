@@ -1148,6 +1148,10 @@ const PipeleyenApp = (function () {
         if (bInteractive) {
             if (sUser === "passed") return "verified";
             if (sUser === "failed" || sUser === "error") return "fail";
+            if (setStepsWithData.has(iIndex) ||
+                (step.dictRunStats || {}).sLastRun) {
+                return "partial";
+            }
             return "";
         }
 

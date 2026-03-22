@@ -173,7 +173,11 @@ def _fbaFetchFallback(
     sWorkflowDirectory, sWorkdir, sFilePath,
 ):
     """Attempt to fetch figure from workdir-relative path."""
-    sFallback = posixpath.join(sWorkflowDirectory, sWorkdir, sFilePath)
+    if sWorkdir.startswith("/"):
+        sFallback = posixpath.join(sWorkdir, sFilePath)
+    else:
+        sFallback = posixpath.join(
+            sWorkflowDirectory, sWorkdir, sFilePath)
     try:
         return connectionDocker.fbaFetchFile(sContainerId, sFallback)
     except Exception as error:
