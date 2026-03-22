@@ -446,42 +446,81 @@ fnCreateVaibifyDirectory() {
 # ---------------------------------------------------------------------------
 fnWriteClaudeMd() {
     local sClaudeMd="${WORKSPACE}/CLAUDE.md"
-    if [ -f "${sClaudeMd}" ]; then
-        return
-    fi
     cat > "${sClaudeMd}" << 'CLAUDEMD'
 # Vaibify Container Environment
 
-You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted data analysis and reproducible research.
+You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted scientific data analysis.
 
 ## Key Paths
 
-- `/workspace/` — All repositories and working files live here
-- `/workspace/.vaibify/workflows/` — Workflow JSON files defining pipeline steps
+- `/workspace/` — All repositories and working files
+- `/workspace/<RepoName>/.vaibify/workflows/` — Workflow JSON files (each repo can have its own)
 - `/workspace/.vaibify/logs/` — Pipeline execution logs
 - `/workspace/.vaibify/director.py` — Standalone pipeline executor
-- `~/.claude/` — Your Claude Code configuration (if present)
 
 ## Workflow System
 
-Each project uses a workflow JSON file that defines a sequence of steps. Read the workflow file in `.vaibify/workflows/` to understand the current project's pipeline. Each step has:
+Each vaibified repository has a `.vaibify/workflows/` directory with JSON files defining pipeline steps. Each step has:
 
-- **Data Analysis Commands** (`saDataCommands`): Computation that generates data, only runs when `bPlotOnly` is false
+- **Data Analysis Commands** (`saDataCommands`): Heavy computation
 - **Data Files** (`saDataFiles`): Output files from data analysis
-- **Plot Commands** (`saPlotCommands`): Visualization commands that always run
+- **Plot Commands** (`saPlotCommands`): Visualization commands
 - **Plot Files** (`saPlotFiles`): Expected figure outputs
+- **Test Commands** (`saTestCommands`): Unit tests for data outputs
+- **Interactive** (`bInteractive`): Steps requiring human judgment
 
-Cross-step references use `{StepNN.stem}` syntax, where NN is the zero-padded step number and stem is the output filename without extension.
+Cross-step references use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`).
 
 Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>`
 
+## Vaibified Repository Structure
+
+A vaibified repo contains:
+- One camelCase directory per step
+- Scripts prefixed with `data` (analysis) or `plot` (visualization)
+- A `Plot/` directory for output figures
+- `.vaibify/workflows/*.json` defining the pipeline
+- `.vaibify/CLAUDE.md` with project-specific context (symlinked to repo root)
+
+## Verification
+
+Each step has a verification status with three components:
+- **Unit Tests**: Automated tests on data outputs
+- **User Approval**: Manual verification by the scientist
+- **Dependencies**: All upstream steps must also pass
+
+## Conventions
+
+- Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)
+- Function names start with return-type prefix (fb, fi, fs, fn, flist, fdict)
+- Functions should be under 20 lines
+- Output figures go in `Plot/` subdirectories
+
 ## Important
 
-- Read the user's personal CLAUDE.md in `~/.claude/` if present — it contains project-specific coding conventions and preferences
-- Do not modify scientific calculations without explicit direction from the user
-- Never embed secrets, tokens, or credentials in source code
+- Do not modify scientific calculations without explicit direction
+- Test changes with `pytest` before committing
+- All repositories are public or will be — never embed secrets in code
 CLAUDEMD
-    echo "[vaib] Generated CLAUDE.md for container awareness."
+    echo "[vaib] Generated workspace CLAUDE.md."
+    fnLinkRepoClaudeMd
+}
+
+# ---------------------------------------------------------------------------
+# fnLinkRepoClaudeMd: Symlink .vaibify/CLAUDE.md to repo root for each repo
+# ---------------------------------------------------------------------------
+fnLinkRepoClaudeMd() {
+    for sVaibDir in "${WORKSPACE}"/*/.vaibify; do
+        [ -d "${sVaibDir}" ] || continue
+        local sRepoDir
+        sRepoDir=$(dirname "${sVaibDir}")
+        local sSource="${sVaibDir}/CLAUDE.md"
+        local sTarget="${sRepoDir}/CLAUDE.md"
+        if [ -f "${sSource}" ] && [ ! -f "${sTarget}" ]; then
+            ln -s ".vaibify/CLAUDE.md" "${sTarget}"
+            echo "[vaib]   Linked CLAUDE.md in $(basename "${sRepoDir}")"
+        fi
+    done
 }
 
 # ---------------------------------------------------------------------------
