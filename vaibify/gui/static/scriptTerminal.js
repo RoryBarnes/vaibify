@@ -510,18 +510,9 @@ const PipeleyenTerminal = (function () {
         fnSendCommandInFreshTab: function (sCommand) {
             if (listPanes.length === 0) {
                 fnCreatePane();
-                _fnSendWhenReady(listPanes[0], sCommand);
-                return;
+            } else {
+                fnCreateTab(0);
             }
-            var dictPane = listPanes[0];
-            var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
-            if (dictTab && dictTab.websocket &&
-                dictTab.websocket.readyState === WebSocket.OPEN) {
-                dictTab.websocket.send(
-                    new TextEncoder().encode(sCommand + "\r"));
-                return;
-            }
-            fnCreateTab(0);
             _fnSendWhenReady(listPanes[0], sCommand);
         },
         fnSendCommand: function (sCommand) {
