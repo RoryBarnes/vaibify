@@ -40,10 +40,20 @@ fnConfigureGit() {
         "git@github.com:"
     if [ -n "${sToken}" ]; then
         echo "[vaib] GitHub credentials detected."
-        git config --global credential.helper store
-        echo "https://x-access-token:${sToken}@github.com" \
-            > "${HOME}/.git-credentials"
+        git config --system credential.helper store
+        local sCredLine="https://x-access-token:${sToken}@github.com"
+        echo "${sCredLine}" > "${HOME}/.git-credentials"
         chmod 600 "${HOME}/.git-credentials"
+        local sContainerUser
+        sContainerUser=$(grep "^VC_USER=" /etc/environment 2>/dev/null \
+            | cut -d= -f2 || echo "")
+        if [ -n "${sContainerUser}" ] && [ "${sContainerUser}" != "root" ]; then
+            local sUserHome
+            sUserHome=$(eval echo "~${sContainerUser}")
+            echo "${sCredLine}" > "${sUserHome}/.git-credentials"
+            chown "${sContainerUser}" "${sUserHome}/.git-credentials"
+            chmod 600 "${sUserHome}/.git-credentials"
+        fi
     else
         echo "[vaib] No GitHub credentials found. Public repos only."
         echo "[vaib]   To access private repos, run on host: gh auth login"
