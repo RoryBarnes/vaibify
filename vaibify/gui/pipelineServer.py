@@ -1285,6 +1285,8 @@ def _fnRegisterPipelineClean(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         listCleanCommands = []
         for dictStep in dictWorkflow.get("listSteps", []):
+            if dictStep.get("bInteractive", False):
+                continue
             sDir = dictStep.get("sDirectory", "")
             for sKey in ("saDataFiles", "saPlotFiles"):
                 for sFile in dictStep.get(sKey, []):

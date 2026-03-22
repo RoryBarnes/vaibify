@@ -1166,6 +1166,10 @@ const PipeleyenApp = (function () {
             if (sUser === "passed" && sDeps !== "failed") {
                 return "verified";
             }
+            var bHasRun = (step.dictRunStats || {}).sLastRun;
+            if (bHasRun && sUser === "untested") {
+                return "partial";
+            }
             return "";
         }
         if (sUnit === "passed" && sUser === "passed" &&
