@@ -1146,14 +1146,12 @@ const PipeleyenApp = (function () {
 
         if (bInteractive) {
             if (sUser === "passed") return "verified";
-            return "fail";
+            if (sUser === "failed" || sUser === "error") return "fail";
+            return "";
         }
 
         var sUnit = fsEffectiveTestState(step);
         var bPlotOnly = (step.saDataCommands || []).length === 0;
-        if (bPlotOnly) {
-            sUnit = "passed";
-        }
 
         if (sUnit === "failed" || sUnit === "error" ||
             sUser === "failed" || sUser === "error") {
@@ -1162,6 +1160,12 @@ const PipeleyenApp = (function () {
         var sDeps = fsComputeDepsState(iIndex);
         if (sDeps === "failed") {
             return "fail";
+        }
+        if (bPlotOnly) {
+            if (sUser === "passed" && sDeps !== "failed") {
+                return "verified";
+            }
+            return "";
         }
         if (sUnit === "passed" && sUser === "passed" &&
             sDeps !== "failed") {
