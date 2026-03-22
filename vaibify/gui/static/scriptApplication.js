@@ -533,13 +533,20 @@ const PipeleyenApp = (function () {
         if (iFileCheckTimer) return;
         iFileCheckTimer = setTimeout(function () {
             iFileCheckTimer = null;
-            if (bFileCheckInProgress) return;
-            bFileCheckInProgress = true;
+            bFileCheckInProgress = false;
             iInflightRequests = 0;
+            var iOutputCount = document.querySelectorAll(
+                ".detail-item.output").length;
+            console.log("[vaibify] File check: " +
+                iOutputCount + " output elements found");
             fnCheckOutputFileExistence();
             fnCheckDataFileExistence();
             if (iInflightRequests === 0) {
                 bFileCheckInProgress = false;
+            } else {
+                setTimeout(function () {
+                    bFileCheckInProgress = false;
+                }, 10000);
             }
         }, 200);
     }
