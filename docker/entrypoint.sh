@@ -36,17 +36,17 @@ fsReadGitHubToken() {
 fnConfigureGit() {
     local sToken
     sToken=$(fsReadGitHubToken)
+    git config --system url."https://github.com/".insteadOf \
+        "git@github.com:"
     if [ -n "${sToken}" ]; then
         echo "[vaib] GitHub credentials detected."
-        git config --system url."https://github.com/".insteadOf \
-            "git@github.com:"
-        git config --system credential.https://github.com.helper \
-            "!f() { echo \"protocol=https\"; echo \"host=github.com\"; echo \"username=x-access-token\"; echo \"password=\$(cat /run/secrets/gh_token 2>/dev/null || gh auth token 2>/dev/null)\"; }; f"
+        git config --global credential.helper store
+        echo "https://x-access-token:${sToken}@github.com" \
+            > "${HOME}/.git-credentials"
+        chmod 600 "${HOME}/.git-credentials"
     else
         echo "[vaib] No GitHub credentials found. Public repos only."
         echo "[vaib]   To access private repos, run on host: gh auth login"
-        git config --system url."https://github.com/".insteadOf \
-            "git@github.com:"
         export GIT_TERMINAL_PROMPT=0
     fi
 }

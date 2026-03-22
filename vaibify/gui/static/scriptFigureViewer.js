@@ -5,6 +5,16 @@ const PipeleyenFigureViewer = (function () {
 
     var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
+    var SET_BINARY_EXTENSIONS = new Set([
+        ".npy", ".npz", ".pkl", ".pickle", ".h5", ".hdf5",
+        ".fits", ".fit", ".fz", ".dat", ".bin", ".so",
+        ".o", ".a", ".pyc", ".pyo", ".whl", ".egg",
+        ".gz", ".tar", ".zip", ".bz2", ".xz",
+    ]);
+
+    function fbIsBinaryFile(sExtension) {
+        return SET_BINARY_EXTENSIONS.has(sExtension);
+    }
     var S_OUTPUT_MISSING = '<span class="placeholder output-missing-message">' +
         'Output not available. Run the step to generate.</span>';
 
@@ -244,7 +254,11 @@ const PipeleyenFigureViewer = (function () {
 
         fnApplyTestFailureOutline(elViewport, sPath);
 
-        if (sExtension === ".pdf") {
+        if (fbIsBinaryFile(sExtension)) {
+            elViewport.innerHTML =
+                '<span class="placeholder" style="color:var(--color-red)">' +
+                'File cannot be viewed.</span>';
+        } else if (sExtension === ".pdf") {
             fnRenderPdf(sUrl, elViewport);
         } else if (fbIsFigureFile(sPath)) {
             fnRenderImage(sUrl, elViewport);

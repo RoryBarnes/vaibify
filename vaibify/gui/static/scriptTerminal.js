@@ -237,6 +237,7 @@ const PipeleyenTerminal = (function () {
             fontFamily:
                 '"SF Mono", "Fira Code", "Cascadia Code", monospace',
             theme: DICT_TERMINAL_THEME,
+            scrollOnOutput: false,
         });
 
         var fitAddon = new FitAddon.FitAddon();

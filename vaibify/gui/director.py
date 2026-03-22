@@ -121,15 +121,15 @@ def fiResolveCoreCount(iRequested):
 
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowRoot):
     """Extract top-level workflow keys into a variables dictionary."""
-    sPlotDirectory = os.path.join(
-        sWorkflowRoot, dictWorkflow.get("sPlotDirectory", "Plot")
-    )
-    os.makedirs(sPlotDirectory, exist_ok=True)
     sRepoRoot = sWorkflowRoot
     if sRepoRoot.endswith("/.vaibify/workflows"):
         sRepoRoot = sRepoRoot[:-len("/.vaibify/workflows")]
     elif sRepoRoot.endswith("/.vaibify"):
         sRepoRoot = sRepoRoot[:-len("/.vaibify")]
+    sPlotDirectory = os.path.join(
+        sRepoRoot, dictWorkflow.get("sPlotDirectory", "Plot")
+    )
+    os.makedirs(sPlotDirectory, exist_ok=True)
     return {
         "sPlotDirectory": sPlotDirectory,
         "sRepoRoot": sRepoRoot,
