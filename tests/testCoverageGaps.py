@@ -652,7 +652,7 @@ def test_fnPullFromContainer_calls_docker_cp(mockRun):
 def test_fnRunDockerCp_failure_raises(mockRun):
     from vaibify.docker.fileTransfer import _fnRunDockerCp
     mockRun.return_value = MagicMock(returncode=1)
-    with pytest.raises(RuntimeError, match="Docker cp failed"):
+    with pytest.raises(RuntimeError, match="Docker command failed"):
         _fnRunDockerCp(["docker", "cp", "a", "b"])
 
 

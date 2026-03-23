@@ -97,7 +97,7 @@ def fdictReadState(connectionDocker, sContainerId):
         if iExitCode != 0 or not sOutput.strip():
             return None
         return json.loads(sOutput)
-    except (json.JSONDecodeError, Exception):
+    except (json.JSONDecodeError, OSError):
         return None
 
 

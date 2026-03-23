@@ -243,7 +243,6 @@ def _fnSaveWorkflowStats(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
 ):
     """Save updated workflow (with run stats) back to container."""
-    import json
     try:
         sContent = json.dumps(dictWorkflow, indent=2)
         connectionDocker.fnWriteFile(
@@ -349,7 +348,7 @@ async def _fiRunSetupIfNeeded(
     sStepDirectory, dictVariables, fnStatusCallback,
 ):
     """Run data analysis commands unless bPlotOnly is True."""
-    if dictStep.get("bPlotOnly", True):
+    if dictStep.get("bPlotOnly", False):
         return 0
     return await _fiRunCommandList(
         connectionDocker, sContainerId,

@@ -1253,7 +1253,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listPatterns = _flistExtractKillPatterns(dictWorkflow)
-        sGrepPattern = "\\|".join(listPatterns) if listPatterns else ""
+        sGrepPattern = "|".join(listPatterns) if listPatterns else ""
         if not sGrepPattern:
             return {"bSuccess": True, "iProcessesKilled": 0}
         sCountCommand = (
@@ -1308,7 +1308,7 @@ def _fnRegisterPipelineClean(app, dictCtx):
                         posixpath.join(sDir, sFile) if sDir
                         else sFile)
                     listCleanCommands.append(
-                        f"rm -f {sPath} 2>/dev/null")
+                        f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
             dictStep["dictRunStats"] = {}
             dictStep["dictVerification"] = {
                 "sUnitTest": "untested", "sUser": "untested"}

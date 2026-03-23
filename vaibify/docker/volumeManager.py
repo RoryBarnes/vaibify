@@ -1,7 +1,8 @@
 """Docker volume management using subprocess CLI calls."""
 
 import subprocess
-import sys
+
+from . import fnRunDockerCommand
 
 
 def fnCreateVolume(sVolumeName):
@@ -66,16 +67,4 @@ def fsGetVolumeName(config):
     return f"{config.sProjectName}-workspace"
 
 
-def _fnRunDockerCommand(saCommand):
-    """Execute a docker command, raising on failure."""
-    resultProcess = subprocess.run(
-        saCommand,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-    )
-    if resultProcess.returncode != 0:
-        sCommandStr = " ".join(saCommand)
-        raise RuntimeError(
-            f"Docker command failed (exit {resultProcess.returncode}): "
-            f"{sCommandStr}"
-        )
+_fnRunDockerCommand = fnRunDockerCommand

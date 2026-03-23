@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import fnRunDockerCommand
+
 
 _OVERLAY_ORDER = [
     "gpu",
@@ -209,16 +211,4 @@ def fbImageExists(sImageName):
     return resultProcess.returncode == 0
 
 
-def _fnRunDockerBuild(saCommand):
-    """Execute a docker command, raising on failure."""
-    resultProcess = subprocess.run(
-        saCommand,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-    )
-    if resultProcess.returncode != 0:
-        sCommandStr = " ".join(saCommand)
-        raise RuntimeError(
-            f"Docker command failed (exit {resultProcess.returncode}): "
-            f"{sCommandStr}"
-        )
+_fnRunDockerBuild = fnRunDockerCommand

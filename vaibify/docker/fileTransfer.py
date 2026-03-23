@@ -1,8 +1,8 @@
 """File transfer between host and container using docker cp."""
 
-import subprocess
-import sys
 from pathlib import PurePosixPath
+
+from . import fnRunDockerCommand
 
 
 def fnPushToContainer(sProjectName, sHostSource, sContainerDest,
@@ -67,16 +67,4 @@ def fsResolveContainerPath(sRelativePath, sWorkspaceRoot):
     return str(pathResolved)
 
 
-def _fnRunDockerCp(saCommand):
-    """Execute a docker cp command, raising on failure."""
-    resultProcess = subprocess.run(
-        saCommand,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-    )
-    if resultProcess.returncode != 0:
-        sCommandStr = " ".join(saCommand)
-        raise RuntimeError(
-            f"Docker cp failed (exit {resultProcess.returncode}): "
-            f"{sCommandStr}"
-        )
+_fnRunDockerCp = fnRunDockerCommand

@@ -7,23 +7,19 @@ import click
 from .configLoader import fbDockerAvailable, fconfigLoad
 
 
-def fnShowDaemonStatus():
+def fnShowDaemonStatus(dockerClient):
     """Print whether the Docker daemon is reachable."""
     try:
-        import docker
-        dockerClient = docker.from_env()
         dockerClient.ping()
         click.echo("Docker daemon: running")
     except Exception as error:
         click.echo(f"Docker daemon: unavailable ({error})")
 
 
-def fnShowImageStatus(config):
+def fnShowImageStatus(dockerClient, config):
     """Print the build status of the configured image."""
     sFullName = f"{config.sProjectName}:latest"
     try:
-        import docker
-        dockerClient = docker.from_env()
         image = dockerClient.images.get(sFullName)
         sCreated = image.attrs.get("Created", "unknown")
         click.echo(f"Image: {sFullName} (built {sCreated})")
@@ -31,24 +27,20 @@ def fnShowImageStatus(config):
         click.echo(f"Image: {sFullName} (not found)")
 
 
-def fnShowVolumeStatus(config):
+def fnShowVolumeStatus(dockerClient, config):
     """Print the status of the workspace volume."""
     sVolumeName = f"{config.sProjectName}-workspace"
     try:
-        import docker
-        dockerClient = docker.from_env()
         dockerClient.volumes.get(sVolumeName)
         click.echo(f"Volume: {sVolumeName} (exists)")
     except Exception:
         click.echo(f"Volume: {sVolumeName} (not found)")
 
 
-def fnShowContainerStatus(config):
+def fnShowContainerStatus(dockerClient, config):
     """Print whether a Vaibify container is running or stopped."""
     sProjectName = config.sProjectName
     try:
-        import docker
-        dockerClient = docker.from_env()
         listContainers = dockerClient.containers.list(
             all=True, filters={"name": sProjectName}
         )
@@ -73,8 +65,10 @@ def status():
             "Install with: pip install vaibify[docker]"
         )
         sys.exit(1)
+    import docker
+    dockerClient = docker.from_env()
     config = fconfigLoad()
-    fnShowDaemonStatus()
-    fnShowImageStatus(config)
-    fnShowVolumeStatus(config)
-    fnShowContainerStatus(config)
+    fnShowDaemonStatus(dockerClient)
+    fnShowImageStatus(dockerClient, config)
+    fnShowVolumeStatus(dockerClient, config)
+    fnShowContainerStatus(dockerClient, config)

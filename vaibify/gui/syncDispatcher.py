@@ -175,10 +175,10 @@ def ftResultPushToGithub(
     listFilePaths, sCommitMessage, sWorkdir,
 ):
     """Git add, commit, and push files inside the container."""
-    listQuoted = " ".join(fsShellQuote(s) for s in listFilePaths)
+    sQuotedPaths = " ".join(fsShellQuote(s) for s in listFilePaths)
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git add {listQuoted} && "
+        f"git add {sQuotedPaths} && "
         f"git commit -m {fsShellQuote(sCommitMessage)} && "
         f"git push && "
         f"git rev-parse --short HEAD"

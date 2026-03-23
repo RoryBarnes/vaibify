@@ -46,17 +46,16 @@ def _fMockDockerModule():
 
 def test_fnShowDaemonStatus_reachable(capsys):
     mockDocker = _fMockDockerModule()
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowDaemonStatus()
+    mockClient = mockDocker._mockClient
+    fnShowDaemonStatus(mockClient)
     sCaptured = capsys.readouterr().out
     assert "running" in sCaptured
 
 
 def test_fnShowDaemonStatus_unreachable(capsys):
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env.side_effect = Exception("fail")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowDaemonStatus()
+    mockClient = MagicMock()
+    mockClient.ping.side_effect = Exception("fail")
+    fnShowDaemonStatus(mockClient)
     sCaptured = capsys.readouterr().out
     assert "unavailable" in sCaptured
 
@@ -67,26 +66,22 @@ def test_fnShowDaemonStatus_unreachable(capsys):
 
 
 def test_fnShowImageStatus_found(capsys):
-    mockDocker = _fMockDockerModule()
+    mockClient = MagicMock()
     mockImage = MagicMock()
     mockImage.attrs = {"Created": "2024-01-01"}
-    mockDocker.from_env().images.get.return_value = mockImage
+    mockClient.images.get.return_value = mockImage
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowImageStatus(mockConfig)
+    fnShowImageStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "testproj:latest" in sCaptured
     assert "built" in sCaptured
 
 
 def test_fnShowImageStatus_not_found(capsys):
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env().images.get.side_effect = (
-        Exception("nope")
-    )
+    mockClient = MagicMock()
+    mockClient.images.get.side_effect = Exception("nope")
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowImageStatus(mockConfig)
+    fnShowImageStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "not found" in sCaptured
 
@@ -97,22 +92,18 @@ def test_fnShowImageStatus_not_found(capsys):
 
 
 def test_fnShowVolumeStatus_exists(capsys):
-    mockDocker = _fMockDockerModule()
+    mockClient = MagicMock()
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowVolumeStatus(mockConfig)
+    fnShowVolumeStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "exists" in sCaptured
 
 
 def test_fnShowVolumeStatus_not_found(capsys):
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env().volumes.get.side_effect = (
-        Exception("nope")
-    )
+    mockClient = MagicMock()
+    mockClient.volumes.get.side_effect = Exception("nope")
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowVolumeStatus(mockConfig)
+    fnShowVolumeStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "not found" in sCaptured
 
@@ -123,36 +114,31 @@ def test_fnShowVolumeStatus_not_found(capsys):
 
 
 def test_fnShowContainerStatus_running(capsys):
-    mockDocker = _fMockDockerModule()
+    mockClient = MagicMock()
     mockContainer = MagicMock()
     mockContainer.name = "testproj"
     mockContainer.status = "running"
-    mockDocker.from_env().containers.list.return_value = [
-        mockContainer,
-    ]
+    mockClient.containers.list.return_value = [mockContainer]
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowContainerStatus(mockConfig)
+    fnShowContainerStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "running" in sCaptured
 
 
 def test_fnShowContainerStatus_none(capsys):
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env().containers.list.return_value = []
+    mockClient = MagicMock()
+    mockClient.containers.list.return_value = []
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowContainerStatus(mockConfig)
+    fnShowContainerStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "none" in sCaptured
 
 
 def test_fnShowContainerStatus_error(capsys):
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env.side_effect = Exception("fail")
+    mockClient = MagicMock()
+    mockClient.containers.list.side_effect = Exception("fail")
     mockConfig = SimpleNamespace(sProjectName="testproj")
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnShowContainerStatus(mockConfig)
+    fnShowContainerStatus(mockClient, mockConfig)
     sCaptured = capsys.readouterr().out
     assert "unable" in sCaptured
 
