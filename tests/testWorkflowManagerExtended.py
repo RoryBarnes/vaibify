@@ -47,13 +47,13 @@ def test_fdictBuildGlobalVariables_keys():
     dictWorkflow = {"sPlotDirectory": "Figures"}
     sPath = "/workspace/.vaibify/workflows/w.json"
     dictVars = fdictBuildGlobalVariables(dictWorkflow, sPath)
-    assert dictVars["sPlotDirectory"] == "Figures"
+    assert dictVars["sPlotDirectory"] == "/workspace/Figures"
     assert dictVars["sRepoRoot"] == "/workspace"
 
 
 def test_fdictBuildGlobalVariables_defaults():
     dictVars = fdictBuildGlobalVariables({}, "/a/b/c.json")
-    assert dictVars["sPlotDirectory"] == "Plot"
+    assert dictVars["sPlotDirectory"] == "/a/b/Plot"
     assert dictVars["iNumberOfCores"] == -1
     assert dictVars["sFigureType"] == "pdf"
 

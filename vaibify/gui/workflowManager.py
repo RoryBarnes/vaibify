@@ -117,8 +117,11 @@ def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
     sRepoRoot = sWorkflowDirectory
     if "/.vaibify" in sRepoRoot:
         sRepoRoot = sRepoRoot[:sRepoRoot.index("/.vaibify")]
+    sPlotDirectory = dictWorkflow.get("sPlotDirectory", "Plot")
+    if not posixpath.isabs(sPlotDirectory):
+        sPlotDirectory = posixpath.join(sRepoRoot, sPlotDirectory)
     return {
-        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sPlotDirectory": sPlotDirectory,
         "sRepoRoot": sRepoRoot,
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf").lower(),
