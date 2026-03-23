@@ -334,6 +334,26 @@ fnInstallAllRepos() {
 }
 
 # ---------------------------------------------------------------------------
+# fnInstallRepoRequirements: Install per-repo .vaibify/requirements.txt files
+# ---------------------------------------------------------------------------
+fnInstallRepoRequirements() {
+    local bFoundAny=false
+    for sReqFile in "${WORKSPACE}"/*/.vaibify/requirements.txt; do
+        [ -f "${sReqFile}" ] || continue
+        local sRepoDir
+        sRepoDir=$(dirname "$(dirname "${sReqFile}")")
+        local sRepoName
+        sRepoName=$(basename "${sRepoDir}")
+        echo "[vaib] Installing requirements for ${sRepoName}..."
+        pip install -r "${sReqFile}" -q
+        bFoundAny=true
+    done
+    if [ "${bFoundAny}" = true ]; then
+        echo "[vaib] Per-repo requirements installed."
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # fnPersistGitConfig: Symlink .gitconfig to the workspace volume
 # ---------------------------------------------------------------------------
 fnPersistGitConfig() {
@@ -506,6 +526,159 @@ Each step has a verification status with three components:
 - Functions should be under 20 lines
 - Output figures go in `Plot/` subdirectories
 
+## Creating New Pipeline Steps
+
+When a user asks you to create a new analysis or plot (e.g., "Create a script that computes
+the probability distribution of water the Earth formed with and a plot of it"), follow this
+protocol. The goal is a fully wired step: scripts, outputs, dependencies, and workflow JSON
+entry — with zero untracked files.
+
+### Phase 1: Discover Context
+
+1. Find the workflow JSON: `find /workspace -maxdepth 4 -path '*/.vaibify/workflows/*.json'`
+2. Read `listSteps` to understand existing steps, their outputs, and available variables.
+3. Identify **backward dependencies**: which existing steps produce data this new step needs?
+   Look for output files in `saDataFiles` that match the needed inputs.
+4. Identify **forward dependents**: search all steps for `{StepNN.*}` references that would
+   be affected if you insert (rather than append) the new step. **Strongly prefer appending**
+   new steps at the end to avoid renumbering. If insertion is required, enumerate every
+   reference that must change and confirm with the user before proceeding.
+5. Determine placement: the new step must come after all its dependencies.
+
+### Phase 2: Name and Structure
+
+1. Choose a **camelCase directory name** that captures the scientific goal, not the method.
+   No abbreviations for words under 8 characters. Examples: `waterProbabilityDistribution`,
+   `cumulativeXuvFlux`, `keplerFlareFit`.
+2. Create the directory at the same level as other step directories in the repository.
+3. Name scripts with standard prefixes:
+   - `data<Purpose>.py` for data analysis (e.g., `dataWaterProbability.py`)
+   - `plot<Purpose>.py` for visualization (e.g., `plotWaterProbability.py`)
+4. Name output files to match the step directory or scientific content:
+   - Data: `waterProbability_samples.npy`, `waterProbability_stats.json`
+   - Plot: `{sPlotDirectory}/WaterProbability.{sFigureType}`
+
+### Phase 3: Write the Scripts
+
+Follow the style guide (check the repo's CLAUDE.md first, then the workspace CLAUDE.md):
+
+1. **Hungarian notation** for all variables (b=bool, i=int, f=float, s=string, da=array of doubles, etc.)
+2. **Function prefixes** based on return type (`fb`, `fi`, `fs`, `fn`, `fda`, `fdict`, `flist`)
+3. **Functions under 20 lines** — extract reusable blocks into separate functions
+4. **No abbreviations** for words under 8 characters
+5. **Import vplot** for any matplotlib plotting
+6. **Accept paths as command-line arguments** so the director can resolve `{StepNN.stem}`,
+   `{sPlotDirectory}`, and `{sFigureType}` variables
+7. **Data outputs** go in the step's own directory
+8. **Plot outputs** go in `{sPlotDirectory}/`
+
+Data script pattern:
+```python
+#!/usr/bin/env python3
+"""One-line description of what this script computes."""
+import sys
+# ... imports ...
+
+def fda<Core>(...):
+    """Core computation."""
+    ...
+
+def fn<Save>(...):
+    """Save results to disk."""
+    ...
+
+if __name__ == "__main__":
+    # Parse arguments, load upstream data, compute, save
+```
+
+Plot script pattern:
+```python
+#!/usr/bin/env python3
+"""One-line description of what this plots."""
+import sys
+import matplotlib.pyplot as plt
+import vplot
+
+def fnPlot<Name>(daData, sOutputPath):
+    """Generate the figure."""
+    ...
+
+if __name__ == "__main__":
+    sOutputPath = sys.argv[1]
+    # Load data from step directory, generate plot
+```
+
+### Phase 4: Update the Workflow JSON
+
+Add a new entry to `listSteps`:
+
+```json
+{
+    "sName": "Human-Readable Step Name",
+    "sDirectory": "stepDirectoryName",
+    "bEnabled": true,
+    "bPlotOnly": false,
+    "bInteractive": false,
+    "saDataCommands": [
+        "python dataWaterProbability.py {Step06.lxuv_constraints}"
+    ],
+    "saDataFiles": [
+        "waterProbability_samples.npy",
+        "waterProbability_stats.json"
+    ],
+    "saTestCommands": [],
+    "saPlotCommands": [
+        "python plotWaterProbability.py {sPlotDirectory}/WaterProbability.{sFigureType}"
+    ],
+    "saPlotFiles": [
+        "{sPlotDirectory}/WaterProbability.{sFigureType}"
+    ]
+}
+```
+
+Rules:
+- Every output file MUST be declared in `saDataFiles` or `saPlotFiles` — no untracked files.
+- Every input from another step MUST use `{StepNN.stem}` syntax — no implicit imports.
+- `saTestCommands` should include a basic sanity check (e.g., file exists, has expected shape).
+- `bPlotOnly: true` only if the step has no data commands and only plots pre-existing data.
+- `bInteractive: true` only for steps requiring human judgment (e.g., visual inspection).
+
+### Phase 5: Verify
+
+1. Run the data script to confirm it executes without errors.
+2. Run the plot script to confirm it produces a figure.
+3. Run `python /workspace/.vaibify/director.py --config <workflow.json> --verify-only` if available.
+4. Report the step number, directory, and output files to the user.
+
+## Managing Package Dependencies
+
+When creating or running a step, you may encounter missing Python packages. Follow this
+procedure to fix them permanently.
+
+### Detection and Immediate Fix
+
+1. If a script raises `ModuleNotFoundError` or `ImportError`, identify the PyPI package name.
+2. Install it immediately: `pip install <package>>=<minimum_version>`
+3. Verify the script now runs.
+
+### Persisting the Dependency
+
+The immediate `pip install` is ephemeral — it is lost when the container is rebuilt. To make
+it permanent:
+
+1. Create or update the file `<repo>/.vaibify/requirements.txt` in the vaibified repository.
+2. Add one line per package with a version constraint: `lightkurve>=2.0`
+3. The vaibify entrypoint installs these automatically on container startup.
+
+### Rules
+
+- Only install packages from PyPI. Never `pip install` from arbitrary URLs.
+- Always include a version lower bound (e.g., `>=1.0`).
+- Before adding a package, check for version conflicts: `pip install --dry-run <package>`
+- Do not add packages that duplicate functionality already available in the container.
+- Distinguish **code dependencies** (packages — belong in requirements.txt) from **data
+  dependencies** (files from other steps — belong in `{StepNN.stem}` references).
+
 ## Important
 
 - Do not modify scientific calculations without explicit direction
@@ -571,6 +744,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnLoadBinariesEnv
     fnSourceBinariesInBashrc
     fnInstallAllRepos
+    fnInstallRepoRequirements
     fnPrintSummary
 
     chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
