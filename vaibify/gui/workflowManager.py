@@ -433,8 +433,19 @@ def flistExtractOutputFiles(dictStep):
 
 
 # ---------------------------------------------------------------------------
-# Figure categorization — archive vs. supporting
+# File categorization — archive (necessary) vs. supporting
 # ---------------------------------------------------------------------------
+
+
+def fsGetFileCategory(dictStep, sFilePath):
+    """Return 'archive' or 'supporting' for a data or plot file."""
+    dictPlot = dictStep.get("dictPlotFileCategories", {})
+    if sFilePath in dictPlot:
+        return dictPlot[sFilePath]
+    dictData = dictStep.get("dictDataFileCategories", {})
+    if sFilePath in dictData:
+        return dictData[sFilePath]
+    return "archive"
 
 
 def fsGetPlotCategory(dictStep, sFilePath):
@@ -443,24 +454,44 @@ def fsGetPlotCategory(dictStep, sFilePath):
     return dictCategories.get(sFilePath, "archive")
 
 
-def flistCollectArchivePlots(dictWorkflow):
-    """Return all plot files categorized as archive."""
+def flistCollectArchiveFiles(dictWorkflow, sArrayKey):
+    """Return files categorized as archive from a given array key."""
     listArchive = []
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sFile in dictStep.get("saPlotFiles", []):
-            if fsGetPlotCategory(dictStep, sFile) == "archive":
+        for sFile in dictStep.get(sArrayKey, []):
+            if fsGetFileCategory(dictStep, sFile) == "archive":
                 listArchive.append(sFile)
     return listArchive
 
 
-def flistCollectSupportingPlots(dictWorkflow):
-    """Return all plot files categorized as supporting."""
+def flistCollectArchivePlots(dictWorkflow):
+    """Return all plot files categorized as archive."""
+    return flistCollectArchiveFiles(dictWorkflow, "saPlotFiles")
+
+
+def flistCollectArchiveDataFiles(dictWorkflow):
+    """Return all data files categorized as archive."""
+    return flistCollectArchiveFiles(dictWorkflow, "saDataFiles")
+
+
+def flistCollectSupportingFiles(dictWorkflow, sArrayKey):
+    """Return files categorized as supporting from a given array key."""
     listSupporting = []
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sFile in dictStep.get("saPlotFiles", []):
-            if fsGetPlotCategory(dictStep, sFile) == "supporting":
+        for sFile in dictStep.get(sArrayKey, []):
+            if fsGetFileCategory(dictStep, sFile) == "supporting":
                 listSupporting.append(sFile)
     return listSupporting
+
+
+def flistCollectSupportingPlots(dictWorkflow):
+    """Return all plot files categorized as supporting."""
+    return flistCollectSupportingFiles(dictWorkflow, "saPlotFiles")
+
+
+def flistCollectSupportingDataFiles(dictWorkflow):
+    """Return all data files categorized as supporting."""
+    return flistCollectSupportingFiles(dictWorkflow, "saDataFiles")
 
 
 # ---------------------------------------------------------------------------

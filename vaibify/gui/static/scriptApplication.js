@@ -22,11 +22,6 @@ const PipeleyenApp = (function () {
         ".bin", ".dat", ".o", ".so", ".a", ".pyc", ".gz",
         ".zip", ".tar", ".bz2", ".xz",
     ]);
-    var SET_TEXT_EXTENSIONS = new Set([
-        ".json", ".txt", ".csv", ".tsv", ".log", ".yaml", ".yml",
-        ".xml", ".ini", ".cfg", ".conf", ".md", ".rst", ".in",
-        ".out", ".py", ".c", ".h", ".js", ".css", ".html",
-    ]);
     let wsPipeline = null;
     let dictStepStatus = {};
 
@@ -577,11 +572,13 @@ const PipeleyenApp = (function () {
         dictWorkflow.listSteps.forEach(function (step, iStep) {
             if (!setExpandedSteps.has(iStep)) return;
             if (setStepsWithData.has(iStep)) return;
-            var listData = step.saDataFiles || [];
-            if (listData.length === 0) return;
+            var listNecessary = flistNecessaryDataFiles(
+                step, iStep
+            );
+            if (listNecessary.length === 0) return;
             var iPresent = 0;
-            var iTotal = listData.length;
-            listData.forEach(function (sFile) {
+            var iTotal = listNecessary.length;
+            listNecessary.forEach(function (sFile) {
                 var sDir = step.sDirectory || "";
                 var sCacheKey = iStep + ":" + sFile;
                 if (dictFileExistenceCache[sCacheKey]) {
@@ -592,22 +589,34 @@ const PipeleyenApp = (function () {
                     }
                     return;
                 }
-                var sUrl = "/api/figure/" + sContainerId + "/" +
-                    sFile + "?sWorkdir=" +
+                var sUrl = "/api/figure/" + sContainerId +
+                    "/" + sFile + "?sWorkdir=" +
                     encodeURIComponent(sDir);
                 iInflightRequests++;
-                fetch(sUrl, { method: "HEAD" }).then(function (r) {
-                    if (r.ok) {
-                        dictFileExistenceCache[sCacheKey] = true;
-                        iPresent++;
-                        if (iPresent >= iTotal) {
-                            setStepsWithData.add(iStep);
-                            fnUpdateGenerateButton(iStep);
+                fetch(sUrl, { method: "HEAD" }).then(
+                    function (r) {
+                        if (r.ok) {
+                            dictFileExistenceCache[sCacheKey] =
+                                true;
+                            iPresent++;
+                            if (iPresent >= iTotal) {
+                                setStepsWithData.add(iStep);
+                                fnUpdateGenerateButton(iStep);
+                            }
                         }
+                        fnFileCheckComplete();
                     }
-                    fnFileCheckComplete();
-                }).catch(function () { fnFileCheckComplete(); });
+                ).catch(function () { fnFileCheckComplete(); });
             });
+        });
+    }
+
+    function flistNecessaryDataFiles(step, iStep) {
+        var listData = step.saDataFiles || [];
+        return listData.filter(function (sFile) {
+            return fsGetFileCategory(
+                iStep, sFile, "saDataFiles"
+            ) === "archive";
         });
     }
 
@@ -627,15 +636,24 @@ const PipeleyenApp = (function () {
             var sResolved = el.dataset.resolved;
             var sWorkdir = el.dataset.workdir || "";
             var sCacheKey = iStep + ":" + sResolved + ":" + sWorkdir;
-            if (sArray === "saDataFiles") {
+            var sRaw = el.dataset.raw || "";
+            var bNecessaryData = sArray === "saDataFiles" &&
+                fsGetFileCategory(iStep, sRaw, sArray) ===
+                "archive";
+            if (bNecessaryData) {
                 dictDataCounts[iStep] =
                     (dictDataCounts[iStep] || 0) + 1;
             }
             if (dictFileExistenceCache[sCacheKey] === true) {
-                fnMarkOutputPresent(el);
+                fnUpdateFileStatus(el, true);
                 fnTrackDataPresence(
-                    iStep, sArray, dictDataCounts, dictDataPresent
+                    iStep, bNecessaryData,
+                    dictDataCounts, dictDataPresent
                 );
+                return;
+            }
+            if (dictFileExistenceCache[sCacheKey] === false) {
+                fnUpdateFileStatus(el, false);
                 return;
             }
             var sUrl = "/api/figure/" + sContainerId + "/" +
@@ -647,31 +665,32 @@ const PipeleyenApp = (function () {
             fetch(sUrl, { method: "HEAD" }).then(function (r) {
                 if (r.ok) {
                     dictFileExistenceCache[sCacheKey] = true;
-                    fnMarkOutputPresent(el);
+                    fnUpdateFileStatus(el, true);
                     fnTrackDataPresence(
-                        iStep, sArray, dictDataCounts,
-                        dictDataPresent
+                        iStep, bNecessaryData,
+                        dictDataCounts, dictDataPresent
                     );
                 } else {
                     console.warn("[vaibify] HEAD " +
                         r.status + " " + sUrl);
-                    fnMarkOutputMissing(el);
+                    dictFileExistenceCache[sCacheKey] = false;
+                    fnUpdateFileStatus(el, false);
                 }
                 fnFileCheckComplete();
             }).catch(function (err) {
                 console.warn("[vaibify] HEAD error: " +
                     err.message + " " + sUrl);
                 dictFileExistenceCache[sCacheKey] = false;
-                fnMarkOutputMissing(el);
+                fnUpdateFileStatus(el, false);
                 fnFileCheckComplete();
             });
         });
     }
 
     function fnTrackDataPresence(
-        iStep, sArray, dictCounts, dictPresent
+        iStep, bNecessaryData, dictCounts, dictPresent
     ) {
-        if (sArray !== "saDataFiles") return;
+        if (!bNecessaryData) return;
         dictPresent[iStep] = (dictPresent[iStep] || 0) + 1;
         if (dictPresent[iStep] >= (dictCounts[iStep] || 0)) {
             setStepsWithData.add(iStep);
@@ -688,22 +707,91 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnMarkOutputPresent(el) {
-        var elText = el.querySelector(".detail-text");
-        if (!elText) return;
-        var sResolved = el.dataset.resolved;
-        elText.classList.remove("file-missing");
-        elText.classList.add(fsFileTypeClass(sResolved));
+    var LIST_FILE_STATUS_CLASSES = [
+        "file-necessary-red", "file-necessary-orange",
+        "file-necessary-valid", "file-supplementary-valid",
+        "file-supplementary-missing", "file-binary",
+    ];
+
+    function fnRemoveAllFileStatusClasses(elText) {
+        LIST_FILE_STATUS_CLASSES.forEach(function (sCls) {
+            elText.classList.remove(sCls);
+        });
     }
 
-    function fnMarkOutputMissing(el) {
+    function fnUpdateFileStatus(el, bExists) {
         var elText = el.querySelector(".detail-text");
-        if (elText) {
-            elText.classList.remove(
-                "file-figure", "file-text", "file-binary"
-            );
-            elText.classList.add("file-missing");
+        if (!elText) return;
+        var iStep = parseInt(el.dataset.step);
+        var sArrayKey = el.dataset.array;
+        var sRaw = el.dataset.raw || "";
+        fnRemoveAllFileStatusClasses(elText);
+        var sClass = fsComputeFileStatusClass(
+            iStep, sArrayKey, sRaw, bExists
+        );
+        elText.classList.add(sClass);
+    }
+
+    function fsComputeFileStatusClass(
+        iStep, sArrayKey, sRaw, bExists
+    ) {
+        if (fbIsBinaryFile(sRaw)) return "file-binary";
+        var sCategory = fsGetFileCategory(
+            iStep, sRaw, sArrayKey
+        );
+        if (sCategory === "supporting") {
+            return bExists ?
+                "file-supplementary-valid" :
+                "file-supplementary-missing";
         }
+        return fsNecessaryFileClass(iStep, bExists);
+    }
+
+    function fsNecessaryFileClass(iStep, bExists) {
+        if (!bExists) return "file-necessary-red";
+        var dictStep = dictWorkflow.listSteps[iStep];
+        var sUnitTest = fsEffectiveTestState(dictStep);
+        if (sUnitTest === "failed" || sUnitTest === "error") {
+            return "file-necessary-red";
+        }
+        if (sUnitTest === "untested") {
+            return "file-necessary-red";
+        }
+        if (fbAllVerificationComplete(dictStep, iStep)) {
+            return "file-necessary-valid";
+        }
+        return "file-necessary-orange";
+    }
+
+    function fbAllVerificationComplete(dictStep, iStep) {
+        var dictVerify = fdictGetVerification(dictStep);
+        var sUnit = fsEffectiveTestState(dictStep);
+        var sUser = dictVerify.sUser;
+        var sDeps = fsComputeDepsState(iStep);
+        return sUnit === "passed" &&
+            sUser === "passed" &&
+            sDeps !== "failed";
+    }
+
+    function fbIsFileMissing(elText) {
+        return elText.classList.contains("file-necessary-red") ||
+            elText.classList.contains("file-supplementary-missing");
+    }
+
+    function fbIsBinaryFile(sRaw) {
+        var iDot = sRaw.lastIndexOf(".");
+        if (iDot === -1) return true;
+        var sExt = sRaw.substring(iDot).toLowerCase();
+        return SET_BINARY_EXTENSIONS.has(sExt);
+    }
+
+    function fsInitialFileStatusClass(iStep, sArrayKey, sRaw) {
+        if (fbIsBinaryFile(sRaw)) return "file-binary";
+        var sCategory = fsGetFileCategory(iStep, sRaw, sArrayKey);
+        if (sCategory === "supporting") {
+            return "file-supplementary-missing";
+        }
+        return "file-necessary-red";
     }
 
     function fiComputeInteractiveNumber(iIndex) {
@@ -1271,22 +1359,33 @@ const PipeleyenApp = (function () {
             '" data-step="' + iStepIdx +
             '" data-array="' + sArrayKey +
             '" data-idx="' + iItemIdx +
+            '" data-raw="' + fnEscapeHtml(sRaw) +
             '" data-resolved="' + fnEscapeHtml(sResolved) +
             '" data-workdir="' + fnEscapeHtml(sWorkdir || "") +
             '" draggable="true">';
 
         if (sType === "output" && !bInvalid) {
-            sFileClass = " " + fsFileTypeClass(sResolved);
+            sFileClass = " " + fsInitialFileStatusClass(
+                iStepIdx, sArrayKey, sRaw
+            );
         }
-        if (sArrayKey === "saPlotFiles" && !bInvalid) {
-            var sCategory = fsGetPlotCategory(iStepIdx, sRaw);
+        if ((sArrayKey === "saPlotFiles" ||
+            sArrayKey === "saDataFiles") && !bInvalid) {
+            var sCategory = fsGetFileCategory(
+                iStepIdx, sRaw, sArrayKey
+            );
             var bArchive = sCategory === "archive";
+            var sFileLabel = sArrayKey === "saPlotFiles" ?
+                "plot" : "data file";
             sHtml += '<span class="archive-star ' +
                 (bArchive ? "active" : "inactive") +
                 '" data-step="' + iStepIdx +
                 '" data-file="' + fnEscapeHtml(sRaw) +
+                '" data-array="' + sArrayKey +
                 '" title="' +
-                (bArchive ? "Archive plot" : "Supporting plot") +
+                (bArchive ?
+                    "Archive " + sFileLabel :
+                    "Supporting " + sFileLabel) +
                 '">' + (bArchive ? "\u2605" : "\u2606") +
                 '</span>';
         }
@@ -1312,38 +1411,36 @@ const PipeleyenApp = (function () {
         return sHtml;
     }
 
-    function fsGetPlotCategory(iStep, sFilePath) {
+    function fsGetFileCategory(iStep, sFilePath, sArrayKey) {
         var dictStep = dictWorkflow.listSteps[iStep];
-        var dictCategories = dictStep.dictPlotFileCategories || {};
-        return dictCategories[sFilePath] || "archive";
+        if (sArrayKey === "saPlotFiles") {
+            var dictPlot = dictStep.dictPlotFileCategories || {};
+            return dictPlot[sFilePath] || "archive";
+        }
+        var dictData = dictStep.dictDataFileCategories || {};
+        return dictData[sFilePath] || "archive";
     }
 
-    async function fnToggleArchiveCategory(iStep, sFilePath) {
+    async function fnToggleArchiveCategory(
+        iStep, sFilePath, sArrayKey
+    ) {
         var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep.dictPlotFileCategories) {
-            dictStep.dictPlotFileCategories = {};
+        var sDictKey = sArrayKey === "saDataFiles" ?
+            "dictDataFileCategories" : "dictPlotFileCategories";
+        if (!dictStep[sDictKey]) {
+            dictStep[sDictKey] = {};
         }
-        var sCurrentCategory = fsGetPlotCategory(iStep, sFilePath);
+        var sCurrentCategory = fsGetFileCategory(
+            iStep, sFilePath, sArrayKey
+        );
         var sNewCategory = sCurrentCategory === "archive" ?
             "supporting" : "archive";
-        dictStep.dictPlotFileCategories[sFilePath] = sNewCategory;
-        await fnSaveStepUpdate(iStep, {
-            dictPlotFileCategories: dictStep.dictPlotFileCategories,
-        });
+        dictStep[sDictKey][sFilePath] = sNewCategory;
+        var dictUpdate = {};
+        dictUpdate[sDictKey] = dictStep[sDictKey];
+        await fnSaveStepUpdate(iStep, dictUpdate);
         fnRenderStepList();
     }
-
-    function fsFileTypeClass(sPath) {
-        var iDot = sPath.lastIndexOf(".");
-        if (iDot === -1) return "file-binary";
-        var sExt = sPath.substring(iDot).toLowerCase();
-        if (SET_FIGURE_EXTENSIONS.has(sExt)) return "file-figure";
-        if (SET_TEXT_EXTENSIONS.has(sExt)) return "file-text";
-        if (SET_BINARY_EXTENSIONS.has(sExt)) return "file-binary";
-        return "file-text";
-    }
-
-    var SET_FIGURE_EXTENSIONS = VaibifyUtilities.SET_FIGURE_EXTENSIONS;
 
     /* --- Step Event Binding (delegated) --- */
 
@@ -1426,7 +1523,8 @@ const PipeleyenApp = (function () {
             var elStar = elTarget.closest(".archive-star");
             fnToggleArchiveCategory(
                 parseInt(elStar.dataset.step),
-                elStar.dataset.file
+                elStar.dataset.file,
+                elStar.dataset.array || "saPlotFiles"
             );
             return;
         }
@@ -1452,7 +1550,7 @@ const PipeleyenApp = (function () {
             var elText = elTarget.closest(".detail-text");
             if (elText.classList.contains("file-binary")) {
                 fnShowBinaryNotViewable();
-            } else if (elText.classList.contains("file-missing")) {
+            } else if (fbIsFileMissing(elText)) {
                 fnShowOutputNotAvailable();
             } else {
                 PipeleyenFigureViewer.fnDisplayInNextViewer(
@@ -1525,7 +1623,8 @@ const PipeleyenApp = (function () {
             var elStar = elTarget.closest(".archive-star");
             fnToggleArchiveCategory(
                 parseInt(elStar.dataset.step),
-                elStar.dataset.file
+                elStar.dataset.file,
+                elStar.dataset.array || "saPlotFiles"
             );
             return;
         }

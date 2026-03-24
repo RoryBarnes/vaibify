@@ -58,6 +58,8 @@ class StepUpdateRequest(BaseModel):
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
     dictVerification: Optional[dict] = None
+    dictPlotFileCategories: Optional[dict] = None
+    dictDataFileCategories: Optional[dict] = None
 
 
 class ReorderRequest(BaseModel):
