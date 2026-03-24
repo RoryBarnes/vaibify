@@ -1440,8 +1440,12 @@ def _ftupleBuildHelpers(connectionDocker, dictWorkflows, dictPaths):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
 
     def fnWorkflowDir(sContainerId):
-        return posixpath.dirname(
+        sWorkflowDirectory = posixpath.dirname(
             fsRequireWorkflowPath(dictPaths, sContainerId))
+        if "/.vaibify" in sWorkflowDirectory:
+            return sWorkflowDirectory[
+                :sWorkflowDirectory.index("/.vaibify")]
+        return sWorkflowDirectory
 
     return fnRequire, fnSave, fnVariables, fnWorkflowDir
 

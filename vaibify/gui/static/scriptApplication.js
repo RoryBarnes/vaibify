@@ -760,10 +760,7 @@ const PipeleyenApp = (function () {
         var bRequiresUnitTests = fbStepRequiresUnitTests(dictStep);
         if (bRequiresUnitTests) {
             var sUnitTest = fsEffectiveTestState(dictStep);
-            if (sUnitTest === "failed" || sUnitTest === "error") {
-                return "file-necessary-red";
-            }
-            if (sUnitTest === "untested") {
+            if (sUnitTest === "failed") {
                 return "file-necessary-red";
             }
         }
