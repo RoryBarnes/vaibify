@@ -384,6 +384,13 @@ const PipeleyenApp = (function () {
         });
     }
 
+    function fsJoinPath(sDirectory, sFilename) {
+        if (sDirectory.endsWith("/")) {
+            return sDirectory + sFilename;
+        }
+        return sDirectory + "/" + sFilename;
+    }
+
     /* --- Left Panel Tabs --- */
 
     function fnBindLeftPanelTabs() {
@@ -750,12 +757,15 @@ const PipeleyenApp = (function () {
     function fsNecessaryFileClass(iStep, bExists) {
         if (!bExists) return "file-necessary-red";
         var dictStep = dictWorkflow.listSteps[iStep];
-        var sUnitTest = fsEffectiveTestState(dictStep);
-        if (sUnitTest === "failed" || sUnitTest === "error") {
-            return "file-necessary-red";
-        }
-        if (sUnitTest === "untested") {
-            return "file-necessary-red";
+        var bRequiresUnitTests = fbStepRequiresUnitTests(dictStep);
+        if (bRequiresUnitTests) {
+            var sUnitTest = fsEffectiveTestState(dictStep);
+            if (sUnitTest === "failed" || sUnitTest === "error") {
+                return "file-necessary-red";
+            }
+            if (sUnitTest === "untested") {
+                return "file-necessary-red";
+            }
         }
         if (fbAllVerificationComplete(dictStep, iStep)) {
             return "file-necessary-valid";
@@ -763,14 +773,21 @@ const PipeleyenApp = (function () {
         return "file-necessary-orange";
     }
 
+    function fbStepRequiresUnitTests(dictStep) {
+        if (dictStep.bInteractive) return false;
+        if ((dictStep.saDataCommands || []).length === 0) return false;
+        return true;
+    }
+
     function fbAllVerificationComplete(dictStep, iStep) {
         var dictVerify = fdictGetVerification(dictStep);
-        var sUnit = fsEffectiveTestState(dictStep);
         var sUser = dictVerify.sUser;
         var sDeps = fsComputeDepsState(iStep);
-        return sUnit === "passed" &&
-            sUser === "passed" &&
-            sDeps !== "failed";
+        if (sUser !== "passed" || sDeps === "failed") return false;
+        if (fbStepRequiresUnitTests(dictStep)) {
+            return fsEffectiveTestState(dictStep) === "passed";
+        }
+        return true;
     }
 
     function fbIsFileMissing(elText) {
@@ -1335,10 +1352,12 @@ const PipeleyenApp = (function () {
             '</div>';
     }
 
-    function fbIsInvalidOutputPath(sRaw, sResolved) {
+    function fbIsInvalidOutputPath(sRaw, sResolved, sWorkdir) {
         if (!sResolved || sResolved.length === 0) return true;
         if (sRaw.includes("{")) return false;
-        return !sResolved.startsWith("/");
+        if (sResolved.startsWith("/")) return false;
+        if (sWorkdir) return false;
+        return true;
     }
 
     function fsRenderDetailItem(
@@ -1346,10 +1365,14 @@ const PipeleyenApp = (function () {
         sWorkdir
     ) {
         var sResolved = fsResolveTemplate(sRaw, dictVars);
+        if (sType === "output" && sWorkdir &&
+            !sResolved.startsWith("/")) {
+            sResolved = fsJoinPath(sWorkdir, sResolved);
+        }
         var sFileClass = "";
         var bInvalid = false;
         if (sType === "output") {
-            if (fbIsInvalidOutputPath(sRaw, sResolved)) {
+            if (fbIsInvalidOutputPath(sRaw, sResolved, sWorkdir)) {
                 sFileClass = " file-invalid";
                 bInvalid = true;
             }

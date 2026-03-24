@@ -131,6 +131,8 @@ def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
 def flistResolveOutputFiles(dictStep, dictVariables):
     """Return output file paths with template variables resolved."""
     listResolved = []
+    for sPath in dictStep.get("saDataFiles", []):
+        listResolved.append(fsResolveVariables(sPath, dictVariables))
     for sPath in dictStep.get("saPlotFiles", []):
         listResolved.append(fsResolveVariables(sPath, dictVariables))
     return listResolved
