@@ -4174,6 +4174,7 @@ const PipeleyenApp = (function () {
         fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },
         fdictBuildClientVariables: fdictBuildClientVariables,
         fsResolveTemplate: fsResolveTemplate,
+        fnShowConfirmModal: fnShowConfirmModal,
         fnFinalizeGeneratedTest: fnFinalizeGeneratedTest,
         fnCancelGeneratedTest: fnCancelGeneratedTest,
         fbIsTestPending: function (iStep) {

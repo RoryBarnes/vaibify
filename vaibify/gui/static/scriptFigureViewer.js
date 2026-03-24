@@ -452,12 +452,15 @@ const PipeleyenFigureViewer = (function () {
         elEditBtn.innerHTML = "&#9998;";
         elEditBtn.addEventListener("click", function () {
             if (fbIsOutputFile(sUrl)) {
-                if (!confirm(
+                PipeleyenApp.fnShowConfirmModal(
+                    "Edit Pipeline Output",
                     "This file is pipeline output that may be " +
-                    "used for verification. Edit anyway?"
-                )) {
-                    return;
-                }
+                    "used for verification. Edit anyway?",
+                    function () {
+                        fnEnterEditMode(sText, sUrl, elViewport);
+                    }
+                );
+                return;
             }
             fnEnterEditMode(sText, sUrl, elViewport);
         });
@@ -514,15 +517,27 @@ const PipeleyenFigureViewer = (function () {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         var sPrefix = "/api/figure/" + sContainerId + "/";
         var sFilePath = sUrl.split(sPrefix)[1] || "";
+        var sWorkdir = "";
         if (sFilePath.includes("?")) {
+            var sQuery = sFilePath.split("?")[1] || "";
             sFilePath = sFilePath.split("?")[0];
+            var dictParams = new URLSearchParams(sQuery);
+            sWorkdir = dictParams.get("sWorkdir") || "";
         }
-        fetch("/api/file/" + sContainerId + "/" + sFilePath, {
+        var sSaveUrl = "/api/file/" + sContainerId + "/" +
+            sFilePath;
+        if (sWorkdir) {
+            sSaveUrl += "?sWorkdir=" +
+                encodeURIComponent(sWorkdir);
+        }
+        fetch(sSaveUrl, {
             method: "PUT",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({sContent: sContent}),
         }).then(function (r) {
-            if (!r.ok) throw new Error("Save failed");
+            if (!r.ok) return r.json().then(function (d) {
+                throw new Error(d.detail || "unknown error");
+            });
             PipeleyenApp.fnShowToast("File saved", "success");
             fnRevertTestStateForFile(sUrl);
             fnRenderTextWithToolbar(sContent, sUrl, elViewport);
@@ -840,7 +855,9 @@ const PipeleyenFigureViewer = (function () {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({sContent: sContent}),
         }).then(function (r) {
-            if (!r.ok) throw new Error("Save failed");
+            if (!r.ok) return r.json().then(function (d) {
+                throw new Error(d.detail || "unknown error");
+            });
             elViewport.classList.remove("viewport-test-generated");
             PipeleyenApp.fnFinalizeGeneratedTest(iStep);
             PipeleyenApp.fnShowToast("Test saved", "success");

@@ -830,13 +830,18 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
     async def fnWriteFile(
         sContainerId: str, sFilePath: str,
-        request: FileWriteRequest,
+        request: FileWriteRequest, sWorkdir: str = "",
     ):
         dictCtx["require"]()
-        sAbsPath = (
-            sFilePath if sFilePath.startswith("/")
-            else posixpath.join(sWorkspaceRoot, sFilePath)
-        )
+        sDir = dictCtx["workflowDir"](sContainerId)
+        if sFilePath.startswith("/"):
+            sAbsPath = sFilePath
+        elif sWorkdir:
+            sBase = sWorkdir if sWorkdir.startswith("/") \
+                else posixpath.join(sDir, sWorkdir)
+            sAbsPath = posixpath.join(sBase, sFilePath)
+        else:
+            sAbsPath = posixpath.join(sDir, sFilePath)
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         baContent = request.sContent.encode("utf-8")
         dictCtx["docker"].fnWriteFile(
