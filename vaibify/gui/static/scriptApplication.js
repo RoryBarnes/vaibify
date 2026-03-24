@@ -745,15 +745,16 @@ const PipeleyenApp = (function () {
         var iStep = parseInt(el.dataset.step);
         var sArrayKey = el.dataset.array;
         var sRaw = el.dataset.raw || "";
+        var sResolved = el.dataset.resolved || "";
         fnRemoveAllFileStatusClasses(elText);
         var sClass = fsComputeFileStatusClass(
-            iStep, sArrayKey, sRaw, bExists
+            iStep, sArrayKey, sRaw, sResolved, bExists
         );
         elText.classList.add(sClass);
     }
 
     function fsComputeFileStatusClass(
-        iStep, sArrayKey, sRaw, bExists
+        iStep, sArrayKey, sRaw, sResolved, bExists
     ) {
         if (fbIsBinaryFile(sRaw)) return "file-binary";
         var sCategory = fsGetFileCategory(
@@ -764,15 +765,15 @@ const PipeleyenApp = (function () {
                 "file-supplementary-valid" :
                 "file-supplementary-missing";
         }
-        return fsNecessaryFileClass(iStep, bExists);
+        return fsNecessaryFileClass(iStep, sResolved, bExists);
     }
 
-    function fsNecessaryFileClass(iStep, bExists) {
+    function fsNecessaryFileClass(iStep, sResolved, bExists) {
         if (!bExists) return "file-necessary-red";
         var dictStep = dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
-        if (listModified.indexOf(sResolved) >= 0) {
+        if (sResolved && listModified.indexOf(sResolved) >= 0) {
             return "file-necessary-red";
         }
         var bRequiresUnitTests = fbStepRequiresUnitTests(dictStep);
