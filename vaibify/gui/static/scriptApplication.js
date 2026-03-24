@@ -457,12 +457,12 @@ const PipeleyenApp = (function () {
             (dictWorkflow.iNumberOfCores || -1) + '">' +
             '</div>' +
             '<div class="gs-row">' +
-            '<span class="gs-label">Poll (s)</span>' +
+            '<span class="gs-label">Poll Interval</span>' +
             '<input class="gs-input" id="gsPollInterval" type="range"' +
-            ' min="1" max="30" value="' +
+            ' min="1" max="60" value="' +
             (iPollIntervalMs / 1000) + '">' +
             '<span id="gsPollIntervalValue" class="gs-value">' +
-            (iPollIntervalMs / 1000) + '</span>' +
+            (iPollIntervalMs / 1000) + 's</span>' +
             '</div>';
         el.querySelectorAll(".gs-input").forEach(function (inp) {
             inp.addEventListener("change", fnSaveGlobalSettings);
@@ -2631,7 +2631,7 @@ const PipeleyenApp = (function () {
     function fnSetPollInterval(iSeconds) {
         iPollIntervalMs = iSeconds * 1000;
         var elLabel = document.getElementById("gsPollIntervalValue");
-        if (elLabel) elLabel.textContent = iSeconds;
+        if (elLabel) elLabel.textContent = iSeconds + "s";
         fnStartFileChangePolling();
     }
 
