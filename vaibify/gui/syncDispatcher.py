@@ -647,12 +647,15 @@ def flistExtractAllScriptPaths(dictWorkflow):
 
 def fdictComputeAllScriptHashes(
     connectionDocker, sContainerId, dictWorkflow,
+    sRepoRoot="",
 ):
     """Compute SHA-256 hashes of all scripts in one Docker exec."""
     listAllPaths = flistExtractAllScriptPaths(dictWorkflow)
     if not listAllPaths:
         return {}
+    sCdPrefix = f"cd {sRepoRoot} && " if sRepoRoot else ""
     sCommand = (
+        sCdPrefix +
         "python3 -c \"import hashlib,os,sys; "
         "[print(p + ' ' + hashlib.sha256(open(p,'rb').read())"
         ".hexdigest() "

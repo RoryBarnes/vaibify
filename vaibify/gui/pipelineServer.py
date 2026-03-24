@@ -1217,6 +1217,7 @@ def _fnRegisterFileStatus(app, dictCtx):
         dictCurrentHashes = await asyncio.to_thread(
             _syncDispatcher.fdictComputeAllScriptHashes,
             dictCtx["docker"], sContainerId, dictWorkflow,
+            sRepoRoot,
         )
         dictScriptStatus = _fdictBuildScriptStatus(
             dictWorkflow, dictCurrentHashes,
