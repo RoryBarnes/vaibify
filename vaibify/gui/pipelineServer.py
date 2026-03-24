@@ -1203,13 +1203,16 @@ def _fnRegisterFileStatus(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        listPaths = _flistCollectOutputPaths(dictWorkflow)
+        sRepoRoot = dictCtx["workflowDir"](sContainerId)
+        listPaths = _flistCollectOutputPaths(
+            dictWorkflow, sRepoRoot)
         dictModTimes = await asyncio.to_thread(
             _fdictGetModTimes,
             dictCtx["docker"], sContainerId, listPaths,
         )
         listInvalidated = _flistDetectAndInvalidate(
-            dictCtx, sContainerId, dictWorkflow, dictModTimes,
+            dictCtx, sContainerId, dictWorkflow,
+            dictModTimes, sRepoRoot,
         )
         dictCurrentHashes = await asyncio.to_thread(
             _syncDispatcher.fdictComputeAllScriptHashes,
@@ -1225,42 +1228,52 @@ def _fnRegisterFileStatus(app, dictCtx):
         }
 
 
-def fdictCollectOutputPathsByStep(dictWorkflow):
+def fdictCollectOutputPathsByStep(dictWorkflow, sRepoRoot=""):
     """Return {iStepIndex: [resolved_paths]} for each step."""
     dictResult = {}
-    dictGlobalVars = _fdictFileStatusGlobalVars(dictWorkflow)
-    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+    dictGlobalVars = _fdictFileStatusGlobalVars(
+        dictWorkflow, sRepoRoot)
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
         dictResult[iIndex] = _flistResolveStepPaths(
-            dictStep, dictGlobalVars,
+            dictStep, dictGlobalVars, sRepoRoot,
         )
     return dictResult
 
 
-def _fdictFileStatusGlobalVars(dictWorkflow):
-    """Return minimal global variables for file path resolution."""
+def _fdictFileStatusGlobalVars(dictWorkflow, sRepoRoot=""):
+    """Return global variables with absolute paths for resolution."""
+    sPlotDir = dictWorkflow.get("sPlotDirectory", "Plot")
+    if sRepoRoot and not sPlotDir.startswith("/"):
+        sPlotDir = posixpath.join(sRepoRoot, sPlotDir)
     return {
-        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sPlotDirectory": sPlotDir,
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
     }
 
 
-def _flistResolveStepPaths(dictStep, dictGlobalVars):
+def _flistResolveStepPaths(dictStep, dictGlobalVars,
+                           sRepoRoot=""):
     """Return resolved output paths for a single step."""
     from .workflowManager import fsResolveVariables
     sStepDir = dictStep.get("sDirectory", "")
+    if sRepoRoot and not sStepDir.startswith("/"):
+        sStepDir = posixpath.join(sRepoRoot, sStepDir)
     listPaths = []
     for sFile in (dictStep.get("saDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
         sResolved = fsResolveVariables(sFile, dictGlobalVars)
         if not sResolved.startswith("/"):
-            sResolved = sStepDir + "/" + sResolved
+            sResolved = posixpath.join(sStepDir, sResolved)
         listPaths.append(sResolved)
     return listPaths
 
 
-def _flistCollectOutputPaths(dictWorkflow):
+def _flistCollectOutputPaths(dictWorkflow, sRepoRoot=""):
     """Collect all resolved output file paths from the workflow."""
-    dictByStep = fdictCollectOutputPathsByStep(dictWorkflow)
+    dictByStep = fdictCollectOutputPathsByStep(
+        dictWorkflow, sRepoRoot)
     listPaths = []
     for iIndex in sorted(dictByStep.keys()):
         listPaths.extend(dictByStep[iIndex])
@@ -1330,7 +1343,8 @@ def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
 
 
 def _flistDetectAndInvalidate(dictCtx, sContainerId,
-                              dictWorkflow, dictNewModTimes):
+                              dictWorkflow, dictNewModTimes,
+                              sRepoRoot=""):
     """Detect file changes and invalidate affected steps."""
     if "dictPreviousModTimes" not in dictCtx:
         dictCtx["dictPreviousModTimes"] = {}
@@ -1341,7 +1355,8 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
         return []
     if _fbPipelineIsRunning(dictCtx, sContainerId):
         return []
-    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow)
+    dictPathsByStep = fdictCollectOutputPathsByStep(
+        dictWorkflow, sRepoRoot)
     setChanged = _fsetFindChangedStepIndices(
         dictPathsByStep, dictOldModTimes, dictNewModTimes,
     )
