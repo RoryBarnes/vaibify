@@ -1761,7 +1761,11 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             sContainerId, request.sFilePath,
             request.sContent.encode("utf-8"),
         )
-        sTestCmd = f"cd {dictStep.get('sDirectory', '/workspace')}"
+        sDir = dictStep.get("sDirectory", "/workspace")
+        sRepoRoot = dictCtx["workflowDir"](sContainerId)
+        if not sDir.startswith("/"):
+            sDir = posixpath.join(sRepoRoot, sDir)
+        sTestCmd = f"cd {sDir}"
         sTestCmd += f" && python -m pytest {request.sFilePath} -v"
         iExitCode, sOutput = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
@@ -1801,6 +1805,9 @@ def _fnRegisterTestRun(app, dictCtx):
         if not listCmds:
             raise HTTPException(400, "No test commands")
         sDir = dictStep.get("sDirectory", "/workspace")
+        sRepoRoot = dictCtx["workflowDir"](sContainerId)
+        if not sDir.startswith("/"):
+            sDir = posixpath.join(sRepoRoot, sDir)
         sFullCmd = " && ".join(
             [f"cd {sDir}"] + listCmds)
         iExitCode, sOutput = await asyncio.to_thread(
