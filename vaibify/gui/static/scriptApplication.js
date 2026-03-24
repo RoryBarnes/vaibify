@@ -460,9 +460,8 @@ const PipeleyenApp = (function () {
             '<span class="gs-label">Poll Interval</span>' +
             '<input class="gs-input" id="gsPollInterval" type="range"' +
             ' min="1" max="60" value="' +
-            (iPollIntervalMs / 1000) + '">' +
-            '<span id="gsPollIntervalValue" class="gs-value">' +
-            (iPollIntervalMs / 1000) + 's</span>' +
+            (iPollIntervalMs / 1000) + '" title="' +
+            (iPollIntervalMs / 1000) + ' seconds">' +
             '</div>';
         el.querySelectorAll(".gs-input").forEach(function (inp) {
             inp.addEventListener("change", fnSaveGlobalSettings);
@@ -2630,8 +2629,8 @@ const PipeleyenApp = (function () {
 
     function fnSetPollInterval(iSeconds) {
         iPollIntervalMs = iSeconds * 1000;
-        var elLabel = document.getElementById("gsPollIntervalValue");
-        if (elLabel) elLabel.textContent = iSeconds + "s";
+        var elSlider = document.getElementById("gsPollInterval");
+        if (elSlider) elSlider.title = iSeconds + " seconds";
         fnStartFileChangePolling();
     }
 
