@@ -845,7 +845,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         baContent = request.sContent.encode("utf-8")
         try:
-            dictCtx["docker"].fnWriteFile(
+            dictCtx["docker"].fnWriteFileViaExec(
                 sContainerId, sAbsPath, baContent
             )
         except Exception as error:
