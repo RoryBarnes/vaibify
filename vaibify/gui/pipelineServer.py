@@ -836,10 +836,6 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         sDir = dictCtx["workflowDir"](sContainerId)
         if sFilePath.startswith("/"):
             sAbsPath = sFilePath
-        elif sWorkdir:
-            sBase = sWorkdir if sWorkdir.startswith("/") \
-                else posixpath.join(sDir, sWorkdir)
-            sAbsPath = posixpath.join(sBase, sFilePath)
         else:
             sAbsPath = posixpath.join(sDir, sFilePath)
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
