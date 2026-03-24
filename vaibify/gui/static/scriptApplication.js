@@ -2612,6 +2612,19 @@ const PipeleyenApp = (function () {
                 el.addEventListener("click", dictActions[sId]);
             }
         }
+        var elSlider = document.getElementById("pollIntervalSlider");
+        if (elSlider) {
+            elSlider.addEventListener("input", function () {
+                fnSetPollInterval(parseInt(elSlider.value, 10));
+            });
+        }
+    }
+
+    function fnSetPollInterval(iSeconds) {
+        iPollIntervalMs = iSeconds * 1000;
+        var elLabel = document.getElementById("pollIntervalValue");
+        if (elLabel) elLabel.textContent = iSeconds;
+        fnStartFileChangePolling();
     }
 
     /* --- Sync Push Modal --- */
@@ -3222,6 +3235,7 @@ const PipeleyenApp = (function () {
     var iPipelinePollTimer = null;
     var iPreviousOutputCount = 0;
     var iFileChangePollTimer = null;
+    var iPollIntervalMs = 5000;
     var dictFileModTimes = {};
 
     async function fnRecoverPipelineState(sId) {
@@ -3359,7 +3373,7 @@ const PipeleyenApp = (function () {
         fnStopFileChangePolling();
         iFileChangePollTimer = setInterval(function () {
             fnPollFileChanges();
-        }, 15000);
+        }, iPollIntervalMs);
     }
 
     function fnStopFileChangePolling() {

@@ -281,6 +281,28 @@ html, body {
     margin: 4px 0;
 }
 
+.poll-interval-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px;
+    cursor: default;
+}
+
+.poll-interval-control:hover {
+    background: transparent;
+}
+
+.poll-interval-control label {
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.poll-interval-control input[type="range"] {
+    width: 100%;
+    accent-color: var(--color-pale-blue);
+}
+
 .workflow-switcher {
     position: relative;
     margin-right: auto;
