@@ -455,10 +455,24 @@ const PipeleyenApp = (function () {
             '<span class="gs-label">Cores</span>' +
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
             (dictWorkflow.iNumberOfCores || -1) + '">' +
+            '</div>' +
+            '<div class="gs-row">' +
+            '<span class="gs-label">Poll (s)</span>' +
+            '<input class="gs-input" id="gsPollInterval" type="range"' +
+            ' min="1" max="30" value="' +
+            (iPollIntervalMs / 1000) + '">' +
+            '<span id="gsPollIntervalValue" class="gs-value">' +
+            (iPollIntervalMs / 1000) + '</span>' +
             '</div>';
         el.querySelectorAll(".gs-input").forEach(function (inp) {
             inp.addEventListener("change", fnSaveGlobalSettings);
         });
+        var elPollSlider = document.getElementById("gsPollInterval");
+        if (elPollSlider) {
+            elPollSlider.addEventListener("input", function () {
+                fnSetPollInterval(parseInt(elPollSlider.value, 10));
+            });
+        }
     }
 
     async function fnSaveGlobalSettings() {
@@ -2612,17 +2626,11 @@ const PipeleyenApp = (function () {
                 el.addEventListener("click", dictActions[sId]);
             }
         }
-        var elSlider = document.getElementById("pollIntervalSlider");
-        if (elSlider) {
-            elSlider.addEventListener("input", function () {
-                fnSetPollInterval(parseInt(elSlider.value, 10));
-            });
-        }
     }
 
     function fnSetPollInterval(iSeconds) {
         iPollIntervalMs = iSeconds * 1000;
-        var elLabel = document.getElementById("pollIntervalValue");
+        var elLabel = document.getElementById("gsPollIntervalValue");
         if (elLabel) elLabel.textContent = iSeconds;
         fnStartFileChangePolling();
     }

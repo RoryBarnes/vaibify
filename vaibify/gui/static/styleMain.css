@@ -281,28 +281,6 @@ html, body {
     margin: 4px 0;
 }
 
-.poll-interval-control {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px 12px;
-    cursor: default;
-}
-
-.poll-interval-control:hover {
-    background: transparent;
-}
-
-.poll-interval-control label {
-    font-size: 0.85em;
-    color: var(--text-muted);
-}
-
-.poll-interval-control input[type="range"] {
-    width: 100%;
-    accent-color: var(--color-pale-blue);
-}
-
 .workflow-switcher {
     position: relative;
     margin-right: auto;
@@ -559,6 +537,20 @@ html, body {
 .global-settings .gs-input:focus {
     outline: none;
     border-color: var(--color-pale-blue);
+}
+
+.global-settings .gs-value {
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 20px;
+    text-align: right;
+}
+
+.global-settings .gs-input[type="range"] {
+    border: none;
+    padding: 0;
+    background: transparent;
+    accent-color: var(--color-pale-blue);
 }
 
 /* Step item */
