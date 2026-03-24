@@ -1223,7 +1223,7 @@ def _fnRegisterFileStatus(app, dictCtx):
         )
         return {
             "dictModTimes": dictModTimes,
-            "listInvalidatedSteps": listInvalidated,
+            "dictInvalidatedSteps": listInvalidated,
             "dictScriptStatus": dictScriptStatus,
         }
 
@@ -1289,25 +1289,40 @@ def _fbPipelineIsRunning(dictCtx, sContainerId):
     return dictState.get("bRunning", False)
 
 
-def _fsetFindChangedStepIndices(dictPathsByStep, dictOldModTimes,
-                                dictNewModTimes):
-    """Return set of step indices whose output files changed."""
-    setChanged = set()
+def _fdictFindChangedFiles(dictPathsByStep, dictOldModTimes,
+                           dictNewModTimes):
+    """Return {stepIndex: [changed file paths]} for files with new mtimes."""
+    dictChanged = {}
     for iIndex, listPaths in dictPathsByStep.items():
+        listChangedPaths = []
         for sPath in listPaths:
             sOldTime = dictOldModTimes.get(sPath)
             sNewTime = dictNewModTimes.get(sPath)
             if sNewTime and sNewTime != sOldTime:
-                setChanged.add(iIndex)
-    return setChanged
+                listChangedPaths.append(sPath)
+        if listChangedPaths:
+            dictChanged[iIndex] = listChangedPaths
+    return dictChanged
 
 
-def _fnInvalidateStepVerification(dictStep):
-    """Set verification to untested and mark output as modified."""
+def _fnInvalidateStepFiles(dictStep, listChangedPaths):
+    """Mark specific files as modified, invalidate unit tests."""
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUnitTest") == "passed":
         dictVerification["sUnitTest"] = "untested"
-    dictVerification["bOutputModified"] = True
+    listExisting = dictVerification.get("listModifiedFiles", [])
+    setModified = set(listExisting)
+    setModified.update(listChangedPaths)
+    dictVerification["listModifiedFiles"] = sorted(setModified)
+    dictStep["dictVerification"] = dictVerification
+
+
+def _fnInvalidateDownstreamStep(dictStep):
+    """Mark a downstream step as affected by upstream changes."""
+    dictVerification = dictStep.get("dictVerification", {})
+    if dictVerification.get("sUnitTest") == "passed":
+        dictVerification["sUnitTest"] = "untested"
+    dictVerification["bUpstreamModified"] = True
     dictStep["dictVerification"] = dictVerification
 
 
@@ -1357,21 +1372,33 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
         return []
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, sRepoRoot)
-    setChanged = _fsetFindChangedStepIndices(
+    dictChangedFiles = _fdictFindChangedFiles(
         dictPathsByStep, dictOldModTimes, dictNewModTimes,
     )
-    if not setChanged:
+    if not dictChangedFiles:
         return []
-    dictDownstream = workflowManager.fdictBuildDownstreamMap(dictWorkflow)
-    setAllAffected = set(setChanged)
-    for iIndex in setChanged:
-        setAllAffected |= dictDownstream.get(iIndex, set())
+    dictDownstream = workflowManager.fdictBuildDownstreamMap(
+        dictWorkflow)
+    setDirectChanged = set(dictChangedFiles.keys())
+    setDownstream = set()
+    for iIndex in setDirectChanged:
+        setDownstream |= dictDownstream.get(iIndex, set())
+    setDownstream -= setDirectChanged
     listSteps = dictWorkflow.get("listSteps", [])
+    for iIndex, listPaths in dictChangedFiles.items():
+        if 0 <= iIndex < len(listSteps):
+            _fnInvalidateStepFiles(listSteps[iIndex], listPaths)
+    for iIndex in setDownstream:
+        if 0 <= iIndex < len(listSteps):
+            _fnInvalidateDownstreamStep(listSteps[iIndex])
+    dictCtx["save"](sContainerId, dictWorkflow)
+    setAllAffected = setDirectChanged | setDownstream
+    dictInvalidated = {}
     for iIndex in setAllAffected:
         if 0 <= iIndex < len(listSteps):
-            _fnInvalidateStepVerification(listSteps[iIndex])
-    dictCtx["save"](sContainerId, dictWorkflow)
-    return sorted(setAllAffected)
+            dictInvalidated[iIndex] = listSteps[iIndex].get(
+                "dictVerification", {})
+    return dictInvalidated
 
 
 def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):

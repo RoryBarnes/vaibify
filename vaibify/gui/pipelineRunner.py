@@ -310,10 +310,12 @@ async def _fiRunStepsAndLog(
 
 
 def fnClearOutputModifiedFlags(dictWorkflow):
-    """Clear bOutputModified on all steps before a pipeline run."""
+    """Clear modification flags on all steps before a pipeline run."""
     for dictStep in dictWorkflow.get("listSteps", []):
         dictVerification = dictStep.get("dictVerification", {})
         dictVerification.pop("bOutputModified", None)
+        dictVerification.pop("listModifiedFiles", None)
+        dictVerification.pop("bUpstreamModified", None)
         dictStep["dictVerification"] = dictVerification
 
 
