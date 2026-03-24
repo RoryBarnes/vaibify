@@ -1727,8 +1727,10 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
+        sRepoRoot = dictCtx["workflowDir"](sContainerId)
         _fnRemoveTestFiles(
-            dictCtx["docker"], sContainerId, dictStep, iStepIndex
+            dictCtx["docker"], sContainerId, dictStep, iStepIndex,
+            sRepoRoot,
         )
         dictStep["saTestCommands"] = []
         dictCtx["save"](sContainerId, dictWorkflow)
@@ -1818,12 +1820,15 @@ def _fnRegisterTestRun(app, dictCtx):
 
 def _fnRemoveTestFiles(
     connectionDocker, sContainerId, dictStep, iStepIndex,
+    sRepoRoot="",
 ):
     """Remove generated test file from the container."""
     from .pipelineRunner import fsShellQuote
     from .testGenerator import fsTestFilePath
 
     sDirectory = dictStep.get("sDirectory", "")
+    if sRepoRoot and not sDirectory.startswith("/"):
+        sDirectory = posixpath.join(sRepoRoot, sDirectory)
     sPath = fsTestFilePath(sDirectory, iStepIndex)
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"rm -f {fsShellQuote(sPath)}"
