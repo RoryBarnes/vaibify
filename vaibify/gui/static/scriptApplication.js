@@ -731,6 +731,7 @@ const PipeleyenApp = (function () {
         "file-necessary-red", "file-necessary-orange",
         "file-necessary-valid", "file-supplementary-valid",
         "file-supplementary-missing", "file-binary",
+        "file-pending",
     ];
 
     function fnRemoveAllFileStatusClasses(elText) {
@@ -834,11 +835,7 @@ const PipeleyenApp = (function () {
 
     function fsInitialFileStatusClass(iStep, sArrayKey, sRaw) {
         if (fbIsBinaryFile(sRaw)) return "file-binary";
-        var sCategory = fsGetFileCategory(iStep, sRaw, sArrayKey);
-        if (sCategory === "supporting") {
-            return "file-supplementary-missing";
-        }
-        return "file-necessary-red";
+        return "file-pending";
     }
 
     function fiComputeInteractiveNumber(iIndex) {

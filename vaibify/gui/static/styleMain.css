@@ -874,6 +874,11 @@ html, body {
     border-radius: 3px;
 }
 
+.detail-item.output .detail-text.file-pending {
+    color: var(--text-muted);
+    cursor: default;
+}
+
 .detail-item.output .detail-text.file-necessary-red {
     color: #c91111;
     cursor: pointer;
