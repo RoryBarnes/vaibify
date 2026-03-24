@@ -535,8 +535,12 @@ const PipeleyenFigureViewer = (function () {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({sContent: sContent}),
         }).then(function (r) {
-            if (!r.ok) return r.json().then(function (d) {
-                throw new Error(d.detail || "unknown error");
+            if (!r.ok) return r.text().then(function (sBody) {
+                var sDetail = "unknown error";
+                try {
+                    sDetail = JSON.parse(sBody).detail || sDetail;
+                } catch (e) { /* non-JSON response */ }
+                throw new Error(sDetail);
             });
             PipeleyenApp.fnShowToast("File saved", "success");
             fnRevertTestStateForFile(sUrl);
@@ -855,8 +859,12 @@ const PipeleyenFigureViewer = (function () {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({sContent: sContent}),
         }).then(function (r) {
-            if (!r.ok) return r.json().then(function (d) {
-                throw new Error(d.detail || "unknown error");
+            if (!r.ok) return r.text().then(function (sBody) {
+                var sDetail = "unknown error";
+                try {
+                    sDetail = JSON.parse(sBody).detail || sDetail;
+                } catch (e) { /* non-JSON response */ }
+                throw new Error(sDetail);
             });
             elViewport.classList.remove("viewport-test-generated");
             PipeleyenApp.fnFinalizeGeneratedTest(iStep);

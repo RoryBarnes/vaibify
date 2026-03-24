@@ -844,9 +844,14 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
             sAbsPath = posixpath.join(sDir, sFilePath)
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         baContent = request.sContent.encode("utf-8")
-        dictCtx["docker"].fnWriteFile(
-            sContainerId, sAbsPath, baContent
-        )
+        try:
+            dictCtx["docker"].fnWriteFile(
+                sContainerId, sAbsPath, baContent
+            )
+        except Exception as error:
+            raise HTTPException(
+                500, f"Write failed: {_fsSanitizeServerError(str(error))}"
+            )
         return {"bSuccess": True, "sPath": sAbsPath}
 
 
