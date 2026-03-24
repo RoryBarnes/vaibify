@@ -822,8 +822,18 @@ const PipeleyenApp = (function () {
     }
 
     function fbIsFileMissing(elText) {
-        return elText.classList.contains("file-necessary-red") ||
-            elText.classList.contains("file-supplementary-missing");
+        if (elText.classList.contains("file-supplementary-missing")) {
+            return true;
+        }
+        if (!elText.classList.contains("file-necessary-red")) {
+            return false;
+        }
+        var elItem = elText.closest(".detail-item");
+        if (!elItem) return true;
+        var sResolved = elItem.dataset.resolved || "";
+        var sCacheKey = elItem.dataset.step + ":" +
+            sResolved + ":" + (elItem.dataset.workdir || "");
+        return dictFileExistenceCache[sCacheKey] === false;
     }
 
     function fbIsBinaryFile(sRaw) {
