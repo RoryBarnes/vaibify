@@ -601,9 +601,13 @@ def fbStepInputsUnchanged(
 
 
 def _flistExtractScripts(dictStep):
-    """Extract script paths from data analysis commands."""
+    """Extract script paths from data and plot commands."""
     from .commandUtilities import flistExtractScripts
-    return flistExtractScripts(dictStep.get("saDataCommands", []))
+    listAll = (
+        dictStep.get("saDataCommands", [])
+        + dictStep.get("saPlotCommands", [])
+    )
+    return flistExtractScripts(listAll)
 
 
 def fdictComputeInputHashes(
