@@ -888,6 +888,10 @@ const PipeleyenApp = (function () {
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
+            (dictScriptModified[iIndex] === "modified" ?
+                '<span class="script-modified-badge" ' +
+                'title="Scripts modified since last run">' +
+                '&#9998;</span>' : '') +
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
@@ -1281,10 +1285,13 @@ const PipeleyenApp = (function () {
         var dictVerify = fdictGetVerification(step);
         var sUser = dictVerify.sUser;
         var bOutputModified = dictVerify.bOutputModified === true;
+        var bScriptModified =
+            dictScriptModified[iIndex] === "modified";
 
         if (bInteractive) {
             if (sUser === "passed") {
-                return bOutputModified ? "partial" : "verified";
+                return (bOutputModified || bScriptModified) ?
+                    "partial" : "verified";
             }
             if (sUser === "failed" || sUser === "error") return "fail";
             if (setStepsWithData.has(iIndex) ||
@@ -1307,7 +1314,8 @@ const PipeleyenApp = (function () {
         }
         if (bPlotOnly) {
             if (sUser === "passed" && sDeps !== "failed") {
-                return bOutputModified ? "partial" : "verified";
+                return (bOutputModified || bScriptModified) ?
+                    "partial" : "verified";
             }
             var bHasRun = (step.dictRunStats || {}).sLastRun;
             if (bHasRun && sUser === "untested") {
@@ -1317,7 +1325,8 @@ const PipeleyenApp = (function () {
         }
         if (sUnit === "passed" && sUser === "passed" &&
             sDeps !== "failed") {
-            return bOutputModified ? "partial" : "verified";
+            return (bOutputModified || bScriptModified) ?
+                "partial" : "verified";
         }
         if ((sUnit === "passed" && sUser === "untested") ||
             (sUnit === "untested" && sUser === "passed")) {
@@ -3244,6 +3253,7 @@ const PipeleyenApp = (function () {
     var iFileChangePollTimer = null;
     var iPollIntervalMs = 5000;
     var dictFileModTimes = {};
+    var dictScriptModified = {};
 
     async function fnRecoverPipelineState(sId) {
         try {
@@ -3413,6 +3423,13 @@ const PipeleyenApp = (function () {
             }
             if (dictStatus.listInvalidatedSteps) {
                 fnApplyInvalidatedSteps(dictStatus.listInvalidatedSteps);
+            }
+            if (dictStatus.dictScriptStatus) {
+                var dictPrev = JSON.stringify(dictScriptModified);
+                dictScriptModified = dictStatus.dictScriptStatus;
+                if (JSON.stringify(dictScriptModified) !== dictPrev) {
+                    fnRenderStepList();
+                }
             }
         } catch (error) {
             /* poll failed, try again next interval */

@@ -621,3 +621,56 @@ def fdictComputeInputHashes(
         if iExit == 0:
             dictHashes[sPath] = sHash.strip()
     return dictHashes
+
+
+def flistExtractAllScriptPaths(dictWorkflow):
+    """Extract all unique script paths from all steps."""
+    from .commandUtilities import flistExtractScripts
+    listAllPaths = []
+    setAdded = set()
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sDirectory = dictStep.get("sDirectory", "")
+        for sKey in ("saDataCommands", "saPlotCommands"):
+            for sScript in flistExtractScripts(
+                dictStep.get(sKey, [])
+            ):
+                sPath = _fsNormalizePath(sDirectory, sScript)
+                if sPath not in setAdded:
+                    listAllPaths.append(sPath)
+                    setAdded.add(sPath)
+    return listAllPaths
+
+
+def fdictComputeAllScriptHashes(
+    connectionDocker, sContainerId, dictWorkflow,
+):
+    """Compute SHA-256 hashes of all scripts in one Docker exec."""
+    listAllPaths = flistExtractAllScriptPaths(dictWorkflow)
+    if not listAllPaths:
+        return {}
+    sCommand = (
+        "python3 -c \"import hashlib,os,sys; "
+        "[print(p + ' ' + hashlib.sha256(open(p,'rb').read())"
+        ".hexdigest() "
+        "if os.path.isfile(p) else p + ' MISSING') "
+        "for p in " + repr(listAllPaths) + "]\""
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExit != 0:
+        return {}
+    return _fdictParseHashOutput(sOutput)
+
+
+def _fdictParseHashOutput(sOutput):
+    """Parse 'path hash' lines into a dictionary."""
+    dictHashes = {}
+    for sLine in (sOutput or "").strip().split("\n"):
+        sLine = sLine.strip()
+        if not sLine:
+            continue
+        listParts = sLine.rsplit(" ", 1)
+        if len(listParts) == 2 and listParts[1] != "MISSING":
+            dictHashes[listParts[0]] = listParts[1]
+    return dictHashes

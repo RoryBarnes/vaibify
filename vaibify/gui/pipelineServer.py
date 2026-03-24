@@ -1194,6 +1194,7 @@ def _fnRegisterFileStatus(app, dictCtx):
     @app.get("/api/pipeline/{sContainerId}/file-status")
     async def fnGetFileStatus(sContainerId: str):
         import asyncio
+        from . import syncDispatcher as _syncDispatcher
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -1205,9 +1206,17 @@ def _fnRegisterFileStatus(app, dictCtx):
         listInvalidated = _flistDetectAndInvalidate(
             dictCtx, sContainerId, dictWorkflow, dictModTimes,
         )
+        dictCurrentHashes = await asyncio.to_thread(
+            _syncDispatcher.fdictComputeAllScriptHashes,
+            dictCtx["docker"], sContainerId, dictWorkflow,
+        )
+        dictScriptStatus = _fdictBuildScriptStatus(
+            dictWorkflow, dictCurrentHashes,
+        )
         return {
             "dictModTimes": dictModTimes,
             "listInvalidatedSteps": listInvalidated,
+            "dictScriptStatus": dictScriptStatus,
         }
 
 
@@ -1282,6 +1291,37 @@ def _fnInvalidateStepVerification(dictStep):
         dictVerification["sUnitTest"] = "untested"
     dictVerification["bOutputModified"] = True
     dictStep["dictVerification"] = dictVerification
+
+
+def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
+    """Compare current script hashes against stored run hashes."""
+    from .syncDispatcher import _fsNormalizePath
+    from .commandUtilities import flistExtractScripts
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        dictRunStats = dictStep.get("dictRunStats", {})
+        dictStoredHashes = dictRunStats.get("dictInputHashes", {})
+        if not dictStoredHashes:
+            dictResult[iIndex] = "unknown"
+            continue
+        sDirectory = dictStep.get("sDirectory", "")
+        bModified = False
+        for sKey in ("saDataCommands", "saPlotCommands"):
+            for sScript in flistExtractScripts(
+                dictStep.get(sKey, [])
+            ):
+                sPath = _fsNormalizePath(sDirectory, sScript)
+                sStored = dictStoredHashes.get(sPath)
+                sCurrent = dictCurrentHashes.get(sPath)
+                if sStored is None or sStored != sCurrent:
+                    bModified = True
+                    break
+            if bModified:
+                break
+        dictResult[iIndex] = "modified" if bModified else "unchanged"
+    return dictResult
 
 
 def _flistDetectAndInvalidate(dictCtx, sContainerId,

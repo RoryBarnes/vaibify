@@ -709,6 +709,13 @@ html, body {
     background: var(--color-pale-blue);
 }
 
+.script-modified-badge {
+    color: var(--color-orange);
+    font-size: 0.85em;
+    margin-left: 4px;
+    cursor: help;
+}
+
 .vaib-verified-badge {
     width: 14px;
     height: 14px;
