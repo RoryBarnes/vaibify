@@ -577,6 +577,45 @@ def fdictInitializeSyncEntry():
     }
 
 
+def fsetExtractUpstreamIndices(sText):
+    """Return set of step indices (0-based) referenced by {StepNN.} tokens."""
+    return set(int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText))
+
+
+def fdictBuildDirectDependencies(dictWorkflow):
+    """Return {iUpstreamIndex: set(iDirectDownstreamIndices)}."""
+    dictDirect = {}
+    for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
+        setUpstream = set()
+        for sKey in ("saDataCommands", "saPlotCommands",
+                     "saTestCommands", "saDataFiles", "saPlotFiles"):
+            for sItem in dictStep.get(sKey, []):
+                setUpstream |= fsetExtractUpstreamIndices(sItem)
+        for iUpstream in setUpstream:
+            if iUpstream not in dictDirect:
+                dictDirect[iUpstream] = set()
+            dictDirect[iUpstream].add(iIndex)
+    return dictDirect
+
+
+def fdictBuildDownstreamMap(dictWorkflow):
+    """Return {iStepIndex: set(all downstream indices)} via BFS."""
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    iStepCount = len(dictWorkflow["listSteps"])
+    dictDownstream = {}
+    for iIndex in range(iStepCount):
+        setVisited = set()
+        listQueue = list(dictDirect.get(iIndex, set()))
+        while listQueue:
+            iCurrent = listQueue.pop(0)
+            if iCurrent in setVisited:
+                continue
+            setVisited.add(iCurrent)
+            listQueue.extend(dictDirect.get(iCurrent, set()))
+        dictDownstream[iIndex] = setVisited
+    return dictDownstream
+
+
 def fnUpdateSyncStatus(dictWorkflow, listFilePaths, sService):
     """Mark files as synced to sService with current timestamp."""
     from datetime import datetime, timezone

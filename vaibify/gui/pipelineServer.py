@@ -1202,26 +1202,116 @@ def _fnRegisterFileStatus(app, dictCtx):
             _fdictGetModTimes,
             dictCtx["docker"], sContainerId, listPaths,
         )
-        return {"dictModTimes": dictModTimes}
+        listInvalidated = _flistDetectAndInvalidate(
+            dictCtx, sContainerId, dictWorkflow, dictModTimes,
+        )
+        return {
+            "dictModTimes": dictModTimes,
+            "listInvalidatedSteps": listInvalidated,
+        }
+
+
+def fdictCollectOutputPathsByStep(dictWorkflow):
+    """Return {iStepIndex: [resolved_paths]} for each step."""
+    dictResult = {}
+    dictGlobalVars = _fdictFileStatusGlobalVars(dictWorkflow)
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        dictResult[iIndex] = _flistResolveStepPaths(
+            dictStep, dictGlobalVars,
+        )
+    return dictResult
+
+
+def _fdictFileStatusGlobalVars(dictWorkflow):
+    """Return minimal global variables for file path resolution."""
+    return {
+        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
+
+
+def _flistResolveStepPaths(dictStep, dictGlobalVars):
+    """Return resolved output paths for a single step."""
+    from .workflowManager import fsResolveVariables
+    sStepDir = dictStep.get("sDirectory", "")
+    listPaths = []
+    for sFile in (dictStep.get("saDataFiles", [])
+                  + dictStep.get("saPlotFiles", [])):
+        sResolved = fsResolveVariables(sFile, dictGlobalVars)
+        if not sResolved.startswith("/"):
+            sResolved = sStepDir + "/" + sResolved
+        listPaths.append(sResolved)
+    return listPaths
 
 
 def _flistCollectOutputPaths(dictWorkflow):
     """Collect all resolved output file paths from the workflow."""
-    from .workflowManager import fsResolveVariables
-    dictGlobalVars = {
-        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
-        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-    }
+    dictByStep = fdictCollectOutputPathsByStep(dictWorkflow)
     listPaths = []
-    for dictStep in dictWorkflow.get("listSteps", []):
-        sStepDir = dictStep.get("sDirectory", "")
-        for sFile in (dictStep.get("saDataFiles", [])
-                      + dictStep.get("saPlotFiles", [])):
-            sResolved = fsResolveVariables(sFile, dictGlobalVars)
-            if not sResolved.startswith("/"):
-                sResolved = sStepDir + "/" + sResolved
-            listPaths.append(sResolved)
+    for iIndex in sorted(dictByStep.keys()):
+        listPaths.extend(dictByStep[iIndex])
     return listPaths
+
+
+def _fbPipelineIsRunning(dictCtx, sContainerId):
+    """Return True if a pipeline is currently running in container."""
+    from .pipelineState import fdictReadState
+    dictState = fdictReadState(dictCtx["docker"], sContainerId)
+    if dictState is None:
+        return False
+    return dictState.get("bRunning", False)
+
+
+def _fsetFindChangedStepIndices(dictPathsByStep, dictOldModTimes,
+                                dictNewModTimes):
+    """Return set of step indices whose output files changed."""
+    setChanged = set()
+    for iIndex, listPaths in dictPathsByStep.items():
+        for sPath in listPaths:
+            sOldTime = dictOldModTimes.get(sPath)
+            sNewTime = dictNewModTimes.get(sPath)
+            if sNewTime and sNewTime != sOldTime:
+                setChanged.add(iIndex)
+    return setChanged
+
+
+def _fnInvalidateStepVerification(dictStep):
+    """Set verification to untested and mark output as modified."""
+    dictVerification = dictStep.get("dictVerification", {})
+    if dictVerification.get("sUnitTest") == "passed":
+        dictVerification["sUnitTest"] = "untested"
+    dictVerification["bOutputModified"] = True
+    dictStep["dictVerification"] = dictVerification
+
+
+def _flistDetectAndInvalidate(dictCtx, sContainerId,
+                              dictWorkflow, dictNewModTimes):
+    """Detect file changes and invalidate affected steps."""
+    if "dictPreviousModTimes" not in dictCtx:
+        dictCtx["dictPreviousModTimes"] = {}
+    dictPrevByContainer = dictCtx["dictPreviousModTimes"]
+    dictOldModTimes = dictPrevByContainer.get(sContainerId, {})
+    dictPrevByContainer[sContainerId] = dict(dictNewModTimes)
+    if not dictOldModTimes:
+        return []
+    if _fbPipelineIsRunning(dictCtx, sContainerId):
+        return []
+    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow)
+    setChanged = _fsetFindChangedStepIndices(
+        dictPathsByStep, dictOldModTimes, dictNewModTimes,
+    )
+    if not setChanged:
+        return []
+    dictDownstream = workflowManager.fdictBuildDownstreamMap(dictWorkflow)
+    setAllAffected = set(setChanged)
+    for iIndex in setChanged:
+        setAllAffected |= dictDownstream.get(iIndex, set())
+    listSteps = dictWorkflow.get("listSteps", [])
+    for iIndex in setAllAffected:
+        if 0 <= iIndex < len(listSteps):
+            _fnInvalidateStepVerification(listSteps[iIndex])
+    dictCtx["save"](sContainerId, dictWorkflow)
+    return sorted(setAllAffected)
 
 
 def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):

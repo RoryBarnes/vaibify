@@ -757,6 +757,11 @@ const PipeleyenApp = (function () {
     function fsNecessaryFileClass(iStep, bExists) {
         if (!bExists) return "file-necessary-red";
         var dictStep = dictWorkflow.listSteps[iStep];
+        var dictVerify = fdictGetVerification(dictStep);
+        if (dictVerify.bOutputModified === true &&
+            dictVerify.sUnitTest === "untested") {
+            return "file-necessary-red";
+        }
         var bRequiresUnitTests = fbStepRequiresUnitTests(dictStep);
         if (bRequiresUnitTests) {
             var sUnitTest = fsEffectiveTestState(dictStep);
@@ -778,6 +783,7 @@ const PipeleyenApp = (function () {
 
     function fbAllVerificationComplete(dictStep, iStep) {
         var dictVerify = fdictGetVerification(dictStep);
+        if (dictVerify.bOutputModified === true) return false;
         var sUser = dictVerify.sUser;
         var sDeps = fsComputeDepsState(iStep);
         if (sUser !== "passed" || sDeps === "failed") return false;
@@ -1107,6 +1113,10 @@ const PipeleyenApp = (function () {
         var sHtml = '<div class="detail-label">Verification</div>';
         sHtml += '<div class="verification-block" data-step="' +
             iIndex + '">';
+        if (dictVerify.bOutputModified === true) {
+            sHtml += '<div class="output-modified-warning">' +
+                '\u26A0 Output modified since last verification</div>';
+        }
         if (!bInteractive && !bPlotOnly) {
             var sTestState = fsEffectiveTestState(step);
             sHtml += fsRenderVerificationRow(
@@ -1257,9 +1267,12 @@ const PipeleyenApp = (function () {
         var bInteractive = step.bInteractive === true;
         var dictVerify = fdictGetVerification(step);
         var sUser = dictVerify.sUser;
+        var bOutputModified = dictVerify.bOutputModified === true;
 
         if (bInteractive) {
-            if (sUser === "passed") return "verified";
+            if (sUser === "passed") {
+                return bOutputModified ? "partial" : "verified";
+            }
             if (sUser === "failed" || sUser === "error") return "fail";
             if (setStepsWithData.has(iIndex) ||
                 (step.dictRunStats || {}).sLastRun) {
@@ -1281,7 +1294,7 @@ const PipeleyenApp = (function () {
         }
         if (bPlotOnly) {
             if (sUser === "passed" && sDeps !== "failed") {
-                return "verified";
+                return bOutputModified ? "partial" : "verified";
             }
             var bHasRun = (step.dictRunStats || {}).sLastRun;
             if (bHasRun && sUser === "untested") {
@@ -1291,7 +1304,7 @@ const PipeleyenApp = (function () {
         }
         if (sUnit === "passed" && sUser === "passed" &&
             sDeps !== "failed") {
-            return "verified";
+            return bOutputModified ? "partial" : "verified";
         }
         if ((sUnit === "passed" && sUser === "untested") ||
             (sUnit === "untested" && sUser === "passed")) {
@@ -3145,8 +3158,10 @@ const PipeleyenApp = (function () {
         } else if (dictEvent.sType === "discoveredOutputs") {
             fnHandleDiscoveredOutputs(dictEvent);
         } else if (dictEvent.sType === "stepPass") {
-            dictStepStatus[dictEvent.iStepNumber - 1] = "pass";
-            fnInvalidateStepFileCache(dictEvent.iStepNumber - 1);
+            var iPassIdx = dictEvent.iStepNumber - 1;
+            dictStepStatus[iPassIdx] = "pass";
+            fnClearOutputModified(iPassIdx);
+            fnInvalidateStepFileCache(iPassIdx);
             fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
             dictStepStatus[dictEvent.iStepNumber - 1] = "fail";
@@ -3178,6 +3193,13 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnClearOutputModified(iStep) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (dictStep && dictStep.dictVerification) {
+            dictStep.dictVerification.bOutputModified = false;
+        }
+    }
+
     function fnHandleTestResult(dictEvent) {
         var iStep = dictEvent.iStepNumber - 1;
         var dictStep = dictWorkflow.listSteps[iStep];
@@ -3187,6 +3209,9 @@ const PipeleyenApp = (function () {
             };
         }
         dictStep.dictVerification.sUnitTest = dictEvent.sResult;
+        if (dictEvent.sResult === "passed") {
+            fnClearOutputModified(iStep);
+        }
         fnRenderStepList();
         var sLabel = dictEvent.sResult === "passed" ?
             "Tests passed" : "Tests FAILED";
@@ -3365,9 +3390,28 @@ const PipeleyenApp = (function () {
                 fnScheduleFileExistenceCheck();
                 fnRenderStepList();
             }
+            if (dictStatus.listInvalidatedSteps) {
+                fnApplyInvalidatedSteps(dictStatus.listInvalidatedSteps);
+            }
         } catch (error) {
             /* poll failed, try again next interval */
         }
+    }
+
+    function fnApplyInvalidatedSteps(listStepIndices) {
+        var bAnyChanged = false;
+        for (var i = 0; i < listStepIndices.length; i++) {
+            var iStep = listStepIndices[i];
+            var dictStep = dictWorkflow.listSteps[iStep];
+            if (!dictStep) continue;
+            dictStep.dictVerification = dictStep.dictVerification || {
+                sUnitTest: "untested", sUser: "untested",
+            };
+            dictStep.dictVerification.sUnitTest = "untested";
+            dictStep.dictVerification.bOutputModified = true;
+            bAnyChanged = true;
+        }
+        if (bAnyChanged) fnRenderStepList();
     }
 
     function fnDisplayLogInViewer(sLogPath) {

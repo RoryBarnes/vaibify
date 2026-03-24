@@ -989,6 +989,12 @@ html, body {
     color: #e84040;
 }
 
+.output-modified-warning {
+    color: var(--color-orange);
+    font-size: 0.85em;
+    margin-top: 4px;
+}
+
 .detail-item .detail-resolved {
     display: block;
     font-size: 10px;

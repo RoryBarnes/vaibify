@@ -309,6 +309,14 @@ async def _fiRunStepsAndLog(
     return iResult
 
 
+def fnClearOutputModifiedFlags(dictWorkflow):
+    """Clear bOutputModified on all steps before a pipeline run."""
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictVerification = dictStep.get("dictVerification", {})
+        dictVerification.pop("bOutputModified", None)
+        dictStep["dictVerification"] = dictVerification
+
+
 async def _fiRunWithLogging(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
@@ -324,6 +332,7 @@ async def _fiRunWithLogging(
     listLogLines = []
     fnLogging = ffBuildLoggingCallback(fnStatusCallback, listLogLines)
     dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
+    fnClearOutputModifiedFlags(dictWorkflow)
 
     listPreflightErrors = await _flistPreflightValidate(
         connectionDocker, sContainerId, dictWorkflow,
