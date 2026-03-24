@@ -768,12 +768,23 @@ const PipeleyenApp = (function () {
         return fsNecessaryFileClass(iStep, sResolved, bExists);
     }
 
+    function fbFileInModifiedList(sResolved, listModified) {
+        if (!sResolved || listModified.length === 0) return false;
+        for (var i = 0; i < listModified.length; i++) {
+            if (listModified[i] === sResolved) return true;
+            if (listModified[i].endsWith("/" + sResolved)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function fsNecessaryFileClass(iStep, sResolved, bExists) {
         if (!bExists) return "file-necessary-red";
         var dictStep = dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
-        if (sResolved && listModified.indexOf(sResolved) >= 0) {
+        if (fbFileInModifiedList(sResolved, listModified)) {
             return "file-necessary-red";
         }
         var bRequiresUnitTests = fbStepRequiresUnitTests(dictStep);
@@ -3434,8 +3445,9 @@ const PipeleyenApp = (function () {
                 fnScheduleFileExistenceCheck();
                 fnRenderStepList();
             }
-            if (dictStatus.dictInvalidatedSteps) {
-                fnApplyInvalidatedSteps(dictStatus.dictInvalidatedSteps);
+            var dictInv = dictStatus.dictInvalidatedSteps;
+            if (dictInv && Object.keys(dictInv).length > 0) {
+                fnApplyInvalidatedSteps(dictInv);
             }
             if (dictStatus.dictScriptStatus) {
                 var dictPrev = JSON.stringify(dictScriptModified);

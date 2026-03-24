@@ -1367,16 +1367,16 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
     dictOldModTimes = dictPrevByContainer.get(sContainerId, {})
     dictPrevByContainer[sContainerId] = dict(dictNewModTimes)
     if not dictOldModTimes:
-        return []
+        return {}
     if _fbPipelineIsRunning(dictCtx, sContainerId):
-        return []
+        return {}
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, sRepoRoot)
     dictChangedFiles = _fdictFindChangedFiles(
         dictPathsByStep, dictOldModTimes, dictNewModTimes,
     )
     if not dictChangedFiles:
-        return []
+        return {}
     dictDownstream = workflowManager.fdictBuildDownstreamMap(
         dictWorkflow)
     setDirectChanged = set(dictChangedFiles.keys())
