@@ -95,23 +95,7 @@ class DockerConnection:
             return fileExtracted.read()
 
     def fnWriteFile(self, sContainerId, sFilePath, baContent):
-        """Write bytes to a file inside the container via tar archive."""
-        import posixpath
-
-        container = self.fcontainerGetById(sContainerId)
-        sDirectory = posixpath.dirname(sFilePath)
-        sFilename = posixpath.basename(sFilePath)
-        bufferTar = io.BytesIO()
-        with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
-            info = tarfile.TarInfo(name=sFilename)
-            info.size = len(baContent)
-            fileTar.addfile(info, io.BytesIO(baContent))
-        bufferTar.seek(0)
-        container.put_archive(sDirectory, bufferTar)
-
-    def fnWriteFileViaExec(self, sContainerId, sFilePath,
-                           baContent):
-        """Write bytes to a file via exec + base64 decode."""
+        """Write bytes to a file inside the container."""
         import base64
         sEncoded = base64.b64encode(baContent).decode("ascii")
         sCommand = (
@@ -125,6 +109,11 @@ class DockerConnection:
             raise RuntimeError(
                 f"Write failed (exit {iExitCode}): {sOutput}"
             )
+
+    def fnWriteFileViaExec(self, sContainerId, sFilePath,
+                           baContent):
+        """Alias for fnWriteFile."""
+        self.fnWriteFile(sContainerId, sFilePath, baContent)
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None

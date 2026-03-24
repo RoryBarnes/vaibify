@@ -165,14 +165,17 @@ def test_fbaFetchFile_returns_bytes(mockGetDocker):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnWriteFile_calls_put_archive(mockGetDocker):
+def test_fnWriteFile_uses_exec(mockGetDocker):
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
     mockContainer = _fMockContainer()
     mockClient.containers.get.return_value = mockContainer
+    mockContainer.exec_run.return_value = (0, b"")
     conn = DockerConnection()
     conn.fnWriteFile(
         "abc123", "/tmp/output.txt", b"data")
-    mockContainer.put_archive.assert_called_once()
-    sDirectory = mockContainer.put_archive.call_args[0][0]
-    assert sDirectory == "/tmp"
+    mockContainer.exec_run.assert_called_once()
+    listCmd = mockContainer.exec_run.call_args.kwargs["cmd"]
+    sShellCommand = listCmd[2]
+    assert "base64" in sShellCommand
+    assert "/tmp/output.txt" in sShellCommand
