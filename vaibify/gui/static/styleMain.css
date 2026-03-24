@@ -2039,6 +2039,10 @@ html, body {
     filter: brightness(1.15);
 }
 
+.unit-test-quick {
+    padding: 2px 0 2px 16px;
+}
+
 .btn-generate-test {
     background: var(--color-orange);
     color: var(--bg-primary);

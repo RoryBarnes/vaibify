@@ -1143,9 +1143,12 @@ const PipeleyenApp = (function () {
             iIndex + '">';
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) {
+            var listNames = listModified.map(function (sPath) {
+                return sPath.split("/").pop();
+            });
             sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 ' + listModified.length +
-                ' file(s) modified since last verification</div>';
+                '\u26A0 Modified: ' +
+                fnEscapeHtml(listNames.join(", ")) + '</div>';
         }
         if (dictVerify.bUpstreamModified === true) {
             sHtml += '<div class="output-modified-warning">' +
@@ -1153,11 +1156,19 @@ const PipeleyenApp = (function () {
         }
         if (!bInteractive && !bPlotOnly) {
             var sTestState = fsEffectiveTestState(step);
+            var bHasTests = (step.saTestCommands || []).length > 0;
+            var sTestLabel = bHasTests ?
+                "Unit Tests" : "Unit Tests (none defined)";
             sHtml += fsRenderVerificationRow(
-                "Unit Tests", sTestState, "unitTest", iIndex
+                sTestLabel, sTestState, "unitTest", iIndex
             );
             if (setExpandedUnitTests.has(iIndex)) {
                 sHtml += fsRenderUnitTestExpanded(step, iIndex);
+            } else if (bHasTests && sTestState !== "passed") {
+                sHtml += '<div class="unit-test-quick">' +
+                    '<button class="btn btn-run-tests" ' +
+                    'data-step="' + iIndex +
+                    '">Run Tests</button></div>';
             }
         }
         sHtml += fsRenderVerificationRow(
@@ -1238,10 +1249,11 @@ const PipeleyenApp = (function () {
 
     function fsRenderUnitTestExpanded(step, iIndex) {
         var sHtml = '<div class="unit-test-expanded">';
+        var bHasTests = (step.saTestCommands || []).length > 0;
         sHtml += fsRenderTestSection(
             "Test Commands", step.saTestCommands, iIndex, "command"
         );
-        if ((step.saTestCommands || []).length > 0) {
+        if (bHasTests) {
             sHtml += '<button class="btn btn-run-tests" ' +
                 'data-step="' + iIndex + '">Run Tests</button>';
         }
