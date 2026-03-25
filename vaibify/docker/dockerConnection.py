@@ -67,11 +67,15 @@ class DockerConnection:
         return container
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        iTimeout=30,
     ):
         """Run a command and return (iExitCode, sOutput)."""
         container = self.fcontainerGetById(sContainerId)
-        dictKwargs = {"cmd": ["/bin/bash", "-c", sCommand]}
+        dictKwargs = {
+            "cmd": ["/bin/bash", "-c", sCommand],
+            "timeout": iTimeout,
+        }
         if sWorkdir:
             dictKwargs["workdir"] = sWorkdir
         if sUser:
@@ -99,8 +103,9 @@ class DockerConnection:
         import base64
         sEncoded = base64.b64encode(baContent).decode("ascii")
         sCommand = (
-            f"echo '{sEncoded}' | base64 -d > "
-            f"'{sFilePath}'"
+            f"python3 -c \"import base64; "
+            f"open('{sFilePath}','wb').write("
+            f"base64.b64decode('{sEncoded}'))\""
         )
         iExitCode, sOutput = self.ftResultExecuteCommand(
             sContainerId, sCommand

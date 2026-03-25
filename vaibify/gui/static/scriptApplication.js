@@ -917,6 +917,17 @@ const PipeleyenApp = (function () {
                 '<span class="script-modified-badge" ' +
                 'title="Scripts modified since last run">' +
                 '&#9998;</span>' : '') +
+            (function () {
+                var listMod = (step.dictVerification || {})
+                    .listModifiedFiles || [];
+                if (listMod.length === 0) return '';
+                var sNames = listMod.map(function (s) {
+                    return s.split("/").pop();
+                }).join(", ");
+                return '<span class="data-modified-badge" ' +
+                    'title="Modified: ' +
+                    fnEscapeHtml(sNames) + '">&#9888;</span>';
+            })() +
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
