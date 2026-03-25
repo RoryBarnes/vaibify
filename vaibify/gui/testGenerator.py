@@ -71,9 +71,9 @@ def _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath):
     from .pipelineRunner import fsShellQuote
 
     sCommand = (
-        f"python3 -c \"import numpy as np; "
-        f"d=np.load({fsShellQuote(sAbsPath)}); "
-        f"print(f'shape={{d.shape}} dtype={{d.dtype}}')\""
+        "python3 -c \"import numpy as np; "
+        "d=np.load(" + repr(sAbsPath) + "); "
+        "print(f'shape={d.shape} dtype={d.dtype}')\""
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand

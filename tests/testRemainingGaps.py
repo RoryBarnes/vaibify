@@ -31,8 +31,11 @@ def test_setup_save_route():
     with patch("vaibify.gui.setupServer.fnWriteConfigToDirectory"):
         app = fappCreateSetupApplication()
         clientHttp = TestClient(app)
+        import os
+        sTestDir = os.path.join(
+            os.path.expanduser("~"), "test_vaibify_save")
         responseHttp = clientHttp.post("/api/setup/save", json={
-            "sProjectDirectory": "/tmp/test",
+            "sProjectDirectory": sTestDir,
             "dictConfig": {"projectName": "test"},
         })
         assert responseHttp.status_code == 200
@@ -48,8 +51,11 @@ def test_setup_build_route():
     ):
         app = fappCreateSetupApplication()
         clientHttp = TestClient(app)
+        import os
+        sTestDir = os.path.join(
+            os.path.expanduser("~"), "test_vaibify_build")
         responseHttp = clientHttp.post("/api/setup/build", json={
-            "sProjectDirectory": "/tmp/test",
+            "sProjectDirectory": sTestDir,
         })
         assert responseHttp.status_code == 200
 

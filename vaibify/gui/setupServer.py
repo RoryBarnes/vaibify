@@ -45,6 +45,7 @@ def _fnRegisterWriteRoutes(app):
 
     @app.post("/api/setup/save")
     async def fnSave(request: SaveRequest):
+        _fnValidateProjectDirectory(request.sProjectDirectory)
         fnWriteConfigToDirectory(
             request.sProjectDirectory, request.dictConfig
         )
@@ -52,6 +53,7 @@ def _fnRegisterWriteRoutes(app):
 
     @app.post("/api/setup/build")
     async def fnBuild(request: BuildRequest):
+        _fnValidateProjectDirectory(request.sProjectDirectory)
         return fdictProcessBuild(request.sProjectDirectory)
 
 
@@ -86,6 +88,15 @@ def fappCreateSetupApplication():
     return app
 
 
+def _fnValidateProjectDirectory(sDirectory):
+    """Reject directory paths that traverse outside home."""
+    sNormalized = os.path.normpath(os.path.abspath(sDirectory))
+    sHome = os.path.expanduser("~")
+    if not sNormalized.startswith(sHome):
+        raise HTTPException(
+            403, "Project directory must be under home")
+
+
 def flistAvailableTemplates():
     """Return template names shipped with the package."""
     from ..cli.commandInit import flistAvailableTemplates as flistGet
@@ -96,8 +107,9 @@ def fdictProcessBuild(sProjectDirectory):
     """Run build and return success dict or raise HTTPException."""
     iExitCode, sOutput = ftResultRunBuild(sProjectDirectory)
     if iExitCode != 0:
+        sTruncated = sOutput[:500] if sOutput else ""
         raise HTTPException(
-            500, f"Build failed (exit {iExitCode}): {sOutput}"
+            500, f"Build failed (exit {iExitCode}): {sTruncated}"
         )
     return {"bSuccess": True, "sOutput": sOutput}
 

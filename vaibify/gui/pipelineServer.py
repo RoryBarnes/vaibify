@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import posixpath
+import re
 import secrets
 
 logger = logging.getLogger("vaibify")
@@ -167,7 +168,7 @@ def fbaFetchFigureWithFallback(
             connectionDocker, sContainerId,
             sWorkflowDirectory, sWorkdir, sFilePath,
         )
-    raise HTTPException(404, f"Figure not found: {sAbsPath}")
+    raise HTTPException(404, "Figure not found")
 
 
 def _fbaFetchFallback(
@@ -1431,7 +1432,8 @@ def _fnRegisterPipelineKill(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listPatterns = _flistExtractKillPatterns(dictWorkflow)
-        sGrepPattern = "|".join(listPatterns) if listPatterns else ""
+        listSafe = [re.escape(s) for s in listPatterns]
+        sGrepPattern = "|".join(listSafe) if listSafe else ""
         if not sGrepPattern:
             return {"bSuccess": True, "iProcessesKilled": 0}
         sCountCommand = (
