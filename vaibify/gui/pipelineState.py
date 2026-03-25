@@ -6,7 +6,6 @@ disconnect, tab close, or GUI restart.
 """
 
 import json
-import posixpath
 from datetime import datetime, timezone
 
 I_MAX_OUTPUT_LINES = 500

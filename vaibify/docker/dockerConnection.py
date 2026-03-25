@@ -4,6 +4,7 @@ Wraps the docker-py SDK with lazy import so the module can be loaded
 even when docker-py is not installed.
 """
 
+import base64
 
 
 def _fmoduleGetDocker():
@@ -80,7 +81,6 @@ class DockerConnection:
 
     def fbaFetchFile(self, sContainerId, sFilePath):
         """Fetch a file from the container and return its bytes."""
-        import base64
         sSafePath = repr(sFilePath)
         sCommand = (
             "python3 -c \"import base64,sys; "
@@ -99,7 +99,6 @@ class DockerConnection:
 
     def fnWriteFile(self, sContainerId, sFilePath, baContent):
         """Write bytes to a file inside the container."""
-        import base64
         sEncoded = base64.b64encode(baContent).decode("ascii")
         sSafePath = repr(sFilePath)
         sCommand = (
@@ -114,11 +113,6 @@ class DockerConnection:
             raise RuntimeError(
                 f"Write failed (exit {iExitCode}): {sOutput}"
             )
-
-    def fnWriteFileViaExec(self, sContainerId, sFilePath,
-                           baContent):
-        """Alias for fnWriteFile."""
-        self.fnWriteFile(sContainerId, sFilePath, baContent)
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None

@@ -846,7 +846,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         baContent = request.sContent.encode("utf-8")
         try:
-            dictCtx["docker"].fnWriteFileViaExec(
+            dictCtx["docker"].fnWriteFile(
                 sContainerId, sAbsPath, baContent
             )
         except Exception as error:
@@ -1769,20 +1769,13 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             sContainerId, sTestCmd,
         )
         bPassed = iExitCode == 0
-        dictVerification = dictStep.setdefault(
-            "dictVerification", {})
+        _fnRecordTestResult(
+            dictStep, bPassed, dictWorkflow, iStepIndex)
         if bPassed:
-            dictVerification["sUnitTest"] = "passed"
-            dictVerification.pop("listModifiedFiles", None)
-            dictVerification.pop("bUpstreamModified", None)
             dictStep.setdefault("saTestCommands", [])
             sRunCmd = f"python -m pytest {request.sFilePath} -v"
             if sRunCmd not in dictStep["saTestCommands"]:
                 dictStep["saTestCommands"].append(sRunCmd)
-            _fnClearDownstreamUpstreamFlags(
-                dictWorkflow, iStepIndex)
-        else:
-            dictVerification["sUnitTest"] = "failed"
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bPassed": bPassed,
@@ -1814,21 +1807,28 @@ def _fnRegisterTestRun(app, dictCtx):
             sContainerId, sFullCmd,
         )
         bPassed = iExitCode == 0
-        dictVerification = dictStep.setdefault(
-            "dictVerification", {})
-        dictVerification["sUnitTest"] = (
-            "passed" if bPassed else "failed")
-        if bPassed:
-            dictVerification.pop("listModifiedFiles", None)
-            dictVerification.pop("bUpstreamModified", None)
-            _fnClearDownstreamUpstreamFlags(
-                dictWorkflow, iStepIndex)
+        _fnRecordTestResult(
+            dictStep, bPassed, dictWorkflow, iStepIndex)
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,
             "iExitCode": iExitCode,
         }
+
+
+def _fnRecordTestResult(dictStep, bPassed, dictWorkflow,
+                        iStepIndex):
+    """Update verification state after test execution."""
+    dictVerification = dictStep.setdefault(
+        "dictVerification", {})
+    dictVerification["sUnitTest"] = (
+        "passed" if bPassed else "failed")
+    if bPassed:
+        dictVerification.pop("listModifiedFiles", None)
+        dictVerification.pop("bUpstreamModified", None)
+        _fnClearDownstreamUpstreamFlags(
+            dictWorkflow, iStepIndex)
 
 
 def _fnClearDownstreamUpstreamFlags(dictWorkflow, iStepIndex):

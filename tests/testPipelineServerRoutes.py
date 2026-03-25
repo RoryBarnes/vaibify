@@ -82,8 +82,6 @@ class MockDockerConnection:
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self._dictFiles[sPath] = baContent
 
-    def fnWriteFileViaExec(self, sContainerId, sPath, baContent):
-        self._dictFiles[sPath] = baContent
 
     def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
         return "exec-id-mock"
