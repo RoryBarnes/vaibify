@@ -3285,6 +3285,19 @@ const PipeleyenApp = (function () {
             delete dictStep.dictVerification.listModifiedFiles;
             delete dictStep.dictVerification.bUpstreamModified;
         }
+        fnClearDownstreamUpstreamFlags(iStep);
+    }
+
+    function fnClearDownstreamUpstreamFlags(iStep) {
+        dictWorkflow.listSteps.forEach(function (step, iIdx) {
+            if (iIdx === iStep) return;
+            var dictV = step.dictVerification;
+            if (!dictV || !dictV.bUpstreamModified) return;
+            var listStepDeps = flistGetStepDependencies(iIdx);
+            if (listStepDeps.indexOf(iStep) >= 0) {
+                delete dictV.bUpstreamModified;
+            }
+        });
     }
 
     function fnHandleTestResult(dictEvent) {
@@ -3694,10 +3707,9 @@ const PipeleyenApp = (function () {
                     "Tests passed" : "Tests FAILED",
                 dictResult.bPassed ? "success" : "error"
             );
-            if (dictResult.sOutput) {
-                PipeleyenFigureViewer.fnDisplayTestOutput(
-                    dictResult.sOutput, dictResult.bPassed);
-            }
+            PipeleyenFigureViewer.fnDisplayTestOutput(
+                dictResult.sOutput || "(no output)",
+                dictResult.bPassed);
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error");
