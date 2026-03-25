@@ -347,8 +347,12 @@ const PipeleyenApp = (function () {
         } else if (sRepoRoot.endsWith("/.vaibify")) {
             sRepoRoot = sRepoRoot.replace("/.vaibify", "");
         }
+        var sPlotDir = dictWorkflow.sPlotDirectory || "Plot";
+        if (sPlotDir.charAt(0) !== "/") {
+            sPlotDir = sRepoRoot + "/" + sPlotDir;
+        }
         var dictVars = {
-            sPlotDirectory: dictWorkflow.sPlotDirectory || "Plot",
+            sPlotDirectory: sPlotDir,
             sRepoRoot: sRepoRoot,
             iNumberOfCores: dictWorkflow.iNumberOfCores || -1,
             sFigureType: (dictWorkflow.sFigureType || "pdf").toLowerCase(),
