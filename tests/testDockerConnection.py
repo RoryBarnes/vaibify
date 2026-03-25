@@ -140,19 +140,14 @@ def test_ftResultExecuteCommand_with_workdir(
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
 def test_fbaFetchFile_returns_bytes(mockGetDocker):
+    import base64
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
     mockContainer = _fMockContainer()
     baContent = b"file content here"
-    bufferTar = io.BytesIO()
-    with tarfile.open(fileobj=bufferTar, mode="w") as ft:
-        info = tarfile.TarInfo(name="test.txt")
-        info.size = len(baContent)
-        ft.addfile(info, io.BytesIO(baContent))
-    bufferTar.seek(0)
-    mockContainer.get_archive.return_value = (
-        [bufferTar.getvalue()], {}
-    )
+    sEncoded = base64.b64encode(baContent).decode("ascii")
+    mockContainer.exec_run.return_value = (
+        0, sEncoded.encode("ascii"))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     baResult = conn.fbaFetchFile("abc123", "/tmp/test.txt")

@@ -82,17 +82,20 @@ class DockerConnection:
 
     def fbaFetchFile(self, sContainerId, sFilePath):
         """Fetch a file from the container and return its bytes."""
-        container = self.fcontainerGetById(sContainerId)
-        taBits, taStat = container.get_archive(sFilePath)
-        baArchive = b"".join(taBits)
-        with tarfile.open(fileobj=io.BytesIO(baArchive)) as fileTar:
-            member = fileTar.getmembers()[0]
-            fileExtracted = fileTar.extractfile(member)
-            if fileExtracted is None:
-                raise FileNotFoundError(
-                    f"Cannot read file from container: {sFilePath}"
-                )
-            return fileExtracted.read()
+        import base64
+        sCommand = (
+            f"python3 -c \"import base64,sys; "
+            f"sys.stdout.buffer.write("
+            f"base64.b64encode(open('{sFilePath}','rb').read()))\""
+        )
+        iExitCode, sOutput = self.ftResultExecuteCommand(
+            sContainerId, sCommand
+        )
+        if iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot read file from container: {sFilePath}"
+            )
+        return base64.b64decode(sOutput)
 
     def fnWriteFile(self, sContainerId, sFilePath, baContent):
         """Write bytes to a file inside the container."""
