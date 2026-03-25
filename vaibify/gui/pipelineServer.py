@@ -183,7 +183,9 @@ def _fbaFetchFallback(
     try:
         return connectionDocker.fbaFetchFile(sContainerId, sFallback)
     except Exception as error:
-        raise HTTPException(404, f"Figure not found: {error}")
+        raise HTTPException(
+            404, f"Figure not found: "
+            f"{_fsSanitizeServerError(str(error))}")
 
 
 def flistDirectoryEntries(connectionDocker, sContainerId, sAbsPath):
@@ -431,7 +433,9 @@ def _fnRegisterContainers(app, dictCtx):
                 )
             return listContainers
         except Exception as error:
-            raise HTTPException(500, f"Docker error: {error}")
+            raise HTTPException(
+                500, f"Docker error: "
+                f"{_fsSanitizeServerError(str(error))}")
 
 
 def _fnRegisterWorkflowSearch(app, dictCtx):
@@ -445,7 +449,9 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
                 dictCtx["docker"], sContainerId
             )
         except Exception as error:
-            raise HTTPException(500, f"Search failed: {error}")
+            raise HTTPException(
+                500, f"Search failed: "
+                f"{_fsSanitizeServerError(str(error))}")
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -690,10 +696,11 @@ def _fnRegisterGithubPush(app, dictCtx):
         iExit, sOutput = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
             sContainerId,
-            f"find {sDirectory} -maxdepth 1 -name '*.py' "
+            f"find {fsShellQuote(sDirectory)} -maxdepth 1"
+            f" -name '*.py' "
             f"-printf '%f\\n' 2>/dev/null || "
-            f"ls {sDirectory}/*.py 2>/dev/null | "
-            f"xargs -n1 basename 2>/dev/null",
+            f"ls {fsShellQuote(sDirectory)}/*.py 2>/dev/null"
+            f" | xargs -n1 basename 2>/dev/null",
         )
         listFiles = [
             s.strip() for s in sOutput.strip().splitlines()
@@ -883,7 +890,9 @@ def _fnRegisterLogRoutes(app, dictCtx):
                 content=baContent, media_type="text/plain"
             )
         except Exception as error:
-            raise HTTPException(404, f"Log not found: {error}")
+            raise HTTPException(
+                404, f"Log not found: "
+                f"{_fsSanitizeServerError(str(error))}")
 
 
 def _fnRegisterSettingsGet(app, dictCtx):
@@ -1056,6 +1065,7 @@ def _fnRegisterFigure(app, dictCtx):
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
+        fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
         listPaths = [sAbsPath]
         if sWorkdir and not sFilePath.startswith("/"):
             if sWorkdir.startswith("/"):
@@ -1693,7 +1703,9 @@ def _fnRegisterTestGenerate(app, dictCtx):
                 sUser=sTerminalUser,
             )
         except Exception as error:
-            raise HTTPException(500, f"Generation failed: {error}")
+            raise HTTPException(
+                500, f"Generation failed: "
+                f"{_fsSanitizeServerError(str(error))}")
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         dictStep["saTestCommands"] = dictResult["saTestCommands"]
         dictCtx["save"](sContainerId, dictWorkflow)
@@ -1747,8 +1759,11 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             request.sContent.encode("utf-8"),
         )
         sDir = dictStep.get("sDirectory", "/workspace")
-        sTestCmd = f"cd {sDir}"
-        sTestCmd += f" && python -m pytest {request.sFilePath} -v"
+        sTestCmd = f"cd {fsShellQuote(sDir)}"
+        sTestCmd += (
+            f" && python -m pytest"
+            f" {fsShellQuote(request.sFilePath)} -v"
+        )
         iExitCode, sOutput = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
             sContainerId, sTestCmd,
@@ -1793,7 +1808,7 @@ def _fnRegisterTestRun(app, dictCtx):
             raise HTTPException(400, "No test commands")
         sDir = dictStep.get("sDirectory", "/workspace")
         sFullCmd = " && ".join(
-            [f"cd {sDir}"] + listCmds)
+            [f"cd {fsShellQuote(sDir)}"] + listCmds)
         iExitCode, sOutput = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
             sContainerId, sFullCmd,
