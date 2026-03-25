@@ -95,7 +95,7 @@ class DockerConnection:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
             )
-        return base64.b64decode(sOutput)
+        return base64.b64decode(sOutput.strip())
 
     def fnWriteFile(self, sContainerId, sFilePath, baContent):
         """Write bytes to a file inside the container."""

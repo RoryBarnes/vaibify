@@ -3695,8 +3695,8 @@ const PipeleyenApp = (function () {
                 dictResult.bPassed ? "success" : "error"
             );
             if (dictResult.sOutput) {
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                    dictResult.sLogPath || "");
+                PipeleyenFigureViewer.fnDisplayTestOutput(
+                    dictResult.sOutput, dictResult.bPassed);
             }
         } catch (error) {
             fnShowToast(

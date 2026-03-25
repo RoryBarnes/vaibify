@@ -893,11 +893,25 @@ const PipeleyenFigureViewer = (function () {
         PipeleyenApp.fnCancelGeneratedTest(iStep);
     }
 
+    function fnDisplayTestOutput(sOutput, bPassed) {
+        var dictViewer = sNextViewer === "A" ?
+            dictViewerA : dictViewerB;
+        sNextViewer = sNextViewer === "A" ? "B" : "A";
+        var elViewport = fnGetViewport(dictViewer);
+        elViewport.innerHTML = "";
+        var elPre = document.createElement("pre");
+        elPre.textContent = sOutput;
+        elPre.style.whiteSpace = "pre-wrap";
+        elPre.style.padding = "12px";
+        elViewport.appendChild(elPre);
+    }
+
     return {
         fnLoadStepFigures: fnLoadStepFigures,
         fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
         fnDisplayFileFromContainer: fnDisplayFileFromContainer,
         fnDisplayInNextViewer: fnDisplayInNextViewer,
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
+        fnDisplayTestOutput: fnDisplayTestOutput,
     };
 })();
