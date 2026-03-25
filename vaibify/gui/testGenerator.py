@@ -233,23 +233,18 @@ def fdictGenerateTest(
     """Orchestrate test generation: gather context, call LLM, save."""
     dictStep = dictWorkflow["listSteps"][iStepIndex]
     sDirectory = dictStep.get("sDirectory", "")
-    sRepoRoot = dictVariables.get("sRepoRoot", "")
-    if sRepoRoot and not sDirectory.startswith("/"):
-        sAbsDirectory = posixpath.join(sRepoRoot, sDirectory)
-    else:
-        sAbsDirectory = sDirectory
     sScripts, sPreviews = fsBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables
     )
     sPrompt = fsBuildPrompt(
-        sAbsDirectory, dictStep, sScripts, sPreviews
+        sDirectory, dictStep, sScripts, sPreviews
     )
     sRawOutput = _fsInvokeLlm(
         connectionDocker, sContainerId, sPrompt, bUseApi, sApiKey,
         sUser=sUser,
     )
     sCode = fsParseGeneratedCode(sRawOutput)
-    sFilePath = fsTestFilePath(sAbsDirectory, iStepIndex)
+    sFilePath = fsTestFilePath(sDirectory, iStepIndex)
     return _fdictBuildTestResult(
         connectionDocker, sContainerId, sCode, sFilePath
     )

@@ -1204,17 +1204,18 @@ def _fnRegisterFileStatus(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        sRepoRoot = dictCtx["workflowDir"](sContainerId)
+        dictVars = dictCtx["variables"](sContainerId)
         listPaths = _flistCollectOutputPaths(
-            dictWorkflow, sRepoRoot)
+            dictWorkflow, dictVars)
         dictModTimes = await asyncio.to_thread(
             _fdictGetModTimes,
             dictCtx["docker"], sContainerId, listPaths,
         )
         listInvalidated = _flistDetectAndInvalidate(
             dictCtx, sContainerId, dictWorkflow,
-            dictModTimes, sRepoRoot,
+            dictModTimes, dictVars,
         )
+        sRepoRoot = dictCtx["workflowDir"](sContainerId)
         dictCurrentHashes = await asyncio.to_thread(
             _syncDispatcher.fdictComputeAllScriptHashes,
             dictCtx["docker"], sContainerId, dictWorkflow,
@@ -1230,38 +1231,28 @@ def _fnRegisterFileStatus(app, dictCtx):
         }
 
 
-def fdictCollectOutputPathsByStep(dictWorkflow, sRepoRoot=""):
+def fdictCollectOutputPathsByStep(dictWorkflow, dictVars=None):
     """Return {iStepIndex: [resolved_paths]} for each step."""
     dictResult = {}
-    dictGlobalVars = _fdictFileStatusGlobalVars(
-        dictWorkflow, sRepoRoot)
+    if dictVars is None:
+        dictVars = {
+            "sPlotDirectory": dictWorkflow.get(
+                "sPlotDirectory", "Plot"),
+            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+        }
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
         dictResult[iIndex] = _flistResolveStepPaths(
-            dictStep, dictGlobalVars, sRepoRoot,
+            dictStep, dictVars,
         )
     return dictResult
 
 
-def _fdictFileStatusGlobalVars(dictWorkflow, sRepoRoot=""):
-    """Return global variables with absolute paths for resolution."""
-    sPlotDir = dictWorkflow.get("sPlotDirectory", "Plot")
-    if sRepoRoot and not sPlotDir.startswith("/"):
-        sPlotDir = posixpath.join(sRepoRoot, sPlotDir)
-    return {
-        "sPlotDirectory": sPlotDir,
-        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-    }
-
-
-def _flistResolveStepPaths(dictStep, dictGlobalVars,
-                           sRepoRoot=""):
+def _flistResolveStepPaths(dictStep, dictGlobalVars):
     """Return resolved output paths for a single step."""
     from .workflowManager import fsResolveVariables
     sStepDir = dictStep.get("sDirectory", "")
-    if sRepoRoot and not sStepDir.startswith("/"):
-        sStepDir = posixpath.join(sRepoRoot, sStepDir)
     listPaths = []
     for sFile in (dictStep.get("saDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
@@ -1272,10 +1263,9 @@ def _flistResolveStepPaths(dictStep, dictGlobalVars,
     return listPaths
 
 
-def _flistCollectOutputPaths(dictWorkflow, sRepoRoot=""):
+def _flistCollectOutputPaths(dictWorkflow, dictVars=None):
     """Collect all resolved output file paths from the workflow."""
-    dictByStep = fdictCollectOutputPathsByStep(
-        dictWorkflow, sRepoRoot)
+    dictByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
     listPaths = []
     for iIndex in sorted(dictByStep.keys()):
         listPaths.extend(dictByStep[iIndex])
@@ -1361,7 +1351,7 @@ def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
 
 def _flistDetectAndInvalidate(dictCtx, sContainerId,
                               dictWorkflow, dictNewModTimes,
-                              sRepoRoot=""):
+                              dictVars=None):
     """Detect file changes and invalidate affected steps."""
     if "dictPreviousModTimes" not in dictCtx:
         dictCtx["dictPreviousModTimes"] = {}
@@ -1373,7 +1363,7 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
     if _fbPipelineIsRunning(dictCtx, sContainerId):
         return {}
     dictPathsByStep = fdictCollectOutputPathsByStep(
-        dictWorkflow, sRepoRoot)
+        dictWorkflow, dictVars)
     dictChangedFiles = _fdictFindChangedFiles(
         dictPathsByStep, dictOldModTimes, dictNewModTimes,
     )
@@ -1727,10 +1717,8 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        sRepoRoot = dictCtx["workflowDir"](sContainerId)
         _fnRemoveTestFiles(
             dictCtx["docker"], sContainerId, dictStep, iStepIndex,
-            sRepoRoot,
         )
         dictStep["saTestCommands"] = []
         dictCtx["save"](sContainerId, dictWorkflow)
@@ -1762,9 +1750,6 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             request.sContent.encode("utf-8"),
         )
         sDir = dictStep.get("sDirectory", "/workspace")
-        sRepoRoot = dictCtx["workflowDir"](sContainerId)
-        if not sDir.startswith("/"):
-            sDir = posixpath.join(sRepoRoot, sDir)
         sTestCmd = f"cd {sDir}"
         sTestCmd += f" && python -m pytest {request.sFilePath} -v"
         iExitCode, sOutput = await asyncio.to_thread(
@@ -1805,9 +1790,6 @@ def _fnRegisterTestRun(app, dictCtx):
         if not listCmds:
             raise HTTPException(400, "No test commands")
         sDir = dictStep.get("sDirectory", "/workspace")
-        sRepoRoot = dictCtx["workflowDir"](sContainerId)
-        if not sDir.startswith("/"):
-            sDir = posixpath.join(sRepoRoot, sDir)
         sFullCmd = " && ".join(
             [f"cd {sDir}"] + listCmds)
         iExitCode, sOutput = await asyncio.to_thread(
@@ -1827,15 +1809,12 @@ def _fnRegisterTestRun(app, dictCtx):
 
 def _fnRemoveTestFiles(
     connectionDocker, sContainerId, dictStep, iStepIndex,
-    sRepoRoot="",
 ):
     """Remove generated test file from the container."""
     from .pipelineRunner import fsShellQuote
     from .testGenerator import fsTestFilePath
 
     sDirectory = dictStep.get("sDirectory", "")
-    if sRepoRoot and not sDirectory.startswith("/"):
-        sDirectory = posixpath.join(sRepoRoot, sDirectory)
     sPath = fsTestFilePath(sDirectory, iStepIndex)
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"rm -f {fsShellQuote(sPath)}"
