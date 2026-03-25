@@ -67,15 +67,11 @@ class DockerConnection:
         return container
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
-        iTimeout=30,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None
     ):
         """Run a command and return (iExitCode, sOutput)."""
         container = self.fcontainerGetById(sContainerId)
-        dictKwargs = {
-            "cmd": ["/bin/bash", "-c", sCommand],
-            "timeout": iTimeout,
-        }
+        dictKwargs = {"cmd": ["/bin/bash", "-c", sCommand]}
         if sWorkdir:
             dictKwargs["workdir"] = sWorkdir
         if sUser:
