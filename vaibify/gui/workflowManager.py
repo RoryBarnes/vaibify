@@ -600,18 +600,19 @@ def fdictBuildDirectDependencies(dictWorkflow):
 
 def fdictBuildDownstreamMap(dictWorkflow):
     """Return {iStepIndex: set(all downstream indices)} via BFS."""
+    from collections import deque
     dictDirect = fdictBuildDirectDependencies(dictWorkflow)
     iStepCount = len(dictWorkflow["listSteps"])
     dictDownstream = {}
     for iIndex in range(iStepCount):
         setVisited = set()
-        listQueue = list(dictDirect.get(iIndex, set()))
-        while listQueue:
-            iCurrent = listQueue.pop(0)
+        dequeQueue = deque(dictDirect.get(iIndex, set()))
+        while dequeQueue:
+            iCurrent = dequeQueue.popleft()
             if iCurrent in setVisited:
                 continue
             setVisited.add(iCurrent)
-            listQueue.extend(dictDirect.get(iCurrent, set()))
+            dequeQueue.extend(dictDirect.get(iCurrent, set()))
         dictDownstream[iIndex] = setVisited
     return dictDownstream
 

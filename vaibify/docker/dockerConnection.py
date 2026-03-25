@@ -4,8 +4,6 @@ Wraps the docker-py SDK with lazy import so the module can be loaded
 even when docker-py is not installed.
 """
 
-import io
-import tarfile
 
 
 def _fmoduleGetDocker():
@@ -83,10 +81,12 @@ class DockerConnection:
     def fbaFetchFile(self, sContainerId, sFilePath):
         """Fetch a file from the container and return its bytes."""
         import base64
+        sSafePath = repr(sFilePath)
         sCommand = (
-            f"python3 -c \"import base64,sys; "
-            f"sys.stdout.buffer.write("
-            f"base64.b64encode(open('{sFilePath}','rb').read()))\""
+            "python3 -c \"import base64,sys; "
+            "sys.stdout.buffer.write("
+            "base64.b64encode(open("
+            + sSafePath + ",'rb').read()))\""
         )
         iExitCode, sOutput = self.ftResultExecuteCommand(
             sContainerId, sCommand
@@ -101,10 +101,11 @@ class DockerConnection:
         """Write bytes to a file inside the container."""
         import base64
         sEncoded = base64.b64encode(baContent).decode("ascii")
+        sSafePath = repr(sFilePath)
         sCommand = (
-            f"python3 -c \"import base64; "
-            f"open('{sFilePath}','wb').write("
-            f"base64.b64decode('{sEncoded}'))\""
+            "python3 -c \"import base64; open("
+            + sSafePath + ",'wb').write("
+            "base64.b64decode('" + sEncoded + "'))\""
         )
         iExitCode, sOutput = self.ftResultExecuteCommand(
             sContainerId, sCommand

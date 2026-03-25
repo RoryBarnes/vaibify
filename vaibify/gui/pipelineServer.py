@@ -1065,7 +1065,7 @@ def _fnRegisterFigure(app, dictCtx):
                 listPaths.append(
                     posixpath.join(sDir, sWorkdir, sFilePath))
         sTestCmd = " || ".join(
-            f"test -f {p}" for p in listPaths)
+            f"test -f {fsShellQuote(p)}" for p in listPaths)
         iExitCode, _ = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
             sContainerId, sTestCmd,
@@ -1082,6 +1082,7 @@ def _fnRegisterFigure(app, dictCtx):
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
+        fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
         baContent = await asyncio.to_thread(
             fbaFetchFigureWithFallback,
             dictCtx["docker"], sContainerId, sAbsPath,
