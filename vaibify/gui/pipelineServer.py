@@ -1757,16 +1757,21 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             sContainerId, sTestCmd,
         )
         bPassed = iExitCode == 0
+        dictVerification = dictStep.setdefault(
+            "dictVerification", {})
         if bPassed:
-            dictStep.setdefault("dictVerification", {})
-            dictStep["dictVerification"]["sUnitTest"] = "passed"
+            dictVerification["sUnitTest"] = "passed"
+            dictVerification.pop("listModifiedFiles", None)
+            dictVerification.pop("bUpstreamModified", None)
             dictStep.setdefault("saTestCommands", [])
             sRunCmd = f"python -m pytest {request.sFilePath} -v"
             if sRunCmd not in dictStep["saTestCommands"]:
                 dictStep["saTestCommands"].append(sRunCmd)
+            _fnClearDownstreamUpstreamFlags(
+                dictWorkflow, iStepIndex)
         else:
-            dictStep.setdefault("dictVerification", {})
-            dictStep["dictVerification"]["sUnitTest"] = "failed"
+            dictVerification["sUnitTest"] = "failed"
+        dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,
@@ -1797,14 +1802,33 @@ def _fnRegisterTestRun(app, dictCtx):
             sContainerId, sFullCmd,
         )
         bPassed = iExitCode == 0
-        dictStep.setdefault("dictVerification", {})
-        dictStep["dictVerification"]["sUnitTest"] = (
+        dictVerification = dictStep.setdefault(
+            "dictVerification", {})
+        dictVerification["sUnitTest"] = (
             "passed" if bPassed else "failed")
+        if bPassed:
+            dictVerification.pop("listModifiedFiles", None)
+            dictVerification.pop("bUpstreamModified", None)
+            _fnClearDownstreamUpstreamFlags(
+                dictWorkflow, iStepIndex)
+        dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,
             "iExitCode": iExitCode,
         }
+
+
+def _fnClearDownstreamUpstreamFlags(dictWorkflow, iStepIndex):
+    """Clear bUpstreamModified on downstream steps."""
+    dictDownstream = workflowManager.fdictBuildDownstreamMap(
+        dictWorkflow)
+    listSteps = dictWorkflow.get("listSteps", [])
+    for iDown in dictDownstream.get(iStepIndex, set()):
+        if 0 <= iDown < len(listSteps):
+            dictVerify = listSteps[iDown].get(
+                "dictVerification", {})
+            dictVerify.pop("bUpstreamModified", None)
 
 
 def _fnRemoveTestFiles(

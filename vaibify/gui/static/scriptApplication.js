@@ -3674,6 +3674,9 @@ const PipeleyenApp = (function () {
             step.dictVerification = step.dictVerification || {};
             step.dictVerification.sUnitTest =
                 dictResult.bPassed ? "passed" : "failed";
+            if (dictResult.bPassed) {
+                fnClearOutputModified(iStepIndex);
+            }
             fnRenderStepList();
             fnShowToast(
                 dictResult.bPassed ?
@@ -4220,6 +4223,7 @@ const PipeleyenApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fsResolveTemplate: fsResolveTemplate,
         fnShowConfirmModal: fnShowConfirmModal,
+        fnClearOutputModified: fnClearOutputModified,
         fnFinalizeGeneratedTest: fnFinalizeGeneratedTest,
         fnCancelGeneratedTest: fnCancelGeneratedTest,
         fbIsTestPending: function (iStep) {

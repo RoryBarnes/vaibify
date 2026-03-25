@@ -832,6 +832,9 @@ const PipeleyenFigureViewer = (function () {
                 dictV.sUnitTest = bPassed ? "passed" : "failed";
                 dictWorkflow.listSteps[iStep].dictVerification =
                     dictV;
+                if (bPassed) {
+                    PipeleyenApp.fnClearOutputModified(iStep);
+                }
                 PipeleyenApp.fnRenderStepList();
             }
             if (dictResult.sOutput) {
