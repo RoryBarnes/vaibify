@@ -189,40 +189,33 @@ def _fbaFetchFallback(
             f"{_fsSanitizeServerError(str(error))}")
 
 
-def flistDirectoryEntries(connectionDocker, sContainerId, sAbsPath):
-    """Run find command and return stripped output lines."""
+def flistQueryDirectory(connectionDocker, sContainerId, sAbsPath):
+    """List files and directories in a single Docker exec call."""
     sCommand = (
         f"find {fsShellQuote(sAbsPath)} -maxdepth 1 -mindepth 1 "
-        f"\\( -type f -o -type d \\) 2>/dev/null | sort"
+        f"-printf '%y %p\\n' 2>/dev/null | sort -k2"
     )
     _, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
-    return [s.strip() for s in sOutput.splitlines() if s.strip()]
+    return _flistParseDirectoryOutput(sOutput)
 
 
-def fdictEntryFromPath(connectionDocker, sContainerId, sPath):
-    """Build a directory entry dict for a single path."""
-    _, sTypeOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        f"test -d {fsShellQuote(sPath)} && echo d || echo f",
-    )
-    return {
-        "sName": posixpath.basename(sPath),
-        "sPath": sPath,
-        "bIsDirectory": "d" in sTypeOutput,
-    }
-
-
-def flistQueryDirectory(connectionDocker, sContainerId, sAbsPath):
-    """List files and directories at the given path."""
-    listPaths = flistDirectoryEntries(
-        connectionDocker, sContainerId, sAbsPath
-    )
-    return [
-        fdictEntryFromPath(connectionDocker, sContainerId, s)
-        for s in listPaths
-    ]
+def _flistParseDirectoryOutput(sOutput):
+    """Parse find -printf '%y %p' output into entry dicts."""
+    listEntries = []
+    for sLine in sOutput.splitlines():
+        sLine = sLine.strip()
+        if not sLine or len(sLine) < 3:
+            continue
+        sType = sLine[0]
+        sPath = sLine[2:]
+        listEntries.append({
+            "sName": posixpath.basename(sPath),
+            "sPath": sPath,
+            "bIsDirectory": sType == "d",
+        })
+    return listEntries
 
 
 async def _fnDispatchRunFrom(
@@ -866,12 +859,12 @@ def _fnRegisterLogRoutes(app, dictCtx):
         sLogsDir = posixpath.join(
             WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
         )
-        listEntries = flistDirectoryEntries(
+        listEntries = flistQueryDirectory(
             dictCtx["docker"], sContainerId, sLogsDir
         )
         listLogs = [
-            posixpath.basename(s) for s in listEntries
-            if s.endswith(".log")
+            e["sName"] for e in listEntries
+            if e["sName"].endswith(".log")
         ]
         return sorted(listLogs, reverse=True)
 

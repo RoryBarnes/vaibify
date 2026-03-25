@@ -304,7 +304,8 @@ def test_fsExtractScriptPath_bare_command():
 
 def test_fnValidateStepDirectory_missing_dir():
     mockConnection = MagicMock()
-    mockConnection.ftResultExecuteCommand.return_value = (1, "")
+    mockConnection.ftResultExecuteCommand.return_value = (
+        1, "missing")
     listErrors = []
     _fnValidateStepDirectory(
         mockConnection, "cid", "/missing",
@@ -316,10 +317,8 @@ def test_fnValidateStepDirectory_missing_dir():
 
 def test_fnValidateStepDirectory_not_writable():
     mockConnection = MagicMock()
-    mockConnection.ftResultExecuteCommand.side_effect = [
-        (0, ""),
-        (1, ""),
-    ]
+    mockConnection.ftResultExecuteCommand.return_value = (
+        1, "readonly")
     listErrors = []
     _fnValidateStepDirectory(
         mockConnection, "cid", "/readonly",

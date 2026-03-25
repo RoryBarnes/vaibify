@@ -18,10 +18,12 @@ class MockDockerConnection:
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listCommands.append(sCommand)
-        for sPattern, iExitCode in self._dictResponses.items():
+        for sPattern, tResult in self._dictResponses.items():
             if sPattern in sCommand:
-                return (iExitCode, "")
-        return (0, "")
+                if isinstance(tResult, tuple):
+                    return tResult
+                return (tResult, "")
+        return (0, "ok")
 
     def fbaFetchFile(self, sContainerId, sFilePath):
         return b"{}"
@@ -85,7 +87,7 @@ async def test_preflight_missing_directory():
                             ["python test.py"]),
     ])
     mockConnection = MockDockerConnection({
-        "test -d '/nonexistent/dir'": 1,
+        "test -d": (1, "missing"),
     })
     dictVariables = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
 
@@ -104,8 +106,7 @@ async def test_preflight_not_writable_directory():
                             ["python test.py"]),
     ])
     mockConnection = MockDockerConnection({
-        "test -d '/readonly/dir'": 0,
-        "test -w '/readonly/dir'": 1,
+        "test -d": (1, "readonly"),
         "test -f 'test.py'": 0,
     })
     dictVariables = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}

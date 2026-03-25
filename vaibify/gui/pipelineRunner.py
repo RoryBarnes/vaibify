@@ -15,13 +15,6 @@ def fsShellQuote(sValue):
     return "'" + sValue.replace("'", "'\\''") + "'"
 
 
-PATTERN_STEP_LABEL = re.compile(
-    r"\[Step(\d+)\]|Step(\d+):|=+\s*\n\s*Step(\d+)"
-)
-PATTERN_STEP_SUCCESS = re.compile(r"SUCCESS:\s*Step(\d+)")
-PATTERN_STEP_FAILED = re.compile(r"FAILED:\s*Step(\d+)")
-
-
 def _fdictBuildVariables(dictWorkflow, sWorkdir):
     """Build merged global + step variable dict for resolution."""
     from . import workflowManager
@@ -114,20 +107,23 @@ def _fnValidateStepDirectory(
 ):
     """Check that a step's working directory exists and is writable."""
     sQuoted = fsShellQuote(sStepDirectory)
-    sCheckDir = f"test -d {sQuoted}"
-    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCheckDir
+    sCommand = (
+        f"test -d {sQuoted} && test -w {sQuoted} "
+        f"&& echo ok || "
+        f"(test -d {sQuoted} && echo readonly || echo missing)"
     )
-    if iExitCode != 0:
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    sResult = sOutput.strip()
+    if sResult == "missing":
         listErrors.append(
             f"Step {iStepNumber} ({sStepName}): "
             f"directory does not exist: {sStepDirectory}"
         )
         return
-    sCheckWrite = f"test -w {sQuoted}"
-    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCheckWrite
-    )
+    if sResult == "readonly":
+        iExitCode = 1
     if iExitCode != 0:
         listErrors.append(
             f"Step {iStepNumber} ({sStepName}): "

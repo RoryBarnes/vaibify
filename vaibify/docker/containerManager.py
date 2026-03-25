@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import sys
 
 from . import fnRunDockerCommand
 from .volumeManager import fsGetVolumeName
