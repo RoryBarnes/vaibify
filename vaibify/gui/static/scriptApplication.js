@@ -815,7 +815,7 @@ const PipeleyenApp = (function () {
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
-        if (dictVerify.bUpstreamModified === true) return false;
+        if (fbAnyUpstreamModified(iStep)) return false;
         var sUser = dictVerify.sUser;
         var sDeps = fsComputeDepsState(iStep);
         if (sUser !== "passed" || sDeps === "failed") return false;
@@ -1147,6 +1147,17 @@ const PipeleyenApp = (function () {
         return true;
     }
 
+    function fbAnyUpstreamModified(iStep) {
+        var listDeps = flistGetStepDependencies(iStep);
+        for (var i = 0; i < listDeps.length; i++) {
+            var dictV = fdictGetVerification(
+                dictWorkflow.listSteps[listDeps[i]]);
+            var listMod = dictV.listModifiedFiles || [];
+            if (listMod.length > 0) return true;
+        }
+        return false;
+    }
+
     function fsComputeDepsState(iStep) {
         var listDeps = flistGetStepDependencies(iStep);
         if (listDeps.length === 0) return "none";
@@ -1175,7 +1186,7 @@ const PipeleyenApp = (function () {
                 '\u26A0 Modified: ' +
                 fnEscapeHtml(listNames.join(", ")) + '</div>';
         }
-        if (dictVerify.bUpstreamModified === true) {
+        if (fbAnyUpstreamModified(iIndex)) {
             sHtml += '<div class="output-modified-warning">' +
                 '\u26A0 Upstream step outputs changed</div>';
         }
@@ -1340,7 +1351,7 @@ const PipeleyenApp = (function () {
         var sUser = dictVerify.sUser;
         var listModified = dictVerify.listModifiedFiles || [];
         var bFilesModified = listModified.length > 0 ||
-            dictVerify.bUpstreamModified === true;
+            fbAnyUpstreamModified(iIndex);
         var bScriptModified =
             dictScriptModified[iIndex] === "modified";
 
@@ -3283,21 +3294,7 @@ const PipeleyenApp = (function () {
         if (dictStep && dictStep.dictVerification) {
             delete dictStep.dictVerification.bOutputModified;
             delete dictStep.dictVerification.listModifiedFiles;
-            delete dictStep.dictVerification.bUpstreamModified;
         }
-        fnClearDownstreamUpstreamFlags(iStep);
-    }
-
-    function fnClearDownstreamUpstreamFlags(iStep) {
-        dictWorkflow.listSteps.forEach(function (step, iIdx) {
-            if (iIdx === iStep) return;
-            var dictV = step.dictVerification;
-            if (!dictV || !dictV.bUpstreamModified) return;
-            var listStepDeps = flistGetStepDependencies(iIdx);
-            if (listStepDeps.indexOf(iStep) >= 0) {
-                delete dictV.bUpstreamModified;
-            }
-        });
     }
 
     function fnHandleTestResult(dictEvent) {
