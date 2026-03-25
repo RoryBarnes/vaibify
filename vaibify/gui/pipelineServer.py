@@ -833,11 +833,9 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         request: FileWriteRequest, sWorkdir: str = "",
     ):
         dictCtx["require"]()
-        sDir = dictCtx["workflowDir"](sContainerId)
-        if sFilePath.startswith("/"):
-            sAbsPath = sFilePath
-        else:
-            sAbsPath = posixpath.join(sDir, sFilePath)
+        sAbsPath = fsResolveFigurePath(
+            dictCtx["workflowDir"](sContainerId), sFilePath
+        )
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         baContent = request.sContent.encode("utf-8")
         try:
