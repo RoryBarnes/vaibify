@@ -251,24 +251,11 @@ def _fnSaveWorkflowStats(
             "Failed to save workflow stats: %s", error)
 
 
-async def _fiRunStepsAndLog(
-    connectionDocker, sContainerId, dictWorkflow, sWorkdir,
-    dictVariables, fnLogging, fnStatusCallback,
-    sLogPath, listLogLines, sAction, iStartStep,
-    sWorkflowPath="",
+def _ffBuildFlushingCallback(
+    fnLogging, connectionDocker, sContainerId,
+    dictState, sLogPath, listLogLines,
 ):
-    """Execute steps, write log, and emit final status."""
-    from . import pipelineState  # noqa: E402
-
-    iStepCount = len(dictWorkflow.get("listSteps", []))
-    dictState = pipelineState.fdictBuildInitialState(
-        sAction, sLogPath, iStepCount
-    )
-    pipelineState.fnWriteState(
-        connectionDocker, sContainerId, dictState
-    )
-    await fnLogging({"sType": "started", "sCommand": sAction})
-
+    """Return a callback that logs events and flushes on step results."""
     async def fnLoggingWithFlush(dictEvent):
         await fnLogging(dictEvent)
         _fnUpdatePipelineState(
@@ -280,12 +267,16 @@ async def _fiRunStepsAndLog(
                 connectionDocker, sContainerId, sLogPath,
                 listLogLines,
             )
+    return fnLoggingWithFlush
 
-    iResult = await _fiRunStepList(
-        connectionDocker, sContainerId,
-        dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
-        iStartStep=iStartStep,
-    )
+
+async def _fnFinalizeRun(
+    connectionDocker, sContainerId, dictState, iResult,
+    sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
+    fnStatusCallback,
+):
+    """Write final state, log, and emit completion event."""
+    from . import pipelineState
     pipelineState.fnUpdateState(
         connectionDocker, sContainerId, dictState,
         pipelineState.fdictBuildCompletedState(iResult),
@@ -301,6 +292,39 @@ async def _fiRunStepsAndLog(
     await fnStatusCallback(
         {"sType": "completed" if iResult == 0 else "failed",
          "iExitCode": iResult, "sLogPath": sLogPath}
+    )
+
+
+async def _fiRunStepsAndLog(
+    connectionDocker, sContainerId, dictWorkflow, sWorkdir,
+    dictVariables, fnLogging, fnStatusCallback,
+    sLogPath, listLogLines, sAction, iStartStep,
+    sWorkflowPath="",
+):
+    """Execute steps, write log, and emit final status."""
+    from . import pipelineState
+
+    iStepCount = len(dictWorkflow.get("listSteps", []))
+    dictState = pipelineState.fdictBuildInitialState(
+        sAction, sLogPath, iStepCount
+    )
+    pipelineState.fnWriteState(
+        connectionDocker, sContainerId, dictState
+    )
+    await fnLogging({"sType": "started", "sCommand": sAction})
+    fnLoggingWithFlush = _ffBuildFlushingCallback(
+        fnLogging, connectionDocker, sContainerId,
+        dictState, sLogPath, listLogLines,
+    )
+    iResult = await _fiRunStepList(
+        connectionDocker, sContainerId,
+        dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
+        iStartStep=iStartStep,
+    )
+    await _fnFinalizeRun(
+        connectionDocker, sContainerId, dictState, iResult,
+        sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
+        fnStatusCallback,
     )
     return iResult
 
@@ -509,6 +533,26 @@ async def _fsetSnapshotDirectory(
     return set(sOutput.strip().splitlines())
 
 
+def _flistFilterUnexpectedFiles(setNewFiles, sDirectory, dictStep):
+    """Return list of unexpected output file dicts from new files."""
+    setExpected = set()
+    for sKey in ("saDataFiles", "saPlotFiles"):
+        for sFile in dictStep.get(sKey, []):
+            setExpected.add(sFile)
+    listUnexpected = []
+    for sFile in sorted(setNewFiles):
+        sRelative = sFile
+        if sFile.startswith(sDirectory + "/"):
+            sRelative = sFile[len(sDirectory) + 1:]
+        bExpected = sRelative in setExpected or sFile in setExpected
+        if not bExpected:
+            listUnexpected.append({
+                "sFilePath": sRelative,
+                "bExpected": False,
+            })
+    return listUnexpected
+
+
 async def _fnEmitDiscoveredOutputs(
     connectionDocker, sContainerId, sDirectory,
     setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
@@ -520,23 +564,8 @@ async def _fnEmitDiscoveredOutputs(
     setNewFiles = setFilesAfter - setFilesBefore
     if not setNewFiles:
         return
-    setExpected = set()
-    for sKey in ("saDataFiles", "saPlotFiles"):
-        for sFile in dictStep.get(sKey, []):
-            setExpected.add(sFile)
-    listDiscovered = []
-    for sFile in sorted(setNewFiles):
-        sRelative = sFile
-        if sFile.startswith(sDirectory + "/"):
-            sRelative = sFile[len(sDirectory) + 1:]
-        bExpected = sRelative in setExpected or sFile in setExpected
-        listDiscovered.append({
-            "sFilePath": sRelative,
-            "bExpected": bExpected,
-        })
-    listUnexpected = [
-        d for d in listDiscovered if not d["bExpected"]
-    ]
+    listUnexpected = _flistFilterUnexpectedFiles(
+        setNewFiles, sDirectory, dictStep)
     if listUnexpected:
         await fnStatusCallback({
             "sType": "discoveredOutputs",
@@ -727,6 +756,15 @@ async def _fnRunOneStep(
     )
 
 
+def _fnRecordRunStats(dictStep, sStartTimestamp, fStartTime):
+    """Store timing information in the step's run stats."""
+    import time
+    dictStep["dictRunStats"] = {
+        "sLastRun": sStartTimestamp,
+        "fWallClock": round(time.time() - fStartTime, 1),
+    }
+
+
 async def _fiExecuteAndRecord(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
@@ -746,10 +784,7 @@ async def _fiExecuteAndRecord(
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber,
     )
-    dictStep["dictRunStats"] = {
-        "sLastRun": sStartTimestamp,
-        "fWallClock": round(time.time() - fStartTime, 1),
-    }
+    _fnRecordRunStats(dictStep, sStartTimestamp, fStartTime)
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],

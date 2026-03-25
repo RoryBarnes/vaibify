@@ -1159,37 +1159,41 @@ def _fnRegisterRuntimeInfo(app, dictCtx):
         return await asyncio.to_thread(fsDetectDockerRuntime)
 
 
+def _fdictSleepWarningForContext(sContext):
+    """Return runtime info dict with appropriate sleep warning."""
+    sSleepDefault = (
+        "Use 'caffeinate -s' to prevent macOS from "
+        "sleeping during long pipeline runs."
+    )
+    if "colima" in sContext:
+        return {"sRuntime": "colima", "sSleepWarning":
+            "Your Docker runtime (Colima) does not "
+            "sleep automatically. " + sSleepDefault}
+    if "desktop" in sContext or "default" == sContext:
+        return {"sRuntime": "desktop", "sSleepWarning":
+            "Ensure Docker Desktop is configured to "
+            "not sleep idle VMs (Settings > Resources "
+            "> Advanced). Also consider running "
+            "'caffeinate -s' to prevent macOS sleep."}
+    if "orbstack" in sContext:
+        return {"sRuntime": "orbstack", "sSleepWarning":
+            "OrbStack VMs survive sleep. " + sSleepDefault}
+    return {"sRuntime": sContext, "sSleepWarning": sSleepDefault}
+
+
 def fsDetectDockerRuntime():
     """Detect the Docker runtime (colima, desktop, orbstack, etc.)."""
     import subprocess
     try:
         resultContext = subprocess.run(
-            ["docker", "context", "ls", "--format", "{{.Name}}:{{.Current}}"],
+            ["docker", "context", "ls", "--format",
+             "{{.Name}}:{{.Current}}"],
             capture_output=True, text=True, timeout=5,
         )
         for sLine in resultContext.stdout.strip().split("\n"):
             if ":true" in sLine.lower():
                 sContext = sLine.split(":")[0].strip().lower()
-                if "colima" in sContext:
-                    return {"sRuntime": "colima", "sSleepWarning":
-                        "Your Docker runtime (Colima) does not "
-                        "sleep automatically. Use 'caffeinate -s' "
-                        "to prevent macOS from sleeping during "
-                        "long pipeline runs."}
-                if "desktop" in sContext or "default" == sContext:
-                    return {"sRuntime": "desktop", "sSleepWarning":
-                        "Ensure Docker Desktop is configured to "
-                        "not sleep idle VMs (Settings > Resources "
-                        "> Advanced). Also consider running "
-                        "'caffeinate -s' to prevent macOS sleep."}
-                if "orbstack" in sContext:
-                    return {"sRuntime": "orbstack", "sSleepWarning":
-                        "OrbStack VMs survive sleep. Use "
-                        "'caffeinate -s' to prevent macOS from "
-                        "sleeping during long pipeline runs."}
-                return {"sRuntime": sContext, "sSleepWarning":
-                    "Use 'caffeinate -s' to prevent macOS from "
-                    "sleeping during long pipeline runs."}
+                return _fdictSleepWarningForContext(sContext)
     except Exception:
         pass
     return {"sRuntime": "unknown", "sSleepWarning":
@@ -1350,10 +1354,10 @@ def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
     return dictResult
 
 
-def _flistDetectAndInvalidate(dictCtx, sContainerId,
-                              dictWorkflow, dictNewModTimes,
-                              dictVars=None):
-    """Detect file changes and invalidate affected steps."""
+def _fdictDetectChangedFiles(dictCtx, sContainerId,
+                             dictWorkflow, dictNewModTimes,
+                             dictVars=None):
+    """Return changed files by step index, or empty if none changed."""
     if "dictPreviousModTimes" not in dictCtx:
         dictCtx["dictPreviousModTimes"] = {}
     dictPrevByContainer = dictCtx["dictPreviousModTimes"]
@@ -1365,11 +1369,13 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
         return {}
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars)
-    dictChangedFiles = _fdictFindChangedFiles(
+    return _fdictFindChangedFiles(
         dictPathsByStep, dictOldModTimes, dictNewModTimes,
     )
-    if not dictChangedFiles:
-        return {}
+
+
+def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles):
+    """Invalidate changed and downstream steps, return verification map."""
     dictDownstream = workflowManager.fdictBuildDownstreamMap(
         dictWorkflow)
     setDirectChanged = set(dictChangedFiles.keys())
@@ -1384,13 +1390,28 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
     for iIndex in setDownstream:
         if 0 <= iIndex < len(listSteps):
             _fnInvalidateDownstreamStep(listSteps[iIndex])
-    dictCtx["save"](sContainerId, dictWorkflow)
     setAllAffected = setDirectChanged | setDownstream
     dictInvalidated = {}
     for iIndex in setAllAffected:
         if 0 <= iIndex < len(listSteps):
             dictInvalidated[iIndex] = listSteps[iIndex].get(
                 "dictVerification", {})
+    return dictInvalidated
+
+
+def _flistDetectAndInvalidate(dictCtx, sContainerId,
+                              dictWorkflow, dictNewModTimes,
+                              dictVars=None):
+    """Detect file changes and invalidate affected steps."""
+    dictChangedFiles = _fdictDetectChangedFiles(
+        dictCtx, sContainerId, dictWorkflow,
+        dictNewModTimes, dictVars,
+    )
+    if not dictChangedFiles:
+        return {}
+    dictInvalidated = _fdictInvalidateAffectedSteps(
+        dictWorkflow, dictChangedFiles)
+    dictCtx["save"](sContainerId, dictWorkflow)
     return dictInvalidated
 
 
@@ -1416,6 +1437,39 @@ def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
     return dictResult
 
 
+async def _fiCountMatchingProcesses(connectionDocker, sContainerId,
+                                     sGrepPattern):
+    """Count processes matching the grep pattern in the container."""
+    sCountCommand = (
+        f"ps aux | grep -E '{sGrepPattern}' "
+        f"| grep -v grep | wc -l"
+    )
+    _, sCountOutput = await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
+        sContainerId, sCountCommand,
+    )
+    try:
+        return int(sCountOutput.strip())
+    except ValueError:
+        return 0
+
+
+async def _fnKillMatchingProcesses(connectionDocker, sContainerId,
+                                   listPatterns):
+    """Kill all processes matching the given patterns."""
+    for sPattern in listPatterns:
+        sBracket = "[" + sPattern[0] + "]" + sPattern[1:]
+        sKill = (
+            f"ps aux | grep '{sBracket}' "
+            f"| awk '{{print $2}}' "
+            f"| xargs kill -9 2>/dev/null"
+        )
+        await asyncio.to_thread(
+            connectionDocker.ftResultExecuteCommand,
+            sContainerId, sKill,
+        )
+
+
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
@@ -1429,35 +1483,37 @@ def _fnRegisterPipelineKill(app, dictCtx):
         sGrepPattern = "|".join(listSafe) if listSafe else ""
         if not sGrepPattern:
             return {"bSuccess": True, "iProcessesKilled": 0}
-        sCountCommand = (
-            f"ps aux | grep -E '{sGrepPattern}' "
-            f"| grep -v grep | wc -l"
-        )
-        _, sCountBefore = await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
-            sContainerId, sCountCommand,
-        )
-        iCountBefore = 0
-        try:
-            iCountBefore = int(sCountBefore.strip())
-        except ValueError:
-            pass
+        iCountBefore = await _fiCountMatchingProcesses(
+            dictCtx["docker"], sContainerId, sGrepPattern)
         if iCountBefore > 0:
-            for sPattern in listPatterns:
-                sBracket = "[" + sPattern[0] + "]" + sPattern[1:]
-                sKill = (
-                    f"ps aux | grep '{sBracket}' "
-                    f"| awk '{{print $2}}' "
-                    f"| xargs kill -9 2>/dev/null"
-                )
-                await asyncio.to_thread(
-                    dictCtx["docker"].ftResultExecuteCommand,
-                    sContainerId, sKill,
-                )
+            await _fnKillMatchingProcesses(
+                dictCtx["docker"], sContainerId, listPatterns)
         return {
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
         }
+
+
+def _flistBuildCleanCommands(dictWorkflow):
+    """Build rm commands for all output files and reset step stats."""
+    listCleanCommands = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if dictStep.get("bInteractive", False):
+            continue
+        sDir = dictStep.get("sDirectory", "")
+        for sKey in ("saDataFiles", "saPlotFiles"):
+            for sFile in dictStep.get(sKey, []):
+                if sFile.startswith("{"):
+                    continue
+                sPath = sFile if sFile.startswith("/") else (
+                    posixpath.join(sDir, sFile) if sDir
+                    else sFile)
+                listCleanCommands.append(
+                    f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
+        dictStep["dictRunStats"] = {}
+        dictStep["dictVerification"] = {
+            "sUnitTest": "untested", "sUser": "untested"}
+    return listCleanCommands
 
 
 def _fnRegisterPipelineClean(app, dictCtx):
@@ -1468,23 +1524,7 @@ def _fnRegisterPipelineClean(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        listCleanCommands = []
-        for dictStep in dictWorkflow.get("listSteps", []):
-            if dictStep.get("bInteractive", False):
-                continue
-            sDir = dictStep.get("sDirectory", "")
-            for sKey in ("saDataFiles", "saPlotFiles"):
-                for sFile in dictStep.get(sKey, []):
-                    if sFile.startswith("{"):
-                        continue
-                    sPath = sFile if sFile.startswith("/") else (
-                        posixpath.join(sDir, sFile) if sDir
-                        else sFile)
-                    listCleanCommands.append(
-                        f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
-            dictStep["dictRunStats"] = {}
-            dictStep["dictVerification"] = {
-                "sUnitTest": "untested", "sUser": "untested"}
+        listCleanCommands = _flistBuildCleanCommands(dictWorkflow)
         if listCleanCommands:
             sCommand = " ; ".join(listCleanCommands)
             await asyncio.to_thread(
@@ -1667,6 +1707,26 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterSettingsPut(app, dictCtx)
 
 
+async def _fdictRunTestGeneration(
+    dictCtx, sContainerId, iStepIndex,
+    dictWorkflow, fdictGenerateTest, request,
+):
+    """Invoke the test generator and return its result dict."""
+    dictVars = dictCtx["variables"](sContainerId)
+    try:
+        return await asyncio.to_thread(
+            fdictGenerateTest,
+            dictCtx["docker"], sContainerId, iStepIndex,
+            dictWorkflow, dictVars,
+            request.bUseApi, request.sApiKey,
+            sUser=sTerminalUser,
+        )
+    except Exception as error:
+        raise HTTPException(
+            500, f"Generation failed: "
+            f"{_fsSanitizeServerError(str(error))}")
+
+
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
@@ -1688,19 +1748,10 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
-        dictVars = dictCtx["variables"](sContainerId)
-        try:
-            dictResult = await asyncio.to_thread(
-                fdictGenerateTest,
-                dictCtx["docker"], sContainerId, iStepIndex,
-                dictWorkflow, dictVars,
-                request.bUseApi, request.sApiKey,
-                sUser=sTerminalUser,
-            )
-        except Exception as error:
-            raise HTTPException(
-                500, f"Generation failed: "
-                f"{_fsSanitizeServerError(str(error))}")
+        dictResult = await _fdictRunTestGeneration(
+            dictCtx, sContainerId, iStepIndex,
+            dictWorkflow, fdictGenerateTest, request,
+        )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         dictStep["saTestCommands"] = dictResult["saTestCommands"]
         dictCtx["save"](sContainerId, dictWorkflow)
@@ -1734,6 +1785,25 @@ class SaveAndRunTestRequest(BaseModel):
     sFilePath: str
 
 
+def _fsBuildPytestCommand(sDirectory, sFilePath):
+    """Build a pytest command string for a test file."""
+    return (
+        f"cd {fsShellQuote(sDirectory)}"
+        f" && python -m pytest"
+        f" {fsShellQuote(sFilePath)} -v"
+    )
+
+
+def _fnRegisterTestCommand(dictStep, bPassed, sFilePath):
+    """Add the pytest run command to the step if the test passed."""
+    if not bPassed:
+        return
+    dictStep.setdefault("saTestCommands", [])
+    sRunCmd = f"python -m pytest {sFilePath} -v"
+    if sRunCmd not in dictStep["saTestCommands"]:
+        dictStep["saTestCommands"].append(sRunCmd)
+
+
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
@@ -1753,11 +1823,9 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             sContainerId, request.sFilePath,
             request.sContent.encode("utf-8"),
         )
-        sDir = dictStep.get("sDirectory", "/workspace")
-        sTestCmd = f"cd {fsShellQuote(sDir)}"
-        sTestCmd += (
-            f" && python -m pytest"
-            f" {fsShellQuote(request.sFilePath)} -v"
+        sTestCmd = _fsBuildPytestCommand(
+            dictStep.get("sDirectory", "/workspace"),
+            request.sFilePath,
         )
         iExitCode, sOutput = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
@@ -1766,11 +1834,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         bPassed = iExitCode == 0
         _fnRecordTestResult(
             dictStep, bPassed, dictWorkflow, iStepIndex)
-        if bPassed:
-            dictStep.setdefault("saTestCommands", [])
-            sRunCmd = f"python -m pytest {request.sFilePath} -v"
-            if sRunCmd not in dictStep["saTestCommands"]:
-                dictStep["saTestCommands"].append(sRunCmd)
+        _fnRegisterTestCommand(dictStep, bPassed, request.sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bPassed": bPassed,

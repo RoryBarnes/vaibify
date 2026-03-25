@@ -7,7 +7,7 @@ import pytest
 from vaibify.docker.imageBuilder import (
     flistDetermineOverlays,
     fbImageExists,
-    _OVERLAY_ORDER,
+    _LIST_OVERLAY_ORDER,
 )
 from vaibify.config.projectConfig import FeaturesConfig
 
@@ -66,7 +66,7 @@ def test_flistDetermineOverlays_all_features():
         "database", "dvc", "claude",
     ]
     assert listOverlays == listExpected
-    assert listOverlays == _OVERLAY_ORDER
+    assert listOverlays == _LIST_OVERLAY_ORDER
 
 
 def test_flistDetermineOverlays_partial_features():
@@ -79,8 +79,8 @@ def test_flistDetermineOverlays_partial_features():
     listOverlays = flistDetermineOverlays(configMock)
 
     assert listOverlays == ["jupyter", "dvc"]
-    iJupyterIndex = _OVERLAY_ORDER.index("jupyter")
-    iDvcIndex = _OVERLAY_ORDER.index("dvc")
+    iJupyterIndex = _LIST_OVERLAY_ORDER.index("jupyter")
+    iDvcIndex = _LIST_OVERLAY_ORDER.index("dvc")
     assert iJupyterIndex < iDvcIndex
 
 

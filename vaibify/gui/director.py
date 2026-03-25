@@ -377,6 +377,14 @@ def _fbExecuteOneStep(
         return False
 
 
+def _fsResolveFigureType(dictStep, dictWorkflow):
+    """Return the figure type for a step, falling back to workflow default."""
+    return dictStep.get(
+        "sFigureType",
+        dictWorkflow.get("sFigureType", "pdf"),
+    ).lower()
+
+
 def fnRunPipeline(dictWorkflow, dictVariables, sWorkflowRoot, iStartStep=1):
     """Execute all enabled steps, halting on first failure."""
     listResults = []
@@ -385,24 +393,17 @@ def fnRunPipeline(dictWorkflow, dictVariables, sWorkflowRoot, iStartStep=1):
             continue
         iStepNumber = iStep + 1
         sLabel = f"Step{iStepNumber:02d}"
-        dictVariables["sFigureType"] = dictStep.get(
-            "sFigureType",
-            dictWorkflow.get("sFigureType", "pdf"),
-        ).lower()
-
+        dictVariables["sFigureType"] = _fsResolveFigureType(
+            dictStep, dictWorkflow)
         if iStepNumber < iStartStep:
-            if not _fbSkipAndRegisterStep(
+            bOk = _fbSkipAndRegisterStep(
                 dictStep, dictVariables, sLabel, sWorkflowRoot,
-                listResults,
-            ):
-                fnPrintSummary(listResults)
-                return False
-            continue
-
-        if not _fbExecuteOneStep(
-            dictStep, dictVariables, sLabel, sWorkflowRoot,
-            listResults,
-        ):
+                listResults)
+        else:
+            bOk = _fbExecuteOneStep(
+                dictStep, dictVariables, sLabel, sWorkflowRoot,
+                listResults)
+        if not bOk:
             fnPrintSummary(listResults)
             return False
     fnPrintSummary(listResults)

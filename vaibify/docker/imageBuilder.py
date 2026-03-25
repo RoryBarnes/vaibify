@@ -7,7 +7,7 @@ from pathlib import Path
 from . import fnRunDockerCommand
 
 
-_OVERLAY_ORDER = [
+_LIST_OVERLAY_ORDER = [
     "gpu",
     "jupyter",
     "rlang",
@@ -17,7 +17,7 @@ _OVERLAY_ORDER = [
     "claude",
 ]
 
-_OVERLAY_DOCKERFILE_MAP = {
+_DICT_OVERLAY_DOCKERFILE_MAP = {
     "jupyter": "Dockerfile.jupyter",
     "rlang": "Dockerfile.rlang",
     "julia": "Dockerfile.julia",
@@ -29,7 +29,7 @@ _OVERLAY_DOCKERFILE_MAP = {
 
 _GPU_BASE_IMAGE = "nvidia/cuda:12.2.0-devel-ubuntu22.04"
 
-_FEATURE_TO_OVERLAY = {
+_DICT_FEATURE_TO_OVERLAY = {
     "bJupyter": "jupyter",
     "bRLanguage": "rlang",
     "bJulia": "julia",
@@ -77,15 +77,15 @@ def flistDetermineOverlays(config):
         Overlay names in deterministic application order.
     """
     listEnabled = []
-    for sFeatureField, sOverlayName in _FEATURE_TO_OVERLAY.items():
+    for sFeatureField, sOverlayName in _DICT_FEATURE_TO_OVERLAY.items():
         if getattr(config.features, sFeatureField, False):
             listEnabled.append(sOverlayName)
     return _flistSortByCanonicalOrder(listEnabled)
 
 
 def _flistSortByCanonicalOrder(listOverlayNames):
-    """Filter and sort overlay names according to _OVERLAY_ORDER."""
-    return [s for s in _OVERLAY_ORDER if s in listOverlayNames]
+    """Filter and sort overlay names according to _LIST_OVERLAY_ORDER."""
+    return [s for s in _LIST_OVERLAY_ORDER if s in listOverlayNames]
 
 
 def fnBuildBase(config, sDockerDir, bNoCache):
@@ -151,7 +151,7 @@ def fnApplyOverlay(sProjectName, sOverlayName, sDockerDir, sFromTag):
     sProjectName : str
         Project name used for image tagging.
     sOverlayName : str
-        Name of the overlay (must be a key in _OVERLAY_DOCKERFILE_MAP).
+        Name of the overlay (must be a key in _DICT_OVERLAY_DOCKERFILE_MAP).
     sDockerDir : str
         Path to the directory containing Dockerfiles.
     sFromTag : str
@@ -166,7 +166,7 @@ def fnApplyOverlay(sProjectName, sOverlayName, sDockerDir, sFromTag):
 
 def _fsResolveOverlayDockerfile(sOverlayName, sDockerDir):
     """Return full path to the overlay Dockerfile."""
-    sRelativePath = _OVERLAY_DOCKERFILE_MAP.get(sOverlayName)
+    sRelativePath = _DICT_OVERLAY_DOCKERFILE_MAP.get(sOverlayName)
     if sRelativePath is None:
         raise ValueError(f"Unknown overlay name: '{sOverlayName}'")
     return str(Path(sDockerDir) / sRelativePath)

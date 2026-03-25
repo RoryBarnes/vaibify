@@ -6,15 +6,15 @@ import uuid
 
 from .pipelineRunner import fsShellQuote
 
-VALID_SERVICES = {"github", "overleaf", "zenodo"}
-VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
+SET_VALID_SERVICES = {"github", "overleaf", "zenodo"}
+SET_VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
 
 
-_AUTH_PATTERNS = [
+_LIST_AUTH_PATTERNS = [
     "authentication", "401", "403", "forbidden",
     "invalid credentials", "bad credentials",
 ]
-_RATE_LIMIT_PATTERNS = ["rate limit", "429", "too many requests"]
+_LIST_RATE_LIMIT_PATTERNS = ["rate limit", "429", "too many requests"]
 _NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
 _NETWORK_PATTERNS = [
     "timeout", "connection refused", "network",
@@ -25,10 +25,10 @@ _NETWORK_PATTERNS = [
 def fdictClassifyError(iExitCode, sOutput):
     """Classify a sync command failure by scanning output text."""
     sLower = sOutput.lower()
-    for sPattern in _AUTH_PATTERNS:
+    for sPattern in _LIST_AUTH_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "auth", "sMessage": sOutput}
-    for sPattern in _RATE_LIMIT_PATTERNS:
+    for sPattern in _LIST_RATE_LIMIT_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "rateLimit", "sMessage": sOutput}
     for sPattern in _NOT_FOUND_PATTERNS:
@@ -51,7 +51,7 @@ def fdictSyncResult(iExitCode, sOutput):
 
 def fnValidateServiceName(sService):
     """Raise ValueError if sService is not a known service."""
-    if sService not in VALID_SERVICES:
+    if sService not in SET_VALID_SERVICES:
         raise ValueError(f"Invalid service: {sService}")
 
 
@@ -188,11 +188,8 @@ def ftResultPushToGithub(
     )
 
 
-def ftResultPushScriptsToGithub(
-    connectionDocker, sContainerId,
-    dictWorkflow, sCommitMessage, sWorkdir,
-):
-    """Organize scripts + archive PNGs into camelCase dirs and push."""
+def _flistBuildStepCopyCommandList(dictWorkflow):
+    """Build per-step copy commands for scripts and archive plots."""
     from .workflowManager import (
         fdictBuildStepDirectoryMap, flistExtractStepScripts,
         fsGetPlotCategory,
@@ -216,6 +213,15 @@ def ftResultPushScriptsToGithub(
                 sStepDir, sCamelDir, listScripts, listArchivePlots
             )
         )
+    return listCommands
+
+
+def ftResultPushScriptsToGithub(
+    connectionDocker, sContainerId,
+    dictWorkflow, sCommitMessage, sWorkdir,
+):
+    """Organize scripts + archive PNGs into camelCase dirs and push."""
+    listCommands = _flistBuildStepCopyCommandList(dictWorkflow)
     if not listCommands:
         return (1, "No scripts found to push")
     sGitIgnore = _fsGenerateGitIgnore()
@@ -378,7 +384,7 @@ def _fdictCheckKeyring(
     connectionDocker, sContainerId, sTokenName,
 ):
     """Check if a keyring token exists inside the container."""
-    if sTokenName not in VALID_TOKEN_NAMES:
+    if sTokenName not in SET_VALID_TOKEN_NAMES:
         raise ValueError(f"Invalid token name: {sTokenName}")
     sCommand = fsPythonCommand(
         "import keyring",
@@ -399,7 +405,7 @@ def fnStoreCredentialInContainer(
     connectionDocker, sContainerId, sName, sValue,
 ):
     """Store a credential in the container's keyring via temp file."""
-    if sName not in VALID_TOKEN_NAMES:
+    if sName not in SET_VALID_TOKEN_NAMES:
         raise ValueError(f"Invalid token name: {sName}")
     sTempPath = f"/tmp/_vc_cred_{uuid.uuid4().hex[:12]}"
     sCommand = fsPythonCommand(
@@ -458,6 +464,26 @@ def fnValidateOverleafProjectId(sProjectId):
         )
 
 
+def _flistBuildDagEdges(listSteps):
+    """Extract dependency edges from step commands."""
+    listEdgeLines = []
+    setEdges = set()
+    for iIndex, dictStep in enumerate(listSteps):
+        sTarget = f"step{iIndex + 1}"
+        for sKey in ("saDataCommands", "saPlotCommands",
+                      "saTestCommands"):
+            for sCmd in dictStep.get(sKey, []):
+                for match in re.finditer(
+                    r"\{Step(\d+)\.\w+\}", sCmd
+                ):
+                    iSource = int(match.group(1))
+                    sEdge = f"  step{iSource} -> {sTarget};"
+                    if sEdge not in setEdges:
+                        setEdges.add(sEdge)
+                        listEdgeLines.append(sEdge)
+    return listEdgeLines
+
+
 def fsBuildDagDot(dictWorkflow):
     """Build a Graphviz DOT string from workflow step references."""
     listLines = [
@@ -473,20 +499,7 @@ def fsBuildDagDot(dictWorkflow):
         sNodeId = f"step{iIndex + 1}"
         sSafeLabel = sLabel.replace('"', '\\"')
         listLines.append(f'  {sNodeId} [label="{sSafeLabel}"];')
-    setEdges = set()
-    for iIndex, dictStep in enumerate(listSteps):
-        sTarget = f"step{iIndex + 1}"
-        for sKey in ("saDataCommands", "saPlotCommands",
-                      "saTestCommands"):
-            for sCmd in dictStep.get(sKey, []):
-                for match in re.finditer(
-                    r"\{Step(\d+)\.\w+\}", sCmd
-                ):
-                    iSource = int(match.group(1))
-                    sEdge = f"  step{iSource} -> {sTarget};"
-                    if sEdge not in setEdges:
-                        setEdges.add(sEdge)
-                        listLines.append(sEdge)
+    listLines.extend(_flistBuildDagEdges(listSteps))
     listLines.append("}")
     return "\n".join(listLines)
 

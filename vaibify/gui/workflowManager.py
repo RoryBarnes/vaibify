@@ -12,8 +12,8 @@ VAIBIFY_DIRECTORY = ".vaibify"
 VAIBIFY_WORKFLOWS_DIR = ".vaibify/workflows"
 VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
-REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
-REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
+T_REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
+T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 
 
 def flistFindWorkflowsInContainer(
@@ -89,11 +89,11 @@ def fdictLoadWorkflowFromContainer(
 
 def fbValidateWorkflow(dictWorkflow):
     """Return True when all required keys and step structures exist."""
-    for sKey in REQUIRED_WORKFLOW_KEYS:
+    for sKey in T_REQUIRED_WORKFLOW_KEYS:
         if sKey not in dictWorkflow:
             return False
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
-        for sField in REQUIRED_STEP_KEYS:
+        for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return False
     return True
@@ -155,7 +155,7 @@ def flistExtractStepNames(dictWorkflow):
     return listSteps
 
 
-VERIFICATION_STATES = ("untested", "passed", "failed", "error")
+T_VERIFICATION_STATES = ("untested", "passed", "failed", "error")
 
 
 def fbStepRequiresTests(dictStep):
