@@ -913,5 +913,6 @@ const PipeleyenFigureViewer = (function () {
         fnDisplayInNextViewer: fnDisplayInNextViewer,
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
+        fnCreateZoomToolbar: fnCreateZoomToolbar,
     };
 })();

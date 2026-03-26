@@ -3198,12 +3198,45 @@ const PipeleyenApp = (function () {
                 "/api/workflow/" + sContainerId + "/dag"
             );
             if (!response.ok) throw new Error("DAG failed");
-            PipeleyenFigureViewer.fnDisplayInNextViewer(
-                "/workspace/.vaibify/dag.svg", ""
-            );
+            var sSvgText = await response.text();
+            _fnRenderDagInViewer(sSvgText);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
+    }
+
+    function _fnRenderDagInViewer(sSvgText) {
+        var dScale = 1.0;
+        _fnRenderDagWithZoom(sSvgText, dScale);
+    }
+
+    function _fnRenderDagWithZoom(sSvgText, dScale) {
+        var elViewport = document.getElementById("viewportA");
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        if (dScale === "fit") {
+            dScale = 1.0;
+        }
+        var elToolbar = PipeleyenFigureViewer.fnCreateZoomToolbar(
+            dScale, function (dNewScale) {
+                _fnRenderDagWithZoom(sSvgText, dNewScale);
+            }
+        );
+        elViewport.appendChild(elToolbar);
+        var elContainer = document.createElement("div");
+        elContainer.style.overflow = "auto";
+        elContainer.style.flex = "1";
+        elContainer.style.display = "flex";
+        elContainer.style.justifyContent = "center";
+        elContainer.style.padding = "16px";
+        elContainer.innerHTML = sSvgText;
+        var elSvg = elContainer.querySelector("svg");
+        if (elSvg) {
+            elSvg.style.transform = "scale(" + dScale + ")";
+            elSvg.style.transformOrigin = "top center";
+        }
+        elViewport.appendChild(elContainer);
     }
 
     var dictCachedSyncStatus = {};
