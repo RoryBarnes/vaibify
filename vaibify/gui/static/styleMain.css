@@ -492,14 +492,6 @@ html, body {
     background: #1a2ce8;
 }
 
-.btn-danger {
-    color: var(--color-red);
-}
-
-.btn-danger:hover {
-    border-color: var(--color-red);
-    background: rgba(201, 17, 17, 0.15);
-}
 
 .btn-icon {
     padding: 4px 8px;
@@ -1656,14 +1648,14 @@ html, body {
     color: var(--text-secondary);
 }
 
-.help-popup {
+#terminalHelpPopup {
     position: fixed;
     bottom: 60px;
     right: 16px;
     z-index: 1000;
 }
 
-.help-popup-content {
+#terminalHelpPopup .help-popup-content {
     background: #1e1e2e;
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -1674,17 +1666,17 @@ html, body {
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-.help-popup-content h3 {
+#terminalHelpPopup .help-popup-content h3 {
     margin: 0 0 8px;
     font-size: 0.9rem;
 }
 
-.help-popup-content p {
+#terminalHelpPopup .help-popup-content p {
     margin: 6px 0;
     line-height: 1.4;
 }
 
-.help-popup-close {
+#terminalHelpPopup .help-popup-close {
     float: right;
     background: none;
     border: none;

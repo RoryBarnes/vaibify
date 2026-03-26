@@ -95,25 +95,6 @@ def testDiscoverConfigRaisesWhenMissing(tmp_path):
         registryManager.fsDiscoverConfigInDirectory(sEmptyDir)
 
 
-# --- fsContainerNameFromDirectory ---
-
-def testContainerNameFromSimpleDirectory():
-    assert registryManager.fsContainerNameFromDirectory(
-        "/home/user/MyProject"
-    ) == "myproject"
-
-
-def testContainerNameFromUnderscoreDirectory():
-    assert registryManager.fsContainerNameFromDirectory(
-        "/home/user/GJ1132_XUV"
-    ) == "gj1132-xuv"
-
-
-def testContainerNameFromComplexDirectory():
-    assert registryManager.fsContainerNameFromDirectory(
-        "/home/user/My--Project__v2.0"
-    ) == "my-project-v2-0"
-
 
 # --- fnAddProject ---
 

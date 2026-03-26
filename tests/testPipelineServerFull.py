@@ -132,7 +132,9 @@ def clientHttp():
             sWorkspaceRoot="/workspace",
             sTerminalUserArg="testuser",
         )
-    return TestClient(app)
+    return TestClient(
+        app, headers={"X-Session-Token": app.state.sSessionToken},
+    )
 
 
 def _fnConnectToContainer(clientHttp):
@@ -408,24 +410,6 @@ def test_fdictResolveVariables_empty():
 def test_fnRequireDocker_raises_on_none():
     with pytest.raises(Exception):
         pipelineServer._fnRequireDocker(None)
-
-
-def test_fbContainerHasVaibify_true():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (0, "")
-    bResult = pipelineServer._fbContainerHasVaibify(
-        mockDocker, "cid"
-    )
-    assert bResult is True
-
-
-def test_fbContainerHasVaibify_false():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (1, "")
-    bResult = pipelineServer._fbContainerHasVaibify(
-        mockDocker, "cid"
-    )
-    assert bResult is False
 
 
 def test_fdictBuildContext_returns_all_keys():

@@ -260,7 +260,10 @@ def testGetRegistryEnrichesRegisteredWithContainerId(
 
 # --- GET /api/host-directories ---
 
-def testHostDirectoriesReturnsEntries(fixtureClient, tmp_path):
+def testHostDirectoriesReturnsEntries(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
     sSubDir = str(tmp_path / "child")
     os.makedirs(sSubDir)
     response = fixtureClient.get(
@@ -274,7 +277,10 @@ def testHostDirectoriesReturnsEntries(fixtureClient, tmp_path):
     assert "child" in listNames
 
 
-def testHostDirectoriesOnlyReturnsDirs(fixtureClient, tmp_path):
+def testHostDirectoriesOnlyReturnsDirs(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
     os.makedirs(str(tmp_path / "subdir"))
     with open(str(tmp_path / "file.txt"), "w") as f:
         f.write("hi")
@@ -288,7 +294,10 @@ def testHostDirectoriesOnlyReturnsDirs(fixtureClient, tmp_path):
     assert "file.txt" not in listNames
 
 
-def testHostDirectoriesDetectsConfig(fixtureClient, tmp_path):
+def testHostDirectoriesDetectsConfig(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
     sProjectDir = str(tmp_path / "myproject")
     os.makedirs(sProjectDir)
     with open(os.path.join(sProjectDir, "vaibify.yml"), "w") as f:
@@ -306,8 +315,9 @@ def testHostDirectoriesDetectsConfig(fixtureClient, tmp_path):
 
 
 def testHostDirectoriesReportsCurrentDirConfig(
-    fixtureClient, tmp_path,
+    fixtureClient, tmp_path, monkeypatch,
 ):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
     with open(str(tmp_path / "vaibify.yml"), "w") as f:
         f.write("projectName: test\n")
     response = fixtureClient.get(
@@ -317,12 +327,12 @@ def testHostDirectoriesReportsCurrentDirConfig(
     assert response.json()["bHasConfig"] is True
 
 
-def testHostDirectoriesRejects404(fixtureClient):
+def testHostDirectoriesRejectsOutsideHome(fixtureClient):
     response = fixtureClient.get(
         "/api/host-directories",
-        params={"sPath": "/nonexistent/path/abc123"},
+        params={"sPath": "/etc"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 403
 
 
 def testHostDirectoriesRejectsRelativePath(fixtureClient):
@@ -333,7 +343,10 @@ def testHostDirectoriesRejectsRelativePath(fixtureClient):
     assert response.status_code == 400
 
 
-def testHostDirectoriesSortsHiddenLast(fixtureClient, tmp_path):
+def testHostDirectoriesSortsHiddenLast(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
     os.makedirs(str(tmp_path / ".hidden"))
     os.makedirs(str(tmp_path / "aardvark"))
     os.makedirs(str(tmp_path / "zebra"))

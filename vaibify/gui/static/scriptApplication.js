@@ -47,9 +47,24 @@ const PipeleyenApp = (function () {
             var response = await fetch("/api/session-token");
             var data = await response.json();
             sSessionToken = data.sToken || "";
+            fnInstallAuthenticatedFetch(sSessionToken);
         } catch (e) {
             sSessionToken = "";
         }
+    }
+
+    function fnInstallAuthenticatedFetch(sToken) {
+        var originalFetch = window.fetch;
+        window.fetch = function (sUrl, dictOptions) {
+            dictOptions = dictOptions || {};
+            dictOptions.headers = dictOptions.headers || {};
+            if (typeof dictOptions.headers.set === "function") {
+                dictOptions.headers.set("X-Session-Token", sToken);
+            } else {
+                dictOptions.headers["X-Session-Token"] = sToken;
+            }
+            return originalFetch.call(window, sUrl, dictOptions);
+        };
     }
 
     /* --- Initialization --- */
@@ -512,10 +527,11 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainerByName(sName) {
         try {
-            var responseContainers = await fetch("/api/containers");
-            var listContainers = await responseContainers.json();
-            var dictMatch = listContainers.find(function (c) {
-                return c.sName === sName;
+            var response = await fetch("/api/registry");
+            var dictResult = await response.json();
+            var listAll = dictResult.listContainers || [];
+            var dictMatch = listAll.find(function (c) {
+                return c.sName === sName && c.sContainerId;
             });
             if (!dictMatch) {
                 fnShowToast("Container not found for " + sName, "error");
@@ -545,7 +561,8 @@ const PipeleyenApp = (function () {
 
     function _fsContainerNameById(sId) {
         var el = document.querySelector(
-            '.container-card[data-id="' + sId + '"] .name'
+            '.container-tile[data-container-id="' + sId + '"]' +
+            ' .container-tile-name'
         );
         return el ? el.textContent : sId.substring(0, 12);
     }
@@ -666,7 +683,7 @@ const PipeleyenApp = (function () {
         }
     }
 
-    async function fnEnterSandbox(sId) {
+    async function fnEnterNoWorkflow(sId) {
         try {
             var response = await fetch(
                 "/api/connect/" + sId,
@@ -3182,7 +3199,7 @@ const PipeleyenApp = (function () {
             );
             if (!response.ok) throw new Error("DAG failed");
             PipeleyenFigureViewer.fnDisplayInNextViewer(
-                ".vaibify/dag.svg", ""
+                "/workspace/.vaibify/dag.svg", ""
             );
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -3481,7 +3498,7 @@ const PipeleyenApp = (function () {
         document.getElementById("btnNoWorkflow").addEventListener(
             "click", function () {
                 if (_sSelectedContainerId) {
-                    fnEnterSandbox(_sSelectedContainerId);
+                    fnEnterNoWorkflow(_sSelectedContainerId);
                 }
             }
         );
@@ -3560,7 +3577,7 @@ const PipeleyenApp = (function () {
                     fnHideWorkflowDropdown();
                     if (el.dataset.action === "noWorkflow") {
                         if (!dictWorkflow && !sWorkflowPath) return;
-                        fnEnterSandbox(sContainerId);
+                        fnEnterNoWorkflow(sContainerId);
                         return;
                     }
                     var sPath = el.dataset.path;
@@ -4735,7 +4752,6 @@ const PipeleyenApp = (function () {
         fnEscapeHtml: fnEscapeHtml,
         fsGetContainerId: function () { return sContainerId; },
         fsGetSessionToken: function () { return sSessionToken; },
-        fnRenderStepList: fnRenderStepList,
         fdictGetWorkflow: function () { return dictWorkflow; },
         fsGetWorkflowPath: function () { return sWorkflowPath; },
         fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },

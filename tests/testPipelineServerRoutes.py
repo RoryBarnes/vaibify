@@ -108,7 +108,9 @@ def clientHttp():
             sWorkspaceRoot="/workspace",
             sTerminalUserArg="testuser",
         )
-    return TestClient(app)
+    return TestClient(
+        app, headers={"X-Session-Token": app.state.sSessionToken},
+    )
 
 
 @pytest.fixture
@@ -152,21 +154,6 @@ def test_security_headers_present(clientHttp):
 
 
 # ── Containers ────────────────────────────────────────────────
-
-
-def test_get_containers_returns_list(clientHttp):
-    responseHttp = clientHttp.get("/api/containers")
-    assert responseHttp.status_code == 200
-    listContainers = responseHttp.json()
-    assert len(listContainers) == 1
-    assert listContainers[0]["sContainerId"] == S_CONTAINER_ID
-
-
-def test_get_containers_includes_configured_flag(clientHttp):
-    responseHttp = clientHttp.get("/api/containers")
-    dictContainer = responseHttp.json()[0]
-    assert "bConfigured" in dictContainer
-    assert dictContainer["bConfigured"] is True
 
 
 # ── Connect ───────────────────────────────────────────────────

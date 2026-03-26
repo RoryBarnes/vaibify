@@ -384,9 +384,9 @@ def _fsSanitizeServerError(sRawError):
 def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response.
 
-    When ``sWorkflowPath`` is None the user enters sandbox mode:
-    no workflow is loaded but the container is authorised for
-    terminal access.
+    When ``sWorkflowPath`` is None the user enters no-workflow
+    mode: no workflow is loaded but the container is authorised
+    for terminal access.
     """
     if sWorkflowPath is None:
         dictCtx["setAllowedContainers"].add(sContainerId)
@@ -414,34 +414,6 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         logger.error("Workflow load failed: %s", error)
         sUserMessage = _fsSanitizeServerError(str(error))
         raise HTTPException(400, sUserMessage)
-
-
-def _fbContainerHasVaibify(connectionDocker, sContainerId):
-    """Return True if the container has a .vaibify directory."""
-    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        f"test -d {fsShellQuote(WORKSPACE_ROOT + '/.vaibify')}",
-    )
-    return iExitCode == 0
-
-
-def _fnRegisterContainers(app, dictCtx):
-    """Register GET /api/containers route."""
-
-    @app.get("/api/containers")
-    async def fnGetContainers():
-        dictCtx["require"]()
-        try:
-            listContainers = dictCtx["docker"].flistGetRunningContainers()
-            for dictContainer in listContainers:
-                dictContainer["bConfigured"] = _fbContainerHasVaibify(
-                    dictCtx["docker"], dictContainer["sContainerId"],
-                )
-            return listContainers
-        except Exception as error:
-            raise HTTPException(
-                500, f"Docker error: "
-                f"{_fsSanitizeServerError(str(error))}")
 
 
 def _fnRegisterWorkflowSearch(app, dictCtx):
@@ -1705,8 +1677,7 @@ def _fconnectionCreateDocker():
 
 
 def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
-    """Register container, file, monitor, and stub routes."""
-    _fnRegisterContainers(app, dictCtx)
+    """Register workflow, file, monitor, and stub routes."""
     _fnRegisterWorkflowSearch(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)
@@ -1960,6 +1931,27 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterStaticFiles(app, dictCtx)
 
 
+class SessionTokenMiddleware(BaseHTTPMiddleware):
+    """Reject /api/ requests missing a valid session token."""
+
+    async def dispatch(self, request: Request, call_next):
+        sPath = request.url.path
+        bNeedsToken = (
+            sPath.startswith("/api/")
+            and sPath != "/api/session-token"
+        )
+        if bNeedsToken:
+            sToken = request.headers.get("x-session-token", "")
+            sExpected = request.app.state.sSessionToken
+            if sToken != sExpected:
+                return Response(
+                    status_code=401,
+                    content='{"detail":"Unauthorized"}',
+                    media_type="application/json",
+                )
+        return await call_next(request)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all HTTP responses."""
 
@@ -2016,6 +2008,7 @@ def fappCreateApplication(
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
+    app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
@@ -2038,6 +2031,7 @@ def fappCreateHubApplication():
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
+    app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken

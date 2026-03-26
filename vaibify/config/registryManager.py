@@ -1,12 +1,13 @@
 """Global project registry at ~/.vaibify/registry.json."""
 
+import fcntl
 import json
 import os
-import re
 import tempfile
 
 _S_REGISTRY_DIRECTORY = os.path.expanduser("~/.vaibify")
 _S_REGISTRY_PATH = os.path.join(_S_REGISTRY_DIRECTORY, "registry.json")
+_S_LOCK_PATH = os.path.join(_S_REGISTRY_DIRECTORY, "registry.lock")
 
 
 def fdictLoadRegistry():
@@ -33,22 +34,41 @@ def fdictLoadRegistry():
 def fnSaveRegistry(dictRegistry):
     """Write the registry dict atomically to disk.
 
+    Uses a file lock to prevent concurrent writes from
+    losing updates.
+
     Parameters
     ----------
     dictRegistry : dict
         Registry dict with key ``listProjects``.
     """
     os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)
+    with _fnOpenRegistryLock():
+        _fnWriteRegistryAtomic(dictRegistry)
+
+
+def _fnOpenRegistryLock():
+    """Open and acquire an exclusive lock for registry writes."""
+    fileHandle = open(_S_LOCK_PATH, "w")
+    fcntl.flock(fileHandle, fcntl.LOCK_EX)
+    return fileHandle
+
+
+def _fnWriteRegistryAtomic(dictRegistry):
+    """Write registry content to a temp file and replace."""
     sContent = json.dumps(dictRegistry, indent=2) + "\n"
     iFileDescriptor, sTempPath = tempfile.mkstemp(
         dir=_S_REGISTRY_DIRECTORY, suffix=".tmp",
     )
+    bClosed = False
     try:
         os.write(iFileDescriptor, sContent.encode("utf-8"))
         os.close(iFileDescriptor)
+        bClosed = True
         os.replace(sTempPath, _S_REGISTRY_PATH)
     except Exception:
-        os.close(iFileDescriptor)
+        if not bClosed:
+            os.close(iFileDescriptor)
         _fnSilentRemove(sTempPath)
         raise
 
@@ -85,25 +105,6 @@ def fsDiscoverConfigInDirectory(sDirectory):
     raise FileNotFoundError(
         f"No vaibify.yml found in {sDirectory}"
     )
-
-
-def fsContainerNameFromDirectory(sDirectory):
-    """Derive a Docker container name from a directory path.
-
-    Parameters
-    ----------
-    sDirectory : str
-        Absolute path to the project directory.
-
-    Returns
-    -------
-    str
-        Lowercase, hyphen-separated name.
-    """
-    sBaseName = os.path.basename(os.path.normpath(sDirectory))
-    sLowered = sBaseName.lower()
-    sCleaned = re.sub(r"[^a-z0-9]+", "-", sLowered)
-    return sCleaned.strip("-")
 
 
 def fnAddProject(sDirectory):

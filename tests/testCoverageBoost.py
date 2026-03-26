@@ -193,7 +193,9 @@ def clientHttp():
             sWorkspaceRoot="/workspace",
             sTerminalUserArg="testuser",
         )
-    return TestClient(app)
+    return TestClient(
+        app, headers={"X-Session-Token": app.state.sSessionToken},
+    )
 
 
 def _fnConnectToContainer(clientHttp):

@@ -108,7 +108,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
             _fnExecuteBuild(dictProject)
         except Exception as error:
             logger.error("Build failed for %s: %s", sName, error)
-            raise HTTPException(500, f"Build failed: {error}")
+            raise HTTPException(500, "Build failed")
         return {"bSuccess": True, "sMessage": "Build complete"}
 
 
@@ -136,7 +136,7 @@ def _fnRegisterStartContainer(app, dictCtx):
             sContainerId = _fsExecuteStart(dictProject)
         except Exception as error:
             logger.error("Start failed for %s: %s", sName, error)
-            raise HTTPException(500, f"Start failed: {error}")
+            raise HTTPException(500, "Start failed")
         return {
             "bSuccess": True,
             "sContainerId": sContainerId,
@@ -170,7 +170,7 @@ def _fnRegisterStopContainer(app, dictCtx):
             _fnExecuteStop(sContainerName)
         except Exception as error:
             logger.error("Stop failed for %s: %s", sName, error)
-            raise HTTPException(500, f"Stop failed: {error}")
+            raise HTTPException(500, "Stop failed")
         return {"bSuccess": True}
 
 
@@ -306,11 +306,15 @@ def _fnRegisterHostDirectories(app, dictCtx):
 
 
 def _fnValidateHostPath(sPath):
-    """Raise HTTPException if the path is invalid."""
+    """Raise HTTPException if the path is invalid or escapes home."""
     if not os.path.isabs(sPath):
         raise HTTPException(400, "Path must be absolute")
-    if not os.path.isdir(sPath):
-        raise HTTPException(404, f"Directory not found: {sPath}")
+    sHome = os.path.expanduser("~")
+    sResolved = os.path.realpath(sPath)
+    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):
+        raise HTTPException(403, "Path is outside allowed root")
+    if not os.path.isdir(sResolved):
+        raise HTTPException(404, "Directory not found")
 
 
 def flistQueryHostDirectory(sAbsPath):
