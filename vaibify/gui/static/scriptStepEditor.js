@@ -38,6 +38,8 @@ const PipeleyenStepEditor = (function () {
             dictStep.sName || "";
         document.getElementById("inputStepDirectory").value =
             dictStep.sDirectory || "";
+        document.getElementById("inputInteractive").checked =
+            dictStep.bInteractive === true;
         document.getElementById("inputPlotOnly").checked =
             dictStep.bPlotOnly !== false;
         document.getElementById("inputSetupCommands").value =
@@ -59,6 +61,7 @@ const PipeleyenStepEditor = (function () {
     function fnClearForm() {
         document.getElementById("inputStepName").value = "";
         document.getElementById("inputStepDirectory").value = "";
+        document.getElementById("inputInteractive").checked = false;
         document.getElementById("inputPlotOnly").checked = true;
         document.getElementById("inputSetupCommands").value = "";
         document.getElementById("inputDataFiles").value = "";
@@ -100,6 +103,8 @@ const PipeleyenStepEditor = (function () {
             sDirectory: document
                 .getElementById("inputStepDirectory")
                 .value.trim(),
+            bInteractive: document.getElementById("inputInteractive")
+                .checked,
             bPlotOnly: document.getElementById("inputPlotOnly")
                 .checked,
             saDataCommands: flistParseTextarea(

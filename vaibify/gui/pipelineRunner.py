@@ -1,5 +1,6 @@
 """Execute workflow steps by running commands directly in containers."""
 
+import asyncio
 import json
 import posixpath
 import re
@@ -299,7 +300,7 @@ async def _fiRunStepsAndLog(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
     dictVariables, fnLogging, fnStatusCallback,
     sLogPath, listLogLines, sAction, iStartStep,
-    sWorkflowPath="",
+    sWorkflowPath="", dictInteractive=None,
 ):
     """Execute steps, write log, and emit final status."""
     from . import pipelineState
@@ -319,7 +320,7 @@ async def _fiRunStepsAndLog(
     iResult = await _fiRunStepList(
         connectionDocker, sContainerId,
         dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
-        iStartStep=iStartStep,
+        iStartStep=iStartStep, dictInteractive=dictInteractive,
     )
     await _fnFinalizeRun(
         connectionDocker, sContainerId, dictState, iResult,
@@ -342,7 +343,7 @@ def fnClearOutputModifiedFlags(dictWorkflow):
 async def _fiRunWithLogging(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
-    sWorkflowPath="",
+    sWorkflowPath="", dictInteractive=None,
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
@@ -371,6 +372,7 @@ async def _fiRunWithLogging(
         dictVariables, fnLogging, fnStatusCallback,
         sLogPath, listLogLines, sAction, iStartStep,
         sWorkflowPath=sWorkflowPath,
+        dictInteractive=dictInteractive,
     )
 
 
@@ -611,7 +613,7 @@ async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
 
 async def fnRunAllSteps(
     connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
-    bForceRun=False,
+    bForceRun=False, dictInteractive=None,
 ):
     """Run all enabled steps with logging."""
     dictWorkflow, sWorkflowPath = await _fdictLoadWorkflow(
@@ -627,13 +629,26 @@ async def fnRunAllSteps(
         sWorkdir, fnStatusCallback,
         "forceRunAll" if bForceRun else "runAll",
         sWorkflowPath=sWorkflowPath,
+        dictInteractive=dictInteractive,
     )
+
+
+def fdictCreateInteractiveContext():
+    """Return a context dict for pause/resume at interactive steps."""
+    return {
+        "eventResume": asyncio.Event(),
+        "sResponse": "",
+    }
+
+
+def fnSetInteractiveResponse(dictContext, sResponse):
+    """Set the response and trigger the resume event."""
+    dictContext["sResponse"] = sResponse
+    dictContext["eventResume"].set()
 
 
 def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
     """Return True if this step should be executed."""
-    if dictStep.get("bInteractive", False):
-        return False
     if iStepNumber < iStartStep:
         return False
     return dictStep.get("bEnabled", True)
@@ -729,9 +744,7 @@ async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
 ):
-    """Run a single step, record timing, and emit result."""
-    if dictStep.get("bInteractive", False):
-        return 0
+    """Run a single automatic step with timing and result."""
     iDepResult = await _fiCheckDependencies(
         connectionDocker, sContainerId, dictStep,
         dictVariables, iStepNumber, fnStatusCallback,
@@ -803,26 +816,79 @@ async def _fiExecuteAndRecord(
 async def _fiRunStepList(
     connectionDocker, sContainerId,
     dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
-    iStartStep=1,
+    iStartStep=1, dictInteractive=None,
 ):
-    """Iterate steps and run each eligible one from iStartStep."""
+    """Iterate steps, pausing at interactive ones."""
     iFinalExitCode = 0
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
             continue
-        iExitCode = await _fnRunOneStep(
-            connectionDocker, sContainerId, dictStep,
-            iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
-        )
+        if dictStep.get("bInteractive", False):
+            iExitCode = await _fiHandleInteractiveStep(
+                dictStep, iStepNumber, fnStatusCallback,
+                dictInteractive,
+            )
+        else:
+            iExitCode = await _fnRunOneStep(
+                connectionDocker, sContainerId, dictStep,
+                iStepNumber, sWorkdir, dictVariables,
+                fnStatusCallback,
+            )
         if iExitCode != 0:
             iFinalExitCode = iExitCode
     return iFinalExitCode
 
 
+async def _fiHandleInteractiveStep(
+    dictStep, iStepNumber, fnStatusCallback, dictInteractive,
+):
+    """Pause the pipeline and wait for user decision."""
+    if dictInteractive is None:
+        return 0
+    sStepName = dictStep.get("sName", f"Step {iStepNumber}")
+    await fnStatusCallback({
+        "sType": "interactivePause",
+        "iStepIndex": iStepNumber - 1,
+        "iStepNumber": iStepNumber,
+        "sStepName": sStepName,
+    })
+    sResponse = await _fsAwaitInteractiveDecision(
+        dictInteractive,
+    )
+    if sResponse == "skip":
+        return 0
+    await fnStatusCallback({
+        "sType": "interactiveTerminalStart",
+        "iStepNumber": iStepNumber,
+        "sStepName": sStepName,
+        "dictStep": dictStep,
+    })
+    return await _fiAwaitInteractiveComplete(dictInteractive)
+
+
+async def _fsAwaitInteractiveDecision(dictInteractive):
+    """Wait for the user to resume or skip, return response."""
+    dictInteractive["eventResume"].clear()
+    dictInteractive["sResponse"] = ""
+    await dictInteractive["eventResume"].wait()
+    return dictInteractive["sResponse"]
+
+
+async def _fiAwaitInteractiveComplete(dictInteractive):
+    """Wait for the frontend to signal interactive step done."""
+    dictInteractive["eventResume"].clear()
+    dictInteractive["sResponse"] = ""
+    await dictInteractive["eventResume"].wait()
+    sResponse = dictInteractive["sResponse"]
+    if sResponse.startswith("complete:"):
+        return int(sResponse.split(":")[1])
+    return 0
+
+
 async def fnRunFromStep(
     connectionDocker, sContainerId, iStartStep,
-    sWorkdir, fnStatusCallback,
+    sWorkdir, fnStatusCallback, dictInteractive=None,
 ):
     """Run steps starting from iStartStep (1-based) with logging."""
     dictWorkflow, sWorkflowPath = await _fdictLoadWorkflow(
@@ -835,6 +901,7 @@ async def fnRunFromStep(
         sWorkdir, fnStatusCallback,
         f"runFrom:{iStartStep}", iStartStep=iStartStep,
         sWorkflowPath=sWorkflowPath,
+        dictInteractive=dictInteractive,
     )
 
 

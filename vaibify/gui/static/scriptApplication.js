@@ -987,27 +987,10 @@ const PipeleyenApp = (function () {
             return;
         }
         var dictVars = fdictBuildClientVariables();
-        var sInteractiveHtml = "";
-        var sPipelineHtml = "";
-        dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            var sItem = fsRenderStepItem(step, iIndex, dictVars);
-            if (step.bInteractive) {
-                sInteractiveHtml += sItem;
-            } else {
-                sPipelineHtml += sItem;
-            }
-        });
         var sHtml = "";
-        if (sInteractiveHtml) {
-            sHtml += '<div class="step-section-header">' +
-                'Interactive Steps</div>';
-            sHtml += sInteractiveHtml;
-        }
-        if (sPipelineHtml) {
-            sHtml += '<div class="step-section-header">' +
-                'Pipeline Steps</div>';
-            sHtml += sPipelineHtml;
-        }
+        dictWorkflow.listSteps.forEach(function (step, iIndex) {
+            sHtml += fsRenderStepItem(step, iIndex, dictVars);
+        });
         elList.innerHTML = sHtml;
         fnBindStepEvents();
         fnScheduleFileExistenceCheck();
@@ -1322,24 +1305,16 @@ const PipeleyenApp = (function () {
         return "file-pending";
     }
 
-    function fiComputeInteractiveNumber(iIndex) {
-        var iInteractive = 0;
+    function fsComputeStepLabel(iIndex) {
+        var listSteps = dictWorkflow.listSteps;
+        var bInteractive = listSteps[iIndex].bInteractive === true;
+        var sPrefix = bInteractive ? "I" : "A";
+        var iCount = 0;
         for (var i = 0; i <= iIndex; i++) {
-            if (dictWorkflow.listSteps[i].bInteractive) {
-                iInteractive++;
-            }
+            var bSameType = listSteps[i].bInteractive === bInteractive;
+            if (bSameType) iCount++;
         }
-        return iInteractive;
-    }
-
-    function fiComputePipelineNumber(iIndex) {
-        var iPipeline = 0;
-        for (var i = 0; i <= iIndex; i++) {
-            if (!dictWorkflow.listSteps[i].bInteractive) {
-                iPipeline++;
-            }
-        }
-        return iPipeline;
+        return sPrefix + String(iCount).padStart(2, "0");
     }
 
     function fsRenderStepItem(step, iIndex, dictVars) {
@@ -1363,14 +1338,7 @@ const PipeleyenApp = (function () {
                 'class="vaib-verified-badge" alt="verified">';
         }
 
-        var sStepNumber;
-        if (bInteractive) {
-            sStepNumber = "-" + String(
-                fiComputeInteractiveNumber(iIndex)).padStart(2, "0");
-        } else {
-            sStepNumber = String(
-                fiComputePipelineNumber(iIndex)).padStart(2, "0");
-        }
+        var sStepNumber = fsComputeStepLabel(iIndex);
 
         var sHtml =
             '<div class="step-item' + (bSelected ? " selected" : "") +
@@ -1704,16 +1672,7 @@ const PipeleyenApp = (function () {
             if (!depStep) continue;
             var bPassing = fbStepFullyPassing(iDep, dictVisited);
             var sState = bPassing ? "passed" : "failed";
-            var sNum;
-            if (depStep.bInteractive) {
-                sNum = "-" + String(
-                    fiComputeInteractiveNumber(iDep)
-                ).padStart(2, "0");
-            } else {
-                sNum = String(
-                    fiComputePipelineNumber(iDep)
-                ).padStart(2, "0");
-            }
+            var sNum = fsComputeStepLabel(iDep);
             sHtml += '<div class="dep-item">' +
                 '<span class="dep-label">' + sNum + ' ' +
                 fnEscapeHtml(depStep.sName) + '</span>' +
@@ -3831,6 +3790,146 @@ const PipeleyenApp = (function () {
             if (dictEvent.sLogPath) {
                 fnDisplayLogInViewer(dictEvent.sLogPath);
             }
+        } else if (dictEvent.sType === "interactivePause") {
+            fnShowInteractivePauseDialog(dictEvent);
+        } else if (dictEvent.sType === "interactiveTerminalStart") {
+            fnRunInteractiveInTerminal(dictEvent);
+        }
+    }
+
+    function fnShowInteractivePauseDialog(dictEvent) {
+        var sLabel = fsComputeStepLabel(dictEvent.iStepIndex);
+        _fnShowTwoActionModal(
+            "Interactive Step Reached",
+            "Step " + sLabel + " '" + dictEvent.sStepName +
+            "' requires your input.\n\n" +
+            "Run it in the terminal?",
+            "Run", function () {
+                _fnSendPipelineMessage("interactiveResume");
+            },
+            "Skip", function () {
+                _fnSendPipelineMessage("interactiveSkip");
+            }
+        );
+    }
+
+    function _fnShowTwoActionModal(
+        sTitle, sMessage, sConfirmLabel, fnOnConfirm,
+        sCancelLabel, fnOnCancel,
+    ) {
+        var elExisting = document.getElementById("modalConfirm");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalConfirm";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
+            '<p style="white-space:pre-wrap;margin-bottom:16px">' +
+            fnEscapeHtml(sMessage) + '</p>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnConfirmCancel">' +
+            fnEscapeHtml(sCancelLabel) + '</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnConfirmOk">' +
+            fnEscapeHtml(sConfirmLabel) + '</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        document.getElementById("btnConfirmCancel").addEventListener(
+            "click", function () {
+                elModal.remove();
+                fnOnCancel();
+            }
+        );
+        document.getElementById("btnConfirmOk").addEventListener(
+            "click", function () {
+                elModal.remove();
+                fnOnConfirm();
+            }
+        );
+    }
+
+    function _fnSendPipelineMessage(sAction) {
+        if (wsPipeline) {
+            wsPipeline.send(JSON.stringify({sAction: sAction}));
+        }
+    }
+
+    function fnRunInteractiveInTerminal(dictEvent) {
+        var dictStep = dictEvent.dictStep || {};
+        var sDirectory = dictStep.sDirectory || "";
+        var listCommands = (dictStep.saDataCommands || []).concat(
+            dictStep.saPlotCommands || []
+        );
+        if (listCommands.length === 0) {
+            _fnSendInteractiveComplete(0);
+            return;
+        }
+        var sUuid = _fsGenerateUuid();
+        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
+        var sFullCommand = _fsBuildInteractiveCommand(
+            sDirectory, listCommands, sSentinel,
+        );
+        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCommand);
+        _fnMonitorTerminalForSentinel(sSentinel);
+    }
+
+    function _fsBuildInteractiveCommand(
+        sDirectory, listCommands, sSentinel,
+    ) {
+        var sCd = sDirectory
+            ? "cd '" + sDirectory.replace(/'/g, "'\\''") + "' && "
+            : "";
+        var sJoined = listCommands.join(" && ");
+        return sCd + sJoined +
+            "; echo " + sSentinel + "=$?";
+    }
+
+    function _fsGenerateUuid() {
+        return "xxxx-xxxx".replace(/x/g, function () {
+            return Math.floor(Math.random() * 16).toString(16);
+        });
+    }
+
+    function _fnMonitorTerminalForSentinel(sSentinel) {
+        var iCheckInterval = setInterval(function () {
+            var sText = _fsReadAllTerminalText();
+            var iMatch = sText.indexOf(sSentinel + "=");
+            if (iMatch < 0) return;
+            clearInterval(iCheckInterval);
+            var sAfter = sText.substring(
+                iMatch + sSentinel.length + 1
+            );
+            var iExitCode = parseInt(sAfter.trim(), 10) || 0;
+            _fnSendInteractiveComplete(iExitCode);
+        }, 1000);
+    }
+
+    function _fsReadAllTerminalText() {
+        var sText = "";
+        var listPanes = document.querySelectorAll(
+            ".terminal-pane-container .xterm"
+        );
+        listPanes.forEach(function (elTerminal) {
+            try {
+                var elRows = elTerminal.querySelectorAll(
+                    ".xterm-rows > div"
+                );
+                elRows.forEach(function (el) {
+                    sText += el.textContent + "\n";
+                });
+            } catch (e) { /* skip unreadable pane */ }
+        });
+        return sText;
+    }
+
+    function _fnSendInteractiveComplete(iExitCode) {
+        if (wsPipeline) {
+            wsPipeline.send(JSON.stringify({
+                sAction: "interactiveComplete",
+                iExitCode: iExitCode,
+            }));
         }
     }
 
@@ -4309,20 +4408,30 @@ const PipeleyenApp = (function () {
 
     function fsInteractiveWarning() {
         if (!dictWorkflow || !dictWorkflow.listSteps) return "";
-        var listIncomplete = [];
-        dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            if (!step.bInteractive) return;
-            var dictVerify = step.dictVerification || {};
-            if (dictVerify.sUser !== "passed") {
-                listIncomplete.push(step.sName);
-            }
-        });
-        if (listIncomplete.length === 0) return "";
-        return "\n\nInteractive steps not yet verified:\n" +
-            listIncomplete.map(function (s) {
-                return "  \u2022 " + s;
-            }).join("\n") +
-            "\n\nThe pipeline may produce incomplete results.";
+        var iLeading = fiCountLeadingInteractive();
+        if (iLeading > 0) {
+            return "\n\nThe first " + iLeading +
+                " step(s) are interactive. The pipeline will " +
+                "pause at each one for your input.";
+        }
+        var bHasMiddle = dictWorkflow.listSteps.some(
+            function (step) { return step.bInteractive; }
+        );
+        if (bHasMiddle) {
+            return "\n\nThe pipeline contains interactive steps " +
+                "and will pause when it reaches them.";
+        }
+        return "";
+    }
+
+    function fiCountLeadingInteractive() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
+        var iCount = 0;
+        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            if (!dictWorkflow.listSteps[i].bInteractive) break;
+            iCount++;
+        }
+        return iCount;
     }
 
     async function fsGetSleepWarning() {
@@ -4383,7 +4492,7 @@ const PipeleyenApp = (function () {
         fnShowConfirmModal(
             "Force Run All",
             "This will clear input hashes and re-run every " +
-            "pipeline step from scratch. Interactive step " +
+            "automatic step from scratch. Interactive step " +
             "outputs are preserved.\n\n" +
             "All verification states will be reset to untested.",
             function () {

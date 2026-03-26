@@ -188,6 +188,30 @@ def fnRemoveProject(sName):
     fnSaveRegistry(dictRegistry)
 
 
+def fsGetContainerUser(sContainerName):
+    """Return the container user for a registered container.
+
+    Parameters
+    ----------
+    sContainerName : str
+        Container name to look up in the registry.
+
+    Returns
+    -------
+    str
+        The container user, or ``"researcher"`` as fallback.
+    """
+    dictProject = fdictGetProject(sContainerName)
+    if dictProject is None:
+        return "researcher"
+    try:
+        from vaibify.cli.configLoader import fconfigLoadFromPath
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+        return configProject.sContainerUser
+    except Exception:
+        return "researcher"
+
+
 def fdictGetProject(sName):
     """Return the registry entry for a project, or None.
 

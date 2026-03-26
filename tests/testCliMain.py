@@ -130,10 +130,10 @@ def test_gui_help_text():
     assert "pipeline" in result.output.lower()
 
 
-def test_gui_help_shows_user_option():
+def test_gui_help_no_user_option():
     runner = CliRunner()
     result = runner.invoke(main, ["gui", "--help"])
-    assert "--user" in result.output
+    assert "--user" not in result.output
 
 
 # -----------------------------------------------------------------------

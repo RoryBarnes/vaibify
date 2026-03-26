@@ -46,9 +46,20 @@ def fdictBuildCompletedState(iExitCode):
     """Return a partial update dict for pipeline completion."""
     return {
         "bRunning": False,
+        "bInteractivePause": False,
         "iActiveStep": -1,
         "iExitCode": iExitCode,
         "sEndTime": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def fdictBuildInteractivePauseState(iStepNumber, sStepName):
+    """Return a partial update for an interactive pause."""
+    return {
+        "bRunning": True,
+        "bInteractivePause": True,
+        "iActiveStep": iStepNumber,
+        "sActiveStepName": sStepName,
     }
 
 

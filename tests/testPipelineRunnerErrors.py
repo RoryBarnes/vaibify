@@ -30,9 +30,9 @@ def test_fbShouldRunStep_at_start():
     assert _fbShouldRunStep(dictStep, 3, 3) is True
 
 
-def test_fbShouldRunStep_interactive():
+def test_fbShouldRunStep_interactive_eligible():
     dictStep = {"bEnabled": True, "bInteractive": True}
-    assert _fbShouldRunStep(dictStep, 1, 1) is False
+    assert _fbShouldRunStep(dictStep, 1, 1) is True
 
 
 def test_fbShouldRunStep_default_enabled():

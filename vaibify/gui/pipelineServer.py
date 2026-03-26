@@ -41,6 +41,7 @@ class StepCreateRequest(BaseModel):
     sName: str
     sDirectory: str
     bPlotOnly: bool = True
+    bInteractive: bool = False
     saDataCommands: List[str] = []
     saDataFiles: List[str] = []
     saTestCommands: List[str] = []
@@ -52,6 +53,7 @@ class StepUpdateRequest(BaseModel):
     sName: Optional[str] = None
     sDirectory: Optional[str] = None
     bPlotOnly: Optional[bool] = None
+    bInteractive: Optional[bool] = None
     bEnabled: Optional[bool] = None
     saDataCommands: Optional[List[str]] = None
     saDataFiles: Optional[List[str]] = None
@@ -119,6 +121,7 @@ def fdictStepFromRequest(request):
         sName=request.sName,
         sDirectory=request.sDirectory,
         bPlotOnly=request.bPlotOnly,
+        bInteractive=request.bInteractive,
         saDataCommands=request.saDataCommands,
         saDataFiles=request.saDataFiles,
         saTestCommands=request.saTestCommands,
@@ -220,40 +223,45 @@ def _flistParseDirectoryOutput(sOutput):
 
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
-    sWorkflowDirectory, fnCallback,
+    sWorkflowDirectory, fnCallback, dictInteractive=None,
 ):
     """Dispatch runFrom with the start step from the request."""
     await fnRunFromStep(
         connectionDocker, sContainerId,
         dictRequest.get("iStartStep", 1),
         sWorkflowDirectory, fnCallback,
+        dictInteractive=dictInteractive,
     )
 
 
 async def fnDispatchAction(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
-    sWorkflowDirectory, fnCallback,
+    sWorkflowDirectory, fnCallback, dictInteractive=None,
 ):
     """Route a WebSocket pipeline action to the correct runner."""
     if sAction == "runAll":
         await fnRunAllSteps(
-            connectionDocker, sContainerId, sWorkflowDirectory, fnCallback)
+            connectionDocker, sContainerId, sWorkflowDirectory,
+            fnCallback, dictInteractive=dictInteractive)
     elif sAction == "forceRunAll":
         await fnRunAllSteps(
             connectionDocker, sContainerId, sWorkflowDirectory,
-            fnCallback, bForceRun=True)
+            fnCallback, bForceRun=True,
+            dictInteractive=dictInteractive)
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
-            sWorkflowDirectory, fnCallback)
+            sWorkflowDirectory, fnCallback,
+            dictInteractive=dictInteractive)
     elif sAction == "verify":
         await fnVerifyOnly(
             connectionDocker, sContainerId, sWorkflowDirectory, fnCallback)
     elif sAction == "runSelected":
         await _fnDispatchSelected(
             connectionDocker, sContainerId, dictRequest,
-            dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory, fnCallback)
+            dictWorkflow, dictWorkflowPathCache,
+            sWorkflowDirectory, fnCallback)
 
 
 async def _fnDispatchSelected(
@@ -329,19 +337,61 @@ async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
 ):
-    """Receive and dispatch pipeline WebSocket messages."""
+    """Receive and dispatch pipeline WebSocket messages.
+
+    Pipeline actions run as background tasks so the loop stays
+    alive to receive interactive resume/skip messages.
+    """
+    from .pipelineRunner import (
+        fdictCreateInteractiveContext,
+        fnSetInteractiveResponse,
+    )
+    dictInteractive = fdictCreateInteractiveContext()
+    taskPipeline = None
+
+    async def fnCallback(dictEvent):
+        await websocket.send_json(dictEvent)
+
     while True:
         dictRequest = json.loads(await websocket.receive_text())
-
-        async def fnCallback(dictEvent):
-            await websocket.send_json(dictEvent)
-
-        await fnDispatchAction(
-            dictRequest.get("sAction", "runAll"),
-            dictRequest, connectionDocker, sContainerId,
-            dictWorkflow, dictWorkflowPathCache,
-            sWorkflowDirectory, fnCallback,
+        sAction = dictRequest.get("sAction", "")
+        if sAction in ("interactiveResume", "interactiveSkip"):
+            _fnHandleInteractiveResponse(
+                dictInteractive, sAction,
+                dictRequest,
+            )
+            continue
+        if sAction == "interactiveComplete":
+            _fnHandleInteractiveComplete(
+                dictInteractive, dictRequest,
+            )
+            continue
+        taskPipeline = asyncio.create_task(
+            fnDispatchAction(
+                sAction, dictRequest, connectionDocker,
+                sContainerId, dictWorkflow,
+                dictWorkflowPathCache, sWorkflowDirectory,
+                fnCallback, dictInteractive=dictInteractive,
+            )
         )
+
+
+def _fnHandleInteractiveResponse(
+    dictInteractive, sAction, dictRequest,
+):
+    """Set the resume/skip response on the interactive context."""
+    if sAction == "interactiveResume":
+        fnSetInteractiveResponse(dictInteractive, "resume")
+    elif sAction == "interactiveSkip":
+        fnSetInteractiveResponse(dictInteractive, "skip")
+
+
+def _fnHandleInteractiveComplete(dictInteractive, dictRequest):
+    """Signal that the interactive terminal command finished."""
+    iExitCode = dictRequest.get("iExitCode", 0)
+    fnSetInteractiveResponse(
+        dictInteractive, f"complete:{iExitCode}",
+    )
 
 
 async def fnRunTerminalSession(
@@ -381,6 +431,24 @@ def _fsSanitizeServerError(sRawError):
     return sRawError
 
 
+def _fsResolveContainerUser(dictCtx, sContainerId):
+    """Query the container for its built-in user.
+
+    Reads the CONTAINER_USER environment variable set during
+    ``docker build``. Falls back to ``"researcher"`` if the
+    variable is not found.
+    """
+    try:
+        iExitCode, sOutput = dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, "printenv CONTAINER_USER",
+        )
+        if iExitCode == 0 and sOutput.strip():
+            return sOutput.strip()
+    except Exception:
+        pass
+    return "researcher"
+
+
 def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response.
 
@@ -390,6 +458,9 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """
     if sWorkflowPath is None:
         dictCtx["setAllowedContainers"].add(sContainerId)
+        dictCtx["containerUsers"][sContainerId] = (
+            _fsResolveContainerUser(dictCtx, sContainerId)
+        )
         return {
             "sContainerId": sContainerId,
             "sWorkflowPath": None,
@@ -401,6 +472,9 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         )
         dictCtx["workflows"][sContainerId] = dictWorkflow
         dictCtx["setAllowedContainers"].add(sContainerId)
+        dictCtx["containerUsers"][sContainerId] = (
+            _fsResolveContainerUser(dictCtx, sContainerId)
+        )
         sResolved = fsResolveWorkflowPath(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
@@ -1555,7 +1629,10 @@ def _fnRegisterTerminalWs(app, dictCtx):
         dictCtx["require"]()
         await websocket.accept()
         session = TerminalSession(
-            dictCtx["docker"], sContainerId, sUser=sTerminalUser
+            dictCtx["docker"], sContainerId,
+            sUser=dictCtx["containerUsers"].get(
+                sContainerId, sTerminalUser
+            ),
         )
         try:
             session.fnStart()
@@ -1660,6 +1737,7 @@ def fdictBuildContext(connectionDocker):
         "workflows": dictWorkflows,
         "paths": dictPaths,
         "terminals": dictTerminals,
+        "containerUsers": {},
         "require": fnRequire,
         "save": fnSave,
         "variables": fnVariables,
@@ -2026,7 +2104,7 @@ def fappCreateHubApplication():
     """
     from .registryRoutes import fnRegisterRegistryRoutes
     global sTerminalUser
-    sTerminalUser = None
+    sTerminalUser = "researcher"
     app = FastAPI(title="Vaibify Hub")
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
