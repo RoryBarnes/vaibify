@@ -382,7 +382,19 @@ def _fsSanitizeServerError(sRawError):
 
 
 def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
-    """Load workflow, cache it, return connection response."""
+    """Load workflow, cache it, return connection response.
+
+    When ``sWorkflowPath`` is None the user enters sandbox mode:
+    no workflow is loaded but the container is authorised for
+    terminal access.
+    """
+    if sWorkflowPath is None:
+        dictCtx["setAllowedContainers"].add(sContainerId)
+        return {
+            "sContainerId": sContainerId,
+            "sWorkflowPath": None,
+            "dictWorkflow": None,
+        }
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
@@ -1651,8 +1663,10 @@ def _ftupleBuildHelpers(connectionDocker, dictWorkflows, dictPaths):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
 
     def fnWorkflowDir(sContainerId):
-        sWorkflowDirectory = posixpath.dirname(
-            fsRequireWorkflowPath(dictPaths, sContainerId))
+        sPath = dictPaths.get(sContainerId)
+        if not sPath:
+            return WORKSPACE_ROOT
+        sWorkflowDirectory = posixpath.dirname(sPath)
         if "/.vaibify" in sWorkflowDirectory:
             return sWorkflowDirectory[
                 :sWorkflowDirectory.index("/.vaibify")]
@@ -2007,4 +2021,27 @@ def fappCreateApplication(
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
+    return app
+
+
+def fappCreateHubApplication():
+    """Build a hub-mode FastAPI app with registry support.
+
+    Unlike ``fappCreateApplication``, this does not require a
+    project config and can manage multiple projects via the
+    global registry.
+    """
+    from .registryRoutes import fnRegisterRegistryRoutes
+    global sTerminalUser
+    sTerminalUser = None
+    app = FastAPI(title="Vaibify Hub")
+    sSessionToken = secrets.token_urlsafe(32)
+    app.state.sSessionToken = sSessionToken
+    app.state.setAllowedContainers = set()
+    app.add_middleware(SecurityHeadersMiddleware)
+    dictCtx = fdictBuildContext(_fconnectionCreateDocker())
+    dictCtx["sSessionToken"] = sSessionToken
+    dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
+    _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
+    fnRegisterRegistryRoutes(app, dictCtx)
     return app

@@ -87,3 +87,15 @@ def test_flistBuildRunArgs_gpu(mockX11):
     config.features.bGpu = True
     saArgs = flistBuildRunArgs(config)
     assert "--gpus" in saArgs
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_detached(mockX11):
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config, bDetached=True)
+    assert "--rm" in saArgs
+    assert "-d" in saArgs
+    assert "-it" not in saArgs

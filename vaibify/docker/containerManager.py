@@ -20,6 +20,44 @@ def fnStartContainer(config, sDockerDir, saCommand=None):
         _fnCleanupTempFiles(listCleanupFiles)
 
 
+def fsStartContainerDetached(config, sDockerDir):
+    """Start a container in detached mode and return its ID.
+
+    Parameters
+    ----------
+    config : ProjectConfig
+        Validated project configuration.
+    sDockerDir : str
+        Path to the docker build context directory.
+
+    Returns
+    -------
+    str
+        The Docker container ID.
+    """
+    listCleanupFiles = []
+    try:
+        saRunArgs = flistBuildRunArgs(config, bDetached=True)
+        fnMountSecrets(config, saRunArgs, listCleanupFiles)
+        saFullCommand = _flistAssembleRunCommand(
+            config, saRunArgs, None,
+        )
+        return _fsRunDetachedCommand(saFullCommand)
+    finally:
+        _fnCleanupTempFiles(listCleanupFiles)
+
+
+def _fsRunDetachedCommand(saCommand):
+    """Run a docker command and return stdout (container ID)."""
+    resultProcess = subprocess.run(
+        saCommand, capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        sError = resultProcess.stderr.strip()
+        raise RuntimeError(f"Docker run failed: {sError}")
+    return resultProcess.stdout.strip()
+
+
 def _flistAssembleRunCommand(config, saRunArgs, saCommand):
     """Combine docker run prefix, args, image tag, and user command."""
     sImageTag = f"{config.sProjectName}:latest"
@@ -29,9 +67,9 @@ def _flistAssembleRunCommand(config, saRunArgs, saCommand):
     return saFullCommand
 
 
-def flistBuildRunArgs(config):
+def flistBuildRunArgs(config, bDetached=False):
     """Build list of docker run arguments from project config."""
-    saRunArgs = ["--rm", "-it"]
+    saRunArgs = ["--rm", "-d"] if bDetached else ["--rm", "-it"]
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddCpuAllocation(saRunArgs)

@@ -24,6 +24,23 @@ const PipeleyenApp = (function () {
     ]);
     let wsPipeline = null;
     let dictStepStatus = {};
+    var _dictDashboardMode = null;
+
+    var DICT_MODE_WORKFLOW = {
+        sMode: "workflow",
+        listLeftTabs: ["steps", "files", "logs"],
+        sDefaultLeftTab: "steps",
+        bShowRunMenu: true,
+        bShowDagButton: true,
+    };
+
+    var DICT_MODE_NO_WORKFLOW = {
+        sMode: "noWorkflow",
+        listLeftTabs: ["files", "logs"],
+        sDefaultLeftTab: "files",
+        bShowRunMenu: false,
+        bShowDagButton: false,
+    };
 
     async function fnFetchSessionToken() {
         try {
@@ -43,8 +60,8 @@ const PipeleyenApp = (function () {
         fnLoadContainers();
         fnBindToolbarEvents();
         fnBindWorkflowPickerEvents();
-        fnBindUnconfiguredToggle();
-        fnBindRefreshButton();
+        fnBindContainerLandingEvents();
+        fnBindAddContainerModal();
         fnBindErrorModal();
         fnBindApiConfirmModal();
         fnBindContextMenuEvents();
@@ -79,85 +96,434 @@ const PipeleyenApp = (function () {
         }
     }
 
-    /* --- Container Picker --- */
+    /* --- Container Landing --- */
 
     async function fnLoadContainers() {
+        var elList = document.getElementById("listContainers");
         try {
-            var response = await fetch("/api/containers");
-            var listContainers = await response.json();
-            fnRenderContainerList(listContainers);
+            var response = await fetch("/api/registry");
+            var dictResult = await response.json();
+            fnRenderContainerList(dictResult.listContainers || []);
+            fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
         } catch (error) {
-            document.getElementById("listContainers").innerHTML =
-                '<p style="color: var(--color-red);">Cannot connect to Docker</p>';
+            elList.innerHTML =
+                '<p style="color: var(--color-red);">' +
+                "Cannot load containers</p>";
         }
     }
 
-    function fsRenderContainerCard(container, sExtraClass) {
-        return (
-            '<div class="container-card' +
-            (sExtraClass ? " " + sExtraClass : "") +
-            '" data-id="' + container.sContainerId + '">' +
-            '<span class="name">' +
-            fnEscapeHtml(container.sName) + "</span>" +
-            '<span class="image">' +
-            fnEscapeHtml(container.sImage) + "</span></div>"
-        );
+    function fnRenderContainerList(listContainers) {
+        var elList = document.getElementById("listContainers");
+        if (listContainers.length === 0) {
+            elList.innerHTML =
+                '<p class="muted-text" style="text-align: center;">' +
+                "No containers registered. Click + to add one.</p>";
+            return;
+        }
+        elList.innerHTML = listContainers.map(function (dictContainer) {
+            return fsRenderContainerTile(dictContainer);
+        }).join("");
+        fnBindContainerTiles(elList);
     }
 
-    function fnBindContainerCards(elParent) {
-        elParent.querySelectorAll(".container-card").forEach(function (el) {
+    function fnRenderUnrecognizedList(listUnrecognized) {
+        var elSection = document.getElementById("unrecognizedSection");
+        var elList = document.getElementById("listUnrecognized");
+        if (listUnrecognized.length === 0) {
+            elSection.style.display = "none";
+            return;
+        }
+        elSection.style.display = "";
+        elList.innerHTML = listUnrecognized.map(function (c) {
+            return (
+                '<div class="container-card unrecognized" data-id="' +
+                fnEscapeHtml(c.sContainerId) + '">' +
+                '<span class="name">' +
+                fnEscapeHtml(c.sName) + "</span>" +
+                '<span class="image">' +
+                fnEscapeHtml(c.sImage) + "</span></div>"
+            );
+        }).join("");
+        elList.querySelectorAll(".container-card").forEach(function (el) {
             el.addEventListener("click", function () {
                 fnConnectToContainer(el.dataset.id);
             });
         });
     }
 
-    function fnRenderContainerList(listContainers) {
-        var elList = document.getElementById("listContainers");
-        var elUnconfiguredSection = document.getElementById(
-            "unconfiguredSection"
+    function fsRenderContainerTile(dictContainer) {
+        var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
+        var sId = dictContainer.sContainerId || "";
+        return (
+            '<div class="container-tile" data-name="' +
+            fnEscapeHtml(dictContainer.sName) +
+            '" data-container-id="' + fnEscapeHtml(sId) + '">' +
+            '<div class="container-tile-main">' +
+            '<span class="status-dot ' + sStatusClass + '"></span>' +
+            '<span class="container-tile-name">' +
+            fnEscapeHtml(dictContainer.sName) + "</span>" +
+            "</div>" +
+            '<button class="btn-icon container-tile-gear" ' +
+            'title="Actions">&#9881;</button>' +
+            '<div class="container-tile-menu" style="display:none;">' +
+            '<div class="container-menu-item" data-action="start">' +
+            "Start</div>" +
+            '<div class="container-menu-item" data-action="stop">' +
+            "Stop</div>" +
+            '<div class="container-menu-item" data-action="rebuild">' +
+            "Rebuild</div>" +
+            '<div class="container-menu-separator"></div>' +
+            '<div class="container-menu-item danger" ' +
+            'data-action="remove">Remove from list</div>' +
+            "</div></div>"
         );
-        var elUnconfiguredList = document.getElementById("listUnconfigured");
-        var elLabel = document.getElementById("labelConfigured");
+    }
 
-        var listConfigured = listContainers.filter(function (c) {
-            return c.bConfigured;
-        });
-        var listUnconfigured = listContainers.filter(function (c) {
-            return !c.bConfigured;
-        });
+    function _fsStatusDotClass(sStatus) {
+        if (sStatus === "running") return "status-running";
+        if (sStatus === "stopped") return "status-stopped";
+        return "status-not-built";
+    }
 
-        if (listContainers.length === 0) {
-            elLabel.style.display = "none";
-            elList.innerHTML =
-                '<p class="muted-text" style="text-align: center;">' +
-                "No running containers found</p>";
-            elUnconfiguredSection.style.display = "none";
+    function fnBindContainerTiles(elParent) {
+        elParent.querySelectorAll(".container-tile").forEach(function (el) {
+            var sName = el.dataset.name;
+            el.querySelector(".container-tile-main").addEventListener(
+                "click", function () {
+                    fnHandleContainerClick(sName);
+                }
+            );
+            _fnBindGearMenu(el, sName);
+        });
+    }
+
+    function _fnBindGearMenu(elTile, sName) {
+        var elGear = elTile.querySelector(".container-tile-gear");
+        var elMenu = elTile.querySelector(".container-tile-menu");
+        elGear.addEventListener("click", function (event) {
+            event.stopPropagation();
+            _fnToggleGearMenu(elMenu);
+        });
+        elMenu.querySelectorAll(".container-menu-item").forEach(
+            function (elItem) {
+                elItem.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                    elMenu.style.display = "none";
+                    fnHandleContainerAction(sName, elItem.dataset.action);
+                });
+            }
+        );
+    }
+
+    function _fnToggleGearMenu(elMenu) {
+        document.querySelectorAll(".container-tile-menu").forEach(
+            function (el) { el.style.display = "none"; }
+        );
+        var bVisible = elMenu.style.display !== "none";
+        elMenu.style.display = bVisible ? "none" : "";
+    }
+
+    async function fnHandleContainerClick(sName) {
+        var elTile = document.querySelector(
+            '.container-tile[data-name="' + sName + '"]'
+        );
+        var elDot = elTile ? elTile.querySelector(".status-dot") : null;
+        var bRunning = elDot && elDot.classList.contains("status-running");
+        var bNotBuilt = elDot &&
+            elDot.classList.contains("status-not-built");
+        if (bNotBuilt) {
+            await fnBuildContainer(sName);
             return;
         }
-
-        elLabel.style.display = "";
-        if (listConfigured.length === 0) {
-            elList.innerHTML =
-                '<p class="muted-text" style="text-align: center;">' +
-                "No configured containers found</p>";
-        } else {
-            elList.innerHTML = listConfigured.map(function (c) {
-                return fsRenderContainerCard(c, "");
-            }).join("");
-            fnBindContainerCards(elList);
+        if (!bRunning) {
+            await fnStartContainer(sName);
         }
-
-        if (listUnconfigured.length > 0) {
-            elUnconfiguredSection.style.display = "";
-            elUnconfiguredList.innerHTML = listUnconfigured.map(
-                function (c) {
-                    return fsRenderContainerCard(c, "unconfigured");
-                }
-            ).join("");
-            fnBindContainerCards(elUnconfiguredList);
+        var sStoredId = elTile ? elTile.dataset.containerId : "";
+        if (sStoredId) {
+            fnConnectToContainer(sStoredId);
         } else {
-            elUnconfiguredSection.style.display = "none";
+            fnConnectToContainerByName(sName);
+        }
+    }
+
+    async function fnHandleContainerAction(sName, sAction) {
+        if (sAction === "start") await fnStartContainer(sName);
+        else if (sAction === "stop") await fnStopContainer(sName);
+        else if (sAction === "rebuild") await fnRebuildContainer(sName);
+        else if (sAction === "remove") await fnRemoveContainer(sName);
+    }
+
+    async function fnBuildContainer(sName) {
+        var elOverlay = document.getElementById("modalBuildProgress");
+        elOverlay.style.display = "flex";
+        try {
+            var response = await fetch(
+                "/api/containers/" + encodeURIComponent(sName) + "/build",
+                { method: "POST" }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Build failed", "error");
+                return;
+            }
+            fnShowToast("Build complete", "success");
+            await fnStartContainer(sName);
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        } finally {
+            elOverlay.style.display = "none";
+            fnLoadContainers();
+        }
+    }
+
+    async function fnStartContainer(sName) {
+        try {
+            var response = await fetch(
+                "/api/containers/" + encodeURIComponent(sName) + "/start",
+                { method: "POST" }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Start failed", "error");
+                return;
+            }
+            fnShowToast("Container started", "success");
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        }
+        fnLoadContainers();
+    }
+
+    async function fnStopContainer(sName) {
+        try {
+            var response = await fetch(
+                "/api/containers/" + encodeURIComponent(sName) + "/stop",
+                { method: "POST" }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Stop failed", "error");
+                return;
+            }
+            fnShowToast("Container stopped", "success");
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        }
+        fnLoadContainers();
+    }
+
+    async function fnRebuildContainer(sName) {
+        if (!confirm("Rebuild will stop and rebuild the container. Continue?"))
+            return;
+        await fnStopContainer(sName);
+        await fnBuildContainer(sName);
+    }
+
+    async function fnRemoveContainer(sName) {
+        if (!confirm("Remove '" + sName + "' from the container list?"))
+            return;
+        try {
+            var response = await fetch(
+                "/api/registry/" + encodeURIComponent(sName),
+                { method: "DELETE" }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Remove failed", "error");
+                return;
+            }
+            fnShowToast("Container removed", "success");
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        }
+        fnLoadContainers();
+    }
+
+    /* --- Directory Browser --- */
+
+    var _sBrowserCurrentPath = "";
+    var _listBrowserHistory = [];
+    var _iBrowserHistoryIndex = -1;
+    var _bBrowserNavigating = false;
+
+    async function fnOpenDirectoryBrowser() {
+        document.getElementById("modalAddContainer").style.display = "flex";
+        _listBrowserHistory = [];
+        _iBrowserHistoryIndex = -1;
+        await fnBrowseDirectory("");
+    }
+
+    function fnBrowserNavigateBack() {
+        if (_iBrowserHistoryIndex <= 0) return;
+        _bBrowserNavigating = true;
+        _iBrowserHistoryIndex--;
+        fnBrowseDirectory(_listBrowserHistory[_iBrowserHistoryIndex]);
+    }
+
+    function fnBrowserNavigateForward() {
+        if (_iBrowserHistoryIndex >= _listBrowserHistory.length - 1) return;
+        _bBrowserNavigating = true;
+        _iBrowserHistoryIndex++;
+        fnBrowseDirectory(_listBrowserHistory[_iBrowserHistoryIndex]);
+    }
+
+    function _fnUpdateBrowserNavButtons() {
+        var elBack = document.getElementById("btnBrowserBack");
+        var elForward = document.getElementById("btnBrowserForward");
+        elBack.disabled = _iBrowserHistoryIndex <= 0;
+        elForward.disabled =
+            _iBrowserHistoryIndex >= _listBrowserHistory.length - 1;
+    }
+
+    async function fnBrowseDirectory(sPath) {
+        var elEntries = document.getElementById("directoryEntries");
+        elEntries.innerHTML =
+            '<p class="muted-text" style="text-align:center;">Loading...</p>';
+        try {
+            var sUrl = "/api/host-directories";
+            if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);
+            var response = await fetch(sUrl);
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Browse failed", "error");
+                return;
+            }
+            var dictResult = await response.json();
+            _sBrowserCurrentPath = dictResult.sCurrentPath;
+            if (!_bBrowserNavigating) {
+                _listBrowserHistory = _listBrowserHistory.slice(
+                    0, _iBrowserHistoryIndex + 1
+                );
+                _listBrowserHistory.push(dictResult.sCurrentPath);
+                _iBrowserHistoryIndex = _listBrowserHistory.length - 1;
+            }
+            _bBrowserNavigating = false;
+            _fnUpdateBrowserNavButtons();
+            fnRenderBreadcrumb(dictResult.sCurrentPath);
+            fnRenderDirectoryEntries(dictResult.listEntries);
+            _fnUpdateSelectButton(
+                dictResult.sCurrentPath, dictResult.bHasConfig
+            );
+        } catch (error) {
+            elEntries.innerHTML =
+                '<p style="color:var(--color-red);">Error loading</p>';
+        }
+    }
+
+    function fnRenderBreadcrumb(sPath) {
+        var elBar = document.getElementById("directoryBreadcrumb");
+        var listSegments = sPath.split("/").filter(function (s) {
+            return s.length > 0;
+        });
+        var sHtml = "";
+        var sBuiltPath = "";
+        for (var i = 0; i < listSegments.length; i++) {
+            sBuiltPath += "/" + listSegments[i];
+            var sNavTarget = (i === 0) ? "/" : sBuiltPath.substring(
+                0, sBuiltPath.lastIndexOf("/"));
+            sHtml +=
+                '<span class="breadcrumb-sep" data-path="' +
+                fnEscapeHtml(sNavTarget) + '">/</span>' +
+                '<span class="breadcrumb-segment" data-path="' +
+                fnEscapeHtml(sBuiltPath) + '">' +
+                fnEscapeHtml(listSegments[i]) + "</span>";
+        }
+        if (listSegments.length === 0) {
+            sHtml = '<span class="breadcrumb-segment" data-path="/">/</span>';
+        }
+        elBar.innerHTML = sHtml;
+        elBar.querySelectorAll(
+            ".breadcrumb-segment, .breadcrumb-sep"
+        ).forEach(function (el) {
+            if (el.dataset.path) {
+                el.addEventListener("click", function () {
+                    fnBrowseDirectory(el.dataset.path);
+                });
+            }
+        });
+    }
+
+    function fnRenderDirectoryEntries(listEntries) {
+        var elContainer = document.getElementById("directoryEntries");
+        if (listEntries.length === 0) {
+            elContainer.innerHTML =
+                '<p class="muted-text" style="text-align:center;">' +
+                "No subdirectories</p>";
+            return;
+        }
+        elContainer.innerHTML = listEntries.map(function (entry) {
+            var sConfigClass = entry.bHasConfig ? " has-config" : "";
+            return (
+                '<div class="directory-entry' + sConfigClass +
+                '" data-path="' + fnEscapeHtml(entry.sPath) + '">' +
+                '<span class="directory-entry-icon">&#128193;</span>' +
+                '<span class="directory-entry-name">' +
+                fnEscapeHtml(entry.sName) + "</span>" +
+                (entry.bHasConfig
+                    ? '<img src="/static/favicon.png" class="config-indicator" alt="vaibify">'
+                    : "") +
+                "</div>"
+            );
+        }).join("");
+        _fnBindDirectoryEntryClicks(elContainer);
+    }
+
+    function _fnBindDirectoryEntryClicks(elContainer) {
+        elContainer.querySelectorAll(".directory-entry").forEach(
+            function (el) {
+                el.addEventListener("click", function () {
+                    fnBrowseDirectory(el.dataset.path);
+                });
+            }
+        );
+    }
+
+    function _fnUpdateSelectButton(sPath, bHasConfig) {
+        var elPath = document.getElementById("directoryCurrentPath");
+        var elLabel = document.getElementById("configFoundLabel");
+        var elButton = document.getElementById("btnAddContainerConfirm");
+        elPath.textContent = sPath;
+        elLabel.style.display = bHasConfig ? "" : "none";
+        elButton.disabled = !bHasConfig;
+    }
+
+    async function fnSelectDirectory() {
+        if (!_sBrowserCurrentPath) return;
+        try {
+            var response = await fetch("/api/registry", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sDirectory: _sBrowserCurrentPath,
+                }),
+            });
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Add failed", "error");
+                return;
+            }
+            fnShowToast("Container added", "success");
+            document.getElementById("modalAddContainer").style.display = "none";
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        }
+        fnLoadContainers();
+    }
+
+    async function fnConnectToContainerByName(sName) {
+        try {
+            var responseContainers = await fetch("/api/containers");
+            var listContainers = await responseContainers.json();
+            var dictMatch = listContainers.find(function (c) {
+                return c.sName === sName;
+            });
+            if (!dictMatch) {
+                fnShowToast("Container not found for " + sName, "error");
+                return;
+            }
+            fnConnectToContainer(dictMatch.sContainerId);
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
     }
 
@@ -269,6 +635,7 @@ const PipeleyenApp = (function () {
             sContainerId = sId;
             dictWorkflow = data.dictWorkflow;
             sWorkflowPath = data.sWorkflowPath;
+            _dictDashboardMode = DICT_MODE_WORKFLOW;
             dictStepStatus = {};
             dictFileExistenceCache = {};
             dictFileModTimes = {};
@@ -299,22 +666,108 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnShowContainerPicker() {
-        document.getElementById("containerPicker").style.display = "flex";
+    async function fnEnterSandbox(sId) {
+        try {
+            var response = await fetch(
+                "/api/connect/" + sId,
+                { method: "POST" }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(fsSanitizeErrorForUser(
+                    detail.detail || "Connection failed"), "error");
+                return;
+            }
+            sContainerId = sId;
+            dictWorkflow = null;
+            sWorkflowPath = null;
+            _dictDashboardMode = DICT_MODE_NO_WORKFLOW;
+            dictStepStatus = {};
+            var elWorkflowName = document.getElementById(
+                "activeWorkflowName"
+            );
+            elWorkflowName.textContent = "No Workflow";
+            fnShowMainLayout();
+            PipeleyenTerminal.fnCreateTab();
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error"
+            );
+        }
+    }
+
+    function fnReorderLeftTabs(listVisibleTabs) {
+        var elTabBar = document.getElementById("leftPanelTabs");
+        if (!elTabBar) return;
+        listVisibleTabs.forEach(function (sPanel) {
+            var elTab = elTabBar.querySelector(
+                '.left-tab[data-panel="' + sPanel + '"]'
+            );
+            if (elTab) elTabBar.appendChild(elTab);
+        });
+    }
+
+    function fnReorderLeftPanels(listVisibleTabs) {
+        var elResizeHandle = document.querySelector(
+            "#panelLeft > .resize-handle-horizontal"
+        );
+        if (!elResizeHandle) return;
+        var elPanelLeft = elResizeHandle.parentElement;
+        listVisibleTabs.forEach(function (sPanel) {
+            var sId = "panel" + sPanel.charAt(0).toUpperCase()
+                + sPanel.slice(1);
+            var elPanel = document.getElementById(sId);
+            if (elPanel) {
+                elPanelLeft.insertBefore(elPanel, elResizeHandle);
+            }
+        });
+    }
+
+    function fnApplyToolbarVisibility(dictMode) {
+        var elRunMenu = document.getElementById("toolbarMenuRun");
+        if (elRunMenu) elRunMenu.style.display =
+            dictMode.bShowRunMenu ? "" : "none";
+        var elDagButton = document.getElementById("btnShowDag");
+        if (elDagButton) elDagButton.style.display =
+            dictMode.bShowDagButton ? "" : "none";
+    }
+
+    function fnApplyDashboardMode() {
+        if (!_dictDashboardMode) return;
+        var listLeftTabs = _dictDashboardMode.listLeftTabs;
+        var listAllTabs = document.querySelectorAll(".left-tab");
+        listAllTabs.forEach(function (elTab) {
+            var bVisible = listLeftTabs.includes(elTab.dataset.panel);
+            elTab.style.display = bVisible ? "" : "none";
+        });
+        fnReorderLeftTabs(listLeftTabs);
+        fnReorderLeftPanels(listLeftTabs);
+        var elDefaultTab = document.querySelector(
+            '.left-tab[data-panel="' +
+            _dictDashboardMode.sDefaultLeftTab + '"]'
+        );
+        if (elDefaultTab) elDefaultTab.click();
+        fnApplyToolbarVisibility(_dictDashboardMode);
+    }
+
+    function fnShowContainerLanding() {
+        document.getElementById("containerLanding").style.display = "flex";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");
+        _dictDashboardMode = null;
     }
 
     function fnShowWorkflowPicker(sContainerName) {
-        document.getElementById("containerPicker").style.display = "none";
+        document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
     }
 
     function fnShowMainLayout() {
-        document.getElementById("containerPicker").style.display = "none";
+        document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.add("active");
+        fnApplyDashboardMode();
     }
 
     function fnDisconnect() {
@@ -331,7 +784,7 @@ const PipeleyenApp = (function () {
             wsPipeline = null;
         }
         PipeleyenTerminal.fnCloseAll();
-        fnShowContainerPicker();
+        fnShowContainerLanding();
         fnLoadContainers();
     }
 
@@ -2645,6 +3098,11 @@ const PipeleyenApp = (function () {
         fnBindToolbarMenus();
         fnBindMenuItemActions();
         fnBindPushModalEvents();
+        var elLogo = document.querySelector(".toolbar-logo");
+        if (elLogo) {
+            elLogo.style.cursor = "pointer";
+            elLogo.addEventListener("click", fnDisconnect);
+        }
     }
 
     function fnBindToolbarMenus() {
@@ -2692,8 +3150,11 @@ const PipeleyenApp = (function () {
             btnVsCode: fnOpenVsCode,
             btnMonitor: function () {},
             btnResetLayout: fnResetLayout,
-            btnDisconnect: fnDisconnect,
-            btnNewWorkflowToolbar: fnCreateNewWorkflow,
+            btnAdminContainers: fnDisconnect,
+            btnAdminWorkflows: function () {
+                if (sContainerId) fnConnectToContainer(sContainerId);
+            },
+            btnAdminQuit: function () { window.close(); },
         };
         for (var sId in dictActions) {
             var el = document.getElementById(sId);
@@ -3013,8 +3474,15 @@ const PipeleyenApp = (function () {
     function fnBindWorkflowPickerEvents() {
         document.getElementById("btnWorkflowBack").addEventListener(
             "click", function () {
-                fnShowContainerPicker();
+                fnShowContainerLanding();
                 fnLoadContainers();
+            }
+        );
+        document.getElementById("btnNoWorkflow").addEventListener(
+            "click", function () {
+                if (_sSelectedContainerId) {
+                    fnEnterSandbox(_sSelectedContainerId);
+                }
             }
         );
         document.getElementById("btnNewWorkflow").addEventListener(
@@ -3062,14 +3530,12 @@ const PipeleyenApp = (function () {
 
     function fnRenderWorkflowDropdown(listWorkflows) {
         var elDropdown = document.getElementById("workflowDropdown");
-        if (listWorkflows.length === 0) {
-            elDropdown.innerHTML =
-                '<div class="workflow-dropdown-item">' +
-                '<span class="wf-name muted-text">' +
-                'No other workflows</span></div>';
-            return;
-        }
-        elDropdown.innerHTML = listWorkflows.map(function (dictWf) {
+        var bInNoWorkflow = !sWorkflowPath && !dictWorkflow;
+        var sHtml = '<div class="workflow-dropdown-item' +
+            (bInNoWorkflow ? " current" : "") +
+            '" data-action="noWorkflow">' +
+            '<span class="wf-name">No Workflow</span></div>';
+        sHtml += listWorkflows.map(function (dictWf) {
             var bCurrent = dictWf.sPath === sWorkflowPath;
             return (
                 '<div class="workflow-dropdown-item' +
@@ -3082,6 +3548,7 @@ const PipeleyenApp = (function () {
                 fnEscapeHtml(dictWf.sPath) + '</span></div>'
             );
         }).join("");
+        elDropdown.innerHTML = sHtml;
         fnBindWorkflowDropdownItems(elDropdown);
     }
 
@@ -3091,6 +3558,11 @@ const PipeleyenApp = (function () {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
                     fnHideWorkflowDropdown();
+                    if (el.dataset.action === "noWorkflow") {
+                        if (!dictWorkflow && !sWorkflowPath) return;
+                        fnEnterSandbox(sContainerId);
+                        return;
+                    }
                     var sPath = el.dataset.path;
                     var sName = el.dataset.name;
                     if (sPath === sWorkflowPath) return;
@@ -3124,24 +3596,47 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnBindRefreshButton() {
+    function fnBindContainerLandingEvents() {
         document.getElementById("btnRefreshContainers").addEventListener(
             "click", function () {
                 fnLoadContainers();
             }
         );
-    }
-
-    function fnBindUnconfiguredToggle() {
-        document.getElementById("btnShowUnconfigured").addEventListener(
+        document.getElementById("btnAddContainer").addEventListener(
+            "click", fnOpenDirectoryBrowser
+        );
+        document.getElementById("btnShowUnrecognized").addEventListener(
             "click", function () {
-                var elList = document.getElementById("listUnconfigured");
+                var elList = document.getElementById("listUnrecognized");
                 var bVisible = elList.style.display !== "none";
                 elList.style.display = bVisible ? "none" : "";
                 this.textContent = bVisible
-                    ? "See unconfigured containers"
-                    : "Hide unconfigured containers";
+                    ? "Show unrecognized containers"
+                    : "Hide unrecognized containers";
             }
+        );
+        document.addEventListener("click", function () {
+            document.querySelectorAll(".container-tile-menu").forEach(
+                function (el) { el.style.display = "none"; }
+            );
+        });
+        document.getElementById("btnBrowserBack").addEventListener(
+            "click", fnBrowserNavigateBack
+        );
+        document.getElementById("btnBrowserForward").addEventListener(
+            "click", fnBrowserNavigateForward
+        );
+    }
+
+    function fnBindAddContainerModal() {
+        document.getElementById("btnAddContainerCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddContainer")
+                    .style.display = "none";
+            }
+        );
+        document.getElementById("btnAddContainerConfirm").addEventListener(
+            "click", fnSelectDirectory
         );
     }
 
@@ -4227,6 +4722,10 @@ const PipeleyenApp = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
+    function fsGetDashboardMode() {
+        return _dictDashboardMode ? _dictDashboardMode.sMode : null;
+    }
+
     /* --- Public API --- */
 
     return {
@@ -4249,6 +4748,7 @@ const PipeleyenApp = (function () {
         fbIsTestPending: function (iStep) {
             return setGeneratedTestsPending.has(iStep);
         },
+        fsGetDashboardMode: fsGetDashboardMode,
     };
 })();
 

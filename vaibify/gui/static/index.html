@@ -11,29 +11,79 @@
 </head>
 <body>
 
-<!-- Container Picker -->
-<div id="containerPicker">
+<!-- Container Landing -->
+<div id="containerLanding">
     <img src="/static/vaibify_logo_paleblue_dark.png" alt="Vaibify"
          class="vaibify-logo-large">
     <p class="subtitle tagline">Vibe boldly. Verify everything.</p>
     <div class="picker-content">
         <div class="picker-section-header">
-            <h3 class="picker-section-label" id="labelConfigured">
-                Available Containers:</h3>
-            <button class="btn-icon picker-refresh" id="btnRefreshContainers"
-                    title="Refresh">&#x21bb;</button>
+            <h3 class="picker-section-label" id="labelContainers">
+                Containers</h3>
+            <div style="display: flex; gap: 6px;">
+                <button class="btn-icon" id="btnAddContainer"
+                        title="Add container">+</button>
+                <button class="btn-icon picker-refresh"
+                        id="btnRefreshContainers"
+                        title="Refresh">&#x21bb;</button>
+            </div>
         </div>
         <div id="listContainers">
             <p class="muted-text" style="text-align: center;">
                 Loading containers...
             </p>
         </div>
-        <div id="unconfiguredSection" style="display: none;">
-            <button class="btn btn-unconfigured-toggle"
-                    id="btnShowUnconfigured">
-                See unconfigured containers</button>
-            <div id="listUnconfigured" style="display: none;"></div>
+        <div id="unrecognizedSection" style="display: none;">
+            <button class="btn btn-unrecognized-toggle"
+                    id="btnShowUnrecognized">
+                Show unrecognized containers</button>
+            <div id="listUnrecognized" style="display: none;"></div>
         </div>
+    </div>
+</div>
+
+<!-- Add Container Modal (Directory Browser) -->
+<div class="modal-overlay" id="modalAddContainer" style="display: none;">
+    <div class="modal modal-directory-browser">
+        <h2 style="color: var(--color-pale-blue);">Select Directory</h2>
+        <p style="font-size: 13px; color: var(--text-secondary);
+                  margin-bottom: 12px;">
+            Navigate to a directory containing
+            <code>vaibify.yml</code>.
+        </p>
+        <div class="browser-nav-row">
+            <button class="btn-icon browser-nav-button" id="btnBrowserBack"
+                    title="Back" disabled>&#9664;</button>
+            <button class="btn-icon browser-nav-button" id="btnBrowserForward"
+                    title="Forward" disabled>&#9654;</button>
+        </div>
+        <div class="breadcrumb-bar" id="directoryBreadcrumb"></div>
+        <div class="directory-browser" id="directoryEntries">
+            <p class="muted-text" style="text-align: center;">
+                Loading...</p>
+        </div>
+        <div class="directory-current-path">
+            <span id="directoryCurrentPath"></span>
+            <span class="config-found-label" id="configFoundLabel"
+                  style="display: none;">vaibify.yml found</span>
+        </div>
+        <div class="modal-actions">
+            <button class="btn" id="btnAddContainerCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnAddContainerConfirm"
+                    disabled>Select</button>
+        </div>
+    </div>
+</div>
+
+<!-- Build Progress Overlay -->
+<div class="modal-overlay" id="modalBuildProgress" style="display: none;">
+    <div class="modal modal-small">
+        <h2 style="color: var(--color-pale-blue);">Building Container</h2>
+        <p id="buildProgressMessage" style="font-size: 13px;
+           color: var(--text-secondary); text-align: center;">
+            Building image, please wait...
+        </p>
+        <div class="build-spinner"></div>
     </div>
 </div>
 
@@ -46,6 +96,12 @@
             <h3 class="picker-section-label">Available Workflows:</h3>
             <button class="btn-icon picker-refresh" id="btnRefreshWorkflows"
                     title="Refresh">&#x21bb;</button>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <div class="container-card" id="btnNoWorkflow">
+                <span class="name">No Workflow</span>
+                <span class="image">Work directly in the container</span>
+            </div>
         </div>
         <div id="listWorkflows"></div>
         <div style="margin-top: 16px; display: flex; gap: 8px;">
@@ -68,7 +124,7 @@
             <div id="workflowDropdown" class="workflow-dropdown"></div>
         </div>
         <!-- Run Menu -->
-        <div class="toolbar-menu">
+        <div class="toolbar-menu" id="toolbarMenuRun">
             <button class="btn toolbar-menu-trigger">Run</button>
             <div class="toolbar-menu-dropdown">
                 <div class="toolbar-menu-item" id="btnRunSelected">
@@ -121,11 +177,13 @@
         <div class="toolbar-menu">
             <button class="btn toolbar-menu-trigger">Admin</button>
             <div class="toolbar-menu-dropdown">
-                <div class="toolbar-menu-item" id="btnNewWorkflowToolbar">
-                    New Workflow</div>
+                <div class="toolbar-menu-item" id="btnAdminContainers">
+                    Containers</div>
+                <div class="toolbar-menu-item" id="btnAdminWorkflows">
+                    Workflows</div>
                 <div class="toolbar-menu-separator"></div>
-                <div class="toolbar-menu-item" id="btnDisconnect">
-                    Disconnect</div>
+                <div class="toolbar-menu-item" id="btnAdminQuit">
+                    Quit</div>
             </div>
         </div>
     </div>

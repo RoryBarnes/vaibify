@@ -33,18 +33,45 @@ from .commandStatus import status
 from .configLoader import fconfigLoad
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(package_name="vaibify")
 @click.option(
     "--config", "sConfigPath", default=None,
     type=click.Path(exists=True),
     help="Path to vaibify.yml (default: ./vaibify.yml).",
 )
-def main(sConfigPath):
+@click.option(
+    "--port", "iPort", default=8050, type=int,
+    help="Port for the hub server (default: 8050).",
+)
+@click.pass_context
+def main(ctx, sConfigPath, iPort):
     """Vaibify - Vibe boldly. Verify everything."""
     if sConfigPath:
         from .configLoader import fnSetConfigPath
         fnSetConfigPath(sConfigPath)
+    if ctx.invoked_subcommand is None:
+        fnLaunchHub(iPort)
+
+
+def fnLaunchHub(iPort):
+    """Start the hub-mode server and open the browser."""
+    import threading
+    import time
+    import uvicorn
+    import webbrowser
+    from vaibify.gui.pipelineServer import fappCreateHubApplication
+    _fnConfigureErrorLogging()
+    sUrl = f"http://127.0.0.1:{iPort}"
+    click.echo(f"Starting Vaibify hub at {sUrl}")
+    app = fappCreateHubApplication()
+    threading.Thread(
+        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+        daemon=True,
+    ).start()
+    uvicorn.run(
+        app, host="127.0.0.1", port=iPort, log_level="warning",
+    )
 
 
 main.add_command(init)

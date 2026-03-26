@@ -57,6 +57,33 @@ def _fconfigParse(sPath):
         sys.exit(1)
 
 
+def fconfigLoadFromPath(sPath):
+    """Load a vaibify.yml from an explicit path.
+
+    Unlike ``fconfigLoad``, this raises on error instead of
+    calling ``sys.exit``, making it safe for server processes.
+
+    Parameters
+    ----------
+    sPath : str
+        Absolute path to the YAML configuration file.
+
+    Returns
+    -------
+    ProjectConfig
+        Validated configuration dataclass instance.
+
+    Raises
+    ------
+    ValueError
+        If the file is missing or fails validation.
+    """
+    if not pathlib.Path(sPath).is_file():
+        raise ValueError(f"Config file not found: {sPath}")
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    return fconfigLoadFromFile(sPath)
+
+
 def fsDockerDir():
     """Return the path to the docker/ directory in the package root."""
     sPackageRoot = str(pathlib.Path(__file__).resolve().parents[2])
