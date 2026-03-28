@@ -1,102 +1,76 @@
-# Vaibify
+<p align="center">
+  <img width = "350" src="docs/vaibify_logo.png?raw=true"/>
+</p>
 
-**Vibe boldly. Verify everything.**
+<h1 align="center">Vaibify: Vibe Boldly. Verify Everything.</h1>
 
-Vaibify is a secure, containerized environment for AI-assisted data science. It decomposes your project into pipeline steps, executes them in parallel inside an isolated Docker container, verifies the outputs, and publishes the results — all with minimal IDE interaction. Vaibify lets data scientists embrace vibe coding with confidence: your AI agent runs wild inside the walls, while your host machine stays safe.
+<p align="center">
+  <a href="https://RoryBarnes.github.io/vaibify">
+    <img src="https://img.shields.io/badge/Read-the_docs-blue.svg?style=flat">
+  </a>
+  <a href="https://RoryBarnes.github.io/vaibify/conduct.html">
+    <img src="https://img.shields.io/badge/Code%20of-Conduct-black.svg">
+  </a>
+  <a href="https://github.com/RoryBarnes/vaibify/issues">
+    <img src="https://img.shields.io/badge/Issues-orange.svg">
+  </a>
+  <a href="https://github.com/RoryBarnes/vaibify/discussions">
+    <img src="https://img.shields.io/badge/Discussions-orange.svg">
+  </a>
+  <br>
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-linux.yml/badge.svg">
+  <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
+  <br>
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-macos.yml/badge.svg">
+  <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
+  <br>
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/docs.yml/badge.svg">
+</p>
 
-## Why Vaibify?
+### Overview
+
+`Vaibify` is a secure, containerized environment for AI-assisted data science. It decomposes projects into pipeline steps, executes them inside isolated Docker containers, verifies the outputs, and publishes the results — all with minimal IDE interaction. Vaibify lets data scientists embrace vibe coding with confidence: the AI agent runs wild inside the walls, while the host machine stays safe.
+
+To get started, follow the [Installation Guide](https://RoryBarnes.github.io/vaibify/install.html) and then the [Quick Start](https://RoryBarnes.github.io/vaibify/quickStart.html).
+
+### Why Vaibify?
 
 Data scientists increasingly rely on AI coding agents to build and iterate on analysis pipelines. But running AI-generated code raises real concerns:
 
 - **Safety** — AI agents need broad permissions to be effective, but broad permissions on your host are dangerous. Vaibify runs everything inside an isolated Docker container with no access to your host filesystem, network, or credentials beyond what you explicitly grant.
 - **Reproducibility** — Vaibify tracks provenance (SHA-256 hashes of every input and output), archives results to Zenodo with a DOI, syncs figures to Overleaf, and generates GitHub Actions workflows so anyone can reproduce your pipeline.
-- **Iteration** — Decompose your project into steps, run them in parallel, inspect the outputs in the workflow viewer GUI, and re-run individual steps until you're satisfied. The AI agent and you iterate together.
+- **Iteration** — Decompose your project into steps, run them in parallel, inspect the outputs in the workflow viewer GUI, and re-run individual steps until you're satisfied.
 - **Generality** — Vaibify is not tied to any specific domain. Configure your repositories, packages, languages (Python, R, Julia), and secrets in a single YAML file. Templates get you started fast.
 
-## Quick Start
+### Features
+
+`Vaibify` provides a complete workflow for containerized scientific computing:
+
+**Container Management** — Build, start, stop, and connect to Docker environments defined by a single `vaibify.yml` configuration file. Clone and install repositories, system packages, and Python/R/Julia dependencies automatically.
+
+**Pipeline Execution** — Define multi-step workflows in `workflow.json` with data commands, plot commands, and test commands. Run individual steps or the full pipeline with one click in the browser-based GUI.
+
+**Workflow Viewer** — A browser-based GUI for managing pipelines, viewing figures, monitoring resources, and running terminal sessions inside the container.
+
+**Security** — No Docker socket inside the container, unprivileged user with `gosu`, ephemeral secrets mounted as mode-600 temp files, optional network isolation, and a built-in security audit (`vaibify verify`).
+
+**Reproducibility** — Provenance tracking, Zenodo archival with DOI assignment, Overleaf figure sync, LaTeX annotation generation, and GitHub Actions workflow generation.
+
+**Templates** — Three project templates ship with Vaibify: `general` (blank slate), `planetary` (VPLanet ecosystem with 10 repositories), and `reproducible-paper` (LaTeX manuscript with automated figures).
+
+### Quick Start
 
 ```bash
 pip install vaibify[docker]
-
-# Initialize a project
 vaibify init --template general
-
-# Edit the config
-vaibify setup
-
-# Build the container
 vaibify build
-
-# Start the environment
-vaibify start
-
-# Open the workflow viewer
-vaibify gui
+vaibify start --gui
 ```
 
-## Configuration
-
-Everything is configured in `vaibify.yml`. Only `projectName` is required — everything else has sensible defaults:
-
-```yaml
-projectName: "my-research"
-```
-
-A full configuration with all options:
-
-```yaml
-projectName: "my-research"
-containerUser: "researcher"
-pythonVersion: "3.12"
-baseImage: "ubuntu:24.04"
-workspaceRoot: "/workspace"
-packageManager: "pip"            # pip | conda | mamba
-
-repositories:
-  - name: "my-model"
-    url: "git@github.com:user/my-model.git"
-    branch: "main"
-    installMethod: "pip_editable" # c_and_pip | pip_no_deps | pip_editable | scripts_only | reference
-
-systemPackages: ["gcc", "make", "libhdf5-dev"]
-pythonPackages: ["numpy>=1.24", "scipy>=1.10"]
-
-features:
-  jupyter: true
-  rLanguage: false
-  julia: false
-  database: false
-  dvc: false
-  latex: true
-  claude: false
-  gpu: false
-
-binaries:
-  - name: "MY_BINARY"
-    path: "/workspace/my-model/bin/my-model"
-
-ports:
-  - host: 8888
-    container: 8888
-
-secrets:
-  - name: "github"
-    method: "gh_auth"            # gh_auth | keyring | docker_secret
-
-reproducibility:
-  zenodoService: "sandbox"
-  latexRoot: "src/tex"
-  overleaf:
-    projectId: ""
-    figureDirectory: "figures"
-
-networkIsolation: false
-```
-
-## CLI Commands
+### CLI Commands
 
 ```
-vaibify init [--template NAME]     Create vaibify.yml from a template
+vaibify init [--template NAME]     Create a project from a template
 vaibify setup                      Launch the setup wizard GUI
 vaibify build [--no-cache]         Build the Docker image
 vaibify start [--gui] [--jupyter]  Start the container
@@ -107,94 +81,36 @@ vaibify verify                     Run the isolation security audit
 vaibify gui                        Launch the workflow viewer
 vaibify push <src> <dest>          Copy files into the container
 vaibify pull <src> <dest>          Copy files out of the container
-vaibify config export <file>       Export configuration
-vaibify config import <file>       Import configuration
-vaibify config edit                Open config in your editor
-vaibify publish archive            Upload outputs to Zenodo
-vaibify publish workflow           Generate GitHub Actions YAML
+vaibify config [edit|export|import]
+vaibify publish [archive|workflow]
 ```
 
-The `vc` command is a shorthand alias for `vaibify`.
+The shorthand `vaib` is also available.
 
-## Templates
+### Resources
 
-Vaibify ships with three project templates:
+The [docs/](docs/) directory contains the full Sphinx documentation, also available [online](https://RoryBarnes.github.io/vaibify). The [templates/](templates/) directory contains the project templates. The [tests/](tests/) directory contains the pytest test suite.
 
-| Template | Use case |
-|----------|----------|
-| `general` | Blank slate for any data science project |
-| `planetary` | Planetary science with VPLanet integration |
-| `reproducible-paper` | LaTeX paper with automated figure generation and Zenodo archival |
+### Code Integrity
 
-```bash
-vaibify init --template reproducible-paper
-```
+The `Vaibify` team maintains code integrity through automatic checks at every pull request. Unit tests run across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and Python 3.9 through 3.14. Tests that require a running Docker daemon are excluded from CI and run locally. Documentation is rebuilt and deployed automatically on every merge to main.
 
-## Feature Overlays
+### Community
 
-Enable features in `vaibify.yml` and Vaibify builds them as Docker layers in a deterministic order:
+`Vaibify` is a community project. We welcome pull requests — please issue them to the `main` branch. See the [Contributor's Guide](https://RoryBarnes.github.io/vaibify/developers.html) for style conventions and testing instructions.
 
-| Feature | What it adds |
-|---------|-------------|
-| `gpu` | NVIDIA CUDA runtime + Python bindings |
-| `jupyter` | JupyterLab on port 8888 |
-| `rLanguage` | R from CRAN + IRkernel for Jupyter |
-| `julia` | Julia + IJulia kernel |
-| `database` | PostgreSQL client + SQLAlchemy |
-| `dvc` | Data Version Control |
-| `claude` | Claude Code CLI (Node.js + claude-code) |
+If you have questions or are running into issues, post to a [Discussion](https://github.com/RoryBarnes/vaibify/discussions).
 
-## Security
+If you believe you have encountered a bug, please raise an issue using the [Issues](https://github.com/RoryBarnes/vaibify/issues) tab.
 
-Vaibify is built for the paranoid scientist:
-
-- **No Docker socket** inside the container
-- **Unprivileged user** with `gosu` privilege drop
-- **Ephemeral secrets** — credentials are mounted as mode-600 temp files at `/run/secrets/`, never stored in environment variables, shell history, or git config
-- **Token hygiene** — Zenodo uses `Authorization: Bearer` headers (not URL params); Overleaf uses git credential helpers (not URL-embedded tokens)
-- **Network isolation** — `networkIsolation: true` starts the container with `--network none`
-- **Security audit** — `vaibify verify` runs an isolation check script that audits mounts, ports, socket access, and privilege escalation paths
-- **GUI binds localhost only** — `127.0.0.1`, never `0.0.0.0`
-
-## Reproducibility
-
-Vaibify integrates reproducibility into the pipeline workflow:
-
-- **Provenance tracking** — SHA-256 hashes of all inputs and outputs, stored as JSON sidecars
-- **Zenodo archival** — One-click upload of pipeline outputs with DOI assignment
-- **Overleaf sync** — Push figures to your Overleaf project; pull manuscript updates back
-- **LaTeX generation** — Auto-generate `\includegraphics` commands and margin icons linking to commits and DOIs
-- **GitHub Actions** — Generate a CI workflow that rebuilds your pipeline in a fresh container
-
-## Workflow Viewer
-
-The built-in GUI (`vaibify gui`) provides:
-
-- Visual pipeline editor for `workflow.json` steps
-- One-click execution of individual steps or the full pipeline
-- Live figure preview with automatic refresh
-- Integrated terminal session
-- Real-time CPU/memory/disk monitoring
-- Buttons for Overleaf push, Zenodo archive, and LaTeX generation
-
-## Requirements
+### Requirements
 
 - Python 3.9+
-- Docker (for container features)
+- Docker (or Colima on macOS)
 - macOS or Linux
 
-## Installation
-
-```bash
-# From PyPI (when published)
-pip install vaibify[all]
-
-# From source
-git clone https://github.com/RoryBarnes/Vaibify.git
-cd Vaibify
-pip install -e .[all]
-```
-
-## License
+### License
 
 MIT
+
+© 2025 Rory Barnes.
