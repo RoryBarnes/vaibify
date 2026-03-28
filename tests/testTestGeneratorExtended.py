@@ -52,12 +52,12 @@ def test_fsParseGeneratedCode_whitespace_only():
 def test_fsParseGeneratedCode_multiple_fences():
     sInput = (
         "Some text\n"
-        "```python\nfirst block\n```\n"
+        "```python\nimport os\n```\n"
         "More text\n"
-        "```python\nsecond block\n```"
+        "```python\nimport sys\n```"
     )
     sResult = fsParseGeneratedCode(sInput)
-    assert sResult == "first block"
+    assert sResult == "import os"
 
 
 def test_fsParseGeneratedCode_no_language_specifier():
@@ -167,3 +167,86 @@ def test_fsBuildStepContext_handles_fetch_failure():
     sScripts, sPreviews = fsBuildStepContext(
         mockConn, "cid123", dictStep, {})
     assert "no scripts" in sScripts
+
+
+# -----------------------------------------------------------------------
+# fdictGenerateAllTests — with mocked Docker/LLM
+# -----------------------------------------------------------------------
+
+
+@pytest.fixture
+def mockConnectionDocker():
+    """Return a MagicMock Docker connection."""
+    return MagicMock()
+
+
+def test_fdictGenerateAllTests_creates_three_categories(
+    mockConnectionDocker,
+):
+    """Verify fdictGenerateAllTests returns all three test categories."""
+    from vaibify.gui.testGenerator import fdictGenerateAllTests
+
+    sIntegrityCode = "import os\ndef test_exists(): assert True"
+    sQualitativeCode = "import pytest\ndef test_label(): assert True"
+    sQuantitativeJson = (
+        '{"listStandards": [{"sName": "fTemp", "sDataFile": "out.csv",'
+        ' "sAccessPath": "column:T,index:-1",'
+        ' "fValue": 300.0, "sUnit": "K"}]}'
+    )
+
+    def fMockExecute(sContainerId, sCommand, sUser=None):
+        if "mkdir" in sCommand:
+            return (0, "")
+        if "which claude" in sCommand:
+            return (0, "/usr/bin/claude")
+        if "claude --print" in sCommand:
+            if "integrity" in sCommand.lower():
+                return (0, sIntegrityCode)
+            if "qualitative" in sCommand.lower():
+                return (0, sQualitativeCode)
+            if "quantitative" in sCommand.lower():
+                return (0, sQuantitativeJson)
+        return (0, "")
+
+    mockConnectionDocker.ftResultExecuteCommand.side_effect = fMockExecute
+    mockConnectionDocker.fnWriteFile = MagicMock()
+    mockConnectionDocker.fbaFetchFile = MagicMock(return_value=b"")
+
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "Process",
+            "sDirectory": "/work/step01",
+            "saDataCommands": ["python run.py"],
+            "saDataFiles": ["output.csv"],
+            "saTestCommands": [],
+            "dictTests": {
+                "dictQualitative": {
+                    "saCommands": [], "sFilePath": "",
+                },
+                "dictQuantitative": {
+                    "saCommands": [], "sFilePath": "",
+                    "sStandardsPath": "",
+                },
+                "dictIntegrity": {
+                    "saCommands": [], "sFilePath": "",
+                },
+                "listUserTests": [],
+            },
+        }],
+    }
+    dictResult = fdictGenerateAllTests(
+        mockConnectionDocker, "container123", 0,
+        dictWorkflow, {}, bUseApi=False,
+    )
+    assert "dictIntegrity" in dictResult
+    assert "dictQualitative" in dictResult
+    assert "dictQuantitative" in dictResult
+    assert dictResult["dictIntegrity"]["sFilePath"].endswith(
+        "test_integrity.py"
+    )
+    assert dictResult["dictQualitative"]["sFilePath"].endswith(
+        "test_qualitative.py"
+    )
+    assert dictResult["dictQuantitative"]["sFilePath"].endswith(
+        "test_quantitative.py"
+    )

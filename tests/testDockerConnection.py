@@ -165,12 +165,10 @@ def test_fnWriteFile_uses_exec(mockGetDocker):
     mockGetDocker.return_value = mockDocker
     mockContainer = _fMockContainer()
     mockClient.containers.get.return_value = mockContainer
-    mockContainer.exec_run.return_value = (0, b"")
+    mockContainer.put_archive = MagicMock(return_value=True)
     conn = DockerConnection()
     conn.fnWriteFile(
         "abc123", "/tmp/output.txt", b"data")
-    mockContainer.exec_run.assert_called_once()
-    listCmd = mockContainer.exec_run.call_args.kwargs["cmd"]
-    sShellCommand = listCmd[2]
-    assert "base64" in sShellCommand
-    assert "/tmp/output.txt" in sShellCommand
+    mockContainer.put_archive.assert_called_once()
+    sDirectory = mockContainer.put_archive.call_args[0][0]
+    assert sDirectory == "/tmp"

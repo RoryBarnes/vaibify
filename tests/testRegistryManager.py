@@ -225,3 +225,27 @@ def testStatusStoppedWhenImageExistsButNotRunning(
     )
     listResult = registryManager.flistGetAllProjectsWithStatus()
     assert listResult[0]["sStatus"] == "stopped"
+
+
+# -----------------------------------------------------------------------
+# _fnWriteRegistryAtomic — exception path
+# -----------------------------------------------------------------------
+
+
+def testWriteRegistryAtomicCleansUpOnReplaceError(
+    tmp_path, monkeypatch,
+):
+    import vaibify.config.registryManager as rm
+    monkeypatch.setattr(rm, "_S_REGISTRY_DIRECTORY", str(tmp_path))
+    monkeypatch.setattr(
+        rm, "_S_REGISTRY_PATH", str(tmp_path / "registry.json"),
+    )
+
+    def fRaisOnReplace(sSrc, sDst):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(os, "replace", fRaisOnReplace)
+    with pytest.raises(OSError, match="replace failed"):
+        rm._fnWriteRegistryAtomic({"listProjects": []})
+    listTmpFiles = list(tmp_path.glob("*.tmp"))
+    assert len(listTmpFiles) == 0, "Temp file should be cleaned up"

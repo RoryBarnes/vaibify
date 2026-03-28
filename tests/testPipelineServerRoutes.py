@@ -683,9 +683,9 @@ def test_sanitize_server_error_permission_denied():
 
 
 def test_sanitize_server_error_truncates_long():
-    sLong = "x" * 300
+    sLong = "x" * 600
     sResult = pipelineServer._fsSanitizeServerError(sLong)
-    assert len(sResult) < 210
+    assert len(sResult) <= 504
     assert sResult.endswith("...")
 
 

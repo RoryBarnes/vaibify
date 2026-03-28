@@ -245,3 +245,49 @@ def test_fnPushAnnotatedToOverleaf_calls_annotate(
         "10.5281/zenodo.123",
     )
     mockAnnotate.assert_called_once()
+
+
+# -----------------------------------------------------------------------
+# _fnAnnotateTexInRepo — direct tests
+# -----------------------------------------------------------------------
+
+
+def test_fnAnnotateTexInRepo_missing_file_raises(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAnnotateTexInRepo, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="not found"):
+        _fnAnnotateTexInRepo(
+            str(tmp_path), "missing.tex", {}, "", "",
+        )
+
+
+@patch("vaibify.reproducibility.latexConnector.fsAnnotateTexFile")
+def test_fnAnnotateTexInRepo_writes_when_changed(
+    mockAnnotate, tmp_path,
+):
+    from vaibify.reproducibility.overleafSync import _fnAnnotateTexInRepo
+    pathTex = tmp_path / "main.tex"
+    pathTex.write_text("original content", encoding="utf-8")
+    mockAnnotate.return_value = "annotated content"
+    _fnAnnotateTexInRepo(
+        str(tmp_path), "main.tex", {"listSteps": []},
+        "https://github.com/u/r", "10.5281/z.1",
+    )
+    assert pathTex.read_text(encoding="utf-8") == "annotated content"
+
+
+@patch("vaibify.reproducibility.latexConnector.fsAnnotateTexFile")
+def test_fnAnnotateTexInRepo_skips_write_when_unchanged(
+    mockAnnotate, tmp_path,
+):
+    from vaibify.reproducibility.overleafSync import _fnAnnotateTexInRepo
+    pathTex = tmp_path / "main.tex"
+    pathTex.write_text("same content", encoding="utf-8")
+    mockAnnotate.return_value = "same content"
+    sMtimeBefore = pathTex.stat().st_mtime
+    _fnAnnotateTexInRepo(
+        str(tmp_path), "main.tex", {}, "", "",
+    )
+    sMtimeAfter = pathTex.stat().st_mtime
+    assert sMtimeBefore == sMtimeAfter

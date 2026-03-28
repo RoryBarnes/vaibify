@@ -358,3 +358,83 @@ def test_fdictBuildStepDirectoryMap():
     dictMap = fdictBuildStepDirectoryMap(dictWorkflow)
     assert dictMap[0] == "KeplerFfdCorner"
     assert dictMap[1] == "FfdAgeComparison"
+
+
+# ---------------------------------------------------------------------------
+# Three-category test infrastructure: migration and aggregation
+# ---------------------------------------------------------------------------
+
+
+def test_fdictMigrateTestFormat_old_format():
+    from vaibify.gui.workflowManager import fdictMigrateTestFormat
+    dictStep = {"saTestCommands": ["pytest test_step01.py"]}
+    fdictMigrateTestFormat(dictStep)
+    assert "dictTests" in dictStep
+    assert dictStep["dictTests"]["dictIntegrity"]["saCommands"] == [
+        "pytest test_step01.py"
+    ]
+    assert dictStep["dictTests"]["dictQualitative"]["saCommands"] == []
+
+
+def test_fdictMigrateTestFormat_already_migrated():
+    from vaibify.gui.workflowManager import fdictMigrateTestFormat
+    dictTests = {
+        "dictQualitative": {
+            "saCommands": ["pytest tests/test_qualitative.py"],
+            "sFilePath": "",
+        },
+        "dictQuantitative": {
+            "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+        },
+        "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+        "listUserTests": [],
+    }
+    dictStep = {"dictTests": dictTests, "saTestCommands": []}
+    fdictMigrateTestFormat(dictStep)
+    assert dictStep["dictTests"]["dictQualitative"]["saCommands"] == [
+        "pytest tests/test_qualitative.py"
+    ]
+
+
+def test_flistBuildTestCommands():
+    from vaibify.gui.workflowManager import flistBuildTestCommands
+    dictStep = {
+        "dictTests": {
+            "dictQualitative": {
+                "saCommands": ["pytest tests/test_qualitative.py"],
+                "sFilePath": "",
+            },
+            "dictQuantitative": {
+                "saCommands": ["pytest tests/test_quantitative.py"],
+                "sFilePath": "", "sStandardsPath": "",
+            },
+            "dictIntegrity": {
+                "saCommands": ["pytest tests/test_integrity.py"],
+                "sFilePath": "",
+            },
+            "listUserTests": [],
+        },
+    }
+    listCommands = flistBuildTestCommands(dictStep)
+    assert len(listCommands) == 3
+    assert "test_qualitative.py" in listCommands[0]
+    assert "test_quantitative.py" in listCommands[1]
+    assert "test_integrity.py" in listCommands[2]
+
+
+def test_flistBuildTestCommands_empty():
+    from vaibify.gui.workflowManager import flistBuildTestCommands
+    dictStep = {"dictTests": {
+        "dictQualitative": {"saCommands": [], "sFilePath": ""},
+        "dictQuantitative": {
+            "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+        },
+        "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+        "listUserTests": [],
+    }}
+    assert flistBuildTestCommands(dictStep) == []
+
+
+def test_fsTestsDirectory():
+    from vaibify.gui.workflowManager import fsTestsDirectory
+    assert fsTestsDirectory("/work/step01") == "/work/step01/tests"

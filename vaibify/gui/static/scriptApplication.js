@@ -673,9 +673,13 @@ const PipeleyenApp = (function () {
             }
             var elWorkflowName = document.getElementById("activeWorkflowName");
             elWorkflowName.textContent = sWorkflowName || "";
+            document.title = (_sSelectedContainerName || "Vaibify") +
+                (sWorkflowName ? ": " + sWorkflowName : "");
             fnShowMainLayout();
             fnLoadSyncStatus();
             fnRenderStepList();
+            fnPollAllStepFiles();
+            fnStartFileChangePolling();
             PipeleyenTerminal.fnCreateTab();
             fnRecoverPipelineState(sId);
         } catch (error) {
@@ -704,6 +708,7 @@ const PipeleyenApp = (function () {
                 "activeWorkflowName"
             );
             elWorkflowName.textContent = "No Workflow";
+            document.title = _sSelectedContainerName || "Vaibify";
             fnShowMainLayout();
             PipeleyenTerminal.fnCreateTab();
         } catch (error) {
@@ -772,12 +777,14 @@ const PipeleyenApp = (function () {
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");
         _dictDashboardMode = null;
+        document.title = "Vaibify";
     }
 
     function fnShowWorkflowPicker(sContainerName) {
         document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
+        document.title = sContainerName || "Vaibify";
     }
 
     function fnShowMainLayout() {
@@ -865,6 +872,16 @@ const PipeleyenApp = (function () {
         return sDirectory + "/" + sFilename;
     }
 
+    function fsShortenPath(sResolved, sWorkdir) {
+        if (!sWorkdir || !sResolved) return sResolved;
+        var sPrefix = sWorkdir.endsWith("/") ?
+            sWorkdir : sWorkdir + "/";
+        if (sResolved.startsWith(sPrefix)) {
+            return sResolved.substring(sPrefix.length);
+        }
+        return sResolved;
+    }
+
     /* --- Left Panel Tabs --- */
 
     function fnBindLeftPanelTabs() {
@@ -931,6 +948,17 @@ const PipeleyenApp = (function () {
             (dictWorkflow.iNumberOfCores || -1) + '">' +
             '</div>' +
             '<div class="gs-row">' +
+            '<span class="gs-label">Tolerance</span>' +
+            '<input class="gs-input" id="gsTolerance" type="range"' +
+            ' min="-16" max="0" step="1" value="' +
+            fsToleranceToExponent(
+                dictWorkflow.fTolerance || 1e-6) +
+            '" title="10^' +
+            fsToleranceToExponent(
+                dictWorkflow.fTolerance || 1e-6) +
+            ' = ' + (dictWorkflow.fTolerance || 1e-6) + '">' +
+            '</div>' +
+            '<div class="gs-row">' +
             '<span class="gs-label">Poll Interval</span>' +
             '<input class="gs-input" id="gsPollInterval" type="range"' +
             ' min="1" max="60" value="' +
@@ -946,15 +974,32 @@ const PipeleyenApp = (function () {
                 fnSetPollInterval(parseInt(elPollSlider.value, 10));
             });
         }
+        var elToleranceSlider = document.getElementById("gsTolerance");
+        if (elToleranceSlider) {
+            elToleranceSlider.addEventListener("input", function () {
+                var iExp = parseInt(elToleranceSlider.value, 10);
+                var fVal = Math.pow(10, iExp);
+                elToleranceSlider.title =
+                    "10^" + iExp + " = " + fVal;
+                dictWorkflow.fTolerance = fVal;
+            });
+        }
+    }
+
+    function fsToleranceToExponent(fTolerance) {
+        return Math.round(Math.log10(fTolerance));
     }
 
     async function fnSaveGlobalSettings() {
+        var iExp = parseInt(
+            document.getElementById("gsTolerance").value, 10);
         var dictUpdates = {
             sPlotDirectory: document.getElementById("gsPlotDirectory").value,
             sFigureType: document.getElementById("gsFigureType").value,
             iNumberOfCores: parseInt(
                 document.getElementById("gsNumberOfCores").value
             ),
+            fTolerance: Math.pow(10, iExp),
         };
         try {
             var response = await fetch(
@@ -970,6 +1015,9 @@ const PipeleyenApp = (function () {
                 dictWorkflow.sPlotDirectory = result.sPlotDirectory;
                 dictWorkflow.sFigureType = result.sFigureType;
                 dictWorkflow.iNumberOfCores = result.iNumberOfCores;
+                if (result.fTolerance !== undefined) {
+                    dictWorkflow.fTolerance = result.fTolerance;
+                }
                 fnShowToast("Settings saved", "success");
                 fnRenderStepList();
             }
@@ -1044,47 +1092,55 @@ const PipeleyenApp = (function () {
         setStepsWithData.delete(iStep);
     }
 
+    function fnPollAllStepFiles() {
+        if (!sContainerId || !dictWorkflow) return;
+        dictWorkflow.listSteps.forEach(function (step, iStep) {
+            fnCheckStepDataFiles(step, iStep);
+        });
+    }
+
     function fnCheckDataFileExistence() {
         if (!sContainerId || !dictWorkflow) return;
         dictWorkflow.listSteps.forEach(function (step, iStep) {
             if (!setExpandedSteps.has(iStep)) return;
-            if (setStepsWithData.has(iStep)) return;
-            var listNecessary = flistNecessaryDataFiles(
-                step, iStep
-            );
-            if (listNecessary.length === 0) return;
-            var iPresent = 0;
-            var iTotal = listNecessary.length;
-            listNecessary.forEach(function (sFile) {
-                var sDir = step.sDirectory || "";
-                var sCacheKey = iStep + ":" + sFile;
-                if (dictFileExistenceCache[sCacheKey]) {
-                    iPresent++;
-                    if (iPresent >= iTotal) {
-                        setStepsWithData.add(iStep);
-                        fnUpdateGenerateButton(iStep);
-                    }
-                    return;
+            fnCheckStepDataFiles(step, iStep);
+        });
+    }
+
+    function fnCheckStepDataFiles(step, iStep) {
+        if (setStepsWithData.has(iStep)) return;
+        var listNecessary = flistNecessaryDataFiles(step, iStep);
+        if (listNecessary.length === 0) return;
+        var iPresent = 0;
+        var iTotal = listNecessary.length;
+        listNecessary.forEach(function (sFile) {
+            var sDir = step.sDirectory || "";
+            var sCacheKey = iStep + ":" + sFile;
+            if (dictFileExistenceCache[sCacheKey]) {
+                iPresent++;
+                if (iPresent >= iTotal) {
+                    setStepsWithData.add(iStep);
+                    fnUpdateGenerateButton(iStep);
                 }
-                var sUrl = "/api/figure/" + sContainerId +
-                    "/" + sFile + "?sWorkdir=" +
-                    encodeURIComponent(sDir);
-                iInflightRequests++;
-                fetch(sUrl, { method: "HEAD" }).then(
-                    function (r) {
-                        if (r.ok) {
-                            dictFileExistenceCache[sCacheKey] =
-                                true;
-                            iPresent++;
-                            if (iPresent >= iTotal) {
-                                setStepsWithData.add(iStep);
-                                fnUpdateGenerateButton(iStep);
-                            }
+                return;
+            }
+            var sUrl = "/api/figure/" + sContainerId +
+                "/" + sFile + "?sWorkdir=" +
+                encodeURIComponent(sDir);
+            iInflightRequests++;
+            fetch(sUrl, { method: "HEAD" }).then(
+                function (r) {
+                    if (r.ok) {
+                        dictFileExistenceCache[sCacheKey] = true;
+                        iPresent++;
+                        if (iPresent >= iTotal) {
+                            setStepsWithData.add(iStep);
+                            fnUpdateGenerateButton(iStep);
                         }
-                        fnFileCheckComplete();
                     }
-                ).catch(function () { fnFileCheckComplete(); });
-            });
+                    fnFileCheckComplete();
+                }
+            ).catch(function () { fnFileCheckComplete(); });
         });
     }
 
@@ -1244,13 +1300,6 @@ const PipeleyenApp = (function () {
         var listModified = dictVerify.listModifiedFiles || [];
         if (fbFileInModifiedList(sResolved, listModified)) {
             return "file-necessary-red";
-        }
-        var bRequiresUnitTests = fbStepRequiresUnitTests(dictStep);
-        if (bRequiresUnitTests) {
-            var sUnitTest = fsEffectiveTestState(dictStep);
-            if (sUnitTest === "failed") {
-                return "file-necessary-red";
-            }
         }
         if (fbAllVerificationComplete(dictStep, iStep)) {
             return "file-necessary-valid";
@@ -1493,6 +1542,37 @@ const PipeleyenApp = (function () {
         };
     }
 
+    function fdictGetTests(step) {
+        if (step.dictTests) return step.dictTests;
+        var listOldCommands = step.saTestCommands || [];
+        return {
+            dictQualitative: {saCommands: [], sFilePath: ""},
+            dictQuantitative: {
+                saCommands: [], sFilePath: "", sStandardsPath: "",
+            },
+            dictIntegrity: {
+                saCommands: listOldCommands.slice(), sFilePath: "",
+            },
+            listUserTests: [],
+        };
+    }
+
+    function fsGetCategoryState(step, sCategory) {
+        var dictVerify = fdictGetVerification(step);
+        var sKey = "s" + sCategory.charAt(0).toUpperCase() +
+            sCategory.slice(1);
+        return dictVerify[sKey] || "untested";
+    }
+
+    function fsTestCategoryLabel(sCategory) {
+        var dictLabels = {
+            qualitative: "Qualitative Tests",
+            quantitative: "Quantitative Tests",
+            integrity: "Integrity Tests",
+        };
+        return dictLabels[sCategory] || sCategory;
+    }
+
     function fsVerificationStateLabel(sState) {
         var dictLabels = {
             passed: "Passed", failed: "Failed",
@@ -1511,18 +1591,51 @@ const PipeleyenApp = (function () {
 
     var setExpandedDeps = new Set();
     var setExpandedUnitTests = new Set();
+    var setExpandedQualitative = new Set();
+    var setExpandedQuantitative = new Set();
+    var setExpandedIntegrity = new Set();
     var setStepsWithData = new Set();
     var setGeneratedTestsPending = new Set();
+    var setGeneratingInFlight = new Set();
+
+    function fsetGetExpandedCategory(sCategory) {
+        var dictSets = {
+            qualitative: setExpandedQualitative,
+            quantitative: setExpandedQuantitative,
+            integrity: setExpandedIntegrity,
+        };
+        return dictSets[sCategory] || new Set();
+    }
 
     function fsEffectiveTestState(step) {
         var dictVerify = fdictGetVerification(step);
-        var sState = dictVerify.sUnitTest;
-        if (sState === "untested" &&
-            (step.saDataCommands || []).length > 0 &&
-            (step.saTestCommands || []).length === 0) {
-            return "error";
+        var dictTests = fdictGetTests(step);
+        var listCategories = [
+            "qualitative", "quantitative", "integrity"];
+        var bAnyCommands = false;
+        var bAllPassed = true;
+        var bAnyFailed = false;
+        for (var i = 0; i < listCategories.length; i++) {
+            var sCategory = listCategories[i];
+            var sCatKey = "dict" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
+            var dictCat = dictTests[sCatKey] || {};
+            if ((dictCat.saCommands || []).length === 0) continue;
+            bAnyCommands = true;
+            var sKey = "s" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
+            var sState = dictVerify[sKey] || "untested";
+            if (sState === "failed" || sState === "error") {
+                bAnyFailed = true;
+            }
+            if (sState !== "passed") bAllPassed = false;
         }
-        return sState;
+        if (!bAnyCommands) return "untested";
+        if (bAnyFailed) return "failed";
+        if (bAllPassed) return "passed";
+        return "untested";
     }
 
     function flistGetStepDependencies(iStep) {
@@ -1629,25 +1742,19 @@ const PipeleyenApp = (function () {
                 '\u26A0 Upstream step outputs changed</div>';
         }
         if (!bInteractive && !bPlotOnly) {
-            var sTestState = fsEffectiveTestState(step);
-            var bHasTests = (step.saTestCommands || []).length > 0;
-            var sTestLabel = bHasTests ?
-                "Unit Tests" : "Unit Tests (none defined)";
+            var sUnitState = fsEffectiveTestState(step);
             sHtml += fsRenderVerificationRow(
-                sTestLabel, sTestState, "unitTest", iIndex
+                "Unit Tests", sUnitState, "unitTest", iIndex
             );
-            if (setExpandedUnitTests.has(iIndex)) {
-                sHtml += fsRenderUnitTestExpanded(step, iIndex);
-            } else if (bHasTests && sTestState !== "passed") {
-                sHtml += '<div class="unit-test-quick">' +
-                    '<button class="btn btn-run-tests" ' +
-                    'data-step="' + iIndex +
-                    '">Run Tests</button></div>';
+            if (setGeneratingInFlight.has(iIndex)) {
+                sHtml += '<div class="unit-tests-expanded">' +
+                    '<button class="btn-generate-test" disabled>' +
+                    '<span class="spinner"></span> ' +
+                    'Building Tests\u2026</button></div>';
+            } else if (setExpandedUnitTests.has(iIndex)) {
+                sHtml += fsRenderUnitTestsExpanded(step, iIndex);
             }
         }
-        sHtml += fsRenderVerificationRow(
-            sUserName, dictVerify.sUser, "user", iIndex
-        );
         var sDepsState = fsComputeDepsState(iIndex);
         if (sDepsState !== "none") {
             sHtml += fsRenderVerificationRow(
@@ -1656,6 +1763,91 @@ const PipeleyenApp = (function () {
             if (setExpandedDeps.has(iIndex)) {
                 sHtml += fsRenderDepsExpanded(iIndex);
             }
+        }
+        sHtml += fsRenderVerificationRow(
+            sUserName, dictVerify.sUser, "user", iIndex
+        );
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderUnitTestsExpanded(step, iIndex) {
+        var sHtml = '<div class="unit-tests-expanded">';
+        var listCategories = [
+            "qualitative", "quantitative", "integrity"];
+        var bAnyTests = false;
+        for (var i = 0; i < listCategories.length; i++) {
+            var sCategory = listCategories[i];
+            var sCatState = fsGetCategoryState(step, sCategory);
+            var sLabel = fsTestCategoryLabel(sCategory);
+            sHtml += fsRenderSubTestRow(
+                sLabel, sCatState, sCategory, iIndex);
+            var setExp = fsetGetExpandedCategory(sCategory);
+            if (setExp.has(iIndex)) {
+                sHtml += fsRenderSubTestExpanded(
+                    step, iIndex, sCategory);
+            }
+            var dictTests = fdictGetTests(step);
+            var sCatKey = "dict" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
+            if (((dictTests[sCatKey] || {}).saCommands ||
+                []).length > 0) {
+                bAnyTests = true;
+            }
+        }
+        if (bAnyTests) {
+            sHtml += '<button class="btn btn-run-all-tests" ' +
+                'data-step="' + iIndex +
+                '">Run All Tests</button>';
+        }
+        sHtml += fsRenderGenerateButton(step, iIndex);
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderSubTestRow(
+        sLabel, sState, sCategory, iIndex
+    ) {
+        var setExp = fsetGetExpandedCategory(sCategory);
+        var bExpanded = setExp.has(iIndex);
+        var sTriangle = '<span class="expand-triangle">' +
+            (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
+        return '<div class="sub-test-row expandable" data-step="' +
+            iIndex + '" data-approver="' + sCategory + '">' +
+            '<span class="verification-label">' +
+            sTriangle + fnEscapeHtml(sLabel) + '</span>' +
+            '<span class="verification-badge state-' +
+            sState + '">' +
+            fsVerificationStateIcon(sState) + ' ' +
+            fsVerificationStateLabel(sState) +
+            '</span></div>';
+    }
+
+    function fsRenderSubTestExpanded(step, iIndex, sCategory) {
+        var dictTests = fdictGetTests(step);
+        var sCatKey = "dict" +
+            sCategory.charAt(0).toUpperCase() +
+            sCategory.slice(1);
+        var dictCat = dictTests[sCatKey] || {};
+        var sFilePath = dictCat.sFilePath || "";
+        var sHtml = '<div class="sub-test-expanded">';
+        if (sFilePath) {
+            var sFileName = sFilePath.split("/").pop();
+            sHtml += '<div class="test-category-file" ' +
+                'data-step="' + iIndex +
+                '" data-category="' + sCategory +
+                '" data-path="' +
+                fnEscapeHtml(sFilePath) + '">' +
+                '<span class="test-item-text clickable">' +
+                fnEscapeHtml(sFileName) + '</span>' +
+                '</div>';
+        }
+        if ((dictCat.saCommands || []).length > 0) {
+            sHtml += '<button class="btn btn-run-category" ' +
+                'data-step="' + iIndex +
+                '" data-category="' + sCategory +
+                '">Run</button>';
         }
         sHtml += '</div>';
         return sHtml;
@@ -1734,6 +1926,13 @@ const PipeleyenApp = (function () {
 
     function fsRenderGenerateButton(step, iIndex) {
         if ((step.saDataCommands || []).length === 0) return "";
+        if (setGeneratingInFlight.has(iIndex)) {
+            return '<button class="btn-generate-test" data-step="' +
+                iIndex + '" id="btnGenTest' + iIndex +
+                '" disabled>' +
+                '<span class="spinner"></span> Building Tests' +
+                '</button>';
+        }
         var bDisabled = !setStepsWithData.has(iIndex);
         var sLabel = bDisabled ? "No Data for Tests" : "Generate Tests";
         return '<button class="btn-generate-test" data-step="' +
@@ -1775,60 +1974,37 @@ const PipeleyenApp = (function () {
     }
 
     function fsComputeStepDotState(step, iIndex) {
-        var bInteractive = step.bInteractive === true;
         var dictVerify = fdictGetVerification(step);
         var sUser = dictVerify.sUser;
-        var listModified = dictVerify.listModifiedFiles || [];
-        var bFilesModified = listModified.length > 0 ||
-            fbAnyUpstreamModified(iIndex);
-        var bScriptModified =
-            dictScriptModified[iIndex] === "modified";
-
-        if (bInteractive) {
-            if (sUser === "passed") {
-                return (bFilesModified || bScriptModified) ?
-                    "partial" : "verified";
-            }
-            if (sUser === "failed" || sUser === "error") return "fail";
-            if (setStepsWithData.has(iIndex) ||
-                (step.dictRunStats || {}).sLastRun) {
-                return "partial";
-            }
-            return "";
-        }
-
-        var sUnit = fsEffectiveTestState(step);
+        var bInteractive = step.bInteractive === true;
         var bPlotOnly = (step.saDataCommands || []).length === 0;
+        var listModified = dictVerify.listModifiedFiles || [];
+        var bDirty = listModified.length > 0 ||
+            fbAnyUpstreamModified(iIndex) ||
+            dictScriptModified[iIndex] === "modified";
+        var bHasData = setStepsWithData.has(iIndex) ||
+            !!(step.dictRunStats || {}).sLastRun;
 
-        if (sUnit === "failed" || sUnit === "error" ||
-            sUser === "failed" || sUser === "error") {
-            return "fail";
-        }
+        if (!bHasData) return "";
+
+        var bHasUnitTests = !bInteractive && !bPlotOnly;
+        var sUnit = bHasUnitTests ?
+            fsEffectiveTestState(step) : null;
         var sDeps = fsComputeDepsState(iIndex);
-        if (sDeps === "failed") {
-            return "fail";
+        var bHasDeps = sDeps !== "none";
+
+        var bUserPassed = sUser === "passed";
+        var bUnitPassed = !bHasUnitTests || sUnit === "passed";
+        var bDepsPassed = !bHasDeps || sDeps === "passed";
+
+        if (bUserPassed && bUnitPassed && bDepsPassed) {
+            return bDirty ? "partial" : "verified";
         }
-        if (bPlotOnly) {
-            if (sUser === "passed" && sDeps !== "failed") {
-                return (bFilesModified || bScriptModified) ?
-                    "partial" : "verified";
-            }
-            var bHasRun = (step.dictRunStats || {}).sLastRun;
-            if (bHasRun && sUser === "untested") {
-                return "partial";
-            }
-            return "";
-        }
-        if (sUnit === "passed" && sUser === "passed" &&
-            sDeps !== "failed") {
-            return (bFilesModified || bScriptModified) ?
-                "partial" : "verified";
-        }
-        if ((sUnit === "passed" && sUser === "untested") ||
-            (sUnit === "untested" && sUser === "passed")) {
+        if (bUserPassed || (bHasUnitTests && sUnit === "passed") ||
+            (bHasDeps && sDeps === "passed")) {
             return "partial";
         }
-        return "";
+        return "fail";
     }
 
     function fsRenderFileSyncBadges(sResolved) {
@@ -1940,13 +2116,15 @@ const PipeleyenApp = (function () {
                 '">' + (bArchive ? "\u2605" : "\u2606") +
                 '</span>';
         }
+        var sDisplayPath = fsShortenPath(sResolved, sWorkdir);
         if (bInvalid) {
             sHtml += '<div class="detail-text file-invalid' +
                 '" title="Output path is not absolute">' +
                 '<em>' + fnEscapeHtml(sResolved) + '</em></div>';
         } else {
-            sHtml += '<div class="detail-text' + sFileClass + '">' +
-                fnEscapeHtml(sResolved) + '</div>';
+            sHtml += '<div class="detail-text' + sFileClass +
+                '" title="' + fnEscapeHtml(sResolved) + '">' +
+                fnEscapeHtml(sDisplayPath) + '</div>';
         }
 
         if (sType === "output") {
@@ -2120,14 +2298,29 @@ const PipeleyenApp = (function () {
             );
             return;
         }
-        var elVerifUnitTest = elTarget.closest(
-            '.verification-row[data-approver="unitTest"]'
-        );
-        if (elVerifUnitTest) {
-            fnToggleUnitTestExpand(
-                parseInt(elVerifUnitTest.dataset.step)
-            );
+        var elSubTestRow = elTarget.closest(".sub-test-row");
+        if (elSubTestRow) {
+            var sSubApprover = elSubTestRow.dataset.approver;
+            var iSubStep = parseInt(elSubTestRow.dataset.step);
+            var setSubExp = fsetGetExpandedCategory(sSubApprover);
+            if (setSubExp.has(iSubStep)) {
+                setSubExp.delete(iSubStep);
+            } else {
+                setSubExp.add(iSubStep);
+            }
+            fnRenderStepList();
             return;
+        }
+        var elVerifExpandable = elTarget.closest(
+            ".verification-row.expandable"
+        );
+        if (elVerifExpandable) {
+            var sApprover = elVerifExpandable.dataset.approver;
+            var iStep = parseInt(elVerifExpandable.dataset.step);
+            if (sApprover === "unitTest") {
+                fnToggleUnitTestExpand(iStep);
+                return;
+            }
         }
         var elVerifDeps = elTarget.closest(
             '.verification-row[data-approver="deps"]'
@@ -2190,6 +2383,26 @@ const PipeleyenApp = (function () {
             fnRunStepTests(
                 parseInt(elTarget.closest(
                     ".btn-run-tests").dataset.step));
+            return;
+        }
+        if (elTarget.closest(".btn-run-all-tests")) {
+            fnRunStepTests(
+                parseInt(elTarget.closest(
+                    ".btn-run-all-tests").dataset.step));
+            return;
+        }
+        if (elTarget.closest(".btn-run-category")) {
+            var elCatBtn = elTarget.closest(".btn-run-category");
+            fnRunCategoryTests(
+                parseInt(elCatBtn.dataset.step),
+                elCatBtn.dataset.category);
+            return;
+        }
+        if (elTarget.closest(".test-category-file")) {
+            var elView = elTarget.closest(".test-category-file");
+            fnViewCategoryTestFile(
+                parseInt(elView.dataset.step),
+                elView.dataset.category);
             return;
         }
         if (elTarget.closest(".test-edit-cmd")) {
@@ -2364,6 +2577,7 @@ const PipeleyenApp = (function () {
 
     async function fnGenerateTests(iStep) {
         var step = dictWorkflow.listSteps[iStep];
+        if (setGeneratingInFlight.has(iStep)) return;
         if (step && (step.saTestCommands || []).length > 0) {
             var bConfirmed = await new Promise(function (resolve) {
                 fnShowConfirmModal(
@@ -2376,13 +2590,8 @@ const PipeleyenApp = (function () {
             });
             if (!bConfirmed) return;
         }
-        var elBtn = document.getElementById("btnGenTest" + iStep);
-        if (elBtn) {
-            if (elBtn.disabled) return;
-            elBtn.disabled = true;
-            elBtn.innerHTML =
-                '<span class="spinner"></span> Building Tests';
-        }
+        setGeneratingInFlight.add(iStep);
+        fnRenderStepList();
         try {
             var response = await fetch(
                 "/api/steps/" + sContainerId + "/" + iStep +
@@ -2392,8 +2601,9 @@ const PipeleyenApp = (function () {
                   body: JSON.stringify({}) }
             );
             var dictResult = await response.json();
+            setGeneratingInFlight.delete(iStep);
             if (dictResult.bNeedsFallback) {
-                fnResetGenerateButton(iStep);
+                fnRenderStepList();
                 fnShowConfirmModal(
                     "Claude Code Not Found",
                     "Test generation requires Claude Code, " +
@@ -2405,16 +2615,18 @@ const PipeleyenApp = (function () {
                 return;
             }
             if (!response.ok) {
-                fnResetGenerateButton(iStep);
-                var sDetail = dictResult.detail ||
-                    "Unknown error";
+                fnRenderStepList();
+                fnShowToast("Test generation failed", "error");
                 fnShowErrorModal(
-                    "Test generation failed:\n\n" + sDetail
+                    "Test generation failed (HTTP " +
+                    response.status + "):\n\n" +
+                    (dictResult.detail || "Unknown error")
                 );
                 return;
             }
             if (!dictResult.bGenerated) {
-                fnResetGenerateButton(iStep);
+                fnRenderStepList();
+                fnShowToast("No tests generated", "error");
                 fnShowErrorModal(
                     "Test generation failed:\n\n" +
                     (dictResult.sMessage || "No tests generated")
@@ -2423,9 +2635,12 @@ const PipeleyenApp = (function () {
             }
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
-            fnResetGenerateButton(iStep);
+            console.error("[vaibify] Generate tests error:", error);
+            setGeneratingInFlight.delete(iStep);
+            fnRenderStepList();
             fnShowErrorModal(
-                "Test generation failed:\n\n" + error.message
+                "Test generation failed:\n\n" +
+                (error.message || String(error))
             );
         }
     }
@@ -2490,14 +2705,70 @@ const PipeleyenApp = (function () {
 
     function fnHandleGeneratedTest(iStep, dictResult) {
         var dictStep = dictWorkflow.listSteps[iStep];
-        dictStep.saTestCommands = ["pytest " +
-            dictResult.sFilePath.split("/").pop()];
-        dictStep.saTestFiles = [dictResult.sFilePath];
-        setGeneratedTestsPending.add(iStep);
+        if (!dictStep.dictTests) {
+            dictStep.dictTests = fdictGetTests(dictStep);
+        }
+        if (!dictStep.dictVerification) {
+            dictStep.dictVerification = {
+                sUnitTest: "untested", sUser: "untested",
+            };
+        }
+        var listCategories = [
+            "qualitative", "quantitative", "integrity"];
+        var listAllCommands = [];
+        var listErrors = [];
+        for (var i = 0; i < listCategories.length; i++) {
+            var sCategory = listCategories[i];
+            var sCatKey = "dict" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
+            var dictCatResult = dictResult[sCatKey];
+            if (!dictCatResult) continue;
+            if (dictCatResult.sError) {
+                listErrors.push(
+                    fsTestCategoryLabel(sCategory));
+                var sVerifKey = "s" +
+                    sCategory.charAt(0).toUpperCase() +
+                    sCategory.slice(1);
+                dictStep.dictVerification[sVerifKey] = "error";
+                continue;
+            }
+            dictStep.dictTests[sCatKey] = {
+                saCommands: dictCatResult.saCommands || [],
+                sFilePath: dictCatResult.sFilePath || "",
+            };
+            if (dictCatResult.sStandardsPath) {
+                dictStep.dictTests[sCatKey].sStandardsPath =
+                    dictCatResult.sStandardsPath;
+            }
+            listAllCommands = listAllCommands.concat(
+                dictCatResult.saCommands || []);
+        }
+        dictStep.saTestCommands = listAllCommands;
+        fnSaveStepUpdate(iStep, {
+            dictTests: dictStep.dictTests,
+            dictVerification: dictStep.dictVerification,
+            saTestCommands: listAllCommands,
+        });
+        if (!setExpandedUnitTests.has(iStep)) {
+            setExpandedUnitTests.add(iStep);
+        }
         fnRenderStepList();
-        PipeleyenFigureViewer.fnDisplayGeneratedTest(
-            dictResult.sFilePath, dictResult.sContent, iStep
-        );
+        var iSuccessCount = listCategories.length - listErrors.length;
+        var sStepLabel = fsComputeStepLabel(iStep);
+        if (listErrors.length > 0) {
+            fnShowErrorModal(
+                listErrors.join(", ") +
+                " failed to generate.\n" +
+                "Fix manually or ask a coding agent to fix.");
+        }
+        fnShowToast(
+            sStepLabel + ": " + iSuccessCount +
+            " of 3 test categories generated. Running\u2026",
+            iSuccessCount === 3 ? "success" : "error");
+        if (listAllCommands.length > 0) {
+            fnRunStepTests(iStep);
+        }
     }
 
     function fnShowApiKeyDialog(iStep) {
@@ -2514,8 +2785,12 @@ const PipeleyenApp = (function () {
                 sUnitTest: "untested", sUser: "untested",
             };
         }
-        dictStep.dictVerification.sUnitTest = "passed";
+        dictStep.dictVerification.sQualitative = "untested";
+        dictStep.dictVerification.sQuantitative = "untested";
+        dictStep.dictVerification.sIntegrity = "untested";
+        dictStep.dictVerification.sUnitTest = "untested";
         fnSaveStepUpdate(iStep, {
+            dictTests: dictStep.dictTests,
             dictVerification: dictStep.dictVerification,
         });
         fnRenderStepList();
@@ -2535,10 +2810,122 @@ const PipeleyenApp = (function () {
         var dictStep = dictWorkflow.listSteps[iStep];
         dictStep.saTestCommands = [];
         dictStep.saTestFiles = [];
+        dictStep.dictTests = {
+            dictQualitative: {saCommands: [], sFilePath: ""},
+            dictQuantitative: {
+                saCommands: [], sFilePath: "", sStandardsPath: "",
+            },
+            dictIntegrity: {saCommands: [], sFilePath: ""},
+            listUserTests: [],
+        };
         fnRenderStepList();
     }
 
+    async function fnRunCategoryTests(iStepIndex, sCategory) {
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" + iStepIndex +
+                "/run-test-category",
+                { method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({sCategory: sCategory}) }
+            );
+            var dictResult = await response.json();
+            if (!response.ok) {
+                fnShowErrorModal("Test run failed: " +
+                    (dictResult.detail || "Unknown error"));
+                return;
+            }
+            fnUpdateCategoryTestState(
+                iStepIndex, sCategory, dictResult);
+        } catch (error) {
+            fnShowErrorModal("Test run failed: " + error.message);
+        }
+    }
+
+    function fnUpdateCategoryTestState(
+        iStepIndex, sCategory, dictResult
+    ) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        if (!dictStep.dictVerification) {
+            dictStep.dictVerification = {
+                sUnitTest: "untested", sUser: "untested",
+            };
+        }
+        var sKey = "s" + sCategory.charAt(0).toUpperCase() +
+            sCategory.slice(1);
+        dictStep.dictVerification[sKey] =
+            dictResult.bPassed ? "passed" : "failed";
+        fnComputeAggregateTestState(iStepIndex);
+        fnSaveStepUpdate(iStepIndex, {
+            dictVerification: dictStep.dictVerification,
+        });
+        fnRenderStepList();
+        var sLabel = fsTestCategoryLabel(sCategory);
+        fnShowToast(sLabel + ": " +
+            (dictResult.bPassed ? "Passed" : "Failed"),
+            dictResult.bPassed ? "success" : "error");
+    }
+
+    function fnComputeAggregateTestState(iStepIndex) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        var dictVerify = fdictGetVerification(dictStep);
+        var dictTests = fdictGetTests(dictStep);
+        var listCategories = [
+            "qualitative", "quantitative", "integrity"];
+        var bAllPassed = true;
+        var bAnyFailed = false;
+        for (var i = 0; i < listCategories.length; i++) {
+            var sCategory = listCategories[i];
+            var sCatKey = "dict" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
+            var dictCat = dictTests[sCatKey] || {};
+            if ((dictCat.saCommands || []).length === 0) continue;
+            var sKey = "s" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
+            var sCatState = dictVerify[sKey] || "untested";
+            if (sCatState !== "passed") bAllPassed = false;
+            if (sCatState === "failed" || sCatState === "error") {
+                bAnyFailed = true;
+            }
+        }
+        if (bAnyFailed) {
+            dictVerify.sUnitTest = "failed";
+        } else if (bAllPassed) {
+            dictVerify.sUnitTest = "passed";
+        } else {
+            dictVerify.sUnitTest = "untested";
+        }
+    }
+
+    function fnViewCategoryTestFile(iStepIndex, sCategory) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        var dictTests = fdictGetTests(dictStep);
+        var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
+            sCategory.slice(1);
+        var dictCat = dictTests[sCatKey] || {};
+        var sFilePath = dictCat.sFilePath || "";
+        if (!sFilePath) {
+            fnShowToast("No test file for this category", "error");
+            return;
+        }
+        var sDir = dictStep.sDirectory || "";
+        PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
+    }
+
     function fnAddTestItem(iStep, sType) {
+        if (sType === "user") {
+            fnShowInputModal(
+                "Test name",
+                "e.g. Check convergence tolerance",
+                function (sValue) {
+                    _fnSaveUserTest(iStep, sValue);
+                }
+            );
+            return;
+        }
         var sLabel = sType === "file" ?
             "Test file path" : "Test command";
         var sPlaceholder = sType === "file" ?
@@ -2557,6 +2944,25 @@ const PipeleyenApp = (function () {
         var dictUpdate = {};
         dictUpdate[sKey] = dictStep[sKey];
         await fnSaveStepUpdate(iStep, dictUpdate);
+        fnRenderStepList();
+    }
+
+    async function _fnSaveUserTest(iStep, sName) {
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (!dictStep.dictTests) {
+            dictStep.dictTests = fdictGetTests(dictStep);
+        }
+        if (!dictStep.dictTests.listUserTests) {
+            dictStep.dictTests.listUserTests = [];
+        }
+        dictStep.dictTests.listUserTests.push({
+            sName: sName.trim(),
+            sCommand: "",
+            sFilePath: "",
+        });
+        await fnSaveStepUpdate(iStep, {
+            dictTests: dictStep.dictTests,
+        });
         fnRenderStepList();
     }
 
@@ -4275,8 +4681,10 @@ const PipeleyenApp = (function () {
         if (!step) return;
         var sCmd = (step.saTestCommands || [])[iCmdIdx];
         if (!sCmd) return;
-        var sFilePath = sCmd.replace(
-            /^python\s+-m\s+pytest\s+/, "").replace(/\s+-v$/, "")
+        var sFilePath = sCmd
+            .replace(/^python\s+-m\s+pytest\s+/, "")
+            .replace(/^pytest\s+/, "")
+            .replace(/\s+(-v|--verbose)(\s|$).*$/, "")
             .trim();
         var sDir = step.sDirectory || "";
         if (sFilePath.charAt(0) !== "/" && sDir) {
@@ -4337,24 +4745,56 @@ const PipeleyenApp = (function () {
             );
             var dictResult = await response.json();
             step.dictVerification = step.dictVerification || {};
+            fnApplyCategoryResults(
+                step, dictResult.dictCategoryResults);
             step.dictVerification.sUnitTest =
                 dictResult.bPassed ? "passed" : "failed";
             if (dictResult.bPassed) {
                 fnClearOutputModified(iStepIndex);
             }
+            fnSaveStepUpdate(iStepIndex, {
+                dictVerification: step.dictVerification,
+            });
             fnRenderStepList();
+            var sOutput = fsCollectTestOutput(dictResult);
             fnShowToast(
                 dictResult.bPassed ?
                     "Tests passed" : "Tests FAILED",
                 dictResult.bPassed ? "success" : "error"
             );
             PipeleyenFigureViewer.fnDisplayTestOutput(
-                dictResult.sOutput || "(no output)",
-                dictResult.bPassed);
+                sOutput, dictResult.bPassed);
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error");
         }
+    }
+
+    function fnApplyCategoryResults(step, dictCategoryResults) {
+        if (!dictCategoryResults) return;
+        var dictMap = {
+            dictIntegrity: "sIntegrity",
+            dictQualitative: "sQualitative",
+            dictQuantitative: "sQuantitative",
+        };
+        for (var sKey in dictMap) {
+            var dictCat = dictCategoryResults[sKey];
+            if (dictCat) {
+                step.dictVerification[dictMap[sKey]] =
+                    dictCat.bPassed ? "passed" : "failed";
+            }
+        }
+    }
+
+    function fsCollectTestOutput(dictResult) {
+        var listParts = [];
+        var dictCats = dictResult.dictCategoryResults || {};
+        for (var sKey in dictCats) {
+            var sOutput = (dictCats[sKey].sOutput || "").trim();
+            if (sOutput) listParts.push(sOutput);
+        }
+        if (listParts.length > 0) return listParts.join("\n\n");
+        return dictResult.sOutput || "(no output)";
     }
 
     function fnRunInteractiveStep(iIndex) {

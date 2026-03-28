@@ -98,21 +98,25 @@ class DockerConnection:
         return base64.b64decode(sOutput.strip())
 
     def fnWriteFile(self, sContainerId, sFilePath, baContent):
-        """Write bytes to a file inside the container."""
-        sEncoded = base64.b64encode(baContent).decode("ascii")
-        sSafePath = repr(sFilePath)
-        sCommand = (
-            "python3 -c \"import base64; open("
-            + sSafePath + ",'wb').write("
-            "base64.b64decode('" + sEncoded + "'))\""
-        )
-        iExitCode, sOutput = self.ftResultExecuteCommand(
-            sContainerId, sCommand
-        )
-        if iExitCode != 0:
-            raise RuntimeError(
-                f"Write failed (exit {iExitCode}): {sOutput}"
-            )
+        """Write bytes to a file inside the container via tar archive."""
+        self.fnWriteFileViaTar(sContainerId, sFilePath, baContent)
+
+    def fnWriteFileViaTar(self, sContainerId, sFilePath, baContent):
+        """Write bytes to a file using put_archive (no exec size limit)."""
+        import io
+        import posixpath
+        import tarfile
+
+        sDirectory = posixpath.dirname(sFilePath)
+        sFilename = posixpath.basename(sFilePath)
+        container = self.fcontainerGetById(sContainerId)
+        bufferTar = io.BytesIO()
+        with tarfile.open(fileobj=bufferTar, mode="w") as tar:
+            infoTar = tarfile.TarInfo(name=sFilename)
+            infoTar.size = len(baContent)
+            tar.addfile(infoTar, io.BytesIO(baContent))
+        bufferTar.seek(0)
+        container.put_archive(sDirectory, bufferTar)
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None

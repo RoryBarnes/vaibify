@@ -63,9 +63,9 @@ def test_fsSanitizeServerError_permission():
 
 
 def test_fsSanitizeServerError_long_truncated():
-    sLong = "x" * 300
+    sLong = "x" * 600
     sResult = _fsSanitizeServerError(sLong)
-    assert len(sResult) <= 204
+    assert len(sResult) <= 504
     assert sResult.endswith("...")
 
 
@@ -108,3 +108,98 @@ def test_fdictFilterNonNone_all_none():
 
 def test_fdictFilterNonNone_empty():
     assert fdictFilterNonNone({}) == {}
+
+
+# -----------------------------------------------------------------------
+# _fnUpdateAggregateTestState
+# -----------------------------------------------------------------------
+
+
+def test_fnUpdateAggregateTestState_all_passed():
+    from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {"saCommands": ["pytest tests/test_integrity.py"]},
+            "dictQualitative": {"saCommands": ["pytest tests/test_qualitative.py"]},
+            "dictQuantitative": {"saCommands": ["pytest tests/test_quantitative.py"]},
+        },
+        "dictVerification": {
+            "sIntegrity": "passed",
+            "sQualitative": "passed",
+            "sQuantitative": "passed",
+        },
+    }
+    _fnUpdateAggregateTestState(dictStep)
+    assert dictStep["dictVerification"]["sUnitTest"] == "passed"
+
+
+def test_fnUpdateAggregateTestState_one_failed():
+    from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {"saCommands": ["pytest tests/test_integrity.py"]},
+            "dictQualitative": {"saCommands": ["pytest tests/test_qualitative.py"]},
+            "dictQuantitative": {"saCommands": ["pytest tests/test_quantitative.py"]},
+        },
+        "dictVerification": {
+            "sIntegrity": "passed",
+            "sQualitative": "failed",
+            "sQuantitative": "passed",
+        },
+    }
+    _fnUpdateAggregateTestState(dictStep)
+    assert dictStep["dictVerification"]["sUnitTest"] == "failed"
+
+
+def test_fnUpdateAggregateTestState_no_commands():
+    from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {"saCommands": []},
+            "dictQualitative": {"saCommands": []},
+            "dictQuantitative": {"saCommands": []},
+        },
+        "dictVerification": {},
+    }
+    _fnUpdateAggregateTestState(dictStep)
+    assert dictStep["dictVerification"]["sUnitTest"] == "untested"
+
+
+def test_fnUpdateAggregateTestState_mixed_untested():
+    from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {"saCommands": ["pytest tests/test_integrity.py"]},
+            "dictQualitative": {"saCommands": ["pytest tests/test_qualitative.py"]},
+            "dictQuantitative": {"saCommands": []},
+        },
+        "dictVerification": {
+            "sIntegrity": "passed",
+            "sQualitative": "untested",
+        },
+    }
+    _fnUpdateAggregateTestState(dictStep)
+    assert dictStep["dictVerification"]["sUnitTest"] == "untested"
+
+
+def test_fnUpdateAggregateTestState_partial_categories():
+    from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {"saCommands": ["pytest tests/test_integrity.py"]},
+            "dictQualitative": {"saCommands": []},
+            "dictQuantitative": {"saCommands": []},
+        },
+        "dictVerification": {
+            "sIntegrity": "passed",
+        },
+    }
+    _fnUpdateAggregateTestState(dictStep)
+    assert dictStep["dictVerification"]["sUnitTest"] == "passed"
+
+
+def test_fnUpdateAggregateTestState_empty_step():
+    from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
+    dictStep = {"dictVerification": {}}
+    _fnUpdateAggregateTestState(dictStep)
+    assert dictStep["dictVerification"]["sUnitTest"] == "untested"

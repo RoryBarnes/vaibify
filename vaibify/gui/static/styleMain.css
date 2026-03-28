@@ -2097,6 +2097,38 @@ html, body {
     font-size: 11px;
 }
 
+.unit-tests-expanded {
+    padding: 4px 6px 4px 16px;
+    font-size: 11px;
+}
+
+.sub-test-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+    cursor: pointer;
+}
+
+.sub-test-row:hover {
+    background: rgba(128, 128, 160, 0.08);
+}
+
+.sub-test-expanded {
+    padding: 2px 0 4px 16px;
+    font-size: 11px;
+}
+
+.test-item-text.clickable {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+.test-item-text.clickable:hover {
+    color: var(--color-pale-blue);
+}
+
 .dep-item {
     display: flex;
     justify-content: space-between;

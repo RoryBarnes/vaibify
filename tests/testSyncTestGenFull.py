@@ -36,7 +36,7 @@ from vaibify.gui.testGenerator import (
     ftResultGenerateViaClaude,
     fsGenerateViaApi,
     fsTestFilePath,
-    _fdictBuildTestResult,
+    _fdictWriteTestFile,
     fdictGenerateTest,
     _fsInvokeLlm,
     _fsExtractScriptFromCommand,
@@ -513,6 +513,24 @@ def test_fsPreviewDataFile_text():
     assert "col1" in sResult
 
 
+def test_fsPreviewDataFile_hdf5():
+    mockDocker = _fMockDocker(
+        0, "dataset:/data shape=(100,) dtype=float64 first=1.0 last=9.0"
+    )
+    sResult = fsPreviewDataFile(
+        mockDocker, "cid", "archive.h5", "/workspace"
+    )
+    assert "dataset:" in sResult
+
+
+def test_fsPreviewDataFile_hdf5_extension():
+    mockDocker = _fMockDocker(0, "dataset:/group shape=(5,)")
+    sResult = fsPreviewDataFile(
+        mockDocker, "cid", "output.hdf5", "/workspace"
+    )
+    assert "dataset:" in sResult
+
+
 # -----------------------------------------------------------------------
 # testGenerator: ftResultGenerateViaClaude
 # -----------------------------------------------------------------------
@@ -543,20 +561,20 @@ def test_fsTestFilePath_higher_index():
 
 
 # -----------------------------------------------------------------------
-# testGenerator: _fdictBuildTestResult
+# testGenerator: _fdictWriteTestFile
 # -----------------------------------------------------------------------
 
 
-def test_fdictBuildTestResult_writes():
+def test_fdictWriteTestFile_writes():
     mockDocker = _fMockDocker()
-    dictResult = _fdictBuildTestResult(
+    dictResult = _fdictWriteTestFile(
         mockDocker, "cid",
         "import pytest\ndef test_a():\n    pass",
-        "/workspace/test_step01.py",
+        "/workspace/tests/test_integrity.py",
     )
-    assert dictResult["sFilePath"] == "/workspace/test_step01.py"
+    assert dictResult["sFilePath"] == "/workspace/tests/test_integrity.py"
     assert "pytest" in dictResult["sContent"]
-    assert "pytest test_step01.py" in dictResult["saTestCommands"]
+    assert "pytest tests/test_integrity.py" in dictResult["saCommands"]
     mockDocker.fnWriteFile.assert_called_once()
 
 
@@ -621,3 +639,4 @@ def test_fdictGenerateTest_via_claude():
     )
     assert dictResult["sFilePath"].endswith("test_step01.py")
     assert "import pytest" in dictResult["sContent"]
+    assert len(dictResult["saCommands"]) > 0

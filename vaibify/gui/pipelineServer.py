@@ -74,6 +74,7 @@ class WorkflowSettingsRequest(BaseModel):
     sPlotDirectory: Optional[str] = None
     sFigureType: Optional[str] = None
     iNumberOfCores: Optional[int] = None
+    fTolerance: Optional[float] = None
 
 
 class RunRequest(BaseModel):
@@ -107,6 +108,7 @@ def fdictExtractSettings(dictWorkflow):
         "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
+        "fTolerance": dictWorkflow.get("fTolerance", 1e-6),
     }
 
 
@@ -418,6 +420,7 @@ async def fnRunTerminalSession(
 
 def _fsSanitizeServerError(sRawError):
     """Return a user-friendly error message, log the raw error."""
+    logger.error("Raw Docker/server error: %s", sRawError)
     if "no space left on device" in sRawError.lower():
         return "Docker disk full. Run: docker image prune -f"
     if "no such container" in sRawError.lower():
@@ -426,8 +429,8 @@ def _fsSanitizeServerError(sRawError):
         return "Cannot connect to Docker. Is it running?"
     if "permission denied" in sRawError.lower():
         return "Permission denied. Check Docker access."
-    if len(sRawError) > 200:
-        return sRawError[:200] + "..."
+    if len(sRawError) > 500:
+        return sRawError[:500] + "..."
     return sRawError
 
 
@@ -1772,17 +1775,20 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
 
 async def _fdictRunTestGeneration(
     dictCtx, sContainerId, iStepIndex,
-    dictWorkflow, fdictGenerateTest, request,
+    dictWorkflow, fdictGenerate, request,
 ):
     """Invoke the test generator and return its result dict."""
     dictVars = dictCtx["variables"](sContainerId)
+    sUser = dictCtx["containerUsers"].get(
+        sContainerId, sTerminalUser
+    )
     try:
         return await asyncio.to_thread(
-            fdictGenerateTest,
+            fdictGenerate,
             dictCtx["docker"], sContainerId, iStepIndex,
             dictWorkflow, dictVars,
             request.bUseApi, request.sApiKey,
-            sUser=sTerminalUser,
+            sUser=sUser,
         )
     except Exception as error:
         raise HTTPException(
@@ -1799,9 +1805,8 @@ def _fnRegisterTestGenerate(app, dictCtx):
         request: TestGenerateRequest,
     ):
         dictCtx["require"]()
-        from .testGenerator import (
-            fbContainerHasClaude, fdictGenerateTest,
-        )
+        from .testGenerator import fbContainerHasClaude, fdictGenerateAllTests
+        from .workflowManager import flistBuildTestCommands
         if not request.bUseApi:
             bHasClaude = fbContainerHasClaude(
                 dictCtx["docker"], sContainerId
@@ -1813,15 +1818,20 @@ def _fnRegisterTestGenerate(app, dictCtx):
         )
         dictResult = await _fdictRunTestGeneration(
             dictCtx, sContainerId, iStepIndex,
-            dictWorkflow, fdictGenerateTest, request,
+            dictWorkflow, fdictGenerateAllTests, request,
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        dictStep["saTestCommands"] = dictResult["saTestCommands"]
+        dictTests = dictStep.setdefault("dictTests", {})
+        for sCategory in ("dictIntegrity", "dictQualitative", "dictQuantitative"):
+            if sCategory in dictResult:
+                dictTests[sCategory] = dictResult[sCategory]
+        dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bGenerated": True,
-            "sFilePath": dictResult["sFilePath"],
-            "sContent": dictResult["sContent"],
+            "dictIntegrity": dictResult.get("dictIntegrity", {}),
+            "dictQualitative": dictResult.get("dictQualitative", {}),
+            "dictQuantitative": dictResult.get("dictQuantitative", {}),
         }
 
     @app.delete(
@@ -1835,10 +1845,23 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        _fnRemoveTestFiles(
-            dictCtx["docker"], sContainerId, dictStep, iStepIndex,
+        _fnRemoveTestDirectory(
+            dictCtx["docker"], sContainerId, dictStep,
         )
+        dictStep["dictTests"] = {
+            "dictQualitative": {"saCommands": [], "sFilePath": ""},
+            "dictQuantitative": {
+                "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+            },
+            "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+            "listUserTests": [],
+        }
         dictStep["saTestCommands"] = []
+        dictVerification = dictStep.setdefault("dictVerification", {})
+        dictVerification["sUnitTest"] = "untested"
+        dictVerification["sQualitative"] = "untested"
+        dictVerification["sQuantitative"] = "untested"
+        dictVerification["sIntegrity"] = "untested"
         dictCtx["save"](sContainerId, dictWorkflow)
         return {"bSuccess": True}
 
@@ -1914,13 +1937,90 @@ def _fnRegisterTestRun(app, dictCtx):
     )
     async def fnRunTests(sContainerId: str, iStepIndex: int):
         import asyncio
+        from .workflowManager import flistBuildTestCommands
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        listCmds = dictStep.get("saTestCommands", [])
+        if "dictTests" in dictStep:
+            listCmds = flistBuildTestCommands(dictStep)
+        else:
+            listCmds = dictStep.get("saTestCommands", [])
         if not listCmds:
             raise HTTPException(400, "No test commands")
+        sDir = dictStep.get("sDirectory", "/workspace")
+        dictVerification = dictStep.setdefault(
+            "dictVerification", {})
+        dictCategoryResults = {}
+        bAllPassed = True
+        for sCategory, sVerifKey in (
+            ("dictIntegrity", "sIntegrity"),
+            ("dictQualitative", "sQualitative"),
+            ("dictQuantitative", "sQuantitative"),
+        ):
+            dictTests = dictStep.get("dictTests", {})
+            dictCat = dictTests.get(sCategory, {})
+            listCatCmds = dictCat.get("saCommands", [])
+            if not listCatCmds:
+                continue
+            sCatCmd = " && ".join(
+                [f"cd {fsShellQuote(sDir)}"] + listCatCmds)
+            iCatExit, sCatOutput = await asyncio.to_thread(
+                dictCtx["docker"].ftResultExecuteCommand,
+                sContainerId, sCatCmd,
+            )
+            bCatPassed = iCatExit == 0
+            dictVerification[sVerifKey] = (
+                "passed" if bCatPassed else "failed")
+            dictCategoryResults[sCategory] = {
+                "bPassed": bCatPassed,
+                "sOutput": sCatOutput,
+                "iExitCode": iCatExit,
+            }
+            if not bCatPassed:
+                bAllPassed = False
+        _fnRecordTestResult(
+            dictStep, bAllPassed, dictWorkflow, iStepIndex)
+        dictCtx["save"](sContainerId, dictWorkflow)
+        iMaxExitCode = max(
+            (d["iExitCode"] for d in dictCategoryResults.values()),
+            default=0,
+        )
+        return {
+            "bPassed": bAllPassed,
+            "iExitCode": iMaxExitCode,
+            "sOutput": "",
+            "dictCategoryResults": dictCategoryResults,
+        }
+
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/run-test-category"
+    )
+    async def fnRunTestCategory(
+        sContainerId: str, iStepIndex: int, request: Request,
+    ):
+        import asyncio
+        dictCtx["require"]()
+        dictBody = await request.json()
+        sCategory = dictBody.get("sCategory", "")
+        dictCategoryKeyMap = {
+            "integrity": ("dictIntegrity", "sIntegrity"),
+            "qualitative": ("dictQualitative", "sQualitative"),
+            "quantitative": ("dictQuantitative", "sQuantitative"),
+        }
+        if sCategory not in dictCategoryKeyMap:
+            raise HTTPException(
+                400, f"Unknown category: {sCategory}")
+        sDictKey, sVerifKey = dictCategoryKeyMap[sCategory]
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        dictTests = dictStep.get("dictTests", {})
+        dictCat = dictTests.get(sDictKey, {})
+        listCmds = dictCat.get("saCommands", [])
+        if not listCmds:
+            raise HTTPException(
+                400, f"No commands for category: {sCategory}")
         sDir = dictStep.get("sDirectory", "/workspace")
         sFullCmd = " && ".join(
             [f"cd {fsShellQuote(sDir)}"] + listCmds)
@@ -1929,8 +2029,11 @@ def _fnRegisterTestRun(app, dictCtx):
             sContainerId, sFullCmd,
         )
         bPassed = iExitCode == 0
-        _fnRecordTestResult(
-            dictStep, bPassed, dictWorkflow, iStepIndex)
+        dictVerification = dictStep.setdefault(
+            "dictVerification", {})
+        dictVerification[sVerifKey] = (
+            "passed" if bPassed else "failed")
+        _fnUpdateAggregateTestState(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bPassed": bPassed,
@@ -1968,7 +2071,7 @@ def _fnClearDownstreamUpstreamFlags(dictWorkflow, iStepIndex):
 def _fnRemoveTestFiles(
     connectionDocker, sContainerId, dictStep, iStepIndex,
 ):
-    """Remove generated test file from the container."""
+    """Remove generated test file from the container. Deprecated."""
     from .pipelineRunner import fsShellQuote
     from .testGenerator import fsTestFilePath
 
@@ -1977,6 +2080,42 @@ def _fnRemoveTestFiles(
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"rm -f {fsShellQuote(sPath)}"
     )
+
+
+def _fnRemoveTestDirectory(connectionDocker, sContainerId, dictStep):
+    """Remove the entire tests subdirectory from the container."""
+    from .pipelineRunner import fsShellQuote
+    from .workflowManager import fsTestsDirectory
+
+    sDirectory = dictStep.get("sDirectory", "")
+    sTestsDir = fsTestsDirectory(sDirectory)
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"rm -rf {fsShellQuote(sTestsDir)}"
+    )
+
+
+def _fnUpdateAggregateTestState(dictStep):
+    """Compute aggregate sUnitTest from per-category verification states."""
+    dictVerification = dictStep.get("dictVerification", {})
+    dictTests = dictStep.get("dictTests", {})
+    listStates = []
+    for sCategory, sVerifKey in (
+        ("dictIntegrity", "sIntegrity"),
+        ("dictQualitative", "sQualitative"),
+        ("dictQuantitative", "sQuantitative"),
+    ):
+        dictCat = dictTests.get(sCategory, {})
+        if (dictCat.get("saCommands", [])):
+            listStates.append(
+                dictVerification.get(sVerifKey, "untested"))
+    if not listStates:
+        dictVerification["sUnitTest"] = "untested"
+    elif "failed" in listStates:
+        dictVerification["sUnitTest"] = "failed"
+    elif all(s == "passed" for s in listStates):
+        dictVerification["sUnitTest"] = "passed"
+    else:
+        dictVerification["sUnitTest"] = "untested"
 
 
 def _fnRegisterStepRoutes(app, dictCtx):

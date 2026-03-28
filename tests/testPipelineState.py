@@ -69,3 +69,24 @@ def test_fnAppendOutput_truncates_at_max():
     assert len(dictState["listRecentOutput"]) == I_MAX_OUTPUT_LINES
     assert dictState["listRecentOutput"][-1] == "overflow"
     assert dictState["listRecentOutput"][0] == "L1"
+
+
+# -----------------------------------------------------------------------
+# fdictBuildInteractivePauseState
+# -----------------------------------------------------------------------
+
+
+def test_fdictBuildInteractivePauseState_returns_expected_keys():
+    from vaibify.gui.pipelineState import fdictBuildInteractivePauseState
+    dictResult = fdictBuildInteractivePauseState(3, "RunMCMC")
+    assert dictResult["bRunning"] is True
+    assert dictResult["bInteractivePause"] is True
+    assert dictResult["iActiveStep"] == 3
+    assert dictResult["sActiveStepName"] == "RunMCMC"
+
+
+def test_fdictBuildInteractivePauseState_step_zero():
+    from vaibify.gui.pipelineState import fdictBuildInteractivePauseState
+    dictResult = fdictBuildInteractivePauseState(0, "Initialize")
+    assert dictResult["iActiveStep"] == 0
+    assert dictResult["bInteractivePause"] is True

@@ -84,6 +84,8 @@ def fdictLoadWorkflowFromContainer(
     dictWorkflow = json.loads(baContent.decode("utf-8"))
     if not fbValidateWorkflow(dictWorkflow):
         raise ValueError(f"Invalid workflow.json: {sWorkflowPath}")
+    for dictStep in dictWorkflow.get("listSteps", []):
+        fdictMigrateTestFormat(dictStep)
     return dictWorkflow
 
 
@@ -188,9 +190,20 @@ def fdictCreateStep(
         "saTestCommands": saTestCommands if saTestCommands else [],
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
+        "dictTests": {
+            "dictQualitative": {"saCommands": [], "sFilePath": ""},
+            "dictQuantitative": {
+                "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+            },
+            "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+            "listUserTests": [],
+        },
         "dictVerification": {
             "sUnitTest": "untested",
             "sUser": "untested",
+            "sQualitative": "untested",
+            "sQuantitative": "untested",
+            "sIntegrity": "untested",
         },
         "dictRunStats": {},
     }
@@ -637,3 +650,40 @@ def fnUpdateSyncStatus(dictWorkflow, listFilePaths, sService):
             )
         dictWorkflow["dictSyncStatus"][sPath][sBoolKey] = True
         dictWorkflow["dictSyncStatus"][sPath][sTimeKey] = sTimestamp
+
+
+def flistBuildTestCommands(dictStep):
+    """Aggregate all test commands from dictTests into a flat list."""
+    dictTests = dictStep.get("dictTests", {})
+    listCommands = []
+    for sKey in ("dictQualitative", "dictQuantitative", "dictIntegrity"):
+        dictCategory = dictTests.get(sKey, {})
+        listCommands.extend(dictCategory.get("saCommands", []))
+    return listCommands
+
+
+def fsTestsDirectory(sStepDirectory):
+    """Return the tests subdirectory path for a step."""
+    return posixpath.join(sStepDirectory, "tests")
+
+
+def fdictMigrateTestFormat(dictStep):
+    """Migrate old saTestCommands format to new dictTests structure."""
+    if "dictTests" in dictStep:
+        return dictStep
+    listOldCommands = dictStep.get("saTestCommands", [])
+    dictStep["dictTests"] = {
+        "dictQualitative": {"saCommands": [], "sFilePath": ""},
+        "dictQuantitative": {
+            "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+        },
+        "dictIntegrity": {
+            "saCommands": list(listOldCommands), "sFilePath": "",
+        },
+        "listUserTests": [],
+    }
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    dictVerification.setdefault("sQualitative", "untested")
+    dictVerification.setdefault("sQuantitative", "untested")
+    dictVerification.setdefault("sIntegrity", "untested")
+    return dictStep
