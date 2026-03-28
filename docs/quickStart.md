@@ -1,34 +1,9 @@
 # Quick Start
 
 This guide walks through the minimal steps to get a Vaibify project
-running on your machine. For a more detailed walkthrough of the interactive
-setup process, see [Setup Wizard](setupWizard.md).
-
-## Prerequisites
-
-- **Docker** (or Colima on macOS)
-- **Python 3.9+** with `pip`
-- **Git**
-
-## Install Vaibify
-
-```bash
-pip install vaibify
-```
-
-Or clone and install in editable mode:
-
-```bash
-git clone https://github.com/RoryBarnes/Vaibify.git
-cd Vaibify
-pip install -e .
-```
-
-The installer script handles Docker and shell configuration automatically:
-
-```bash
-sh vaibify/install/installVaibify.sh
-```
+running on your machine. See [Installing Vaibify](install.md) for
+detailed installation instructions, or [Setup Wizard](setupWizard.md)
+for the interactive configuration walkthrough.
 
 ## Initialize a Project
 

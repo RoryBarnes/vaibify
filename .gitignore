@@ -6,6 +6,10 @@ build/
 *.egg
 .pytest_cache/
 .eggs/
+.coverage
+
+# Sphinx build output
+docs/_build/
 
 # Project-specific config (generated per-project, not part of the package)
 vaibify.yml
