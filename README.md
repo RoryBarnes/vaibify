@@ -2,7 +2,7 @@
   <img width = "350" src="docs/vaibify_logo.png?raw=true"/>
 </p>
 
-<h1 align="center">Vaibify: Vibe Boldly. Verify Everything.</h1>
+<h1 align="center">Vibe Boldly. Verify Everything.</h1>
 
 <p align="center">
   <a href="https://RoryBarnes.github.io/vaibify">
