@@ -133,7 +133,12 @@ For each significant numerical result visible in the output data:
    - "column:ColName,index:N" (first row is the header)
 
 5. Optionally set "sFormat" to override extension-based format detection.
-   Valid values: "csv", "npy", "json", "hdf5", "whitespace".
+   Valid values: "csv", "npy", "npz", "json", "jsonl", "hdf5",
+   "whitespace", "keyvalue", "excel", "fits", "matlab", "parquet",
+   "image", "fasta", "fastq", "vcf", "bed", "gff", "sam", "bam",
+   "fortran", "spss", "stata", "sas", "rdata", "votable", "ipac",
+   "pcap", "vtk", "cgns", "safetensors", "tfrecord", "syslog", "cef",
+   "fixedwidth", "multitable".
    Omit this field unless the extension is ambiguous.
 6. Optionally override the default relative tolerance with "fRtol".
 
@@ -161,8 +166,8 @@ Include initial and final state values where available.
 
 
 _CLAUDE_MD_MARKER = "# Vaibify Test Generation Instructions"
-_CLAUDE_MD_VERSION = "v7"
-_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v7 -->"
+_CLAUDE_MD_VERSION = "v8"
+_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v8 -->"
 
 
 def fnEnsureClaudeMdInstructions(
