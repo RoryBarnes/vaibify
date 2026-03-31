@@ -52,7 +52,7 @@ And these optional fields:
             "bEnabled": true,
             "bPlotOnly": false,
             "saDataCommands": [
-                "vplanet vpl.in"
+                "python runAnalysis.py"
             ],
             "saPlotCommands": [
                 "python makePlot.py"

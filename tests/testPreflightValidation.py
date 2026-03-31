@@ -60,7 +60,7 @@ def test_fsExtractScriptPath_python_command():
 
 
 def test_fsExtractScriptPath_bare_executable():
-    assert _fsExtractScriptPath("vplanet vpl.in") == "vplanet"
+    assert _fsExtractScriptPath("python runAnalysis.py") == "runAnalysis.py"
 
 
 def test_fsExtractScriptPath_builtin_returns_none():

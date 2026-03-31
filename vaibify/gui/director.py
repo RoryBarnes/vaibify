@@ -425,10 +425,11 @@ def fsGenerateLogPath(sLogDir, sWorkflowName):
 def fnConfigureEnvironment(dictWorkflow, sWorkflowRoot):
     """Set PATH from workflow configuration."""
     sUserBinDir = os.path.join(os.path.expanduser("~"), ".local", "bin")
+    sWorkspaceBinDir = "/workspace/bin"
+    _fnCreateDirectorySilently(sWorkspaceBinDir)
     listExtraPaths = dictWorkflow.get("listBinaryDirectories", [])
-    sSingleDir = dictWorkflow.get("sVplanetBinaryDirectory", "")
-    if sSingleDir and sSingleDir not in listExtraPaths:
-        listExtraPaths.append(sSingleDir)
+    if sWorkspaceBinDir not in listExtraPaths:
+        listExtraPaths.append(sWorkspaceBinDir)
     listPrependPaths = [
         sDir for sDir in listExtraPaths + [sUserBinDir]
         if sDir and os.path.isdir(sDir)
@@ -438,6 +439,14 @@ def fnConfigureEnvironment(dictWorkflow, sWorkflowRoot):
         os.environ["PATH"] = ":".join(
             listPrependPaths + [sExistingPath]
         )
+
+
+def _fnCreateDirectorySilently(sPath):
+    """Create a directory if possible, silently ignoring errors."""
+    try:
+        os.makedirs(sPath, exist_ok=True)
+    except OSError:
+        pass
 
 
 def fnDownloadDatasets(dictWorkflow, sWorkflowRoot):

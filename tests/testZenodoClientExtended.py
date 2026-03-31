@@ -223,10 +223,10 @@ def test_flistSearchDeposits(mockRequest, clientTest):
     mockRequest.return_value = _fmockResponse(
         dictJson=[{"id": 1}, {"id": 2}],
     )
-    listResult = clientTest.flistSearchDeposits("vplanet")
+    listResult = clientTest.flistSearchDeposits("vaibify")
     assert isinstance(listResult, list)
     dictParams = mockRequest.call_args[1].get("params", {})
-    assert dictParams.get("q") == "vplanet"
+    assert dictParams.get("q") == "vaibify"
 
 
 @patch("requests.request")

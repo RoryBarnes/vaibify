@@ -22,7 +22,7 @@ def _fConfigForBuild():
         listPythonPackages=["numpy", "scipy"],
         sPipInstallFlags="--no-deps",
         listBinaries=[
-            {"name": "vplanet", "path": "/usr/local/bin/vplanet"},
+            {"name": "solver", "path": "/workspace/bin/solver"},
         ],
     )
 
@@ -66,7 +66,7 @@ def test_fnWriteBinariesEnv_content():
         sPath = os.path.join(sTmpDir, "binaries.env")
         with open(sPath) as fh:
             sContent = fh.read()
-        assert "vplanet=/usr/local/bin/vplanet" in sContent
+        assert "solver=/workspace/bin/solver" in sContent
 
 
 def test_fnWriteBinariesEnv_empty():

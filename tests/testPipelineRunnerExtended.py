@@ -293,8 +293,8 @@ def test_fsExtractScriptPath_builtin_returns_none():
 
 
 def test_fsExtractScriptPath_bare_command():
-    sResult = _fsExtractScriptPath("vplanet input.in")
-    assert sResult == "vplanet"
+    sResult = _fsExtractScriptPath("python runAnalysis.py")
+    assert sResult == "runAnalysis.py"
 
 
 # -----------------------------------------------------------------------

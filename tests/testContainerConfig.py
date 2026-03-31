@@ -18,20 +18,20 @@ def _fnWriteTempConf(tmp_path, sContent):
 
 def test_flistParseContainerConf_parses_valid_file(tmp_path):
     sContent = (
-        "vplanet|https://github.com/VPLanet/vplanet|main|c_and_pip\n"
-        "vplot|https://github.com/VPLanet/vplot|main|pip_editable\n"
-        "bigplanet|https://github.com/VPLanet/bigplanet|main|pip_no_deps\n"
+        "analysis-code|https://github.com/example/analysis-code.git|main|c_and_pip\n"
+        "plot-tools|https://github.com/example/plot-tools.git|main|pip_editable\n"
+        "data-archive|https://github.com/example/data-archive.git|main|pip_no_deps\n"
     )
     sFilePath = _fnWriteTempConf(tmp_path, sContent)
 
     listRepos = flistParseContainerConf(sFilePath)
 
     assert len(listRepos) == 3
-    assert listRepos[0]["sName"] == "vplanet"
-    assert listRepos[0]["sUrl"] == "https://github.com/VPLanet/vplanet"
+    assert listRepos[0]["sName"] == "analysis-code"
+    assert listRepos[0]["sUrl"] == "https://github.com/example/analysis-code.git"
     assert listRepos[0]["sBranch"] == "main"
     assert listRepos[0]["sInstallMethod"] == "c_and_pip"
-    assert listRepos[1]["sName"] == "vplot"
+    assert listRepos[1]["sName"] == "plot-tools"
     assert listRepos[2]["sInstallMethod"] == "pip_no_deps"
 
 
@@ -41,30 +41,30 @@ def test_flistParseContainerConf_skips_comments_and_blank_lines(tmp_path):
         "\n"
         "  \n"
         "# Another comment\n"
-        "vplanet|https://github.com/VPLanet/vplanet|main|c_and_pip\n"
+        "analysis-code|https://github.com/example/analysis-code.git|main|c_and_pip\n"
         "\n"
-        "vplot|https://github.com/VPLanet/vplot|main|pip_editable\n"
+        "plot-tools|https://github.com/example/plot-tools.git|main|pip_editable\n"
     )
     sFilePath = _fnWriteTempConf(tmp_path, sContent)
 
     listRepos = flistParseContainerConf(sFilePath)
 
     assert len(listRepos) == 2
-    assert listRepos[0]["sName"] == "vplanet"
-    assert listRepos[1]["sName"] == "vplot"
+    assert listRepos[0]["sName"] == "analysis-code"
+    assert listRepos[1]["sName"] == "plot-tools"
 
 
 def test_fnWriteContainerConf_roundtrips(tmp_path):
     listOriginal = [
         {
-            "sName": "vplanet",
-            "sUrl": "https://github.com/VPLanet/vplanet",
+            "sName": "analysis-code",
+            "sUrl": "https://github.com/example/analysis-code.git",
             "sBranch": "main",
             "sInstallMethod": "c_and_pip",
         },
         {
-            "sName": "vspace",
-            "sUrl": "https://github.com/VPLanet/vspace",
+            "sName": "param-sweep",
+            "sUrl": "https://github.com/example/param-sweep.git",
             "sBranch": "develop",
             "sInstallMethod": "pip_editable",
         },
@@ -91,25 +91,25 @@ def test_flistConvertFromProjectConfig():
     class MockConfig:
         listRepositories = [
             {
-                "name": "vplanet",
-                "url": "https://github.com/VPLanet/vplanet",
+                "name": "analysis-code",
+                "url": "https://github.com/example/analysis-code.git",
                 "branch": "v3.0",
                 "installMethod": "c_and_pip",
             },
             {
-                "name": "alabi",
-                "url": "https://github.com/user/alabi",
+                "name": "ml-surrogate",
+                "url": "https://github.com/example/ml-surrogate.git",
             },
         ]
 
     listConverted = flistConvertFromProjectConfig(MockConfig())
 
     assert len(listConverted) == 2
-    assert listConverted[0]["sName"] == "vplanet"
-    assert listConverted[0]["sUrl"] == "https://github.com/VPLanet/vplanet"
+    assert listConverted[0]["sName"] == "analysis-code"
+    assert listConverted[0]["sUrl"] == "https://github.com/example/analysis-code.git"
     assert listConverted[0]["sBranch"] == "v3.0"
     assert listConverted[0]["sInstallMethod"] == "c_and_pip"
-    assert listConverted[1]["sName"] == "alabi"
+    assert listConverted[1]["sName"] == "ml-surrogate"
     assert listConverted[1]["sBranch"] == "main"
     assert listConverted[1]["sInstallMethod"] == "pip_editable"
 
@@ -121,7 +121,7 @@ def test_flistParseContainerConf_raises_on_missing_file(tmp_path):
 
 
 def test_flistParseContainerConf_raises_on_malformed_line(tmp_path):
-    sContent = "vplanet|https://github.com/VPLanet/vplanet|main\n"
+    sContent = "analysis-code|https://github.com/example/analysis-code.git|main\n"
     sFilePath = _fnWriteTempConf(tmp_path, sContent)
 
     with pytest.raises(ValueError, match="Expected 4"):

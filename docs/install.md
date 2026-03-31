@@ -44,24 +44,11 @@ test suite, and all data format libraries.
 
 ## Data Format Libraries
 
-The deterministic test generator supports 36 data formats. Core formats
-(CSV, JSON, NumPy, whitespace) require no extra packages. Additional
-formats require optional libraries, installable individually or as bundles:
-
-```bash
-pip install "vaibify[formats]"          # all format libraries
-pip install "vaibify[formats-core]"     # h5py, openpyxl, Pillow, pyarrow
-pip install "vaibify[formats-science]"  # astropy, scipy, pyvista
-pip install "vaibify[formats-bio]"      # pysam
-pip install "vaibify[formats-social]"   # pyreadstat, pyreadr
-pip install "vaibify[formats-ml]"       # safetensors, tfrecord
-pip install "vaibify[formats-security]" # scapy
-```
-
-Missing libraries do not break the test generator. When a format's library
-is unavailable, the file is reported with a message indicating which
-package to install. See [Supported Data Formats](testFormats.md) for the
-complete list.
+All data format libraries (h5py, openpyxl, Pillow, pyarrow, astropy,
+scipy, pyvista, pysam, pyreadstat, pyreadr, safetensors, tfrecord, scapy)
+are included by default when you install Vaibify. No additional extras are
+required. See [Supported Data Formats](testFormats.md) for the complete
+list.
 
 Run the tests to verify the installation:
 

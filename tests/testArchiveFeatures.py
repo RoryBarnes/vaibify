@@ -168,13 +168,13 @@ class TestArchiveGeneration:
             "sProjectTitle": "My Study",
             "listCreators": [{"name": "Scientist, A."}],
             "sLicense": "CC-BY-4.0",
-            "listKeywords": ["astrophysics"],
+            "listKeywords": ["data-science"],
         }
         dictMeta = fdictBuildZenodoMetadata(dictWorkflow)
         assert dictMeta["title"] == "Data for: My Study"
         assert dictMeta["upload_type"] == "dataset"
         assert dictMeta["license"] == "CC-BY-4.0"
-        assert dictMeta["keywords"] == ["astrophysics"]
+        assert dictMeta["keywords"] == ["data-science"]
         assert dictMeta["creators"][0]["name"] == "Scientist, A."
 
     def test_fbMetadataDefaults(self):

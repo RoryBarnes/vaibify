@@ -56,7 +56,7 @@ Data scientists increasingly rely on AI coding agents to build and iterate on an
 
 **Reproducibility** — Provenance tracking, Zenodo archival with DOI assignment, Overleaf figure sync, LaTeX annotation generation, and GitHub Actions workflow generation.
 
-**Templates** — Three project templates ship with Vaibify: `general` (blank slate), `planetary` (VPLanet ecosystem with 10 repositories), and `reproducible-paper` (LaTeX manuscript with automated figures).
+**Templates** — Two project templates ship with Vaibify: `general` (blank slate) and `reproducible-paper` (LaTeX manuscript with automated figures).
 
 ### Quick Start
 

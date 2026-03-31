@@ -18,8 +18,10 @@ from vaibify.config.containerConfig import (
     flistConvertFromProjectConfig,
 )
 
-_sConfigPath = "/Users/rory/src/GJ1132/vaibify.yml"
-_sContainerConfPath = "/Users/rory/src/GJ1132/container.conf"
+import os as _os
+
+_sConfigPath = _os.path.expanduser("~/src/GJ1132/vaibify.yml")
+_sContainerConfPath = _os.path.expanduser("~/src/GJ1132/container.conf")
 _sProjectName = "gj1132-xuv"
 _iExpectedRepoCount = 12
 

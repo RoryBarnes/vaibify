@@ -245,10 +245,12 @@ def test_fnPrintSummary_outputs_results(capsys):
     assert "1 passed" in sCaptured
 
 
-def test_fnConfigureEnvironment_adds_path():
+@patch("os.path.isdir", side_effect=lambda p: True)
+@patch("vaibify.gui.director._fnCreateDirectorySilently")
+def test_fnConfigureEnvironment_adds_path(mockCreate, mockIsDir):
     from vaibify.gui.director import fnConfigureEnvironment
-    dictWorkflow = {"sVplanetBinaryDirectory": ""}
+    dictWorkflow = {}
     sOrigPath = os.environ.get("PATH", "")
     fnConfigureEnvironment(dictWorkflow, "/tmp")
-    assert os.environ.get("PATH", "") is not None
+    assert "/workspace/bin" in os.environ.get("PATH", "")
     os.environ["PATH"] = sOrigPath

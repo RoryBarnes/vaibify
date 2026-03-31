@@ -390,17 +390,16 @@ def test_fnConfigureEnvironment_ignores_missing_dirs():
     os.environ["PATH"] = sOriginalPath
 
 
-def test_fnConfigureEnvironment_deduplicates_vpBinDir():
-    with tempfile.TemporaryDirectory() as sTmpDir:
-        dictWorkflow = {
-            "listBinaryDirectories": [sTmpDir],
-            "sVplanetBinaryDirectory": sTmpDir,
-        }
-        sOriginalPath = os.environ.get("PATH", "")
-        fnConfigureEnvironment(dictWorkflow, sTmpDir)
-        iCount = os.environ["PATH"].split(":").count(sTmpDir)
-        assert iCount == 1
-        os.environ["PATH"] = sOriginalPath
+@patch("os.path.isdir", side_effect=lambda p: True)
+@patch("vaibify.gui.director._fnCreateDirectorySilently")
+def test_fnConfigureEnvironment_includes_workspace_bin(
+    mockCreate, mockIsDir,
+):
+    sOriginalPath = os.environ.get("PATH", "")
+    dictWorkflow = {"listBinaryDirectories": []}
+    fnConfigureEnvironment(dictWorkflow, "/tmp")
+    assert "/workspace/bin" in os.environ["PATH"]
+    os.environ["PATH"] = sOriginalPath
 
 
 # -----------------------------------------------------------------------
@@ -419,32 +418,38 @@ def test_fnSetupLogFile_creates_log():
 
 
 # -----------------------------------------------------------------------
-# fnConfigureEnvironment — sVplanetBinaryDirectory (line 431)
+# fnConfigureEnvironment — /workspace/bin on PATH
 # -----------------------------------------------------------------------
 
 
-def test_fnConfigureEnvironment_appends_vplanet_dir():
-    """Line 431: sVplanetBinaryDirectory appended to extra paths."""
+@patch("os.path.isdir", side_effect=lambda p: True)
+@patch("vaibify.gui.director._fnCreateDirectorySilently")
+def test_fnConfigureEnvironment_creates_workspace_bin(
+    mockCreate, mockIsDir,
+):
+    """Verify /workspace/bin is created and added to PATH."""
     sOriginalPath = os.environ.get("PATH", "")
-    with tempfile.TemporaryDirectory() as sTmpDir:
-        dictWorkflow = {"sVplanetBinaryDirectory": sTmpDir}
-        fnConfigureEnvironment(dictWorkflow, sTmpDir)
-        assert sTmpDir in os.environ["PATH"]
-        os.environ["PATH"] = sOriginalPath
+    dictWorkflow = {}
+    fnConfigureEnvironment(dictWorkflow, "/tmp")
+    assert "/workspace/bin" in os.environ["PATH"]
+    mockCreate.assert_called_once_with("/workspace/bin")
+    os.environ["PATH"] = sOriginalPath
 
 
-def test_fnConfigureEnvironment_no_duplicate_vplanet_dir():
-    """sVplanetBinaryDirectory not duplicated when already in list."""
+@patch("os.path.isdir", side_effect=lambda p: True)
+@patch("vaibify.gui.director._fnCreateDirectorySilently")
+def test_fnConfigureEnvironment_no_duplicate_workspace_bin(
+    mockCreate, mockIsDir,
+):
+    """/workspace/bin not duplicated when already in list."""
     sOriginalPath = os.environ.get("PATH", "")
-    with tempfile.TemporaryDirectory() as sTmpDir:
-        dictWorkflow = {
-            "listBinaryDirectories": [sTmpDir],
-            "sVplanetBinaryDirectory": sTmpDir,
-        }
-        fnConfigureEnvironment(dictWorkflow, sTmpDir)
-        iCount = os.environ["PATH"].split(":").count(sTmpDir)
-        assert iCount == 1
-        os.environ["PATH"] = sOriginalPath
+    dictWorkflow = {
+        "listBinaryDirectories": ["/workspace/bin"],
+    }
+    fnConfigureEnvironment(dictWorkflow, "/tmp")
+    iCount = os.environ["PATH"].split(":").count("/workspace/bin")
+    assert iCount == 1
+    os.environ["PATH"] = sOriginalPath
 
 
 # -----------------------------------------------------------------------

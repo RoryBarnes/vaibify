@@ -65,13 +65,13 @@ def test_fdictBuildZenodoMetadata_fields():
     dictWorkflow = {
         "sProjectTitle": "Hab Zone",
         "sLicense": "MIT",
-        "listKeywords": ["exoplanet"],
+        "listKeywords": ["simulation"],
     }
     dictMeta = fdictBuildZenodoMetadata(dictWorkflow)
     assert dictMeta["title"] == "Data for: Hab Zone"
     assert dictMeta["upload_type"] == "dataset"
     assert dictMeta["license"] == "MIT"
-    assert "exoplanet" in dictMeta["keywords"]
+    assert "simulation" in dictMeta["keywords"]
 
 
 def test_fdictBuildZenodoMetadata_defaults():
