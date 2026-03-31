@@ -17,11 +17,11 @@ manage containers.
 Install the latest release from PyPI:
 
 ```bash
-pip install vaibify[docker]
+pip install vaibify
 ```
 
-The `[docker]` extra installs the Docker Python SDK for status queries. The
-core CLI works without it by shelling out to the `docker` command directly.
+This installs everything: the CLI, Docker SDK, keyring integration, and all
+data format libraries.
 
 After installation, confirm the CLI is available:
 
@@ -36,11 +36,11 @@ Clone the repository and install in editable mode:
 ```bash
 git clone https://github.com/RoryBarnes/Vaibify.git
 cd Vaibify
-pip install -e ".[all]"
+pip install -e ".[dev]"
 ```
 
-The `[all]` extra installs Docker support, keyring integration, the full
-test suite, and all data format libraries.
+The `[dev]` extra adds pytest, pytest-cov, pytest-asyncio, and httpx for
+running the test suite.
 
 ## Data Format Libraries
 

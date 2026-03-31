@@ -49,18 +49,17 @@ dependencies = [
     "safetensors>=0.3",
     "tfrecord>=1.14",
     "scapy>=2.5",
+    "docker>=6.0",
+    "keyring>=23.0",
 ]
 
 [project.optional-dependencies]
-docker = ["docker>=6.0"]
-keyring = ["keyring>=23.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
     "pytest-asyncio",
     "httpx",
 ]
-all = ["vaibify[docker,keyring,dev]"]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"
