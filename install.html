@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.1.dev156+g4d2cefc12.d20260331 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.1.dev157+gc0f8ef113.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1ec6fb2f"></script>
+      <script src="_static/documentation_options.js?v=1af46b26"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -219,7 +219,9 @@ colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w">
 colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">4</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">8</span>
 </pre></div>
 </div>
-<p>When running long builds, prevent macOS from sleeping the VM:</p>
+<p>If a Docker build takes more than a few minutes, macOS may sleep the
+Colima VM and corrupt the build. Prefix any long-running command with
+<code class="docutils literal notranslate"><span class="pre">caffeinate</span> <span class="pre">-s</span></code> to prevent this:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caffeinate<span class="w"> </span>-s<span class="w"> </span>vaibify<span class="w"> </span>build
 </pre></div>
 </div>
