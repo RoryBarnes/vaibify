@@ -236,7 +236,7 @@ def test_fdictGenerateAllTests_creates_three_categories(
     }
     dictResult = fdictGenerateAllTests(
         mockConnectionDocker, "container123", 0,
-        dictWorkflow, {}, bUseApi=False,
+        dictWorkflow, {}, bUseApi=False, bDeterministic=False,
     )
     assert "dictIntegrity" in dictResult
     assert "dictQualitative" in dictResult

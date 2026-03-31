@@ -89,6 +89,7 @@ class FileWriteRequest(BaseModel):
 class TestGenerateRequest(BaseModel):
     bUseApi: bool = False
     sApiKey: Optional[str] = None
+    bDeterministic: bool = True
 
 
 def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
@@ -1789,6 +1790,7 @@ async def _fdictRunTestGeneration(
             dictWorkflow, dictVars,
             request.bUseApi, request.sApiKey,
             sUser=sUser,
+            bDeterministic=request.bDeterministic,
         )
     except Exception as error:
         raise HTTPException(
@@ -1807,7 +1809,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictCtx["require"]()
         from .testGenerator import fbContainerHasClaude, fdictGenerateAllTests
         from .workflowManager import flistBuildTestCommands
-        if not request.bUseApi:
+        if not request.bDeterministic and not request.bUseApi:
             bHasClaude = fbContainerHasClaude(
                 dictCtx["docker"], sContainerId
             )
