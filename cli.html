@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.1.dev155+gfbd4fcbfc.d20260331 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.1.dev156+g4d2cefc12.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1a2961e2"></script>
+      <script src="_static/documentation_options.js?v=1ec6fb2f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -268,26 +268,65 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 </section>
 <section id="working-with-the-container">
 <h2>Working with the Container<a class="headerlink" href="#working-with-the-container" title="Link to this heading"></a></h2>
+<p>These commands work from any directory on the host. If you have multiple
+projects, specify which one with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>. If only one project is
+registered, the flag can be omitted.</p>
 <section id="vaibify-connect">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code><a class="headerlink" href="#vaibify-connect" title="Link to this heading"></a></h3>
 <p>Open an interactive shell inside the running container.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="vaibify-push">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code><a class="headerlink" href="#vaibify-push" title="Link to this heading"></a></h3>
 <p>Copy files from the host into the container workspace.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>push<span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>push<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
 </pre></div>
 </div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="vaibify-pull">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code><a class="headerlink" href="#vaibify-pull" title="Link to this heading"></a></h3>
 <p>Copy files from the container workspace to the host.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>pull<span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>pull<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
 </pre></div>
 </div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="vaibify-verify">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify</span></code><a class="headerlink" href="#vaibify-verify" title="Link to this heading"></a></h3>

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.1.dev155+gfbd4fcbfc.d20260331 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.1.dev156+g4d2cefc12.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1a2961e2"></script>
+      <script src="_static/documentation_options.js?v=1ec6fb2f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -164,9 +164,40 @@ list.</p>
 </section>
 <section id="shell-helpers">
 <h2>Shell Helpers<a class="headerlink" href="#shell-helpers" title="Link to this heading"></a></h2>
-<p>Shell completions and helper commands (<code class="docutils literal notranslate"><span class="pre">connect_vc</span></code>, <code class="docutils literal notranslate"><span class="pre">vc_push</span></code>,
-<code class="docutils literal notranslate"><span class="pre">vc_pull</span></code>) are configured automatically the first time any <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>
-command is run. No manual step is required.</p>
+<p>Shell completions and helper commands are configured automatically the
+first time any <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command is run. No manual step is required.
+The following aliases are added to your shell configuration:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Alias</p></th>
+<th class="head"><p>Shorthand</p></th>
+<th class="head"><p>Equivalent</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify_connect</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaib_connect</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify_push</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaib_push</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify_pull</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaib_pull</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>These commands work from any directory on the host. When multiple
+projects are registered, specify the target with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify_connect<span class="w"> </span>-p<span class="w"> </span>my-project
+vaibify_push<span class="w"> </span>-p<span class="w"> </span>my-project<span class="w"> </span>data.csv<span class="w"> </span>/workspace/data.csv
+vaibify_pull<span class="w"> </span>-p<span class="w"> </span>my-project<span class="w"> </span>/workspace/results.csv<span class="w"> </span>./results.csv
+</pre></div>
+</div>
+<p>When only one project is registered, the <code class="docutils literal notranslate"><span class="pre">--project</span></code> flag can be
+omitted. See <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a> for details.</p>
 <p>To force the setup to run again, remove the marker file and invoke any
 command:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rm<span class="w"> </span>~/.vaibify/.setup_done
@@ -177,8 +208,14 @@ vaibify<span class="w"> </span>--version
 <section id="docker-on-macos">
 <h2>Docker on macOS<a class="headerlink" href="#docker-on-macos" title="Link to this heading"></a></h2>
 <p>On macOS, <a class="reference external" href="https://github.com/abiosoft/colima">Colima</a> is the recommended
-Docker runtime. Install it with Homebrew:</p>
+Docker runtime. Install with Homebrew or MacPorts:</p>
+<p><strong>Homebrew:</strong></p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>brew<span class="w"> </span>install<span class="w"> </span>colima<span class="w"> </span>docker
+colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">4</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">8</span>
+</pre></div>
+</div>
+<p><strong>MacPorts:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>port<span class="w"> </span>install<span class="w"> </span>colima<span class="w"> </span>docker
 colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">4</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">8</span>
 </pre></div>
 </div>
