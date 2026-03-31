@@ -64,9 +64,27 @@ pytest -m docker
 
 ## Shell Helpers
 
-Shell completions and helper commands (`connect_vc`, `vc_push`,
-`vc_pull`) are configured automatically the first time any `vaibify`
-command is run. No manual step is required.
+Shell completions and helper commands are configured automatically the
+first time any `vaibify` command is run. No manual step is required.
+The following aliases are added to your shell configuration:
+
+| Alias | Shorthand | Equivalent |
+|---|---|---|
+| `vaibify_connect` | `vaib_connect` | `vaibify connect` |
+| `vaibify_push` | `vaib_push` | `vaibify push` |
+| `vaibify_pull` | `vaib_pull` | `vaibify pull` |
+
+These commands work from any directory on the host. When multiple
+projects are registered, specify the target with `--project/-p`:
+
+```bash
+vaibify_connect -p my-project
+vaibify_push -p my-project data.csv /workspace/data.csv
+vaibify_pull -p my-project /workspace/results.csv ./results.csv
+```
+
+When only one project is registered, the `--project` flag can be
+omitted. See [CLI Reference](cli.md) for details.
 
 To force the setup to run again, remove the marker file and invoke any
 command:
@@ -79,10 +97,19 @@ vaibify --version
 ## Docker on macOS
 
 On macOS, [Colima](https://github.com/abiosoft/colima) is the recommended
-Docker runtime. Install it with Homebrew:
+Docker runtime. Install with Homebrew or MacPorts:
+
+**Homebrew:**
 
 ```bash
 brew install colima docker
+colima start --cpu 4 --memory 8
+```
+
+**MacPorts:**
+
+```bash
+sudo port install colima docker
 colima start --cpu 4 --memory 8
 ```
 

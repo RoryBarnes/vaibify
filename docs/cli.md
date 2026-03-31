@@ -109,29 +109,45 @@ vaibify status
 
 ## Working with the Container
 
+These commands work from any directory on the host. If you have multiple
+projects, specify which one with `--project/-p`. If only one project is
+registered, the flag can be omitted.
+
 ### `vaibify connect`
 
 Open an interactive shell inside the running container.
 
 ```bash
-vaibify connect
+vaibify connect [--project/-p NAME]
 ```
+
+| Option             | Description                              |
+|--------------------|------------------------------------------|
+| `--project`, `-p`  | Target project name (optional if only one exists) |
 
 ### `vaibify push`
 
 Copy files from the host into the container workspace.
 
 ```bash
-vaibify push <source> <destination>
+vaibify push [--project/-p NAME] <source> <destination>
 ```
+
+| Option             | Description                              |
+|--------------------|------------------------------------------|
+| `--project`, `-p`  | Target project name (optional if only one exists) |
 
 ### `vaibify pull`
 
 Copy files from the container workspace to the host.
 
 ```bash
-vaibify pull <source> <destination>
+vaibify pull [--project/-p NAME] <source> <destination>
 ```
+
+| Option             | Description                              |
+|--------------------|------------------------------------------|
+| `--project`, `-p`  | Target project name (optional if only one exists) |
 
 ### `vaibify verify`
 
