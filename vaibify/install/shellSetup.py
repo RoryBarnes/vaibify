@@ -124,7 +124,7 @@ def _fnConfigureHelperCommandsInner():
     sRcPath = _fsDetectShellRcFile(sShellName)
     if not sRcPath:
         return
-    if _fbRcFileContainsLine(sRcPath, "connect_vc"):
+    if _fbRcFileContainsLine(sRcPath, "vaibify_connect"):
         return
     sAliases = _fsHelperAliasBlock(sShellName)
     _fnAppendToRcFile(sRcPath, sAliases)
@@ -134,14 +134,20 @@ def _fsHelperAliasBlock(sShellName):
     """Return the alias block appropriate for the shell."""
     if sShellName == "fish":
         return (
-            "alias connect_vc 'vaibify connect'\n"
-            "alias vc_push 'vaibify push'\n"
-            "alias vc_pull 'vaibify pull'"
+            "alias vaibify_connect 'vaibify connect'\n"
+            "alias vaibify_push 'vaibify push'\n"
+            "alias vaibify_pull 'vaibify pull'\n"
+            "alias vaib_connect 'vaib connect'\n"
+            "alias vaib_push 'vaib push'\n"
+            "alias vaib_pull 'vaib pull'"
         )
     return (
-        "alias connect_vc='vaibify connect'\n"
-        "alias vc_push='vaibify push'\n"
-        "alias vc_pull='vaibify pull'"
+        "alias vaibify_connect='vaibify connect'\n"
+        "alias vaibify_push='vaibify push'\n"
+        "alias vaibify_pull='vaibify pull'\n"
+        "alias vaib_connect='vaib connect'\n"
+        "alias vaib_push='vaib push'\n"
+        "alias vaib_pull='vaib pull'"
     )
 
 
