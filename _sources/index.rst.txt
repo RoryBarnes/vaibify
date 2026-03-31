@@ -8,10 +8,9 @@ It decomposes projects into pipeline steps, executes them inside isolated
 Docker containers, verifies the outputs, and publishes the results -- all
 with minimal IDE interaction.
 
-Vaibify grew out of the
-`VVM <https://github.com/RoryBarnes/vvm>`_ (Virtual VPLanet Machine) project
-and generalizes its approach so that any scientific workflow -- not just
-planetary simulations -- can benefit from containerized reproducibility.
+Vaibify grew out of efforts to make scientific computing workflows
+reproducible and generalizes that approach so that any data science
+pipeline can benefit from containerized reproducibility.
 
 .. toctree::
    :maxdepth: 1
@@ -29,6 +28,5 @@ planetary simulations -- can benefit from containerized reproducibility.
    security
    reproducibility
    developers
-   repos
    GitHub <https://github.com/RoryBarnes/Vaibify>
    PyPI <https://pypi.org/project/vaibify/>

@@ -1,6 +1,6 @@
 # Project Templates
 
-Vaibify ships with three project templates that provide starting
+Vaibify ships with two project templates that provide starting
 configurations for common use cases. Select a template when initializing a
 new project:
 
@@ -22,20 +22,6 @@ when your project does not fit into one of the specialized categories.
 - Minimal `vaibify.yml` with default Python version and base image.
 - Empty `container.conf` (no repositories).
 - Empty `workflow.json` (no pipeline steps).
-
-## planetary
-
-Pre-configured for the VPLanet ecosystem. This template includes the full
-set of planetary science repositories and a scientific computing stack.
-
-**Includes:**
-
-- `container.conf` with ten repositories: VPLanet, vplot, vspace,
-  multiplanet, bigplanet, alabi, vconverge, MaxLEV, and supporting tools.
-- System packages for C compilation (`gcc`, `make`) and HDF5.
-- Python packages for scientific computing (`numpy`, `scipy`, `matplotlib`,
-  `h5py`).
-- LaTeX enabled by default for manuscript preparation.
 
 ## reproducible-paper
 

@@ -19,13 +19,12 @@ repository list. Choose a template when prompted:
 | Template              | Description                              |
 |-----------------------|------------------------------------------|
 | `general`             | Empty starting point                     |
-| `planetary`           | VPLanet ecosystem (10 repositories)      |
 | `reproducible-paper`  | LaTeX manuscript with figures pipeline   |
 
 Or specify a template directly:
 
 ```bash
-vaibify init --template planetary
+vaibify init --template general
 ```
 
 ## Build the Image

@@ -75,5 +75,5 @@ reporter of any incident.
 Attribution
 -----------
 
-This Code of Conduct is adapted from the Contributor Covenant v2.0 and the
-VPLanet Code of Conduct.
+This Code of Conduct is adapted from the
+`Contributor Covenant <https://www.contributor-covenant.org>`_ v2.0.

@@ -78,7 +78,7 @@ vaibify/
   gui/              FastAPI web application and pipeline runner
   install/          Setup wizard and shell installer
   reproducibility/  Zenodo, Overleaf, and LaTeX integration
-templates/          Project templates (general, planetary, reproducible-paper)
+templates/          Project templates (general, reproducible-paper)
 tests/              Pytest test suite
 docs/               Sphinx documentation (this site)
 ```

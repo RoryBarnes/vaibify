@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.1.dev149+g443985c8c.d20260331 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.1.dev150+g2596039dc.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7d56c8f0"></script>
+      <script src="_static/documentation_options.js?v=e2f785f5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -64,7 +64,6 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="repos.html">Related Repositories</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
@@ -149,22 +148,11 @@ test suite, and all data format libraries.</p>
 </section>
 <section id="data-format-libraries">
 <h2>Data Format Libraries<a class="headerlink" href="#data-format-libraries" title="Link to this heading"></a></h2>
-<p>The deterministic test generator supports 36 data formats. Core formats
-(CSV, JSON, NumPy, whitespace) require no extra packages. Additional
-formats require optional libraries, installable individually or as bundles:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats]&quot;</span><span class="w">          </span><span class="c1"># all format libraries</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats-core]&quot;</span><span class="w">     </span><span class="c1"># h5py, openpyxl, Pillow, pyarrow</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats-science]&quot;</span><span class="w">  </span><span class="c1"># astropy, scipy, pyvista</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats-bio]&quot;</span><span class="w">      </span><span class="c1"># pysam</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats-social]&quot;</span><span class="w">   </span><span class="c1"># pyreadstat, pyreadr</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats-ml]&quot;</span><span class="w">       </span><span class="c1"># safetensors, tfrecord</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;vaibify[formats-security]&quot;</span><span class="w"> </span><span class="c1"># scapy</span>
-</pre></div>
-</div>
-<p>Missing libraries do not break the test generator. When a format’s library
-is unavailable, the file is reported with a message indicating which
-package to install. See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the
-complete list.</p>
+<p>All data format libraries (h5py, openpyxl, Pillow, pyarrow, astropy,
+scipy, pyvista, pysam, pyreadstat, pyreadr, safetensors, tfrecord, scapy)
+are included by default when you install Vaibify. No additional extras are
+required. See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the complete
+list.</p>
 <p>Run the tests to verify the installation:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
 </pre></div>

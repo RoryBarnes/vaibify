@@ -35,8 +35,7 @@ Choose a starting template:
 ```
 Available templates:
   [1] general             - Empty starting point
-  [2] planetary           - VPLanet ecosystem
-  [3] reproducible-paper  - LaTeX manuscript with figures
+  [2] reproducible-paper  - LaTeX manuscript with figures
 Select template [1]:
 ```
 
