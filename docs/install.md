@@ -39,8 +39,8 @@ cd Vaibify
 pip install -e ".[dev]"
 ```
 
-The `[dev]` extra adds pytest, pytest-cov, pytest-asyncio, and httpx for
-running the test suite.
+The `[dev]` extra adds pytest-asyncio and httpx for running vaibify's
+own internal test suite.
 
 ## Data Format Libraries
 
