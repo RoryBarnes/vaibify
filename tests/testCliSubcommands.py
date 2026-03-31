@@ -258,7 +258,7 @@ def test_init_existing_config_no_force_exits(
     mockExists, mockWrite, mockCopy,
 ):
     runner = CliRunner()
-    result = runner.invoke(init, ["--template", "general"])
+    result = runner.invoke(init, ["--template", "sandbox"])
     assert result.exit_code != 0
 
 
@@ -270,7 +270,7 @@ def test_init_existing_config_force_succeeds(
 ):
     runner = CliRunner()
     result = runner.invoke(
-        init, ["--template", "general", "--force"])
+        init, ["--template", "sandbox", "--force"])
     assert result.exit_code == 0
     assert "Initialized" in result.output
 

@@ -233,10 +233,10 @@ def test_init_with_template_no_config(
 ):
     from vaibify.cli.commandInit import init
     runner = CliRunner()
-    result = runner.invoke(init, ["--template", "general"])
+    result = runner.invoke(init, ["--template", "sandbox"])
     assert result.exit_code == 0
     assert "Initialized" in result.output
-    mockCopy.assert_called_once_with("general")
+    mockCopy.assert_called_once_with("sandbox")
 
 
 # =======================================================================

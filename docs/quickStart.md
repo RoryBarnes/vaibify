@@ -16,16 +16,19 @@ vaibify init
 This creates a `vaibify.yml` configuration file and a `container.conf`
 repository list. Choose a template when prompted:
 
-| Template              | Description                              |
-|-----------------------|------------------------------------------|
-| `general`             | Empty starting point                     |
-| `reproducible-paper`  | LaTeX manuscript with figures pipeline   |
+| Template     | Description                                       |
+|-------------|---------------------------------------------------|
+| `sandbox`   | No workflow. For exploration and interactive use.  |
+| `workflow`  | Pipeline steps for reproducible data analysis.    |
 
 Or specify a template directly:
 
 ```bash
-vaibify init --template general
+vaibify init --template sandbox
 ```
+
+See [Templates](templates.md) for details on each template and how to
+create your own.
 
 ## Build the Image
 
@@ -49,10 +52,10 @@ This launches the container in the background. To open a shell inside it:
 vaibify connect
 ```
 
-Or use the standalone script:
+Or use the shell alias (configured automatically on first run):
 
 ```bash
-connect_vc
+vaibify_connect
 ```
 
 ## Transfer Files
@@ -60,15 +63,21 @@ connect_vc
 Copy files into the container:
 
 ```bash
-vc_push localfile.txt .
-vc_push -r results/ project/
+vaibify push localfile.txt /workspace/localfile.txt
 ```
 
 Copy files out:
 
 ```bash
-vc_pull output.csv .
-vc_pull -r project/results/ ./backup/
+vaibify pull /workspace/output.csv ./output.csv
+```
+
+These commands work from any directory. When multiple projects are
+registered, specify the target with `--project/-p`:
+
+```bash
+vaibify connect -p my-project
+vaibify push -p my-project data.csv /workspace/data.csv
 ```
 
 ## Stop the Container

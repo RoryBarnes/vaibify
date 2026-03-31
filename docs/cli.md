@@ -27,7 +27,7 @@ vaibify init [--template NAME] [--force]
 
 | Option           | Description                                   |
 |------------------|-----------------------------------------------|
-| `--template`     | Template name: `general` or `reproducible-paper` |
+| `--template`     | Template name: `sandbox` or `workflow`            |
 | `--force`        | Overwrite existing configuration files         |
 
 Creates `vaibify.yml`, `container.conf`, and `workflow.json` in the current

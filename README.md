@@ -56,13 +56,13 @@ Data scientists increasingly rely on AI coding agents to build and iterate on an
 
 **Reproducibility** — Provenance tracking, Zenodo archival with DOI assignment, Overleaf figure sync, LaTeX annotation generation, and GitHub Actions workflow generation.
 
-**Templates** — Two project templates ship with Vaibify: `general` (blank slate) and `reproducible-paper` (LaTeX manuscript with automated figures).
+**Templates** — Two project templates ship with Vaibify: `sandbox` (no workflow, for exploration) and `workflow` (pipeline steps for reproducible analysis).
 
 ### Quick Start
 
 ```bash
-pip install vaibify[docker]
-vaibify init --template general
+pip install vaibify
+vaibify init --template workflow
 vaibify build
 vaibify start --gui
 ```

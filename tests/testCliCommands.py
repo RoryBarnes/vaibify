@@ -134,13 +134,13 @@ def test_flistAvailableTemplates_contains_known():
 
 
 def test_fsTemplatePath_returns_string():
-    sPath = fsTemplatePath("general")
+    sPath = fsTemplatePath("sandbox")
     assert isinstance(sPath, str)
-    assert "general" in sPath
+    assert "sandbox" in sPath
 
 
 def test_fsTemplatePath_is_absolute():
-    sPath = fsTemplatePath("general")
+    sPath = fsTemplatePath("sandbox")
     assert os.path.isabs(sPath)
 
 
