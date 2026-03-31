@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project Templates &mdash; Vaibify 0.1.dev157+gc0f8ef113.d20260331 documentation</title>
+  <title>Project Templates &mdash; Vaibify 0.1.dev158+gc46d5351e.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1af46b26"></script>
+      <script src="_static/documentation_options.js?v=1d7a5b6c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -53,8 +53,8 @@
 <li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Project Templates</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#general">general</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#reproducible-paper">reproducible-paper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sandbox">sandbox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#workflow">workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#creating-custom-templates">Creating Custom Templates</a></li>
 </ul>
 </li>
@@ -99,32 +99,48 @@ new project:</p>
 </div>
 <p>Each template creates three files in the current directory: <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>,
 <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>.</p>
-<section id="general">
-<h2>general<a class="headerlink" href="#general" title="Link to this heading"></a></h2>
-<p>A blank slate for any data science project. The configuration contains
-sensible defaults with no pre-configured repositories. Use this template
-when your project does not fit into one of the specialized categories.</p>
+<section id="sandbox">
+<h2>sandbox<a class="headerlink" href="#sandbox" title="Link to this heading"></a></h2>
+<p>An empty starting point for exploration, prototyping, and interactive use.
+No pipeline steps are defined — you work directly inside the container.</p>
 <p><strong>Includes:</strong></p>
 <ul class="simple">
 <li><p>Minimal <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> with default Python version and base image.</p></li>
 <li><p>Empty <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> (no repositories).</p></li>
 <li><p>Empty <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> (no pipeline steps).</p></li>
 </ul>
+<p>Use this template when you want a containerized environment without a
+predefined workflow.</p>
 </section>
-<section id="reproducible-paper">
-<h2>reproducible-paper<a class="headerlink" href="#reproducible-paper" title="Link to this heading"></a></h2>
-<p>Designed for writing academic papers with automated figure generation and
-archival. The pipeline builds figures from data, syncs them to Overleaf,
-and archives the results to Zenodo.</p>
+<section id="workflow">
+<h2>workflow<a class="headerlink" href="#workflow" title="Link to this heading"></a></h2>
+<p>A starting point for reproducible data analysis pipelines. Includes an
+example step with data generation and plotting commands that you replace
+with your own.</p>
 <p><strong>Includes:</strong></p>
 <ul class="simple">
-<li><p>Reproducibility block pre-configured with Zenodo sandbox and Overleaf
-sync paths.</p></li>
-<li><p>LaTeX enabled by default.</p></li>
-<li><p>Example <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> with steps for data generation, figure production,
-and LaTeX compilation.</p></li>
-<li><p>GitHub Actions workflow generation ready to go.</p></li>
+<li><p>Minimal <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> with default Python version and base image.</p></li>
+<li><p>Empty <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> (add your repositories).</p></li>
+<li><p>Example <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> with one step (<code class="docutils literal notranslate"><span class="pre">AnalyzeData</span></code>) that runs
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">runAnalysis.py</span></code> and <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">makePlot.py</span></code>.</p></li>
 </ul>
+<p>Use this template when your project follows a defined sequence of analysis
+steps that should be reproducible.</p>
+<p><strong>Adding LaTeX compilation:</strong> If you compile your manuscript inside the
+container rather than using an external tool like Overleaf, add a step
+to <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CompileManuscript&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tex&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bPlotOnly&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;saDataCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;saDataFiles&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;saPlotCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;latexmk -pdf manuscript.tex&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;saPlotFiles&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
 </section>
 <section id="creating-custom-templates">
 <h2>Creating Custom Templates<a class="headerlink" href="#creating-custom-templates" title="Link to this heading"></a></h2>

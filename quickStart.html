@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quick Start &mdash; Vaibify 0.1.dev157+gc0f8ef113.d20260331 documentation</title>
+  <title>Quick Start &mdash; Vaibify 0.1.dev158+gc46d5351e.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1af46b26"></script>
+      <script src="_static/documentation_options.js?v=1d7a5b6c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -113,18 +113,20 @@ repository list. Choose a template when prompted:</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">general</span></code></p></td>
-<td><p>Empty starting point</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sandbox</span></code></p></td>
+<td><p>No workflow. For exploration and interactive use.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reproducible-paper</span></code></p></td>
-<td><p>LaTeX manuscript with figures pipeline</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
+<td><p>Pipeline steps for reproducible data analysis.</p></td>
 </tr>
 </tbody>
 </table>
 <p>Or specify a template directly:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span>--template<span class="w"> </span>general
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span>--template<span class="w"> </span>sandbox
 </pre></div>
 </div>
+<p>See <a class="reference internal" href="templates.html"><span class="std std-doc">Templates</span></a> for details on each template and how to
+create your own.</p>
 </section>
 <section id="build-the-image">
 <h2>Build the Image<a class="headerlink" href="#build-the-image" title="Link to this heading"></a></h2>
@@ -144,21 +146,25 @@ rebuild is only required when <code class="docutils literal notranslate"><span c
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect
 </pre></div>
 </div>
-<p>Or use the standalone script:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>connect_vc
+<p>Or use the shell alias (configured automatically on first run):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify_connect
 </pre></div>
 </div>
 </section>
 <section id="transfer-files">
 <h2>Transfer Files<a class="headerlink" href="#transfer-files" title="Link to this heading"></a></h2>
 <p>Copy files into the container:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vc_push<span class="w"> </span>localfile.txt<span class="w"> </span>.
-vc_push<span class="w"> </span>-r<span class="w"> </span>results/<span class="w"> </span>project/
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>push<span class="w"> </span>localfile.txt<span class="w"> </span>/workspace/localfile.txt
 </pre></div>
 </div>
 <p>Copy files out:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vc_pull<span class="w"> </span>output.csv<span class="w"> </span>.
-vc_pull<span class="w"> </span>-r<span class="w"> </span>project/results/<span class="w"> </span>./backup/
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>pull<span class="w"> </span>/workspace/output.csv<span class="w"> </span>./output.csv
+</pre></div>
+</div>
+<p>These commands work from any directory. When multiple projects are
+registered, specify the target with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect<span class="w"> </span>-p<span class="w"> </span>my-project
+vaibify<span class="w"> </span>push<span class="w"> </span>-p<span class="w"> </span>my-project<span class="w"> </span>data.csv<span class="w"> </span>/workspace/data.csv
 </pre></div>
 </div>
 </section>

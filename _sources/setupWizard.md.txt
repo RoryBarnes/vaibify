@@ -34,8 +34,8 @@ Choose a starting template:
 
 ```
 Available templates:
-  [1] general             - Empty starting point
-  [2] reproducible-paper  - LaTeX manuscript with figures
+  [1] sandbox   - No workflow, for exploration and interactive use
+  [2] workflow  - Pipeline steps for reproducible data analysis
 Select template [1]:
 ```
 

@@ -11,11 +11,10 @@ vaibify init --template <name>
 Each template creates three files in the current directory: `vaibify.yml`,
 `container.conf`, and `workflow.json`.
 
-## general
+## sandbox
 
-A blank slate for any data science project. The configuration contains
-sensible defaults with no pre-configured repositories. Use this template
-when your project does not fit into one of the specialized categories.
+An empty starting point for exploration, prototyping, and interactive use.
+No pipeline steps are defined — you work directly inside the container.
 
 **Includes:**
 
@@ -23,20 +22,41 @@ when your project does not fit into one of the specialized categories.
 - Empty `container.conf` (no repositories).
 - Empty `workflow.json` (no pipeline steps).
 
-## reproducible-paper
+Use this template when you want a containerized environment without a
+predefined workflow.
 
-Designed for writing academic papers with automated figure generation and
-archival. The pipeline builds figures from data, syncs them to Overleaf,
-and archives the results to Zenodo.
+## workflow
+
+A starting point for reproducible data analysis pipelines. Includes an
+example step with data generation and plotting commands that you replace
+with your own.
 
 **Includes:**
 
-- Reproducibility block pre-configured with Zenodo sandbox and Overleaf
-  sync paths.
-- LaTeX enabled by default.
-- Example `workflow.json` with steps for data generation, figure production,
-  and LaTeX compilation.
-- GitHub Actions workflow generation ready to go.
+- Minimal `vaibify.yml` with default Python version and base image.
+- Empty `container.conf` (add your repositories).
+- Example `workflow.json` with one step (`AnalyzeData`) that runs
+  `python runAnalysis.py` and `python makePlot.py`.
+
+Use this template when your project follows a defined sequence of analysis
+steps that should be reproducible.
+
+**Adding LaTeX compilation:** If you compile your manuscript inside the
+container rather than using an external tool like Overleaf, add a step
+to `workflow.json`:
+
+```json
+{
+    "sName": "CompileManuscript",
+    "sDirectory": "tex",
+    "bEnabled": true,
+    "bPlotOnly": false,
+    "saDataCommands": [],
+    "saDataFiles": [],
+    "saPlotCommands": ["latexmk -pdf manuscript.tex"],
+    "saPlotFiles": []
+}
+```
 
 ## Creating Custom Templates
 
