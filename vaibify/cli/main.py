@@ -30,7 +30,7 @@ from .commandInit import init
 from .commandPublish import publish
 from .commandStart import start
 from .commandStatus import status
-from .configLoader import fconfigLoad
+from .configLoader import fconfigLoad, fconfigResolveProject
 
 
 def _fnEnsureFirstTimeSetup():
@@ -114,9 +114,13 @@ def stop():
 
 
 @main.command("connect")
-def connect():
+@click.option(
+    "--project", "-p", default=None,
+    help="Project name (optional if only one project exists).",
+)
+def connect(project):
     """Open a shell inside the running container."""
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(project)
     sUser = configProject.sContainerUser
     sName = configProject.sProjectName
     subprocess.run(
@@ -179,22 +183,30 @@ def gui():
 
 
 @main.command("push")
+@click.option(
+    "--project", "-p", default=None,
+    help="Project name (optional if only one project exists).",
+)
 @click.argument("source")
 @click.argument("destination")
-def push(source, destination):
+def push(project, source, destination):
     """Push files from the host into the container workspace."""
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(project)
     from vaibify.docker.fileTransfer import fnPushToContainer
     fnPushToContainer(configProject.sProjectName, source, destination)
     click.echo(f"Pushed {source} -> {destination}")
 
 
 @main.command("pull")
+@click.option(
+    "--project", "-p", default=None,
+    help="Project name (optional if only one project exists).",
+)
 @click.argument("source")
 @click.argument("destination")
-def pull(source, destination):
+def pull(project, source, destination):
     """Pull files from the container workspace to the host."""
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(project)
     from vaibify.docker.fileTransfer import fnPullFromContainer
     fnPullFromContainer(configProject.sProjectName, source, destination)
     click.echo(f"Pulled {source} -> {destination}")
