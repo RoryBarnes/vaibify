@@ -33,6 +33,21 @@ from .commandStatus import status
 from .configLoader import fconfigLoad
 
 
+def _fnEnsureFirstTimeSetup():
+    """Run shell setup on first invocation; never block the CLI."""
+    try:
+        from vaibify.install.shellSetup import (
+            fbIsSetupComplete, fnRunFirstTimeSetup,
+        )
+        if not fbIsSetupComplete():
+            fnRunFirstTimeSetup()
+    except Exception:
+        pass
+
+
+_fnEnsureFirstTimeSetup()
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(package_name="vaibify")
 @click.option(
