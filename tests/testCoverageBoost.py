@@ -583,7 +583,7 @@ def test_delete_generated_test(clientHttp):
 def test_generate_test_no_claude(clientHttp):
     """POST generate-test without Claude should return bNeedsFallback."""
     _fnConnectToContainer(clientHttp)
-    dictPayload = {"bUseApi": False}
+    dictPayload = {"bUseApi": False, "bDeterministic": False}
     responseHttp = clientHttp.post(
         f"/api/steps/{S_CONTAINER_ID}/0/generate-test",
         json=dictPayload,

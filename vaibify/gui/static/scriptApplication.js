@@ -328,30 +328,38 @@ const PipeleyenApp = (function () {
     }
 
     async function fnRebuildContainer(sName) {
-        if (!confirm("Rebuild will stop and rebuild the container. Continue?"))
-            return;
-        await fnStopContainer(sName);
-        await fnBuildContainer(sName);
+        fnShowConfirmModal(
+            "Rebuild Container",
+            "Rebuild will stop and rebuild the container. Continue?",
+            async function () {
+                await fnStopContainer(sName);
+                await fnBuildContainer(sName);
+            }
+        );
     }
 
     async function fnRemoveContainer(sName) {
-        if (!confirm("Remove '" + sName + "' from the container list?"))
-            return;
-        try {
-            var response = await fetch(
-                "/api/registry/" + encodeURIComponent(sName),
-                { method: "DELETE" }
-            );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Remove failed", "error");
-                return;
+        fnShowConfirmModal(
+            "Remove Container",
+            "Remove '" + sName + "' from the container list?",
+            async function () {
+                try {
+                    var response = await fetch(
+                        "/api/registry/" + encodeURIComponent(sName),
+                        { method: "DELETE" }
+                    );
+                    if (!response.ok) {
+                        var detail = await response.json();
+                        fnShowToast(detail.detail || "Remove failed", "error");
+                        return;
+                    }
+                    fnShowToast("Container removed", "success");
+                } catch (error) {
+                    fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+                }
+                fnLoadContainers();
             }
-            fnShowToast("Container removed", "success");
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
-        fnLoadContainers();
+        );
     }
 
     /* --- Directory Browser --- */
@@ -597,15 +605,25 @@ const PipeleyenApp = (function () {
         });
     }
 
-    async function fnCreateNewWorkflow() {
+    function fnCreateNewWorkflow() {
         if (!_sSelectedContainerId) return;
-        var sName = prompt("Workflow display name:", "My Workflow");
-        if (!sName) return;
-        var sFileName = prompt(
-            "Filename (no spaces, .json added automatically):",
-            sName.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        fnShowInputModal(
+            "Workflow display name",
+            "My Workflow",
+            function (sName) {
+                var sDefault = sName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+                fnShowInputModal(
+                    "Filename (no spaces, .json added automatically)",
+                    sDefault,
+                    function (sFileName) {
+                        _fnSubmitNewWorkflow(sName, sFileName);
+                    }
+                );
+            }
         );
-        if (!sFileName) return;
+    }
+
+    async function _fnSubmitNewWorkflow(sName, sFileName) {
         try {
             var response = await fetch(
                 "/api/workflows/" + _sSelectedContainerId + "/create",
@@ -3186,9 +3204,10 @@ const PipeleyenApp = (function () {
             "Moved to " + dictWorkflow.listSteps[iTargetStep].sName,
             "success"
         );
-        alert(
+        fnShowToast(
             "Modifying pipeline. Ensure that all subsequent " +
-            "steps properly reference the new pipeline."
+            "steps properly reference the new pipeline.",
+            "warning"
         );
     }
 
@@ -5314,7 +5333,8 @@ const PipeleyenApp = (function () {
             );
         } else {
             el.textContent = sMessage;
-            setTimeout(function () { el.remove(); }, 4000);
+            var iTimeout = sType === "warning" ? 8000 : 4000;
+            setTimeout(function () { el.remove(); }, iTimeout);
         }
         document.getElementById("toastContainer").appendChild(el);
     }

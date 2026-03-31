@@ -358,3 +358,195 @@ def testHostDirectoriesSortsHiddenLast(
         e["sName"] for e in response.json()["listEntries"]
     ]
     assert listNames == ["aardvark", "zebra", ".hidden"]
+
+
+# -----------------------------------------------------------------------
+# Build/Start/Stop success paths (lines 107-180)
+# -----------------------------------------------------------------------
+
+
+def testBuildContainerSuccess(fixtureClient, tmp_path, monkeypatch):
+    """Lines 107-112: successful build returns 200."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "build-proj")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        lambda dictProject: None,
+    )
+    response = fixtureClient.post(
+        "/api/containers/build-proj/build",
+    )
+    assert response.status_code == 200
+    assert response.json()["bSuccess"] is True
+
+
+def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
+    """Lines 109-111: build failure returns 500."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "fail-build")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        lambda dictProject: (_ for _ in ()).throw(
+            RuntimeError("build error")
+        ),
+    )
+    response = fixtureClient.post(
+        "/api/containers/fail-build/build",
+    )
+    assert response.status_code == 500
+
+
+def testStartContainerSuccess(fixtureClient, tmp_path, monkeypatch):
+    """Lines 135-143: successful start returns container ID."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "start-proj")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fsExecuteStart",
+        lambda dictProject: "abc123",
+    )
+    response = fixtureClient.post(
+        "/api/containers/start-proj/start",
+    )
+    assert response.status_code == 200
+    assert response.json()["sContainerId"] == "abc123"
+
+
+def testStartContainerFailure(fixtureClient, tmp_path, monkeypatch):
+    """Lines 137-139: start failure returns 500."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "fail-start")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fsExecuteStart",
+        lambda dictProject: (_ for _ in ()).throw(
+            RuntimeError("start error")
+        ),
+    )
+    response = fixtureClient.post(
+        "/api/containers/fail-start/start",
+    )
+    assert response.status_code == 500
+
+
+def testStopContainerSuccess(fixtureClient, tmp_path, monkeypatch):
+    """Lines 168-174: successful stop returns 200."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "stop-proj")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteStop",
+        lambda sContainerName: None,
+    )
+    response = fixtureClient.post(
+        "/api/containers/stop-proj/stop",
+    )
+    assert response.status_code == 200
+    assert response.json()["bSuccess"] is True
+
+
+def testStopContainerFailure(fixtureClient, tmp_path, monkeypatch):
+    """Lines 171-173: stop failure returns 500."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "fail-stop")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteStop",
+        lambda sContainerName: (_ for _ in ()).throw(
+            RuntimeError("stop error")
+        ),
+    )
+    response = fixtureClient.post(
+        "/api/containers/fail-stop/stop",
+    )
+    assert response.status_code == 500
+
+
+# -----------------------------------------------------------------------
+# Docker discovery exception (lines 208-209)
+# -----------------------------------------------------------------------
+
+
+def testDiscoverContainersDockerException(tmp_path, monkeypatch):
+    """Lines 208-209: Docker exception returns empty lists."""
+    from unittest.mock import MagicMock
+    mockDocker = MagicMock()
+    mockDocker.flistGetRunningContainers.side_effect = RuntimeError("boom")
+    client = _fClientWithDocker(mockDocker)
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.flistGetAllProjectsWithStatus",
+        lambda: [],
+    )
+    response = client.get("/api/registry")
+    assert response.status_code == 200
+    assert response.json()["listContainers"] == []
+
+
+# -----------------------------------------------------------------------
+# _fbIsVaibifyContainer exception (lines 237-238)
+# -----------------------------------------------------------------------
+
+
+def testIsVaibifyContainerExceptionReturnsFalse(monkeypatch):
+    """Lines 237-238: exception in exec returns False."""
+    from unittest.mock import MagicMock
+    from vaibify.gui.registryRoutes import _fbIsVaibifyContainer
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.side_effect = RuntimeError("err")
+    bResult = _fbIsVaibifyContainer(
+        mockDocker, {"sContainerId": "x"},
+    )
+    assert bResult is False
+
+
+# -----------------------------------------------------------------------
+# host-directories: nonexistent path (line 317)
+# -----------------------------------------------------------------------
+
+
+def testHostDirectoriesNonexistentPath(fixtureClient, tmp_path, monkeypatch):
+    """Line 317: nonexistent directory returns 404."""
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    sNonexistent = str(tmp_path / "does_not_exist")
+    response = fixtureClient.get(
+        "/api/host-directories",
+        params={"sPath": sNonexistent},
+    )
+    assert response.status_code == 404
+
+
+# -----------------------------------------------------------------------
+# host-directories: permission error (lines 342-343)
+# -----------------------------------------------------------------------
+
+
+def testHostDirectoriesPermissionError(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Lines 342-343: PermissionError raises 403."""
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    monkeypatch.setattr(
+        os, "scandir",
+        lambda sPath: (_ for _ in ()).throw(
+            PermissionError("denied")
+        ),
+    )
+    response = fixtureClient.get(
+        "/api/host-directories",
+        params={"sPath": str(tmp_path)},
+    )
+    assert response.status_code == 403

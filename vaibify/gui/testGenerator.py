@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import posixpath
 import re
 
@@ -502,9 +503,14 @@ def fdictParseQuantitativeJson(sRawOutput):
 
 def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
     """Write a test file to the container and return result dict."""
-    connectionDocker.fnWriteFile(
-        sContainerId, sFilePath, sCode.encode("utf-8"),
-    )
+    try:
+        connectionDocker.fnWriteFile(
+            sContainerId, sFilePath, sCode.encode("utf-8"),
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to write test file {sFilePath}: {exc}"
+        ) from exc
     sFilename = posixpath.basename(sFilePath)
     return {
         "sFilePath": sFilePath,
@@ -732,7 +738,15 @@ def _fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
 
 def _fLoadNumpyValue(sFullPath, dictAccess):
     """Load a value from a numpy file."""
-    daData = np.load(sFullPath, allow_pickle=False)
+    try:
+        daData = np.load(sFullPath, allow_pickle=False)
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as npy: {exc}") from exc
+    return _fExtractArrayValue(daData, dictAccess)
+
+
+def _fExtractArrayValue(daData, dictAccess):
+    """Extract a scalar from an array by aggregate or index."""
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate == "mean":
         return float(daData.mean())
@@ -746,18 +760,13 @@ def _fLoadNumpyValue(sFullPath, dictAccess):
 
 def _fLoadNpzValue(sFullPath, dictAccess):
     """Load a value from a numpy .npz archive."""
-    archiveNpz = np.load(sFullPath, allow_pickle=False)
+    try:
+        archiveNpz = np.load(sFullPath, allow_pickle=False)
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as npz: {exc}") from exc
     sKey = dictAccess.get("key", list(archiveNpz.files)[0])
     daData = archiveNpz[sKey]
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate == "mean":
-        return float(daData.mean())
-    if sAggregate == "min":
-        return float(daData.min())
-    if sAggregate == "max":
-        return float(daData.max())
-    listIndices = dictAccess.get("listIndices", [-1])
-    return float(daData[tuple(listIndices)])
+    return _fExtractArrayValue(daData, dictAccess)
 
 
 def _fLoadKeyvalueValue(sFullPath, dictAccess):
@@ -806,8 +815,19 @@ def _ftSplitHeaderAndData(listDataLines):
 
 def _fLoadJsonValue(sFullPath, dictAccess):
     """Load a value from a JSON file."""
-    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
-        dictData = json.load(fileHandle)
+    try:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+            dictData = json.load(fileHandle)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Failed to load {sFullPath} as json: {exc}") from exc
+    try:
+        return _fNavigateJsonValue(dictData, dictAccess)
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError(f"Failed to access json path in {sFullPath}: {exc}") from exc
+
+
+def _fNavigateJsonValue(dictData, dictAccess):
+    """Traverse a parsed JSON structure and return a scalar."""
     sKey = dictAccess.get("key", "")
     listKeys = sKey.split(".") if sKey else []
     value = dictData
@@ -831,33 +851,34 @@ def _fLoadCsvValue(sFullPath, dictAccess):
     """Load a value from a CSV file."""
     import csv
     sColumn = dictAccess.get("column", "")
-    with open(sFullPath, newline="", encoding="utf-8", errors="replace") as fileHandle:
-        reader = csv.DictReader(fileHandle)
-        listRows = list(reader)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate and sColumn:
-        daValues = np.array([float(r[sColumn]) for r in listRows])
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [-1])
-    iIndex = listIndices[0] if listIndices else -1
-    return float(listRows[iIndex][sColumn])
+    try:
+        with open(sFullPath, newline="", encoding="utf-8", errors="replace") as fileHandle:
+            reader = csv.DictReader(fileHandle)
+            listRows = list(reader)
+    except csv.Error as exc:
+        raise ValueError(f"Failed to load {sFullPath} as csv: {exc}") from exc
+    try:
+        sAggregate = dictAccess.get("sAggregate")
+        if sAggregate and sColumn:
+            daValues = np.array([float(r[sColumn]) for r in listRows])
+            return float(getattr(daValues, sAggregate)())
+        listIndices = dictAccess.get("listIndices", [-1])
+        iIndex = listIndices[0] if listIndices else -1
+        return float(listRows[iIndex][sColumn])
+    except (KeyError, IndexError, ValueError) as exc:
+        raise ValueError(f"Failed to access csv column in {sFullPath}: {exc}") from exc
 
 
 def _fLoadHdf5Value(sFullPath, dictAccess):
     """Load a value from an HDF5 file."""
     import h5py
     sDataset = dictAccess.get("dataset", "")
-    with h5py.File(sFullPath, "r") as fileHdf5:
-        daData = np.array(fileHdf5[sDataset])
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate == "mean":
-        return float(daData.mean())
-    if sAggregate == "min":
-        return float(daData.min())
-    if sAggregate == "max":
-        return float(daData.max())
-    listIndices = dictAccess.get("listIndices", [-1])
-    return float(daData[tuple(listIndices)])
+    try:
+        with h5py.File(sFullPath, "r") as fileHdf5:
+            daData = np.array(fileHdf5[sDataset])
+    except (OSError, KeyError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as hdf5: {exc}") from exc
+    return _fExtractArrayValue(daData, dictAccess)
 
 
 def _fLoadWhitespaceValue(sFullPath, dictAccess):
@@ -865,16 +886,22 @@ def _fLoadWhitespaceValue(sFullPath, dictAccess):
     sColumn = dictAccess.get("column", "")
     listIndices = dictAccess.get("listIndices", [-1])
     iIndex = listIndices[0] if listIndices else -1
-    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
-        listRawLines = fileHandle.readlines()
+    try:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+            listRawLines = fileHandle.readlines()
+    except OSError as exc:
+        raise ValueError(f"Failed to load {sFullPath} as whitespace: {exc}") from exc
     listDataLines = _flistFilterDataLines(listRawLines)
     sHeader, listDataRows = _ftSplitHeaderAndData(listDataLines)
     listColumns = sHeader.split() if sHeader else []
     listRows = [sRow.split() for sRow in listDataRows]
-    if sColumn and listColumns:
-        iColumn = listColumns.index(sColumn)
-    else:
-        iColumn = listIndices[1] if len(listIndices) > 1 else 0
+    try:
+        if sColumn and listColumns:
+            iColumn = listColumns.index(sColumn)
+        else:
+            iColumn = listIndices[1] if len(listIndices) > 1 else 0
+    except ValueError as exc:
+        raise ValueError(f"Column {sColumn!r} not found in {sFullPath}") from exc
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
         daValues = np.array([float(r[iColumn]) for r in listRows])
@@ -885,18 +912,24 @@ def _fLoadWhitespaceValue(sFullPath, dictAccess):
 def _fLoadJsonlValue(sFullPath, dictAccess):
     """Load a value from a JSON Lines file."""
     import json as jsonMod
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listRecords = [jsonMod.loads(sLine) for sLine in fh if sLine.strip()]
+    try:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fh:
+            listRecords = [jsonMod.loads(sLine) for sLine in fh if sLine.strip()]
+    except jsonMod.JSONDecodeError as exc:
+        raise ValueError(f"Failed to load {sFullPath} as jsonl: {exc}") from exc
     sKey = dictAccess.get("key", "")
     sAggregate = dictAccess.get("sAggregate")
-    if sAggregate and sKey:
-        daValues = np.array([float(r[sKey]) for r in listRecords])
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    iRow = listIndices[0] if listIndices else 0
-    if sKey:
-        return float(listRecords[iRow][sKey])
-    return float(listRecords[iRow])
+    try:
+        if sAggregate and sKey:
+            daValues = np.array([float(r[sKey]) for r in listRecords])
+            return float(getattr(daValues, sAggregate)())
+        listIndices = dictAccess.get("listIndices", [0])
+        iRow = listIndices[0] if listIndices else 0
+        if sKey:
+            return float(listRecords[iRow][sKey])
+        return float(listRecords[iRow])
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError(f"Failed to access jsonl data in {sFullPath}: {exc}") from exc
 
 
 def _fLoadExcelValue(sFullPath, dictAccess):
@@ -905,20 +938,26 @@ def _fLoadExcelValue(sFullPath, dictAccess):
         import openpyxl
     except ImportError:
         raise ImportError("openpyxl is required to load Excel files")
-    workbook = openpyxl.load_workbook(sFullPath, read_only=True)
-    sheet = workbook.active
-    listRows = list(sheet.iter_rows(values_only=True))
-    workbook.close()
-    listHeaders = [str(c) if c else f"col{i}" for i, c in enumerate(listRows[0])]
-    sColumn = dictAccess.get("column", listHeaders[0])
-    iCol = listHeaders.index(sColumn)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        daValues = np.array([float(r[iCol]) for r in listRows[1:]])
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [-1])
-    iRow = listIndices[0] if listIndices else -1
-    return float(listRows[1:][iRow][iCol])
+    try:
+        workbook = openpyxl.load_workbook(sFullPath, read_only=True)
+        sheet = workbook.active
+        listRows = list(sheet.iter_rows(values_only=True))
+        workbook.close()
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as excel: {exc}") from exc
+    try:
+        listHeaders = [str(c) if c else f"col{i}" for i, c in enumerate(listRows[0])]
+        sColumn = dictAccess.get("column", listHeaders[0])
+        iCol = listHeaders.index(sColumn)
+        sAggregate = dictAccess.get("sAggregate")
+        if sAggregate:
+            daValues = np.array([float(r[iCol]) for r in listRows[1:]])
+            return float(getattr(daValues, sAggregate)())
+        listIndices = dictAccess.get("listIndices", [-1])
+        iRow = listIndices[0] if listIndices else -1
+        return float(listRows[1:][iRow][iCol])
+    except (KeyError, IndexError, ValueError, TypeError) as exc:
+        raise ValueError(f"Failed to access excel data in {sFullPath}: {exc}") from exc
 
 
 def _fLoadFitsValue(sFullPath, dictAccess):
@@ -931,12 +970,17 @@ def _fLoadFitsValue(sFullPath, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     sColumn = dictAccess.get("column", "")
     listIndices = dictAccess.get("listIndices", [0])
-    with fitsLib.open(sFullPath) as hduList:
-        hdu = hduList[iHdu]
-        if sColumn and hasattr(hdu, "columns"):
-            daData = np.array(hdu.data[sColumn], dtype=float)
-        else:
-            daData = np.array(hdu.data, dtype=float).flatten()
+    try:
+        with fitsLib.open(sFullPath) as hduList:
+            hdu = hduList[iHdu]
+            if hdu.data is None:
+                raise ValueError(f"HDU {iHdu} has no data")
+            if sColumn and hasattr(hdu, "columns"):
+                daData = np.array(hdu.data[sColumn], dtype=float)
+            else:
+                daData = np.array(hdu.data, dtype=float).flatten()
+    except (OSError, KeyError, TypeError, IndexError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as fits: {exc}") from exc
     if sAggregate:
         return float(getattr(daData, sAggregate)())
     iDataIdx = listIndices[1] if len(listIndices) > 1 else 0
@@ -949,18 +993,19 @@ def _fLoadMatlabValue(sFullPath, dictAccess):
         from scipy.io import loadmat
     except ImportError:
         raise ImportError("scipy is required to load MATLAB files")
-    dictMat = loadmat(sFullPath)
+    try:
+        dictMat = loadmat(sFullPath)
+    except (NotImplementedError, OSError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as matlab: {exc}") from exc
     sKey = dictAccess.get("key", "")
     if not sKey:
         listKeys = [k for k in dictMat if not k.startswith("__")]
         sKey = listKeys[0]
-    daData = np.array(dictMat[sKey], dtype=float).flatten()
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daData, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    iIdx = listIndices[0] if listIndices else 0
-    return float(daData[iIdx])
+    try:
+        daData = np.array(dictMat[sKey], dtype=float).flatten()
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"Failed to access matlab variable in {sFullPath}: {exc}") from exc
+    return _fExtractArrayValue(daData, dictAccess)
 
 
 def _fLoadParquetValue(sFullPath, dictAccess):
@@ -969,15 +1014,16 @@ def _fLoadParquetValue(sFullPath, dictAccess):
         import pyarrow.parquet as pq
     except ImportError:
         raise ImportError("pyarrow is required to load Parquet files")
-    table = pq.read_table(sFullPath)
-    sColumn = dictAccess.get("column", table.column_names[0])
-    daValues = table.column(sColumn).to_numpy().astype(float)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(np, sAggregate)(daValues))
-    listIndices = dictAccess.get("listIndices", [-1])
-    iIdx = listIndices[0] if listIndices else -1
-    return float(daValues[iIdx])
+    try:
+        table = pq.read_table(sFullPath)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as parquet: {exc}") from exc
+    try:
+        sColumn = dictAccess.get("column", table.column_names[0])
+        daValues = table.column(sColumn).to_numpy().astype(float)
+    except (KeyError, ValueError, TypeError) as exc:
+        raise ValueError(f"Failed to access parquet column in {sFullPath}: {exc}") from exc
+    return _fExtractArrayValue(daValues, dictAccess)
 
 
 def _fLoadImageValue(sFullPath, dictAccess):
@@ -986,12 +1032,11 @@ def _fLoadImageValue(sFullPath, dictAccess):
         from PIL import Image
     except ImportError:
         raise ImportError("Pillow is required to load image files")
-    daPixels = np.array(Image.open(sFullPath), dtype=float)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daPixels, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daPixels.flatten()[listIndices[0]])
+    try:
+        daPixels = np.array(Image.open(sFullPath), dtype=float)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as image: {exc}") from exc
+    return _fExtractArrayValue(daPixels.flatten(), dictAccess)
 
 
 def _fLoadFastaValue(sFullPath, dictAccess):
@@ -1181,7 +1226,10 @@ def _fLoadBamValue(sFullPath, dictAccess):
         import pysam
     except ImportError:
         raise ImportError("pysam is required to load BAM files")
-    samfile = pysam.AlignmentFile(sFullPath, "rb")
+    try:
+        samfile = pysam.AlignmentFile(sFullPath, "rb")
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as bam: {exc}") from exc
     listValues = []
     sKey = dictAccess.get("key", "mapq")
     for read in samfile.fetch(until_eof=True):
@@ -1191,11 +1239,7 @@ def _fLoadBamValue(sFullPath, dictAccess):
             listValues.append(float(read.template_length))
     samfile.close()
     daValues = np.array(listValues, dtype=float)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daValues[listIndices[0]])
+    return _fExtractArrayValue(daValues, dictAccess)
 
 
 def _fLoadFortranValue(sFullPath, dictAccess):
@@ -1204,7 +1248,10 @@ def _fLoadFortranValue(sFullPath, dictAccess):
         from scipy.io import FortranFile
     except ImportError:
         raise ImportError("scipy is required to load FORTRAN binary files")
-    fortranFile = FortranFile(sFullPath, "r")
+    try:
+        fortranFile = FortranFile(sFullPath, "r")
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as fortran: {exc}") from exc
     listRecords = []
     try:
         while True:
@@ -1212,14 +1259,12 @@ def _fLoadFortranValue(sFullPath, dictAccess):
     except Exception:
         pass
     fortranFile.close()
+    if not listRecords:
+        raise ValueError(f"No records found in {sFullPath}")
     sKey = dictAccess.get("key", "")
     iRecord = int(sKey) if sKey.isdigit() else 0
     daData = listRecords[iRecord]
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daData, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daData[listIndices[0]])
+    return _fExtractArrayValue(daData, dictAccess)
 
 
 def _fLoadSpssValue(sFullPath, dictAccess):
@@ -1228,19 +1273,25 @@ def _fLoadSpssValue(sFullPath, dictAccess):
         import pyreadstat
     except ImportError:
         raise ImportError("pyreadstat is required to load SPSS files")
-    dfData, _ = pyreadstat.read_sav(sFullPath)
-    return _fExtractDataframeValue(dfData, dictAccess)
+    try:
+        dfData, _ = pyreadstat.read_sav(sFullPath)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as spss: {exc}") from exc
+    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
-def _fExtractDataframeValue(dfData, dictAccess):
+def _fExtractDataframeValue(dfData, dictAccess, sFullPath=""):
     """Extract a value from a pandas DataFrame."""
-    sColumn = dictAccess.get("column", dfData.columns[0])
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(dfData[sColumn].astype(float), sAggregate)())
-    listIndices = dictAccess.get("listIndices", [-1])
-    iRow = listIndices[0] if listIndices else -1
-    return float(dfData[sColumn].iloc[iRow])
+    try:
+        sColumn = dictAccess.get("column", dfData.columns[0])
+        sAggregate = dictAccess.get("sAggregate")
+        if sAggregate:
+            return float(getattr(dfData[sColumn].astype(float), sAggregate)())
+        listIndices = dictAccess.get("listIndices", [-1])
+        iRow = listIndices[0] if listIndices else -1
+        return float(dfData[sColumn].iloc[iRow])
+    except (KeyError, IndexError, ValueError, TypeError) as exc:
+        raise ValueError(f"Failed to access dataframe column in {sFullPath}: {exc}") from exc
 
 
 def _fLoadStataValue(sFullPath, dictAccess):
@@ -1249,8 +1300,11 @@ def _fLoadStataValue(sFullPath, dictAccess):
         import pyreadstat
     except ImportError:
         raise ImportError("pyreadstat is required to load Stata files")
-    dfData, _ = pyreadstat.read_dta(sFullPath)
-    return _fExtractDataframeValue(dfData, dictAccess)
+    try:
+        dfData, _ = pyreadstat.read_dta(sFullPath)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as stata: {exc}") from exc
+    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
 def _fLoadSasValue(sFullPath, dictAccess):
@@ -1259,8 +1313,11 @@ def _fLoadSasValue(sFullPath, dictAccess):
         import pyreadstat
     except ImportError:
         raise ImportError("pyreadstat is required to load SAS files")
-    dfData, _ = pyreadstat.read_sas7bdat(sFullPath)
-    return _fExtractDataframeValue(dfData, dictAccess)
+    try:
+        dfData, _ = pyreadstat.read_sas7bdat(sFullPath)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as sas: {exc}") from exc
+    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
 def _fLoadRdataValue(sFullPath, dictAccess):
@@ -1269,10 +1326,13 @@ def _fLoadRdataValue(sFullPath, dictAccess):
         import pyreadr
     except ImportError:
         raise ImportError("pyreadr is required to load R data files")
-    dictFrames = pyreadr.read_r(sFullPath)
+    try:
+        dictFrames = pyreadr.read_r(sFullPath)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as rdata: {exc}") from exc
     sKey = dictAccess.get("key", list(dictFrames.keys())[0])
     dfData = dictFrames[sKey]
-    return _fExtractDataframeValue(dfData, dictAccess)
+    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
 def _fLoadVotableValue(sFullPath, dictAccess):
@@ -1281,15 +1341,17 @@ def _fLoadVotableValue(sFullPath, dictAccess):
         from astropy.io.votable import parse as votableParse
     except ImportError:
         raise ImportError("astropy is required to load VOTable files")
-    votable = votableParse(sFullPath)
-    table = votable.get_first_table().to_table()
-    sColumn = dictAccess.get("column", table.colnames[0])
-    daValues = np.array(table[sColumn], dtype=float)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [-1])
-    return float(daValues[listIndices[0]])
+    try:
+        votable = votableParse(sFullPath)
+        table = votable.get_first_table().to_table()
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as votable: {exc}") from exc
+    try:
+        sColumn = dictAccess.get("column", table.colnames[0])
+        daValues = np.array(table[sColumn], dtype=float)
+    except (KeyError, ValueError, TypeError) as exc:
+        raise ValueError(f"Failed to access votable column in {sFullPath}: {exc}") from exc
+    return _fExtractArrayValue(daValues, dictAccess)
 
 
 def _fLoadIpacValue(sFullPath, dictAccess):
@@ -1298,14 +1360,16 @@ def _fLoadIpacValue(sFullPath, dictAccess):
         from astropy.io import ascii as astropyAscii
     except ImportError:
         raise ImportError("astropy is required to load IPAC table files")
-    table = astropyAscii.read(sFullPath, format="ipac")
-    sColumn = dictAccess.get("column", table.colnames[0])
-    daValues = np.array(table[sColumn], dtype=float)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [-1])
-    return float(daValues[listIndices[0]])
+    try:
+        table = astropyAscii.read(sFullPath, format="ipac")
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as ipac: {exc}") from exc
+    try:
+        sColumn = dictAccess.get("column", table.colnames[0])
+        daValues = np.array(table[sColumn], dtype=float)
+    except (KeyError, ValueError, TypeError) as exc:
+        raise ValueError(f"Failed to access ipac column in {sFullPath}: {exc}") from exc
+    return _fExtractArrayValue(daValues, dictAccess)
 
 
 def _fLoadPcapValue(sFullPath, dictAccess):
@@ -1314,14 +1378,13 @@ def _fLoadPcapValue(sFullPath, dictAccess):
         from scapy.all import rdpcap
     except ImportError:
         raise ImportError("scapy is required to load PCAP files")
-    listPackets = rdpcap(sFullPath)
+    try:
+        listPackets = rdpcap(sFullPath)
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as pcap: {exc}") from exc
     listLengths = [float(len(p)) for p in listPackets]
     daValues = np.array(listLengths, dtype=float)
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daValues[listIndices[0]])
+    return _fExtractArrayValue(daValues, dictAccess)
 
 
 def _fLoadVtkValue(sFullPath, dictAccess):
@@ -1330,29 +1393,30 @@ def _fLoadVtkValue(sFullPath, dictAccess):
         import pyvista
     except ImportError:
         raise ImportError("pyvista is required to load VTK files")
-    mesh = pyvista.read(sFullPath)
+    try:
+        mesh = pyvista.read(sFullPath)
+    except (FileNotFoundError, Exception) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as vtk: {exc}") from exc
     sKey = dictAccess.get("key", "")
     if not sKey and mesh.array_names:
         sKey = mesh.array_names[0]
-    daData = np.array(mesh[sKey], dtype=float).flatten()
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daData, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daData[listIndices[0]])
+    try:
+        daData = np.array(mesh[sKey], dtype=float).flatten()
+    except (KeyError, ValueError, TypeError) as exc:
+        raise ValueError(f"Failed to access vtk array in {sFullPath}: {exc}") from exc
+    return _fExtractArrayValue(daData, dictAccess)
 
 
 def _fLoadCgnsValue(sFullPath, dictAccess):
     """Load a value from a CGNS file (HDF5 under the hood)."""
     import h5py
     sDataset = dictAccess.get("dataset", "")
-    with h5py.File(sFullPath, "r") as fileHdf5:
-        daData = np.array(fileHdf5[sDataset])
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daData.flatten(), sAggregate)())
-    listIndices = dictAccess.get("listIndices", [-1])
-    return float(daData.flatten()[tuple(listIndices)])
+    try:
+        with h5py.File(sFullPath, "r") as fileHdf5:
+            daData = np.array(fileHdf5[sDataset])
+    except (OSError, KeyError) as exc:
+        raise ValueError(f"Failed to load {sFullPath} as cgns: {exc}") from exc
+    return _fExtractArrayValue(daData.flatten(), dictAccess)
 
 
 def _fLoadSafetensorsValue(sFullPath, dictAccess):
@@ -1362,15 +1426,14 @@ def _fLoadSafetensorsValue(sFullPath, dictAccess):
     except ImportError:
         raise ImportError("safetensors is required to load safetensors files")
     sKey = dictAccess.get("key", "")
-    with safe_open(sFullPath, framework="numpy") as fh:
-        if not sKey:
-            sKey = list(fh.keys())[0]
-        daData = fh.get_tensor(sKey).astype(float).flatten()
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daData, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daData[listIndices[0]])
+    try:
+        with safe_open(sFullPath, framework="numpy") as fh:
+            if not sKey:
+                sKey = list(fh.keys())[0]
+            daData = fh.get_tensor(sKey).astype(float).flatten()
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as safetensors: {exc}") from exc
+    return _fExtractArrayValue(daData, dictAccess)
 
 
 def _fLoadTfrecordValue(sFullPath, dictAccess):
@@ -1379,21 +1442,21 @@ def _fLoadTfrecordValue(sFullPath, dictAccess):
         from tfrecord.reader import tfrecord_iterator
     except ImportError:
         raise ImportError("tfrecord is required to load TFRecord files")
+    try:
+        listRecords = list(tfrecord_iterator(sFullPath))
+    except Exception as exc:
+        raise ValueError(f"Failed to load {sFullPath} as tfrecord: {exc}") from exc
     sKey = dictAccess.get("key", "")
-    listRecords = []
-    for record in tfrecord_iterator(sFullPath):
-        listRecords.append(record)
-    if sKey and listRecords:
-        daValues = np.array(
-            [float(r[sKey]) for r in listRecords], dtype=float,
-        )
-    else:
-        daValues = np.array([float(len(r)) for r in listRecords])
-    sAggregate = dictAccess.get("sAggregate")
-    if sAggregate:
-        return float(getattr(daValues, sAggregate)())
-    listIndices = dictAccess.get("listIndices", [0])
-    return float(daValues[listIndices[0]])
+    try:
+        if sKey and listRecords:
+            daValues = np.array(
+                [float(r[sKey]) for r in listRecords], dtype=float,
+            )
+        else:
+            daValues = np.array([float(len(r)) for r in listRecords])
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"Failed to access tfrecord key in {sFullPath}: {exc}") from exc
+    return _fExtractArrayValue(daValues, dictAccess)
 
 
 def _fdictLoadStandardsFile():
@@ -2584,7 +2647,26 @@ def _fsRunIntrospection(
         raise RuntimeError(
             f"Introspection failed (exit {iExitCode}): {sOutput}"
         )
-    return json.loads(sOutput)
+    return _flistParseIntrospectionOutput(sOutput)
+
+
+def _flistParseIntrospectionOutput(sOutput):
+    """Extract JSON from introspection output, ignoring non-JSON lines."""
+    sStripped = sOutput.strip()
+    try:
+        return json.loads(sStripped)
+    except json.JSONDecodeError:
+        pass
+    for sLine in reversed(sStripped.splitlines()):
+        sLine = sLine.strip()
+        if sLine.startswith("["):
+            try:
+                return json.loads(sLine)
+            except json.JSONDecodeError:
+                continue
+    raise ValueError(
+        f"Introspection output is not valid JSON: {sStripped[:200]}"
+    )
 
 
 def _fsGenerateIntegrityCode(listdictReports):
@@ -3571,10 +3653,18 @@ def fdictGenerateAllTestsDeterministic(
     sDirectory = dictStep.get("sDirectory", "")
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     listDataFiles = dictStep.get("saDataFiles", [])
+    if not listDataFiles:
+        logger.warning("No data files for step %d; generating minimal tests", iStepIndex)
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
     listdictReports = _fsRunIntrospection(
         connectionDocker, sContainerId, sDirectory, listDataFiles,
     )
+    bAllUnloadable = all(
+        not r.get("bLoadable") for r in listdictReports
+    )
+    if bAllUnloadable and listdictReports:
+        listErrors = [r.get("sError", "") for r in listdictReports]
+        logger.warning("All files unloadable: %s", listErrors)
     return _fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance,

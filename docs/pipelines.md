@@ -33,7 +33,10 @@ And these optional fields:
 |--------------------|--------------|---------|--------------------------------|
 | `bEnabled`         | boolean      | `true`  | Whether the step should run    |
 | `bPlotOnly`        | boolean      | `true`  | Step produces only plots       |
-| `saDataCommands`  | string array | `[]`    | Commands to run before saPlotCommands |
+| `bInteractive`     | boolean      | `false` | Pause pipeline for user input  |
+| `saDataCommands`   | string array | `[]`    | Commands to run before plots   |
+| `saDataFiles`      | string array | `[]`    | Output data files to verify    |
+| `saTestCommands`   | string array | `[]`    | Pytest commands for the step   |
 
 ## Example
 

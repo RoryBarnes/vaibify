@@ -249,3 +249,59 @@ def testWriteRegistryAtomicCleansUpOnReplaceError(
         rm._fnWriteRegistryAtomic({"listProjects": []})
     listTmpFiles = list(tmp_path.glob("*.tmp"))
     assert len(listTmpFiles) == 0, "Temp file should be cleaned up"
+
+
+# -----------------------------------------------------------------------
+# fdictLoadRegistry — non-dict value in file
+# -----------------------------------------------------------------------
+
+
+def testLoadRegistryReturnsEmptyWhenNotDict(tmp_path):
+    """Line 29: registry file contains a list instead of a dict."""
+    sDir = registryManager._S_REGISTRY_DIRECTORY
+    os.makedirs(sDir, exist_ok=True)
+    sPath = registryManager._S_REGISTRY_PATH
+    with open(sPath, "w") as fileHandle:
+        fileHandle.write('["not", "a", "dict"]')
+    dictResult = registryManager.fdictLoadRegistry()
+    assert dictResult == {"listProjects": []}
+
+
+# -----------------------------------------------------------------------
+# fsGetContainerUser
+# -----------------------------------------------------------------------
+
+
+def testGetContainerUserReturnsResearcherWhenNotRegistered():
+    """Lines 204-206: project not in registry returns fallback."""
+    sResult = registryManager.fsGetContainerUser("nonexistent-container")
+    assert sResult == "researcher"
+
+
+def testGetContainerUserReturnsResearcherOnConfigError(
+    tmp_path, monkeypatch,
+):
+    """Lines 207-212: config load fails returns fallback."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "user-project")
+    registryManager.fnAddProject(sProjectDir)
+    monkeypatch.setattr(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        lambda sPath: (_ for _ in ()).throw(
+            RuntimeError("config broken")
+        ),
+    )
+    sResult = registryManager.fsGetContainerUser("user-project")
+    assert sResult == "researcher"
+
+
+def testGetContainerUserReturnsActualUser(tmp_path, monkeypatch):
+    """Lines 204-210: successful path returns container user."""
+    from types import SimpleNamespace
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "real-project")
+    registryManager.fnAddProject(sProjectDir)
+    monkeypatch.setattr(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        lambda sPath: SimpleNamespace(sContainerUser="scientist"),
+    )
+    sResult = registryManager.fsGetContainerUser("real-project")
+    assert sResult == "scientist"

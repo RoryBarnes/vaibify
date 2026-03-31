@@ -416,3 +416,170 @@ def test_fnSetupLogFile_creates_log():
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
         fileLog.close()
+
+
+# -----------------------------------------------------------------------
+# fnConfigureEnvironment — sVplanetBinaryDirectory (line 431)
+# -----------------------------------------------------------------------
+
+
+def test_fnConfigureEnvironment_appends_vplanet_dir():
+    """Line 431: sVplanetBinaryDirectory appended to extra paths."""
+    sOriginalPath = os.environ.get("PATH", "")
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        dictWorkflow = {"sVplanetBinaryDirectory": sTmpDir}
+        fnConfigureEnvironment(dictWorkflow, sTmpDir)
+        assert sTmpDir in os.environ["PATH"]
+        os.environ["PATH"] = sOriginalPath
+
+
+def test_fnConfigureEnvironment_no_duplicate_vplanet_dir():
+    """sVplanetBinaryDirectory not duplicated when already in list."""
+    sOriginalPath = os.environ.get("PATH", "")
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        dictWorkflow = {
+            "listBinaryDirectories": [sTmpDir],
+            "sVplanetBinaryDirectory": sTmpDir,
+        }
+        fnConfigureEnvironment(dictWorkflow, sTmpDir)
+        iCount = os.environ["PATH"].split(":").count(sTmpDir)
+        assert iCount == 1
+        os.environ["PATH"] = sOriginalPath
+
+
+# -----------------------------------------------------------------------
+# fnDownloadDatasets (lines 443-459) — mocked, no network
+# -----------------------------------------------------------------------
+
+
+def test_fnDownloadDatasets_no_datasets():
+    """Lines 445-447: no listDatasets key is a no-op."""
+    from vaibify.gui.director import fnDownloadDatasets
+    fnDownloadDatasets({}, "/tmp")
+
+
+def test_fnDownloadDatasets_skips_incomplete_entries(capsys):
+    """Lines 452-453: entries without sDoi or sFileName are skipped."""
+    from vaibify.gui.director import fnDownloadDatasets
+    dictWorkflow = {"listDatasets": [
+        {"sDoi": "", "sFileName": "data.csv"},
+        {"sDoi": "10.5281/zenodo.123", "sFileName": ""},
+    ]}
+    fnDownloadDatasets(dictWorkflow, "/tmp")
+    sCaptured = capsys.readouterr().out
+    assert "Downloading" not in sCaptured
+
+
+def test_fnDownloadDatasets_skips_existing_file(capsys):
+    """Lines 455-457: existing file prints 'Dataset exists'."""
+    from vaibify.gui.director import fnDownloadDatasets
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sFilePath = os.path.join(sTmpDir, "data.csv")
+        with open(sFilePath, "w") as fh:
+            fh.write("x")
+        dictWorkflow = {"listDatasets": [{
+            "sDoi": "10.5281/zenodo.123",
+            "sFileName": "data.csv",
+            "sDestination": "",
+        }]}
+        fnDownloadDatasets(dictWorkflow, sTmpDir)
+        sCaptured = capsys.readouterr().out
+        assert "Dataset exists" in sCaptured
+
+
+@patch("vaibify.gui.director._fnDownloadFromZenodo")
+def test_fnDownloadDatasets_calls_download(mockDownload, capsys):
+    """Lines 458-459: calls download for missing files."""
+    from vaibify.gui.director import fnDownloadDatasets
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        dictWorkflow = {"listDatasets": [{
+            "sDoi": "10.5281/zenodo.999",
+            "sFileName": "missing.csv",
+            "sDestination": "",
+        }]}
+        fnDownloadDatasets(dictWorkflow, sTmpDir)
+        mockDownload.assert_called_once()
+        sCaptured = capsys.readouterr().out
+        assert "Downloading" in sCaptured
+
+
+# -----------------------------------------------------------------------
+# _fnDownloadFromZenodo — mocked (lines 464-486)
+# -----------------------------------------------------------------------
+
+
+def test_fnDownloadFromZenodo_success(capsys):
+    """Lines 464-483: successful download writes file."""
+    import sys
+    from vaibify.gui.director import _fnDownloadFromZenodo
+    mockRequests = MagicMock()
+    mockResponse = MagicMock()
+    mockResponse.json.return_value = {
+        "files": [{"key": "data.csv", "links": {"self": "http://f"}}],
+    }
+    mockDownloadResp = MagicMock()
+    mockDownloadResp.iter_content.return_value = [b"data"]
+    mockRequests.get.side_effect = [mockResponse, mockDownloadResp]
+    with patch.dict(sys.modules, {"requests": mockRequests}):
+        with tempfile.TemporaryDirectory() as sTmpDir:
+            sDestPath = os.path.join(sTmpDir, "data.csv")
+            _fnDownloadFromZenodo(
+                "10.5281/zenodo.123", "data.csv", sDestPath,
+            )
+            assert os.path.isfile(sDestPath)
+            sCaptured = capsys.readouterr().out
+            assert "Downloaded" in sCaptured
+
+
+def test_fnDownloadFromZenodo_file_not_found(capsys):
+    """Line 484: file not found in record."""
+    import sys
+    from vaibify.gui.director import _fnDownloadFromZenodo
+    mockRequests = MagicMock()
+    mockResponse = MagicMock()
+    mockResponse.json.return_value = {
+        "files": [{"key": "other.csv", "links": {"self": "http://f"}}],
+    }
+    mockRequests.get.return_value = mockResponse
+    with patch.dict(sys.modules, {"requests": mockRequests}):
+        with tempfile.TemporaryDirectory() as sTmpDir:
+            sDestPath = os.path.join(sTmpDir, "missing.csv")
+            _fnDownloadFromZenodo(
+                "10.5281/zenodo.123", "missing.csv", sDestPath,
+            )
+            sCaptured = capsys.readouterr().out
+            assert "WARNING" in sCaptured
+
+
+def test_fnDownloadFromZenodo_exception(capsys):
+    """Lines 485-486: exception path prints warning."""
+    import sys
+    from vaibify.gui.director import _fnDownloadFromZenodo
+    mockRequests = MagicMock()
+    mockRequests.get.side_effect = RuntimeError("network error")
+    with patch.dict(sys.modules, {"requests": mockRequests}):
+        _fnDownloadFromZenodo(
+            "10.5281/zenodo.123", "data.csv", "/tmp/x.csv",
+        )
+        sCaptured = capsys.readouterr().out
+        assert "WARNING" in sCaptured
+        assert "network error" in sCaptured
+
+
+# -----------------------------------------------------------------------
+# _fsResolveFigureType (line 380-385)
+# -----------------------------------------------------------------------
+
+
+def test_fsResolveFigureType_step_override():
+    from vaibify.gui.director import _fsResolveFigureType
+    dictStep = {"sFigureType": "PNG"}
+    dictWorkflow = {"sFigureType": "pdf"}
+    assert _fsResolveFigureType(dictStep, dictWorkflow) == "png"
+
+
+def test_fsResolveFigureType_workflow_default():
+    from vaibify.gui.director import _fsResolveFigureType
+    dictStep = {}
+    dictWorkflow = {"sFigureType": "SVG"}
+    assert _fsResolveFigureType(dictStep, dictWorkflow) == "svg"

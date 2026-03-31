@@ -1,5 +1,7 @@
 """Tests for pure functions in vaibify.gui.testGenerator."""
 
+import pytest
+
 from vaibify.gui.testGenerator import (
     fsParseGeneratedCode,
     fsTestFilePath,
@@ -243,3 +245,96 @@ def test_fsRepairMissingImports_no_repairs_needed():
     sCode = "x = 1 + 2"
     sResult = fsRepairMissingImports(sCode)
     assert sResult == sCode
+
+
+# -----------------------------------------------------------------------
+# fdictParseQuantitativeJson — brace fallback (lines 497-501)
+# -----------------------------------------------------------------------
+
+
+def test_fdictParseQuantitativeJson_brace_fallback():
+    """Lines 497-500: invalid JSON wrapping valid JSON object."""
+    from vaibify.gui.testGenerator import fdictParseQuantitativeJson
+    sInput = 'Here is the result: {"listStandards": [{"sName": "x"}]}'
+    dictResult = fdictParseQuantitativeJson(sInput)
+    assert dictResult["listStandards"][0]["sName"] == "x"
+
+
+def test_fdictParseQuantitativeJson_no_json_returns_empty():
+    """Line 501: completely invalid text returns empty list."""
+    from vaibify.gui.testGenerator import fdictParseQuantitativeJson
+    sInput = "this is not json at all"
+    dictResult = fdictParseQuantitativeJson(sInput)
+    assert dictResult == {"listStandards": []}
+
+
+# -----------------------------------------------------------------------
+# _fdictWriteTestFile — exception path (lines 510-511)
+# -----------------------------------------------------------------------
+
+
+def test_fdictWriteTestFile_write_failure():
+    """Lines 510-511: fnWriteFile exception re-raised as RuntimeError."""
+    from unittest.mock import MagicMock
+    from vaibify.gui.testGenerator import _fdictWriteTestFile
+    mockDocker = MagicMock()
+    mockDocker.fnWriteFile.side_effect = OSError("disk full")
+    with pytest.raises(RuntimeError, match="Failed to write"):
+        _fdictWriteTestFile(
+            mockDocker, "cid", "import os", "/test.py",
+        )
+
+
+# -----------------------------------------------------------------------
+# _fbOutputLooksValid (lines 547-556)
+# -----------------------------------------------------------------------
+
+
+def test_fbOutputLooksValid_backtick():
+    from vaibify.gui.testGenerator import _fbOutputLooksValid
+    assert _fbOutputLooksValid("```python\ncode\n```") is True
+
+
+def test_fbOutputLooksValid_test_def():
+    from vaibify.gui.testGenerator import _fbOutputLooksValid
+    assert _fbOutputLooksValid("def test_something(): pass") is True
+
+
+def test_fbOutputLooksValid_standards():
+    from vaibify.gui.testGenerator import _fbOutputLooksValid
+    assert _fbOutputLooksValid('"listStandards": [...]') is True
+
+
+def test_fbOutputLooksValid_garbage():
+    from vaibify.gui.testGenerator import _fbOutputLooksValid
+    assert _fbOutputLooksValid("random text") is False
+
+
+# -----------------------------------------------------------------------
+# _fdictErrorResult and _fnAppendErrorLog (lines 3856-3876)
+# -----------------------------------------------------------------------
+
+
+def test_fdictErrorResult_returns_error_dict():
+    from vaibify.gui.testGenerator import _fdictErrorResult
+    dictResult = _fdictErrorResult("something broke")
+    assert dictResult["sFilePath"] == ""
+    assert dictResult["saCommands"] == []
+    assert "something broke" in dictResult["sError"]
+
+
+def test_fnAppendErrorLog_writes_to_temp_file():
+    import tempfile
+    import os
+    from vaibify.gui.testGenerator import _fnAppendErrorLog
+    sLogPath = os.path.join(
+        tempfile.gettempdir(), "vaibify_test_errors.log",
+    )
+    if os.path.isfile(sLogPath):
+        os.unlink(sLogPath)
+    _fnAppendErrorLog("test error message")
+    assert os.path.isfile(sLogPath)
+    with open(sLogPath, "r") as fh:
+        sContent = fh.read()
+    assert "test error message" in sContent
+    os.unlink(sLogPath)

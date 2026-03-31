@@ -1995,6 +1995,10 @@ html, body {
     border-color: var(--color-pale-blue);
 }
 
+.toast.warning {
+    border-color: #e5a100;
+}
+
 @keyframes slideIn {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }

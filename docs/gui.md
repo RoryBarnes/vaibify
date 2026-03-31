@@ -68,10 +68,29 @@ usage of the container. These metrics update continuously via WebSocket.
 
 ## Test Generation
 
-The **Tests** panel provides AI-powered test generation for pipeline steps.
-Select a step and click **Generate Tests** to produce verification scripts
-based on the step's expected outputs. Generated tests can be reviewed,
-edited, and added to the step's `saTestCommands` array.
+The **Tests** panel generates unit tests for pipeline steps. Select a step
+and click **Generate Tests** to produce three categories of verification:
+
+1. **Integrity tests** (`test_integrity.py`) -- validate that output files
+   exist, are non-empty, load in their expected format, have the correct
+   shape, and contain no NaN or Inf values.
+
+2. **Qualitative tests** (`test_qualitative.py`) -- verify that column
+   names, JSON keys, parameter names, and other categorical content match
+   expectations.
+
+3. **Quantitative tests** (`test_quantitative.py` +
+   `quantitative_standards.json`) -- compare numerical output values
+   against stored benchmarks at full double precision with configurable
+   relative and absolute tolerances.
+
+Test generation is **deterministic by default**: a Python introspection
+script runs inside the container, reads each data file, and produces tests
+mechanically. No LLM is required. The LLM-based path is available as a
+fallback by setting `bDeterministic: false` in the API request.
+
+See [Supported Data Formats](testFormats.md) for the full list of file
+types the test generator can read.
 
 ## Sync Controls
 

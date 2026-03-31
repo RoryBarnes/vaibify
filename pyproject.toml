@@ -47,7 +47,35 @@ dev = [
     "pytest-asyncio",
     "httpx",
 ]
-all = ["vaibify[docker,keyring,dev]"]
+formats-core = [
+    "h5py>=3.0",
+    "openpyxl>=3.0",
+    "Pillow>=9.0",
+    "pyarrow>=10.0",
+]
+formats-science = [
+    "astropy>=5.0",
+    "scipy>=1.9",
+    "pyvista>=0.38",
+]
+formats-bio = [
+    "pysam>=0.20",
+]
+formats-social = [
+    "pyreadstat>=1.2",
+    "pyreadr>=0.5",
+]
+formats-ml = [
+    "safetensors>=0.3",
+    "tfrecord>=1.14",
+]
+formats-security = [
+    "scapy>=2.5",
+]
+formats = [
+    "vaibify[formats-core,formats-science,formats-bio,formats-social,formats-ml,formats-security]",
+]
+all = ["vaibify[docker,keyring,dev,formats]"]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"

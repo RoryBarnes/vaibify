@@ -24,6 +24,7 @@ planetary simulations -- can benefit from containerized reproducibility.
    cli
    pipelines
    gui
+   testFormats
    templates
    security
    reproducibility

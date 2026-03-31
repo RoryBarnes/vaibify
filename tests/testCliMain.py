@@ -200,3 +200,126 @@ def test_main_config_option_in_help():
     runner = CliRunner()
     result = runner.invoke(main, ["--help"])
     assert "--config" in result.output
+
+
+# -----------------------------------------------------------------------
+# --config option sets path (lines 51-52)
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.cli.main.fnLaunchHub")
+def test_main_config_option_calls_set_path(mockLaunch, tmp_path):
+    """Lines 51-52: --config option invokes fnSetConfigPath."""
+    sConfigPath = str(tmp_path / "vaibify.yml")
+    with open(sConfigPath, "w") as fh:
+        fh.write("projectName: test\n")
+    with patch(
+        "vaibify.cli.main.fnSetConfigPath",
+        create=True,
+    ) as mockSetPath:
+        with patch(
+            "vaibify.cli.configLoader.fnSetConfigPath",
+        ) as mockSetPathReal:
+            runner = CliRunner()
+            result = runner.invoke(
+                main, ["--config", sConfigPath],
+            )
+            mockSetPathReal.assert_called_once_with(sConfigPath)
+
+
+# -----------------------------------------------------------------------
+# main invoked without subcommand (line 54)
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.cli.main.fnLaunchHub")
+def test_main_no_subcommand_calls_launch_hub(mockLaunch):
+    """Line 54: no subcommand invokes fnLaunchHub."""
+    runner = CliRunner()
+    result = runner.invoke(main, [])
+    mockLaunch.assert_called_once_with(8050)
+
+
+@patch("vaibify.cli.main.fnLaunchHub")
+def test_main_custom_port_passed_to_launch_hub(mockLaunch):
+    """Lines 54: --port forwarded to fnLaunchHub."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--port", "9999"])
+    mockLaunch.assert_called_once_with(9999)
+
+
+# -----------------------------------------------------------------------
+# fnLaunchHub (lines 59-72)
+# -----------------------------------------------------------------------
+
+
+def test_fnLaunchHub_starts_server():
+    """Lines 59-72: fnLaunchHub creates app and runs uvicorn."""
+    import sys
+    mockUvicorn = MagicMock()
+    mockWebbrowser = MagicMock()
+    with patch.dict(sys.modules, {
+        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
+    }):
+        with patch(
+            "vaibify.gui.pipelineServer.fappCreateHubApplication",
+        ) as mockApp:
+            mockApp.return_value = MagicMock()
+            from vaibify.cli.main import fnLaunchHub
+            fnLaunchHub(8050)
+            mockApp.assert_called_once()
+            mockUvicorn.run.assert_called_once()
+            args = mockUvicorn.run.call_args
+            assert args[1]["port"] == 8050
+
+
+# -----------------------------------------------------------------------
+# setup command (lines 126-138)
+# -----------------------------------------------------------------------
+
+
+def test_setup_launches_wizard():
+    """Lines 126-138: setup command starts wizard server."""
+    import sys
+    mockUvicorn = MagicMock()
+    mockWebbrowser = MagicMock()
+    with patch.dict(sys.modules, {
+        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
+    }):
+        with patch(
+            "vaibify.install.setupServer.fappCreateSetupWizard",
+        ) as mockWizard:
+            mockWizard.return_value = MagicMock()
+            runner = CliRunner()
+            result = runner.invoke(main, ["setup"])
+            assert "setup wizard" in result.output.lower()
+            mockUvicorn.run.assert_called_once()
+
+
+# -----------------------------------------------------------------------
+# gui command (lines 144-163)
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.cli.main.fconfigLoad")
+def test_gui_launches_pipeline_viewer(mockConfig):
+    """Lines 144-163: gui command starts pipeline viewer."""
+    import sys
+    mockConfig.return_value = SimpleNamespace(
+        sWorkspaceRoot="/workspace",
+        sContainerUser="researcher",
+    )
+    mockUvicorn = MagicMock()
+    mockWebbrowser = MagicMock()
+    mockCreateApp = MagicMock(return_value=MagicMock())
+    with patch.dict(sys.modules, {
+        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
+    }):
+        with patch(
+            "vaibify.gui.pipelineServer.fappCreateApplication",
+            mockCreateApp,
+        ):
+            runner = CliRunner()
+            result = runner.invoke(main, ["gui"])
+            assert "pipeline viewer" in result.output.lower()
+            mockUvicorn.run.assert_called_once()
