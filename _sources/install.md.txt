@@ -64,17 +64,16 @@ pytest -m docker
 
 ## Shell Helpers
 
-The installer script configures shell completions and helper commands
-(`connect_vc`, `vc_push`, `vc_pull`):
+Shell completions and helper commands (`connect_vc`, `vc_push`,
+`vc_pull`) are configured automatically the first time any `vaibify`
+command is run. No manual step is required.
+
+To force the setup to run again, remove the marker file and invoke any
+command:
 
 ```bash
-sh vaibify/install/installVaibify.sh
-```
-
-To remove them:
-
-```bash
-sh vaibify/install/uninstallVaibify.sh
+rm ~/.vaibify/.setup_done
+vaibify --version
 ```
 
 ## Docker on macOS
