@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.1.dev150+g2596039dc.d20260331 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.1.dev151+g6044255b6.d20260331 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e2f785f5"></script>
+      <script src="_static/documentation_options.js?v=20991c08"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -125,11 +125,11 @@ manage containers.</p>
 <section id="users">
 <h2>Users<a class="headerlink" href="#users" title="Link to this heading"></a></h2>
 <p>Install the latest release from PyPI:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>vaibify<span class="o">[</span>docker<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>vaibify
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">[docker]</span></code> extra installs the Docker Python SDK for status queries. The
-core CLI works without it by shelling out to the <code class="docutils literal notranslate"><span class="pre">docker</span></code> command directly.</p>
+<p>This installs everything: the CLI, Docker SDK, keyring integration, and all
+data format libraries.</p>
 <p>After installation, confirm the CLI is available:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>--version
 </pre></div>
@@ -140,11 +140,11 @@ core CLI works without it by shelling out to the <code class="docutils literal n
 <p>Clone the repository and install in editable mode:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/Vaibify.git
 <span class="nb">cd</span><span class="w"> </span>Vaibify
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[all]&quot;</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">[all]</span></code> extra installs Docker support, keyring integration, the full
-test suite, and all data format libraries.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">[dev]</span></code> extra adds pytest, pytest-cov, pytest-asyncio, and httpx for
+running the test suite.</p>
 </section>
 <section id="data-format-libraries">
 <h2>Data Format Libraries<a class="headerlink" href="#data-format-libraries" title="Link to this heading"></a></h2>
