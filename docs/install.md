@@ -113,7 +113,9 @@ sudo port install colima docker
 colima start --cpu 4 --memory 8
 ```
 
-When running long builds, prevent macOS from sleeping the VM:
+If a Docker build takes more than a few minutes, macOS may sleep the
+Colima VM and corrupt the build. Prefix any long-running command with
+`caffeinate -s` to prevent this:
 
 ```bash
 caffeinate -s vaibify build
