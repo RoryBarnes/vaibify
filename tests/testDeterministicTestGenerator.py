@@ -568,9 +568,9 @@ def test_numeric_token_scientific_notation():
 
 def test_json_array_benchmarks_include_min_max():
     sScript = _fsBuildIntrospectionScript(["x.json"], "/tmp")
-    iFirstCount = sScript.count("_fnAddJsonArrayBenchmarks")
-    assert "Min" in sScript.split("_fnAddJsonArrayBenchmarks")[0] or True
-    sAfterFunc = sScript.split("def _fnAddJsonArrayBenchmarks")[1]
+    assert "_fnAddJsonArrayBenchmarks" in sScript
+    assert "_fnAddStatsBenchmarks" in sScript
+    sAfterFunc = sScript.split("def _fnAddStatsBenchmarks")[1]
     sBody = sAfterFunc.split("\ndef ")[0]
     assert "Min" in sBody
     assert "Max" in sBody

@@ -1,6 +1,5 @@
 """Generate pytest unit tests for workflow steps via LLM."""
 
-import asyncio
 import json
 import logging
 import os
@@ -519,14 +518,19 @@ def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
     }
 
 
+def _ftExtractStepInfo(dictWorkflow, iStepIndex):
+    """Return (dictStep, sDirectory) for the given step index."""
+    dictStep = dictWorkflow["listSteps"][iStepIndex]
+    return dictStep, dictStep.get("sDirectory", "")
+
+
 def fdictGenerateTest(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
     sUser=None,
 ):
     """Orchestrate test generation: gather context, call LLM, save."""
-    dictStep = dictWorkflow["listSteps"][iStepIndex]
-    sDirectory = dictStep.get("sDirectory", "")
+    dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     sScripts, sPreviews = fsBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables
     )
@@ -556,6 +560,21 @@ def _fbOutputLooksValid(sOutput):
     return False
 
 
+def _fnRaiseClaudeError(iExitCode, sOutput):
+    """Raise RuntimeError with a helpful hint for Claude CLI failures."""
+    sHint = ""
+    sLower = sOutput.lower()
+    if "not logged in" in sLower or "/login" in sLower:
+        sHint = (
+            "\n\nClaude Code is not authenticated. "
+            "Open a terminal and run 'claude' to log in."
+        )
+    raise RuntimeError(
+        f"Claude CLI failed (exit {iExitCode}): "
+        f"{sOutput.strip()}{sHint}"
+    )
+
+
 def _fsInvokeLlm(
     connectionDocker, sContainerId, sPrompt, bUseApi, sApiKey,
     sUser=None,
@@ -569,17 +588,7 @@ def _fsInvokeLlm(
     if iExitCode != 0 and _fbOutputLooksValid(sOutput):
         return sOutput
     if iExitCode != 0:
-        sHint = ""
-        sLower = sOutput.lower()
-        if "not logged in" in sLower or "/login" in sLower:
-            sHint = (
-                "\n\nClaude Code is not authenticated. "
-                "Open a terminal and run 'claude' to log in."
-            )
-        raise RuntimeError(
-            f"Claude CLI failed (exit {iExitCode}): "
-            f"{sOutput.strip()}{sHint}"
-        )
+        _fnRaiseClaudeError(iExitCode, sOutput)
     return sOutput
 
 
@@ -1749,6 +1758,36 @@ def _fnAddArrayBenchmarks(
             "fValue": float(daFlat.max()),
         }})
 
+def _fnAddStatsBenchmarks(
+    daValues, sLabel, sFileName, sAccessPrefix, dictReport,
+):
+    listBench = dictReport["listBenchmarks"]
+    listBench.append({{
+        "sName": f"f{{sLabel}}First", "sDataFile": sFileName,
+        "sAccessPath": f"{{sAccessPrefix}}index:0",
+        "fValue": float(daValues[0]),
+    }})
+    listBench.append({{
+        "sName": f"f{{sLabel}}Last", "sDataFile": sFileName,
+        "sAccessPath": f"{{sAccessPrefix}}index:-1",
+        "fValue": float(daValues[-1]),
+    }})
+    listBench.append({{
+        "sName": f"f{{sLabel}}Mean", "sDataFile": sFileName,
+        "sAccessPath": f"{{sAccessPrefix}}index:mean",
+        "fValue": float(daValues.mean()),
+    }})
+    listBench.append({{
+        "sName": f"f{{sLabel}}Min", "sDataFile": sFileName,
+        "sAccessPath": f"{{sAccessPrefix}}index:min",
+        "fValue": float(daValues.min()),
+    }})
+    listBench.append({{
+        "sName": f"f{{sLabel}}Max", "sDataFile": sFileName,
+        "sAccessPath": f"{{sAccessPrefix}}index:max",
+        "fValue": float(daValues.max()),
+    }})
+
 def _fnBenchmarkJson(sFullPath, sFileName, dictReport):
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
         dictData = json.load(fh)
@@ -1796,38 +1835,10 @@ def _fnAddJsonArrayBenchmarks(
     listNumeric, sFileName, sKeyPath, dictReport,
 ):
     sName = sKeyPath.replace(".", "_") if sKeyPath else "root"
-    listBench = dictReport["listBenchmarks"]
-    listBench.append({{
-        "sName": f"f{{sName}}First",
-        "sDataFile": sFileName,
-        "sAccessPath": f"key:{{sKeyPath}},index:0",
-        "fValue": float(listNumeric[0]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sName}}Last",
-        "sDataFile": sFileName,
-        "sAccessPath": f"key:{{sKeyPath}},index:-1",
-        "fValue": float(listNumeric[-1]),
-    }})
     daValues = np.array(listNumeric, dtype=float)
-    listBench.append({{
-        "sName": f"f{{sName}}Mean",
-        "sDataFile": sFileName,
-        "sAccessPath": f"key:{{sKeyPath}},index:mean",
-        "fValue": float(daValues.mean()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sName}}Min",
-        "sDataFile": sFileName,
-        "sAccessPath": f"key:{{sKeyPath}},index:min",
-        "fValue": float(daValues.min()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sName}}Max",
-        "sDataFile": sFileName,
-        "sAccessPath": f"key:{{sKeyPath}},index:max",
-        "fValue": float(daValues.max()),
-    }})
+    _fnAddStatsBenchmarks(
+        daValues, sName, sFileName, f"key:{{sKeyPath}},", dictReport,
+    )
 
 def _fnBenchmarkCsv(sFullPath, sFileName, dictReport):
     import csv
@@ -1852,37 +1863,9 @@ def _fnAddColumnBenchmarks(listRows, sCol, sFileName, dictReport):
         )
     except (ValueError, KeyError):
         return
-    listBench = dictReport["listBenchmarks"]
-    listBench.append({{
-        "sName": f"f{{sCol}}First",
-        "sDataFile": sFileName,
-        "sAccessPath": f"column:{{sCol}},index:0",
-        "fValue": float(daValues[0]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sCol}}Last",
-        "sDataFile": sFileName,
-        "sAccessPath": f"column:{{sCol}},index:-1",
-        "fValue": float(daValues[-1]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sCol}}Mean",
-        "sDataFile": sFileName,
-        "sAccessPath": f"column:{{sCol}},index:mean",
-        "fValue": float(daValues.mean()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sCol}}Min",
-        "sDataFile": sFileName,
-        "sAccessPath": f"column:{{sCol}},index:min",
-        "fValue": float(daValues.min()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sCol}}Max",
-        "sDataFile": sFileName,
-        "sAccessPath": f"column:{{sCol}},index:max",
-        "fValue": float(daValues.max()),
-    }})
+    _fnAddStatsBenchmarks(
+        daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+    )
 
 def _fnBenchmarkHdf5(sFullPath, sFileName, dictReport):
     import h5py
@@ -1981,37 +1964,9 @@ def _fnAddWhitespaceColBenchmarks(
     except (ValueError, IndexError):
         return
     sAccessPrefix = f"column:{{sLabel}}," if sLabel else ""
-    listBench = dictReport["listBenchmarks"]
-    listBench.append({{
-        "sName": f"f{{sLabel}}First",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:0",
-        "fValue": float(daValues[0]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Last",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:-1",
-        "fValue": float(daValues[-1]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Mean",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:mean",
-        "fValue": float(daValues.mean()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Min",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:min",
-        "fValue": float(daValues.min()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Max",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:max",
-        "fValue": float(daValues.max()),
-    }})
+    _fnAddStatsBenchmarks(
+        daValues, sLabel, sFileName, sAccessPrefix, dictReport,
+    )
 
 def _fnBenchmarkJsonl(sFullPath, sFileName, dictReport):
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
@@ -2030,13 +1985,9 @@ def _fnBenchmarkJsonl(sFullPath, sFileName, dictReport):
             )
         except (ValueError, KeyError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        sLabel = sKey
-        listBench.append({{"sName": f"f{{sLabel}}First", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sLabel}}Last", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sLabel}}Mean", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sLabel}}Min", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sLabel}}Max", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sKey, sFileName, f"key:{{sKey}},", dictReport,
+        )
 
 def _fnBenchmarkExcel(sFullPath, sFileName, dictReport):
     try:
@@ -2061,12 +2012,9 @@ def _fnBenchmarkExcel(sFullPath, sFileName, dictReport):
             daValues = np.array([float(r[iCol]) for r in listRows[1:]])
         except (ValueError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkFits(sFullPath, sFileName, dictReport):
     try:
@@ -2134,12 +2082,9 @@ def _fnBenchmarkParquet(sFullPath, sFileName, dictReport):
             daValues = table.column(sCol).to_numpy().astype(float)
         except (ValueError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkImage(sFullPath, sFileName, dictReport):
     try:
@@ -2222,12 +2167,9 @@ def _fnBenchmarkTabularWithComments(
             daValues = np.array([float(r[iCol]) for r in listRows])
         except (ValueError, IndexError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkVcf(sFullPath, sFileName, dictReport):
     _fnBenchmarkTabularWithComments(
@@ -2257,12 +2199,9 @@ def _fnBenchmarkBed(sFullPath, sFileName, dictReport):
             daValues = np.array([float(r[iCol]) for r in listRows])
         except (ValueError, IndexError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkGff(sFullPath, sFileName, dictReport):
     listDefaultHeaders = [
@@ -2292,12 +2231,9 @@ def _fnBenchmarkSam(sFullPath, sFileName, dictReport):
             daValues = np.array([float(r[iCol]) for r in listRows])
         except (ValueError, IndexError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkSyslog(sFullPath, sFileName, dictReport):
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
@@ -2418,12 +2354,9 @@ def _fnBenchmarkDataframe(dfData, sFileName, dictReport):
             daValues = dfData[sCol].values.astype(float)
         except (ValueError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkSpss(sFullPath, sFileName, dictReport):
     try:
@@ -2482,12 +2415,9 @@ def _fnBenchmarkVotable(sFullPath, sFileName, dictReport):
             daValues = np.array(table[sCol], dtype=float)
         except (ValueError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkIpac(sFullPath, sFileName, dictReport):
     try:
@@ -2506,12 +2436,9 @@ def _fnBenchmarkIpac(sFullPath, sFileName, dictReport):
             daValues = np.array(table[sCol], dtype=float)
         except (ValueError, TypeError):
             continue
-        listBench = dictReport["listBenchmarks"]
-        listBench.append({{"sName": f"f{{sCol}}First", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:0", "fValue": float(daValues[0])}})
-        listBench.append({{"sName": f"f{{sCol}}Last", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:-1", "fValue": float(daValues[-1])}})
-        listBench.append({{"sName": f"f{{sCol}}Mean", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:mean", "fValue": float(daValues.mean())}})
-        listBench.append({{"sName": f"f{{sCol}}Min", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:min", "fValue": float(daValues.min())}})
-        listBench.append({{"sName": f"f{{sCol}}Max", "sDataFile": sFileName, "sAccessPath": f"column:{{sCol}},index:max", "fValue": float(daValues.max())}})
+        _fnAddStatsBenchmarks(
+            daValues, sCol, sFileName, f"column:{{sCol}},", dictReport,
+        )
 
 def _fnBenchmarkPcap(sFullPath, sFileName, dictReport):
     try:
@@ -2611,12 +2538,9 @@ def _fnBenchmarkTfrecord(sFullPath, sFileName, dictReport):
                 )
             except (ValueError, KeyError, TypeError):
                 continue
-            listBench = dictReport["listBenchmarks"]
-            listBench.append({{"sName": f"f{{sKey}}First", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:0", "fValue": float(daValues[0])}})
-            listBench.append({{"sName": f"f{{sKey}}Last", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:-1", "fValue": float(daValues[-1])}})
-            listBench.append({{"sName": f"f{{sKey}}Mean", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:mean", "fValue": float(daValues.mean())}})
-            listBench.append({{"sName": f"f{{sKey}}Min", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:min", "fValue": float(daValues.min())}})
-            listBench.append({{"sName": f"f{{sKey}}Max", "sDataFile": sFileName, "sAccessPath": f"key:{{sKey}},index:max", "fValue": float(daValues.max())}})
+            _fnAddStatsBenchmarks(
+                daValues, sKey, sFileName, f"key:{{sKey}},", dictReport,
+            )
 
 sDirectory = {sDirectoryRepr}
 listDataFiles = {sFileListRepr}
@@ -2669,6 +2593,25 @@ def _flistParseIntrospectionOutput(sOutput):
     )
 
 
+_SET_NONAN_FORMATS = {
+    "npy", "npz", "csv", "whitespace", "fits", "matlab",
+    "parquet", "image", "vcf", "bed", "gff", "sam",
+    "fortran", "spss", "stata", "sas", "votable", "ipac",
+    "vtk", "cgns", "safetensors", "excel", "rdata", "hdf5",
+}
+
+
+def _fbShouldAddNoNanTest(dictReport):
+    """Return True if this report qualifies for a no-NaN test."""
+    if not dictReport.get("bLoadable"):
+        return False
+    if dictReport.get("iNanCount", 0) != 0:
+        return False
+    if dictReport.get("iInfCount", 0) != 0:
+        return False
+    return dictReport.get("sFormat", "") in _SET_NONAN_FORMATS
+
+
 def _fsGenerateIntegrityCode(listdictReports):
     """Produce test_integrity.py source from introspection reports."""
     listParts = [
@@ -2679,27 +2622,23 @@ def _fsGenerateIntegrityCode(listdictReports):
         f'os.path.dirname(os.path.abspath(__file__)))\n\n',
     ]
     for dictReport in listdictReports:
-        sSafe = _fsFormatSafeName(dictReport["sFileName"])
-        sFile = dictReport["sFileName"]
-        _fnAddExistsTest(listParts, sSafe, sFile)
-        if dictReport.get("bLoadable"):
-            _fnAddLoadableTest(listParts, sSafe, sFile, dictReport)
-        if dictReport.get("iNanCount", 0) == 0 and dictReport.get(
-            "iInfCount", 0,
-        ) == 0 and dictReport.get("bLoadable") and dictReport.get(
-            "sFormat",
-        ) in (
-            "npy", "npz", "csv", "whitespace", "fits", "matlab",
-            "parquet", "image", "vcf", "bed", "gff", "sam",
-            "fortran", "spss", "stata", "sas", "votable", "ipac",
-            "vtk", "cgns", "safetensors", "excel", "rdata", "hdf5",
-        ):
-            _fnAddNoNanTest(listParts, sSafe, sFile, dictReport)
+        _fnAddReportTests(listParts, dictReport)
     if not listdictReports:
         listParts.append(
             "def test_no_integrity_outputs():\n    assert True\n"
         )
     return "".join(listParts)
+
+
+def _fnAddReportTests(listParts, dictReport):
+    """Append exists, loadable, and no-NaN tests for one report."""
+    sSafe = _fsFormatSafeName(dictReport["sFileName"])
+    sFile = dictReport["sFileName"]
+    _fnAddExistsTest(listParts, sSafe, sFile)
+    if dictReport.get("bLoadable"):
+        _fnAddLoadableTest(listParts, sSafe, sFile, dictReport)
+    if _fbShouldAddNoNanTest(dictReport):
+        _fnAddNoNanTest(listParts, sSafe, sFile, dictReport)
 
 
 def _fnAddExistsTest(listParts, sSafe, sFile):
@@ -3400,21 +3339,21 @@ def _fsNoNanFortran(sSafe, sFile, dictReport):
     )
 
 
+_DICT_READSTAT_LOADERS = {
+    "spss": "read_sav",
+    "stata": "read_dta",
+    "sas": "read_sas7bdat",
+}
+
+
 def _fsNoNanDataframe(sSafe, sFile, dictReport):
     """Return no-NaN test code for a DataFrame-based file."""
     sFormat = dictReport.get("sFormat", "")
-    if sFormat == "spss":
-        sImport = "    import pyreadstat\n"
-        sLoad = "    df, _ = pyreadstat.read_sav(sPath)\n"
-    elif sFormat == "stata":
-        sImport = "    import pyreadstat\n"
-        sLoad = "    df, _ = pyreadstat.read_dta(sPath)\n"
-    else:
-        sImport = "    import pyreadstat\n"
-        sLoad = "    df, _ = pyreadstat.read_sas7bdat(sPath)\n"
+    sFunc = _DICT_READSTAT_LOADERS.get(sFormat, "read_sas7bdat")
+    sLoad = f"    df, _ = pyreadstat.{sFunc}(sPath)\n"
     return (
         f"\ndef test_{sSafe}_no_nan():\n"
-        f"{sImport}"
+        f"    import pyreadstat\n"
         f"    sPath = os.path.join(_STEP_DIRECTORY, {sFile!r})\n"
         f"{sLoad}"
         f"    for col in df.columns:\n"
@@ -3538,27 +3477,32 @@ def _fsNoNanRdata(sSafe, sFile, dictReport):
     )
 
 
+def _fbAddQualitativeReportTests(listParts, dictReport):
+    """Append qualitative tests for one report. Return True if any added."""
+    sSafe = _fsFormatSafeName(dictReport["sFileName"])
+    bAdded = False
+    listColumns = dictReport.get("listColumnNames", [])
+    if listColumns:
+        _fnAddColumnNamesTest(listParts, sSafe, dictReport, listColumns)
+        bAdded = True
+    listJsonKeys = dictReport.get("listJsonTopKeys", [])
+    if listJsonKeys:
+        _fnAddJsonKeysTest(listParts, sSafe, dictReport, listJsonKeys)
+        bAdded = True
+    return bAdded
+
+
 def _fsGenerateQualitativeCode(listdictReports):
     """Produce test_qualitative.py source from introspection reports."""
     listParts = [
         '"""Qualitative tests generated by vaibify."""\n\n',
         "import pytest\n\n",
     ]
-    bHasTests = False
-    for dictReport in listdictReports:
-        sSafe = _fsFormatSafeName(dictReport["sFileName"])
-        listColumns = dictReport.get("listColumnNames", [])
-        if listColumns:
-            _fnAddColumnNamesTest(
-                listParts, sSafe, dictReport, listColumns,
-            )
-            bHasTests = True
-        listJsonKeys = dictReport.get("listJsonTopKeys", [])
-        if listJsonKeys:
-            _fnAddJsonKeysTest(
-                listParts, sSafe, dictReport, listJsonKeys,
-            )
-            bHasTests = True
+    listResults = [
+        _fbAddQualitativeReportTests(listParts, r)
+        for r in listdictReports
+    ]
+    bHasTests = any(listResults)
     if not bHasTests:
         listParts.append(
             "def test_no_qualitative_outputs():\n"
@@ -3567,38 +3511,36 @@ def _fsGenerateQualitativeCode(listdictReports):
     return "".join(listParts)
 
 
-def _fnAddColumnNamesTest(listParts, sSafe, dictReport, listColumns):
-    """Append a column-names presence test to listParts."""
-    sFile = dictReport["sFileName"]
-    sFormat = dictReport.get("sFormat", "")
+def _fsColumnReaderBlock(sFile, sFormat):
+    """Return the test function header and column-loading code."""
+    sPathLine = (
+        f"    sPath = os.path.join(\n"
+        f"        os.path.dirname(os.path.dirname("
+        f"os.path.abspath(__file__))),\n"
+        f"        {sFile!r},\n    )\n"
+    )
     if sFormat == "csv":
-        listParts.append(
-            f"\ndef test_{sSafe}_columns():\n"
-            f"    import csv\n"
-            f"    import os\n"
-            f"    sPath = os.path.join(\n"
-            f"        os.path.dirname(os.path.dirname("
-            f"os.path.abspath(__file__))),\n"
-            f"        {sFile!r},\n    )\n"
+        return (
+            f"    import csv\n    import os\n{sPathLine}"
             f"    with open(sPath, newline='', encoding='utf-8') as fh:\n"
             f"        reader = csv.DictReader(fh)\n"
             f"        listCols = reader.fieldnames or []\n"
         )
-    else:
-        listParts.append(
-            f"\ndef test_{sSafe}_columns():\n"
-            f"    import os\n"
-            f"    sPath = os.path.join(\n"
-            f"        os.path.dirname(os.path.dirname("
-            f"os.path.abspath(__file__))),\n"
-            f"        {sFile!r},\n    )\n"
-            f"    with open(sPath, encoding='utf-8') as fh:\n"
-            f"        listCols = fh.readline().split()\n"
-        )
+    return (
+        f"    import os\n{sPathLine}"
+        f"    with open(sPath, encoding='utf-8') as fh:\n"
+        f"        listCols = fh.readline().split()\n"
+    )
+
+
+def _fnAddColumnNamesTest(listParts, sSafe, dictReport, listColumns):
+    """Append a column-names presence test to listParts."""
+    sFile = dictReport["sFileName"]
+    sFormat = dictReport.get("sFormat", "")
+    sBlock = _fsColumnReaderBlock(sFile, sFormat)
+    listParts.append(f"\ndef test_{sSafe}_columns():\n{sBlock}")
     for sCol in listColumns:
-        listParts.append(
-            f"    assert {sCol!r} in listCols\n"
-        )
+        listParts.append(f"    assert {sCol!r} in listCols\n")
     listParts.append("\n")
 
 
@@ -3644,27 +3586,34 @@ def _fdictBuildQuantitativeStandards(listdictReports, fTolerance):
     }
 
 
-def fdictGenerateAllTestsDeterministic(
-    connectionDocker, sContainerId, iStepIndex,
-    dictWorkflow, dictVariables,
-):
-    """Generate all three test categories deterministically."""
-    dictStep = dictWorkflow["listSteps"][iStepIndex]
-    sDirectory = dictStep.get("sDirectory", "")
-    fTolerance = dictWorkflow.get("fTolerance", 1e-6)
-    listDataFiles = dictStep.get("saDataFiles", [])
-    if not listDataFiles:
-        logger.warning("No data files for step %d; generating minimal tests", iStepIndex)
-    fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
-    listdictReports = _fsRunIntrospection(
-        connectionDocker, sContainerId, sDirectory, listDataFiles,
-    )
+def _fnWarnIfAllUnloadable(listdictReports):
+    """Log a warning if every report failed to load."""
     bAllUnloadable = all(
         not r.get("bLoadable") for r in listdictReports
     )
     if bAllUnloadable and listdictReports:
         listErrors = [r.get("sError", "") for r in listdictReports]
         logger.warning("All files unloadable: %s", listErrors)
+
+
+def fdictGenerateAllTestsDeterministic(
+    connectionDocker, sContainerId, iStepIndex,
+    dictWorkflow, dictVariables,
+):
+    """Generate all three test categories deterministically."""
+    dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
+    fTolerance = dictWorkflow.get("fTolerance", 1e-6)
+    listDataFiles = dictStep.get("saDataFiles", [])
+    if not listDataFiles:
+        logger.warning(
+            "No data files for step %d; generating minimal tests",
+            iStepIndex,
+        )
+    fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
+    listdictReports = _fsRunIntrospection(
+        connectionDocker, sContainerId, sDirectory, listDataFiles,
+    )
+    _fnWarnIfAllUnloadable(listdictReports)
     return _fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance,
@@ -3694,14 +3643,11 @@ def _fdictWriteAllDeterministicTests(
     return dictResult
 
 
-def _fdictWriteQuantitativeTests(
+def _fdictWriteQuantitativeFiles(
     connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance,
+    dictStandards,
 ):
     """Write quantitative standards JSON and test file, return dict."""
-    dictStandards = _fdictBuildQuantitativeStandards(
-        listdictReports, fTolerance,
-    )
     sStandardsPath = fsQuantitativeStandardsPath(sDirectory)
     sJsonContent = json.dumps(dictStandards, indent=4)
     connectionDocker.fnWriteFile(
@@ -3724,6 +3670,19 @@ def _fdictWriteQuantitativeTests(
     }
 
 
+def _fdictWriteQuantitativeTests(
+    connectionDocker, sContainerId, sDirectory,
+    listdictReports, fTolerance,
+):
+    """Build standards from reports and write quantitative test files."""
+    dictStandards = _fdictBuildQuantitativeStandards(
+        listdictReports, fTolerance,
+    )
+    return _fdictWriteQuantitativeFiles(
+        connectionDocker, sContainerId, sDirectory, dictStandards,
+    )
+
+
 def fdictGenerateAllTests(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
@@ -3735,29 +3694,48 @@ def fdictGenerateAllTests(
             connectionDocker, sContainerId, iStepIndex,
             dictWorkflow, dictVariables,
         )
-    dictStep = dictWorkflow["listSteps"][iStepIndex]
-    sDirectory = dictStep.get("sDirectory", "")
+    return _fdictGenerateAllTestsViaLlm(
+        connectionDocker, sContainerId, iStepIndex,
+        dictWorkflow, dictVariables, bUseApi, sApiKey, sUser,
+    )
+
+
+def _fdictGenerateAllTestsViaLlm(
+    connectionDocker, sContainerId, iStepIndex,
+    dictWorkflow, dictVariables, bUseApi, sApiKey, sUser,
+):
+    """Generate all three test categories via LLM."""
+    dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     sDataFiles = ", ".join(dictStep.get("saDataFiles", []))
     sScripts, sPreviews = fsBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     if not bUseApi:
-        fnEnsureClaudeMdInstructions(
-            connectionDocker, sContainerId,
-        )
+        fnEnsureClaudeMdInstructions(connectionDocker, sContainerId)
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
+    return _fdictDispatchLlmCategories(
+        connectionDocker, sContainerId, sDirectory,
+        sDataFiles, sScripts, sPreviews,
+        fTolerance, bUseApi, sApiKey, sUser,
+    )
+
+
+def _fdictDispatchLlmCategories(
+    connectionDocker, sContainerId, sDirectory,
+    sDataFiles, sScripts, sPreviews,
+    fTolerance, bUseApi, sApiKey, sUser,
+):
+    """Dispatch LLM generation for each test category."""
     dictResult = {}
-    dictResult["dictIntegrity"] = _fdictGenerateSingleCategory(
-        connectionDocker, sContainerId, sDirectory,
-        "integrity", sDataFiles, sScripts, sPreviews,
-        bUseApi, sApiKey, sUser,
-    )
-    dictResult["dictQualitative"] = _fdictGenerateSingleCategory(
-        connectionDocker, sContainerId, sDirectory,
-        "qualitative", sDataFiles, sScripts, sPreviews,
-        bUseApi, sApiKey, sUser,
-    )
+    for sCategory in ("integrity", "qualitative"):
+        dictResult[f"dict{sCategory.capitalize()}"] = (
+            _fdictGenerateSingleCategory(
+                connectionDocker, sContainerId, sDirectory,
+                sCategory, sDataFiles, sScripts, sPreviews,
+                bUseApi, sApiKey, sUser,
+            )
+        )
     dictResult["dictQuantitative"] = _fdictGenerateQuantitativeCategory(
         connectionDocker, sContainerId, sDirectory,
         sDataFiles, sScripts, sPreviews,
@@ -3766,13 +3744,17 @@ def fdictGenerateAllTests(
     return dictResult
 
 
-def _fdictGenerateSingleCategory(
-    connectionDocker, sContainerId, sDirectory,
-    sCategory, sDataFiles, sScriptContents, sDataPreviews,
-    bUseApi, sApiKey, sUser,
+_DICT_CATEGORY_PATHS = {
+    "integrity": fsIntegrityTestPath,
+    "qualitative": fsQualitativeTestPath,
+}
+
+
+def _fsBuildCategoryPrompt(
+    sCategory, sDirectory, sDataFiles, sScriptContents, sDataPreviews,
 ):
-    """Generate one Python test category via LLM, with error isolation."""
-    sPrompt = (
+    """Build an LLM prompt for a single test category."""
+    return (
         f"Generate {sCategory} tests for the step in {sDirectory}.\n"
         f"See CLAUDE.md for instructions.\n"
         f"Output files: {sDataFiles}\n\n"
@@ -3780,11 +3762,18 @@ def _fdictGenerateSingleCategory(
         f"Data file previews:\n{sDataPreviews}\n\n"
         f"Return ONLY Python code, no explanations."
     )
-    dictPaths = {
-        "integrity": fsIntegrityTestPath,
-        "qualitative": fsQualitativeTestPath,
-    }
-    sFilePath = dictPaths[sCategory](sDirectory)
+
+
+def _fdictGenerateSingleCategory(
+    connectionDocker, sContainerId, sDirectory,
+    sCategory, sDataFiles, sScriptContents, sDataPreviews,
+    bUseApi, sApiKey, sUser,
+):
+    """Generate one Python test category via LLM, with error isolation."""
+    sPrompt = _fsBuildCategoryPrompt(
+        sCategory, sDirectory, sDataFiles, sScriptContents, sDataPreviews,
+    )
+    sFilePath = _DICT_CATEGORY_PATHS[sCategory](sDirectory)
     sRaw = ""
     try:
         sRaw = _fsInvokeLlm(
@@ -3803,13 +3792,11 @@ def _fdictGenerateSingleCategory(
         return _fdictErrorResult(str(error))
 
 
-def _fdictGenerateQuantitativeCategory(
-    connectionDocker, sContainerId, sDirectory,
-    sDataFiles, sScriptContents, sDataPreviews,
-    fTolerance, bUseApi, sApiKey, sUser,
+def _fsBuildQuantitativePrompt(
+    sDirectory, sDataFiles, sScriptContents, sDataPreviews, fTolerance,
 ):
-    """Generate quantitative standards JSON via LLM, with error isolation."""
-    sPrompt = (
+    """Build the LLM prompt for quantitative standards generation."""
+    return (
         f"Generate quantitative standards JSON for the step in "
         f"{sDirectory}. Default tolerance: {fTolerance}.\n"
         f"See CLAUDE.md for instructions.\n"
@@ -3821,6 +3808,18 @@ def _fdictGenerateQuantitativeCategory(
         f"above. Use repr() precision — never round or guess values.\n"
         f"Return ONLY a JSON object, no explanations."
     )
+
+
+def _fdictGenerateQuantitativeCategory(
+    connectionDocker, sContainerId, sDirectory,
+    sDataFiles, sScriptContents, sDataPreviews,
+    fTolerance, bUseApi, sApiKey, sUser,
+):
+    """Generate quantitative standards JSON via LLM."""
+    sPrompt = _fsBuildQuantitativePrompt(
+        sDirectory, sDataFiles, sScriptContents,
+        sDataPreviews, fTolerance,
+    )
     try:
         sRaw = _fsInvokeLlm(
             connectionDocker, sContainerId, sPrompt,
@@ -3829,26 +3828,10 @@ def _fdictGenerateQuantitativeCategory(
         logger.debug("Quantitative raw output: %s", sRaw[:500])
         dictStandards = fdictParseQuantitativeJson(sRaw)
         dictStandards["fDefaultRtol"] = fTolerance
-        sStandardsPath = fsQuantitativeStandardsPath(sDirectory)
-        sJsonContent = json.dumps(dictStandards, indent=4)
-        connectionDocker.fnWriteFile(
-            sContainerId, sStandardsPath,
-            sJsonContent.encode("utf-8"),
+        return _fdictWriteQuantitativeFiles(
+            connectionDocker, sContainerId, sDirectory,
+            dictStandards,
         )
-        sTestCode = fsBuildQuantitativeTestCode()
-        sTestPath = fsQuantitativeTestPath(sDirectory)
-        connectionDocker.fnWriteFile(
-            sContainerId, sTestPath,
-            sTestCode.encode("utf-8"),
-        )
-        sFilename = posixpath.basename(sTestPath)
-        return {
-            "sFilePath": sTestPath,
-            "sContent": sTestCode,
-            "sStandardsPath": sStandardsPath,
-            "sStandardsContent": sJsonContent,
-            "saCommands": [f"pytest tests/{sFilename}"],
-        }
     except Exception as error:
         return _fdictErrorResult(str(error))
 
