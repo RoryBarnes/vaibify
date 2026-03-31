@@ -1,0 +1,483 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Supported Data Formats &mdash; Vaibify 0.1.dev149+g443985c8c.d20260331 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=7d56c8f0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Project Templates" href="templates.html" />
+    <link rel="prev" title="Workflow Viewer" href="gui.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Supported Data Formats</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#format-table">Format Table</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-format-detection-works">How Format Detection Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#optional-libraries">Optional Libraries</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#overriding-format-detection">Overriding Format Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#access-path-syntax">Access Path Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#security">Security</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#unsupported-files">Unsupported Files</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="repos.html">Related Repositories</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Supported Data Formats</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/testFormats.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="supported-data-formats">
+<h1>Supported Data Formats<a class="headerlink" href="#supported-data-formats" title="Link to this heading"></a></h1>
+<p>The deterministic test generator reads output files produced by pipeline
+steps and generates integrity, qualitative, and quantitative tests for
+each file. Format detection is automatic based on file extension.</p>
+<section id="format-table">
+<h2>Format Table<a class="headerlink" href="#format-table" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Format</p></th>
+<th class="head"><p>Extensions</p></th>
+<th class="head"><p>Library Required</p></th>
+<th class="head"><p>Domain</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>NumPy array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.npy</span></code></p></td>
+<td><p>numpy</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>NumPy archive</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.npz</span></code></p></td>
+<td><p>numpy</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.json</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>JSON Lines</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.jsonl</span></code>, <code class="docutils literal notranslate"><span class="pre">.ndjson</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>CSV</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.csv</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>HDF5</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.h5</span></code>, <code class="docutils literal notranslate"><span class="pre">.hdf5</span></code></p></td>
+<td><p>h5py</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>Whitespace-delimited</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.dat</span></code>, <code class="docutils literal notranslate"><span class="pre">.txt</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>Key-value text</p></td>
+<td><p>(via <code class="docutils literal notranslate"><span class="pre">sFormat</span></code> override)</p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>Fixed-width text</p></td>
+<td><p>(via <code class="docutils literal notranslate"><span class="pre">sFormat</span></code> override)</p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>Multi-table text</p></td>
+<td><p>(via <code class="docutils literal notranslate"><span class="pre">sFormat</span></code> override)</p></td>
+<td><p>(stdlib)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>Excel</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>, <code class="docutils literal notranslate"><span class="pre">.xls</span></code></p></td>
+<td><p>openpyxl</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>Parquet</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.parquet</span></code></p></td>
+<td><p>pyarrow</p></td>
+<td><p>Data Science</p></td>
+</tr>
+<tr class="row-even"><td><p>Image</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.png</span></code>, <code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, <code class="docutils literal notranslate"><span class="pre">.jpeg</span></code>, <code class="docutils literal notranslate"><span class="pre">.tiff</span></code>, <code class="docutils literal notranslate"><span class="pre">.tif</span></code></p></td>
+<td><p>Pillow</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>FITS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.fits</span></code>, <code class="docutils literal notranslate"><span class="pre">.fit</span></code></p></td>
+<td><p>astropy</p></td>
+<td><p>Astronomy</p></td>
+</tr>
+<tr class="row-even"><td><p>VOTable</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vot</span></code></p></td>
+<td><p>astropy</p></td>
+<td><p>Astronomy</p></td>
+</tr>
+<tr class="row-odd"><td><p>IPAC table</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.ipac</span></code></p></td>
+<td><p>astropy</p></td>
+<td><p>Astronomy</p></td>
+</tr>
+<tr class="row-even"><td><p>MATLAB</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.mat</span></code></p></td>
+<td><p>scipy</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-odd"><td><p>FORTRAN binary</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.unf</span></code></p></td>
+<td><p>scipy</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-even"><td><p>VTK mesh</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vtk</span></code>, <code class="docutils literal notranslate"><span class="pre">.vtu</span></code></p></td>
+<td><p>pyvista</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-odd"><td><p>CGNS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cgns</span></code></p></td>
+<td><p>h5py</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-even"><td><p>FASTA</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.fasta</span></code>, <code class="docutils literal notranslate"><span class="pre">.fa</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>FASTQ</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.fastq</span></code>, <code class="docutils literal notranslate"><span class="pre">.fq</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-even"><td><p>VCF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vcf</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>BED</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.bed</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-even"><td><p>GFF/GTF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.gff</span></code>, <code class="docutils literal notranslate"><span class="pre">.gtf</span></code>, <code class="docutils literal notranslate"><span class="pre">.gff3</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>SAM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.sam</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-even"><td><p>BAM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.bam</span></code></p></td>
+<td><p>pysam</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>SPSS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.sav</span></code></p></td>
+<td><p>pyreadstat</p></td>
+<td><p>Social Science</p></td>
+</tr>
+<tr class="row-even"><td><p>Stata</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.dta</span></code></p></td>
+<td><p>pyreadstat</p></td>
+<td><p>Social Science</p></td>
+</tr>
+<tr class="row-odd"><td><p>SAS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.sas7bdat</span></code></p></td>
+<td><p>pyreadstat</p></td>
+<td><p>Social Science</p></td>
+</tr>
+<tr class="row-even"><td><p>R data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.rds</span></code>, <code class="docutils literal notranslate"><span class="pre">.RData</span></code>, <code class="docutils literal notranslate"><span class="pre">.rda</span></code></p></td>
+<td><p>pyreadr</p></td>
+<td><p>Social Science</p></td>
+</tr>
+<tr class="row-odd"><td><p>Safetensors</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.safetensors</span></code></p></td>
+<td><p>safetensors</p></td>
+<td><p>AI/ML</p></td>
+</tr>
+<tr class="row-even"><td><p>TFRecord</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.tfrecord</span></code></p></td>
+<td><p>tfrecord</p></td>
+<td><p>AI/ML</p></td>
+</tr>
+<tr class="row-odd"><td><p>Syslog</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.log</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Security</p></td>
+</tr>
+<tr class="row-even"><td><p>CEF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cef</span></code></p></td>
+<td><p>(stdlib)</p></td>
+<td><p>Security</p></td>
+</tr>
+<tr class="row-odd"><td><p>PCAP</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.pcap</span></code>, <code class="docutils literal notranslate"><span class="pre">.pcapng</span></code></p></td>
+<td><p>scapy</p></td>
+<td><p>Security</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Total: 36 format names, 50 file extensions.</strong></p>
+</section>
+<section id="how-format-detection-works">
+<h2>How Format Detection Works<a class="headerlink" href="#how-format-detection-works" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>The file extension is matched against the format map above.</p></li>
+<li><p>For <code class="docutils literal notranslate"><span class="pre">.txt</span></code> and <code class="docutils literal notranslate"><span class="pre">.dat</span></code> files, the system checks whether a majority of
+non-blank, non-comment lines contain <code class="docutils literal notranslate"><span class="pre">=</span></code> signs. If so, the file is
+treated as key-value format rather than whitespace-delimited.</p></li>
+<li><p>For unknown extensions, the first 4 bytes are read. If any byte exceeds
+ASCII range (value &gt; 127), the file is reported as an unsupported binary
+format and skipped. Otherwise it is treated as whitespace-delimited text.</p></li>
+</ol>
+</section>
+<section id="optional-libraries">
+<h2>Optional Libraries<a class="headerlink" href="#optional-libraries" title="Link to this heading"></a></h2>
+<p>Formats marked <code class="docutils literal notranslate"><span class="pre">(stdlib)</span></code> require no additional packages. All other
+libraries are imported with <code class="docutils literal notranslate"><span class="pre">try/except</span> <span class="pre">ImportError</span></code>, so a missing library
+does not break the test generator – the file is reported with an error
+message indicating which package to install, and the remaining files are
+processed normally.</p>
+</section>
+<section id="overriding-format-detection">
+<h2>Overriding Format Detection<a class="headerlink" href="#overriding-format-detection" title="Link to this heading"></a></h2>
+<p>When a file extension is ambiguous (for example, a <code class="docutils literal notranslate"><span class="pre">.txt</span></code> file that uses
+fixed-width columns rather than whitespace delimiters), set the <code class="docutils literal notranslate"><span class="pre">sFormat</span></code>
+field in the quantitative standards JSON to override extension-based
+detection:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fTemperature&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sDataFile&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;results.txt&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sAccessPath&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;column:TGlobal,index:-1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sFormat&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fixedwidth&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;fValue&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">288.15</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Valid <code class="docutils literal notranslate"><span class="pre">sFormat</span></code> values are the format names in the table above.</p>
+</section>
+<section id="access-path-syntax">
+<h2>Access Path Syntax<a class="headerlink" href="#access-path-syntax" title="Link to this heading"></a></h2>
+<p>Each quantitative benchmark specifies an access path that tells the test
+runner how to locate a value within a file. The syntax depends on the
+format:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Format Family</p></th>
+<th class="head"><p>Access Path Example</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>CSV, whitespace, Excel, SPSS, Stata, SAS, VOTable, IPAC</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">column:Temperature,index:-1</span></code></p></td>
+<td><p>Last row of Temperature column</p></td>
+</tr>
+<tr class="row-odd"><td><p>CSV, whitespace</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">column:Temperature,index:mean</span></code></p></td>
+<td><p>Mean of Temperature column</p></td>
+</tr>
+<tr class="row-even"><td><p>NumPy, MATLAB, safetensors</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:arrayName,index:0</span></code></p></td>
+<td><p>First element of named array</p></td>
+</tr>
+<tr class="row-odd"><td><p>NumPy, MATLAB, safetensors</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:arrayName,index:mean</span></code></p></td>
+<td><p>Mean of named array</p></td>
+</tr>
+<tr class="row-even"><td><p>NumPy (.npy)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:0</span></code></p></td>
+<td><p>First element (flat)</p></td>
+</tr>
+<tr class="row-odd"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:path.to.field</span></code></p></td>
+<td><p>Nested key traversal</p></td>
+</tr>
+<tr class="row-even"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:daMedians,index:0</span></code></p></td>
+<td><p>First element of JSON array</p></td>
+</tr>
+<tr class="row-odd"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:daMedians,index:mean</span></code></p></td>
+<td><p>Mean of JSON array</p></td>
+</tr>
+<tr class="row-even"><td><p>HDF5, CGNS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dataset:/group/name,index:0</span></code></p></td>
+<td><p>First element of dataset</p></td>
+</tr>
+<tr class="row-odd"><td><p>FITS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hdu:1,column:flux,index:0</span></code></p></td>
+<td><p>First row of flux column in HDU 1</p></td>
+</tr>
+<tr class="row-even"><td><p>FITS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hdu:0,index:mean</span></code></p></td>
+<td><p>Mean of image data in HDU 0</p></td>
+</tr>
+<tr class="row-odd"><td><p>FASTA, FASTQ</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:mean</span></code></p></td>
+<td><p>Mean sequence length</p></td>
+</tr>
+<tr class="row-even"><td><p>VCF, BED, GFF, SAM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">column:POS,index:0</span></code></p></td>
+<td><p>First value in POS column</p></td>
+</tr>
+<tr class="row-odd"><td><p>Key-value</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:parameterName</span></code></p></td>
+<td><p>Value associated with key</p></td>
+</tr>
+<tr class="row-even"><td><p>PCAP</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:mean</span></code></p></td>
+<td><p>Mean packet length</p></td>
+</tr>
+<tr class="row-odd"><td><p>Syslog, CEF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:0</span></code></p></td>
+<td><p>Line count</p></td>
+</tr>
+<tr class="row-even"><td><p>Multi-table</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">section:0,column:X,index:0</span></code></p></td>
+<td><p>First value in column X of first table</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="security">
+<h2>Security<a class="headerlink" href="#security" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>All <code class="docutils literal notranslate"><span class="pre">np.load()</span></code> calls use <code class="docutils literal notranslate"><span class="pre">allow_pickle=False</span></code> to prevent arbitrary code
+execution via malicious NumPy files.</p></li>
+<li><p>PyTorch checkpoint files (<code class="docutils literal notranslate"><span class="pre">.pt</span></code>, <code class="docutils literal notranslate"><span class="pre">.pth</span></code>) are intentionally unsupported
+because they use pickle deserialization internally. Use safetensors instead.</p></li>
+<li><p>File paths are validated with <code class="docutils literal notranslate"><span class="pre">os.path.realpath()</span></code> to prevent path
+traversal attacks.</p></li>
+<li><p>Files larger than 500 MB are skipped to prevent memory exhaustion.</p></li>
+<li><p>JSON traversal is limited to 10 levels of nesting depth.</p></li>
+<li><p>Each file generates at most 250 benchmark entries to prevent test
+explosion on wide datasets.</p></li>
+</ul>
+</section>
+<section id="unsupported-files">
+<h2>Unsupported Files<a class="headerlink" href="#unsupported-files" title="Link to this heading"></a></h2>
+<p>Files with unrecognized extensions are handled as follows:</p>
+<ol class="arabic simple">
+<li><p>The first 4 bytes are inspected. If any byte is non-ASCII (&gt; 127), the
+file is classified as an unsupported binary format.</p></li>
+<li><p>For binary files, the introspection reports <code class="docutils literal notranslate"><span class="pre">bLoadable:</span> <span class="pre">false</span></code> with
+<code class="docutils literal notranslate"><span class="pre">sError:</span> <span class="pre">&quot;unsupported</span> <span class="pre">binary</span> <span class="pre">format&quot;</span></code>. No benchmarks are generated, but
+the integrity test still verifies the file exists and is non-empty.</p></li>
+<li><p>For text files with unknown extensions, the system falls back to
+whitespace-delimited parsing with automatic header detection.</p></li>
+</ol>
+<p>To add support for a new format, add an entry to <code class="docutils literal notranslate"><span class="pre">_DICT_FORMAT_MAP</span></code>, a
+loader function to the template, a benchmarker to the introspection script,
+and integrity/no-NaN test generators. All new library imports must use
+<code class="docutils literal notranslate"><span class="pre">try/except</span> <span class="pre">ImportError</span></code> for graceful degradation.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="gui.html" class="btn btn-neutral float-left" title="Workflow Viewer" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="templates.html" class="btn btn-neutral float-right" title="Project Templates" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

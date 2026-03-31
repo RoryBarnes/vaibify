@@ -1,0 +1,220 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contributor’s Guide &mdash; Vaibify 0.1.dev149+g443985c8c.d20260331 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=7d56c8f0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Related Repositories" href="repos.html" />
+    <link rel="prev" title="Reproducibility" href="reproducibility.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Contributor’s Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#style-guide">Style Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#naming-conventions">Naming Conventions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#functions">Functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#code-clarity">Code Clarity</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#running-tests">Running Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#portability">Portability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pull-request-workflow">Pull Request Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#project-layout">Project Layout</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="repos.html">Related Repositories</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Contributor’s Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/developers.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="contributor-s-guide">
+<h1>Contributor’s Guide<a class="headerlink" href="#contributor-s-guide" title="Link to this heading"></a></h1>
+<p>Interested in contributing to Vaibify? This page outlines the steps to make
+a meaningful contribution. Before you begin, contact
+<a class="reference external" href="mailto:rory&#37;&#52;&#48;astro&#46;washington&#46;edu">Rory Barnes</a> to confirm that your
+proposed changes are not duplicating work and will be of general interest.</p>
+<section id="style-guide">
+<h2>Style Guide<a class="headerlink" href="#style-guide" title="Link to this heading"></a></h2>
+<p>Vaibify follows the style conventions described in the project’s global
+development standards. The key rules are summarized here.</p>
+<section id="naming-conventions">
+<h3>Naming Conventions<a class="headerlink" href="#naming-conventions" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Variables</strong> use camelCase with Hungarian prefixes: <code class="docutils literal notranslate"><span class="pre">bEnabled</span></code>,
+<code class="docutils literal notranslate"><span class="pre">iCount</span></code>, <code class="docutils literal notranslate"><span class="pre">sName</span></code>, <code class="docutils literal notranslate"><span class="pre">fValue</span></code>, <code class="docutils literal notranslate"><span class="pre">daWeights</span></code>, <code class="docutils literal notranslate"><span class="pre">dictConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">listItems</span></code>.</p></li>
+<li><p><strong>Functions</strong> begin with <code class="docutils literal notranslate"><span class="pre">f</span></code> followed by lowercase letter(s) indicating
+the return type: <code class="docutils literal notranslate"><span class="pre">fbIsValid()</span></code>, <code class="docutils literal notranslate"><span class="pre">fsGetName()</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunStep()</span></code> (no return).</p></li>
+<li><p><strong>Files</strong> use camelCase without Hungarian prefixes: <code class="docutils literal notranslate"><span class="pre">pipelineRunner.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">containerManager.py</span></code>.</p></li>
+</ul>
+</section>
+<section id="functions">
+<h3>Functions<a class="headerlink" href="#functions" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Functions should be fewer than 20 lines.</p></li>
+<li><p>Each function should have a single, clear purpose.</p></li>
+<li><p>If the same lines appear in multiple places, extract them into a new
+function.</p></li>
+</ul>
+</section>
+<section id="code-clarity">
+<h3>Code Clarity<a class="headerlink" href="#code-clarity" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Variable and function names should be self-explanatory.</p></li>
+<li><p>Use inline comments sparingly – clear naming replaces most comments.</p></li>
+<li><p>Do not abbreviate any word shorter than 8 characters.</p></li>
+<li><p>Function names must contain an action verb (except <code class="docutils literal notranslate"><span class="pre">main</span></code>).</p></li>
+</ul>
+</section>
+</section>
+<section id="running-tests">
+<h2>Running Tests<a class="headerlink" href="#running-tests" title="Link to this heading"></a></h2>
+<p>Run the full test suite:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
+</pre></div>
+</div>
+<p>Run only tests that require Docker:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>-m<span class="w"> </span>docker
+</pre></div>
+</div>
+<p>Run with coverage:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>--cov<span class="o">=</span>vaibify<span class="w"> </span>tests/
+</pre></div>
+</div>
+</section>
+<section id="portability">
+<h2>Portability<a class="headerlink" href="#portability" title="Link to this heading"></a></h2>
+<p>All code must work on both macOS and Linux, and with Python versions
+3.9 through 3.14. The project uses GitHub Actions to test all permutations
+of OS and Python version.</p>
+</section>
+<section id="pull-request-workflow">
+<h2>Pull Request Workflow<a class="headerlink" href="#pull-request-workflow" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Fork the repository and create a feature branch.</p></li>
+<li><p>Make your changes following the style guide.</p></li>
+<li><p>Add or update tests as needed.</p></li>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">pytest</span></code> locally and confirm all tests pass.</p></li>
+<li><p>Open a pull request against the <code class="docutils literal notranslate"><span class="pre">main</span></code> branch with a clear description
+of the change.</p></li>
+</ol>
+</section>
+<section id="project-layout">
+<h2>Project Layout<a class="headerlink" href="#project-layout" title="Link to this heading"></a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vaibify</span><span class="o">/</span>
+  <span class="n">cli</span><span class="o">/</span>              <span class="n">Command</span><span class="o">-</span><span class="n">line</span> <span class="n">interface</span> <span class="p">(</span><span class="n">Click</span><span class="p">)</span>
+  <span class="n">config</span><span class="o">/</span>           <span class="n">Configuration</span> <span class="n">dataclasses</span> <span class="ow">and</span> <span class="n">parsers</span>
+  <span class="n">docker</span><span class="o">/</span>           <span class="n">Container</span> <span class="n">lifecycle</span> <span class="n">management</span>
+  <span class="n">gui</span><span class="o">/</span>              <span class="n">FastAPI</span> <span class="n">web</span> <span class="n">application</span> <span class="ow">and</span> <span class="n">pipeline</span> <span class="n">runner</span>
+  <span class="n">install</span><span class="o">/</span>          <span class="n">Setup</span> <span class="n">wizard</span> <span class="ow">and</span> <span class="n">shell</span> <span class="n">installer</span>
+  <span class="n">reproducibility</span><span class="o">/</span>  <span class="n">Zenodo</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="ow">and</span> <span class="n">LaTeX</span> <span class="n">integration</span>
+<span class="n">templates</span><span class="o">/</span>          <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">general</span><span class="p">,</span> <span class="n">planetary</span><span class="p">,</span> <span class="n">reproducible</span><span class="o">-</span><span class="n">paper</span><span class="p">)</span>
+<span class="n">tests</span><span class="o">/</span>              <span class="n">Pytest</span> <span class="n">test</span> <span class="n">suite</span>
+<span class="n">docs</span><span class="o">/</span>               <span class="n">Sphinx</span> <span class="n">documentation</span> <span class="p">(</span><span class="n">this</span> <span class="n">site</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="reproducibility.html" class="btn btn-neutral float-left" title="Reproducibility" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="repos.html" class="btn btn-neutral float-right" title="Related Repositories" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

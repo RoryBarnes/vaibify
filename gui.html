@@ -1,0 +1,246 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workflow Viewer &mdash; Vaibify 0.1.dev149+g443985c8c.d20260331 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=7d56c8f0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Supported Data Formats" href="testFormats.html" />
+    <link rel="prev" title="Pipelines" href="pipelines.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Workflow Viewer</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#pipeline-panel">Pipeline Panel</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#adding-a-step">Adding a Step</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#interactive-steps">Interactive Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#figure-viewer">Figure Viewer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#dag-visualization">DAG Visualization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#integrated-terminal">Integrated Terminal</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#resource-monitor">Resource Monitor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#test-generation">Test Generation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sync-controls">Sync Controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub Mode</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="repos.html">Related Repositories</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Workflow Viewer</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/gui.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="workflow-viewer">
+<h1>Workflow Viewer<a class="headerlink" href="#workflow-viewer" title="Link to this heading"></a></h1>
+<p>The workflow viewer is a browser-based GUI for managing and executing
+pipelines inside a Vaibify container. Launch it with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>gui
+</pre></div>
+</div>
+<p>The viewer opens at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> and communicates with the
+running container over the Docker CLI.</p>
+<section id="pipeline-panel">
+<h2>Pipeline Panel<a class="headerlink" href="#pipeline-panel" title="Link to this heading"></a></h2>
+<p>The left panel displays the steps defined in <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. Each step
+shows its name, working directory, and current status (idle, running,
+passed, or failed). From this panel you can:</p>
+<ul class="simple">
+<li><p><strong>Run All</strong> – execute every enabled step in order.</p></li>
+<li><p><strong>Run Selected</strong> – execute only the checked steps.</p></li>
+<li><p><strong>Run From Step</strong> – execute from a chosen step to the end.</p></li>
+<li><p><strong>Enable / Disable</strong> – toggle individual steps without removing them.</p></li>
+<li><p><strong>Reorder</strong> – drag steps to change the execution order.</p></li>
+</ul>
+<section id="adding-a-step">
+<h3>Adding a Step<a class="headerlink" href="#adding-a-step" title="Link to this heading"></a></h3>
+<p>Click <strong>Add Step</strong> to open the step editor. Fill in the step name,
+working directory, and commands. The editor has separate fields for data
+commands (heavy computation) and plot commands (figure generation), making
+it straightforward to re-run just the visualization after adjusting a
+plotting script.</p>
+</section>
+<section id="interactive-steps">
+<h3>Interactive Steps<a class="headerlink" href="#interactive-steps" title="Link to this heading"></a></h3>
+<p>Steps can be marked as <strong>interactive</strong> (<code class="docutils literal notranslate"><span class="pre">bInteractive:</span> <span class="pre">true</span></code>). When the
+pipeline reaches an interactive step it pauses and waits for the user to
+confirm before continuing. This is useful for manual inspection or
+parameter adjustment between automated stages.</p>
+</section>
+</section>
+<section id="figure-viewer">
+<h2>Figure Viewer<a class="headerlink" href="#figure-viewer" title="Link to this heading"></a></h2>
+<p>The right panel displays figures produced by the pipeline. Figures are
+loaded from the container’s plot directory and refresh automatically after
+each step completes. Supported formats include PDF, PNG, SVG, and JPG.</p>
+<p>The figure viewer provides:</p>
+<ul class="simple">
+<li><p><strong>Automatic refresh</strong> after each step completes.</p></li>
+<li><p><strong>Full-size preview</strong> by clicking a thumbnail.</p></li>
+<li><p><strong>Side-by-side comparison</strong> of before/after versions of a figure.</p></li>
+</ul>
+</section>
+<section id="dag-visualization">
+<h2>DAG Visualization<a class="headerlink" href="#dag-visualization" title="Link to this heading"></a></h2>
+<p>The workflow viewer renders the pipeline as a directed acyclic graph (DAG)
+showing the dependency structure between steps. The DAG updates in real time
+as steps complete. A zoom toolbar allows panning and scaling.</p>
+</section>
+<section id="integrated-terminal">
+<h2>Integrated Terminal<a class="headerlink" href="#integrated-terminal" title="Link to this heading"></a></h2>
+<p>Click <strong>Terminal</strong> to open a shell session inside the container. The
+terminal runs in the browser via WebSocket and behaves like a standard
+terminal emulator. Multiple sessions can run concurrently.</p>
+</section>
+<section id="resource-monitor">
+<h2>Resource Monitor<a class="headerlink" href="#resource-monitor" title="Link to this heading"></a></h2>
+<p>The status bar at the bottom displays real-time CPU, memory, and disk
+usage of the container. These metrics update continuously via WebSocket.</p>
+</section>
+<section id="test-generation">
+<h2>Test Generation<a class="headerlink" href="#test-generation" title="Link to this heading"></a></h2>
+<p>The <strong>Tests</strong> panel generates unit tests for pipeline steps. Select a step
+and click <strong>Generate Tests</strong> to produce three categories of verification:</p>
+<ol class="arabic simple">
+<li><p><strong>Integrity tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_integrity.py</span></code>) – validate that output files
+exist, are non-empty, load in their expected format, have the correct
+shape, and contain no NaN or Inf values.</p></li>
+<li><p><strong>Qualitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_qualitative.py</span></code>) – verify that column
+names, JSON keys, parameter names, and other categorical content match
+expectations.</p></li>
+<li><p><strong>Quantitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_quantitative.py</span></code> +
+<code class="docutils literal notranslate"><span class="pre">quantitative_standards.json</span></code>) – compare numerical output values
+against stored benchmarks at full double precision with configurable
+relative and absolute tolerances.</p></li>
+</ol>
+<p>Test generation is <strong>deterministic by default</strong>: a Python introspection
+script runs inside the container, reads each data file, and produces tests
+mechanically. No LLM is required. The LLM-based path is available as a
+fallback by setting <code class="docutils literal notranslate"><span class="pre">bDeterministic:</span> <span class="pre">false</span></code> in the API request.</p>
+<p>See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the full list of file
+types the test generator can read.</p>
+</section>
+<section id="sync-controls">
+<h2>Sync Controls<a class="headerlink" href="#sync-controls" title="Link to this heading"></a></h2>
+<p>The toolbar includes buttons for:</p>
+<ul class="simple">
+<li><p><strong>Push to Overleaf</strong> – sync figures to the configured Overleaf project.</p></li>
+<li><p><strong>Archive to Zenodo</strong> – upload outputs and receive a DOI.</p></li>
+<li><p><strong>Generate LaTeX</strong> – create <code class="docutils literal notranslate"><span class="pre">\includegraphics</span></code> commands for all figures.</p></li>
+</ul>
+<p>These actions are also available via the CLI (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code>).</p>
+</section>
+<section id="hub-mode">
+<h2>Hub Mode<a class="headerlink" href="#hub-mode" title="Link to this heading"></a></h2>
+<p>When Vaibify is invoked with no subcommand, it starts in <strong>hub mode</strong> – a
+dashboard that lists all Vaibify projects on the host. Hub mode provides:</p>
+<ul class="simple">
+<li><p>A container registry browser for discovering published images.</p></li>
+<li><p>A directory browser for locating project configuration files.</p></li>
+<li><p>Quick-launch buttons to start, stop, or open the GUI for any project.</p></li>
+</ul>
+<p>Hub mode binds to the same port (8050) and is intended for users who manage
+multiple Vaibify environments.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="pipelines.html" class="btn btn-neutral float-left" title="Pipelines" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="testFormats.html" class="btn btn-neutral float-right" title="Supported Data Formats" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

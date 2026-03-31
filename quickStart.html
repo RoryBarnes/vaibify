@@ -1,0 +1,218 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Start &mdash; Vaibify 0.1.dev149+g443985c8c.d20260331 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=7d56c8f0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Setup Wizard" href="setupWizard.html" />
+    <link rel="prev" title="Installing Vaibify" href="install.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#initialize-a-project">Initialize a Project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#build-the-image">Build the Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#start-and-connect">Start and Connect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#transfer-files">Transfer Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stop-the-container">Stop the Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#check-status">Check Status</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="repos.html">Related Repositories</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quick Start</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/quickStart.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quick-start">
+<h1>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h1>
+<p>This guide walks through the minimal steps to get a Vaibify project
+running on your machine. See <a class="reference internal" href="install.html"><span class="std std-doc">Installing Vaibify</span></a> for
+detailed installation instructions, or <a class="reference internal" href="setupWizard.html"><span class="std std-doc">Setup Wizard</span></a>
+for the interactive configuration walkthrough.</p>
+<section id="initialize-a-project">
+<h2>Initialize a Project<a class="headerlink" href="#initialize-a-project" title="Link to this heading"></a></h2>
+<p>Navigate to your project directory and run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init
+</pre></div>
+</div>
+<p>This creates a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> configuration file and a <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>
+repository list. Choose a template when prompted:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Template</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">general</span></code></p></td>
+<td><p>Empty starting point</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">planetary</span></code></p></td>
+<td><p>VPLanet ecosystem (10 repositories)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reproducible-paper</span></code></p></td>
+<td><p>LaTeX manuscript with figures pipeline</p></td>
+</tr>
+</tbody>
+</table>
+<p>Or specify a template directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span>--template<span class="w"> </span>planetary
+</pre></div>
+</div>
+</section>
+<section id="build-the-image">
+<h2>Build the Image<a class="headerlink" href="#build-the-image" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build
+</pre></div>
+</div>
+<p>On first run this installs the base image, system packages, Python
+dependencies, and clones all repositories listed in <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>. A
+rebuild is only required when <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> or <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> change.</p>
+</section>
+<section id="start-and-connect">
+<h2>Start and Connect<a class="headerlink" href="#start-and-connect" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start
+</pre></div>
+</div>
+<p>This launches the container in the background. To open a shell inside it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect
+</pre></div>
+</div>
+<p>Or use the standalone script:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>connect_vc
+</pre></div>
+</div>
+</section>
+<section id="transfer-files">
+<h2>Transfer Files<a class="headerlink" href="#transfer-files" title="Link to this heading"></a></h2>
+<p>Copy files into the container:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vc_push<span class="w"> </span>localfile.txt<span class="w"> </span>.
+vc_push<span class="w"> </span>-r<span class="w"> </span>results/<span class="w"> </span>project/
+</pre></div>
+</div>
+<p>Copy files out:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vc_pull<span class="w"> </span>output.csv<span class="w"> </span>.
+vc_pull<span class="w"> </span>-r<span class="w"> </span>project/results/<span class="w"> </span>./backup/
+</pre></div>
+</div>
+</section>
+<section id="stop-the-container">
+<h2>Stop the Container<a class="headerlink" href="#stop-the-container" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>stop
+</pre></div>
+</div>
+<p>The workspace volume persists between sessions. Use <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code>
+to remove the container and optionally delete the volume.</p>
+</section>
+<section id="check-status">
+<h2>Check Status<a class="headerlink" href="#check-status" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status
+</pre></div>
+</div>
+<p>This reports whether the container is running, lists installed repositories,
+and shows resource usage.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="install.html" class="btn btn-neutral float-left" title="Installing Vaibify" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="setupWizard.html" class="btn btn-neutral float-right" title="Setup Wizard" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
