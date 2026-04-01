@@ -25,6 +25,7 @@ const PipeleyenApp = (function () {
     let wsPipeline = null;
     let dictStepStatus = {};
     var _dictDashboardMode = null;
+    var bShowTimestamps = false;
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
@@ -72,6 +73,7 @@ const PipeleyenApp = (function () {
     async function fnInitialize() {
         await fnFetchSessionToken();
         fnLoadUserName();
+        fnLoadTimestampSetting();
         fnLoadContainers();
         fnBindToolbarEvents();
         fnBindWorkflowPickerEvents();
@@ -1002,6 +1004,12 @@ const PipeleyenApp = (function () {
             ' min="1" max="60" value="' +
             (iPollIntervalMs / 1000) + '" title="' +
             (iPollIntervalMs / 1000) + ' seconds">' +
+            '</div>' +
+            '<div class="gs-row">' +
+            '<label class="gs-label gs-checkbox-label">' +
+            '<input type="checkbox" id="gsShowTimestamps"' +
+            (bShowTimestamps ? " checked" : "") + '> ' +
+            'Show timestamps</label>' +
             '</div>';
         el.querySelectorAll(".gs-input").forEach(function (inp) {
             inp.addEventListener("change", fnSaveGlobalSettings);
@@ -1022,6 +1030,43 @@ const PipeleyenApp = (function () {
                 dictWorkflow.fTolerance = fVal;
             });
         }
+        var elTimestampCheckbox = document.getElementById(
+            "gsShowTimestamps");
+        if (elTimestampCheckbox) {
+            elTimestampCheckbox.addEventListener(
+                "change", function () {
+                    fnToggleShowTimestamps(
+                        elTimestampCheckbox.checked);
+                });
+        }
+    }
+
+    function fnToggleShowTimestamps(bEnabled) {
+        bShowTimestamps = bEnabled;
+        try {
+            localStorage.setItem(
+                "vaibifyShowTimestamps",
+                bEnabled ? "true" : "false");
+        } catch (e) { /* localStorage may be unavailable */ }
+        fnApplyTimestampVisibility();
+    }
+
+    function fnApplyTimestampVisibility() {
+        var elList = document.getElementById("listSteps");
+        if (!elList) return;
+        if (bShowTimestamps) {
+            elList.classList.remove("hide-timestamps");
+        } else {
+            elList.classList.add("hide-timestamps");
+        }
+    }
+
+    function fnLoadTimestampSetting() {
+        try {
+            var sStored = localStorage.getItem(
+                "vaibifyShowTimestamps");
+            bShowTimestamps = sStored === "true";
+        } catch (e) { /* localStorage may be unavailable */ }
     }
 
     function fsToleranceToExponent(fTolerance) {
@@ -1078,6 +1123,7 @@ const PipeleyenApp = (function () {
             sHtml += fsRenderStepItem(step, iIndex, dictVars);
         });
         elList.innerHTML = sHtml;
+        fnApplyTimestampVisibility();
         fnBindStepEvents();
         fnScheduleFileExistenceCheck();
     }
@@ -1786,6 +1832,10 @@ const PipeleyenApp = (function () {
             sHtml += fsRenderVerificationRow(
                 "Unit Tests", sUnitState, "unitTest", iIndex
             );
+            sHtml += '<span class="timestamp-field">' +
+                fsRenderVerificationTimestamp(
+                    "Last run", dictVerify.sLastTestRun) +
+                '</span>';
             if (setGeneratingInFlight.has(iIndex)) {
                 sHtml += '<div class="unit-tests-expanded">' +
                     '<button class="btn-generate-test" disabled>' +
@@ -1799,12 +1849,20 @@ const PipeleyenApp = (function () {
         sHtml += fsRenderVerificationRow(
             "Dependencies", sDepsState, "deps", iIndex
         );
+        sHtml += '<span class="timestamp-field">' +
+            fsRenderVerificationTimestamp(
+                "Last checked", dictVerify.sLastDepsCheck) +
+            '</span>';
         if (setExpandedDeps.has(iIndex)) {
             sHtml += fsRenderDepsExpanded(iIndex);
         }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
         );
+        sHtml += '<span class="timestamp-field">' +
+            fsRenderVerificationTimestamp(
+                "Last updated", dictVerify.sLastUserUpdate) +
+            '</span>';
         sHtml += '</div>';
         return sHtml;
     }
@@ -1869,20 +1927,33 @@ const PipeleyenApp = (function () {
             sCategory.slice(1);
         var dictCat = dictTests[sCatKey] || {};
         var sStandardsPath = dictCat.sStandardsPath || "";
-        var sHtml = '<div class="sub-test-expanded">';
+        var sHtml = '<div class="sub-test-expanded sub-test-column">';
         if (sStandardsPath) {
-            sHtml += '<span class="test-standards-link" ' +
+            sHtml += '<div><span class="test-standards-link" ' +
                 'data-step="' + iIndex +
                 '" data-category="' + sCategory +
                 '" data-path="' +
                 fnEscapeHtml(sStandardsPath) +
-                '">Standards</span>';
+                '">Standards</span></div>';
         }
-        if ((dictCat.saCommands || []).length > 0) {
-            sHtml += '<button class="btn btn-run-category" ' +
+        var sLogPath = (dictCat.sLogPath || "");
+        if (!sLogPath) {
+            sLogPath = (fdictGetVerification(step))
+                .sTestLogPath || "";
+        }
+        if (sLogPath) {
+            sHtml += '<div><span class="test-log-link" ' +
                 'data-step="' + iIndex +
                 '" data-category="' + sCategory +
-                '">Run</button>';
+                '" data-log="' +
+                fnEscapeHtml(sLogPath) +
+                '">Log</span></div>';
+        }
+        if ((dictCat.saCommands || []).length > 0) {
+            sHtml += '<div><button class="btn btn-run-category" ' +
+                'data-step="' + iIndex +
+                '" data-category="' + sCategory +
+                '">Run</button></div>';
         }
         sHtml += '</div>';
         return sHtml;
@@ -2083,6 +2154,23 @@ const PipeleyenApp = (function () {
         var iHours = Math.floor(iMinutes / 60);
         iMinutes = iMinutes % 60;
         return iHours + "h " + iMinutes + "m";
+    }
+
+    function fsFormatUtcTimestamp() {
+        var d = new Date();
+        var sPad = function (i) { return String(i).padStart(2, "0"); };
+        return d.getUTCFullYear() + "-" +
+            sPad(d.getUTCMonth() + 1) + "-" +
+            sPad(d.getUTCDate()) + " " +
+            sPad(d.getUTCHours()) + ":" +
+            sPad(d.getUTCMinutes()) + " UTC";
+    }
+
+    function fsRenderVerificationTimestamp(sLabel, sTimestamp) {
+        if (!sTimestamp) return "";
+        return '<div class="verification-timestamp">' +
+            fnEscapeHtml(sLabel) + ": " +
+            fnEscapeHtml(sTimestamp) + '</div>';
     }
 
     function fsRenderSectionLabel(sLabel, iStepIdx, sArrayKey) {
@@ -2453,6 +2541,12 @@ const PipeleyenApp = (function () {
             fnViewStandardsFile(
                 parseInt(elStandards.dataset.step),
                 elStandards.dataset.category);
+            return;
+        }
+        if (elTarget.closest(".test-log-link")) {
+            var elLogLink = elTarget.closest(".test-log-link");
+            PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                elLogLink.dataset.log);
             return;
         }
         if (elTarget.closest(".test-edit-cmd")) {
@@ -2906,6 +3000,8 @@ const PipeleyenApp = (function () {
             sCategory.slice(1);
         dictStep.dictVerification[sKey] =
             dictResult.bPassed ? "passed" : "failed";
+        dictStep.dictVerification.sLastTestRun =
+            fsFormatUtcTimestamp();
         fnComputeAggregateTestState(iStepIndex);
         fnSaveStepUpdate(iStepIndex, {
             dictVerification: dictStep.dictVerification,
@@ -3122,6 +3218,7 @@ const PipeleyenApp = (function () {
         var iCurrent = listStates.indexOf(dictVerify.sUser);
         var iNext = (iCurrent + 1) % listStates.length;
         dictVerify.sUser = listStates[iNext];
+        dictVerify.sLastUserUpdate = fsFormatUtcTimestamp();
         dictStep.dictVerification = dictVerify;
         try {
             await fetch(
@@ -3306,7 +3403,9 @@ const PipeleyenApp = (function () {
 
     function fnDeleteDetailItem(iStep, sArray, iIdx) {
         var sValue = dictWorkflow.listSteps[iStep][sArray][iIdx];
-        fnShowConfirmModal("Delete Item", sValue, function () {
+        var dictVars = fdictBuildClientVariables();
+        var sDisplay = fsResolveTemplate(sValue, dictVars);
+        fnShowConfirmModal("Delete Item", sDisplay, function () {
             _fnExecuteDeleteItem(iStep, sArray, iIdx, sValue);
         });
     }
@@ -3541,6 +3640,13 @@ const PipeleyenApp = (function () {
                 }
             );
             var dictResult = await responseHttp.json();
+            dictStep.dictVerification = dictStep.dictVerification ||
+                {sUnitTest: "untested", sUser: "untested"};
+            dictStep.dictVerification.sLastDepsCheck =
+                fsFormatUtcTimestamp();
+            fnSaveStepUpdate(iStep, {
+                dictVerification: dictStep.dictVerification,
+            });
             fnShowDependencyModal(iStep, dictResult);
         } catch (error) {
             fnShowToast("Dependency scan failed", "error");
@@ -5719,6 +5825,8 @@ const PipeleyenApp = (function () {
                 step, dictResult.dictCategoryResults);
             step.dictVerification.sUnitTest =
                 dictResult.bPassed ? "passed" : "failed";
+            step.dictVerification.sLastTestRun =
+                fsFormatUtcTimestamp();
             if (dictResult.bPassed) {
                 fnClearOutputModified(iStepIndex);
             }
