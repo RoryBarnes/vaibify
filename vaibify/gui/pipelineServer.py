@@ -86,6 +86,10 @@ class FileWriteRequest(BaseModel):
     sContent: str
 
 
+class DependencyScanRequest(BaseModel):
+    saDataCommands: List[str] = []
+
+
 class TestGenerateRequest(BaseModel):
     bUseApi: bool = False
     sApiKey: Optional[str] = None
@@ -763,6 +767,113 @@ def _fnRegisterGithubPush(app, dictCtx):
             if s.strip()
         ] if iExit == 0 and sOutput.strip() else []
         return workflowManager.fdictAutoDetectScripts(listFiles)
+
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"
+    )
+    async def fnScanDependencies(
+        sContainerId: str,
+        iStepIndex: int,
+        request: DependencyScanRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        return await _fdictScanDependencies(
+            dictCtx, sContainerId, iStepIndex,
+            request.saDataCommands, dictWorkflow,
+        )
+
+
+async def _fdictScanDependencies(
+    dictCtx, sContainerId, iStepIndex,
+    saDataCommands, dictWorkflow,
+):
+    """Scan commands for file loads and cross-reference upstream outputs."""
+    from .commandUtilities import ftExtractScriptPathForLanguage
+    from .dependencyScanner import flistScanForLoadCalls, fsDetectLanguage
+
+    listAllDetected = []
+    for sCommand in saDataCommands:
+        sScriptPath, sLanguage = ftExtractScriptPathForLanguage(sCommand)
+        if not sScriptPath or sLanguage == "unknown":
+            continue
+        try:
+            baContent = await asyncio.to_thread(
+                dictCtx["docker"].fbaFetchFile,
+                sContainerId, sScriptPath,
+            )
+            sSourceCode = baContent.decode("utf-8")
+        except Exception:
+            continue
+        if sLanguage == "unknown":
+            sFirstLine = sSourceCode.split("\n", 1)[0]
+            sLanguage = fsDetectLanguage(sScriptPath, sCommand, sFirstLine)
+        listDetected = flistScanForLoadCalls(sSourceCode, sLanguage)
+        for dictItem in listDetected:
+            dictItem["sFoundInScript"] = sScriptPath
+        listAllDetected.extend(listDetected)
+
+    return _fdictCrossReferenceFiles(
+        listAllDetected, dictWorkflow, iStepIndex
+    )
+
+
+def _fdictCrossReferenceFiles(listDetected, dictWorkflow, iCurrentStep):
+    """Match detected filenames against upstream step outputs."""
+    dictStemRegistry = workflowManager.fdictBuildStemRegistry(dictWorkflow)
+    listSuggestions = []
+    listUnmatchedFiles = []
+
+    for dictItem in listDetected:
+        sFileName = dictItem["sFileName"]
+        sBasename = os.path.basename(sFileName)
+        sStem = os.path.splitext(sBasename)[0]
+        dictMatch = _fdictFindStemMatch(
+            sStem, dictStemRegistry, dictWorkflow, iCurrentStep
+        )
+        if dictMatch:
+            dictMatch.update({
+                "sFileName": sFileName,
+                "sFoundInScript": dictItem.get("sFoundInScript", ""),
+                "sLoadFunction": dictItem["sLoadFunction"],
+                "iLineNumber": dictItem["iLineNumber"],
+            })
+            listSuggestions.append(dictMatch)
+        else:
+            listUnmatchedFiles.append({
+                "sFileName": sFileName,
+                "sLoadFunction": dictItem["sLoadFunction"],
+                "iLineNumber": dictItem["iLineNumber"],
+                "sFoundInScript": dictItem.get("sFoundInScript", ""),
+            })
+
+    return {
+        "listSuggestions": listSuggestions,
+        "listUnmatchedFiles": listUnmatchedFiles,
+    }
+
+
+def _fdictFindStemMatch(
+    sStem, dictStemRegistry, dictWorkflow, iCurrentStep,
+):
+    """Return match dict if sStem maps to an upstream step output."""
+    for sKey, iStepNumber in dictStemRegistry.items():
+        iStepIndex = iStepNumber - 1
+        if iStepIndex >= iCurrentStep:
+            continue
+        sRegistryStem = sKey.split(".", 1)[1] if "." in sKey else ""
+        if sRegistryStem == sStem:
+            sStepName = dictWorkflow["listSteps"][iStepIndex].get(
+                "sName", f"Step {iStepNumber}"
+            )
+            return {
+                "iSourceStep": iStepNumber,
+                "sSourceStepName": sStepName,
+                "sTemplateVariable": "{" + sKey + "}",
+                "sResolvedPath": sKey,
+            }
+    return None
 
 
 def _fnStoreCommitHash(dictWorkflow, listFilePaths, sCommitHash):
