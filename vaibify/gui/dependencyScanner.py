@@ -99,6 +99,10 @@ def fbLooksLikeDataFile(sCandidate):
         return False
     if "{" in sCandidate:
         return False
+    if sCandidate.endswith("/"):
+        return False
+    if sCandidate.count(" ") >= 3:
+        return False
     sExtension = os.path.splitext(sCandidate)[1].lower()
     if sExtension in SET_FILE_EXTENSIONS:
         return True
@@ -381,8 +385,87 @@ def _flistMergeAndDeduplicate(listFunctionCalls, listStringLiterals):
     return listMerged
 
 
+def _flistScanWritePython(sSourceCode):
+    """Scan Python source for file-writing calls."""
+    sQuoted = r"""(?P<sFileName>["'][^"']+["'])"""
+    listPatterns = [
+        (r'np\.save\s*\(\s*' + sQuoted, "np.save"),
+        (r'np\.savez\s*\(\s*' + sQuoted, "np.savez"),
+        (r'np\.savez_compressed\s*\(\s*' + sQuoted, "np.savez_compressed"),
+        (r'np\.savetxt\s*\(\s*' + sQuoted, "np.savetxt"),
+        (r'\.to_csv\s*\(\s*' + sQuoted, ".to_csv"),
+        (r'\.to_excel\s*\(\s*' + sQuoted, ".to_excel"),
+        (r'\.to_parquet\s*\(\s*' + sQuoted, ".to_parquet"),
+        (r'\.to_hdf\s*\(\s*' + sQuoted, ".to_hdf"),
+        (r'json\.dump\s*\(.*?,\s*open\s*\(\s*' + sQuoted, "json.dump"),
+        (r'pickle\.dump\s*\(.*?,\s*open\s*\(\s*' + sQuoted, "pickle.dump"),
+        (r'open\s*\(\s*' + sQuoted + r'[^)]*["\'][wa]', "open(write)"),
+    ]
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
+
+
+def _flistScanWriteR(sSourceCode):
+    """Scan R source for file-writing calls."""
+    sQuoted = r"""(?P<sFileName>["'][^"']+["'])"""
+    listPatterns = [
+        (r'write\.csv\s*\(.*?,\s*' + sQuoted, "write.csv"),
+        (r'saveRDS\s*\(.*?,\s*' + sQuoted, "saveRDS"),
+        (r'write\.table\s*\(.*?,\s*' + sQuoted, "write.table"),
+        (r'writeLines\s*\(.*?,\s*' + sQuoted, "writeLines"),
+    ]
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
+
+
+def _flistScanWriteC(sSourceCode):
+    """Scan C/C++ source for file-writing calls."""
+    sQuoted = r"""(?P<sFileName>["'][^"']+["'])"""
+    listPatterns = [
+        (r'fopen\s*\(\s*' + sQuoted + r'[^)]*["\']w', "fopen(write)"),
+    ]
+    return _flistMatchPatterns(sSourceCode, listPatterns, "//")
+
+
+def _flistScanWriteShell(sSourceCode):
+    """Scan shell scripts for file-writing redirects."""
+    sUnquotedOrQuoted = r"""(?P<sFileName>["'][^"']+["']|\S+)"""
+    listPatterns = [
+        (r'>\s*' + sUnquotedOrQuoted, ">"),
+        (r'>>\s*' + sUnquotedOrQuoted, ">>"),
+    ]
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
+
+
+DICT_WRITE_SCANNERS = {
+    "python": _flistScanWritePython,
+    "r": _flistScanWriteR,
+    "c": _flistScanWriteC,
+    "shell": _flistScanWriteShell,
+}
+
+
+def flistScanForWriteCalls(sSourceCode, sLanguage):
+    """Scan source for file-writing calls and return list of match dicts."""
+    fnScanner = DICT_WRITE_SCANNERS.get(sLanguage)
+    if fnScanner is None:
+        return []
+    return fnScanner(sSourceCode)
+
+
+def _fsetWriteTargetBaseNames(sSourceCode, sLanguage):
+    """Return basenames of files identified as write targets."""
+    listWriteCalls = flistScanForWriteCalls(sSourceCode, sLanguage)
+    return {os.path.basename(d["sFileName"]) for d in listWriteCalls}
+
+
 def flistScanForLoadCalls(sSourceCode, sLanguage):
     """Scan source for file references via function calls and string literals."""
     listFunctionCalls = _flistScanByLanguage(sSourceCode, sLanguage)
     listStringLiterals = _flistHarvestStringLiterals(sSourceCode, sLanguage)
-    return _flistMergeAndDeduplicate(listFunctionCalls, listStringLiterals)
+    listMerged = _flistMergeAndDeduplicate(listFunctionCalls, listStringLiterals)
+    setWriteTargets = _fsetWriteTargetBaseNames(sSourceCode, sLanguage)
+    if not setWriteTargets:
+        return listMerged
+    return [
+        d for d in listMerged
+        if os.path.basename(d["sFileName"]) not in setWriteTargets
+    ]

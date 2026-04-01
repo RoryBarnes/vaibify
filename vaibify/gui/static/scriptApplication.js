@@ -3540,6 +3540,45 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnAttachAddButtons(elModal, listUnmatched, listSuggestions) {
+        var listAddButtons = elModal.querySelectorAll(
+            ".btn-add-unmatched"
+        );
+        for (var b = 0; b < listAddButtons.length; b++) {
+            listAddButtons[b].addEventListener("click", function () {
+                var iIdx = parseInt(
+                    this.getAttribute("data-unmatched-idx"), 10
+                );
+                var dictFile = listUnmatched[iIdx];
+                var elRow = this.closest(".dependency-unmatched");
+                if (elRow) elRow.remove();
+                fnAddUnmatchedToSuggestions(
+                    elModal, dictFile, listSuggestions
+                );
+            });
+        }
+    }
+
+    function fnAddUnmatchedToSuggestions(
+        elModal, dictFile, listSuggestions
+    ) {
+        var iNewIndex = listSuggestions.length;
+        listSuggestions.push(dictFile);
+        var elSection = elModal.querySelector(
+            ".dependency-section-title"
+        );
+        if (!elSection) return;
+        var elNewRow = document.createElement("div");
+        elNewRow.className = "dependency-suggestion";
+        elNewRow.innerHTML =
+            '<input type="checkbox" checked ' +
+            'data-dep-index="' + iNewIndex + '" ' +
+            'class="dependency-checkbox">' +
+            '<span>' + fnEscapeHtml(dictFile.sFileName) +
+            '</span>';
+        elSection.insertAdjacentElement("afterend", elNewRow);
+    }
+
     function fnShowDependencyModal(iStep, dictResult) {
         var elExisting = document.getElementById("modalDependency");
         if (elExisting) elExisting.remove();
@@ -3580,12 +3619,18 @@ const PipeleyenApp = (function () {
                 'Unmatched Files</div>';
             for (var j = 0; j < listUnmatched.length; j++) {
                 var dictFile = listUnmatched[j];
-                sHtml += '<div class="dependency-unmatched">' +
+                sHtml += '<div class="dependency-unmatched" ' +
+                    'data-unmatched-idx="' + j + '">' +
                     fnEscapeHtml(dictFile.sFileName) +
                     ' <span style="color:var(--text-secondary)">' +
                     fnEscapeHtml(dictFile.sLoadFunction) +
                     ' (line ' + dictFile.iLineNumber + ')' +
-                    '</span></div>';
+                    '</span>' +
+                    '<button class="btn btn-small btn-add-unmatched" ' +
+                    'data-unmatched-idx="' + j + '" ' +
+                    'style="margin-left:auto;padding:2px 8px;' +
+                    'font-size:12px">Add</button>' +
+                    '</div>';
             }
         }
 
@@ -3620,7 +3665,7 @@ const PipeleyenApp = (function () {
         sHtml += '<div class="dependency-section-title">' +
             'Manual Dependency</div>';
         sHtml += '<input type="text" class="dependency-manual-input" ' +
-            'placeholder="/path/to/upstream/file.npy">';
+            'placeholder="/path/to/upstream/file">';
 
         sHtml += '<div class="modal-actions">' +
             '<button class="btn" id="btnDepSkip">Skip</button>' +
@@ -3630,6 +3675,8 @@ const PipeleyenApp = (function () {
 
         elModal.innerHTML = sHtml;
         document.body.appendChild(elModal);
+
+        fnAttachAddButtons(elModal, listUnmatched, listSuggestions);
 
         if (bNoResults) {
             var elManualInput = elModal.querySelector(

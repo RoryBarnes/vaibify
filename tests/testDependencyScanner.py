@@ -6,6 +6,7 @@ from vaibify.gui.dependencyScanner import (
     fbLooksLikeDataFile,
     fbLooksLikeFilePath,
     flistScanForLoadCalls,
+    flistScanForWriteCalls,
     fsDetectLanguage,
     fsExtractStringLiteral,
     _flistHarvestStringLiterals,
@@ -785,3 +786,105 @@ class TestUpstreamFallback:
         }
         listResult = _flistCollectUpstreamOutputs(dictWorkflow, 0)
         assert listResult == []
+
+
+# ── Write-call scanning ────────────────────────────────────────
+
+
+class TestWriteCallScanning:
+
+    def test_np_save_detected(self):
+        sCode = 'np.save("model.npy", daArray)\n'
+        listResult = flistScanForWriteCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "model.npy"
+
+    def test_to_csv_detected(self):
+        sCode = 'df.to_csv("results.csv")\n'
+        listResult = flistScanForWriteCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "results.csv"
+
+    def test_open_write_mode_detected(self):
+        sCode = 'f = open("output.txt", "w")\n'
+        listResult = flistScanForWriteCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "output.txt"
+
+    def test_pickle_dump_detected(self):
+        sCode = 'pickle.dump(obj, open("model.pkl", "wb"))\n'
+        listResult = flistScanForWriteCalls(sCode, "python")
+        assert len(listResult) >= 1
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "model.pkl" in listFileNames
+
+    def test_r_write_csv_detected(self):
+        sCode = 'write.csv(df, "output.csv")\n'
+        listResult = flistScanForWriteCalls(sCode, "r")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "output.csv"
+
+    def test_r_saveRDS_detected(self):
+        sCode = 'saveRDS(obj, "model.rds")\n'
+        listResult = flistScanForWriteCalls(sCode, "r")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "model.rds"
+
+    def test_unknown_language_returns_empty(self):
+        listResult = flistScanForWriteCalls("anything", "julia")
+        assert listResult == []
+
+
+# ── Write-target filtering in load calls ───────────────────────
+
+
+class TestWriteTargetFiltering:
+
+    def test_write_target_excluded_from_loads(self):
+        sCode = (
+            'data = np.load("input.npy")\n'
+            'np.save("output.npy", data)\n'
+        )
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "input.npy" in listFileNames
+        assert "output.npy" not in listFileNames
+
+    def test_pkl_write_target_excluded(self):
+        sCode = (
+            'sModelPath = "surrogate_model.pkl"\n'
+            'pickle.dump(model, open("surrogate_model.pkl", "wb"))\n'
+        )
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "surrogate_model.pkl" not in listFileNames
+
+    def test_savetxt_target_excluded(self):
+        sCode = (
+            'np.savetxt("gp_grid_search_results.txt", daResults)\n'
+            'sFile = "gp_grid_search_results.txt"\n'
+        )
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "gp_grid_search_results.txt" not in listFileNames
+
+
+# ── Sentence and directory filtering ───────────────────────────
+
+
+class TestSentenceAndDirectoryFiltering:
+
+    def test_sentence_rejected(self):
+        sCandidate = (
+            "Return a qualitative label for a delta/sigma agreement."
+        )
+        assert fbLooksLikeDataFile(sCandidate) is False
+
+    def test_directory_only_rejected(self):
+        assert fbLooksLikeDataFile("output/") is False
+
+    def test_short_filename_still_accepted(self):
+        assert fbLooksLikeDataFile("data.csv") is True
+
+    def test_path_with_file_still_accepted(self):
+        assert fbLooksLikeDataFile("output/results.csv") is True
