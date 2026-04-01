@@ -1901,17 +1901,24 @@ _DICT_FORMAT_MAP = {{
     ".tfrecord": "tfrecord",
 }}
 
+def _fbIsDividerLine(sLine):
+    sStripped = sLine.strip()
+    if len(sStripped) < 3:
+        return False
+    return all(c == sStripped[0] for c in sStripped)
+
 def _fbLooksLikeKeyvalue(sFullPath):
     try:
         with open(sFullPath, encoding="utf-8", errors="replace") as fh:
             listLines = [
                 s.strip() for s in fh.readlines()
                 if s.strip() and not s.strip().startswith("#")
+                and not _fbIsDividerLine(s)
             ]
         if not listLines:
             return False
         iWithEquals = sum(1 for s in listLines if "=" in s)
-        return iWithEquals > len(listLines) / 2
+        return iWithEquals > len(listLines) / 3
     except Exception:
         return False
 
