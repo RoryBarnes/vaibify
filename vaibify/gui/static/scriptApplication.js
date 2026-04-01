@@ -3595,8 +3595,28 @@ const PipeleyenApp = (function () {
             }
         }
 
+        var listUpstream = dictResult.listUpstreamOutputs || [];
+        if (listUpstream.length > 0) {
+            sHtml += '<div class="dependency-section-title">' +
+                'Select from upstream outputs</div>';
+            for (var u = 0; u < listUpstream.length; u++) {
+                var dictUp = listUpstream[u];
+                sHtml += '<div class="dependency-suggestion">' +
+                    '<input type="checkbox" ' +
+                    'data-upstream-index="' + u + '" ' +
+                    'class="upstream-checkbox">' +
+                    '<span class="dependency-step-badge">' +
+                    fnEscapeHtml(dictUp.sSourceStepName) +
+                    '</span> ' +
+                    '<span>' + fnEscapeHtml(dictUp.sFileName) +
+                    '</span></div>';
+            }
+        }
+
         var bNoResults = (
-            listSuggestions.length === 0 && listUnmatched.length === 0
+            listSuggestions.length === 0 &&
+            listUnmatched.length === 0 &&
+            listUpstream.length === 0
         );
         if (bNoResults) {
             sHtml += '<p style="color:var(--text-secondary)">' +
@@ -3644,6 +3664,20 @@ const PipeleyenApp = (function () {
                             10
                         );
                         listChecked.push(listSuggestions[iIdx]);
+                    }
+                }
+                var listUpstreamBoxes = elModal.querySelectorAll(
+                    ".upstream-checkbox"
+                );
+                for (var p = 0; p < listUpstreamBoxes.length; p++) {
+                    if (listUpstreamBoxes[p].checked) {
+                        var iUpIdx = parseInt(
+                            listUpstreamBoxes[p].getAttribute(
+                                "data-upstream-index"
+                            ),
+                            10
+                        );
+                        listChecked.push(listUpstream[iUpIdx]);
                     }
                 }
                 var sManual = elModal.querySelector(

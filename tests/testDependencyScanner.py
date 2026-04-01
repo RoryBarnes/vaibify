@@ -3,10 +3,13 @@
 import pytest
 
 from vaibify.gui.dependencyScanner import (
+    fbLooksLikeDataFile,
     fbLooksLikeFilePath,
     flistScanForLoadCalls,
     fsDetectLanguage,
     fsExtractStringLiteral,
+    _flistHarvestStringLiterals,
+    _flistMergeAndDeduplicate,
 )
 
 
@@ -624,3 +627,80 @@ class TestGoLanguageDetection:
         assert fsDetectLanguage(
             "script", sCommandPrefix="go"
         ) == "go"
+
+
+# ── String harvesting tests ────────────────────────────────────
+
+
+class TestStringHarvest:
+
+    def test_string_harvest_variable_assignment(self):
+        sCode = (
+            'sPath = "results.npy"\n'
+            'data = np.loadtxt(sPath)\n'
+        )
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "results.npy" in listFileNames
+
+    def test_string_harvest_path_component(self):
+        sCode = 'sFile = "../MaximumLikelihood/maxlike_results.txt"\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "../MaximumLikelihood/maxlike_results.txt" in listFileNames
+
+    def test_string_harvest_comment_filtered(self):
+        sCode = '# "old_data.csv"\n'
+        listResult = _flistHarvestStringLiterals(sCode, "python")
+        assert len(listResult) == 0
+
+    def test_string_harvest_non_file_filtered(self):
+        sCode = (
+            'sVersion = "v2.0"\n'
+            'sMode = "readonly"\n'
+        )
+        listResult = _flistHarvestStringLiterals(sCode, "python")
+        assert len(listResult) == 0
+
+    def test_merge_deduplication(self):
+        sCode = 'data = np.load("data.npy")\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listDataNpy = [
+            d for d in listResult if d["sFileName"] == "data.npy"
+        ]
+        assert len(listDataNpy) == 1
+        assert listDataNpy[0]["sLoadFunction"] == "np.load"
+
+    def test_string_harvest_fortran(self):
+        sCode = 'CHARACTER(LEN=50) :: fname = "output.dat"\n'
+        listResult = flistScanForLoadCalls(sCode, "fortran")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "output.dat" in listFileNames
+
+    def test_string_harvest_r(self):
+        sCode = 'sPath <- "../step01/results.csv"\n'
+        listResult = flistScanForLoadCalls(sCode, "r")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "../step01/results.csv" in listFileNames
+
+    def test_string_harvest_shell(self):
+        sCode = 'INPUT_FILE="data.txt"\n'
+        listResult = flistScanForLoadCalls(sCode, "shell")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "data.txt" in listFileNames
+
+
+# ── Upstream fallback tests ────────────────────────────────────
+
+
+class TestUpstreamFallback:
+
+    def test_upstream_fallback_empty(self):
+        from vaibify.gui.pipelineServer import _flistCollectUpstreamOutputs
+        dictWorkflow = {
+            "listSteps": [
+                {"sName": "Step01", "saDataFiles": ["output.csv"]},
+            ],
+        }
+        listResult = _flistCollectUpstreamOutputs(dictWorkflow, 0)
+        assert listResult == []

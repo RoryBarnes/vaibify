@@ -820,9 +820,35 @@ async def _fdictScanDependencies(
             dictItem["sFoundInScript"] = sScriptPath
         listAllDetected.extend(listDetected)
 
-    return _fdictCrossReferenceFiles(
+    dictResult = _fdictCrossReferenceFiles(
         listAllDetected, dictWorkflow, iStepIndex
     )
+    bNoSuggestions = len(dictResult.get("listSuggestions", [])) == 0
+    if bNoSuggestions and iStepIndex > 0:
+        dictResult["listUpstreamOutputs"] = _flistCollectUpstreamOutputs(
+            dictWorkflow, iStepIndex,
+        )
+    return dictResult
+
+
+def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
+    """Collect all saDataFiles entries from steps preceding iStepIndex."""
+    listUpstream = []
+    listSteps = dictWorkflow.get("listSteps", [])
+    for iIndex in range(min(iStepIndex, len(listSteps))):
+        dictStep = listSteps[iIndex]
+        sStepName = dictStep.get("sName", f"Step {iIndex + 1}")
+        iStepNumber = iIndex + 1
+        for sFileName in dictStep.get("saDataFiles", []):
+            sStem = os.path.splitext(os.path.basename(sFileName))[0]
+            sTemplateVariable = "{" + f"{iStepNumber}.{sStem}" + "}"
+            listUpstream.append({
+                "sFileName": sFileName,
+                "sSourceStepName": sStepName,
+                "iSourceStep": iStepNumber,
+                "sTemplateVariable": sTemplateVariable,
+            })
+    return listUpstream
 
 
 def _fsJoinStepPath(sStepDirectory, sScriptPath):

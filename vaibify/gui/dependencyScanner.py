@@ -88,6 +88,23 @@ def fbLooksLikeFilePath(sCandidate):
     return False
 
 
+def fbLooksLikeDataFile(sCandidate):
+    """Return True only when sCandidate has a known data extension or a path separator."""
+    if not sCandidate or not sCandidate.strip():
+        return False
+    sCandidate = sCandidate.strip()
+    if sCandidate.startswith("http://") or sCandidate.startswith("https://"):
+        return False
+    if sCandidate.startswith("ftp://"):
+        return False
+    sExtension = os.path.splitext(sCandidate)[1].lower()
+    if sExtension in SET_FILE_EXTENSIONS:
+        return True
+    if "/" in sCandidate:
+        return True
+    return False
+
+
 def _fbIsCommentLine(sStripped, sCommentPrefix):
     """Return True when a stripped line begins with the comment prefix."""
     if not sCommentPrefix:
@@ -324,9 +341,46 @@ DICT_LANGUAGE_SCANNERS = {
 }
 
 
-def flistScanForLoadCalls(sSourceCode, sLanguage):
+def _flistScanByLanguage(sSourceCode, sLanguage):
     """Dispatch to language-specific scanner and return load call list."""
     fnScanner = DICT_LANGUAGE_SCANNERS.get(sLanguage)
     if fnScanner is None:
         return []
     return fnScanner(sSourceCode)
+
+
+def _flistHarvestStringLiterals(sSourceCode, sLanguage):
+    """Extract all quoted strings that look like data files."""
+    sCommentPrefix = DICT_COMMENT_PREFIX.get(sLanguage, "#")
+    sPattern = r'["\']((?:[^"\'\\]|\\.)+)["\']'
+    listResults = []
+    for iLineNumber, sLine in enumerate(sSourceCode.splitlines(), start=1):
+        sStripped = sLine.strip()
+        if not sStripped or _fbIsCommentLine(sStripped, sCommentPrefix):
+            continue
+        for matchResult in re.finditer(sPattern, sLine):
+            sValue = matchResult.group(1)
+            if fbLooksLikeDataFile(sValue):
+                listResults.append({
+                    "sFileName": sValue,
+                    "sLoadFunction": "string-literal",
+                    "iLineNumber": iLineNumber,
+                })
+    return listResults
+
+
+def _flistMergeAndDeduplicate(listFunctionCalls, listStringLiterals):
+    """Merge function-call and string-literal results, preferring function calls."""
+    setFunctionFileNames = {d["sFileName"] for d in listFunctionCalls}
+    listMerged = list(listFunctionCalls)
+    for dictItem in listStringLiterals:
+        if dictItem["sFileName"] not in setFunctionFileNames:
+            listMerged.append(dictItem)
+    return listMerged
+
+
+def flistScanForLoadCalls(sSourceCode, sLanguage):
+    """Scan source for file references via function calls and string literals."""
+    listFunctionCalls = _flistScanByLanguage(sSourceCode, sLanguage)
+    listStringLiterals = _flistHarvestStringLiterals(sSourceCode, sLanguage)
+    return _flistMergeAndDeduplicate(listFunctionCalls, listStringLiterals)
