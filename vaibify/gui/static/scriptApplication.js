@@ -1795,13 +1795,11 @@ const PipeleyenApp = (function () {
             }
         }
         var sDepsState = fsComputeDepsState(iIndex);
-        if (sDepsState !== "none") {
-            sHtml += fsRenderVerificationRow(
-                "Dependencies", sDepsState, "deps", iIndex
-            );
-            if (setExpandedDeps.has(iIndex)) {
-                sHtml += fsRenderDepsExpanded(iIndex);
-            }
+        sHtml += fsRenderVerificationRow(
+            "Dependencies", sDepsState, "deps", iIndex
+        );
+        if (setExpandedDeps.has(iIndex)) {
+            sHtml += fsRenderDepsExpanded(iIndex);
         }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
@@ -1910,6 +1908,9 @@ const PipeleyenApp = (function () {
                 fsVerificationStateLabel(sState) +
                 '</span></div>';
         }
+        sHtml += '<button class="btn btn-small btn-add-deps" ' +
+            'data-step="' + iIndex + '" ' +
+            'style="margin-top:6px">Add Dependencies</button>';
         sHtml += '</div>';
         return sHtml;
     }
@@ -2432,6 +2433,11 @@ const PipeleyenApp = (function () {
             fnRunCategoryTests(
                 parseInt(elCatBtn.dataset.step),
                 elCatBtn.dataset.category);
+            return;
+        }
+        if (elTarget.closest(".btn-add-deps")) {
+            var elAddDeps = elTarget.closest(".btn-add-deps");
+            fnScanDependencies(parseInt(elAddDeps.dataset.step));
             return;
         }
         if (elTarget.closest(".test-category-file")) {
@@ -3540,43 +3546,232 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnAttachAddButtons(elModal, listUnmatched, listSuggestions) {
-        var listAddButtons = elModal.querySelectorAll(
-            ".btn-add-unmatched"
-        );
-        for (var b = 0; b < listAddButtons.length; b++) {
-            listAddButtons[b].addEventListener("click", function () {
-                var iIdx = parseInt(
-                    this.getAttribute("data-unmatched-idx"), 10
-                );
-                var dictFile = listUnmatched[iIdx];
-                var elRow = this.closest(".dependency-unmatched");
-                if (elRow) elRow.remove();
-                fnAddUnmatchedToSuggestions(
-                    elModal, dictFile, listSuggestions
-                );
-            });
+    function fsRenderDetectedSection(listSuggestions) {
+        if (listSuggestions.length === 0) return "";
+        var sHtml = '<div class="dependency-section-title">' +
+            'Detected Dependencies</div>';
+        for (var i = 0; i < listSuggestions.length; i++) {
+            var dictSugg = listSuggestions[i];
+            sHtml += '<div class="dependency-suggestion">' +
+                '<input type="checkbox" checked ' +
+                'data-source="detected" data-dep-index="' + i +
+                '" class="dependency-checkbox">' +
+                '<span class="dependency-step-badge">' +
+                fnEscapeHtml(dictSugg.sSourceStepName) +
+                '</span> ' +
+                '<span>' + fnEscapeHtml(dictSugg.sFileName) +
+                '</span> ' +
+                '<span style="color:var(--text-secondary)">' +
+                fnEscapeHtml(dictSugg.sLoadFunction) +
+                ' (line ' + dictSugg.iLineNumber + ')' +
+                '</span></div>';
         }
+        return sHtml;
     }
 
-    function fnAddUnmatchedToSuggestions(
-        elModal, dictFile, listSuggestions
-    ) {
-        var iNewIndex = listSuggestions.length;
-        listSuggestions.push(dictFile);
-        var elSection = elModal.querySelector(
-            ".dependency-section-title"
-        );
-        if (!elSection) return;
-        var elNewRow = document.createElement("div");
-        elNewRow.className = "dependency-suggestion";
-        elNewRow.innerHTML =
-            '<input type="checkbox" checked ' +
-            'data-dep-index="' + iNewIndex + '" ' +
-            'class="dependency-checkbox">' +
-            '<span>' + fnEscapeHtml(dictFile.sFileName) +
-            '</span>';
-        elSection.insertAdjacentElement("afterend", elNewRow);
+    function fsRenderPossibleSection(listUnmatched) {
+        if (listUnmatched.length === 0) return "";
+        var sHtml = '<div class="dependency-section-title">' +
+            'Possible Dependencies</div>';
+        for (var j = 0; j < listUnmatched.length; j++) {
+            var dictFile = listUnmatched[j];
+            sHtml += '<div class="dependency-unmatched">' +
+                '<input type="checkbox" data-source="possible" ' +
+                'data-unmatched-idx="' + j +
+                '" class="dependency-checkbox">' +
+                '<span>' + fnEscapeHtml(dictFile.sFileName) +
+                '</span> ' +
+                '<span style="color:var(--text-secondary)">' +
+                fnEscapeHtml(dictFile.sLoadFunction) +
+                ' (line ' + dictFile.iLineNumber + ')' +
+                '</span></div>';
+        }
+        return sHtml;
+    }
+
+    function fsRenderManualSection() {
+        return '<div class="dependency-section-title">' +
+            'Manual Dependencies</div>' +
+            '<div id="listManualDeps"></div>' +
+            '<div class="dependency-browser-row">' +
+            '<button class="btn btn-small" id="btnBrowseDep">' +
+            'Browse</button>' +
+            '</div>' +
+            '<div id="depFileBrowser" class="dep-file-browser" ' +
+            'style="display:none"></div>';
+    }
+
+    function fsRenderSelectionStep(dictResult) {
+        var sHtml = '<h2>Dependency Detection' +
+            '<span class="dep-step-indicator">Step 1 of 2</span></h2>';
+        var listSuggestions = dictResult.listSuggestions || [];
+        var listUnmatched = dictResult.listUnmatchedFiles || [];
+        sHtml += fsRenderDetectedSection(listSuggestions);
+        sHtml += fsRenderPossibleSection(listUnmatched);
+        sHtml += fsRenderManualSection();
+        sHtml += '<div class="modal-actions">' +
+            '<button class="btn" id="btnDepSkip">Skip</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnDepNext">Next</button></div>';
+        return sHtml;
+    }
+
+    function flistCollectCheckedDeps(elModal, dictResult) {
+        var listChecked = [];
+        var listBoxes = elModal.querySelectorAll(
+            ".dependency-checkbox:checked");
+        for (var k = 0; k < listBoxes.length; k++) {
+            var elBox = listBoxes[k];
+            var sSource = elBox.getAttribute("data-source");
+            if (sSource === "detected") {
+                var iIdx = parseInt(
+                    elBox.getAttribute("data-dep-index"), 10);
+                listChecked.push(dictResult.listSuggestions[iIdx]);
+            } else if (sSource === "possible") {
+                var iUIdx = parseInt(
+                    elBox.getAttribute("data-unmatched-idx"), 10);
+                var dictFile = dictResult.listUnmatchedFiles[iUIdx];
+                var sResolved = fsResolvePathToTemplate(
+                    dictFile.sFileName);
+                listChecked.push({
+                    sFileName: dictFile.sFileName,
+                    sSourceStepName: "Manual",
+                    sTemplateVariable: sResolved,
+                });
+            } else if (sSource === "manual") {
+                var sPath = elBox.getAttribute("data-file-path");
+                var sTemplate = fsResolvePathToTemplate(sPath);
+                listChecked.push({
+                    sFileName: sPath.split("/").pop(),
+                    sSourceStepName: "Manual",
+                    sTemplateVariable: sTemplate,
+                });
+            }
+        }
+        return listChecked;
+    }
+
+    function fsSourceLabel(sSource) {
+        if (sSource === "detected") return "Detected";
+        if (sSource === "possible") return "Possible";
+        return "Manual";
+    }
+
+    function fsRenderConfirmStep(listChecked) {
+        var sHtml = '<h2>Confirm Dependencies' +
+            '<span class="dep-step-indicator">Step 2 of 2</span></h2>';
+        if (listChecked.length === 0) {
+            sHtml += '<p style="color:var(--text-secondary)">' +
+                'No dependencies selected.</p>';
+        }
+        for (var i = 0; i < listChecked.length; i++) {
+            var dictDep = listChecked[i];
+            sHtml += '<div class="dependency-suggestion">' +
+                '<input type="checkbox" checked ' +
+                'data-confirm-index="' + i +
+                '" class="dependency-checkbox">' +
+                '<span class="dependency-step-badge">' +
+                fnEscapeHtml(dictDep.sSourceStepName) +
+                '</span> ' +
+                '<span>' +
+                fnEscapeHtml(dictDep.sFileName) + '</span> ' +
+                '<span style="color:var(--text-secondary)">' +
+                fnEscapeHtml(fsSourceLabel(
+                    dictDep._sSource || "detected")) +
+                '</span></div>';
+        }
+        sHtml += '<div class="modal-actions">' +
+            '<button class="btn" id="btnDepBack">Go Back</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnDepConfirm">Confirm</button></div>';
+        return sHtml;
+    }
+
+    function fbDepAlreadyListed(sFilePath, dictResult, elModal) {
+        var sBasename = sFilePath.split("/").pop();
+        var listSugg = dictResult.listSuggestions || [];
+        for (var i = 0; i < listSugg.length; i++) {
+            if (listSugg[i].sFileName === sBasename) return true;
+        }
+        var listUnm = dictResult.listUnmatchedFiles || [];
+        for (var j = 0; j < listUnm.length; j++) {
+            if (listUnm[j].sFileName === sBasename) return true;
+        }
+        var listManual = elModal.querySelectorAll(
+            '[data-source="manual"]');
+        for (var m = 0; m < listManual.length; m++) {
+            if (listManual[m].getAttribute("data-file-path") ===
+                sFilePath) return true;
+        }
+        return false;
+    }
+
+    function fnAddManualDepRow(elList, sFilePath) {
+        var sBasename = sFilePath.split("/").pop();
+        var elRow = document.createElement("div");
+        elRow.className = "dependency-suggestion";
+        elRow.innerHTML =
+            '<input type="checkbox" checked data-source="manual" ' +
+            'data-file-path="' + fnEscapeHtml(sFilePath) +
+            '" class="dependency-checkbox">' +
+            '<span>' + fnEscapeHtml(sBasename) + '</span> ' +
+            '<span style="color:var(--text-secondary)">' +
+            fnEscapeHtml(sFilePath) + '</span>' +
+            '<button class="btn btn-small btn-remove-manual" ' +
+            'style="margin-left:auto;padding:2px 8px;' +
+            'font-size:12px">Remove</button>';
+        elList.appendChild(elRow);
+    }
+
+    function fsRenderBrowserEntries(listEntries) {
+        var sHtml = '';
+        for (var i = 0; i < listEntries.length; i++) {
+            var dictEntry = listEntries[i];
+            var sIcon = dictEntry.bIsDirectory ? "\uD83D\uDCC1" :
+                "\uD83D\uDCC4";
+            var sClass = dictEntry.bIsDirectory ?
+                "dep-browser-dir" : "dep-browser-file";
+            sHtml += '<div class="' + sClass +
+                '" data-path="' + fnEscapeHtml(dictEntry.sPath) +
+                '" data-is-dir="' + dictEntry.bIsDirectory + '">' +
+                sIcon + ' ' +
+                fnEscapeHtml(dictEntry.sName) + '</div>';
+        }
+        return sHtml;
+    }
+
+    function fsRenderBreadcrumb(sCurrentPath) {
+        var listParts = sCurrentPath.split("/").filter(
+            function (s) { return s; });
+        var sHtml = '<span class="dep-breadcrumb-part" ' +
+            'data-path="/">/</span>';
+        var sBuilt = "";
+        for (var i = 0; i < listParts.length; i++) {
+            sBuilt += "/" + listParts[i];
+            sHtml += '<span class="dep-breadcrumb-sep">/</span>' +
+                '<span class="dep-breadcrumb-part" data-path="' +
+                fnEscapeHtml(sBuilt) + '">' +
+                fnEscapeHtml(listParts[i]) + '</span>';
+        }
+        return '<div class="dep-breadcrumb">' + sHtml + '</div>';
+    }
+
+    async function fnLoadBrowserDirectory(elBrowser, sPath) {
+        elBrowser.style.display = "block";
+        elBrowser.innerHTML = '<div class="dep-browser-loading">' +
+            'Loading...</div>';
+        try {
+            var sUrl = "/api/files/" + sContainerId + sPath;
+            var resp = await fetch(sUrl);
+            var listEntries = await resp.json();
+            elBrowser.innerHTML = fsRenderBreadcrumb(sPath) +
+                '<div class="dep-browser-list">' +
+                fsRenderBrowserEntries(listEntries) + '</div>';
+            elBrowser.setAttribute("data-current-path", sPath);
+        } catch (error) {
+            elBrowser.innerHTML = '<div class="dep-browser-loading">' +
+                'Failed to load directory</div>';
+        }
     }
 
     function fnShowDependencyModal(iStep, dictResult) {
@@ -3586,148 +3781,118 @@ const PipeleyenApp = (function () {
         elModal.id = "modalDependency";
         elModal.className = "modal-overlay";
         elModal.style.display = "flex";
-
-        var sHtml = '<div class="modal">';
-        sHtml += '<h2>Dependency Detection</h2>';
-
-        var listSuggestions = dictResult.listSuggestions || [];
-        var listUnmatched = dictResult.listUnmatchedFiles || [];
-
-        if (listSuggestions.length > 0) {
-            sHtml += '<div class="dependency-section-title">' +
-                'Matched Dependencies</div>';
-            for (var i = 0; i < listSuggestions.length; i++) {
-                var dictSugg = listSuggestions[i];
-                sHtml += '<div class="dependency-suggestion">' +
-                    '<input type="checkbox" checked ' +
-                    'data-dep-index="' + i + '" ' +
-                    'class="dependency-checkbox">' +
-                    '<span class="dependency-step-badge">' +
-                    fnEscapeHtml(dictSugg.sSourceStepName) +
-                    '</span> ' +
-                    '<span>' + fnEscapeHtml(dictSugg.sFileName) +
-                    '</span> ' +
-                    '<span style="color:var(--text-secondary)">' +
-                    fnEscapeHtml(dictSugg.sLoadFunction) +
-                    ' (line ' + dictSugg.iLineNumber + ')' +
-                    '</span></div>';
-            }
-        }
-
-        if (listUnmatched.length > 0) {
-            sHtml += '<div class="dependency-section-title">' +
-                'Unmatched Files</div>';
-            for (var j = 0; j < listUnmatched.length; j++) {
-                var dictFile = listUnmatched[j];
-                sHtml += '<div class="dependency-unmatched" ' +
-                    'data-unmatched-idx="' + j + '">' +
-                    fnEscapeHtml(dictFile.sFileName) +
-                    ' <span style="color:var(--text-secondary)">' +
-                    fnEscapeHtml(dictFile.sLoadFunction) +
-                    ' (line ' + dictFile.iLineNumber + ')' +
-                    '</span>' +
-                    '<button class="btn btn-small btn-add-unmatched" ' +
-                    'data-unmatched-idx="' + j + '" ' +
-                    'style="margin-left:auto;padding:2px 8px;' +
-                    'font-size:12px">Add</button>' +
-                    '</div>';
-            }
-        }
-
-        var listUpstream = dictResult.listUpstreamOutputs || [];
-        if (listUpstream.length > 0) {
-            sHtml += '<div class="dependency-section-title">' +
-                'Select from upstream outputs</div>';
-            for (var u = 0; u < listUpstream.length; u++) {
-                var dictUp = listUpstream[u];
-                sHtml += '<div class="dependency-suggestion">' +
-                    '<input type="checkbox" ' +
-                    'data-upstream-index="' + u + '" ' +
-                    'class="upstream-checkbox">' +
-                    '<span class="dependency-step-badge">' +
-                    fnEscapeHtml(dictUp.sSourceStepName) +
-                    '</span> ' +
-                    '<span>' + fnEscapeHtml(dictUp.sFileName) +
-                    '</span></div>';
-            }
-        }
-
-        var bNoResults = (
-            listSuggestions.length === 0 &&
-            listUnmatched.length === 0 &&
-            listUpstream.length === 0
-        );
-        if (bNoResults) {
-            sHtml += '<p style="color:var(--text-secondary)">' +
-                'No dependencies detected.</p>';
-        }
-
-        sHtml += '<div class="dependency-section-title">' +
-            'Manual Dependency</div>';
-        sHtml += '<input type="text" class="dependency-manual-input" ' +
-            'placeholder="/path/to/upstream/file">';
-
-        sHtml += '<div class="modal-actions">' +
-            '<button class="btn" id="btnDepSkip">Skip</button>' +
-            '<button class="btn btn-primary" ' +
-            'id="btnDepConfirm">Confirm</button>' +
-            '</div></div>';
-
-        elModal.innerHTML = sHtml;
+        fnRenderDepModalStep1(elModal, dictResult);
         document.body.appendChild(elModal);
+        fnAttachDepModalEvents(elModal, iStep, dictResult);
+    }
 
-        fnAttachAddButtons(elModal, listUnmatched, listSuggestions);
+    function fnRenderDepModalStep1(elModal, dictResult) {
+        elModal.innerHTML = '<div class="modal">' +
+            fsRenderSelectionStep(dictResult) + '</div>';
+    }
 
-        if (bNoResults) {
-            var elManualInput = elModal.querySelector(
-                ".dependency-manual-input"
-            );
-            if (elManualInput) {
-                elManualInput.focus();
+    function fnAttachDepModalEvents(elModal, iStep, dictResult) {
+        elModal.addEventListener("click", function (event) {
+            var elTarget = event.target;
+            if (elTarget.id === "btnDepSkip") {
+                elModal.remove();
+                return;
+            }
+            if (elTarget.id === "btnDepNext") {
+                fnHandleDepNext(elModal, dictResult);
+                return;
+            }
+            if (elTarget.id === "btnDepBack") {
+                fnRenderDepModalStep1(elModal, dictResult);
+                return;
+            }
+            if (elTarget.id === "btnDepConfirm") {
+                fnHandleDepConfirm(elModal, iStep);
+                return;
+            }
+            if (elTarget.id === "btnBrowseDep") {
+                fnHandleDepBrowse(elModal);
+                return;
+            }
+            if (elTarget.classList.contains("btn-remove-manual")) {
+                elTarget.closest(".dependency-suggestion").remove();
+                return;
+            }
+            fnHandleBrowserClick(elTarget, elModal, dictResult);
+        });
+    }
+
+    function fnHandleDepBrowse(elModal) {
+        var elBrowser = elModal.querySelector("#depFileBrowser");
+        if (!elBrowser) return;
+        if (elBrowser.style.display === "block") {
+            elBrowser.style.display = "none";
+            return;
+        }
+        fnLoadBrowserDirectory(elBrowser, "/workspace");
+    }
+
+    function fnHandleBrowserClick(elTarget, elModal, dictResult) {
+        var elEntry = elTarget.closest(
+            ".dep-browser-dir, .dep-browser-file");
+        if (elEntry) {
+            var sPath = elEntry.getAttribute("data-path");
+            var bIsDir = elEntry.getAttribute("data-is-dir") ===
+                "true";
+            var elBrowser = elModal.querySelector("#depFileBrowser");
+            if (bIsDir) {
+                fnLoadBrowserDirectory(elBrowser, sPath);
+            } else {
+                fnHandleFileSelection(elModal, sPath, dictResult);
+            }
+            return;
+        }
+        var elCrumb = elTarget.closest(".dep-breadcrumb-part");
+        if (elCrumb) {
+            var sCrumbPath = elCrumb.getAttribute("data-path");
+            var elBr = elModal.querySelector("#depFileBrowser");
+            fnLoadBrowserDirectory(elBr, sCrumbPath);
+        }
+    }
+
+    function fnHandleFileSelection(elModal, sPath, dictResult) {
+        if (fbDepAlreadyListed(sPath, dictResult, elModal)) {
+            fnShowToast("Already listed as a dependency", "info");
+            return;
+        }
+        var elList = elModal.querySelector("#listManualDeps");
+        if (elList) fnAddManualDepRow(elList, sPath);
+    }
+
+    function fnHandleDepNext(elModal, dictResult) {
+        var listChecked = flistCollectCheckedDeps(
+            elModal, dictResult);
+        for (var i = 0; i < listChecked.length; i++) {
+            if (!listChecked[i]._sSource) {
+                listChecked[i]._sSource = "detected";
             }
         }
+        var elInner = elModal.querySelector(".modal");
+        elInner.innerHTML = fsRenderConfirmStep(listChecked);
+        elModal._listPendingDeps = listChecked;
+    }
 
-        document.getElementById("btnDepSkip").addEventListener(
-            "click", function () { elModal.remove(); }
-        );
-        document.getElementById("btnDepConfirm").addEventListener(
-            "click", function () {
-                var listChecked = [];
-                var listCheckboxes = elModal.querySelectorAll(
-                    ".dependency-checkbox"
-                );
-                for (var k = 0; k < listCheckboxes.length; k++) {
-                    if (listCheckboxes[k].checked) {
-                        var iIdx = parseInt(
-                            listCheckboxes[k].getAttribute(
-                                "data-dep-index"
-                            ),
-                            10
-                        );
-                        listChecked.push(listSuggestions[iIdx]);
-                    }
-                }
-                var listUpstreamBoxes = elModal.querySelectorAll(
-                    ".upstream-checkbox"
-                );
-                for (var p = 0; p < listUpstreamBoxes.length; p++) {
-                    if (listUpstreamBoxes[p].checked) {
-                        var iUpIdx = parseInt(
-                            listUpstreamBoxes[p].getAttribute(
-                                "data-upstream-index"
-                            ),
-                            10
-                        );
-                        listChecked.push(listUpstream[iUpIdx]);
-                    }
-                }
-                var sManual = elModal.querySelector(
-                    ".dependency-manual-input"
-                ).value.trim();
-                elModal.remove();
-                fnApplyDependencies(iStep, listChecked, sManual);
+    function fnHandleDepConfirm(elModal, iStep) {
+        var listPending = elModal._listPendingDeps || [];
+        var listFinal = [];
+        var listBoxes = elModal.querySelectorAll(
+            ".dependency-checkbox:checked");
+        for (var i = 0; i < listBoxes.length; i++) {
+            var iIdx = parseInt(
+                listBoxes[i].getAttribute("data-confirm-index"), 10);
+            if (!isNaN(iIdx) && listPending[iIdx]) {
+                listFinal.push(listPending[iIdx]);
             }
-        );
+        }
+        elModal.remove();
+        if (listFinal.length > 0) {
+            fnApplyDependencies(iStep, listFinal);
+        }
     }
 
     function fsResolvePathToTemplate(sPath) {
@@ -3743,59 +3908,68 @@ const PipeleyenApp = (function () {
                 var sUpBase = saFiles[j].split("/").pop();
                 var sUpStem = sUpBase.replace(/\.[^.]+$/, "");
                 if (sUpStem === sStem) {
-                    return "{" + (i + 1) + "." + sStem + "}";
+                    var iStepNumber = i + 1;
+                    var sStepLabel = "Step" +
+                        String(iStepNumber).padStart(2, "0");
+                    return "{" + sStepLabel + "." + sStem + "}";
                 }
             }
         }
         return sPath;
     }
 
-    async function fnApplyDependencies(iStep, listChecked, sManual) {
+    function flistFilterNewTokens(listTokens, saCommands) {
+        var sJoined = saCommands.join(" ");
+        var listNew = [];
+        for (var i = 0; i < listTokens.length; i++) {
+            var sToken = listTokens[i];
+            if (!/^\{Step\d+\./.test(sToken)) continue;
+            if (sJoined.indexOf(sToken) === -1) {
+                listNew.push(sToken);
+            }
+        }
+        return listNew;
+    }
+
+    async function fnApplyDependencies(iStep, listChecked) {
         var dictStep = dictWorkflow.listSteps[iStep];
         var saCommands = dictStep.saDataCommands || [];
-        var bChanged = false;
 
         var listDepTokens = [];
         for (var i = 0; i < listChecked.length; i++) {
             listDepTokens.push(listChecked[i].sTemplateVariable);
         }
-        if (sManual) {
-            var listManualParts = sManual.split(/[\s,]+/);
-            for (var m = 0; m < listManualParts.length; m++) {
-                var sPart = listManualParts[m].trim();
-                if (sPart) {
-                    listDepTokens.push(fsResolvePathToTemplate(sPart));
-                }
-            }
+        var listNew = flistFilterNewTokens(listDepTokens, saCommands);
+        if (listNew.length === 0 || saCommands.length === 0) {
+            fnShowToast("No new dependencies to add", "info");
+            return;
         }
-        if (listDepTokens.length > 0 && saCommands.length > 0) {
-            var sDepComment = "  # " + listDepTokens.join(" ");
-            var iTarget = saCommands.length - 1;
-            saCommands[iTarget] = saCommands[iTarget].replace(
-                /\s*#\s*\{Step\d+\..*$/, ""
-            ) + sDepComment;
-            bChanged = true;
-        }
+        var sDepComment = "  # " + listNew.join(" ");
+        var iTarget = saCommands.length - 1;
+        saCommands[iTarget] = saCommands[iTarget].replace(
+            /\s*#\s*\{Step\d+\..*$/, ""
+        ) + sDepComment;
+        dictStep.saDataCommands = saCommands;
+        await fnSaveDependencyCommands(iStep, saCommands);
+        fnShowToast(listNew.length + " dependencies added", "success");
+    }
 
-        if (bChanged) {
-            dictStep.saDataCommands = saCommands;
-            var dictUpdate = { saDataCommands: saCommands };
-            try {
-                await fetch(
-                    "/api/steps/" + sContainerId + "/" + iStep,
-                    {
-                        method: "PUT",
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify(dictUpdate),
-                    }
-                );
-                fnRenderStepList();
-                fnShowToast("Dependencies applied", "success");
-            } catch (error) {
-                fnShowToast("Failed to save dependencies", "error");
-            }
+    async function fnSaveDependencyCommands(iStep, saCommands) {
+        var dictUpdate = { saDataCommands: saCommands };
+        try {
+            await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(dictUpdate),
+                }
+            );
+            fnRenderStepList();
+        } catch (error) {
+            fnShowToast("Failed to save dependencies", "error");
         }
     }
 

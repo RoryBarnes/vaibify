@@ -841,7 +841,7 @@ def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
         iStepNumber = iIndex + 1
         for sFileName in dictStep.get("saDataFiles", []):
             sStem = os.path.splitext(os.path.basename(sFileName))[0]
-            sTemplateVariable = "{" + f"{iStepNumber}.{sStem}" + "}"
+            sTemplateVariable = "{" + f"Step{iStepNumber:02d}.{sStem}" + "}"
             listUpstream.append({
                 "sFileName": sFileName,
                 "sSourceStepName": sStepName,
