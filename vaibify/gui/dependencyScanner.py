@@ -291,6 +291,22 @@ def _flistScanGo(sSourceCode):
     return _flistMatchPatterns(sSourceCode, listPatterns, "//")
 
 
+def _flistScanConfigFile(sSourceCode):
+    """Extract file-path-like string values from JSON or YAML config."""
+    listResults = []
+    sQuotedPattern = r'["\']((?:[^"\'\\]|\\.)+)["\']'
+    for iLineNumber, sLine in enumerate(sSourceCode.splitlines(), 1):
+        for matchResult in re.finditer(sQuotedPattern, sLine):
+            sValue = matchResult.group(1)
+            if fbLooksLikeFilePath(sValue):
+                listResults.append({
+                    "sFileName": sValue,
+                    "sLoadFunction": "config-reference",
+                    "iLineNumber": iLineNumber,
+                })
+    return listResults
+
+
 DICT_LANGUAGE_SCANNERS = {
     "python": _flistScanPython,
     "r": _flistScanR,
@@ -303,6 +319,8 @@ DICT_LANGUAGE_SCANNERS = {
     "julia": _flistScanJulia,
     "matlab": _flistScanMatlab,
     "go": _flistScanGo,
+    "json": _flistScanConfigFile,
+    "yaml": _flistScanConfigFile,
 }
 
 

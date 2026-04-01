@@ -3275,7 +3275,7 @@ const PipeleyenApp = (function () {
             var sNewValue = elInput.value.trim();
             if (sNewValue && sNewValue !== sRaw) {
                 dictWorkflow.listSteps[iStep][sArray][iIdx] = sNewValue;
-                fnSaveStepArray(iStep, sArray);
+                fnSaveStepArray(iStep, sArray, true);
             }
             elInput.removeEventListener("blur", fnFinishEdit);
             elInput.remove();
@@ -3449,7 +3449,7 @@ const PipeleyenApp = (function () {
             iIdx: dictWorkflow.listSteps[iStep][sArrayKey].length - 1,
             sValue: sValue,
         });
-        await fnSaveStepArray(iStep, sArrayKey);
+        await fnSaveStepArray(iStep, sArrayKey, true);
         fnRenderStepList();
         fnShowToast("Item added", "success");
     }
@@ -3495,7 +3495,7 @@ const PipeleyenApp = (function () {
         fnShowToast("Undone", "success");
     }
 
-    async function fnSaveStepArray(iStep, sArray) {
+    async function fnSaveStepArray(iStep, sArray, bScanDeps) {
         var dictUpdate = {};
         dictUpdate[sArray] = dictWorkflow.listSteps[iStep][sArray];
         try {
@@ -3510,7 +3510,7 @@ const PipeleyenApp = (function () {
         } catch (error) {
             fnShowToast("Save failed", "error");
         }
-        if (sArray === "saDataCommands") {
+        if (sArray === "saDataCommands" && bScanDeps) {
             fnScanDependencies(iStep);
         }
     }
@@ -3519,7 +3519,9 @@ const PipeleyenApp = (function () {
         var dictStep = dictWorkflow.listSteps[iStep];
         var saCommands = dictStep.saDataCommands || [];
         if (saCommands.length === 0) {
-            fnShowDependencyModal(iStep, {
+            return;
+        }
+        fnShowDependencyModal(iStep, {
                 listSuggestions: [],
                 listUnmatchedFiles: [],
             });

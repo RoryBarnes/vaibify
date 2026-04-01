@@ -44,6 +44,9 @@ DICT_EXTENSION_TO_LANGUAGE = {
     ".jl": "julia",
     ".m": "matlab",
     ".go": "go",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
 }
 
 
@@ -75,6 +78,11 @@ def ftExtractScriptPathForLanguage(sCommand):
     sExtension = os.path.splitext(sFirstToken)[1]
     if sExtension in DICT_EXTENSION_TO_LANGUAGE:
         return (sFirstToken, DICT_EXTENSION_TO_LANGUAGE[sExtension])
+    if len(listTokens) > 1:
+        sSecondToken = listTokens[1]
+        sSecondExt = os.path.splitext(sSecondToken)[1]
+        if sSecondExt in DICT_EXTENSION_TO_LANGUAGE:
+            return (sSecondToken, DICT_EXTENSION_TO_LANGUAGE[sSecondExt])
     return ("", "unknown")
 
 
