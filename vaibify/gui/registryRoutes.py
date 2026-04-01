@@ -14,6 +14,14 @@ class AddProjectRequest(BaseModel):
     sDirectory: str
 
 
+class CreateProjectRequest(BaseModel):
+    sDirectory: str
+    sProjectName: str
+    sTemplateName: str
+    sPythonVersion: str = "3.12"
+    listRepositories: list = []
+
+
 def fnRegisterRegistryRoutes(app, dictCtx):
     """Register all registry and container lifecycle routes."""
     _fnRegisterGetRegistry(app, dictCtx)
@@ -23,6 +31,9 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
     _fnRegisterHostDirectories(app, dictCtx)
+    _fnRegisterGetTemplates(app, dictCtx)
+    _fnRegisterGetTemplateConfig(app, dictCtx)
+    _fnRegisterCreateProject(app, dictCtx)
 
 
 def _fnRegisterGetRegistry(app, dictCtx):
@@ -371,3 +382,87 @@ def _flistSortDirectoryEntries(listEntries):
     listVisible.sort(key=lambda e: e["sName"].lower())
     listHidden.sort(key=lambda e: e["sName"].lower())
     return listVisible + listHidden
+
+
+def _fnRegisterGetTemplates(app, dictCtx):
+    """Register GET /api/setup/templates."""
+
+    @app.get("/api/setup/templates")
+    async def fnGetTemplates():
+        dictCtx["require"]()
+        from vaibify.config.templateManager import (
+            flistAvailableTemplates,
+        )
+        try:
+            listTemplates = flistAvailableTemplates()
+        except FileNotFoundError as error:
+            raise HTTPException(404, str(error))
+        return {"listTemplates": listTemplates}
+
+
+def _fnRegisterGetTemplateConfig(app, dictCtx):
+    """Register GET /api/setup/templates/{sName}."""
+
+    @app.get("/api/setup/templates/{sName}")
+    async def fnGetTemplateConfig(sName: str):
+        dictCtx["require"]()
+        from vaibify.config.templateManager import (
+            fdictLoadTemplateConfig,
+        )
+        try:
+            dictConfig = fdictLoadTemplateConfig(sName)
+        except FileNotFoundError as error:
+            raise HTTPException(404, str(error))
+        return dictConfig
+
+
+def _fnRegisterCreateProject(app, dictCtx):
+    """Register POST /api/projects/create."""
+
+    @app.post("/api/projects/create")
+    async def fnCreateProject(request: CreateProjectRequest):
+        dictCtx["require"]()
+        _fnValidateCreateDirectory(request.sDirectory)
+        _fnScaffoldProject(request)
+        _fnWriteProjectConfig(request)
+        _fnRegisterNewProject(request.sDirectory)
+        return {"bSuccess": True, "sDirectory": request.sDirectory}
+
+
+def _fnValidateCreateDirectory(sDirectory):
+    """Validate directory path for project creation."""
+    if not os.path.isabs(sDirectory):
+        raise HTTPException(400, "Directory must be an absolute path")
+    sHome = os.path.expanduser("~")
+    sResolved = os.path.realpath(sDirectory)
+    if not sResolved.startswith(sHome):
+        raise HTTPException(403, "Path is outside allowed root")
+
+
+def _fnScaffoldProject(request):
+    """Create directory and copy template files."""
+    from vaibify.config.templateManager import fnCopyTemplate
+    try:
+        fnCopyTemplate(request.sTemplateName, request.sDirectory)
+    except FileNotFoundError as error:
+        raise HTTPException(404, str(error))
+
+
+def _fnWriteProjectConfig(request):
+    """Write vaibify.yml with project settings."""
+    sConfigPath = os.path.join(request.sDirectory, "vaibify.yml")
+    listLines = [
+        f"projectName: {request.sProjectName}",
+        f"pythonVersion: \"{request.sPythonVersion}\"",
+    ]
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write("\n".join(listLines) + "\n")
+
+
+def _fnRegisterNewProject(sDirectory):
+    """Register the newly created project."""
+    from vaibify.config.registryManager import fnAddProject
+    try:
+        fnAddProject(sDirectory)
+    except ValueError:
+        pass

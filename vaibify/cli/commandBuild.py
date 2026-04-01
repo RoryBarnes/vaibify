@@ -6,7 +6,7 @@ import sys
 
 import click
 
-from .configLoader import fconfigLoad, fsDockerDir
+from .configLoader import fconfigResolveProject, fsDockerDir
 
 
 def fnBuildFromConfig(config, sDockerDir, bNoCache):
@@ -117,9 +117,14 @@ def _fnWriteFile(sPath, sContent):
     default=False,
     help="Build the image without using Docker cache.",
 )
-def build(bNoCache):
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
+def build(bNoCache, sProjectName):
     """Build the Vaibify Docker image from vaibify.yml."""
-    config = fconfigLoad()
+    config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()
     click.echo(
         f"Building image {config.sProjectName}:latest ..."

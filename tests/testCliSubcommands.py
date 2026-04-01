@@ -98,7 +98,7 @@ def test_config_help_shows_subcommands():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.commandConfig.fconfigLoad")
+@patch("vaibify.cli.commandConfig.fconfigResolveProject")
 @patch("vaibify.config.projectConfig.fnSaveToFile")
 def test_config_export_calls_save(mockSave, mockLoad):
     mockLoad.return_value = SimpleNamespace(sProjectName="proj")

@@ -75,6 +75,54 @@
     </div>
 </div>
 
+<!-- Add Choice Modal -->
+<div class="modal-overlay" id="modalAddChoice" style="display: none;">
+    <div class="modal modal-small">
+        <h2 style="color: var(--color-pale-blue);">Add Container</h2>
+        <div class="add-choice-cards">
+            <div class="add-choice-card" id="btnChoiceAddExisting">
+                <div class="add-choice-icon">&#128193;</div>
+                <div class="add-choice-title">Add Existing</div>
+                <div class="add-choice-description">
+                    Browse for a directory with vaibify.yml
+                </div>
+            </div>
+            <div class="add-choice-card" id="btnChoiceCreateNew">
+                <div class="add-choice-icon">&#43;</div>
+                <div class="add-choice-title">Create New</div>
+                <div class="add-choice-description">
+                    Set up a new project from a template
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn" id="btnAddChoiceCancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Creation Wizard Modal -->
+<div class="modal-overlay" id="modalCreateWizard" style="display: none;">
+    <div class="modal">
+        <h2 id="wizardStepTitle" style="color: var(--color-pale-blue);">
+            Create Project</h2>
+        <div class="wizard-progress">
+            <span class="wizard-progress-step active"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
+        </div>
+        <div id="wizardStepContent"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnWizardCancel">Cancel</button>
+            <button class="btn" id="btnWizardBack" disabled>Back</button>
+            <button class="btn btn-primary" id="btnWizardNext">Next</button>
+        </div>
+    </div>
+</div>
+
 <!-- Build Progress Overlay -->
 <div class="modal-overlay" id="modalBuildProgress" style="display: none;">
     <div class="modal modal-small">

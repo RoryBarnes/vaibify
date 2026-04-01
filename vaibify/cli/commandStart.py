@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from .configLoader import fconfigLoad, fsDockerDir
+from .configLoader import fconfigResolveProject, fsDockerDir
 
 
 def _fnStartContainer(config, sDockerDir, sCommand):
@@ -53,10 +53,15 @@ def fnLaunchGui(config):
     default=False,
     help="Enable Jupyter overlay with port forwarding.",
 )
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
 @click.argument("command", required=False, default=None)
-def start(bGui, bJupyter, command):
+def start(bGui, bJupyter, sProjectName, command):
     """Start the Vaibify environment."""
-    config = fconfigLoad()
+    config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()
     click.echo(f"Starting container {config.sProjectName} ...")
     _fnStartContainer(config, sDockerDir, command)

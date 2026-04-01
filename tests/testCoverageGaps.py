@@ -166,7 +166,7 @@ def test_fnCopyDirectorScript_copies(tmp_path):
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
-@patch("vaibify.cli.commandBuild.fconfigLoad")
+@patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
 def test_build_cli_command(mockDir, mockConfig, mockBuild):
@@ -179,7 +179,7 @@ def test_build_cli_command(mockDir, mockConfig, mockBuild):
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
-@patch("vaibify.cli.commandBuild.fconfigLoad")
+@patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
 def test_build_cli_no_cache(mockDir, mockConfig, mockBuild):
@@ -245,7 +245,7 @@ def test_init_with_template_no_config(
 
 
 @patch("vaibify.cli.commandStart._fnStartContainer")
-@patch("vaibify.cli.commandStart.fconfigLoad")
+@patch("vaibify.cli.commandStart.fconfigResolveProject")
 @patch("vaibify.cli.commandStart.fsDockerDir",
        return_value="/docker")
 def test_start_cli_command(mockDir, mockConfig, mockStart):
@@ -291,7 +291,7 @@ def test_fnStartContainer_no_command(mockStart):
 
 @patch("vaibify.cli.commandStart.fnLaunchGui")
 @patch("vaibify.cli.commandStart._fnStartContainer")
-@patch("vaibify.cli.commandStart.fconfigLoad")
+@patch("vaibify.cli.commandStart.fconfigResolveProject")
 @patch("vaibify.cli.commandStart.fsDockerDir",
        return_value="/docker")
 def test_start_with_gui(mockDir, mockConfig, mockStart, mockGui):
@@ -366,7 +366,7 @@ def test_fnConfigureErrorLogging(tmp_path):
     assert (tmp_path / "error.log").exists() or True
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 def test_main_config_option_sets_path(mockConfig):
     from vaibify.cli.main import main
     mockConfig.return_value = _fConfigFull()

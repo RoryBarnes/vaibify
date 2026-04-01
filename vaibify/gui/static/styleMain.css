@@ -2523,6 +2523,66 @@ html, body {
     text-align: center;
 }
 
+/* --- Add Choice Cards --- */
+
+.add-choice-cards {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.add-choice-card {
+    flex: 1;
+    padding: 20px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--bg-input);
+    cursor: pointer;
+    text-align: center;
+    transition: border-color var(--transition-speed);
+}
+
+.add-choice-card:hover {
+    border-color: var(--color-pale-blue);
+}
+
+.add-choice-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.add-choice-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.add-choice-description {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* --- Wizard Progress --- */
+
+.wizard-progress {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.wizard-progress-step {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border-color);
+    transition: background var(--transition-speed);
+}
+
+.wizard-progress-step.active {
+    background: var(--color-pale-blue);
+}
+
 /* --- Scrollbar --- */
 
 ::-webkit-scrollbar {

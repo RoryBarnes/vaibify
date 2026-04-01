@@ -8,6 +8,8 @@ import click
 
 from .configLoader import fsConfigPath
 
+from vaibify.config.registryManager import fnAddProject
+
 _sTemplatesDir = "templates"
 
 
@@ -76,6 +78,14 @@ def fnWriteDefaultConfig(sTemplateName):
     click.echo(f"Created {sConfigPath}")
 
 
+def fnRegisterProject():
+    """Register the current directory in the global project registry."""
+    try:
+        fnAddProject(str(pathlib.Path.cwd()))
+    except (ValueError, FileNotFoundError):
+        pass
+
+
 @click.command("init")
 @click.option(
     "--template",
@@ -103,4 +113,5 @@ def init(sTemplateName, bForce):
         sys.exit(1)
     fnCopyTemplate(sTemplateName)
     fnWriteDefaultConfig(sTemplateName)
+    fnRegisterProject()
     click.echo(f"Initialized Vaibify project with '{sTemplateName}'.")

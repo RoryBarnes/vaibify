@@ -161,7 +161,7 @@ def test_status_no_docker(mockAvail):
 @patch("vaibify.cli.commandStatus.fnShowVolumeStatus")
 @patch("vaibify.cli.commandStatus.fnShowImageStatus")
 @patch("vaibify.cli.commandStatus.fnShowDaemonStatus")
-@patch("vaibify.cli.commandStatus.fconfigLoad")
+@patch("vaibify.cli.commandStatus.fconfigResolveProject")
 @patch("vaibify.cli.commandStatus.fbDockerAvailable",
        return_value=True)
 def test_status_full_run(
@@ -257,7 +257,7 @@ def test_fnRemoveImage_api_error():
 
 @patch("vaibify.cli.commandDestroy.fbDockerAvailable",
        return_value=True)
-@patch("vaibify.cli.commandDestroy.fconfigLoad")
+@patch("vaibify.cli.commandDestroy.fconfigResolveProject")
 @patch("vaibify.cli.commandDestroy.fnRemoveVolume")
 def test_destroy_confirm_yes(
     mockRemove, mockLoad, mockAvail,
@@ -274,7 +274,7 @@ def test_destroy_confirm_yes(
 
 @patch("vaibify.cli.commandDestroy.fbDockerAvailable",
        return_value=True)
-@patch("vaibify.cli.commandDestroy.fconfigLoad")
+@patch("vaibify.cli.commandDestroy.fconfigResolveProject")
 def test_destroy_confirm_no(mockLoad, mockAvail):
     mockLoad.return_value = SimpleNamespace(
         sProjectName="proj"
@@ -286,7 +286,7 @@ def test_destroy_confirm_no(mockLoad, mockAvail):
 
 @patch("vaibify.cli.commandDestroy.fbDockerAvailable",
        return_value=True)
-@patch("vaibify.cli.commandDestroy.fconfigLoad")
+@patch("vaibify.cli.commandDestroy.fconfigResolveProject")
 @patch("vaibify.cli.commandDestroy.fnRemoveVolume")
 @patch("vaibify.cli.commandDestroy.fnRemoveImage")
 def test_destroy_also_image(

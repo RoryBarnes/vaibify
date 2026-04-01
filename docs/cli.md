@@ -15,6 +15,15 @@ Vaibify provides two equivalent entry points: `vaibify` and the shorthand
 When invoked with no subcommand, Vaibify starts in **hub mode** -- a
 browser-based dashboard for managing multiple projects.
 
+## Project Targeting
+
+> **Note:** When you are in a directory containing `vaibify.yml`, the
+> `--project` flag defaults to that project. When only one project is
+> registered globally, the flag can be omitted entirely. When multiple
+> projects exist, `--project` is required unless you are in a project
+> directory. Projects are registered automatically when you run
+> `vaibify init`.
+
 ## Project Setup
 
 ### `vaibify init`
@@ -47,9 +56,9 @@ vaibify setup
 Edit, export, or import configuration.
 
 ```bash
-vaibify config edit              # Open vaibify.yml in $EDITOR
-vaibify config export <file>     # Write current config to a file
-vaibify config import <file>     # Load config from a file
+vaibify config edit                         # Open vaibify.yml in $EDITOR
+vaibify config export [-p NAME] <file>      # Write current config to a file
+vaibify config import <file>                # Load config from a file
 ```
 
 ## Container Lifecycle
@@ -59,32 +68,34 @@ vaibify config import <file>     # Load config from a file
 Build the Docker image from `vaibify.yml` and `container.conf`.
 
 ```bash
-vaibify build [--no-cache]
+vaibify build [--no-cache] [--project/-p NAME]
 ```
 
-| Option         | Description                              |
-|----------------|------------------------------------------|
-| `--no-cache`   | Force a clean rebuild of all layers      |
+| Option             | Description                              |
+|--------------------|------------------------------------------|
+| `--no-cache`       | Force a clean rebuild of all layers      |
+| `--project`, `-p`  | Target project name (optional if only one exists) |
 
 ### `vaibify start`
 
 Start the container in the background.
 
 ```bash
-vaibify start [--gui] [--jupyter]
+vaibify start [--gui] [--jupyter] [--project/-p NAME]
 ```
 
-| Option       | Description                                  |
-|--------------|----------------------------------------------|
-| `--gui`      | Launch the pipeline viewer after starting     |
-| `--jupyter`  | Start JupyterLab inside the container         |
+| Option             | Description                                  |
+|--------------------|----------------------------------------------|
+| `--gui`            | Launch the pipeline viewer after starting     |
+| `--jupyter`        | Start JupyterLab inside the container         |
+| `--project`, `-p`  | Target project name (optional if only one exists) |
 
 ### `vaibify stop`
 
 Stop the running container. The workspace volume persists.
 
 ```bash
-vaibify stop
+vaibify stop [--project/-p NAME]
 ```
 
 ### `vaibify destroy`
@@ -92,19 +103,20 @@ vaibify stop
 Remove the container and optionally delete the workspace volume.
 
 ```bash
-vaibify destroy [--volumes]
+vaibify destroy [--volumes] [--project/-p NAME]
 ```
 
-| Option       | Description                                  |
-|--------------|----------------------------------------------|
-| `--volumes`  | Also remove the workspace volume             |
+| Option             | Description                                  |
+|--------------------|----------------------------------------------|
+| `--volumes`        | Also remove the workspace volume             |
+| `--project`, `-p`  | Target project name (optional if only one exists) |
 
 ### `vaibify status`
 
 Report the state of the container, image, and workspace volume.
 
 ```bash
-vaibify status
+vaibify status [--project/-p NAME]
 ```
 
 ## Working with the Container
@@ -156,7 +168,7 @@ for Docker socket access, privilege escalation paths, exposed ports, and
 mounted secrets.
 
 ```bash
-vaibify verify
+vaibify verify [--project/-p NAME]
 ```
 
 ## GUI and Pipeline
@@ -167,7 +179,7 @@ Launch the pipeline viewer in a browser (port 8050). See [Workflow
 Viewer](gui.md) for details.
 
 ```bash
-vaibify gui
+vaibify gui [--project/-p NAME]
 ```
 
 ## Publishing

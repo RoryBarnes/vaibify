@@ -37,7 +37,7 @@ def test_main_version_option():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 def test_stop_success(mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="testproj",
@@ -51,7 +51,7 @@ def test_stop_success(mockConfig):
         assert "Stopped" in result.output
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 def test_stop_not_running_exits(mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="testproj",
@@ -71,7 +71,7 @@ def test_stop_not_running_exits(mockConfig):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("subprocess.run")
 def test_connect_calls_docker_exec(mockRun, mockConfig):
     mockConfig.return_value = SimpleNamespace(
@@ -87,12 +87,55 @@ def test_connect_calls_docker_exec(mockRun, mockConfig):
     assert "researcher" in listArgs
 
 
+@patch("vaibify.cli.main.fconfigResolveProject")
+@patch("subprocess.run")
+def test_connect_with_project_option(mockRun, mockConfig):
+    mockConfig.return_value = SimpleNamespace(
+        sProjectName="myproj",
+        sContainerUser="researcher",
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect", "-p", "myproj"])
+    mockConfig.assert_called_once_with("myproj")
+    assert mockRun.called
+
+
+@patch("vaibify.cli.main.fconfigResolveProject")
+@patch("vaibify.docker.fileTransfer.fnPushToContainer")
+def test_push_with_project_option(mockPush, mockConfig):
+    mockConfig.return_value = SimpleNamespace(
+        sProjectName="myproj",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["push", "-p", "myproj", "/src", "/dst"],
+    )
+    assert result.exit_code == 0
+    mockConfig.assert_called_once_with("myproj")
+    mockPush.assert_called_once_with("myproj", "/src", "/dst")
+
+
+@patch("vaibify.cli.main.fconfigResolveProject")
+@patch("vaibify.docker.fileTransfer.fnPullFromContainer")
+def test_pull_with_project_option(mockPull, mockConfig):
+    mockConfig.return_value = SimpleNamespace(
+        sProjectName="myproj",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["pull", "-p", "myproj", "/src", "/dst"],
+    )
+    assert result.exit_code == 0
+    mockConfig.assert_called_once_with("myproj")
+    mockPull.assert_called_once_with("myproj", "/src", "/dst")
+
+
 # -----------------------------------------------------------------------
 # verify
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("subprocess.run")
 def test_verify_calls_check_isolation(mockRun, mockConfig):
     mockConfig.return_value = SimpleNamespace(
@@ -141,7 +184,7 @@ def test_gui_help_no_user_option():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("vaibify.docker.fileTransfer.fnPushToContainer")
 def test_push_calls_transfer(mockPush, mockConfig):
     mockConfig.return_value = SimpleNamespace(
@@ -159,7 +202,7 @@ def test_push_calls_transfer(mockPush, mockConfig):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("vaibify.docker.fileTransfer.fnPullFromContainer")
 def test_pull_calls_transfer(mockPull, mockConfig):
     mockConfig.return_value = SimpleNamespace(
@@ -182,6 +225,7 @@ def test_push_help_text():
     result = runner.invoke(main, ["push", "--help"])
     assert result.exit_code == 0
     assert "Push" in result.output
+    assert "--project" in result.output
 
 
 def test_pull_help_text():
@@ -189,6 +233,14 @@ def test_pull_help_text():
     result = runner.invoke(main, ["pull", "--help"])
     assert result.exit_code == 0
     assert "Pull" in result.output
+    assert "--project" in result.output
+
+
+def test_connect_help_shows_project_option():
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect", "--help"])
+    assert result.exit_code == 0
+    assert "--project" in result.output
 
 
 # -----------------------------------------------------------------------
@@ -301,7 +353,7 @@ def test_setup_launches_wizard():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 def test_gui_launches_pipeline_viewer(mockConfig):
     """Lines 144-163: gui command starts pipeline viewer."""
     import sys

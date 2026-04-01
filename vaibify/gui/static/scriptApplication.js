@@ -4037,7 +4037,7 @@ const PipeleyenApp = (function () {
             }
         );
         document.getElementById("btnAddContainer").addEventListener(
-            "click", fnOpenDirectoryBrowser
+            "click", fnOpenAddChoice
         );
         document.getElementById("btnShowUnrecognized").addEventListener(
             "click", function () {
@@ -4072,6 +4072,341 @@ const PipeleyenApp = (function () {
         document.getElementById("btnAddContainerConfirm").addEventListener(
             "click", fnSelectDirectory
         );
+        fnBindAddChoiceModal();
+        fnBindCreateWizardModal();
+    }
+
+    /* --- Add Choice Modal --- */
+
+    function fnOpenAddChoice() {
+        document.getElementById("modalAddChoice").style.display = "flex";
+    }
+
+    function fnBindAddChoiceModal() {
+        document.getElementById("btnAddChoiceCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddChoice")
+                    .style.display = "none";
+            }
+        );
+        document.getElementById("btnChoiceAddExisting").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddChoice")
+                    .style.display = "none";
+                fnOpenDirectoryBrowser();
+            }
+        );
+        document.getElementById("btnChoiceCreateNew").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddChoice")
+                    .style.display = "none";
+                fnOpenCreateWizard();
+            }
+        );
+    }
+
+    /* --- Creation Wizard --- */
+
+    var _iWizardStep = 0;
+    var _dictWizardData = {};
+    var _LIST_WIZARD_TITLES = [
+        "Project Directory",
+        "Template",
+        "Project Name",
+        "Python Version",
+        "Repositories",
+        "Summary",
+    ];
+
+    function fnOpenCreateWizard() {
+        _iWizardStep = 0;
+        _dictWizardData = {
+            sDirectory: "",
+            sTemplateName: "",
+            sProjectName: "",
+            sPythonVersion: "3.12",
+            listRepositories: [],
+        };
+        document.getElementById("modalCreateWizard")
+            .style.display = "flex";
+        fnRenderWizardStep(_iWizardStep);
+    }
+
+    function fnBindCreateWizardModal() {
+        document.getElementById("btnWizardCancel").addEventListener(
+            "click", _fnCloseWizard
+        );
+        document.getElementById("btnWizardBack").addEventListener(
+            "click", _fnWizardStepBack
+        );
+        document.getElementById("btnWizardNext").addEventListener(
+            "click", _fnWizardStepNext
+        );
+    }
+
+    function _fnCloseWizard() {
+        document.getElementById("modalCreateWizard")
+            .style.display = "none";
+    }
+
+    function _fnWizardStepBack() {
+        if (_iWizardStep <= 0) return;
+        _fnSaveCurrentStepData();
+        _iWizardStep--;
+        fnRenderWizardStep(_iWizardStep);
+    }
+
+    function _fnWizardStepNext() {
+        _fnSaveCurrentStepData();
+        if (!_fbValidateWizardStep(_iWizardStep)) return;
+        if (_iWizardStep >= 5) {
+            fnSubmitCreateProject();
+            return;
+        }
+        _iWizardStep++;
+        fnRenderWizardStep(_iWizardStep);
+    }
+
+    function fnRenderWizardStep(iStep) {
+        _fnUpdateWizardProgress(iStep);
+        _fnUpdateWizardButtons(iStep);
+        document.getElementById("wizardStepTitle").textContent =
+            _LIST_WIZARD_TITLES[iStep];
+        var elContent = document.getElementById("wizardStepContent");
+        var listRenderers = [
+            _fnRenderStepDirectory,
+            _fnRenderStepTemplate,
+            _fnRenderStepProjectName,
+            _fnRenderStepPythonVersion,
+            _fnRenderStepRepositories,
+            _fnRenderStepSummary,
+        ];
+        listRenderers[iStep](elContent);
+    }
+
+    function _fnUpdateWizardProgress(iStep) {
+        var listDots = document.querySelectorAll(
+            ".wizard-progress-step"
+        );
+        listDots.forEach(function (el, i) {
+            el.classList.toggle("active", i <= iStep);
+        });
+    }
+
+    function _fnUpdateWizardButtons(iStep) {
+        document.getElementById("btnWizardBack").disabled =
+            iStep === 0;
+        document.getElementById("btnWizardNext").textContent =
+            iStep === 5 ? "Create" : "Next";
+    }
+
+    function _fnRenderStepDirectory(elContent) {
+        elContent.innerHTML =
+            '<div class="form-group">' +
+            '<label>Project Directory</label>' +
+            '<input type="text" id="inputWizardDirectory" ' +
+            'placeholder="/Users/you/projects/my-project">' +
+            '</div>';
+        var elInput = document.getElementById("inputWizardDirectory");
+        elInput.value = _dictWizardData.sDirectory;
+    }
+
+    function _fnRenderStepTemplate(elContent) {
+        elContent.innerHTML =
+            '<p class="muted-text" style="text-align:center;">' +
+            'Loading templates...</p>';
+        _fnFetchAndRenderTemplates(elContent);
+    }
+
+    async function _fnFetchAndRenderTemplates(elContent) {
+        try {
+            var response = await fetch("/api/setup/templates");
+            if (!response.ok) throw new Error("Fetch failed");
+            var dictResult = await response.json();
+            _fnBuildTemplateCards(elContent, dictResult.listTemplates);
+        } catch (error) {
+            elContent.innerHTML =
+                '<p class="muted-text">Could not load templates.</p>';
+        }
+    }
+
+    function _fnBuildTemplateCards(elContent, listTemplates) {
+        if (!listTemplates || listTemplates.length === 0) {
+            elContent.innerHTML =
+                '<p class="muted-text">No templates available.</p>';
+            return;
+        }
+        elContent.innerHTML = '<div class="add-choice-cards">' +
+            listTemplates.map(function (sName) {
+                var sActive = sName === _dictWizardData.sTemplateName
+                    ? " style=\"border-color:var(--color-pale-blue);\""
+                    : "";
+                return '<div class="add-choice-card" ' +
+                    'data-template="' + fnEscapeHtml(sName) + '"' +
+                    sActive + '>' +
+                    '<div class="add-choice-title">' +
+                    fnEscapeHtml(sName) + '</div></div>';
+            }).join("") + '</div>';
+        _fnBindTemplateCardClicks(elContent);
+    }
+
+    function _fnBindTemplateCardClicks(elContent) {
+        elContent.querySelectorAll(".add-choice-card").forEach(
+            function (el) {
+                el.addEventListener("click", function () {
+                    _dictWizardData.sTemplateName =
+                        el.dataset.template;
+                    _fnHighlightSelectedCard(elContent, el);
+                });
+            }
+        );
+    }
+
+    function _fnHighlightSelectedCard(elContent, elSelected) {
+        elContent.querySelectorAll(".add-choice-card").forEach(
+            function (el) {
+                el.style.borderColor =
+                    el === elSelected
+                        ? "var(--color-pale-blue)" : "";
+            }
+        );
+    }
+
+    function _fnRenderStepProjectName(elContent) {
+        var sDefault = _fsProjectNameFromDirectory();
+        if (!_dictWizardData.sProjectName) {
+            _dictWizardData.sProjectName = sDefault;
+        }
+        elContent.innerHTML =
+            '<div class="form-group">' +
+            '<label>Project Name</label>' +
+            '<input type="text" id="inputWizardProjectName" ' +
+            'placeholder="my-project">' +
+            '</div>';
+        document.getElementById("inputWizardProjectName").value =
+            _dictWizardData.sProjectName;
+    }
+
+    function _fsProjectNameFromDirectory() {
+        var sDir = _dictWizardData.sDirectory || "";
+        var sTrimmed = sDir.replace(/\/+$/, "");
+        var iLastSlash = sTrimmed.lastIndexOf("/");
+        return iLastSlash >= 0
+            ? sTrimmed.substring(iLastSlash + 1) : sTrimmed;
+    }
+
+    function _fnRenderStepPythonVersion(elContent) {
+        var listVersions = [
+            "3.9", "3.10", "3.11", "3.12", "3.13", "3.14",
+        ];
+        elContent.innerHTML =
+            '<div class="form-group">' +
+            '<label>Python Version</label>' +
+            '<select id="selectWizardPython">' +
+            listVersions.map(function (sVersion) {
+                var sSelected =
+                    sVersion === _dictWizardData.sPythonVersion
+                        ? " selected" : "";
+                return '<option value="' + sVersion + '"' +
+                    sSelected + '>' + sVersion + '</option>';
+            }).join("") +
+            '</select></div>';
+    }
+
+    function _fnRenderStepRepositories(elContent) {
+        elContent.innerHTML =
+            '<div class="form-group">' +
+            '<label>Repositories (one per line, optional)</label>' +
+            '<textarea id="inputWizardRepos" rows="5" ' +
+            'placeholder="https://github.com/org/repo.git">' +
+            '</textarea></div>';
+        var sRepos = _dictWizardData.listRepositories.join("\n");
+        document.getElementById("inputWizardRepos").value = sRepos;
+    }
+
+    function _fnRenderStepSummary(elContent) {
+        elContent.innerHTML =
+            '<div style="font-size:13px;color:var(--text-secondary);">' +
+            '<p><strong>Directory:</strong> ' +
+            fnEscapeHtml(_dictWizardData.sDirectory) + '</p>' +
+            '<p><strong>Template:</strong> ' +
+            fnEscapeHtml(_dictWizardData.sTemplateName) + '</p>' +
+            '<p><strong>Project Name:</strong> ' +
+            fnEscapeHtml(_dictWizardData.sProjectName) + '</p>' +
+            '<p><strong>Python:</strong> ' +
+            fnEscapeHtml(_dictWizardData.sPythonVersion) + '</p>' +
+            '<p><strong>Repositories:</strong> ' +
+            (_dictWizardData.listRepositories.length > 0
+                ? fnEscapeHtml(
+                    _dictWizardData.listRepositories.join(", "))
+                : '<em>None</em>') +
+            '</p></div>';
+    }
+
+    function _fnSaveCurrentStepData() {
+        var elDir = document.getElementById("inputWizardDirectory");
+        if (elDir) _dictWizardData.sDirectory = elDir.value.trim();
+        var elName = document.getElementById(
+            "inputWizardProjectName"
+        );
+        if (elName) {
+            _dictWizardData.sProjectName = elName.value.trim();
+        }
+        var elPython = document.getElementById("selectWizardPython");
+        if (elPython) {
+            _dictWizardData.sPythonVersion = elPython.value;
+        }
+        var elRepos = document.getElementById("inputWizardRepos");
+        if (elRepos) {
+            _dictWizardData.listRepositories = elRepos.value
+                .split("\n")
+                .map(function (s) { return s.trim(); })
+                .filter(function (s) { return s.length > 0; });
+        }
+    }
+
+    function _fbValidateWizardStep(iStep) {
+        if (iStep === 0 && !_dictWizardData.sDirectory) {
+            fnShowToast("Directory path is required.", "warning");
+            return false;
+        }
+        if (iStep === 1 && !_dictWizardData.sTemplateName) {
+            fnShowToast("Please select a template.", "warning");
+            return false;
+        }
+        if (iStep === 2 && !_dictWizardData.sProjectName) {
+            fnShowToast("Project name is required.", "warning");
+            return false;
+        }
+        return true;
+    }
+
+    async function fnSubmitCreateProject() {
+        var elButton = document.getElementById("btnWizardNext");
+        elButton.disabled = true;
+        elButton.textContent = "Creating...";
+        try {
+            var response = await fetch("/api/projects/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(_dictWizardData),
+            });
+            if (!response.ok) {
+                var dictError = await response.json();
+                fnShowToast(
+                    dictError.detail || "Creation failed", "error"
+                );
+                return;
+            }
+            _fnCloseWizard();
+            fnShowToast("Project created successfully.");
+            fnLoadContainers();
+        } catch (error) {
+            fnShowToast("Network error creating project.", "error");
+        } finally {
+            elButton.disabled = false;
+            elButton.textContent = "Create";
+        }
     }
 
     async function fnLoadLogs() {

@@ -46,7 +46,7 @@ def test_main_help_shows_description():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("vaibify.cli.main.fnStopContainer",
        create=True)
 def test_stop_calls_stop_container(mockStop, mockConfig):
@@ -66,7 +66,7 @@ def test_stop_calls_stop_container(mockStop, mockConfig):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("subprocess.run")
 def test_connect_invokes_docker_exec(mockRun, mockConfig):
     mockConfig.return_value = SimpleNamespace(
@@ -86,7 +86,7 @@ def test_connect_invokes_docker_exec(mockRun, mockConfig):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.cli.main.fconfigLoad")
+@patch("vaibify.cli.main.fconfigResolveProject")
 @patch("subprocess.run")
 def test_verify_invokes_check_isolation(mockRun, mockConfig):
     mockConfig.return_value = SimpleNamespace(

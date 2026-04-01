@@ -24,13 +24,19 @@ def _fnConfigureErrorLogging():
     logging.getLogger("vaibify").addHandler(fileHandler)
 
 from .commandBuild import build
+from .commandCat import cat
 from .commandConfig import config
 from .commandDestroy import destroy
 from .commandInit import init
+from .commandLs import ls
 from .commandPublish import publish
+from .commandRun import run
 from .commandStart import start
 from .commandStatus import status
-from .configLoader import fconfigLoad, fconfigResolveProject
+from .commandTest import test
+from .commandVerifyStep import verify_step
+from .commandWorkflow import workflow
+from .configLoader import fconfigResolveProject
 
 
 def _fnEnsureFirstTimeSetup():
@@ -96,12 +102,23 @@ main.add_command(status)
 main.add_command(destroy)
 main.add_command(config)
 main.add_command(publish)
+main.add_command(run)
+main.add_command(workflow)
+main.add_command(verify_step)
+main.add_command(ls)
+main.add_command(cat)
+main.add_command(test)
 
 
 @main.command("stop")
-def stop():
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
+def stop(sProjectName):
     """Stop the running Vaibify environment."""
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(sProjectName)
     from vaibify.docker.containerManager import fnStopContainer
     sName = configProject.sProjectName
     try:
@@ -129,9 +146,14 @@ def connect(project):
 
 
 @main.command("verify")
-def verify():
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
+def verify(sProjectName):
     """Run the isolation check script inside the container."""
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(sProjectName)
     sUser = configProject.sContainerUser
     sScript = f"/home/{sUser}/checkIsolation.sh"
     subprocess.run(
@@ -158,9 +180,14 @@ def setup():
 
 
 @main.command("gui")
-def gui():
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
+def gui(sProjectName):
     """Launch the Vaibify pipeline viewer GUI."""
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(sProjectName)
     from vaibify.gui.pipelineServer import fappCreateApplication
     import logging
     import threading

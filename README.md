@@ -46,7 +46,7 @@ Data scientists increasingly rely on AI coding agents to build and iterate on an
 
 `Vaibify` provides a complete workflow for containerized scientific computing:
 
-**Container Management** — Build, start, stop, and connect to Docker environments defined by a single `vaibify.yml` configuration file. Clone and install repositories, system packages, and Python/R/Julia dependencies automatically.
+**Container Management** — Build, start, stop, and connect to Docker environments defined by a single `vaibify.yml` configuration file. Multiple projects can run simultaneously, each with its own container, image, and workspace volume. Target any project from any directory with `--project/-p`. Clone and install repositories, system packages, and Python/R/Julia dependencies automatically.
 
 **Pipeline Execution** — Define multi-step workflows in `workflow.json` with data commands, plot commands, and test commands. Run individual steps or the full pipeline with one click in the browser-based GUI.
 
@@ -70,17 +70,17 @@ vaibify start --gui
 ### CLI Commands
 
 ```
-vaibify init [--template NAME]     Create a project from a template
-vaibify setup                      Launch the setup wizard GUI
-vaibify build [--no-cache]         Build the Docker image
-vaibify start [--gui] [--jupyter]  Start the container
-vaibify stop                       Stop the container
-vaibify status                     Show environment status
-vaibify connect                    Shell into the container
-vaibify verify                     Run the isolation security audit
-vaibify gui                        Launch the workflow viewer
-vaibify push <src> <dest>          Copy files into the container
-vaibify pull <src> <dest>          Copy files out of the container
+vaibify init [--template NAME]          Create a project from a template
+vaibify setup                           Launch the setup wizard GUI
+vaibify build [-p NAME] [--no-cache]    Build the Docker image
+vaibify start [-p NAME] [--gui]         Start the container
+vaibify stop [-p NAME]                  Stop the container
+vaibify status [-p NAME]                Show environment status
+vaibify connect [-p NAME]               Shell into the container
+vaibify verify [-p NAME]                Run the isolation security audit
+vaibify gui [-p NAME]                   Launch the workflow viewer
+vaibify push [-p NAME] <src> <dest>     Copy files into the container
+vaibify pull [-p NAME] <src> <dest>     Copy files out of the container
 vaibify config [edit|export|import]
 vaibify publish [archive|workflow]
 ```

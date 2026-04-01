@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from .configLoader import fbDockerAvailable, fconfigLoad
+from .configLoader import fbDockerAvailable, fconfigResolveProject
 
 
 def fnRemoveVolume(sVolumeName):
@@ -47,10 +47,15 @@ def fnRequireDocker():
 
 
 @click.command("destroy")
-def destroy():
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
+def destroy(sProjectName):
     """Remove the Vaibify workspace volume and optionally the image."""
     fnRequireDocker()
-    config = fconfigLoad()
+    config = fconfigResolveProject(sProjectName)
     sVolumeName = f"{config.sProjectName}-workspace"
     sFullName = f"{config.sProjectName}:latest"
     if not click.confirm(

@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from .configLoader import fbDockerAvailable, fconfigLoad
+from .configLoader import fbDockerAvailable, fconfigResolveProject
 
 
 def fnShowDaemonStatus(dockerClient):
@@ -57,7 +57,12 @@ def fnShowContainerStatus(dockerClient, config):
 
 
 @click.command("status")
-def status():
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
+def status(sProjectName):
     """Show the status of the Vaibify environment."""
     if not fbDockerAvailable():
         click.echo(
@@ -67,7 +72,7 @@ def status():
         sys.exit(1)
     import docker
     dockerClient = docker.from_env()
-    config = fconfigLoad()
+    config = fconfigResolveProject(sProjectName)
     fnShowDaemonStatus(dockerClient)
     fnShowImageStatus(dockerClient, config)
     fnShowVolumeStatus(dockerClient, config)

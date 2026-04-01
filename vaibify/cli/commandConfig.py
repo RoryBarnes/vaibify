@@ -6,7 +6,7 @@ import sys
 import click
 import yaml
 
-from .configLoader import fconfigLoad, fsConfigPath
+from .configLoader import fconfigResolveProject, fsConfigPath
 
 
 def fnWriteYaml(dictData, sPath):
@@ -42,11 +42,16 @@ def config():
 
 
 @config.command("export")
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Project name (omit if in a project directory "
+    "or only one project exists).",
+)
 @click.argument("sfilepath", metavar="FILE")
-def configExport(sfilepath):
+def configExport(sProjectName, sfilepath):
     """Export the current configuration to a YAML file."""
     from vaibify.config.projectConfig import fnSaveToFile
-    configProject = fconfigLoad()
+    configProject = fconfigResolveProject(sProjectName)
     fnSaveToFile(configProject, sfilepath)
     click.echo(f"Configuration exported to {sfilepath}")
 
