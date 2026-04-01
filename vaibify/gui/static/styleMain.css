@@ -2625,7 +2625,7 @@ html, body {
 }
 
 .step-wrapper .step-item.selected {
-    background: rgba(19, 174, 213, 0.1);
+    background: #2a3548;
 }
 
 /* --- Vaibified celebration --- */

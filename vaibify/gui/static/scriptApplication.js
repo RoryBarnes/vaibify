@@ -1869,20 +1869,8 @@ const PipeleyenApp = (function () {
             sCategory.charAt(0).toUpperCase() +
             sCategory.slice(1);
         var dictCat = dictTests[sCatKey] || {};
-        var sFilePath = dictCat.sFilePath || "";
         var sStandardsPath = dictCat.sStandardsPath || "";
         var sHtml = '<div class="sub-test-expanded">';
-        if (sFilePath) {
-            var sFileName = sFilePath.split("/").pop();
-            sHtml += '<div class="test-category-file" ' +
-                'data-step="' + iIndex +
-                '" data-category="' + sCategory +
-                '" data-path="' +
-                fnEscapeHtml(sFilePath) + '">' +
-                '<span class="test-item-text clickable">' +
-                fnEscapeHtml(sFileName) + '</span>' +
-                '</div>';
-        }
         if (sStandardsPath) {
             sHtml += '<span class="test-standards-link" ' +
                 'data-step="' + iIndex +
