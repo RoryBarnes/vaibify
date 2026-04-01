@@ -1832,10 +1832,10 @@ const PipeleyenApp = (function () {
             sHtml += fsRenderVerificationRow(
                 "Unit Tests", sUnitState, "unitTest", iIndex
             );
-            sHtml += '<span class="timestamp-field">' +
+            sHtml += '<div class="timestamp-field">' +
                 fsRenderVerificationTimestamp(
                     "Last run", dictVerify.sLastTestRun) +
-                '</span>';
+                '</div>';
             if (setGeneratingInFlight.has(iIndex)) {
                 sHtml += '<div class="unit-tests-expanded">' +
                     '<button class="btn-generate-test" disabled>' +
@@ -1849,20 +1849,20 @@ const PipeleyenApp = (function () {
         sHtml += fsRenderVerificationRow(
             "Dependencies", sDepsState, "deps", iIndex
         );
-        sHtml += '<span class="timestamp-field">' +
+        sHtml += '<div class="timestamp-field">' +
             fsRenderVerificationTimestamp(
                 "Last checked", dictVerify.sLastDepsCheck) +
-            '</span>';
+            '</div>';
         if (setExpandedDeps.has(iIndex)) {
             sHtml += fsRenderDepsExpanded(iIndex);
         }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
         );
-        sHtml += '<span class="timestamp-field">' +
+        sHtml += '<div class="timestamp-field">' +
             fsRenderVerificationTimestamp(
                 "Last updated", dictVerify.sLastUserUpdate) +
-            '</span>';
+            '</div>';
         sHtml += '</div>';
         return sHtml;
     }
@@ -1936,17 +1936,13 @@ const PipeleyenApp = (function () {
                 fnEscapeHtml(sStandardsPath) +
                 '">Standards</span></div>';
         }
-        var sLogPath = (dictCat.sLogPath || "");
-        if (!sLogPath) {
-            sLogPath = (fdictGetVerification(step))
-                .sTestLogPath || "";
-        }
-        if (sLogPath) {
+        var sLastOutput = dictCat.sLastOutput || "";
+        if (sLastOutput) {
             sHtml += '<div><span class="test-log-link" ' +
                 'data-step="' + iIndex +
                 '" data-category="' + sCategory +
                 '" data-log="' +
-                fnEscapeHtml(sLogPath) +
+                fnEscapeHtml(sCategory) +
                 '">Log</span></div>';
         }
         if ((dictCat.saCommands || []).length > 0) {
@@ -2063,7 +2059,8 @@ const PipeleyenApp = (function () {
             sHtml += '<div class="' + sCls + '" data-step="' +
                 iIndex + '" data-idx="' + i + '">' +
                 '<span class="test-item-text">' +
-                fnEscapeHtml(listItems[i]) + '</span>' +
+                fnEscapeHtml(fsResolveTemplate(listItems[i],
+                    fdictBuildClientVariables())) + '</span>' +
                 '<span class="test-item-actions">' +
                 '<button class="btn-icon test-edit-cmd" ' +
                 'data-step="' + iIndex + '" data-idx="' + i +
@@ -2545,8 +2542,15 @@ const PipeleyenApp = (function () {
         }
         if (elTarget.closest(".test-log-link")) {
             var elLogLink = elTarget.closest(".test-log-link");
-            PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                elLogLink.dataset.log);
+            var iLogStep = parseInt(elLogLink.dataset.step, 10);
+            var sCatKey = elLogLink.dataset.category;
+            var dictLogStep = dictWorkflow.listSteps[iLogStep];
+            var dictLogTests = fdictGetTests(dictLogStep);
+            var sLogCatKey = "dict" + sCatKey.charAt(0)
+                .toUpperCase() + sCatKey.slice(1);
+            var sOutput = (dictLogTests[sLogCatKey] || {})
+                .sLastOutput || "No test output available.";
+            fnShowTestLogModal(sCatKey, sOutput);
             return;
         }
         if (elTarget.closest(".test-edit-cmd")) {
@@ -3126,6 +3130,30 @@ const PipeleyenApp = (function () {
             dictTests: dictStep.dictTests,
         });
         fnRenderStepList();
+    }
+
+    function fnShowTestLogModal(sCategory, sOutput) {
+        var elExisting = document.getElementById("modalTestLog");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalTestLog";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal" style="max-width:700px">' +
+            '<h2>' + fnEscapeHtml(sCategory) + ' Test Log</h2>' +
+            '<pre style="max-height:400px;overflow:auto;' +
+            'background:var(--bg-main);padding:10px;' +
+            'border-radius:4px;font-size:12px;' +
+            'white-space:pre-wrap;word-break:break-all">' +
+            fnEscapeHtml(sOutput) + '</pre>' +
+            '<div class="modal-actions">' +
+            '<button class="btn btn-primary" ' +
+            'id="btnTestLogClose">Close</button></div></div>';
+        document.body.appendChild(elModal);
+        document.getElementById("btnTestLogClose").addEventListener(
+            "click", function () { elModal.remove(); }
+        );
     }
 
     function fnShowConfirmModal(sTitle, sMessage, fnOnConfirm) {
@@ -5851,6 +5879,7 @@ const PipeleyenApp = (function () {
 
     function fnApplyCategoryResults(step, dictCategoryResults) {
         if (!dictCategoryResults) return;
+        var dictTests = step.dictTests || {};
         var dictMap = {
             dictIntegrity: "sIntegrity",
             dictQualitative: "sQualitative",
@@ -5861,6 +5890,10 @@ const PipeleyenApp = (function () {
             if (dictCat) {
                 step.dictVerification[dictMap[sKey]] =
                     dictCat.bPassed ? "passed" : "failed";
+                if (dictTests[sKey]) {
+                    dictTests[sKey].sLastOutput =
+                        dictCat.sOutput || "";
+                }
             }
         }
     }

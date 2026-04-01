@@ -1,5 +1,7 @@
 /* Vaibify — dark theme with accessible color palette */
 
+@import url("https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap");
+
 :root {
     --color-red: #c91111;
     --color-orange: #e09401;
@@ -28,8 +30,6 @@
     padding: 0;
     box-sizing: border-box;
 }
-
-@import url("https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap");
 
 html, body {
     height: 100%;
