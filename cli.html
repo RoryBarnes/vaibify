@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.1.dev158+gc46d5351e.d20260331 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.1.dev159+g110ee370e.d20260401 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1d7a5b6c"></script>
+      <script src="_static/documentation_options.js?v=e90544ba"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -50,6 +50,7 @@
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#global-options">Global Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#project-targeting">Project Targeting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-setup">Project Setup</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-init"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-setup"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup</span></code></a></li>
@@ -145,6 +146,17 @@
 <p>When invoked with no subcommand, Vaibify starts in <strong>hub mode</strong> – a
 browser-based dashboard for managing multiple projects.</p>
 </section>
+<section id="project-targeting">
+<h2>Project Targeting<a class="headerlink" href="#project-targeting" title="Link to this heading"></a></h2>
+<blockquote>
+<div><p><strong>Note:</strong> When you are in a directory containing <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, the
+<code class="docutils literal notranslate"><span class="pre">--project</span></code> flag defaults to that project. When only one project is
+registered globally, the flag can be omitted entirely. When multiple
+projects exist, <code class="docutils literal notranslate"><span class="pre">--project</span></code> is required unless you are in a project
+directory. Projects are registered automatically when you run
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>.</p>
+</div></blockquote>
+</section>
 <section id="project-setup">
 <h2>Project Setup<a class="headerlink" href="#project-setup" title="Link to this heading"></a></h2>
 <section id="vaibify-init">
@@ -182,9 +194,9 @@ walks through configuration fields and writes the result to <code class="docutil
 <section id="vaibify-config">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">config</span></code><a class="headerlink" href="#vaibify-config" title="Link to this heading"></a></h3>
 <p>Edit, export, or import configuration.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>config<span class="w"> </span>edit<span class="w">              </span><span class="c1"># Open vaibify.yml in $EDITOR</span>
-vaibify<span class="w"> </span>config<span class="w"> </span><span class="nb">export</span><span class="w"> </span>&lt;file&gt;<span class="w">     </span><span class="c1"># Write current config to a file</span>
-vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="w"> </span>&lt;file&gt;<span class="w">     </span><span class="c1"># Load config from a file</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>config<span class="w"> </span>edit<span class="w">                         </span><span class="c1"># Open vaibify.yml in $EDITOR</span>
+vaibify<span class="w"> </span>config<span class="w"> </span><span class="nb">export</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;file&gt;<span class="w">      </span><span class="c1"># Write current config to a file</span>
+vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="w"> </span>&lt;file&gt;<span class="w">                </span><span class="c1"># Load config from a file</span>
 </pre></div>
 </div>
 </section>
@@ -194,7 +206,7 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 <section id="vaibify-build">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code><a class="headerlink" href="#vaibify-build" title="Link to this heading"></a></h3>
 <p>Build the Docker image from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span><span class="o">[</span>--no-cache<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span><span class="o">[</span>--no-cache<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -207,13 +219,16 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-cache</span></code></p></td>
 <td><p>Force a clean rebuild of all layers</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
 </tbody>
 </table>
 </section>
 <section id="vaibify-start">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code><a class="headerlink" href="#vaibify-start" title="Link to this heading"></a></h3>
 <p>Start the container in the background.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>--gui<span class="o">]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>--gui<span class="o">]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -229,20 +244,23 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--jupyter</span></code></p></td>
 <td><p>Start JupyterLab inside the container</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
 </tbody>
 </table>
 </section>
 <section id="vaibify-stop">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code><a class="headerlink" href="#vaibify-stop" title="Link to this heading"></a></h3>
 <p>Stop the running container. The workspace volume persists.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>stop
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>stop<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 </section>
 <section id="vaibify-destroy">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code><a class="headerlink" href="#vaibify-destroy" title="Link to this heading"></a></h3>
 <p>Remove the container and optionally delete the workspace volume.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>destroy<span class="w"> </span><span class="o">[</span>--volumes<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>destroy<span class="w"> </span><span class="o">[</span>--volumes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -255,13 +273,16 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--volumes</span></code></p></td>
 <td><p>Also remove the workspace volume</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
 </tbody>
 </table>
 </section>
 <section id="vaibify-status">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">status</span></code><a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
 <p>Report the state of the container, image, and workspace volume.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 </section>
@@ -333,7 +354,7 @@ registered, the flag can be omitted.</p>
 <p>Run the isolation security audit inside the container. The audit checks
 for Docker socket access, privilege escalation paths, exposed ports, and
 mounted secrets.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>verify
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>verify<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 </section>
@@ -344,7 +365,7 @@ mounted secrets.</p>
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span></code><a class="headerlink" href="#vaibify-gui" title="Link to this heading"></a></h3>
 <p>Launch the pipeline viewer in a browser (port 8050). See <a class="reference internal" href="gui.html"><span class="std std-doc">Workflow
 Viewer</span></a> for details.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>gui
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>gui<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 </section>

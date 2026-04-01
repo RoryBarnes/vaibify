@@ -105,3 +105,22 @@ Use `vaibify publish workflow` to generate a GitHub Actions workflow
 from `workflow.json`. The generated workflow builds the Docker image and
 runs each step inside the container. See [Reproducibility](reproducibility.md)
 for details.
+
+## Multi-Container Workflows
+
+Each Vaibify project gets its own Docker image, container, and workspace
+volume. Multiple projects can run simultaneously on the same machine
+without interference. Use the `--project/-p` flag to target a specific
+project from any directory:
+
+```bash
+vaibify build -p earth-water
+vaibify start -p earth-water
+vaibify status -p earth-water
+vaibify stop -p earth-water
+```
+
+Projects are registered automatically when you run `vaibify init`. When
+only one project is registered, the `--project` flag can be omitted.
+When you are inside a project directory (one containing `vaibify.yml`),
+the flag defaults to that project.

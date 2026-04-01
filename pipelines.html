@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.1.dev158+gc46d5351e.d20260331 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.1.dev159+g110ee370e.d20260401 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1d7a5b6c"></script>
+      <script src="_static/documentation_options.js?v=e90544ba"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,6 +57,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#running-a-pipeline">Running a Pipeline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pipeline-output">Pipeline Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#integration-with-github-actions">Integration with GitHub Actions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#multi-container-workflows">Multi-Container Workflows</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
@@ -266,6 +267,23 @@ does not exist.</p>
 from <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. The generated workflow builds the Docker image and
 runs each step inside the container. See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>
 for details.</p>
+</section>
+<section id="multi-container-workflows">
+<h2>Multi-Container Workflows<a class="headerlink" href="#multi-container-workflows" title="Link to this heading"></a></h2>
+<p>Each Vaibify project gets its own Docker image, container, and workspace
+volume. Multiple projects can run simultaneously on the same machine
+without interference. Use the <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code> flag to target a specific
+project from any directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span>-p<span class="w"> </span>earth-water
+vaibify<span class="w"> </span>start<span class="w"> </span>-p<span class="w"> </span>earth-water
+vaibify<span class="w"> </span>status<span class="w"> </span>-p<span class="w"> </span>earth-water
+vaibify<span class="w"> </span>stop<span class="w"> </span>-p<span class="w"> </span>earth-water
+</pre></div>
+</div>
+<p>Projects are registered automatically when you run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>. When
+only one project is registered, the <code class="docutils literal notranslate"><span class="pre">--project</span></code> flag can be omitted.
+When you are inside a project directory (one containing <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>),
+the flag defaults to that project.</p>
 </section>
 </section>
 

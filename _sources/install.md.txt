@@ -29,6 +29,11 @@ After installation, confirm the CLI is available:
 vaibify --version
 ```
 
+Multiple Vaibify projects can coexist on the same machine. Each project
+gets its own container, image, and workspace volume. Use `vaibify init`
+in each project directory to register it, then target any project from
+anywhere with `--project/-p`.
+
 ## Developers
 
 Clone the repository and install in editable mode:

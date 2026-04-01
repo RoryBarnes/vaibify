@@ -76,8 +76,12 @@ These commands work from any directory. When multiple projects are
 registered, specify the target with `--project/-p`:
 
 ```bash
+vaibify build -p my-project
+vaibify start -p my-project
+vaibify status -p my-project
 vaibify connect -p my-project
 vaibify push -p my-project data.csv /workspace/data.csv
+vaibify stop -p my-project
 ```
 
 ## Stop the Container
