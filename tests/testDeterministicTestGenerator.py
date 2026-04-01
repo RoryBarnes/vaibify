@@ -9,13 +9,15 @@ from unittest.mock import MagicMock
 
 from vaibify.gui.testGenerator import (
     _fbOutputLooksValid,
+    _fdictBuildIntegrityStandards,
+    _fdictBuildQualitativeStandards,
     _fdictBuildQuantitativeStandards,
     _flistParseIntrospectionOutput,
     _fsBuildIntrospectionScript,
     _fsFormatSafeName,
-    _fsGenerateIntegrityCode,
-    _fsGenerateQualitativeCode,
     _fsRemoveOldTestSection,
+    fsBuildIntegrityTestCode,
+    fsBuildQualitativeTestCode,
     fsBuildQuantitativeTestCode,
 )
 
@@ -36,6 +38,40 @@ def _fdictExecTemplate(tmp_path=None):
         json.dump({"fDefaultRtol": 1e-6, "listStandards": []}, fh)
     sFakeFile = str(tmp_path / "test_quantitative.py")
     sCode = fsBuildQuantitativeTestCode()
+    dictLocals = {"__file__": sFakeFile}
+    exec(compile(sCode, "<template>", "exec"), dictLocals)
+    return dictLocals
+
+
+def _fdictExecIntegrityTemplate(tmp_path=None):
+    """Execute the integrity test template and return its namespace."""
+    import tempfile
+    import pathlib
+
+    if tmp_path is None:
+        tmp_path = pathlib.Path(tempfile.mkdtemp())
+    sStandardsPath = str(tmp_path / "integrity_standards.json")
+    with open(sStandardsPath, "w", encoding="utf-8") as fh:
+        json.dump({"listStandards": []}, fh)
+    sFakeFile = str(tmp_path / "test_integrity.py")
+    sCode = fsBuildIntegrityTestCode()
+    dictLocals = {"__file__": sFakeFile}
+    exec(compile(sCode, "<template>", "exec"), dictLocals)
+    return dictLocals
+
+
+def _fdictExecQualitativeTemplate(tmp_path=None):
+    """Execute the qualitative test template and return its namespace."""
+    import tempfile
+    import pathlib
+
+    if tmp_path is None:
+        tmp_path = pathlib.Path(tempfile.mkdtemp())
+    sStandardsPath = str(tmp_path / "qualitative_standards.json")
+    with open(sStandardsPath, "w", encoding="utf-8") as fh:
+        json.dump({"listStandards": []}, fh)
+    sFakeFile = str(tmp_path / "test_qualitative.py")
+    sCode = fsBuildQualitativeTestCode()
     dictLocals = {"__file__": sFakeFile}
     exec(compile(sCode, "<template>", "exec"), dictLocals)
     return dictLocals
@@ -65,11 +101,11 @@ def test_fsFormatSafeName_already_valid():
 
 
 # -----------------------------------------------------------------------
-# _fsGenerateIntegrityCode
+# _fdictBuildIntegrityStandards
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateIntegrityCode_produces_valid_python():
+def test_fdictBuildIntegrityStandards_produces_valid_json():
     listdictReports = [
         {
             "sFileName": "data.npy",
@@ -81,11 +117,13 @@ def test_fsGenerateIntegrityCode_produces_valid_python():
             "tShape": [100, 3],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert "listStandards" in dictResult
+    assert len(dictResult["listStandards"]) == 1
+    assert dictResult["listStandards"][0]["sFileName"] == "data.npy"
 
 
-def test_fsGenerateIntegrityCode_file_exists_test():
+def test_fdictBuildIntegrityStandards_file_entry():
     listdictReports = [
         {
             "sFileName": "output.csv",
@@ -98,23 +136,39 @@ def test_fsGenerateIntegrityCode_file_exists_test():
             "listColumnNames": ["time", "flux"],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    assert "os.path.isfile" in sCode
-    assert "output.csv" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["sFileName"] == "output.csv"
+    assert dictEntry["sFormat"] == "csv"
+    assert dictEntry["tExpectedShape"] == [50, 4]
 
 
-def test_fsGenerateIntegrityCode_empty_reports():
-    sCode = _fsGenerateIntegrityCode([])
+def test_fdictBuildIntegrityStandards_empty_reports():
+    dictResult = _fdictBuildIntegrityStandards([])
+    assert dictResult["listStandards"] == []
+
+
+def test_integrity_template_valid_python():
+    sCode = fsBuildIntegrityTestCode()
     ast.parse(sCode)
-    assert "test_no_integrity_outputs" in sCode
+
+
+def test_integrity_template_has_parametrize():
+    sCode = fsBuildIntegrityTestCode()
+    assert "pytest.mark.parametrize" in sCode
+    assert "test_integrity_check" in sCode
+
+
+def test_integrity_template_exec():
+    _fdictExecIntegrityTemplate()
 
 
 # -----------------------------------------------------------------------
-# _fsGenerateQualitativeCode
+# _fdictBuildQualitativeStandards
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateQualitativeCode_with_columns():
+def test_fdictBuildQualitativeStandards_with_columns():
     listdictReports = [
         {
             "sFileName": "results.csv",
@@ -125,14 +179,15 @@ def test_fsGenerateQualitativeCode_with_columns():
             "listJsonTopKeys": [],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "'time'" in sCode
-    assert "'temperature'" in sCode
-    assert "'pressure'" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 1
+    dictEntry = dictResult["listStandards"][0]
+    assert "time" in dictEntry["listExpectedColumns"]
+    assert "temperature" in dictEntry["listExpectedColumns"]
+    assert "pressure" in dictEntry["listExpectedColumns"]
 
 
-def test_fsGenerateQualitativeCode_no_strings():
+def test_fdictBuildQualitativeStandards_no_strings():
     listdictReports = [
         {
             "sFileName": "data.npy",
@@ -143,12 +198,11 @@ def test_fsGenerateQualitativeCode_no_strings():
             "listJsonTopKeys": [],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_no_qualitative_outputs" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    assert dictResult["listStandards"] == []
 
 
-def test_fsGenerateQualitativeCode_json_keys():
+def test_fdictBuildQualitativeStandards_json_keys():
     listdictReports = [
         {
             "sFileName": "config.json",
@@ -159,10 +213,26 @@ def test_fsGenerateQualitativeCode_json_keys():
             "listJsonTopKeys": ["model", "version", "parameters"],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 1
+    dictEntry = dictResult["listStandards"][0]
+    assert "model" in dictEntry["listExpectedJsonKeys"]
+    assert "version" in dictEntry["listExpectedJsonKeys"]
+
+
+def test_qualitative_template_valid_python():
+    sCode = fsBuildQualitativeTestCode()
     ast.parse(sCode)
-    assert "'model'" in sCode
-    assert "'version'" in sCode
+
+
+def test_qualitative_template_has_parametrize():
+    sCode = fsBuildQualitativeTestCode()
+    assert "pytest.mark.parametrize" in sCode
+    assert "test_qualitative_check" in sCode
+
+
+def test_qualitative_template_exec():
+    _fdictExecQualitativeTemplate()
 
 
 # -----------------------------------------------------------------------
@@ -294,6 +364,8 @@ def test_fdictGenerateAllTestsDeterministic_mock():
         "test_quantitative.py"
     )
     assert "sStandardsPath" in dictResult["dictQuantitative"]
+    assert "sStandardsPath" in dictResult["dictIntegrity"]
+    assert "sStandardsPath" in dictResult["dictQualitative"]
 
 
 # -----------------------------------------------------------------------
@@ -348,7 +420,7 @@ def test_npz_in_format_map():
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateIntegrityCode_json_loadable():
+def test_fdictBuildIntegrityStandards_json_format():
     listdictReports = [
         {
             "sFileName": "stats.json",
@@ -361,13 +433,12 @@ def test_fsGenerateIntegrityCode_json_loadable():
             "listJsonTopKeys": ["alpha", "beta"],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "json.load" in sCode
-    assert "'alpha' in d" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 1
+    assert dictResult["listStandards"][0]["sFormat"] == "json"
 
 
-def test_fsGenerateIntegrityCode_hdf5_loadable():
+def test_fdictBuildIntegrityStandards_hdf5_format():
     listdictReports = [
         {
             "sFileName": "data.h5",
@@ -379,13 +450,13 @@ def test_fsGenerateIntegrityCode_hdf5_loadable():
             "tShape": [1000],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "h5py" in sCode
-    assert "len(fh.keys()) > 0" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["sFormat"] == "hdf5"
+    assert dictEntry["tExpectedShape"] == [1000]
 
 
-def test_fsGenerateIntegrityCode_npz_loadable():
+def test_fdictBuildIntegrityStandards_npz_format():
     listdictReports = [
         {
             "sFileName": "archive.npz",
@@ -398,13 +469,11 @@ def test_fsGenerateIntegrityCode_npz_loadable():
             "listColumnNames": ["samples", "weights"],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "a.files" in sCode
-    assert "'samples' in a.files" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert dictResult["listStandards"][0]["sFormat"] == "npz"
 
 
-def test_fsGenerateIntegrityCode_whitespace_loadable():
+def test_fdictBuildIntegrityStandards_whitespace_format():
     listdictReports = [
         {
             "sFileName": "ages.txt",
@@ -417,13 +486,12 @@ def test_fsGenerateIntegrityCode_whitespace_loadable():
             "listColumnNames": [],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "startswith('#')" in sCode
-    assert "len(rows) >= 200" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["tExpectedShape"] == [200, 1]
 
 
-def test_fsGenerateIntegrityCode_keyvalue_loadable():
+def test_fdictBuildIntegrityStandards_keyvalue_format():
     listdictReports = [
         {
             "sFileName": "results.txt",
@@ -435,9 +503,8 @@ def test_fsGenerateIntegrityCode_keyvalue_loadable():
             "tShape": None,
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "'=' in l" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert dictResult["listStandards"][0]["sFormat"] == "keyvalue"
 
 
 # -----------------------------------------------------------------------
@@ -445,7 +512,7 @@ def test_fsGenerateIntegrityCode_keyvalue_loadable():
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateIntegrityCode_csv_no_nan():
+def test_fdictBuildIntegrityStandards_csv_nan_check():
     listdictReports = [
         {
             "sFileName": "data.csv",
@@ -458,13 +525,13 @@ def test_fsGenerateIntegrityCode_csv_no_nan():
             "listColumnNames": ["x", "y", "z"],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_data_no_nan" in sCode
-    assert "np.isnan" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["bCheckNaN"] is True
+    assert dictEntry["bCheckInf"] is True
 
 
-def test_fsGenerateIntegrityCode_npz_no_nan():
+def test_fdictBuildIntegrityStandards_npz_nan_check():
     listdictReports = [
         {
             "sFileName": "samples.npz",
@@ -477,10 +544,9 @@ def test_fsGenerateIntegrityCode_npz_no_nan():
             "listColumnNames": ["arr"],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_samples_no_nan" in sCode
-    assert "np.issubdtype" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["bCheckNaN"] is True
 
 
 # -----------------------------------------------------------------------
@@ -655,7 +721,7 @@ def test_introspection_script_has_all_formats():
         assert sHandler in sScript
 
 
-def test_integrity_code_all_formats():
+def test_integrity_standards_all_formats():
     listFormats = [
         ("data.jsonl", "jsonl"),
         ("data.xlsx", "excel"),
@@ -676,8 +742,9 @@ def test_integrity_code_all_formats():
                 "tShape": [10],
             },
         ]
-        sCode = _fsGenerateIntegrityCode(listdictReports)
-        ast.parse(sCode)
+        dictResult = _fdictBuildIntegrityStandards(listdictReports)
+        assert len(dictResult["listStandards"]) == 1
+        assert dictResult["listStandards"][0]["sFormat"] == sFormat
 
 
 # -----------------------------------------------------------------------
@@ -733,7 +800,7 @@ def test_introspection_has_all_new_benchmarkers():
         )
 
 
-def test_integrity_code_new_formats():
+def test_integrity_standards_new_formats():
     listFormats = [
         ("seqs.fasta", "fasta"),
         ("reads.fastq", "fastq"),
@@ -771,8 +838,9 @@ def test_integrity_code_new_formats():
                 "tShape": [10],
             },
         ]
-        sCode = _fsGenerateIntegrityCode(listdictReports)
-        ast.parse(sCode)
+        dictResult = _fdictBuildIntegrityStandards(listdictReports)
+        assert len(dictResult["listStandards"]) == 1
+        assert dictResult["listStandards"][0]["sFormat"] == sFormat
 
 
 # -----------------------------------------------------------------------
@@ -1025,7 +1093,7 @@ def test_fsRemoveOldTestSection_with_marker():
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateIntegrityCode_unloadable_file():
+def test_fdictBuildIntegrityStandards_unloadable_file():
     listdictReports = [
         {
             "sFileName": "broken.npy",
@@ -1037,13 +1105,12 @@ def test_fsGenerateIntegrityCode_unloadable_file():
             "tShape": None,
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_broken_exists" in sCode
-    assert "loadable" not in sCode.lower() or "test_broken_loadable" not in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 1
+    assert dictResult["listStandards"][0]["bCheckNaN"] is False
 
 
-def test_fsGenerateIntegrityCode_multiple_files():
+def test_fdictBuildIntegrityStandards_multiple_files():
     listdictReports = [
         {
             "sFileName": "alpha.csv",
@@ -1065,13 +1132,14 @@ def test_fsGenerateIntegrityCode_multiple_files():
             "tShape": [50],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "alpha" in sCode
-    assert "beta" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 2
+    listFileNames = [s["sFileName"] for s in dictResult["listStandards"]]
+    assert "alpha.csv" in listFileNames
+    assert "beta.npy" in listFileNames
 
 
-def test_fsGenerateQualitativeCode_multiple_files():
+def test_fdictBuildQualitativeStandards_multiple_files():
     listdictReports = [
         {
             "sFileName": "results.csv",
@@ -1090,10 +1158,10 @@ def test_fsGenerateQualitativeCode_multiple_files():
             "listJsonTopKeys": ["model", "version"],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "'time'" in sCode
-    assert "'model'" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 2
+    assert "time" in dictResult["listStandards"][0]["listExpectedColumns"]
+    assert "model" in dictResult["listStandards"][1]["listExpectedJsonKeys"]
 
 
 def test_fdictBuildQuantitativeStandards_empty_benchmarks():
@@ -1540,7 +1608,7 @@ def test_introspection_script_binary_detection():
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateQualitativeCode_csv_format():
+def test_fdictBuildQualitativeStandards_csv_format():
     listdictReports = [
         {
             "sFileName": "data.csv",
@@ -1551,13 +1619,13 @@ def test_fsGenerateQualitativeCode_csv_format():
             "listJsonTopKeys": [],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "csv.DictReader" in sCode
-    assert "'time'" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert "time" in dictEntry["listExpectedColumns"]
+    assert dictEntry["sFormat"] == "csv"
 
 
-def test_fsGenerateQualitativeCode_whitespace_format():
+def test_fdictBuildQualitativeStandards_whitespace_format():
     listdictReports = [
         {
             "sFileName": "data.dat",
@@ -1568,18 +1636,18 @@ def test_fsGenerateQualitativeCode_whitespace_format():
             "listJsonTopKeys": [],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "'age'" in sCode
-    assert "'mass'" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert "age" in dictEntry["listExpectedColumns"]
+    assert "mass" in dictEntry["listExpectedColumns"]
 
 
 # -----------------------------------------------------------------------
-# Integrity code — no-NaN test generation per format
+# Integrity standards — NaN/Inf check flags
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateIntegrityCode_npy_no_nan():
+def test_fdictBuildIntegrityStandards_npy_nan_flags():
     listdictReports = [
         {
             "sFileName": "array.npy",
@@ -1591,14 +1659,13 @@ def test_fsGenerateIntegrityCode_npy_no_nan():
             "tShape": [100],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_array_no_nan" in sCode
-    assert "np.isnan" in sCode
-    assert "np.isinf" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["bCheckNaN"] is True
+    assert dictEntry["bCheckInf"] is True
 
 
-def test_fsGenerateIntegrityCode_whitespace_no_nan():
+def test_fdictBuildIntegrityStandards_whitespace_nan_flags():
     listdictReports = [
         {
             "sFileName": "data.dat",
@@ -1610,12 +1677,11 @@ def test_fsGenerateIntegrityCode_whitespace_no_nan():
             "tShape": [50, 3],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_data_no_nan" in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert dictResult["listStandards"][0]["bCheckNaN"] is True
 
 
-def test_fsGenerateIntegrityCode_nan_present_skips_nonan():
+def test_fdictBuildIntegrityStandards_nan_present_no_check():
     listdictReports = [
         {
             "sFileName": "data.npy",
@@ -1627,9 +1693,8 @@ def test_fsGenerateIntegrityCode_nan_present_skips_nonan():
             "tShape": [100],
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_data_no_nan" not in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert dictResult["listStandards"][0]["bCheckNaN"] is False
 
 
 # -----------------------------------------------------------------------
@@ -1795,11 +1860,14 @@ def test_loader_image(tmp_path):
 # -----------------------------------------------------------------------
 
 
-def test_integrity_code_executes_with_npy(tmp_path):
-    """Generate integrity code from a report and exec it."""
+def test_integrity_template_executes_with_npy(tmp_path):
+    """Write integrity standards and exec the template with npy data."""
+    import pathlib
     daData = np.array([1.0, 2.0, 3.0])
     np.save(str(tmp_path / "output.npy"), daData)
-    listdictReports = [
+    sTestsDir = tmp_path / "tests"
+    sTestsDir.mkdir()
+    dictStandards = _fdictBuildIntegrityStandards([
         {
             "sFileName": "output.npy",
             "sFormat": "npy",
@@ -1809,26 +1877,26 @@ def test_integrity_code_executes_with_npy(tmp_path):
             "iInfCount": 0,
             "tShape": [3],
         },
-    ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    sFixedCode = sCode.replace(
-        "_STEP_DIRECTORY = os.path.dirname("
-        "os.path.dirname(os.path.abspath(__file__)))",
-        f"_STEP_DIRECTORY = {str(tmp_path)!r}",
-    )
-    dictNamespace = {}
-    exec(compile(sFixedCode, "<integrity>", "exec"), dictNamespace)
-    dictNamespace["test_output_exists"]()
-    dictNamespace["test_output_loadable"]()
-    dictNamespace["test_output_no_nan"]()
+    ])
+    sStandardsPath = str(sTestsDir / "integrity_standards.json")
+    with open(sStandardsPath, "w", encoding="utf-8") as fh:
+        json.dump(dictStandards, fh)
+    sFakeFile = str(sTestsDir / "test_integrity.py")
+    sCode = fsBuildIntegrityTestCode()
+    dictNs = {"__file__": sFakeFile}
+    exec(compile(sCode, "<integrity>", "exec"), dictNs)
+    dictEntry = dictStandards["listStandards"][0]
+    dictNs["test_integrity_check"](dictEntry)
 
 
-def test_integrity_code_executes_with_csv(tmp_path):
-    """Generate integrity code for CSV and exec it."""
+def test_integrity_template_executes_with_csv(tmp_path):
+    """Write integrity standards and exec the template with csv data."""
     sPath = str(tmp_path / "data.csv")
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("x,y\n1.0,2.0\n3.0,4.0\n")
-    listdictReports = [
+    sTestsDir = tmp_path / "tests"
+    sTestsDir.mkdir()
+    dictStandards = _fdictBuildIntegrityStandards([
         {
             "sFileName": "data.csv",
             "sFormat": "csv",
@@ -1839,26 +1907,26 @@ def test_integrity_code_executes_with_csv(tmp_path):
             "tShape": [2, 2],
             "listColumnNames": ["x", "y"],
         },
-    ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    sFixedCode = sCode.replace(
-        "_STEP_DIRECTORY = os.path.dirname("
-        "os.path.dirname(os.path.abspath(__file__)))",
-        f"_STEP_DIRECTORY = {str(tmp_path)!r}",
-    )
-    dictNamespace = {}
-    exec(compile(sFixedCode, "<integrity>", "exec"), dictNamespace)
-    dictNamespace["test_data_exists"]()
-    dictNamespace["test_data_loadable"]()
-    dictNamespace["test_data_no_nan"]()
+    ])
+    sStandardsPath = str(sTestsDir / "integrity_standards.json")
+    with open(sStandardsPath, "w", encoding="utf-8") as fh:
+        json.dump(dictStandards, fh)
+    sFakeFile = str(sTestsDir / "test_integrity.py")
+    sCode = fsBuildIntegrityTestCode()
+    dictNs = {"__file__": sFakeFile}
+    exec(compile(sCode, "<integrity>", "exec"), dictNs)
+    dictEntry = dictStandards["listStandards"][0]
+    dictNs["test_integrity_check"](dictEntry)
 
 
-def test_qualitative_code_executes_with_csv(tmp_path):
-    """Generate qualitative code for CSV and exec it."""
+def test_qualitative_template_executes_with_csv(tmp_path):
+    """Write qualitative standards and exec the template with csv data."""
     sPath = str(tmp_path / "data.csv")
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("time,flux\n0.0,1.5\n")
-    listdictReports = [
+    sTestsDir = tmp_path / "tests"
+    sTestsDir.mkdir()
+    dictStandards = _fdictBuildQualitativeStandards([
         {
             "sFileName": "data.csv",
             "sFormat": "csv",
@@ -1867,16 +1935,16 @@ def test_qualitative_code_executes_with_csv(tmp_path):
             "listColumnNames": ["time", "flux"],
             "listJsonTopKeys": [],
         },
-    ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    sFixedCode = sCode.replace(
-        "os.path.dirname(os.path.dirname("
-        "os.path.abspath(__file__)))",
-        repr(str(tmp_path)),
-    )
-    dictNamespace = {}
-    exec(compile(sFixedCode, "<qualitative>", "exec"), dictNamespace)
-    dictNamespace["test_data_columns"]()
+    ])
+    sStandardsPath = str(sTestsDir / "qualitative_standards.json")
+    with open(sStandardsPath, "w", encoding="utf-8") as fh:
+        json.dump(dictStandards, fh)
+    sFakeFile = str(sTestsDir / "test_qualitative.py")
+    sCode = fsBuildQualitativeTestCode()
+    dictNs = {"__file__": sFakeFile}
+    exec(compile(sCode, "<qualitative>", "exec"), dictNs)
+    dictEntry = dictStandards["listStandards"][0]
+    dictNs["test_qualitative_check"](dictEntry)
 
 
 # -----------------------------------------------------------------------
@@ -1962,8 +2030,8 @@ def test_quantitative_template_end_to_end(tmp_path):
 # -----------------------------------------------------------------------
 
 
-def test_fnAddColumnNamesTest_special_chars():
-    """Column names with quotes and backslashes are handled."""
+def test_qualitative_standards_special_chars():
+    """Column names with special chars are preserved in JSON."""
     listdictReports = [
         {
             "sFileName": "data.csv",
@@ -1974,13 +2042,15 @@ def test_fnAddColumnNamesTest_special_chars():
             "listJsonTopKeys": [],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "it's" in sCode or "it\\'s" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    sJson = json.dumps(dictResult)
+    json.loads(sJson)
+    listCols = dictResult["listStandards"][0]["listExpectedColumns"]
+    assert "it's" in listCols
 
 
-def test_fnAddJsonKeysTest_special_chars():
-    """JSON keys with dots and brackets are properly quoted."""
+def test_qualitative_standards_json_keys_special_chars():
+    """JSON keys with dots and brackets are preserved in standards."""
     listdictReports = [
         {
             "sFileName": "config.json",
@@ -1991,14 +2061,14 @@ def test_fnAddJsonKeysTest_special_chars():
             "listJsonTopKeys": ["key.with.dots", "key[0]", "normal"],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "'key.with.dots'" in sCode
-    assert "'key[0]'" in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    listKeys = dictResult["listStandards"][0]["listExpectedJsonKeys"]
+    assert "key.with.dots" in listKeys
+    assert "key[0]" in listKeys
 
 
-def test_fsGenerateIntegrityCode_not_exists_not_loadable():
-    """Report where file does not exist and is not loadable."""
+def test_integrity_standards_not_exists_excluded():
+    """File that does not exist is excluded from standards."""
     listdictReports = [
         {
             "sFileName": "missing.npy",
@@ -2010,15 +2080,12 @@ def test_fsGenerateIntegrityCode_not_exists_not_loadable():
             "tShape": None,
         },
     ]
-    sCode = _fsGenerateIntegrityCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_missing_exists" in sCode
-    assert "test_missing_loadable" not in sCode
-    assert "test_missing_no_nan" not in sCode
+    dictResult = _fdictBuildIntegrityStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 0
 
 
-def test_fsGenerateQualitativeCode_columns_and_json_keys():
-    """Report with both column names and JSON keys in same file."""
+def test_qualitative_standards_columns_and_json_keys():
+    """Report with both column names and JSON keys in separate files."""
     listdictReports = [
         {
             "sFileName": "hybrid.csv",
@@ -2037,13 +2104,10 @@ def test_fsGenerateQualitativeCode_columns_and_json_keys():
             "listJsonTopKeys": ["model", "version"],
         },
     ]
-    sCode = _fsGenerateQualitativeCode(listdictReports)
-    ast.parse(sCode)
-    assert "test_hybrid_columns" in sCode
-    assert "test_meta_json_keys" in sCode
-    assert "'time'" in sCode
-    assert "'model'" in sCode
-    assert "test_no_qualitative_outputs" not in sCode
+    dictResult = _fdictBuildQualitativeStandards(listdictReports)
+    assert len(dictResult["listStandards"]) == 2
+    assert "time" in dictResult["listStandards"][0]["listExpectedColumns"]
+    assert "model" in dictResult["listStandards"][1]["listExpectedJsonKeys"]
 
 
 # -----------------------------------------------------------------------
@@ -2151,32 +2215,40 @@ def test_fdictGenerateAllTestsDeterministic_written_content():
         mockConnection, "cid123", 0, dictWorkflow, {},
     )
     sIntegrityPath = "/work/step01/tests/test_integrity.py"
+    sIntegrityStdPath = "/work/step01/tests/integrity_standards.json"
     sQualitativePath = "/work/step01/tests/test_qualitative.py"
+    sQualitativeStdPath = "/work/step01/tests/qualitative_standards.json"
     sQuantitativePath = "/work/step01/tests/test_quantitative.py"
-    sStandardsPath = "/work/step01/tests/quantitative_standards.json"
+    sQuantitativeStdPath = "/work/step01/tests/quantitative_standards.json"
     assert sIntegrityPath in dictWrittenFiles
+    assert sIntegrityStdPath in dictWrittenFiles
     assert sQualitativePath in dictWrittenFiles
+    assert sQualitativeStdPath in dictWrittenFiles
     assert sQuantitativePath in dictWrittenFiles
-    assert sStandardsPath in dictWrittenFiles
+    assert sQuantitativeStdPath in dictWrittenFiles
     sIntegrityCode = dictWrittenFiles[sIntegrityPath].decode("utf-8")
     ast.parse(sIntegrityCode)
-    assert "test_data_exists" in sIntegrityCode
-    sQualitativeCode = dictWrittenFiles[sQualitativePath].decode(
-        "utf-8",
+    assert "test_integrity_check" in sIntegrityCode
+    dictIntegrityStd = json.loads(
+        dictWrittenFiles[sIntegrityStdPath].decode("utf-8"),
     )
+    assert "listStandards" in dictIntegrityStd
+    sQualitativeCode = dictWrittenFiles[sQualitativePath].decode("utf-8")
     ast.parse(sQualitativeCode)
-    assert "'time'" in sQualitativeCode
-    sQuantitativeCode = dictWrittenFiles[sQuantitativePath].decode(
-        "utf-8",
+    assert "test_qualitative_check" in sQualitativeCode
+    dictQualitativeStd = json.loads(
+        dictWrittenFiles[sQualitativeStdPath].decode("utf-8"),
     )
+    assert "listStandards" in dictQualitativeStd
+    sQuantitativeCode = dictWrittenFiles[sQuantitativePath].decode("utf-8")
     ast.parse(sQuantitativeCode)
-    dictStandards = json.loads(
-        dictWrittenFiles[sStandardsPath].decode("utf-8"),
+    dictQuantitativeStd = json.loads(
+        dictWrittenFiles[sQuantitativeStdPath].decode("utf-8"),
     )
-    assert "fDefaultRtol" in dictStandards
-    assert "listStandards" in dictStandards
-    assert len(dictStandards["listStandards"]) == 2
-    assert dictStandards["listStandards"][0]["sName"] == "fTimeFirst"
+    assert "fDefaultRtol" in dictQuantitativeStd
+    assert "listStandards" in dictQuantitativeStd
+    assert len(dictQuantitativeStd["listStandards"]) == 2
+    assert dictQuantitativeStd["listStandards"][0]["sName"] == "fTimeFirst"
 
 
 def test_fdictGenerateAllTestsDeterministic_no_data_files():
@@ -2334,16 +2406,24 @@ def test_flistParseIntrospectionOutput_all_invalid_raises():
 
 
 # -----------------------------------------------------------------------
-# _fsNoNanCsv — empty columns (line 3267)
+# Integrity NaN check — unloadable file gets no NaN check
 # -----------------------------------------------------------------------
 
 
-def test_fsNoNanCsv_empty_columns_returns_empty():
-    """Line 3267: no columns returns empty string."""
-    from vaibify.gui.testGenerator import _fsNoNanCsv
-    dictReport = {"listColumnNames": []}
-    sResult = _fsNoNanCsv("safe_name", "file.csv", dictReport)
-    assert sResult == ""
+def test_integrity_standards_unloadable_no_nan_check():
+    """Unloadable files should have bCheckNaN=False."""
+    dictResult = _fdictBuildIntegrityStandards([
+        {
+            "sFileName": "file.csv",
+            "sFormat": "csv",
+            "bExists": True,
+            "bLoadable": False,
+            "iNanCount": 0,
+            "iInfCount": 0,
+            "tShape": None,
+        },
+    ])
+    assert dictResult["listStandards"][0]["bCheckNaN"] is False
 
 
 # -----------------------------------------------------------------------

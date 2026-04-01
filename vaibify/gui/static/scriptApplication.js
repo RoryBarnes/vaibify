@@ -696,6 +696,7 @@ const PipeleyenApp = (function () {
             fnShowMainLayout();
             fnLoadSyncStatus();
             fnRenderStepList();
+            fnCheckVaibifiedOnLoad();
             fnPollAllStepFiles();
             fnStartFileChangePolling();
             PipeleyenTerminal.fnCreateTab();
@@ -821,6 +822,12 @@ const PipeleyenApp = (function () {
         setExpandedDeps.clear();
         setExpandedUnitTests.clear();
         dictStepStatus = {};
+        _bVaibifiedShown = false;
+        var elBanner = document.getElementById("vaibifiedBanner");
+        if (elBanner) {
+            elBanner.style.display = "none";
+            elBanner.classList.remove("revealed");
+        }
         if (wsPipeline) {
             wsPipeline.close();
             wsPipeline = null;
@@ -910,15 +917,28 @@ const PipeleyenApp = (function () {
                 });
                 el.classList.add("active");
                 var sPanel = el.dataset.panel;
-                document.getElementById("panelSteps").classList.toggle(
-                    "active", sPanel === "steps"
-                );
-                document.getElementById("panelFiles").classList.toggle(
-                    "active", sPanel === "files"
-                );
-                document.getElementById("panelLogs").classList.toggle(
-                    "active", sPanel === "logs"
-                );
+                var bWorkflowMode = _dictDashboardMode &&
+                    _dictDashboardMode.sMode === "workflow";
+                if (bWorkflowMode) {
+                    document.getElementById("panelSteps")
+                        .classList.add("active");
+                    document.getElementById("panelFiles")
+                        .classList.toggle("active",
+                            sPanel === "files");
+                    document.getElementById("panelLogs")
+                        .classList.toggle("active",
+                            sPanel === "logs");
+                } else {
+                    document.getElementById("panelSteps")
+                        .classList.toggle("active",
+                            sPanel === "steps");
+                    document.getElementById("panelFiles")
+                        .classList.toggle("active",
+                            sPanel === "files");
+                    document.getElementById("panelLogs")
+                        .classList.toggle("active",
+                            sPanel === "logs");
+                }
                 if (sPanel === "files") {
                     PipeleyenFiles.fnLoadDirectory("/workspace");
                 } else if (sPanel === "logs") {
@@ -1407,7 +1427,7 @@ const PipeleyenApp = (function () {
 
         var sStepNumber = fsComputeStepLabel(iIndex);
 
-        var sHtml =
+        var sHtml = '<div class="step-wrapper">' +
             '<div class="step-item' + (bSelected ? " selected" : "") +
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
@@ -1442,7 +1462,7 @@ const PipeleyenApp = (function () {
             "</span></div>";
 
         if (!bExpanded) {
-            return sHtml;
+            return sHtml + '</div>';
         }
 
         sHtml += '<div class="step-detail expanded' +
@@ -1550,6 +1570,7 @@ const PipeleyenApp = (function () {
         /* Discovered outputs */
         sHtml += fsRenderDiscoveredOutputs(iIndex);
 
+        sHtml += "</div>";
         sHtml += "</div>";
         return sHtml;
     }
@@ -1849,6 +1870,7 @@ const PipeleyenApp = (function () {
             sCategory.slice(1);
         var dictCat = dictTests[sCatKey] || {};
         var sFilePath = dictCat.sFilePath || "";
+        var sStandardsPath = dictCat.sStandardsPath || "";
         var sHtml = '<div class="sub-test-expanded">';
         if (sFilePath) {
             var sFileName = sFilePath.split("/").pop();
@@ -1860,6 +1882,14 @@ const PipeleyenApp = (function () {
                 '<span class="test-item-text clickable">' +
                 fnEscapeHtml(sFileName) + '</span>' +
                 '</div>';
+        }
+        if (sStandardsPath) {
+            sHtml += '<span class="test-standards-link" ' +
+                'data-step="' + iIndex +
+                '" data-category="' + sCategory +
+                '" data-path="' +
+                fnEscapeHtml(sStandardsPath) +
+                '">Standards</span>';
         }
         if ((dictCat.saCommands || []).length > 0) {
             sHtml += '<button class="btn btn-run-category" ' +
@@ -2423,6 +2453,13 @@ const PipeleyenApp = (function () {
                 elView.dataset.category);
             return;
         }
+        if (elTarget.closest(".test-standards-link")) {
+            var elStandards = elTarget.closest(".test-standards-link");
+            fnViewStandardsFile(
+                parseInt(elStandards.dataset.step),
+                elStandards.dataset.category);
+            return;
+        }
         if (elTarget.closest(".test-edit-cmd")) {
             var elEditCmd = elTarget.closest(".test-edit-cmd");
             fnEditTestFile(
@@ -2933,6 +2970,22 @@ const PipeleyenApp = (function () {
         PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
     }
 
+    function fnViewStandardsFile(iStepIndex, sCategory) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        var dictTests = fdictGetTests(dictStep);
+        var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
+            sCategory.slice(1);
+        var dictCat = dictTests[sCatKey] || {};
+        var sStandardsPath = dictCat.sStandardsPath || "";
+        if (!sStandardsPath) {
+            fnShowToast("No standards file for this category", "error");
+            return;
+        }
+        var sDir = dictStep.sDirectory || "";
+        PipeleyenFigureViewer.fnDisplayInNextViewer(
+            sStandardsPath, sDir);
+    }
+
     function fnAddTestItem(iStep, sType) {
         if (sType === "user") {
             fnShowInputModal(
@@ -3090,6 +3143,124 @@ const PipeleyenApp = (function () {
             fnShowToast("Save failed", "error");
         }
         fnRenderStepList();
+        fnCheckVaibified();
+    }
+
+    var _bVaibifiedShown = false;
+
+    function fbIsWorkflowFullyVerified() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return false;
+        var listSteps = dictWorkflow.listSteps;
+        if (listSteps.length === 0) return false;
+        for (var i = 0; i < listSteps.length; i++) {
+            var step = listSteps[i];
+            if (step.bEnabled === false) continue;
+            var dictVerify = fdictGetVerification(step);
+            if (dictVerify.sUser !== "passed") return false;
+        }
+        return true;
+    }
+
+    function fnCheckVaibified() {
+        if (!fbIsWorkflowFullyVerified()) return;
+        var elBanner = document.getElementById("vaibifiedBanner");
+        if (!elBanner) return;
+        if (_bVaibifiedShown) return;
+        _bVaibifiedShown = true;
+        elBanner.style.display = "inline";
+        fnSpawnSparkles(elBanner);
+        fnPlayWhooshSound();
+        setTimeout(function () {
+            elBanner.classList.add("revealed");
+        }, 1500);
+    }
+
+    function fnCheckVaibifiedOnLoad() {
+        if (!fbIsWorkflowFullyVerified()) return;
+        var elBanner = document.getElementById("vaibifiedBanner");
+        if (!elBanner) return;
+        _bVaibifiedShown = true;
+        elBanner.style.display = "inline";
+        elBanner.style.animation = "none";
+        elBanner.classList.add("revealed");
+    }
+
+    function fnSpawnSparkles(elAnchor) {
+        var elContainer = document.createElement("div");
+        elContainer.className = "sparkle-container";
+        elAnchor.parentElement.appendChild(elContainer);
+        var listColors = [
+            "#ffffff", "var(--color-pale-blue)", "#ffd700"
+        ];
+        var iCount = 18;
+        for (var i = 0; i < iCount; i++) {
+            var elSparkle = document.createElement("span");
+            elSparkle.className = "sparkle-particle";
+            var iSize = 3 + Math.random() * 2;
+            elSparkle.style.width = iSize + "px";
+            elSparkle.style.height = iSize + "px";
+            elSparkle.style.background =
+                listColors[i % listColors.length];
+            elSparkle.style.top =
+                (Math.random() * 100) + "%";
+            elSparkle.style.animationDelay =
+                (Math.random() * 0.8) + "s";
+            elSparkle.style.animationDuration =
+                (0.8 + Math.random() * 0.6) + "s";
+            elContainer.appendChild(elSparkle);
+        }
+        setTimeout(function () {
+            elContainer.remove();
+        }, 2500);
+    }
+
+    function fnPlayWhooshSound() {
+        try {
+            var audioContext = new (window.AudioContext ||
+                window.webkitAudioContext)();
+            var fDuration = 0.5;
+            var oscillator = audioContext.createOscillator();
+            var gainNode = audioContext.createGain();
+            oscillator.type = "sine";
+            oscillator.frequency.setValueAtTime(
+                800, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(
+                200, audioContext.currentTime + fDuration);
+            gainNode.gain.setValueAtTime(
+                0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(
+                0.08, audioContext.currentTime + 0.05);
+            gainNode.gain.linearRampToValueAtTime(
+                0.06, audioContext.currentTime + fDuration * 0.7);
+            gainNode.gain.linearRampToValueAtTime(
+                0, audioContext.currentTime + fDuration);
+            var iNoiseLength = audioContext.sampleRate * fDuration;
+            var noiseBuffer = audioContext.createBuffer(
+                1, iNoiseLength, audioContext.sampleRate);
+            var daNoiseData = noiseBuffer.getChannelData(0);
+            for (var i = 0; i < iNoiseLength; i++) {
+                daNoiseData[i] = (Math.random() * 2 - 1) * 0.02;
+            }
+            var noiseSource = audioContext.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+            var noiseGain = audioContext.createGain();
+            noiseGain.gain.setValueAtTime(
+                0, audioContext.currentTime);
+            noiseGain.gain.linearRampToValueAtTime(
+                0.3, audioContext.currentTime + 0.05);
+            noiseGain.gain.linearRampToValueAtTime(
+                0, audioContext.currentTime + fDuration);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            noiseSource.connect(noiseGain);
+            noiseGain.connect(audioContext.destination);
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + fDuration);
+            noiseSource.start(audioContext.currentTime);
+            noiseSource.stop(audioContext.currentTime + fDuration);
+        } catch (error) {
+            /* Web Audio API not available */
+        }
     }
 
     /* --- Detail Item Actions --- */
@@ -4714,6 +4885,7 @@ const PipeleyenApp = (function () {
             fnClearOutputModified(iStep);
         }
         fnRenderStepList();
+        fnCheckVaibified();
         var sLabel = dictEvent.sResult === "passed" ?
             "Tests passed" : "Tests FAILED";
         fnShowToast("Step " + (iStep + 1) + ": " + sLabel,
@@ -5110,6 +5282,7 @@ const PipeleyenApp = (function () {
                 dictVerification: step.dictVerification,
             });
             fnRenderStepList();
+            fnCheckVaibified();
             var sOutput = fsCollectTestOutput(dictResult);
             fnShowToast(
                 dictResult.bPassed ?

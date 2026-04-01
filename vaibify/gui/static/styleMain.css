@@ -2583,6 +2583,98 @@ html, body {
     background: var(--color-pale-blue);
 }
 
+/* --- Standards link --- */
+
+.test-standards-link {
+    cursor: pointer;
+    color: var(--color-pale-blue);
+    font-size: 11px;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    margin-left: 8px;
+}
+
+.test-standards-link:hover {
+    color: var(--text-primary);
+}
+
+/* --- Workflow mode: steps always visible with secondary panel below --- */
+
+#panelSteps.active ~ #panelFiles.active,
+#panelSteps.active ~ #panelLogs.active {
+    flex: 1;
+    border-top: 1px solid var(--border-color);
+    max-height: 40%;
+}
+
+/* --- Sticky step banner --- */
+
+.step-wrapper {
+    position: relative;
+}
+
+.step-wrapper .step-item {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-panel);
+}
+
+.step-wrapper .step-item:hover {
+    background: var(--bg-hover);
+}
+
+.step-wrapper .step-item.selected {
+    background: rgba(19, 174, 213, 0.1);
+}
+
+/* --- Vaibified celebration --- */
+
+@keyframes fairyDustReveal {
+    0% { clip-path: inset(0 100% 0 0); }
+    100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes shimmer {
+    0%, 100% { text-shadow: 0 0 4px rgba(130, 170, 220, 0.4); }
+    50% { text-shadow: 0 0 12px rgba(130, 170, 220, 0.8); }
+}
+
+@keyframes sparkleSweep {
+    0% { left: -5%; opacity: 1; }
+    80% { opacity: 1; }
+    100% { left: 105%; opacity: 0; }
+}
+
+#vaibifiedBanner {
+    color: var(--color-pale-blue);
+    font-weight: bold;
+    font-size: 16px;
+    margin-right: auto;
+    animation: fairyDustReveal 1.5s ease-out forwards;
+}
+
+#vaibifiedBanner.revealed {
+    animation: shimmer 3s ease-in-out infinite;
+}
+
+.sparkle-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.sparkle-particle {
+    position: absolute;
+    border-radius: 50%;
+    animation: sparkleSweep 1.2s ease-out forwards;
+    opacity: 0;
+}
+
 /* --- Scrollbar --- */
 
 ::-webkit-scrollbar {
