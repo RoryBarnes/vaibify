@@ -1910,7 +1910,7 @@ const PipeleyenApp = (function () {
         }
         sHtml += '<button class="btn btn-small btn-add-deps" ' +
             'data-step="' + iIndex + '" ' +
-            'style="margin-top:6px">Add Dependencies</button>';
+            'style="margin-top:6px">Update Dependencies</button>';
         sHtml += '</div>';
         return sHtml;
     }
@@ -3667,9 +3667,8 @@ const PipeleyenApp = (function () {
         for (var i = 0; i < listChecked.length; i++) {
             var dictDep = listChecked[i];
             sHtml += '<div class="dependency-suggestion">' +
-                '<input type="checkbox" checked ' +
-                'data-confirm-index="' + i +
-                '" class="dependency-checkbox">' +
+                '<span style="color:var(--color-pale-blue);">' +
+                '&#10003;</span> ' +
                 '<span class="dependency-step-badge">' +
                 fnEscapeHtml(dictDep.sSourceStepName) +
                 '</span> ' +
@@ -3879,19 +3878,9 @@ const PipeleyenApp = (function () {
 
     function fnHandleDepConfirm(elModal, iStep) {
         var listPending = elModal._listPendingDeps || [];
-        var listFinal = [];
-        var listBoxes = elModal.querySelectorAll(
-            ".dependency-checkbox:checked");
-        for (var i = 0; i < listBoxes.length; i++) {
-            var iIdx = parseInt(
-                listBoxes[i].getAttribute("data-confirm-index"), 10);
-            if (!isNaN(iIdx) && listPending[iIdx]) {
-                listFinal.push(listPending[iIdx]);
-            }
-        }
         elModal.remove();
-        if (listFinal.length > 0) {
-            fnApplyDependencies(iStep, listFinal);
+        if (listPending.length > 0) {
+            fnApplyDependencies(iStep, listPending);
         }
     }
 
@@ -3947,7 +3936,7 @@ const PipeleyenApp = (function () {
         var sDepComment = "  # " + listNew.join(" ");
         var iTarget = saCommands.length - 1;
         saCommands[iTarget] = saCommands[iTarget].replace(
-            /\s*#\s*\{Step\d+\..*$/, ""
+            /\s*#\s*(?:\{Step|\/workspace).*$/, ""
         ) + sDepComment;
         dictStep.saDataCommands = saCommands;
         await fnSaveDependencyCommands(iStep, saCommands);
