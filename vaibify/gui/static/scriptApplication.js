@@ -1006,10 +1006,9 @@ const PipeleyenApp = (function () {
             (iPollIntervalMs / 1000) + ' seconds">' +
             '</div>' +
             '<div class="gs-row">' +
-            '<label class="gs-label gs-checkbox-label">' +
+            '<span class="gs-label">Show timestamps</span>' +
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (bShowTimestamps ? " checked" : "") + '> ' +
-            'Show timestamps</label>' +
+            (bShowTimestamps ? " checked" : "") + '>' +
             '</div>';
         el.querySelectorAll(".gs-input").forEach(function (inp) {
             inp.addEventListener("change", fnSaveGlobalSettings);
@@ -1049,6 +1048,7 @@ const PipeleyenApp = (function () {
                 bEnabled ? "true" : "false");
         } catch (e) { /* localStorage may be unavailable */ }
         fnApplyTimestampVisibility();
+        fnRenderStepList();
     }
 
     function fnApplyTimestampVisibility() {
@@ -2132,15 +2132,11 @@ const PipeleyenApp = (function () {
         var sLastRun = dictStats.sLastRun || "";
         var sWallClock = dictStats.fWallClock !== undefined ?
             fsFormatDuration(dictStats.fWallClock) : "";
-        var sCpuTime = dictStats.fCpuTime !== undefined ?
-            fsFormatDuration(dictStats.fCpuTime) : "";
         return '<div class="run-stats">' +
             '<span class="run-stat">Last run: ' +
             (sLastRun || "—") + '</span>' +
             '<span class="run-stat">Wall-clock: ' +
-            (sWallClock || "—") + '</span>' +
-            '<span class="run-stat">CPU time: ' +
-            (sCpuTime || "—") + '</span></div>';
+            (sWallClock || "—") + '</span></div>';
     }
 
     function fsFormatDuration(fSeconds) {
