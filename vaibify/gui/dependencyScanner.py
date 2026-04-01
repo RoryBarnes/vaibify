@@ -97,6 +97,8 @@ def fbLooksLikeDataFile(sCandidate):
         return False
     if sCandidate.startswith("ftp://"):
         return False
+    if "{" in sCandidate:
+        return False
     sExtension = os.path.splitext(sCandidate)[1].lower()
     if sExtension in SET_FILE_EXTENSIONS:
         return True

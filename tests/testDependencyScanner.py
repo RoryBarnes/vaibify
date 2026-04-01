@@ -693,6 +693,87 @@ class TestStringHarvest:
 # ── Upstream fallback tests ────────────────────────────────────
 
 
+class TestFStringFiltering:
+
+    def test_fstring_format_fragment_rejected(self):
+        assert fbLooksLikeDataFile("{iIdx+1}/{iTotal}") is False
+
+    def test_fstring_format_spec_rejected(self):
+        assert fbLooksLikeDataFile("{sName:12s}") is False
+
+    def test_real_file_still_accepted(self):
+        assert fbLooksLikeDataFile("surrogate_model.pkl") is True
+
+    def test_path_with_slash_still_accepted(self):
+        assert fbLooksLikeDataFile("data/results.csv") is True
+
+    def test_harvest_skips_fstring_fragments(self):
+        sCode = 'print(f"{iIdx+1}/{iTotal} done")\n'
+        listResult = _flistHarvestStringLiterals(sCode, "python")
+        listFileNames = [d["sFileName"] for d in listResult]
+        assert "{iIdx+1}/{iTotal}" not in listFileNames
+
+
+# ── Output file filtering tests ────────────────────────────────
+
+
+class TestOutputFileFiltering:
+
+    def test_own_outputs_filtered(self):
+        from vaibify.gui.pipelineServer import (
+            _fsetCollectCurrentStepOutputs,
+            _flistFilterOwnOutputs,
+        )
+        dictWorkflow = {
+            "listSteps": [
+                {"sName": "Step01", "saDataFiles": ["input.csv"]},
+                {
+                    "sName": "Step02",
+                    "saDataFiles": ["surrogate_model.pkl"],
+                    "saPlotFiles": ["convergence.png"],
+                },
+            ],
+        }
+        setOwnOutputs = _fsetCollectCurrentStepOutputs(dictWorkflow, 1)
+        assert "surrogate_model.pkl" in setOwnOutputs
+        assert "convergence.png" in setOwnOutputs
+
+        listDetected = [
+            {"sFileName": "input.csv", "sLoadFunction": "np.load",
+             "iLineNumber": 1},
+            {"sFileName": "surrogate_model.pkl",
+             "sLoadFunction": "string-literal", "iLineNumber": 5},
+            {"sFileName": "convergence.png",
+             "sLoadFunction": "string-literal", "iLineNumber": 8},
+        ]
+        listFiltered = _flistFilterOwnOutputs(listDetected, setOwnOutputs)
+        listFileNames = [d["sFileName"] for d in listFiltered]
+        assert "input.csv" in listFileNames
+        assert "surrogate_model.pkl" not in listFileNames
+        assert "convergence.png" not in listFileNames
+
+    def test_empty_step_outputs(self):
+        from vaibify.gui.pipelineServer import (
+            _fsetCollectCurrentStepOutputs,
+        )
+        dictWorkflow = {
+            "listSteps": [{"sName": "Step01"}],
+        }
+        setOwnOutputs = _fsetCollectCurrentStepOutputs(dictWorkflow, 0)
+        assert len(setOwnOutputs) == 0
+
+    def test_out_of_range_step(self):
+        from vaibify.gui.pipelineServer import (
+            _fsetCollectCurrentStepOutputs,
+        )
+        dictWorkflow = {"listSteps": []}
+        setOwnOutputs = _fsetCollectCurrentStepOutputs(dictWorkflow, 5)
+        assert len(setOwnOutputs) == 0
+
+
+# ── Upstream fallback tests ────────────────────────────────────
+
+
 class TestUpstreamFallback:
 
     def test_upstream_fallback_empty(self):

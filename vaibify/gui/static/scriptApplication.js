@@ -3620,7 +3620,7 @@ const PipeleyenApp = (function () {
         sHtml += '<div class="dependency-section-title">' +
             'Manual Dependency</div>';
         sHtml += '<input type="text" class="dependency-manual-input" ' +
-            'placeholder="{StepNN.variable}">';
+            'placeholder="/path/to/upstream/file.npy">';
 
         sHtml += '<div class="modal-actions">' +
             '<button class="btn" id="btnDepSkip">Skip</button>' +
@@ -3683,6 +3683,26 @@ const PipeleyenApp = (function () {
         );
     }
 
+    function fsResolvePathToTemplate(sPath) {
+        var sBasename = sPath.split("/").pop();
+        var sStem = sBasename.replace(/\.[^.]+$/, "");
+        if (!sStem) return sPath;
+        var listSteps = dictWorkflow.listSteps || [];
+        for (var i = 0; i < listSteps.length; i++) {
+            var saFiles = (listSteps[i].saDataFiles || []).concat(
+                listSteps[i].saPlotFiles || []
+            );
+            for (var j = 0; j < saFiles.length; j++) {
+                var sUpBase = saFiles[j].split("/").pop();
+                var sUpStem = sUpBase.replace(/\.[^.]+$/, "");
+                if (sUpStem === sStem) {
+                    return "{" + (i + 1) + "." + sStem + "}";
+                }
+            }
+        }
+        return sPath;
+    }
+
     async function fnApplyDependencies(iStep, listChecked, sManual) {
         var dictStep = dictWorkflow.listSteps[iStep];
         var saCommands = dictStep.saDataCommands || [];
@@ -3697,7 +3717,7 @@ const PipeleyenApp = (function () {
             for (var m = 0; m < listManualParts.length; m++) {
                 var sPart = listManualParts[m].trim();
                 if (sPart) {
-                    listDepTokens.push(sPart);
+                    listDepTokens.push(fsResolvePathToTemplate(sPart));
                 }
             }
         }

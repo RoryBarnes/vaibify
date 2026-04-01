@@ -870,9 +870,37 @@ async def _fsReadContainerFile(dictCtx, sContainerId, sFilePath):
         return None
 
 
+def _fsetCollectCurrentStepOutputs(dictWorkflow, iCurrentStep):
+    """Return basenames of data and plot files produced by the current step."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iCurrentStep >= len(listSteps):
+        return set()
+    dictStep = listSteps[iCurrentStep]
+    setOutputs = set()
+    for sFile in dictStep.get("saDataFiles", []):
+        setOutputs.add(os.path.basename(sFile))
+    for sFile in dictStep.get("saPlotFiles", []):
+        setOutputs.add(os.path.basename(sFile))
+    return setOutputs
+
+
+def _flistFilterOwnOutputs(listDetected, setOwnOutputs):
+    """Remove detected files whose basename matches a current step output."""
+    listFiltered = []
+    for dictItem in listDetected:
+        sBasename = os.path.basename(dictItem["sFileName"])
+        if sBasename not in setOwnOutputs:
+            listFiltered.append(dictItem)
+    return listFiltered
+
+
 def _fdictCrossReferenceFiles(listDetected, dictWorkflow, iCurrentStep):
     """Match detected filenames against upstream step outputs."""
     dictStemRegistry = workflowManager.fdictBuildStemRegistry(dictWorkflow)
+    setOwnOutputs = _fsetCollectCurrentStepOutputs(
+        dictWorkflow, iCurrentStep,
+    )
+    listDetected = _flistFilterOwnOutputs(listDetected, setOwnOutputs)
     listSuggestions = []
     listUnmatchedFiles = []
 
