@@ -3521,12 +3521,6 @@ const PipeleyenApp = (function () {
         if (saCommands.length === 0) {
             return;
         }
-        fnShowDependencyModal(iStep, {
-                listSuggestions: [],
-                listUnmatchedFiles: [],
-            });
-            return;
-        }
         try {
             var responseHttp = await fetch(
                 "/api/steps/" + sContainerId + "/" + iStep +
