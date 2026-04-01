@@ -3742,15 +3742,19 @@ const PipeleyenApp = (function () {
     function fsRenderBreadcrumb(sCurrentPath) {
         var listParts = sCurrentPath.split("/").filter(
             function (s) { return s; });
-        var sHtml = '<span class="dep-breadcrumb-part" ' +
-            'data-path="/">/</span>';
         var sBuilt = "";
+        var sHtml = "";
         for (var i = 0; i < listParts.length; i++) {
             sBuilt += "/" + listParts[i];
-            sHtml += '<span class="dep-breadcrumb-sep">/</span>' +
-                '<span class="dep-breadcrumb-part" data-path="' +
+            if (i > 0) {
+                sHtml += '<span class="dep-breadcrumb-sep">/</span>';
+            }
+            sHtml += '<span class="dep-breadcrumb-part" data-path="' +
                 fnEscapeHtml(sBuilt) + '">' +
-                fnEscapeHtml(listParts[i]) + '</span>';
+                fnEscapeHtml("/" + listParts[i]) + '</span>';
+        }
+        if (!sHtml) {
+            sHtml = '<span class="dep-breadcrumb-part" data-path="/">/</span>';
         }
         return '<div class="dep-breadcrumb">' + sHtml + '</div>';
     }
@@ -3936,7 +3940,7 @@ const PipeleyenApp = (function () {
         var sDepComment = "  # " + listNew.join(" ");
         var iTarget = saCommands.length - 1;
         saCommands[iTarget] = saCommands[iTarget].replace(
-            /\s*#\s*(?:\{Step|\/workspace).*$/, ""
+            /\s{2,}#\s.*$/, ""
         ) + sDepComment;
         dictStep.saDataCommands = saCommands;
         await fnSaveDependencyCommands(iStep, saCommands);
