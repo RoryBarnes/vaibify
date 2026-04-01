@@ -465,16 +465,16 @@ def fnValidateOverleafProjectId(sProjectId):
 
 
 def _flistBuildDagEdges(listSteps):
-    """Extract dependency edges from step commands."""
+    """Extract dependency edges from step commands and saDependencies."""
     listEdgeLines = []
     setEdges = set()
     for iIndex, dictStep in enumerate(listSteps):
         sTarget = f"step{iIndex + 1}"
         for sKey in ("saDataCommands", "saPlotCommands",
-                      "saTestCommands"):
-            for sCmd in dictStep.get(sKey, []):
+                      "saTestCommands", "saDependencies"):
+            for sText in dictStep.get(sKey, []):
                 for match in re.finditer(
-                    r"\{Step(\d+)\.\w+\}", sCmd
+                    r"\{Step(\d+)\.\w+\}", sText
                 ):
                     iSource = int(match.group(1))
                     sEdge = f"  step{iSource} -> {sTarget};"

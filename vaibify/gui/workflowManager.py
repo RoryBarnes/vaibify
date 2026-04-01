@@ -205,6 +205,7 @@ def fdictCreateStep(
             "sQuantitative": "untested",
             "sIntegrity": "untested",
         },
+        "saDependencies": [],
         "dictRunStats": {},
     }
 
@@ -234,7 +235,8 @@ def fnRenumberAllReferences(dictWorkflow, fnRemap):
     """Update all {StepNN.*} references in every step per fnRemap."""
     for dictStep in dictWorkflow["listSteps"]:
         for sKey in ("saDataCommands", "saTestCommands",
-                     "saPlotCommands", "saPlotFiles"):
+                     "saPlotCommands", "saPlotFiles",
+                     "saDependencies"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
                     fsRemapStepReferences(sItem, fnRemap)
@@ -349,6 +351,15 @@ def fdictBuildStemRegistry(dictWorkflow):
     return dictRegistry
 
 
+def flistCollectReferenceStrings(dictStep):
+    """Return all strings that may contain {StepNN.variable} references."""
+    listStrings = []
+    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands"):
+        listStrings.extend(dictStep.get(sKey, []))
+    listStrings.extend(dictStep.get("saDependencies", []))
+    return listStrings
+
+
 def flistValidateReferences(dictWorkflow):
     """Return a list of warnings about cross-step reference problems."""
     dictRegistry = fdictBuildStemRegistry(dictWorkflow)
@@ -358,13 +369,11 @@ def flistValidateReferences(dictWorkflow):
         iNumber = iIndex + 1
         sStepLabel = f"Step{iNumber:02d}"
 
-        for sKey in ("saDataCommands", "saTestCommands",
-                     "saPlotCommands"):
-            for sCommand in dictStep.get(sKey, []):
-                _fnCheckCommandReferences(
-                    sCommand, sStepLabel, iNumber,
-                    dictWorkflow, dictRegistry, listWarnings,
-                )
+        for sText in flistCollectReferenceStrings(dictStep):
+            _fnCheckCommandReferences(
+                sText, sStepLabel, iNumber,
+                dictWorkflow, dictRegistry, listWarnings,
+            )
 
     return listWarnings
 
@@ -603,7 +612,8 @@ def fdictBuildDirectDependencies(dictWorkflow):
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         setUpstream = set()
         for sKey in ("saDataCommands", "saPlotCommands",
-                     "saTestCommands", "saDataFiles", "saPlotFiles"):
+                     "saTestCommands", "saDataFiles", "saPlotFiles",
+                     "saDependencies"):
             for sItem in dictStep.get(sKey, []):
                 setUpstream |= fsetExtractUpstreamIndices(sItem)
         for iUpstream in setUpstream:

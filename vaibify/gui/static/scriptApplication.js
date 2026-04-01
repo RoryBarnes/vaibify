@@ -1682,7 +1682,8 @@ const PipeleyenApp = (function () {
         var step = dictWorkflow.listSteps[iStep];
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
-            "saTestCommands", "saDataFiles", "saPlotFiles"];
+            "saTestCommands", "saDataFiles", "saPlotFiles",
+            "saDependencies"];
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
                 var rRef = /\{Step(\d+)\.\w+\}/g;
@@ -3911,13 +3912,15 @@ const PipeleyenApp = (function () {
         return sPath;
     }
 
-    function flistFilterNewTokens(listTokens, saCommands) {
-        var sJoined = saCommands.join(" ");
+    function flistFilterNewTokens(listTokens, saCommands, saDependencies) {
+        var sJoinedCommands = saCommands.join(" ");
+        var sJoinedDeps = (saDependencies || []).join(" ");
         var listNew = [];
         for (var i = 0; i < listTokens.length; i++) {
             var sToken = listTokens[i];
             if (!/^\{Step\d+\./.test(sToken)) continue;
-            if (sJoined.indexOf(sToken) === -1) {
+            if (sJoinedCommands.indexOf(sToken) === -1 &&
+                sJoinedDeps.indexOf(sToken) === -1) {
                 listNew.push(sToken);
             }
         }
@@ -3927,28 +3930,27 @@ const PipeleyenApp = (function () {
     async function fnApplyDependencies(iStep, listChecked) {
         var dictStep = dictWorkflow.listSteps[iStep];
         var saCommands = dictStep.saDataCommands || [];
+        var saDependencies = dictStep.saDependencies || [];
 
         var listDepTokens = [];
         for (var i = 0; i < listChecked.length; i++) {
             listDepTokens.push(listChecked[i].sTemplateVariable);
         }
-        var listNew = flistFilterNewTokens(listDepTokens, saCommands);
-        if (listNew.length === 0 || saCommands.length === 0) {
+        var listNew = flistFilterNewTokens(
+            listDepTokens, saCommands, saDependencies
+        );
+        if (listNew.length === 0) {
             fnShowToast("No new dependencies to add", "info");
             return;
         }
-        var sDepComment = "  # " + listNew.join(" ");
-        var iTarget = saCommands.length - 1;
-        saCommands[iTarget] = saCommands[iTarget].replace(
-            /\s{2,}#\s.*$/, ""
-        ) + sDepComment;
-        dictStep.saDataCommands = saCommands;
-        await fnSaveDependencyCommands(iStep, saCommands);
+        var saUpdated = saDependencies.concat(listNew);
+        dictStep.saDependencies = saUpdated;
+        await fnSaveDependencies(iStep, saUpdated);
         fnShowToast(listNew.length + " dependencies added", "success");
     }
 
-    async function fnSaveDependencyCommands(iStep, saCommands) {
-        var dictUpdate = { saDataCommands: saCommands };
+    async function fnSaveDependencies(iStep, saDependencies) {
+        var dictUpdate = { saDependencies: saDependencies };
         try {
             await fetch(
                 "/api/steps/" + sContainerId + "/" + iStep,

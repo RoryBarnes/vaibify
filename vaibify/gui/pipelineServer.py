@@ -60,6 +60,7 @@ class StepUpdateRequest(BaseModel):
     saTestCommands: Optional[List[str]] = None
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
+    saDependencies: Optional[List[str]] = None
     dictVerification: Optional[dict] = None
     dictPlotFileCategories: Optional[dict] = None
     dictDataFileCategories: Optional[dict] = None
