@@ -3,28 +3,8 @@
 import os
 import re
 
+from .commandUtilities import DICT_EXTENSION_TO_LANGUAGE
 
-DICT_EXTENSION_TO_LANGUAGE = {
-    ".py": "python",
-    ".R": "r",
-    ".r": "r",
-    ".c": "c",
-    ".cpp": "c",
-    ".h": "c",
-    ".hpp": "c",
-    ".f90": "fortran",
-    ".f": "fortran",
-    ".f95": "fortran",
-    ".rs": "rust",
-    ".js": "javascript",
-    ".ts": "javascript",
-    ".pl": "perl",
-    ".pm": "perl",
-    ".sh": "shell",
-    ".bash": "shell",
-    ".jl": "julia",
-    ".m": "matlab",
-}
 
 DICT_SHEBANG_KEYWORDS = {
     "python": "python",
@@ -43,6 +23,20 @@ SET_FILE_EXTENSIONS = {
     ".nc", ".xml", ".yaml", ".yml", ".ini", ".cfg",
     ".log", ".out", ".in", ".png", ".jpg", ".pdf",
     ".svg", ".bmp", ".tif", ".tiff", ".gif",
+}
+
+DICT_COMMENT_PREFIX = {
+    "python": "#",
+    "r": "#",
+    "shell": "#",
+    "julia": "#",
+    "perl": "#",
+    "c": "//",
+    "rust": "//",
+    "javascript": "//",
+    "go": "//",
+    "fortran": "!",
+    "matlab": "%",
 }
 
 
@@ -94,12 +88,19 @@ def fbLooksLikeFilePath(sCandidate):
     return False
 
 
-def _flistMatchPatterns(sSourceCode, listPatterns):
+def _fbIsCommentLine(sStripped, sCommentPrefix):
+    """Return True when a stripped line begins with the comment prefix."""
+    if not sCommentPrefix:
+        return False
+    return sStripped.startswith(sCommentPrefix)
+
+
+def _flistMatchPatterns(sSourceCode, listPatterns, sCommentPrefix="#"):
     """Apply regex patterns line-by-line and return list of match dicts."""
     listResults = []
     for iLineNumber, sLine in enumerate(sSourceCode.splitlines(), start=1):
         sStripped = sLine.strip()
-        if not sStripped or sStripped.startswith("#"):
+        if not sStripped or _fbIsCommentLine(sStripped, sCommentPrefix):
             continue
         for tPattern in listPatterns:
             sRegex, sLabel = tPattern[0], tPattern[1]
@@ -126,16 +127,16 @@ def _flistScanPython(sSourceCode):
         (r'(?:np\.load|numpy\.load)\s*\(\s*' + sQuoted, "np.load"),
         (r'(?:np\.loadtxt|numpy\.loadtxt)\s*\(\s*' + sQuoted, "np.loadtxt"),
         (r'(?:np\.genfromtxt|numpy\.genfromtxt)\s*\(\s*' + sQuoted, "np.genfromtxt"),
-        (r'pd\.read_csv\s*\(\s*' + sQuoted, "pd.read_csv"),
-        (r'pd\.read_excel\s*\(\s*' + sQuoted, "pd.read_excel"),
-        (r'pd\.read_parquet\s*\(\s*' + sQuoted, "pd.read_parquet"),
-        (r'pd\.read_json\s*\(\s*' + sQuoted, "pd.read_json"),
-        (r'pd\.read_hdf\s*\(\s*' + sQuoted, "pd.read_hdf"),
-        (r'pd\.read_stata\s*\(\s*' + sQuoted, "pd.read_stata"),
-        (r'pd\.read_spss\s*\(\s*' + sQuoted, "pd.read_spss"),
-        (r'pd\.read_sas\s*\(\s*' + sQuoted, "pd.read_sas"),
+        (r'(?:pd|pandas)\.read_csv\s*\(\s*' + sQuoted, "pd.read_csv"),
+        (r'(?:pd|pandas)\.read_excel\s*\(\s*' + sQuoted, "pd.read_excel"),
+        (r'(?:pd|pandas)\.read_parquet\s*\(\s*' + sQuoted, "pd.read_parquet"),
+        (r'(?:pd|pandas)\.read_json\s*\(\s*' + sQuoted, "pd.read_json"),
+        (r'(?:pd|pandas)\.read_hdf\s*\(\s*' + sQuoted, "pd.read_hdf"),
+        (r'(?:pd|pandas)\.read_stata\s*\(\s*' + sQuoted, "pd.read_stata"),
+        (r'(?:pd|pandas)\.read_spss\s*\(\s*' + sQuoted, "pd.read_spss"),
+        (r'(?:pd|pandas)\.read_sas\s*\(\s*' + sQuoted, "pd.read_sas"),
         (r'h5py\.File\s*\(\s*' + sQuoted, "h5py.File"),
-        (r'fits\.open\s*\(\s*' + sQuoted, "fits.open"),
+        (r'(?<![.\w])fits\.open\s*\(\s*' + sQuoted, "fits.open"),
         (r'loadmat\s*\(\s*' + sQuoted, "loadmat"),
         (r'Image\.open\s*\(\s*' + sQuoted, "Image.open"),
         (r'(?:csv\.reader|csv\.DictReader)\s*\(\s*open\s*\(\s*' + sQuoted, "csv.reader(open)"),
@@ -143,7 +144,7 @@ def _flistScanPython(sSourceCode):
         (r'os\.path\.join\s*\(\s*' + sQuoted, "os.path.join"),
         (r'(?<![.\w])open\s*\(\s*' + sQuoted, "open"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
 
 
 def _flistScanR(sSourceCode):
@@ -161,7 +162,7 @@ def _flistScanR(sSourceCode):
         (r'read_excel\s*\(\s*' + sQuoted, "read_excel"),
         (r'fread\s*\(\s*' + sQuoted, "fread"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
 
 
 def _flistScanC(sSourceCode):
@@ -172,7 +173,7 @@ def _flistScanC(sSourceCode):
         (r'ifstream\s+\w+\s*\(\s*' + sQuoted, "ifstream"),
         (r'H5Fopen\s*\(\s*' + sQuoted, "H5Fopen"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "//")
 
 
 def _flistScanFortran(sSourceCode):
@@ -181,7 +182,7 @@ def _flistScanFortran(sSourceCode):
     listPatterns = [
         (r'(?i)OPEN\s*\([^)]*FILE\s*=\s*' + sQuoted, "OPEN(FILE=)"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "!")
 
 
 def _flistScanRust(sSourceCode):
@@ -192,7 +193,7 @@ def _flistScanRust(sSourceCode):
         (r'fs::read\s*\(\s*' + sQuoted, "fs::read"),
         (r'fs::read_to_string\s*\(\s*' + sQuoted, "fs::read_to_string"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "//")
 
 
 def _flistScanJavaScript(sSourceCode):
@@ -203,7 +204,31 @@ def _flistScanJavaScript(sSourceCode):
         (r'fs\.readFile\s*\(\s*' + sQuoted, "fs.readFile"),
         (r'require\s*\(\s*' + sQuoted, "require"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    listRawResults = _flistMatchPatterns(sSourceCode, listPatterns, "//")
+    return _flistFilterRequireResults(listRawResults)
+
+
+def _flistFilterRequireResults(listRawResults):
+    """Remove require() matches that look like module imports, not files."""
+    listFiltered = []
+    for dictResult in listRawResults:
+        if dictResult["sLoadFunction"] != "require":
+            listFiltered.append(dictResult)
+            continue
+        sFileName = dictResult["sFileName"]
+        if _fbLooksLikeRequiredFile(sFileName):
+            listFiltered.append(dictResult)
+    return listFiltered
+
+
+def _fbLooksLikeRequiredFile(sFileName):
+    """Return True when a require() argument looks like a file, not a module."""
+    if sFileName.startswith("./") or sFileName.startswith("../"):
+        return True
+    sDotPart = os.path.splitext(sFileName)[1].lower()
+    if sDotPart in SET_FILE_EXTENSIONS:
+        return True
+    return False
 
 
 def _flistScanPerl(sSourceCode):
@@ -213,7 +238,7 @@ def _flistScanPerl(sSourceCode):
         (r'(?<!\w)open\s*\(\s*\w+\s*,\s*' + sQuoted, "open"),
         (r'IO::File->new\s*\(\s*' + sQuoted, "IO::File->new"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
 
 
 def _flistScanShell(sSourceCode):
@@ -222,9 +247,9 @@ def _flistScanShell(sSourceCode):
     listPatterns = [
         (r'(?<!\w)cat\s+' + sUnquotedOrQuoted, "cat"),
         (r'(?<!\w)source\s+' + sUnquotedOrQuoted, "source"),
-        (r'<\s*' + sUnquotedOrQuoted, "<"),
+        (r'(?<!<)<(?!<)\s*' + sUnquotedOrQuoted, "<"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
 
 
 def _flistScanJulia(sSourceCode):
@@ -237,7 +262,7 @@ def _flistScanJulia(sSourceCode):
         (r'(?<![.\w])load\s*\(\s*' + sQuoted, "load"),
         (r'(?<![.\w])readlines\s*\(\s*' + sQuoted, "readlines"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "#")
 
 
 def _flistScanMatlab(sSourceCode):
@@ -251,7 +276,19 @@ def _flistScanMatlab(sSourceCode):
         (r'dlmread\s*\(\s*' + sQuoted, "dlmread"),
         (r'importdata\s*\(\s*' + sQuoted, "importdata"),
     ]
-    return _flistMatchPatterns(sSourceCode, listPatterns)
+    return _flistMatchPatterns(sSourceCode, listPatterns, "%")
+
+
+def _flistScanGo(sSourceCode):
+    """Scan Go source for file-opening calls."""
+    sQuoted = r"""(?P<sFileName>["'][^"']+["'])"""
+    listPatterns = [
+        (r'os\.Open\s*\(\s*' + sQuoted, "os.Open"),
+        (r'os\.ReadFile\s*\(\s*' + sQuoted, "os.ReadFile"),
+        (r'ioutil\.ReadFile\s*\(\s*' + sQuoted, "ioutil.ReadFile"),
+        (r'os\.OpenFile\s*\(\s*' + sQuoted, "os.OpenFile"),
+    ]
+    return _flistMatchPatterns(sSourceCode, listPatterns, "//")
 
 
 DICT_LANGUAGE_SCANNERS = {
@@ -265,6 +302,7 @@ DICT_LANGUAGE_SCANNERS = {
     "shell": _flistScanShell,
     "julia": _flistScanJulia,
     "matlab": _flistScanMatlab,
+    "go": _flistScanGo,
 }
 
 

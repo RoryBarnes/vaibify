@@ -793,22 +793,28 @@ async def _fdictScanDependencies(
     from .commandUtilities import ftExtractScriptPathForLanguage
     from .dependencyScanner import flistScanForLoadCalls, fsDetectLanguage
 
+    dictStep = dictWorkflow.get("listSteps", [{}])[iStepIndex] \
+        if iStepIndex < len(dictWorkflow.get("listSteps", [])) else {}
+    sStepDirectory = dictStep.get("sDirectory", "")
+
     listAllDetected = []
     for sCommand in saDataCommands:
         sScriptPath, sLanguage = ftExtractScriptPathForLanguage(sCommand)
-        if not sScriptPath or sLanguage == "unknown":
+        if not sScriptPath:
             continue
-        try:
-            baContent = await asyncio.to_thread(
-                dictCtx["docker"].fbaFetchFile,
-                sContainerId, sScriptPath,
-            )
-            sSourceCode = baContent.decode("utf-8")
-        except Exception:
+        sAbsScriptPath = _fsJoinStepPath(sStepDirectory, sScriptPath)
+        sSourceCode = await _fsReadContainerFile(
+            dictCtx, sContainerId, sAbsScriptPath,
+        )
+        if sSourceCode is None:
             continue
         if sLanguage == "unknown":
             sFirstLine = sSourceCode.split("\n", 1)[0]
-            sLanguage = fsDetectLanguage(sScriptPath, sCommand, sFirstLine)
+            sLanguage = fsDetectLanguage(
+                sScriptPath, sCommand, sFirstLine,
+            )
+        if sLanguage == "unknown":
+            continue
         listDetected = flistScanForLoadCalls(sSourceCode, sLanguage)
         for dictItem in listDetected:
             dictItem["sFoundInScript"] = sScriptPath
@@ -817,6 +823,25 @@ async def _fdictScanDependencies(
     return _fdictCrossReferenceFiles(
         listAllDetected, dictWorkflow, iStepIndex
     )
+
+
+def _fsJoinStepPath(sStepDirectory, sScriptPath):
+    """Join a step directory with a script path when the path is relative."""
+    if os.path.isabs(sScriptPath) or not sStepDirectory:
+        return sScriptPath
+    return os.path.join(sStepDirectory, sScriptPath)
+
+
+async def _fsReadContainerFile(dictCtx, sContainerId, sFilePath):
+    """Fetch a file from the container and return its contents as a string."""
+    try:
+        baContent = await asyncio.to_thread(
+            dictCtx["docker"].fbaFetchFile,
+            sContainerId, sFilePath,
+        )
+        return baContent.decode("utf-8")
+    except Exception:
+        return None
 
 
 def _fdictCrossReferenceFiles(listDetected, dictWorkflow, iCurrentStep):

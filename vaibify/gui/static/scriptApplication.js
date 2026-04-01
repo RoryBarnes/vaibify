@@ -3593,7 +3593,10 @@ const PipeleyenApp = (function () {
             }
         }
 
-        if (listSuggestions.length === 0 && listUnmatched.length === 0) {
+        var bNoResults = (
+            listSuggestions.length === 0 && listUnmatched.length === 0
+        );
+        if (bNoResults) {
             sHtml += '<p style="color:var(--text-secondary)">' +
                 'No dependencies detected.</p>';
         }
@@ -3611,6 +3614,15 @@ const PipeleyenApp = (function () {
 
         elModal.innerHTML = sHtml;
         document.body.appendChild(elModal);
+
+        if (bNoResults) {
+            var elManualInput = elModal.querySelector(
+                ".dependency-manual-input"
+            );
+            if (elManualInput) {
+                elManualInput.focus();
+            }
+        }
 
         document.getElementById("btnDepSkip").addEventListener(
             "click", function () { elModal.remove(); }
@@ -3646,20 +3658,25 @@ const PipeleyenApp = (function () {
         var saCommands = dictStep.saDataCommands || [];
         var bChanged = false;
 
+        var listDepTokens = [];
         for (var i = 0; i < listChecked.length; i++) {
-            var dictDep = listChecked[i];
-            for (var j = 0; j < saCommands.length; j++) {
-                if (saCommands[j].indexOf(dictDep.sFileName) !== -1) {
-                    saCommands[j] = saCommands[j].replace(
-                        dictDep.sFileName,
-                        dictDep.sTemplateVariable
-                    );
-                    bChanged = true;
+            listDepTokens.push(listChecked[i].sTemplateVariable);
+        }
+        if (sManual) {
+            var listManualParts = sManual.split(/[\s,]+/);
+            for (var m = 0; m < listManualParts.length; m++) {
+                var sPart = listManualParts[m].trim();
+                if (sPart) {
+                    listDepTokens.push(sPart);
                 }
             }
         }
-
-        if (sManual) {
+        if (listDepTokens.length > 0 && saCommands.length > 0) {
+            var sDepComment = "  # " + listDepTokens.join(" ");
+            var iTarget = saCommands.length - 1;
+            saCommands[iTarget] = saCommands[iTarget].replace(
+                /\s*#\s*\{Step\d+\..*$/, ""
+            ) + sDepComment;
             bChanged = true;
         }
 

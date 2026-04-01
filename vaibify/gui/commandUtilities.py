@@ -13,6 +13,14 @@ DICT_COMMAND_PREFIXES = {
     "bash": "shell",
     "sh": "shell",
     "node": "javascript",
+    "gfortran": "fortran",
+    "gcc": "c",
+    "g++": "c",
+    "rustc": "rust",
+    "cargo": "rust",
+    "go": "go",
+    "ruby": "ruby",
+    "php": "php",
 }
 
 DICT_EXTENSION_TO_LANGUAGE = {
@@ -21,14 +29,21 @@ DICT_EXTENSION_TO_LANGUAGE = {
     ".r": "r",
     ".c": "c",
     ".cpp": "c",
+    ".h": "c",
+    ".hpp": "c",
     ".f90": "fortran",
+    ".f": "fortran",
+    ".f95": "fortran",
     ".rs": "rust",
     ".js": "javascript",
     ".ts": "javascript",
     ".pl": "perl",
+    ".pm": "perl",
     ".sh": "shell",
+    ".bash": "shell",
     ".jl": "julia",
     ".m": "matlab",
+    ".go": "go",
 }
 
 

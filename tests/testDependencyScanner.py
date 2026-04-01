@@ -446,3 +446,181 @@ class TestEdgeCases:
         sCode = "x = 1\ny = 2\nz = np.load('third.npy')\n"
         listResult = flistScanForLoadCalls(sCode, "python")
         assert listResult[0]["iLineNumber"] == 3
+
+
+# ── Whitespace variations ──────────────────────────────────────
+
+
+class TestWhitespaceVariations:
+
+    def test_np_load_with_extra_spaces(self):
+        sCode = 'data = np.load(  "file.npy"  )\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "file.npy"
+
+
+# ── Comment skipping per language ──────────────────────────────
+
+
+class TestCommentSkipping:
+
+    def test_c_double_slash_comment_skipped(self):
+        sCode = '// fopen("secret.dat", "r");\n'
+        listResult = flistScanForLoadCalls(sCode, "c")
+        assert len(listResult) == 0
+
+    def test_c_code_not_skipped(self):
+        sCode = 'fp = fopen("real.dat", "r");\n'
+        listResult = flistScanForLoadCalls(sCode, "c")
+        assert len(listResult) == 1
+
+    def test_fortran_exclamation_comment_skipped(self):
+        sCode = "! OPEN(UNIT=10, FILE='ghost.dat')\n"
+        listResult = flistScanForLoadCalls(sCode, "fortran")
+        assert len(listResult) == 0
+
+    def test_fortran_code_not_skipped(self):
+        sCode = "OPEN(UNIT=10, FILE='real.dat', STATUS='OLD')\n"
+        listResult = flistScanForLoadCalls(sCode, "fortran")
+        assert len(listResult) == 1
+
+    def test_matlab_percent_comment_skipped(self):
+        sCode = "% data = load('phantom.mat');\n"
+        listResult = flistScanForLoadCalls(sCode, "matlab")
+        assert len(listResult) == 0
+
+    def test_matlab_code_not_skipped(self):
+        sCode = "data = load('real.mat');\n"
+        listResult = flistScanForLoadCalls(sCode, "matlab")
+        assert len(listResult) == 1
+
+
+# ── Shell heredoc exclusion ────────────────────────────────────
+
+
+class TestShellHeredoc:
+
+    def test_heredoc_not_matched(self):
+        sCode = "cat <<EOF\nsome content\nEOF\n"
+        listResult = flistScanForLoadCalls(sCode, "shell")
+        listRedirectMatches = [
+            d for d in listResult if d["sLoadFunction"] == "<"
+        ]
+        assert len(listRedirectMatches) == 0
+
+
+# ── JavaScript require filtering ───────────────────────────────
+
+
+class TestJavaScriptRequireFiltering:
+
+    def test_require_module_filtered_out(self):
+        sCode = 'var express = require("express");\n'
+        listResult = flistScanForLoadCalls(sCode, "javascript")
+        assert len(listResult) == 0
+
+    def test_require_relative_path_kept(self):
+        sCode = 'var cfg = require("./config.json");\n'
+        listResult = flistScanForLoadCalls(sCode, "javascript")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "./config.json"
+
+    def test_require_parent_path_kept(self):
+        sCode = 'var data = require("../data/input.json");\n'
+        listResult = flistScanForLoadCalls(sCode, "javascript")
+        assert len(listResult) == 1
+
+    def test_require_data_extension_kept(self):
+        sCode = 'var tbl = require("table.csv");\n'
+        listResult = flistScanForLoadCalls(sCode, "javascript")
+        assert len(listResult) == 1
+
+
+# ── Pandas long-form detection ─────────────────────────────────
+
+
+class TestPandasLongForm:
+
+    def test_pandas_read_csv(self):
+        sCode = 'df = pandas.read_csv("catalog.csv")\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "catalog.csv"
+        assert listResult[0]["sLoadFunction"] == "pd.read_csv"
+
+    def test_pandas_read_excel(self):
+        sCode = 'df = pandas.read_excel("budget.xlsx")\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "budget.xlsx"
+
+
+# ── fits.open negative lookbehind ──────────────────────────────
+
+
+class TestFitsOpenLookbehind:
+
+    def test_fits_open_detected(self):
+        sCode = 'hdu = fits.open("image.fits")\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "image.fits"
+
+    def test_benefits_open_not_detected(self):
+        sCode = 'x = benefits.open("report.pdf")\n'
+        listResult = flistScanForLoadCalls(sCode, "python")
+        listFitsMatches = [
+            d for d in listResult if d["sLoadFunction"] == "fits.open"
+        ]
+        assert len(listFitsMatches) == 0
+
+
+# ── Go scanner ─────────────────────────────────────────────────
+
+
+class TestScanGo:
+
+    def test_os_open(self):
+        sCode = 'f, err := os.Open("data.csv")\n'
+        listResult = flistScanForLoadCalls(sCode, "go")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "data.csv"
+        assert listResult[0]["sLoadFunction"] == "os.Open"
+
+    def test_os_read_file(self):
+        sCode = 'content, err := os.ReadFile("config.yaml")\n'
+        listResult = flistScanForLoadCalls(sCode, "go")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "config.yaml"
+
+    def test_ioutil_read_file(self):
+        sCode = 'data, err := ioutil.ReadFile("legacy.dat")\n'
+        listResult = flistScanForLoadCalls(sCode, "go")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "legacy.dat"
+
+    def test_os_open_file(self):
+        sCode = 'f, err := os.OpenFile("output.log", os.O_RDONLY, 0644)\n'
+        listResult = flistScanForLoadCalls(sCode, "go")
+        assert len(listResult) == 1
+        assert listResult[0]["sFileName"] == "output.log"
+
+    def test_go_comment_skipped(self):
+        sCode = '// f, err := os.Open("hidden.csv")\n'
+        listResult = flistScanForLoadCalls(sCode, "go")
+        assert len(listResult) == 0
+
+
+# ── Go language detection ──────────────────────────────────────
+
+
+class TestGoLanguageDetection:
+
+    def test_fsDetectLanguage_go_extension(self):
+        assert fsDetectLanguage("main.go") == "go"
+
+    def test_fsDetectLanguage_go_command_prefix(self):
+        assert fsDetectLanguage(
+            "script", sCommandPrefix="go"
+        ) == "go"
