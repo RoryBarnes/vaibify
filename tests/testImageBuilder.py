@@ -7,6 +7,8 @@ import pytest
 from vaibify.docker.imageBuilder import (
     flistDetermineOverlays,
     fbImageExists,
+    fbBuildxAvailable,
+    _flistBuildPrefix,
     _LIST_OVERLAY_ORDER,
 )
 from vaibify.config.projectConfig import FeaturesConfig
@@ -117,6 +119,39 @@ def test_fbImageExists_returns_false_when_subprocess_fails():
     assert "image" in listCallArgs
     assert "inspect" in listCallArgs
     assert "nonexistent:latest" in listCallArgs
+
+
+def test_fbBuildxAvailable_true():
+    with patch(
+        "vaibify.docker.imageBuilder.subprocess.run"
+    ) as mockRun:
+        mockRun.return_value = MagicMock(returncode=0)
+        assert fbBuildxAvailable() is True
+
+
+def test_fbBuildxAvailable_false():
+    with patch(
+        "vaibify.docker.imageBuilder.subprocess.run"
+    ) as mockRun:
+        mockRun.return_value = MagicMock(returncode=1)
+        assert fbBuildxAvailable() is False
+
+
+def test_flistBuildPrefix_uses_buildx_when_available():
+    with patch(
+        "vaibify.docker.imageBuilder.fbBuildxAvailable",
+        return_value=True,
+    ):
+        assert _flistBuildPrefix() == [
+            "docker", "buildx", "build"]
+
+
+def test_flistBuildPrefix_falls_back_to_legacy():
+    with patch(
+        "vaibify.docker.imageBuilder.fbBuildxAvailable",
+        return_value=False,
+    ):
+        assert _flistBuildPrefix() == ["docker", "build"]
 
 
 def test_fbImageExists_returns_true_when_subprocess_succeeds():

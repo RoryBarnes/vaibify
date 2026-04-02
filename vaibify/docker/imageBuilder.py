@@ -7,6 +7,22 @@ from pathlib import Path
 from . import fnRunDockerCommand
 
 
+def fbBuildxAvailable():
+    """Return True if `docker buildx` is installed and functional."""
+    resultProcess = subprocess.run(
+        ["docker", "buildx", "version"],
+        capture_output=True,
+    )
+    return resultProcess.returncode == 0
+
+
+def _flistBuildPrefix():
+    """Return the docker build command prefix, preferring buildx."""
+    if fbBuildxAvailable():
+        return ["docker", "buildx", "build"]
+    return ["docker", "build"]
+
+
 _LIST_OVERLAY_ORDER = [
     "gpu",
     "jupyter",
@@ -117,7 +133,7 @@ def _flistBuildBaseCommand(config, sDockerDir, sBaseImage, bNoCache):
     sProjectName = config.sProjectName
     sDockerfile = str(Path(sDockerDir) / "Dockerfile")
     sTag = f"{sProjectName}:base"
-    saCommand = ["docker", "build", "-f", sDockerfile, "-t", sTag]
+    saCommand = _flistBuildPrefix() + ["-f", sDockerfile, "-t", sTag]
     if bNoCache:
         saCommand.append("--no-cache")
     saCommand += _flistBuildArgPairs(config, sBaseImage)
@@ -174,8 +190,7 @@ def _fsResolveOverlayDockerfile(sOverlayName, sDockerDir):
 
 def _flistOverlayCommand(sDockerfile, sNewTag, sFromImage, sDockerDir):
     """Assemble docker build command for an overlay."""
-    return [
-        "docker", "build",
+    return _flistBuildPrefix() + [
         "-f", sDockerfile,
         "-t", sNewTag,
         "--build-arg", f"BASE_IMAGE={sFromImage}",

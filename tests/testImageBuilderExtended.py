@@ -95,7 +95,7 @@ def test_flistOverlayCommand_structure():
         "proj:base", "/d",
     )
     assert listCmd[0] == "docker"
-    assert listCmd[1] == "build"
+    assert "build" in listCmd
     assert "-f" in listCmd
     assert "-t" in listCmd
     assert "proj:jupyter" in listCmd
