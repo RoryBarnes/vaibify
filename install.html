@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.1.dev187+g76ee2b9f0.d20260402 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.1.dev188+gf309d3e84.d20260402 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e4087bb2"></script>
+      <script src="_static/documentation_options.js?v=2ba057c1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -115,7 +115,11 @@ manage containers.</p>
 <td><p>20.10+</p></td>
 <td><p>Or Colima on macOS</p></td>
 </tr>
-<tr class="row-even"><td><p>Git</p></td>
+<tr class="row-even"><td><p>Docker Buildx</p></td>
+<td><p>0.10+</p></td>
+<td><p>BuildKit-based image builder</p></td>
+</tr>
+<tr class="row-odd"><td><p>Git</p></td>
 <td><p>2.0+</p></td>
 <td><p>For cloning repositories into images</p></td>
 </tr>
@@ -214,12 +218,12 @@ vaibify<span class="w"> </span>--version
 <p>On macOS, <a class="reference external" href="https://github.com/abiosoft/colima">Colima</a> is the recommended
 Docker runtime. Install with Homebrew or MacPorts:</p>
 <p><strong>Homebrew:</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>brew<span class="w"> </span>install<span class="w"> </span>colima<span class="w"> </span>docker
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>brew<span class="w"> </span>install<span class="w"> </span>colima<span class="w"> </span>docker<span class="w"> </span>docker-buildx
 colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">4</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">8</span>
 </pre></div>
 </div>
 <p><strong>MacPorts:</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>port<span class="w"> </span>install<span class="w"> </span>colima<span class="w"> </span>docker
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>port<span class="w"> </span>install<span class="w"> </span>colima<span class="w"> </span>docker<span class="w"> </span>docker-buildx-plugin
 colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">4</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">8</span>
 </pre></div>
 </div>

@@ -6,11 +6,12 @@ manage containers.
 
 ## Prerequisites
 
-| Requirement  | Version    | Notes                                |
-|-------------|-----------|--------------------------------------|
-| Python      | 3.9 -- 3.14 | Any CPython release in this range  |
-| Docker      | 20.10+    | Or Colima on macOS                   |
-| Git         | 2.0+      | For cloning repositories into images |
+| Requirement      | Version     | Notes                                |
+|-----------------|------------|--------------------------------------|
+| Python          | 3.9 -- 3.14 | Any CPython release in this range  |
+| Docker          | 20.10+     | Or Colima on macOS                   |
+| Docker Buildx   | 0.10+      | BuildKit-based image builder         |
+| Git             | 2.0+       | For cloning repositories into images |
 
 ## Users
 
@@ -107,14 +108,14 @@ Docker runtime. Install with Homebrew or MacPorts:
 **Homebrew:**
 
 ```bash
-brew install colima docker
+brew install colima docker docker-buildx
 colima start --cpu 4 --memory 8
 ```
 
 **MacPorts:**
 
 ```bash
-sudo port install colima docker
+sudo port install colima docker docker-buildx-plugin
 colima start --cpu 4 --memory 8
 ```
 
