@@ -354,16 +354,25 @@ const PipeleyenTerminal = (function () {
 
     function fnDisposeTab(dictTab) {
         if (dictTab.websocket) dictTab.websocket.close();
+        dictTab.websocket = null;
         if (dictTab.disposableOnData) dictTab.disposableOnData.dispose();
+        dictTab.disposableOnData = null;
         if (dictTab.disposableOnResize) dictTab.disposableOnResize.dispose();
+        dictTab.disposableOnResize = null;
         if (dictTab.elKillButton && dictTab.elKillButton.parentNode) {
             dictTab.elKillButton.parentNode.removeChild(
                 dictTab.elKillButton
             );
         }
         dictTab.elKillButton = null;
-        if (dictTab.terminal) dictTab.terminal.dispose();
+        if (dictTab.terminal) {
+            dictTab.terminal.clear();
+            dictTab.terminal.dispose();
+        }
+        dictTab.terminal = null;
+        dictTab.fitAddon = null;
         if (dictTab.resizeObserver) dictTab.resizeObserver.disconnect();
+        dictTab.resizeObserver = null;
     }
 
     function fnReconcileActiveTab(iPaneId, iClosedIndex) {

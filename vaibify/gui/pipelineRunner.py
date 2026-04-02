@@ -38,18 +38,29 @@ def fsGenerateLogFilename(sWorkflowName):
     return f"{sCleanName}_{sTimestamp}.log"
 
 
+I_MAX_LOG_LINES = 10000
+
+
 def ffBuildLoggingCallback(fnOriginalCallback, listLogLines):
     """Return a callback that logs output lines and forwards events."""
     async def fnLoggingCallback(dictEvent):
         await fnOriginalCallback(dictEvent)
-        if dictEvent.get("sType") == "output":
-            listLogLines.append(dictEvent.get("sLine", ""))
-        elif dictEvent.get("sType") == "commandFailed":
-            listLogLines.append(
-                f"FAILED: {dictEvent.get('sCommand', '')} "
-                f"(exit {dictEvent.get('iExitCode', '?')})"
-            )
+        sLine = _fsExtractLogLine(dictEvent)
+        if sLine is not None:
+            if len(listLogLines) >= I_MAX_LOG_LINES:
+                del listLogLines[0]
+            listLogLines.append(sLine)
     return fnLoggingCallback
+
+
+def _fsExtractLogLine(dictEvent):
+    """Return the log line from a pipeline event, or None."""
+    if dictEvent.get("sType") == "output":
+        return dictEvent.get("sLine", "")
+    if dictEvent.get("sType") == "commandFailed":
+        return (f"FAILED: {dictEvent.get('sCommand', '')} "
+                f"(exit {dictEvent.get('iExitCode', '?')})")
+    return None
 
 
 async def fnWriteLogToContainer(
