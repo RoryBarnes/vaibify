@@ -603,8 +603,9 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
     ):
         import asyncio
         dictCtx["require"]()
+        sSafeFilename = posixpath.basename(request.sFilename)
         sDestPath = posixpath.join(
-            request.sDestination, request.sFilename)
+            request.sDestination, sSafeFilename)
         fnValidatePathWithinRoot(sDestPath, sWorkspaceRoot)
         try:
             baContent = base64.b64decode(request.sContentBase64)
@@ -660,7 +661,9 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         dictCtx["require"]()
         fnValidatePathWithinRoot(
             request.sContainerPath, sWorkspaceRoot)
-        sHostDest = os.path.expanduser(request.sHostDestination)
+        sHostDest = os.path.realpath(
+            os.path.expanduser(request.sHostDestination))
+        _fnValidateHostDestination(sHostDest)
         try:
             await asyncio.to_thread(
                 _fnDockerCopy, sContainerId,
@@ -670,6 +673,15 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
             raise HTTPException(
                 status_code=500, detail=str(error))
         return {"bSuccess": True, "sHostPath": sHostDest}
+
+
+def _fnValidateHostDestination(sResolvedPath):
+    """Raise 403 if the destination escapes the user's home directory."""
+    sHome = os.path.expanduser("~")
+    if sResolvedPath != sHome and not sResolvedPath.startswith(
+            sHome + os.sep):
+        raise HTTPException(
+            403, "Destination outside home directory")
 
 
 def _fnDockerCopy(sContainerId, sContainerPath, sHostDest):
@@ -2456,7 +2468,13 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
         if bNeedsToken:
             sToken = request.headers.get("x-session-token", "")
             if not sToken:
-                sToken = request.query_params.get("sToken", "")
+                bIsWebSocket = (
+                    request.headers.get("upgrade", "").lower()
+                    == "websocket")
+                bIsDownload = "/download/" in sPath
+                if bIsWebSocket or bIsDownload:
+                    sToken = request.query_params.get(
+                        "sToken", "")
             sExpected = request.app.state.sSessionToken
             if sToken != sExpected:
                 return Response(

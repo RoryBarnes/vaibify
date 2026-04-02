@@ -504,22 +504,6 @@ const PipeleyenTerminal = (function () {
         }
     }
 
-    function fnKillTabProcess(iPaneId, iTabIndex) {
-        var dictPane = listPanes[iPaneId];
-        if (!dictPane) return;
-        var dictTab = dictPane.listTabs[iTabIndex];
-        if (!dictTab || !dictTab.websocket) return;
-        var ws = dictTab.websocket;
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ sType: "kill" }));
-            if (dictTab.terminal) {
-                dictTab.terminal.write(
-                    "\r\n\x1b[31m[Process killed]\x1b[0m\r\n"
-                );
-            }
-        }
-    }
-
     return {
         fnCreateTab: function () {
             if (listPanes.length === 0) {
