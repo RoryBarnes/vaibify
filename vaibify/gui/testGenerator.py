@@ -785,6 +785,8 @@ def _fExtractArrayValue(daData, dictAccess):
     if sAggregate == "max":
         return float(daData.max())
     listIndices = dictAccess.get("listIndices", [-1])
+    if len(listIndices) == 1 and daData.ndim > 1:
+        return float(daData.flat[listIndices[0]])
     return float(daData[tuple(listIndices)])
 
 
