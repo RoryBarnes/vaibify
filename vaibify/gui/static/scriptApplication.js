@@ -1559,7 +1559,8 @@ const PipeleyenApp = (function () {
 
         /* Data Analysis Timing */
         if ((step.saDataCommands || []).length > 0) {
-            sHtml += fsRenderRunStats(step);
+            sHtml += '<div class="timestamp-field">' +
+                fsRenderRunStats(step) + '</div>';
         }
 
         /* Data Files */
@@ -1604,10 +1605,11 @@ const PipeleyenApp = (function () {
         /* Plot Timing */
         if ((step.saPlotFiles || []).length > 0) {
             var dictPlotStats = step.dictRunStats || {};
-            sHtml += '<div class="run-stats">' +
+            sHtml += '<div class="timestamp-field">' +
+                '<div class="run-stats">' +
                 '<span class="run-stat">Plots created: ' +
                 (dictPlotStats.sLastRun || "—") +
-                '</span></div>';
+                '</span></div></div>';
         }
 
         /* Verification */
@@ -1845,16 +1847,19 @@ const PipeleyenApp = (function () {
                 sHtml += fsRenderUnitTestsExpanded(step, iIndex);
             }
         }
-        var sDepsState = fsComputeDepsState(iIndex);
-        sHtml += fsRenderVerificationRow(
-            "Dependencies", sDepsState, "deps", iIndex
-        );
-        sHtml += '<div class="timestamp-field">' +
-            fsRenderVerificationTimestamp(
-                "Last checked", dictVerify.sLastDepsCheck) +
-            '</div>';
-        if (setExpandedDeps.has(iIndex)) {
-            sHtml += fsRenderDepsExpanded(iIndex);
+        var bHasExplicitDeps = (step.saDependencies || []).length > 0;
+        if (bHasExplicitDeps) {
+            var sDepsState = fsComputeDepsState(iIndex);
+            sHtml += fsRenderVerificationRow(
+                "Dependencies", sDepsState, "deps", iIndex
+            );
+            sHtml += '<div class="timestamp-field">' +
+                fsRenderVerificationTimestamp(
+                    "Last checked", dictVerify.sLastDepsCheck) +
+                '</div>';
+            if (setExpandedDeps.has(iIndex)) {
+                sHtml += fsRenderDepsExpanded(iIndex);
+            }
         }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
@@ -2164,10 +2169,9 @@ const PipeleyenApp = (function () {
     }
 
     function fsRenderVerificationTimestamp(sLabel, sTimestamp) {
-        if (!sTimestamp) return "";
         return '<div class="verification-timestamp">' +
             fnEscapeHtml(sLabel) + ": " +
-            fnEscapeHtml(sTimestamp) + '</div>';
+            fnEscapeHtml(sTimestamp || "\u2014") + '</div>';
     }
 
     function fsRenderSectionLabel(sLabel, iStepIdx, sArrayKey) {
