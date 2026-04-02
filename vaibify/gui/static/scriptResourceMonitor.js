@@ -14,6 +14,7 @@ var VaibifyMonitor = (function () {
     var listMemoryHistory = [];
     var elMonitorPanel = null;
     var bVisible = false;
+    var dictCanvasContextCache = {};
 
     /* --- Initialization --- */
 
@@ -176,7 +177,10 @@ var VaibifyMonitor = (function () {
         var elCanvas = document.getElementById(sCanvasId);
         if (!elCanvas) return;
 
-        var ctx = elCanvas.getContext("2d");
+        if (!dictCanvasContextCache[sCanvasId]) {
+            dictCanvasContextCache[sCanvasId] = elCanvas.getContext("2d");
+        }
+        var ctx = dictCanvasContextCache[sCanvasId];
         var iWidth = elCanvas.width;
         var iHeight = elCanvas.height;
         var iPadding = 2;

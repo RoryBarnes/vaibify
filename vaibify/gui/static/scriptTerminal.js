@@ -262,6 +262,7 @@ const PipeleyenTerminal = (function () {
 
         dictTab.terminal = terminal;
         dictTab.fitAddon = fitAddon;
+        dictTab.elKillButton = elKillButton;
 
         fnConnectTerminalWebSocket(dictTab, terminal);
         fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon);
@@ -310,13 +311,13 @@ const PipeleyenTerminal = (function () {
             terminal.write("\r\n[Connection closed]\r\n");
         };
 
-        terminal.onData(function (sData) {
+        dictTab.disposableOnData = terminal.onData(function (sData) {
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(new TextEncoder().encode(sData));
             }
         });
 
-        terminal.onResize(function (size) {
+        dictTab.disposableOnResize = terminal.onResize(function (size) {
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     sType: "resize",
@@ -353,6 +354,14 @@ const PipeleyenTerminal = (function () {
 
     function fnDisposeTab(dictTab) {
         if (dictTab.websocket) dictTab.websocket.close();
+        if (dictTab.disposableOnData) dictTab.disposableOnData.dispose();
+        if (dictTab.disposableOnResize) dictTab.disposableOnResize.dispose();
+        if (dictTab.elKillButton && dictTab.elKillButton.parentNode) {
+            dictTab.elKillButton.parentNode.removeChild(
+                dictTab.elKillButton
+            );
+        }
+        dictTab.elKillButton = null;
         if (dictTab.terminal) dictTab.terminal.dispose();
         if (dictTab.resizeObserver) dictTab.resizeObserver.disconnect();
     }

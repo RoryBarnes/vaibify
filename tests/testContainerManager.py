@@ -96,6 +96,6 @@ def test_flistBuildRunArgs_gpu(mockX11):
 def test_flistBuildRunArgs_detached(mockX11):
     config = _fConfigMinimal()
     saArgs = flistBuildRunArgs(config, bDetached=True)
-    assert "--rm" in saArgs
+    assert "--rm" not in saArgs
     assert "-d" in saArgs
     assert "-it" not in saArgs

@@ -69,7 +69,7 @@ def _flistAssembleRunCommand(config, saRunArgs, saCommand):
 
 def flistBuildRunArgs(config, bDetached=False):
     """Build list of docker run arguments from project config."""
-    saRunArgs = ["--rm", "-d"] if bDetached else ["--rm", "-it"]
+    saRunArgs = ["-d"] if bDetached else ["--rm", "-it"]
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddCpuAllocation(saRunArgs)

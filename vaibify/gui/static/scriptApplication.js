@@ -370,6 +370,7 @@ const PipeleyenApp = (function () {
     var _listBrowserHistory = [];
     var _iBrowserHistoryIndex = -1;
     var _bBrowserNavigating = false;
+    var I_MAX_BROWSER_HISTORY = 100;
 
     async function fnOpenDirectoryBrowser() {
         document.getElementById("modalAddContainer").style.display = "flex";
@@ -420,6 +421,11 @@ const PipeleyenApp = (function () {
                     0, _iBrowserHistoryIndex + 1
                 );
                 _listBrowserHistory.push(dictResult.sCurrentPath);
+                if (_listBrowserHistory.length > I_MAX_BROWSER_HISTORY) {
+                    _listBrowserHistory.splice(
+                        0, _listBrowserHistory.length - I_MAX_BROWSER_HISTORY
+                    );
+                }
                 _iBrowserHistoryIndex = _listBrowserHistory.length - 1;
             }
             _bBrowserNavigating = false;
@@ -1135,9 +1141,18 @@ const PipeleyenApp = (function () {
     }
 
     var dictFileExistenceCache = {};
+    var I_MAX_FILE_CACHE_ENTRIES = 500;
     var iFileCheckTimer = null;
     var bFileCheckInProgress = false;
     var iInflightRequests = 0;
+
+    function fnSetFileExistenceCache(sKey, bValue) {
+        if (Object.keys(dictFileExistenceCache).length >=
+            I_MAX_FILE_CACHE_ENTRIES) {
+            dictFileExistenceCache = {};
+        }
+        dictFileExistenceCache[sKey] = bValue;
+    }
 
     function fnScheduleFileExistenceCheck() {
         if (iFileCheckTimer) return;
@@ -1221,7 +1236,7 @@ const PipeleyenApp = (function () {
             fetch(sUrl, { method: "HEAD" }).then(
                 function (r) {
                     if (r.ok) {
-                        dictFileExistenceCache[sCacheKey] = true;
+                        fnSetFileExistenceCache(sCacheKey, true);
                         iPresent++;
                         if (iPresent >= iTotal) {
                             setStepsWithData.add(iStep);
@@ -1287,7 +1302,7 @@ const PipeleyenApp = (function () {
             iInflightRequests++;
             fetch(sUrl, { method: "HEAD" }).then(function (r) {
                 if (r.ok) {
-                    dictFileExistenceCache[sCacheKey] = true;
+                    fnSetFileExistenceCache(sCacheKey, true);
                     fnUpdateFileStatus(el, true);
                     fnTrackDataPresence(
                         iStep, bNecessaryData,
@@ -1296,14 +1311,14 @@ const PipeleyenApp = (function () {
                 } else {
                     console.warn("[vaibify] HEAD " +
                         r.status + " " + sUrl);
-                    dictFileExistenceCache[sCacheKey] = false;
+                    fnSetFileExistenceCache(sCacheKey, false);
                     fnUpdateFileStatus(el, false);
                 }
                 fnFileCheckComplete();
             }).catch(function (err) {
                 console.warn("[vaibify] HEAD error: " +
                     err.message + " " + sUrl);
-                dictFileExistenceCache[sCacheKey] = false;
+                fnSetFileExistenceCache(sCacheKey, false);
                 fnUpdateFileStatus(el, false);
                 fnFileCheckComplete();
             });
@@ -5127,16 +5142,21 @@ const PipeleyenApp = (function () {
             "/ws/pipeline/" + sContainerId +
             "?sToken=" + encodeURIComponent(sSessionToken);
         wsPipeline = new WebSocket(sUrl);
+        wsPipeline.onopen = function () {
+            _fnFlushPendingPipelineActions();
+        };
         wsPipeline.onmessage = function (event) {
             fnHandlePipelineEvent(JSON.parse(event.data));
         };
         wsPipeline.onclose = function () {
             wsPipeline = null;
+            _listPendingPipelineActions.length = 0;
             fnClearRunningStatuses();
             fnRenderStepList();
         };
         wsPipeline.onerror = function () {
             wsPipeline = null;
+            _listPendingPipelineActions.length = 0;
         };
         return wsPipeline;
     }
@@ -5312,7 +5332,15 @@ const PipeleyenApp = (function () {
     }
 
     function _fnMonitorTerminalForSentinel(sSentinel) {
+        var I_MAX_SENTINEL_CHECKS = 30;
+        var iCheckCount = 0;
         var iCheckInterval = setInterval(function () {
+            iCheckCount++;
+            if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
+                clearInterval(iCheckInterval);
+                _fnSendInteractiveComplete(1);
+                return;
+            }
             var sText = _fsReadAllTerminalText();
             var iMatch = sText.indexOf(sSentinel + "=");
             if (iMatch < 0) return;
@@ -5657,7 +5685,7 @@ const PipeleyenApp = (function () {
         elViewport.scrollTop = 0;
     }
 
-    var MAX_PIPELINE_OUTPUT_LINES = 5000;
+    var MAX_PIPELINE_OUTPUT_LINES = 1000;
 
     function fnAppendPipelineOutput(sLine) {
         var elOutput = document.getElementById("pipelineOutput");
@@ -5673,20 +5701,32 @@ const PipeleyenApp = (function () {
             elLine.style.color = "var(--color-blue, #3498db)";
         }
         elOutput.appendChild(elLine);
-        while (elOutput.childNodes.length > MAX_PIPELINE_OUTPUT_LINES) {
+        var iExcessCount =
+            elOutput.childNodes.length - MAX_PIPELINE_OUTPUT_LINES;
+        while (iExcessCount > 0) {
             elOutput.removeChild(elOutput.firstChild);
+            iExcessCount--;
         }
         elOutput.scrollTop = elOutput.scrollHeight;
     }
+
+    var _listPendingPipelineActions = [];
 
     function fnSendPipelineAction(dictAction) {
         var ws = fnConnectPipelineWebSocket();
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(dictAction));
         } else {
-            ws.addEventListener("open", function () {
-                ws.send(JSON.stringify(dictAction));
-            }, { once: true });
+            _listPendingPipelineActions.push(dictAction);
+        }
+    }
+
+    function _fnFlushPendingPipelineActions() {
+        while (_listPendingPipelineActions.length > 0) {
+            var dictAction = _listPendingPipelineActions.shift();
+            if (wsPipeline && wsPipeline.readyState === WebSocket.OPEN) {
+                wsPipeline.send(JSON.stringify(dictAction));
+            }
         }
     }
 
@@ -6615,30 +6655,37 @@ var PipeleyenFiles = (function () {
             );
         }).join("");
 
-        elList.querySelectorAll(".file-item").forEach(function (el) {
-            el.addEventListener("click", function () {
-                if (el.dataset.isDir === "true") {
-                    fnLoadDirectory(el.dataset.path);
-                } else {
-                    PipeleyenFigureViewer.fnDisplayInNextViewer(
-                        el.dataset.path
-                    );
-                }
-            });
-            el.addEventListener("dragstart", function (event) {
-                event.dataTransfer.setData(
-                    "vaibify/filepath", el.dataset.path
-                );
-            });
-            if (el.dataset.isDir !== "true") {
-                el.addEventListener("contextmenu",
-                    function (event) {
-                        event.preventDefault();
-                        PipeleyenApp.fnPromptPullToHost(
-                            el.dataset.path);
-                    }
+        fnBindFileItemDelegation(elList);
+    }
+
+    var _bFileItemDelegationBound = false;
+
+    function fnBindFileItemDelegation(elList) {
+        if (_bFileItemDelegationBound) return;
+        _bFileItemDelegationBound = true;
+        elList.addEventListener("click", function (event) {
+            var elItem = event.target.closest(".file-item");
+            if (!elItem) return;
+            if (elItem.dataset.isDir === "true") {
+                fnLoadDirectory(elItem.dataset.path);
+            } else {
+                PipeleyenFigureViewer.fnDisplayInNextViewer(
+                    elItem.dataset.path
                 );
             }
+        });
+        elList.addEventListener("dragstart", function (event) {
+            var elItem = event.target.closest(".file-item");
+            if (!elItem) return;
+            event.dataTransfer.setData(
+                "vaibify/filepath", elItem.dataset.path
+            );
+        });
+        elList.addEventListener("contextmenu", function (event) {
+            var elItem = event.target.closest(".file-item");
+            if (!elItem || elItem.dataset.isDir === "true") return;
+            event.preventDefault();
+            PipeleyenApp.fnPromptPullToHost(elItem.dataset.path);
         });
     }
 
