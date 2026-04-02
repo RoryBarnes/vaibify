@@ -845,6 +845,7 @@ const PipeleyenApp = (function () {
             clearInterval(_iActiveSentinelMonitor);
             _iActiveSentinelMonitor = null;
         }
+        PipeleyenFigureViewer.fnReleaseResources();
         PipeleyenTerminal.fnCloseAll();
         fnShowContainerLanding();
         fnLoadContainers();
@@ -5146,6 +5147,10 @@ const PipeleyenApp = (function () {
             wsPipeline.readyState === WebSocket.CONNECTING
         )) {
             return wsPipeline;
+        }
+        if (wsPipeline) {
+            try { wsPipeline.close(); } catch (e) { /* ignore */ }
+            wsPipeline = null;
         }
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";

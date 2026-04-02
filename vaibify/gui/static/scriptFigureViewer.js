@@ -61,8 +61,12 @@ const PipeleyenFigureViewer = (function () {
         fnRefreshHistoryDropdowns();
     }
 
+    var I_MAX_HISTORY_ENTRIES = 200;
+
     function fnTrimHistory() {
-        /* History is permanent — no trimming. */
+        if (listHistory.length <= I_MAX_HISTORY_ENTRIES) return;
+        listHistory.sort(fdCompareHistoryScore);
+        listHistory.length = I_MAX_HISTORY_ENTRIES;
     }
 
     function fdCompareHistoryScore(a, b) {
@@ -268,6 +272,8 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRenderImage(sUrl, elViewport) {
+        fnDestroyActivePdf();
+        fnCancelPendingImage(elViewport);
         elViewport.innerHTML = "";
         var elImg = document.createElement("img");
         elImg.src = sUrl;
@@ -277,10 +283,19 @@ const PipeleyenFigureViewer = (function () {
             fnRenderImageWithZoom(elImg, sUrl, elViewport, dScale);
         };
         elImg.onerror = function () {
-            elViewport.innerHTML =
-                S_OUTPUT_MISSING;
+            elViewport.innerHTML = S_OUTPUT_MISSING;
         };
+        elViewport._activeImage = elImg;
         elViewport.appendChild(elImg);
+    }
+
+    function fnCancelPendingImage(elViewport) {
+        if (elViewport._activeImage) {
+            elViewport._activeImage.onload = null;
+            elViewport._activeImage.onerror = null;
+            elViewport._activeImage.src = "";
+            elViewport._activeImage = null;
+        }
     }
 
     function fnRenderImageWithZoom(
@@ -365,7 +380,17 @@ const PipeleyenFigureViewer = (function () {
         return elToolbar;
     }
 
+    var _activePdfDocument = null;
+
+    function fnDestroyActivePdf() {
+        if (_activePdfDocument) {
+            _activePdfDocument.destroy();
+            _activePdfDocument = null;
+        }
+    }
+
     function fnRenderPdfDocument(sUrl, elViewport) {
+        fnDestroyActivePdf();
         if (typeof pdfjsLib === "undefined") {
             elViewport.innerHTML =
                 '<span class="placeholder">PDF.js not loaded</span>';
@@ -376,6 +401,7 @@ const PipeleyenFigureViewer = (function () {
         pdfjsLib.getDocument({
             url: sUrl, isEvalSupported: false,
         }).promise.then(function (pdfDoc) {
+            _activePdfDocument = pdfDoc;
             pdfDoc.getPage(1).then(function (page) {
                 fnRenderPdfPage(page, elViewport, 1.0);
             });
@@ -422,6 +448,8 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRenderText(sUrl, elViewport) {
+        fnDestroyActivePdf();
+        fnCancelPendingImage(elViewport);
         elViewport.innerHTML =
             '<span class="placeholder">Loading...</span>';
         fetch(sUrl)
@@ -914,5 +942,6 @@ const PipeleyenFigureViewer = (function () {
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,
+        fnReleaseResources: fnDestroyActivePdf,
     };
 })();
