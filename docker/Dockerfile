@@ -82,9 +82,10 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa \
         python${PYTHON_VERSION} \
         python${PYTHON_VERSION}-dev \
         python${PYTHON_VERSION}-venv \
-        python${PYTHON_VERSION}-distutils \
         python${PYTHON_VERSION}-tk \
         tk-dev \
+    && (apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION}-distutils 2>/dev/null || true) \
     && rm -rf /var/lib/apt/lists/*
 
 # Make the selected Python version the default
