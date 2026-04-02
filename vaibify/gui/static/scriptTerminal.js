@@ -460,10 +460,6 @@ const PipeleyenTerminal = (function () {
         });
     }
 
-    function fnFitActiveTerminal() {
-        fnFitAllTerminals();
-    }
-
     /* --- Init --- */
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -527,7 +523,7 @@ const PipeleyenTerminal = (function () {
         },
         fnCreatePane: fnCreatePane,
         fnCloseAll: fnCloseAll,
-        fnFitActiveTerminal: fnFitActiveTerminal,
+        fnFitActiveTerminal: fnFitAllTerminals,
         fnSendCommandInFreshTab: function (sCommand) {
             if (listPanes.length === 0) {
                 fnCreatePane();

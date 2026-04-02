@@ -318,14 +318,7 @@ const PipeleyenFigureViewer = (function () {
         elImg.style.width = Math.round(iNativeWidth * dScale) + "px";
         elImg.style.height = "auto";
         elViewport.appendChild(elToolbar);
-        var elContent = document.createElement("div");
-        elContent.style.overflow = "auto";
-        elContent.style.flex = "1";
-        elContent.style.display = "flex";
-        elContent.style.justifyContent = "center";
-        elContent.style.padding = "16px";
-        elContent.appendChild(elImg);
-        elViewport.appendChild(elContent);
+        elViewport.appendChild(fnCreateScrollableContent(elImg));
     }
 
     function fnRenderPdf(sUrl, elViewport) {
@@ -421,11 +414,22 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
+    function fnCreateScrollableContent(elChild) {
+        var elContent = document.createElement("div");
+        elContent.style.overflow = "auto";
+        elContent.style.flex = "1";
+        elContent.style.display = "flex";
+        elContent.style.justifyContent = "center";
+        elContent.style.padding = "16px";
+        elContent.appendChild(elChild);
+        return elContent;
+    }
+
     function fnRenderPdfPage(page, elViewport, dDisplayScale) {
         var dNativeViewport = page.getViewport({ scale: 1.0 });
         if (dDisplayScale === "fit") {
-            var dFitWidth = elViewport.clientWidth - 32;
-            dDisplayScale = dFitWidth / dNativeViewport.width;
+            dDisplayScale = (elViewport.clientWidth - 32) /
+                dNativeViewport.width;
         }
         var dRenderScale = dDisplayScale * 2;
         var viewport = page.getViewport({ scale: dRenderScale });
@@ -443,14 +447,7 @@ const PipeleyenFigureViewer = (function () {
             }
         );
         elViewport.appendChild(elToolbar);
-        var elContent = document.createElement("div");
-        elContent.style.overflow = "auto";
-        elContent.style.flex = "1";
-        elContent.style.display = "flex";
-        elContent.style.justifyContent = "center";
-        elContent.style.padding = "16px";
-        elContent.appendChild(elCanvas);
-        elViewport.appendChild(elContent);
+        elViewport.appendChild(fnCreateScrollableContent(elCanvas));
         page.render({
             canvasContext: elCanvas.getContext("2d"),
             viewport: viewport,
@@ -509,49 +506,48 @@ const PipeleyenFigureViewer = (function () {
         elViewport.appendChild(elPre);
     }
 
-    function fnEnterEditMode(sText, sUrl, elViewport) {
-        elViewport.innerHTML = "";
-        elViewport.style.flexDirection = "column";
-        elViewport.style.alignItems = "stretch";
+    function fnCreateEditorToolbar() {
         var elToolbar = document.createElement("div");
         elToolbar.className = "editor-toolbar";
-
         var elFind = document.createElement("input");
         elFind.type = "text";
         elFind.placeholder = "Find...";
         elFind.className = "editor-find-input";
-
         var elSave = document.createElement("button");
         elSave.className = "btn btn-primary";
         elSave.textContent = "Save";
-
         var elCancel = document.createElement("button");
         elCancel.className = "btn";
         elCancel.textContent = "Cancel";
-
         elToolbar.appendChild(elFind);
         elToolbar.appendChild(elSave);
         elToolbar.appendChild(elCancel);
+        return { elToolbar: elToolbar, elFind: elFind,
+                 elSave: elSave, elCancel: elCancel };
+    }
 
+    function fnEnterEditMode(sText, sUrl, elViewport) {
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        var dictToolbar = fnCreateEditorToolbar();
         var elTextarea = document.createElement("textarea");
         elTextarea.className = "editor-textarea";
         elTextarea.value = sText;
         elTextarea.spellcheck = false;
-
-        elViewport.appendChild(elToolbar);
+        elViewport.appendChild(dictToolbar.elToolbar);
         elViewport.appendChild(elTextarea);
         elTextarea.focus();
-
-        fnBindEditorFind(elFind, elTextarea);
-        elSave.addEventListener("click", function () {
+        fnBindEditorFind(dictToolbar.elFind, elTextarea);
+        dictToolbar.elSave.addEventListener("click", function () {
             fnSaveEditedFile(sUrl, elTextarea.value, elViewport);
         });
-        elCancel.addEventListener("click", function () {
+        dictToolbar.elCancel.addEventListener("click", function () {
             fnRenderTextWithToolbar(sText, sUrl, elViewport);
         });
     }
 
-    function fnSaveEditedFile(sUrl, sContent, elViewport) {
+    function fsBuildSaveUrl(sUrl) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         var sPrefix = "/api/figure/" + sContainerId + "/";
         var sFilePath = sUrl.split(sPrefix)[1] || "";
@@ -562,12 +558,15 @@ const PipeleyenFigureViewer = (function () {
             var dictParams = new URLSearchParams(sQuery);
             sWorkdir = dictParams.get("sWorkdir") || "";
         }
-        var sSaveUrl = "/api/file/" + sContainerId + "/" +
-            sFilePath;
+        var sSaveUrl = "/api/file/" + sContainerId + "/" + sFilePath;
         if (sWorkdir) {
-            sSaveUrl += "?sWorkdir=" +
-                encodeURIComponent(sWorkdir);
+            sSaveUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
         }
+        return sSaveUrl;
+    }
+
+    function fnSaveEditedFile(sUrl, sContent, elViewport) {
+        var sSaveUrl = fsBuildSaveUrl(sUrl);
         fetch(sSaveUrl, {
             method: "PUT",
             headers: {"Content-Type": "application/json"},

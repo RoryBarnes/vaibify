@@ -458,32 +458,34 @@ def _fsResolveContainerUser(dictCtx, sContainerId):
     return "researcher"
 
 
-def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
-    """Load workflow, cache it, return connection response.
+def _fnAuthorizeContainer(dictCtx, sContainerId):
+    """Authorize the container and cache its user."""
+    dictCtx["setAllowedContainers"].add(sContainerId)
+    dictCtx["containerUsers"][sContainerId] = (
+        _fsResolveContainerUser(dictCtx, sContainerId)
+    )
 
-    When ``sWorkflowPath`` is None the user enters no-workflow
-    mode: no workflow is loaded but the container is authorised
-    for terminal access.
-    """
+
+def _fdictConnectNoWorkflow(dictCtx, sContainerId):
+    """Return response for no-workflow mode."""
+    _fnAuthorizeContainer(dictCtx, sContainerId)
+    return {
+        "sContainerId": sContainerId,
+        "sWorkflowPath": None,
+        "dictWorkflow": None,
+    }
+
+
+def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
+    """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
-        dictCtx["setAllowedContainers"].add(sContainerId)
-        dictCtx["containerUsers"][sContainerId] = (
-            _fsResolveContainerUser(dictCtx, sContainerId)
-        )
-        return {
-            "sContainerId": sContainerId,
-            "sWorkflowPath": None,
-            "dictWorkflow": None,
-        }
+        return _fdictConnectNoWorkflow(dictCtx, sContainerId)
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["workflows"][sContainerId] = dictWorkflow
-        dictCtx["setAllowedContainers"].add(sContainerId)
-        dictCtx["containerUsers"][sContainerId] = (
-            _fsResolveContainerUser(dictCtx, sContainerId)
-        )
+        _fnAuthorizeContainer(dictCtx, sContainerId)
         sResolved = fsResolveWorkflowPath(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
@@ -1688,34 +1690,37 @@ def _fnInvalidateDownstreamStep(dictStep):
     dictStep["dictVerification"] = dictVerification
 
 
-def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
-    """Compare current script hashes against stored run hashes."""
+def _fbStepScriptsModified(dictStep, dictCurrentHashes):
+    """Return True if any script hash differs from stored hashes."""
     from .syncDispatcher import _fsNormalizePath
     from .commandUtilities import flistExtractScripts
+    dictStoredHashes = dictStep.get(
+        "dictRunStats", {}
+    ).get("dictInputHashes", {})
+    if not dictStoredHashes:
+        return None
+    sDirectory = dictStep.get("sDirectory", "")
+    for sKey in ("saDataCommands", "saPlotCommands"):
+        for sScript in flistExtractScripts(dictStep.get(sKey, [])):
+            sPath = _fsNormalizePath(sDirectory, sScript)
+            if dictStoredHashes.get(sPath) != dictCurrentHashes.get(sPath):
+                return True
+    return False
+
+
+def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
+    """Compare current script hashes against stored run hashes."""
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
-        dictRunStats = dictStep.get("dictRunStats", {})
-        dictStoredHashes = dictRunStats.get("dictInputHashes", {})
-        if not dictStoredHashes:
+        bModified = _fbStepScriptsModified(dictStep, dictCurrentHashes)
+        if bModified is None:
             dictResult[iIndex] = "unknown"
-            continue
-        sDirectory = dictStep.get("sDirectory", "")
-        bModified = False
-        for sKey in ("saDataCommands", "saPlotCommands"):
-            for sScript in flistExtractScripts(
-                dictStep.get(sKey, [])
-            ):
-                sPath = _fsNormalizePath(sDirectory, sScript)
-                sStored = dictStoredHashes.get(sPath)
-                sCurrent = dictCurrentHashes.get(sPath)
-                if sStored is None or sStored != sCurrent:
-                    bModified = True
-                    break
-            if bModified:
-                break
-        dictResult[iIndex] = "modified" if bModified else "unchanged"
+        elif bModified:
+            dictResult[iIndex] = "modified"
+        else:
+            dictResult[iIndex] = "unchanged"
     return dictResult
 
 

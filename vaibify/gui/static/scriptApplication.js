@@ -1179,8 +1179,6 @@ const PipeleyenApp = (function () {
             iInflightRequests = 0;
             var iOutputCount = document.querySelectorAll(
                 ".detail-item.output").length;
-            console.log("[vaibify] File check: " +
-                iOutputCount + " output elements found");
             fnCheckOutputFileExistence();
             fnCheckDataFileExistence();
             if (iInflightRequests === 0) {
@@ -2066,25 +2064,6 @@ const PipeleyenApp = (function () {
             fsVerificationStateLabel(sState) + '</span></div>';
     }
 
-    function fsRenderUnitTestExpanded(step, iIndex) {
-        var sHtml = '<div class="unit-test-expanded">';
-        var bHasTests = (step.saTestCommands || []).length > 0;
-        sHtml += fsRenderTestSection(
-            "Test Commands", step.saTestCommands, iIndex, "command"
-        );
-        if (bHasTests) {
-            sHtml += '<button class="btn btn-run-tests" ' +
-                'data-step="' + iIndex + '">Run Tests</button>';
-        }
-        var sLogPath = (fdictGetVerification(step)).sTestLogPath;
-        if (sLogPath) {
-            sHtml += '<div class="test-last-run" data-log="' +
-                fnEscapeHtml(sLogPath) + '">Last Run: view log</div>';
-        }
-        sHtml += fsRenderGenerateButton(step, iIndex);
-        sHtml += '</div>';
-        return sHtml;
-    }
 
     function fsRenderGenerateButton(step, iIndex) {
         if ((step.saDataCommands || []).length === 0) return "";
@@ -2537,15 +2516,6 @@ const PipeleyenApp = (function () {
             );
             return;
         }
-        if (elTarget.closest(".archive-star")) {
-            var elStar = elTarget.closest(".archive-star");
-            fnToggleArchiveCategory(
-                parseInt(elStar.dataset.step),
-                elStar.dataset.file,
-                elStar.dataset.array || "saPlotFiles"
-            );
-            return;
-        }
         if (elTarget.closest(".btn-interactive-plots")) {
             fnRunInteractivePlots(
                 parseInt(elTarget.closest(
@@ -2846,7 +2816,6 @@ const PipeleyenApp = (function () {
             }
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
-            console.error("[vaibify] Generate tests error:", error);
             setGeneratingInFlight.delete(iStep);
             fnRenderStepList();
             fnShowErrorModal(
@@ -2904,14 +2873,6 @@ const PipeleyenApp = (function () {
             function (d) { return d.sFilePath !== sFile; }
         );
         fnRenderStepList();
-    }
-
-    function fnResetGenerateButton(iStep) {
-        var elBtn = document.getElementById("btnGenTest" + iStep);
-        if (elBtn) {
-            elBtn.disabled = false;
-            elBtn.innerHTML = "Generate Tests";
-        }
     }
 
     function fnHandleGeneratedTest(iStep, dictResult) {
@@ -6540,7 +6501,6 @@ const PipeleyenApp = (function () {
 
     function fsSanitizeErrorForUser(sRawError) {
         if (!sRawError) return "An error occurred.";
-        console.error("[vaibify]", sRawError);
         if (sRawError.indexOf("no space left on device") >= 0) {
             return "Docker disk is full. Run 'docker image " +
                 "prune -f' to free space.";

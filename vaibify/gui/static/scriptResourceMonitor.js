@@ -58,50 +58,54 @@ var VaibifyMonitor = (function () {
 
     /* --- Panel Creation --- */
 
-    function fnCreatePanel() {
-        elMonitorPanel = document.createElement("div");
-        elMonitorPanel.id = "monitorPanel";
-        elMonitorPanel.style.cssText =
+    function fsMonitorPanelStyle() {
+        return (
             "position: fixed; bottom: 16px; right: 16px; " +
             "width: 260px; background: #282840; " +
             "border: 1px solid #3a3a58; border-radius: 6px; " +
             "padding: 14px; z-index: 1500; " +
-            "box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);";
+            "box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);"
+        );
+    }
 
-        elMonitorPanel.innerHTML =
+    function fsMonitorHeaderHtml() {
+        return (
             '<div style="display: flex; justify-content: space-between; ' +
             'align-items: center; margin-bottom: 12px;">' +
             '<span style="font-weight: 600; color: #13aed5; ' +
             'font-size: 13px; letter-spacing: 0.5px;">MONITOR</span>' +
             '<button id="btnMonitorClose" style="border: none; ' +
             'background: transparent; color: #8080a0; cursor: pointer; ' +
-            'font-size: 16px;">&times;</button>' +
-            '</div>' +
+            'font-size: 16px;">&times;</button></div>'
+        );
+    }
+
+    function fsMonitorMetricHtml(sLabel, sTextId, sCanvasId) {
+        return (
             '<div style="margin-bottom: 10px;">' +
             '<div style="font-size: 11px; color: #a0a0b8; ' +
             'text-transform: uppercase; letter-spacing: 0.5px; ' +
-            'margin-bottom: 4px;">CPU</div>' +
-            '<span id="monitorCpuText" style="font-size: 18px; ' +
+            'margin-bottom: 4px;">' + sLabel + '</div>' +
+            '<span id="' + sTextId + '" style="font-size: 18px; ' +
             'font-weight: 300; color: #e0e0e8;">--</span>' +
-            '<canvas id="canvasCpuSparkline" width="' +
+            '<canvas id="' + sCanvasId + '" width="' +
             I_SPARKLINE_WIDTH + '" height="' + I_SPARKLINE_HEIGHT +
             '" style="display: block; width: 100%; ' +
-            'margin-top: 4px;"></canvas>' +
-            '</div>' +
-            '<div>' +
-            '<div style="font-size: 11px; color: #a0a0b8; ' +
-            'text-transform: uppercase; letter-spacing: 0.5px; ' +
-            'margin-bottom: 4px;">Memory</div>' +
-            '<span id="monitorMemoryText" style="font-size: 18px; ' +
-            'font-weight: 300; color: #e0e0e8;">--</span>' +
-            '<canvas id="canvasMemorySparkline" width="' +
-            I_SPARKLINE_WIDTH + '" height="' + I_SPARKLINE_HEIGHT +
-            '" style="display: block; width: 100%; ' +
-            'margin-top: 4px;"></canvas>' +
-            '</div>';
+            'margin-top: 4px;"></canvas></div>'
+        );
+    }
 
+    function fnCreatePanel() {
+        elMonitorPanel = document.createElement("div");
+        elMonitorPanel.id = "monitorPanel";
+        elMonitorPanel.style.cssText = fsMonitorPanelStyle();
+        elMonitorPanel.innerHTML =
+            fsMonitorHeaderHtml() +
+            fsMonitorMetricHtml(
+                "CPU", "monitorCpuText", "canvasCpuSparkline") +
+            fsMonitorMetricHtml(
+                "Memory", "monitorMemoryText", "canvasMemorySparkline");
         document.body.appendChild(elMonitorPanel);
-
         document.getElementById("btnMonitorClose").addEventListener(
             "click", fnHidePanel
         );
@@ -174,69 +178,63 @@ var VaibifyMonitor = (function () {
 
     /* --- Canvas Sparklines --- */
 
+    function fnDrawSparklineFill(
+        ctx, listData, dMaxValue, dStartX, dStepX,
+        iPadding, iDrawHeight, sColor
+    ) {
+        var iPointCount = listData.length;
+        ctx.beginPath();
+        ctx.moveTo(dStartX, iPadding + iDrawHeight);
+        for (var i = 0; i < iPointCount; i++) {
+            var dX = dStartX + i * dStepX;
+            var dNormalized = Math.min(listData[i] / dMaxValue, 1);
+            ctx.lineTo(dX, iPadding + iDrawHeight * (1 - dNormalized));
+        }
+        var dLastX = dStartX + (iPointCount - 1) * dStepX;
+        ctx.lineTo(dLastX, iPadding + iDrawHeight);
+        ctx.closePath();
+        ctx.fillStyle = fnConvertToRgba(sColor, 0.15);
+        ctx.fill();
+    }
+
+    function fnDrawSparklineStroke(
+        ctx, listData, dMaxValue, dStartX, dStepX,
+        iPadding, iDrawHeight, sColor
+    ) {
+        ctx.beginPath();
+        for (var j = 0; j < listData.length; j++) {
+            var dX = dStartX + j * dStepX;
+            var dNormalized = Math.min(listData[j] / dMaxValue, 1);
+            var dY = iPadding + iDrawHeight * (1 - dNormalized);
+            if (j === 0) { ctx.moveTo(dX, dY); }
+            else { ctx.lineTo(dX, dY); }
+        }
+        ctx.strokeStyle = sColor;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+
     function fnDrawSparkline(sCanvasId, listData, sColor, dMaxValue) {
         var elCanvas = document.getElementById(sCanvasId);
         if (!elCanvas) return;
-
         if (!dictCanvasContextCache[sCanvasId]) {
             dictCanvasContextCache[sCanvasId] = elCanvas.getContext("2d");
         }
         var ctx = dictCanvasContextCache[sCanvasId];
-        var iWidth = elCanvas.width;
-        var iHeight = elCanvas.height;
         var iPadding = 2;
-
-        ctx.clearRect(0, 0, iWidth, iHeight);
-
+        ctx.clearRect(0, 0, elCanvas.width, elCanvas.height);
         if (listData.length < 2) return;
-
-        var iDrawWidth = iWidth - 2 * iPadding;
-        var iDrawHeight = iHeight - 2 * iPadding;
-        var iPointCount = listData.length;
+        var iDrawWidth = elCanvas.width - 2 * iPadding;
+        var iDrawHeight = elCanvas.height - 2 * iPadding;
         var dStepX = iDrawWidth / (I_MAX_DATA_POINTS - 1);
         var dStartX = iPadding +
-            (I_MAX_DATA_POINTS - iPointCount) * dStepX;
-
-        /* Draw filled area */
-        ctx.beginPath();
-        ctx.moveTo(dStartX, iPadding + iDrawHeight);
-
-        for (var i = 0; i < iPointCount; i++) {
-            var dX = dStartX + i * dStepX;
-            var dNormalized = Math.min(listData[i] / dMaxValue, 1);
-            var dY = iPadding + iDrawHeight * (1 - dNormalized);
-            if (i === 0) {
-                ctx.lineTo(dX, dY);
-            } else {
-                ctx.lineTo(dX, dY);
-            }
-        }
-
-        var dLastX = dStartX + (iPointCount - 1) * dStepX;
-        ctx.lineTo(dLastX, iPadding + iDrawHeight);
-        ctx.closePath();
-
-        ctx.fillStyle = fnConvertToRgba(sColor, 0.15);
-        ctx.fill();
-
-        /* Draw line */
-        ctx.beginPath();
-        for (var j = 0; j < iPointCount; j++) {
-            var dLineX = dStartX + j * dStepX;
-            var dLineNormalized = Math.min(
-                listData[j] / dMaxValue, 1
-            );
-            var dLineY = iPadding + iDrawHeight * (1 - dLineNormalized);
-            if (j === 0) {
-                ctx.moveTo(dLineX, dLineY);
-            } else {
-                ctx.lineTo(dLineX, dLineY);
-            }
-        }
-
-        ctx.strokeStyle = sColor;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+            (I_MAX_DATA_POINTS - listData.length) * dStepX;
+        fnDrawSparklineFill(
+            ctx, listData, dMaxValue, dStartX, dStepX,
+            iPadding, iDrawHeight, sColor);
+        fnDrawSparklineStroke(
+            ctx, listData, dMaxValue, dStartX, dStepX,
+            iPadding, iDrawHeight, sColor);
     }
 
     function fnConvertToRgba(sHexColor, dAlpha) {
