@@ -2132,11 +2132,15 @@ const PipeleyenApp = (function () {
         var sLastRun = dictStats.sLastRun || "";
         var sWallClock = dictStats.fWallClock !== undefined ?
             fsFormatDuration(dictStats.fWallClock) : "";
+        var sCpuTime = dictStats.fCpuTime !== undefined ?
+            fsFormatDuration(dictStats.fCpuTime) : "";
         return '<div class="run-stats">' +
             '<span class="run-stat">Last run: ' +
             (sLastRun || "—") + '</span>' +
             '<span class="run-stat">Wall-clock: ' +
-            (sWallClock || "—") + '</span></div>';
+            (sWallClock || "—") + '</span>' +
+            '<span class="run-stat">CPU time: ' +
+            (sCpuTime || "—") + '</span></div>';
     }
 
     function fsFormatDuration(fSeconds) {

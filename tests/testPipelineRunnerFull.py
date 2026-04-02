@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from vaibify.gui.pipelineRunner import (
     fiRunStepCommands,
     _fiRunSetupIfNeeded,
-    _fiRunCommandList,
-    _fiRunSingleCommand,
+    _ftRunCommandList,
+    _ftRunSingleCommand,
     fnRunAllSteps,
     fnRunFromStep,
     fnRunSelectedSteps,
@@ -59,14 +59,14 @@ def _fMockCallback():
 
 
 # -----------------------------------------------------------------------
-# _fiRunSingleCommand
+# _ftRunSingleCommand
 # -----------------------------------------------------------------------
 
 
-def test_fiRunSingleCommand_success():
+def test_ftRunSingleCommand_success():
     mockDocker = _fMockDocker(0, "line1\nline2")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(_fiRunSingleCommand(
+    iResult, fCpu = _fnRunAsync(_ftRunSingleCommand(
         mockDocker, "cid", "cmd", "cmd", "/work", fnCallback,
     ))
     assert iResult == 0
@@ -74,10 +74,10 @@ def test_fiRunSingleCommand_success():
     assert "output" in listTypes
 
 
-def test_fiRunSingleCommand_failure():
+def test_ftRunSingleCommand_failure():
     mockDocker = _fMockDocker(1, "error msg")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(_fiRunSingleCommand(
+    iResult, fCpu = _fnRunAsync(_ftRunSingleCommand(
         mockDocker, "cid", "badcmd", "badcmd",
         "/work", fnCallback,
     ))
@@ -87,36 +87,36 @@ def test_fiRunSingleCommand_failure():
 
 
 # -----------------------------------------------------------------------
-# _fiRunCommandList
+# _ftRunCommandList
 # -----------------------------------------------------------------------
 
 
-def test_fiRunCommandList_empty():
+def test_ftRunCommandList_empty():
     mockDocker = _fMockDocker()
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(_fiRunCommandList(
+    iResult, fCpu = _fnRunAsync(_ftRunCommandList(
         mockDocker, "cid", [], "/work", {}, fnCallback,
     ))
     assert iResult == 0
 
 
-def test_fiRunCommandList_stops_on_failure():
+def test_ftRunCommandList_stops_on_failure():
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.side_effect = [
         (1, "fail"),
     ]
     fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(_fiRunCommandList(
+    iResult, fCpu = _fnRunAsync(_ftRunCommandList(
         mockDocker, "cid", ["cmd1", "cmd2"],
         "/work", {}, fnCallback,
     ))
     assert iResult == 1
 
 
-def test_fiRunCommandList_runs_all():
+def test_ftRunCommandList_runs_all():
     mockDocker = _fMockDocker(0, "ok")
     fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(_fiRunCommandList(
+    iResult, fCpu = _fnRunAsync(_ftRunCommandList(
         mockDocker, "cid", ["c1", "c2"],
         "/work", {}, fnCallback,
     ))
@@ -132,7 +132,7 @@ def test_fiRunSetupIfNeeded_plot_only():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {"bPlotOnly": True}
-    iResult = _fnRunAsync(_fiRunSetupIfNeeded(
+    iResult, fCpu = _fnRunAsync(_fiRunSetupIfNeeded(
         mockDocker, "cid", dictStep, "/work", {}, fnCallback,
     ))
     assert iResult == 0
@@ -142,7 +142,7 @@ def test_fiRunSetupIfNeeded_runs_data():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()
     dictStep = {"bPlotOnly": False, "saDataCommands": ["cmd1"]}
-    iResult = _fnRunAsync(_fiRunSetupIfNeeded(
+    iResult, fCpu = _fnRunAsync(_fiRunSetupIfNeeded(
         mockDocker, "cid", dictStep, "/work", {}, fnCallback,
     ))
     assert iResult == 0
@@ -349,7 +349,7 @@ def test_fiRunStepCommands_plot_only():
         "saPlotCommands": ["python plot.py"],
         "saPlotFiles": [],
     }
-    iResult = _fnRunAsync(fiRunStepCommands(
+    iResult, fCpu = _fnRunAsync(fiRunStepCommands(
         mockDocker, "cid", dictStep, "/work",
         {"sPlotDirectory": "Plot"}, fnCallback,
     ))

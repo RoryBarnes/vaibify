@@ -382,8 +382,8 @@ async def _fiRunSetupIfNeeded(
 ):
     """Run data analysis commands unless bPlotOnly is True."""
     if dictStep.get("bPlotOnly", False):
-        return 0
-    return await _fiRunCommandList(
+        return (0, 0.0)
+    return await _ftRunCommandList(
         connectionDocker, sContainerId,
         dictStep.get("saDataCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
@@ -404,7 +404,7 @@ async def _fiRunTestCommands(
     )
     listTestLog = []
     fnTestLog = ffBuildLoggingCallback(fnStatusCallback, listTestLog)
-    iExitCode = await _fiRunCommandList(
+    iExitCode, _ = await _ftRunCommandList(
         connectionDocker, sContainerId, listTestCommands,
         sStepDirectory, dictVariables, fnTestLog,
     )
@@ -450,56 +450,62 @@ async def fiRunStepCommands(
         sContainerId,
         f"mkdir -p {fsShellQuote(sPlotDirectory)}"
     )
-    iExitCode = await _fiRunSetupIfNeeded(
+    iExitCode, fCpuTime = await _fiRunSetupIfNeeded(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,
     )
     if iExitCode != 0:
-        return iExitCode
+        return (iExitCode, fCpuTime)
     await _fiRunTestCommands(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,
         iStepNumber,
     )
-    return await _fiRunCommandList(
+    iPlotExit, fPlotCpu = await _ftRunCommandList(
         connectionDocker, sContainerId,
         dictStep.get("saPlotCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
     )
+    return (iPlotExit, fCpuTime + fPlotCpu)
 
 
-async def _fiRunCommandList(
+async def _ftRunCommandList(
     connectionDocker, sContainerId, listCommands,
     sWorkdir, dictVariables, fnStatusCallback,
 ):
-    """Execute a list of commands, returning first non-zero exit code."""
+    """Execute commands, return (iExitCode, fTotalCpuSeconds)."""
     from . import workflowManager
-
+    fTotalCpu = 0.0
     for sCommand in listCommands:
         sResolved = workflowManager.fsResolveCommand(
             sCommand, dictVariables
         )
-        iExitCode = await _fiRunSingleCommand(
+        iExitCode, fCpu = await _ftRunSingleCommand(
             connectionDocker, sContainerId,
             sCommand, sResolved, sWorkdir, fnStatusCallback,
         )
+        fTotalCpu += fCpu
         if iExitCode != 0:
-            return iExitCode
-    return 0
+            return (iExitCode, fTotalCpu)
+    return (0, fTotalCpu)
 
 
-async def _fiRunSingleCommand(
+async def _ftRunSingleCommand(
     connectionDocker, sContainerId,
     sOriginal, sResolved, sWorkdir, fnStatusCallback,
 ):
-    """Execute one command and stream its output lines."""
+    """Execute one command, return (iExitCode, fCpuSeconds)."""
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
     )
+    sTimedCmd = _fsWrapWithTime(sResolved)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sResolved, sWorkdir=sWorkdir
+        sContainerId, sTimedCmd, sWorkdir=sWorkdir
     )
+    fCpuSeconds = _fParseCpuTime(sOutput)
     for sLine in sOutput.splitlines():
+        if sLine.startswith("__VAIBIFY_CPU__ "):
+            continue
         await fnStatusCallback({"sType": "output", "sLine": sLine})
     if iExitCode != 0:
         await fnStatusCallback({
@@ -508,7 +514,29 @@ async def _fiRunSingleCommand(
             "sDirectory": sWorkdir,
             "iExitCode": iExitCode,
         })
-    return iExitCode
+    return (iExitCode, fCpuSeconds)
+
+
+def _fsWrapWithTime(sCommand):
+    """Wrap a command with /usr/bin/time to capture CPU usage."""
+    return (
+        f"{{ /usr/bin/time -f '__VAIBIFY_CPU__ %U %S' "
+        f"{sCommand} ; }} 2>&1"
+    )
+
+
+def _fParseCpuTime(sOutput):
+    """Extract user+system CPU seconds from time output."""
+    for sLine in sOutput.splitlines():
+        if sLine.startswith("__VAIBIFY_CPU__ "):
+            listParts = sLine.split()
+            try:
+                fUser = float(listParts[1])
+                fSystem = float(listParts[2])
+                return fUser + fSystem
+            except (IndexError, ValueError):
+                pass
+    return 0.0
 
 
 async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
@@ -769,12 +797,15 @@ async def _fnRunOneStep(
     )
 
 
-def _fnRecordRunStats(dictStep, sStartTimestamp, fStartTime):
+def _fnRecordRunStats(
+    dictStep, sStartTimestamp, fStartTime, fCpuTime=0.0,
+):
     """Store timing information in the step's run stats."""
     import time
     dictStep["dictRunStats"] = {
         "sLastRun": sStartTimestamp,
         "fWallClock": round(time.time() - fStartTime, 1),
+        "fCpuTime": round(fCpuTime, 1),
     }
 
 
@@ -792,12 +823,13 @@ async def _fiExecuteAndRecord(
     setFilesBefore = await _fsetSnapshotDirectory(
         connectionDocker, sContainerId, sStepDir
     )
-    iExitCode = await fiRunStepCommands(
+    iExitCode, fCpuTime = await fiRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber,
     )
-    _fnRecordRunStats(dictStep, sStartTimestamp, fStartTime)
+    _fnRecordRunStats(
+        dictStep, sStartTimestamp, fStartTime, fCpuTime)
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],

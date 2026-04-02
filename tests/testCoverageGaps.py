@@ -1094,7 +1094,7 @@ def test_fnRunOneStep_interactive_returns_zero():
 @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes",
        new_callable=AsyncMock)
 @patch("vaibify.gui.pipelineRunner.fiRunStepCommands",
-       new_callable=AsyncMock, return_value=0)
+       new_callable=AsyncMock, return_value=(0, 1.5))
 @patch("vaibify.gui.pipelineRunner._fsetSnapshotDirectory",
        new_callable=AsyncMock, return_value=set())
 def test_fiExecuteAndRecord_records_timing(
