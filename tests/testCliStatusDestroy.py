@@ -164,8 +164,9 @@ def test_status_no_docker(mockAvail):
 @patch("vaibify.cli.commandStatus.fconfigResolveProject")
 @patch("vaibify.cli.commandStatus.fbDockerAvailable",
        return_value=True)
+@patch("docker.from_env")
 def test_status_full_run(
-    mockAvail, mockLoad, mockDaemon,
+    mockDockerEnv, mockAvail, mockLoad, mockDaemon,
     mockImage, mockVolume, mockContainer,
 ):
     mockLoad.return_value = SimpleNamespace(
