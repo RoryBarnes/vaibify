@@ -88,10 +88,11 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa \
         python${PYTHON_VERSION}-distutils 2>/dev/null || true) \
     && rm -rf /var/lib/apt/lists/*
 
-# Make the selected Python version the default
+# Make the selected Python version the default and install pip
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION}
+    && python${PYTHON_VERSION} -m ensurepip --upgrade \
+    && python${PYTHON_VERSION} -m pip install --upgrade pip
 
 # Conditional conda/mamba install for non-pip package managers
 RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
