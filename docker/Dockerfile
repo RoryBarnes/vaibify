@@ -117,8 +117,9 @@ RUN if [ -s /tmp/requirements.txt ]; then \
     fi \
     && rm -f /tmp/requirements.txt /tmp/pip-flags.txt
 
-# Create non-root user
-RUN useradd -m -s /bin/bash -u 1000 ${CONTAINER_USER} \
+# Create non-root user (skip if already exists)
+RUN id -u ${CONTAINER_USER} >/dev/null 2>&1 \
+    || useradd -m -s /bin/bash -u 1000 ${CONTAINER_USER} \
     && echo "${CONTAINER_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${CONTAINER_USER}
 
 # Copy entrypoint and configuration files
