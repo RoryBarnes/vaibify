@@ -30,10 +30,30 @@ def _fmoduleGetDocker():
         )
 
 
+def _fnEnsureDockerHost():
+    """Set DOCKER_HOST from active Docker context if not already set."""
+    import os
+    import subprocess
+    if os.environ.get("DOCKER_HOST"):
+        return
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "context", "inspect", "--format",
+             "{{.Endpoints.docker.Host}}"],
+            capture_output=True, text=True,
+        )
+        sHost = resultProcess.stdout.strip()
+        if sHost:
+            os.environ["DOCKER_HOST"] = sHost
+    except Exception:
+        pass
+
+
 class DockerConnection:
     """Wraps docker-py client for container operations."""
 
     def __init__(self):
+        _fnEnsureDockerHost()
         self._clientDocker = _fmoduleGetDocker().from_env()
         self._dictContainers = {}
 
