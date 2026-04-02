@@ -52,6 +52,7 @@ var VaibifyMonitor = (function () {
             elMonitorPanel.style.display = "none";
         }
         bVisible = false;
+        dictCanvasContextCache = {};
         fnStopMonitoring();
     }
 

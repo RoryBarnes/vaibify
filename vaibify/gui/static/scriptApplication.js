@@ -463,15 +463,16 @@ const PipeleyenApp = (function () {
             sHtml = '<span class="breadcrumb-segment" data-path="/">/</span>';
         }
         elBar.innerHTML = sHtml;
-        elBar.querySelectorAll(
-            ".breadcrumb-segment, .breadcrumb-sep"
-        ).forEach(function (el) {
-            if (el.dataset.path) {
-                el.addEventListener("click", function () {
-                    fnBrowseDirectory(el.dataset.path);
-                });
-            }
-        });
+        if (!elBar._bDelegated) {
+            elBar._bDelegated = true;
+            elBar.addEventListener("click", function (event) {
+                var elSegment = event.target.closest(
+                    "[data-path]");
+                if (elSegment) {
+                    fnBrowseDirectory(elSegment.dataset.path);
+                }
+            });
+        }
     }
 
     function fnRenderDirectoryEntries(listEntries) {
@@ -833,6 +834,16 @@ const PipeleyenApp = (function () {
         if (wsPipeline) {
             wsPipeline.close();
             wsPipeline = null;
+        }
+        fnStopPipelinePolling();
+        fnStopFileChangePolling();
+        if (iFileCheckTimer) {
+            clearTimeout(iFileCheckTimer);
+            iFileCheckTimer = null;
+        }
+        if (_iActiveSentinelMonitor) {
+            clearInterval(_iActiveSentinelMonitor);
+            _iActiveSentinelMonitor = null;
         }
         PipeleyenTerminal.fnCloseAll();
         fnShowContainerLanding();
@@ -5331,20 +5342,27 @@ const PipeleyenApp = (function () {
         });
     }
 
+    var _iActiveSentinelMonitor = null;
+
     function _fnMonitorTerminalForSentinel(sSentinel) {
+        if (_iActiveSentinelMonitor) {
+            clearInterval(_iActiveSentinelMonitor);
+        }
         var I_MAX_SENTINEL_CHECKS = 30;
         var iCheckCount = 0;
-        var iCheckInterval = setInterval(function () {
+        _iActiveSentinelMonitor = setInterval(function () {
             iCheckCount++;
             if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
-                clearInterval(iCheckInterval);
+                clearInterval(_iActiveSentinelMonitor);
+                _iActiveSentinelMonitor = null;
                 _fnSendInteractiveComplete(1);
                 return;
             }
             var sText = _fsReadAllTerminalText();
             var iMatch = sText.indexOf(sSentinel + "=");
             if (iMatch < 0) return;
-            clearInterval(iCheckInterval);
+            clearInterval(_iActiveSentinelMonitor);
+            _iActiveSentinelMonitor = null;
             var sAfter = sText.substring(
                 iMatch + sSentinel.length + 1
             );
@@ -5717,7 +5735,9 @@ const PipeleyenApp = (function () {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(dictAction));
         } else {
-            _listPendingPipelineActions.push(dictAction);
+            if (_listPendingPipelineActions.length < 100) {
+                _listPendingPipelineActions.push(dictAction);
+            }
         }
     }
 
