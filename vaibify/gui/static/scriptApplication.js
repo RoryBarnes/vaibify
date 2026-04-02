@@ -841,6 +841,10 @@ const PipeleyenApp = (function () {
             clearTimeout(iFileCheckTimer);
             iFileCheckTimer = null;
         }
+        if (_abortControllerFileCheck) {
+            _abortControllerFileCheck.abort();
+            _abortControllerFileCheck = null;
+        }
         if (_iActiveSentinelMonitor) {
             clearInterval(_iActiveSentinelMonitor);
             _iActiveSentinelMonitor = null;
@@ -1157,6 +1161,7 @@ const PipeleyenApp = (function () {
     var iFileCheckTimer = null;
     var bFileCheckInProgress = false;
     var iInflightRequests = 0;
+    var _abortControllerFileCheck = null;
 
     function fnSetFileExistenceCache(sKey, bValue) {
         if (Object.keys(dictFileExistenceCache).length >=
@@ -1272,6 +1277,11 @@ const PipeleyenApp = (function () {
 
     function fnCheckOutputFileExistence() {
         if (!sContainerId) return;
+        if (_abortControllerFileCheck) {
+            _abortControllerFileCheck.abort();
+        }
+        _abortControllerFileCheck = new AbortController();
+        var signalFileCheck = _abortControllerFileCheck.signal;
         var dictDataCounts = {};
         var dictDataPresent = {};
         document.querySelectorAll(
@@ -1312,7 +1322,9 @@ const PipeleyenApp = (function () {
                 sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
             }
             iInflightRequests++;
-            fetch(sUrl, { method: "HEAD" }).then(function (r) {
+            fetch(sUrl, {
+                method: "HEAD", signal: signalFileCheck,
+            }).then(function (r) {
                 if (r.ok) {
                     fnSetFileExistenceCache(sCacheKey, true);
                     fnUpdateFileStatus(el, true);
@@ -1321,15 +1333,12 @@ const PipeleyenApp = (function () {
                         dictDataCounts, dictDataPresent
                     );
                 } else {
-                    console.warn("[vaibify] HEAD " +
-                        r.status + " " + sUrl);
                     fnSetFileExistenceCache(sCacheKey, false);
                     fnUpdateFileStatus(el, false);
                 }
                 fnFileCheckComplete();
             }).catch(function (err) {
-                console.warn("[vaibify] HEAD error: " +
-                    err.message + " " + sUrl);
+                if (err.name === "AbortError") return;
                 fnSetFileExistenceCache(sCacheKey, false);
                 fnUpdateFileStatus(el, false);
                 fnFileCheckComplete();

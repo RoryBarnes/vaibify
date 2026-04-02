@@ -429,12 +429,7 @@ const PipeleyenTerminal = (function () {
         while (listPanes.length > 0) {
             var dictPane = listPanes[0];
             while (dictPane.listTabs.length > 0) {
-                var dictTab = dictPane.listTabs[0];
-                if (dictTab.websocket) dictTab.websocket.close();
-                if (dictTab.terminal) dictTab.terminal.dispose();
-                if (dictTab.resizeObserver) {
-                    dictTab.resizeObserver.disconnect();
-                }
+                fnDisposeTab(dictPane.listTabs[0]);
                 dictPane.listTabs.splice(0, 1);
             }
             dictPane.elPane.remove();

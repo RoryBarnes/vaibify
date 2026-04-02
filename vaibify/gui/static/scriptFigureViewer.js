@@ -389,6 +389,16 @@ const PipeleyenFigureViewer = (function () {
         }
     }
 
+    function fnReleaseAllResources() {
+        fnDestroyActivePdf();
+        listHistory = [];
+        iHistoryCounter = 0;
+        dictViewerA.listNavHistory = [];
+        dictViewerA.iNavIndex = -1;
+        dictViewerB.listNavHistory = [];
+        dictViewerB.iNavIndex = -1;
+    }
+
     function fnRenderPdfDocument(sUrl, elViewport) {
         fnDestroyActivePdf();
         if (typeof pdfjsLib === "undefined") {
@@ -942,6 +952,6 @@ const PipeleyenFigureViewer = (function () {
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,
-        fnReleaseResources: fnDestroyActivePdf,
+        fnReleaseResources: fnReleaseAllResources,
     };
 })();
