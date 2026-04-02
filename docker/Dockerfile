@@ -89,12 +89,13 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa \
     && rm -rf /var/lib/apt/lists/*
 
 # Make the selected Python version the default and install pip
-# Remove PEP 668 externally-managed marker so pip works in container
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
-    && rm -f /usr/lib/python${PYTHON_VERSION}/EXTERNALLY-MANAGED \
-    && python${PYTHON_VERSION} -m ensurepip --upgrade \
-    && python${PYTHON_VERSION} -m pip install --upgrade pip
+    && apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
+    && pip install --upgrade pip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Conditional conda/mamba install for non-pip package managers
 RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
