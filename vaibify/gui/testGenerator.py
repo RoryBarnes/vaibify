@@ -775,6 +775,8 @@ def _fLoadNumpyValue(sFullPath, dictAccess):
 
 def _fExtractArrayValue(daData, dictAccess):
     """Extract a scalar from an array by aggregate or index."""
+    if daData.ndim == 0:
+        return float(daData)
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate == "mean":
         return float(daData.mean())
@@ -1777,7 +1779,12 @@ _STEP_DIRECTORY = str(pathlib.Path(__file__).parent.parent)
 
 
 def _flistLoadColumns(sFullPath, sFormat):
-    """Load column names from a tabular file."""
+    """Load column names from a tabular or array file."""
+    if sFormat == "npz":
+        import numpy as np
+        return list(np.load(sFullPath, allow_pickle=False).files)
+    if sFormat in ("npy", "hdf5"):
+        return []
     if sFormat == "csv":
         import csv
         with open(sFullPath, newline="", encoding="utf-8") as fh:
