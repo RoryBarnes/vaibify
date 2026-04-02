@@ -582,6 +582,106 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
         )
 
 
+class FileUploadRequest(BaseModel):
+    sFilename: str
+    sDestination: str = "/workspace"
+    sContentBase64: str
+
+
+class FilePullRequest(BaseModel):
+    sContainerPath: str
+    sHostDestination: str
+
+
+def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
+    """Register POST /api/files/{id}/upload for host-to-container transfer."""
+    import base64
+
+    @app.post("/api/files/{sContainerId}/upload")
+    async def fnUploadFile(
+        sContainerId: str, request: FileUploadRequest,
+    ):
+        import asyncio
+        dictCtx["require"]()
+        sDestPath = posixpath.join(
+            request.sDestination, request.sFilename)
+        fnValidatePathWithinRoot(sDestPath, sWorkspaceRoot)
+        try:
+            baContent = base64.b64decode(request.sContentBase64)
+            await asyncio.to_thread(
+                dictCtx["docker"].fnWriteFile,
+                sContainerId, sDestPath, baContent,
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=500, detail=str(error))
+        return {"bSuccess": True, "sPath": sDestPath}
+
+
+def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
+    """Register GET /api/files/{id}/download for container-to-host transfer."""
+
+    @app.get("/api/files/{sContainerId}/download/{sFilePath:path}")
+    async def fnDownloadFile(sContainerId: str, sFilePath: str):
+        import asyncio
+        dictCtx["require"]()
+        sAbsPath = fsResolveFigurePath(
+            dictCtx["workflowDir"](sContainerId), sFilePath
+        )
+        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        try:
+            baContent = await asyncio.to_thread(
+                dictCtx["docker"].fbaFetchFile,
+                sContainerId, sAbsPath,
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=500, detail=str(error))
+        sFilename = posixpath.basename(sAbsPath)
+        sMimeType = fsMimeTypeForFile(sAbsPath)
+        return Response(
+            content=baContent,
+            media_type=sMimeType,
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="{sFilename}"',
+            },
+        )
+
+
+def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
+    """Register POST /api/files/{id}/pull for container-to-host copy."""
+
+    @app.post("/api/files/{sContainerId}/pull")
+    async def fnPullFile(
+        sContainerId: str, request: FilePullRequest,
+    ):
+        import asyncio
+        dictCtx["require"]()
+        fnValidatePathWithinRoot(
+            request.sContainerPath, sWorkspaceRoot)
+        sHostDest = os.path.expanduser(request.sHostDestination)
+        try:
+            await asyncio.to_thread(
+                _fnDockerCopy, sContainerId,
+                request.sContainerPath, sHostDest,
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=500, detail=str(error))
+        return {"bSuccess": True, "sHostPath": sHostDest}
+
+
+def _fnDockerCopy(sContainerId, sContainerPath, sHostDest):
+    """Run docker cp to copy from container to host."""
+    import subprocess
+    sSource = f"{sContainerId}:{sContainerPath}"
+    subprocess.run(
+        ["docker", "cp", sSource, sHostDest],
+        check=True, capture_output=True,
+    )
+
+
 def _fnRegisterMonitor(app):
     """Register GET /api/monitor route."""
 
@@ -1954,6 +2054,9 @@ def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterWorkflowSearch(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)
+    _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot)
+    _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot)
+    _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot)
     _fnRegisterMonitor(app)
@@ -2352,6 +2455,8 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
         )
         if bNeedsToken:
             sToken = request.headers.get("x-session-token", "")
+            if not sToken:
+                sToken = request.query_params.get("sToken", "")
             sExpected = request.app.state.sSessionToken
             if sToken != sExpected:
                 return Response(

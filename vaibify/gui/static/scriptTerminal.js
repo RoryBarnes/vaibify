@@ -86,9 +86,9 @@ const PipeleyenTerminal = (function () {
         var dictPane = listPanes[iPaneId];
         if (!dictPane) return;
 
-        /* Close all tabs in this pane */
+        /* Close all tabs in this pane without confirmation */
         while (dictPane.listTabs.length > 0) {
-            fnCloseTabInPane(iPaneId, 0);
+            fnForceCloseTabInPane(iPaneId, 0);
         }
 
         /* Remove DOM elements */
@@ -188,10 +188,15 @@ const PipeleyenTerminal = (function () {
                 '<span class="close-tab">&times;</span>';
             var iCapturedPane = iPaneId;
             var iCapturedTab = iTabIndex;
-            elTab.addEventListener("click", function (event) {
-                if (event.target.classList.contains("close-tab")) {
+            elTab.querySelector(".close-tab").addEventListener(
+                "click", function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
                     fnCloseTabInPane(iCapturedPane, iCapturedTab);
-                } else {
+                }
+            );
+            elTab.addEventListener("click", function (event) {
+                if (!event.target.closest(".close-tab")) {
                     fnActivateTabInPane(iCapturedPane, iCapturedTab);
                 }
             });
@@ -337,15 +342,24 @@ const PipeleyenTerminal = (function () {
         if (!dictPane) return;
         if (iTabIndex < 0 || iTabIndex >= dictPane.listTabs.length) return;
 
-        var dictTab = dictPane.listTabs[iTabIndex];
+        PipeleyenApp.fnShowConfirmModal(
+            "Close Terminal",
+            "Are you sure you want to close this terminal tab?",
+            function () {
+                fnForceCloseTabInPane(iPaneId, iTabIndex);
+            }
+        );
+    }
+
+    function fnDisposeTab(dictTab) {
         if (dictTab.websocket) dictTab.websocket.close();
         if (dictTab.terminal) dictTab.terminal.dispose();
         if (dictTab.resizeObserver) dictTab.resizeObserver.disconnect();
+    }
 
-        dictPane.listTabs.splice(iTabIndex, 1);
-
+    function fnReconcileActiveTab(iPaneId, iClosedIndex) {
+        var dictPane = listPanes[iPaneId];
         if (dictPane.listTabs.length === 0) {
-            /* Remove pane if empty (unless it's the last pane) */
             if (listPanes.length > 1) {
                 fnRemovePane(iPaneId);
                 return;
@@ -358,11 +372,21 @@ const PipeleyenTerminal = (function () {
         } else if (dictPane.iActiveTabIndex >= dictPane.listTabs.length) {
             dictPane.iActiveTabIndex = dictPane.listTabs.length - 1;
             fnActivateTabInPane(iPaneId, dictPane.iActiveTabIndex);
-        } else if (dictPane.iActiveTabIndex === iTabIndex) {
-            var iNewIndex = Math.min(iTabIndex, dictPane.listTabs.length - 1);
+        } else if (dictPane.iActiveTabIndex === iClosedIndex) {
+            var iNewIndex = Math.min(
+                iClosedIndex, dictPane.listTabs.length - 1);
             dictPane.iActiveTabIndex = -1;
             fnActivateTabInPane(iPaneId, iNewIndex);
         }
+    }
+
+    function fnForceCloseTabInPane(iPaneId, iTabIndex) {
+        var dictPane = listPanes[iPaneId];
+        if (!dictPane) return;
+        if (iTabIndex < 0 || iTabIndex >= dictPane.listTabs.length) return;
+        fnDisposeTab(dictPane.listTabs[iTabIndex]);
+        dictPane.listTabs.splice(iTabIndex, 1);
+        fnReconcileActiveTab(iPaneId, iTabIndex);
         fnRenderPaneTabs(iPaneId);
     }
 

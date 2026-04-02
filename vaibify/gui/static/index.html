@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vaibify</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/styleMain.css">
+    <link rel="stylesheet" href="/static/styleMain.css?v=20260401">
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
 </head>
@@ -247,7 +247,6 @@
         <!-- Steps sub-panel -->
         <div id="panelSteps" class="active">
             <div class="panel-header">
-                <span id="vaibifiedBanner" style="display: none;">vaibified!</span>
                 <button class="btn-icon" id="btnGlobalSettings"
                         title="Workflow settings">&#9881;</button>
                 <button class="btn-icon" id="btnNewStep"
@@ -433,6 +432,8 @@
 </div>
 
 <div class="context-menu" id="fileContextMenu">
+    <div class="context-menu-item" data-action="pullToHost">
+        Pull to host...</div>
     <div class="context-menu-item" data-action="addToGit">
         Add to Git repository</div>
     <div class="context-menu-item" data-action="archiveToZenodo">
@@ -527,11 +528,11 @@
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="/static/scriptUtilities.js?v=20260328"></script>
-<script src="/static/scriptApplication.js?v=20260328"></script>
-<script src="/static/scriptFigureViewer.js?v=20260328"></script>
-<script src="/static/scriptTerminal.js?v=20260328"></script>
-<script src="/static/scriptStepEditor.js?v=20260328"></script>
-<script src="/static/scriptResourceMonitor.js?v=20260328"></script>
+<script src="/static/scriptUtilities.js?v=20260401"></script>
+<script src="/static/scriptApplication.js?v=20260401"></script>
+<script src="/static/scriptFigureViewer.js?v=20260401"></script>
+<script src="/static/scriptTerminal.js?v=20260401"></script>
+<script src="/static/scriptStepEditor.js?v=20260401"></script>
+<script src="/static/scriptResourceMonitor.js?v=20260401"></script>
 </body>
 </html>

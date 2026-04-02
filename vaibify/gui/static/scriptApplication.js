@@ -696,7 +696,6 @@ const PipeleyenApp = (function () {
             document.title = (_sSelectedContainerName || "Vaibify") +
                 (sWorkflowName ? ": " + sWorkflowName : "");
             fnShowMainLayout();
-            fnLoadSyncStatus();
             fnRenderStepList();
             fnCheckVaibifiedOnLoad();
             fnPollAllStepFiles();
@@ -824,12 +823,7 @@ const PipeleyenApp = (function () {
         setExpandedDeps.clear();
         setExpandedUnitTests.clear();
         dictStepStatus = {};
-        _bVaibifiedShown = false;
-        var elBanner = document.getElementById("vaibifiedBanner");
-        if (elBanner) {
-            elBanner.style.display = "none";
-            elBanner.classList.remove("revealed");
-        }
+        document.body.classList.remove("all-verified");
         if (wsPipeline) {
             wsPipeline.close();
             wsPipeline = null;
@@ -1119,13 +1113,25 @@ const PipeleyenApp = (function () {
         }
         var dictVars = fdictBuildClientVariables();
         var sHtml = "";
+        var bPreviousInteractive = null;
         dictWorkflow.listSteps.forEach(function (step, iIndex) {
+            var bInteractive = step.bInteractive === true;
+            if (bInteractive !== bPreviousInteractive) {
+                sHtml += fsRenderStepTypeBanner(bInteractive);
+                bPreviousInteractive = bInteractive;
+            }
             sHtml += fsRenderStepItem(step, iIndex, dictVars);
         });
         elList.innerHTML = sHtml;
         fnApplyTimestampVisibility();
         fnBindStepEvents();
         fnScheduleFileExistenceCheck();
+    }
+
+    function fsRenderStepTypeBanner(bInteractive) {
+        var sLabel = bInteractive ?
+            "Interactive Steps" : "Automatic Steps";
+        return '<div class="step-type-banner">' + sLabel + '</div>';
     }
 
     var dictFileExistenceCache = {};
@@ -1556,6 +1562,11 @@ const PipeleyenApp = (function () {
                 );
             });
         }
+        if ((step.saDataCommands || []).length > 0) {
+            sHtml += '<button class="btn btn-run-data" ' +
+                'data-step="' + iIndex +
+                '">Run Data Analysis</button>';
+        }
 
         /* Data Analysis Timing */
         if ((step.saDataCommands || []).length > 0) {
@@ -1587,6 +1598,11 @@ const PipeleyenApp = (function () {
                     iIndex, iCmdIdx
                 );
             });
+        }
+        if ((step.saPlotCommands || []).length > 0) {
+            sHtml += '<button class="btn btn-run-plots" ' +
+                'data-step="' + iIndex +
+                '">Run Plots</button>';
         }
 
         /* Plot Files */
@@ -2118,20 +2134,6 @@ const PipeleyenApp = (function () {
         return "fail";
     }
 
-    function fsRenderFileSyncBadges(sResolved) {
-        var dictSync = dictCachedSyncStatus[sResolved] || {};
-        var sGithubTitle = dictSync.bGithub ?
-            "Commit: " + (dictSync.sGithubCommit || "unknown") :
-            "Not synced";
-        return '<span class="sync-badges">' +
-            fsRenderOneBadge("overleaf", dictSync.bOverleaf) +
-            '<span class="sync-badge sync-badge-github ' +
-            (dictSync.bGithub ? "sync-active" : "sync-inactive") +
-            '" title="' + sGithubTitle + '"></span>' +
-            fsRenderOneBadge("zenodo", dictSync.bZenodo) +
-            '</span>';
-    }
-
     function fsRenderRunStats(step) {
         var dictStats = step.dictRunStats || {};
         var sLastRun = dictStats.sLastRun || "";
@@ -2254,11 +2256,13 @@ const PipeleyenApp = (function () {
                 fnEscapeHtml(sDisplayPath) + '</div>';
         }
 
+        sHtml += '<div class="detail-actions">';
         if (sType === "output") {
-            sHtml += fsRenderFileSyncBadges(sResolved);
+            sHtml += '<button class="action-download" ' +
+                'title="Download to host">' +
+                '&#8615;</button>';
         }
-        sHtml += '<div class="detail-actions">' +
-            '<button class="action-edit" title="Edit">&#9998;</button>' +
+        sHtml += '<button class="action-edit" title="Edit">&#9998;</button>' +
             '<button class="action-copy" title="Copy">&#9112;</button>' +
             '<button class="action-delete" title="Delete">&#10005;</button>' +
             '</div>';
@@ -2329,6 +2333,13 @@ const PipeleyenApp = (function () {
         var elDetailItem = elTarget.closest(".detail-item");
         var elStepItem = elTarget.closest(".step-item");
 
+        if (elTarget.closest(".action-download")) {
+            event.stopPropagation();
+            if (elDetailItem) {
+                fnPromptPullToHost(elDetailItem.dataset.resolved);
+            }
+            return;
+        }
         if (elTarget.closest(".action-edit")) {
             event.stopPropagation();
             if (elDetailItem) {
@@ -2523,6 +2534,18 @@ const PipeleyenApp = (function () {
             fnRunCategoryTests(
                 parseInt(elCatBtn.dataset.step),
                 elCatBtn.dataset.category);
+            return;
+        }
+        if (elTarget.closest(".btn-run-data")) {
+            fnRunDataCommands(
+                parseInt(elTarget.closest(
+                    ".btn-run-data").dataset.step));
+            return;
+        }
+        if (elTarget.closest(".btn-run-plots")) {
+            fnRunPlotCommands(
+                parseInt(elTarget.closest(
+                    ".btn-run-plots").dataset.step));
             return;
         }
         if (elTarget.closest(".btn-add-deps")) {
@@ -3270,8 +3293,6 @@ const PipeleyenApp = (function () {
         fnCheckVaibified();
     }
 
-    var _bVaibifiedShown = false;
-
     function fbIsWorkflowFullyVerified() {
         if (!dictWorkflow || !dictWorkflow.listSteps) return false;
         var listSteps = dictWorkflow.listSteps;
@@ -3286,104 +3307,18 @@ const PipeleyenApp = (function () {
     }
 
     function fnCheckVaibified() {
-        if (!fbIsWorkflowFullyVerified()) return;
-        var elBanner = document.getElementById("vaibifiedBanner");
-        if (!elBanner) return;
-        if (_bVaibifiedShown) return;
-        _bVaibifiedShown = true;
-        elBanner.style.display = "inline";
-        fnSpawnSparkles(elBanner);
-        fnPlayWhooshSound();
-        setTimeout(function () {
-            elBanner.classList.add("revealed");
-        }, 1500);
+        fnUpdateHighlightState();
     }
 
     function fnCheckVaibifiedOnLoad() {
-        if (!fbIsWorkflowFullyVerified()) return;
-        var elBanner = document.getElementById("vaibifiedBanner");
-        if (!elBanner) return;
-        _bVaibifiedShown = true;
-        elBanner.style.display = "inline";
-        elBanner.style.animation = "none";
-        elBanner.classList.add("revealed");
+        fnUpdateHighlightState();
     }
 
-    function fnSpawnSparkles(elAnchor) {
-        var elContainer = document.createElement("div");
-        elContainer.className = "sparkle-container";
-        elAnchor.parentElement.appendChild(elContainer);
-        var listColors = [
-            "#ffffff", "var(--color-pale-blue)", "#ffd700"
-        ];
-        var iCount = 18;
-        for (var i = 0; i < iCount; i++) {
-            var elSparkle = document.createElement("span");
-            elSparkle.className = "sparkle-particle";
-            var iSize = 3 + Math.random() * 2;
-            elSparkle.style.width = iSize + "px";
-            elSparkle.style.height = iSize + "px";
-            elSparkle.style.background =
-                listColors[i % listColors.length];
-            elSparkle.style.top =
-                (Math.random() * 100) + "%";
-            elSparkle.style.animationDelay =
-                (Math.random() * 0.8) + "s";
-            elSparkle.style.animationDuration =
-                (0.8 + Math.random() * 0.6) + "s";
-            elContainer.appendChild(elSparkle);
-        }
-        setTimeout(function () {
-            elContainer.remove();
-        }, 2500);
-    }
-
-    function fnPlayWhooshSound() {
-        try {
-            var audioContext = new (window.AudioContext ||
-                window.webkitAudioContext)();
-            var fDuration = 0.5;
-            var oscillator = audioContext.createOscillator();
-            var gainNode = audioContext.createGain();
-            oscillator.type = "sine";
-            oscillator.frequency.setValueAtTime(
-                800, audioContext.currentTime);
-            oscillator.frequency.exponentialRampToValueAtTime(
-                200, audioContext.currentTime + fDuration);
-            gainNode.gain.setValueAtTime(
-                0, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(
-                0.08, audioContext.currentTime + 0.05);
-            gainNode.gain.linearRampToValueAtTime(
-                0.06, audioContext.currentTime + fDuration * 0.7);
-            gainNode.gain.linearRampToValueAtTime(
-                0, audioContext.currentTime + fDuration);
-            var iNoiseLength = audioContext.sampleRate * fDuration;
-            var noiseBuffer = audioContext.createBuffer(
-                1, iNoiseLength, audioContext.sampleRate);
-            var daNoiseData = noiseBuffer.getChannelData(0);
-            for (var i = 0; i < iNoiseLength; i++) {
-                daNoiseData[i] = (Math.random() * 2 - 1) * 0.02;
-            }
-            var noiseSource = audioContext.createBufferSource();
-            noiseSource.buffer = noiseBuffer;
-            var noiseGain = audioContext.createGain();
-            noiseGain.gain.setValueAtTime(
-                0, audioContext.currentTime);
-            noiseGain.gain.linearRampToValueAtTime(
-                0.3, audioContext.currentTime + 0.05);
-            noiseGain.gain.linearRampToValueAtTime(
-                0, audioContext.currentTime + fDuration);
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            noiseSource.connect(noiseGain);
-            noiseGain.connect(audioContext.destination);
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + fDuration);
-            noiseSource.start(audioContext.currentTime);
-            noiseSource.stop(audioContext.currentTime + fDuration);
-        } catch (error) {
-            /* Web Audio API not available */
+    function fnUpdateHighlightState() {
+        if (fbIsWorkflowFullyVerified()) {
+            document.body.classList.add("all-verified");
+        } else {
+            document.body.classList.remove("all-verified");
         }
     }
 
@@ -4376,20 +4311,7 @@ const PipeleyenApp = (function () {
         elViewport.appendChild(elContainer);
     }
 
-    var dictCachedSyncStatus = {};
     var sPushService = "";
-
-    async function fnLoadSyncStatus() {
-        if (!sContainerId) return;
-        try {
-            var response = await fetch(
-                "/api/sync/" + sContainerId + "/status"
-            );
-            dictCachedSyncStatus = await response.json();
-        } catch (error) {
-            dictCachedSyncStatus = {};
-        }
-    }
 
     async function fnOpenPushModal(sService) {
         if (!sContainerId) return;
@@ -4436,25 +4358,10 @@ const PipeleyenApp = (function () {
                 '<span class="push-file-name">' +
                 fnEscapeHtml(dictFile.sPath) +
                 (bSupporting ? " (supporting)" : "") +
-                '</span>' +
-                '<span class="push-file-sync">' +
-                fsRenderSyncBadges(dictFile.dictSync) +
                 '</span></div>';
         }).join("");
     }
 
-    function fsRenderSyncBadges(dictSync) {
-        return fsRenderOneBadge("overleaf", dictSync.bOverleaf) +
-            fsRenderOneBadge("github", dictSync.bGithub) +
-            fsRenderOneBadge("zenodo", dictSync.bZenodo);
-    }
-
-    function fsRenderOneBadge(sService, bActive) {
-        var sClass = bActive ? "sync-active" : "sync-inactive";
-        return '<span class="sync-badge sync-badge-' + sService +
-            ' ' + sClass + '" title="' +
-            (bActive ? "Synced" : "Not synced") + '"></span>';
-    }
 
     async function fnHandlePushConfirm() {
         var listPaths = [];
@@ -4489,7 +4396,6 @@ const PipeleyenApp = (function () {
                 return;
             }
             fnShowToast("Push complete!", "success");
-            await fnLoadSyncStatus();
             fnRenderStepList();
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -5945,6 +5851,14 @@ const PipeleyenApp = (function () {
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
 
+    function fnRunDataCommands(iIndex) {
+        fnRunInteractiveStep(iIndex);
+    }
+
+    function fnRunPlotCommands(iIndex) {
+        fnRunInteractivePlots(iIndex);
+    }
+
     function fnRunSelected() {
         var listIndices = [];
         document.querySelectorAll(".step-checkbox:checked")
@@ -6266,6 +6180,10 @@ const PipeleyenApp = (function () {
     }
 
     async function fnHandleFileContextAction(sAction) {
+        if (sAction === "pullToHost") {
+            fnPromptPullToHost(sContextFilePath);
+            return;
+        }
         if (sAction === "copyPath") {
             navigator.clipboard.writeText(sContextFilePath)
                 .then(function () {
@@ -6291,7 +6209,6 @@ const PipeleyenApp = (function () {
                 var dictResult = await response.json();
                 if (dictResult.bSuccess) {
                     fnShowToast("Added to Git", "success");
-                    await fnLoadSyncStatus();
                     fnRenderStepList();
                 } else {
                     fnShowSyncError(dictResult, "GitHub");
@@ -6319,7 +6236,6 @@ const PipeleyenApp = (function () {
                 var dictZenodoResult = await zenodoResponse.json();
                 if (dictZenodoResult.bSuccess) {
                     fnShowToast("Archived to Zenodo", "success");
-                    await fnLoadSyncStatus();
                     fnRenderStepList();
                 } else {
                     fnShowSyncError(dictZenodoResult, "Zenodo");
@@ -6327,6 +6243,158 @@ const PipeleyenApp = (function () {
             } catch (error) {
                 fnShowToast(fsSanitizeErrorForUser(error.message), "error");
             }
+        }
+    }
+
+    function fnPromptPullToHost(sContainerPath) {
+        var sFilename = sContainerPath.split("/").pop();
+        var elExisting = document.getElementById("modalPull");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalPull";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML = fsRenderPullModalHtml(sFilename);
+        document.body.appendChild(elModal);
+        fnBindPullModalEvents(elModal, sContainerPath);
+        fnLoadPullDirectory(elModal, null);
+    }
+
+    function fsRenderPullModalHtml(sFilename) {
+        return '<div class="modal" style="width:480px">' +
+            '<h2>Pull to host</h2>' +
+            '<p style="margin-bottom:8px;color:var(--text-muted)">' +
+            fnEscapeHtml(sFilename) + '</p>' +
+            '<div class="pull-breadcrumb" ' +
+            'style="margin-bottom:6px;font-size:12px;' +
+            'color:var(--text-secondary)"></div>' +
+            '<div class="pull-dir-list" style="max-height:240px;' +
+            'overflow-y:auto;border:1px solid var(--border-color);' +
+            'border-radius:var(--border-radius);' +
+            'margin-bottom:12px"></div>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnPullCancel">Cancel</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnPullConfirm">Pull Here</button>' +
+            '</div></div>';
+    }
+
+    function fnBindPullModalEvents(
+        elModal, sContainerPath
+    ) {
+        var sFilename = sContainerPath.split("/").pop();
+        document.getElementById("btnPullCancel")
+            .addEventListener("click", function () {
+                elModal.remove();
+            });
+        document.getElementById("btnPullConfirm")
+            .addEventListener("click", function () {
+                var sDirectory = elModal.dataset.currentPath;
+                elModal.remove();
+                fnExecutePullToHost(
+                    sContainerPath, sDirectory + "/" + sFilename);
+            });
+    }
+
+    async function fnLoadPullDirectory(elModal, sPath) {
+        var sUrl = "/api/host-directories";
+        if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);
+        try {
+            var response = await fetch(sUrl);
+            var dictResult = await response.json();
+            fnRenderPullDirectoryList(elModal, dictResult);
+        } catch (error) {
+            fnShowToast("Cannot browse host", "error");
+        }
+    }
+
+    function fnRenderPullDirectoryList(elModal, dictResult) {
+        var sCurrentPath = dictResult.sCurrentPath;
+        elModal.dataset.currentPath = sCurrentPath;
+        fnRenderPullBreadcrumb(elModal, sCurrentPath);
+        var elList = elModal.querySelector(".pull-dir-list");
+        var sHtml = fsRenderPullParentEntry(sCurrentPath);
+        dictResult.listEntries.forEach(function (entry) {
+            sHtml += fsRenderPullDirectoryEntry(entry);
+        });
+        elList.innerHTML = sHtml;
+        fnBindPullDirectoryClicks(elModal, elList);
+    }
+
+    function fsRenderPullParentEntry(sCurrentPath) {
+        var sParent = sCurrentPath.replace(/\/[^/]+$/, "");
+        if (!sParent || sParent === sCurrentPath) return "";
+        return '<div class="pull-dir-entry" data-path="' +
+            fnEscapeHtml(sParent) + '">' +
+            '<span class="file-icon dir">&#128193;</span> ' +
+            '..</div>';
+    }
+
+    function fsRenderPullDirectoryEntry(entry) {
+        return '<div class="pull-dir-entry" data-path="' +
+            fnEscapeHtml(entry.sPath) + '">' +
+            '<span class="file-icon dir">&#128193;</span> ' +
+            fnEscapeHtml(entry.sName) + '</div>';
+    }
+
+    function fnBindPullDirectoryClicks(elModal, elList) {
+        elList.querySelectorAll(".pull-dir-entry")
+            .forEach(function (el) {
+                el.addEventListener("click", function () {
+                    fnLoadPullDirectory(elModal, el.dataset.path);
+                });
+            });
+    }
+
+    function fnRenderPullBreadcrumb(elModal, sPath) {
+        var elBreadcrumb = elModal.querySelector(
+            ".pull-breadcrumb");
+        var listParts = sPath.split("/").filter(Boolean);
+        var sHtml = "";
+        var sBuiltPath = "";
+        listParts.forEach(function (sPart, iIndex) {
+            sBuiltPath += "/" + sPart;
+            if (iIndex > 0) sHtml += " / ";
+            sHtml += '<span class="pull-crumb" data-path="' +
+                fnEscapeHtml(sBuiltPath) + '" style="cursor:' +
+                'pointer;color:var(--highlight-color)">' +
+                fnEscapeHtml(sPart) + '</span>';
+        });
+        elBreadcrumb.innerHTML = sHtml;
+        elBreadcrumb.querySelectorAll(".pull-crumb")
+            .forEach(function (el) {
+                el.addEventListener("click", function () {
+                    fnLoadPullDirectory(elModal, el.dataset.path);
+                });
+            });
+    }
+
+    async function fnExecutePullToHost(
+        sContainerPath, sHostDestination
+    ) {
+        fnShowToast("Pulling " + sContainerPath + "...", "success");
+        try {
+            var response = await fetch(
+                "/api/files/" + sContainerId + "/pull",
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        sContainerPath: sContainerPath,
+                        sHostDestination: sHostDestination,
+                    }),
+                }
+            );
+            var dictResult = await response.json();
+            if (!response.ok) {
+                fnShowToast(dictResult.detail || "Pull failed",
+                    "error");
+                return;
+            }
+            fnShowToast("Pulled to " + dictResult.sHostPath,
+                "success");
+        } catch (error) {
+            fnShowToast("Pull failed: " + error.message, "error");
         }
     }
 
@@ -6457,6 +6525,7 @@ const PipeleyenApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fsResolveTemplate: fsResolveTemplate,
         fnShowConfirmModal: fnShowConfirmModal,
+        fnPromptPullToHost: fnPromptPullToHost,
         fnClearOutputModified: fnClearOutputModified,
         fnFinalizeGeneratedTest: fnFinalizeGeneratedTest,
         fnCancelGeneratedTest: fnCancelGeneratedTest,
@@ -6561,8 +6630,95 @@ var PipeleyenFiles = (function () {
                     "vaibify/filepath", el.dataset.path
                 );
             });
+            if (el.dataset.isDir !== "true") {
+                el.addEventListener("contextmenu",
+                    function (event) {
+                        event.preventDefault();
+                        PipeleyenApp.fnPromptPullToHost(
+                            el.dataset.path);
+                    }
+                );
+            }
         });
     }
+
+    function fnBindDropZone() {
+        var elList = document.getElementById("listFiles");
+        if (!elList) return;
+        fnBindDropEvents(elList);
+    }
+
+    function fnBindDropEvents(elTarget) {
+        elTarget.addEventListener("dragover", function (event) {
+            if (!fbHasHostFiles(event)) return;
+            event.preventDefault();
+            elTarget.classList.add("drag-over");
+        });
+        elTarget.addEventListener("dragleave", function () {
+            elTarget.classList.remove("drag-over");
+        });
+        elTarget.addEventListener("drop", function (event) {
+            elTarget.classList.remove("drag-over");
+            if (!fbHasHostFiles(event)) return;
+            event.preventDefault();
+            fnUploadDroppedFiles(event.dataTransfer.files);
+        });
+    }
+
+    function fbHasHostFiles(event) {
+        var listTypes = event.dataTransfer.types || [];
+        for (var i = 0; i < listTypes.length; i++) {
+            if (listTypes[i] === "Files") return true;
+        }
+        return false;
+    }
+
+    async function fnUploadDroppedFiles(fileList) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId || fileList.length === 0) return;
+        for (var i = 0; i < fileList.length; i++) {
+            await fnUploadOneFile(sContainerId, fileList[i]);
+        }
+        fnLoadDirectory(sCurrentPath);
+    }
+
+    async function fnUploadOneFile(sContainerId, file) {
+        var sContentBase64 = await fsEncodeFileBase64(file);
+        try {
+            await fetch(
+                "/api/files/" + sContainerId + "/upload",
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        sFilename: file.name,
+                        sDestination: sCurrentPath,
+                        sContentBase64: sContentBase64,
+                    }),
+                }
+            );
+        } catch (error) {
+            PipeleyenApp.fnShowConfirmModal(
+                "Upload Error",
+                "Failed to upload " + file.name,
+                function () {}
+            );
+        }
+    }
+
+    function fsEncodeFileBase64(file) {
+        return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function () {
+                var sEncoded = reader.result.split(",")[1] || "";
+                resolve(sEncoded);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", fnBindDropZone);
 
     return {
         fnLoadDirectory: fnLoadDirectory,
@@ -6570,3 +6726,27 @@ var PipeleyenFiles = (function () {
 })();
 
 document.addEventListener("DOMContentLoaded", PipeleyenApp.fnInitialize);
+
+function fnBlockUnload(event) {
+    event.preventDefault();
+    event.returnValue = "";
+}
+
+window.addEventListener("beforeunload", fnBlockUnload);
+
+window.addEventListener("keydown", function (event) {
+    var bCloseShortcut = (event.metaKey || event.ctrlKey) &&
+        event.key === "w";
+    if (!bCloseShortcut) return;
+    event.preventDefault();
+    PipeleyenApp.fnShowConfirmModal(
+        "Close Vaibify",
+        "Are you sure you want to close this window? " +
+            "Unsaved changes may be lost.",
+        function () {
+            window.removeEventListener("beforeunload",
+                fnBlockUnload);
+            window.close();
+        }
+    );
+});
