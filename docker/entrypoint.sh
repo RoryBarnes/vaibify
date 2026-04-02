@@ -305,7 +305,7 @@ fnInstallRepo() {
         c_and_pip|pip_no_deps)
             fnPipInstall "${sRepoPath}" "${sName}" --no-deps --no-build-isolation ;;
         pip_editable)
-            fnPipInstall "${sRepoPath}" "${sName}" --no-build-isolation ;;
+            fnPipInstall "${sRepoPath}" "${sName}" ;;
         scripts_only)
             echo "[vaib] ${sName} available via PYTHONPATH and PATH." ;;
         reference)
