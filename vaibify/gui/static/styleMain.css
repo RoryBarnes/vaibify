@@ -2631,6 +2631,35 @@ body.all-verified {
     --highlight-color: #b39ddb;
 }
 
+/* --- Radial bloom animation --- */
+
+@keyframes vaibifyBloom {
+    0% {
+        clip-path: circle(0% at 30px 28px);
+        opacity: 1;
+    }
+    80% {
+        opacity: 0.8;
+    }
+    100% {
+        clip-path: circle(200vmax at 30px 28px);
+        opacity: 0;
+    }
+}
+
+body.vaibify-blooming::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(179, 157, 219, 0.15);
+    pointer-events: none;
+    z-index: 9999;
+    animation: vaibifyBloom 1.5s ease-out forwards;
+}
+
 body.all-verified .toolbar-logo {
     filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }

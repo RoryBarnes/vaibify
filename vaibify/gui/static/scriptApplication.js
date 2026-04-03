@@ -3363,14 +3363,28 @@ const PipeleyenApp = (function () {
         fnUpdateHighlightState();
     }
 
+    var _bWasVaibified = false;
+
     function fnUpdateHighlightState() {
         var bVerified = fbIsWorkflowFullyVerified();
         if (bVerified) {
             document.body.classList.add("all-verified");
             PipeleyenTerminal.fnUpdateCursorColor("#b39ddb");
+            fnTriggerBloomIfNeeded(bVerified);
         } else {
             document.body.classList.remove("all-verified");
+            document.body.classList.remove("vaibify-blooming");
             PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
+        }
+        _bWasVaibified = bVerified;
+    }
+
+    function fnTriggerBloomIfNeeded(bVerified) {
+        if (bVerified && !_bWasVaibified) {
+            document.body.classList.add("vaibify-blooming");
+            setTimeout(function () {
+                document.body.classList.remove("vaibify-blooming");
+            }, 1500);
         }
     }
 
