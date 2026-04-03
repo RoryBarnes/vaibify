@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     pkg-config \
     graphviz \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Project-specific system packages from vaibify.yml systemPackages

@@ -2556,11 +2556,16 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
         sOutputDir, _fsPlotStandardPath(sStandardBase))
     sStandardPrefix = posixpath.join(
         sOutputDir, f"{sStandardBase}_standard")
+    sGsCommand = (
+        f"gs -q -dNOPAUSE -dBATCH -sDEVICE=png16m -r150 "
+        f"-sOutputFile={fsShellQuote(sStandardPng)} "
+        f"{fsShellQuote(sPlotPath)}")
     return (
         f"pdftoppm -png -r 150 -singlefile "
         f"{fsShellQuote(sPlotPath)} "
         f"{fsShellQuote(sStandardPrefix)} "
-        f"2>/dev/null || cp {fsShellQuote(sPlotPath)} "
+        f"2>/dev/null || {sGsCommand} 2>/dev/null "
+        f"|| cp {fsShellQuote(sPlotPath)} "
         f"{fsShellQuote(sStandardPng)} 2>/dev/null || true"
     )
 
