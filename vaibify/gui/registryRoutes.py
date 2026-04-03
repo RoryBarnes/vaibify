@@ -435,7 +435,7 @@ def _fnValidateCreateDirectory(sDirectory):
         raise HTTPException(400, "Directory must be an absolute path")
     sHome = os.path.expanduser("~")
     sResolved = os.path.realpath(sDirectory)
-    if not sResolved.startswith(sHome):
+    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):
         raise HTTPException(403, "Path is outside allowed root")
 
 
