@@ -25,7 +25,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 def _fnRunAsync(coroutine):
     """Run an async coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coroutine)
+    return asyncio.run(coroutine)
 
 
 def _fMockDocker(iExitCode=0, sOutput=""):
