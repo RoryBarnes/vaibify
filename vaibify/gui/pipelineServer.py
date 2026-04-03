@@ -2603,16 +2603,18 @@ def _fnRegisterStandardizePlots(app, dictCtx):
             raise HTTPException(400, "No plot files in this step")
         listConverted = await _flistConvertToStandards(
             dictCtx, sContainerId, listPlots, sTargetFile)
+        listStandardizedBasenames = _flistStandardizedBasenames(
+            listPlots, sTargetFile)
         dictVerification = dictStep.setdefault(
             "dictVerification", {})
         sTimestamp = datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M UTC")
-        dictVerification["sPlotStandards"] = "passed"
         dictVerification["sLastStandardized"] = sTimestamp
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bSuccess": True,
             "listConverted": listConverted,
+            "listStandardizedBasenames": listStandardizedBasenames,
             "sTimestamp": sTimestamp,
         }
 
@@ -2633,12 +2635,86 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         if not sFileName:
             raise HTTPException(400, "sFileName is required")
         listPlots = _flistResolvePlotPaths(dictStep, dictVars)
+        sPlotPath = _fsFindPlotPath(listPlots, sFileName)
         sStandardPath = _fsFindStandardForFile(
             listPlots, sFileName)
         if not sStandardPath:
             raise HTTPException(
                 404, "No standard found for this file")
-        return {"sStandardPath": sStandardPath}
+        return {
+            "sPlotPath": sPlotPath,
+            "sStandardPath": sStandardPath,
+        }
+
+    @app.get(
+        "/api/steps/{sContainerId}/{iStepIndex}/plot-standards"
+    )
+    async def fnCheckPlotStandards(
+        sContainerId: str, iStepIndex: int,
+    ):
+        import asyncio
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        dictVars = dictCtx["variables"](sContainerId)
+        listPlots = _flistResolvePlotPaths(dictStep, dictVars)
+        dictStandards = await _fdictCheckStandardsExist(
+            dictCtx, sContainerId, listPlots)
+        return {"dictStandards": dictStandards}
+
+
+async def _fdictCheckStandardsExist(
+    dictCtx, sContainerId, listPlots,
+):
+    """Check which standard PNGs exist in the container."""
+    import asyncio
+    if not listPlots:
+        return {}
+    listPaths = []
+    listBasenames = []
+    for sResolved, sBasename in listPlots:
+        sBase = posixpath.splitext(sBasename)[0]
+        sDir = posixpath.dirname(sResolved)
+        sStandardPath = posixpath.join(
+            sDir, _fsPlotStandardPath(sBase))
+        listPaths.append(sStandardPath)
+        listBasenames.append(sBasename)
+    sCheckCommand = " && ".join(
+        f'test -f {fsShellQuote(sPath)} && echo "Y" || echo "N"'
+        for sPath in listPaths
+    )
+    tResult = await asyncio.to_thread(
+        dictCtx["docker"].ftResultExecuteCommand,
+        sContainerId, sCheckCommand,
+    )
+    sOutput = tResult[0] if tResult else ""
+    listLines = sOutput.strip().split("\n")
+    dictResult = {}
+    for iIdx, sBasename in enumerate(listBasenames):
+        if iIdx < len(listLines):
+            dictResult[sBasename] = listLines[iIdx].strip() == "Y"
+        else:
+            dictResult[sBasename] = False
+    return dictResult
+
+
+def _flistStandardizedBasenames(listPlots, sTargetFile):
+    """Return basenames of plots that were standardized."""
+    listResult = []
+    for _sResolved, sBasename in listPlots:
+        if sTargetFile and sBasename != sTargetFile:
+            continue
+        listResult.append(sBasename)
+    return listResult
+
+
+def _fsFindPlotPath(listPlots, sFileName):
+    """Return the resolved plot path for a given filename."""
+    for sResolved, sBasename in listPlots:
+        if sBasename == sFileName or sResolved.endswith(sFileName):
+            return sResolved
+    return ""
 
 
 def _fsFindStandardForFile(listPlots, sFileName):

@@ -1139,35 +1139,40 @@ html, body {
     color: var(--color-orange);
 }
 
-.plot-standards-expanded {
-    padding: 4px 0 4px 16px;
-    font-size: 0.85em;
-}
-
-.plot-standard-item {
+.plot-standard-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 2px 0;
+    gap: 6px;
+    padding: 2px 0 4px 20px;
+    font-size: 0.8em;
 }
 
-.plot-standard-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-secondary);
-}
-
-.btn-standardize-one,
-.btn-compare-plot,
-.btn-standardize-all {
+.plot-standard-actions .btn-standardize-one,
+.plot-standard-actions .btn-compare-plot {
     font-size: 10px;
     padding: 1px 6px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.8;
 }
 
-.btn-standardize-all {
-    margin-top: 4px;
+.plot-standard-actions .btn-standardize-one:hover,
+.plot-standard-actions .btn-compare-plot:hover {
+    opacity: 1;
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.plot-standard-badge {
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.plot-standard-badge.standard-exists {
+    color: var(--color-green, #4caf50);
 }
 
 .output-modified-warning {

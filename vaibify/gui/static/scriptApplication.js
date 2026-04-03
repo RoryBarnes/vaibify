@@ -829,7 +829,7 @@ const PipeleyenApp = (function () {
         setExpandedSteps.clear();
         setExpandedDeps.clear();
         setExpandedUnitTests.clear();
-        setExpandedPlotStandards.clear();
+        dictPlotStandardExists = {};
         dictStepStatus = {};
         document.body.classList.remove("all-verified");
         if (wsPipeline) {
@@ -1743,7 +1743,7 @@ const PipeleyenApp = (function () {
 
     var setExpandedDeps = new Set();
     var setExpandedUnitTests = new Set();
-    var setExpandedPlotStandards = new Set();
+    var dictPlotStandardExists = {};
     var setExpandedQualitative = new Set();
     var setExpandedQuantitative = new Set();
     var setExpandedIntegrity = new Set();
@@ -1927,23 +1927,6 @@ const PipeleyenApp = (function () {
                 sHtml += fsRenderDepsExpanded(iIndex);
             }
         }
-        var bHasPlotFiles = (step.saPlotFiles || []).length > 0;
-        if (bHasPlotFiles) {
-            var sPlotState = dictVerify.sPlotStandards || "untested";
-            sHtml += fsRenderVerificationRow(
-                "Plot Standards", sPlotState, "plotStandards",
-                iIndex
-            );
-            sHtml += '<div class="timestamp-field">' +
-                fsRenderVerificationTimestamp(
-                    "Last standardized",
-                    dictVerify.sLastStandardized) +
-                '</div>';
-            if (setExpandedPlotStandards.has(iIndex)) {
-                sHtml += fsRenderPlotStandardsExpanded(
-                    step, iIndex);
-            }
-        }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
         );
@@ -2117,13 +2100,6 @@ const PipeleyenApp = (function () {
             var bDepsExpanded = setExpandedDeps.has(iIndex);
             sTriangle = '<span class="expand-triangle">' +
                 (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
-        }
-        if (sApprover === "plotStandards") {
-            var bPlotExpanded = setExpandedPlotStandards.has(
-                iIndex);
-            sTriangle = '<span class="expand-triangle">' +
-                (bPlotExpanded ? "\u25BE" : "\u25B8") +
-                '</span> ';
         }
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
@@ -2353,8 +2329,39 @@ const PipeleyenApp = (function () {
             '<button class="action-delete" title="Delete">&#10005;</button>' +
             '</div>';
 
+        if (sArrayKey === "saPlotFiles" && !bInvalid) {
+            sHtml += fsRenderPlotStandardButtons(
+                iStepIdx, sRaw);
+        }
+
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderPlotStandardButtons(iStepIndex, sRawFile) {
+        var sBasename = sRawFile.split("/").pop();
+        var sStandardKey = iStepIndex + ":" + sBasename;
+        var bStandardExists = dictPlotStandardExists[sStandardKey];
+        var sStandardBadge = "";
+        if (bStandardExists === true) {
+            sStandardBadge = '<span class="plot-standard-badge ' +
+                'standard-exists" title="Standard exists">' +
+                '\u2713</span>';
+        }
+        var sCompareButton = "";
+        if (bStandardExists) {
+            sCompareButton =
+                '<button class="btn-compare-plot" ' +
+                'data-step="' + iStepIndex +
+                '" data-file="' + fnEscapeHtml(sBasename) +
+                '">Compare to Standard</button>';
+        }
+        return '<div class="plot-standard-actions">' +
+            sStandardBadge + sCompareButton +
+            '<button class="btn-standardize-one" ' +
+            'data-step="' + iStepIndex +
+            '" data-file="' + fnEscapeHtml(sBasename) +
+            '">Make Standard</button></div>';
     }
 
     function fsGetFileCategory(iStep, sFilePath, sArrayKey) {
@@ -2545,10 +2552,6 @@ const PipeleyenApp = (function () {
                 fnToggleUnitTestExpand(iStep);
                 return;
             }
-            if (sApprover === "plotStandards") {
-                fnTogglePlotStandardsExpand(iStep);
-                return;
-            }
         }
         var elVerifDeps = elTarget.closest(
             '.verification-row[data-approver="deps"]'
@@ -2557,12 +2560,6 @@ const PipeleyenApp = (function () {
             fnToggleDepsExpand(
                 parseInt(elVerifDeps.dataset.step)
             );
-            return;
-        }
-        if (elTarget.closest(".btn-standardize-all")) {
-            fnStandardizeAllPlots(parseInt(
-                elTarget.closest(".btn-standardize-all")
-                    .dataset.step));
             return;
         }
         if (elTarget.closest(".btn-standardize-one")) {
@@ -2862,52 +2859,6 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnTogglePlotStandardsExpand(iStep) {
-        if (setExpandedPlotStandards.has(iStep)) {
-            setExpandedPlotStandards.delete(iStep);
-        } else {
-            setExpandedPlotStandards.add(iStep);
-        }
-        fnRenderStepList();
-    }
-
-    function fsRenderPlotStandardsExpanded(step, iIndex) {
-        var listPlotFiles = step.saPlotFiles || [];
-        var dictVerify = fdictGetVerification(step);
-        var sPlotState = dictVerify.sPlotStandards || "untested";
-        var sHtml = '<div class="plot-standards-expanded">';
-        for (var i = 0; i < listPlotFiles.length; i++) {
-            var sFile = listPlotFiles[i];
-            var sBasename = sFile.split("/").pop();
-            sHtml += fsRenderPlotStandardItem(
-                sBasename, sPlotState, iIndex);
-        }
-        sHtml += '<button class="btn btn-standardize-all" ' +
-            'data-step="' + iIndex +
-            '">Standardize All</button>';
-        sHtml += '</div>';
-        return sHtml;
-    }
-
-    function fsRenderPlotStandardItem(
-        sBasename, sPlotState, iIndex
-    ) {
-        var sIcon = fsVerificationStateIcon(sPlotState);
-        return '<div class="plot-standard-item">' +
-            '<span class="plot-standard-name">' +
-            fnEscapeHtml(sBasename) + '</span>' +
-            '<span class="verification-badge state-' +
-            sPlotState + '">' + sIcon + '</span>' +
-            '<button class="btn btn-small btn-standardize-one"' +
-            ' data-step="' + iIndex +
-            '" data-file="' + fnEscapeHtml(sBasename) +
-            '">Standardize</button>' +
-            '<button class="btn btn-small btn-compare-plot"' +
-            ' data-step="' + iIndex +
-            '" data-file="' + fnEscapeHtml(sBasename) +
-            '">Compare</button>' +
-            '</div>';
-    }
 
     async function fnGenerateTests(iStep) {
         var step = dictWorkflow.listSteps[iStep];
@@ -4252,9 +4203,33 @@ const PipeleyenApp = (function () {
             setExpandedSteps.delete(iIndex);
         } else {
             setExpandedSteps.add(iIndex);
+            fnLoadPlotStandardStatus(iIndex);
         }
         iSelectedStepIndex = iIndex;
         fnRenderStepList();
+    }
+
+    async function fnLoadPlotStandardStatus(iStepIndex) {
+        if (!sContainerId || !dictWorkflow) return;
+        var step = dictWorkflow.listSteps[iStepIndex];
+        if (!step || (step.saPlotFiles || []).length === 0) return;
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" +
+                iStepIndex + "/plot-standards",
+                {headers: {"Content-Type": "application/json"}}
+            );
+            var dictResult = await response.json();
+            var dictStandards = dictResult.dictStandards || {};
+            for (var sBasename in dictStandards) {
+                var sKey = iStepIndex + ":" + sBasename;
+                dictPlotStandardExists[sKey] =
+                    dictStandards[sBasename];
+            }
+            fnRenderStepList();
+        } catch (error) {
+            /* Silently ignore - buttons remain hidden */
+        }
     }
 
     async function fnToggleStepEnabled(iIndex, bEnabled) {
@@ -6095,14 +6070,23 @@ const PipeleyenApp = (function () {
         var step = dictWorkflow.listSteps[iStepIndex];
         if (!step) return;
         step.dictVerification = step.dictVerification || {};
-        step.dictVerification.sPlotStandards = "passed";
         step.dictVerification.sLastStandardized =
             dictResult.sTimestamp || fsFormatUtcTimestamp();
+        var listBasenames =
+            dictResult.listStandardizedBasenames || [];
+        fnMarkStandardsExist(iStepIndex, listBasenames);
         fnSaveStepUpdate(iStepIndex, {
             dictVerification: step.dictVerification,
         });
         fnRenderStepList();
         fnShowToast("Plot standards saved", "success");
+    }
+
+    function fnMarkStandardsExist(iStepIndex, listBasenames) {
+        for (var i = 0; i < listBasenames.length; i++) {
+            var sKey = iStepIndex + ":" + listBasenames[i];
+            dictPlotStandardExists[sKey] = true;
+        }
     }
 
     async function fnComparePlotToStandard(iStepIndex, sFileName) {
@@ -6118,7 +6102,12 @@ const PipeleyenApp = (function () {
                 }
             );
             var dictResult = await response.json();
-            if (dictResult.sStandardPath) {
+            if (dictResult.sPlotPath && dictResult.sStandardPath) {
+                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                    dictResult.sPlotPath);
+                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                    dictResult.sStandardPath);
+            } else if (dictResult.sStandardPath) {
                 PipeleyenFigureViewer.fnDisplayFileFromContainer(
                     dictResult.sStandardPath);
             } else {
