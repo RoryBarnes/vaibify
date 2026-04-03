@@ -8,23 +8,21 @@
   <a href="https://RoryBarnes.github.io/vaibify">
     <img src="https://img.shields.io/badge/Read-the_docs-blue.svg?style=flat">
   </a>
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/docs.yml/badge.svg">
   <a href="https://RoryBarnes.github.io/vaibify/conduct.html">
     <img src="https://img.shields.io/badge/Code%20of-Conduct-black.svg">
   </a>
-  <a href="https://github.com/RoryBarnes/vaibify/issues">
-    <img src="https://img.shields.io/badge/Issues-orange.svg">
-  </a>
-  <a href="https://github.com/RoryBarnes/vaibify/discussions">
-    <img src="https://img.shields.io/badge/Discussions-orange.svg">
-  </a>
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/pip-install.yml/badge.svg">
   <br>
+  <img src="https://img.shields.io/badge/Unit%20Tests-1,818-darkblue.svg">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-linux.yml/badge.svg">
   <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
   <br>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-macos.yml/badge.svg">
   <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
-  <br>
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/docs.yml/badge.svg">
+  <a href="https://codecov.io/gh/RoryBarnes/vaibify">
+  <img src="https://codecov.io/gh/RoryBarnes/vaibify/branch/main/graph/badge.svg">
+</a>
 </p>
 
 ### Overview
