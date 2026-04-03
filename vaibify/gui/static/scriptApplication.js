@@ -3375,7 +3375,14 @@ const PipeleyenApp = (function () {
             document.body.classList.remove("all-verified");
             PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
         }
+        fnRecolorVisibleDagEdges();
         _bWasVaibified = bVerified;
+    }
+
+    function fnRecolorVisibleDagEdges() {
+        document.querySelectorAll(".dag-container svg").forEach(
+            function (elSvg) { fnRecolorDagEdges(elSvg); }
+        );
     }
 
     function fnTriggerBloomIfNeeded(bVerified) {
@@ -4394,6 +4401,7 @@ const PipeleyenApp = (function () {
         );
         elViewport.appendChild(elToolbar);
         var elContainer = document.createElement("div");
+        elContainer.className = "dag-container";
         elContainer.style.overflow = "auto";
         elContainer.style.flex = "1";
         elContainer.style.display = "flex";
