@@ -46,7 +46,7 @@ def test_fnEmitBanner_emits_five_lines():
     async def fnCapture(dictMsg):
         listCaptured.append(dictMsg)
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         _fnEmitBanner(fnCapture, 1, "Compute")
     )
     assert len(listCaptured) == 5
@@ -60,7 +60,7 @@ def test_fnEmitBanner_output_type():
     async def fnCapture(dictMsg):
         listCaptured.append(dictMsg)
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         _fnEmitBanner(fnCapture, 2, "Plot")
     )
     for dictMsg in listCaptured:

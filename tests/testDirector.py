@@ -18,7 +18,8 @@ def test_fiResolveCoreCount_auto():
 
 
 def test_fiResolveCoreCount_explicit():
-    assert fiResolveCoreCount(4) == 4
+    import multiprocessing
+    assert fiResolveCoreCount(4) == min(4, multiprocessing.cpu_count())
 
 
 def test_fiResolveCoreCount_clamps_to_total():
