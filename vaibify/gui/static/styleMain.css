@@ -1453,8 +1453,9 @@ html, body {
 }
 
 .viewer-nav:disabled {
-    color: var(--text-muted) !important;
-    opacity: 0.35 !important;
+    color: var(--highlight-color);
+    opacity: 0.4;
+    cursor: default;
 }
 
 .viewer-select {
