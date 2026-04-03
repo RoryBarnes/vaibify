@@ -23,13 +23,13 @@ def _fsNormalizePath(sPath):
     "--project", "-p", "sProjectName", default=None,
     help="Project name.",
 )
-@click.argument("sPath")
-def cat(sProjectName, sPath):
+@click.argument("path")
+def cat(sProjectName, path):
     """Print file contents from the container."""
     configProject = fconfigResolveProject(sProjectName)
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
-    sNormalized = _fsNormalizePath(sPath)
+    sNormalized = _fsNormalizePath(path)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerName, f"cat {sNormalized}"
     )

@@ -39,13 +39,13 @@ def _flistParseDirectoryListing(sOutput):
     "--json", "bJson", is_flag=True, default=False,
     help="Output in JSON format.",
 )
-@click.argument("sPath", default="/workspace")
-def ls(sProjectName, bJson, sPath):
+@click.argument("path", default="/workspace")
+def ls(sProjectName, bJson, path):
     """List files in the container workspace."""
     configProject = fconfigResolveProject(sProjectName)
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
-    sNormalized = _fsNormalizePath(sPath)
+    sNormalized = _fsNormalizePath(path)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerName, f"ls -1 {sNormalized}"
     )
