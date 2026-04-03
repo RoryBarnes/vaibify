@@ -3373,7 +3373,6 @@ const PipeleyenApp = (function () {
             fnTriggerBloomIfNeeded(bVerified);
         } else {
             document.body.classList.remove("all-verified");
-            document.body.classList.remove("vaibify-blooming");
             PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
         }
         _bWasVaibified = bVerified;
@@ -3381,11 +3380,43 @@ const PipeleyenApp = (function () {
 
     function fnTriggerBloomIfNeeded(bVerified) {
         if (bVerified && !_bWasVaibified) {
-            document.body.classList.add("vaibify-blooming");
-            setTimeout(function () {
-                document.body.classList.remove("vaibify-blooming");
-            }, 1500);
+            fnAnimateBloomOverlay();
+            fnAnimatePanelBorderCascade();
         }
+    }
+
+    function fnAnimateBloomOverlay() {
+        var elOverlay = document.createElement("div");
+        elOverlay.className = "vaibify-bloom-overlay";
+        document.body.appendChild(elOverlay);
+        requestAnimationFrame(function () {
+            elOverlay.classList.add("expanding");
+        });
+        setTimeout(function () {
+            elOverlay.classList.add("fading");
+        }, 1200);
+        setTimeout(function () {
+            if (elOverlay.parentNode) {
+                elOverlay.parentNode.removeChild(elOverlay);
+            }
+        }, 1700);
+    }
+
+    function fnAnimatePanelBorderCascade() {
+        var listSelectors = [
+            "#panelLeft", "#viewerA", "#viewerB",
+            "#terminalStrip"
+        ];
+        listSelectors.forEach(function (sSelector, iIndex) {
+            var elPanel = document.querySelector(sSelector);
+            if (!elPanel) return;
+            setTimeout(function () {
+                elPanel.classList.add("vaibify-glow-cascade");
+                elPanel.addEventListener("animationend", function () {
+                    elPanel.classList.remove("vaibify-glow-cascade");
+                }, { once: true });
+            }, iIndex * 200);
+        });
     }
 
     /* --- Detail Item Actions --- */
