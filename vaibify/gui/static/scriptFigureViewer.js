@@ -369,20 +369,43 @@ const PipeleyenFigureViewer = (function () {
         return elButton;
     }
 
+    var _LIST_ZOOM_LEVELS = [
+        0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 1.0,
+        1.25, 1.50, 2.0, 3.0, 4.0,
+    ];
+
+    function fiNextZoomIndex(dCurrentScale, iDirection) {
+        for (var i = 0; i < _LIST_ZOOM_LEVELS.length; i++) {
+            if (_LIST_ZOOM_LEVELS[i] >= dCurrentScale - 0.001) {
+                return Math.max(0, Math.min(
+                    _LIST_ZOOM_LEVELS.length - 1, i + iDirection));
+            }
+        }
+        return _LIST_ZOOM_LEVELS.length - 1;
+    }
+
     function fnCreateZoomToolbar(dCurrentScale, fnOnZoom) {
         var elToolbar = document.createElement("div");
         elToolbar.className = "editor-toolbar zoom-toolbar";
+        var sLabel = dCurrentScale === "fit" ? "Fit" :
+            Math.round(dCurrentScale * 100) + "%";
         var elZoomLevel = document.createElement("span");
         elZoomLevel.className = "zoom-level";
-        elZoomLevel.textContent = Math.round(dCurrentScale * 100) + "%";
+        elZoomLevel.textContent = sLabel;
         elToolbar.appendChild(felCreateZoomButton(
             "btn-icon", "Zoom out", "\u2212", function () {
-                fnOnZoom(Math.max(0.25, dCurrentScale - 0.25));
+                var dNumeric = dCurrentScale === "fit" ?
+                    1.0 : dCurrentScale;
+                var iIdx = fiNextZoomIndex(dNumeric, -1);
+                fnOnZoom(_LIST_ZOOM_LEVELS[iIdx]);
             }));
         elToolbar.appendChild(elZoomLevel);
         elToolbar.appendChild(felCreateZoomButton(
             "btn-icon", "Zoom in", "+", function () {
-                fnOnZoom(Math.min(4.0, dCurrentScale + 0.25));
+                var dNumeric = dCurrentScale === "fit" ?
+                    1.0 : dCurrentScale;
+                var iIdx = fiNextZoomIndex(dNumeric, 1);
+                fnOnZoom(_LIST_ZOOM_LEVELS[iIdx]);
             }));
         elToolbar.appendChild(felCreateZoomButton(
             "btn-icon", "Fit to window", "\u2922", function () {
