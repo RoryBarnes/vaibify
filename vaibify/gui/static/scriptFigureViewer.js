@@ -275,21 +275,39 @@ const PipeleyenFigureViewer = (function () {
         fnDestroyActivePdf();
         fnCancelPendingImage(elViewport);
         elViewport.innerHTML = "";
+        fetch(sUrl).then(function (response) {
+            if (!response.ok) throw new Error("Not found");
+            return response.blob();
+        }).then(function (blob) {
+            var sBlobUrl = URL.createObjectURL(blob);
+            fnDisplayImageBlob(sBlobUrl, sUrl, elViewport);
+        }).catch(function () {
+            elViewport.innerHTML = S_OUTPUT_MISSING;
+        });
+    }
+
+    function fnDisplayImageBlob(sBlobUrl, sUrl, elViewport) {
         var elImg = document.createElement("img");
-        elImg.src = sUrl;
+        elImg.src = sBlobUrl;
         elImg.alt = "Figure";
         var dScale = 1.0;
         elImg.onload = function () {
             fnRenderImageWithZoom(elImg, sUrl, elViewport, dScale);
         };
         elImg.onerror = function () {
+            URL.revokeObjectURL(sBlobUrl);
             elViewport.innerHTML = S_OUTPUT_MISSING;
         };
         elViewport._activeImage = elImg;
+        elViewport._activeBlobUrl = sBlobUrl;
         elViewport.appendChild(elImg);
     }
 
     function fnCancelPendingImage(elViewport) {
+        if (elViewport._activeBlobUrl) {
+            URL.revokeObjectURL(elViewport._activeBlobUrl);
+            elViewport._activeBlobUrl = null;
+        }
         if (elViewport._activeImage) {
             elViewport._activeImage.onload = null;
             elViewport._activeImage.onerror = null;
