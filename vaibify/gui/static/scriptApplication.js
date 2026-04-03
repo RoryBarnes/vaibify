@@ -17,11 +17,7 @@ const PipeleyenApp = (function () {
     let setExpandedSteps = new Set();
     var listUndoStack = [];
     var I_MAX_UNDO = 50;
-    var SET_BINARY_EXTENSIONS = new Set([
-        ".npy", ".npz", ".pkl", ".pickle", ".hdf5", ".h5",
-        ".bin", ".dat", ".o", ".so", ".a", ".pyc", ".gz",
-        ".zip", ".tar", ".bz2", ".xz",
-    ]);
+    var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
     let wsPipeline = null;
     let dictStepStatus = {};
     var _dictDashboardMode = null;
@@ -401,6 +397,33 @@ const PipeleyenApp = (function () {
             _iBrowserHistoryIndex >= _listBrowserHistory.length - 1;
     }
 
+    function _fnPushBrowserHistory(sCurrentPath) {
+        _listBrowserHistory = _listBrowserHistory.slice(
+            0, _iBrowserHistoryIndex + 1
+        );
+        _listBrowserHistory.push(sCurrentPath);
+        if (_listBrowserHistory.length > I_MAX_BROWSER_HISTORY) {
+            _listBrowserHistory.splice(
+                0, _listBrowserHistory.length - I_MAX_BROWSER_HISTORY
+            );
+        }
+        _iBrowserHistoryIndex = _listBrowserHistory.length - 1;
+    }
+
+    function _fnApplyBrowseResult(dictResult) {
+        _sBrowserCurrentPath = dictResult.sCurrentPath;
+        if (!_bBrowserNavigating) {
+            _fnPushBrowserHistory(dictResult.sCurrentPath);
+        }
+        _bBrowserNavigating = false;
+        _fnUpdateBrowserNavButtons();
+        fnRenderBreadcrumb(dictResult.sCurrentPath);
+        fnRenderDirectoryEntries(dictResult.listEntries);
+        _fnUpdateSelectButton(
+            dictResult.sCurrentPath, dictResult.bHasConfig
+        );
+    }
+
     async function fnBrowseDirectory(sPath) {
         var elEntries = document.getElementById("directoryEntries");
         elEntries.innerHTML =
@@ -414,27 +437,7 @@ const PipeleyenApp = (function () {
                 fnShowToast(detail.detail || "Browse failed", "error");
                 return;
             }
-            var dictResult = await response.json();
-            _sBrowserCurrentPath = dictResult.sCurrentPath;
-            if (!_bBrowserNavigating) {
-                _listBrowserHistory = _listBrowserHistory.slice(
-                    0, _iBrowserHistoryIndex + 1
-                );
-                _listBrowserHistory.push(dictResult.sCurrentPath);
-                if (_listBrowserHistory.length > I_MAX_BROWSER_HISTORY) {
-                    _listBrowserHistory.splice(
-                        0, _listBrowserHistory.length - I_MAX_BROWSER_HISTORY
-                    );
-                }
-                _iBrowserHistoryIndex = _listBrowserHistory.length - 1;
-            }
-            _bBrowserNavigating = false;
-            _fnUpdateBrowserNavButtons();
-            fnRenderBreadcrumb(dictResult.sCurrentPath);
-            fnRenderDirectoryEntries(dictResult.listEntries);
-            _fnUpdateSelectButton(
-                dictResult.sCurrentPath, dictResult.bHasConfig
-            );
+            _fnApplyBrowseResult(await response.json());
         } catch (error) {
             elEntries.innerHTML =
                 '<p style="color:var(--color-red);">Error loading</p>';
@@ -497,17 +500,20 @@ const PipeleyenApp = (function () {
                 "</div>"
             );
         }).join("");
-        _fnBindDirectoryEntryClicks(elContainer);
+        _fnBindDirectoryEntryDelegation(elContainer);
     }
 
-    function _fnBindDirectoryEntryClicks(elContainer) {
-        elContainer.querySelectorAll(".directory-entry").forEach(
-            function (el) {
-                el.addEventListener("click", function () {
-                    fnBrowseDirectory(el.dataset.path);
-                });
+    var _bDirectoryEntryDelegationBound = false;
+
+    function _fnBindDirectoryEntryDelegation(elContainer) {
+        if (_bDirectoryEntryDelegationBound) return;
+        _bDirectoryEntryDelegationBound = true;
+        elContainer.addEventListener("click", function (event) {
+            var elEntry = event.target.closest(".directory-entry");
+            if (elEntry) {
+                fnBrowseDirectory(elEntry.dataset.path);
             }
-        );
+        });
     }
 
     function _fnUpdateSelectButton(sPath, bHasConfig) {
@@ -1465,13 +1471,6 @@ const PipeleyenApp = (function () {
         var sCacheKey = elItem.dataset.step + ":" +
             sResolved + ":" + (elItem.dataset.workdir || "");
         return dictFileExistenceCache[sCacheKey] === false;
-    }
-
-    function fbIsBinaryFile(sRaw) {
-        var iDot = sRaw.lastIndexOf(".");
-        if (iDot === -1) return true;
-        var sExt = sRaw.substring(iDot).toLowerCase();
-        return SET_BINARY_EXTENSIONS.has(sExt);
     }
 
     function fsInitialFileStatusClass(iStep, sArrayKey, sRaw) {
