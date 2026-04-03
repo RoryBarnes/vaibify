@@ -1668,9 +1668,21 @@ const PipeleyenApp = (function () {
         /* Discovered outputs */
         sHtml += fsRenderDiscoveredOutputs(iIndex);
 
+        /* Run Step button */
+        sHtml += fsRenderRunStepButton(step, iIndex);
+
         sHtml += "</div>";
         sHtml += "</div>";
         return sHtml;
+    }
+
+    function fsRenderRunStepButton(step, iIndex) {
+        var bHasDataCmds = (step.saDataCommands || []).length > 0;
+        var bHasPlotCmds = (step.saPlotCommands || []).length > 0;
+        if (!bHasDataCmds && !bHasPlotCmds) return "";
+        return '<button class="btn btn-primary btn-run-step" ' +
+            'data-step="' + iIndex +
+            '">&#9654; Run Step</button>';
     }
 
     function fdictGetVerification(step) {
@@ -2021,9 +2033,12 @@ const PipeleyenApp = (function () {
             if (!depStep) continue;
             var bPassing = fbStepFullyPassing(iDep, dictVisited);
             var sState = bPassing ? "passed" : "failed";
+            var sColorClass = fsDepLabelColorClass(
+                iDep, bPassing);
             var sNum = fsComputeStepLabel(iDep);
             sHtml += '<div class="dep-item">' +
-                '<span class="dep-label">' + sNum + ' ' +
+                '<span class="dep-label ' + sColorClass +
+                '">' + sNum + ' ' +
                 fnEscapeHtml(depStep.sName) + '</span>' +
                 '<span class="verification-badge state-' +
                 sState + '">' +
@@ -2034,8 +2049,36 @@ const PipeleyenApp = (function () {
         sHtml += '<button class="btn btn-small btn-add-deps" ' +
             'data-step="' + iIndex + '" ' +
             'style="margin-top:6px">Update Dependencies</button>';
+        sHtml += ' <button class="btn btn-small btn-show-deps" ' +
+            'data-step="' + iIndex + '" ' +
+            'style="margin-top:6px">Show Dependencies</button>';
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsDepLabelColorClass(iDep, bPassing) {
+        if (document.body.classList.contains("all-verified")) {
+            return "";
+        }
+        if (bPassing) return "dep-status-blue";
+        var depStep = dictWorkflow.listSteps[iDep];
+        if (!depStep) return "dep-status-red";
+        var sDepState = fsDepStepOverallState(depStep, iDep);
+        if (sDepState === "partial") return "dep-status-orange";
+        return "dep-status-red";
+    }
+
+    function fsDepStepOverallState(depStep, iDep) {
+        var dictVerify = fdictGetVerification(depStep);
+        var bUserPassed = dictVerify.sUser === "passed";
+        var bUnitPassed = fsEffectiveTestState(depStep) === "passed";
+        var sDeps = fsComputeDepsState(iDep);
+        var bDepsPassed = sDeps === "none" || sDeps === "passed";
+        var bAnyPassed = bUserPassed || bUnitPassed || bDepsPassed;
+        var bAllPassed = bUserPassed && bUnitPassed && bDepsPassed;
+        if (bAllPassed) return "passed";
+        if (bAnyPassed) return "partial";
+        return "failed";
     }
 
     function fsRenderVerificationRow(
@@ -2557,6 +2600,16 @@ const PipeleyenApp = (function () {
         if (elTarget.closest(".btn-add-deps")) {
             var elAddDeps = elTarget.closest(".btn-add-deps");
             fnScanDependencies(parseInt(elAddDeps.dataset.step));
+            return;
+        }
+        if (elTarget.closest(".btn-show-deps")) {
+            fnShowDag();
+            return;
+        }
+        if (elTarget.closest(".btn-run-step")) {
+            var elRunStep = elTarget.closest(".btn-run-step");
+            fnRunStepCombined(
+                parseInt(elRunStep.dataset.step));
             return;
         }
         if (elTarget.closest(".test-category-file")) {
@@ -4306,8 +4359,25 @@ const PipeleyenApp = (function () {
         if (elSvg) {
             elSvg.style.transform = "scale(" + dScale + ")";
             elSvg.style.transformOrigin = "top center";
+            fnRecolorDagEdges(elSvg);
         }
         elViewport.appendChild(elContainer);
+    }
+
+    function fnRecolorDagEdges(elSvg) {
+        var sColor = fsGetHighlightColor();
+        elSvg.querySelectorAll(".edge path, .edge polygon")
+            .forEach(function (el) {
+                el.setAttribute("stroke", sColor);
+                if (el.tagName === "polygon") {
+                    el.setAttribute("fill", sColor);
+                }
+            });
+    }
+
+    function fsGetHighlightColor() {
+        return getComputedStyle(document.documentElement)
+            .getPropertyValue("--highlight-color").trim();
     }
 
     var sPushService = "";
@@ -5894,6 +5964,47 @@ const PipeleyenApp = (function () {
 
     function fnRunPlotCommands(iIndex) {
         fnRunInteractivePlots(iIndex);
+    }
+
+    function fnRunStepCombined(iIndex) {
+        var step = dictWorkflow.listSteps[iIndex];
+        if (!step) return;
+        var bHasOutputFiles = fbStepHasOutputFiles(step);
+        if (bHasOutputFiles && setStepsWithData.has(iIndex)) {
+            fnShowConfirmModal(
+                "Overwrite Output",
+                "Output files already exist. Overwrite?",
+                function () { fnExecuteStepCombined(iIndex); }
+            );
+        } else {
+            fnExecuteStepCombined(iIndex);
+        }
+    }
+
+    function fbStepHasOutputFiles(step) {
+        var listData = step.saDataFiles || [];
+        var listPlots = step.saPlotFiles || [];
+        return listData.length > 0 || listPlots.length > 0;
+    }
+
+    function fnExecuteStepCombined(iIndex) {
+        var step = dictWorkflow.listSteps[iIndex];
+        if (!step) return;
+        var dictVars = fdictBuildClientVariables();
+        var sDir = fsResolveTemplate(step.sDirectory, dictVars);
+        var listCmds = [];
+        (step.saDataCommands || []).forEach(function (sCmd) {
+            listCmds.push(fsResolveTemplate(sCmd, dictVars));
+        });
+        (step.saPlotCommands || []).forEach(function (sCmd) {
+            listCmds.push(fsResolveTemplate(sCmd, dictVars));
+        });
+        if (listCmds.length === 0) return;
+        var sFullCmd = "cd " + sDir + " && " +
+            listCmds.join(" && ");
+        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
+        var elStrip = document.getElementById("terminalStrip");
+        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
 
     function fnRunSelected() {
