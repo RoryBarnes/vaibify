@@ -9,11 +9,14 @@ from . import fnRunDockerCommand
 
 def fbBuildxAvailable():
     """Return True if `docker buildx` is installed and functional."""
-    resultProcess = subprocess.run(
-        ["docker", "buildx", "version"],
-        capture_output=True,
-    )
-    return resultProcess.returncode == 0
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "buildx", "version"],
+            capture_output=True,
+        )
+        return resultProcess.returncode == 0
+    except FileNotFoundError:
+        return False
 
 
 def _flistBuildPrefix():
