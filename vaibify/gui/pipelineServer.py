@@ -2557,12 +2557,12 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
     sStandardPrefix = posixpath.join(
         sOutputDir, f"{sStandardBase}_standard")
     return (
-        f"pdftoppm -png -r 150 -singlefile "
+        f"pdftoppm -png -r 72 -singlefile "
         f"{fsShellQuote(sPlotPath)} "
         f"{fsShellQuote(sStandardPrefix)} "
         f"2>/dev/null || "
         f"gs -q -dNOPAUSE -dBATCH -sDEVICE=pngalpha "
-        f"-r150 -dUseCropBox "
+        f"-r72 -dUseCropBox "
         f"-sOutputFile={fsShellQuote(sStandardPng)} "
         f"{fsShellQuote(sPlotPath)} 2>/dev/null || true"
     )
