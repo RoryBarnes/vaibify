@@ -1,6 +1,8 @@
 name: tests-linux
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
