@@ -1653,6 +1653,10 @@ const PipeleyenApp = (function () {
             });
         }
 
+        if ((step.saPlotFiles || []).length > 0) {
+            sHtml += fsRenderPlotStandardButtons(iIndex);
+        }
+
         /* Plot Timing */
         if ((step.saPlotFiles || []).length > 0) {
             var dictPlotStats = step.dictRunStats || {};
@@ -2318,6 +2322,11 @@ const PipeleyenApp = (function () {
                 fnEscapeHtml(sDisplayPath) + '</div>';
         }
 
+        if (sArrayKey === "saPlotFiles" && !bInvalid) {
+            sHtml += fsRenderStandardIndicator(
+                iStepIdx, sRaw);
+        }
+
         sHtml += '<div class="detail-actions">';
         if (sType === "output") {
             sHtml += '<button class="action-download" ' +
@@ -2329,39 +2338,48 @@ const PipeleyenApp = (function () {
             '<button class="action-delete" title="Delete">&#10005;</button>' +
             '</div>';
 
-        if (sArrayKey === "saPlotFiles" && !bInvalid) {
-            sHtml += fsRenderPlotStandardButtons(
-                iStepIdx, sRaw);
-        }
-
         sHtml += '</div>';
         return sHtml;
     }
 
-    function fsRenderPlotStandardButtons(iStepIndex, sRawFile) {
+    function fsRenderStandardIndicator(iStepIndex, sRawFile) {
         var sBasename = sRawFile.split("/").pop();
         var sStandardKey = iStepIndex + ":" + sBasename;
-        var bStandardExists = dictPlotStandardExists[sStandardKey];
-        var sStandardBadge = "";
-        if (bStandardExists === true) {
-            sStandardBadge = '<span class="plot-standard-badge ' +
-                'standard-exists" title="Standard exists">' +
-                '\u2713</span>';
-        }
-        var sCompareButton = "";
-        if (bStandardExists) {
-            sCompareButton =
-                '<button class="btn-compare-plot" ' +
-                'data-step="' + iStepIndex +
-                '" data-file="' + fnEscapeHtml(sBasename) +
-                '">Compare to Standard</button>';
-        }
-        return '<div class="plot-standard-actions">' +
-            sStandardBadge + sCompareButton +
-            '<button class="btn-standardize-one" ' +
+        var bStandardExists =
+            dictPlotStandardExists[sStandardKey] === true;
+        if (!bStandardExists) return "";
+        return '<span class="plot-standard-indicator"' +
+            ' title="Standard exists">\u2713</span>';
+    }
+
+    function fsRenderPlotStandardButtons(iStepIndex) {
+        return '<div class="plot-standard-button-row">' +
+            '<button class="btn btn-make-standard" ' +
             'data-step="' + iStepIndex +
-            '" data-file="' + fnEscapeHtml(sBasename) +
-            '">Make Standard</button></div>';
+            '">Make Standard</button>' +
+            '<button class="btn btn-compare-standard" ' +
+            'data-step="' + iStepIndex +
+            '">Compare to Standard</button></div>';
+    }
+
+    function fsFirstPlotBasename(iStepIndex) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        var listPlots = dictStep.saPlotFiles || [];
+        if (listPlots.length === 0) return null;
+        return listPlots[0].split("/").pop();
+    }
+
+    function fbStepHasAnyStandard(iStepIndex) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        var listPlots = dictStep.saPlotFiles || [];
+        for (var i = 0; i < listPlots.length; i++) {
+            var sBasename = listPlots[i].split("/").pop();
+            var sKey = iStepIndex + ":" + sBasename;
+            if (dictPlotStandardExists[sKey] === true) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function fsGetFileCategory(iStep, sFilePath, sArrayKey) {
@@ -2562,19 +2580,18 @@ const PipeleyenApp = (function () {
             );
             return;
         }
-        if (elTarget.closest(".btn-standardize-one")) {
-            var elStdBtn = elTarget.closest(
-                ".btn-standardize-one");
-            fnStandardizePlot(
-                parseInt(elStdBtn.dataset.step),
-                elStdBtn.dataset.file);
+        if (elTarget.closest(".btn-make-standard")) {
+            var elMakeBtn = elTarget.closest(
+                ".btn-make-standard");
+            fnStandardizeAllPlots(
+                parseInt(elMakeBtn.dataset.step));
             return;
         }
-        if (elTarget.closest(".btn-compare-plot")) {
-            var elCmpBtn = elTarget.closest(".btn-compare-plot");
-            fnComparePlotToStandard(
-                parseInt(elCmpBtn.dataset.step),
-                elCmpBtn.dataset.file);
+        if (elTarget.closest(".btn-compare-standard")) {
+            var elCmpBtn = elTarget.closest(
+                ".btn-compare-standard");
+            fnCompareStepPlots(
+                parseInt(elCmpBtn.dataset.step));
             return;
         }
         if (elTarget.closest(".test-file-item")) {
@@ -6118,6 +6135,21 @@ const PipeleyenApp = (function () {
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error");
+        }
+    }
+
+    async function fnCompareStepPlots(iStepIndex) {
+        if (!fbStepHasAnyStandard(iStepIndex)) {
+            fnShowToast(
+                "No standards found. " +
+                "Use \u2018Make Standard\u2019 first.",
+                "error");
+            return;
+        }
+        var sBasename = fsFirstPlotBasename(iStepIndex);
+        if (sBasename) {
+            await fnComparePlotToStandard(
+                iStepIndex, sBasename);
         }
     }
 
