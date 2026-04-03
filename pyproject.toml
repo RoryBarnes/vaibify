@@ -86,3 +86,21 @@ testpaths = ["tests"]
 markers = [
     "docker: tests that require a running Docker daemon",
 ]
+
+[tool.coverage.run]
+source = ["vaibify"]
+omit = [
+    "vaibify/_version.py",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
