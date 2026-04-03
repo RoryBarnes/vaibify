@@ -2556,31 +2556,16 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
         sOutputDir, _fsPlotStandardPath(sStandardBase))
     sStandardPrefix = posixpath.join(
         sOutputDir, f"{sStandardBase}_standard")
-    sGsCommand = _fsBuildGhostscriptCommand(sPlotPath, sStandardPng)
     return (
         f"pdftoppm -png -r 150 -singlefile "
         f"{fsShellQuote(sPlotPath)} "
         f"{fsShellQuote(sStandardPrefix)} "
-        f"2>/dev/null || {sGsCommand} 2>/dev/null "
-        f"|| cp {fsShellQuote(sPlotPath)} "
-        f"{fsShellQuote(sStandardPng)} 2>/dev/null || true"
+        f"2>/dev/null || "
+        f"gs -q -dNOPAUSE -dBATCH -sDEVICE=pngalpha "
+        f"-r150 -dUseCropBox "
+        f"-sOutputFile={fsShellQuote(sStandardPng)} "
+        f"{fsShellQuote(sPlotPath)} 2>/dev/null || true"
     )
-
-
-def _fsBuildGhostscriptCommand(sPlotPath, sStandardPng):
-    """Build a gs command that preserves the PDF page dimensions."""
-    sScript = (
-        "import re,subprocess as sp;"
-        "c=open('{src}','rb').read();"
-        "m=re.search(rb'/MediaBox\\\\s*\\\\[([^\\\\]]+)\\\\]',c);"
-        "p=m.group(1).split() if m else [b'0',b'0',b'612',b'792'];"
-        "w,h=int(float(p[-2])),int(float(p[-1]));"
-        "sp.run(['gs','-q','-dNOPAUSE','-dBATCH','-sDEVICE=png16m',"
-        "'-r150','-dDEVICEWIDTHPOINTS='+str(w),"
-        "'-dDEVICEHEIGHTPOINTS='+str(h),'-dFIXEDMEDIA=false',"
-        "'-sOutputFile={dst}','{src}'],check=True)"
-    ).format(src=sPlotPath, dst=sStandardPng)
-    return f'python3 -c "{sScript}"'
 
 
 def _flistResolvePlotPaths(dictStep, dictVars):
