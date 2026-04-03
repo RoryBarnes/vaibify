@@ -1134,6 +1134,42 @@ html, body {
     color: #e84040;
 }
 
+.verification-badge.state-stale {
+    background: rgba(230, 180, 40, 0.2);
+    color: var(--color-orange);
+}
+
+.plot-standards-expanded {
+    padding: 4px 0 4px 16px;
+    font-size: 0.85em;
+}
+
+.plot-standard-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.plot-standard-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+.btn-standardize-one,
+.btn-compare-plot,
+.btn-standardize-all {
+    font-size: 10px;
+    padding: 1px 6px;
+}
+
+.btn-standardize-all {
+    margin-top: 4px;
+}
+
 .output-modified-warning {
     color: var(--color-orange);
     font-size: 0.85em;

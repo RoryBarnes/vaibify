@@ -1674,11 +1674,27 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths):
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUnitTest") == "passed":
         dictVerification["sUnitTest"] = "untested"
+    if dictVerification.get("sPlotStandards") == "passed":
+        listPlotFiles = dictStep.get("saPlotFiles", [])
+        if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
+            dictVerification["sPlotStandards"] = "stale"
     listExisting = dictVerification.get("listModifiedFiles", [])
     setModified = set(listExisting)
     setModified.update(listChangedPaths)
     dictVerification["listModifiedFiles"] = sorted(setModified)
     dictStep["dictVerification"] = dictVerification
+
+
+def _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
+    """Return True if any changed path matches a plot file."""
+    setPlotBasenames = set()
+    for sPlotFile in listPlotFiles:
+        setPlotBasenames.add(posixpath.basename(sPlotFile))
+    for sChangedPath in listChangedPaths:
+        sChangedBasename = posixpath.basename(sChangedPath)
+        if sChangedBasename in setPlotBasenames:
+            return True
+    return False
 
 
 def _fnInvalidateDownstreamStep(dictStep):
@@ -2431,6 +2447,140 @@ def _fnUpdateAggregateTestState(dictStep):
         dictVerification["sUnitTest"] = "untested"
 
 
+def _fsPlotStandardPath(sBasename):
+    """Return the standard PNG filename for a plot basename."""
+    return f"{sBasename}_standard.png"
+
+
+def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
+    """Build a shell command to convert a plot to a standard PNG."""
+    sStandardBase = posixpath.splitext(sBasename)[0]
+    sStandardPng = posixpath.join(
+        sOutputDir, _fsPlotStandardPath(sStandardBase))
+    sStandardPrefix = posixpath.join(
+        sOutputDir, f"{sStandardBase}_standard")
+    return (
+        f"pdftoppm -png -r 150 -singlefile "
+        f"{fsShellQuote(sPlotPath)} "
+        f"{fsShellQuote(sStandardPrefix)} "
+        f"2>/dev/null || cp {fsShellQuote(sPlotPath)} "
+        f"{fsShellQuote(sStandardPng)} 2>/dev/null || true"
+    )
+
+
+def _flistResolvePlotPaths(dictStep, dictVars):
+    """Return list of (resolved_path, basename) for step plot files."""
+    from .workflowManager import fsResolveVariables
+    sStepDir = dictStep.get("sDirectory", "")
+    listResult = []
+    for sFile in dictStep.get("saPlotFiles", []):
+        sResolved = fsResolveVariables(sFile, dictVars)
+        if not sResolved.startswith("/"):
+            sResolved = posixpath.join(sStepDir, sResolved)
+        sBasename = posixpath.basename(sResolved)
+        listResult.append((sResolved, sBasename))
+    return listResult
+
+
+def _fnRegisterStandardizePlots(app, dictCtx):
+    """Register POST /api/steps/{id}/{step}/standardize-plots."""
+
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/standardize-plots"
+    )
+    async def fnStandardizePlots(
+        sContainerId: str, iStepIndex: int,
+        request: Request,
+    ):
+        import asyncio
+        from datetime import datetime, timezone
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        dictVars = dictCtx["variables"](sContainerId)
+        dictBody = await request.json()
+        sTargetFile = dictBody.get("sFileName", "")
+        listPlots = _flistResolvePlotPaths(dictStep, dictVars)
+        if not listPlots:
+            raise HTTPException(400, "No plot files in this step")
+        listConverted = await _flistConvertToStandards(
+            dictCtx, sContainerId, listPlots, sTargetFile)
+        dictVerification = dictStep.setdefault(
+            "dictVerification", {})
+        sTimestamp = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M UTC")
+        dictVerification["sPlotStandards"] = "passed"
+        dictVerification["sLastStandardized"] = sTimestamp
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {
+            "bSuccess": True,
+            "listConverted": listConverted,
+            "sTimestamp": sTimestamp,
+        }
+
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"
+    )
+    async def fnComparePlot(
+        sContainerId: str, iStepIndex: int,
+        request: Request,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = dictWorkflow["listSteps"][iStepIndex]
+        dictVars = dictCtx["variables"](sContainerId)
+        dictBody = await request.json()
+        sFileName = dictBody.get("sFileName", "")
+        if not sFileName:
+            raise HTTPException(400, "sFileName is required")
+        listPlots = _flistResolvePlotPaths(dictStep, dictVars)
+        sStandardPath = _fsFindStandardForFile(
+            listPlots, sFileName)
+        if not sStandardPath:
+            raise HTTPException(
+                404, "No standard found for this file")
+        return {"sStandardPath": sStandardPath}
+
+
+def _fsFindStandardForFile(listPlots, sFileName):
+    """Return the standard PNG path for a given plot filename."""
+    for sResolved, sBasename in listPlots:
+        if sBasename == sFileName or sResolved.endswith(sFileName):
+            sBase = posixpath.splitext(sBasename)[0]
+            sDir = posixpath.dirname(sResolved)
+            return posixpath.join(
+                sDir, _fsPlotStandardPath(sBase))
+    return ""
+
+
+async def _flistConvertToStandards(
+    dictCtx, sContainerId, listPlots, sTargetFile,
+):
+    """Convert plot files to standard PNGs inside the container."""
+    import asyncio
+    listCommands = []
+    listConverted = []
+    for sResolved, sBasename in listPlots:
+        if sTargetFile and sBasename != sTargetFile:
+            continue
+        sOutputDir = posixpath.dirname(sResolved)
+        sCommand = _fsBuildConvertCommand(
+            sResolved, sOutputDir, sBasename)
+        listCommands.append(sCommand)
+        sBase = posixpath.splitext(sBasename)[0]
+        listConverted.append(_fsPlotStandardPath(sBase))
+    if not listCommands:
+        return []
+    sFullCommand = " && ".join(listCommands)
+    await asyncio.to_thread(
+        dictCtx["docker"].ftResultExecuteCommand,
+        sContainerId, sFullCommand,
+    )
+    return listConverted
+
+
 def _fnRegisterStepRoutes(app, dictCtx):
     """Register all step CRUD routes."""
     _fnRegisterStepsList(app, dictCtx)
@@ -2449,6 +2599,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterTestSaveAndRun(app, dictCtx)
     _fnRegisterTestRun(app, dictCtx)
+    _fnRegisterStandardizePlots(app, dictCtx)
     _fnRegisterFigure(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterPipelineState(app, dictCtx)

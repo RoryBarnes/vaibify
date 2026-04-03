@@ -829,6 +829,7 @@ const PipeleyenApp = (function () {
         setExpandedSteps.clear();
         setExpandedDeps.clear();
         setExpandedUnitTests.clear();
+        setExpandedPlotStandards.clear();
         dictStepStatus = {};
         document.body.classList.remove("all-verified");
         if (wsPipeline) {
@@ -1726,6 +1727,7 @@ const PipeleyenApp = (function () {
         var dictLabels = {
             passed: "Passed", failed: "Failed",
             untested: "Untested", error: "Error",
+            stale: "Stale",
         };
         return dictLabels[sState] || "Untested";
     }
@@ -1734,12 +1736,14 @@ const PipeleyenApp = (function () {
         var dictIcons = {
             passed: "\u2713", failed: "\u2717",
             untested: "\u2014", error: "\u2717",
+            stale: "\u26A0",
         };
         return dictIcons[sState] || "\u2014";
     }
 
     var setExpandedDeps = new Set();
     var setExpandedUnitTests = new Set();
+    var setExpandedPlotStandards = new Set();
     var setExpandedQualitative = new Set();
     var setExpandedQuantitative = new Set();
     var setExpandedIntegrity = new Set();
@@ -1923,6 +1927,23 @@ const PipeleyenApp = (function () {
                 sHtml += fsRenderDepsExpanded(iIndex);
             }
         }
+        var bHasPlotFiles = (step.saPlotFiles || []).length > 0;
+        if (bHasPlotFiles) {
+            var sPlotState = dictVerify.sPlotStandards || "untested";
+            sHtml += fsRenderVerificationRow(
+                "Plot Standards", sPlotState, "plotStandards",
+                iIndex
+            );
+            sHtml += '<div class="timestamp-field">' +
+                fsRenderVerificationTimestamp(
+                    "Last standardized",
+                    dictVerify.sLastStandardized) +
+                '</div>';
+            if (setExpandedPlotStandards.has(iIndex)) {
+                sHtml += fsRenderPlotStandardsExpanded(
+                    step, iIndex);
+            }
+        }
         sHtml += fsRenderVerificationRow(
             sUserName, dictVerify.sUser, "user", iIndex
         );
@@ -2096,6 +2117,13 @@ const PipeleyenApp = (function () {
             var bDepsExpanded = setExpandedDeps.has(iIndex);
             sTriangle = '<span class="expand-triangle">' +
                 (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
+        }
+        if (sApprover === "plotStandards") {
+            var bPlotExpanded = setExpandedPlotStandards.has(
+                iIndex);
+            sTriangle = '<span class="expand-triangle">' +
+                (bPlotExpanded ? "\u25BE" : "\u25B8") +
+                '</span> ';
         }
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
@@ -2517,6 +2545,10 @@ const PipeleyenApp = (function () {
                 fnToggleUnitTestExpand(iStep);
                 return;
             }
+            if (sApprover === "plotStandards") {
+                fnTogglePlotStandardsExpand(iStep);
+                return;
+            }
         }
         var elVerifDeps = elTarget.closest(
             '.verification-row[data-approver="deps"]'
@@ -2525,6 +2557,27 @@ const PipeleyenApp = (function () {
             fnToggleDepsExpand(
                 parseInt(elVerifDeps.dataset.step)
             );
+            return;
+        }
+        if (elTarget.closest(".btn-standardize-all")) {
+            fnStandardizeAllPlots(parseInt(
+                elTarget.closest(".btn-standardize-all")
+                    .dataset.step));
+            return;
+        }
+        if (elTarget.closest(".btn-standardize-one")) {
+            var elStdBtn = elTarget.closest(
+                ".btn-standardize-one");
+            fnStandardizePlot(
+                parseInt(elStdBtn.dataset.step),
+                elStdBtn.dataset.file);
+            return;
+        }
+        if (elTarget.closest(".btn-compare-plot")) {
+            var elCmpBtn = elTarget.closest(".btn-compare-plot");
+            fnComparePlotToStandard(
+                parseInt(elCmpBtn.dataset.step),
+                elCmpBtn.dataset.file);
             return;
         }
         if (elTarget.closest(".test-file-item")) {
@@ -2807,6 +2860,53 @@ const PipeleyenApp = (function () {
             setExpandedUnitTests.add(iStep);
         }
         fnRenderStepList();
+    }
+
+    function fnTogglePlotStandardsExpand(iStep) {
+        if (setExpandedPlotStandards.has(iStep)) {
+            setExpandedPlotStandards.delete(iStep);
+        } else {
+            setExpandedPlotStandards.add(iStep);
+        }
+        fnRenderStepList();
+    }
+
+    function fsRenderPlotStandardsExpanded(step, iIndex) {
+        var listPlotFiles = step.saPlotFiles || [];
+        var dictVerify = fdictGetVerification(step);
+        var sPlotState = dictVerify.sPlotStandards || "untested";
+        var sHtml = '<div class="plot-standards-expanded">';
+        for (var i = 0; i < listPlotFiles.length; i++) {
+            var sFile = listPlotFiles[i];
+            var sBasename = sFile.split("/").pop();
+            sHtml += fsRenderPlotStandardItem(
+                sBasename, sPlotState, iIndex);
+        }
+        sHtml += '<button class="btn btn-standardize-all" ' +
+            'data-step="' + iIndex +
+            '">Standardize All</button>';
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderPlotStandardItem(
+        sBasename, sPlotState, iIndex
+    ) {
+        var sIcon = fsVerificationStateIcon(sPlotState);
+        return '<div class="plot-standard-item">' +
+            '<span class="plot-standard-name">' +
+            fnEscapeHtml(sBasename) + '</span>' +
+            '<span class="verification-badge state-' +
+            sPlotState + '">' + sIcon + '</span>' +
+            '<button class="btn btn-small btn-standardize-one"' +
+            ' data-step="' + iIndex +
+            '" data-file="' + fnEscapeHtml(sBasename) +
+            '">Standardize</button>' +
+            '<button class="btn btn-small btn-compare-plot"' +
+            ' data-step="' + iIndex +
+            '" data-file="' + fnEscapeHtml(sBasename) +
+            '">Compare</button>' +
+            '</div>';
     }
 
     async function fnGenerateTests(iStep) {
@@ -4336,6 +4436,7 @@ const PipeleyenApp = (function () {
             btnKillPipeline: fnKillPipeline,
             btnVerify: fnVerify,
             btnValidateReferences: fnValidateReferences,
+            btnStandardizeAllPlots: fnStandardizeAllWorkflowPlots,
             btnOverleafPush: function () { fnOpenPushModal("overleaf"); },
             btnGithubPush: function () { fnOpenPushModal("github"); },
             btnZenodoArchive: function () { fnOpenPushModal("zenodo"); },
@@ -5945,6 +6046,128 @@ const PipeleyenApp = (function () {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error");
         }
+    }
+
+    async function fnStandardizePlot(iStepIndex, sFileName) {
+        if (!sContainerId) return;
+        fnShowToast("Standardizing " + sFileName + "\u2026",
+            "success");
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" +
+                iStepIndex + "/standardize-plots",
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({sFileName: sFileName}),
+                }
+            );
+            var dictResult = await response.json();
+            fnApplyStandardizeResult(iStepIndex, dictResult);
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+        }
+    }
+
+    async function fnStandardizeAllPlots(iStepIndex) {
+        if (!sContainerId) return;
+        fnShowToast("Standardizing all plots\u2026", "success");
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" +
+                iStepIndex + "/standardize-plots",
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({}),
+                }
+            );
+            var dictResult = await response.json();
+            fnApplyStandardizeResult(iStepIndex, dictResult);
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+        }
+    }
+
+    function fnApplyStandardizeResult(iStepIndex, dictResult) {
+        var step = dictWorkflow.listSteps[iStepIndex];
+        if (!step) return;
+        step.dictVerification = step.dictVerification || {};
+        step.dictVerification.sPlotStandards = "passed";
+        step.dictVerification.sLastStandardized =
+            dictResult.sTimestamp || fsFormatUtcTimestamp();
+        fnSaveStepUpdate(iStepIndex, {
+            dictVerification: step.dictVerification,
+        });
+        fnRenderStepList();
+        fnShowToast("Plot standards saved", "success");
+    }
+
+    async function fnComparePlotToStandard(iStepIndex, sFileName) {
+        if (!sContainerId) return;
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" +
+                iStepIndex + "/compare-plot",
+                {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({sFileName: sFileName}),
+                }
+            );
+            var dictResult = await response.json();
+            if (dictResult.sStandardPath) {
+                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                    dictResult.sStandardPath);
+            } else {
+                fnShowToast(
+                    "No standard found for " + sFileName,
+                    "error");
+            }
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+        }
+    }
+
+    function fiCountStepsWithPlots() {
+        var listSteps = (dictWorkflow || {}).listSteps || [];
+        var iCount = 0;
+        for (var i = 0; i < listSteps.length; i++) {
+            if ((listSteps[i].saPlotFiles || []).length > 0) {
+                iCount++;
+            }
+        }
+        return iCount;
+    }
+
+    async function fnStandardizeAllWorkflowPlots() {
+        if (!sContainerId || !dictWorkflow) return;
+        var iCount = fiCountStepsWithPlots();
+        if (iCount === 0) {
+            fnShowToast("No steps have plot files", "error");
+            return;
+        }
+        fnShowConfirmModal(
+            "Standardize All Plots",
+            "Create plot standards for " + iCount +
+            " step(s)? This will overwrite existing standards.",
+            async function () {
+                await fnStandardizeEachStep();
+            }
+        );
+    }
+
+    async function fnStandardizeEachStep() {
+        var listSteps = dictWorkflow.listSteps || [];
+        for (var i = 0; i < listSteps.length; i++) {
+            if ((listSteps[i].saPlotFiles || []).length > 0) {
+                await fnStandardizeAllPlots(i);
+            }
+        }
+        fnShowToast("All plot standards updated", "success");
     }
 
     function fnApplyCategoryResults(step, dictCategoryResults) {
