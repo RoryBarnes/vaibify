@@ -2608,6 +2608,11 @@ def _fnRegisterStandardizePlots(app, dictCtx):
             raise HTTPException(400, "No plot files in this step")
         listConverted = await _flistConvertToStandards(
             dictCtx, sContainerId, listPlots, sTargetFile)
+        if not listConverted:
+            raise HTTPException(
+                500, "Conversion failed: no standard PNGs "
+                "were created. Check that ghostscript or "
+                "poppler-utils is installed in the container.")
         listStandardizedBasenames = _flistStandardizedBasenames(
             listPlots, sTargetFile)
         dictVerification = dictStep.setdefault(
@@ -2756,7 +2761,33 @@ async def _flistConvertToStandards(
         dictCtx["docker"].ftResultExecuteCommand,
         sContainerId, sFullCommand,
     )
-    return listConverted
+    return await _flistVerifyConverted(
+        dictCtx, sContainerId, listPlots,
+        listConverted, sTargetFile,
+    )
+
+
+async def _flistVerifyConverted(
+    dictCtx, sContainerId, listPlots, listConverted,
+    sTargetFile,
+):
+    """Return only the basenames whose standard PNGs exist."""
+    import asyncio
+    listVerified = []
+    for sConverted, (sResolved, sBasename) in zip(
+        listConverted, listPlots,
+    ):
+        if sTargetFile and sBasename != sTargetFile:
+            continue
+        sDir = posixpath.dirname(sResolved)
+        sFullPath = posixpath.join(sDir, sConverted)
+        iExitCode, _ = await asyncio.to_thread(
+            dictCtx["docker"].ftResultExecuteCommand,
+            sContainerId, f"test -f {fsShellQuote(sFullPath)}",
+        )
+        if iExitCode == 0:
+            listVerified.append(sConverted)
+    return listVerified
 
 
 def _fnRegisterStepRoutes(app, dictCtx):
