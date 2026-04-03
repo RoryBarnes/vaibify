@@ -2351,14 +2351,20 @@ const PipeleyenApp = (function () {
         var dictStep = dictWorkflow.listSteps[iStepIndex];
         var listPlots = dictStep.saPlotFiles || [];
         if (listPlots.length === 0) return null;
-        return listPlots[0].split("/").pop();
+        var dictVars = fdictBuildClientVariables();
+        var sResolved = fsResolveTemplate(
+            listPlots[0], dictVars);
+        return sResolved.split("/").pop();
     }
 
     function fbStepHasAnyStandard(iStepIndex) {
         var dictStep = dictWorkflow.listSteps[iStepIndex];
         var listPlots = dictStep.saPlotFiles || [];
+        var dictVars = fdictBuildClientVariables();
         for (var i = 0; i < listPlots.length; i++) {
-            var sBasename = listPlots[i].split("/").pop();
+            var sResolved = fsResolveTemplate(
+                listPlots[i], dictVars);
+            var sBasename = sResolved.split("/").pop();
             var sKey = iStepIndex + ":" + sBasename;
             if (dictPlotStandardExists[sKey] === true) {
                 return true;
