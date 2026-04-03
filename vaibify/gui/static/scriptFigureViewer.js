@@ -320,12 +320,15 @@ const PipeleyenFigureViewer = (function () {
         elImg, sUrl, elViewport, dScale
     ) {
         var iNativeWidth = elImg.naturalWidth || 800;
+        var iNativeHeight = elImg.naturalHeight || 800;
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
-        elViewport.style.alignItems = "center";
+        elViewport.style.alignItems = "stretch";
         if (dScale === "fit") {
             dScale = (elViewport.clientWidth - 32) / iNativeWidth;
         }
+        var iDisplayWidth = Math.round(iNativeWidth * dScale);
+        var iDisplayHeight = Math.round(iNativeHeight * dScale);
         var elToolbar = fnCreateZoomToolbar(
             dScale, function (dNewScale) {
                 fnRenderImageWithZoom(
@@ -333,8 +336,8 @@ const PipeleyenFigureViewer = (function () {
                 );
             }
         );
-        elImg.style.width = Math.round(iNativeWidth * dScale) + "px";
-        elImg.style.height = "auto";
+        elImg.style.width = iDisplayWidth + "px";
+        elImg.style.height = iDisplayHeight + "px";
         elViewport.appendChild(elToolbar);
         elViewport.appendChild(fnCreateScrollableContent(elImg));
     }
