@@ -2322,11 +2322,6 @@ const PipeleyenApp = (function () {
                 fnEscapeHtml(sDisplayPath) + '</div>';
         }
 
-        if (sArrayKey === "saPlotFiles" && !bInvalid) {
-            sHtml += fsRenderStandardIndicator(
-                iStepIdx, sRaw);
-        }
-
         sHtml += '<div class="detail-actions">';
         if (sType === "output") {
             sHtml += '<button class="action-download" ' +
@@ -2340,16 +2335,6 @@ const PipeleyenApp = (function () {
 
         sHtml += '</div>';
         return sHtml;
-    }
-
-    function fsRenderStandardIndicator(iStepIndex, sRawFile) {
-        var sBasename = sRawFile.split("/").pop();
-        var sStandardKey = iStepIndex + ":" + sBasename;
-        var bStandardExists =
-            dictPlotStandardExists[sStandardKey] === true;
-        if (!bStandardExists) return "";
-        return '<span class="plot-standard-indicator"' +
-            ' title="Standard exists">\u2713</span>';
     }
 
     function fsRenderPlotStandardButtons(iStepIndex) {
@@ -6062,9 +6047,20 @@ const PipeleyenApp = (function () {
         }
     }
 
-    async function fnStandardizeAllPlots(iStepIndex) {
+    function fnStandardizeAllPlots(iStepIndex) {
         if (!sContainerId) return;
-        fnShowToast("Standardizing all plots\u2026", "success");
+        fnShowConfirmModal(
+            "Make Standard",
+            "Convert all plots in this step to standard PNGs? " +
+            "This will overwrite any existing standards.",
+            function () {
+                fnExecuteStandardizeAllPlots(iStepIndex);
+            }
+        );
+    }
+
+    async function fnExecuteStandardizeAllPlots(iStepIndex) {
+        fnShowToast("Standardizing plots\u2026", "success");
         try {
             var response = await fetch(
                 "/api/steps/" + sContainerId + "/" +
