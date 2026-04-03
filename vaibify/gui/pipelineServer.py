@@ -720,6 +720,19 @@ class SyncSetupRequest(BaseModel):
     sToken: Optional[str] = None
 
 
+def _fdictBuildOverleafArgs(dictWorkflow):
+    """Extract Overleaf push arguments from workflow settings."""
+    return {
+        "sProjectId": dictWorkflow.get("sOverleafProjectId", ""),
+        "sTargetDirectory": dictWorkflow.get(
+            "sOverleafFigureDirectory", "figures"),
+        "dictWorkflow": dictWorkflow,
+        "sGithubBaseUrl": dictWorkflow.get("sGithubBaseUrl", ""),
+        "sDoi": dictWorkflow.get("sZenodoDoi", ""),
+        "sTexFilename": dictWorkflow.get("sTexFilename", "main.tex"),
+    }
+
+
 def _fnRegisterOverleafPush(app, dictCtx):
     """Register POST /api/overleaf/{id}/push endpoint."""
     from . import syncDispatcher
@@ -731,20 +744,11 @@ def _fnRegisterOverleafPush(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        sFigureDir = dictWorkflow.get(
-            "sOverleafFigureDirectory", "figures")
-        sProjectId = dictWorkflow.get("sOverleafProjectId", "")
-        sGithubUrl = dictWorkflow.get("sGithubBaseUrl", "")
-        sDoi = dictWorkflow.get("sZenodoDoi", "")
-        sTexFile = dictWorkflow.get("sTexFilename", "main.tex")
+        dictOverleafArgs = _fdictBuildOverleafArgs(dictWorkflow)
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultPushToOverleaf,
             dictCtx["docker"], sContainerId,
-            request.listFilePaths, sProjectId, sFigureDir,
-            dictWorkflow=dictWorkflow,
-            sGithubBaseUrl=sGithubUrl,
-            sDoi=sDoi,
-            sTexFilename=sTexFile,
+            request.listFilePaths, **dictOverleafArgs,
         )
         dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
         if not dictResult["bSuccess"]:
@@ -905,45 +909,72 @@ async def _fdictScanDependencies(
     saDataCommands, dictWorkflow,
 ):
     """Scan commands for file loads and cross-reference upstream outputs."""
-    from .commandUtilities import ftExtractScriptPathForLanguage
-    from .dependencyScanner import flistScanForLoadCalls, fsDetectLanguage
-
     dictStep = dictWorkflow.get("listSteps", [{}])[iStepIndex] \
         if iStepIndex < len(dictWorkflow.get("listSteps", [])) else {}
     sStepDirectory = dictStep.get("sDirectory", "")
-
-    listAllDetected = []
-    for sCommand in saDataCommands:
-        sScriptPath, sLanguage = ftExtractScriptPathForLanguage(sCommand)
-        if not sScriptPath:
-            continue
-        sAbsScriptPath = _fsJoinStepPath(sStepDirectory, sScriptPath)
-        sSourceCode = await _fsReadContainerFile(
-            dictCtx, sContainerId, sAbsScriptPath,
-        )
-        if sSourceCode is None:
-            continue
-        if sLanguage == "unknown":
-            sFirstLine = sSourceCode.split("\n", 1)[0]
-            sLanguage = fsDetectLanguage(
-                sScriptPath, sCommand, sFirstLine,
-            )
-        if sLanguage == "unknown":
-            continue
-        listDetected = flistScanForLoadCalls(sSourceCode, sLanguage)
-        for dictItem in listDetected:
-            dictItem["sFoundInScript"] = sScriptPath
-        listAllDetected.extend(listDetected)
-
+    listAllDetected = await _flistDetectLoadsInCommands(
+        dictCtx, sContainerId, saDataCommands, sStepDirectory,
+    )
     dictResult = _fdictCrossReferenceFiles(
         listAllDetected, dictWorkflow, iStepIndex
     )
-    bNoSuggestions = len(dictResult.get("listSuggestions", [])) == 0
-    if bNoSuggestions and iStepIndex > 0:
+    if not dictResult.get("listSuggestions") and iStepIndex > 0:
         dictResult["listUpstreamOutputs"] = _flistCollectUpstreamOutputs(
             dictWorkflow, iStepIndex,
         )
     return dictResult
+
+
+async def _flistDetectLoadsInCommands(
+    dictCtx, sContainerId, saDataCommands, sStepDirectory,
+):
+    """Scan each command's script for file-load calls."""
+    from .commandUtilities import ftExtractScriptPathForLanguage
+    from .dependencyScanner import flistScanForLoadCalls, fsDetectLanguage
+
+    listAllDetected = []
+    for sCommand in saDataCommands:
+        listDetected = await _flistDetectLoadsInOneCommand(
+            dictCtx, sContainerId, sCommand, sStepDirectory,
+        )
+        listAllDetected.extend(listDetected)
+    return listAllDetected
+
+
+async def _flistDetectLoadsInOneCommand(
+    dictCtx, sContainerId, sCommand, sStepDirectory,
+):
+    """Return detected load calls from a single command's script."""
+    from .commandUtilities import ftExtractScriptPathForLanguage
+    from .dependencyScanner import flistScanForLoadCalls, fsDetectLanguage
+
+    sScriptPath, sLanguage = ftExtractScriptPathForLanguage(sCommand)
+    if not sScriptPath:
+        return []
+    sAbsScriptPath = _fsJoinStepPath(sStepDirectory, sScriptPath)
+    sSourceCode = await _fsReadContainerFile(
+        dictCtx, sContainerId, sAbsScriptPath,
+    )
+    if sSourceCode is None:
+        return []
+    sLanguage = _fsResolveLanguage(
+        sLanguage, sScriptPath, sCommand, sSourceCode,
+    )
+    if sLanguage == "unknown":
+        return []
+    listDetected = flistScanForLoadCalls(sSourceCode, sLanguage)
+    for dictItem in listDetected:
+        dictItem["sFoundInScript"] = sScriptPath
+    return listDetected
+
+
+def _fsResolveLanguage(sLanguage, sScriptPath, sCommand, sSourceCode):
+    """Detect language from source if not already known."""
+    from .dependencyScanner import fsDetectLanguage
+    if sLanguage != "unknown":
+        return sLanguage
+    sFirstLine = sSourceCode.split("\n", 1)[0]
+    return fsDetectLanguage(sScriptPath, sCommand, sFirstLine)
 
 
 def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
@@ -1018,34 +1049,42 @@ def _fdictCrossReferenceFiles(listDetected, dictWorkflow, iCurrentStep):
     listDetected = _flistFilterOwnOutputs(listDetected, setOwnOutputs)
     listSuggestions = []
     listUnmatchedFiles = []
-
     for dictItem in listDetected:
-        sFileName = dictItem["sFileName"]
-        sBasename = os.path.basename(sFileName)
-        sStem = os.path.splitext(sBasename)[0]
-        dictMatch = _fdictFindStemMatch(
-            sStem, dictStemRegistry, dictWorkflow, iCurrentStep
+        _fnClassifyDetectedItem(
+            dictItem, dictStemRegistry, dictWorkflow,
+            iCurrentStep, listSuggestions, listUnmatchedFiles,
         )
-        if dictMatch:
-            dictMatch.update({
-                "sFileName": sFileName,
-                "sFoundInScript": dictItem.get("sFoundInScript", ""),
-                "sLoadFunction": dictItem["sLoadFunction"],
-                "iLineNumber": dictItem["iLineNumber"],
-            })
-            listSuggestions.append(dictMatch)
-        else:
-            listUnmatchedFiles.append({
-                "sFileName": sFileName,
-                "sLoadFunction": dictItem["sLoadFunction"],
-                "iLineNumber": dictItem["iLineNumber"],
-                "sFoundInScript": dictItem.get("sFoundInScript", ""),
-            })
-
     return {
         "listSuggestions": listSuggestions,
         "listUnmatchedFiles": listUnmatchedFiles,
     }
+
+
+def _fnClassifyDetectedItem(
+    dictItem, dictStemRegistry, dictWorkflow,
+    iCurrentStep, listSuggestions, listUnmatchedFiles,
+):
+    """Sort a detected file reference into suggestions or unmatched."""
+    sFileName = dictItem["sFileName"]
+    sStem = os.path.splitext(os.path.basename(sFileName))[0]
+    dictMatch = _fdictFindStemMatch(
+        sStem, dictStemRegistry, dictWorkflow, iCurrentStep
+    )
+    if dictMatch:
+        dictMatch.update({
+            "sFileName": sFileName,
+            "sFoundInScript": dictItem.get("sFoundInScript", ""),
+            "sLoadFunction": dictItem["sLoadFunction"],
+            "iLineNumber": dictItem["iLineNumber"],
+        })
+        listSuggestions.append(dictMatch)
+    else:
+        listUnmatchedFiles.append({
+            "sFileName": sFileName,
+            "sLoadFunction": dictItem["sLoadFunction"],
+            "iLineNumber": dictItem["iLineNumber"],
+            "sFoundInScript": dictItem.get("sFoundInScript", ""),
+        })
 
 
 def _fdictFindStemMatch(
@@ -1415,6 +1454,17 @@ def _fnRegisterStepReorder(app, dictCtx):
         return {"listSteps": dictWorkflow["listSteps"]}
 
 
+def _flistBuildFigureCheckPaths(sAbsPath, sWorkdir, sDir, sFilePath):
+    """Build list of paths to check for figure existence."""
+    listPaths = [sAbsPath]
+    if sWorkdir and not sFilePath.startswith("/"):
+        if sWorkdir.startswith("/"):
+            listPaths.append(posixpath.join(sWorkdir, sFilePath))
+        else:
+            listPaths.append(posixpath.join(sDir, sWorkdir, sFilePath))
+    return listPaths
+
+
 def _fnRegisterFigure(app, dictCtx):
     """Register GET and HEAD /api/figure routes."""
 
@@ -1427,14 +1477,9 @@ def _fnRegisterFigure(app, dictCtx):
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
-        listPaths = [sAbsPath]
-        if sWorkdir and not sFilePath.startswith("/"):
-            if sWorkdir.startswith("/"):
-                listPaths.append(
-                    posixpath.join(sWorkdir, sFilePath))
-            else:
-                listPaths.append(
-                    posixpath.join(sDir, sWorkdir, sFilePath))
+        listPaths = _flistBuildFigureCheckPaths(
+            sAbsPath, sWorkdir, sDir, sFilePath,
+        )
         sTestCmd = " || ".join(
             f"test -f {fsShellQuote(p)}" for p in listPaths)
         iExitCode, _ = await asyncio.to_thread(
@@ -2125,6 +2170,38 @@ async def _fdictRunTestGeneration(
             f"{_fsSanitizeServerError(str(error))}")
 
 
+def _fbNeedsClaudeFallback(dictCtx, sContainerId, request):
+    """Return True if we need an LLM fallback and Claude is unavailable."""
+    if request.bDeterministic or request.bUseApi:
+        return False
+    from .testGenerator import fbContainerHasClaude
+    return not fbContainerHasClaude(dictCtx["docker"], sContainerId)
+
+
+def _fnApplyGeneratedTests(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, dictResult,
+):
+    """Store generated test categories in the step and save."""
+    from .workflowManager import flistBuildTestCommands
+    dictStep = dictWorkflow["listSteps"][iStepIndex]
+    dictTests = dictStep.setdefault("dictTests", {})
+    for sCategory in ("dictIntegrity", "dictQualitative", "dictQuantitative"):
+        if sCategory in dictResult:
+            dictTests[sCategory] = dictResult[sCategory]
+    dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
+    dictCtx["save"](sContainerId, dictWorkflow)
+
+
+def _fdictBuildGenerateResponse(dictResult):
+    """Build the HTTP response dict for test generation."""
+    return {
+        "bGenerated": True,
+        "dictIntegrity": dictResult.get("dictIntegrity", {}),
+        "dictQualitative": dictResult.get("dictQualitative", {}),
+        "dictQuantitative": dictResult.get("dictQuantitative", {}),
+    }
+
+
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
@@ -2135,13 +2212,8 @@ def _fnRegisterTestGenerate(app, dictCtx):
     ):
         dictCtx["require"]()
         from .testGenerator import fbContainerHasClaude, fdictGenerateAllTests
-        from .workflowManager import flistBuildTestCommands
-        if not request.bDeterministic and not request.bUseApi:
-            bHasClaude = fbContainerHasClaude(
-                dictCtx["docker"], sContainerId
-            )
-            if not bHasClaude:
-                return {"bNeedsFallback": True}
+        if _fbNeedsClaudeFallback(dictCtx, sContainerId, request):
+            return {"bNeedsFallback": True}
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
@@ -2149,19 +2221,11 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx, sContainerId, iStepIndex,
             dictWorkflow, fdictGenerateAllTests, request,
         )
-        dictStep = dictWorkflow["listSteps"][iStepIndex]
-        dictTests = dictStep.setdefault("dictTests", {})
-        for sCategory in ("dictIntegrity", "dictQualitative", "dictQuantitative"):
-            if sCategory in dictResult:
-                dictTests[sCategory] = dictResult[sCategory]
-        dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
-        return {
-            "bGenerated": True,
-            "dictIntegrity": dictResult.get("dictIntegrity", {}),
-            "dictQualitative": dictResult.get("dictQualitative", {}),
-            "dictQuantitative": dictResult.get("dictQuantitative", {}),
-        }
+        _fnApplyGeneratedTests(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex,
+            dictResult,
+        )
+        return _fdictBuildGenerateResponse(dictResult)
 
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
@@ -2258,6 +2322,75 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         }
 
 
+def _flistResolveTestCommands(dictStep):
+    """Return test commands from structured tests or legacy list."""
+    from .workflowManager import flistBuildTestCommands
+    if "dictTests" in dictStep:
+        return flistBuildTestCommands(dictStep)
+    return dictStep.get("saTestCommands", [])
+
+
+_LIST_TEST_CATEGORIES = (
+    ("dictIntegrity", "sIntegrity"),
+    ("dictQualitative", "sQualitative"),
+    ("dictQuantitative", "sQuantitative"),
+)
+
+
+async def _fdictRunAllTestCategories(dictCtx, sContainerId, dictStep):
+    """Run each test category and return {category: result_dict}."""
+    import asyncio
+    sDir = dictStep.get("sDirectory", "/workspace")
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    dictCategoryResults = {}
+    for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
+        dictResult = await _fdictRunOneTestCategory(
+            dictCtx, sContainerId, dictStep, sDir, sCategory,
+        )
+        if dictResult is None:
+            continue
+        dictVerification[sVerifKey] = (
+            "passed" if dictResult["bPassed"] else "failed")
+        dictCategoryResults[sCategory] = dictResult
+    return dictCategoryResults
+
+
+async def _fdictRunOneTestCategory(
+    dictCtx, sContainerId, dictStep, sDirectory, sCategory,
+):
+    """Execute one test category and return result dict, or None."""
+    import asyncio
+    dictCat = dictStep.get("dictTests", {}).get(sCategory, {})
+    listCatCmds = dictCat.get("saCommands", [])
+    if not listCatCmds:
+        return None
+    sCatCmd = " && ".join(
+        [f"cd {fsShellQuote(sDirectory)}"] + listCatCmds)
+    iCatExit, sCatOutput = await asyncio.to_thread(
+        dictCtx["docker"].ftResultExecuteCommand,
+        sContainerId, sCatCmd,
+    )
+    return {
+        "bPassed": iCatExit == 0,
+        "sOutput": sCatOutput,
+        "iExitCode": iCatExit,
+    }
+
+
+def _fdictBuildTestResponse(bAllPassed, dictCategoryResults):
+    """Build the HTTP response dict for a test run."""
+    iMaxExitCode = max(
+        (d["iExitCode"] for d in dictCategoryResults.values()),
+        default=0,
+    )
+    return {
+        "bPassed": bAllPassed,
+        "iExitCode": iMaxExitCode,
+        "sOutput": "",
+        "dictCategoryResults": dictCategoryResults,
+    }
+
+
 def _fnRegisterTestRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-tests."""
 
@@ -2271,56 +2404,20 @@ def _fnRegisterTestRun(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        if "dictTests" in dictStep:
-            listCmds = flistBuildTestCommands(dictStep)
-        else:
-            listCmds = dictStep.get("saTestCommands", [])
+        listCmds = _flistResolveTestCommands(dictStep)
         if not listCmds:
             raise HTTPException(400, "No test commands")
-        sDir = dictStep.get("sDirectory", "/workspace")
-        dictVerification = dictStep.setdefault(
-            "dictVerification", {})
-        dictCategoryResults = {}
-        bAllPassed = True
-        for sCategory, sVerifKey in (
-            ("dictIntegrity", "sIntegrity"),
-            ("dictQualitative", "sQualitative"),
-            ("dictQuantitative", "sQuantitative"),
-        ):
-            dictTests = dictStep.get("dictTests", {})
-            dictCat = dictTests.get(sCategory, {})
-            listCatCmds = dictCat.get("saCommands", [])
-            if not listCatCmds:
-                continue
-            sCatCmd = " && ".join(
-                [f"cd {fsShellQuote(sDir)}"] + listCatCmds)
-            iCatExit, sCatOutput = await asyncio.to_thread(
-                dictCtx["docker"].ftResultExecuteCommand,
-                sContainerId, sCatCmd,
-            )
-            bCatPassed = iCatExit == 0
-            dictVerification[sVerifKey] = (
-                "passed" if bCatPassed else "failed")
-            dictCategoryResults[sCategory] = {
-                "bPassed": bCatPassed,
-                "sOutput": sCatOutput,
-                "iExitCode": iCatExit,
-            }
-            if not bCatPassed:
-                bAllPassed = False
+        dictCategoryResults = await _fdictRunAllTestCategories(
+            dictCtx, sContainerId, dictStep,
+        )
+        bAllPassed = all(
+            d["bPassed"] for d in dictCategoryResults.values()
+        )
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
         dictCtx["save"](sContainerId, dictWorkflow)
-        iMaxExitCode = max(
-            (d["iExitCode"] for d in dictCategoryResults.values()),
-            default=0,
-        )
-        return {
-            "bPassed": bAllPassed,
-            "iExitCode": iMaxExitCode,
-            "sOutput": "",
-            "dictCategoryResults": dictCategoryResults,
-        }
+        return _fdictBuildTestResponse(
+            bAllPassed, dictCategoryResults)
 
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-test-category"

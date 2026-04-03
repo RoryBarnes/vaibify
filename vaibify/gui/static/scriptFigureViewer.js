@@ -339,37 +339,34 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
+    function felCreateZoomButton(sClass, sTitle, sText, fnClick) {
+        var elButton = document.createElement("button");
+        elButton.className = sClass;
+        elButton.title = sTitle;
+        elButton.textContent = sText;
+        elButton.addEventListener("click", fnClick);
+        return elButton;
+    }
+
     function fnCreateZoomToolbar(dCurrentScale, fnOnZoom) {
         var elToolbar = document.createElement("div");
         elToolbar.className = "editor-toolbar zoom-toolbar";
-        var elZoomOut = document.createElement("button");
-        elZoomOut.className = "btn-icon";
-        elZoomOut.title = "Zoom out";
-        elZoomOut.textContent = "\u2212";
         var elZoomLevel = document.createElement("span");
         elZoomLevel.className = "zoom-level";
         elZoomLevel.textContent = Math.round(dCurrentScale * 100) + "%";
-        var elZoomIn = document.createElement("button");
-        elZoomIn.className = "btn-icon";
-        elZoomIn.title = "Zoom in";
-        elZoomIn.textContent = "+";
-        var elFit = document.createElement("button");
-        elFit.className = "btn-icon";
-        elFit.title = "Fit to window";
-        elFit.textContent = "\u2922";
-        elZoomOut.addEventListener("click", function () {
-            fnOnZoom(Math.max(0.25, dCurrentScale - 0.25));
-        });
-        elZoomIn.addEventListener("click", function () {
-            fnOnZoom(Math.min(4.0, dCurrentScale + 0.25));
-        });
-        elFit.addEventListener("click", function () {
-            fnOnZoom("fit");
-        });
-        elToolbar.appendChild(elZoomOut);
+        elToolbar.appendChild(felCreateZoomButton(
+            "btn-icon", "Zoom out", "\u2212", function () {
+                fnOnZoom(Math.max(0.25, dCurrentScale - 0.25));
+            }));
         elToolbar.appendChild(elZoomLevel);
-        elToolbar.appendChild(elZoomIn);
-        elToolbar.appendChild(elFit);
+        elToolbar.appendChild(felCreateZoomButton(
+            "btn-icon", "Zoom in", "+", function () {
+                fnOnZoom(Math.min(4.0, dCurrentScale + 0.25));
+            }));
+        elToolbar.appendChild(felCreateZoomButton(
+            "btn-icon", "Fit to window", "\u2922", function () {
+                fnOnZoom("fit");
+            }));
         return elToolbar;
     }
 
@@ -425,19 +422,23 @@ const PipeleyenFigureViewer = (function () {
         return elContent;
     }
 
+    function felCreatePdfCanvas(viewport) {
+        var elCanvas = document.createElement("canvas");
+        elCanvas.width = viewport.width;
+        elCanvas.height = viewport.height;
+        elCanvas.style.width = viewport.width / 2 + "px";
+        elCanvas.style.height = viewport.height / 2 + "px";
+        return elCanvas;
+    }
+
     function fnRenderPdfPage(page, elViewport, dDisplayScale) {
         var dNativeViewport = page.getViewport({ scale: 1.0 });
         if (dDisplayScale === "fit") {
             dDisplayScale = (elViewport.clientWidth - 32) /
                 dNativeViewport.width;
         }
-        var dRenderScale = dDisplayScale * 2;
-        var viewport = page.getViewport({ scale: dRenderScale });
-        var elCanvas = document.createElement("canvas");
-        elCanvas.width = viewport.width;
-        elCanvas.height = viewport.height;
-        elCanvas.style.width = viewport.width / 2 + "px";
-        elCanvas.style.height = viewport.height / 2 + "px";
+        var viewport = page.getViewport({ scale: dDisplayScale * 2 });
+        var elCanvas = felCreatePdfCanvas(viewport);
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
         elViewport.style.alignItems = "stretch";
@@ -475,30 +476,32 @@ const PipeleyenFigureViewer = (function () {
             });
     }
 
+    function fnHandleEditClick(sText, sUrl, elViewport) {
+        if (fbIsOutputFile(sUrl)) {
+            PipeleyenApp.fnShowConfirmModal(
+                "Edit Pipeline Output",
+                "This file is pipeline output that may be " +
+                "used for verification. Edit anyway?",
+                function () {
+                    fnEnterEditMode(sText, sUrl, elViewport);
+                }
+            );
+            return;
+        }
+        fnEnterEditMode(sText, sUrl, elViewport);
+    }
+
     function fnRenderTextWithToolbar(sText, sUrl, elViewport) {
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
         elViewport.style.alignItems = "stretch";
         var elToolbar = document.createElement("div");
         elToolbar.className = "editor-toolbar";
-        var elEditBtn = document.createElement("button");
-        elEditBtn.className = "btn-icon";
-        elEditBtn.title = "Edit";
+        var elEditBtn = felCreateZoomButton(
+            "btn-icon", "Edit", "", function () {
+                fnHandleEditClick(sText, sUrl, elViewport);
+            });
         elEditBtn.innerHTML = "&#9998;";
-        elEditBtn.addEventListener("click", function () {
-            if (fbIsOutputFile(sUrl)) {
-                PipeleyenApp.fnShowConfirmModal(
-                    "Edit Pipeline Output",
-                    "This file is pipeline output that may be " +
-                    "used for verification. Edit anyway?",
-                    function () {
-                        fnEnterEditMode(sText, sUrl, elViewport);
-                    }
-                );
-                return;
-            }
-            fnEnterEditMode(sText, sUrl, elViewport);
-        });
         elToolbar.appendChild(elEditBtn);
         var elPre = document.createElement("pre");
         elPre.textContent = sText;
