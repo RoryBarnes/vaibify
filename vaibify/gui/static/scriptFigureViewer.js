@@ -5,16 +5,7 @@ const PipeleyenFigureViewer = (function () {
 
     var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
-    var SET_BINARY_EXTENSIONS = new Set([
-        ".npy", ".npz", ".pkl", ".pickle", ".h5", ".hdf5",
-        ".fits", ".fit", ".fz", ".dat", ".bin", ".so",
-        ".o", ".a", ".pyc", ".pyo", ".whl", ".egg",
-        ".gz", ".tar", ".zip", ".bz2", ".xz",
-    ]);
-
-    function fbIsBinaryFile(sExtension) {
-        return SET_BINARY_EXTENSIONS.has(sExtension);
-    }
+    var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
     var S_OUTPUT_MISSING = '<span class="placeholder output-missing-message">' +
         'Output not available. Run the step to generate.</span>';
 
@@ -743,10 +734,10 @@ const PipeleyenFigureViewer = (function () {
             elViewport.addEventListener("drop", function (event) {
                 event.preventDefault();
                 elViewport.classList.remove("drag-over");
-                var sPath = event.dataTransfer.getData("pipeleyen/filepath");
+                var sPath = event.dataTransfer.getData("vaibify/filepath");
                 if (sPath) {
                     var sWorkdir = event.dataTransfer.getData(
-                        "pipeleyen/workdir"
+                        "vaibify/workdir"
                     ) || "";
                     fnNavigateToPath(dictViewer, sPath, sWorkdir);
                 }

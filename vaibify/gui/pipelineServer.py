@@ -816,6 +816,10 @@ def _fnRegisterGithubPush(app, dictCtx):
         return dictResult
 
 
+def _fnRegisterGithubAddFile(app, dictCtx):
+    """Register POST /api/github/{id}/add-file endpoint."""
+    from . import syncDispatcher
+
     @app.post("/api/github/{sContainerId}/add-file")
     async def fnGithubAddFile(
         sContainerId: str, request: GitAddFileRequest,
@@ -842,6 +846,10 @@ def _fnRegisterGithubPush(app, dictCtx):
             sHash = sOut.strip().splitlines()[-1] if sOut else ""
             dictResult["sCommitHash"] = sHash
         return dictResult
+
+
+def _fnRegisterScriptRoutes(app, dictCtx):
+    """Register script listing and scanning routes."""
 
     @app.get("/api/sync/{sContainerId}/scripts")
     async def fnGetScripts(sContainerId: str):
@@ -1228,6 +1236,8 @@ def _fnRegisterReproEndpoints(app, dictCtx):
     _fnRegisterOverleafPush(app, dictCtx)
     _fnRegisterZenodoArchive(app, dictCtx)
     _fnRegisterGithubPush(app, dictCtx)
+    _fnRegisterGithubAddFile(app, dictCtx)
+    _fnRegisterScriptRoutes(app, dictCtx)
     _fnRegisterSyncRoutes(app, dictCtx)
 
 

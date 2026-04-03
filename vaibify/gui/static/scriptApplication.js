@@ -668,6 +668,46 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function _fnResetWorkflowState() {
+        dictStepStatus = {};
+        dictFileExistenceCache = {};
+        dictFileModTimes = {};
+        setStepsWithData.clear();
+        bFileCheckInProgress = false;
+        bDelegatedEventsInitialized = false;
+        iPreviousOutputCount = 0;
+        fnStopPipelinePolling();
+        fnStopFileChangePolling();
+    }
+
+    function _fnActivateWorkflow(sId, data, sWorkflowName) {
+        sContainerId = sId;
+        dictWorkflow = data.dictWorkflow;
+        sWorkflowPath = data.sWorkflowPath;
+        _dictDashboardMode = DICT_MODE_WORKFLOW;
+        _fnResetWorkflowState();
+        var iStepCount = (dictWorkflow.listSteps || []).length;
+        if (iStepCount > 500) {
+            fnShowToast(
+                "This workflow has " + iStepCount + " steps. " +
+                "Large workflows may use significant memory. " +
+                "Avoid expanding many steps simultaneously.",
+                "error"
+            );
+        }
+        var elWorkflowName = document.getElementById("activeWorkflowName");
+        elWorkflowName.textContent = sWorkflowName || "";
+        document.title = (_sSelectedContainerName || "Vaibify") +
+            (sWorkflowName ? ": " + sWorkflowName : "");
+        fnShowMainLayout();
+        fnRenderStepList();
+        fnCheckVaibifiedOnLoad();
+        fnPollAllStepFiles();
+        fnStartFileChangePolling();
+        PipeleyenTerminal.fnCreateTab();
+        fnRecoverPipelineState(sId);
+    }
+
     async function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
         try {
             var response = await fetch(
@@ -681,40 +721,7 @@ const PipeleyenApp = (function () {
                     detail.detail || "Connection failed"), "error");
                 return;
             }
-            var data = await response.json();
-            sContainerId = sId;
-            dictWorkflow = data.dictWorkflow;
-            sWorkflowPath = data.sWorkflowPath;
-            _dictDashboardMode = DICT_MODE_WORKFLOW;
-            dictStepStatus = {};
-            dictFileExistenceCache = {};
-            dictFileModTimes = {};
-            setStepsWithData.clear();
-            bFileCheckInProgress = false;
-            bDelegatedEventsInitialized = false;
-            iPreviousOutputCount = 0;
-            fnStopPipelinePolling();
-            fnStopFileChangePolling();
-            var iStepCount = (dictWorkflow.listSteps || []).length;
-            if (iStepCount > 500) {
-                fnShowToast(
-                    "This workflow has " + iStepCount + " steps. " +
-                    "Large workflows may use significant memory. " +
-                    "Avoid expanding many steps simultaneously.",
-                    "error"
-                );
-            }
-            var elWorkflowName = document.getElementById("activeWorkflowName");
-            elWorkflowName.textContent = sWorkflowName || "";
-            document.title = (_sSelectedContainerName || "Vaibify") +
-                (sWorkflowName ? ": " + sWorkflowName : "");
-            fnShowMainLayout();
-            fnRenderStepList();
-            fnCheckVaibifiedOnLoad();
-            fnPollAllStepFiles();
-            fnStartFileChangePolling();
-            PipeleyenTerminal.fnCreateTab();
-            fnRecoverPipelineState(sId);
+            _fnActivateWorkflow(sId, await response.json(), sWorkflowName);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
@@ -827,17 +834,7 @@ const PipeleyenApp = (function () {
         fnApplyDashboardMode();
     }
 
-    function fnDisconnect() {
-        sContainerId = null;
-        dictWorkflow = null;
-        sWorkflowPath = null;
-        iSelectedStepIndex = -1;
-        setExpandedSteps.clear();
-        setExpandedDeps.clear();
-        setExpandedUnitTests.clear();
-        dictPlotStandardExists = {};
-        dictStepStatus = {};
-        document.body.classList.remove("all-verified");
+    function _fnCancelAllTimers() {
         if (wsPipeline) {
             wsPipeline.close();
             wsPipeline = null;
@@ -856,6 +853,20 @@ const PipeleyenApp = (function () {
             clearInterval(_iActiveSentinelMonitor);
             _iActiveSentinelMonitor = null;
         }
+    }
+
+    function fnDisconnect() {
+        sContainerId = null;
+        dictWorkflow = null;
+        sWorkflowPath = null;
+        iSelectedStepIndex = -1;
+        setExpandedSteps.clear();
+        setExpandedDeps.clear();
+        setExpandedUnitTests.clear();
+        dictPlotStandardExists = {};
+        dictStepStatus = {};
+        document.body.classList.remove("all-verified");
+        _fnCancelAllTimers();
         PipeleyenFigureViewer.fnReleaseResources();
         PipeleyenTerminal.fnCloseAll();
         fnShowContainerLanding();
@@ -991,51 +1002,39 @@ const PipeleyenApp = (function () {
         );
     }
 
-    function fnRenderGlobalSettings() {
-        if (!dictWorkflow) return;
-        var el = document.getElementById("globalSettingsPanel");
-        el.innerHTML =
-            '<div class="gs-row">' +
-            '<span class="gs-label">Plot Dir</span>' +
+    function fsSettingsRowHtml(sLabel, sInputHtml) {
+        return '<div class="gs-row">' +
+            '<span class="gs-label">' + sLabel + '</span>' +
+            sInputHtml + '</div>';
+    }
+
+    function fsGlobalSettingsHtml() {
+        var iToleranceExp = fsToleranceToExponent(
+            dictWorkflow.fTolerance || 1e-6);
+        return fsSettingsRowHtml("Plot Dir",
             '<input class="gs-input" id="gsPlotDirectory" value="' +
-            fnEscapeHtml(dictWorkflow.sPlotDirectory || "Plot") + '">' +
-            '</div>' +
-            '<div class="gs-row">' +
-            '<span class="gs-label">Figure Type</span>' +
+            fnEscapeHtml(dictWorkflow.sPlotDirectory || "Plot") + '">') +
+            fsSettingsRowHtml("Figure Type",
             '<input class="gs-input" id="gsFigureType" value="' +
-            fnEscapeHtml(dictWorkflow.sFigureType || "pdf") + '">' +
-            '</div>' +
-            '<div class="gs-row">' +
-            '<span class="gs-label">Cores</span>' +
+            fnEscapeHtml(dictWorkflow.sFigureType || "pdf") + '">') +
+            fsSettingsRowHtml("Cores",
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
-            (dictWorkflow.iNumberOfCores || -1) + '">' +
-            '</div>' +
-            '<div class="gs-row">' +
-            '<span class="gs-label">Tolerance</span>' +
+            (dictWorkflow.iNumberOfCores || -1) + '">') +
+            fsSettingsRowHtml("Tolerance",
             '<input class="gs-input" id="gsTolerance" type="range"' +
-            ' min="-16" max="0" step="1" value="' +
-            fsToleranceToExponent(
-                dictWorkflow.fTolerance || 1e-6) +
-            '" title="10^' +
-            fsToleranceToExponent(
-                dictWorkflow.fTolerance || 1e-6) +
-            ' = ' + (dictWorkflow.fTolerance || 1e-6) + '">' +
-            '</div>' +
-            '<div class="gs-row">' +
-            '<span class="gs-label">Poll Interval</span>' +
+            ' min="-16" max="0" step="1" value="' + iToleranceExp +
+            '" title="10^' + iToleranceExp +
+            ' = ' + (dictWorkflow.fTolerance || 1e-6) + '">') +
+            fsSettingsRowHtml("Poll Interval",
             '<input class="gs-input" id="gsPollInterval" type="range"' +
-            ' min="1" max="60" value="' +
-            (iPollIntervalMs / 1000) + '" title="' +
-            (iPollIntervalMs / 1000) + ' seconds">' +
-            '</div>' +
-            '<div class="gs-row">' +
-            '<span class="gs-label">Show timestamps</span>' +
+            ' min="1" max="60" value="' + (iPollIntervalMs / 1000) +
+            '" title="' + (iPollIntervalMs / 1000) + ' seconds">') +
+            fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (bShowTimestamps ? " checked" : "") + '>' +
-            '</div>';
-        el.querySelectorAll(".gs-input").forEach(function (inp) {
-            inp.addEventListener("change", fnSaveGlobalSettings);
-        });
+            (bShowTimestamps ? " checked" : "") + '>');
+    }
+
+    function fnBindSettingsSliders() {
         var elPollSlider = document.getElementById("gsPollInterval");
         if (elPollSlider) {
             elPollSlider.addEventListener("input", function () {
@@ -1061,6 +1060,16 @@ const PipeleyenApp = (function () {
                         elTimestampCheckbox.checked);
                 });
         }
+    }
+
+    function fnRenderGlobalSettings() {
+        if (!dictWorkflow) return;
+        var el = document.getElementById("globalSettingsPanel");
+        el.innerHTML = fsGlobalSettingsHtml();
+        el.querySelectorAll(".gs-input").forEach(function (inp) {
+            inp.addEventListener("change", fnSaveGlobalSettings);
+        });
+        fnBindSettingsSliders();
     }
 
     function fnToggleShowTimestamps(bEnabled) {
@@ -1280,6 +1289,65 @@ const PipeleyenApp = (function () {
         });
     }
 
+    function _fnCheckSingleOutputFile(
+        el, dictDataCounts, dictDataPresent, signalFileCheck
+    ) {
+        var elText = el.querySelector(".detail-text");
+        if (!elText || elText.classList.contains("file-invalid")) {
+            return;
+        }
+        var iStep = parseInt(el.dataset.step);
+        var sArray = el.dataset.array;
+        var sResolved = el.dataset.resolved;
+        var sWorkdir = el.dataset.workdir || "";
+        var sCacheKey = iStep + ":" + sResolved + ":" + sWorkdir;
+        var sRaw = el.dataset.raw || "";
+        var bNecessaryData = sArray === "saDataFiles" &&
+            fsGetFileCategory(iStep, sRaw, sArray) === "archive";
+        if (bNecessaryData) {
+            dictDataCounts[iStep] =
+                (dictDataCounts[iStep] || 0) + 1;
+        }
+        if (dictFileExistenceCache[sCacheKey] === true) {
+            fnUpdateFileStatus(el, true);
+            fnTrackDataPresence(
+                iStep, bNecessaryData,
+                dictDataCounts, dictDataPresent
+            );
+            return;
+        }
+        if (dictFileExistenceCache[sCacheKey] === false) {
+            fnUpdateFileStatus(el, false);
+            return;
+        }
+        var sUrl = "/api/figure/" + sContainerId + "/" + sResolved;
+        if (sWorkdir) {
+            sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
+        }
+        iInflightRequests++;
+        fetch(sUrl, {
+            method: "HEAD", signal: signalFileCheck,
+        }).then(function (r) {
+            if (r.ok) {
+                fnSetFileExistenceCache(sCacheKey, true);
+                fnUpdateFileStatus(el, true);
+                fnTrackDataPresence(
+                    iStep, bNecessaryData,
+                    dictDataCounts, dictDataPresent
+                );
+            } else {
+                fnSetFileExistenceCache(sCacheKey, false);
+                fnUpdateFileStatus(el, false);
+            }
+            fnFileCheckComplete();
+            }).catch(function (err) {
+                if (err.name === "AbortError") return;
+                fnSetFileExistenceCache(sCacheKey, false);
+                fnUpdateFileStatus(el, false);
+                fnFileCheckComplete();
+            });
+    }
+
     function fnCheckOutputFileExistence() {
         if (!sContainerId) return;
         if (_abortControllerFileCheck) {
@@ -1292,62 +1360,9 @@ const PipeleyenApp = (function () {
         document.querySelectorAll(
             '.detail-item.output'
         ).forEach(function (el) {
-            var elText = el.querySelector(".detail-text");
-            if (!elText || elText.classList.contains("file-invalid")) {
-                return;
-            }
-            var iStep = parseInt(el.dataset.step);
-            var sArray = el.dataset.array;
-            var sResolved = el.dataset.resolved;
-            var sWorkdir = el.dataset.workdir || "";
-            var sCacheKey = iStep + ":" + sResolved + ":" + sWorkdir;
-            var sRaw = el.dataset.raw || "";
-            var bNecessaryData = sArray === "saDataFiles" &&
-                fsGetFileCategory(iStep, sRaw, sArray) ===
-                "archive";
-            if (bNecessaryData) {
-                dictDataCounts[iStep] =
-                    (dictDataCounts[iStep] || 0) + 1;
-            }
-            if (dictFileExistenceCache[sCacheKey] === true) {
-                fnUpdateFileStatus(el, true);
-                fnTrackDataPresence(
-                    iStep, bNecessaryData,
-                    dictDataCounts, dictDataPresent
-                );
-                return;
-            }
-            if (dictFileExistenceCache[sCacheKey] === false) {
-                fnUpdateFileStatus(el, false);
-                return;
-            }
-            var sUrl = "/api/figure/" + sContainerId + "/" +
-                sResolved;
-            if (sWorkdir) {
-                sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
-            }
-            iInflightRequests++;
-            fetch(sUrl, {
-                method: "HEAD", signal: signalFileCheck,
-            }).then(function (r) {
-                if (r.ok) {
-                    fnSetFileExistenceCache(sCacheKey, true);
-                    fnUpdateFileStatus(el, true);
-                    fnTrackDataPresence(
-                        iStep, bNecessaryData,
-                        dictDataCounts, dictDataPresent
-                    );
-                } else {
-                    fnSetFileExistenceCache(sCacheKey, false);
-                    fnUpdateFileStatus(el, false);
-                }
-                fnFileCheckComplete();
-            }).catch(function (err) {
-                if (err.name === "AbortError") return;
-                fnSetFileExistenceCache(sCacheKey, false);
-                fnUpdateFileStatus(el, false);
-                fnFileCheckComplete();
-            });
+            _fnCheckSingleOutputFile(
+                el, dictDataCounts, dictDataPresent, signalFileCheck
+            );
         });
     }
 
