@@ -74,6 +74,7 @@ Documentation = "https://vaibify.readthedocs.io"
 [tool.setuptools_scm]
 write_to = "vaibify/_version.py"
 local_scheme = "no-local-version"
+git_describe_command = ["git", "describe", "--tags", "--long", "--match", "v*"]
 
 [tool.setuptools.packages.find]
 include = ["vaibify*"]
