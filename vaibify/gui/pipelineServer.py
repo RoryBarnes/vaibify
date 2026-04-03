@@ -2688,7 +2688,7 @@ async def _fdictCheckStandardsExist(
         dictCtx["docker"].ftResultExecuteCommand,
         sContainerId, sCheckCommand,
     )
-    sOutput = tResult[0] if tResult else ""
+    sOutput = tResult[1] if tResult else ""
     listLines = sOutput.strip().split("\n")
     dictResult = {}
     for iIdx, sBasename in enumerate(listBasenames):
