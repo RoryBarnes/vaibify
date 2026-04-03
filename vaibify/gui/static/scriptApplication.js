@@ -3401,12 +3401,12 @@ const PipeleyenApp = (function () {
         });
         setTimeout(function () {
             elOverlay.classList.add("fading");
-        }, 1200);
+        }, 2700);
         setTimeout(function () {
             if (elOverlay.parentNode) {
                 elOverlay.parentNode.removeChild(elOverlay);
             }
-        }, 1700);
+        }, 3500);
     }
 
     function fnAnimatePanelBorderCascade() {
@@ -4429,7 +4429,7 @@ const PipeleyenApp = (function () {
     }
 
     function fsGetHighlightColor() {
-        return getComputedStyle(document.documentElement)
+        return getComputedStyle(document.body)
             .getPropertyValue("--highlight-color").trim();
     }
 
