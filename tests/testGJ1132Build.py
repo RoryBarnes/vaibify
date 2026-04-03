@@ -62,6 +62,9 @@ def _fbDockerAvailable():
 bDockerRunning = _fbDockerAvailable()
 sSkipReason = "Docker daemon is not available"
 
+bConfigExists = _os.path.isfile(_sConfigPath)
+sSkipConfigReason = f"GJ1132 config not found at {_sConfigPath}"
+
 
 def _fnCleanupImages():
     """Remove all GJ1132_XUV image tags."""
@@ -90,6 +93,7 @@ def _fnStopAndRemoveContainer(sContainerName):
 # Tier 1: Config validation (no Docker required)
 # -------------------------------------------------------------------
 
+@pytest.mark.skipif(not bConfigExists, reason=sSkipConfigReason)
 class TestConfigValidation:
     """Validate vaibify.yml and container.conf parse correctly."""
 
