@@ -449,7 +449,7 @@ def test_fnDispatchAction_verify():
         "fdictLoadWorkflowFromContainer",
         return_value={"sWorkflowName": "Test", "listSteps": []},
     ):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             pipelineServer.fnDispatchAction(
                 "verify", {},
                 mockDocker, "cid", {}, {},

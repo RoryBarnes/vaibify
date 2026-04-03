@@ -51,40 +51,6 @@ jobs:
           name: ${{ matrix.os }}-py${{ matrix.python-version }}
           fail_ci_if_error: false
 
-      - name: Parse test counts
-        if: always() && matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.9'
-        id: test_counts
-        run: |
-          python -c "
-          import xml.etree.ElementTree as ET, sys, os
-          tree = ET.parse('junit/test-results.xml')
-          root = tree.getroot()
-          iTests = int(root.attrib.get('tests', 0))
-          iFailures = int(root.attrib.get('failures', 0))
-          iErrors = int(root.attrib.get('errors', 0))
-          iPassed = iTests - iFailures - iErrors
-          if iFailures + iErrors > 0:
-              sLabel = f'{iPassed} passed, {iFailures + iErrors} failed'
-              sColor = 'red'
-          else:
-              sLabel = f'{iPassed} passed'
-              sColor = 'brightgreen'
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-              fh.write(f'label={sLabel}\n')
-              fh.write(f'color={sColor}\n')
-          "
-
-      - name: Update test count badge
-        if: always() && matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.9'
-        uses: Schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_TOKEN }}
-          gistID: ${{ secrets.TEST_BADGE_GIST_ID }}
-          filename: vaibify-test-badge.json
-          label: tests
-          message: ${{ steps.test_counts.outputs.label }}
-          color: ${{ steps.test_counts.outputs.color }}
-
       - name: Publish test results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
