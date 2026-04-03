@@ -319,10 +319,10 @@ const PipeleyenFigureViewer = (function () {
     function fnRenderImageWithZoom(
         elImg, sUrl, elViewport, dScale
     ) {
-        var iNativeWidth = elImg.naturalWidth;
+        var iNativeWidth = elImg.naturalWidth || 800;
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
-        elViewport.style.alignItems = "stretch";
+        elViewport.style.alignItems = "center";
         if (dScale === "fit") {
             dScale = (elViewport.clientWidth - 32) / iNativeWidth;
         }
