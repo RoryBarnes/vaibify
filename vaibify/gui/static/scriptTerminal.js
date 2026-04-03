@@ -513,7 +513,21 @@ const PipeleyenTerminal = (function () {
         }
     }
 
+    function fnUpdateCursorColor(sColor) {
+        for (var i = 0; i < listPanes.length; i++) {
+            var listTabs = listPanes[i].listTabs;
+            for (var j = 0; j < listTabs.length; j++) {
+                if (listTabs[j].terminal) {
+                    listTabs[j].terminal.options.theme =
+                        Object.assign({}, DICT_TERMINAL_THEME,
+                            { cursor: sColor });
+                }
+            }
+        }
+    }
+
     return {
+        fnUpdateCursorColor: fnUpdateCursorColor,
         fnCreateTab: function () {
             if (listPanes.length === 0) {
                 fnCreatePane();

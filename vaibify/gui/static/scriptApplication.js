@@ -3297,8 +3297,7 @@ const PipeleyenApp = (function () {
         for (var i = 0; i < listSteps.length; i++) {
             var step = listSteps[i];
             if (step.bEnabled === false) continue;
-            var dictVerify = fdictGetVerification(step);
-            if (dictVerify.sUser !== "passed") return false;
+            if (!fbAllVerificationComplete(step, i)) return false;
         }
         return true;
     }
@@ -3312,10 +3311,13 @@ const PipeleyenApp = (function () {
     }
 
     function fnUpdateHighlightState() {
-        if (fbIsWorkflowFullyVerified()) {
+        var bVerified = fbIsWorkflowFullyVerified();
+        if (bVerified) {
             document.body.classList.add("all-verified");
+            PipeleyenTerminal.fnUpdateCursorColor("#b39ddb");
         } else {
             document.body.classList.remove("all-verified");
+            PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
         }
     }
 

@@ -311,6 +311,7 @@ html, body {
 #toolbar .toolbar-logo {
     height: 24px;
     width: auto;
+    transition: filter 0.5s ease;
 }
 
 .vaibify-logo-large {
@@ -325,7 +326,7 @@ html, body {
 }
 
 #toolbar .toolbar-workflow {
-    color: var(--text-muted);
+    color: #e0e0e8;
     font-size: 13px;
     cursor: pointer;
     margin-right: auto;
@@ -341,7 +342,7 @@ html, body {
 #toolbar .toolbar-workflow::after {
     content: " \25BE";
     font-size: 10px;
-    color: var(--text-muted);
+    color: #e0e0e8;
 }
 
 /* --- Toolbar Dropdown Menus --- */
@@ -565,7 +566,7 @@ html, body {
 }
 
 .left-tab.active {
-    color: var(--highlight-color);
+    color: #e0e0e8;
     border-bottom-color: var(--color-dark-blue);
 }
 
@@ -589,6 +590,7 @@ html, body {
 #panelSteps .panel-header .btn-icon {
     font-size: 20px;
     padding: 4px 10px;
+    color: #e0e0e8;
 }
 
 #listSteps {
@@ -666,7 +668,8 @@ html, body {
     align-items: center;
     padding: 6px 14px;
     cursor: pointer;
-    transition: background var(--transition-speed);
+    transition: background var(--transition-speed),
+                border-color 0.5s ease;
     gap: 8px;
     border-left: 3px solid transparent;
 }
@@ -699,10 +702,11 @@ html, body {
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: rgba(179, 157, 219, 0.2);
-    color: #b39ddb !important;
+    background: #1a3a5c;
+    color: var(--highlight-color);
     font-size: 10px;
     font-weight: 700;
+    transition: color 0.5s ease;
 }
 
 .step-item.interactive .step-number {
@@ -766,7 +770,8 @@ html, body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #b39ddb;
+    color: var(--highlight-color);
+    transition: color 0.5s ease;
 }
 
 .step-item.interactive .step-name {
@@ -784,6 +789,7 @@ html, body {
 
 .step-item .step-status.pass {
     background: var(--highlight-color);
+    transition: background 0.5s ease;
 }
 
 .step-item .step-status.fail {
@@ -815,6 +821,7 @@ html, body {
 
 .step-item .step-status.verified {
     background: var(--highlight-color);
+    transition: background 0.5s ease;
 }
 
 .script-modified-badge,
@@ -853,6 +860,7 @@ html, body {
     font-size: 12px;
     background: rgba(0, 0, 0, 0.15);
     border-left: 3px solid var(--highlight-color);
+    transition: border-color 0.5s ease;
 }
 
 .step-detail.expanded {
@@ -1425,9 +1433,14 @@ html, body {
     background: var(--bg-panel);
 }
 
+.viewer-panel .panel-header .btn-icon {
+    color: var(--highlight-color);
+}
+
 .viewer-nav {
     font-size: 10px !important;
     padding: 2px 6px !important;
+    color: var(--highlight-color);
 }
 
 .viewer-select {
@@ -1569,7 +1582,7 @@ html, body {
 .terminal-pane-add {
     padding: 2px 8px;
     font-size: 14px;
-    color: var(--text-muted);
+    color: var(--highlight-color);
     cursor: pointer;
     border: none;
     background: transparent;
@@ -1652,7 +1665,11 @@ html, body {
 
 .btn-terminal-help {
     font-size: 0.75rem;
-    color: var(--text-secondary);
+    color: var(--highlight-color);
+}
+
+#terminalStripToolbar .btn-icon {
+    color: var(--highlight-color);
 }
 
 #terminalHelpPopup {
@@ -2608,7 +2625,31 @@ body.all-verified {
 }
 
 body.all-verified .toolbar-logo {
-    filter: hue-rotate(260deg) saturate(0.7) brightness(1.1);
+    filter: brightness(0) saturate(100%) invert(73%) sepia(30%)
+            saturate(1000%) hue-rotate(220deg);
+    animation: vaibifyLogoGlow 1.2s ease-out;
+}
+
+body.all-verified .vaib-verified-badge {
+    filter: brightness(0) saturate(100%) invert(73%) sepia(30%)
+            saturate(1000%) hue-rotate(220deg);
+}
+
+body.all-verified #panelLeft {
+    animation: vaibifyBorderGlow 1.2s ease-out;
+}
+
+@keyframes vaibifyLogoGlow {
+    0% { filter: brightness(1.5) saturate(200%) invert(73%) sepia(30%)
+                 saturate(1000%) hue-rotate(220deg)
+                 drop-shadow(0 0 8px #b39ddb); }
+    100% { filter: brightness(0) saturate(100%) invert(73%) sepia(30%)
+                   saturate(1000%) hue-rotate(220deg); }
+}
+
+@keyframes vaibifyBorderGlow {
+    0% { box-shadow: inset -2px 0 12px rgba(179, 157, 219, 0.4); }
+    100% { box-shadow: none; }
 }
 
 /* --- Step type banners --- */
