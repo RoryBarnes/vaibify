@@ -771,7 +771,8 @@ html, body {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--highlight-color);
-    transition: color 0.5s ease;
+    filter: brightness(1.2);
+    transition: color 0.5s ease, filter 0.5s ease;
 }
 
 .step-item.interactive .step-name {
@@ -882,7 +883,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: var(--color-label);
+    color: var(--text-primary);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -1438,9 +1439,15 @@ html, body {
 }
 
 .viewer-nav {
-    font-size: 10px !important;
+    font-size: 14px !important;
     padding: 2px 6px !important;
-    color: var(--highlight-color);
+    color: var(--highlight-color) !important;
+    opacity: 1 !important;
+}
+
+.viewer-nav:disabled {
+    color: var(--text-muted) !important;
+    opacity: 0.4 !important;
 }
 
 .viewer-select {
@@ -2625,31 +2632,60 @@ body.all-verified {
 }
 
 body.all-verified .toolbar-logo {
-    filter: brightness(0) saturate(100%) invert(73%) sepia(30%)
-            saturate(1000%) hue-rotate(220deg);
+    filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
     animation: vaibifyLogoGlow 1.2s ease-out;
 }
 
 body.all-verified .vaib-verified-badge {
-    filter: brightness(0) saturate(100%) invert(73%) sepia(30%)
-            saturate(1000%) hue-rotate(220deg);
+    filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }
 
-body.all-verified #panelLeft {
-    animation: vaibifyBorderGlow 1.2s ease-out;
+body.all-verified #panelLeft,
+body.all-verified #panelCenter,
+body.all-verified #panelRight,
+body.all-verified #toolbar,
+body.all-verified .viewer-panel,
+body.all-verified .step-detail {
+    animation: vaibifyBorderShimmer 1.5s ease-out;
+    animation-iteration-count: 1;
+}
+
+body.all-verified::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    background: radial-gradient(circle at 50% 50%,
+        rgba(179, 157, 219, 0.25), transparent 70%);
+    animation: vaibifyFlash 1.5s ease-out forwards;
+    animation-iteration-count: 1;
+}
+
+@keyframes vaibifyFlash {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 0; }
 }
 
 @keyframes vaibifyLogoGlow {
-    0% { filter: brightness(1.5) saturate(200%) invert(73%) sepia(30%)
-                 saturate(1000%) hue-rotate(220deg)
+    0% { filter: sepia(1) hue-rotate(220deg) saturate(3) brightness(1.3)
                  drop-shadow(0 0 8px #b39ddb); }
-    100% { filter: brightness(0) saturate(100%) invert(73%) sepia(30%)
-                   saturate(1000%) hue-rotate(220deg); }
+    100% { filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85); }
 }
 
-@keyframes vaibifyBorderGlow {
-    0% { box-shadow: inset -2px 0 12px rgba(179, 157, 219, 0.4); }
-    100% { box-shadow: none; }
+@keyframes vaibifyBorderShimmer {
+    0% { box-shadow: inset 0 0 6px rgba(179, 157, 219, 0.6),
+                     0 0 12px rgba(179, 157, 219, 0.3);
+         border-color: #b39ddb; }
+    50% { box-shadow: inset 0 0 3px rgba(179, 157, 219, 0.3),
+                      0 0 6px rgba(179, 157, 219, 0.15);
+          border-color: #8b6fbf; }
+    100% { box-shadow: none;
+           border-color: var(--border-color); }
 }
 
 /* --- Step type banners --- */
