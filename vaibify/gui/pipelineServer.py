@@ -2570,11 +2570,11 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
 def _fsBuildGhostscriptCommand(sPlotPath, sStandardPng):
     """Build a gs command that preserves the PDF page dimensions."""
     sScript = (
-        "import re,subprocess as sp\\n"
-        "c=open('{src}','rb').read()\\n"
-        "m=re.search(rb'/MediaBox\\\\s*\\\\[([^\\\\]]+)\\\\]',c)\\n"
-        "p=m.group(1).split() if m else [b'0',b'0',b'612',b'792']\\n"
-        "w,h=int(float(p[-2])),int(float(p[-1]))\\n"
+        "import re,subprocess as sp;"
+        "c=open('{src}','rb').read();"
+        "m=re.search(rb'/MediaBox\\\\s*\\\\[([^\\\\]]+)\\\\]',c);"
+        "p=m.group(1).split() if m else [b'0',b'0',b'612',b'792'];"
+        "w,h=int(float(p[-2])),int(float(p[-1]));"
         "sp.run(['gs','-q','-dNOPAUSE','-dBATCH','-sDEVICE=png16m',"
         "'-r150','-dDEVICEWIDTHPOINTS='+str(w),"
         "'-dDEVICEHEIGHTPOINTS='+str(h),'-dFIXEDMEDIA=false',"
