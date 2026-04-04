@@ -959,6 +959,7 @@ html, body {
     cursor: pointer;
     font-size: 13px;
     padding: 0 4px;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -978,6 +979,7 @@ html, body {
     word-break: break-all;
     cursor: pointer;
     min-width: 0;
+    -webkit-user-select: text;
     user-select: text;
 }
 
@@ -1933,6 +1935,7 @@ html, body {
     color: var(--highlight-color);
     margin-bottom: 20px;
     cursor: move;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -2775,6 +2778,11 @@ body.all-verified .vaibify-checkmark {
 }
 
 /* --- Scrollbar --- */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
 
 ::-webkit-scrollbar {
     width: 8px;
