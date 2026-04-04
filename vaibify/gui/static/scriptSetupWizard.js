@@ -78,7 +78,22 @@ var VaibifySetup = (function () {
 
     /* --- Form Binding --- */
 
+    function fnSyncFeatureCardCheckedClass(elCheckbox) {
+        var elCard = elCheckbox.closest(".feature-card");
+        if (elCard) {
+            elCard.classList.toggle("checked", elCheckbox.checked);
+        }
+    }
+
     function fnBindFormEvents() {
+        document.querySelectorAll(
+            '.feature-card input[type="checkbox"]'
+        ).forEach(function (elCheckbox) {
+            elCheckbox.addEventListener("change", function () {
+                fnSyncFeatureCardCheckedClass(elCheckbox);
+            });
+        });
+
         document.getElementById("btnAddRepo").addEventListener(
             "click", fnAddRepository
         );
@@ -200,6 +215,7 @@ var VaibifySetup = (function () {
             var el = document.getElementById(dictFeatureMap[sKey]);
             if (el) {
                 el.checked = listFeatures.indexOf(sKey) >= 0;
+                fnSyncFeatureCardCheckedClass(el);
             }
         });
     }

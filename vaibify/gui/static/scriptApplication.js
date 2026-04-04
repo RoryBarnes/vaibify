@@ -3,6 +3,34 @@
 const PipeleyenApp = (function () {
     "use strict";
 
+    function fnCopyToClipboard(sText) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sText).then(function () {
+                fnShowToast("Copied to clipboard", "success");
+            }).catch(function () {
+                fnCopyToClipboardFallback(sText);
+            });
+        } else {
+            fnCopyToClipboardFallback(sText);
+        }
+    }
+
+    function fnCopyToClipboardFallback(sText) {
+        var elTextarea = document.createElement("textarea");
+        elTextarea.value = sText;
+        elTextarea.style.position = "fixed";
+        elTextarea.style.opacity = "0";
+        document.body.appendChild(elTextarea);
+        elTextarea.select();
+        try {
+            document.execCommand("copy");
+            fnShowToast("Copied to clipboard", "success");
+        } catch (e) {
+            fnShowToast("Copy failed", "error");
+        }
+        document.body.removeChild(elTextarea);
+    }
+
     function fbIsTerminalFocused() {
         var elActive = document.activeElement;
         if (!elActive) return false;
@@ -2471,11 +2499,7 @@ const PipeleyenApp = (function () {
         if (elTarget.closest(".action-copy")) {
             event.stopPropagation();
             if (elDetailItem) {
-                navigator.clipboard.writeText(
-                    elDetailItem.dataset.resolved
-                ).then(function () {
-                    fnShowToast("Copied to clipboard", "success");
-                });
+                fnCopyToClipboard(elDetailItem.dataset.resolved);
             }
             return;
         }
@@ -6646,10 +6670,7 @@ const PipeleyenApp = (function () {
             return;
         }
         if (sAction === "copyPath") {
-            navigator.clipboard.writeText(sContextFilePath)
-                .then(function () {
-                    fnShowToast("Copied to clipboard", "success");
-                });
+            fnCopyToClipboard(sContextFilePath);
             return;
         }
         if (sAction === "addToGit") {
