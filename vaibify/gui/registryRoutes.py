@@ -423,6 +423,7 @@ def _fnRegisterCreateProject(app, dictCtx):
     async def fnCreateProject(request: CreateProjectRequest):
         dictCtx["require"]()
         _fnValidateCreateDirectory(request.sDirectory)
+        _fnRejectDuplicateProjectName(request.sProjectName)
         _fnScaffoldProject(request)
         _fnWriteProjectConfig(request)
         _fnRegisterNewProject(request.sDirectory)
@@ -437,6 +438,38 @@ def _fnValidateCreateDirectory(sDirectory):
     sResolved = os.path.realpath(sDirectory)
     if sResolved != sHome and not sResolved.startswith(sHome + os.sep):
         raise HTTPException(403, "Path is outside allowed root")
+
+
+def _fnRejectDuplicateProjectName(sProjectName):
+    """Raise 409 if project name conflicts with registry or Docker."""
+    from vaibify.config.registryManager import flistGetAllProjects
+    for dictProject in flistGetAllProjects():
+        if dictProject["sName"] == sProjectName:
+            raise HTTPException(
+                409,
+                f"A project named '{sProjectName}' is already "
+                f"registered at {dictProject['sDirectory']}",
+            )
+    if _fbDockerContainerExists(sProjectName):
+        raise HTTPException(
+            409,
+            f"A Docker container named '{sProjectName}' already "
+            f"exists on this host",
+        )
+
+
+def _fbDockerContainerExists(sContainerName):
+    """Return True if a Docker container with this name exists."""
+    import subprocess
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{.Names}}",
+             "--filter", f"name=^{sContainerName}$"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return sContainerName in resultProcess.stdout.split()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
 def _fnScaffoldProject(request):
@@ -464,5 +497,5 @@ def _fnRegisterNewProject(sDirectory):
     from vaibify.config.registryManager import fnAddProject
     try:
         fnAddProject(sDirectory)
-    except ValueError:
-        pass
+    except ValueError as error:
+        raise HTTPException(409, str(error))

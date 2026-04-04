@@ -14,6 +14,8 @@ const PipeleyenTerminal = (function () {
 
     /* --- Terminal Theme --- */
 
+    var sCurrentCursorColor = "#13aed5";
+
     var DICT_TERMINAL_THEME = {
         background: "#0d0d1a",
         foreground: "#e0e0e8",
@@ -236,12 +238,14 @@ const PipeleyenTerminal = (function () {
             ".terminal-pane-container"
         );
 
+        var dictTheme = Object.assign({}, DICT_TERMINAL_THEME,
+            { cursor: sCurrentCursorColor });
         var terminal = new Terminal({
             cursorBlink: true,
             fontSize: 14,
             fontFamily:
                 '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-            theme: DICT_TERMINAL_THEME,
+            theme: dictTheme,
             scrollOnOutput: false,
         });
 
@@ -514,6 +518,7 @@ const PipeleyenTerminal = (function () {
     }
 
     function fnUpdateCursorColor(sColor) {
+        sCurrentCursorColor = sColor;
         for (var i = 0; i < listPanes.length; i++) {
             var listTabs = listPanes[i].listTabs;
             for (var j = 0; j < listTabs.length; j++) {

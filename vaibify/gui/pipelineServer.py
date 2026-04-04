@@ -520,6 +520,69 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
 class CreateWorkflowRequest(BaseModel):
     sWorkflowName: str
     sFileName: str
+    sRepoDirectory: str
+
+
+def _fnRejectDuplicateWorkflowName(
+    connectionDocker, sContainerId, sWorkflowName
+):
+    """Raise 409 if another workflow in the container uses this name."""
+    listExisting = workflowManager.flistFindWorkflowsInContainer(
+        connectionDocker, sContainerId
+    )
+    for dictWorkflow in listExisting:
+        if dictWorkflow["sName"] == sWorkflowName:
+            raise HTTPException(
+                409,
+                f"A workflow named '{sWorkflowName}' already exists "
+                f"at {dictWorkflow['sPath']}",
+            )
+
+
+def _fsValidateRepoDirectory(
+    connectionDocker, sContainerId, sRepoDirectory
+):
+    """Validate the repo directory exists under /workspace/."""
+    sClean = sRepoDirectory.strip().strip("/")
+    if not sClean:
+        raise HTTPException(
+            400, "sRepoDirectory is required"
+        )
+    if ".." in sClean.split("/"):
+        raise HTTPException(
+            400, "sRepoDirectory may not contain '..'"
+        )
+    sFullPath = posixpath.join("/workspace", sClean)
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"test -d {fsShellQuote(sFullPath)}"
+    )
+    if iExitCode != 0:
+        raise HTTPException(
+            404, f"Repo directory not found: {sFullPath}"
+        )
+    return sFullPath
+
+
+def _fnRegisterRepoList(app, dictCtx):
+    """Register GET /api/repos/{id} to list top-level repo directories."""
+
+    @app.get("/api/repos/{sContainerId}")
+    async def fnListRepos(sContainerId: str):
+        dictCtx["require"]()
+        sCommand = (
+            "find /workspace -mindepth 1 -maxdepth 1 -type d "
+            "-not -name '.*' -printf '%f\\n' 2>/dev/null"
+        )
+        iExitCode, sOutput = dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, sCommand
+        )
+        if iExitCode != 0:
+            raise HTTPException(500, "Failed to list repos")
+        listRepos = sorted([
+            sLine.strip() for sLine in sOutput.splitlines()
+            if sLine.strip()
+        ])
+        return {"listRepos": listRepos}
 
 
 def _fnRegisterWorkflowCreate(app, dictCtx):
@@ -530,6 +593,12 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
         sContainerId: str, request: CreateWorkflowRequest
     ):
         dictCtx["require"]()
+        _fnRejectDuplicateWorkflowName(
+            dictCtx["docker"], sContainerId, request.sWorkflowName
+        )
+        sRepoDirectory = _fsValidateRepoDirectory(
+            dictCtx["docker"], sContainerId, request.sRepoDirectory
+        )
         sFileName = request.sFileName.strip()
         if not sFileName.endswith(".json"):
             sFileName += ".json"
@@ -542,7 +611,7 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
         }
         sContent = json.dumps(dictBlank, indent=2) + "\n"
         sWorkflowDir = posixpath.join(
-            "/workspace", workflowManager.VAIBIFY_WORKFLOWS_DIR
+            sRepoDirectory, workflowManager.VAIBIFY_WORKFLOWS_DIR
         )
         dictCtx["docker"].ftResultExecuteCommand(
             sContainerId, f"mkdir -p {fsShellQuote(sWorkflowDir)}"
@@ -2140,6 +2209,7 @@ def _fconnectionCreateDocker():
 def _fnRegisterCoreRoutes(app, dictCtx, sWorkspaceRoot):
     """Register workflow, file, monitor, and stub routes."""
     _fnRegisterWorkflowSearch(app, dictCtx)
+    _fnRegisterRepoList(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)
     _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot)

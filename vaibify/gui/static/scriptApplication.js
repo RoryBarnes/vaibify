@@ -659,14 +659,37 @@ const PipeleyenApp = (function () {
                     "Filename (no spaces, .json added automatically)",
                     sDefault,
                     function (sFileName) {
-                        _fnSubmitNewWorkflow(sName, sFileName);
+                        _fnPromptForRepoDirectory(sName, sFileName);
                     }
                 );
             }
         );
     }
 
-    async function _fnSubmitNewWorkflow(sName, sFileName) {
+    async function _fnPromptForRepoDirectory(sName, sFileName) {
+        var sSuggestion = "";
+        try {
+            var response = await fetch(
+                "/api/repos/" + _sSelectedContainerId
+            );
+            if (response.ok) {
+                var dictRepos = await response.json();
+                if (dictRepos.listRepos && dictRepos.listRepos.length) {
+                    sSuggestion = dictRepos.listRepos[0];
+                }
+            }
+        } catch (error) { /* fall through */ }
+        fnShowInputModal(
+            "Repository directory name under /workspace/ "
+                + "(where the workflow and its Plot/ folder will live)",
+            sSuggestion,
+            function (sRepo) {
+                _fnSubmitNewWorkflow(sName, sFileName, sRepo);
+            }
+        );
+    }
+
+    async function _fnSubmitNewWorkflow(sName, sFileName, sRepo) {
         try {
             var response = await fetch(
                 "/api/workflows/" + _sSelectedContainerId + "/create",
@@ -676,6 +699,7 @@ const PipeleyenApp = (function () {
                     body: JSON.stringify({
                         sWorkflowName: sName,
                         sFileName: sFileName,
+                        sRepoDirectory: sRepo,
                     }),
                 }
             );

@@ -472,6 +472,7 @@ def test_create_workflow(clientHttp):
     dictPayload = {
         "sWorkflowName": "New Pipeline",
         "sFileName": "newPipeline",
+        "sRepoDirectory": "MyRepo",
     }
     responseHttp = clientHttp.post(
         f"/api/workflows/{S_CONTAINER_ID}/create",
