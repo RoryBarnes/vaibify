@@ -758,9 +758,30 @@ async def _fnRecordInputHashes(
     dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
 
 
-async def _fnEmitBanner(fnStatusCallback, iStepNumber, sStepName):
+def fsComputeStepLabel(dictWorkflow, iStepNumber):
+    """Return the display label (A01, I01) for a 1-based step number."""
+    iIndex = iStepNumber - 1
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iIndex < 0 or iIndex >= len(listSteps):
+        return f"{iStepNumber:02d}"
+    bInteractive = listSteps[iIndex].get("bInteractive", False)
+    sPrefix = "I" if bInteractive else "A"
+    iCount = 0
+    for iPos in range(iIndex + 1):
+        bSameType = listSteps[iPos].get(
+            "bInteractive", False) == bInteractive
+        if bSameType:
+            iCount += 1
+    return f"{sPrefix}{iCount:02d}"
+
+
+async def _fnEmitBanner(
+    fnStatusCallback, iStepNumber, sStepName, sStepLabel=None,
+):
     """Emit step banner lines to the status callback."""
-    sBanner = f"Step {iStepNumber:02d} - {sStepName}"
+    if sStepLabel is None:
+        sStepLabel = f"{iStepNumber:02d}"
+    sBanner = f"Step {sStepLabel} - {sStepName}"
     sLine = "=" * len(sBanner)
     for sText in ["", sLine, sBanner, sLine, ""]:
         await fnStatusCallback({"sType": "output", "sLine": sText})
@@ -769,6 +790,7 @@ async def _fnEmitBanner(fnStatusCallback, iStepNumber, sStepName):
 async def _fiCheckDependencies(
     connectionDocker, sContainerId, dictStep,
     dictVariables, iStepNumber, fnStatusCallback,
+    sStepLabel=None,
 ):
     """Return 1 if dependencies are missing, 0 otherwise."""
     sStepMissing = await _fsMissingDependencyFile(
@@ -776,10 +798,12 @@ async def _fiCheckDependencies(
     )
     if not sStepMissing:
         return 0
+    if sStepLabel is None:
+        sStepLabel = f"{iStepNumber:02d}"
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
     await fnStatusCallback({
         "sType": "output",
-        "sLine": f"SKIPPED: Step {iStepNumber:02d} - "
+        "sLine": f"SKIPPED: Step {sStepLabel} - "
                  f"{sStepName} (dependency not found: "
                  f"{sStepMissing})",
     })
@@ -793,16 +817,20 @@ async def _fiCheckDependencies(
 async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
+    sStepLabel=None,
 ):
     """Run a single automatic step with timing and result."""
     iDepResult = await _fiCheckDependencies(
         connectionDocker, sContainerId, dictStep,
         dictVariables, iStepNumber, fnStatusCallback,
+        sStepLabel=sStepLabel,
     )
     if iDepResult != 0:
         return iDepResult
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
-    await _fnEmitBanner(fnStatusCallback, iStepNumber, sStepName)
+    await _fnEmitBanner(
+        fnStatusCallback, iStepNumber, sStepName, sStepLabel,
+    )
     if await _fbShouldSkipStep(
         connectionDocker, sContainerId, dictStep, iStepNumber
     ):
@@ -878,6 +906,7 @@ async def _fiRunStepList(
         iStepNumber = iIndex + 1
         if not _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
             continue
+        sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
         if dictStep.get("bInteractive", False):
             iExitCode = await _fiHandleInteractiveStep(
                 dictStep, iStepNumber, fnStatusCallback,
@@ -887,7 +916,7 @@ async def _fiRunStepList(
             iExitCode = await _fnRunOneStep(
                 connectionDocker, sContainerId, dictStep,
                 iStepNumber, sWorkdir, dictVariables,
-                fnStatusCallback,
+                fnStatusCallback, sStepLabel=sStepLabel,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode

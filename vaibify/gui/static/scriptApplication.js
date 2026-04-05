@@ -5542,7 +5542,9 @@ const PipeleyenApp = (function () {
                 "\n  Directory: " + dictEvent.sDirectory +
                 "\n  Exit code: " + dictEvent.iExitCode;
             fnAppendPipelineOutput(sMessage);
-            fnShowErrorModal(sMessage);
+            fnShowToast(
+                "Command failed (exit "
+                + dictEvent.iExitCode + ")", "error");
         } else if (dictEvent.sType === "preflightFailed") {
             var sErrors = dictEvent.listErrors.join("\n");
             fnShowErrorModal(
@@ -5786,7 +5788,8 @@ const PipeleyenApp = (function () {
         fnCheckVaibified();
         var sLabel = dictEvent.sResult === "passed" ?
             "Tests passed" : "Tests FAILED";
-        fnShowToast("Step " + (iStep + 1) + ": " + sLabel,
+        var sStepLabel = fsComputeStepLabel(iStep);
+        fnShowToast("Step " + sStepLabel + ": " + sLabel,
             dictEvent.sResult === "passed" ? "success" : "error");
     }
 
