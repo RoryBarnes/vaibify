@@ -344,6 +344,7 @@ async def fnRejectNotConnected(websocket):
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
+    dictPipelineTasks=None,
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
@@ -355,7 +356,6 @@ async def fnPipelineMessageLoop(
         fnSetInteractiveResponse,
     )
     dictInteractive = fdictCreateInteractiveContext()
-    taskPipeline = None
 
     async def fnCallback(dictEvent):
         await websocket.send_json(dictEvent)
@@ -382,12 +382,15 @@ async def fnPipelineMessageLoop(
                 fnCallback, dictInteractive=dictInteractive,
             )
         )
+        if dictPipelineTasks is not None:
+            dictPipelineTasks[sContainerId] = taskPipeline
 
 
 def _fnHandleInteractiveResponse(
     dictInteractive, sAction, dictRequest,
 ):
     """Set the resume/skip response on the interactive context."""
+    from .pipelineRunner import fnSetInteractiveResponse
     if sAction == "interactiveResume":
         fnSetInteractiveResponse(dictInteractive, "resume")
     elif sAction == "interactiveSkip":
@@ -396,6 +399,7 @@ def _fnHandleInteractiveResponse(
 
 def _fnHandleInteractiveComplete(dictInteractive, dictRequest):
     """Signal that the interactive terminal command finished."""
+    from .pipelineRunner import fnSetInteractiveResponse
     iExitCode = dictRequest.get("iExitCode", 0)
     fnSetInteractiveResponse(
         dictInteractive, f"complete:{iExitCode}",
@@ -1601,6 +1605,7 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
         await fnPipelineMessageLoop(
             websocket, dictCtx["docker"], sContainerId,
             dictWorkflow, dictCtx["paths"], sDir,
+            dictPipelineTasks=dictCtx["pipelineTasks"],
         )
     except WebSocketDisconnect:
         pass
@@ -2003,20 +2008,48 @@ def _fnRegisterPipelineKill(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        bTaskCancelled = _fbCancelPipelineTask(
+            dictCtx["pipelineTasks"], sContainerId)
         listPatterns = _flistExtractKillPatterns(dictWorkflow)
         listSafe = [re.escape(s) for s in listPatterns]
         sGrepPattern = "|".join(listSafe) if listSafe else ""
-        if not sGrepPattern:
-            return {"bSuccess": True, "iProcessesKilled": 0}
-        iCountBefore = await _fiCountMatchingProcesses(
-            dictCtx["docker"], sContainerId, sGrepPattern)
-        if iCountBefore > 0:
-            await _fnKillMatchingProcesses(
-                dictCtx["docker"], sContainerId, listPatterns)
+        iCountBefore = 0
+        if sGrepPattern:
+            iCountBefore = await _fiCountMatchingProcesses(
+                dictCtx["docker"], sContainerId, sGrepPattern)
+            if iCountBefore > 0:
+                await _fnKillMatchingProcesses(
+                    dictCtx["docker"], sContainerId, listPatterns)
+        _fnMarkPipelineStopped(
+            dictCtx["docker"], sContainerId)
         return {
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
+            "bTaskCancelled": bTaskCancelled,
         }
+
+
+def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
+    """Cancel any running pipeline asyncio task for a container."""
+    taskPipeline = dictPipelineTasks.get(sContainerId)
+    if taskPipeline is None or taskPipeline.done():
+        return False
+    taskPipeline.cancel()
+    dictPipelineTasks.pop(sContainerId, None)
+    return True
+
+
+def _fnMarkPipelineStopped(connectionDocker, sContainerId):
+    """Write a stopped state file so the UI no longer shows running."""
+    from . import pipelineState
+    dictState = pipelineState.fdictReadState(
+        connectionDocker, sContainerId)
+    if dictState is None or not dictState.get("bRunning"):
+        return
+    pipelineState.fnUpdateState(
+        connectionDocker, sContainerId, dictState,
+        pipelineState.fdictBuildCompletedState(130),
+    )
 
 
 def _flistBuildCleanCommands(dictWorkflow):
@@ -2205,6 +2238,7 @@ def fdictBuildContext(connectionDocker):
         "paths": dictPaths,
         "terminals": dictTerminals,
         "containerUsers": {},
+        "pipelineTasks": {},
         "require": fnRequire,
         "save": fnSave,
         "variables": fnVariables,

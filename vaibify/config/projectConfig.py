@@ -51,7 +51,7 @@ class ProjectConfig:
     listSystemPackages: List[str] = field(
         default_factory=lambda: [
             "gcc", "make", "git", "curl",
-            "ca-certificates", "gnupg", "gosu", "sudo",
+            "ca-certificates", "gnupg", "gosu", "sudo", "time",
         ]
     )
     listPythonPackages: List[str] = field(default_factory=list)

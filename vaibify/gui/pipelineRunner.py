@@ -68,8 +68,9 @@ async def fnWriteLogToContainer(
 ):
     """Write accumulated log lines to a file in the container."""
     sContent = "\n".join(listLogLines) + "\n"
-    connectionDocker.fnWriteFile(
-        sContainerId, sLogPath, sContent.encode("utf-8")
+    await asyncio.to_thread(
+        connectionDocker.fnWriteFile,
+        sContainerId, sLogPath, sContent.encode("utf-8"),
     )
 
 
@@ -81,8 +82,9 @@ async def _fnEnsureLogsDirectory(connectionDocker, sContainerId):
         workflowManager.DEFAULT_SEARCH_ROOT,
         workflowManager.VAIBIFY_LOGS_DIR,
     )
-    connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"mkdir -p {fsShellQuote(sLogsDir)}"
+    await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
+        sContainerId, f"mkdir -p {fsShellQuote(sLogsDir)}",
     )
     return sLogsDir
 
@@ -457,9 +459,10 @@ async def fiRunStepCommands(
     """Run a single step's commands sequentially in its directory."""
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
     sPlotDirectory = dictVariables.get("sPlotDirectory", "Plot")
-    connectionDocker.ftResultExecuteCommand(
+    await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
         sContainerId,
-        f"mkdir -p {fsShellQuote(sPlotDirectory)}"
+        f"mkdir -p {fsShellQuote(sPlotDirectory)}",
     )
     iExitCode, fCpuTime = await _fiRunSetupIfNeeded(
         connectionDocker, sContainerId, dictStep,
@@ -510,8 +513,9 @@ async def _ftRunSingleCommand(
         fnStatusCallback, sOriginal, sResolved
     )
     sTimedCmd = _fsWrapWithTime(sResolved)
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sTimedCmd, sWorkdir=sWorkdir
+    iExitCode, sOutput = await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
+        sContainerId, sTimedCmd, sWorkdir=sWorkdir,
     )
     fCpuSeconds = _fParseCpuTime(sOutput)
     for sLine in sOutput.splitlines():
@@ -529,10 +533,15 @@ async def _ftRunSingleCommand(
 
 
 def _fsWrapWithTime(sCommand):
-    """Wrap a command with /usr/bin/time to capture CPU usage."""
+    """Wrap a command with /usr/bin/time to capture CPU usage.
+
+    Falls back to running the command without timing when
+    /usr/bin/time is missing from the container.
+    """
     return (
-        f"{{ /usr/bin/time -f '__VAIBIFY_CPU__ %U %S' "
-        f"{sCommand} ; }} 2>&1"
+        f"{{ if [ -x /usr/bin/time ]; then "
+        f"/usr/bin/time -f '__VAIBIFY_CPU__ %U %S' "
+        f"{sCommand}; else {sCommand}; fi; }} 2>&1"
     )
 
 
@@ -565,7 +574,8 @@ async def _fsetSnapshotDirectory(
     connectionDocker, sContainerId, sDirectory,
 ):
     """Return a set of file paths in a directory."""
-    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+    iExit, sOutput = await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
         sContainerId,
         f"find {fsShellQuote(sDirectory)} -type f 2>/dev/null",
     )
@@ -618,9 +628,10 @@ async def _fnEmitDiscoveredOutputs(
 async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
     """Send a stepPass or stepFail event based on exit code."""
     sType = "stepPass" if iExitCode == 0 else "stepFail"
-    await fnStatusCallback(
-        {"sType": sType, "iStepNumber": iStepNumber}
-    )
+    await fnStatusCallback({
+        "sType": sType, "iStepNumber": iStepNumber,
+        "iExitCode": iExitCode,
+    })
 
 
 async def _fnEmitCompletion(fnStatusCallback, iExitCode):
@@ -956,8 +967,9 @@ async def _fbVerifyStepOutputs(
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
     for sOutputFile in dictStep.get("saPlotFiles", []):
         sCheckCommand = f"test -f {fsShellQuote(sOutputFile)}"
-        iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-            sContainerId, sCheckCommand, sWorkdir=sStepDirectory
+        iExitCode, _ = await asyncio.to_thread(
+            connectionDocker.ftResultExecuteCommand,
+            sContainerId, sCheckCommand, sWorkdir=sStepDirectory,
         )
         if iExitCode != 0:
             await fnStatusCallback(

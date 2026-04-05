@@ -5504,15 +5504,31 @@ const PipeleyenApp = (function () {
         wsPipeline.onmessage = function (event) {
             fnHandlePipelineEvent(JSON.parse(event.data));
         };
-        wsPipeline.onclose = function () {
+        wsPipeline.onclose = function (event) {
             wsPipeline = null;
+            var bActionsDropped =
+                _listPendingPipelineActions.length > 0;
             _listPendingPipelineActions.length = 0;
             fnClearRunningStatuses();
             fnRenderStepList();
+            if (bActionsDropped) {
+                fnShowToast(
+                    "Pipeline connection closed (code "
+                    + event.code + "). Reselect the workflow.",
+                    "error");
+            }
         };
         wsPipeline.onerror = function () {
             wsPipeline = null;
+            var bActionsDropped =
+                _listPendingPipelineActions.length > 0;
             _listPendingPipelineActions.length = 0;
+            if (bActionsDropped) {
+                fnShowToast(
+                    "Pipeline connection error. "
+                    + "Reselect the workflow.",
+                    "error");
+            }
         };
         return wsPipeline;
     }
@@ -5693,25 +5709,28 @@ const PipeleyenApp = (function () {
         if (_iActiveSentinelMonitor) {
             clearInterval(_iActiveSentinelMonitor);
         }
-        var I_MAX_SENTINEL_CHECKS = 30;
+        var I_MAX_SENTINEL_CHECKS = 86400;
         var iCheckCount = 0;
         _iActiveSentinelMonitor = setInterval(function () {
             iCheckCount++;
             if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
                 clearInterval(_iActiveSentinelMonitor);
                 _iActiveSentinelMonitor = null;
+                fnShowToast(
+                    "Interactive step timed out after 24 hours",
+                    "error");
                 _fnSendInteractiveComplete(1);
                 return;
             }
             var sText = _fsReadAllTerminalText();
-            var iMatch = sText.indexOf(sSentinel + "=");
-            if (iMatch < 0) return;
+            var oPattern = new RegExp(
+                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
+            );
+            var oMatch = sText.match(oPattern);
+            if (!oMatch) return;
             clearInterval(_iActiveSentinelMonitor);
             _iActiveSentinelMonitor = null;
-            var sAfter = sText.substring(
-                iMatch + sSentinel.length + 1
-            );
-            var iExitCode = parseInt(sAfter.trim(), 10) || 0;
+            var iExitCode = parseInt(oMatch[1], 10);
             _fnSendInteractiveComplete(iExitCode);
         }, 1000);
     }
