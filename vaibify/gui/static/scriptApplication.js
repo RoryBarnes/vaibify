@@ -213,6 +213,8 @@ const PipeleyenApp = (function () {
             "Stop</div>" +
             '<div class="container-menu-item" data-action="rebuild">' +
             "Rebuild</div>" +
+            '<div class="container-menu-item" data-action="settings">' +
+            "Settings</div>" +
             '<div class="container-menu-separator"></div>' +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
@@ -291,7 +293,90 @@ const PipeleyenApp = (function () {
         if (sAction === "start") await fnStartContainer(sName);
         else if (sAction === "stop") await fnStopContainer(sName);
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
+        else if (sAction === "settings") await fnShowContainerSettings(sName);
         else if (sAction === "remove") await fnRemoveContainer(sName);
+    }
+
+    async function fnShowContainerSettings(sName) {
+        try {
+            var response = await fetch(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/settings"
+            );
+            if (!response.ok) {
+                fnShowToast("Cannot load settings", "error");
+                return;
+            }
+            var dictSettings = await response.json();
+            fnShowContainerSettingsModal(sName, dictSettings);
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+        }
+    }
+
+    function fnShowContainerSettingsModal(sName, dictSettings) {
+        var elExisting = document.getElementById("modalSettings");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalSettings";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>Settings for ' + fnEscapeHtml(sName) + '</h2>' +
+            '<label class="checkbox-row" ' +
+            'style="display:flex;align-items:center;gap:10px;' +
+            'margin-bottom:16px">' +
+            '<input type="checkbox" id="settingNeverSleep"' +
+            (dictSettings.bNeverSleep ? " checked" : "") + '>' +
+            '<span>Never Sleep (run caffeinate while this ' +
+            'container is running)</span></label>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnSettingsCancel">Cancel</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnSettingsSave">Save</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        document.getElementById("btnSettingsCancel").addEventListener(
+            "click", function () { elModal.remove(); });
+        document.getElementById("btnSettingsSave").addEventListener(
+            "click", async function () {
+                var bNeverSleep = document.getElementById(
+                    "settingNeverSleep").checked;
+                elModal.remove();
+                await fnSaveContainerSettings(sName, {
+                    bNeverSleep: bNeverSleep,
+                });
+            });
+    }
+
+    async function fnSaveContainerSettings(sName, dictSettings) {
+        try {
+            var response = await fetch(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/settings",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(dictSettings),
+                }
+            );
+            if (!response.ok) {
+                var detail = await response.json();
+                fnShowToast(detail.detail || "Save failed",
+                    "error");
+                return;
+            }
+            fnShowToast(
+                "Settings saved. Stop and start to apply.",
+                "success");
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+        }
     }
 
     async function fnBuildContainer(sName) {
@@ -317,7 +402,18 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnSetTilePending(sName) {
+        var elTile = document.querySelector(
+            '.container-tile[data-name="' + CSS.escape(sName) + '"]'
+        );
+        if (!elTile) return;
+        var elDot = elTile.querySelector(".status-dot");
+        if (!elDot) return;
+        elDot.className = "status-dot status-pending";
+    }
+
     async function fnStartContainer(sName) {
+        fnSetTilePending(sName);
         try {
             var response = await fetch(
                 "/api/containers/" + encodeURIComponent(sName) + "/start",
@@ -326,16 +422,18 @@ const PipeleyenApp = (function () {
             if (!response.ok) {
                 var detail = await response.json();
                 fnShowToast(detail.detail || "Start failed", "error");
-                return;
+            } else {
+                fnShowToast("Container started", "success");
             }
-            fnShowToast("Container started", "success");
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        } finally {
+            fnLoadContainers();
         }
-        fnLoadContainers();
     }
 
     async function fnStopContainer(sName) {
+        fnSetTilePending(sName);
         try {
             var response = await fetch(
                 "/api/containers/" + encodeURIComponent(sName) + "/stop",
@@ -344,13 +442,14 @@ const PipeleyenApp = (function () {
             if (!response.ok) {
                 var detail = await response.json();
                 fnShowToast(detail.detail || "Stop failed", "error");
-                return;
+            } else {
+                fnShowToast("Container stopped", "success");
             }
-            fnShowToast("Container stopped", "success");
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        } finally {
+            fnLoadContainers();
         }
-        fnLoadContainers();
     }
 
     async function fnRebuildContainer(sName) {

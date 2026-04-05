@@ -69,7 +69,7 @@ def _flistAssembleRunCommand(config, saRunArgs, saCommand):
 
 def flistBuildRunArgs(config, bDetached=False):
     """Build list of docker run arguments from project config."""
-    saRunArgs = ["-d"] if bDetached else ["--rm", "-it"]
+    saRunArgs = ["-d", "-t"] if bDetached else ["--rm", "-it"]
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddCpuAllocation(saRunArgs)
@@ -162,8 +162,15 @@ def fnStopContainer(sProjectName):
     sProjectName : str
         Name of the container to stop.
     """
-    saCommand = ["docker", "stop", sProjectName]
-    _fnRunDockerCommand(saCommand)
+    resultProcess = subprocess.run(
+        ["docker", "stop", sProjectName],
+        capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        raise RuntimeError(
+            f"docker stop failed: "
+            f"{resultProcess.stderr.strip()}"
+        )
     fnRemoveStopped(sProjectName)
 
 

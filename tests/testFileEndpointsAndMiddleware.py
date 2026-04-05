@@ -682,6 +682,16 @@ def test_fdictFindChangedFiles_no_changes():
 # ── Sleep warning helper ─────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _fnNoCaffeinate(request, monkeypatch):
+    """Force caffeinate-not-running for sleep warning tests."""
+    if "SleepWarning" not in request.node.name:
+        return
+    monkeypatch.setattr(
+        pipelineServer, "_fbCaffeinateRunning", lambda: False,
+    )
+
+
 def test_fdictSleepWarningForContext_colima():
     dictResult = pipelineServer._fdictSleepWarningForContext("colima")
     assert dictResult["sRuntime"] == "colima"

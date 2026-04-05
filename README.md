@@ -27,13 +27,6 @@
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/docs.yml/badge.svg">
 </p>
 
-### Overview
-
-`vaibify` is based on the premise that AI-assisted research projects must be decomposable, verifiable, and containable.
-
-`vaibify` creates secure, containerized environments for AI-assisted data science that can be accessed through a GUI and is fully scriptable. While it fully embraces agentic AI code development, `vaibify` also recognizes that *a human must verify all results*. `vaibify` solves these challanges by configuring Docker containers that prevent AI agents from harming your sensitive data, povides a GUI that supports terminal window(s) for running agents like Claude Code, and includes "viewing windows" that allow users to inspect resutls (data files, figures, animations). "Workflow" mode decomposes projects into automatic vs. interactive steps, and verifies the output via unit tests, dependency checks, and user validation. `vaibify` also seamlessly integrates with external resources like GitHub, Overleaf, and Zenodo so you can easily write reports, manage your work with version control, and archive your data. `vaibify` allows you to vibe code with confidence: your host machine stays safe while the agents develop code and build your analysis pipeline — all with minimal IDE interaction — enabling you to focus on vetting the results via visual inspection.
-
-To get started, follow the [Installation Guide](https://RoryBarnes.github.io/vaibify/install.html) and then the [Quick Start](https://RoryBarnes.github.io/vaibify/quickStart.html).
 
 ### Why Vaibify?
 

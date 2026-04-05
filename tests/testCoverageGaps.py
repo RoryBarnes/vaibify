@@ -73,6 +73,7 @@ def _fConfigFull():
         listRepositories=[{"url": "https://github.com/a/b"}],
         features=features,
         reproducibility=reproducibility,
+        bNeverSleep=False,
     )
 
 

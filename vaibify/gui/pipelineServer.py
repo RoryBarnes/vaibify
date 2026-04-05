@@ -1650,8 +1650,23 @@ def _fnRegisterRuntimeInfo(app, dictCtx):
         return await asyncio.to_thread(fsDetectDockerRuntime)
 
 
+def _fbCaffeinateRunning():
+    """Return True if a caffeinate process is active for this user."""
+    import subprocess
+    try:
+        resultProcess = subprocess.run(
+            ["pgrep", "-u", str(os.getuid()), "-x", "caffeinate"],
+            capture_output=True, timeout=2,
+        )
+        return resultProcess.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
 def _fdictSleepWarningForContext(sContext):
     """Return runtime info dict with appropriate sleep warning."""
+    if _fbCaffeinateRunning():
+        return {"sRuntime": sContext, "sSleepWarning": ""}
     sSleepDefault = (
         "Use 'caffeinate -s' to prevent macOS from "
         "sleeping during long pipeline runs."

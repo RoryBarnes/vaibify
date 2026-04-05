@@ -22,6 +22,10 @@ class CreateProjectRequest(BaseModel):
     listRepositories: list = []
 
 
+class ContainerSettingsRequest(BaseModel):
+    bNeverSleep: bool = False
+
+
 def fnRegisterRegistryRoutes(app, dictCtx):
     """Register all registry and container lifecycle routes."""
     _fnRegisterGetRegistry(app, dictCtx)
@@ -30,6 +34,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterBuildContainer(app, dictCtx)
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
+    _fnRegisterContainerSettings(app, dictCtx)
     _fnRegisterHostDirectories(app, dictCtx)
     _fnRegisterGetTemplates(app, dictCtx)
     _fnRegisterGetTemplateConfig(app, dictCtx)
@@ -147,7 +152,7 @@ def _fnRegisterStartContainer(app, dictCtx):
             sContainerId = _fsExecuteStart(dictProject)
         except Exception as error:
             logger.error("Start failed for %s: %s", sName, error)
-            raise HTTPException(500, "Start failed")
+            raise HTTPException(500, f"Start failed: {error}")
         return {
             "bSuccess": True,
             "sContainerId": sContainerId,
@@ -159,14 +164,71 @@ def _fsExecuteStart(dictProject):
     from vaibify.cli.configLoader import (
         fconfigLoadFromPath, fsDockerDir,
     )
-    from vaibify.docker.containerManager import (
-        fsStartContainerDetached,
-    )
+    from vaibify.docker.keepAliveManager import fnStartKeepAlive
     configProject = fconfigLoadFromPath(
         dictProject["sConfigPath"],
     )
-    sDockerDir = fsDockerDir()
+    sContainerName = dictProject["sContainerName"]
+    sContainerId = _fsStartOrCreate(
+        configProject, sContainerName, fsDockerDir(),
+    )
+    if configProject.bNeverSleep:
+        fnStartKeepAlive(sContainerName)
+    return sContainerId
+
+
+def _fsStartOrCreate(configProject, sContainerName, sDockerDir):
+    """Restart an exited container or create a new one."""
+    from vaibify.docker.containerManager import (
+        fdictGetContainerStatus, fsStartContainerDetached,
+    )
+    dictStatus = fdictGetContainerStatus(sContainerName)
+    if dictStatus["bRunning"]:
+        raise RuntimeError(
+            f"Container '{sContainerName}' is already running"
+        )
+    if dictStatus["bExists"]:
+        if _fbContainerHasTty(sContainerName):
+            return _fsDockerStartExisting(sContainerName)
+        _fnRemoveContainer(sContainerName)
     return fsStartContainerDetached(configProject, sDockerDir)
+
+
+def _fbContainerHasTty(sContainerName):
+    """Return True if the container was created with a TTY."""
+    import subprocess
+    resultProcess = subprocess.run(
+        ["docker", "inspect", "--format", "{{.Config.Tty}}",
+         sContainerName],
+        capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        return False
+    return resultProcess.stdout.strip() == "true"
+
+
+def _fnRemoveContainer(sContainerName):
+    """Remove a stopped container so a fresh one can be created."""
+    import subprocess
+    subprocess.run(
+        ["docker", "rm", sContainerName],
+        capture_output=True, text=True,
+    )
+
+
+def _fsDockerStartExisting(sContainerName):
+    """Start a previously-created container by name."""
+    import subprocess
+    resultProcess = subprocess.run(
+        ["docker", "start", sContainerName],
+        capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        raise RuntimeError(
+            f"docker start failed: "
+            f"{resultProcess.stderr.strip()}"
+        )
+    return resultProcess.stdout.strip()
 
 
 def _fnRegisterStopContainer(app, dictCtx):
@@ -181,14 +243,85 @@ def _fnRegisterStopContainer(app, dictCtx):
             _fnExecuteStop(sContainerName)
         except Exception as error:
             logger.error("Stop failed for %s: %s", sName, error)
-            raise HTTPException(500, "Stop failed")
+            raise HTTPException(500, f"Stop failed: {error}")
         return {"bSuccess": True}
 
 
 def _fnExecuteStop(sContainerName):
-    """Stop and remove a running container."""
-    from vaibify.docker.containerManager import fnStopContainer
-    fnStopContainer(sContainerName)
+    """Stop and remove a running container (idempotent)."""
+    from vaibify.docker.containerManager import (
+        fdictGetContainerStatus, fnRemoveStopped,
+    )
+    from vaibify.docker.keepAliveManager import fnStopKeepAlive
+    dictStatus = fdictGetContainerStatus(sContainerName)
+    if not dictStatus["bExists"]:
+        fnStopKeepAlive(sContainerName)
+        return
+    if dictStatus["bRunning"]:
+        _fnDockerStopCommand(sContainerName)
+    fnRemoveStopped(sContainerName)
+    fnStopKeepAlive(sContainerName)
+
+
+def _fnDockerStopCommand(sContainerName):
+    """Run 'docker stop' and raise with the real stderr on failure."""
+    import subprocess
+    resultProcess = subprocess.run(
+        ["docker", "stop", sContainerName],
+        capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        raise RuntimeError(
+            f"docker stop failed: "
+            f"{resultProcess.stderr.strip()}"
+        )
+
+
+def _fnRegisterContainerSettings(app, dictCtx):
+    """Register GET and POST /api/containers/{sName}/settings."""
+
+    @app.get("/api/containers/{sName}/settings")
+    async def fnGetContainerSettings(sName: str):
+        dictCtx["require"]()
+        dictProject = _fdictRequireProject(sName)
+        from vaibify.config.projectConfig import fconfigLoadFromFile
+        configProject = fconfigLoadFromFile(
+            dictProject["sConfigPath"]
+        )
+        return {"bNeverSleep": configProject.bNeverSleep}
+
+    @app.post("/api/containers/{sName}/settings")
+    async def fnSetContainerSettings(
+        sName: str, request: ContainerSettingsRequest
+    ):
+        dictCtx["require"]()
+        dictProject = _fdictRequireProject(sName)
+        _fnUpdateYamlBoolField(
+            dictProject["sConfigPath"], "neverSleep",
+            request.bNeverSleep,
+        )
+        return {"bSuccess": True}
+
+
+def _fnUpdateYamlBoolField(sConfigPath, sKey, bValue):
+    """Update or append a top-level boolean key in a YAML file."""
+    with open(sConfigPath, "r") as fileHandle:
+        listLines = fileHandle.readlines()
+    sValue = "true" if bValue else "false"
+    bFound = False
+    for iIndex, sLine in enumerate(listLines):
+        if sLine.startswith(f"{sKey}:") or sLine.startswith(
+            f"{sKey} :"
+        ):
+            listLines[iIndex] = f"{sKey}: {sValue}\n"
+            bFound = True
+            break
+    if not bFound:
+        if listLines and not listLines[-1].endswith("\n"):
+            listLines[-1] += "\n"
+        listLines.append(f"{sKey}: {sValue}\n")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.writelines(listLines)
 
 
 def _fdictRequireProject(sName):

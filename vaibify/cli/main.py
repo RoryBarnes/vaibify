@@ -12,16 +12,18 @@ import click
 
 
 def _fnConfigureErrorLogging():
-    """Write vaibify errors to ~/.vaibify/error.log."""
+    """Write vaibify activity to ~/.vaibify/vaibify.log."""
     sLogDir = os.path.expanduser("~/.vaibify")
     os.makedirs(sLogDir, exist_ok=True)
-    sLogPath = os.path.join(sLogDir, "error.log")
+    sLogPath = os.path.join(sLogDir, "vaibify.log")
     fileHandler = logging.FileHandler(sLogPath)
-    fileHandler.setLevel(logging.ERROR)
+    fileHandler.setLevel(logging.INFO)
     fileHandler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(message)s"
+        "%(asctime)s %(levelname)s %(name)s: %(message)s"
     ))
-    logging.getLogger("vaibify").addHandler(fileHandler)
+    loggerVaibify = logging.getLogger("vaibify")
+    loggerVaibify.setLevel(logging.INFO)
+    loggerVaibify.addHandler(fileHandler)
 
 from .commandBuild import build
 from .commandCat import cat
@@ -52,6 +54,7 @@ def _fnEnsureFirstTimeSetup():
 
 
 _fnEnsureFirstTimeSetup()
+_fnConfigureErrorLogging()
 
 
 @click.group(invoke_without_command=True)
@@ -82,7 +85,6 @@ def fnLaunchHub(iPort):
     import uvicorn
     import webbrowser
     from vaibify.gui.pipelineServer import fappCreateHubApplication
-    _fnConfigureErrorLogging()
     sUrl = f"http://127.0.0.1:{iPort}"
     click.echo(f"Starting Vaibify hub at {sUrl}")
     app = fappCreateHubApplication()

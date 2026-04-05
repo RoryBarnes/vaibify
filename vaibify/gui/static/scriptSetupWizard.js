@@ -173,6 +173,9 @@ var VaibifySetup = (function () {
         fnSetInputValue(
             "zenodoDepositionId", dictConfig.sZenodoDepositionId
         );
+        document.getElementById("neverSleep").checked = Boolean(
+            dictConfig.bNeverSleep
+        );
 
         if (dictConfig.listRepositories) {
             listRepositories = dictConfig.listRepositories.slice();
@@ -255,6 +258,9 @@ var VaibifySetup = (function () {
             sZenodoDepositionId: document.getElementById(
                 "zenodoDepositionId"
             ).value.trim(),
+            bNeverSleep: document.getElementById(
+                "neverSleep"
+            ).checked,
         };
     }
 

@@ -43,6 +43,7 @@ class WizardConfigRequest(BaseModel):
     listAptPackages: List[str] = []
     sOverleafProjectId: str = ""
     sZenodoDepositionId: str = ""
+    bNeverSleep: bool = False
 
 
 class ValidateResponse(BaseModel):
@@ -203,6 +204,7 @@ def _fdictConfigToWizardFormat(config):
         "sOverleafProjectId": (
             config.reproducibility.overleaf.sProjectId
         ),
+        "bNeverSleep": config.bNeverSleep,
     }
 
 
@@ -236,6 +238,7 @@ def _fdictWizardToYaml(request):
         "systemPackages": request.listAptPackages,
         "pythonPackages": request.listPipPackages,
         "features": dictFeatures,
+        "neverSleep": request.bNeverSleep,
     }
     if request.sOverleafProjectId:
         dictYaml["reproducibility"] = {

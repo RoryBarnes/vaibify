@@ -23,7 +23,29 @@ def _fnStartContainer(config, sDockerDir, sCommand):
         )
         sys.exit(1)
     saCommand = [sCommand] if sCommand else None
-    fnStartContainer(config, sDockerDir, saCommand=saCommand)
+    try:
+        fnStartContainer(config, sDockerDir, saCommand=saCommand)
+    except RuntimeError as error:
+        _fnHandleDockerRuntimeError(error, config.sProjectName)
+
+
+def _fnHandleDockerRuntimeError(error, sProjectName):
+    """Print a friendly message for known Docker exit scenarios."""
+    sMessage = str(error)
+    if "exit 137" in sMessage:
+        click.echo(
+            f"\nContainer '{sProjectName}' was stopped externally "
+            f"(SIGKILL). This is normal when stopping the "
+            f"container from another terminal or the GUI."
+        )
+        sys.exit(0)
+    if "exit 130" in sMessage or "exit 143" in sMessage:
+        click.echo(
+            f"\nContainer '{sProjectName}' exited cleanly."
+        )
+        sys.exit(0)
+    click.echo(f"Error: {sMessage}", err=True)
+    sys.exit(1)
 
 
 def fnLaunchGui(config):

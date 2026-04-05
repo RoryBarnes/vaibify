@@ -76,6 +76,7 @@ class ProjectConfig:
         default_factory=ReproducibilityConfig
     )
     bNetworkIsolation: bool = False
+    bNeverSleep: bool = False
 
 
 # Mapping from camelCase YAML keys to Hungarian dataclass fields
@@ -98,6 +99,7 @@ _YAML_TO_HUNGARIAN = {
     "secrets": "listSecrets",
     "reproducibility": "reproducibility",
     "networkIsolation": "bNetworkIsolation",
+    "neverSleep": "bNeverSleep",
 }
 
 _HUNGARIAN_TO_YAML = {v: k for k, v in _YAML_TO_HUNGARIAN.items()}

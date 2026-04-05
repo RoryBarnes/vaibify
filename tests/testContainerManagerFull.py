@@ -41,11 +41,12 @@ def _fConfigMinimal():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.docker.containerManager._fnRunDockerCommand")
+@patch("vaibify.docker.containerManager.subprocess.run")
 @patch("vaibify.docker.containerManager.fnRemoveStopped")
 def test_fnStopContainer_calls_stop(
     mockRemove, mockRun,
 ):
+    mockRun.return_value = MagicMock(returncode=0, stderr="")
     fnStopContainer("testproj")
     mockRun.assert_called_once()
     saArgs = mockRun.call_args[0][0]
