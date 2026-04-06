@@ -409,7 +409,7 @@ async def _fiRunTestCommands(
     iStepNumber,
 ):
     """Run test commands and emit result. Does not abort on failure."""
-    listTestCommands = dictStep.get("saTestCommands", [])
+    listTestCommands = _flistResolveTestCommands(dictStep)
     if not listTestCommands:
         return 0
     await fnStatusCallback(
@@ -1071,6 +1071,88 @@ async def fnVerifyOnly(
     )
     iExitCode = 0 if bAllPresent else 1
     await _fnEmitCompletion(fnStatusCallback, iExitCode)
+    return iExitCode
+
+
+async def fnRunAllTests(
+    connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
+    dictWorkflow=None,
+):
+    """Run unit tests for all enabled steps without data or plot commands."""
+    if dictWorkflow is None:
+        dictWorkflow, _sPath = await _fdictLoadWorkflow(
+            connectionDocker, sContainerId, fnStatusCallback
+        )
+    if dictWorkflow is None:
+        return 1
+    await fnStatusCallback(
+        {"sType": "started", "sCommand": "runAllTests"}
+    )
+    dictVars = _fdictBuildWorkflowVars(dictWorkflow)
+    iFinalExitCode = await _fiRunTestsForAllSteps(
+        connectionDocker, sContainerId, dictWorkflow,
+        dictVars, fnStatusCallback,
+    )
+    await _fnEmitCompletion(fnStatusCallback, iFinalExitCode)
+    return iFinalExitCode
+
+
+def _flistResolveTestCommands(dictStep):
+    """Return test commands from structured tests or legacy list."""
+    from .workflowManager import flistBuildTestCommands
+    if "dictTests" in dictStep:
+        return flistBuildTestCommands(dictStep)
+    return dictStep.get("saTestCommands", [])
+
+
+async def _fiRunTestsForAllSteps(
+    connectionDocker, sContainerId, dictWorkflow,
+    dictVars, fnStatusCallback,
+):
+    """Iterate enabled steps and run their test commands."""
+    iFinalExitCode = 0
+    listSteps = dictWorkflow.get("listSteps", [])
+    for iIndex, dictStep in enumerate(listSteps):
+        if not dictStep.get("bEnabled", True):
+            continue
+        if not _flistResolveTestCommands(dictStep):
+            continue
+        iStepNumber = iIndex + 1
+        iExitCode = await _fiRunStepTests(
+            connectionDocker, sContainerId, dictStep,
+            dictVars, fnStatusCallback, iStepNumber,
+            dictWorkflow,
+        )
+        if iExitCode != 0:
+            iFinalExitCode = 1
+    return iFinalExitCode
+
+
+async def _fiRunStepTests(
+    connectionDocker, sContainerId, dictStep,
+    dictVars, fnStatusCallback, iStepNumber,
+    dictWorkflow,
+):
+    """Run tests for a single step and emit results."""
+    sStepName = dictStep.get("sName", f"Step {iStepNumber}")
+    sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
+    sStepDirectory = dictStep.get("sDirectory", "")
+    await _fnEmitBanner(
+        fnStatusCallback, iStepNumber, sStepName,
+        sStepLabel=sStepLabel,
+    )
+    await fnStatusCallback(
+        {"sType": "stepStarted", "iStepNumber": iStepNumber}
+    )
+    iExitCode = await _fiRunTestCommands(
+        connectionDocker, sContainerId, dictStep,
+        sStepDirectory, dictVars, fnStatusCallback,
+        iStepNumber,
+    )
+    await _fnRecordInputHashes(
+        connectionDocker, sContainerId, dictStep,
+    )
+    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
 
 

@@ -1672,7 +1672,9 @@ const PipeleyenApp = (function () {
             sStatusClass = (sVerifyState === "verified")
                 ? "verified" : "partial";
         } else if (sRunStatus === "fail") {
-            sStatusClass = "fail";
+            var sVerifyOnFail = fsComputeStepDotState(step, iIndex);
+            sStatusClass = (sVerifyOnFail === "partial" ||
+                sVerifyOnFail === "verified") ? "partial" : "fail";
         } else {
             sStatusClass = fsComputeStepDotState(step, iIndex);
         }
@@ -4588,6 +4590,7 @@ const PipeleyenApp = (function () {
             btnForceRunAll: fnForceRunAll,
             btnKillPipeline: fnKillPipeline,
             btnVerify: fnVerify,
+            btnRunAllTests: fnRunAllTests,
             btnValidateReferences: fnValidateReferences,
             btnStandardizeAllPlots: fnStandardizeAllWorkflowPlots,
             btnOverleafPush: function () { fnOpenPushModal("overleaf"); },
@@ -5508,12 +5511,16 @@ const PipeleyenApp = (function () {
             "?sToken=" + encodeURIComponent(sSessionToken);
         wsPipeline = new WebSocket(sUrl);
         wsPipeline.onopen = function () {
+            console.log("[WS] open, flushing",
+                _listPendingPipelineActions.length, "pending actions");
             _fnFlushPendingPipelineActions();
         };
         wsPipeline.onmessage = function (event) {
+            console.log("[WS] message:", event.data.substring(0, 200));
             fnHandlePipelineEvent(JSON.parse(event.data));
         };
         wsPipeline.onclose = function (event) {
+            console.log("[WS] close, code:", event.code);
             wsPipeline = null;
             var bActionsDropped =
                 _listPendingPipelineActions.length > 0;
@@ -5773,6 +5780,24 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnApplyTestResultToCategories(dictStep, sResult) {
+        var dictVerify = dictStep.dictVerification;
+        var dictTests = dictStep.dictTests || {};
+        var listKeys = [
+            ["dictIntegrity", "sIntegrity"],
+            ["dictQualitative", "sQualitative"],
+            ["dictQuantitative", "sQuantitative"],
+        ];
+        for (var i = 0; i < listKeys.length; i++) {
+            var sCatKey = listKeys[i][0];
+            var sVerifyKey = listKeys[i][1];
+            var dictCat = dictTests[sCatKey] || {};
+            if ((dictCat.saCommands || []).length > 0) {
+                dictVerify[sVerifyKey] = sResult;
+            }
+        }
+    }
+
     function fnClearOutputModified(iStep) {
         var dictStep = dictWorkflow.listSteps[iStep];
         if (dictStep && dictStep.dictVerification) {
@@ -5790,9 +5815,15 @@ const PipeleyenApp = (function () {
             };
         }
         dictStep.dictVerification.sUnitTest = dictEvent.sResult;
+        dictStep.dictVerification.sLastTestRun =
+            fsFormatUtcTimestamp();
+        fnApplyTestResultToCategories(dictStep, dictEvent.sResult);
         if (dictEvent.sResult === "passed") {
             fnClearOutputModified(iStep);
         }
+        fnSaveStepUpdate(iStep, {
+            dictVerification: dictStep.dictVerification,
+        });
         fnRenderStepList();
         fnCheckVaibified();
         var sLabel = dictEvent.sResult === "passed" ?
@@ -6822,6 +6853,12 @@ const PipeleyenApp = (function () {
 
     function fnVerify() {
         fnSendPipelineAction({ sAction: "verify" });
+    }
+
+    function fnRunAllTests() {
+        console.log("[RUN-ALL-TESTS] sending action, wsPipeline:",
+            wsPipeline ? wsPipeline.readyState : "null");
+        fnSendPipelineAction({ sAction: "runAllTests" });
     }
 
     async function fnValidateReferences() {

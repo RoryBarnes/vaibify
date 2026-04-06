@@ -25,6 +25,7 @@ from .pipelineRunner import (
     fnRunAllSteps,
     fnRunFromStep,
     fnRunSelectedSteps,
+    fnRunAllTests,
     fnVerifyOnly,
     fsShellQuote,
 )
@@ -265,6 +266,10 @@ async def fnDispatchAction(
     elif sAction == "verify":
         await fnVerifyOnly(
             connectionDocker, sContainerId, sWorkflowDirectory, fnCallback)
+    elif sAction == "runAllTests":
+        await fnRunAllTests(
+            connectionDocker, sContainerId, sWorkflowDirectory, fnCallback,
+            dictWorkflow=dictWorkflow)
     elif sAction == "runSelected":
         await _fnDispatchSelected(
             connectionDocker, sContainerId, dictRequest,
@@ -375,15 +380,40 @@ async def fnPipelineMessageLoop(
             )
             continue
         taskPipeline = asyncio.create_task(
-            fnDispatchAction(
+            _fnSafeDispatch(
                 sAction, dictRequest, connectionDocker,
                 sContainerId, dictWorkflow,
                 dictWorkflowPathCache, sWorkflowDirectory,
-                fnCallback, dictInteractive=dictInteractive,
+                fnCallback, dictInteractive,
             )
         )
         if dictPipelineTasks is not None:
             dictPipelineTasks[sContainerId] = taskPipeline
+
+
+async def _fnSafeDispatch(
+    sAction, dictRequest, connectionDocker,
+    sContainerId, dictWorkflow, dictWorkflowPathCache,
+    sWorkflowDirectory, fnCallback, dictInteractive,
+):
+    """Wrap fnDispatchAction with error handling."""
+    try:
+        await fnDispatchAction(
+            sAction, dictRequest, connectionDocker,
+            sContainerId, dictWorkflow,
+            dictWorkflowPathCache, sWorkflowDirectory,
+            fnCallback, dictInteractive=dictInteractive,
+        )
+    except Exception as exc:
+        logger.error("Pipeline action '%s' failed: %s", sAction, exc)
+        try:
+            await fnCallback({
+                "sType": "failed",
+                "iExitCode": 1,
+                "sMessage": str(exc),
+            })
+        except Exception:
+            pass
 
 
 def _fnHandleInteractiveResponse(
@@ -2737,6 +2767,7 @@ def _fnRegisterTestRun(app, dictCtx):
     async def fnRunTests(sContainerId: str, iStepIndex: int):
         import asyncio
         from .workflowManager import flistBuildTestCommands
+        from . import syncDispatcher as _syncDispatcher
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -2752,6 +2783,9 @@ def _fnRegisterTestRun(app, dictCtx):
         )
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
+        await _fnUpdateInputHashes(
+            dictCtx, sContainerId, dictStep,
+        )
         dictCtx["save"](sContainerId, dictWorkflow)
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
@@ -2803,6 +2837,19 @@ def _fnRegisterTestRun(app, dictCtx):
             "sOutput": sOutput,
             "iExitCode": iExitCode,
         }
+
+
+async def _fnUpdateInputHashes(dictCtx, sContainerId, dictStep):
+    """Recompute and store input script hashes after test execution."""
+    import asyncio
+    from . import syncDispatcher as _syncDispatcher
+    dictHashes = await asyncio.to_thread(
+        _syncDispatcher.fdictComputeInputHashes,
+        dictCtx["docker"], sContainerId, dictStep,
+    )
+    if "dictRunStats" not in dictStep:
+        dictStep["dictRunStats"] = {}
+    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
 
 
 def _fnRecordTestResult(dictStep, bPassed, dictWorkflow,
