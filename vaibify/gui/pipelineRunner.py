@@ -408,29 +408,121 @@ async def _fiRunTestCommands(
     sStepDirectory, dictVariables, fnStatusCallback,
     iStepNumber,
 ):
-    """Run test commands and emit result. Does not abort on failure."""
+    """Run test commands per category and emit results."""
     listTestCommands = _flistResolveTestCommands(dictStep)
     if not listTestCommands:
         return 0
     await fnStatusCallback(
         {"sType": "output", "sLine": "--- Running unit tests ---"}
     )
-    listTestLog = []
-    fnTestLog = ffBuildLoggingCallback(fnStatusCallback, listTestLog)
-    iExitCode, _ = await _ftRunCommandList(
-        connectionDocker, sContainerId, listTestCommands,
-        sStepDirectory, dictVariables, fnTestLog,
+    dictCategoryResults = await _fdictRunTestsByCategory(
+        connectionDocker, sContainerId, dictStep,
+        sStepDirectory, dictVariables, fnStatusCallback,
     )
+    listAllLog = _flistCollectCategoryLogs(dictCategoryResults)
     await _fnWriteTestLog(
-        connectionDocker, sContainerId, iStepNumber, listTestLog
+        connectionDocker, sContainerId, iStepNumber, listAllLog,
     )
-    sResult = "passed" if iExitCode == 0 else "failed"
+    await _fnEmitPerCategoryResults(
+        fnStatusCallback, iStepNumber, dictCategoryResults,
+    )
+    return _fiAggregateTestExitCode(dictCategoryResults)
+
+
+def _flistCollectCategoryLogs(dictCategoryResults):
+    """Collect all log lines from category results."""
+    listLines = []
+    for dictResult in dictCategoryResults.values():
+        sOutput = dictResult.get("sOutput", "")
+        if sOutput:
+            listLines.extend(sOutput.split("\n"))
+    return listLines
+
+
+async def _fdictRunTestsByCategory(
+    connectionDocker, sContainerId, dictStep,
+    sStepDirectory, dictVariables, fnStatusCallback,
+):
+    """Run each test category separately, return {sCategory: dict}."""
+    dictTests = dictStep.get("dictTests", {})
+    dictResults = {}
+    for sCatKey in ("dictIntegrity", "dictQualitative",
+                    "dictQuantitative"):
+        dictCat = dictTests.get(sCatKey, {})
+        listCmds = dictCat.get("saCommands", [])
+        if not listCmds:
+            continue
+        dictResults[sCatKey] = await _fdictRunOneCategoryCommands(
+            connectionDocker, sContainerId, listCmds,
+            sStepDirectory, dictVariables, fnStatusCallback,
+        )
+    if not dictResults:
+        dictResults = await _fdictRunLegacyTestCommands(
+            connectionDocker, sContainerId, dictStep,
+            sStepDirectory, dictVariables, fnStatusCallback,
+        )
+    return dictResults
+
+
+async def _fdictRunOneCategoryCommands(
+    connectionDocker, sContainerId, listCommands,
+    sStepDirectory, dictVariables, fnStatusCallback,
+):
+    """Run commands for one test category, return result dict."""
+    listLog = []
+    fnLog = ffBuildLoggingCallback(fnStatusCallback, listLog)
+    iExitCode, _ = await _ftRunCommandList(
+        connectionDocker, sContainerId, listCommands,
+        sStepDirectory, dictVariables, fnLog,
+    )
+    return {
+        "iExitCode": iExitCode,
+        "sOutput": "\n".join(listLog),
+    }
+
+
+async def _fdictRunLegacyTestCommands(
+    connectionDocker, sContainerId, dictStep,
+    sStepDirectory, dictVariables, fnStatusCallback,
+):
+    """Fallback for steps using saTestCommands without dictTests."""
+    listCommands = dictStep.get("saTestCommands", [])
+    if not listCommands:
+        return {}
+    dictResult = await _fdictRunOneCategoryCommands(
+        connectionDocker, sContainerId, listCommands,
+        sStepDirectory, dictVariables, fnStatusCallback,
+    )
+    return {"legacy": dictResult}
+
+
+async def _fnEmitPerCategoryResults(
+    fnStatusCallback, iStepNumber, dictCategoryResults,
+):
+    """Emit testResult events with per-category detail."""
+    dictCatStatus = {}
+    listAllOutput = []
+    for sCatKey, dictResult in dictCategoryResults.items():
+        sStatus = "passed" if dictResult["iExitCode"] == 0 else "failed"
+        dictCatStatus[sCatKey] = sStatus
+        listAllOutput.append(dictResult.get("sOutput", ""))
+    bAllPassed = all(s == "passed" for s in dictCatStatus.values())
+    sAggResult = "passed" if bAllPassed else "failed"
     await fnStatusCallback({
         "sType": "testResult",
         "iStepNumber": iStepNumber,
-        "sResult": sResult,
+        "sResult": sAggResult,
+        "sOutput": "\n".join(listAllOutput),
+        "dictCategoryResults": dictCatStatus,
     })
-    return iExitCode
+
+
+def _fiAggregateTestExitCode(dictCategoryResults):
+    """Return 0 if all categories passed, 1 otherwise."""
+    for dictResult in dictCategoryResults.values():
+        if dictResult.get("iExitCode", 1) != 0:
+            return 1
+    return 0
 
 
 async def _fnWriteTestLog(

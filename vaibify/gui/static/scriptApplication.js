@@ -3330,6 +3330,12 @@ const PipeleyenApp = (function () {
             dictResult.bPassed ? "passed" : "failed";
         dictStep.dictVerification.sLastTestRun =
             fsFormatUtcTimestamp();
+        var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
+            sCategory.slice(1);
+        var dictTests = dictStep.dictTests || {};
+        if (dictTests[sCatKey] && dictResult.sOutput) {
+            dictTests[sCatKey].sLastOutput = dictResult.sOutput;
+        }
         fnComputeAggregateTestState(iStepIndex);
         fnSaveStepUpdate(iStepIndex, {
             dictVerification: dictStep.dictVerification,
@@ -5796,7 +5802,9 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnApplyTestResultToCategories(dictStep, sResult) {
+    function fnApplyTestResultToCategories(
+        dictStep, sResult, sOutput, dictCategoryResults
+    ) {
         var dictVerify = dictStep.dictVerification;
         var dictTests = dictStep.dictTests || {};
         var listKeys = [
@@ -5808,8 +5816,12 @@ const PipeleyenApp = (function () {
             var sCatKey = listKeys[i][0];
             var sVerifyKey = listKeys[i][1];
             var dictCat = dictTests[sCatKey] || {};
-            if ((dictCat.saCommands || []).length > 0) {
-                dictVerify[sVerifyKey] = sResult;
+            if ((dictCat.saCommands || []).length === 0) continue;
+            var sCatResult = (dictCategoryResults && dictCategoryResults[sCatKey])
+                ? dictCategoryResults[sCatKey] : sResult;
+            dictVerify[sVerifyKey] = sCatResult;
+            if (sOutput) {
+                dictCat.sLastOutput = sOutput;
             }
         }
     }
@@ -5833,7 +5845,9 @@ const PipeleyenApp = (function () {
         dictStep.dictVerification.sUnitTest = dictEvent.sResult;
         dictStep.dictVerification.sLastTestRun =
             fsFormatUtcTimestamp();
-        fnApplyTestResultToCategories(dictStep, dictEvent.sResult);
+        fnApplyTestResultToCategories(
+            dictStep, dictEvent.sResult, dictEvent.sOutput || "",
+            dictEvent.dictCategoryResults || null);
         if (dictEvent.sResult === "passed") {
             fnClearOutputModified(iStep);
         }
