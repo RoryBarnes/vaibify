@@ -2116,6 +2116,15 @@ const PipeleyenApp = (function () {
             sHtml += '<div class="output-modified-warning">' +
                 '\u26A0 Upstream step outputs changed</div>';
         }
+        if (!bInteractive && !bPlotOnly &&
+            fsEffectiveTestState(step) === "failed") {
+            sHtml += '<div class="output-modified-warning">' +
+                '\u26A0 Unit tests failing</div>';
+        }
+        if (fsComputeDepsState(iIndex) === "failed") {
+            sHtml += '<div class="output-modified-warning">' +
+                '\u26A0 Dependencies failing</div>';
+        }
         if (!bInteractive && !bPlotOnly) {
             var sUnitState = fsEffectiveTestState(step);
             sHtml += fsRenderVerificationRow(
@@ -2134,8 +2143,8 @@ const PipeleyenApp = (function () {
                 sHtml += fsRenderUnitTestsExpanded(step, iIndex);
             }
         }
-        var bHasExplicitDeps = (step.saDependencies || []).length > 0;
-        if (bHasExplicitDeps) {
+        var bHasDeps = flistGetStepDependencies(iIndex).length > 0;
+        if (bHasDeps) {
             var sDepsState = fsComputeDepsState(iIndex);
             sHtml += fsRenderVerificationRow(
                 "Dependencies", sDepsState, "deps", iIndex
@@ -2907,7 +2916,12 @@ const PipeleyenApp = (function () {
                 .toUpperCase() + sCatKey.slice(1);
             var sOutput = (dictLogTests[sLogCatKey] || {})
                 .sLastOutput || "No test output available.";
-            fnShowTestLogModal(sCatKey, sOutput);
+            var sVerifyKey = "s" + sCatKey.charAt(0)
+                .toUpperCase() + sCatKey.slice(1);
+            var bLogPassed = (dictLogStep.dictVerification || {})[
+                sVerifyKey] === "passed";
+            PipeleyenFigureViewer.fnDisplayTestOutput(
+                sOutput, bLogPassed);
             return;
         }
         if (elTarget.closest(".test-edit-cmd")) {

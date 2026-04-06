@@ -361,7 +361,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     var _LIST_ZOOM_LEVELS = [
-        0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 1.0,
+        0.10, 0.25, 0.50, 0.75, 1.0,
         1.25, 1.50, 2.0, 3.0, 4.0,
     ];
 
@@ -406,8 +406,17 @@ const PipeleyenFigureViewer = (function () {
     }
 
     var _activePdfDocument = null;
+    var _activePdfRenderTask = null;
+
+    function fnCancelActivePdfRender() {
+        if (_activePdfRenderTask) {
+            _activePdfRenderTask.cancel();
+            _activePdfRenderTask = null;
+        }
+    }
 
     function fnDestroyActivePdf() {
+        fnCancelActivePdfRender();
         if (_activePdfDocument) {
             _activePdfDocument.destroy();
             _activePdfDocument = null;
@@ -467,13 +476,33 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRenderPdfPage(page, elViewport, dDisplayScale) {
+        var iContainerWidth = elViewport.clientWidth;
         var dNativeViewport = page.getViewport({ scale: 1.0 });
         if (dDisplayScale === "fit") {
-            dDisplayScale = (elViewport.clientWidth - 32) /
+            dDisplayScale = (iContainerWidth - 32) /
                 dNativeViewport.width;
         }
+        dDisplayScale = Math.max(dDisplayScale, 0.10);
+        fnCancelActivePdfRender();
         var viewport = page.getViewport({ scale: dDisplayScale * 2 });
         var elCanvas = felCreatePdfCanvas(viewport);
+        var renderTask = page.render({
+            canvasContext: elCanvas.getContext("2d"),
+            viewport: viewport,
+        });
+        _activePdfRenderTask = renderTask;
+        renderTask.promise.then(function () {
+            _activePdfRenderTask = null;
+            fnSwapPdfContent(page, elViewport, elCanvas, dDisplayScale);
+        }).catch(function (reason) {
+            if (reason && reason.name === "RenderCancelled") return;
+            _activePdfRenderTask = null;
+        });
+    }
+
+    function fnSwapPdfContent(
+        page, elViewport, elCanvas, dDisplayScale
+    ) {
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
         elViewport.style.alignItems = "stretch";
@@ -484,10 +513,6 @@ const PipeleyenFigureViewer = (function () {
         );
         elViewport.appendChild(elToolbar);
         elViewport.appendChild(fnCreateScrollableContent(elCanvas));
-        page.render({
-            canvasContext: elCanvas.getContext("2d"),
-            viewport: viewport,
-        });
     }
 
     function fnRenderText(sUrl, elViewport) {
