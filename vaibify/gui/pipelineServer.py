@@ -79,6 +79,7 @@ class StepUpdateRequest(BaseModel):
     saPlotFiles: Optional[List[str]] = None
     saDependencies: Optional[List[str]] = None
     dictVerification: Optional[dict] = None
+    dictTests: Optional[dict] = None
     dictPlotFileCategories: Optional[dict] = None
     dictDataFileCategories: Optional[dict] = None
 
@@ -2739,6 +2740,7 @@ async def _fdictRunAllTestCategories(dictCtx, sContainerId, dictStep):
     import asyncio
     sDir = dictStep.get("sDirectory", "/workspace")
     dictVerification = dictStep.setdefault("dictVerification", {})
+    dictTests = dictStep.get("dictTests", {})
     dictCategoryResults = {}
     for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
         dictResult = await _fdictRunOneTestCategory(
@@ -2748,6 +2750,9 @@ async def _fdictRunAllTestCategories(dictCtx, sContainerId, dictStep):
             continue
         dictVerification[sVerifKey] = (
             "passed" if dictResult["bPassed"] else "failed")
+        sCatOutput = dictResult.get("sOutput", "")
+        if sCatOutput and sCategory in dictTests:
+            dictTests[sCategory]["sLastOutput"] = sCatOutput
         dictCategoryResults[sCategory] = dictResult
     return dictCategoryResults
 
@@ -2860,6 +2865,10 @@ def _fnRegisterTestRun(app, dictCtx):
             "dictVerification", {})
         dictVerification[sVerifKey] = (
             "passed" if bPassed else "failed")
+        dictVerification.pop("listModifiedFiles", None)
+        dictVerification.pop("bUpstreamModified", None)
+        if sOutput:
+            dictCat["sLastOutput"] = sOutput
         _fnUpdateAggregateTestState(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
@@ -2889,9 +2898,9 @@ def _fnRecordTestResult(dictStep, bPassed, dictWorkflow,
         "dictVerification", {})
     dictVerification["sUnitTest"] = (
         "passed" if bPassed else "failed")
+    dictVerification.pop("listModifiedFiles", None)
+    dictVerification.pop("bUpstreamModified", None)
     if bPassed:
-        dictVerification.pop("listModifiedFiles", None)
-        dictVerification.pop("bUpstreamModified", None)
         _fnClearDownstreamUpstreamFlags(
             dictWorkflow, iStepIndex)
 

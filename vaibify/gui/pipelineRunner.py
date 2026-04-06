@@ -500,20 +500,26 @@ async def _fnEmitPerCategoryResults(
     fnStatusCallback, iStepNumber, dictCategoryResults,
 ):
     """Emit testResult events with per-category detail."""
-    dictCatStatus = {}
+    dictCatDetail = {}
     listAllOutput = []
     for sCatKey, dictResult in dictCategoryResults.items():
-        sStatus = "passed" if dictResult["iExitCode"] == 0 else "failed"
-        dictCatStatus[sCatKey] = sStatus
-        listAllOutput.append(dictResult.get("sOutput", ""))
-    bAllPassed = all(s == "passed" for s in dictCatStatus.values())
+        bPassed = dictResult["iExitCode"] == 0
+        sCatOutput = dictResult.get("sOutput", "")
+        dictCatDetail[sCatKey] = {
+            "sStatus": "passed" if bPassed else "failed",
+            "sOutput": sCatOutput,
+        }
+        listAllOutput.append(sCatOutput)
+    bAllPassed = all(
+        d["sStatus"] == "passed" for d in dictCatDetail.values()
+    )
     sAggResult = "passed" if bAllPassed else "failed"
     await fnStatusCallback({
         "sType": "testResult",
         "iStepNumber": iStepNumber,
         "sResult": sAggResult,
         "sOutput": "\n".join(listAllOutput),
-        "dictCategoryResults": dictCatStatus,
+        "dictCategoryResults": dictCatDetail,
     })
 
 

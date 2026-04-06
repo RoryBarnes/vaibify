@@ -1677,6 +1677,41 @@ const PipeleyenApp = (function () {
         return sPrefix + String(iCount).padStart(2, "0");
     }
 
+    function fsBuildWarningBadge(step, iIndex) {
+        var listWarnings = [];
+        var listMod = (step.dictVerification || {})
+            .listModifiedFiles || [];
+        if (listMod.length > 0) {
+            var sNames = listMod.map(function (s) {
+                return s.split("/").pop();
+            }).join(", ");
+            listWarnings.push("Modified: " + sNames);
+        }
+        fnAppendTestWarning(step, iIndex, listWarnings);
+        fnAppendDepsWarning(iIndex, listWarnings);
+        if (listWarnings.length === 0) return "";
+        var sTooltip = fnEscapeHtml(listWarnings.join("\n"));
+        return '<span class="data-modified-badge" ' +
+            'title="' + sTooltip + '">&#9888;</span>';
+    }
+
+    function fnAppendTestWarning(step, iIndex, listWarnings) {
+        var bInteractive = step.bInteractive === true;
+        var bPlotOnly = (step.saDataCommands || []).length === 0;
+        if (bInteractive || bPlotOnly) return;
+        var sUnit = fsEffectiveTestState(step);
+        if (sUnit === "failed") {
+            listWarnings.push("Unit tests failing");
+        }
+    }
+
+    function fnAppendDepsWarning(iIndex, listWarnings) {
+        var sDeps = fsComputeDepsState(iIndex);
+        if (sDeps === "failed") {
+            listWarnings.push("Dependencies failing");
+        }
+    }
+
     function fsRenderStepItem(step, iIndex, dictVars) {
         var bInteractive = step.bInteractive === true;
         var sRunStatus = dictStepStatus[iIndex] || "";
@@ -1721,17 +1756,7 @@ const PipeleyenApp = (function () {
                 '<span class="script-modified-badge" ' +
                 'title="Scripts modified since last run">' +
                 '&#9998;</span>' : '') +
-            (function () {
-                var listMod = (step.dictVerification || {})
-                    .listModifiedFiles || [];
-                if (listMod.length === 0) return '';
-                var sNames = listMod.map(function (s) {
-                    return s.split("/").pop();
-                }).join(", ");
-                return '<span class="data-modified-badge" ' +
-                    'title="Modified: ' +
-                    fnEscapeHtml(sNames) + '">&#9888;</span>';
-            })() +
+            fsBuildWarningBadge(step, iIndex) +
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
@@ -3337,9 +3362,14 @@ const PipeleyenApp = (function () {
             dictTests[sCatKey].sLastOutput = dictResult.sOutput;
         }
         fnComputeAggregateTestState(iStepIndex);
-        fnSaveStepUpdate(iStepIndex, {
+        fnClearOutputModified(iStepIndex);
+        var dictCatUpdate = {
             dictVerification: dictStep.dictVerification,
-        });
+        };
+        if (dictStep.dictTests) {
+            dictCatUpdate.dictTests = dictStep.dictTests;
+        }
+        fnSaveStepUpdate(iStepIndex, dictCatUpdate);
         fnRenderStepList();
         var sLabel = fsTestCategoryLabel(sCategory);
         fnShowToast(sLabel + ": " +
@@ -5817,11 +5847,22 @@ const PipeleyenApp = (function () {
             var sVerifyKey = listKeys[i][1];
             var dictCat = dictTests[sCatKey] || {};
             if ((dictCat.saCommands || []).length === 0) continue;
-            var sCatResult = (dictCategoryResults && dictCategoryResults[sCatKey])
-                ? dictCategoryResults[sCatKey] : sResult;
-            dictVerify[sVerifyKey] = sCatResult;
-            if (sOutput) {
-                dictCat.sLastOutput = sOutput;
+            var dictCatEntry = (dictCategoryResults || {})[sCatKey];
+            if (dictCatEntry && typeof dictCatEntry === "object") {
+                dictVerify[sVerifyKey] = dictCatEntry.sStatus || sResult;
+                if (dictCatEntry.sOutput) {
+                    dictCat.sLastOutput = dictCatEntry.sOutput;
+                }
+            } else if (typeof dictCatEntry === "string") {
+                dictVerify[sVerifyKey] = dictCatEntry;
+                if (sOutput) {
+                    dictCat.sLastOutput = sOutput;
+                }
+            } else {
+                dictVerify[sVerifyKey] = sResult;
+                if (sOutput) {
+                    dictCat.sLastOutput = sOutput;
+                }
             }
         }
     }
@@ -5848,12 +5889,14 @@ const PipeleyenApp = (function () {
         fnApplyTestResultToCategories(
             dictStep, dictEvent.sResult, dictEvent.sOutput || "",
             dictEvent.dictCategoryResults || null);
-        if (dictEvent.sResult === "passed") {
-            fnClearOutputModified(iStep);
-        }
-        fnSaveStepUpdate(iStep, {
+        fnClearOutputModified(iStep);
+        var dictUpdate = {
             dictVerification: dictStep.dictVerification,
-        });
+        };
+        if (dictStep.dictTests) {
+            dictUpdate.dictTests = dictStep.dictTests;
+        }
+        fnSaveStepUpdate(iStep, dictUpdate);
         fnRenderStepList();
         fnCheckVaibified();
         var sLabel = dictEvent.sResult === "passed" ?
@@ -6358,12 +6401,14 @@ const PipeleyenApp = (function () {
                 dictResult.bPassed ? "passed" : "failed";
             step.dictVerification.sLastTestRun =
                 fsFormatUtcTimestamp();
-            if (dictResult.bPassed) {
-                fnClearOutputModified(iStepIndex);
-            }
-            fnSaveStepUpdate(iStepIndex, {
+            fnClearOutputModified(iStepIndex);
+            var dictStepUpdate = {
                 dictVerification: step.dictVerification,
-            });
+            };
+            if (step.dictTests) {
+                dictStepUpdate.dictTests = step.dictTests;
+            }
+            fnSaveStepUpdate(iStepIndex, dictStepUpdate);
             fnRenderStepList();
             fnCheckVaibified();
             var sOutput = fsCollectTestOutput(dictResult);
