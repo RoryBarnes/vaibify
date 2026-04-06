@@ -1,5 +1,6 @@
 """Dispatch sync operations to run inside Docker containers."""
 
+import json
 import posixpath
 import re
 import uuid
@@ -462,6 +463,48 @@ def fnValidateOverleafProjectId(sProjectId):
         raise ValueError(
             f"Invalid Overleaf project ID: {sProjectId}"
         )
+
+
+def fsBuildTestMarkerCheckCommand(listStepDirectories):
+    """Build a docker exec command to read test markers and scan dirs."""
+    sListLiteral = repr(listStepDirectories)
+    return (
+        "python3 -c \""
+        "import json,os,time;"
+        "R={};"
+        "mdir='/workspace/.vaibify/test_markers';"
+        "R['markers']={};"
+        "if os.path.isdir(mdir):\n"
+        "  for f in os.listdir(mdir):\n"
+        "    if f.endswith('.json'):\n"
+        "      try: R['markers'][f]=json.load("
+        "open(os.path.join(mdir,f)))\n"
+        "      except: pass\n"
+        "R['testFiles']={};"
+        "R['missingConftest']=[];"
+        "for d in " + sListLiteral + ":\n"
+        "  td=os.path.join(d,'tests');\n"
+        "  if not os.path.isdir(td): continue\n"
+        "  fs=[f for f in os.listdir(td)"
+        " if f.startswith('test_') and f.endswith('.py')];\n"
+        "  mt={f:os.path.getmtime(os.path.join(td,f)) for f in fs"
+        " if os.path.isfile(os.path.join(td,f))};\n"
+        "  R['testFiles'][d]={'listFiles':fs,'dictMtimes':mt};\n"
+        "  if not os.path.isfile(os.path.join(td,'conftest.py')):\n"
+        "    R['missingConftest'].append(d)\n"
+        "print(json.dumps(R))\""
+    )
+
+
+def fdictParseTestMarkerOutput(sOutput):
+    """Parse the JSON output from the test marker check command."""
+    sStripped = (sOutput or "").strip()
+    if not sStripped:
+        return {"markers": {}, "testFiles": {}, "missingConftest": []}
+    try:
+        return json.loads(sStripped)
+    except (json.JSONDecodeError, ValueError):
+        return {"markers": {}, "testFiles": {}, "missingConftest": []}
 
 
 def _flistBuildDagEdges(listSteps):

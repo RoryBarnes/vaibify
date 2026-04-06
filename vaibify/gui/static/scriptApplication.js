@@ -1366,7 +1366,12 @@ const PipeleyenApp = (function () {
     }
 
     function fnClearRunningStatuses() {
-        dictStepStatus = {};
+        for (var sKey in dictStepStatus) {
+            var sVal = dictStepStatus[sKey];
+            if (sVal === "running" || sVal === "queued") {
+                delete dictStepStatus[sKey];
+            }
+        }
     }
 
     function fnInvalidateStepFileCache(iStep) {
@@ -1662,6 +1667,10 @@ const PipeleyenApp = (function () {
         var sStatusClass = "";
         if (sRunStatus === "running" || sRunStatus === "queued") {
             sStatusClass = sRunStatus;
+        } else if (sRunStatus === "pass") {
+            var sVerifyState = fsComputeStepDotState(step, iIndex);
+            sStatusClass = (sVerifyState === "verified")
+                ? "verified" : "partial";
         } else if (sRunStatus === "fail") {
             sStatusClass = "fail";
         } else {
@@ -5799,6 +5808,7 @@ const PipeleyenApp = (function () {
     var iPollIntervalMs = 5000;
     var dictFileModTimes = {};
     var dictScriptModified = {};
+    var dictTestMarkerTimestamps = {};
 
     async function fnRecoverPipelineState(sId) {
         try {
@@ -5877,7 +5887,7 @@ const PipeleyenApp = (function () {
             var iStep = parseInt(sKey) - 1;
             var sStatus = dictResults[sKey].sStatus;
             if (sStatus === "passed") {
-                dictStepStatus[iStep] = "";
+                dictStepStatus[iStep] = "pass";
             } else if (sStatus === "failed") {
                 dictStepStatus[iStep] = "fail";
             } else if (sStatus === "skipped") {
@@ -5924,7 +5934,9 @@ const PipeleyenApp = (function () {
         for (var sKey in dictResults) {
             var iStep = parseInt(sKey) - 1;
             var sStatus = dictResults[sKey].sStatus;
-            if (sStatus === "failed") {
+            if (sStatus === "passed") {
+                dictStepStatus[iStep] = "pass";
+            } else if (sStatus === "failed") {
                 dictStepStatus[iStep] = "fail";
             }
         }
@@ -5945,6 +5957,42 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnProcessFileStatusResponse(dictStatus) {
+        fnDetectOutputFileChanges(dictStatus.dictModTimes || {});
+        var dictInv = dictStatus.dictInvalidatedSteps;
+        if (dictInv && Object.keys(dictInv).length > 0) {
+            fnApplyInvalidatedSteps(dictInv);
+        }
+        fnUpdateScriptStatus(dictStatus.dictScriptStatus);
+        if (dictStatus.dictTestMarkers) {
+            fnApplyTestMarkers(dictStatus.dictTestMarkers);
+        }
+        if (dictStatus.dictTestFileChanges) {
+            fnNotifyTestFileChanges(dictStatus.dictTestFileChanges);
+        }
+    }
+
+    function fnDetectOutputFileChanges(dictNewMods) {
+        for (var sPath in dictNewMods) {
+            if (dictFileModTimes[sPath] !== dictNewMods[sPath]) {
+                dictFileModTimes = dictNewMods;
+                dictFileExistenceCache = {};
+                fnScheduleFileExistenceCheck();
+                fnRenderStepList();
+                return;
+            }
+        }
+    }
+
+    function fnUpdateScriptStatus(dictNewScriptStatus) {
+        if (!dictNewScriptStatus) return;
+        var dictPrev = JSON.stringify(dictScriptModified);
+        dictScriptModified = dictNewScriptStatus;
+        if (JSON.stringify(dictScriptModified) !== dictPrev) {
+            fnRenderStepList();
+        }
+    }
+
     async function fnPollFileChanges() {
         if (!sContainerId || !dictWorkflow) return;
         try {
@@ -5952,33 +6000,90 @@ const PipeleyenApp = (function () {
                 "/api/pipeline/" + sContainerId + "/file-status"
             );
             var dictStatus = await response.json();
-            var bChanged = false;
-            var dictNewMods = dictStatus.dictModTimes || {};
-            for (var sPath in dictNewMods) {
-                if (dictFileModTimes[sPath] !== dictNewMods[sPath]) {
-                    bChanged = true;
-                    break;
-                }
-            }
-            if (bChanged) {
-                dictFileModTimes = dictNewMods;
-                dictFileExistenceCache = {};
-                fnScheduleFileExistenceCheck();
-                fnRenderStepList();
-            }
-            var dictInv = dictStatus.dictInvalidatedSteps;
-            if (dictInv && Object.keys(dictInv).length > 0) {
-                fnApplyInvalidatedSteps(dictInv);
-            }
-            if (dictStatus.dictScriptStatus) {
-                var dictPrev = JSON.stringify(dictScriptModified);
-                dictScriptModified = dictStatus.dictScriptStatus;
-                if (JSON.stringify(dictScriptModified) !== dictPrev) {
-                    fnRenderStepList();
-                }
-            }
+            fnProcessFileStatusResponse(dictStatus);
         } catch (error) {
             /* poll failed, try again next interval */
+        }
+    }
+
+    function fbApplyStepMarker(iStep, dictEntry) {
+        var dictMarker = dictEntry.dictMarker || {};
+        var sIndex = String(iStep);
+        var fTimestamp = dictMarker.fTimestamp || 0;
+        if (fTimestamp <= (dictTestMarkerTimestamps[sIndex] || 0))
+            return false;
+        dictTestMarkerTimestamps[sIndex] = fTimestamp;
+        if (dictEntry.bStale) return false;
+        var dictStep = dictWorkflow.listSteps[iStep];
+        if (!dictStep) return false;
+        var dictVerify = dictStep.dictVerification || {};
+        dictStep.dictVerification = dictVerify;
+        var dictCategories = dictMarker.dictCategories || {};
+        return fbApplyAllMarkerCategories(
+            dictVerify, dictCategories
+        );
+    }
+
+    function fbApplyAllMarkerCategories(dictVerify, dictCategories) {
+        var bUpdated = false;
+        bUpdated = fnApplyMarkerCategory(
+            dictVerify, dictCategories, "integrity", "sIntegrity"
+        ) || bUpdated;
+        bUpdated = fnApplyMarkerCategory(
+            dictVerify, dictCategories, "qualitative", "sQualitative"
+        ) || bUpdated;
+        bUpdated = fnApplyMarkerCategory(
+            dictVerify, dictCategories, "quantitative", "sQuantitative"
+        ) || bUpdated;
+        return bUpdated;
+    }
+
+    function fnApplyTestMarkers(dictMarkers) {
+        var bAnyChanged = false;
+        for (var sIndex in dictMarkers) {
+            var iStep = parseInt(sIndex, 10);
+            if (!fbApplyStepMarker(iStep, dictMarkers[sIndex]))
+                continue;
+            bAnyChanged = true;
+            var dictMarker = dictMarkers[sIndex].dictMarker || {};
+            var sLabel = fsComputeStepLabel(iStep);
+            var iExitStatus = dictMarker.iExitStatus || 0;
+            var sVerb = iExitStatus === 0 ? "passed" : "failed";
+            var sVariant = iExitStatus === 0 ? "success" : "error";
+            fnShowToast(
+                "Step " + sLabel + ": tests " + sVerb +
+                " (external run detected)", sVariant
+            );
+        }
+        if (bAnyChanged) fnRenderStepList();
+    }
+
+    function fnApplyMarkerCategory(
+        dictVerify, dictCategories, sCategory, sVerifyKey
+    ) {
+        if (!dictCategories[sCategory]) return false;
+        var dictCat = dictCategories[sCategory];
+        var sOld = dictVerify[sVerifyKey] || "";
+        if (dictCat.iFailed > 0) {
+            dictVerify[sVerifyKey] = "failed";
+        } else if (dictCat.iPassed > 0) {
+            dictVerify[sVerifyKey] = "passed";
+        }
+        return dictVerify[sVerifyKey] !== sOld;
+    }
+
+    function fnNotifyTestFileChanges(dictChanges) {
+        for (var sIndex in dictChanges) {
+            var iStep = parseInt(sIndex, 10);
+            var dictChange = dictChanges[sIndex];
+            var listNew = dictChange.listNew || [];
+            if (listNew.length > 0) {
+                var sLabel = fsComputeStepLabel(iStep);
+                fnShowToast(
+                    "Step " + sLabel + ": " + listNew.length +
+                    " new test file(s) discovered", "info"
+                );
+            }
         }
     }
 

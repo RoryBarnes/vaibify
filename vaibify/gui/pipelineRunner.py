@@ -990,22 +990,39 @@ async def fnRunFromStep(
 
 async def _fbVerifyStepOutputs(
     connectionDocker, sContainerId,
-    dictStep, sWorkdir, fnStatusCallback,
+    dictStep, dictVars, sWorkdir, fnStatusCallback,
 ):
     """Return True if all output files for a step exist."""
+    from .workflowManager import fsResolveVariables
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
-    for sOutputFile in dictStep.get("saPlotFiles", []):
-        sCheckCommand = f"test -f {fsShellQuote(sOutputFile)}"
-        iExitCode, _ = await asyncio.to_thread(
-            connectionDocker.ftResultExecuteCommand,
-            sContainerId, sCheckCommand, sWorkdir=sStepDirectory,
+    listOutputFiles = (
+        dictStep.get("saPlotFiles", [])
+        + dictStep.get("saDataFiles", [])
+    )
+    for sOutputFile in listOutputFiles:
+        sResolved = fsResolveVariables(sOutputFile, dictVars)
+        bExists = await _fbFileExistsInContainer(
+            connectionDocker, sContainerId,
+            sResolved, sStepDirectory,
         )
-        if iExitCode != 0:
+        if not bExists:
             await fnStatusCallback(
-                {"sType": "output", "sLine": f"Missing: {sOutputFile}"}
+                {"sType": "output", "sLine": f"Missing: {sResolved}"}
             )
             return False
     return True
+
+
+async def _fbFileExistsInContainer(
+    connectionDocker, sContainerId, sFilePath, sWorkdir,
+):
+    """Return True if a file exists inside the container."""
+    sCommand = f"test -f {fsShellQuote(sFilePath)}"
+    iExitCode, _ = await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
+        sContainerId, sCommand, sWorkdir=sWorkdir,
+    )
+    return iExitCode == 0
 
 
 async def _fnVerifyStepList(
@@ -1013,11 +1030,12 @@ async def _fnVerifyStepList(
     sWorkdir, fnStatusCallback,
 ):
     """Verify outputs for every step, returning True if all present."""
+    dictVars = _fdictBuildWorkflowVars(dictWorkflow)
     bAllPresent = True
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         bStepOk = await _fbVerifyStepOutputs(
             connectionDocker, sContainerId,
-            dictStep, sWorkdir, fnStatusCallback,
+            dictStep, dictVars, sWorkdir, fnStatusCallback,
         )
         await _fnEmitStepResult(
             fnStatusCallback, iIndex + 1, 0 if bStepOk else 1
@@ -1025,6 +1043,14 @@ async def _fnVerifyStepList(
         if not bStepOk:
             bAllPresent = False
     return bAllPresent
+
+
+def _fdictBuildWorkflowVars(dictWorkflow):
+    """Extract variable substitution dict from workflow metadata."""
+    return {
+        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
 
 
 async def fnVerifyOnly(

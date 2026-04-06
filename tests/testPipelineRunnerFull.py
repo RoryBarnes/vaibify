@@ -308,8 +308,9 @@ def test_fbVerifyStepOutputs_all_present():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()
     dictStep = {"sDirectory": "/work", "saPlotFiles": ["a.pdf"]}
+    dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
-        mockDocker, "cid", dictStep, "/work", fnCallback,
+        mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
     ))
     assert bResult is True
 
@@ -318,8 +319,9 @@ def test_fbVerifyStepOutputs_missing():
     mockDocker = _fMockDocker(1, "")
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {"sDirectory": "/work", "saPlotFiles": ["a.pdf"]}
+    dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
-        mockDocker, "cid", dictStep, "/work", fnCallback,
+        mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
     ))
     assert bResult is False
     assert any("Missing" in d.get("sLine", "") for d in listCaptured)
@@ -329,8 +331,9 @@ def test_fbVerifyStepOutputs_no_files():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {"sDirectory": "/work"}
+    dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
-        mockDocker, "cid", dictStep, "/work", fnCallback,
+        mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
     ))
     assert bResult is True
 

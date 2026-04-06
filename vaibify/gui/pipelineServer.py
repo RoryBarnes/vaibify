@@ -1717,34 +1717,242 @@ def _fnRegisterFileStatus(app, dictCtx):
 
     @app.get("/api/pipeline/{sContainerId}/file-status")
     async def fnGetFileStatus(sContainerId: str):
-        import asyncio
-        from . import syncDispatcher as _syncDispatcher
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictVars = dictCtx["variables"](sContainerId)
-        listPaths = _flistCollectOutputPaths(
-            dictWorkflow, dictVars)
-        dictModTimes = await asyncio.to_thread(
-            _fdictGetModTimes,
-            dictCtx["docker"], sContainerId, listPaths,
+        dictOutputStatus = await _fdictFetchOutputStatus(
+            dictCtx, sContainerId, dictWorkflow, dictVars,
         )
-        listInvalidated = _flistDetectAndInvalidate(
+        dictTestStatus = await _fdictFetchTestStatus(
             dictCtx, sContainerId, dictWorkflow,
-            dictModTimes, dictVars,
         )
-        dictCurrentHashes = await asyncio.to_thread(
-            _syncDispatcher.fdictComputeAllScriptHashes,
-            dictCtx["docker"], sContainerId, dictWorkflow,
-        )
-        dictScriptStatus = _fdictBuildScriptStatus(
+        dictOutputStatus.update(dictTestStatus)
+        return dictOutputStatus
+
+
+async def _fdictFetchOutputStatus(
+    dictCtx, sContainerId, dictWorkflow, dictVars,
+):
+    """Fetch output file mod times, invalidations, and script hashes."""
+    import asyncio
+    from . import syncDispatcher as _syncDispatcher
+    listPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
+    dictModTimes = await asyncio.to_thread(
+        _fdictGetModTimes,
+        dictCtx["docker"], sContainerId, listPaths,
+    )
+    listInvalidated = _flistDetectAndInvalidate(
+        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+    )
+    dictCurrentHashes = await asyncio.to_thread(
+        _syncDispatcher.fdictComputeAllScriptHashes,
+        dictCtx["docker"], sContainerId, dictWorkflow,
+    )
+    return {
+        "dictModTimes": dictModTimes,
+        "dictInvalidatedSteps": listInvalidated,
+        "dictScriptStatus": _fdictBuildScriptStatus(
             dictWorkflow, dictCurrentHashes,
+        ),
+    }
+
+
+async def _fdictFetchTestStatus(dictCtx, sContainerId, dictWorkflow):
+    """Fetch test markers, backfill conftest, and build test status."""
+    import asyncio
+    listStepDirs = _flistExtractStepDirectories(dictWorkflow)
+    dictTestInfo = await asyncio.to_thread(
+        _fdictFetchTestMarkers,
+        dictCtx["docker"], sContainerId, listStepDirs,
+    )
+    await _fnBackfillMissingConftest(
+        dictCtx["docker"], sContainerId,
+        dictTestInfo.get("missingConftest", []),
+    )
+    dictTestMarkers = _fdictBuildTestMarkerStatus(
+        dictWorkflow, dictTestInfo,
+    )
+    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    return {
+        "dictTestMarkers": dictTestMarkers,
+        "dictTestFileChanges": _fdictBuildTestFileChanges(
+            dictWorkflow, dictTestInfo,
+        ),
+    }
+
+
+def _flistExtractStepDirectories(dictWorkflow):
+    """Return a list of step directories from the workflow."""
+    listDirs = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sDir = dictStep.get("sDirectory", "")
+        if sDir:
+            listDirs.append(sDir)
+    return listDirs
+
+
+def _fdictFetchTestMarkers(
+    connectionDocker, sContainerId, listStepDirs,
+):
+    """Run the batched test-marker check command in the container."""
+    from . import syncDispatcher as _syncDispatcher
+    sCommand = _syncDispatcher.fsBuildTestMarkerCheckCommand(
+        listStepDirs,
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExit != 0:
+        return {"markers": {}, "testFiles": {}, "missingConftest": []}
+    return _syncDispatcher.fdictParseTestMarkerOutput(sOutput)
+
+
+async def _fnBackfillMissingConftest(
+    connectionDocker, sContainerId, listMissingDirs,
+):
+    """Write conftest.py into step dirs that have tests/ but no conftest."""
+    import asyncio
+    from .testGenerator import fnWriteConftestMarker, fsConftestContent
+    if listMissingDirs:
+        await asyncio.to_thread(
+            _fnEnsureConftestTemplate,
+            connectionDocker, sContainerId, fsConftestContent(),
         )
-        return {
-            "dictModTimes": dictModTimes,
-            "dictInvalidatedSteps": listInvalidated,
-            "dictScriptStatus": dictScriptStatus,
+    for sDir in listMissingDirs:
+        await asyncio.to_thread(
+            fnWriteConftestMarker,
+            connectionDocker, sContainerId, sDir,
+        )
+
+
+def _fnEnsureConftestTemplate(
+    connectionDocker, sContainerId, sContent,
+):
+    """Ship conftest template to /usr/share/vaibify/ for Claude access."""
+    sTemplatePath = "/usr/share/vaibify/conftest_marker.py"
+    iExit, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        "test -f " + sTemplatePath,
+    )
+    if iExit == 0:
+        return
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        "mkdir -p /usr/share/vaibify",
+    )
+    connectionDocker.fnWriteFile(
+        sContainerId, sTemplatePath,
+        sContent.encode("utf-8"),
+    )
+
+
+def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
+    """Map test markers to step indices and check staleness."""
+    dictMarkers = dictTestInfo.get("markers", {})
+    dictTestFiles = dictTestInfo.get("testFiles", {})
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sDir = dictStep.get("sDirectory", "")
+        if not sDir:
+            continue
+        sMarkerName = sDir.strip("/").replace("/", "_") + ".json"
+        if sMarkerName not in dictMarkers:
+            continue
+        dictMarker = dictMarkers[sMarkerName]
+        bStale = _fbMarkerStale(
+            dictMarker, dictTestFiles.get(sDir, {}),
+        )
+        dictResult[str(iIndex)] = {
+            "dictMarker": dictMarker,
+            "bStale": bStale,
         }
+    return dictResult
+
+
+def _fbMarkerStale(dictMarker, dictTestFileInfo):
+    """Return True if any test file is newer than the marker."""
+    fMarkerTime = dictMarker.get("fTimestamp", 0)
+    dictMtimes = dictTestFileInfo.get("dictMtimes", {})
+    for fMtime in dictMtimes.values():
+        if fMtime > fMarkerTime:
+            return True
+    return False
+
+
+def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
+    """Update workflow dictVerification from external test markers."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    for sIndex, dictEntry in dictTestMarkers.items():
+        iIndex = int(sIndex)
+        if dictEntry["bStale"] or iIndex >= len(listSteps):
+            continue
+        dictVerify = listSteps[iIndex].setdefault(
+            "dictVerification", {},
+        )
+        dictCategories = dictEntry["dictMarker"].get(
+            "dictCategories", {},
+        )
+        _fnApplyMarkerCategory(
+            dictVerify, dictCategories, "integrity", "sIntegrity",
+        )
+        _fnApplyMarkerCategory(
+            dictVerify, dictCategories, "qualitative", "sQualitative",
+        )
+        _fnApplyMarkerCategory(
+            dictVerify, dictCategories, "quantitative", "sQuantitative",
+        )
+
+
+def _fnApplyMarkerCategory(
+    dictVerify, dictCategories, sCategory, sVerifyKey,
+):
+    """Apply a single category result from a marker to verification."""
+    if sCategory not in dictCategories:
+        return
+    dictCat = dictCategories[sCategory]
+    if dictCat.get("iFailed", 0) > 0:
+        dictVerify[sVerifyKey] = "failed"
+    elif dictCat.get("iPassed", 0) > 0:
+        dictVerify[sVerifyKey] = "passed"
+
+
+def _fsetExtractRegisteredTestFiles(dictStep):
+    """Extract registered test file names from step test commands."""
+    dictTests = dictStep.get("dictTests", {})
+    setRegistered = set()
+    for sCatKey in ("integrity", "qualitative", "quantitative"):
+        dictCat = dictTests.get(sCatKey, {})
+        for sCmd in dictCat.get("saCommands", []):
+            for sPart in sCmd.split():
+                if sPart.startswith("test_") and sPart.endswith(".py"):
+                    setRegistered.add(sPart)
+                elif sPart.startswith("tests/test_"):
+                    setRegistered.add(sPart.replace("tests/", ""))
+    return setRegistered
+
+
+def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
+    """Compare discovered test files against registered test commands."""
+    dictTestFiles = dictTestInfo.get("testFiles", {})
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sDir = dictStep.get("sDirectory", "")
+        if sDir not in dictTestFiles:
+            continue
+        listDiscovered = dictTestFiles[sDir].get("listFiles", [])
+        setRegistered = _fsetExtractRegisteredTestFiles(dictStep)
+        listNew = [f for f in listDiscovered if f not in setRegistered]
+        listMissing = [f for f in setRegistered if f not in listDiscovered]
+        if listNew or listMissing:
+            dictResult[str(iIndex)] = {
+                "listNew": listNew, "listMissing": listMissing,
+            }
+    return dictResult
 
 
 def fdictCollectOutputPathsByStep(dictWorkflow, dictVars=None):
