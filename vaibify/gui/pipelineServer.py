@@ -35,6 +35,22 @@ from .terminalSession import TerminalSession
 
 STATIC_DIRECTORY = os.path.join(os.path.dirname(__file__), "static")
 
+_DICT_KNOWN_ERROR_PATTERNS = {
+    "No such container": "Container not found. It may have stopped.",
+    "not running": "Container is not running.",
+    "connection refused": "Could not connect to container.",
+    "timeout": "Operation timed out.",
+}
+
+
+def fsSanitizeExceptionForClient(exc):
+    """Return a user-safe error message without leaking internal paths."""
+    sRaw = str(exc)
+    for sPattern, sMessage in _DICT_KNOWN_ERROR_PATTERNS.items():
+        if sPattern.lower() in sRaw.lower():
+            return sMessage
+    return "Pipeline action failed. Check server logs for details."
+
 sTerminalUser = None
 
 
@@ -405,12 +421,15 @@ async def _fnSafeDispatch(
             fnCallback, dictInteractive=dictInteractive,
         )
     except Exception as exc:
-        logger.error("Pipeline action '%s' failed: %s", sAction, exc)
+        logger.error(
+            "Pipeline action '%s' failed: %s", sAction, exc,
+            exc_info=True,
+        )
         try:
             await fnCallback({
                 "sType": "failed",
                 "iExitCode": 1,
-                "sMessage": str(exc),
+                "sMessage": fsSanitizeExceptionForClient(exc),
             })
         except Exception:
             pass
@@ -1877,6 +1896,11 @@ def _fnEnsureConftestTemplate(
     )
 
 
+def _fsMarkerNameFromDirectory(sDirectory):
+    """Convert a step directory path to a marker filename."""
+    return sDirectory.strip("/").replace("/", "_") + ".json"
+
+
 def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
     """Map test markers to step indices and check staleness."""
     dictMarkers = dictTestInfo.get("markers", {})
@@ -1888,7 +1912,7 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
         sDir = dictStep.get("sDirectory", "")
         if not sDir:
             continue
-        sMarkerName = sDir.strip("/").replace("/", "_") + ".json"
+        sMarkerName = _fsMarkerNameFromDirectory(sDir)
         if sMarkerName not in dictMarkers:
             continue
         dictMarker = dictMarkers[sMarkerName]
@@ -1896,8 +1920,7 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
             dictMarker, dictTestFiles.get(sDir, {}),
         )
         dictResult[str(iIndex)] = {
-            "dictMarker": dictMarker,
-            "bStale": bStale,
+            "dictMarker": dictMarker, "bStale": bStale,
         }
     return dictResult
 
@@ -1910,6 +1933,21 @@ def _fbMarkerStale(dictMarker, dictTestFileInfo):
         if fMtime > fMarkerTime:
             return True
     return False
+
+
+_LIST_MARKER_CATEGORY_KEYS = [
+    ("integrity", "sIntegrity"),
+    ("qualitative", "sQualitative"),
+    ("quantitative", "sQuantitative"),
+]
+
+
+def _fnApplyAllMarkerCategories(dictVerify, dictCategories):
+    """Apply all marker categories to a verification dict."""
+    for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
+        _fnApplyMarkerCategory(
+            dictVerify, dictCategories, sCategory, sVerifyKey,
+        )
 
 
 def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
@@ -1925,15 +1963,7 @@ def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
         dictCategories = dictEntry["dictMarker"].get(
             "dictCategories", {},
         )
-        _fnApplyMarkerCategory(
-            dictVerify, dictCategories, "integrity", "sIntegrity",
-        )
-        _fnApplyMarkerCategory(
-            dictVerify, dictCategories, "qualitative", "sQualitative",
-        )
-        _fnApplyMarkerCategory(
-            dictVerify, dictCategories, "quantitative", "sQuantitative",
-        )
+        _fnApplyAllMarkerCategories(dictVerify, dictCategories)
 
 
 def _fnApplyMarkerCategory(

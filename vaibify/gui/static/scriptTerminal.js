@@ -332,40 +332,42 @@ const PipeleyenTerminal = (function () {
         });
     }
 
+    function fdictCaptureTerminalMetrics(term) {
+        return {
+            iCols: term ? term.cols : -1,
+            iRows: term ? term.rows : -1,
+            iYdisp: (term && term.buffer && term.buffer.active)
+                ? term.buffer.active.viewportY : -1,
+            iBase: (term && term.buffer && term.buffer.active)
+                ? term.buffer.active.baseY : -1,
+        };
+    }
+
+    function fnLogResizeChange(dictBefore, dictAfter, dictProposed) {
+        var bDimsChanged = (dictBefore.iCols !== dictAfter.iCols ||
+            dictBefore.iRows !== dictAfter.iRows);
+        var bViewportJumped = (dictBefore.iYdisp !== dictAfter.iYdisp);
+        if (bDimsChanged || bViewportJumped) {
+            console.log("[TERM-RESIZE]",
+                "cols:", dictBefore.iCols, "->", dictAfter.iCols,
+                "rows:", dictBefore.iRows, "->", dictAfter.iRows,
+                "ydisp:", dictBefore.iYdisp, "->", dictAfter.iYdisp,
+                "baseY:", dictBefore.iBase, "->", dictAfter.iBase,
+                "proposed:", dictProposed);
+        }
+    }
+
     function fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon) {
         var resizeObserver = new ResizeObserver(function () {
             if (dictPane.listTabs[dictPane.iActiveTabIndex] !== dictTab) {
                 return;
             }
-            var term = dictTab.terminal;
-            var iColsBefore = term ? term.cols : -1;
-            var iRowsBefore = term ? term.rows : -1;
-            var iYdispBefore = (term && term.buffer && term.buffer.active)
-                ? term.buffer.active.viewportY : -1;
-            var iBaseBefore = (term && term.buffer && term.buffer.active)
-                ? term.buffer.active.baseY : -1;
+            var dictBefore = fdictCaptureTerminalMetrics(dictTab.terminal);
             var dictProposed = null;
             try { dictProposed = fitAddon.proposeDimensions(); } catch (_) {}
             fitAddon.fit();
-            var iColsAfter = term ? term.cols : -1;
-            var iRowsAfter = term ? term.rows : -1;
-            var iYdispAfter = (term && term.buffer && term.buffer.active)
-                ? term.buffer.active.viewportY : -1;
-            var iBaseAfter = (term && term.buffer && term.buffer.active)
-                ? term.buffer.active.baseY : -1;
-            var bDimsChanged = (iColsBefore !== iColsAfter ||
-                iRowsBefore !== iRowsAfter);
-            var bViewportJumped = (iYdispBefore !== iYdispAfter);
-            if (bDimsChanged || bViewportJumped) {
-                console.log("[TERM-RESIZE]",
-                    "cols:", iColsBefore, "->", iColsAfter,
-                    "rows:", iRowsBefore, "->", iRowsAfter,
-                    "ydisp:", iYdispBefore, "->", iYdispAfter,
-                    "baseY:", iBaseBefore, "->", iBaseAfter,
-                    "proposed:", dictProposed,
-                    "dimsChanged:", bDimsChanged,
-                    "viewportJumped:", bViewportJumped);
-            }
+            var dictAfter = fdictCaptureTerminalMetrics(dictTab.terminal);
+            fnLogResizeChange(dictBefore, dictAfter, dictProposed);
         });
         resizeObserver.observe(elContainer);
         dictTab.resizeObserver = resizeObserver;
@@ -546,25 +548,28 @@ const PipeleyenTerminal = (function () {
         }
     }
 
+    function fnApplyTerminalTheme(term, sColor, iPaneIndex, iTabIndex) {
+        var iYdispBefore = (term.buffer && term.buffer.active)
+            ? term.buffer.active.viewportY : -1;
+        term.options.theme =
+            Object.assign({}, DICT_TERMINAL_THEME, { cursor: sColor });
+        var iYdispAfter = (term.buffer && term.buffer.active)
+            ? term.buffer.active.viewportY : -1;
+        if (iYdispBefore !== iYdispAfter) {
+            console.log("[TERM-THEME]",
+                "pane:", iPaneIndex, "tab:", iTabIndex,
+                "ydisp:", iYdispBefore, "->", iYdispAfter);
+        }
+    }
+
     function fnUpdateCursorColor(sColor) {
         sCurrentCursorColor = sColor;
         for (var i = 0; i < listPanes.length; i++) {
             var listTabs = listPanes[i].listTabs;
             for (var j = 0; j < listTabs.length; j++) {
                 if (listTabs[j].terminal) {
-                    var term = listTabs[j].terminal;
-                    var iYdispBefore = (term.buffer && term.buffer.active)
-                        ? term.buffer.active.viewportY : -1;
-                    term.options.theme =
-                        Object.assign({}, DICT_TERMINAL_THEME,
-                            { cursor: sColor });
-                    var iYdispAfter = (term.buffer && term.buffer.active)
-                        ? term.buffer.active.viewportY : -1;
-                    if (iYdispBefore !== iYdispAfter) {
-                        console.log("[TERM-THEME]",
-                            "pane:", i, "tab:", j,
-                            "ydisp:", iYdispBefore, "->", iYdispAfter);
-                    }
+                    fnApplyTerminalTheme(
+                        listTabs[j].terminal, sColor, i, j);
                 }
             }
         }

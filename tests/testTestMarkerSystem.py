@@ -21,8 +21,12 @@ from vaibify.gui.pipelineServer import (
     _fnApplyMarkerCategory,
     _fdictBuildTestFileChanges,
     _fsetExtractRegisteredTestFiles,
+    _flistResolveTestCommands as flistResolveTestCommandsServer,
 )
-from vaibify.gui.pipelineRunner import _fdictBuildWorkflowVars
+from vaibify.gui.pipelineRunner import (
+    _fdictBuildWorkflowVars,
+    _flistResolveTestCommands as flistResolveTestCommandsRunner,
+)
 
 
 # ---- testGenerator: fsConftestPath ----
@@ -509,3 +513,92 @@ def test_fdictBuildWorkflowVars_extra_keys_ignored():
     dictVars = _fdictBuildWorkflowVars(dictWorkflow)
     assert len(dictVars) == 2
     assert "sWorkflowName" not in dictVars
+
+
+# ---- _flistResolveTestCommands (pipelineRunner) ----
+
+
+def test_flistResolveTestCommandsRunner_with_dictTests():
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {
+                "saCommands": ["pytest test_integrity.py"],
+            },
+            "dictQualitative": {
+                "saCommands": ["pytest test_qualitative.py"],
+            },
+        },
+    }
+    listResult = flistResolveTestCommandsRunner(dictStep)
+    assert "pytest test_qualitative.py" in listResult
+    assert "pytest test_integrity.py" in listResult
+    assert len(listResult) == 2
+
+
+def test_flistResolveTestCommandsRunner_legacy_saTestCommands():
+    dictStep = {
+        "saTestCommands": ["pytest test_old.py -v", "pytest test_legacy.py"],
+    }
+    listResult = flistResolveTestCommandsRunner(dictStep)
+    assert listResult == ["pytest test_old.py -v", "pytest test_legacy.py"]
+
+
+def test_flistResolveTestCommandsRunner_empty_dictTests():
+    dictStep = {"dictTests": {}}
+    listResult = flistResolveTestCommandsRunner(dictStep)
+    assert listResult == []
+
+
+def test_flistResolveTestCommandsRunner_no_tests_at_all():
+    dictStep = {"sName": "Step with no tests"}
+    listResult = flistResolveTestCommandsRunner(dictStep)
+    assert listResult == []
+
+
+def test_flistResolveTestCommandsRunner_dictTests_takes_precedence():
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {
+                "saCommands": ["pytest test_new.py"],
+            },
+        },
+        "saTestCommands": ["pytest test_old.py"],
+    }
+    listResult = flistResolveTestCommandsRunner(dictStep)
+    assert listResult == ["pytest test_new.py"]
+    assert "pytest test_old.py" not in listResult
+
+
+# ---- _flistResolveTestCommands (pipelineServer) ----
+
+
+def test_flistResolveTestCommandsServer_with_dictTests():
+    dictStep = {
+        "dictTests": {
+            "dictQuantitative": {
+                "saCommands": ["pytest test_quant.py"],
+            },
+        },
+    }
+    listResult = flistResolveTestCommandsServer(dictStep)
+    assert listResult == ["pytest test_quant.py"]
+
+
+def test_flistResolveTestCommandsServer_legacy_saTestCommands():
+    dictStep = {
+        "saTestCommands": ["pytest test_legacy.py"],
+    }
+    listResult = flistResolveTestCommandsServer(dictStep)
+    assert listResult == ["pytest test_legacy.py"]
+
+
+def test_flistResolveTestCommandsServer_no_tests():
+    dictStep = {}
+    listResult = flistResolveTestCommandsServer(dictStep)
+    assert listResult == []
+
+
+def test_flistResolveTestCommandsServer_empty_dictTests():
+    dictStep = {"dictTests": {}}
+    listResult = flistResolveTestCommandsServer(dictStep)
+    assert listResult == []

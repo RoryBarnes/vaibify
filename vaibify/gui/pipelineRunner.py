@@ -1025,7 +1025,7 @@ async def _fbFileExistsInContainer(
     return iExitCode == 0
 
 
-async def _fnVerifyStepList(
+async def _fbVerifyStepList(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback,
 ):
@@ -1065,7 +1065,7 @@ async def fnVerifyOnly(
     await fnStatusCallback(
         {"sType": "started", "sCommand": "verify"}
     )
-    bAllPresent = await _fnVerifyStepList(
+    bAllPresent = await _fbVerifyStepList(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback,
     )
@@ -1128,21 +1128,30 @@ async def _fiRunTestsForAllSteps(
     return iFinalExitCode
 
 
-async def _fiRunStepTests(
-    connectionDocker, sContainerId, dictStep,
-    dictVars, fnStatusCallback, iStepNumber,
-    dictWorkflow,
+async def _fnEmitStepBanner(
+    fnStatusCallback, iStepNumber, dictStep, dictWorkflow,
 ):
-    """Run tests for a single step and emit results."""
+    """Emit banner and stepStarted event for a step."""
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
     sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
-    sStepDirectory = dictStep.get("sDirectory", "")
     await _fnEmitBanner(
         fnStatusCallback, iStepNumber, sStepName,
         sStepLabel=sStepLabel,
     )
     await fnStatusCallback(
         {"sType": "stepStarted", "iStepNumber": iStepNumber}
+    )
+
+
+async def _fiRunStepTests(
+    connectionDocker, sContainerId, dictStep,
+    dictVars, fnStatusCallback, iStepNumber,
+    dictWorkflow,
+):
+    """Run tests for a single step and emit results."""
+    sStepDirectory = dictStep.get("sDirectory", "")
+    await _fnEmitStepBanner(
+        fnStatusCallback, iStepNumber, dictStep, dictWorkflow,
     )
     iExitCode = await _fiRunTestCommands(
         connectionDocker, sContainerId, dictStep,

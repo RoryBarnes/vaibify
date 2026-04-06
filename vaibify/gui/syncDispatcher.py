@@ -16,8 +16,8 @@ _LIST_AUTH_PATTERNS = [
     "invalid credentials", "bad credentials",
 ]
 _LIST_RATE_LIMIT_PATTERNS = ["rate limit", "429", "too many requests"]
-_NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
-_NETWORK_PATTERNS = [
+_LIST_NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
+_LIST_NETWORK_PATTERNS = [
     "timeout", "connection refused", "network",
     "could not resolve", "no route",
 ]
@@ -32,10 +32,10 @@ def fdictClassifyError(iExitCode, sOutput):
     for sPattern in _LIST_RATE_LIMIT_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "rateLimit", "sMessage": sOutput}
-    for sPattern in _NOT_FOUND_PATTERNS:
+    for sPattern in _LIST_NOT_FOUND_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "notFound", "sMessage": sOutput}
-    for sPattern in _NETWORK_PATTERNS:
+    for sPattern in _LIST_NETWORK_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "network", "sMessage": sOutput}
     return {"sErrorType": "unknown", "sMessage": sOutput}
@@ -465,11 +465,14 @@ def fnValidateOverleafProjectId(sProjectId):
         )
 
 
-def fsBuildTestMarkerCheckCommand(listStepDirectories):
-    """Build a docker exec command to read test markers and scan dirs."""
-    sListLiteral = repr(listStepDirectories)
+def _fbSafeDirectoryName(sDirectory):
+    """Return True if a directory name is safe for shell embedding."""
+    return bool(re.match(r'^[A-Za-z0-9_./ -]+$', sDirectory))
+
+
+def _fsBuildMarkerReadScript():
+    """Return the inline Python that reads marker JSON files."""
     return (
-        "python3 -c \""
         "import json,os,time;"
         "R={};"
         "mdir='/workspace/.vaibify/test_markers';"
@@ -480,9 +483,15 @@ def fsBuildTestMarkerCheckCommand(listStepDirectories):
         "      try: R['markers'][f]=json.load("
         "open(os.path.join(mdir,f)))\n"
         "      except: pass\n"
+    )
+
+
+def _fsBuildDirectoryScanScript(sEscapedJson):
+    """Return inline Python that scans step directories for tests."""
+    return (
         "R['testFiles']={};"
         "R['missingConftest']=[];"
-        "for d in " + sListLiteral + ":\n"
+        "for d in json.loads('" + sEscapedJson + "'):\n"
         "  td=os.path.join(d,'tests');\n"
         "  if not os.path.isdir(td): continue\n"
         "  fs=[f for f in os.listdir(td)"
@@ -492,8 +501,20 @@ def fsBuildTestMarkerCheckCommand(listStepDirectories):
         "  R['testFiles'][d]={'listFiles':fs,'dictMtimes':mt};\n"
         "  if not os.path.isfile(os.path.join(td,'conftest.py')):\n"
         "    R['missingConftest'].append(d)\n"
-        "print(json.dumps(R))\""
+        "print(json.dumps(R))"
     )
+
+
+def fsBuildTestMarkerCheckCommand(listStepDirectories):
+    """Build a docker exec command to read test markers and scan dirs."""
+    listSafe = [
+        s for s in listStepDirectories if _fbSafeDirectoryName(s)
+    ]
+    sJsonDirs = json.dumps(listSafe)
+    sEscapedJson = sJsonDirs.replace("\\", "\\\\").replace('"', '\\"')
+    sMarkerScript = _fsBuildMarkerReadScript()
+    sScanScript = _fsBuildDirectoryScanScript(sEscapedJson)
+    return "python3 -c \"" + sMarkerScript + sScanScript + "\""
 
 
 def fdictParseTestMarkerOutput(sOutput):

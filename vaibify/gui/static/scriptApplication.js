@@ -823,6 +823,7 @@ const PipeleyenApp = (function () {
         dictStepStatus = {};
         dictFileExistenceCache = {};
         dictFileModTimes = {};
+        dictTestMarkerTimestamps = {};
         setStepsWithData.clear();
         bFileCheckInProgress = false;
         bDelegatedEventsInitialized = false;
@@ -1370,6 +1371,21 @@ const PipeleyenApp = (function () {
             var sVal = dictStepStatus[sKey];
             if (sVal === "running" || sVal === "queued") {
                 delete dictStepStatus[sKey];
+            }
+        }
+    }
+
+    function fnPruneStaleStatuses() {
+        var iStepCount = (dictWorkflow && dictWorkflow.listSteps)
+            ? dictWorkflow.listSteps.length : 0;
+        for (var sKey in dictStepStatus) {
+            if (parseInt(sKey, 10) >= iStepCount) {
+                delete dictStepStatus[sKey];
+            }
+        }
+        for (var sKey in dictTestMarkerTimestamps) {
+            if (parseInt(sKey, 10) >= iStepCount) {
+                delete dictTestMarkerTimestamps[sKey];
             }
         }
     }
@@ -6057,13 +6073,13 @@ const PipeleyenApp = (function () {
 
     function fbApplyAllMarkerCategories(dictVerify, dictCategories) {
         var bUpdated = false;
-        bUpdated = fnApplyMarkerCategory(
+        bUpdated = fbApplyMarkerCategory(
             dictVerify, dictCategories, "integrity", "sIntegrity"
         ) || bUpdated;
-        bUpdated = fnApplyMarkerCategory(
+        bUpdated = fbApplyMarkerCategory(
             dictVerify, dictCategories, "qualitative", "sQualitative"
         ) || bUpdated;
-        bUpdated = fnApplyMarkerCategory(
+        bUpdated = fbApplyMarkerCategory(
             dictVerify, dictCategories, "quantitative", "sQuantitative"
         ) || bUpdated;
         return bUpdated;
@@ -6089,7 +6105,7 @@ const PipeleyenApp = (function () {
         if (bAnyChanged) fnRenderStepList();
     }
 
-    function fnApplyMarkerCategory(
+    function fbApplyMarkerCategory(
         dictVerify, dictCategories, sCategory, sVerifyKey
     ) {
         if (!dictCategories[sCategory]) return false;
@@ -7206,6 +7222,7 @@ const PipeleyenApp = (function () {
                 dictWorkflow.listSteps = result.listSteps;
                 if (iSelectedStepIndex === iIndex) iSelectedStepIndex = -1;
                 setExpandedSteps.delete(iIndex);
+                fnPruneStaleStatuses();
                 fnRenderStepList();
                 fnShowToast(
                     "Step deleted (references renumbered)",
