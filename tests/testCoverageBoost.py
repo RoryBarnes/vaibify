@@ -306,6 +306,7 @@ def test_fnInvalidateStepFiles_marks_modified():
             "sUnitTest": "passed",
             "sUser": "untested",
         },
+        "saDataFiles": ["a.py"],
     }
     pipelineServer._fnInvalidateStepFiles(
         dictStep, ["/workspace/a.py"],

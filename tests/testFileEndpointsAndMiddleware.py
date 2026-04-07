@@ -613,6 +613,7 @@ def test_fnHandleTerminalText_resize_clamped():
 def test_fnInvalidateStepFiles_marks_modified():
     dictStep = {
         "dictVerification": {"sUnitTest": "passed"},
+        "saDataFiles": ["a.npy"],
     }
     pipelineServer._fnInvalidateStepFiles(
         dictStep, ["/workspace/a.npy"]

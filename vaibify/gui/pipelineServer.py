@@ -1887,6 +1887,8 @@ async def _fdictFetchOutputStatus(
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
+    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes):
+        dictCtx["save"](sContainerId, dictWorkflow)
     listInvalidated = _flistDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
     )
@@ -2236,13 +2238,119 @@ def _fdictFindChangedFiles(dictPathsByStep, dictOldModTimes,
     return dictChanged
 
 
-def _fnInvalidateStepFiles(dictStep, listChangedPaths):
-    """Mark specific files as modified, invalidate verifications."""
+def _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
+    """Return True if any changed path matches a data file."""
+    setDataBasenames = {
+        posixpath.basename(sFile) for sFile in listDataFiles
+    }
+    for sChangedPath in listChangedPaths:
+        if posixpath.basename(sChangedPath) in setDataBasenames:
+            return True
+    return False
+
+
+def _fbPlotNewerThanUserVerification(dictStep, listChangedPaths,
+                                     dictModTimes):
+    """Return True if a changed plot file is newer than sLastUserUpdate."""
     dictVerification = dictStep.get("dictVerification", {})
+    listPlotFiles = dictStep.get("saPlotFiles", [])
+    if not _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
+        return False
+    sLastUserUpdate = dictVerification.get("sLastUserUpdate", "")
+    if not sLastUserUpdate:
+        return True
+    iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
+    if iUserEpoch is None:
+        return True
+    return _fbAnyMtimeNewerThan(listChangedPaths, dictModTimes,
+                                iUserEpoch)
+
+
+def _fiParseUtcTimestamp(sTimestamp):
+    """Parse 'YYYY-MM-DD HH:MM:SS UTC' to Unix epoch seconds."""
+    from datetime import datetime, timezone
+    try:
+        sClean = sTimestamp.replace(" UTC", "").strip()
+        dtParsed = datetime.strptime(sClean, "%Y-%m-%d %H:%M:%S")
+        dtUtc = dtParsed.replace(tzinfo=timezone.utc)
+        return int(dtUtc.timestamp())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _fbAnyMtimeNewerThan(listPaths, dictModTimes, iThreshold):
+    """Return True if any path in dictModTimes has mtime > iThreshold."""
+    for sPath in listPaths:
+        sMtime = dictModTimes.get(sPath)
+        if sMtime and int(sMtime) > iThreshold:
+            return True
+    return False
+
+
+def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes):
+    """Reset sUser if plot files are newer than sLastUserUpdate.
+
+    Returns True if any step was modified, so the caller can save.
+    This handles the case where outputs changed before the server
+    started, so poll-based delta detection never fires.
+    """
+    bChanged = False
+    from .workflowManager import fsResolveVariables
+    dictVars = {
+        "sPlotDirectory": dictWorkflow.get(
+            "sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        dictVerification = dictStep.get("dictVerification", {})
+        if dictVerification.get("sUser") != "passed":
+            continue
+        sLastUserUpdate = dictVerification.get(
+            "sLastUserUpdate", "")
+        if not sLastUserUpdate:
+            continue
+        iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
+        if iUserEpoch is None:
+            continue
+        listPlotPaths = _flistResolvePlotPaths(dictStep, dictVars)
+        if _fbAnyMtimeNewerThan(listPlotPaths, dictModTimes,
+                                iUserEpoch):
+            dictVerification["sUser"] = "untested"
+            dictStep["dictVerification"] = dictVerification
+            bChanged = True
+    return bChanged
+
+
+def _flistResolvePlotPaths(dictStep, dictVars):
+    """Return resolved paths for a step's plot files only."""
+    from .workflowManager import fsResolveVariables
+    sStepDir = dictStep.get("sDirectory", "")
+    listPaths = []
+    for sFile in dictStep.get("saPlotFiles", []):
+        sResolved = fsResolveVariables(sFile, dictVars)
+        if not sResolved.startswith("/"):
+            sResolved = posixpath.join(sStepDir, sResolved)
+        listPaths.append(sResolved)
+    return listPaths
+
+
+def _fnInvalidateStepFiles(dictStep, listChangedPaths,
+                           dictModTimes=None):
+    """Mark specific files as modified, invalidate verifications."""
+    if dictModTimes is None:
+        dictModTimes = {}
+    dictVerification = dictStep.get("dictVerification", {})
+    listDataFiles = dictStep.get("saDataFiles", [])
     if dictVerification.get("sUnitTest") == "passed":
-        dictVerification["sUnitTest"] = "untested"
+        if _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
+            dictVerification["sUnitTest"] = "untested"
     if dictVerification.get("sUser") == "passed":
-        dictVerification["sUser"] = "untested"
+        if _fbPlotNewerThanUserVerification(
+            dictStep, listChangedPaths, dictModTimes
+        ):
+            dictVerification["sUser"] = "untested"
     if dictVerification.get("sPlotStandards") == "passed":
         listPlotFiles = dictStep.get("saPlotFiles", [])
         if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
@@ -2329,7 +2437,8 @@ def _fdictDetectChangedFiles(dictCtx, sContainerId,
     )
 
 
-def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles):
+def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles,
+                                  dictModTimes=None):
     """Invalidate changed and downstream steps, return verification map."""
     dictDownstream = workflowManager.fdictBuildDownstreamMap(
         dictWorkflow)
@@ -2341,7 +2450,8 @@ def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles):
     listSteps = dictWorkflow.get("listSteps", [])
     for iIndex, listPaths in dictChangedFiles.items():
         if 0 <= iIndex < len(listSteps):
-            _fnInvalidateStepFiles(listSteps[iIndex], listPaths)
+            _fnInvalidateStepFiles(listSteps[iIndex], listPaths,
+                                   dictModTimes)
     for iIndex in setDownstream:
         if 0 <= iIndex < len(listSteps):
             _fnInvalidateDownstreamStep(listSteps[iIndex])
@@ -2365,7 +2475,7 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
     if not dictChangedFiles:
         return {}
     dictInvalidated = _fdictInvalidateAffectedSteps(
-        dictWorkflow, dictChangedFiles)
+        dictWorkflow, dictChangedFiles, dictNewModTimes)
     dictCtx["save"](sContainerId, dictWorkflow)
     return dictInvalidated
 
