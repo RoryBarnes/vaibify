@@ -1899,6 +1899,7 @@ const PipeleyenApp = (function () {
     }
 
     function fsRenderRunStepButton(step, iIndex) {
+        if (step.bInteractive) return "";
         var bHasDataCmds = (step.saDataCommands || []).length > 0;
         var bHasPlotCmds = (step.saPlotCommands || []).length > 0;
         if (!bHasDataCmds && !bHasPlotCmds) return "";
@@ -5656,6 +5657,7 @@ const PipeleyenApp = (function () {
             var iPassIdx = dictEvent.iStepNumber - 1;
             dictStepStatus[iPassIdx] = "pass";
             fnClearOutputModified(iPassIdx);
+            fnAcknowledgeStepCompletion(iPassIdx);
             fnInvalidateStepFileCache(iPassIdx);
             fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
@@ -5879,6 +5881,20 @@ const PipeleyenApp = (function () {
                 }
             }
         }
+    }
+
+    var dictAcknowledgedAt = {};
+
+    function fnAcknowledgeStepCompletion(iStepIndex) {
+        if (!sContainerId) return;
+        dictAcknowledgedAt[iStepIndex] = Date.now();
+        fetch(
+            "/api/pipeline/" + sContainerId +
+            "/acknowledge-step/" + iStepIndex,
+            { method: "POST" }
+        ).then(function () {
+            fnClearOutputModified(iStepIndex);
+        }).catch(function () { /* best effort */ });
     }
 
     function fnClearOutputModified(iStep) {
@@ -6207,8 +6223,14 @@ const PipeleyenApp = (function () {
 
     function fnApplyInvalidatedSteps(dictStepVerifications) {
         var bAnyChanged = false;
+        var iNow = Date.now();
+        var iGraceMs = 15000;
         for (var sIndex in dictStepVerifications) {
             var iStep = parseInt(sIndex, 10);
+            var iAckedAt = dictAcknowledgedAt[iStep];
+            if (iAckedAt && (iNow - iAckedAt) < iGraceMs) {
+                continue;
+            }
             var dictStep = dictWorkflow.listSteps[iStep];
             if (!dictStep) continue;
             dictStep.dictVerification =
@@ -6637,14 +6659,18 @@ const PipeleyenApp = (function () {
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         var dictVars = fdictBuildClientVariables();
-        var listCmds = step.saDataCommands || [];
+        var listCmds = (step.saDataCommands || []).map(function (c) {
+            return fsResolveTemplate(c, dictVars);
+        });
         if (listCmds.length === 0) return;
         var sDir = fsResolveTemplate(step.sDirectory, dictVars);
-        var sFullCmd = "cd " + sDir + " && " +
-            listCmds.map(function (c) {
-                return fsResolveTemplate(c, dictVars);
-            }).join(" && ");
+        var sUuid = _fsGenerateUuid();
+        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
+        var sFullCmd = _fsBuildInteractiveCommand(
+            sDir, listCmds, sSentinel,
+        );
         PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
+        _fnMonitorStepCompletion(sSentinel, iIndex);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
@@ -6653,14 +6679,18 @@ const PipeleyenApp = (function () {
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         var dictVars = fdictBuildClientVariables();
-        var listCmds = step.saPlotCommands || [];
+        var listCmds = (step.saPlotCommands || []).map(function (c) {
+            return fsResolveTemplate(c, dictVars);
+        });
         if (listCmds.length === 0) return;
         var sDir = fsResolveTemplate(step.sDirectory, dictVars);
-        var sFullCmd = "cd " + sDir + " && " +
-            listCmds.map(function (c) {
-                return fsResolveTemplate(c, dictVars);
-            }).join(" && ");
+        var sUuid = _fsGenerateUuid();
+        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
+        var sFullCmd = _fsBuildInteractiveCommand(
+            sDir, listCmds, sSentinel,
+        );
         PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
+        _fnMonitorStepCompletion(sSentinel, iIndex);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
@@ -6698,7 +6728,21 @@ const PipeleyenApp = (function () {
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         var dictVars = fdictBuildClientVariables();
+        var listCmds = flistResolveStepCommands(step, dictVars);
+        if (listCmds.length === 0) return;
         var sDir = fsResolveTemplate(step.sDirectory, dictVars);
+        var sUuid = _fsGenerateUuid();
+        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
+        var sFullCmd = _fsBuildInteractiveCommand(
+            sDir, listCmds, sSentinel,
+        );
+        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
+        _fnMonitorStepCompletion(sSentinel, iIndex);
+        var elStrip = document.getElementById("terminalStrip");
+        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function flistResolveStepCommands(step, dictVars) {
         var listCmds = [];
         (step.saDataCommands || []).forEach(function (sCmd) {
             listCmds.push(fsResolveTemplate(sCmd, dictVars));
@@ -6706,12 +6750,45 @@ const PipeleyenApp = (function () {
         (step.saPlotCommands || []).forEach(function (sCmd) {
             listCmds.push(fsResolveTemplate(sCmd, dictVars));
         });
-        if (listCmds.length === 0) return;
-        var sFullCmd = "cd " + sDir + " && " +
-            listCmds.join(" && ");
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        return listCmds;
+    }
+
+    function _fnMonitorStepCompletion(sSentinel, iStepIndex) {
+        if (_iActiveSentinelMonitor) {
+            clearInterval(_iActiveSentinelMonitor);
+        }
+        _iActiveSentinelMonitor = setInterval(function () {
+            var sText = _fsReadAllTerminalText();
+            var oPattern = new RegExp(
+                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
+            );
+            var oMatch = sText.match(oPattern);
+            if (!oMatch) return;
+            clearInterval(_iActiveSentinelMonitor);
+            _iActiveSentinelMonitor = null;
+            var iExitCode = parseInt(oMatch[1], 10);
+            fnHandleStandaloneStepComplete(iStepIndex, iExitCode);
+        }, 1000);
+    }
+
+    function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
+        var sStatus = iExitCode === 0 ? "pass" : "fail";
+        dictStepStatus[iStepIndex] = sStatus;
+        var step = dictWorkflow.listSteps[iStepIndex];
+        if (step) {
+            step.dictRunStats = step.dictRunStats || {};
+            step.dictRunStats.sLastRun = fsFormatUtcTimestamp();
+        }
+        if (iExitCode === 0) {
+            fnClearOutputModified(iStepIndex);
+        }
+        fnAcknowledgeStepCompletion(iStepIndex);
+        fnInvalidateStepFileCache(iStepIndex);
+        fnRenderStepList();
+        var sLabel = fsComputeStepLabel(iStepIndex);
+        var sVerb = iExitCode === 0 ? "completed" : "failed";
+        fnShowToast("Step " + sLabel + " " + sVerb,
+            iExitCode === 0 ? "success" : "error");
     }
 
     function fnRunSelected() {

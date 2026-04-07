@@ -1007,8 +1007,8 @@ async def _fiRunStepList(
         sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
         if dictStep.get("bInteractive", False):
             iExitCode = await _fiHandleInteractiveStep(
-                dictStep, iStepNumber, fnStatusCallback,
-                dictInteractive,
+                connectionDocker, sContainerId, dictStep,
+                iStepNumber, fnStatusCallback, dictInteractive,
             )
         else:
             iExitCode = await _fnRunOneStep(
@@ -1022,7 +1022,8 @@ async def _fiRunStepList(
 
 
 async def _fiHandleInteractiveStep(
-    dictStep, iStepNumber, fnStatusCallback, dictInteractive,
+    connectionDocker, sContainerId, dictStep,
+    iStepNumber, fnStatusCallback, dictInteractive,
 ):
     """Pause the pipeline and wait for user decision."""
     if dictInteractive is None:
@@ -1039,13 +1040,39 @@ async def _fiHandleInteractiveStep(
     )
     if sResponse == "skip":
         return 0
+    return await _fiRunInteractiveAndRecord(
+        connectionDocker, sContainerId, dictStep,
+        iStepNumber, fnStatusCallback, dictInteractive,
+    )
+
+
+async def _fiRunInteractiveAndRecord(
+    connectionDocker, sContainerId, dictStep,
+    iStepNumber, fnStatusCallback, dictInteractive,
+):
+    """Run the interactive terminal session and record results."""
+    import time
+    fStartTime = time.time()
+    sStartTimestamp = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    )
     await fnStatusCallback({
         "sType": "interactiveTerminalStart",
         "iStepNumber": iStepNumber,
-        "sStepName": sStepName,
+        "sStepName": dictStep.get("sName", ""),
         "dictStep": dictStep,
     })
-    return await _fiAwaitInteractiveComplete(dictInteractive)
+    iExitCode = await _fiAwaitInteractiveComplete(dictInteractive)
+    _fnRecordRunStats(dictStep, sStartTimestamp, fStartTime, 0.0)
+    await _fnRecordInputHashes(
+        connectionDocker, sContainerId, dictStep,
+    )
+    await fnStatusCallback({
+        "sType": "stepStats", "iStepNumber": iStepNumber,
+        "dictRunStats": dictStep.get("dictRunStats", {}),
+    })
+    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
+    return iExitCode
 
 
 async def _fsAwaitInteractiveDecision(dictInteractive):

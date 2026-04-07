@@ -80,6 +80,7 @@ class StepUpdateRequest(BaseModel):
     saDependencies: Optional[List[str]] = None
     dictVerification: Optional[dict] = None
     dictTests: Optional[dict] = None
+    dictRunStats: Optional[dict] = None
     dictPlotFileCategories: Optional[dict] = None
     dictDataFileCategories: Optional[dict] = None
 
@@ -1762,6 +1763,96 @@ def fsDetectDockerRuntime():
         "sleeping during long pipeline runs."}
 
 
+def _fnRegisterAcknowledgeStep(app, dictCtx):
+    """Register POST endpoint to acknowledge step completion."""
+
+    @app.post(
+        "/api/pipeline/{sContainerId}/acknowledge-step/{iStepIndex}"
+    )
+    async def fnAcknowledgeStep(
+        sContainerId: str, iStepIndex: int,
+    ):
+        import asyncio
+        from . import syncDispatcher as _syncDispatcher
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        _fnClearStepModificationState(
+            dictWorkflow, iStepIndex,
+        )
+        _fnRecordStepRunTimestamp(dictWorkflow, iStepIndex)
+        await _fnRefreshStepInputHashes(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex,
+        )
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+        listPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
+        dictModTimes = await asyncio.to_thread(
+            _fdictGetModTimes,
+            dictCtx["docker"], sContainerId, listPaths,
+        )
+        _fnUpdateModTimeBaseline(dictCtx, sContainerId, dictModTimes)
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"bSuccess": True}
+
+
+async def _fnRefreshStepInputHashes(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex,
+):
+    """Recompute input hashes for a step after execution."""
+    import asyncio
+    from . import syncDispatcher as _syncDispatcher
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return
+    dictStep = listSteps[iStepIndex]
+    dictHashes = await asyncio.to_thread(
+        _syncDispatcher.fdictComputeInputHashes,
+        dictCtx["docker"], sContainerId, dictStep,
+    )
+    if "dictRunStats" not in dictStep:
+        dictStep["dictRunStats"] = {}
+    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
+
+
+def _fnRecordStepRunTimestamp(dictWorkflow, iStepIndex):
+    """Set sLastRun on the step's dictRunStats."""
+    from datetime import datetime, timezone
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return
+    dictStep = listSteps[iStepIndex]
+    if "dictRunStats" not in dictStep:
+        dictStep["dictRunStats"] = {}
+    dictStep["dictRunStats"]["sLastRun"] = (
+        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    )
+
+
+def _fnClearStepModificationState(dictWorkflow, iStepIndex):
+    """Clear modification flags from a step's verification."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return
+    dictVerify = listSteps[iStepIndex].get("dictVerification", {})
+    dictVerify.pop("listModifiedFiles", None)
+    dictVerify.pop("bOutputModified", None)
+
+
+def _fnUpdateModTimeBaseline(dictCtx, sContainerId, dictModTimes):
+    """Update stored mtimes so the next poll doesn't re-flag files."""
+    if "dictPreviousModTimes" not in dictCtx:
+        dictCtx["dictPreviousModTimes"] = {}
+    dictCtx["dictPreviousModTimes"][sContainerId] = dict(dictModTimes)
+
+
+def _fdictBuildFileStatusVars(dictWorkflow):
+    """Build variable dict for file path resolution."""
+    return {
+        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
+
+
 def _fnRegisterFileStatus(app, dictCtx):
     """Register GET /api/pipeline/{id}/file-status endpoint."""
 
@@ -3235,6 +3326,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     _fnRegisterPipelineState(app, dictCtx)
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterFileStatus(app, dictCtx)
+    _fnRegisterAcknowledgeStep(app, dictCtx)
     _fnRegisterPipelineKill(app, dictCtx)
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
