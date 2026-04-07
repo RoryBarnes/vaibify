@@ -6206,15 +6206,23 @@ const PipeleyenApp = (function () {
         return dictVerify[sVerifyKey] !== sOld;
     }
 
+    var _setNotifiedTestFiles = new Set();
+
     function fnNotifyTestFileChanges(dictChanges) {
         for (var sIndex in dictChanges) {
             var iStep = parseInt(sIndex, 10);
             var dictChange = dictChanges[sIndex];
             var listNew = dictChange.listNew || [];
-            if (listNew.length > 0) {
+            var listUnseen = listNew.filter(function (sFile) {
+                var sKey = iStep + ":" + sFile;
+                if (_setNotifiedTestFiles.has(sKey)) return false;
+                _setNotifiedTestFiles.add(sKey);
+                return true;
+            });
+            if (listUnseen.length > 0) {
                 var sLabel = fsComputeStepLabel(iStep);
                 fnShowToast(
-                    "Step " + sLabel + ": " + listNew.length +
+                    "Step " + sLabel + ": " + listUnseen.length +
                     " new test file(s) discovered", "info"
                 );
             }
@@ -7425,14 +7433,12 @@ const PipeleyenApp = (function () {
     function fnShowToast(sMessage, sType) {
         var el = document.createElement("div");
         el.className = "toast " + (sType || "");
-        if (sType === "error") {
-            el.innerHTML = fnEscapeHtml(sMessage) +
-                '<button class="toast-close">&times;</button>';
-            el.querySelector(".toast-close").addEventListener(
-                "click", function () { el.remove(); }
-            );
-        } else {
-            el.textContent = sMessage;
+        el.innerHTML = fnEscapeHtml(sMessage) +
+            '<button class="toast-close">&times;</button>';
+        el.querySelector(".toast-close").addEventListener(
+            "click", function () { el.remove(); }
+        );
+        if (sType !== "error") {
             var iTimeout = sType === "warning" ? 8000 : 4000;
             setTimeout(function () { el.remove(); }, iTimeout);
         }

@@ -575,14 +575,11 @@ def _fdictBuildCategoryResults(session):
         dictCat = dictCategories.setdefault(
             sCategory, {"iPassed": 0, "iFailed": 0}
         )
-        bPassed = (
-            hasattr(item, "rep_call")
-            and item.rep_call is not None
-            and item.rep_call.passed
-        )
-        if bPassed:
+        if not hasattr(item, "rep_call") or item.rep_call is None:
+            continue
+        if item.rep_call.passed:
             dictCat["iPassed"] += 1
-        else:
+        elif item.rep_call.failed:
             dictCat["iFailed"] += 1
     return dictCategories
 

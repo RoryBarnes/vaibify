@@ -2525,13 +2525,31 @@ def _fnRegisterUserInfo(app):
         return {"sUserName": sTerminalUser or "User"}
 
 
+def fsComputeStaticCacheVersion():
+    """Return a version string derived from static file mtimes."""
+    iMaxMtime = 0
+    for sName in os.listdir(STATIC_DIRECTORY):
+        sPath = os.path.join(STATIC_DIRECTORY, sName)
+        if os.path.isfile(sPath) and sName != "index.html":
+            iMtime = int(os.path.getmtime(sPath))
+            if iMtime > iMaxMtime:
+                iMaxMtime = iMtime
+    return str(iMaxMtime)
+
+
 def _fnRegisterStaticFiles(app, dictCtx):
     """Register index page, token endpoint, and static file mount."""
 
     @app.get("/")
     async def fnServeIndex():
-        return FileResponse(
-            os.path.join(STATIC_DIRECTORY, "index.html"),
+        sIndexPath = os.path.join(STATIC_DIRECTORY, "index.html")
+        with open(sIndexPath, "r") as fileIndex:
+            sContent = fileIndex.read()
+        sVersion = fsComputeStaticCacheVersion()
+        sContent = sContent.replace("__CACHE_VERSION__", sVersion)
+        return Response(
+            content=sContent,
+            media_type="text/html",
             headers={"Cache-Control": "no-cache, no-store"},
         )
 
