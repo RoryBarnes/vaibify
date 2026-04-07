@@ -2410,7 +2410,8 @@ const PipeleyenApp = (function () {
             fbAnyUpstreamModified(iIndex) ||
             dictScriptModified[iIndex] === "modified";
         var bHasData = setStepsWithData.has(iIndex) ||
-            !!(step.dictRunStats || {}).sLastRun;
+            !!(step.dictRunStats || {}).sLastRun ||
+            !!dictOutputMtimes[String(iIndex)];
 
         if (!bHasData) return "";
 
