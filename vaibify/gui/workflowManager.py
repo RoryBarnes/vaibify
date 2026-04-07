@@ -672,6 +672,13 @@ def flistBuildTestCommands(dictStep):
     return listCommands
 
 
+def flistResolveTestCommands(dictStep):
+    """Return test commands from structured tests or legacy list."""
+    if "dictTests" in dictStep:
+        return flistBuildTestCommands(dictStep)
+    return dictStep.get("saTestCommands", [])
+
+
 def fsTestsDirectory(sStepDirectory):
     """Return the tests subdirectory path for a step."""
     return posixpath.join(sStepDirectory, "tests")

@@ -1224,10 +1224,8 @@ async def fnRunAllTests(
 
 def _flistResolveTestCommands(dictStep):
     """Return test commands from structured tests or legacy list."""
-    from .workflowManager import flistBuildTestCommands
-    if "dictTests" in dictStep:
-        return flistBuildTestCommands(dictStep)
-    return dictStep.get("saTestCommands", [])
+    from .workflowManager import flistResolveTestCommands
+    return flistResolveTestCommands(dictStep)
 
 
 async def _fiRunTestsForAllSteps(
