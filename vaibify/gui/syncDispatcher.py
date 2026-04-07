@@ -470,51 +470,48 @@ def _fbSafeDirectoryName(sDirectory):
     return bool(re.match(r'^[A-Za-z0-9_./ -]+$', sDirectory))
 
 
-def _fsBuildMarkerReadScript():
-    """Return the inline Python that reads marker JSON files."""
-    return (
-        "import json,os,time;"
-        "R={};"
-        "mdir='/workspace/.vaibify/test_markers';"
-        "R['markers']={};"
-        "if os.path.isdir(mdir):\n"
-        "  for f in os.listdir(mdir):\n"
-        "    if f.endswith('.json'):\n"
-        "      try: R['markers'][f]=json.load("
-        "open(os.path.join(mdir,f)))\n"
-        "      except: pass\n"
-    )
-
-
-def _fsBuildDirectoryScanScript(sEscapedJson):
-    """Return inline Python that scans step directories for tests."""
-    return (
-        "R['testFiles']={};"
-        "R['missingConftest']=[];"
-        "for d in json.loads('" + sEscapedJson + "'):\n"
-        "  td=os.path.join(d,'tests');\n"
-        "  if not os.path.isdir(td): continue\n"
-        "  fs=[f for f in os.listdir(td)"
-        " if f.startswith('test_') and f.endswith('.py')];\n"
-        "  mt={f:os.path.getmtime(os.path.join(td,f)) for f in fs"
-        " if os.path.isfile(os.path.join(td,f))};\n"
-        "  R['testFiles'][d]={'listFiles':fs,'dictMtimes':mt};\n"
-        "  if not os.path.isfile(os.path.join(td,'conftest.py')):\n"
-        "    R['missingConftest'].append(d)\n"
-        "print(json.dumps(R))"
-    )
-
-
 def fsBuildTestMarkerCheckCommand(listStepDirectories):
     """Build a docker exec command to read test markers and scan dirs."""
     listSafe = [
         s for s in listStepDirectories if _fbSafeDirectoryName(s)
     ]
     sJsonDirs = json.dumps(listSafe)
-    sEscapedJson = sJsonDirs.replace("\\", "\\\\").replace('"', '\\"')
-    sMarkerScript = _fsBuildMarkerReadScript()
-    sScanScript = _fsBuildDirectoryScanScript(sEscapedJson)
-    return "python3 -c \"" + sMarkerScript + sScanScript + "\""
+    sScript = _fsBuildTestMarkerScript(sJsonDirs)
+    return "python3 -c " + fsShellQuote(sScript)
+
+
+def _fsBuildTestMarkerScript(sJsonDirs):
+    """Build the Python script that reads markers and scans dirs.
+
+    All string literals use double quotes so the script survives
+    single-quote shell wrapping by fsShellQuote.
+    """
+    return (
+        "import json, os\n"
+        'R = {"markers": {}, "testFiles": {}, "missingConftest": []}\n'
+        'mdir = "/workspace/.vaibify/test_markers"\n'
+        "if os.path.isdir(mdir):\n"
+        "    for f in os.listdir(mdir):\n"
+        '        if f.endswith(".json"):\n'
+        "            try:\n"
+        '                R["markers"][f] = json.load('
+        "open(os.path.join(mdir, f)))\n"
+        "            except Exception:\n"
+        "                pass\n"
+        "for d in json.loads(" + json.dumps(sJsonDirs) + "):\n"
+        '    td = os.path.join(d, "tests")\n'
+        "    if not os.path.isdir(td):\n"
+        "        continue\n"
+        "    fs = [f for f in os.listdir(td)"
+        ' if f.startswith("test_") and f.endswith(".py")]\n'
+        "    mt = {f: os.path.getmtime(os.path.join(td, f))"
+        " for f in fs"
+        " if os.path.isfile(os.path.join(td, f))}\n"
+        '    R["testFiles"][d] = {"listFiles": fs, "dictMtimes": mt}\n'
+        '    if not os.path.isfile(os.path.join(td, "conftest.py")):\n'
+        '        R["missingConftest"].append(d)\n'
+        "print(json.dumps(R))\n"
+    )
 
 
 def fdictParseTestMarkerOutput(sOutput):

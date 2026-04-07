@@ -1954,17 +1954,30 @@ async def _fnBackfillMissingConftest(
 ):
     """Write conftest.py into step dirs that have tests/ but no conftest."""
     import asyncio
+    import logging
+    loggerBackfill = logging.getLogger("vaibify")
     from .testGenerator import fnWriteConftestMarker, fsConftestContent
-    if listMissingDirs:
-        await asyncio.to_thread(
-            _fnEnsureConftestTemplate,
-            connectionDocker, sContainerId, fsConftestContent(),
-        )
+    if not listMissingDirs:
+        return
+    loggerBackfill.info(
+        "Backfilling conftest.py into %d dirs: %s",
+        len(listMissingDirs), listMissingDirs,
+    )
     for sDir in listMissingDirs:
-        await asyncio.to_thread(
-            fnWriteConftestMarker,
-            connectionDocker, sContainerId, sDir,
-        )
+        try:
+            await asyncio.to_thread(
+                fnWriteConftestMarker,
+                connectionDocker, sContainerId, sDir,
+            )
+            loggerBackfill.info("Wrote conftest.py to %s", sDir)
+        except Exception as exc:
+            loggerBackfill.error(
+                "Failed to write conftest.py to %s: %s", sDir, exc,
+            )
+    await asyncio.to_thread(
+        _fnEnsureConftestTemplate,
+        connectionDocker, sContainerId, fsConftestContent(),
+    )
 
 
 def _fnEnsureConftestTemplate(
