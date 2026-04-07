@@ -5726,12 +5726,15 @@ const PipeleyenApp = (function () {
             var iPassIdx = dictEvent.iStepNumber - 1;
             dictStepStatus[iPassIdx] = "pass";
             fnClearOutputModified(iPassIdx);
+            fnResetUserVerification(iPassIdx);
             fnAcknowledgeStepCompletion(iPassIdx);
             fnInvalidateStepFileCache(iPassIdx);
             fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
-            dictStepStatus[dictEvent.iStepNumber - 1] = "fail";
-            fnInvalidateStepFileCache(dictEvent.iStepNumber - 1);
+            var iFailIdx = dictEvent.iStepNumber - 1;
+            dictStepStatus[iFailIdx] = "fail";
+            fnResetUserVerification(iFailIdx);
+            fnInvalidateStepFileCache(iFailIdx);
             fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             fnStopPipelinePolling();
@@ -5950,6 +5953,18 @@ const PipeleyenApp = (function () {
                 }
             }
         }
+    }
+
+    function fnResetUserVerification(iStepIndex) {
+        var dictStep = dictWorkflow.listSteps[iStepIndex];
+        if (!dictStep) return;
+        var dictVerify = fdictGetVerification(dictStep);
+        if (dictVerify.sUser === "untested") return;
+        dictVerify.sUser = "untested";
+        dictStep.dictVerification = dictVerify;
+        fnSaveStepUpdate(iStepIndex, {
+            dictVerification: dictStep.dictVerification,
+        });
     }
 
     var dictAcknowledgedAt = {};
@@ -6903,6 +6918,7 @@ const PipeleyenApp = (function () {
             step.dictRunStats = step.dictRunStats || {};
             step.dictRunStats.sLastRun = fsFormatUtcTimestamp();
         }
+        fnResetUserVerification(iStepIndex);
         if (iExitCode === 0) {
             fnClearOutputModified(iStepIndex);
         }
