@@ -6277,23 +6277,21 @@ const PipeleyenApp = (function () {
         return dictVerify[sVerifyKey] !== sOld;
     }
 
-    var _setNotifiedTestFiles = new Set();
+    var _bFirstTestFilePoll = true;
 
     function fnNotifyTestFileChanges(dictChanges) {
+        if (_bFirstTestFilePoll) {
+            _bFirstTestFilePoll = false;
+            return;
+        }
         for (var sIndex in dictChanges) {
             var iStep = parseInt(sIndex, 10);
             var dictChange = dictChanges[sIndex];
             var listNew = dictChange.listNew || [];
-            var listUnseen = listNew.filter(function (sFile) {
-                var sKey = iStep + ":" + sFile;
-                if (_setNotifiedTestFiles.has(sKey)) return false;
-                _setNotifiedTestFiles.add(sKey);
-                return true;
-            });
-            if (listUnseen.length > 0) {
+            if (listNew.length > 0) {
                 var sLabel = fsComputeStepLabel(iStep);
                 fnShowToast(
-                    "Step " + sLabel + ": " + listUnseen.length +
+                    "Step " + sLabel + ": " + listNew.length +
                     " new test file(s) discovered", "info"
                 );
             }
