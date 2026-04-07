@@ -1785,7 +1785,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         await _fnRefreshStepInputHashes(
             dictCtx, sContainerId, dictWorkflow, iStepIndex,
         )
-        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+        dictVars = dictCtx["variables"](sContainerId)
         listPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
         dictModTimes = await asyncio.to_thread(
             _fdictGetModTimes,
@@ -1887,7 +1887,8 @@ async def _fdictFetchOutputStatus(
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
-    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes):
+    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
+                                         dictVars):
         dictCtx["save"](sContainerId, dictWorkflow)
     listInvalidated = _flistDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
@@ -2287,20 +2288,23 @@ def _fbAnyMtimeNewerThan(listPaths, dictModTimes, iThreshold):
     return False
 
 
-def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes):
+def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
+                                   dictVars=None):
     """Reset sUser if plot files are newer than sLastUserUpdate.
 
     Returns True if any step was modified, so the caller can save.
     This handles the case where outputs changed before the server
     started, so poll-based delta detection never fires.
     """
+    import logging
+    logger = logging.getLogger("vaibify")
     bChanged = False
-    from .workflowManager import fsResolveVariables
-    dictVars = {
-        "sPlotDirectory": dictWorkflow.get(
-            "sPlotDirectory", "Plot"),
-        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-    }
+    if dictVars is None:
+        dictVars = {
+            "sPlotDirectory": dictWorkflow.get(
+                "sPlotDirectory", "Plot"),
+            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+        }
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
@@ -2315,8 +2319,15 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes):
         if iUserEpoch is None:
             continue
         listPlotPaths = _flistResolvePlotPaths(dictStep, dictVars)
-        if _fbAnyMtimeNewerThan(listPlotPaths, dictModTimes,
-                                iUserEpoch):
+        bStale = _fbAnyMtimeNewerThan(
+            listPlotPaths, dictModTimes, iUserEpoch)
+        logger.info(
+            "Freshness check step %d: sLastUserUpdate=%s "
+            "iUserEpoch=%s paths=%s bStale=%s",
+            iIndex, sLastUserUpdate, iUserEpoch,
+            listPlotPaths, bStale,
+        )
+        if bStale:
             dictVerification["sUser"] = "untested"
             dictStep["dictVerification"] = dictVerification
             bChanged = True
