@@ -2237,10 +2237,12 @@ def _fdictFindChangedFiles(dictPathsByStep, dictOldModTimes,
 
 
 def _fnInvalidateStepFiles(dictStep, listChangedPaths):
-    """Mark specific files as modified, invalidate unit tests."""
+    """Mark specific files as modified, invalidate verifications."""
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUnitTest") == "passed":
         dictVerification["sUnitTest"] = "untested"
+    if dictVerification.get("sUser") == "passed":
+        dictVerification["sUser"] = "untested"
     if dictVerification.get("sPlotStandards") == "passed":
         listPlotFiles = dictStep.get("saPlotFiles", [])
         if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
