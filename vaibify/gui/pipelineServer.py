@@ -1902,6 +1902,9 @@ async def _fdictFetchOutputStatus(
         "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
             dictPathsByStep, dictModTimes,
         ),
+        "dictMaxPlotMtimeByStep": _fdictComputeMaxPlotMtimeByStep(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
             dictWorkflow, dictCurrentHashes,
@@ -2217,6 +2220,29 @@ def _fdictComputeMaxMtimeByStep(dictPathsByStep, dictModTimes):
         listMtimes = [
             int(dictModTimes[sPath])
             for sPath in listPaths if sPath in dictModTimes
+        ]
+        if listMtimes:
+            dictResult[str(iIndex)] = str(max(listMtimes))
+    return dictResult
+
+
+def _fdictComputeMaxPlotMtimeByStep(dictWorkflow, dictModTimes,
+                                     dictVars=None):
+    """Return {stepIndex: maxPlotMtimeString} using only plot files."""
+    if dictVars is None:
+        dictVars = {
+            "sPlotDirectory": dictWorkflow.get(
+                "sPlotDirectory", "Plot"),
+            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+        }
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        listPlotTuples = _flistResolvePlotPaths(dictStep, dictVars)
+        listMtimes = [
+            int(dictModTimes[sPath])
+            for sPath, _ in listPlotTuples if sPath in dictModTimes
         ]
         if listMtimes:
             dictResult[str(iIndex)] = str(max(listMtimes))

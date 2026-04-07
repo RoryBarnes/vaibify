@@ -824,6 +824,7 @@ const PipeleyenApp = (function () {
         dictFileExistenceCache = {};
         dictFileModTimes = {};
         dictOutputMtimes = {};
+        dictPlotMtimes = {};
         dictTestMarkerTimestamps = {};
         _dictSeenNewTestFiles = {};
         _bFirstTestFilePoll = true;
@@ -2483,7 +2484,8 @@ const PipeleyenApp = (function () {
             sPad(d.getUTCMonth() + 1) + "-" +
             sPad(d.getUTCDate()) + " " +
             sPad(d.getUTCHours()) + ":" +
-            sPad(d.getUTCMinutes()) + " UTC";
+            sPad(d.getUTCMinutes()) + ":" +
+            sPad(d.getUTCSeconds()) + " UTC";
     }
 
     function fsFormatUnixTimestamp(sEpoch) {
@@ -6037,6 +6039,7 @@ const PipeleyenApp = (function () {
     var iPollIntervalMs = 5000;
     var dictFileModTimes = {};
     var dictOutputMtimes = {};
+    var dictPlotMtimes = {};
     var dictScriptModified = {};
     var dictTestMarkerTimestamps = {};
 
@@ -6193,6 +6196,9 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxMtimeByStep) {
             dictOutputMtimes = dictStatus.dictMaxMtimeByStep;
         }
+        if (dictStatus.dictMaxPlotMtimeByStep) {
+            dictPlotMtimes = dictStatus.dictMaxPlotMtimeByStep;
+        }
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
@@ -6229,7 +6235,7 @@ const PipeleyenApp = (function () {
     }
 
     function _fbOutputNewerThanVerification(iStep, dictVerify) {
-        var sMaxMtime = dictOutputMtimes[String(iStep)];
+        var sMaxMtime = dictPlotMtimes[String(iStep)];
         if (!sMaxMtime) return false;
         var iOutputEpoch = parseInt(sMaxMtime, 10);
         var iUserEpoch = fiParseUtcTimestamp(
