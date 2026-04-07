@@ -823,6 +823,7 @@ const PipeleyenApp = (function () {
         dictStepStatus = {};
         dictFileExistenceCache = {};
         dictFileModTimes = {};
+        dictOutputMtimes = {};
         dictTestMarkerTimestamps = {};
         setStepsWithData.clear();
         bFileCheckInProgress = false;
@@ -1823,7 +1824,8 @@ const PipeleyenApp = (function () {
         /* Data Analysis Timing */
         if ((step.saDataCommands || []).length > 0) {
             sHtml += '<div class="timestamp-field">' +
-                fsRenderRunStats(step) + '</div>';
+                fsRenderRunStats(step) +
+                fsRenderOutputMtime(iIndex) + '</div>';
         }
 
         /* Data Files */
@@ -1877,11 +1879,13 @@ const PipeleyenApp = (function () {
         /* Plot Timing */
         if ((step.saPlotFiles || []).length > 0) {
             var dictPlotStats = step.dictRunStats || {};
+            var sPlotMtime = (step.saDataCommands || []).length === 0 ?
+                fsRenderOutputMtime(iIndex) : "";
             sHtml += '<div class="timestamp-field">' +
                 '<div class="run-stats">' +
                 '<span class="run-stat">Plots created: ' +
                 (dictPlotStats.sLastRun || "—") +
-                '</span></div></div>';
+                '</span></div>' + sPlotMtime + '</div>';
         }
 
         /* Verification */
@@ -2443,6 +2447,15 @@ const PipeleyenApp = (function () {
             (sCpuTime || "—") + '</span></div>';
     }
 
+    function fsRenderOutputMtime(iIndex) {
+        var sOutputMtime = dictOutputMtimes[String(iIndex)];
+        if (!sOutputMtime) return "";
+        return '<div class="run-stats"><span class="run-stat">' +
+            'Outputs modified: ' +
+            fsFormatUnixTimestamp(sOutputMtime) +
+            '</span></div>';
+    }
+
     function fsFormatDuration(fSeconds) {
         if (fSeconds < 60) return fSeconds.toFixed(1) + "s";
         var iMinutes = Math.floor(fSeconds / 60);
@@ -2455,6 +2468,16 @@ const PipeleyenApp = (function () {
 
     function fsFormatUtcTimestamp() {
         var d = new Date();
+        var sPad = function (i) { return String(i).padStart(2, "0"); };
+        return d.getUTCFullYear() + "-" +
+            sPad(d.getUTCMonth() + 1) + "-" +
+            sPad(d.getUTCDate()) + " " +
+            sPad(d.getUTCHours()) + ":" +
+            sPad(d.getUTCMinutes()) + " UTC";
+    }
+
+    function fsFormatUnixTimestamp(sEpoch) {
+        var d = new Date(parseInt(sEpoch, 10) * 1000);
         var sPad = function (i) { return String(i).padStart(2, "0"); };
         return d.getUTCFullYear() + "-" +
             sPad(d.getUTCMonth() + 1) + "-" +
@@ -5985,6 +6008,7 @@ const PipeleyenApp = (function () {
     var iFileChangePollTimer = null;
     var iPollIntervalMs = 5000;
     var dictFileModTimes = {};
+    var dictOutputMtimes = {};
     var dictScriptModified = {};
     var dictTestMarkerTimestamps = {};
 
@@ -6137,6 +6161,9 @@ const PipeleyenApp = (function () {
 
     function fnProcessFileStatusResponse(dictStatus) {
         fnDetectOutputFileChanges(dictStatus.dictModTimes || {});
+        if (dictStatus.dictMaxMtimeByStep) {
+            dictOutputMtimes = dictStatus.dictMaxMtimeByStep;
+        }
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);

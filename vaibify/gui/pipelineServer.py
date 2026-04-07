@@ -1884,6 +1884,9 @@ async def _fdictFetchOutputStatus(
         _fdictGetModTimes,
         dictCtx["docker"], sContainerId, listPaths,
     )
+    dictPathsByStep = fdictCollectOutputPathsByStep(
+        dictWorkflow, dictVars,
+    )
     listInvalidated = _flistDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
     )
@@ -1893,6 +1896,9 @@ async def _fdictFetchOutputStatus(
     )
     return {
         "dictModTimes": dictModTimes,
+        "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
+            dictPathsByStep, dictModTimes,
+        ),
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
             dictWorkflow, dictCurrentHashes,
@@ -2199,6 +2205,19 @@ def _fbPipelineIsRunning(dictCtx, sContainerId):
     if dictState is None:
         return False
     return dictState.get("bRunning", False)
+
+
+def _fdictComputeMaxMtimeByStep(dictPathsByStep, dictModTimes):
+    """Return {stepIndex: maxMtimeString} for steps with output files."""
+    dictResult = {}
+    for iIndex, listPaths in dictPathsByStep.items():
+        listMtimes = [
+            int(dictModTimes[sPath])
+            for sPath in listPaths if sPath in dictModTimes
+        ]
+        if listMtimes:
+            dictResult[str(iIndex)] = str(max(listMtimes))
+    return dictResult
 
 
 def _fdictFindChangedFiles(dictPathsByStep, dictOldModTimes,
