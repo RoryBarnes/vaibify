@@ -825,6 +825,8 @@ const PipeleyenApp = (function () {
         dictFileModTimes = {};
         dictOutputMtimes = {};
         dictTestMarkerTimestamps = {};
+        _dictSeenNewTestFiles = {};
+        _bFirstTestFilePoll = true;
         setStepsWithData.clear();
         bFileCheckInProgress = false;
         bDelegatedEventsInitialized = false;
@@ -6277,21 +6279,23 @@ const PipeleyenApp = (function () {
         return dictVerify[sVerifyKey] !== sOld;
     }
 
+    var _dictSeenNewTestFiles = {};
     var _bFirstTestFilePoll = true;
 
     function fnNotifyTestFileChanges(dictChanges) {
-        if (_bFirstTestFilePoll) {
-            _bFirstTestFilePoll = false;
-            return;
-        }
+        var bSeedOnly = _bFirstTestFilePoll;
+        _bFirstTestFilePoll = false;
         for (var sIndex in dictChanges) {
             var iStep = parseInt(sIndex, 10);
             var dictChange = dictChanges[sIndex];
             var listNew = dictChange.listNew || [];
-            if (listNew.length > 0) {
+            var listUnseen = flistFilterUnseenTestFiles(
+                iStep, listNew
+            );
+            if (!bSeedOnly && listUnseen.length > 0) {
                 var sLabel = fsComputeStepLabel(iStep);
                 fnShowToast(
-                    "Step " + sLabel + ": " + listNew.length +
+                    "Step " + sLabel + ": " + listUnseen.length +
                     " new test file(s) discovered", "info"
                 );
             }
@@ -6300,6 +6304,22 @@ const PipeleyenApp = (function () {
                 fnShowCustomTestNotice(iStep, listCustom);
             }
         }
+    }
+
+    function flistFilterUnseenTestFiles(iStep, listFiles) {
+        var sKey = String(iStep);
+        if (!_dictSeenNewTestFiles[sKey]) {
+            _dictSeenNewTestFiles[sKey] = {};
+        }
+        var dictSeen = _dictSeenNewTestFiles[sKey];
+        var listUnseen = [];
+        for (var i = 0; i < listFiles.length; i++) {
+            if (!dictSeen[listFiles[i]]) {
+                listUnseen.push(listFiles[i]);
+            }
+            dictSeen[listFiles[i]] = true;
+        }
+        return listUnseen;
     }
 
     function fnShowCustomTestNotice(iStep, listCustomFiles) {
