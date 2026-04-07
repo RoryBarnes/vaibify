@@ -3689,6 +3689,8 @@ const PipeleyenApp = (function () {
         }
     }
 
+    var dictUserVerifiedAt = {};
+
     async function fnCycleUserVerification(iStep) {
         var dictStep = dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
@@ -3700,6 +3702,7 @@ const PipeleyenApp = (function () {
         dictVerify.sUser = listStates[iNext];
         dictVerify.sLastUserUpdate = fsFormatUtcTimestamp();
         dictStep.dictVerification = dictVerify;
+        dictUserVerifiedAt[iStep] = Date.now();
         try {
             await fetch(
                 "/api/steps/" + sContainerId + "/" + iStep,
@@ -6207,24 +6210,31 @@ const PipeleyenApp = (function () {
     function fnResetStaleUserVerifications() {
         if (!dictWorkflow || !dictWorkflow.listSteps) return;
         var bChanged = false;
+        var iNow = Date.now();
         for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            if (dictUserVerifiedAt[i] &&
+                (iNow - dictUserVerifiedAt[i]) < 15000) {
+                continue;
+            }
             var dictStep = dictWorkflow.listSteps[i];
             var dictVerify = (dictStep.dictVerification || {});
             if (dictVerify.sUser !== "passed") continue;
-            var sMaxMtime = dictOutputMtimes[String(i)];
-            if (!sMaxMtime) continue;
-            var iOutputEpoch = parseInt(sMaxMtime, 10);
-            var iUserEpoch = fiParseUtcTimestamp(
-                dictVerify.sLastUserUpdate);
-            if (iUserEpoch > 0 && iOutputEpoch > iUserEpoch) {
+            if (_fbOutputNewerThanVerification(i, dictVerify)) {
                 dictVerify.sUser = "untested";
                 dictStep.dictVerification = dictVerify;
                 bChanged = true;
             }
         }
-        if (bChanged) {
-            fnRenderStepList();
-        }
+        if (bChanged) fnRenderStepList();
+    }
+
+    function _fbOutputNewerThanVerification(iStep, dictVerify) {
+        var sMaxMtime = dictOutputMtimes[String(iStep)];
+        if (!sMaxMtime) return false;
+        var iOutputEpoch = parseInt(sMaxMtime, 10);
+        var iUserEpoch = fiParseUtcTimestamp(
+            dictVerify.sLastUserUpdate);
+        return iUserEpoch > 0 && iOutputEpoch > iUserEpoch;
     }
 
     function fnDetectOutputFileChanges(dictNewMods) {
