@@ -3135,6 +3135,21 @@ const PipeleyenApp = (function () {
                 );
                 return;
             }
+            if (dictResult.bNeedsOverwriteConfirm) {
+                fnRenderStepList();
+                var listFiles = dictResult.listModifiedFiles || [];
+                fnShowConfirmModal(
+                    "Custom Test Files Detected",
+                    "The following test files have been " +
+                    "customized and will be overwritten:\n\n" +
+                    listFiles.join("\n") +
+                    "\n\nProceed with overwrite?",
+                    function () {
+                        fnGenerateTestsForced(iStep);
+                    }
+                );
+                return;
+            }
             if (!response.ok) {
                 fnRenderStepList();
                 fnShowToast("Test generation failed", "error");
@@ -3152,6 +3167,35 @@ const PipeleyenApp = (function () {
                     "Test generation failed:\n\n" +
                     (dictResult.sMessage || "No tests generated")
                 );
+                return;
+            }
+            fnHandleGeneratedTest(iStep, dictResult);
+        } catch (error) {
+            setGeneratingInFlight.delete(iStep);
+            fnRenderStepList();
+            fnShowErrorModal(
+                "Test generation failed:\n\n" +
+                (error.message || String(error))
+            );
+        }
+    }
+
+    async function fnGenerateTestsForced(iStep) {
+        setGeneratingInFlight.add(iStep);
+        fnRenderStepList();
+        try {
+            var response = await fetch(
+                "/api/steps/" + sContainerId + "/" + iStep +
+                "/generate-test",
+                { method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({bForceOverwrite: true}) }
+            );
+            var dictResult = await response.json();
+            setGeneratingInFlight.delete(iStep);
+            if (!response.ok) {
+                fnRenderStepList();
+                fnShowToast("Test generation failed", "error");
                 return;
             }
             fnHandleGeneratedTest(iStep, dictResult);
@@ -6226,6 +6270,33 @@ const PipeleyenApp = (function () {
                     " new test file(s) discovered", "info"
                 );
             }
+            var listCustom = dictChange.listCustom || [];
+            if (listCustom.length > 0) {
+                fnShowCustomTestNotice(iStep, listCustom);
+            }
+        }
+    }
+
+    function fnShowCustomTestNotice(iStep, listCustomFiles) {
+        var elStep = document.querySelector(
+            '.step-item[data-index="' + iStep + '"]'
+        );
+        if (!elStep) return;
+        var elExisting = elStep.querySelector(".custom-test-notice");
+        if (elExisting) return;
+        var elNotice = document.createElement("div");
+        elNotice.className = "custom-test-notice";
+        elNotice.style.cssText =
+            "color:var(--color-yellow,#f1c40f);" +
+            "font-size:0.85em;margin-top:4px;";
+        elNotice.textContent =
+            "Custom test scripts detected: " +
+            listCustomFiles.join(", ");
+        var elTestArea = elStep.querySelector(".test-section-label");
+        if (elTestArea) {
+            elTestArea.parentNode.insertBefore(
+                elNotice, elTestArea.nextSibling
+            );
         }
     }
 

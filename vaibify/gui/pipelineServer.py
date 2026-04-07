@@ -114,6 +114,7 @@ class TestGenerateRequest(BaseModel):
     bUseApi: bool = False
     sApiKey: Optional[str] = None
     bDeterministic: bool = True
+    bForceOverwrite: bool = False
 
 
 def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
@@ -2101,6 +2102,16 @@ def _fsetExtractRegisteredTestFiles(dictStep):
 
 def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
     """Compare discovered test files against registered test commands."""
+    from .testGenerator import (
+        fsQuantitativeTemplateHash,
+        fsIntegrityTemplateHash,
+        fsQualitativeTemplateHash,
+    )
+    dictExpectedHashes = {
+        "test_quantitative.py": fsQuantitativeTemplateHash(),
+        "test_integrity.py": fsIntegrityTemplateHash(),
+        "test_qualitative.py": fsQualitativeTemplateHash(),
+    }
     dictTestFiles = dictTestInfo.get("testFiles", {})
     dictResult = {}
     for iIndex, dictStep in enumerate(
@@ -2109,15 +2120,35 @@ def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
         sDir = dictStep.get("sDirectory", "")
         if sDir not in dictTestFiles:
             continue
-        listDiscovered = dictTestFiles[sDir].get("listFiles", [])
+        dictDirInfo = dictTestFiles[sDir]
+        listDiscovered = dictDirInfo.get("listFiles", [])
         setRegistered = _fsetExtractRegisteredTestFiles(dictStep)
         listNew = [f for f in listDiscovered if f not in setRegistered]
-        listMissing = [f for f in setRegistered if f not in listDiscovered]
+        listMissing = [
+            f for f in setRegistered if f not in listDiscovered
+        ]
+        listCustom = _flistFindCustomTestFiles(
+            dictDirInfo.get("dictHashes", {}), dictExpectedHashes,
+        )
+        dictEntry = {}
         if listNew or listMissing:
-            dictResult[str(iIndex)] = {
-                "listNew": listNew, "listMissing": listMissing,
-            }
+            dictEntry["listNew"] = listNew
+            dictEntry["listMissing"] = listMissing
+        if listCustom:
+            dictEntry["listCustom"] = listCustom
+        if dictEntry:
+            dictResult[str(iIndex)] = dictEntry
     return dictResult
+
+
+def _flistFindCustomTestFiles(dictFileHashes, dictExpectedHashes):
+    """Return filenames whose hash differs from the current template."""
+    listCustom = []
+    for sFilename, sExpected in dictExpectedHashes.items():
+        sActual = dictFileHashes.get(sFilename)
+        if sActual is not None and sActual != sExpected:
+            listCustom.append(sFilename)
+    return listCustom
 
 
 def fdictCollectOutputPathsByStep(dictWorkflow, dictVars=None):
@@ -2683,6 +2714,7 @@ async def _fdictRunTestGeneration(
             request.bUseApi, request.sApiKey,
             sUser=sUser,
             bDeterministic=request.bDeterministic,
+            bForceOverwrite=request.bForceOverwrite,
         )
     except Exception as error:
         raise HTTPException(
@@ -2741,6 +2773,13 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx, sContainerId, iStepIndex,
             dictWorkflow, fdictGenerateAllTests, request,
         )
+        if dictResult.get("bNeedsOverwriteConfirm"):
+            return {
+                "bNeedsOverwriteConfirm": True,
+                "listModifiedFiles": dictResult.get(
+                    "listModifiedFiles", []
+                ),
+            }
         _fnApplyGeneratedTests(
             dictCtx, sContainerId, dictWorkflow, iStepIndex,
             dictResult,

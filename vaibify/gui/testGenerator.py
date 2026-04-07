@@ -1,5 +1,6 @@
 """Generate pytest unit tests for workflow steps via LLM."""
 
+import hashlib
 import json
 import logging
 import os
@@ -7,6 +8,64 @@ import posixpath
 import re
 
 logger = logging.getLogger("vaibify")
+
+
+def _fsComputeTemplateHash(sTemplate):
+    """Strip any existing hash line, then SHA-256 the remainder."""
+    sStripped = re.sub(
+        r"^# vaibify-template-hash: [0-9a-f]+\n", "",
+        sTemplate, count=1,
+    )
+    sDigest = hashlib.sha256(sStripped.encode("utf-8")).hexdigest()
+    return sDigest[:16]
+
+
+def _fsEmbedTemplateHash(sTemplate):
+    """Prepend a template-hash comment as the second line."""
+    sHash = _fsComputeTemplateHash(sTemplate)
+    listLines = sTemplate.split("\n", 1)
+    sFirstLine = listLines[0]
+    sRest = listLines[1] if len(listLines) > 1 else ""
+    return (
+        sFirstLine + "\n"
+        + f"# vaibify-template-hash: {sHash}\n"
+        + sRest
+    )
+
+
+def _fbFileMatchesTemplate(
+    connectionDocker, sContainerId, sFilePath, sTemplate,
+):
+    """Return True if the file is safe to overwrite."""
+    sExisting = fsReadFileFromContainer(
+        connectionDocker, sContainerId, sFilePath,
+    )
+    if not sExisting or not isinstance(sExisting, str):
+        return True
+    sExpectedHash = _fsComputeTemplateHash(sTemplate)
+    matchHash = re.search(
+        r"^# vaibify-template-hash: ([0-9a-f]+)",
+        sExisting, re.MULTILINE,
+    )
+    if matchHash:
+        return matchHash.group(1) == sExpectedHash
+    sEmbedded = _fsEmbedTemplateHash(sTemplate)
+    return sExisting.strip() == sEmbedded.strip()
+
+
+def fsQuantitativeTemplateHash():
+    """Return the current quantitative template hash."""
+    return _fsComputeTemplateHash(fsBuildQuantitativeTestCode())
+
+
+def fsIntegrityTemplateHash():
+    """Return the current integrity template hash."""
+    return _fsComputeTemplateHash(fsBuildIntegrityTestCode())
+
+
+def fsQualitativeTemplateHash():
+    """Return the current qualitative template hash."""
+    return _fsComputeTemplateHash(fsBuildQualitativeTestCode())
 
 
 _PROMPT_TEMPLATE = """Generate a pytest file that validates scientific data analysis outputs.
@@ -35,6 +94,20 @@ Return ONLY the Python code for a single pytest file. No explanations."""
 
 _CLAUDE_MD_TEST_SECTION = """
 # Vaibify Test Generation Instructions
+
+## CRITICAL: Protected Files
+
+The following files are monitored by the vaibify dashboard.
+Do NOT modify them without explicit user approval:
+- tests/conftest.py
+- tests/test_quantitative.py
+- tests/test_integrity.py
+- tests/test_qualitative.py
+- .vaibify/generate_standards.py
+
+If you need to modify these files to handle a new data format,
+STOP and explain to the user what change is needed and why
+before making any edits.
 
 When asked to generate tests for a workflow step, follow these instructions.
 Each step has a directory, data commands, output files, and analysis scripts.
@@ -171,12 +244,39 @@ the dashboard can detect test outcomes automatically. If creating a new
 `tests/` directory, copy the marker plugin:
 `cp /usr/share/vaibify/conftest_marker.py tests/conftest.py`
 Do NOT modify or delete conftest.py — vaibify owns this file.
+
+## Test Infrastructure Contract (DO NOT VIOLATE)
+
+The dashboard parses test results by matching specific patterns.
+If you modify test files WITH USER APPROVAL, you MUST preserve:
+
+### Required function names:
+- `test_quantitative_benchmark` in test_quantitative.py
+- Parametrized with `dictStandard` from a `_LIST_STANDARDS` list
+
+### Required JSON schema for quantitative_standards.json:
+{"listStandards": [{"sName": str, "sDataFile": str, "sAccessPath": str, "fValue": float, "sUnit": str}], "fDefaultRtol": float}
+
+### Never modify or delete:
+- conftest.py (vaibify's test result marker plugin)
+- The `# vaibify-template-hash:` comment line
+
+### Where to add custom data format loaders:
+- Add new `_fLoad*Value` functions in test_quantitative.py
+- Register them in the format dispatch dict
+- Do NOT rename `test_quantitative_benchmark` or change its parametrize pattern
+
+### Persistence
+After modifying any test infrastructure file with user approval,
+commit the changes so they survive container recreation:
+git add tests/test_*.py tests/*_standards.json
+git commit -m "Extend test infrastructure for [format/edge case]"
 """
 
 
 _CLAUDE_MD_MARKER = "# Vaibify Test Generation Instructions"
-_CLAUDE_MD_VERSION = "v9"
-_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v9 -->"
+_CLAUDE_MD_VERSION = "v10"
+_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v10 -->"
 
 
 def fnEnsureClaudeMdInstructions(
@@ -1640,7 +1740,7 @@ def test_quantitative_benchmark(dictStandard):
 
 def fsBuildQuantitativeTestCode():
     """Return the deterministic quantitative test file content."""
-    return _QUANTITATIVE_TEST_TEMPLATE
+    return _fsEmbedTemplateHash(_QUANTITATIVE_TEST_TEMPLATE)
 
 
 _INTEGRITY_TEST_TEMPLATE = '''"""Integrity tests generated by vaibify."""
@@ -1966,12 +2066,12 @@ else:
 
 def fsBuildIntegrityTestCode():
     """Return the deterministic integrity test file content."""
-    return _INTEGRITY_TEST_TEMPLATE
+    return _fsEmbedTemplateHash(_INTEGRITY_TEST_TEMPLATE)
 
 
 def fsBuildQualitativeTestCode():
     """Return the deterministic qualitative test file content."""
-    return _QUALITATIVE_TEST_TEMPLATE
+    return _fsEmbedTemplateHash(_QUALITATIVE_TEST_TEMPLATE)
 
 
 def _fsFormatSafeName(sFileName):
@@ -3188,7 +3288,7 @@ def _fnWarnIfAllUnloadable(listdictReports):
 
 def fdictGenerateAllTestsDeterministic(
     connectionDocker, sContainerId, iStepIndex,
-    dictWorkflow, dictVariables,
+    dictWorkflow, dictVariables, bForceOverwrite=False,
 ):
     """Generate all three test categories deterministically."""
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
@@ -3206,35 +3306,49 @@ def fdictGenerateAllTestsDeterministic(
     _fnWarnIfAllUnloadable(listdictReports)
     return _fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
-        listdictReports, fTolerance,
+        listdictReports, fTolerance, bForceOverwrite,
     )
 
 
 def _fdictWriteAllDeterministicTests(
     connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance,
+    listdictReports, fTolerance, bForceOverwrite=False,
 ):
     """Write all three deterministic test files and return result dict."""
     fnWriteConftestMarker(connectionDocker, sContainerId, sDirectory)
     dictResult = {}
+    listModified = []
     dictResult["dictIntegrity"] = _fdictWriteIntegrityTests(
         connectionDocker, sContainerId, sDirectory,
-        listdictReports,
+        listdictReports, bForceOverwrite,
     )
+    if dictResult["dictIntegrity"].get("bNeedsOverwriteConfirm"):
+        listModified.append(dictResult["dictIntegrity"]["sFilePath"])
     dictResult["dictQualitative"] = _fdictWriteQualitativeTests(
         connectionDocker, sContainerId, sDirectory,
-        listdictReports,
+        listdictReports, bForceOverwrite,
     )
+    if dictResult["dictQualitative"].get("bNeedsOverwriteConfirm"):
+        listModified.append(
+            dictResult["dictQualitative"]["sFilePath"]
+        )
     dictResult["dictQuantitative"] = _fdictWriteQuantitativeTests(
         connectionDocker, sContainerId, sDirectory,
-        listdictReports, fTolerance,
+        listdictReports, fTolerance, bForceOverwrite,
     )
+    if dictResult["dictQuantitative"].get("bNeedsOverwriteConfirm"):
+        listModified.append(
+            dictResult["dictQuantitative"]["sFilePath"]
+        )
+    if listModified:
+        dictResult["bNeedsOverwriteConfirm"] = True
+        dictResult["listModifiedFiles"] = listModified
     return dictResult
 
 
 def _fdictWriteQuantitativeFiles(
     connectionDocker, sContainerId, sDirectory,
-    dictStandards,
+    dictStandards, bForceOverwrite=False,
 ):
     """Write quantitative standards JSON and test file, return dict."""
     sStandardsPath = fsQuantitativeStandardsPath(sDirectory)
@@ -3245,6 +3359,10 @@ def _fdictWriteQuantitativeFiles(
     )
     sTestCode = fsBuildQuantitativeTestCode()
     sTestPath = fsQuantitativeTestPath(sDirectory)
+    if not bForceOverwrite and not _fbFileMatchesTemplate(
+        connectionDocker, sContainerId, sTestPath, sTestCode,
+    ):
+        return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
     connectionDocker.fnWriteFile(
         sContainerId, sTestPath,
         sTestCode.encode("utf-8"),
@@ -3261,19 +3379,21 @@ def _fdictWriteQuantitativeFiles(
 
 def _fdictWriteQuantitativeTests(
     connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance,
+    listdictReports, fTolerance, bForceOverwrite=False,
 ):
     """Build standards from reports and write quantitative test files."""
     dictStandards = _fdictBuildQuantitativeStandards(
         listdictReports, fTolerance,
     )
     return _fdictWriteQuantitativeFiles(
-        connectionDocker, sContainerId, sDirectory, dictStandards,
+        connectionDocker, sContainerId, sDirectory,
+        dictStandards, bForceOverwrite,
     )
 
 
 def _fdictWriteIntegrityFiles(
-    connectionDocker, sContainerId, sDirectory, dictStandards,
+    connectionDocker, sContainerId, sDirectory,
+    dictStandards, bForceOverwrite=False,
 ):
     """Write integrity standards JSON and test file, return dict."""
     sStandardsPath = fsIntegrityStandardsPath(sDirectory)
@@ -3284,6 +3404,10 @@ def _fdictWriteIntegrityFiles(
     )
     sTestCode = fsBuildIntegrityTestCode()
     sTestPath = fsIntegrityTestPath(sDirectory)
+    if not bForceOverwrite and not _fbFileMatchesTemplate(
+        connectionDocker, sContainerId, sTestPath, sTestCode,
+    ):
+        return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
     connectionDocker.fnWriteFile(
         sContainerId, sTestPath, sTestCode.encode("utf-8"),
     )
@@ -3298,17 +3422,20 @@ def _fdictWriteIntegrityFiles(
 
 
 def _fdictWriteIntegrityTests(
-    connectionDocker, sContainerId, sDirectory, listdictReports,
+    connectionDocker, sContainerId, sDirectory,
+    listdictReports, bForceOverwrite=False,
 ):
     """Build standards and write integrity test files."""
     dictStandards = _fdictBuildIntegrityStandards(listdictReports)
     return _fdictWriteIntegrityFiles(
-        connectionDocker, sContainerId, sDirectory, dictStandards,
+        connectionDocker, sContainerId, sDirectory,
+        dictStandards, bForceOverwrite,
     )
 
 
 def _fdictWriteQualitativeFiles(
-    connectionDocker, sContainerId, sDirectory, dictStandards,
+    connectionDocker, sContainerId, sDirectory,
+    dictStandards, bForceOverwrite=False,
 ):
     """Write qualitative standards JSON and test file, return dict."""
     sStandardsPath = fsQualitativeStandardsPath(sDirectory)
@@ -3319,6 +3446,10 @@ def _fdictWriteQualitativeFiles(
     )
     sTestCode = fsBuildQualitativeTestCode()
     sTestPath = fsQualitativeTestPath(sDirectory)
+    if not bForceOverwrite and not _fbFileMatchesTemplate(
+        connectionDocker, sContainerId, sTestPath, sTestCode,
+    ):
+        return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
     connectionDocker.fnWriteFile(
         sContainerId, sTestPath, sTestCode.encode("utf-8"),
     )
@@ -3333,25 +3464,27 @@ def _fdictWriteQualitativeFiles(
 
 
 def _fdictWriteQualitativeTests(
-    connectionDocker, sContainerId, sDirectory, listdictReports,
+    connectionDocker, sContainerId, sDirectory,
+    listdictReports, bForceOverwrite=False,
 ):
     """Build standards and write qualitative test files."""
     dictStandards = _fdictBuildQualitativeStandards(listdictReports)
     return _fdictWriteQualitativeFiles(
-        connectionDocker, sContainerId, sDirectory, dictStandards,
+        connectionDocker, sContainerId, sDirectory,
+        dictStandards, bForceOverwrite,
     )
 
 
 def fdictGenerateAllTests(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
-    sUser=None, bDeterministic=True,
+    sUser=None, bDeterministic=True, bForceOverwrite=False,
 ):
     """Generate all three test categories via LLM or deterministically."""
     if bDeterministic:
         return fdictGenerateAllTestsDeterministic(
             connectionDocker, sContainerId, iStepIndex,
-            dictWorkflow, dictVariables,
+            dictWorkflow, dictVariables, bForceOverwrite,
         )
     return _fdictGenerateAllTestsViaLlm(
         connectionDocker, sContainerId, iStepIndex,

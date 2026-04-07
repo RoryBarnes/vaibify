@@ -498,6 +498,16 @@ def _fsBuildTestMarkerScript(sJsonDirs):
         "open(os.path.join(mdir, f)))\n"
         "            except Exception:\n"
         "                pass\n"
+        "import re\n"
+        "def _fsExtractHash(sPath):\n"
+        "    try:\n"
+        "        with open(sPath) as fh:\n"
+        "            for sLine in fh:\n"
+        '                m = re.match(r"^# vaibify-template-hash:'
+        ' ([0-9a-f]+)", sLine)\n'
+        "                if m: return m.group(1)\n"
+        "    except Exception: pass\n"
+        "    return None\n"
         "for d in json.loads(" + json.dumps(sJsonDirs) + "):\n"
         '    td = os.path.join(d, "tests")\n'
         "    if not os.path.isdir(td):\n"
@@ -507,7 +517,12 @@ def _fsBuildTestMarkerScript(sJsonDirs):
         "    mt = {f: os.path.getmtime(os.path.join(td, f))"
         " for f in fs"
         " if os.path.isfile(os.path.join(td, f))}\n"
-        '    R["testFiles"][d] = {"listFiles": fs, "dictMtimes": mt}\n'
+        "    dh = {}\n"
+        "    for f in fs:\n"
+        "        h = _fsExtractHash(os.path.join(td, f))\n"
+        "        if h: dh[f] = h\n"
+        '    R["testFiles"][d] = '
+        '{"listFiles": fs, "dictMtimes": mt, "dictHashes": dh}\n'
         '    if not os.path.isfile(os.path.join(td, "conftest.py")):\n'
         '        R["missingConftest"].append(d)\n'
         "print(json.dumps(R))\n"
