@@ -6172,6 +6172,7 @@ const PipeleyenApp = (function () {
 
     function fnStartFileChangePolling() {
         fnStopFileChangePolling();
+        fnPollFileChanges();
         iFileChangePollTimer = setInterval(function () {
             fnPollFileChanges();
         }, iPollIntervalMs);
