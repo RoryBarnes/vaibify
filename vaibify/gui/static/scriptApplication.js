@@ -3703,6 +3703,10 @@ const PipeleyenApp = (function () {
         var iNext = (iCurrent + 1) % listStates.length;
         dictVerify.sUser = listStates[iNext];
         dictVerify.sLastUserUpdate = fsFormatUtcTimestamp();
+        if (listStates[iNext] === "passed") {
+            delete dictVerify.listModifiedFiles;
+            delete dictVerify.bOutputModified;
+        }
         dictStep.dictVerification = dictVerify;
         dictUserVerifiedAt[iStep] = Date.now();
         try {
@@ -6199,10 +6203,28 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxPlotMtimeByStep) {
             dictPlotMtimes = dictStatus.dictMaxPlotMtimeByStep;
         }
+        var sBefore1 = dictWorkflow && dictWorkflow.listSteps[1]
+            ? dictWorkflow.listSteps[1].dictVerification.sUser
+            : "?";
         fnResetStaleUserVerifications();
+        var sAfterStale1 = dictWorkflow && dictWorkflow.listSteps[1]
+            ? dictWorkflow.listSteps[1].dictVerification.sUser
+            : "?";
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);
+        }
+        var sAfterInv1 = dictWorkflow && dictWorkflow.listSteps[1]
+            ? dictWorkflow.listSteps[1].dictVerification.sUser
+            : "?";
+        if (sBefore1 !== sAfterStale1 ||
+            sAfterStale1 !== sAfterInv1) {
+            console.log(
+                "[POLL] step1 sUser: before=" + sBefore1 +
+                " afterStale=" + sAfterStale1 +
+                " afterInvalidate=" + sAfterInv1 +
+                " invKeys=" + (dictInv ? Object.keys(dictInv) : "none")
+            );
         }
         fnUpdateScriptStatus(dictStatus.dictScriptStatus);
         if (dictStatus.dictTestMarkers) {
@@ -6240,7 +6262,15 @@ const PipeleyenApp = (function () {
         var iOutputEpoch = parseInt(sMaxMtime, 10);
         var iUserEpoch = fiParseUtcTimestamp(
             dictVerify.sLastUserUpdate);
-        return iUserEpoch > 0 && iOutputEpoch > iUserEpoch;
+        var bResult = iUserEpoch > 0 && iOutputEpoch > iUserEpoch;
+        if (bResult) {
+            console.log(
+                "[STALE] step " + iStep + ": plotEpoch=" +
+                iOutputEpoch + " userEpoch=" + iUserEpoch +
+                " sLastUserUpdate=" + dictVerify.sLastUserUpdate
+            );
+        }
+        return bResult;
     }
 
     function fnDetectOutputFileChanges(dictNewMods) {
@@ -6415,17 +6445,36 @@ const PipeleyenApp = (function () {
         var iGraceMs = 15000;
         for (var sIndex in dictStepVerifications) {
             var iStep = parseInt(sIndex, 10);
-            var iAckedAt = dictAcknowledgedAt[iStep];
-            if (iAckedAt && (iNow - iAckedAt) < iGraceMs) {
+            if (_fbWithinGracePeriod(iStep, iNow, iGraceMs)) {
                 continue;
             }
             var dictStep = dictWorkflow.listSteps[iStep];
             if (!dictStep) continue;
+            var sOldUser = (dictStep.dictVerification || {}).sUser;
+            var sNewUser = (dictStepVerifications[sIndex] || {}).sUser;
+            if (sOldUser !== sNewUser) {
+                console.log(
+                    "[INVALIDATE] step " + iStep +
+                    ": sUser " + sOldUser + " -> " + sNewUser
+                );
+            }
             dictStep.dictVerification =
                 dictStepVerifications[sIndex];
             bAnyChanged = true;
         }
         if (bAnyChanged) fnRenderStepList();
+    }
+
+    function _fbWithinGracePeriod(iStep, iNow, iGraceMs) {
+        var iAckedAt = dictAcknowledgedAt[iStep];
+        if (iAckedAt && (iNow - iAckedAt) < iGraceMs) {
+            return true;
+        }
+        var iVerifiedAt = dictUserVerifiedAt[iStep];
+        if (iVerifiedAt && (iNow - iVerifiedAt) < iGraceMs) {
+            return true;
+        }
+        return false;
     }
 
     function fnDisplayLogInViewer(sLogPath) {

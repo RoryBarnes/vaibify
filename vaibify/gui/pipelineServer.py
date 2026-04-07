@@ -1887,12 +1887,28 @@ async def _fdictFetchOutputStatus(
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
-    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
-                                         dictVars):
+    bStaleReset = _fbCheckStaleUserVerification(
+        dictWorkflow, dictModTimes, dictVars)
+    if bStaleReset:
+        logger.info(
+            "POLL stale-check reset sUser for container=%s",
+            sContainerId,
+        )
         dictCtx["save"](sContainerId, dictWorkflow)
     listInvalidated = _flistDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
     )
+    if listInvalidated:
+        logger.info(
+            "POLL invalidated steps=%s container=%s",
+            list(listInvalidated.keys()), sContainerId,
+        )
+        for sIdx, dictV in listInvalidated.items():
+            logger.info(
+                "  step %s sUser=%s listModifiedFiles=%s",
+                sIdx, dictV.get("sUser"),
+                dictV.get("listModifiedFiles", []),
+            )
     dictCurrentHashes = await asyncio.to_thread(
         _syncDispatcher.fdictComputeAllScriptHashes,
         dictCtx["docker"], sContainerId, dictWorkflow,
@@ -2363,6 +2379,12 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
             dictVerification["sUser"] = "untested"
             dictStep["dictVerification"] = dictVerification
             bChanged = True
+        else:
+            if dictVerification.get("listModifiedFiles"):
+                dictVerification.pop("listModifiedFiles", None)
+                dictVerification.pop("bOutputModified", None)
+                dictStep["dictVerification"] = dictVerification
+                bChanged = True
     return bChanged
 
 
@@ -2377,9 +2399,17 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
         if _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
             dictVerification["sUnitTest"] = "untested"
     if dictVerification.get("sUser") == "passed":
-        if _fbPlotNewerThanUserVerification(
+        bPlotNewer = _fbPlotNewerThanUserVerification(
             dictStep, listChangedPaths, dictModTimes
-        ):
+        )
+        logger.info(
+            "_fnInvalidateStepFiles sUser=%s changed=%s "
+            "bPlotNewer=%s sLastUserUpdate=%s",
+            dictVerification.get("sUser"), listChangedPaths,
+            bPlotNewer,
+            dictVerification.get("sLastUserUpdate"),
+        )
+        if bPlotNewer:
             dictVerification["sUser"] = "untested"
     if dictVerification.get("sPlotStandards") == "passed":
         listPlotFiles = dictStep.get("saPlotFiles", [])
