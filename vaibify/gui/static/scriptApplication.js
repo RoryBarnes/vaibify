@@ -2468,6 +2468,14 @@ const PipeleyenApp = (function () {
         return iHours + "h " + iMinutes + "m";
     }
 
+    function fiParseUtcTimestamp(sTimestamp) {
+        if (!sTimestamp) return 0;
+        var sClean = sTimestamp.replace(" UTC", "").trim();
+        var dtParsed = new Date(sClean + "Z");
+        if (isNaN(dtParsed.getTime())) return 0;
+        return Math.floor(dtParsed.getTime() / 1000);
+    }
+
     function fsFormatUtcTimestamp() {
         var d = new Date();
         var sPad = function (i) { return String(i).padStart(2, "0"); };
@@ -6181,6 +6189,7 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxMtimeByStep) {
             dictOutputMtimes = dictStatus.dictMaxMtimeByStep;
         }
+        fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);
@@ -6191,6 +6200,29 @@ const PipeleyenApp = (function () {
         }
         if (dictStatus.dictTestFileChanges) {
             fnNotifyTestFileChanges(dictStatus.dictTestFileChanges);
+        }
+    }
+
+    function fnResetStaleUserVerifications() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return;
+        var bChanged = false;
+        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            var dictStep = dictWorkflow.listSteps[i];
+            var dictVerify = (dictStep.dictVerification || {});
+            if (dictVerify.sUser !== "passed") continue;
+            var sMaxMtime = dictOutputMtimes[String(i)];
+            if (!sMaxMtime) continue;
+            var iOutputEpoch = parseInt(sMaxMtime, 10);
+            var iUserEpoch = fiParseUtcTimestamp(
+                dictVerify.sLastUserUpdate);
+            if (iUserEpoch > 0 && iOutputEpoch > iUserEpoch) {
+                dictVerify.sUser = "untested";
+                dictStep.dictVerification = dictVerify;
+                bChanged = true;
+            }
+        }
+        if (bChanged) {
+            fnRenderStepList();
         }
     }
 

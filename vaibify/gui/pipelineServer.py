@@ -2268,14 +2268,19 @@ def _fbPlotNewerThanUserVerification(dictStep, listChangedPaths,
 
 
 def _fiParseUtcTimestamp(sTimestamp):
-    """Parse 'YYYY-MM-DD HH:MM:SS UTC' to Unix epoch seconds."""
+    """Parse 'YYYY-MM-DD HH:MM[:SS] UTC' to Unix epoch seconds."""
     from datetime import datetime, timezone
     try:
         sClean = sTimestamp.replace(" UTC", "").strip()
-        dtParsed = datetime.strptime(sClean, "%Y-%m-%d %H:%M:%S")
-        dtUtc = dtParsed.replace(tzinfo=timezone.utc)
-        return int(dtUtc.timestamp())
-    except (ValueError, AttributeError):
+        for sFmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                dtParsed = datetime.strptime(sClean, sFmt)
+                dtUtc = dtParsed.replace(tzinfo=timezone.utc)
+                return int(dtUtc.timestamp())
+            except ValueError:
+                continue
+        return None
+    except AttributeError:
         return None
 
 
@@ -2318,7 +2323,8 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
         iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
         if iUserEpoch is None:
             continue
-        listPlotPaths = _flistResolvePlotPaths(dictStep, dictVars)
+        listPlotTuples = _flistResolvePlotPaths(dictStep, dictVars)
+        listPlotPaths = [tEntry[0] for tEntry in listPlotTuples]
         bStale = _fbAnyMtimeNewerThan(
             listPlotPaths, dictModTimes, iUserEpoch)
         logger.info(
@@ -2332,19 +2338,6 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
             dictStep["dictVerification"] = dictVerification
             bChanged = True
     return bChanged
-
-
-def _flistResolvePlotPaths(dictStep, dictVars):
-    """Return resolved paths for a step's plot files only."""
-    from .workflowManager import fsResolveVariables
-    sStepDir = dictStep.get("sDirectory", "")
-    listPaths = []
-    for sFile in dictStep.get("saPlotFiles", []):
-        sResolved = fsResolveVariables(sFile, dictVars)
-        if not sResolved.startswith("/"):
-            sResolved = posixpath.join(sStepDir, sResolved)
-        listPaths.append(sResolved)
-    return listPaths
 
 
 def _fnInvalidateStepFiles(dictStep, listChangedPaths,
