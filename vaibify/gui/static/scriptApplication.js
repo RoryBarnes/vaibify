@@ -6204,29 +6204,12 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxPlotMtimeByStep) {
             dictPlotMtimes = dictStatus.dictMaxPlotMtimeByStep;
         }
-        var sBefore1 = dictWorkflow && dictWorkflow.listSteps[1]
-            ? dictWorkflow.listSteps[1].dictVerification.sUser
-            : "?";
         fnResetStaleUserVerifications();
-        var sAfterStale1 = dictWorkflow && dictWorkflow.listSteps[1]
-            ? dictWorkflow.listSteps[1].dictVerification.sUser
-            : "?";
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);
         }
-        var sAfterInv1 = dictWorkflow && dictWorkflow.listSteps[1]
-            ? dictWorkflow.listSteps[1].dictVerification.sUser
-            : "?";
-        if (sBefore1 !== sAfterStale1 ||
-            sAfterStale1 !== sAfterInv1) {
-            console.log(
-                "[POLL] step1 sUser: before=" + sBefore1 +
-                " afterStale=" + sAfterStale1 +
-                " afterInvalidate=" + sAfterInv1 +
-                " invKeys=" + (dictInv ? Object.keys(dictInv) : "none")
-            );
-        }
+        fnUpdateDepsTimestamps();
         fnUpdateScriptStatus(dictStatus.dictScriptStatus);
         if (dictStatus.dictTestMarkers) {
             fnApplyTestMarkers(dictStatus.dictTestMarkers);
@@ -6272,6 +6255,25 @@ const PipeleyenApp = (function () {
             );
         }
         return bResult;
+    }
+
+    function fnUpdateDepsTimestamps() {
+        if (!dictWorkflow || !dictWorkflow.listSteps) return;
+        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+            var listDeps = flistGetStepDependencies(i);
+            if (listDeps.length === 0) continue;
+            var sDepsState = fsComputeDepsState(i);
+            var dictStep = dictWorkflow.listSteps[i];
+            var dictVerify = dictStep.dictVerification || {};
+            var sOld = dictVerify.sLastDepsCheck || "";
+            if (sDepsState === "passed" && !sOld) {
+                dictVerify.sLastDepsCheck = fsFormatUtcTimestamp();
+                dictStep.dictVerification = dictVerify;
+            } else if (sDepsState !== "passed" && sOld) {
+                dictVerify.sLastDepsCheck = "";
+                dictStep.dictVerification = dictVerify;
+            }
+        }
     }
 
     function fnDetectOutputFileChanges(dictNewMods) {
