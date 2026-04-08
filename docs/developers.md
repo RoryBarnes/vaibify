@@ -72,13 +72,29 @@ of OS and Python version.
 
 ```
 vaibify/
-  cli/              Command-line interface (Click)
-  config/           Configuration dataclasses and parsers
-  docker/           Container lifecycle management
-  gui/              FastAPI web application and pipeline runner
-  install/          Setup wizard and shell installer
-  reproducibility/  Zenodo, Overleaf, and LaTeX integration
-templates/          Project templates (sandbox, workflow)
-tests/              Pytest test suite
-docs/               Sphinx documentation (this site)
+  cli/                Command-line interface (Click)
+  config/             Configuration dataclasses and parsers
+  docker/             Container lifecycle management
+  gui/                FastAPI web application and pipeline runner
+    routes/           12 route modules (stepRoutes, fileRoutes, etc.)
+    static/           24 JavaScript IIFE modules + CSS + HTML
+    pipelineServer.py App factory, shared utilities, WebSocket dispatch
+    pipelineRunner.py Pipeline step execution orchestrator
+    pipelineUtils.py  Shared leaf utilities (fsShellQuote, emitters)
+    workflowManager.py Workflow CRUD, variable resolution, dependency graph
+    fileStatusManager.py File polling, mtime tracking, step invalidation
+    testGenerator.py  Test generation orchestrator
+    dataLoaders.py    Data format dispatch table (50 extensions)
+    syncDispatcher.py Sync operations (GitHub, Overleaf, Zenodo)
+    ...               See CLAUDE.md at repo root for the full module map
+  install/            Setup wizard and shell installer
+  reproducibility/    Zenodo, Overleaf, and LaTeX integration
+templates/            Project templates (sandbox, workflow)
+tests/                Pytest test suite (2,200+ tests)
+docs/                 Sphinx documentation (this site)
+CLAUDE.md             Architecture guide with module map and data flows
 ```
+
+For a detailed architecture overview including module dependency graphs,
+state management patterns, and data flow diagrams, see `CLAUDE.md` at
+the repository root.
