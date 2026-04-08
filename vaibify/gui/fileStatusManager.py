@@ -38,8 +38,15 @@ State Transitions
 import logging
 import posixpath
 
+__all__ = [
+    "fdictCollectOutputPathsByStep",
+]
+
+from . import pipelineState
 from . import workflowManager
-from .pipelineRunner import fsShellQuote
+from .commandUtilities import flistExtractScripts
+from .fileIntegrity import _fsNormalizePath
+from .pipelineUtils import fsShellQuote
 
 logger = logging.getLogger("vaibify")
 
@@ -103,12 +110,12 @@ def fdictCollectOutputPathsByStep(dictWorkflow, dictVars=None):
 
 def _flistResolveStepPaths(dictStep, dictGlobalVars):
     """Return resolved output paths for a single step."""
-    from .workflowManager import fsResolveVariables
     sStepDir = dictStep.get("sDirectory", "")
     listPaths = []
     for sFile in (dictStep.get("saDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
-        sResolved = fsResolveVariables(sFile, dictGlobalVars)
+        sResolved = workflowManager.fsResolveVariables(
+            sFile, dictGlobalVars)
         if not sResolved.startswith("/"):
             sResolved = posixpath.join(sStepDir, sResolved)
         listPaths.append(sResolved)
@@ -126,11 +133,10 @@ def _flistCollectOutputPaths(dictWorkflow, dictVars=None):
 
 def _flistResolvePlotPaths(dictStep, dictVars):
     """Return list of (resolved_path, basename) for step plot files."""
-    from .workflowManager import fsResolveVariables
     sStepDir = dictStep.get("sDirectory", "")
     listResult = []
     for sFile in dictStep.get("saPlotFiles", []):
-        sResolved = fsResolveVariables(sFile, dictVars)
+        sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
         if not sResolved.startswith("/"):
             sResolved = posixpath.join(sStepDir, sResolved)
         sBasename = posixpath.basename(sResolved)
@@ -140,8 +146,8 @@ def _flistResolvePlotPaths(dictStep, dictVars):
 
 def _fbPipelineIsRunning(dictCtx, sContainerId):
     """Return True if a pipeline is currently running in container."""
-    from .pipelineState import fdictReadState
-    dictState = fdictReadState(dictCtx["docker"], sContainerId)
+    dictState = pipelineState.fdictReadState(
+        dictCtx["docker"], sContainerId)
     if dictState is None:
         return False
     return dictState.get("bRunning", False)
@@ -363,8 +369,6 @@ def _fnInvalidateDownstreamStep(dictStep):
 
 def _fbStepScriptsModified(dictStep, dictCurrentHashes):
     """Return True if any script hash differs from stored hashes."""
-    from .fileIntegrity import _fsNormalizePath
-    from .commandUtilities import flistExtractScripts
     dictStoredHashes = dictStep.get(
         "dictRunStats", {}
     ).get("dictInputHashes", {})

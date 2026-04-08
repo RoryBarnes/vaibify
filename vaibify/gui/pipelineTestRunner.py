@@ -3,11 +3,20 @@
 import posixpath
 from datetime import datetime, timezone
 
+from . import workflowManager
+from .pipelineUtils import (
+    fsComputeStepLabel,
+    _fnEmitBanner,
+    _fnEmitCompletion,
+    _fnEmitStepResult,
+    _fdictBuildWorkflowVars,
+    _fnRecordRunStats,
+)
+
 
 def _flistResolveTestCommands(dictStep):
     """Return test commands from structured tests or legacy list."""
-    from .workflowManager import flistResolveTestCommands
-    return flistResolveTestCommands(dictStep)
+    return workflowManager.flistResolveTestCommands(dictStep)
 
 
 async def _fiRunTestCommands(
@@ -67,7 +76,7 @@ async def _fdictRunOneCategoryCommands(
 ):
     """Run commands for one test category, return result dict."""
     from .pipelineLogger import ffBuildLoggingCallback
-    from .pipelineRunner import _ftRunCommandList
+    from .pipelineRunner import _ftRunCommandList  # noqa: deferred to avoid cycle
 
     listLog = []
     fnLog = ffBuildLoggingCallback(fnStatusCallback, listLog)
@@ -145,9 +154,7 @@ async def _fnWriteTestLog(
     connectionDocker, sContainerId, iStepNumber, listLogLines,
 ):
     """Write test output to a separate log file."""
-    from . import workflowManager
     from .pipelineLogger import fnWriteLogToContainer
-
     sLogsDir = posixpath.join(
         workflowManager.DEFAULT_SEARCH_ROOT,
         workflowManager.VAIBIFY_LOGS_DIR,
@@ -165,11 +172,7 @@ async def fnRunAllTests(
     dictWorkflow=None,
 ):
     """Run unit tests for all enabled steps."""
-    from .pipelineRunner import (
-        _fdictBuildWorkflowVars,
-        _fdictLoadWorkflow,
-        _fnEmitCompletion,
-    )
+    from .pipelineRunner import _fdictLoadWorkflow
 
     if dictWorkflow is None:
         dictWorkflow, _sPath = await _fdictLoadWorkflow(
@@ -216,8 +219,6 @@ async def _fnEmitStepBanner(
     fnStatusCallback, iStepNumber, dictStep, dictWorkflow,
 ):
     """Emit banner and stepStarted event for a step."""
-    from .pipelineRunner import _fnEmitBanner, fsComputeStepLabel
-
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
     sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
     await _fnEmitBanner(
@@ -235,7 +236,7 @@ async def _fiRunStepTests(
     dictWorkflow,
 ):
     """Run tests for a single step and emit results."""
-    from .pipelineRunner import _fnEmitStepResult, _fnRecordInputHashes
+    from .pipelineRunner import _fnRecordInputHashes
 
     sStepDirectory = dictStep.get("sDirectory", "")
     await _fnEmitStepBanner(

@@ -1,12 +1,15 @@
 """Preflight validation for pipeline steps."""
 
+from . import workflowManager
+from .commandUtilities import fsExtractScriptPath
+from .pipelineUtils import fsShellQuote
+
 
 def _fnValidateStepDirectory(
     connectionDocker, sContainerId, sStepDirectory,
     iStepNumber, sStepName, listErrors,
 ):
     """Check that a step's working directory exists and is writable."""
-    from .pipelineRunner import fsShellQuote
 
     sQuoted = fsShellQuote(sStepDirectory)
     sCommand = (
@@ -38,8 +41,6 @@ def _fnValidateStepCommands(
     sStepDirectory, dictVariables, iStepNumber, listErrors,
 ):
     """Check that command scripts exist in the step directory."""
-    from . import workflowManager
-
     for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands"):
         for sCommand in dictStep.get(sKey, []):
             sResolved = workflowManager.fsResolveCommand(
@@ -57,8 +58,6 @@ def _fnValidateSingleCommand(
     sStepDirectory, iStepNumber, sStepName, listErrors,
 ):
     """Check that the script in a command exists."""
-    from .pipelineRunner import fsShellQuote
-
     sScript = _fsExtractScriptPath(sResolved)
     if not sScript:
         return
@@ -80,7 +79,6 @@ def _fnValidateSingleCommand(
 
 def _fsExtractScriptPath(sCommand):
     """Extract the script/executable path from a command string."""
-    from .commandUtilities import fsExtractScriptPath
     sScript = fsExtractScriptPath(sCommand)
     if sScript:
         return sScript
@@ -98,7 +96,6 @@ async def _fiReportPreflightFailure(
 ):
     """Emit preflight errors, write log, and return exit code 1."""
     from .pipelineLogger import fnWriteLogToContainer
-
     await fnLogging({"sType": "started", "sCommand": sAction})
     for sError in listErrors:
         await fnLogging({"sType": "output", "sLine": f"ERROR: {sError}"})

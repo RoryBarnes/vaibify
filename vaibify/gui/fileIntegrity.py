@@ -2,6 +2,15 @@
 
 import posixpath
 
+from .commandUtilities import flistExtractScripts as _flistCommandScripts
+
+__all__ = [
+    "fbStepInputsUnchanged",
+    "fdictComputeAllScriptHashes",
+    "fdictComputeInputHashes",
+    "flistExtractAllScriptPaths",
+]
+
 
 def _fsHashFileCommand(sPath):
     """Build a shell-safe hash command for a file path."""
@@ -22,12 +31,11 @@ def _fsNormalizePath(sDirectory, sScript):
 
 def _flistExtractScripts(dictStep):
     """Extract script paths from data and plot commands."""
-    from .commandUtilities import flistExtractScripts
     listAll = (
         dictStep.get("saDataCommands", [])
         + dictStep.get("saPlotCommands", [])
     )
-    return flistExtractScripts(listAll)
+    return _flistCommandScripts(listAll)
 
 
 def _fdictParseHashOutput(sOutput):
@@ -45,13 +53,12 @@ def _fdictParseHashOutput(sOutput):
 
 def flistExtractAllScriptPaths(dictWorkflow):
     """Extract all unique script paths from all steps."""
-    from .commandUtilities import flistExtractScripts
     listAllPaths = []
     setAdded = set()
     for dictStep in dictWorkflow.get("listSteps", []):
         sDirectory = dictStep.get("sDirectory", "")
         for sKey in ("saDataCommands", "saPlotCommands"):
-            for sScript in flistExtractScripts(
+            for sScript in _flistCommandScripts(
                 dictStep.get(sKey, [])
             ):
                 sPath = _fsNormalizePath(sDirectory, sScript)

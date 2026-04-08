@@ -19,6 +19,35 @@ from typing import List, Optional
 
 WORKSPACE_ROOT = "/workspace"
 
+__all__ = [
+    "fCreateApp",
+    "fdictBuildContext",
+    "fdictHandleConnect",
+    "fnDispatchAction",
+    "fnHandlePipelineWs",
+    "fnPipelineMessageLoop",
+    "fnRejectNotConnected",
+    "fnRejectTerminalStart",
+    "fnRunTerminalSession",
+    "fnTerminalInputLoop",
+    "fnTerminalReadLoop",
+    "fnValidatePathWithinRoot",
+    "fbValidateWebSocketOrigin",
+    "fdictExtractSettings",
+    "fdictFilterNonNone",
+    "fdictRequireWorkflow",
+    "fdictStepFromRequest",
+    "fsSanitizeExceptionForClient",
+    "fsComputeStaticCacheVersion",
+    "fsDetectDockerRuntime",
+    "fsRequireWorkflowPath",
+    "fsResolveFigurePath",
+    "fsResolveWorkflowPath",
+    "fdictResolveVariables",
+    "flistQueryDirectory",
+    "fbaFetchFigureWithFallback",
+]
+
 from . import workflowManager
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
@@ -27,8 +56,8 @@ from .pipelineRunner import (
     fnRunSelectedSteps,
     fnRunAllTests,
     fnVerifyOnly,
-    fsShellQuote,
 )
+from .pipelineUtils import fsShellQuote
 from .resourceMonitor import fdictGetContainerStats
 from .terminalSession import TerminalSession
 

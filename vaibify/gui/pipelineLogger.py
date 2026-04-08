@@ -7,6 +7,10 @@ import posixpath
 import re
 from datetime import datetime, timezone
 
+from . import pipelineState
+from . import workflowManager
+from .pipelineUtils import fsShellQuote
+
 
 I_MAX_LOG_LINES = 10000
 
@@ -53,9 +57,6 @@ async def fnWriteLogToContainer(
 
 async def _fnEnsureLogsDirectory(connectionDocker, sContainerId):
     """Create .vaibify/logs/ directory if it does not exist."""
-    from . import workflowManager
-    from .pipelineRunner import fsShellQuote
-
     sLogsDir = posixpath.join(
         workflowManager.DEFAULT_SEARCH_ROOT,
         workflowManager.VAIBIFY_LOGS_DIR,
@@ -90,7 +91,6 @@ def _fnUpdatePipelineState(
     connectionDocker, sContainerId, dictState, dictEvent,
 ):
     """Update pipeline state based on a step event."""
-    from . import pipelineState
     sEventType = dictEvent.get("sType", "")
     if sEventType == "output":
         pipelineState.fnAppendOutput(
@@ -134,7 +134,6 @@ async def _fnFinalizeRun(
     fnStatusCallback,
 ):
     """Write final state, log, and emit completion event."""
-    from . import pipelineState
     pipelineState.fnUpdateState(
         connectionDocker, sContainerId, dictState,
         pipelineState.fdictBuildCompletedState(iResult),

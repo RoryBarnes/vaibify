@@ -1,6 +1,5 @@
 """Generate pytest unit tests for workflow steps via LLM."""
 
-import hashlib
 import json
 import logging
 import os
@@ -9,396 +8,123 @@ import re
 
 logger = logging.getLogger("vaibify")
 
+# ---------------------------------------------------------------------------
+# Re-exports from leaf modules -- every name that was previously defined here
+# remains importable from vaibify.gui.testGenerator.
+# ---------------------------------------------------------------------------
 
-def _fsComputeTemplateHash(sTemplate):
-    """Strip any existing hash line, then SHA-256 the remainder."""
-    sStripped = re.sub(
-        r"^# vaibify-template-hash: [0-9a-f]+\n", "",
-        sTemplate, count=1,
-    )
-    sDigest = hashlib.sha256(sStripped.encode("utf-8")).hexdigest()
-    return sDigest[:16]
+from .testParser import (  # noqa: F401
+    fsParseGeneratedCode,
+    fbValidatePythonSyntax,
+    fsRepairMissingImports,
+    fdictParseCombinedOutput,
+    fdictParseQuantitativeJson,
+)
 
+from .dataPreview import (  # noqa: F401
+    fsPreviewDataFile,
+    _fsResolvePath,
+    _fsPreviewNpy,
+    _fsPreviewHdf5,
+    _fsPreviewText,
+)
 
-def _fsEmbedTemplateHash(sTemplate):
-    """Prepend a template-hash comment as the second line."""
-    sHash = _fsComputeTemplateHash(sTemplate)
-    listLines = sTemplate.split("\n", 1)
-    sFirstLine = listLines[0]
-    sRest = listLines[1] if len(listLines) > 1 else ""
-    return (
-        sFirstLine + "\n"
-        + f"# vaibify-template-hash: {sHash}\n"
-        + sRest
-    )
+from .conftestManager import (  # noqa: F401
+    fsConftestPath,
+    fsConftestContent,
+    fnWriteConftestMarker,
+    _CONFTEST_MARKER_TEMPLATE,
+    fnEnsureTestsDirectory,
+)
 
+from .llmInvoker import (  # noqa: F401
+    _PROMPT_TEMPLATE,
+    _CLAUDE_MD_TEST_SECTION,
+    _CLAUDE_MD_MARKER,
+    _CLAUDE_MD_VERSION,
+    _CLAUDE_MD_VERSION_TAG,
+    fnEnsureClaudeMdInstructions,
+    _fsRemoveOldTestSection,
+    fbContainerHasClaude,
+    fsReadFileFromContainer,
+    fsBuildPrompt,
+    ftResultGenerateViaClaude,
+    fsGenerateViaApi,
+    _fbOutputLooksValid,
+    _fnRaiseClaudeError,
+    _fsInvokeLlm,
+    _fsBuildCategoryPrompt,
+    _fsBuildQuantitativePrompt,
+)
 
-def _fbFileMatchesTemplate(
-    connectionDocker, sContainerId, sFilePath, sTemplate,
-):
-    """Return True if the file is safe to overwrite."""
-    sExisting = fsReadFileFromContainer(
-        connectionDocker, sContainerId, sFilePath,
-    )
-    if not sExisting or not isinstance(sExisting, str):
-        return True
-    sExpectedHash = _fsComputeTemplateHash(sTemplate)
-    matchHash = re.search(
-        r"^# vaibify-template-hash: ([0-9a-f]+)",
-        sExisting, re.MULTILINE,
-    )
-    if matchHash:
-        return matchHash.group(1) == sExpectedHash
-    sEmbedded = _fsEmbedTemplateHash(sTemplate)
-    return sExisting.strip() == sEmbedded.strip()
+from .templateManager import (  # noqa: F401
+    _fsComputeTemplateHash,
+    _fsEmbedTemplateHash,
+    _fbFileMatchesTemplate,
+    fsQuantitativeTemplateHash,
+    fsIntegrityTemplateHash,
+    fsQualitativeTemplateHash,
+    _QUANTITATIVE_TEMPLATE_HEADER,
+    _QUANTITATIVE_TEMPLATE_FOOTER,
+    fsBuildQuantitativeTestCode,
+    _INTEGRITY_TEST_TEMPLATE,
+    fsBuildIntegrityTestCode,
+    _QUALITATIVE_TEST_TEMPLATE,
+    fsBuildQualitativeTestCode,
+)
 
-
-def fsQuantitativeTemplateHash():
-    """Return the current quantitative template hash."""
-    return _fsComputeTemplateHash(fsBuildQuantitativeTestCode())
-
-
-def fsIntegrityTemplateHash():
-    """Return the current integrity template hash."""
-    return _fsComputeTemplateHash(fsBuildIntegrityTestCode())
-
-
-def fsQualitativeTemplateHash():
-    """Return the current qualitative template hash."""
-    return _fsComputeTemplateHash(fsBuildQualitativeTestCode())
-
-
-_PROMPT_TEMPLATE = """Generate a pytest file that validates scientific data analysis outputs.
-
-Step directory: {sDirectory}
-Data analysis commands:
-{sDataCommands}
-
-Expected output files:
-{sDataFiles}
-
-Source code of the analysis scripts:
-{sScriptContents}
-
-Previews of existing output data:
-{sDataPreviews}
-
-Generate tests that validate:
-1. All expected output files exist and are non-empty
-2. Data formats are correct (loadable, correct shape/columns)
-3. Numerical values are within physically reasonable ranges
-4. No NaN or Inf values in numerical outputs
-
-Return ONLY the Python code for a single pytest file. No explanations."""
+# ---------------------------------------------------------------------------
+# Path helpers (remain in orchestrator)
+# ---------------------------------------------------------------------------
 
 
-_CLAUDE_MD_TEST_SECTION = """
-# Vaibify Test Generation Instructions
-
-## CRITICAL: Protected Files
-
-The following files are monitored by the vaibify dashboard.
-Do NOT modify them without explicit user approval:
-- tests/conftest.py
-- tests/test_quantitative.py
-- tests/test_integrity.py
-- tests/test_qualitative.py
-- .vaibify/generate_standards.py
-
-If you need to modify these files to handle a new data format,
-STOP and explain to the user what change is needed and why
-before making any edits.
-
-When asked to generate tests for a workflow step, follow these instructions.
-Each step has a directory, data commands, output files, and analysis scripts.
-Vaibify uses three categories of tests stored in a `tests/` subdirectory.
-
-## CRITICAL OUTPUT RULES
-
-When generating all three test categories in one response, use this
-exact format with three labeled fenced code blocks:
-
-```INTEGRITY
-import os
-import pytest
-# ... integrity test code ...
-```
-
-```QUALITATIVE
-import pytest
-# ... qualitative test code ...
-```
-
-```QUANTITATIVE
-{
-    "listStandards": [ ... ]
-}
-```
-
-- No prose, no markdown bullets, no explanations between blocks.
-- Every Python block must begin with all necessary imports.
-  Always include `import os` and any other modules used.
-- Do NOT describe what you would test. Write the actual pytest code.
-- Python code must compile: `ast.parse(code)` must succeed.
-- If you are unsure about file formats, write a test that loads the
-  file and asserts it is not empty, rather than skipping it.
-
-## Integrity Tests (test_integrity.py)
-
-Generate a pytest file that validates structural integrity of data files:
-1. All expected output files exist and are non-empty
-2. Data files are loadable in their expected format (CSV, NPY, HDF5, etc.)
-3. Data shapes and dimensions match what the analysis scripts produce
-4. No NaN or Inf values in numerical columns or arrays
-5. Column names or array keys match what the scripts produce
-
-Do NOT test specific numerical values or string content.
-Return ONLY the Python code for a single pytest file. No explanations.
-
-## Qualitative Tests (test_qualitative.py)
-
-Generate a pytest file that validates categorical and string outputs:
-1. String or categorical values in output files (column headers, model names, labels)
-2. Enum-like values (kernel types, method names, planet identifiers)
-3. Boolean flags or status indicators
-4. Any non-numeric metadata embedded in the outputs
-
-For each categorical value found, assert it equals the exact expected string.
-If no categorical outputs exist, generate a minimal test file with a single
-test function named test_no_qualitative_outputs that asserts True.
-
-IMPORTANT rules for qualitative tests:
-- Only assert the PRESENCE of expected values. Never assert the ABSENCE
-  of unexpected keys, columns, or values. Data files may contain fields
-  beyond what the analysis script produces.
-- Do not test exact key sets, column counts, or row counts — those
-  belong in integrity tests.
-Return ONLY the Python code for a single pytest file. No explanations.
-
-## Quantitative Standards (quantitative_standards.json)
-
-Extract numerical benchmark values into a JSON file (not Python code).
-For each significant numerical result visible in the output data:
-1. Identify the parameter with a descriptive camelCase name prefixed with "f"
-2. Record the value at FULL double precision — use repr() or f"{value:.17g}"
-   to capture all 17 significant digits. Never round or truncate
-3. Identify the physical unit (e.g., "K", "W/m^2", "kg", or "" if dimensionless)
-4. Specify the access path. The supported formats by file type are:
-
-   **CSV** (`.csv`):
-   - "column:ColName,index:N" (N=-1 for last row)
-
-   **Numpy** (`.npy`):
-   - "index:N" for 1D arrays
-   - "index:R,C" for 2D arrays
-   - "index:mean", "index:min", "index:max" for aggregates
-
-   **JSON** (`.json`):
-   - "key:path.to.field" (dot-separated nested keys)
-   - "key:path.to.array,index:N" for arrays (N=-1 for last)
-
-   **HDF5** (`.h5`, `.hdf5`):
-   - "dataset:/group/datasetName,index:N"
-   - "dataset:/group/datasetName,index:R,C"
-   - "dataset:/group/datasetName,index:mean" (also min, max)
-
-   **Whitespace-delimited text** (`.dat`, `.txt`):
-   - "column:ColName,index:N" (first row is the header)
-
-5. Optionally set "sFormat" to override extension-based format detection.
-   Valid values: "csv", "npy", "npz", "json", "jsonl", "hdf5",
-   "whitespace", "keyvalue", "excel", "fits", "matlab", "parquet",
-   "image", "fasta", "fastq", "vcf", "bed", "gff", "sam", "bam",
-   "fortran", "spss", "stata", "sas", "rdata", "votable", "ipac",
-   "pcap", "vtk", "cgns", "safetensors", "tfrecord", "syslog", "cef",
-   "fixedwidth", "multitable".
-   Omit this field unless the extension is ambiguous.
-6. Optionally override the default relative tolerance with "fRtol".
-
-IMPORTANT: Only use access path formats listed above. Do not invent
-new formats or combine aggregates with indices.
-
-Return ONLY a JSON object (no markdown fences, no explanation) with this structure:
-```json
-{
-    "listStandards": [
-        {
-            "sName": "fParameterName",
-            "sDataFile": "filename.csv",
-            "sAccessPath": "column:ColName,index:-1",
-            "fValue": 1.234567890123e+02,
-            "sUnit": "K"
-        }
-    ]
-}
-```
-
-Focus on physically meaningful quantities.
-Include initial and final state values where available.
-
-## Test Result Tracking
-
-Every `tests/` directory must contain the vaibify `conftest.py` marker
-plugin. This plugin writes a JSON result marker after each pytest run so
-the dashboard can detect test outcomes automatically. If creating a new
-`tests/` directory, copy the marker plugin:
-`cp /usr/share/vaibify/conftest_marker.py tests/conftest.py`
-Do NOT modify or delete conftest.py — vaibify owns this file.
-
-## Test Infrastructure Contract (DO NOT VIOLATE)
-
-The dashboard parses test results by matching specific patterns.
-If you modify test files WITH USER APPROVAL, you MUST preserve:
-
-### Required function names:
-- `test_quantitative_benchmark` in test_quantitative.py
-- Parametrized with `dictStandard` from a `_LIST_STANDARDS` list
-
-### Required JSON schema for quantitative_standards.json:
-{"listStandards": [{"sName": str, "sDataFile": str, "sAccessPath": str, "fValue": float, "sUnit": str}], "fDefaultRtol": float}
-
-### Never modify or delete:
-- conftest.py (vaibify's test result marker plugin)
-- The `# vaibify-template-hash:` comment line
-
-### Where to add custom data format loaders:
-- Add new `_fLoad*Value` functions in test_quantitative.py
-- Register them in the format dispatch dict
-- Do NOT rename `test_quantitative_benchmark` or change its parametrize pattern
-
-### Persistence
-After modifying any test infrastructure file with user approval,
-commit the changes so they survive container recreation:
-git add tests/test_*.py tests/*_standards.json
-git commit -m "Extend test infrastructure for [format/edge case]"
-"""
+def fsTestFilePath(sDirectory, iStepIndex):
+    """Return the test file path for a given step."""
+    sFilename = f"test_step{iStepIndex + 1:02d}.py"
+    return posixpath.join(sDirectory, sFilename)
 
 
-_CLAUDE_MD_MARKER = "# Vaibify Test Generation Instructions"
-_CLAUDE_MD_VERSION = "v10"
-_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v10 -->"
+def fsIntegrityTestPath(sStepDirectory):
+    """Return the integrity test file path for a step."""
+    return posixpath.join(sStepDirectory, "tests", "test_integrity.py")
 
 
-def fnEnsureClaudeMdInstructions(
-    connectionDocker, sContainerId, sWorkspaceRoot="/workspace",
-):
-    """Write or update test generation instructions in CLAUDE.md."""
-    sClaudeMdPath = posixpath.join(sWorkspaceRoot, "CLAUDE.md")
-    sExisting = fsReadFileFromContainer(
-        connectionDocker, sContainerId, sClaudeMdPath,
-    )
-    if _CLAUDE_MD_VERSION_TAG in sExisting:
-        return
-    sWithoutOld = _fsRemoveOldTestSection(sExisting)
-    sContent = (
-        sWithoutOld.rstrip() + "\n"
-        + _CLAUDE_MD_VERSION_TAG + "\n"
-        + _CLAUDE_MD_TEST_SECTION
-    )
-    connectionDocker.fnWriteFile(
-        sContainerId, sClaudeMdPath, sContent.encode("utf-8"),
+def fsQualitativeTestPath(sStepDirectory):
+    """Return the qualitative test file path for a step."""
+    return posixpath.join(sStepDirectory, "tests", "test_qualitative.py")
+
+
+def fsQuantitativeTestPath(sStepDirectory):
+    """Return the quantitative test file path for a step."""
+    return posixpath.join(
+        sStepDirectory, "tests", "test_quantitative.py",
     )
 
 
-def _fsRemoveOldTestSection(sContent):
-    """Strip any prior vaibify test instruction block from CLAUDE.md."""
-    iStart = sContent.find(_CLAUDE_MD_MARKER)
-    if iStart == -1:
-        return sContent
-    return sContent[:iStart].rstrip()
-
-
-def fbContainerHasClaude(connectionDocker, sContainerId):
-    """Return True if the claude CLI is available in the container."""
-    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, "which claude"
+def fsQuantitativeStandardsPath(sStepDirectory):
+    """Return the quantitative standards JSON path for a step."""
+    return posixpath.join(
+        sStepDirectory, "tests", "quantitative_standards.json",
     )
-    return iExitCode == 0
 
 
-def fsReadFileFromContainer(connectionDocker, sContainerId, sFilePath):
-    """Read a text file from the container, returning empty on failure."""
-    try:
-        baContent = connectionDocker.fbaFetchFile(
-            sContainerId, sFilePath
-        )
-        return baContent.decode("utf-8", errors="replace")
-    except Exception:
-        return ""
-
-
-def fsPreviewDataFile(
-    connectionDocker, sContainerId, sFilePath, sDirectory,
-):
-    """Return a short preview of a data file's contents or structure."""
-    sAbsPath = _fsResolvePath(sFilePath, sDirectory)
-    sExtension = posixpath.splitext(sAbsPath)[1].lower()
-    if sExtension == ".npy":
-        return _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath)
-    if sExtension in (".h5", ".hdf5"):
-        return _fsPreviewHdf5(connectionDocker, sContainerId, sAbsPath)
-    return _fsPreviewText(connectionDocker, sContainerId, sAbsPath)
-
-
-def _fsResolvePath(sFilePath, sDirectory):
-    """Return absolute path, joining with directory if relative."""
-    if posixpath.isabs(sFilePath):
-        return sFilePath
-    return posixpath.join(sDirectory, sFilePath)
-
-
-def _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath):
-    """Preview a .npy file with shape, dtype, and summary statistics."""
-    sCommand = (
-        "python3 -c \""
-        "import numpy as np; "
-        "d=np.load(" + repr(sAbsPath) + ",allow_pickle=False); "
-        "print(f'shape={d.shape} dtype={d.dtype}'); "
-        "f=d.flatten(); "
-        "print(f'first={f[0]!r} last={f[-1]!r}'); "
-        "print(f'min={f.min()!r} max={f.max()!r} mean={f.mean()!r}')"
-        "\""
+def fsIntegrityStandardsPath(sStepDirectory):
+    """Return the integrity standards JSON path for a step."""
+    return posixpath.join(
+        sStepDirectory, "tests", "integrity_standards.json",
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return sOutput.strip() if iExitCode == 0 else "(unreadable)"
 
 
-def _fsPreviewHdf5(connectionDocker, sContainerId, sAbsPath):
-    """Preview an HDF5 file's datasets with shape and summary stats."""
-    sCommand = (
-        "python3 -c \""
-        "import h5py, numpy as np; "
-        "f=h5py.File(" + repr(sAbsPath) + ",'r'); "
-        "items=[]; "
-        "f.visititems(lambda n,o: items.append(n) "
-        "if isinstance(o,h5py.Dataset) else None); "
-        "[print(f'dataset:{n} shape={f[n].shape} dtype={f[n].dtype} "
-        "first={np.array(f[n]).flatten()[0]!r} "
-        "last={np.array(f[n]).flatten()[-1]!r}') "
-        "for n in items[:10]]; "
-        "f.close()\""
+def fsQualitativeStandardsPath(sStepDirectory):
+    """Return the qualitative standards JSON path for a step."""
+    return posixpath.join(
+        sStepDirectory, "tests", "qualitative_standards.json",
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return sOutput.strip() if iExitCode == 0 else "(unreadable)"
 
 
-def _fsPreviewText(connectionDocker, sContainerId, sAbsPath):
-    """Preview first and last lines of a text file."""
-    from .pipelineRunner import fsShellQuote
-    sQuoted = fsShellQuote(sAbsPath)
-    sCommand = (
-        f"head -10 {sQuoted} 2>/dev/null;"
-        f" echo '...';"
-        f" tail -3 {sQuoted} 2>/dev/null"
-    )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return sOutput.strip() if iExitCode == 0 else "(unreadable)"
+# ---------------------------------------------------------------------------
+# Context gathering
+# ---------------------------------------------------------------------------
 
 
 def fsBuildStepContext(
@@ -455,278 +181,9 @@ def _fsBuildDataPreviews(
     return "\n".join(listParts) if listParts else "(no data files)"
 
 
-def fsBuildPrompt(sDirectory, dictStep, sScriptContents, sPreviews):
-    """Construct the LLM prompt from the template and context."""
-    sDataCommands = "\n".join(
-        f"  {s}" for s in dictStep.get("saDataCommands", [])
-    )
-    sDataFiles = "\n".join(
-        f"  {s}" for s in dictStep.get("saDataFiles", [])
-    )
-    return _PROMPT_TEMPLATE.format(
-        sDirectory=sDirectory,
-        sDataCommands=sDataCommands or "(none)",
-        sDataFiles=sDataFiles or "(none)",
-        sScriptContents=sScriptContents,
-        sDataPreviews=sPreviews,
-    )
-
-
-def ftResultGenerateViaClaude(
-    connectionDocker, sContainerId, sPrompt, sUser=None,
-):
-    """Run claude --print from /workspace so CLAUDE.md is loaded."""
-    from .pipelineRunner import fsShellQuote
-
-    sCommand = (
-        f"cd /workspace && CLAUDECODE= claude --print"
-        f" {fsShellQuote(sPrompt)}"
-    )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand, sUser=sUser
-    )
-
-
-def fsGenerateViaApi(sPrompt, sApiKey):
-    """Call the Anthropic API directly, return generated text."""
-    try:
-        import anthropic
-    except ImportError:
-        raise RuntimeError(
-            "The 'anthropic' package is not installed. "
-            "Install with: pip install anthropic"
-        )
-    client = anthropic.Anthropic(api_key=sApiKey)
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": sPrompt}],
-    )
-    return message.content[0].text
-
-
-def fsParseGeneratedCode(sRawOutput):
-    """Extract Python code from LLM output, stripping markdown fences."""
-    sStripped = sRawOutput.strip()
-    matchFenced = re.search(
-        r"```\w*\s*\n(.*?)```",
-        sStripped, re.DOTALL,
-    )
-    sCode = matchFenced.group(1).strip() if matchFenced else sStripped
-    sCode = fsRepairMissingImports(sCode)
-    fbValidatePythonSyntax(sCode)
-    return sCode
-
-
-def fbValidatePythonSyntax(sCode):
-    """Raise ValueError if code is not valid Python."""
-    import ast
-    try:
-        ast.parse(sCode)
-    except SyntaxError as error:
-        raise ValueError(
-            f"Generated code has syntax error: {error.msg} "
-            f"(line {error.lineno})"
-        )
-
-
-def fsRepairMissingImports(sCode):
-    """Add missing standard imports detected by compile check."""
-    import ast
-    try:
-        ast.parse(sCode)
-    except SyntaxError:
-        return sCode
-    listNeeded = []
-    for sModule in ("os", "sys", "json", "pathlib", "csv"):
-        if sModule + "." in sCode and f"import {sModule}" not in sCode:
-            listNeeded.append(f"import {sModule}")
-    if not listNeeded:
-        return sCode
-    return "\n".join(listNeeded) + "\n\n" + sCode
-
-
-def fdictParseCombinedOutput(sRawOutput):
-    """Parse a combined LLM response into three labeled sections."""
-    dictSections = {}
-    listLabels = ["INTEGRITY", "QUALITATIVE", "QUANTITATIVE"]
-    for sLabel in listLabels:
-        matchBlock = re.search(
-            r"```" + sLabel + r"\s*\n(.*?)```",
-            sRawOutput, re.DOTALL,
-        )
-        if matchBlock:
-            dictSections[sLabel] = matchBlock.group(1).strip()
-    return dictSections
-
-
-def fsTestFilePath(sDirectory, iStepIndex):
-    """Return the test file path for a given step."""
-    sFilename = f"test_step{iStepIndex + 1:02d}.py"
-    return posixpath.join(sDirectory, sFilename)
-
-
-def fsIntegrityTestPath(sStepDirectory):
-    """Return the integrity test file path for a step."""
-    return posixpath.join(sStepDirectory, "tests", "test_integrity.py")
-
-
-def fsQualitativeTestPath(sStepDirectory):
-    """Return the qualitative test file path for a step."""
-    return posixpath.join(sStepDirectory, "tests", "test_qualitative.py")
-
-
-def fsQuantitativeTestPath(sStepDirectory):
-    """Return the quantitative test file path for a step."""
-    return posixpath.join(sStepDirectory, "tests", "test_quantitative.py")
-
-
-def fsQuantitativeStandardsPath(sStepDirectory):
-    """Return the quantitative standards JSON path for a step."""
-    return posixpath.join(
-        sStepDirectory, "tests", "quantitative_standards.json",
-    )
-
-
-def fsIntegrityStandardsPath(sStepDirectory):
-    """Return the integrity standards JSON path for a step."""
-    return posixpath.join(
-        sStepDirectory, "tests", "integrity_standards.json",
-    )
-
-
-def fsQualitativeStandardsPath(sStepDirectory):
-    """Return the qualitative standards JSON path for a step."""
-    return posixpath.join(
-        sStepDirectory, "tests", "qualitative_standards.json",
-    )
-
-
-def fnEnsureTestsDirectory(connectionDocker, sContainerId, sStepDirectory):
-    """Create the tests subdirectory in the container if missing."""
-    from .pipelineRunner import fsShellQuote
-    sTestsDir = posixpath.join(sStepDirectory, "tests")
-    connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"mkdir -p {fsShellQuote(sTestsDir)}"
-    )
-
-
-def fsConftestPath(sStepDirectory):
-    """Return the conftest.py path for a step's tests directory."""
-    return posixpath.join(sStepDirectory, "tests", "conftest.py")
-
-
-def fsConftestContent():
-    """Return the conftest.py marker plugin source code."""
-    return _CONFTEST_MARKER_TEMPLATE
-
-
-def fnWriteConftestMarker(
-    connectionDocker, sContainerId, sStepDirectory,
-):
-    """Write the conftest.py marker plugin into a step's tests dir."""
-    sPath = fsConftestPath(sStepDirectory)
-    connectionDocker.fnWriteFile(
-        sContainerId, sPath,
-        _CONFTEST_MARKER_TEMPLATE.encode("utf-8"),
-    )
-
-
-_CONFTEST_MARKER_TEMPLATE = '''\
-"""Vaibify test result marker plugin.
-
-Auto-generated by vaibify. Do not remove.
-Writes a JSON result marker after every pytest session so the
-dashboard can detect test outcomes regardless of how pytest was invoked.
-"""
-
-import json
-import os
-import time
-from pathlib import Path
-
-_MARKER_DIR = Path("/workspace/.vaibify/test_markers")
-
-_CATEGORY_MAP = {
-    "test_integrity": "integrity",
-    "test_qualitative": "qualitative",
-    "test_quantitative": "quantitative",
-}
-
-
-def _fsStepDirToMarkerName(sStepDir):
-    """Convert a step directory path to a safe marker filename."""
-    return sStepDir.strip("/").replace("/", "_") + ".json"
-
-
-def _fsGetCategory(sNodeId):
-    """Map a test node ID to a category name."""
-    for sPrefix, sCategory in _CATEGORY_MAP.items():
-        if sPrefix in sNodeId:
-            return sCategory
-    return "other"
-
-
-def _fdictBuildCategoryResults(session):
-    """Tally pass/fail counts per test category from session items."""
-    dictCategories = {}
-    for item in session.items:
-        sCategory = _fsGetCategory(item.nodeid)
-        dictCat = dictCategories.setdefault(
-            sCategory, {"iPassed": 0, "iFailed": 0}
-        )
-        if not hasattr(item, "rep_call") or item.rep_call is None:
-            continue
-        if item.rep_call.passed:
-            dictCat["iPassed"] += 1
-        elif item.rep_call.failed:
-            dictCat["iFailed"] += 1
-    return dictCategories
-
-
-def pytest_sessionfinish(session, exitstatus):
-    """Write a JSON marker after every pytest run."""
-    sStepDir = str(Path(__file__).resolve().parent.parent)
-    dictMarker = {
-        "sDirectory": sStepDir,
-        "iExitStatus": exitstatus,
-        "fTimestamp": time.time(),
-        "iCollected": session.testscollected,
-        "dictCategories": _fdictBuildCategoryResults(session),
-    }
-    _MARKER_DIR.mkdir(parents=True, exist_ok=True)
-    sFilename = _fsStepDirToMarkerName(sStepDir)
-    (_MARKER_DIR / sFilename).write_text(
-        json.dumps(dictMarker, indent=2)
-    )
-
-
-import pytest
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    """Store the call report on the item for sessionfinish access."""
-    outcome = yield
-    if call.when == "call":
-        item.rep_call = outcome.get_result()
-'''
-
-
-def fdictParseQuantitativeJson(sRawOutput):
-    """Extract and parse JSON from LLM output for quantitative standards."""
-    sStripped = sRawOutput.strip()
-    matchFenced = re.search(
-        r"```(?:json)?\s*\n(.*?)```", sStripped, re.DOTALL,
-    )
-    if matchFenced:
-        sStripped = matchFenced.group(1).strip()
-    try:
-        return json.loads(sStripped)
-    except json.JSONDecodeError:
-        matchBrace = re.search(r"\{.*\}", sStripped, re.DOTALL)
-        if matchBrace:
-            return json.loads(matchBrace.group(0))
-        return {"listStandards": []}
+# ---------------------------------------------------------------------------
+# Test file writing helpers
+# ---------------------------------------------------------------------------
 
 
 def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
@@ -753,6 +210,11 @@ def _ftExtractStepInfo(dictWorkflow, iStepIndex):
     return dictStep, dictStep.get("sDirectory", "")
 
 
+# ---------------------------------------------------------------------------
+# Single-step LLM generation
+# ---------------------------------------------------------------------------
+
+
 def fdictGenerateTest(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
@@ -777,436 +239,9 @@ def fdictGenerateTest(
     )
 
 
-def _fbOutputLooksValid(sOutput):
-    """Return True if the output contains plausible LLM-generated content."""
-    sStripped = sOutput.strip()
-    if "```" in sStripped:
-        return True
-    if "def test_" in sStripped:
-        return True
-    if '"listStandards"' in sStripped:
-        return True
-    return False
-
-
-def _fnRaiseClaudeError(iExitCode, sOutput):
-    """Raise RuntimeError with a helpful hint for Claude CLI failures."""
-    sHint = ""
-    sLower = sOutput.lower()
-    if "not logged in" in sLower or "/login" in sLower:
-        sHint = (
-            "\n\nClaude Code is not authenticated. "
-            "Open a terminal and run 'claude' to log in."
-        )
-    raise RuntimeError(
-        f"Claude CLI failed (exit {iExitCode}): "
-        f"{sOutput.strip()}{sHint}"
-    )
-
-
-def _fsInvokeLlm(
-    connectionDocker, sContainerId, sPrompt, bUseApi, sApiKey,
-    sUser=None,
-):
-    """Call the appropriate LLM provider and return raw text."""
-    if bUseApi:
-        return fsGenerateViaApi(sPrompt, sApiKey)
-    iExitCode, sOutput = ftResultGenerateViaClaude(
-        connectionDocker, sContainerId, sPrompt, sUser=sUser
-    )
-    if iExitCode != 0 and _fbOutputLooksValid(sOutput):
-        return sOutput
-    if iExitCode != 0:
-        _fnRaiseClaudeError(iExitCode, sOutput)
-    return sOutput
-
-
-_QUANTITATIVE_TEMPLATE_HEADER = '''"""Quantitative benchmark tests generated by vaibify."""
-
-import pytest
-
-'''
-
-_QUANTITATIVE_TEMPLATE_FOOTER = '''
-
-def _fdictLoadStandardsFile():
-    """Load the quantitative standards JSON file."""
-    sJsonPath = str(
-        pathlib.Path(__file__).parent / "quantitative_standards.json"
-    )
-    with open(sJsonPath, encoding="utf-8") as fileHandle:
-        return json.load(fileHandle)
-
-
-_DICT_STANDARDS = _fdictLoadStandardsFile()
-_F_DEFAULT_RTOL = _DICT_STANDARDS.get("fDefaultRtol", 1e-6)
-_LIST_STANDARDS = _DICT_STANDARDS["listStandards"]
-_STEP_DIRECTORY = str(pathlib.Path(__file__).parent.parent)
-
-
-@pytest.mark.parametrize(
-    "dictStandard",
-    _LIST_STANDARDS,
-    ids=[s["sName"] for s in _LIST_STANDARDS],
-)
-def test_quantitative_benchmark(dictStandard):
-    """Compare output value against stored benchmark within tolerance."""
-    fActual = _fLoadValue(
-        dictStandard["sDataFile"],
-        dictStandard["sAccessPath"],
-        _STEP_DIRECTORY,
-        sFormat=dictStandard.get("sFormat", ""),
-    )
-    fExpected = dictStandard["fValue"]
-    fRtol = dictStandard.get("fRtol", _F_DEFAULT_RTOL)
-    fAtol = dictStandard.get("fAtol", 1e-08)
-    assert np.allclose(fActual, fExpected, rtol=fRtol, atol=fAtol), (
-        f"{dictStandard[\'sName\']}: expected {fExpected}, got {fActual}"
-    )
-'''
-
-
-def fsBuildQuantitativeTestCode():
-    """Return the deterministic quantitative test file content."""
-    from .dataLoaders import fsReadLoaderSource
-    sLoaderSource = fsReadLoaderSource()
-    sTemplate = (
-        _QUANTITATIVE_TEMPLATE_HEADER
-        + sLoaderSource
-        + _QUANTITATIVE_TEMPLATE_FOOTER
-    )
-    return _fsEmbedTemplateHash(sTemplate)
-
-
-_INTEGRITY_TEST_TEMPLATE = '''"""Integrity tests generated by vaibify."""
-
-import json
-import os
-import pathlib
-
-import numpy as np
-import pytest
-
-try:
-    import h5py
-except ImportError:
-    h5py = None
-
-try:
-    import csv as csvModule
-except ImportError:
-    csvModule = None
-
-
-def _fdictLoadIntegrityStandards():
-    """Load the integrity standards JSON file."""
-    sJsonPath = str(
-        pathlib.Path(__file__).parent / "integrity_standards.json"
-    )
-    with open(sJsonPath, encoding="utf-8") as fileHandle:
-        return json.load(fileHandle)
-
-
-_DICT_STANDARDS = _fdictLoadIntegrityStandards()
-_LIST_STANDARDS = _DICT_STANDARDS["listStandards"]
-_STEP_DIRECTORY = str(pathlib.Path(__file__).parent.parent)
-
-
-def _fnCheckFileExists(sFullPath):
-    """Assert the file exists and is non-empty."""
-    assert os.path.isfile(sFullPath), f"File not found: {sFullPath}"
-    assert os.path.getsize(sFullPath) > 0, f"File is empty: {sFullPath}"
-
-
-def _fnCheckShape(daData, tExpectedShape, sFullPath):
-    """Assert the data array shape matches the expected shape."""
-    if tExpectedShape is not None:
-        assert list(daData.shape) == tExpectedShape, (
-            f"{sFullPath}: expected shape {tExpectedShape}, "
-            f"got {list(daData.shape)}"
-        )
-
-
-def _fnCheckNanInf(daData, bCheckNaN, bCheckInf, sFullPath):
-    """Assert no NaN or Inf values in numeric data."""
-    if not np.issubdtype(daData.dtype, np.number):
-        return
-    if bCheckNaN:
-        assert not np.any(np.isnan(daData)), (
-            f"{sFullPath}: contains NaN values"
-        )
-    if bCheckInf:
-        assert not np.any(np.isinf(daData)), (
-            f"{sFullPath}: contains Inf values"
-        )
-
-
-def _fnCheckNpy(sFullPath, dictStandard):
-    """Validate a numpy .npy file."""
-    daData = np.load(sFullPath, allow_pickle=False)
-    tShape = dictStandard.get("tExpectedShape")
-    _fnCheckShape(daData, tShape, sFullPath)
-    _fnCheckNanInf(
-        daData, dictStandard.get("bCheckNaN", False),
-        dictStandard.get("bCheckInf", False), sFullPath,
-    )
-
-
-def _fnCheckNpz(sFullPath, dictStandard):
-    """Validate a numpy .npz archive."""
-    archiveNpz = np.load(sFullPath, allow_pickle=False)
-    assert len(archiveNpz.files) > 0, f"{sFullPath}: empty npz archive"
-    for sKey in archiveNpz.files:
-        daData = archiveNpz[sKey]
-        if np.issubdtype(daData.dtype, np.number):
-            _fnCheckNanInf(
-                daData, dictStandard.get("bCheckNaN", False),
-                dictStandard.get("bCheckInf", False), sFullPath,
-            )
-
-
-def _fnCheckCsv(sFullPath, dictStandard):
-    """Validate a CSV file."""
-    import csv
-    with open(sFullPath, newline="", encoding="utf-8") as fh:
-        listRows = list(csv.DictReader(fh))
-    tShape = dictStandard.get("tExpectedShape")
-    if tShape is not None and len(tShape) >= 1:
-        assert len(listRows) == tShape[0], (
-            f"{sFullPath}: expected {tShape[0]} rows, got {len(listRows)}"
-        )
-    if dictStandard.get("bCheckNaN", False):
-        for dictRow in listRows:
-            for sVal in dictRow.values():
-                try:
-                    fVal = float(sVal)
-                    assert not np.isnan(fVal), (
-                        f"{sFullPath}: contains NaN"
-                    )
-                    if dictStandard.get("bCheckInf", False):
-                        assert not np.isinf(fVal), (
-                            f"{sFullPath}: contains Inf"
-                        )
-                except ValueError:
-                    pass
-
-
-def _fnCheckJson(sFullPath, dictStandard):
-    """Validate a JSON file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        json.load(fh)
-
-
-def _fnCheckHdf5(sFullPath, dictStandard):
-    """Validate an HDF5 file."""
-    assert h5py is not None, "h5py is not installed"
-    with h5py.File(sFullPath, "r") as fh:
-        assert len(fh.keys()) > 0, f"{sFullPath}: empty HDF5 file"
-        if dictStandard.get("bCheckNaN", False):
-            def fnCheckDataset(sName, obj):
-                if isinstance(obj, h5py.Dataset):
-                    daData = np.array(obj)
-                    if np.issubdtype(daData.dtype, np.number):
-                        _fnCheckNanInf(
-                            daData, True,
-                            dictStandard.get("bCheckInf", False),
-                            sFullPath,
-                        )
-            fh.visititems(fnCheckDataset)
-
-
-def _fnCheckWhitespace(sFullPath, dictStandard):
-    """Validate a whitespace-delimited file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        listRows = [
-            s for s in fh if s.strip()
-            and not s.strip().startswith("#")
-        ]
-    tShape = dictStandard.get("tExpectedShape")
-    if tShape is not None and len(tShape) >= 1:
-        assert len(listRows) >= tShape[0], (
-            f"{sFullPath}: expected >= {tShape[0]} rows"
-        )
-    if dictStandard.get("bCheckNaN", False):
-        for sLine in listRows:
-            for sToken in sLine.split():
-                try:
-                    fVal = float(sToken)
-                    assert not np.isnan(fVal)
-                    if dictStandard.get("bCheckInf", False):
-                        assert not np.isinf(fVal)
-                except ValueError:
-                    pass
-
-
-def _fnCheckKeyvalue(sFullPath, dictStandard):
-    """Validate a key=value text file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        listLines = [s for s in fh if "=" in s]
-    assert len(listLines) > 0, f"{sFullPath}: no key=value pairs"
-
-
-def _fnCheckJsonl(sFullPath, dictStandard):
-    """Validate a JSON Lines file."""
-    import json as jsonMod
-    with open(sFullPath, encoding="utf-8") as fh:
-        listRecords = [jsonMod.loads(s) for s in fh if s.strip()]
-    assert len(listRecords) > 0, f"{sFullPath}: empty JSONL"
-
-
-def _fnCheckGenericText(sFullPath, dictStandard):
-    """Validate a generic text file by checking it is non-empty."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        sContent = fh.read()
-    assert len(sContent.strip()) > 0, f"{sFullPath}: empty file"
-
-
-_DICT_INTEGRITY_CHECKERS = {
-    "npy": _fnCheckNpy,
-    "npz": _fnCheckNpz,
-    "csv": _fnCheckCsv,
-    "json": _fnCheckJson,
-    "hdf5": _fnCheckHdf5,
-    "whitespace": _fnCheckWhitespace,
-    "keyvalue": _fnCheckKeyvalue,
-    "jsonl": _fnCheckJsonl,
-}
-
-
-def _fnDispatchIntegrityCheck(sFullPath, dictStandard):
-    """Load and check the file using the appropriate format checker."""
-    sFormat = dictStandard.get("sFormat", "")
-    fnChecker = _DICT_INTEGRITY_CHECKERS.get(
-        sFormat, _fnCheckGenericText,
-    )
-    fnChecker(sFullPath, dictStandard)
-
-
-if not _LIST_STANDARDS:
-    def test_no_integrity_outputs():
-        """Placeholder when no data files are present."""
-        assert True
-else:
-    @pytest.mark.parametrize(
-        "dictStandard",
-        _LIST_STANDARDS,
-        ids=[s["sFileName"] for s in _LIST_STANDARDS],
-    )
-    def test_integrity_check(dictStandard):
-        """Validate structural integrity of a data file."""
-        sFullPath = os.path.join(
-            _STEP_DIRECTORY, dictStandard["sFileName"],
-        )
-        _fnCheckFileExists(sFullPath)
-        _fnDispatchIntegrityCheck(sFullPath, dictStandard)
-'''
-
-
-_QUALITATIVE_TEST_TEMPLATE = '''"""Qualitative tests generated by vaibify."""
-
-import json
-import os
-import pathlib
-
-import pytest
-
-
-def _fdictLoadQualitativeStandards():
-    """Load the qualitative standards JSON file."""
-    sJsonPath = str(
-        pathlib.Path(__file__).parent / "qualitative_standards.json"
-    )
-    with open(sJsonPath, encoding="utf-8") as fileHandle:
-        return json.load(fileHandle)
-
-
-_DICT_STANDARDS = _fdictLoadQualitativeStandards()
-_LIST_STANDARDS = _DICT_STANDARDS["listStandards"]
-_STEP_DIRECTORY = str(pathlib.Path(__file__).parent.parent)
-
-
-def _flistLoadColumns(sFullPath, sFormat):
-    """Load column names from a tabular or array file."""
-    if sFormat == "npz":
-        import numpy as np
-        return list(np.load(sFullPath, allow_pickle=False).files)
-    if sFormat in ("npy", "hdf5"):
-        return []
-    if sFormat == "csv":
-        import csv
-        with open(sFullPath, newline="", encoding="utf-8") as fh:
-            reader = csv.DictReader(fh)
-            return list(reader.fieldnames or [])
-    with open(sFullPath, encoding="utf-8") as fh:
-        return fh.readline().split()
-
-
-def _flistLoadJsonKeys(sFullPath):
-    """Load top-level keys from a JSON file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        dictData = json.load(fh)
-    if isinstance(dictData, dict):
-        return list(dictData.keys())
-    return []
-
-
-def _fnCheckExpectedColumns(sFullPath, sFormat, listExpected):
-    """Assert all expected columns are present in the file."""
-    if not listExpected:
-        return
-    listActual = _flistLoadColumns(sFullPath, sFormat)
-    for sColumn in listExpected:
-        assert sColumn in listActual, (
-            f"{sFullPath}: missing column {sColumn!r}"
-        )
-
-
-def _fnCheckExpectedJsonKeys(sFullPath, listExpected):
-    """Assert all expected JSON keys are present in the file."""
-    if not listExpected:
-        return
-    listActual = _flistLoadJsonKeys(sFullPath)
-    for sKey in listExpected:
-        assert sKey in listActual, (
-            f"{sFullPath}: missing JSON key {sKey!r}"
-        )
-
-
-if not _LIST_STANDARDS:
-    def test_no_qualitative_outputs():
-        """Placeholder when no qualitative checks are needed."""
-        assert True
-else:
-    @pytest.mark.parametrize(
-        "dictStandard",
-        _LIST_STANDARDS,
-        ids=[s["sFileName"] for s in _LIST_STANDARDS],
-    )
-    def test_qualitative_check(dictStandard):
-        """Validate qualitative properties of a data file."""
-        sFullPath = os.path.join(
-            _STEP_DIRECTORY, dictStandard["sFileName"],
-        )
-        sFormat = dictStandard.get("sFormat", "")
-        _fnCheckExpectedColumns(
-            sFullPath, sFormat,
-            dictStandard.get("listExpectedColumns", []),
-        )
-        _fnCheckExpectedJsonKeys(
-            sFullPath,
-            dictStandard.get("listExpectedJsonKeys", []),
-        )
-'''
-
-
-def fsBuildIntegrityTestCode():
-    """Return the deterministic integrity test file content."""
-    return _fsEmbedTemplateHash(_INTEGRITY_TEST_TEMPLATE)
-
-
-def fsBuildQualitativeTestCode():
-    """Return the deterministic qualitative test file content."""
-    return _fsEmbedTemplateHash(_QUALITATIVE_TEST_TEMPLATE)
+# ---------------------------------------------------------------------------
+# Introspection script (large f-string, stays in orchestrator)
+# ---------------------------------------------------------------------------
 
 
 def _fsFormatSafeName(sFileName):
@@ -2257,6 +1292,11 @@ print(json.dumps(listReports))
 '''
 
 
+# ---------------------------------------------------------------------------
+# Introspection execution
+# ---------------------------------------------------------------------------
+
+
 def _fsRunIntrospection(
     connectionDocker, sContainerId, sDirectory, listDataFiles,
 ):
@@ -2299,6 +1339,11 @@ def _flistParseIntrospectionOutput(sOutput):
     )
 
 
+# ---------------------------------------------------------------------------
+# Standards builders
+# ---------------------------------------------------------------------------
+
+
 _SET_NONAN_FORMATS = {
     "npy", "npz", "csv", "whitespace", "fits", "matlab",
     "parquet", "image", "vcf", "bed", "gff", "sam",
@@ -2336,10 +1381,6 @@ def _fsGenerateQualitativeCode(listdictReports):
     """
     dictStandards = _fdictBuildQualitativeStandards(listdictReports)
     return json.dumps(dictStandards, indent=4)
-
-
-
-
 
 
 def _fdictBuildQuantitativeStandards(listdictReports, fTolerance):
@@ -2419,6 +1460,11 @@ def _fnWarnIfAllUnloadable(listdictReports):
     if bAllUnloadable and listdictReports:
         listErrors = [r.get("sError", "") for r in listdictReports]
         logger.warning("All files unloadable: %s", listErrors)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic test generation
+# ---------------------------------------------------------------------------
 
 
 def fdictGenerateAllTestsDeterministic(
@@ -2610,6 +1656,11 @@ def _fdictWriteQualitativeTests(
     )
 
 
+# ---------------------------------------------------------------------------
+# LLM-based test generation
+# ---------------------------------------------------------------------------
+
+
 def fdictGenerateAllTests(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
@@ -2678,20 +1729,6 @@ _DICT_CATEGORY_PATHS = {
 }
 
 
-def _fsBuildCategoryPrompt(
-    sCategory, sDirectory, sDataFiles, sScriptContents, sDataPreviews,
-):
-    """Build an LLM prompt for a single test category."""
-    return (
-        f"Generate {sCategory} tests for the step in {sDirectory}.\n"
-        f"See CLAUDE.md for instructions.\n"
-        f"Output files: {sDataFiles}\n\n"
-        f"Source code of analysis scripts:\n{sScriptContents}\n\n"
-        f"Data file previews:\n{sDataPreviews}\n\n"
-        f"Return ONLY Python code, no explanations."
-    )
-
-
 def _fdictGenerateSingleCategory(
     connectionDocker, sContainerId, sDirectory,
     sCategory, sDataFiles, sScriptContents, sDataPreviews,
@@ -2720,24 +1757,6 @@ def _fdictGenerateSingleCategory(
         return _fdictErrorResult(str(error))
 
 
-def _fsBuildQuantitativePrompt(
-    sDirectory, sDataFiles, sScriptContents, sDataPreviews, fTolerance,
-):
-    """Build the LLM prompt for quantitative standards generation."""
-    return (
-        f"Generate quantitative standards JSON for the step in "
-        f"{sDirectory}. Default tolerance: {fTolerance}.\n"
-        f"See CLAUDE.md for instructions.\n"
-        f"Output files: {sDataFiles}\n\n"
-        f"Source code of analysis scripts:\n{sScriptContents}\n\n"
-        f"Data file previews (use these actual values):\n"
-        f"{sDataPreviews}\n\n"
-        f"IMPORTANT: Extract benchmark values from the data previews "
-        f"above. Use repr() precision — never round or guess values.\n"
-        f"Return ONLY a JSON object, no explanations."
-    )
-
-
 def _fdictGenerateQuantitativeCategory(
     connectionDocker, sContainerId, sDirectory,
     sDataFiles, sScriptContents, sDataPreviews,
@@ -2762,6 +1781,11 @@ def _fdictGenerateQuantitativeCategory(
         )
     except Exception as error:
         return _fdictErrorResult(str(error))
+
+
+# ---------------------------------------------------------------------------
+# Error helpers
+# ---------------------------------------------------------------------------
 
 
 def _fdictErrorResult(sMessage):

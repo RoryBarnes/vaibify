@@ -5,6 +5,41 @@ import json
 import posixpath
 from datetime import datetime, timezone
 
+from . import pipelineState
+from . import workflowManager
+
+__all__ = [
+    "fsShellQuote",
+    "fnRunAllSteps",
+    "fnRunFromStep",
+    "fnRunSelectedSteps",
+    "fnVerifyOnly",
+    "fnRunAllTests",
+    "fsGenerateLogFilename",
+    "fdictCreateInteractiveContext",
+    "fnSetInteractiveResponse",
+    "fsComputeStepLabel",
+    "fnClearOutputModifiedFlags",
+    "ffBuildLoggingCallback",
+    "fnWriteLogToContainer",
+]
+
+# ---------------------------------------------------------------------------
+# Re-exports from pipelineUtils (true leaf — breaks circular imports).
+# ---------------------------------------------------------------------------
+
+from .pipelineUtils import (  # noqa: F401
+    fsShellQuote,
+    fsComputeStepLabel,
+    _fnRecordRunStats,
+    _fdictBuildWorkflowVars,
+    fnClearOutputModifiedFlags,
+    _fnEmitCommandHeader,
+    _fnEmitStepResult,
+    _fnEmitCompletion,
+    _fnEmitBanner,
+)
+
 # ---------------------------------------------------------------------------
 # Re-exports from extracted modules so existing imports keep working.
 # ---------------------------------------------------------------------------
@@ -32,27 +67,21 @@ from .pipelineLogger import (  # noqa: F401
 
 from .pipelineTestRunner import (  # noqa: F401
     _fiRunTestCommands,
-    _fdictRunTestsByCategory,
-    _fdictRunOneCategoryCommands,
-    _fdictRunLegacyTestCommands,
-    _fnEmitPerCategoryResults,
     _fiAggregateTestExitCode,
     _flistCollectCategoryLogs,
     _fnWriteTestLog,
     _flistResolveTestCommands,
     fnRunAllTests,
-    _fiRunTestsForAllSteps,
-    _fiRunStepTests,
-    _fnEmitStepBanner,
 )
 
 from .interactiveSteps import (  # noqa: F401
     fdictCreateInteractiveContext,
     fnSetInteractiveResponse,
-    _fiHandleInteractiveStep,
-    _fiRunInteractiveAndRecord,
-    _fsAwaitInteractiveDecision,
-    _fiAwaitInteractiveComplete,
+)
+
+from .fileIntegrity import (  # noqa: F401
+    fbStepInputsUnchanged,
+    fdictComputeInputHashes,
 )
 
 
@@ -85,26 +114,11 @@ async def _flistPreflightValidate(
 
 
 # ---------------------------------------------------------------------------
-# Utility kept here (used by many modules as a leaf dependency).
-# ---------------------------------------------------------------------------
-
-def fsShellQuote(sValue):
-    """Safely quote a value for use in a shell command.
-
-    Wraps the value in single quotes and escapes any embedded single
-    quotes with the standard '\\'' idiom, preventing shell injection.
-    """
-    return "'" + sValue.replace("'", "'\\''") + "'"
-
-
-# ---------------------------------------------------------------------------
 # Variable resolution
 # ---------------------------------------------------------------------------
 
 def _fdictBuildVariables(dictWorkflow, sWorkdir):
     """Build merged global + step variable dict for resolution."""
-    from . import workflowManager
-
     dictGlobalVars = workflowManager.fdictBuildGlobalVariables(
         dictWorkflow, sWorkdir
     )
@@ -116,28 +130,6 @@ def _fdictBuildVariables(dictWorkflow, sWorkdir):
     return dictMerged
 
 
-def _fdictBuildWorkflowVars(dictWorkflow):
-    """Extract variable substitution dict from workflow metadata."""
-    return {
-        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
-        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Output modification flags
-# ---------------------------------------------------------------------------
-
-def fnClearOutputModifiedFlags(dictWorkflow):
-    """Clear modification flags on all steps before a pipeline run."""
-    for dictStep in dictWorkflow.get("listSteps", []):
-        dictVerification = dictStep.get("dictVerification", {})
-        dictVerification.pop("bOutputModified", None)
-        dictVerification.pop("listModifiedFiles", None)
-        dictVerification.pop("bUpstreamModified", None)
-        dictStep["dictVerification"] = dictVerification
-
-
 # ---------------------------------------------------------------------------
 # Core command execution
 # ---------------------------------------------------------------------------
@@ -147,7 +139,6 @@ async def _ftRunCommandList(
     sWorkdir, dictVariables, fnStatusCallback,
 ):
     """Execute commands, return (iExitCode, fTotalCpuSeconds)."""
-    from . import workflowManager
     fTotalCpu = 0.0
     for sCommand in listCommands:
         sResolved = workflowManager.fsResolveCommand(
@@ -212,71 +203,6 @@ def _fParseCpuTime(sOutput):
             except (IndexError, ValueError):
                 pass
     return 0.0
-
-
-# ---------------------------------------------------------------------------
-# Event emission helpers
-# ---------------------------------------------------------------------------
-
-async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
-    """Emit the command being run, showing resolution if different."""
-    await fnStatusCallback(
-        {"sType": "output", "sLine": f"$ {sOriginal}"}
-    )
-    if sResolved != sOriginal:
-        await fnStatusCallback(
-            {"sType": "output", "sLine": f"  => {sResolved}"}
-        )
-
-
-async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
-    """Send a stepPass or stepFail event based on exit code."""
-    sType = "stepPass" if iExitCode == 0 else "stepFail"
-    await fnStatusCallback({
-        "sType": sType, "iStepNumber": iStepNumber,
-        "iExitCode": iExitCode,
-    })
-
-
-async def _fnEmitCompletion(fnStatusCallback, iExitCode):
-    """Send the final completed or failed event."""
-    sResultType = "completed" if iExitCode == 0 else "failed"
-    await fnStatusCallback(
-        {"sType": sResultType, "iExitCode": iExitCode}
-    )
-
-
-async def _fnEmitBanner(
-    fnStatusCallback, iStepNumber, sStepName, sStepLabel=None,
-):
-    """Emit step banner lines to the status callback."""
-    if sStepLabel is None:
-        sStepLabel = f"{iStepNumber:02d}"
-    sBanner = f"Step {sStepLabel} - {sStepName}"
-    sLine = "=" * len(sBanner)
-    for sText in ["", sLine, sBanner, sLine, ""]:
-        await fnStatusCallback({"sType": "output", "sLine": sText})
-
-
-# ---------------------------------------------------------------------------
-# Step label computation
-# ---------------------------------------------------------------------------
-
-def fsComputeStepLabel(dictWorkflow, iStepNumber):
-    """Return the display label (A01, I01) for a 1-based step number."""
-    iIndex = iStepNumber - 1
-    listSteps = dictWorkflow.get("listSteps", [])
-    if iIndex < 0 or iIndex >= len(listSteps):
-        return f"{iStepNumber:02d}"
-    bInteractive = listSteps[iIndex].get("bInteractive", False)
-    sPrefix = "I" if bInteractive else "A"
-    iCount = 0
-    for iPos in range(iIndex + 1):
-        bSameType = listSteps[iPos].get(
-            "bInteractive", False) == bInteractive
-        if bSameType:
-            iCount += 1
-    return f"{sPrefix}{iCount:02d}"
 
 
 # ---------------------------------------------------------------------------
@@ -395,14 +321,15 @@ async def _fbVerifyStepOutputs(
     dictStep, dictVars, sWorkdir, fnStatusCallback,
 ):
     """Return True if all output files for a step exist."""
-    from .workflowManager import fsResolveVariables
     sStepDirectory = dictStep.get("sDirectory", sWorkdir)
     listOutputFiles = (
         dictStep.get("saPlotFiles", [])
         + dictStep.get("saDataFiles", [])
     )
     for sOutputFile in listOutputFiles:
-        sResolved = fsResolveVariables(sOutputFile, dictVars)
+        sResolved = workflowManager.fsResolveVariables(
+            sOutputFile, dictVars
+        )
         bExists = await _fbFileExistsInContainer(
             connectionDocker, sContainerId,
             sResolved, sStepDirectory,
@@ -490,9 +417,7 @@ async def _fbShouldSkipStep(
     connectionDocker, sContainerId, dictStep, iStepNumber,
 ):
     """Return True if the step's inputs are unchanged."""
-    from . import syncDispatcher
-
-    return syncDispatcher.fbStepInputsUnchanged(
+    return fbStepInputsUnchanged(
         connectionDocker, sContainerId, dictStep, iStepNumber
     )
 
@@ -501,26 +426,12 @@ async def _fnRecordInputHashes(
     connectionDocker, sContainerId, dictStep,
 ):
     """Compute and store input hashes after a step runs."""
-    from . import syncDispatcher
-
-    dictHashes = syncDispatcher.fdictComputeInputHashes(
+    dictHashes = fdictComputeInputHashes(
         connectionDocker, sContainerId, dictStep
     )
     if "dictRunStats" not in dictStep:
         dictStep["dictRunStats"] = {}
     dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
-
-
-def _fnRecordRunStats(
-    dictStep, sStartTimestamp, fStartTime, fCpuTime=0.0,
-):
-    """Store timing information in the step's run stats."""
-    import time
-    dictStep["dictRunStats"] = {
-        "sLastRun": sStartTimestamp,
-        "fWallClock": round(time.time() - fStartTime, 1),
-        "fCpuTime": round(fCpuTime, 1),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -668,8 +579,6 @@ async def _fiRunStepsAndLog(
     sWorkflowPath="", dictInteractive=None,
 ):
     """Execute steps, write log, and emit final status."""
-    from . import pipelineState
-
     iStepCount = len(dictWorkflow.get("listSteps", []))
     dictState = pipelineState.fdictBuildInitialState(
         sAction, sLogPath, iStepCount
@@ -737,8 +646,6 @@ async def _fiRunWithLogging(
 
 async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
     """Load workflow.json from the container, returning (dict, path)."""
-    from . import workflowManager
-
     listWorkflows = workflowManager.flistFindWorkflowsInContainer(
         connectionDocker, sContainerId
     )
@@ -838,8 +745,6 @@ async def _fnExecuteSelectedSteps(
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
 ):
     """Toggle steps, save, run with logging, and emit completion."""
-    from . import workflowManager
-
     _fnToggleSelectedSteps(dictWorkflow, listStepIndices)
     workflowManager.fnSaveWorkflowToContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
@@ -855,8 +760,6 @@ async def fnRunSelectedSteps(
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
 ):
     """Run only selected steps by toggling bEnabled."""
-    from . import workflowManager
-
     dictBackup = json.loads(json.dumps(dictWorkflow))
     try:
         iResult = await _fnExecuteSelectedSteps(

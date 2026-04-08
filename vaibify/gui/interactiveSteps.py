@@ -49,11 +49,8 @@ async def _fiRunInteractiveAndRecord(
 ):
     """Run the interactive terminal session and record results."""
     import time
-    from .pipelineRunner import (
-        _fnEmitStepResult,
-        _fnRecordInputHashes,
-        _fnRecordRunStats,
-    )
+    from .pipelineRunner import _fnRecordInputHashes
+    from .pipelineUtils import _fnEmitStepResult, _fnRecordRunStats
 
     fStartTime = time.time()
     sStartTimestamp = datetime.now(timezone.utc).strftime(

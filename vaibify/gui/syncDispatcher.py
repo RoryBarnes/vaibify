@@ -5,7 +5,37 @@ import posixpath
 import re
 import uuid
 
-from .pipelineRunner import fsShellQuote
+from . import workflowManager
+from .pipelineUtils import fsShellQuote
+
+__all__ = [
+    "fbStepInputsUnchanged",
+    "fbValidateOverleafCredentials",
+    "fbValidateZenodoToken",
+    "fdictCheckConnectivity",
+    "fdictClassifyError",
+    "fdictComputeAllScriptHashes",
+    "fdictComputeInputHashes",
+    "fdictParseTestMarkerOutput",
+    "fdictSyncResult",
+    "flistCollectOutputFiles",
+    "flistExtractAllScriptPaths",
+    "fnStoreCredentialInContainer",
+    "fnValidateOverleafProjectId",
+    "fnValidateServiceName",
+    "fsBuildDagDot",
+    "fsBuildTestMarkerCheckCommand",
+    "fsPythonCommand",
+    "ftResultAddFileToGithub",
+    "ftResultArchiveProject",
+    "ftResultArchiveToZenodo",
+    "ftResultGenerateDagSvg",
+    "ftResultGenerateLatex",
+    "ftResultPullFromOverleaf",
+    "ftResultPushScriptsToGithub",
+    "ftResultPushToGithub",
+    "ftResultPushToOverleaf",
+]
 
 SET_VALID_SERVICES = {"github", "overleaf", "zenodo"}
 SET_VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
@@ -191,11 +221,7 @@ def ftResultPushToGithub(
 
 def _flistBuildStepCopyCommandList(dictWorkflow):
     """Build per-step copy commands for scripts and archive plots."""
-    from .workflowManager import (
-        fdictBuildStepDirectoryMap, flistExtractStepScripts,
-        fsGetPlotCategory,
-    )
-    dictDirMap = fdictBuildStepDirectoryMap(dictWorkflow)
+    dictDirMap = workflowManager.fdictBuildStepDirectoryMap(dictWorkflow)
     listCommands = []
     for iStep, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
@@ -203,10 +229,10 @@ def _flistBuildStepCopyCommandList(dictWorkflow):
         sCamelDir = dictDirMap.get(iStep, "")
         if not sCamelDir:
             continue
-        listScripts = flistExtractStepScripts(dictStep)
+        listScripts = workflowManager.flistExtractStepScripts(dictStep)
         sStepDir = dictStep.get("sDirectory", "")
         listArchivePlots = _flistArchivePlotPaths(
-            dictStep, sStepDir, fsGetPlotCategory)
+            dictStep, sStepDir, workflowManager.fsGetPlotCategory)
         if not listScripts and not listArchivePlots:
             continue
         listCommands.append(
@@ -608,7 +634,6 @@ def ftResultArchiveProject(
     connectionDocker, sContainerId, dictWorkflow,
 ):
     """Build a Zenodo archive with data + archive plots + metadata."""
-    from .workflowManager import fsGetPlotCategory
     import json
     sWorkflowJson = json.dumps(dictWorkflow)
     sImport = (
@@ -633,7 +658,6 @@ def ftResultArchiveProject(
 
 def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
     """Collect all output files with their sync and category info."""
-    from .workflowManager import fsGetPlotCategory
     listFiles = []
     for dictStep in dictWorkflow.get("listSteps", []):
         for sKey in ("saDataFiles", "saPlotFiles"):
@@ -641,7 +665,8 @@ def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
                 dictSync = dictSyncStatus.get(sFile, {})
                 sCategory = "archive"
                 if sKey == "saPlotFiles":
-                    sCategory = fsGetPlotCategory(dictStep, sFile)
+                    sCategory = workflowManager.fsGetPlotCategory(
+                        dictStep, sFile)
                 listFiles.append({
                     "sPath": sFile,
                     "sCategory": sCategory,
@@ -654,7 +679,6 @@ def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
 # Canonical implementations live in fileIntegrity.py.
 from .fileIntegrity import (  # noqa: F401
     _fdictParseHashOutput,
-    _flistExtractScripts,
     _fsHashFileCommand,
     _fsNormalizePath,
     fbStepInputsUnchanged,
