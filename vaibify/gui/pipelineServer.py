@@ -1815,43 +1815,47 @@ async def _fnRefreshStepInputHashes(
     dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
 
 
-def _fnRecordStepRunTimestamp(dictWorkflow, iStepIndex):
-    """Set sLastRun on the step's dictRunStats."""
-    from datetime import datetime, timezone
-    listSteps = dictWorkflow.get("listSteps", [])
-    if iStepIndex < 0 or iStepIndex >= len(listSteps):
-        return
-    dictStep = listSteps[iStepIndex]
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["sLastRun"] = (
-        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    )
+from .fileStatusManager import (  # noqa: F401
+    _fbAnyDataFileChanged,
+    _fbAnyMtimeNewerThan,
+    _fbAnyPlotFileChanged,
+    _fbCheckStaleUserVerification,
+    _fbPipelineIsRunning,
+    _fbPlotNewerThanUserVerification,
+    _fbStepScriptsModified,
+    _fdictBuildFileStatusVars,
+    _fdictBuildScriptStatus,
+    _fdictComputeMaxMtimeByStep,
+    _fdictComputeMaxPlotMtimeByStep,
+    _fdictDetectChangedFiles,
+    _fdictFindChangedFiles,
+    _fdictGetModTimes,
+    _fdictInvalidateAffectedSteps,
+    _fiParseUtcTimestamp,
+    _flistCollectOutputPaths,
+    _flistDetectAndInvalidate,
+    _flistResolvePlotPaths,
+    _flistResolveStepPaths,
+    _fnClearStepModificationState,
+    _fnInvalidateDownstreamStep,
+    _fnInvalidateStepFiles,
+    _fnRecordStepRunTimestamp,
+    _fnUpdateModTimeBaseline,
+    fdictCollectOutputPathsByStep,
+)
 
-
-def _fnClearStepModificationState(dictWorkflow, iStepIndex):
-    """Clear modification flags from a step's verification."""
-    listSteps = dictWorkflow.get("listSteps", [])
-    if iStepIndex < 0 or iStepIndex >= len(listSteps):
-        return
-    dictVerify = listSteps[iStepIndex].get("dictVerification", {})
-    dictVerify.pop("listModifiedFiles", None)
-    dictVerify.pop("bOutputModified", None)
-
-
-def _fnUpdateModTimeBaseline(dictCtx, sContainerId, dictModTimes):
-    """Update stored mtimes so the next poll doesn't re-flag files."""
-    if "dictPreviousModTimes" not in dictCtx:
-        dictCtx["dictPreviousModTimes"] = {}
-    dictCtx["dictPreviousModTimes"][sContainerId] = dict(dictModTimes)
-
-
-def _fdictBuildFileStatusVars(dictWorkflow):
-    """Build variable dict for file path resolution."""
-    return {
-        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
-        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-    }
+from .testStatusManager import (  # noqa: F401
+    _LIST_TEST_CATEGORIES,
+    _fdictBuildTestResponse,
+    _flistResolveTestCommands,
+    _fnClearDownstreamUpstreamFlags,
+    _fnRecordTestResult,
+    _fnRegisterTestCommand,
+    _fnRemoveTestDirectory,
+    _fnRemoveTestFiles,
+    _fnUpdateAggregateTestState,
+    _fsBuildPytestCommand,
+)
 
 
 def _fnRegisterFileStatus(app, dictCtx):
@@ -2179,387 +2183,6 @@ def _flistFindCustomTestFiles(dictFileHashes, dictExpectedHashes):
     return listCustom
 
 
-def fdictCollectOutputPathsByStep(dictWorkflow, dictVars=None):
-    """Return {iStepIndex: [resolved_paths]} for each step."""
-    dictResult = {}
-    if dictVars is None:
-        dictVars = {
-            "sPlotDirectory": dictWorkflow.get(
-                "sPlotDirectory", "Plot"),
-            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-        }
-    for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
-        dictResult[iIndex] = _flistResolveStepPaths(
-            dictStep, dictVars,
-        )
-    return dictResult
-
-
-def _flistResolveStepPaths(dictStep, dictGlobalVars):
-    """Return resolved output paths for a single step."""
-    from .workflowManager import fsResolveVariables
-    sStepDir = dictStep.get("sDirectory", "")
-    listPaths = []
-    for sFile in (dictStep.get("saDataFiles", [])
-                  + dictStep.get("saPlotFiles", [])):
-        sResolved = fsResolveVariables(sFile, dictGlobalVars)
-        if not sResolved.startswith("/"):
-            sResolved = posixpath.join(sStepDir, sResolved)
-        listPaths.append(sResolved)
-    return listPaths
-
-
-def _flistCollectOutputPaths(dictWorkflow, dictVars=None):
-    """Collect all resolved output file paths from the workflow."""
-    dictByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
-    listPaths = []
-    for iIndex in sorted(dictByStep.keys()):
-        listPaths.extend(dictByStep[iIndex])
-    return listPaths
-
-
-def _fbPipelineIsRunning(dictCtx, sContainerId):
-    """Return True if a pipeline is currently running in container."""
-    from .pipelineState import fdictReadState
-    dictState = fdictReadState(dictCtx["docker"], sContainerId)
-    if dictState is None:
-        return False
-    return dictState.get("bRunning", False)
-
-
-def _fdictComputeMaxMtimeByStep(dictPathsByStep, dictModTimes):
-    """Return {stepIndex: maxMtimeString} for steps with output files."""
-    dictResult = {}
-    for iIndex, listPaths in dictPathsByStep.items():
-        listMtimes = [
-            int(dictModTimes[sPath])
-            for sPath in listPaths if sPath in dictModTimes
-        ]
-        if listMtimes:
-            dictResult[str(iIndex)] = str(max(listMtimes))
-    return dictResult
-
-
-def _fdictComputeMaxPlotMtimeByStep(dictWorkflow, dictModTimes,
-                                     dictVars=None):
-    """Return {stepIndex: maxPlotMtimeString} using only plot files."""
-    if dictVars is None:
-        dictVars = {
-            "sPlotDirectory": dictWorkflow.get(
-                "sPlotDirectory", "Plot"),
-            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-        }
-    dictResult = {}
-    for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
-        listPlotTuples = _flistResolvePlotPaths(dictStep, dictVars)
-        listMtimes = [
-            int(dictModTimes[sPath])
-            for sPath, _ in listPlotTuples if sPath in dictModTimes
-        ]
-        if listMtimes:
-            dictResult[str(iIndex)] = str(max(listMtimes))
-    return dictResult
-
-
-def _fdictFindChangedFiles(dictPathsByStep, dictOldModTimes,
-                           dictNewModTimes):
-    """Return {stepIndex: [changed file paths]} for files with new mtimes."""
-    dictChanged = {}
-    for iIndex, listPaths in dictPathsByStep.items():
-        listChangedPaths = []
-        for sPath in listPaths:
-            sOldTime = dictOldModTimes.get(sPath)
-            sNewTime = dictNewModTimes.get(sPath)
-            if sNewTime and sNewTime != sOldTime:
-                listChangedPaths.append(sPath)
-        if listChangedPaths:
-            dictChanged[iIndex] = listChangedPaths
-    return dictChanged
-
-
-def _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
-    """Return True if any changed path matches a data file."""
-    setDataBasenames = {
-        posixpath.basename(sFile) for sFile in listDataFiles
-    }
-    for sChangedPath in listChangedPaths:
-        if posixpath.basename(sChangedPath) in setDataBasenames:
-            return True
-    return False
-
-
-def _fbPlotNewerThanUserVerification(dictStep, listChangedPaths,
-                                     dictModTimes):
-    """Return True if a changed plot file is newer than sLastUserUpdate."""
-    dictVerification = dictStep.get("dictVerification", {})
-    listPlotFiles = dictStep.get("saPlotFiles", [])
-    if not _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
-        return False
-    sLastUserUpdate = dictVerification.get("sLastUserUpdate", "")
-    if not sLastUserUpdate:
-        return True
-    iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
-    if iUserEpoch is None:
-        return True
-    return _fbAnyMtimeNewerThan(listChangedPaths, dictModTimes,
-                                iUserEpoch)
-
-
-def _fiParseUtcTimestamp(sTimestamp):
-    """Parse 'YYYY-MM-DD HH:MM[:SS] UTC' to Unix epoch seconds."""
-    from datetime import datetime, timezone
-    try:
-        sClean = sTimestamp.replace(" UTC", "").strip()
-        for sFmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-            try:
-                dtParsed = datetime.strptime(sClean, sFmt)
-                dtUtc = dtParsed.replace(tzinfo=timezone.utc)
-                return int(dtUtc.timestamp())
-            except ValueError:
-                continue
-        return None
-    except AttributeError:
-        return None
-
-
-def _fbAnyMtimeNewerThan(listPaths, dictModTimes, iThreshold):
-    """Return True if any path in dictModTimes has mtime > iThreshold."""
-    for sPath in listPaths:
-        sMtime = dictModTimes.get(sPath)
-        if sMtime and int(sMtime) > iThreshold:
-            return True
-    return False
-
-
-def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
-                                   dictVars=None):
-    """Reset sUser if plot files are newer than sLastUserUpdate.
-
-    Returns True if any step was modified, so the caller can save.
-    This handles the case where outputs changed before the server
-    started, so poll-based delta detection never fires.
-    """
-    import logging
-    logger = logging.getLogger("vaibify")
-    bChanged = False
-    if dictVars is None:
-        dictVars = {
-            "sPlotDirectory": dictWorkflow.get(
-                "sPlotDirectory", "Plot"),
-            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-        }
-    for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
-        dictVerification = dictStep.get("dictVerification", {})
-        if dictVerification.get("sUser") != "passed":
-            continue
-        sLastUserUpdate = dictVerification.get(
-            "sLastUserUpdate", "")
-        if not sLastUserUpdate:
-            continue
-        iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
-        if iUserEpoch is None:
-            continue
-        listPlotTuples = _flistResolvePlotPaths(dictStep, dictVars)
-        listPlotPaths = [tEntry[0] for tEntry in listPlotTuples]
-        bStale = _fbAnyMtimeNewerThan(
-            listPlotPaths, dictModTimes, iUserEpoch)
-        logger.info(
-            "Freshness check step %d: sLastUserUpdate=%s "
-            "iUserEpoch=%s paths=%s bStale=%s",
-            iIndex, sLastUserUpdate, iUserEpoch,
-            listPlotPaths, bStale,
-        )
-        if bStale:
-            dictVerification["sUser"] = "untested"
-            dictStep["dictVerification"] = dictVerification
-            bChanged = True
-        else:
-            if dictVerification.get("listModifiedFiles"):
-                dictVerification.pop("listModifiedFiles", None)
-                dictVerification.pop("bOutputModified", None)
-                dictStep["dictVerification"] = dictVerification
-                bChanged = True
-    return bChanged
-
-
-def _fnInvalidateStepFiles(dictStep, listChangedPaths,
-                           dictModTimes=None):
-    """Mark specific files as modified, invalidate verifications."""
-    if dictModTimes is None:
-        dictModTimes = {}
-    dictVerification = dictStep.get("dictVerification", {})
-    listDataFiles = dictStep.get("saDataFiles", [])
-    if dictVerification.get("sUnitTest") == "passed":
-        if _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
-            dictVerification["sUnitTest"] = "untested"
-    if dictVerification.get("sUser") == "passed":
-        bPlotNewer = _fbPlotNewerThanUserVerification(
-            dictStep, listChangedPaths, dictModTimes
-        )
-        logger.info(
-            "_fnInvalidateStepFiles sUser=%s changed=%s "
-            "bPlotNewer=%s sLastUserUpdate=%s",
-            dictVerification.get("sUser"), listChangedPaths,
-            bPlotNewer,
-            dictVerification.get("sLastUserUpdate"),
-        )
-        if bPlotNewer:
-            dictVerification["sUser"] = "untested"
-    if dictVerification.get("sPlotStandards") == "passed":
-        listPlotFiles = dictStep.get("saPlotFiles", [])
-        if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
-            dictVerification["sPlotStandards"] = "stale"
-    listExisting = dictVerification.get("listModifiedFiles", [])
-    setModified = set(listExisting)
-    setModified.update(listChangedPaths)
-    dictVerification["listModifiedFiles"] = sorted(setModified)
-    dictStep["dictVerification"] = dictVerification
-
-
-def _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
-    """Return True if any changed path matches a plot file."""
-    setPlotBasenames = set()
-    for sPlotFile in listPlotFiles:
-        setPlotBasenames.add(posixpath.basename(sPlotFile))
-    for sChangedPath in listChangedPaths:
-        sChangedBasename = posixpath.basename(sChangedPath)
-        if sChangedBasename in setPlotBasenames:
-            return True
-    return False
-
-
-def _fnInvalidateDownstreamStep(dictStep):
-    """Mark a downstream step as affected by upstream changes."""
-    dictVerification = dictStep.get("dictVerification", {})
-    if dictVerification.get("sUnitTest") == "passed":
-        dictVerification["sUnitTest"] = "untested"
-    dictVerification["bUpstreamModified"] = True
-    dictStep["dictVerification"] = dictVerification
-
-
-def _fbStepScriptsModified(dictStep, dictCurrentHashes):
-    """Return True if any script hash differs from stored hashes."""
-    from .syncDispatcher import _fsNormalizePath
-    from .commandUtilities import flistExtractScripts
-    dictStoredHashes = dictStep.get(
-        "dictRunStats", {}
-    ).get("dictInputHashes", {})
-    if not dictStoredHashes:
-        return None
-    sDirectory = dictStep.get("sDirectory", "")
-    for sKey in ("saDataCommands", "saPlotCommands"):
-        for sScript in flistExtractScripts(dictStep.get(sKey, [])):
-            sPath = _fsNormalizePath(sDirectory, sScript)
-            if dictStoredHashes.get(sPath) != dictCurrentHashes.get(sPath):
-                return True
-    return False
-
-
-def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
-    """Compare current script hashes against stored run hashes."""
-    dictResult = {}
-    for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
-        bModified = _fbStepScriptsModified(dictStep, dictCurrentHashes)
-        if bModified is None:
-            dictResult[iIndex] = "unknown"
-        elif bModified:
-            dictResult[iIndex] = "modified"
-        else:
-            dictResult[iIndex] = "unchanged"
-    return dictResult
-
-
-def _fdictDetectChangedFiles(dictCtx, sContainerId,
-                             dictWorkflow, dictNewModTimes,
-                             dictVars=None):
-    """Return changed files by step index, or empty if none changed."""
-    if "dictPreviousModTimes" not in dictCtx:
-        dictCtx["dictPreviousModTimes"] = {}
-    dictPrevByContainer = dictCtx["dictPreviousModTimes"]
-    dictOldModTimes = dictPrevByContainer.get(sContainerId, {})
-    dictPrevByContainer[sContainerId] = dict(dictNewModTimes)
-    if not dictOldModTimes:
-        return {}
-    if _fbPipelineIsRunning(dictCtx, sContainerId):
-        return {}
-    dictPathsByStep = fdictCollectOutputPathsByStep(
-        dictWorkflow, dictVars)
-    return _fdictFindChangedFiles(
-        dictPathsByStep, dictOldModTimes, dictNewModTimes,
-    )
-
-
-def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles,
-                                  dictModTimes=None):
-    """Invalidate changed and downstream steps, return verification map."""
-    dictDownstream = workflowManager.fdictBuildDownstreamMap(
-        dictWorkflow)
-    setDirectChanged = set(dictChangedFiles.keys())
-    setDownstream = set()
-    for iIndex in setDirectChanged:
-        setDownstream |= dictDownstream.get(iIndex, set())
-    setDownstream -= setDirectChanged
-    listSteps = dictWorkflow.get("listSteps", [])
-    for iIndex, listPaths in dictChangedFiles.items():
-        if 0 <= iIndex < len(listSteps):
-            _fnInvalidateStepFiles(listSteps[iIndex], listPaths,
-                                   dictModTimes)
-    for iIndex in setDownstream:
-        if 0 <= iIndex < len(listSteps):
-            _fnInvalidateDownstreamStep(listSteps[iIndex])
-    setAllAffected = setDirectChanged | setDownstream
-    dictInvalidated = {}
-    for iIndex in setAllAffected:
-        if 0 <= iIndex < len(listSteps):
-            dictInvalidated[iIndex] = listSteps[iIndex].get(
-                "dictVerification", {})
-    return dictInvalidated
-
-
-def _flistDetectAndInvalidate(dictCtx, sContainerId,
-                              dictWorkflow, dictNewModTimes,
-                              dictVars=None):
-    """Detect file changes and invalidate affected steps."""
-    dictChangedFiles = _fdictDetectChangedFiles(
-        dictCtx, sContainerId, dictWorkflow,
-        dictNewModTimes, dictVars,
-    )
-    if not dictChangedFiles:
-        return {}
-    dictInvalidated = _fdictInvalidateAffectedSteps(
-        dictWorkflow, dictChangedFiles, dictNewModTimes)
-    dictCtx["save"](sContainerId, dictWorkflow)
-    return dictInvalidated
-
-
-def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
-    """Return {path: mtime_string} for each file that exists."""
-    if not listPaths:
-        return {}
-    sPathArgs = " ".join(
-        fsShellQuote(s) for s in listPaths[:200]
-    )
-    sCmd = f"stat -c '%n %Y' {sPathArgs} 2>/dev/null || true"
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCmd
-    )
-    dictResult = {}
-    for sLine in (sOutput or "").strip().split("\n"):
-        sLine = sLine.strip()
-        if not sLine:
-            continue
-        listParts = sLine.rsplit(" ", 1)
-        if len(listParts) == 2:
-            dictResult[listParts[0]] = listParts[1]
-    return dictResult
 
 
 async def _fiCountMatchingProcesses(connectionDocker, sContainerId,
@@ -3014,25 +2637,6 @@ class SaveAndRunTestRequest(BaseModel):
     sFilePath: str
 
 
-def _fsBuildPytestCommand(sDirectory, sFilePath):
-    """Build a pytest command string for a test file."""
-    return (
-        f"cd {fsShellQuote(sDirectory)}"
-        f" && python -m pytest"
-        f" {fsShellQuote(sFilePath)} -v"
-    )
-
-
-def _fnRegisterTestCommand(dictStep, bPassed, sFilePath):
-    """Add the pytest run command to the step if the test passed."""
-    if not bPassed:
-        return
-    dictStep.setdefault("saTestCommands", [])
-    sRunCmd = f"python -m pytest {sFilePath} -v"
-    if sRunCmd not in dictStep["saTestCommands"]:
-        dictStep["saTestCommands"].append(sRunCmd)
-
-
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
@@ -3070,19 +2674,6 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             "sOutput": sOutput,
             "iExitCode": iExitCode,
         }
-
-
-def _flistResolveTestCommands(dictStep):
-    """Return test commands from structured tests or legacy list."""
-    from .workflowManager import flistResolveTestCommands
-    return flistResolveTestCommands(dictStep)
-
-
-_LIST_TEST_CATEGORIES = (
-    ("dictIntegrity", "sIntegrity"),
-    ("dictQualitative", "sQualitative"),
-    ("dictQuantitative", "sQuantitative"),
-)
 
 
 async def _fdictRunAllTestCategories(dictCtx, sContainerId, dictStep):
@@ -3126,20 +2717,6 @@ async def _fdictRunOneTestCategory(
         "bPassed": iCatExit == 0,
         "sOutput": sCatOutput,
         "iExitCode": iCatExit,
-    }
-
-
-def _fdictBuildTestResponse(bAllPassed, dictCategoryResults):
-    """Build the HTTP response dict for a test run."""
-    iMaxExitCode = max(
-        (d["iExitCode"] for d in dictCategoryResults.values()),
-        default=0,
-    )
-    return {
-        "bPassed": bAllPassed,
-        "iExitCode": iMaxExitCode,
-        "sOutput": "",
-        "dictCategoryResults": dictCategoryResults,
     }
 
 
@@ -3241,82 +2818,6 @@ async def _fnUpdateInputHashes(dictCtx, sContainerId, dictStep):
     dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
 
 
-def _fnRecordTestResult(dictStep, bPassed, dictWorkflow,
-                        iStepIndex):
-    """Update verification state after test execution."""
-    dictVerification = dictStep.setdefault(
-        "dictVerification", {})
-    dictVerification["sUnitTest"] = (
-        "passed" if bPassed else "failed")
-    dictVerification.pop("listModifiedFiles", None)
-    dictVerification.pop("bUpstreamModified", None)
-    if bPassed:
-        _fnClearDownstreamUpstreamFlags(
-            dictWorkflow, iStepIndex)
-
-
-def _fnClearDownstreamUpstreamFlags(dictWorkflow, iStepIndex):
-    """Clear bUpstreamModified on downstream steps."""
-    dictDownstream = workflowManager.fdictBuildDownstreamMap(
-        dictWorkflow)
-    listSteps = dictWorkflow.get("listSteps", [])
-    for iDown in dictDownstream.get(iStepIndex, set()):
-        if 0 <= iDown < len(listSteps):
-            dictVerify = listSteps[iDown].get(
-                "dictVerification", {})
-            dictVerify.pop("bUpstreamModified", None)
-
-
-def _fnRemoveTestFiles(
-    connectionDocker, sContainerId, dictStep, iStepIndex,
-):
-    """Remove generated test file from the container. Deprecated."""
-    from .pipelineRunner import fsShellQuote
-    from .testGenerator import fsTestFilePath
-
-    sDirectory = dictStep.get("sDirectory", "")
-    sPath = fsTestFilePath(sDirectory, iStepIndex)
-    connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"rm -f {fsShellQuote(sPath)}"
-    )
-
-
-def _fnRemoveTestDirectory(connectionDocker, sContainerId, dictStep):
-    """Remove the entire tests subdirectory from the container."""
-    from .pipelineRunner import fsShellQuote
-    from .workflowManager import fsTestsDirectory
-
-    sDirectory = dictStep.get("sDirectory", "")
-    sTestsDir = fsTestsDirectory(sDirectory)
-    connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"rm -rf {fsShellQuote(sTestsDir)}"
-    )
-
-
-def _fnUpdateAggregateTestState(dictStep):
-    """Compute aggregate sUnitTest from per-category verification states."""
-    dictVerification = dictStep.get("dictVerification", {})
-    dictTests = dictStep.get("dictTests", {})
-    listStates = []
-    for sCategory, sVerifKey in (
-        ("dictIntegrity", "sIntegrity"),
-        ("dictQualitative", "sQualitative"),
-        ("dictQuantitative", "sQuantitative"),
-    ):
-        dictCat = dictTests.get(sCategory, {})
-        if (dictCat.get("saCommands", [])):
-            listStates.append(
-                dictVerification.get(sVerifKey, "untested"))
-    if not listStates:
-        dictVerification["sUnitTest"] = "untested"
-    elif "failed" in listStates:
-        dictVerification["sUnitTest"] = "failed"
-    elif all(s == "passed" for s in listStates):
-        dictVerification["sUnitTest"] = "passed"
-    else:
-        dictVerification["sUnitTest"] = "untested"
-
-
 def _fsPlotStandardPath(sBasename):
     """Return the standard PNG filename for a plot basename."""
     return f"{sBasename}_standard.png"
@@ -3341,18 +2842,6 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
     )
 
 
-def _flistResolvePlotPaths(dictStep, dictVars):
-    """Return list of (resolved_path, basename) for step plot files."""
-    from .workflowManager import fsResolveVariables
-    sStepDir = dictStep.get("sDirectory", "")
-    listResult = []
-    for sFile in dictStep.get("saPlotFiles", []):
-        sResolved = fsResolveVariables(sFile, dictVars)
-        if not sResolved.startswith("/"):
-            sResolved = posixpath.join(sStepDir, sResolved)
-        sBasename = posixpath.basename(sResolved)
-        listResult.append((sResolved, sBasename))
-    return listResult
 
 
 def _fnRegisterStandardizePlots(app, dictCtx):
