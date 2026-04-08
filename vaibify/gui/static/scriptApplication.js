@@ -637,6 +637,7 @@ const PipeleyenApp = (function () {
         elList.innerHTML = sHtml;
         fnApplyTimestampVisibility();
         fnBindStepEvents();
+        fnUpdateHighlightState();
         PipeleyenFileOps.fnScheduleFileExistenceCheck(
             _dictWorkflowState);
     }
