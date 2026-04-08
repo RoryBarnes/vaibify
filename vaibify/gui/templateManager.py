@@ -1,5 +1,14 @@
 """Manage deterministic test file templates and their content hashes."""
 
+__all__ = [
+    "fsQuantitativeTemplateHash",
+    "fsIntegrityTemplateHash",
+    "fsQualitativeTemplateHash",
+    "fsBuildQuantitativeTestCode",
+    "fsBuildIntegrityTestCode",
+    "fsBuildQualitativeTestCode",
+]
+
 import hashlib
 import re
 

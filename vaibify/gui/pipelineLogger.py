@@ -1,5 +1,12 @@
 """Logging infrastructure for pipeline execution."""
 
+__all__ = [
+    "I_MAX_LOG_LINES",
+    "fsGenerateLogFilename",
+    "ffBuildLoggingCallback",
+    "fnWriteLogToContainer",
+]
+
 import asyncio
 import json
 import logging

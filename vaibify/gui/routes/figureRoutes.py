@@ -1,5 +1,7 @@
 """Figure serving route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import posixpath
 
 from fastapi import HTTPException

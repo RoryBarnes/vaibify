@@ -1,5 +1,9 @@
 """Container CPU, memory, and disk statistics via subprocess."""
 
+__all__ = [
+    "fdictGetContainerStats",
+]
+
 import json
 import subprocess
 

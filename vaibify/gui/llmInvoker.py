@@ -1,5 +1,14 @@
 """Invoke LLM providers (Claude CLI or Anthropic API) for test generation."""
 
+__all__ = [
+    "fnEnsureClaudeMdInstructions",
+    "fbContainerHasClaude",
+    "fsReadFileFromContainer",
+    "fsBuildPrompt",
+    "ftResultGenerateViaClaude",
+    "fsGenerateViaApi",
+]
+
 import logging
 import posixpath
 

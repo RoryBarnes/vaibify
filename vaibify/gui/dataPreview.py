@@ -1,5 +1,9 @@
 """Preview data files inside a Docker container."""
 
+__all__ = [
+    "fsPreviewDataFile",
+]
+
 import posixpath
 
 

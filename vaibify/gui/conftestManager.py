@@ -1,5 +1,12 @@
 """Manage conftest.py marker plugin and tests directory in containers."""
 
+__all__ = [
+    "fsConftestPath",
+    "fsConftestContent",
+    "fnWriteConftestMarker",
+    "fnEnsureTestsDirectory",
+]
+
 import posixpath
 
 

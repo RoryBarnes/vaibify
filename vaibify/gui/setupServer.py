@@ -1,5 +1,16 @@
 """Standalone FastAPI app for the setup wizard (host-side, no Docker)."""
 
+__all__ = [
+    "ValidateRequest",
+    "SaveRequest",
+    "BuildRequest",
+    "fappCreateSetupApplication",
+    "flistAvailableTemplates",
+    "fdictProcessBuild",
+    "fnWriteConfigToDirectory",
+    "ftResultRunBuild",
+]
+
 import os
 import subprocess
 import sys

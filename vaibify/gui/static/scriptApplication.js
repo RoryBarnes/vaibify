@@ -694,90 +694,13 @@ const PipeleyenApp = (function () {
     }
 
     function fnRenderWorkflowList(listWorkflows, sId) {
-        var elList = document.getElementById("listWorkflows");
-        var sCardsHtml = "";
-        if (listWorkflows.length === 0) {
-            sCardsHtml =
-                '<p style="color: var(--text-muted); text-align: center;">' +
-                'No workflows found. Create one to get started.</p>';
-        } else {
-            sCardsHtml = listWorkflows.map(function (dictWf) {
-                var sRepo = dictWf.sRepoName || "";
-                return (
-                    '<div class="container-card" data-path="' +
-                    fnEscapeHtml(dictWf.sPath) + '">' +
-                    '<span class="name">' +
-                    fnEscapeHtml(dictWf.sName) + '</span>' +
-                    '<span class="image">' +
-                    fnEscapeHtml(sRepo) + '</span></div>'
-                );
-            }).join("");
-        }
-        elList.innerHTML = sCardsHtml;
-        elList.querySelectorAll(".container-card").forEach(function (el) {
-            el.addEventListener("click", function () {
-                var sPath = el.dataset.path;
-                var sName = el.querySelector(".name").textContent;
-                fnSelectWorkflow(sId, sPath, sName);
-            });
-        });
+        VaibifyWorkflowManager.fnRenderWorkflowList(
+            listWorkflows, sId);
     }
 
     function fnCreateNewWorkflow() {
-        if (!_sSelectedContainerId) return;
-        fnShowInputModal(
-            "Workflow display name",
-            "My Workflow",
-            function (sName) {
-                var sDefault = sName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-                fnShowInputModal(
-                    "Filename (no spaces, .json added automatically)",
-                    sDefault,
-                    function (sFileName) {
-                        _fnPromptForRepoDirectory(sName, sFileName);
-                    }
-                );
-            }
-        );
-    }
-
-    async function _fnPromptForRepoDirectory(sName, sFileName) {
-        var sSuggestion = "";
-        try {
-            var dictRepos = await VaibifyApi.fdictGet(
-                "/api/repos/" + _sSelectedContainerId
-            );
-            if (dictRepos.listRepos && dictRepos.listRepos.length) {
-                sSuggestion = dictRepos.listRepos[0];
-            }
-        } catch (error) { /* fall through */ }
-        fnShowInputModal(
-            "Repository directory name under /workspace/ "
-                + "(where the workflow and its Plot/ folder will live)",
-            sSuggestion,
-            function (sRepo) {
-                _fnSubmitNewWorkflow(sName, sFileName, sRepo);
-            }
-        );
-    }
-
-    async function _fnSubmitNewWorkflow(sName, sFileName, sRepo) {
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/workflows/" + _sSelectedContainerId + "/create",
-                {
-                    sWorkflowName: sName,
-                    sFileName: sFileName,
-                    sRepoDirectory: sRepo,
-                }
-            );
-            fnShowToast("Workflow created", "success");
-            fnSelectWorkflow(
-                _sSelectedContainerId, dictResult.sPath, dictResult.sName
-            );
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
+        VaibifyWorkflowManager.fnCreateNewWorkflow(
+            _sSelectedContainerId);
     }
 
     function _fnResetWorkflowState() {
@@ -825,16 +748,9 @@ const PipeleyenApp = (function () {
         fnRecoverPipelineState(sId);
     }
 
-    async function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
-        try {
-            var dictResult = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId +
-                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPathArg)
-            );
-            _fnActivateWorkflow(sId, dictResult, sWorkflowName);
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
+    function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
+        VaibifyWorkflowManager.fnSelectWorkflow(
+            sId, sWorkflowPathArg, sWorkflowName);
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -2050,86 +1966,272 @@ const PipeleyenApp = (function () {
         elList.addEventListener("drop", fnHandleDelegatedDrop);
     }
 
+    function _fnHandleActionDownload(event, elMatch) {
+        event.stopPropagation();
+        var elDetailItem = event.target.closest(".detail-item");
+        if (elDetailItem) {
+            fnPromptPullToHost(elDetailItem.dataset.resolved);
+        }
+    }
+
+    function _fnHandleActionEdit(event, elMatch) {
+        event.stopPropagation();
+        var elDetailItem = event.target.closest(".detail-item");
+        if (elDetailItem) {
+            fnInlineEditItem(
+                elDetailItem,
+                parseInt(elDetailItem.dataset.step),
+                elDetailItem.dataset.array,
+                parseInt(elDetailItem.dataset.idx)
+            );
+        }
+    }
+
+    function _fnHandleActionCopy(event, elMatch) {
+        event.stopPropagation();
+        var elDetailItem = event.target.closest(".detail-item");
+        if (elDetailItem) {
+            fnCopyToClipboard(elDetailItem.dataset.resolved);
+        }
+    }
+
+    function _fnHandleActionDelete(event, elMatch) {
+        event.stopPropagation();
+        var elDetailItem = event.target.closest(".detail-item");
+        if (elDetailItem) {
+            fnDeleteDetailItem(
+                parseInt(elDetailItem.dataset.step),
+                elDetailItem.dataset.array,
+                parseInt(elDetailItem.dataset.idx)
+            );
+        }
+    }
+
+    function _fnHandleDiscoveredButton(event, elMatch) {
+        event.stopPropagation();
+        var elDiscItem = elMatch.closest(".discovered-item");
+        fnAddDiscoveredOutput(
+            parseInt(elDiscItem.dataset.step),
+            elDiscItem.dataset.file,
+            elMatch.dataset.target
+        );
+    }
+
+    function _fnHandleArchiveStar(event, elMatch) {
+        event.stopPropagation();
+        fnToggleArchiveCategory(
+            parseInt(elMatch.dataset.step),
+            elMatch.dataset.file,
+            elMatch.dataset.array || "saPlotFiles"
+        );
+    }
+
+    function _fnHandleTestAdd(event, elMatch) {
+        event.stopPropagation();
+        fnAddTestItem(
+            parseInt(elMatch.dataset.step),
+            elMatch.dataset.testType
+        );
+    }
+
+    function _fnHandleSectionAdd(event, elMatch) {
+        event.stopPropagation();
+        fnAddNewItem(
+            parseInt(elMatch.dataset.step),
+            elMatch.dataset.array
+        );
+    }
+
+    function _fnHandleVerificationClickable(event, elMatch) {
+        fnCycleUserVerification(
+            parseInt(elMatch.dataset.step)
+        );
+    }
+
+    function _fnHandleSubTestRow(event, elMatch) {
+        var sSubApprover = elMatch.dataset.approver;
+        var iSubStep = parseInt(elMatch.dataset.step);
+        var setSubExp = fsetGetExpandedCategory(sSubApprover);
+        if (setSubExp.has(iSubStep)) {
+            setSubExp.delete(iSubStep);
+        } else {
+            setSubExp.add(iSubStep);
+        }
+        fnRenderStepList();
+    }
+
+    function _fnHandleVerificationExpandable(event, elMatch) {
+        var sApprover = elMatch.dataset.approver;
+        var iStep = parseInt(elMatch.dataset.step);
+        if (sApprover === "unitTest") {
+            fnToggleUnitTestExpand(iStep);
+        }
+    }
+
+    function _fnHandleVerificationDeps(event, elMatch) {
+        fnToggleDepsExpand(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleMakeStandard(event, elMatch) {
+        fnStandardizeAllPlots(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleCompareStandard(event, elMatch) {
+        fnCompareStepPlots(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleTestFileItem(event, elMatch) {
+        PipeleyenFigureViewer.fnDisplayFileFromContainer(
+            elMatch.textContent.trim()
+        );
+    }
+
+    function _fnHandleTestLastRun(event, elMatch) {
+        PipeleyenFigureViewer.fnDisplayFileFromContainer(
+            elMatch.dataset.log
+        );
+    }
+
+    function _fnHandleGenerateTest(event, elMatch) {
+        fnGenerateTests(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleStepEdit(event, elMatch) {
+        var elStepItem = event.target.closest(".step-item");
+        PipeleyenStepEditor.fnOpenEditModal(
+            parseInt(elStepItem.dataset.index)
+        );
+    }
+
+    function _fnHandleInteractiveRun(event, elMatch) {
+        fnRunInteractiveStep(parseInt(elMatch.dataset.index));
+    }
+
+    function _fnHandleInteractivePlots(event, elMatch) {
+        fnRunInteractivePlots(parseInt(elMatch.dataset.index));
+    }
+
+    function _fnHandleRunTests(event, elMatch) {
+        fnRunStepTests(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleRunCategory(event, elMatch) {
+        fnRunCategoryTests(
+            parseInt(elMatch.dataset.step),
+            elMatch.dataset.category);
+    }
+
+    function _fnHandleRunData(event, elMatch) {
+        fnRunDataCommands(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleRunPlots(event, elMatch) {
+        fnRunPlotCommands(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleAddDeps(event, elMatch) {
+        fnScanDependencies(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleShowDeps(event, elMatch) {
+        fnShowDag();
+    }
+
+    function _fnHandleRunStep(event, elMatch) {
+        fnRunStepCombined(parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleTestCategoryFile(event, elMatch) {
+        fnViewCategoryTestFile(
+            parseInt(elMatch.dataset.step),
+            elMatch.dataset.category);
+    }
+
+    function _fnHandleTestStandardsLink(event, elMatch) {
+        fnViewStandardsFile(
+            parseInt(elMatch.dataset.step),
+            elMatch.dataset.category);
+    }
+
+    function _fnHandleTestLogLink(event, elMatch) {
+        var iLogStep = parseInt(elMatch.dataset.step, 10);
+        var sCatKey = elMatch.dataset.category;
+        var dictLogStep = dictWorkflow.listSteps[iLogStep];
+        var dictLogTests = fdictGetTests(dictLogStep);
+        var sLogCatKey = "dict" + sCatKey.charAt(0)
+            .toUpperCase() + sCatKey.slice(1);
+        var sOutput = (dictLogTests[sLogCatKey] || {})
+            .sLastOutput || "No test output available.";
+        var sVerifyKey = "s" + sCatKey.charAt(0)
+            .toUpperCase() + sCatKey.slice(1);
+        var bLogPassed = (dictLogStep.dictVerification || {})[
+            sVerifyKey] === "passed";
+        PipeleyenFigureViewer.fnDisplayTestOutput(
+            sOutput, bLogPassed);
+    }
+
+    function _fnHandleTestEditCmd(event, elMatch) {
+        fnEditTestFile(
+            parseInt(elMatch.dataset.step),
+            parseInt(elMatch.dataset.idx));
+    }
+
+    function _fnHandleTestDeleteCmd(event, elMatch) {
+        fnDeleteTestCommand(
+            parseInt(elMatch.dataset.step),
+            parseInt(elMatch.dataset.idx));
+    }
+
+    var _DICT_CLICK_HANDLERS = {
+        ".action-download": _fnHandleActionDownload,
+        ".action-edit": _fnHandleActionEdit,
+        ".action-copy": _fnHandleActionCopy,
+        ".action-delete": _fnHandleActionDelete,
+        ".btn-discovered": _fnHandleDiscoveredButton,
+        ".archive-star": _fnHandleArchiveStar,
+        ".test-add": _fnHandleTestAdd,
+        ".section-add": _fnHandleSectionAdd,
+        ".verification-row.clickable": _fnHandleVerificationClickable,
+        ".sub-test-row": _fnHandleSubTestRow,
+        ".verification-row.expandable": _fnHandleVerificationExpandable,
+        '.verification-row[data-approver="deps"]':
+            _fnHandleVerificationDeps,
+        ".btn-make-standard": _fnHandleMakeStandard,
+        ".btn-compare-standard": _fnHandleCompareStandard,
+        ".test-file-item": _fnHandleTestFileItem,
+        ".test-last-run": _fnHandleTestLastRun,
+        ".btn-generate-test": _fnHandleGenerateTest,
+        ".step-edit": _fnHandleStepEdit,
+        ".btn-interactive-run": _fnHandleInteractiveRun,
+        ".btn-interactive-plots": _fnHandleInteractivePlots,
+        ".btn-run-tests": _fnHandleRunTests,
+        ".btn-run-all-tests": _fnHandleRunTests,
+        ".btn-run-category": _fnHandleRunCategory,
+        ".btn-run-data": _fnHandleRunData,
+        ".btn-run-plots": _fnHandleRunPlots,
+        ".btn-add-deps": _fnHandleAddDeps,
+        ".btn-show-deps": _fnHandleShowDeps,
+        ".btn-run-step": _fnHandleRunStep,
+        ".test-category-file": _fnHandleTestCategoryFile,
+        ".test-standards-link": _fnHandleTestStandardsLink,
+        ".test-log-link": _fnHandleTestLogLink,
+        ".test-edit-cmd": _fnHandleTestEditCmd,
+        ".test-delete-cmd": _fnHandleTestDeleteCmd,
+    };
+
     function fnHandleDelegatedClick(event) {
         var elTarget = event.target;
-        var elDetailItem = elTarget.closest(".detail-item");
-        var elStepItem = elTarget.closest(".step-item");
 
-        if (elTarget.closest(".action-download")) {
-            event.stopPropagation();
-            if (elDetailItem) {
-                fnPromptPullToHost(elDetailItem.dataset.resolved);
+        for (var sSelector in _DICT_CLICK_HANDLERS) {
+            var elMatch = elTarget.closest(sSelector);
+            if (elMatch) {
+                _DICT_CLICK_HANDLERS[sSelector](event, elMatch);
+                return;
             }
-            return;
         }
-        if (elTarget.closest(".action-edit")) {
-            event.stopPropagation();
-            if (elDetailItem) {
-                fnInlineEditItem(
-                    elDetailItem,
-                    parseInt(elDetailItem.dataset.step),
-                    elDetailItem.dataset.array,
-                    parseInt(elDetailItem.dataset.idx)
-                );
-            }
-            return;
-        }
-        if (elTarget.closest(".action-copy")) {
-            event.stopPropagation();
-            if (elDetailItem) {
-                fnCopyToClipboard(elDetailItem.dataset.resolved);
-            }
-            return;
-        }
-        if (elTarget.closest(".action-delete")) {
-            event.stopPropagation();
-            if (elDetailItem) {
-                fnDeleteDetailItem(
-                    parseInt(elDetailItem.dataset.step),
-                    elDetailItem.dataset.array,
-                    parseInt(elDetailItem.dataset.idx)
-                );
-            }
-            return;
-        }
-        if (elTarget.closest(".btn-discovered")) {
-            event.stopPropagation();
-            var elDiscBtn = elTarget.closest(".btn-discovered");
-            var elDiscItem = elDiscBtn.closest(".discovered-item");
-            fnAddDiscoveredOutput(
-                parseInt(elDiscItem.dataset.step),
-                elDiscItem.dataset.file,
-                elDiscBtn.dataset.target
-            );
-            return;
-        }
-        if (elTarget.closest(".archive-star")) {
-            event.stopPropagation();
-            var elStar = elTarget.closest(".archive-star");
-            fnToggleArchiveCategory(
-                parseInt(elStar.dataset.step),
-                elStar.dataset.file,
-                elStar.dataset.array || "saPlotFiles"
-            );
-            return;
-        }
-        if (elTarget.closest(".test-add")) {
-            event.stopPropagation();
-            var elTestAdd2 = elTarget.closest(".test-add");
-            fnAddTestItem(
-                parseInt(elTestAdd2.dataset.step),
-                elTestAdd2.dataset.testType
-            );
-            return;
-        }
-        if (elTarget.closest(".section-add")) {
-            event.stopPropagation();
-            var elAdd = elTarget.closest(".section-add");
-            fnAddNewItem(
-                parseInt(elAdd.dataset.step), elAdd.dataset.array
-            );
-            return;
-        }
+
+        /* Special case: detail-text on output items */
+        var elDetailItem = elTarget.closest(".detail-item");
         if (elTarget.closest(".detail-text") && elDetailItem &&
             elDetailItem.classList.contains("output")) {
             var elText = elTarget.closest(".detail-text");
@@ -2145,193 +2247,9 @@ const PipeleyenApp = (function () {
             }
             return;
         }
-        var elVerifClickable = elTarget.closest(
-            ".verification-row.clickable"
-        );
-        if (elVerifClickable) {
-            fnCycleUserVerification(
-                parseInt(elVerifClickable.dataset.step)
-            );
-            return;
-        }
-        var elSubTestRow = elTarget.closest(".sub-test-row");
-        if (elSubTestRow) {
-            var sSubApprover = elSubTestRow.dataset.approver;
-            var iSubStep = parseInt(elSubTestRow.dataset.step);
-            var setSubExp = fsetGetExpandedCategory(sSubApprover);
-            if (setSubExp.has(iSubStep)) {
-                setSubExp.delete(iSubStep);
-            } else {
-                setSubExp.add(iSubStep);
-            }
-            fnRenderStepList();
-            return;
-        }
-        var elVerifExpandable = elTarget.closest(
-            ".verification-row.expandable"
-        );
-        if (elVerifExpandable) {
-            var sApprover = elVerifExpandable.dataset.approver;
-            var iStep = parseInt(elVerifExpandable.dataset.step);
-            if (sApprover === "unitTest") {
-                fnToggleUnitTestExpand(iStep);
-                return;
-            }
-        }
-        var elVerifDeps = elTarget.closest(
-            '.verification-row[data-approver="deps"]'
-        );
-        if (elVerifDeps) {
-            fnToggleDepsExpand(
-                parseInt(elVerifDeps.dataset.step)
-            );
-            return;
-        }
-        if (elTarget.closest(".btn-make-standard")) {
-            var elMakeBtn = elTarget.closest(
-                ".btn-make-standard");
-            fnStandardizeAllPlots(
-                parseInt(elMakeBtn.dataset.step));
-            return;
-        }
-        if (elTarget.closest(".btn-compare-standard")) {
-            var elCmpBtn = elTarget.closest(
-                ".btn-compare-standard");
-            fnCompareStepPlots(
-                parseInt(elCmpBtn.dataset.step));
-            return;
-        }
-        if (elTarget.closest(".test-file-item")) {
-            PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                elTarget.closest(".test-file-item")
-                    .textContent.trim()
-            );
-            return;
-        }
-        if (elTarget.closest(".test-last-run")) {
-            var elLog = elTarget.closest(".test-last-run");
-            PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                elLog.dataset.log
-            );
-            return;
-        }
-        if (elTarget.closest(".btn-generate-test")) {
-            var elBtn = elTarget.closest(".btn-generate-test");
-            fnGenerateTests(parseInt(elBtn.dataset.step));
-            return;
-        }
-        if (elTarget.closest(".step-edit")) {
-            PipeleyenStepEditor.fnOpenEditModal(
-                parseInt(elStepItem.dataset.index)
-            );
-            return;
-        }
-        if (elTarget.closest(".btn-interactive-run")) {
-            fnRunInteractiveStep(
-                parseInt(elTarget.closest(
-                    ".btn-interactive-run").dataset.index)
-            );
-            return;
-        }
-        if (elTarget.closest(".btn-interactive-plots")) {
-            fnRunInteractivePlots(
-                parseInt(elTarget.closest(
-                    ".btn-interactive-plots").dataset.index)
-            );
-            return;
-        }
-        if (elTarget.closest(".btn-run-tests")) {
-            fnRunStepTests(
-                parseInt(elTarget.closest(
-                    ".btn-run-tests").dataset.step));
-            return;
-        }
-        if (elTarget.closest(".btn-run-all-tests")) {
-            fnRunStepTests(
-                parseInt(elTarget.closest(
-                    ".btn-run-all-tests").dataset.step));
-            return;
-        }
-        if (elTarget.closest(".btn-run-category")) {
-            var elCatBtn = elTarget.closest(".btn-run-category");
-            fnRunCategoryTests(
-                parseInt(elCatBtn.dataset.step),
-                elCatBtn.dataset.category);
-            return;
-        }
-        if (elTarget.closest(".btn-run-data")) {
-            fnRunDataCommands(
-                parseInt(elTarget.closest(
-                    ".btn-run-data").dataset.step));
-            return;
-        }
-        if (elTarget.closest(".btn-run-plots")) {
-            fnRunPlotCommands(
-                parseInt(elTarget.closest(
-                    ".btn-run-plots").dataset.step));
-            return;
-        }
-        if (elTarget.closest(".btn-add-deps")) {
-            var elAddDeps = elTarget.closest(".btn-add-deps");
-            fnScanDependencies(parseInt(elAddDeps.dataset.step));
-            return;
-        }
-        if (elTarget.closest(".btn-show-deps")) {
-            fnShowDag();
-            return;
-        }
-        if (elTarget.closest(".btn-run-step")) {
-            var elRunStep = elTarget.closest(".btn-run-step");
-            fnRunStepCombined(
-                parseInt(elRunStep.dataset.step));
-            return;
-        }
-        if (elTarget.closest(".test-category-file")) {
-            var elView = elTarget.closest(".test-category-file");
-            fnViewCategoryTestFile(
-                parseInt(elView.dataset.step),
-                elView.dataset.category);
-            return;
-        }
-        if (elTarget.closest(".test-standards-link")) {
-            var elStandards = elTarget.closest(".test-standards-link");
-            fnViewStandardsFile(
-                parseInt(elStandards.dataset.step),
-                elStandards.dataset.category);
-            return;
-        }
-        if (elTarget.closest(".test-log-link")) {
-            var elLogLink = elTarget.closest(".test-log-link");
-            var iLogStep = parseInt(elLogLink.dataset.step, 10);
-            var sCatKey = elLogLink.dataset.category;
-            var dictLogStep = dictWorkflow.listSteps[iLogStep];
-            var dictLogTests = fdictGetTests(dictLogStep);
-            var sLogCatKey = "dict" + sCatKey.charAt(0)
-                .toUpperCase() + sCatKey.slice(1);
-            var sOutput = (dictLogTests[sLogCatKey] || {})
-                .sLastOutput || "No test output available.";
-            var sVerifyKey = "s" + sCatKey.charAt(0)
-                .toUpperCase() + sCatKey.slice(1);
-            var bLogPassed = (dictLogStep.dictVerification || {})[
-                sVerifyKey] === "passed";
-            PipeleyenFigureViewer.fnDisplayTestOutput(
-                sOutput, bLogPassed);
-            return;
-        }
-        if (elTarget.closest(".test-edit-cmd")) {
-            var elEditCmd = elTarget.closest(".test-edit-cmd");
-            fnEditTestFile(
-                parseInt(elEditCmd.dataset.step),
-                parseInt(elEditCmd.dataset.idx));
-            return;
-        }
-        if (elTarget.closest(".test-delete-cmd")) {
-            var elDelCmd = elTarget.closest(".test-delete-cmd");
-            fnDeleteTestCommand(
-                parseInt(elDelCmd.dataset.step),
-                parseInt(elDelCmd.dataset.idx));
-            return;
-        }
+
+        /* Default: toggle step expansion */
+        var elStepItem = elTarget.closest(".step-item");
         if (elStepItem &&
             !elTarget.classList.contains("step-checkbox")) {
             fnToggleStepExpand(parseInt(elStepItem.dataset.index));
@@ -4103,243 +4021,16 @@ const PipeleyenApp = (function () {
             .getPropertyValue("--highlight-color").trim();
     }
 
-    var sPushService = "";
-
-    async function fnOpenPushModal(sService) {
-        if (!sContainerId) return;
-        var dictResult = await VaibifyApi.fdictGet(
-            "/api/sync/" + sContainerId + "/check/" + sService
-        );
-        if (!dictResult.bConnected) {
-            fnShowConnectionSetup(sService);
-            return;
-        }
-        sPushService = sService;
-        fnPopulatePushModal(sService);
+    function fnOpenPushModal(sService) {
+        VaibifySyncManager.fnOpenPushModal(sService);
     }
-
-    async function fnPopulatePushModal(sService) {
-        var listFiles = await VaibifyApi.fdictGet(
-            "/api/sync/" + sContainerId + "/files"
-        );
-        var dictNames = {
-            overleaf: "Overleaf", zenodo: "Zenodo",
-            github: "GitHub",
-        };
-        document.getElementById("modalPushTitle").textContent =
-            "Push to " + dictNames[sService];
-        fnRenderPushFileList(listFiles);
-        document.getElementById("modalPush").style.display = "flex";
-    }
-
-    function fnRenderPushFileList(listFiles) {
-        var elList = document.getElementById("modalPushFileList");
-        var bOverleaf = sPushService === "overleaf";
-        elList.innerHTML = listFiles.map(function (dictFile) {
-            var bSupporting = bOverleaf &&
-                dictFile.sCategory === "supporting";
-            return '<div class="push-file-row' +
-                (bSupporting ? " push-file-supporting" : "") +
-                '">' +
-                '<input type="checkbox" class="push-file-checkbox" ' +
-                'data-path="' + fnEscapeHtml(dictFile.sPath) +
-                '"' + (bSupporting ? "" : " checked") +
-                (bSupporting ? " disabled" : "") + '>' +
-                '<span class="push-file-name">' +
-                fnEscapeHtml(dictFile.sPath) +
-                (bSupporting ? " (supporting)" : "") +
-                '</span></div>';
-        }).join("");
-    }
-
-
-    async function fnHandlePushConfirm() {
-        var listPaths = [];
-        document.querySelectorAll(
-            ".push-file-checkbox:checked"
-        ).forEach(function (el) {
-            listPaths.push(el.dataset.path);
-        });
-        if (listPaths.length === 0) {
-            fnShowToast("No files selected", "error");
-            return;
-        }
-        document.getElementById("modalPush").style.display = "none";
-        fnShowToast("Pushing " + listPaths.length + " files...",
-            "success");
-        var sEndpoint = _fsServiceEndpoint(sPushService);
-        var sAction = _fsServiceAction(sPushService);
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                sEndpoint + sContainerId + "/" + sAction,
-                {listFilePaths: listPaths}
-            );
-            if (!dictResult.bSuccess) {
-                fnShowSyncError(dictResult, sPushService);
-                return;
-            }
-            fnShowToast("Push complete!", "success");
-            fnRenderStepList();
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    var dictSyncErrorMessages = {
-        auth: "Authentication failed. Check your credentials " +
-            "in Sync > Setup.",
-        rateLimit: "Rate limited. Try again in a few minutes.",
-        notFound: "Resource not found. Check your project ID " +
-            "or DOI.",
-        network: "Network error. Check your container's " +
-            "internet connection.",
-    };
 
     function fnShowSyncError(dictResult, sService) {
-        var sErrorType = dictResult.sErrorType || "unknown";
-        var sMessage = dictSyncErrorMessages[sErrorType] ||
-            dictResult.sMessage || "Unknown error";
-        var sTitle = (sService || "Sync") + " failed: " +
-            sErrorType;
-        fnShowErrorModal(sTitle + "\n\n" + sMessage);
-    }
-
-    function _fsServiceEndpoint(sService) {
-        if (sService === "overleaf") return "/api/overleaf/";
-        if (sService === "zenodo") return "/api/zenodo/";
-        return "/api/github/";
-    }
-
-    function _fsServiceAction(sService) {
-        if (sService === "zenodo") return "archive";
-        return "push";
+        VaibifySyncManager.fnShowSyncError(dictResult, sService);
     }
 
     function fnBindPushModalEvents() {
-        document.getElementById("btnPushCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalPush")
-                    .style.display = "none";
-            }
-        );
-        document.getElementById("btnPushConfirm").addEventListener(
-            "click", fnHandlePushConfirm
-        );
-        document.getElementById("btnPushSelectAll").addEventListener(
-            "click", function () {
-                document.querySelectorAll(".push-file-checkbox")
-                    .forEach(function (el) { el.checked = true; });
-            }
-        );
-        fnBindConnectionSetupEvents();
-    }
-
-    function fnShowConnectionSetup(sService) {
-        var elModal = document.getElementById("modalConnectionSetup");
-        elModal.dataset.service = sService;
-        var elProjectId = document.getElementById("groupSetupProjectId");
-        var elToken = document.getElementById("groupSetupToken");
-        elProjectId.style.display = "none";
-        elToken.style.display = "none";
-        if (sService === "overleaf") {
-            elProjectId.style.display = "";
-            elToken.style.display = "";
-            var elLabel = document.getElementById("labelSetupToken");
-            var elHelp = document.getElementById("helpSetupToken");
-            elLabel.textContent = "Overleaf Password ";
-            if (elHelp) {
-                elHelp.setAttribute("title",
-                    "Enter your Overleaf account password. " +
-                    "Overleaf uses this as the git password " +
-                    "for its git bridge. Go to Account > " +
-                    "Password to set or reset it.");
-                elLabel.appendChild(elHelp);
-            }
-            document.getElementById("modalConnectionTitle")
-                .textContent = "Connect to Overleaf";
-        } else if (sService === "zenodo") {
-            elToken.style.display = "";
-            var elLabel = document.getElementById("labelSetupToken");
-            var elHelp = document.getElementById("helpSetupToken");
-            elLabel.textContent = "Zenodo API Token ";
-            if (elHelp) elLabel.appendChild(elHelp);
-            document.getElementById("modalConnectionTitle")
-                .textContent = "Connect to Zenodo";
-        } else {
-            fnShowToast(
-                "GitHub uses gh auth. Run 'gh auth login' " +
-                "on your host machine.", "error"
-            );
-            return;
-        }
-        elModal.style.display = "flex";
-    }
-
-    function fnBindConnectionSetupEvents() {
-        document.getElementById("btnSetupCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalConnectionSetup")
-                    .style.display = "none";
-            }
-        );
-        document.getElementById("btnSetupSave").addEventListener(
-            "click", fnHandleSetupSave
-        );
-        document.addEventListener("click", function (event) {
-            var elHelp = event.target.closest(".help-icon");
-            if (!elHelp) return;
-            var sText = elHelp.getAttribute("title");
-            if (!sText) return;
-            event.preventDefault();
-            event.stopPropagation();
-            fnShowHelpPopup(sText);
-        });
-    }
-
-    function fnShowHelpPopup(sText) {
-        var elExisting = document.getElementById("popupHelp");
-        if (elExisting) elExisting.remove();
-        var elPopup = document.createElement("div");
-        elPopup.id = "popupHelp";
-        elPopup.className = "help-popup";
-        elPopup.innerHTML =
-            '<div class="help-popup-content">' +
-            '<span class="help-popup-close">&times;</span>' +
-            '<p>' + fnEscapeHtml(sText) + '</p></div>';
-        document.body.appendChild(elPopup);
-        elPopup.querySelector(".help-popup-close").addEventListener(
-            "click", function () { elPopup.remove(); }
-        );
-    }
-
-    async function fnHandleSetupSave() {
-        var elModal = document.getElementById("modalConnectionSetup");
-        var sService = elModal.dataset.service;
-        var dictBody = { sService: sService };
-        var sProjectId = document.getElementById(
-            "inputSetupProjectId").value.trim();
-        var sToken = document.getElementById(
-            "inputSetupToken").value.trim();
-        if (sProjectId) dictBody.sProjectId = sProjectId;
-        if (sToken) dictBody.sToken = sToken;
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/sync/" + sContainerId + "/setup",
-                dictBody
-            );
-            elModal.style.display = "none";
-            if (dictResult.bConnected) {
-                fnShowToast("Connected!", "success");
-                fnOpenPushModal(sService);
-            } else {
-                fnShowToast(
-                    dictResult.sMessage || "Connection failed",
-                    "error"
-                );
-            }
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
+        VaibifySyncManager.fnBindPushModalEvents();
     }
 
     function fnBindWorkflowPickerEvents() {
@@ -4369,101 +4060,12 @@ const PipeleyenApp = (function () {
         document.getElementById("activeWorkflowName").addEventListener(
             "click", function (event) {
                 event.stopPropagation();
-                fnToggleWorkflowDropdown();
+                VaibifyWorkflowManager.fnToggleWorkflowDropdown();
             }
         );
         document.addEventListener("click", function () {
-            fnHideWorkflowDropdown();
+            VaibifyWorkflowManager.fnHideWorkflowDropdown();
         });
-    }
-
-    async function fnToggleWorkflowDropdown() {
-        var elDropdown = document.getElementById("workflowDropdown");
-        if (elDropdown.classList.contains("active")) {
-            elDropdown.classList.remove("active");
-            return;
-        }
-        if (!sContainerId) return;
-        try {
-            var listWorkflows = await VaibifyApi.fdictGet(
-                "/api/workflows/" + sContainerId);
-            fnRenderWorkflowDropdown(listWorkflows);
-            elDropdown.classList.add("active");
-        } catch (error) {
-            fnShowToast("Could not load workflows", "error");
-        }
-    }
-
-    function fnHideWorkflowDropdown() {
-        document.getElementById("workflowDropdown")
-            .classList.remove("active");
-    }
-
-    function fnRenderWorkflowDropdown(listWorkflows) {
-        var elDropdown = document.getElementById("workflowDropdown");
-        var bInNoWorkflow = !sWorkflowPath && !dictWorkflow;
-        var sHtml = '<div class="workflow-dropdown-item' +
-            (bInNoWorkflow ? " current" : "") +
-            '" data-action="noWorkflow">' +
-            '<span class="wf-name">No Workflow</span></div>';
-        sHtml += listWorkflows.map(function (dictWf) {
-            var bCurrent = dictWf.sPath === sWorkflowPath;
-            return (
-                '<div class="workflow-dropdown-item' +
-                (bCurrent ? " current" : "") +
-                '" data-path="' + fnEscapeHtml(dictWf.sPath) +
-                '" data-name="' + fnEscapeHtml(dictWf.sName) + '">' +
-                '<span class="wf-name">' +
-                fnEscapeHtml(dictWf.sName) + '</span>' +
-                '<span class="wf-path">' +
-                fnEscapeHtml(dictWf.sPath) + '</span></div>'
-            );
-        }).join("");
-        elDropdown.innerHTML = sHtml;
-        fnBindWorkflowDropdownItems(elDropdown);
-    }
-
-    function fnBindWorkflowDropdownItems(elDropdown) {
-        elDropdown.querySelectorAll(".workflow-dropdown-item")
-            .forEach(function (el) {
-                el.addEventListener("click", function (event) {
-                    event.stopPropagation();
-                    fnHideWorkflowDropdown();
-                    if (el.dataset.action === "noWorkflow") {
-                        if (!dictWorkflow && !sWorkflowPath) return;
-                        fnEnterNoWorkflow(sContainerId);
-                        return;
-                    }
-                    var sPath = el.dataset.path;
-                    var sName = el.dataset.name;
-                    if (sPath === sWorkflowPath) return;
-                    fnConfirmWorkflowSwitch(sPath, sName);
-                });
-            });
-    }
-
-    function fnConfirmWorkflowSwitch(sNewPath, sNewName) {
-        fnShowConfirmModal(
-            "Switch Workflow",
-            "Switch to \"" + sNewName + "\"?\n\n" +
-            "Current workflow state will be saved.",
-            async function () {
-                await fnSaveCurrentWorkflow();
-                fnSelectWorkflow(sContainerId, sNewPath, sNewName);
-            }
-        );
-    }
-
-    async function fnSaveCurrentWorkflow() {
-        if (!sContainerId || !dictWorkflow || !sWorkflowPath) return;
-        try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sContainerId +
-                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPath)
-            );
-        } catch (error) {
-            fnShowToast("Could not save workflow", "error");
-        }
     }
 
     function fnBindContainerLandingEvents() {
@@ -4509,7 +4111,7 @@ const PipeleyenApp = (function () {
             "click", fnSelectDirectory
         );
         fnBindAddChoiceModal();
-        fnBindCreateWizardModal();
+        VaibifyWorkflowManager.fnBindCreateWizardModal();
     }
 
     /* --- Add Choice Modal --- */
@@ -4536,304 +4138,12 @@ const PipeleyenApp = (function () {
             "click", function () {
                 document.getElementById("modalAddChoice")
                     .style.display = "none";
-                fnOpenCreateWizard();
+                VaibifyWorkflowManager.fnOpenCreateWizard();
             }
         );
     }
 
-    /* --- Creation Wizard --- */
-
-    var _iWizardStep = 0;
-    var _dictWizardData = {};
-    var _LIST_WIZARD_TITLES = [
-        "Project Directory",
-        "Template",
-        "Project Name",
-        "Python Version",
-        "Repositories",
-        "Summary",
-    ];
-
-    function fnOpenCreateWizard() {
-        _iWizardStep = 0;
-        _dictWizardData = {
-            sDirectory: "",
-            sTemplateName: "",
-            sProjectName: "",
-            sPythonVersion: "3.12",
-            listRepositories: [],
-        };
-        document.getElementById("modalCreateWizard")
-            .style.display = "flex";
-        fnRenderWizardStep(_iWizardStep);
-    }
-
-    function fnBindCreateWizardModal() {
-        document.getElementById("btnWizardCancel").addEventListener(
-            "click", _fnCloseWizard
-        );
-        document.getElementById("btnWizardBack").addEventListener(
-            "click", _fnWizardStepBack
-        );
-        document.getElementById("btnWizardNext").addEventListener(
-            "click", _fnWizardStepNext
-        );
-    }
-
-    function _fnCloseWizard() {
-        document.getElementById("modalCreateWizard")
-            .style.display = "none";
-    }
-
-    function _fnWizardStepBack() {
-        if (_iWizardStep <= 0) return;
-        _fnSaveCurrentStepData();
-        _iWizardStep--;
-        fnRenderWizardStep(_iWizardStep);
-    }
-
-    function _fnWizardStepNext() {
-        _fnSaveCurrentStepData();
-        if (!_fbValidateWizardStep(_iWizardStep)) return;
-        if (_iWizardStep >= 5) {
-            fnSubmitCreateProject();
-            return;
-        }
-        _iWizardStep++;
-        fnRenderWizardStep(_iWizardStep);
-    }
-
-    function fnRenderWizardStep(iStep) {
-        _fnUpdateWizardProgress(iStep);
-        _fnUpdateWizardButtons(iStep);
-        document.getElementById("wizardStepTitle").textContent =
-            _LIST_WIZARD_TITLES[iStep];
-        var elContent = document.getElementById("wizardStepContent");
-        var listRenderers = [
-            _fnRenderStepDirectory,
-            _fnRenderStepTemplate,
-            _fnRenderStepProjectName,
-            _fnRenderStepPythonVersion,
-            _fnRenderStepRepositories,
-            _fnRenderStepSummary,
-        ];
-        listRenderers[iStep](elContent);
-    }
-
-    function _fnUpdateWizardProgress(iStep) {
-        var listDots = document.querySelectorAll(
-            ".wizard-progress-step"
-        );
-        listDots.forEach(function (el, i) {
-            el.classList.toggle("active", i <= iStep);
-        });
-    }
-
-    function _fnUpdateWizardButtons(iStep) {
-        document.getElementById("btnWizardBack").disabled =
-            iStep === 0;
-        document.getElementById("btnWizardNext").textContent =
-            iStep === 5 ? "Create" : "Next";
-    }
-
-    function _fnRenderStepDirectory(elContent) {
-        elContent.innerHTML =
-            '<div class="form-group">' +
-            '<label>Project Directory</label>' +
-            '<input type="text" id="inputWizardDirectory" ' +
-            'placeholder="/Users/you/projects/my-project">' +
-            '</div>';
-        var elInput = document.getElementById("inputWizardDirectory");
-        elInput.value = _dictWizardData.sDirectory;
-    }
-
-    function _fnRenderStepTemplate(elContent) {
-        elContent.innerHTML =
-            '<p class="muted-text" style="text-align:center;">' +
-            'Loading templates...</p>';
-        _fnFetchAndRenderTemplates(elContent);
-    }
-
-    async function _fnFetchAndRenderTemplates(elContent) {
-        try {
-            var dictResult = await VaibifyApi.fdictGet(
-                "/api/setup/templates");
-            _fnBuildTemplateCards(elContent, dictResult.listTemplates);
-        } catch (error) {
-            elContent.innerHTML =
-                '<p class="muted-text">Could not load templates.</p>';
-        }
-    }
-
-    function _fnBuildTemplateCards(elContent, listTemplates) {
-        if (!listTemplates || listTemplates.length === 0) {
-            elContent.innerHTML =
-                '<p class="muted-text">No templates available.</p>';
-            return;
-        }
-        elContent.innerHTML = '<div class="add-choice-cards">' +
-            listTemplates.map(function (sName) {
-                var sActive = sName === _dictWizardData.sTemplateName
-                    ? " style=\"border-color:var(--color-pale-blue);\""
-                    : "";
-                return '<div class="add-choice-card" ' +
-                    'data-template="' + fnEscapeHtml(sName) + '"' +
-                    sActive + '>' +
-                    '<div class="add-choice-title">' +
-                    fnEscapeHtml(sName) + '</div></div>';
-            }).join("") + '</div>';
-        _fnBindTemplateCardClicks(elContent);
-    }
-
-    function _fnBindTemplateCardClicks(elContent) {
-        elContent.querySelectorAll(".add-choice-card").forEach(
-            function (el) {
-                el.addEventListener("click", function () {
-                    _dictWizardData.sTemplateName =
-                        el.dataset.template;
-                    _fnHighlightSelectedCard(elContent, el);
-                });
-            }
-        );
-    }
-
-    function _fnHighlightSelectedCard(elContent, elSelected) {
-        elContent.querySelectorAll(".add-choice-card").forEach(
-            function (el) {
-                el.style.borderColor =
-                    el === elSelected
-                        ? "var(--color-pale-blue)" : "";
-            }
-        );
-    }
-
-    function _fnRenderStepProjectName(elContent) {
-        var sDefault = _fsProjectNameFromDirectory();
-        if (!_dictWizardData.sProjectName) {
-            _dictWizardData.sProjectName = sDefault;
-        }
-        elContent.innerHTML =
-            '<div class="form-group">' +
-            '<label>Project Name</label>' +
-            '<input type="text" id="inputWizardProjectName" ' +
-            'placeholder="my-project">' +
-            '</div>';
-        document.getElementById("inputWizardProjectName").value =
-            _dictWizardData.sProjectName;
-    }
-
-    function _fsProjectNameFromDirectory() {
-        var sDir = _dictWizardData.sDirectory || "";
-        var sTrimmed = sDir.replace(/\/+$/, "");
-        var iLastSlash = sTrimmed.lastIndexOf("/");
-        return iLastSlash >= 0
-            ? sTrimmed.substring(iLastSlash + 1) : sTrimmed;
-    }
-
-    function _fnRenderStepPythonVersion(elContent) {
-        var listVersions = [
-            "3.9", "3.10", "3.11", "3.12", "3.13", "3.14",
-        ];
-        elContent.innerHTML =
-            '<div class="form-group">' +
-            '<label>Python Version</label>' +
-            '<select id="selectWizardPython">' +
-            listVersions.map(function (sVersion) {
-                var sSelected =
-                    sVersion === _dictWizardData.sPythonVersion
-                        ? " selected" : "";
-                return '<option value="' + sVersion + '"' +
-                    sSelected + '>' + sVersion + '</option>';
-            }).join("") +
-            '</select></div>';
-    }
-
-    function _fnRenderStepRepositories(elContent) {
-        elContent.innerHTML =
-            '<div class="form-group">' +
-            '<label>Repositories (one per line, optional)</label>' +
-            '<textarea id="inputWizardRepos" rows="5" ' +
-            'placeholder="https://github.com/org/repo.git">' +
-            '</textarea></div>';
-        var sRepos = _dictWizardData.listRepositories.join("\n");
-        document.getElementById("inputWizardRepos").value = sRepos;
-    }
-
-    function _fnRenderStepSummary(elContent) {
-        elContent.innerHTML =
-            '<div style="font-size:13px;color:var(--text-secondary);">' +
-            '<p><strong>Directory:</strong> ' +
-            fnEscapeHtml(_dictWizardData.sDirectory) + '</p>' +
-            '<p><strong>Template:</strong> ' +
-            fnEscapeHtml(_dictWizardData.sTemplateName) + '</p>' +
-            '<p><strong>Project Name:</strong> ' +
-            fnEscapeHtml(_dictWizardData.sProjectName) + '</p>' +
-            '<p><strong>Python:</strong> ' +
-            fnEscapeHtml(_dictWizardData.sPythonVersion) + '</p>' +
-            '<p><strong>Repositories:</strong> ' +
-            (_dictWizardData.listRepositories.length > 0
-                ? fnEscapeHtml(
-                    _dictWizardData.listRepositories.join(", "))
-                : '<em>None</em>') +
-            '</p></div>';
-    }
-
-    function _fnSaveCurrentStepData() {
-        var elDir = document.getElementById("inputWizardDirectory");
-        if (elDir) _dictWizardData.sDirectory = elDir.value.trim();
-        var elName = document.getElementById(
-            "inputWizardProjectName"
-        );
-        if (elName) {
-            _dictWizardData.sProjectName = elName.value.trim();
-        }
-        var elPython = document.getElementById("selectWizardPython");
-        if (elPython) {
-            _dictWizardData.sPythonVersion = elPython.value;
-        }
-        var elRepos = document.getElementById("inputWizardRepos");
-        if (elRepos) {
-            _dictWizardData.listRepositories = elRepos.value
-                .split("\n")
-                .map(function (s) { return s.trim(); })
-                .filter(function (s) { return s.length > 0; });
-        }
-    }
-
-    function _fbValidateWizardStep(iStep) {
-        if (iStep === 0 && !_dictWizardData.sDirectory) {
-            fnShowToast("Directory path is required.", "warning");
-            return false;
-        }
-        if (iStep === 1 && !_dictWizardData.sTemplateName) {
-            fnShowToast("Please select a template.", "warning");
-            return false;
-        }
-        if (iStep === 2 && !_dictWizardData.sProjectName) {
-            fnShowToast("Project name is required.", "warning");
-            return false;
-        }
-        return true;
-    }
-
-    async function fnSubmitCreateProject() {
-        var elButton = document.getElementById("btnWizardNext");
-        elButton.disabled = true;
-        elButton.textContent = "Creating...";
-        try {
-            await VaibifyApi.fdictPost(
-                "/api/projects/create", _dictWizardData);
-            _fnCloseWizard();
-            fnShowToast("Project created successfully.");
-            fnLoadContainers();
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        } finally {
-            elButton.disabled = false;
-            elButton.textContent = "Create";
-        }
-    }
+    /* --- Creation Wizard (delegated to VaibifyWorkflowManager) --- */
 
     async function fnLoadLogs() {
         if (!sContainerId) return;
@@ -6752,6 +6062,7 @@ const PipeleyenApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fsResolveTemplate: fsResolveTemplate,
         fnShowConfirmModal: fnShowConfirmModal,
+        fnShowInputModal: fnShowInputModal,
         fnPromptPullToHost: fnPromptPullToHost,
         fnClearOutputModified: fnClearOutputModified,
         fnFinalizeGeneratedTest: fnFinalizeGeneratedTest,
@@ -6760,6 +6071,10 @@ const PipeleyenApp = (function () {
             return setGeneratedTestsPending.has(iStep);
         },
         fsGetDashboardMode: fsGetDashboardMode,
+        fsSanitizeErrorForUser: fsSanitizeErrorForUser,
+        fnActivateWorkflow: _fnActivateWorkflow,
+        fnEnterNoWorkflow: fnEnterNoWorkflow,
+        fnLoadContainers: fnLoadContainers,
     };
 })();
 

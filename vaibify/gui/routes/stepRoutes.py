@@ -1,5 +1,7 @@
 """Step CRUD route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 from fastapi import HTTPException
 
 from .. import workflowManager

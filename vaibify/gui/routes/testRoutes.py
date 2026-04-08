@@ -1,5 +1,7 @@
 """Test management route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import asyncio
 
 from fastapi import HTTPException, Request

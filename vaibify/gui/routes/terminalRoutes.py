@@ -1,5 +1,7 @@
 """Terminal WebSocket route handler."""
 
+__all__ = ["fnRegisterAll"]
+
 from fastapi import WebSocket
 
 from .. import pipelineServer as _pipelineServer

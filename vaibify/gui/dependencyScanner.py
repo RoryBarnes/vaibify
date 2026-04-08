@@ -1,5 +1,19 @@
 """Scan source code for file-loading calls across multiple languages."""
 
+__all__ = [
+    "DICT_SHEBANG_KEYWORDS",
+    "SET_FILE_EXTENSIONS",
+    "DICT_COMMENT_PREFIX",
+    "DICT_LANGUAGE_SCANNERS",
+    "DICT_WRITE_SCANNERS",
+    "fsDetectLanguage",
+    "fsExtractStringLiteral",
+    "fbLooksLikeFilePath",
+    "fbLooksLikeDataFile",
+    "flistScanForWriteCalls",
+    "flistScanForLoadCalls",
+]
+
 import os
 import re
 

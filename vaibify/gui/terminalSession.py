@@ -1,5 +1,10 @@
 """WebSocket-to-Docker PTY bridge for terminal sessions."""
 
+__all__ = [
+    "fsGenerateSessionId",
+    "TerminalSession",
+]
+
 import uuid
 
 

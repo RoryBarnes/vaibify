@@ -1,5 +1,9 @@
 """Test execution within pipeline steps."""
 
+__all__ = [
+    "fnRunAllTests",
+]
+
 import posixpath
 from datetime import datetime, timezone
 

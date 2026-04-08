@@ -1,5 +1,14 @@
 """API routes for the global project registry."""
 
+__all__ = [
+    "AddProjectRequest",
+    "CreateProjectRequest",
+    "ContainerSettingsRequest",
+    "fnRegisterRegistryRoutes",
+    "flistQueryHostDirectory",
+    "fbDirectoryHasConfig",
+]
+
 import logging
 import os
 

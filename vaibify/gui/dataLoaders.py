@@ -19,6 +19,13 @@ fsReadLoaderSource() -> str
     Return the embeddable loader source code between the markers.
 """
 
+__all__ = [
+    "DICT_FORMAT_MAP",
+    "DICT_LOADERS",
+    "fLoadValue",
+    "fsReadLoaderSource",
+]
+
 import json
 import pathlib
 import re

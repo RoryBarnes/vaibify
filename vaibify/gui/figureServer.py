@@ -1,5 +1,11 @@
 """Fetch and serve figure files from Docker containers."""
 
+__all__ = [
+    "DICT_MIME_TYPES",
+    "fbIsFigureFile",
+    "fsMimeTypeForFile",
+]
+
 import os
 
 DICT_MIME_TYPES = {

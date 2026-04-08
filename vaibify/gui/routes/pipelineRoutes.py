@@ -1,5 +1,7 @@
 """Pipeline control route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import asyncio
 import logging
 import posixpath

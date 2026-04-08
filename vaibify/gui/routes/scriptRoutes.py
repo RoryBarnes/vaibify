@@ -1,5 +1,7 @@
 """Script detection and dependency scanning route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import asyncio
 import os
 import posixpath

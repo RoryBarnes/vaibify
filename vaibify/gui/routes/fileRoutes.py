@@ -1,5 +1,7 @@
 """File management route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import os
 import posixpath
 

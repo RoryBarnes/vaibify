@@ -5,6 +5,22 @@ container so the GUI can recover pipeline status after a browser
 disconnect, tab close, or GUI restart.
 """
 
+__all__ = [
+    "I_MAX_OUTPUT_LINES",
+    "S_STATE_PATH",
+    "fdictBuildInitialState",
+    "fdictBuildStepStarted",
+    "fdictBuildStepResult",
+    "fdictBuildCompletedState",
+    "fdictBuildInteractivePauseState",
+    "fnWriteState",
+    "fnUpdateState",
+    "fnRecordStepResult",
+    "fnAppendOutput",
+    "fdictReadState",
+    "fnClearState",
+]
+
 import json
 from datetime import datetime, timezone
 

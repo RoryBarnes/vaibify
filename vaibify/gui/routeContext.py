@@ -8,6 +8,8 @@ The class also acts as a dict for backward compatibility — existing
 code using ``dictCtx["key"]`` continues to work unchanged.
 """
 
+__all__ = ["RouteContext"]
+
 
 class RouteContext:
     """Typed context object passed to all route handlers.

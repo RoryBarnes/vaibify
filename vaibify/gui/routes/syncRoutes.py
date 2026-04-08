@@ -1,5 +1,7 @@
 """Sync, reproducibility, and DAG route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import asyncio
 import posixpath
 

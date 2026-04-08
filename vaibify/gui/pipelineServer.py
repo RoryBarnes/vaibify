@@ -1032,33 +1032,20 @@ def _fconnectionCreateDocker():
 
 def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     """Register all API routes on the app."""
-    from .routes import (
-        stepRoutes,
-        fileRoutes,
-        syncRoutes,
-        testRoutes,
-        plotRoutes,
-        pipelineRoutes,
-        terminalRoutes,
-        workflowRoutes,
-        settingsRoutes,
-        figureRoutes,
-        scriptRoutes,
-        systemRoutes,
-    )
+    from . import routes
 
-    workflowRoutes.fnRegisterAll(app, dictCtx)
-    fileRoutes.fnRegisterAll(app, dictCtx, sWorkspaceRoot)
-    syncRoutes.fnRegisterAll(app, dictCtx)
-    scriptRoutes.fnRegisterAll(app, dictCtx)
-    settingsRoutes.fnRegisterAll(app, dictCtx)
-    stepRoutes.fnRegisterAll(app, dictCtx)
-    testRoutes.fnRegisterAll(app, dictCtx)
-    plotRoutes.fnRegisterAll(app, dictCtx)
-    figureRoutes.fnRegisterAll(app, dictCtx)
-    systemRoutes.fnRegisterAll(app, dictCtx)
-    pipelineRoutes.fnRegisterAll(app, dictCtx)
-    terminalRoutes.fnRegisterAll(app, dictCtx)
+    routes.workflowRoutes.fnRegisterAll(app, dictCtx)
+    routes.fileRoutes.fnRegisterAll(app, dictCtx, sWorkspaceRoot)
+    routes.syncRoutes.fnRegisterAll(app, dictCtx)
+    routes.scriptRoutes.fnRegisterAll(app, dictCtx)
+    routes.settingsRoutes.fnRegisterAll(app, dictCtx)
+    routes.stepRoutes.fnRegisterAll(app, dictCtx)
+    routes.testRoutes.fnRegisterAll(app, dictCtx)
+    routes.plotRoutes.fnRegisterAll(app, dictCtx)
+    routes.figureRoutes.fnRegisterAll(app, dictCtx)
+    routes.systemRoutes.fnRegisterAll(app, dictCtx)
+    routes.pipelineRoutes.fnRegisterAll(app, dictCtx)
+    routes.terminalRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

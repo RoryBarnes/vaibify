@@ -1,5 +1,10 @@
 """Interactive step handling for pipeline execution."""
 
+__all__ = [
+    "fdictCreateInteractiveContext",
+    "fnSetInteractiveResponse",
+]
+
 import asyncio
 from datetime import datetime, timezone
 

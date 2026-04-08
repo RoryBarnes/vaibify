@@ -1,5 +1,13 @@
 """Shared utilities for parsing pipeline commands."""
 
+__all__ = [
+    "DICT_COMMAND_PREFIXES",
+    "DICT_EXTENSION_TO_LANGUAGE",
+    "fsExtractScriptPath",
+    "ftExtractScriptPathForLanguage",
+    "flistExtractScripts",
+]
+
 import os
 
 

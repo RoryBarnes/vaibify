@@ -1,5 +1,7 @@
 """System endpoint route handlers."""
 
+__all__ = ["fnRegisterAll"]
+
 import asyncio
 import os
 
