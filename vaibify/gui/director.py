@@ -50,6 +50,8 @@ import sys
 import threading
 from datetime import datetime, timezone
 
+from .workflowManager import fsResolveVariables as _fsResolveVariablesBase
+
 
 # ---------------------------------------------------------------------------
 # Log file tee
@@ -89,15 +91,14 @@ def fnSetupLogFile(sLogPath):
 
 
 def fsResolveVariables(sTemplate, dictVariables):
-    """Replace {name} tokens in sTemplate with values from dictVariables."""
-
-    def fnReplace(match):
-        sToken = match.group(1)
-        if sToken in dictVariables:
-            return str(dictVariables[sToken])
-        raise KeyError(f"Unresolved variable: {{{sToken}}}")
-
-    return re.sub(r"\{([^}]+)\}", fnReplace, sTemplate)
+    """Resolve variables strictly -- raise KeyError on unresolved tokens."""
+    sResult = _fsResolveVariablesBase(sTemplate, dictVariables)
+    matchUnresolved = re.search(r"\{([^}]+)\}", sResult)
+    if matchUnresolved:
+        raise KeyError(
+            f"Unresolved variable: {{{matchUnresolved.group(1)}}}"
+        )
+    return sResult
 
 
 # ---------------------------------------------------------------------------

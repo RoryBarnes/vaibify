@@ -1,5 +1,41 @@
 """Generate pytest unit tests for workflow steps via LLM."""
 
+__all__ = [
+    "fbContainerHasClaude",
+    "fbValidatePythonSyntax",
+    "fdictGenerateAllTests",
+    "fdictGenerateAllTestsDeterministic",
+    "fdictGenerateTest",
+    "fdictParseCombinedOutput",
+    "fdictParseQuantitativeJson",
+    "fnEnsureClaudeMdInstructions",
+    "fnEnsureTestsDirectory",
+    "fnWriteConftestMarker",
+    "fsBuildIntegrityTestCode",
+    "fsBuildPrompt",
+    "fsBuildQualitativeTestCode",
+    "fsBuildQuantitativeTestCode",
+    "fsBuildStepContext",
+    "fsConftestContent",
+    "fsConftestPath",
+    "fsGenerateViaApi",
+    "fsIntegrityStandardsPath",
+    "fsIntegrityTemplateHash",
+    "fsIntegrityTestPath",
+    "fsParseGeneratedCode",
+    "fsPreviewDataFile",
+    "fsQualitativeStandardsPath",
+    "fsQualitativeTemplateHash",
+    "fsQualitativeTestPath",
+    "fsQuantitativeStandardsPath",
+    "fsQuantitativeTemplateHash",
+    "fsQuantitativeTestPath",
+    "fsReadFileFromContainer",
+    "fsRepairMissingImports",
+    "fsTestFilePath",
+    "ftResultGenerateViaClaude",
+]
+
 import json
 import logging
 import os
