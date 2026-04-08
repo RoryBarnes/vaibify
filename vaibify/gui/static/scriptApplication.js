@@ -93,7 +93,8 @@ const PipeleyenApp = (function () {
     /* --- WebSocket and Polling Registration --- */
 
     function fnRegisterWebSocketHandlers() {
-        VaibifyWebSocket.fnOnEvent("*", fnHandlePipelineEvent);
+        VaibifyWebSocket.fnOnEvent("*",
+            PipeleyenPipelineRunner.fnHandlePipelineEvent);
         VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
             fnClearRunningStatuses();
             fnRenderStepList();
@@ -115,7 +116,7 @@ const PipeleyenApp = (function () {
 
     function fnRegisterPollingHandlers() {
         VaibifyPolling.fnSetPipelineStateHandler(
-            fnHandlePipelinePollResult);
+            PipeleyenPipelineRunner.fnHandlePipelinePollResult);
         VaibifyPolling.fnSetFileStatusHandler(
             fnProcessFileStatusResponse);
     }
@@ -134,7 +135,7 @@ const PipeleyenApp = (function () {
         fnBindContainerLandingEvents();
         fnBindAddContainerModal();
         fnBindErrorModal();
-        fnBindApiConfirmModal();
+        PipeleyenTestManager.fnBindApiConfirmModal();
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
         fnBindResizeHandles();
@@ -166,541 +167,24 @@ const PipeleyenApp = (function () {
         }
     }
 
-    /* --- Container Landing --- */
+    /* Container management is now in scriptContainerManager.js */
 
-    async function fnLoadContainers() {
-        var elList = document.getElementById("listContainers");
-        try {
-            var dictResult = await VaibifyApi.fdictGet("/api/registry");
-            fnRenderContainerList(dictResult.listContainers || []);
-            fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
-        } catch (error) {
-            elList.innerHTML =
-                '<p style="color: var(--color-red);">' +
-                "Cannot load containers</p>";
-        }
+    function fnLoadContainers() {
+        PipeleyenContainerManager.fnLoadContainers();
     }
 
-    function fnRenderContainerList(listContainers) {
-        var elList = document.getElementById("listContainers");
-        if (listContainers.length === 0) {
-            elList.innerHTML =
-                '<p class="muted-text" style="text-align: center;">' +
-                "No containers registered. Click + to add one.</p>";
-            return;
-        }
-        elList.innerHTML = listContainers.map(function (dictContainer) {
-            return fsRenderContainerTile(dictContainer);
-        }).join("");
-        fnBindContainerTiles(elList);
+    /* Directory browser is now in scriptDirectoryBrowser.js */
+
+    function fnOpenDirectoryBrowser() {
+        PipeleyenDirectoryBrowser.fnOpenDirectoryBrowser();
     }
 
-    function fnRenderUnrecognizedList(listUnrecognized) {
-        var elSection = document.getElementById("unrecognizedSection");
-        var elList = document.getElementById("listUnrecognized");
-        if (listUnrecognized.length === 0) {
-            elSection.style.display = "none";
-            return;
-        }
-        elSection.style.display = "";
-        elList.innerHTML = listUnrecognized.map(function (c) {
-            return (
-                '<div class="container-card unrecognized" data-id="' +
-                fnEscapeHtml(c.sContainerId) + '">' +
-                '<span class="name">' +
-                fnEscapeHtml(c.sName) + "</span>" +
-                '<span class="image">' +
-                fnEscapeHtml(c.sImage) + "</span></div>"
-            );
-        }).join("");
-        elList.querySelectorAll(".container-card").forEach(function (el) {
-            el.addEventListener("click", function () {
-                fnConnectToContainer(el.dataset.id);
-            });
-        });
+    function fnSelectDirectory() {
+        PipeleyenDirectoryBrowser.fnSelectDirectory();
     }
 
-    function fsRenderContainerTile(dictContainer) {
-        var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
-        var sId = dictContainer.sContainerId || "";
-        return (
-            '<div class="container-tile" data-name="' +
-            fnEscapeHtml(dictContainer.sName) +
-            '" data-container-id="' + fnEscapeHtml(sId) + '">' +
-            '<div class="container-tile-main">' +
-            '<span class="status-dot ' + sStatusClass + '"></span>' +
-            '<span class="container-tile-name">' +
-            fnEscapeHtml(dictContainer.sName) + "</span>" +
-            "</div>" +
-            '<button class="btn-icon container-tile-gear" ' +
-            'title="Actions">&#9881;</button>' +
-            '<div class="container-tile-menu" style="display:none;">' +
-            '<div class="container-menu-item" data-action="start">' +
-            "Start</div>" +
-            '<div class="container-menu-item" data-action="stop">' +
-            "Stop</div>" +
-            '<div class="container-menu-item" data-action="rebuild">' +
-            "Rebuild</div>" +
-            '<div class="container-menu-item" data-action="settings">' +
-            "Settings</div>" +
-            '<div class="container-menu-separator"></div>' +
-            '<div class="container-menu-item danger" ' +
-            'data-action="remove">Remove from list</div>' +
-            "</div></div>"
-        );
-    }
-
-    function _fsStatusDotClass(sStatus) {
-        if (sStatus === "running") return "status-running";
-        if (sStatus === "stopped") return "status-stopped";
-        return "status-not-built";
-    }
-
-    function fnBindContainerTiles(elParent) {
-        elParent.querySelectorAll(".container-tile").forEach(function (el) {
-            var sName = el.dataset.name;
-            el.querySelector(".container-tile-main").addEventListener(
-                "click", function () {
-                    fnHandleContainerClick(sName);
-                }
-            );
-            _fnBindGearMenu(el, sName);
-        });
-    }
-
-    function _fnBindGearMenu(elTile, sName) {
-        var elGear = elTile.querySelector(".container-tile-gear");
-        var elMenu = elTile.querySelector(".container-tile-menu");
-        elGear.addEventListener("click", function (event) {
-            event.stopPropagation();
-            _fnToggleGearMenu(elMenu);
-        });
-        elMenu.querySelectorAll(".container-menu-item").forEach(
-            function (elItem) {
-                elItem.addEventListener("click", function (event) {
-                    event.stopPropagation();
-                    elMenu.style.display = "none";
-                    fnHandleContainerAction(sName, elItem.dataset.action);
-                });
-            }
-        );
-    }
-
-    function _fnToggleGearMenu(elMenu) {
-        document.querySelectorAll(".container-tile-menu").forEach(
-            function (el) { el.style.display = "none"; }
-        );
-        var bVisible = elMenu.style.display !== "none";
-        elMenu.style.display = bVisible ? "none" : "";
-    }
-
-    async function fnHandleContainerClick(sName) {
-        var elTile = document.querySelector(
-            '.container-tile[data-name="' + sName + '"]'
-        );
-        var elDot = elTile ? elTile.querySelector(".status-dot") : null;
-        var bRunning = elDot && elDot.classList.contains("status-running");
-        var bNotBuilt = elDot &&
-            elDot.classList.contains("status-not-built");
-        if (bNotBuilt) {
-            await fnBuildContainer(sName);
-            return;
-        }
-        if (!bRunning) {
-            await fnStartContainer(sName);
-        }
-        var sStoredId = elTile ? elTile.dataset.containerId : "";
-        if (sStoredId) {
-            fnConnectToContainer(sStoredId);
-        } else {
-            fnConnectToContainerByName(sName);
-        }
-    }
-
-    async function fnHandleContainerAction(sName, sAction) {
-        if (sAction === "start") await fnStartContainer(sName);
-        else if (sAction === "stop") await fnStopContainer(sName);
-        else if (sAction === "rebuild") await fnRebuildContainer(sName);
-        else if (sAction === "settings") await fnShowContainerSettings(sName);
-        else if (sAction === "remove") await fnRemoveContainer(sName);
-    }
-
-    async function fnShowContainerSettings(sName) {
-        try {
-            var dictSettings = await VaibifyApi.fdictGet(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/settings"
-            );
-            fnShowContainerSettingsModal(sName, dictSettings);
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    function fnShowContainerSettingsModal(sName, dictSettings) {
-        var elExisting = document.getElementById("modalSettings");
-        if (elExisting) elExisting.remove();
-        var elModal = document.createElement("div");
-        elModal.id = "modalSettings";
-        elModal.className = "modal-overlay";
-        elModal.style.display = "flex";
-        elModal.innerHTML =
-            '<div class="modal">' +
-            '<h2>Settings for ' + fnEscapeHtml(sName) + '</h2>' +
-            '<label class="checkbox-row" ' +
-            'style="display:flex;align-items:center;gap:10px;' +
-            'margin-bottom:16px">' +
-            '<input type="checkbox" id="settingNeverSleep"' +
-            (dictSettings.bNeverSleep ? " checked" : "") + '>' +
-            '<span>Never Sleep (run caffeinate while this ' +
-            'container is running)</span></label>' +
-            '<div class="modal-actions">' +
-            '<button class="btn" id="btnSettingsCancel">Cancel</button>' +
-            '<button class="btn btn-primary" ' +
-            'id="btnSettingsSave">Save</button>' +
-            '</div></div>';
-        document.body.appendChild(elModal);
-        document.getElementById("btnSettingsCancel").addEventListener(
-            "click", function () { elModal.remove(); });
-        document.getElementById("btnSettingsSave").addEventListener(
-            "click", async function () {
-                var bNeverSleep = document.getElementById(
-                    "settingNeverSleep").checked;
-                elModal.remove();
-                await fnSaveContainerSettings(sName, {
-                    bNeverSleep: bNeverSleep,
-                });
-            });
-    }
-
-    async function fnSaveContainerSettings(sName, dictSettings) {
-        try {
-            await VaibifyApi.fdictPost(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/settings",
-                dictSettings
-            );
-            fnShowToast(
-                "Settings saved. Stop and start to apply.",
-                "success");
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    async function fnBuildContainer(sName) {
-        var elOverlay = document.getElementById("modalBuildProgress");
-        elOverlay.style.display = "flex";
-        try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/build"
-            );
-            fnShowToast("Build complete", "success");
-            await fnStartContainer(sName);
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        } finally {
-            elOverlay.style.display = "none";
-            fnLoadContainers();
-        }
-    }
-
-    function fnSetTilePending(sName) {
-        var elTile = document.querySelector(
-            '.container-tile[data-name="' + CSS.escape(sName) + '"]'
-        );
-        if (!elTile) return;
-        var elDot = elTile.querySelector(".status-dot");
-        if (!elDot) return;
-        elDot.className = "status-dot status-pending";
-    }
-
-    async function fnStartContainer(sName) {
-        fnSetTilePending(sName);
-        try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/start"
-            );
-            fnShowToast("Container started", "success");
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        } finally {
-            fnLoadContainers();
-        }
-    }
-
-    async function fnStopContainer(sName) {
-        fnSetTilePending(sName);
-        try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/stop"
-            );
-            fnShowToast("Container stopped", "success");
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        } finally {
-            fnLoadContainers();
-        }
-    }
-
-    async function fnRebuildContainer(sName) {
-        fnShowConfirmModal(
-            "Rebuild Container",
-            "Rebuild will stop and rebuild the container. Continue?",
-            async function () {
-                await fnStopContainer(sName);
-                await fnBuildContainer(sName);
-            }
-        );
-    }
-
-    async function fnRemoveContainer(sName) {
-        fnShowConfirmModal(
-            "Remove Container",
-            "Remove '" + sName + "' from the container list?",
-            async function () {
-                try {
-                    await VaibifyApi.fnDelete(
-                        "/api/registry/"
-                        + encodeURIComponent(sName)
-                    );
-                    fnShowToast("Container removed", "success");
-                } catch (error) {
-                    fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-                }
-                fnLoadContainers();
-            }
-        );
-    }
-
-    /* --- Directory Browser --- */
-
-    var _sBrowserCurrentPath = "";
-    var _listBrowserHistory = [];
-    var _iBrowserHistoryIndex = -1;
-    var _bBrowserNavigating = false;
-    var I_MAX_BROWSER_HISTORY = 100;
-
-    async function fnOpenDirectoryBrowser() {
-        document.getElementById("modalAddContainer").style.display = "flex";
-        _listBrowserHistory = [];
-        _iBrowserHistoryIndex = -1;
-        await fnBrowseDirectory("");
-    }
-
-    function fnBrowserNavigateBack() {
-        if (_iBrowserHistoryIndex <= 0) return;
-        _bBrowserNavigating = true;
-        _iBrowserHistoryIndex--;
-        fnBrowseDirectory(_listBrowserHistory[_iBrowserHistoryIndex]);
-    }
-
-    function fnBrowserNavigateForward() {
-        if (_iBrowserHistoryIndex >= _listBrowserHistory.length - 1) return;
-        _bBrowserNavigating = true;
-        _iBrowserHistoryIndex++;
-        fnBrowseDirectory(_listBrowserHistory[_iBrowserHistoryIndex]);
-    }
-
-    function _fnUpdateBrowserNavButtons() {
-        var elBack = document.getElementById("btnBrowserBack");
-        var elForward = document.getElementById("btnBrowserForward");
-        elBack.disabled = _iBrowserHistoryIndex <= 0;
-        elForward.disabled =
-            _iBrowserHistoryIndex >= _listBrowserHistory.length - 1;
-    }
-
-    function _fnPushBrowserHistory(sCurrentPath) {
-        _listBrowserHistory = _listBrowserHistory.slice(
-            0, _iBrowserHistoryIndex + 1
-        );
-        _listBrowserHistory.push(sCurrentPath);
-        if (_listBrowserHistory.length > I_MAX_BROWSER_HISTORY) {
-            _listBrowserHistory.splice(
-                0, _listBrowserHistory.length - I_MAX_BROWSER_HISTORY
-            );
-        }
-        _iBrowserHistoryIndex = _listBrowserHistory.length - 1;
-    }
-
-    function _fnApplyBrowseResult(dictResult) {
-        _sBrowserCurrentPath = dictResult.sCurrentPath;
-        if (!_bBrowserNavigating) {
-            _fnPushBrowserHistory(dictResult.sCurrentPath);
-        }
-        _bBrowserNavigating = false;
-        _fnUpdateBrowserNavButtons();
-        fnRenderBreadcrumb(dictResult.sCurrentPath);
-        fnRenderDirectoryEntries(dictResult.listEntries);
-        _fnUpdateSelectButton(
-            dictResult.sCurrentPath, dictResult.bHasConfig
-        );
-    }
-
-    async function fnBrowseDirectory(sPath) {
-        var elEntries = document.getElementById("directoryEntries");
-        elEntries.innerHTML =
-            '<p class="muted-text" style="text-align:center;">Loading...</p>';
-        try {
-            var sUrl = "/api/host-directories";
-            if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);
-            var dictResult = await VaibifyApi.fdictGet(sUrl);
-            _fnApplyBrowseResult(dictResult);
-        } catch (error) {
-            elEntries.innerHTML =
-                '<p style="color:var(--color-red);">Error loading</p>';
-        }
-    }
-
-    function fnRenderBreadcrumb(sPath) {
-        var elBar = document.getElementById("directoryBreadcrumb");
-        var listSegments = sPath.split("/").filter(function (s) {
-            return s.length > 0;
-        });
-        var sHtml = "";
-        var sBuiltPath = "";
-        for (var i = 0; i < listSegments.length; i++) {
-            sBuiltPath += "/" + listSegments[i];
-            var sNavTarget = (i === 0) ? "/" : sBuiltPath.substring(
-                0, sBuiltPath.lastIndexOf("/"));
-            sHtml +=
-                '<span class="breadcrumb-sep" data-path="' +
-                fnEscapeHtml(sNavTarget) + '">/</span>' +
-                '<span class="breadcrumb-segment" data-path="' +
-                fnEscapeHtml(sBuiltPath) + '">' +
-                fnEscapeHtml(listSegments[i]) + "</span>";
-        }
-        if (listSegments.length === 0) {
-            sHtml = '<span class="breadcrumb-segment" data-path="/">/</span>';
-        }
-        elBar.innerHTML = sHtml;
-        if (!elBar._bDelegated) {
-            elBar._bDelegated = true;
-            elBar.addEventListener("click", function (event) {
-                var elSegment = event.target.closest(
-                    "[data-path]");
-                if (elSegment) {
-                    fnBrowseDirectory(elSegment.dataset.path);
-                }
-            });
-        }
-    }
-
-    function fnRenderDirectoryEntries(listEntries) {
-        var elContainer = document.getElementById("directoryEntries");
-        if (listEntries.length === 0) {
-            elContainer.innerHTML =
-                '<p class="muted-text" style="text-align:center;">' +
-                "No subdirectories</p>";
-            return;
-        }
-        elContainer.innerHTML = listEntries.map(function (entry) {
-            var sConfigClass = entry.bHasConfig ? " has-config" : "";
-            return (
-                '<div class="directory-entry' + sConfigClass +
-                '" data-path="' + fnEscapeHtml(entry.sPath) + '">' +
-                '<span class="directory-entry-icon">&#128193;</span>' +
-                '<span class="directory-entry-name">' +
-                fnEscapeHtml(entry.sName) + "</span>" +
-                (entry.bHasConfig
-                    ? '<img src="/static/favicon.png" class="config-indicator" alt="vaibify">'
-                    : "") +
-                "</div>"
-            );
-        }).join("");
-        _fnBindDirectoryEntryDelegation(elContainer);
-    }
-
-    var _bDirectoryEntryDelegationBound = false;
-
-    function _fnBindDirectoryEntryDelegation(elContainer) {
-        if (_bDirectoryEntryDelegationBound) return;
-        _bDirectoryEntryDelegationBound = true;
-        elContainer.addEventListener("click", function (event) {
-            var elEntry = event.target.closest(".directory-entry");
-            if (elEntry) {
-                fnBrowseDirectory(elEntry.dataset.path);
-            }
-        });
-    }
-
-    function _fnUpdateSelectButton(sPath, bHasConfig) {
-        var elPath = document.getElementById("directoryCurrentPath");
-        var elLabel = document.getElementById("configFoundLabel");
-        var elButton = document.getElementById("btnAddContainerConfirm");
-        elPath.textContent = sPath;
-        elLabel.style.display = bHasConfig ? "" : "none";
-        elButton.disabled = !bHasConfig;
-    }
-
-    async function fnSelectDirectory() {
-        if (!_sBrowserCurrentPath) return;
-        try {
-            await VaibifyApi.fdictPost("/api/registry", {
-                sDirectory: _sBrowserCurrentPath,
-            });
-            fnShowToast("Container added", "success");
-            document.getElementById("modalAddContainer").style.display = "none";
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
-        fnLoadContainers();
-    }
-
-    async function fnConnectToContainerByName(sName) {
-        try {
-            var dictResult = await VaibifyApi.fdictGet("/api/registry");
-            var listAll = dictResult.listContainers || [];
-            var dictMatch = listAll.find(function (c) {
-                return c.sName === sName && c.sContainerId;
-            });
-            if (!dictMatch) {
-                fnShowToast("Container not found for " + sName, "error");
-                return;
-            }
-            fnConnectToContainer(dictMatch.sContainerId);
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    var _sSelectedContainerId = null;
-    var _sSelectedContainerName = null;
-
-    async function fnConnectToContainer(sId) {
-        try {
-            var listWorkflows = await VaibifyApi.fdictGet(
-                "/api/workflows/" + sId);
-            _sSelectedContainerId = sId;
-            _sSelectedContainerName = _fsContainerNameById(sId);
-            fnShowWorkflowPicker(_sSelectedContainerName);
-            fnRenderWorkflowList(listWorkflows, sId);
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    function _fsContainerNameById(sId) {
-        var el = document.querySelector(
-            '.container-tile[data-container-id="' + sId + '"]' +
-            ' .container-tile-name'
-        );
-        return el ? el.textContent : sId.substring(0, 12);
-    }
-
-    function fnRenderWorkflowList(listWorkflows, sId) {
-        VaibifyWorkflowManager.fnRenderWorkflowList(
-            listWorkflows, sId);
-    }
-
-    function fnCreateNewWorkflow() {
-        VaibifyWorkflowManager.fnCreateNewWorkflow(
-            _sSelectedContainerId);
+    function fnConnectToContainer(sId) {
+        PipeleyenContainerManager.fnConnectToContainer(sId);
     }
 
     function _fnResetWorkflowState() {
@@ -709,13 +193,10 @@ const PipeleyenApp = (function () {
         dictFileModTimes = {};
         dictOutputMtimes = {};
         dictPlotMtimes = {};
-        dictTestMarkerTimestamps = {};
-        _dictSeenNewTestFiles = {};
-        _bFirstTestFilePoll = true;
-        setStepsWithData.clear();
         bFileCheckInProgress = false;
         bDelegatedEventsInitialized = false;
-        iPreviousOutputCount = 0;
+        PipeleyenTestManager.fnResetState();
+        PipeleyenPipelineRunner.fnResetState();
         fnStopPipelinePolling();
         fnStopFileChangePolling();
     }
@@ -737,15 +218,15 @@ const PipeleyenApp = (function () {
         }
         var elWorkflowName = document.getElementById("activeWorkflowName");
         elWorkflowName.textContent = sWorkflowName || "";
-        document.title = (_sSelectedContainerName || "Vaibify") +
+        document.title = (PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify") +
             (sWorkflowName ? ": " + sWorkflowName : "");
         fnShowMainLayout();
         fnRenderStepList();
-        fnCheckVaibifiedOnLoad();
+        fnUpdateHighlightState();
         fnPollAllStepFiles();
         fnStartFileChangePolling();
         PipeleyenTerminal.fnCreateTab();
-        fnRecoverPipelineState(sId);
+        PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
     }
 
     function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
@@ -765,7 +246,7 @@ const PipeleyenApp = (function () {
                 "activeWorkflowName"
             );
             elWorkflowName.textContent = "No Workflow";
-            document.title = _sSelectedContainerName || "Vaibify";
+            document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
             PipeleyenTerminal.fnCreateTab();
         } catch (error) {
@@ -863,10 +344,7 @@ const PipeleyenApp = (function () {
             _abortControllerFileCheck.abort();
             _abortControllerFileCheck = null;
         }
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-        }
+        PipeleyenPipelineRunner.fnCancelSentinelMonitor();
     }
 
     function fnDisconnect() {
@@ -876,7 +354,7 @@ const PipeleyenApp = (function () {
         iSelectedStepIndex = -1;
         setExpandedSteps.clear();
         setExpandedDeps.clear();
-        setExpandedUnitTests.clear();
+        PipeleyenTestManager.fnResetState();
         dictPlotStandardExists = {};
         dictStepStatus = {};
         document.body.classList.remove("all-verified");
@@ -1157,9 +635,9 @@ const PipeleyenApp = (function () {
             iSelectedStepIndex: iSelectedStepIndex,
             setExpandedSteps: setExpandedSteps,
             setExpandedDeps: setExpandedDeps,
-            setExpandedUnitTests: setExpandedUnitTests,
-            setStepsWithData: setStepsWithData,
-            setGeneratingInFlight: setGeneratingInFlight,
+            setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
+            setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
+            setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: dictPlotStandardExists,
             dictScriptModified: dictScriptModified,
             dictOutputMtimes: dictOutputMtimes,
@@ -1281,11 +759,6 @@ const PipeleyenApp = (function () {
                 delete dictStepStatus[sKey];
             }
         }
-        for (var sKey in dictTestMarkerTimestamps) {
-            if (parseInt(sKey, 10) >= iStepCount) {
-                delete dictTestMarkerTimestamps[sKey];
-            }
-        }
     }
 
     function fnInvalidateStepFileCache(iStep) {
@@ -1295,7 +768,7 @@ const PipeleyenApp = (function () {
                 delete dictFileExistenceCache[sKey];
             }
         });
-        setStepsWithData.delete(iStep);
+        PipeleyenTestManager.fsetGetStepsWithData().delete(iStep);
     }
 
     function fnPollAllStepFiles() {
@@ -1314,7 +787,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnCheckStepDataFiles(step, iStep) {
-        if (setStepsWithData.has(iStep)) return;
+        if (PipeleyenTestManager.fsetGetStepsWithData().has(iStep)) return;
         var listNecessary = flistNecessaryDataFiles(step, iStep);
         if (listNecessary.length === 0) return;
         var iPresent = 0;
@@ -1325,7 +798,7 @@ const PipeleyenApp = (function () {
             if (dictFileExistenceCache[sCacheKey]) {
                 iPresent++;
                 if (iPresent >= iTotal) {
-                    setStepsWithData.add(iStep);
+                    PipeleyenTestManager.fsetGetStepsWithData().add(iStep);
                     fnUpdateGenerateButton(iStep);
                 }
                 return;
@@ -1340,7 +813,7 @@ const PipeleyenApp = (function () {
                         fnSetFileExistenceCache(sCacheKey, true);
                         iPresent++;
                         if (iPresent >= iTotal) {
-                            setStepsWithData.add(iStep);
+                            PipeleyenTestManager.fsetGetStepsWithData().add(iStep);
                             fnUpdateGenerateButton(iStep);
                         }
                     }
@@ -1441,7 +914,7 @@ const PipeleyenApp = (function () {
         if (!bNecessaryData) return;
         dictPresent[iStep] = (dictPresent[iStep] || 0) + 1;
         if (dictPresent[iStep] >= (dictCounts[iStep] || 0)) {
-            setStepsWithData.add(iStep);
+            PipeleyenTestManager.fsetGetStepsWithData().add(iStep);
             fnUpdateGenerateButton(iStep);
         }
     }
@@ -1665,14 +1138,10 @@ const PipeleyenApp = (function () {
     }
 
     var setExpandedDeps = new Set();
-    var setExpandedUnitTests = new Set();
     var dictPlotStandardExists = {};
     var setExpandedQualitative = new Set();
     var setExpandedQuantitative = new Set();
     var setExpandedIntegrity = new Set();
-    var setStepsWithData = new Set();
-    var setGeneratedTestsPending = new Set();
-    var setGeneratingInFlight = new Set();
 
     function fsetGetExpandedCategory(sCategory) {
         var dictSets = {
@@ -1838,7 +1307,7 @@ const PipeleyenApp = (function () {
         var bDirty = listModified.length > 0 ||
             fbAnyUpstreamModified(iIndex) ||
             dictScriptModified[iIndex] === "modified";
-        var bHasData = setStepsWithData.has(iIndex) ||
+        var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
             !!(step.dictRunStats || {}).sLastRun ||
             !!dictOutputMtimes[String(iIndex)];
 
@@ -1884,29 +1353,11 @@ const PipeleyenApp = (function () {
     }
 
     function fsFirstPlotBasename(iStepIndex) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var listPlots = dictStep.saPlotFiles || [];
-        if (listPlots.length === 0) return null;
-        var dictVars = fdictBuildClientVariables();
-        var sResolved = fsResolveTemplate(
-            listPlots[0], dictVars);
-        return sResolved.split("/").pop();
+        return PipeleyenPlotStandards.fsFirstPlotBasename(iStepIndex);
     }
 
     function fbStepHasAnyStandard(iStepIndex) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var listPlots = dictStep.saPlotFiles || [];
-        var dictVars = fdictBuildClientVariables();
-        for (var i = 0; i < listPlots.length; i++) {
-            var sResolved = fsResolveTemplate(
-                listPlots[i], dictVars);
-            var sBasename = sResolved.split("/").pop();
-            var sKey = iStepIndex + ":" + sBasename;
-            if (dictPlotStandardExists[sKey] === true) {
-                return true;
-            }
-        }
-        return false;
+        return PipeleyenPlotStandards.fbStepHasAnyStandard(iStepIndex);
     }
 
     function fsGetFileCategory(iStep, sFilePath, sArrayKey) {
@@ -2122,11 +1573,11 @@ const PipeleyenApp = (function () {
     }
 
     function _fnHandleRunData(event, elMatch) {
-        fnRunDataCommands(parseInt(elMatch.dataset.step));
+        fnRunInteractiveStep(parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleRunPlots(event, elMatch) {
-        fnRunPlotCommands(parseInt(elMatch.dataset.step));
+        fnRunInteractivePlots(parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleAddDeps(event, elMatch) {
@@ -2394,115 +1845,20 @@ const PipeleyenApp = (function () {
     }
 
     function fnToggleUnitTestExpand(iStep) {
-        if (setExpandedUnitTests.has(iStep)) {
-            setExpandedUnitTests.delete(iStep);
+        var setExpanded = PipeleyenTestManager.fsetGetExpandedUnitTests();
+        if (setExpanded.has(iStep)) {
+            setExpanded.delete(iStep);
         } else {
-            setExpandedUnitTests.add(iStep);
+            setExpanded.add(iStep);
         }
         fnRenderStepList();
     }
 
 
-    async function fnGenerateTests(iStep) {
-        var step = dictWorkflow.listSteps[iStep];
-        if (setGeneratingInFlight.has(iStep)) return;
-        if (step && (step.saTestCommands || []).length > 0) {
-            var bConfirmed = await new Promise(function (resolve) {
-                fnShowConfirmModal(
-                    "Overwrite Tests",
-                    "Tests already exist for this step. " +
-                    "Generate new tests will overwrite them.",
-                    function () { resolve(true); },
-                    function () { resolve(false); }
-                );
-            });
-            if (!bConfirmed) return;
-        }
-        setGeneratingInFlight.add(iStep);
-        fnRenderStepList();
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" + iStep +
-                "/generate-test",
-                {}
-            );
-            setGeneratingInFlight.delete(iStep);
-            if (dictResult.bNeedsFallback) {
-                fnRenderStepList();
-                fnShowConfirmModal(
-                    "Claude Code Not Found",
-                    "Test generation requires Claude Code, " +
-                    "which is not installed in this container. " +
-                    "You can use the Anthropic API instead " +
-                    "(requires an API key, may incur charges).",
-                    function () { fnShowApiKeyDialog(iStep); }
-                );
-                return;
-            }
-            if (dictResult.bNeedsOverwriteConfirm) {
-                fnRenderStepList();
-                var listFiles = dictResult.listModifiedFiles || [];
-                fnShowConfirmModal(
-                    "Custom Test Files Detected",
-                    "The following test files have been " +
-                    "customized and will be overwritten:\n\n" +
-                    listFiles.join("\n") +
-                    "\n\nProceed with overwrite?",
-                    function () {
-                        fnGenerateTestsForced(iStep);
-                    }
-                );
-                return;
-            }
-            if (!response.ok) {
-                fnRenderStepList();
-                fnShowToast("Test generation failed", "error");
-                fnShowErrorModal(
-                    "Test generation failed (HTTP " +
-                    response.status + "):\n\n" +
-                    (dictResult.detail || "Unknown error")
-                );
-                return;
-            }
-            if (!dictResult.bGenerated) {
-                fnRenderStepList();
-                fnShowToast("No tests generated", "error");
-                fnShowErrorModal(
-                    "Test generation failed:\n\n" +
-                    (dictResult.sMessage || "No tests generated")
-                );
-                return;
-            }
-            fnHandleGeneratedTest(iStep, dictResult);
-        } catch (error) {
-            setGeneratingInFlight.delete(iStep);
-            fnRenderStepList();
-            fnShowErrorModal(
-                "Test generation failed:\n\n" +
-                (error.message || String(error))
-            );
-        }
-    }
+    /* Test generation, running, and state now in scriptTestManager.js */
 
-    async function fnGenerateTestsForced(iStep) {
-        setGeneratingInFlight.add(iStep);
-        fnRenderStepList();
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" + iStep +
-                "/generate-test",
-                {bForceOverwrite: true}
-            );
-            setGeneratingInFlight.delete(iStep);
-            fnHandleGeneratedTest(iStep, dictResult);
-        } catch (error) {
-            setGeneratingInFlight.delete(iStep);
-            fnRenderStepList();
-            fnShowErrorModal(
-                "Test generation failed:\n\n" +
-                (error.message || String(error))
-            );
-        }
+    function fnGenerateTests(iStep) {
+        PipeleyenTestManager.fnGenerateTests(iStep);
     }
 
     var dictDiscoveredOutputs = {};
@@ -2534,311 +1890,20 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnHandleGeneratedTest(iStep, dictResult) {
-        var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep.dictTests) {
-            dictStep.dictTests = fdictGetTests(dictStep);
-        }
-        if (!dictStep.dictVerification) {
-            dictStep.dictVerification = {
-                sUnitTest: "untested", sUser: "untested",
-            };
-        }
-        var listCategories = [
-            "qualitative", "quantitative", "integrity"];
-        var listAllCommands = [];
-        var listErrors = [];
-        for (var i = 0; i < listCategories.length; i++) {
-            var sCategory = listCategories[i];
-            var sCatKey = "dict" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
-            var dictCatResult = dictResult[sCatKey];
-            if (!dictCatResult) continue;
-            if (dictCatResult.sError) {
-                listErrors.push(
-                    fsTestCategoryLabel(sCategory));
-                var sVerifKey = "s" +
-                    sCategory.charAt(0).toUpperCase() +
-                    sCategory.slice(1);
-                dictStep.dictVerification[sVerifKey] = "error";
-                continue;
-            }
-            dictStep.dictTests[sCatKey] = {
-                saCommands: dictCatResult.saCommands || [],
-                sFilePath: dictCatResult.sFilePath || "",
-            };
-            if (dictCatResult.sStandardsPath) {
-                dictStep.dictTests[sCatKey].sStandardsPath =
-                    dictCatResult.sStandardsPath;
-            }
-            listAllCommands = listAllCommands.concat(
-                dictCatResult.saCommands || []);
-        }
-        dictStep.saTestCommands = listAllCommands;
-        fnSaveStepUpdate(iStep, {
-            dictTests: dictStep.dictTests,
-            dictVerification: dictStep.dictVerification,
-            saTestCommands: listAllCommands,
-        });
-        if (!setExpandedUnitTests.has(iStep)) {
-            setExpandedUnitTests.add(iStep);
-        }
-        fnRenderStepList();
-        var iSuccessCount = listCategories.length - listErrors.length;
-        var sStepLabel = fsComputeStepLabel(iStep);
-        if (listErrors.length > 0) {
-            fnShowErrorModal(
-                listErrors.join(", ") +
-                " failed to generate.\n" +
-                "Fix manually or ask a coding agent to fix.");
-        }
-        fnShowToast(
-            sStepLabel + ": " + iSuccessCount +
-            " of 3 test categories generated. Running\u2026",
-            iSuccessCount === 3 ? "success" : "error");
-        if (listAllCommands.length > 0) {
-            fnRunStepTests(iStep);
-        }
-    }
-
-    function fnShowApiKeyDialog(iStep) {
-        var elModal = document.getElementById("modalApiConfirm");
-        elModal.style.display = "flex";
-        elModal.dataset.step = iStep;
-    }
-
-    function fnFinalizeGeneratedTest(iStep) {
-        setGeneratedTestsPending.delete(iStep);
-        var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep.dictVerification) {
-            dictStep.dictVerification = {
-                sUnitTest: "untested", sUser: "untested",
-            };
-        }
-        dictStep.dictVerification.sQualitative = "untested";
-        dictStep.dictVerification.sQuantitative = "untested";
-        dictStep.dictVerification.sIntegrity = "untested";
-        dictStep.dictVerification.sUnitTest = "untested";
-        fnSaveStepUpdate(iStep, {
-            dictTests: dictStep.dictTests,
-            dictVerification: dictStep.dictVerification,
-        });
-        fnRenderStepList();
-    }
-
-    async function fnCancelGeneratedTest(iStep) {
-        setGeneratedTestsPending.delete(iStep);
-        try {
-            await VaibifyApi.fnDelete(
-                "/api/steps/" + sContainerId + "/" + iStep +
-                "/generated-test"
-            );
-        } catch (error) {
-            fnShowToast("Delete failed", "error");
-        }
-        var dictStep = dictWorkflow.listSteps[iStep];
-        dictStep.saTestCommands = [];
-        dictStep.saTestFiles = [];
-        dictStep.dictTests = {
-            dictQualitative: {saCommands: [], sFilePath: ""},
-            dictQuantitative: {
-                saCommands: [], sFilePath: "", sStandardsPath: "",
-            },
-            dictIntegrity: {saCommands: [], sFilePath: ""},
-            listUserTests: [],
-        };
-        fnRenderStepList();
-    }
-
-    async function fnRunCategoryTests(iStepIndex, sCategory) {
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" + iStepIndex +
-                "/run-test-category",
-                {sCategory: sCategory}
-            );
-            fnUpdateCategoryTestState(
-                iStepIndex, sCategory, dictResult);
-        } catch (error) {
-            fnShowErrorModal("Test run failed: " + error.message);
-        }
-    }
-
-    function fnUpdateCategoryTestState(
-        iStepIndex, sCategory, dictResult
-    ) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        if (!dictStep.dictVerification) {
-            dictStep.dictVerification = {
-                sUnitTest: "untested", sUser: "untested",
-            };
-        }
-        var sKey = "s" + sCategory.charAt(0).toUpperCase() +
-            sCategory.slice(1);
-        dictStep.dictVerification[sKey] =
-            dictResult.bPassed ? "passed" : "failed";
-        dictStep.dictVerification.sLastTestRun =
-            fsFormatUtcTimestamp();
-        var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
-            sCategory.slice(1);
-        var dictTests = dictStep.dictTests || {};
-        if (dictTests[sCatKey] && dictResult.sOutput) {
-            dictTests[sCatKey].sLastOutput = dictResult.sOutput;
-        }
-        fnComputeAggregateTestState(iStepIndex);
-        fnClearOutputModified(iStepIndex);
-        var dictCatUpdate = {
-            dictVerification: dictStep.dictVerification,
-        };
-        if (dictStep.dictTests) {
-            dictCatUpdate.dictTests = dictStep.dictTests;
-        }
-        fnSaveStepUpdate(iStepIndex, dictCatUpdate);
-        fnRenderStepList();
-        var sLabel = fsTestCategoryLabel(sCategory);
-        fnShowToast(sLabel + ": " +
-            (dictResult.bPassed ? "Passed" : "Failed"),
-            dictResult.bPassed ? "success" : "error");
-    }
-
-    function fnComputeAggregateTestState(iStepIndex) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var dictVerify = fdictGetVerification(dictStep);
-        var dictTests = fdictGetTests(dictStep);
-        var listCategories = [
-            "qualitative", "quantitative", "integrity"];
-        var bAllPassed = true;
-        var bAnyFailed = false;
-        for (var i = 0; i < listCategories.length; i++) {
-            var sCategory = listCategories[i];
-            var sCatKey = "dict" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
-            var dictCat = dictTests[sCatKey] || {};
-            if ((dictCat.saCommands || []).length === 0) continue;
-            var sKey = "s" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
-            var sCatState = dictVerify[sKey] || "untested";
-            if (sCatState !== "passed") bAllPassed = false;
-            if (sCatState === "failed" || sCatState === "error") {
-                bAnyFailed = true;
-            }
-        }
-        if (bAnyFailed) {
-            dictVerify.sUnitTest = "failed";
-        } else if (bAllPassed) {
-            dictVerify.sUnitTest = "passed";
-        } else {
-            dictVerify.sUnitTest = "untested";
-        }
+    function fnRunCategoryTests(iStepIndex, sCategory) {
+        PipeleyenTestManager.fnRunCategoryTests(iStepIndex, sCategory);
     }
 
     function fnViewCategoryTestFile(iStepIndex, sCategory) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var dictTests = fdictGetTests(dictStep);
-        var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
-            sCategory.slice(1);
-        var dictCat = dictTests[sCatKey] || {};
-        var sFilePath = dictCat.sFilePath || "";
-        if (!sFilePath) {
-            fnShowToast("No test file for this category", "error");
-            return;
-        }
-        var sDir = dictStep.sDirectory || "";
-        PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
+        PipeleyenTestManager.fnViewCategoryTestFile(iStepIndex, sCategory);
     }
 
     function fnViewStandardsFile(iStepIndex, sCategory) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var dictTests = fdictGetTests(dictStep);
-        var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
-            sCategory.slice(1);
-        var dictCat = dictTests[sCatKey] || {};
-        var sStandardsPath = dictCat.sStandardsPath || "";
-        if (!sStandardsPath) {
-            fnShowToast("No standards file for this category", "error");
-            return;
-        }
-        var sDir = dictStep.sDirectory || "";
-        PipeleyenFigureViewer.fnDisplayInNextViewer(
-            sStandardsPath, sDir);
+        PipeleyenTestManager.fnViewStandardsFile(iStepIndex, sCategory);
     }
 
     function fnAddTestItem(iStep, sType) {
-        if (sType === "user") {
-            fnShowInputModal(
-                "Test name",
-                "e.g. Check convergence tolerance",
-                function (sValue) {
-                    _fnSaveUserTest(iStep, sValue);
-                }
-            );
-            return;
-        }
-        var sLabel = sType === "file" ?
-            "Test file path" : "Test command";
-        var sPlaceholder = sType === "file" ?
-            "e.g. test_step01.py" : "e.g. pytest test_step01.py";
-        fnShowInputModal(sLabel, sPlaceholder, function (sValue) {
-            _fnSaveTestItem(iStep, sType, sValue);
-        });
-    }
-
-    async function _fnSaveTestItem(iStep, sType, sValue) {
-        var dictStep = dictWorkflow.listSteps[iStep];
-        var sKey = sType === "file" ?
-            "saTestFiles" : "saTestCommands";
-        if (!dictStep[sKey]) dictStep[sKey] = [];
-        dictStep[sKey].push(sValue.trim());
-        var dictUpdate = {};
-        dictUpdate[sKey] = dictStep[sKey];
-        await fnSaveStepUpdate(iStep, dictUpdate);
-        fnRenderStepList();
-    }
-
-    async function _fnSaveUserTest(iStep, sName) {
-        var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep.dictTests) {
-            dictStep.dictTests = fdictGetTests(dictStep);
-        }
-        if (!dictStep.dictTests.listUserTests) {
-            dictStep.dictTests.listUserTests = [];
-        }
-        dictStep.dictTests.listUserTests.push({
-            sName: sName.trim(),
-            sCommand: "",
-            sFilePath: "",
-        });
-        await fnSaveStepUpdate(iStep, {
-            dictTests: dictStep.dictTests,
-        });
-        fnRenderStepList();
-    }
-
-    function fnShowTestLogModal(sCategory, sOutput) {
-        var elExisting = document.getElementById("modalTestLog");
-        if (elExisting) elExisting.remove();
-        var elModal = document.createElement("div");
-        elModal.id = "modalTestLog";
-        elModal.className = "modal-overlay";
-        elModal.style.display = "flex";
-        elModal.innerHTML =
-            '<div class="modal" style="max-width:700px">' +
-            '<h2>' + fnEscapeHtml(sCategory) + ' Test Log</h2>' +
-            '<pre style="max-height:400px;overflow:auto;' +
-            'background:var(--bg-main);padding:10px;' +
-            'border-radius:4px;font-size:12px;' +
-            'white-space:pre-wrap;word-break:break-all">' +
-            fnEscapeHtml(sOutput) + '</pre>' +
-            '<div class="modal-actions">' +
-            '<button class="btn btn-primary" ' +
-            'id="btnTestLogClose">Close</button></div></div>';
-        document.body.appendChild(elModal);
-        document.getElementById("btnTestLogClose").addEventListener(
-            "click", function () { elModal.remove(); }
-        );
+        PipeleyenTestManager.fnAddTestItem(iStep, sType);
     }
 
     function fnShowConfirmModal(sTitle, sMessage, fnOnConfirm) {
@@ -2944,7 +2009,7 @@ const PipeleyenApp = (function () {
             fnShowToast("Save failed", "error");
         }
         fnRenderStepList();
-        fnCheckVaibified();
+        fnUpdateHighlightState();
     }
 
     function fbIsWorkflowFullyVerified() {
@@ -2959,13 +2024,7 @@ const PipeleyenApp = (function () {
         return true;
     }
 
-    function fnCheckVaibified() {
-        fnUpdateHighlightState();
-    }
-
-    function fnCheckVaibifiedOnLoad() {
-        fnUpdateHighlightState();
-    }
+    /* fnCheckVaibified inlined to fnUpdateHighlightState */
 
     var _bWasVaibified = false;
 
@@ -3291,441 +2350,15 @@ const PipeleyenApp = (function () {
         }
     }
 
-    async function fnScanDependencies(iStep) {
-        var dictStep = dictWorkflow.listSteps[iStep];
-        var saCommands = dictStep.saDataCommands || [];
-        if (saCommands.length === 0) {
-            return;
-        }
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" + iStep +
-                "/scan-dependencies",
-                {saDataCommands: saCommands}
-            );
-            dictStep.dictVerification = dictStep.dictVerification ||
-                {sUnitTest: "untested", sUser: "untested"};
-            dictStep.dictVerification.sLastDepsCheck =
-                fsFormatUtcTimestamp();
-            fnSaveStepUpdate(iStep, {
-                dictVerification: dictStep.dictVerification,
-            });
-            fnShowDependencyModal(iStep, dictResult);
-        } catch (error) {
-            fnShowToast("Dependency scan failed", "error");
-        }
-    }
+    /* Dependency scanner is now in scriptDependencyScanner.js */
 
-    function fsRenderDetectedSection(listSuggestions) {
-        if (listSuggestions.length === 0) return "";
-        var sHtml = '<div class="dependency-section-title">' +
-            'Detected Dependencies</div>';
-        for (var i = 0; i < listSuggestions.length; i++) {
-            var dictSugg = listSuggestions[i];
-            sHtml += '<div class="dependency-suggestion">' +
-                '<input type="checkbox" checked ' +
-                'data-source="detected" data-dep-index="' + i +
-                '" class="dependency-checkbox">' +
-                '<span class="dependency-step-badge">' +
-                fnEscapeHtml(dictSugg.sSourceStepName) +
-                '</span> ' +
-                '<span>' + fnEscapeHtml(dictSugg.sFileName) +
-                '</span> ' +
-                '<span style="color:var(--text-secondary)">' +
-                fnEscapeHtml(dictSugg.sLoadFunction) +
-                ' (line ' + dictSugg.iLineNumber + ')' +
-                '</span></div>';
-        }
-        return sHtml;
-    }
-
-    function fsRenderPossibleSection(listUnmatched) {
-        if (listUnmatched.length === 0) return "";
-        var sHtml = '<div class="dependency-section-title">' +
-            'Possible Dependencies</div>';
-        for (var j = 0; j < listUnmatched.length; j++) {
-            var dictFile = listUnmatched[j];
-            sHtml += '<div class="dependency-unmatched">' +
-                '<input type="checkbox" data-source="possible" ' +
-                'data-unmatched-idx="' + j +
-                '" class="dependency-checkbox">' +
-                '<span>' + fnEscapeHtml(dictFile.sFileName) +
-                '</span> ' +
-                '<span style="color:var(--text-secondary)">' +
-                fnEscapeHtml(dictFile.sLoadFunction) +
-                ' (line ' + dictFile.iLineNumber + ')' +
-                '</span></div>';
-        }
-        return sHtml;
-    }
-
-    function fsRenderManualSection() {
-        return '<div class="dependency-section-title">' +
-            'Manual Dependencies</div>' +
-            '<div id="listManualDeps"></div>' +
-            '<div class="dependency-browser-row">' +
-            '<button class="btn btn-small" id="btnBrowseDep">' +
-            'Browse</button>' +
-            '</div>' +
-            '<div id="depFileBrowser" class="dep-file-browser" ' +
-            'style="display:none"></div>';
-    }
-
-    function fsRenderSelectionStep(dictResult) {
-        var sHtml = '<h2>Dependency Detection' +
-            '<span class="dep-step-indicator">Step 1 of 2</span></h2>';
-        var listSuggestions = dictResult.listSuggestions || [];
-        var listUnmatched = dictResult.listUnmatchedFiles || [];
-        sHtml += fsRenderDetectedSection(listSuggestions);
-        sHtml += fsRenderPossibleSection(listUnmatched);
-        sHtml += fsRenderManualSection();
-        sHtml += '<div class="modal-actions">' +
-            '<button class="btn" id="btnDepSkip">Skip</button>' +
-            '<button class="btn btn-primary" ' +
-            'id="btnDepNext">Next</button></div>';
-        return sHtml;
-    }
-
-    function flistCollectCheckedDeps(elModal, dictResult) {
-        var listChecked = [];
-        var listBoxes = elModal.querySelectorAll(
-            ".dependency-checkbox:checked");
-        for (var k = 0; k < listBoxes.length; k++) {
-            var elBox = listBoxes[k];
-            var sSource = elBox.getAttribute("data-source");
-            if (sSource === "detected") {
-                var iIdx = parseInt(
-                    elBox.getAttribute("data-dep-index"), 10);
-                listChecked.push(dictResult.listSuggestions[iIdx]);
-            } else if (sSource === "possible") {
-                var iUIdx = parseInt(
-                    elBox.getAttribute("data-unmatched-idx"), 10);
-                var dictFile = dictResult.listUnmatchedFiles[iUIdx];
-                var sResolved = fsResolvePathToTemplate(
-                    dictFile.sFileName);
-                listChecked.push({
-                    sFileName: dictFile.sFileName,
-                    sSourceStepName: "Manual",
-                    sTemplateVariable: sResolved,
-                });
-            } else if (sSource === "manual") {
-                var sPath = elBox.getAttribute("data-file-path");
-                var sTemplate = fsResolvePathToTemplate(sPath);
-                listChecked.push({
-                    sFileName: sPath.split("/").pop(),
-                    sSourceStepName: "Manual",
-                    sTemplateVariable: sTemplate,
-                });
-            }
-        }
-        return listChecked;
-    }
-
-    function fsSourceLabel(sSource) {
-        if (sSource === "detected") return "Detected";
-        if (sSource === "possible") return "Possible";
-        return "Manual";
-    }
-
-    function fsRenderConfirmStep(listChecked) {
-        var sHtml = '<h2>Confirm Dependencies' +
-            '<span class="dep-step-indicator">Step 2 of 2</span></h2>';
-        if (listChecked.length === 0) {
-            sHtml += '<p style="color:var(--text-secondary)">' +
-                'No dependencies selected.</p>';
-        }
-        for (var i = 0; i < listChecked.length; i++) {
-            var dictDep = listChecked[i];
-            sHtml += '<div class="dependency-suggestion">' +
-                '<span style="color:var(--color-pale-blue);">' +
-                '&#10003;</span> ' +
-                '<span class="dependency-step-badge">' +
-                fnEscapeHtml(dictDep.sSourceStepName) +
-                '</span> ' +
-                '<span>' +
-                fnEscapeHtml(dictDep.sFileName) + '</span> ' +
-                '<span style="color:var(--text-secondary)">' +
-                fnEscapeHtml(fsSourceLabel(
-                    dictDep._sSource || "detected")) +
-                '</span></div>';
-        }
-        sHtml += '<div class="modal-actions">' +
-            '<button class="btn" id="btnDepBack">Go Back</button>' +
-            '<button class="btn btn-primary" ' +
-            'id="btnDepConfirm">Confirm</button></div>';
-        return sHtml;
-    }
-
-    function fbDepAlreadyListed(sFilePath, dictResult, elModal) {
-        var sBasename = sFilePath.split("/").pop();
-        var listSugg = dictResult.listSuggestions || [];
-        for (var i = 0; i < listSugg.length; i++) {
-            if (listSugg[i].sFileName === sBasename) return true;
-        }
-        var listUnm = dictResult.listUnmatchedFiles || [];
-        for (var j = 0; j < listUnm.length; j++) {
-            if (listUnm[j].sFileName === sBasename) return true;
-        }
-        var listManual = elModal.querySelectorAll(
-            '[data-source="manual"]');
-        for (var m = 0; m < listManual.length; m++) {
-            if (listManual[m].getAttribute("data-file-path") ===
-                sFilePath) return true;
-        }
-        return false;
-    }
-
-    function fnAddManualDepRow(elList, sFilePath) {
-        var sBasename = sFilePath.split("/").pop();
-        var elRow = document.createElement("div");
-        elRow.className = "dependency-suggestion";
-        elRow.innerHTML =
-            '<input type="checkbox" checked data-source="manual" ' +
-            'data-file-path="' + fnEscapeHtml(sFilePath) +
-            '" class="dependency-checkbox">' +
-            '<span>' + fnEscapeHtml(sBasename) + '</span> ' +
-            '<span style="color:var(--text-secondary)">' +
-            fnEscapeHtml(sFilePath) + '</span>' +
-            '<button class="btn btn-small btn-remove-manual" ' +
-            'style="margin-left:auto;padding:2px 8px;' +
-            'font-size:12px">Remove</button>';
-        elList.appendChild(elRow);
-    }
-
-    function fsRenderBrowserEntries(listEntries) {
-        var sHtml = '';
-        for (var i = 0; i < listEntries.length; i++) {
-            var dictEntry = listEntries[i];
-            var sIcon = dictEntry.bIsDirectory ? "\uD83D\uDCC1" :
-                "\uD83D\uDCC4";
-            var sClass = dictEntry.bIsDirectory ?
-                "dep-browser-dir" : "dep-browser-file";
-            sHtml += '<div class="' + sClass +
-                '" data-path="' + fnEscapeHtml(dictEntry.sPath) +
-                '" data-is-dir="' + dictEntry.bIsDirectory + '">' +
-                sIcon + ' ' +
-                fnEscapeHtml(dictEntry.sName) + '</div>';
-        }
-        return sHtml;
-    }
-
-    function fsRenderBreadcrumb(sCurrentPath) {
-        var listParts = sCurrentPath.split("/").filter(
-            function (s) { return s; });
-        var sBuilt = "";
-        var sHtml = "";
-        for (var i = 0; i < listParts.length; i++) {
-            sBuilt += "/" + listParts[i];
-            if (i > 0) {
-                sHtml += '<span class="dep-breadcrumb-sep">/</span>';
-            }
-            sHtml += '<span class="dep-breadcrumb-part" data-path="' +
-                fnEscapeHtml(sBuilt) + '">' +
-                fnEscapeHtml("/" + listParts[i]) + '</span>';
-        }
-        if (!sHtml) {
-            sHtml = '<span class="dep-breadcrumb-part" data-path="/">/</span>';
-        }
-        return '<div class="dep-breadcrumb">' + sHtml + '</div>';
-    }
-
-    async function fnLoadBrowserDirectory(elBrowser, sPath) {
-        elBrowser.style.display = "block";
-        elBrowser.innerHTML = '<div class="dep-browser-loading">' +
-            'Loading...</div>';
-        try {
-            var sUrl = "/api/files/" + sContainerId + sPath;
-            var listEntries = await VaibifyApi.fdictGet(sUrl);
-            elBrowser.innerHTML = fsRenderBreadcrumb(sPath) +
-                '<div class="dep-browser-list">' +
-                fsRenderBrowserEntries(listEntries) + '</div>';
-            elBrowser.setAttribute("data-current-path", sPath);
-        } catch (error) {
-            elBrowser.innerHTML = '<div class="dep-browser-loading">' +
-                'Failed to load directory</div>';
-        }
+    function fnScanDependencies(iStep) {
+        PipeleyenDependencyScanner.fnScanDependencies(iStep);
     }
 
     function fnShowDependencyModal(iStep, dictResult) {
-        var elExisting = document.getElementById("modalDependency");
-        if (elExisting) elExisting.remove();
-        var elModal = document.createElement("div");
-        elModal.id = "modalDependency";
-        elModal.className = "modal-overlay";
-        elModal.style.display = "flex";
-        fnRenderDepModalStep1(elModal, dictResult);
-        document.body.appendChild(elModal);
-        fnAttachDepModalEvents(elModal, iStep, dictResult);
-    }
-
-    function fnRenderDepModalStep1(elModal, dictResult) {
-        elModal.innerHTML = '<div class="modal">' +
-            fsRenderSelectionStep(dictResult) + '</div>';
-    }
-
-    function fnAttachDepModalEvents(elModal, iStep, dictResult) {
-        elModal.addEventListener("click", function (event) {
-            var elTarget = event.target;
-            if (elTarget.id === "btnDepSkip") {
-                elModal.remove();
-                return;
-            }
-            if (elTarget.id === "btnDepNext") {
-                fnHandleDepNext(elModal, dictResult);
-                return;
-            }
-            if (elTarget.id === "btnDepBack") {
-                fnRenderDepModalStep1(elModal, dictResult);
-                return;
-            }
-            if (elTarget.id === "btnDepConfirm") {
-                fnHandleDepConfirm(elModal, iStep);
-                return;
-            }
-            if (elTarget.id === "btnBrowseDep") {
-                fnHandleDepBrowse(elModal);
-                return;
-            }
-            if (elTarget.classList.contains("btn-remove-manual")) {
-                elTarget.closest(".dependency-suggestion").remove();
-                return;
-            }
-            fnHandleBrowserClick(elTarget, elModal, dictResult);
-        });
-    }
-
-    function fnHandleDepBrowse(elModal) {
-        var elBrowser = elModal.querySelector("#depFileBrowser");
-        if (!elBrowser) return;
-        if (elBrowser.style.display === "block") {
-            elBrowser.style.display = "none";
-            return;
-        }
-        fnLoadBrowserDirectory(elBrowser, "/workspace");
-    }
-
-    function fnHandleBrowserClick(elTarget, elModal, dictResult) {
-        var elEntry = elTarget.closest(
-            ".dep-browser-dir, .dep-browser-file");
-        if (elEntry) {
-            var sPath = elEntry.getAttribute("data-path");
-            var bIsDir = elEntry.getAttribute("data-is-dir") ===
-                "true";
-            var elBrowser = elModal.querySelector("#depFileBrowser");
-            if (bIsDir) {
-                fnLoadBrowserDirectory(elBrowser, sPath);
-            } else {
-                fnHandleFileSelection(elModal, sPath, dictResult);
-            }
-            return;
-        }
-        var elCrumb = elTarget.closest(".dep-breadcrumb-part");
-        if (elCrumb) {
-            var sCrumbPath = elCrumb.getAttribute("data-path");
-            var elBr = elModal.querySelector("#depFileBrowser");
-            fnLoadBrowserDirectory(elBr, sCrumbPath);
-        }
-    }
-
-    function fnHandleFileSelection(elModal, sPath, dictResult) {
-        if (fbDepAlreadyListed(sPath, dictResult, elModal)) {
-            fnShowToast("Already listed as a dependency", "info");
-            return;
-        }
-        var elList = elModal.querySelector("#listManualDeps");
-        if (elList) fnAddManualDepRow(elList, sPath);
-    }
-
-    function fnHandleDepNext(elModal, dictResult) {
-        var listChecked = flistCollectCheckedDeps(
-            elModal, dictResult);
-        for (var i = 0; i < listChecked.length; i++) {
-            if (!listChecked[i]._sSource) {
-                listChecked[i]._sSource = "detected";
-            }
-        }
-        var elInner = elModal.querySelector(".modal");
-        elInner.innerHTML = fsRenderConfirmStep(listChecked);
-        elModal._listPendingDeps = listChecked;
-    }
-
-    function fnHandleDepConfirm(elModal, iStep) {
-        var listPending = elModal._listPendingDeps || [];
-        elModal.remove();
-        if (listPending.length > 0) {
-            fnApplyDependencies(iStep, listPending);
-        }
-    }
-
-    function fsResolvePathToTemplate(sPath) {
-        var sBasename = sPath.split("/").pop();
-        var sStem = sBasename.replace(/\.[^.]+$/, "");
-        if (!sStem) return sPath;
-        var listSteps = dictWorkflow.listSteps || [];
-        for (var i = 0; i < listSteps.length; i++) {
-            var saFiles = (listSteps[i].saDataFiles || []).concat(
-                listSteps[i].saPlotFiles || []
-            );
-            for (var j = 0; j < saFiles.length; j++) {
-                var sUpBase = saFiles[j].split("/").pop();
-                var sUpStem = sUpBase.replace(/\.[^.]+$/, "");
-                if (sUpStem === sStem) {
-                    var iStepNumber = i + 1;
-                    var sStepLabel = "Step" +
-                        String(iStepNumber).padStart(2, "0");
-                    return "{" + sStepLabel + "." + sStem + "}";
-                }
-            }
-        }
-        return sPath;
-    }
-
-    function flistFilterNewTokens(listTokens, saCommands, saDependencies) {
-        var sJoinedCommands = saCommands.join(" ");
-        var sJoinedDeps = (saDependencies || []).join(" ");
-        var listNew = [];
-        for (var i = 0; i < listTokens.length; i++) {
-            var sToken = listTokens[i];
-            if (!/^\{Step\d+\./.test(sToken)) continue;
-            if (sJoinedCommands.indexOf(sToken) === -1 &&
-                sJoinedDeps.indexOf(sToken) === -1) {
-                listNew.push(sToken);
-            }
-        }
-        return listNew;
-    }
-
-    async function fnApplyDependencies(iStep, listChecked) {
-        var dictStep = dictWorkflow.listSteps[iStep];
-        var saCommands = dictStep.saDataCommands || [];
-        var saDependencies = dictStep.saDependencies || [];
-
-        var listDepTokens = [];
-        for (var i = 0; i < listChecked.length; i++) {
-            listDepTokens.push(listChecked[i].sTemplateVariable);
-        }
-        var listNew = flistFilterNewTokens(
-            listDepTokens, saCommands, saDependencies
-        );
-        if (listNew.length === 0) {
-            fnShowToast("No new dependencies to add", "info");
-            return;
-        }
-        var saUpdated = saDependencies.concat(listNew);
-        dictStep.saDependencies = saUpdated;
-        await fnSaveDependencies(iStep, saUpdated);
-        fnShowToast(listNew.length + " dependencies added", "success");
-    }
-
-    async function fnSaveDependencies(iStep, saDependencies) {
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iStep,
-                {saDependencies: saDependencies});
-            fnRenderStepList();
-        } catch (error) {
-            fnShowToast("Failed to save dependencies", "error");
-        }
+        PipeleyenDependencyScanner.fnShowDependencyModal(
+            iStep, dictResult);
     }
 
     /* --- Step Expand/Collapse --- */
@@ -3741,25 +2374,8 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    async function fnLoadPlotStandardStatus(iStepIndex) {
-        if (!sContainerId || !dictWorkflow) return;
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (!step || (step.saPlotFiles || []).length === 0) return;
-        try {
-            var dictResult = await VaibifyApi.fdictGet(
-                "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/plot-standards"
-            );
-            var dictStandards = dictResult.dictStandards || {};
-            for (var sBasename in dictStandards) {
-                var sKey = iStepIndex + ":" + sBasename;
-                dictPlotStandardExists[sKey] =
-                    dictStandards[sBasename];
-            }
-            fnRenderStepList();
-        } catch (error) {
-            /* Silently ignore - buttons remain hidden */
-        }
+    function fnLoadPlotStandardStatus(iStepIndex) {
+        PipeleyenPlotStandards.fnLoadPlotStandardStatus(iStepIndex);
     }
 
     async function fnToggleStepEnabled(iIndex, bEnabled) {
@@ -4042,18 +2658,20 @@ const PipeleyenApp = (function () {
         );
         document.getElementById("btnNoWorkflow").addEventListener(
             "click", function () {
-                if (_sSelectedContainerId) {
-                    fnEnterNoWorkflow(_sSelectedContainerId);
+                if (PipeleyenContainerManager.fsGetSelectedContainerId()) {
+                    fnEnterNoWorkflow(PipeleyenContainerManager.fsGetSelectedContainerId());
                 }
             }
         );
         document.getElementById("btnNewWorkflow").addEventListener(
-            "click", fnCreateNewWorkflow
+            "click", function () {
+                PipeleyenContainerManager.fnCreateNewWorkflow();
+            }
         );
         document.getElementById("btnRefreshWorkflows").addEventListener(
             "click", function () {
-                if (_sSelectedContainerId) {
-                    fnConnectToContainer(_sSelectedContainerId);
+                if (PipeleyenContainerManager.fsGetSelectedContainerId()) {
+                    fnConnectToContainer(PipeleyenContainerManager.fsGetSelectedContainerId());
                 }
             }
         );
@@ -4069,78 +2687,11 @@ const PipeleyenApp = (function () {
     }
 
     function fnBindContainerLandingEvents() {
-        document.getElementById("btnRefreshContainers").addEventListener(
-            "click", function () {
-                fnLoadContainers();
-            }
-        );
-        document.getElementById("btnAddContainer").addEventListener(
-            "click", fnOpenAddChoice
-        );
-        document.getElementById("btnShowUnrecognized").addEventListener(
-            "click", function () {
-                var elList = document.getElementById("listUnrecognized");
-                var bVisible = elList.style.display !== "none";
-                elList.style.display = bVisible ? "none" : "";
-                this.textContent = bVisible
-                    ? "Show unrecognized containers"
-                    : "Hide unrecognized containers";
-            }
-        );
-        document.addEventListener("click", function () {
-            document.querySelectorAll(".container-tile-menu").forEach(
-                function (el) { el.style.display = "none"; }
-            );
-        });
-        document.getElementById("btnBrowserBack").addEventListener(
-            "click", fnBrowserNavigateBack
-        );
-        document.getElementById("btnBrowserForward").addEventListener(
-            "click", fnBrowserNavigateForward
-        );
+        PipeleyenContainerManager.fnBindContainerLandingEvents();
     }
 
     function fnBindAddContainerModal() {
-        document.getElementById("btnAddContainerCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddContainer")
-                    .style.display = "none";
-            }
-        );
-        document.getElementById("btnAddContainerConfirm").addEventListener(
-            "click", fnSelectDirectory
-        );
-        fnBindAddChoiceModal();
-        VaibifyWorkflowManager.fnBindCreateWizardModal();
-    }
-
-    /* --- Add Choice Modal --- */
-
-    function fnOpenAddChoice() {
-        document.getElementById("modalAddChoice").style.display = "flex";
-    }
-
-    function fnBindAddChoiceModal() {
-        document.getElementById("btnAddChoiceCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-            }
-        );
-        document.getElementById("btnChoiceAddExisting").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-                fnOpenDirectoryBrowser();
-            }
-        );
-        document.getElementById("btnChoiceCreateNew").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-                VaibifyWorkflowManager.fnOpenCreateWizard();
-            }
-        );
+        PipeleyenContainerManager.fnBindAddContainerModal();
     }
 
     /* --- Creation Wizard (delegated to VaibifyWorkflowManager) --- */
@@ -4189,301 +2740,10 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnConnectPipelineWebSocket() {
-        return VaibifyWebSocket.fnConnect(
-            sContainerId, sSessionToken);
-    }
+    /* Pipeline WebSocket, interactive, and sentinel monitoring
+       now in scriptPipelineRunner.js */
 
-    function fnHandlePipelineEvent(dictEvent) {
-        if (dictEvent.sType === "output") {
-            fnAppendPipelineOutput(dictEvent.sLine);
-        } else if (dictEvent.sType === "commandFailed") {
-            var sMessage =
-                "FAILED: " + dictEvent.sCommand +
-                "\n  Directory: " + dictEvent.sDirectory +
-                "\n  Exit code: " + dictEvent.iExitCode;
-            fnAppendPipelineOutput(sMessage);
-            fnShowToast(
-                "Command failed (exit "
-                + dictEvent.iExitCode + ")", "error");
-        } else if (dictEvent.sType === "preflightFailed") {
-            var sErrors = dictEvent.listErrors.join("\n");
-            fnShowErrorModal(
-                "Pre-flight validation failed:\n\n" + sErrors
-            );
-        } else if (dictEvent.sType === "testResult") {
-            fnHandleTestResult(dictEvent);
-        } else if (dictEvent.sType === "stepStarted") {
-            dictStepStatus[dictEvent.iStepNumber - 1] = "running";
-            fnRenderStepList();
-        } else if (dictEvent.sType === "stepStats") {
-            var iStepIdx = dictEvent.iStepNumber - 1;
-            if (dictWorkflow && dictWorkflow.listSteps[iStepIdx]) {
-                dictWorkflow.listSteps[iStepIdx].dictRunStats =
-                    dictEvent.dictRunStats;
-                fnRenderStepList();
-            }
-        } else if (dictEvent.sType === "stepSkipped") {
-            dictStepStatus[dictEvent.iStepNumber - 1] = "skipped";
-            fnAppendPipelineOutput(
-                "Step " + dictEvent.iStepNumber +
-                ": SKIPPED (inputs unchanged)");
-            fnRenderStepList();
-        } else if (dictEvent.sType === "discoveredOutputs") {
-            fnHandleDiscoveredOutputs(dictEvent);
-        } else if (dictEvent.sType === "stepPass") {
-            var iPassIdx = dictEvent.iStepNumber - 1;
-            dictStepStatus[iPassIdx] = "pass";
-            fnClearOutputModified(iPassIdx);
-            fnResetUserVerification(iPassIdx);
-            fnAcknowledgeStepCompletion(iPassIdx);
-            fnInvalidateStepFileCache(iPassIdx);
-            fnRenderStepList();
-        } else if (dictEvent.sType === "stepFail") {
-            var iFailIdx = dictEvent.iStepNumber - 1;
-            dictStepStatus[iFailIdx] = "fail";
-            fnResetUserVerification(iFailIdx);
-            fnInvalidateStepFileCache(iFailIdx);
-            fnRenderStepList();
-        } else if (dictEvent.sType === "started") {
-            fnStopPipelinePolling();
-            fnStopFileChangePolling();
-            fnInitPipelineOutput();
-            fnShowToast("Pipeline started", "success");
-        } else if (dictEvent.sType === "completed") {
-            fnClearRunningStatuses();
-            fnStartFileChangePolling();
-            fnShowToast("Pipeline completed", "success");
-            fnRenderStepList();
-            if (dictEvent.sLogPath) {
-                fnDisplayLogInViewer(dictEvent.sLogPath);
-            }
-        } else if (dictEvent.sType === "failed") {
-            fnClearRunningStatuses();
-            fnStartFileChangePolling();
-            fnShowToast(
-                "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
-            );
-            fnRenderStepList();
-            if (dictEvent.sLogPath) {
-                fnDisplayLogInViewer(dictEvent.sLogPath);
-            }
-        } else if (dictEvent.sType === "interactivePause") {
-            fnShowInteractivePauseDialog(dictEvent);
-        } else if (dictEvent.sType === "interactiveTerminalStart") {
-            fnRunInteractiveInTerminal(dictEvent);
-        }
-    }
-
-    function fnShowInteractivePauseDialog(dictEvent) {
-        var sLabel = fsComputeStepLabel(dictEvent.iStepIndex);
-        _fnShowTwoActionModal(
-            "Interactive Step Reached",
-            "Step " + sLabel + " '" + dictEvent.sStepName +
-            "' requires your input.\n\n" +
-            "Run it in the terminal?",
-            "Run", function () {
-                _fnSendPipelineMessage("interactiveResume");
-            },
-            "Skip", function () {
-                _fnSendPipelineMessage("interactiveSkip");
-            }
-        );
-    }
-
-    function _fnShowTwoActionModal(
-        sTitle, sMessage, sConfirmLabel, fnOnConfirm,
-        sCancelLabel, fnOnCancel,
-    ) {
-        var elExisting = document.getElementById("modalConfirm");
-        if (elExisting) elExisting.remove();
-        var elModal = document.createElement("div");
-        elModal.id = "modalConfirm";
-        elModal.className = "modal-overlay";
-        elModal.style.display = "flex";
-        elModal.innerHTML =
-            '<div class="modal">' +
-            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
-            '<p style="white-space:pre-wrap;margin-bottom:16px">' +
-            fnEscapeHtml(sMessage) + '</p>' +
-            '<div class="modal-actions">' +
-            '<button class="btn" id="btnConfirmCancel">' +
-            fnEscapeHtml(sCancelLabel) + '</button>' +
-            '<button class="btn btn-primary" ' +
-            'id="btnConfirmOk">' +
-            fnEscapeHtml(sConfirmLabel) + '</button>' +
-            '</div></div>';
-        document.body.appendChild(elModal);
-        document.getElementById("btnConfirmCancel").addEventListener(
-            "click", function () {
-                elModal.remove();
-                fnOnCancel();
-            }
-        );
-        document.getElementById("btnConfirmOk").addEventListener(
-            "click", function () {
-                elModal.remove();
-                fnOnConfirm();
-            }
-        );
-    }
-
-    function _fnSendPipelineMessage(sAction) {
-        VaibifyWebSocket.fnSendDirect({sAction: sAction});
-    }
-
-    function fnRunInteractiveInTerminal(dictEvent) {
-        var dictStep = dictEvent.dictStep || {};
-        var sDirectory = dictStep.sDirectory || "";
-        var listCommands = (dictStep.saDataCommands || []).concat(
-            dictStep.saPlotCommands || []
-        );
-        if (listCommands.length === 0) {
-            _fnSendInteractiveComplete(0);
-            return;
-        }
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCommand = _fsBuildInteractiveCommand(
-            sDirectory, listCommands, sSentinel,
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCommand);
-        _fnMonitorTerminalForSentinel(sSentinel);
-    }
-
-    function _fsBuildInteractiveCommand(
-        sDirectory, listCommands, sSentinel,
-    ) {
-        var sCd = sDirectory
-            ? "cd '" + sDirectory.replace(/'/g, "'\\''") + "' && "
-            : "";
-        var sJoined = listCommands.join(" && ");
-        return sCd + sJoined +
-            "; echo " + sSentinel + "=$?";
-    }
-
-    function _fsGenerateUuid() {
-        return "xxxx-xxxx".replace(/x/g, function () {
-            return Math.floor(Math.random() * 16).toString(16);
-        });
-    }
-
-    var _iActiveSentinelMonitor = null;
-
-    function _fnMonitorTerminalForSentinel(sSentinel) {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-        }
-        var I_MAX_SENTINEL_CHECKS = 86400;
-        var iCheckCount = 0;
-        _iActiveSentinelMonitor = setInterval(function () {
-            iCheckCount++;
-            if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
-                clearInterval(_iActiveSentinelMonitor);
-                _iActiveSentinelMonitor = null;
-                fnShowToast(
-                    "Interactive step timed out after 24 hours",
-                    "error");
-                _fnSendInteractiveComplete(1);
-                return;
-            }
-            var sText = _fsReadAllTerminalText();
-            var oPattern = new RegExp(
-                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
-            );
-            var oMatch = sText.match(oPattern);
-            if (!oMatch) return;
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-            var iExitCode = parseInt(oMatch[1], 10);
-            _fnSendInteractiveComplete(iExitCode);
-        }, 1000);
-    }
-
-    function _fsReadAllTerminalText() {
-        var sText = "";
-        var listPanes = document.querySelectorAll(
-            ".terminal-pane-container .xterm"
-        );
-        listPanes.forEach(function (elTerminal) {
-            try {
-                var elRows = elTerminal.querySelectorAll(
-                    ".xterm-rows > div"
-                );
-                elRows.forEach(function (el) {
-                    sText += el.textContent + "\n";
-                });
-            } catch (e) { /* skip unreadable pane */ }
-        });
-        return sText;
-    }
-
-    function _fnSendInteractiveComplete(iExitCode) {
-        VaibifyWebSocket.fnSendDirect({
-            sAction: "interactiveComplete",
-            iExitCode: iExitCode,
-        });
-    }
-
-    function fnApplyTestResultToCategories(
-        dictStep, sResult, sOutput, dictCategoryResults
-    ) {
-        var dictVerify = dictStep.dictVerification;
-        var dictTests = dictStep.dictTests || {};
-        var listKeys = [
-            ["dictIntegrity", "sIntegrity"],
-            ["dictQualitative", "sQualitative"],
-            ["dictQuantitative", "sQuantitative"],
-        ];
-        for (var i = 0; i < listKeys.length; i++) {
-            var sCatKey = listKeys[i][0];
-            var sVerifyKey = listKeys[i][1];
-            var dictCat = dictTests[sCatKey] || {};
-            if ((dictCat.saCommands || []).length === 0) continue;
-            var dictCatEntry = (dictCategoryResults || {})[sCatKey];
-            if (dictCatEntry && typeof dictCatEntry === "object") {
-                dictVerify[sVerifyKey] = dictCatEntry.sStatus || sResult;
-                if (dictCatEntry.sOutput) {
-                    dictCat.sLastOutput = dictCatEntry.sOutput;
-                }
-            } else if (typeof dictCatEntry === "string") {
-                dictVerify[sVerifyKey] = dictCatEntry;
-                if (sOutput) {
-                    dictCat.sLastOutput = sOutput;
-                }
-            } else {
-                dictVerify[sVerifyKey] = sResult;
-                if (sOutput) {
-                    dictCat.sLastOutput = sOutput;
-                }
-            }
-        }
-    }
-
-    function fnResetUserVerification(iStepIndex) {
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        if (!dictStep) return;
-        var dictVerify = fdictGetVerification(dictStep);
-        if (dictVerify.sUser === "untested") return;
-        dictVerify.sUser = "untested";
-        dictStep.dictVerification = dictVerify;
-        fnSaveStepUpdate(iStepIndex, {
-            dictVerification: dictStep.dictVerification,
-        });
-    }
-
-    var dictAcknowledgedAt = {};
-
-    function fnAcknowledgeStepCompletion(iStepIndex) {
-        if (!sContainerId) return;
-        dictAcknowledgedAt[iStepIndex] = Date.now();
-        VaibifyApi.fdictPostRaw(
-            "/api/pipeline/" + sContainerId +
-            "/acknowledge-step/" + iStepIndex
-        ).then(function () {
-            fnClearOutputModified(iStepIndex);
-        }).catch(function () { /* best effort */ });
-    }
+    /* Test result handling now in scriptTestManager.js */
 
     function fnClearOutputModified(iStep) {
         var dictStep = dictWorkflow.listSteps[iStep];
@@ -4493,62 +2753,12 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fnHandleTestResult(dictEvent) {
-        var iStep = dictEvent.iStepNumber - 1;
-        var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep.dictVerification) {
-            dictStep.dictVerification = {
-                sUnitTest: "untested", sUser: "untested",
-            };
-        }
-        dictStep.dictVerification.sUnitTest = dictEvent.sResult;
-        dictStep.dictVerification.sLastTestRun =
-            fsFormatUtcTimestamp();
-        fnApplyTestResultToCategories(
-            dictStep, dictEvent.sResult, dictEvent.sOutput || "",
-            dictEvent.dictCategoryResults || null);
-        fnClearOutputModified(iStep);
-        var dictUpdate = {
-            dictVerification: dictStep.dictVerification,
-        };
-        if (dictStep.dictTests) {
-            dictUpdate.dictTests = dictStep.dictTests;
-        }
-        fnSaveStepUpdate(iStep, dictUpdate);
-        fnRenderStepList();
-        fnCheckVaibified();
-        var sLabel = dictEvent.sResult === "passed" ?
-            "Tests passed" : "Tests FAILED";
-        var sStepLabel = fsComputeStepLabel(iStep);
-        fnShowToast("Step " + sStepLabel + ": " + sLabel,
-            dictEvent.sResult === "passed" ? "success" : "error");
-    }
-
-    var iPreviousOutputCount = 0;
     var dictFileModTimes = {};
     var dictOutputMtimes = {};
     var dictPlotMtimes = {};
     var dictScriptModified = {};
-    var dictTestMarkerTimestamps = {};
 
-    async function fnRecoverPipelineState(sId) {
-        try {
-            var dictState = await VaibifyApi.fdictGet(
-                "/api/pipeline/" + sId + "/state");
-            if (!dictState || !dictState.bRunning) {
-                if (dictState && dictState.sLogPath &&
-                    dictState.iExitCode >= 0) {
-                    fnApplyCompletedState(dictState);
-                }
-                fnStartFileChangePolling();
-                return;
-            }
-            fnApplyRunningState(dictState, true);
-            fnStartPipelinePolling(sId);
-        } catch (error) {
-            fnStartFileChangePolling();
-        }
-    }
+    /* Pipeline state recovery now in scriptPipelineRunner.js */
 
     function fnStartPipelinePolling(sId) {
         VaibifyPolling.fnStartPipelinePolling(sId);
@@ -4556,96 +2766,6 @@ const PipeleyenApp = (function () {
 
     function fnStopPipelinePolling() {
         VaibifyPolling.fnStopPipelinePolling();
-    }
-
-    function fnHandlePipelinePollResult(dictState) {
-        if (!dictState) return;
-        if (!dictState.bRunning) {
-            fnStopPipelinePolling();
-            fnApplyCompletedState(dictState);
-            if (dictState.sLogPath) {
-                fnDisplayLogInViewer(dictState.sLogPath);
-            }
-            fnShowToast(
-                dictState.iExitCode === 0 ?
-                    "Pipeline completed" :
-                    "Pipeline failed (exit " +
-                    dictState.iExitCode + ")",
-                dictState.iExitCode === 0 ? "success" : "error"
-            );
-            fnStartFileChangePolling();
-            return;
-        }
-        fnApplyRunningState(dictState, false);
-    }
-
-    function fnApplyRunningState(dictState, bInitial) {
-        if (bInitial) {
-            fnInitPipelineOutput();
-            fnShowToast(
-                "Reconnected to running pipeline", "success"
-            );
-            iPreviousOutputCount = 0;
-        }
-        var dictResults = dictState.dictStepResults || {};
-        for (var sKey in dictResults) {
-            var iStep = parseInt(sKey) - 1;
-            var sStatus = dictResults[sKey].sStatus;
-            if (sStatus === "passed") {
-                dictStepStatus[iStep] = "pass";
-            } else if (sStatus === "failed") {
-                dictStepStatus[iStep] = "fail";
-            } else if (sStatus === "skipped") {
-                dictStepStatus[iStep] = "";
-            }
-        }
-        if (dictState.iActiveStep > 0) {
-            dictStepStatus[dictState.iActiveStep - 1] = "running";
-        }
-        var iStepCount = dictState.iStepCount || 0;
-        for (var i = 0; i < iStepCount; i++) {
-            var sIdx = String(i + 1);
-            if (!dictResults[sIdx] &&
-                i !== dictState.iActiveStep - 1) {
-                if (!dictResults[sIdx]) {
-                    dictStepStatus[i] = "queued";
-                }
-            }
-        }
-        var listOutput = dictState.listRecentOutput || [];
-        var elOutput = document.getElementById("panelOutput");
-        if (elOutput && listOutput.length > iPreviousOutputCount) {
-            var listNew = listOutput.slice(iPreviousOutputCount);
-            listNew.forEach(function (sLine) {
-                var elLine = document.createElement("div");
-                elLine.textContent = sLine;
-                if (sLine.indexOf("FAILED") >= 0) {
-                    elLine.style.color = "var(--color-red)";
-                } else if (sLine.startsWith("$")) {
-                    elLine.style.color =
-                        "var(--color-blue, #3498db)";
-                }
-                elOutput.appendChild(elLine);
-            });
-            elOutput.scrollTop = elOutput.scrollHeight;
-            iPreviousOutputCount = listOutput.length;
-        }
-        fnRenderStepList();
-    }
-
-    function fnApplyCompletedState(dictState) {
-        fnClearRunningStatuses();
-        var dictResults = dictState.dictStepResults || {};
-        for (var sKey in dictResults) {
-            var iStep = parseInt(sKey) - 1;
-            var sStatus = dictResults[sKey].sStatus;
-            if (sStatus === "passed") {
-                dictStepStatus[iStep] = "pass";
-            } else if (sStatus === "failed") {
-                dictStepStatus[iStep] = "fail";
-            }
-        }
-        fnRenderStepList();
     }
 
     function fnStartFileChangePolling() {
@@ -4673,10 +2793,12 @@ const PipeleyenApp = (function () {
         fnUpdateDepsTimestamps();
         fnUpdateScriptStatus(dictStatus.dictScriptStatus);
         if (dictStatus.dictTestMarkers) {
-            fnApplyTestMarkers(dictStatus.dictTestMarkers);
+            PipeleyenTestManager.fnApplyTestMarkers(
+                dictStatus.dictTestMarkers);
         }
         if (dictStatus.dictTestFileChanges) {
-            fnNotifyTestFileChanges(dictStatus.dictTestFileChanges);
+            PipeleyenTestManager.fnNotifyTestFileChanges(
+                dictStatus.dictTestFileChanges);
         }
     }
 
@@ -4759,137 +2881,8 @@ const PipeleyenApp = (function () {
     }
 
 
-    function fbApplyStepMarker(iStep, dictEntry) {
-        var dictMarker = dictEntry.dictMarker || {};
-        var sIndex = String(iStep);
-        var fTimestamp = dictMarker.fTimestamp || 0;
-        if (fTimestamp <= (dictTestMarkerTimestamps[sIndex] || 0))
-            return false;
-        dictTestMarkerTimestamps[sIndex] = fTimestamp;
-        if (dictEntry.bStale) return false;
-        var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep) return false;
-        var dictVerify = dictStep.dictVerification || {};
-        dictStep.dictVerification = dictVerify;
-        var dictCategories = dictMarker.dictCategories || {};
-        return fbApplyAllMarkerCategories(
-            dictVerify, dictCategories
-        );
-    }
-
-    function fbApplyAllMarkerCategories(dictVerify, dictCategories) {
-        var bUpdated = false;
-        bUpdated = fbApplyMarkerCategory(
-            dictVerify, dictCategories, "integrity", "sIntegrity"
-        ) || bUpdated;
-        bUpdated = fbApplyMarkerCategory(
-            dictVerify, dictCategories, "qualitative", "sQualitative"
-        ) || bUpdated;
-        bUpdated = fbApplyMarkerCategory(
-            dictVerify, dictCategories, "quantitative", "sQuantitative"
-        ) || bUpdated;
-        return bUpdated;
-    }
-
-    function fnApplyTestMarkers(dictMarkers) {
-        var bAnyChanged = false;
-        for (var sIndex in dictMarkers) {
-            var iStep = parseInt(sIndex, 10);
-            if (!fbApplyStepMarker(iStep, dictMarkers[sIndex]))
-                continue;
-            bAnyChanged = true;
-            var dictMarker = dictMarkers[sIndex].dictMarker || {};
-            var sLabel = fsComputeStepLabel(iStep);
-            var iExitStatus = dictMarker.iExitStatus || 0;
-            var sVerb = iExitStatus === 0 ? "passed" : "failed";
-            var sVariant = iExitStatus === 0 ? "success" : "error";
-            fnShowToast(
-                "Step " + sLabel + ": tests " + sVerb +
-                " (external run detected)", sVariant
-            );
-        }
-        if (bAnyChanged) fnRenderStepList();
-    }
-
-    function fbApplyMarkerCategory(
-        dictVerify, dictCategories, sCategory, sVerifyKey
-    ) {
-        if (!dictCategories[sCategory]) return false;
-        var dictCat = dictCategories[sCategory];
-        var sOld = dictVerify[sVerifyKey] || "";
-        if (dictCat.iFailed > 0) {
-            dictVerify[sVerifyKey] = "failed";
-        } else if (dictCat.iPassed > 0) {
-            dictVerify[sVerifyKey] = "passed";
-        }
-        return dictVerify[sVerifyKey] !== sOld;
-    }
-
-    var _dictSeenNewTestFiles = {};
-    var _bFirstTestFilePoll = true;
-
-    function fnNotifyTestFileChanges(dictChanges) {
-        var bSeedOnly = _bFirstTestFilePoll;
-        _bFirstTestFilePoll = false;
-        for (var sIndex in dictChanges) {
-            var iStep = parseInt(sIndex, 10);
-            var dictChange = dictChanges[sIndex];
-            var listNew = dictChange.listNew || [];
-            var listUnseen = flistFilterUnseenTestFiles(
-                iStep, listNew
-            );
-            if (!bSeedOnly && listUnseen.length > 0) {
-                var sLabel = fsComputeStepLabel(iStep);
-                fnShowToast(
-                    "Step " + sLabel + ": " + listUnseen.length +
-                    " new test file(s) discovered", "info"
-                );
-            }
-            var listCustom = dictChange.listCustom || [];
-            if (listCustom.length > 0) {
-                fnShowCustomTestNotice(iStep, listCustom);
-            }
-        }
-    }
-
-    function flistFilterUnseenTestFiles(iStep, listFiles) {
-        var sKey = String(iStep);
-        if (!_dictSeenNewTestFiles[sKey]) {
-            _dictSeenNewTestFiles[sKey] = {};
-        }
-        var dictSeen = _dictSeenNewTestFiles[sKey];
-        var listUnseen = [];
-        for (var i = 0; i < listFiles.length; i++) {
-            if (!dictSeen[listFiles[i]]) {
-                listUnseen.push(listFiles[i]);
-            }
-            dictSeen[listFiles[i]] = true;
-        }
-        return listUnseen;
-    }
-
-    function fnShowCustomTestNotice(iStep, listCustomFiles) {
-        var elStep = document.querySelector(
-            '.step-item[data-index="' + iStep + '"]'
-        );
-        if (!elStep) return;
-        var elExisting = elStep.querySelector(".custom-test-notice");
-        if (elExisting) return;
-        var elNotice = document.createElement("div");
-        elNotice.className = "custom-test-notice";
-        elNotice.style.cssText =
-            "color:var(--color-yellow,#f1c40f);" +
-            "font-size:0.85em;margin-top:4px;";
-        elNotice.textContent =
-            "Custom test scripts detected: " +
-            listCustomFiles.join(", ");
-        var elTestArea = elStep.querySelector(".test-section-label");
-        if (elTestArea) {
-            elTestArea.parentNode.insertBefore(
-                elNotice, elTestArea.nextSibling
-            );
-        }
-    }
+    /* Test markers and file change notifications
+       now in scriptTestManager.js */
 
     function fnApplyInvalidatedSteps(dictStepVerifications) {
         var bAnyChanged = false;
@@ -4918,7 +2911,7 @@ const PipeleyenApp = (function () {
     }
 
     function _fbWithinGracePeriod(iStep, iNow, iGraceMs) {
-        var iAckedAt = dictAcknowledgedAt[iStep];
+        var iAckedAt = PipeleyenPipelineRunner.fiGetAcknowledgedAt(iStep);
         if (iAckedAt && (iNow - iAckedAt) < iGraceMs) {
             return true;
         }
@@ -4930,7 +2923,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnDisplayLogInViewer(sLogPath) {
-        PipeleyenFigureViewer.fnDisplayFileFromContainer(sLogPath);
+        PipeleyenPipelineRunner.fnDisplayLogInViewer(sLogPath);
     }
 
     function fnShowErrorModal(sMessage) {
@@ -4948,745 +2941,85 @@ const PipeleyenApp = (function () {
         );
     }
 
-    function fnBindApiConfirmModal() {
-        document.getElementById("btnApiCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalApiConfirm")
-                    .style.display = "none";
-            }
-        );
-        document.getElementById("btnApiConfirm").addEventListener(
-            "click", function () {
-                var elModal = document.getElementById("modalApiConfirm");
-                var iStep = parseInt(elModal.dataset.step);
-                var sApiKey = document.getElementById(
-                    "inputApiKey"
-                ).value.trim();
-                if (!sApiKey) {
-                    fnShowToast("API key is required", "error");
-                    return;
-                }
-                elModal.style.display = "none";
-                fnGenerateTestsWithApi(iStep, sApiKey);
-            }
-        );
-    }
+    /* API confirm modal and test generation via API
+       now in scriptTestManager.js */
 
-    async function fnGenerateTestsWithApi(iStep, sApiKey) {
-        fnShowToast("Generating tests via API...", "success");
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" + iStep +
-                "/generate-test",
-                {bUseApi: true, sApiKey: sApiKey}
-            );
-            fnHandleGeneratedTest(iStep, dictResult);
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    function fnInitPipelineOutput() {
-        var elViewport = document.getElementById("viewportA");
-        elViewport.innerHTML =
-            '<pre id="pipelineOutput" class="pipeline-output"></pre>';
-        elViewport.scrollTop = 0;
-    }
-
-    var MAX_PIPELINE_OUTPUT_LINES = 1000;
-
-    function fnAppendPipelineOutput(sLine) {
-        var elOutput = document.getElementById("pipelineOutput");
-        if (!elOutput) {
-            fnInitPipelineOutput();
-            elOutput = document.getElementById("pipelineOutput");
-        }
-        var elLine = document.createElement("span");
-        elLine.textContent = sLine + "\n";
-        if (sLine.startsWith("FAILED:")) {
-            elLine.style.color = "var(--color-red, #e74c3c)";
-        } else if (sLine.startsWith("$")) {
-            elLine.style.color = "var(--color-blue, #3498db)";
-        }
-        elOutput.appendChild(elLine);
-        var iExcessCount =
-            elOutput.childNodes.length - MAX_PIPELINE_OUTPUT_LINES;
-        while (iExcessCount > 0) {
-            elOutput.removeChild(elOutput.firstChild);
-            iExcessCount--;
-        }
-        elOutput.scrollTop = elOutput.scrollHeight;
-    }
-
-    function fnSendPipelineAction(dictAction) {
-        fnConnectPipelineWebSocket();
-        VaibifyWebSocket.fnSend(dictAction);
-    }
+    /* Pipeline output, execution, and actions
+       now in scriptPipelineRunner.js */
+    /* Test file editing now in scriptTestManager.js */
 
     function fnEditTestFile(iStepIndex, iCmdIdx) {
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (!step) return;
-        var sCmd = (step.saTestCommands || [])[iCmdIdx];
-        if (!sCmd) return;
-        var sFilePath = sCmd
-            .replace(/^python\s+-m\s+pytest\s+/, "")
-            .replace(/^pytest\s+/, "")
-            .replace(/\s+(-v|--verbose)(\s|$).*$/, "")
-            .trim();
-        var sDir = step.sDirectory || "";
-        if (sFilePath.charAt(0) !== "/" && sDir) {
-            sFilePath = sDir + "/" + sFilePath;
-        }
-        PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
+        PipeleyenTestManager.fnEditTestFile(iStepIndex, iCmdIdx);
     }
 
     function fnDeleteTestCommand(iStepIndex, iCmdIdx) {
-        fnShowConfirmModal(
-            "Delete Test",
-            "Delete this test command and its test file? " +
-            "This cannot be undone.",
-            async function () {
-                var step = dictWorkflow.listSteps[iStepIndex];
-                if (!step) return;
-                var listCmds = step.saTestCommands || [];
-                if (iCmdIdx >= listCmds.length) return;
-                listCmds.splice(iCmdIdx, 1);
-                step.dictVerification = step.dictVerification || {};
-                step.dictVerification.sUnitTest = "untested";
-                await fnSaveStepUpdate(iStepIndex, {
-                    saTestCommands: listCmds,
-                    dictVerification: step.dictVerification,
-                });
-                fnRenderStepList();
-            }
-        );
+        PipeleyenTestManager.fnDeleteTestCommand(iStepIndex, iCmdIdx);
+    }
+
+    function fnSendPipelineAction(dictAction) {
+        PipeleyenPipelineRunner.fnSendPipelineAction(dictAction);
     }
 
     function fnRunSingleStep(iIndex) {
-        var step = dictWorkflow.listSteps[iIndex];
-        if (!step) return;
-        if (step.bInteractive) {
-            fnRunInteractiveStep(iIndex);
-            return;
-        }
-        dictStepStatus[iIndex] = "queued";
-        fnRenderStepList();
-        fnSendPipelineAction({
-            sAction: "runSelected",
-            listStepIndices: [iIndex],
-        });
+        PipeleyenPipelineRunner.fnRunSingleStep(iIndex);
     }
 
-    async function fnRunStepTests(iStepIndex) {
-        if (!sContainerId) return;
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (!step || !step.saTestCommands ||
-            step.saTestCommands.length === 0) return;
-        fnShowToast("Running tests for Step " +
-            (iStepIndex + 1) + "...", "success");
-        try {
-            var dictResult = await VaibifyApi.fdictPostRaw(
-                "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/run-tests"
-            );
-            step.dictVerification = step.dictVerification || {};
-            fnApplyCategoryResults(
-                step, dictResult.dictCategoryResults);
-            step.dictVerification.sUnitTest =
-                dictResult.bPassed ? "passed" : "failed";
-            step.dictVerification.sLastTestRun =
-                fsFormatUtcTimestamp();
-            fnClearOutputModified(iStepIndex);
-            var dictStepUpdate = {
-                dictVerification: step.dictVerification,
-            };
-            if (step.dictTests) {
-                dictStepUpdate.dictTests = step.dictTests;
-            }
-            fnSaveStepUpdate(iStepIndex, dictStepUpdate);
-            fnRenderStepList();
-            fnCheckVaibified();
-            var sOutput = fsCollectTestOutput(dictResult);
-            fnShowToast(
-                dictResult.bPassed ?
-                    "Tests passed" : "Tests FAILED",
-                dictResult.bPassed ? "success" : "error"
-            );
-            PipeleyenFigureViewer.fnDisplayTestOutput(
-                sOutput, dictResult.bPassed);
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        }
+    function fnRunStepTests(iStepIndex) {
+        PipeleyenTestManager.fnRunStepTests(iStepIndex);
     }
 
-    async function fnStandardizePlot(iStepIndex, sFileName) {
-        if (!sContainerId) return;
-        fnShowToast("Standardizing " + sFileName + "\u2026",
-            "success");
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/standardize-plots",
-                {sFileName: sFileName}
-            );
-            fnApplyStandardizeResult(iStepIndex, dictResult);
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
+    /* Plot standardization is now in scriptPlotStandards.js */
 
     function fnStandardizeAllPlots(iStepIndex) {
-        if (!sContainerId) return;
-        fnShowConfirmModal(
-            "Make Standard",
-            "Convert all plots in this step to standard PNGs? " +
-            "This will overwrite any existing standards.",
-            function () {
-                fnExecuteStandardizeAllPlots(iStepIndex);
-            }
-        );
+        PipeleyenPlotStandards.fnStandardizeAllPlots(iStepIndex);
     }
 
-    async function fnExecuteStandardizeAllPlots(iStepIndex) {
-        fnShowToast("Standardizing plots\u2026", "success");
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/standardize-plots",
-                {}
-            );
-            fnApplyStandardizeResult(iStepIndex, dictResult);
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        }
+    function fnCompareStepPlots(iStepIndex) {
+        PipeleyenPlotStandards.fnCompareStepPlots(iStepIndex);
     }
 
-    function fnApplyStandardizeResult(iStepIndex, dictResult) {
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (!step) return;
-        step.dictVerification = step.dictVerification || {};
-        step.dictVerification.sLastStandardized =
-            dictResult.sTimestamp || fsFormatUtcTimestamp();
-        var listBasenames =
-            dictResult.listStandardizedBasenames || [];
-        fnMarkStandardsExist(iStepIndex, listBasenames);
-        fnSaveStepUpdate(iStepIndex, {
-            dictVerification: step.dictVerification,
-        });
-        fnRenderStepList();
-        fnShowToast("Plot standards saved", "success");
-    }
-
-    function fnMarkStandardsExist(iStepIndex, listBasenames) {
-        for (var i = 0; i < listBasenames.length; i++) {
-            var sKey = iStepIndex + ":" + listBasenames[i];
-            dictPlotStandardExists[sKey] = true;
-        }
-    }
-
-    async function fnComparePlotToStandard(iStepIndex, sFileName) {
-        if (!sContainerId) return;
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/compare-plot",
-                {sFileName: sFileName}
-            );
-            if (dictResult.sPlotPath && dictResult.sStandardPath) {
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                    dictResult.sPlotPath);
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                    dictResult.sStandardPath);
-            } else if (dictResult.sStandardPath) {
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
-                    dictResult.sStandardPath);
-            } else {
-                fnShowToast(
-                    "No standard found for " + sFileName,
-                    "error");
-            }
-        } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error");
-        }
-    }
-
-    async function fnCompareStepPlots(iStepIndex) {
-        if (!fbStepHasAnyStandard(iStepIndex)) {
-            fnShowToast(
-                "No standards found. " +
-                "Use \u2018Make Standard\u2019 first.",
-                "error");
-            return;
-        }
-        var sBasename = fsFirstPlotBasename(iStepIndex);
-        if (sBasename) {
-            await fnComparePlotToStandard(
-                iStepIndex, sBasename);
-        }
-    }
-
-    function fiCountStepsWithPlots() {
-        var listSteps = (dictWorkflow || {}).listSteps || [];
-        var iCount = 0;
-        for (var i = 0; i < listSteps.length; i++) {
-            if ((listSteps[i].saPlotFiles || []).length > 0) {
-                iCount++;
-            }
-        }
-        return iCount;
-    }
-
-    async function fnStandardizeAllWorkflowPlots() {
-        if (!sContainerId || !dictWorkflow) return;
-        var iCount = fiCountStepsWithPlots();
-        if (iCount === 0) {
-            fnShowToast("No steps have plot files", "error");
-            return;
-        }
-        fnShowConfirmModal(
-            "Standardize All Plots",
-            "Create plot standards for " + iCount +
-            " step(s)? This will overwrite existing standards.",
-            async function () {
-                await fnStandardizeEachStep();
-            }
-        );
-    }
-
-    async function fnStandardizeEachStep() {
-        var listSteps = dictWorkflow.listSteps || [];
-        for (var i = 0; i < listSteps.length; i++) {
-            if ((listSteps[i].saPlotFiles || []).length > 0) {
-                await fnStandardizeAllPlots(i);
-            }
-        }
-        fnShowToast("All plot standards updated", "success");
-    }
-
-    function fnApplyCategoryResults(step, dictCategoryResults) {
-        if (!dictCategoryResults) return;
-        var dictTests = step.dictTests || {};
-        var dictMap = {
-            dictIntegrity: "sIntegrity",
-            dictQualitative: "sQualitative",
-            dictQuantitative: "sQuantitative",
-        };
-        for (var sKey in dictMap) {
-            var dictCat = dictCategoryResults[sKey];
-            if (dictCat) {
-                step.dictVerification[dictMap[sKey]] =
-                    dictCat.bPassed ? "passed" : "failed";
-                if (dictTests[sKey]) {
-                    dictTests[sKey].sLastOutput =
-                        dictCat.sOutput || "";
-                }
-            }
-        }
-    }
-
-    function fsCollectTestOutput(dictResult) {
-        var listParts = [];
-        var dictCats = dictResult.dictCategoryResults || {};
-        for (var sKey in dictCats) {
-            var sOutput = (dictCats[sKey].sOutput || "").trim();
-            if (sOutput) listParts.push(sOutput);
-        }
-        if (listParts.length > 0) return listParts.join("\n\n");
-        return dictResult.sOutput || "(no output)";
+    function fnStandardizeAllWorkflowPlots() {
+        PipeleyenPlotStandards.fnStandardizeAllWorkflowPlots();
     }
 
     function fnRunInteractiveStep(iIndex) {
-        var step = dictWorkflow.listSteps[iIndex];
-        if (!step) return;
-        var dictVars = fdictBuildClientVariables();
-        var listCmds = (step.saDataCommands || []).map(function (c) {
-            return fsResolveTemplate(c, dictVars);
-        });
-        if (listCmds.length === 0) return;
-        var sDir = fsResolveTemplate(step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel,
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        PipeleyenPipelineRunner.fnRunInteractiveStep(iIndex);
     }
 
     function fnRunInteractivePlots(iIndex) {
-        var step = dictWorkflow.listSteps[iIndex];
-        if (!step) return;
-        var dictVars = fdictBuildClientVariables();
-        var listCmds = (step.saPlotCommands || []).map(function (c) {
-            return fsResolveTemplate(c, dictVars);
-        });
-        if (listCmds.length === 0) return;
-        var sDir = fsResolveTemplate(step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel,
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
-    }
-
-    function fnRunDataCommands(iIndex) {
-        fnRunInteractiveStep(iIndex);
-    }
-
-    function fnRunPlotCommands(iIndex) {
-        fnRunInteractivePlots(iIndex);
+        PipeleyenPipelineRunner.fnRunInteractivePlots(iIndex);
     }
 
     function fnRunStepCombined(iIndex) {
-        var step = dictWorkflow.listSteps[iIndex];
-        if (!step) return;
-        var bHasOutputFiles = fbStepHasOutputFiles(step);
-        if (bHasOutputFiles && setStepsWithData.has(iIndex)) {
-            fnShowConfirmModal(
-                "Overwrite Output",
-                "Output files already exist. Overwrite?",
-                function () { fnExecuteStepCombined(iIndex); }
-            );
-        } else {
-            fnExecuteStepCombined(iIndex);
-        }
-    }
-
-    function fbStepHasOutputFiles(step) {
-        var listData = step.saDataFiles || [];
-        var listPlots = step.saPlotFiles || [];
-        return listData.length > 0 || listPlots.length > 0;
-    }
-
-    function fnExecuteStepCombined(iIndex) {
-        var step = dictWorkflow.listSteps[iIndex];
-        if (!step) return;
-        var dictVars = fdictBuildClientVariables();
-        var listCmds = flistResolveStepCommands(step, dictVars);
-        if (listCmds.length === 0) return;
-        var sDir = fsResolveTemplate(step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel,
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
-    }
-
-    function flistResolveStepCommands(step, dictVars) {
-        var listCmds = [];
-        (step.saDataCommands || []).forEach(function (sCmd) {
-            listCmds.push(fsResolveTemplate(sCmd, dictVars));
-        });
-        (step.saPlotCommands || []).forEach(function (sCmd) {
-            listCmds.push(fsResolveTemplate(sCmd, dictVars));
-        });
-        return listCmds;
-    }
-
-    function _fnMonitorStepCompletion(sSentinel, iStepIndex) {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-        }
-        _iActiveSentinelMonitor = setInterval(function () {
-            var sText = _fsReadAllTerminalText();
-            var oPattern = new RegExp(
-                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
-            );
-            var oMatch = sText.match(oPattern);
-            if (!oMatch) return;
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-            var iExitCode = parseInt(oMatch[1], 10);
-            fnHandleStandaloneStepComplete(iStepIndex, iExitCode);
-        }, 1000);
-    }
-
-    function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
-        var sStatus = iExitCode === 0 ? "pass" : "fail";
-        dictStepStatus[iStepIndex] = sStatus;
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (step) {
-            step.dictRunStats = step.dictRunStats || {};
-            step.dictRunStats.sLastRun = fsFormatUtcTimestamp();
-        }
-        fnResetUserVerification(iStepIndex);
-        if (iExitCode === 0) {
-            fnClearOutputModified(iStepIndex);
-        }
-        fnAcknowledgeStepCompletion(iStepIndex);
-        fnInvalidateStepFileCache(iStepIndex);
-        fnRenderStepList();
-        var sLabel = fsComputeStepLabel(iStepIndex);
-        var sVerb = iExitCode === 0 ? "completed" : "failed";
-        fnShowToast("Step " + sLabel + " " + sVerb,
-            iExitCode === 0 ? "success" : "error");
+        PipeleyenPipelineRunner.fnRunStepCombined(iIndex);
     }
 
     function fnRunSelected() {
-        var listIndices = [];
-        document.querySelectorAll(".step-checkbox:checked")
-            .forEach(function (el) {
-                var iIndex = parseInt(
-                    el.closest(".step-item").dataset.index
-                );
-                listIndices.push(iIndex);
-                dictStepStatus[iIndex] = "queued";
-            });
-        fnRenderStepList();
-        fnSendPipelineAction({
-            sAction: "runSelected",
-            listStepIndices: listIndices,
-        });
+        PipeleyenPipelineRunner.fnRunSelected();
     }
 
-    function fsInteractiveWarning() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return "";
-        var iLeading = fiCountLeadingInteractive();
-        if (iLeading > 0) {
-            return "\n\nThe first " + iLeading +
-                " step(s) are interactive. The pipeline will " +
-                "pause at each one for your input.";
-        }
-        var bHasMiddle = dictWorkflow.listSteps.some(
-            function (step) { return step.bInteractive; }
-        );
-        if (bHasMiddle) {
-            return "\n\nThe pipeline contains interactive steps " +
-                "and will pause when it reaches them.";
-        }
-        return "";
+    function fnRunAll() {
+        PipeleyenPipelineRunner.fnRunAll();
     }
 
-    function fiCountLeadingInteractive() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
-        var iCount = 0;
-        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
-            if (!dictWorkflow.listSteps[i].bInteractive) break;
-            iCount++;
-        }
-        return iCount;
-    }
-
-    async function fsGetSleepWarning() {
-        var fTotalSeconds = fsEstimateRunTimeSeconds();
-        if (fTotalSeconds < 3600) return "";
-        try {
-            var dictRuntime = await VaibifyApi.fdictGet(
-                "/api/runtime");
-            return "\n\n" + (dictRuntime.sSleepWarning || "");
-        } catch (e) {
-            return "";
-        }
-    }
-
-    function fsEstimateRunTimeSeconds() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
-        var fTotal = 0;
-        dictWorkflow.listSteps.forEach(function (step) {
-            if (step.bEnabled === false) return;
-            var dictStats = step.dictRunStats || {};
-            if (dictStats.fWallClock) fTotal += dictStats.fWallClock;
-        });
-        return fTotal;
-    }
-
-    async function fnRunAll() {
-        var sEstimate = fsEstimateRunTime();
-        var sInteractiveWarn = fsInteractiveWarning();
-        var sSleepWarn = await fsGetSleepWarning();
-        var sMessage = "Run all enabled steps?";
-        if (sInteractiveWarn) {
-            sMessage += sInteractiveWarn;
-        }
-        if (sEstimate) {
-            sMessage += "\n\n" + sEstimate;
-        }
-        sMessage += sSleepWarn;
-        fnShowConfirmModal("Run All", sMessage, async function () {
-            var listEnablePromises = [];
-            dictWorkflow.listSteps.forEach(function (step, iIndex) {
-                if (step.bEnabled === false) {
-                    listEnablePromises.push(
-                        fnToggleStepEnabled(iIndex, true)
-                    );
-                }
-                dictStepStatus[iIndex] = "queued";
-            });
-            if (listEnablePromises.length > 0) {
-                await Promise.all(listEnablePromises);
-            }
-            fnRenderStepList();
-            fnSendPipelineAction({ sAction: "runAll" });
-        });
-    }
-
-    async function fnForceRunAll() {
-        var sSleepWarn = await fsGetSleepWarning();
-        fnShowConfirmModal(
-            "Force Run All",
-            "This will clear input hashes and re-run every " +
-            "automatic step from scratch. Interactive step " +
-            "outputs are preserved.\n\n" +
-            "All verification states will be reset to untested.",
-            function () {
-                var sEstimate = fsEstimateRunTime();
-                var sTimeMsg = sEstimate ?
-                    "\n\n" + sEstimate : "";
-                fnShowConfirmModal(
-                    "Confirm Clean Rebuild",
-                    "Are you sure? This cannot be undone." +
-                    sTimeMsg + sSleepWarn,
-                    async function () {
-                        await _fnExecuteForceRunAll();
-                    }
-                );
-            }
-        );
+    function fnForceRunAll() {
+        PipeleyenPipelineRunner.fnForceRunAll();
     }
 
     function fnKillPipeline() {
-        fnShowConfirmModal(
-            "Stop All Tasks",
-            "This will kill all running pipeline processes " +
-            "in the container.\n\n" +
-            "Any in-progress computations will be lost.",
-            async function () {
-                try {
-                    var dictResult = await VaibifyApi.fdictPostRaw(
-                        "/api/pipeline/" + sContainerId + "/kill"
-                    );
-                    if (dictResult.bSuccess) {
-                        dictStepStatus = {};
-                        fnRenderStepList();
-                        fnShowToast(
-                            "Killed " + dictResult.iProcessesKilled +
-                            " process(es)", "success");
-                    } else {
-                        fnShowToast("Kill failed", "error");
-                    }
-                } catch (error) {
-                    fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-                }
-            }
-        );
-    }
-
-    async function _fnExecuteForceRunAll() {
-        fnShowToast("Stopping running tasks...", "success");
-        try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/pipeline/" + sContainerId + "/kill"
-            );
-        } catch (error) { /* continue even if kill fails */ }
-        fnShowToast("Cleaning outputs...", "success");
-        try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/pipeline/" + sContainerId + "/clean"
-            );
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-            return;
-        }
-        var listEnablePromises = [];
-        dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            if (step.bEnabled === false) {
-                listEnablePromises.push(
-                    fnToggleStepEnabled(iIndex, true)
-                );
-            }
-            dictStepStatus[iIndex] = "queued";
-        });
-        if (listEnablePromises.length > 0) {
-            await Promise.all(listEnablePromises);
-        }
-        dictFileExistenceCache = {};
-        fnRenderStepList();
-        fnSendPipelineAction({ sAction: "forceRunAll" });
-    }
-
-    function fsEstimateRunTime() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return "";
-        var fTotalSeconds = 0;
-        var iStepsWithTime = 0;
-        var iEnabledSteps = 0;
-        dictWorkflow.listSteps.forEach(function (step) {
-            if (step.bEnabled === false) return;
-            iEnabledSteps++;
-            var dictStats = step.dictRunStats || {};
-            if (dictStats.fWallClock) {
-                fTotalSeconds += dictStats.fWallClock;
-                iStepsWithTime++;
-            }
-        });
-        if (iStepsWithTime === 0) return "";
-        var sTime = fsFormatDurationLong(fTotalSeconds);
-        if (iStepsWithTime < iEnabledSteps) {
-            return "This workflow will require at least " + sTime +
-                " (based on " + iStepsWithTime + " of " +
-                iEnabledSteps + " steps).";
-        }
-        return "This workflow will require at least " + sTime + ".";
-    }
-
-    function fsFormatDurationLong(fSeconds) {
-        var iDays = Math.floor(fSeconds / 86400);
-        var iHours = Math.floor((fSeconds % 86400) / 3600);
-        var iMinutes = Math.floor((fSeconds % 3600) / 60);
-        var listParts = [];
-        if (iDays > 0) listParts.push(iDays + " day" +
-            (iDays > 1 ? "s" : ""));
-        if (iHours > 0) listParts.push(iHours + " hour" +
-            (iHours > 1 ? "s" : ""));
-        if (iMinutes > 0 || listParts.length === 0) {
-            listParts.push(iMinutes + " minute" +
-                (iMinutes !== 1 ? "s" : ""));
-        }
-        return listParts.join(", ");
+        PipeleyenPipelineRunner.fnKillPipeline();
     }
 
     function fnVerify() {
-        fnSendPipelineAction({ sAction: "verify" });
+        PipeleyenPipelineRunner.fnVerify();
     }
 
     function fnRunAllTests() {
-        console.log("[RUN-ALL-TESTS] sending action, wsState:",
-            VaibifyWebSocket.fiGetReadyState());
-        fnSendPipelineAction({ sAction: "runAllTests" });
+        PipeleyenPipelineRunner.fnRunAllTests();
     }
 
-    async function fnValidateReferences() {
-        if (!sContainerId) return;
-        try {
-            var result = await VaibifyApi.fdictGet(
-                "/api/steps/" + sContainerId + "/validate");
-            var listWarnings = result.listWarnings;
-            if (listWarnings.length === 0) {
-                fnShowToast(
-                    "All cross-step references are valid",
-                    "success"
-                );
-            } else {
-                listWarnings.forEach(function (sWarning) {
-                    fnShowToast(sWarning, "error");
-                });
-            }
-        } catch (error) {
-            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
-        }
+    function fnValidateReferences() {
+        PipeleyenPipelineRunner.fnValidateReferences();
     }
 
     function fnOpenVsCode() {
@@ -5803,144 +3136,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnPromptPullToHost(sContainerPath) {
-        var sFilename = sContainerPath.split("/").pop();
-        var elExisting = document.getElementById("modalPull");
-        if (elExisting) elExisting.remove();
-        var elModal = document.createElement("div");
-        elModal.id = "modalPull";
-        elModal.className = "modal-overlay";
-        elModal.style.display = "flex";
-        elModal.innerHTML = fsRenderPullModalHtml(sFilename);
-        document.body.appendChild(elModal);
-        fnBindPullModalEvents(elModal, sContainerPath);
-        fnLoadPullDirectory(elModal, null);
-    }
-
-    function fsRenderPullModalHtml(sFilename) {
-        return '<div class="modal" style="width:480px">' +
-            '<h2>Pull to host</h2>' +
-            '<p style="margin-bottom:8px;color:var(--text-muted)">' +
-            fnEscapeHtml(sFilename) + '</p>' +
-            '<div class="pull-breadcrumb" ' +
-            'style="margin-bottom:6px;font-size:12px;' +
-            'color:var(--text-secondary)"></div>' +
-            '<div class="pull-dir-list" style="max-height:240px;' +
-            'overflow-y:auto;border:1px solid var(--border-color);' +
-            'border-radius:var(--border-radius);' +
-            'margin-bottom:12px"></div>' +
-            '<div class="modal-actions">' +
-            '<button class="btn" id="btnPullCancel">Cancel</button>' +
-            '<button class="btn btn-primary" ' +
-            'id="btnPullConfirm">Pull Here</button>' +
-            '</div></div>';
-    }
-
-    function fnBindPullModalEvents(
-        elModal, sContainerPath
-    ) {
-        var sFilename = sContainerPath.split("/").pop();
-        document.getElementById("btnPullCancel")
-            .addEventListener("click", function () {
-                elModal.remove();
-            });
-        document.getElementById("btnPullConfirm")
-            .addEventListener("click", function () {
-                var sDirectory = elModal.dataset.currentPath;
-                elModal.remove();
-                fnExecutePullToHost(
-                    sContainerPath, sDirectory + "/" + sFilename);
-            });
-    }
-
-    async function fnLoadPullDirectory(elModal, sPath) {
-        var sUrl = "/api/host-directories";
-        if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);
-        try {
-            var dictResult = await VaibifyApi.fdictGet(sUrl);
-            fnRenderPullDirectoryList(elModal, dictResult);
-        } catch (error) {
-            fnShowToast("Cannot browse host", "error");
-        }
-    }
-
-    function fnRenderPullDirectoryList(elModal, dictResult) {
-        var sCurrentPath = dictResult.sCurrentPath;
-        elModal.dataset.currentPath = sCurrentPath;
-        fnRenderPullBreadcrumb(elModal, sCurrentPath);
-        var elList = elModal.querySelector(".pull-dir-list");
-        var sHtml = fsRenderPullParentEntry(sCurrentPath);
-        dictResult.listEntries.forEach(function (entry) {
-            sHtml += fsRenderPullDirectoryEntry(entry);
-        });
-        elList.innerHTML = sHtml;
-        fnBindPullDirectoryClicks(elModal, elList);
-    }
-
-    function fsRenderPullParentEntry(sCurrentPath) {
-        var sParent = sCurrentPath.replace(/\/[^/]+$/, "");
-        if (!sParent || sParent === sCurrentPath) return "";
-        return '<div class="pull-dir-entry" data-path="' +
-            fnEscapeHtml(sParent) + '">' +
-            '<span class="file-icon dir">&#128193;</span> ' +
-            '..</div>';
-    }
-
-    function fsRenderPullDirectoryEntry(entry) {
-        return '<div class="pull-dir-entry" data-path="' +
-            fnEscapeHtml(entry.sPath) + '">' +
-            '<span class="file-icon dir">&#128193;</span> ' +
-            fnEscapeHtml(entry.sName) + '</div>';
-    }
-
-    function fnBindPullDirectoryClicks(elModal, elList) {
-        elList.querySelectorAll(".pull-dir-entry")
-            .forEach(function (el) {
-                el.addEventListener("click", function () {
-                    fnLoadPullDirectory(elModal, el.dataset.path);
-                });
-            });
-    }
-
-    function fnRenderPullBreadcrumb(elModal, sPath) {
-        var elBreadcrumb = elModal.querySelector(
-            ".pull-breadcrumb");
-        var listParts = sPath.split("/").filter(Boolean);
-        var sHtml = "";
-        var sBuiltPath = "";
-        listParts.forEach(function (sPart, iIndex) {
-            sBuiltPath += "/" + sPart;
-            if (iIndex > 0) sHtml += " / ";
-            sHtml += '<span class="pull-crumb" data-path="' +
-                fnEscapeHtml(sBuiltPath) + '" style="cursor:' +
-                'pointer;color:var(--highlight-color)">' +
-                fnEscapeHtml(sPart) + '</span>';
-        });
-        elBreadcrumb.innerHTML = sHtml;
-        elBreadcrumb.querySelectorAll(".pull-crumb")
-            .forEach(function (el) {
-                el.addEventListener("click", function () {
-                    fnLoadPullDirectory(elModal, el.dataset.path);
-                });
-            });
-    }
-
-    async function fnExecutePullToHost(
-        sContainerPath, sHostDestination
-    ) {
-        fnShowToast("Pulling " + sContainerPath + "...", "success");
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/files/" + sContainerId + "/pull",
-                {
-                    sContainerPath: sContainerPath,
-                    sHostDestination: sHostDestination,
-                }
-            );
-            fnShowToast("Pulled to " + dictResult.sHostPath,
-                "success");
-        } catch (error) {
-            fnShowToast("Pull failed: " + error.message, "error");
-        }
+        PipeleyenFilePull.fnPromptPullToHost(sContainerPath);
     }
 
     function fnHandleContextAction(sAction, iIndex) {
@@ -6065,209 +3261,56 @@ const PipeleyenApp = (function () {
         fnShowInputModal: fnShowInputModal,
         fnPromptPullToHost: fnPromptPullToHost,
         fnClearOutputModified: fnClearOutputModified,
-        fnFinalizeGeneratedTest: fnFinalizeGeneratedTest,
-        fnCancelGeneratedTest: fnCancelGeneratedTest,
+        fnFinalizeGeneratedTest: function (iStep) {
+            PipeleyenTestManager.fnFinalizeGeneratedTest(iStep);
+        },
+        fnCancelGeneratedTest: function (iStep) {
+            PipeleyenTestManager.fnCancelGeneratedTest(iStep);
+        },
         fbIsTestPending: function (iStep) {
-            return setGeneratedTestsPending.has(iStep);
+            return PipeleyenTestManager.fbIsTestPending(iStep);
         },
         fsGetDashboardMode: fsGetDashboardMode,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,
         fnActivateWorkflow: _fnActivateWorkflow,
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnLoadContainers: fnLoadContainers,
+        fnSaveStepUpdate: fnSaveStepUpdate,
+        fsFormatUtcTimestamp: fsFormatUtcTimestamp,
+        fnShowWorkflowPicker: fnShowWorkflowPicker,
+        fnSetPlotStandardExists: function (sKey, bValue) {
+            dictPlotStandardExists[sKey] = bValue;
+        },
+        fbGetPlotStandardExists: function (sKey) {
+            return dictPlotStandardExists[sKey];
+        },
+        fnShowErrorModal: fnShowErrorModal,
+        fnUpdateHighlightState: fnUpdateHighlightState,
+        fsComputeStepLabel: fsComputeStepLabel,
+        fsTestCategoryLabel: fsTestCategoryLabel,
+        fdictGetVerification: fdictGetVerification,
+        fdictGetTests: fdictGetTests,
+        fnInvalidateStepFileCache: fnInvalidateStepFileCache,
+        fnSetStepStatus: function (iIndex, sStatus) {
+            dictStepStatus[iIndex] = sStatus;
+        },
+        fnClearRunningStatuses: fnClearRunningStatuses,
+        fnClearAllStepStatuses: function () {
+            dictStepStatus = {};
+        },
+        fnStartFileChangePolling: fnStartFileChangePolling,
+        fnStopFileChangePolling: fnStopFileChangePolling,
+        fnStartPipelinePolling: fnStartPipelinePolling,
+        fnStopPipelinePolling: fnStopPipelinePolling,
+        fnToggleStepEnabled: fnToggleStepEnabled,
+        fnClearFileExistenceCache: function () {
+            dictFileExistenceCache = {};
+        },
+        fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
     };
 })();
 
-/* --- File Browser --- */
-
-var PipeleyenFiles = (function () {
-    "use strict";
-
-    var sCurrentPath = "/workspace";
-
-    async function fnLoadDirectory(sPath) {
-        sCurrentPath = sPath || "/workspace";
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId) return;
-
-        fnRenderBreadcrumb(sCurrentPath);
-
-        try {
-            var listEntries = await VaibifyApi.fdictGet(
-                "/api/files/" + sContainerId + sCurrentPath
-            );
-            fnRenderFileList(listEntries);
-        } catch (error) {
-            document.getElementById("listFiles").innerHTML =
-                '<p style="padding:14px;color:var(--text-muted)">Error loading directory</p>';
-        }
-    }
-
-    function fnRenderBreadcrumb(sPath) {
-        var elBreadcrumb = document.getElementById("fileBreadcrumb");
-        var listParts = sPath.split("/").filter(Boolean);
-        var sHtml = "";
-        var sBuiltPath = "";
-        listParts.forEach(function (sPart, iIndex) {
-            sBuiltPath += "/" + sPart;
-            var sPathCopy = sBuiltPath;
-            if (iIndex > 0) sHtml += " / ";
-            sHtml += '<span class="crumb" data-path="' +
-                sPathCopy + '">' + sPart + "</span>";
-        });
-        elBreadcrumb.innerHTML = sHtml;
-        elBreadcrumb.querySelectorAll(".crumb").forEach(function (el) {
-            el.addEventListener("click", function () {
-                fnLoadDirectory(el.dataset.path);
-            });
-        });
-    }
-
-    function fnRenderFileList(listEntries) {
-        var elList = document.getElementById("listFiles");
-        if (listEntries.length === 0) {
-            elList.innerHTML =
-                '<p style="padding:14px;color:var(--text-muted)">Empty directory</p>';
-            return;
-        }
-        listEntries.sort(function (a, b) {
-            if (a.bIsDirectory !== b.bIsDirectory) {
-                return a.bIsDirectory ? -1 : 1;
-            }
-            return a.sName.localeCompare(b.sName);
-        });
-
-        elList.innerHTML = listEntries.map(function (entry) {
-            var sIconClass = entry.bIsDirectory ? "dir" : "";
-            var sIcon = entry.bIsDirectory ? "&#128193;" : "&#128196;";
-            var sLower = entry.sName.toLowerCase();
-            if (sLower.endsWith(".pdf") || sLower.endsWith(".png") ||
-                sLower.endsWith(".jpg") || sLower.endsWith(".svg")) {
-                sIconClass = "figure";
-            }
-            return (
-                '<div class="file-item" data-path="' + entry.sPath +
-                '" data-is-dir="' + entry.bIsDirectory +
-                '" draggable="true">' +
-                '<span class="file-icon ' + sIconClass + '">' +
-                sIcon + "</span>" +
-                '<span class="file-name">' + entry.sName + "</span>" +
-                "</div>"
-            );
-        }).join("");
-
-        fnBindFileItemDelegation(elList);
-    }
-
-    var _bFileItemDelegationBound = false;
-
-    function fnBindFileItemDelegation(elList) {
-        if (_bFileItemDelegationBound) return;
-        _bFileItemDelegationBound = true;
-        elList.addEventListener("click", function (event) {
-            var elItem = event.target.closest(".file-item");
-            if (!elItem) return;
-            if (elItem.dataset.isDir === "true") {
-                fnLoadDirectory(elItem.dataset.path);
-            } else {
-                PipeleyenFigureViewer.fnDisplayInNextViewer(
-                    elItem.dataset.path
-                );
-            }
-        });
-        elList.addEventListener("dragstart", function (event) {
-            var elItem = event.target.closest(".file-item");
-            if (!elItem) return;
-            event.dataTransfer.setData(
-                "vaibify/filepath", elItem.dataset.path
-            );
-        });
-        elList.addEventListener("contextmenu", function (event) {
-            var elItem = event.target.closest(".file-item");
-            if (!elItem || elItem.dataset.isDir === "true") return;
-            event.preventDefault();
-            PipeleyenApp.fnPromptPullToHost(elItem.dataset.path);
-        });
-    }
-
-    function fnBindDropZone() {
-        var elList = document.getElementById("listFiles");
-        if (!elList) return;
-        fnBindDropEvents(elList);
-    }
-
-    function fnBindDropEvents(elTarget) {
-        elTarget.addEventListener("dragover", function (event) {
-            if (!fbHasHostFiles(event)) return;
-            event.preventDefault();
-            elTarget.classList.add("drag-over");
-        });
-        elTarget.addEventListener("dragleave", function () {
-            elTarget.classList.remove("drag-over");
-        });
-        elTarget.addEventListener("drop", function (event) {
-            elTarget.classList.remove("drag-over");
-            if (!fbHasHostFiles(event)) return;
-            event.preventDefault();
-            fnUploadDroppedFiles(event.dataTransfer.files);
-        });
-    }
-
-    function fbHasHostFiles(event) {
-        var listTypes = event.dataTransfer.types || [];
-        for (var i = 0; i < listTypes.length; i++) {
-            if (listTypes[i] === "Files") return true;
-        }
-        return false;
-    }
-
-    async function fnUploadDroppedFiles(fileList) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId || fileList.length === 0) return;
-        for (var i = 0; i < fileList.length; i++) {
-            await fnUploadOneFile(sContainerId, fileList[i]);
-        }
-        fnLoadDirectory(sCurrentPath);
-    }
-
-    async function fnUploadOneFile(sContainerId, file) {
-        var sContentBase64 = await fsEncodeFileBase64(file);
-        try {
-            await VaibifyApi.fdictPost(
-                "/api/files/" + sContainerId + "/upload",
-                {
-                    sFilename: file.name,
-                    sDestination: sCurrentPath,
-                    sContentBase64: sContentBase64,
-                }
-            );
-        } catch (error) {
-            PipeleyenApp.fnShowConfirmModal(
-                "Upload Error",
-                "Failed to upload " + file.name,
-                function () {}
-            );
-        }
-    }
-
-    function fsEncodeFileBase64(file) {
-        return new Promise(function (resolve, reject) {
-            var reader = new FileReader();
-            reader.onload = function () {
-                var sEncoded = reader.result.split(",")[1] || "";
-                resolve(sEncoded);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    }
-
-    document.addEventListener("DOMContentLoaded", fnBindDropZone);
-
-    return {
-        fnLoadDirectory: fnLoadDirectory,
-    };
-})();
+/* PipeleyenFiles is now in scriptFiles.js */
 
 document.addEventListener("DOMContentLoaded", PipeleyenApp.fnInitialize);
 

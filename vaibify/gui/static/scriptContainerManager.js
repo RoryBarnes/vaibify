@@ -1,0 +1,475 @@
+/* Vaibify — Container landing page (extracted from scriptApplication.js) */
+
+var PipeleyenContainerManager = (function () {
+    "use strict";
+
+    var _sSelectedContainerId = null;
+    var _sSelectedContainerName = null;
+
+    async function fnLoadContainers() {
+        var elList = document.getElementById("listContainers");
+        try {
+            var dictResult = await VaibifyApi.fdictGet("/api/registry");
+            fnRenderContainerList(dictResult.listContainers || []);
+            fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
+        } catch (error) {
+            elList.innerHTML =
+                '<p style="color: var(--color-red);">' +
+                "Cannot load containers</p>";
+        }
+    }
+
+    function fnRenderContainerList(listContainers) {
+        var elList = document.getElementById("listContainers");
+        if (listContainers.length === 0) {
+            elList.innerHTML =
+                '<p class="muted-text" style="text-align: center;">' +
+                "No containers registered. Click + to add one.</p>";
+            return;
+        }
+        elList.innerHTML = listContainers.map(function (dictContainer) {
+            return fsRenderContainerTile(dictContainer);
+        }).join("");
+        fnBindContainerTiles(elList);
+    }
+
+    function fnRenderUnrecognizedList(listUnrecognized) {
+        var elSection = document.getElementById("unrecognizedSection");
+        var elList = document.getElementById("listUnrecognized");
+        if (listUnrecognized.length === 0) {
+            elSection.style.display = "none";
+            return;
+        }
+        elSection.style.display = "";
+        elList.innerHTML = listUnrecognized.map(function (c) {
+            return (
+                '<div class="container-card unrecognized" data-id="' +
+                PipeleyenApp.fnEscapeHtml(c.sContainerId) + '">' +
+                '<span class="name">' +
+                PipeleyenApp.fnEscapeHtml(c.sName) + "</span>" +
+                '<span class="image">' +
+                PipeleyenApp.fnEscapeHtml(c.sImage) + "</span></div>"
+            );
+        }).join("");
+        elList.querySelectorAll(".container-card").forEach(function (el) {
+            el.addEventListener("click", function () {
+                fnConnectToContainer(el.dataset.id);
+            });
+        });
+    }
+
+    function fsRenderContainerTile(dictContainer) {
+        var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
+        var sId = dictContainer.sContainerId || "";
+        return (
+            '<div class="container-tile" data-name="' +
+            PipeleyenApp.fnEscapeHtml(dictContainer.sName) +
+            '" data-container-id="' + PipeleyenApp.fnEscapeHtml(sId) + '">' +
+            '<div class="container-tile-main">' +
+            '<span class="status-dot ' + sStatusClass + '"></span>' +
+            '<span class="container-tile-name">' +
+            PipeleyenApp.fnEscapeHtml(dictContainer.sName) + "</span>" +
+            "</div>" +
+            '<button class="btn-icon container-tile-gear" ' +
+            'title="Actions">&#9881;</button>' +
+            '<div class="container-tile-menu" style="display:none;">' +
+            '<div class="container-menu-item" data-action="start">' +
+            "Start</div>" +
+            '<div class="container-menu-item" data-action="stop">' +
+            "Stop</div>" +
+            '<div class="container-menu-item" data-action="rebuild">' +
+            "Rebuild</div>" +
+            '<div class="container-menu-item" data-action="settings">' +
+            "Settings</div>" +
+            '<div class="container-menu-separator"></div>' +
+            '<div class="container-menu-item danger" ' +
+            'data-action="remove">Remove from list</div>' +
+            "</div></div>"
+        );
+    }
+
+    function _fsStatusDotClass(sStatus) {
+        if (sStatus === "running") return "status-running";
+        if (sStatus === "stopped") return "status-stopped";
+        return "status-not-built";
+    }
+
+    function fnBindContainerTiles(elParent) {
+        elParent.querySelectorAll(".container-tile").forEach(function (el) {
+            var sName = el.dataset.name;
+            el.querySelector(".container-tile-main").addEventListener(
+                "click", function () {
+                    fnHandleContainerClick(sName);
+                }
+            );
+            _fnBindGearMenu(el, sName);
+        });
+    }
+
+    function _fnBindGearMenu(elTile, sName) {
+        var elGear = elTile.querySelector(".container-tile-gear");
+        var elMenu = elTile.querySelector(".container-tile-menu");
+        elGear.addEventListener("click", function (event) {
+            event.stopPropagation();
+            _fnToggleGearMenu(elMenu);
+        });
+        elMenu.querySelectorAll(".container-menu-item").forEach(
+            function (elItem) {
+                elItem.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                    elMenu.style.display = "none";
+                    fnHandleContainerAction(sName, elItem.dataset.action);
+                });
+            }
+        );
+    }
+
+    function _fnToggleGearMenu(elMenu) {
+        document.querySelectorAll(".container-tile-menu").forEach(
+            function (el) { el.style.display = "none"; }
+        );
+        var bVisible = elMenu.style.display !== "none";
+        elMenu.style.display = bVisible ? "none" : "";
+    }
+
+    async function fnHandleContainerClick(sName) {
+        var elTile = document.querySelector(
+            '.container-tile[data-name="' + sName + '"]'
+        );
+        var elDot = elTile ? elTile.querySelector(".status-dot") : null;
+        var bRunning = elDot && elDot.classList.contains("status-running");
+        var bNotBuilt = elDot &&
+            elDot.classList.contains("status-not-built");
+        if (bNotBuilt) {
+            await fnBuildContainer(sName);
+            return;
+        }
+        if (!bRunning) {
+            await fnStartContainer(sName);
+        }
+        var sStoredId = elTile ? elTile.dataset.containerId : "";
+        if (sStoredId) {
+            fnConnectToContainer(sStoredId);
+        } else {
+            fnConnectToContainerByName(sName);
+        }
+    }
+
+    async function fnHandleContainerAction(sName, sAction) {
+        if (sAction === "start") await fnStartContainer(sName);
+        else if (sAction === "stop") await fnStopContainer(sName);
+        else if (sAction === "rebuild") await fnRebuildContainer(sName);
+        else if (sAction === "settings") await fnShowContainerSettings(sName);
+        else if (sAction === "remove") await fnRemoveContainer(sName);
+    }
+
+    async function fnShowContainerSettings(sName) {
+        try {
+            var dictSettings = await VaibifyApi.fdictGet(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/settings"
+            );
+            fnShowContainerSettingsModal(sName, dictSettings);
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
+    function fnShowContainerSettingsModal(sName, dictSettings) {
+        var elExisting = document.getElementById("modalSettings");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalSettings";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>Settings for ' + PipeleyenApp.fnEscapeHtml(sName) + '</h2>' +
+            '<label class="checkbox-row" ' +
+            'style="display:flex;align-items:center;gap:10px;' +
+            'margin-bottom:16px">' +
+            '<input type="checkbox" id="settingNeverSleep"' +
+            (dictSettings.bNeverSleep ? " checked" : "") + '>' +
+            '<span>Never Sleep (run caffeinate while this ' +
+            'container is running)</span></label>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnSettingsCancel">Cancel</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnSettingsSave">Save</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        document.getElementById("btnSettingsCancel").addEventListener(
+            "click", function () { elModal.remove(); });
+        document.getElementById("btnSettingsSave").addEventListener(
+            "click", async function () {
+                var bNeverSleep = document.getElementById(
+                    "settingNeverSleep").checked;
+                elModal.remove();
+                await fnSaveContainerSettings(sName, {
+                    bNeverSleep: bNeverSleep,
+                });
+            });
+    }
+
+    async function fnSaveContainerSettings(sName, dictSettings) {
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/settings",
+                dictSettings
+            );
+            PipeleyenApp.fnShowToast(
+                "Settings saved. Stop and start to apply.",
+                "success");
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
+    async function fnBuildContainer(sName) {
+        var elOverlay = document.getElementById("modalBuildProgress");
+        elOverlay.style.display = "flex";
+        try {
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/build"
+            );
+            PipeleyenApp.fnShowToast("Build complete", "success");
+            await fnStartContainer(sName);
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        } finally {
+            elOverlay.style.display = "none";
+            fnLoadContainers();
+        }
+    }
+
+    function fnSetTilePending(sName) {
+        var elTile = document.querySelector(
+            '.container-tile[data-name="' + CSS.escape(sName) + '"]'
+        );
+        if (!elTile) return;
+        var elDot = elTile.querySelector(".status-dot");
+        if (!elDot) return;
+        elDot.className = "status-dot status-pending";
+    }
+
+    async function fnStartContainer(sName) {
+        fnSetTilePending(sName);
+        try {
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/start"
+            );
+            PipeleyenApp.fnShowToast("Container started", "success");
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        } finally {
+            fnLoadContainers();
+        }
+    }
+
+    async function fnStopContainer(sName) {
+        fnSetTilePending(sName);
+        try {
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/stop"
+            );
+            PipeleyenApp.fnShowToast("Container stopped", "success");
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        } finally {
+            fnLoadContainers();
+        }
+    }
+
+    async function fnRebuildContainer(sName) {
+        PipeleyenApp.fnShowConfirmModal(
+            "Rebuild Container",
+            "Rebuild will stop and rebuild the container. Continue?",
+            async function () {
+                await fnStopContainer(sName);
+                await fnBuildContainer(sName);
+            }
+        );
+    }
+
+    async function fnRemoveContainer(sName) {
+        PipeleyenApp.fnShowConfirmModal(
+            "Remove Container",
+            "Remove '" + sName + "' from the container list?",
+            async function () {
+                try {
+                    await VaibifyApi.fnDelete(
+                        "/api/registry/"
+                        + encodeURIComponent(sName)
+                    );
+                    PipeleyenApp.fnShowToast(
+                        "Container removed", "success");
+                } catch (error) {
+                    PipeleyenApp.fnShowToast(
+                        PipeleyenApp.fsSanitizeErrorForUser(
+                            error.message), "error");
+                }
+                fnLoadContainers();
+            }
+        );
+    }
+
+    async function fnConnectToContainerByName(sName) {
+        try {
+            var dictResult = await VaibifyApi.fdictGet("/api/registry");
+            var listAll = dictResult.listContainers || [];
+            var dictMatch = listAll.find(function (c) {
+                return c.sName === sName && c.sContainerId;
+            });
+            if (!dictMatch) {
+                PipeleyenApp.fnShowToast(
+                    "Container not found for " + sName, "error");
+                return;
+            }
+            fnConnectToContainer(dictMatch.sContainerId);
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
+    function _fsContainerNameById(sId) {
+        var el = document.querySelector(
+            '.container-tile[data-container-id="' + sId + '"]' +
+            ' .container-tile-name'
+        );
+        return el ? el.textContent : sId.substring(0, 12);
+    }
+
+    async function fnConnectToContainer(sId) {
+        try {
+            var listWorkflows = await VaibifyApi.fdictGet(
+                "/api/workflows/" + sId);
+            _sSelectedContainerId = sId;
+            _sSelectedContainerName = _fsContainerNameById(sId);
+            PipeleyenApp.fnShowWorkflowPicker(_sSelectedContainerName);
+            fnRenderWorkflowList(listWorkflows, sId);
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
+    function fnRenderWorkflowList(listWorkflows, sId) {
+        VaibifyWorkflowManager.fnRenderWorkflowList(
+            listWorkflows, sId);
+    }
+
+    function fnCreateNewWorkflow() {
+        VaibifyWorkflowManager.fnCreateNewWorkflow(
+            _sSelectedContainerId);
+    }
+
+    function fnBindContainerLandingEvents() {
+        document.getElementById("btnRefreshContainers").addEventListener(
+            "click", function () {
+                fnLoadContainers();
+            }
+        );
+        document.getElementById("btnAddContainer").addEventListener(
+            "click", fnOpenAddChoice
+        );
+        document.getElementById("btnShowUnrecognized").addEventListener(
+            "click", function () {
+                var elList = document.getElementById("listUnrecognized");
+                var bVisible = elList.style.display !== "none";
+                elList.style.display = bVisible ? "none" : "";
+                this.textContent = bVisible
+                    ? "Show unrecognized containers"
+                    : "Hide unrecognized containers";
+            }
+        );
+        document.addEventListener("click", function () {
+            document.querySelectorAll(".container-tile-menu").forEach(
+                function (el) { el.style.display = "none"; }
+            );
+        });
+        document.getElementById("btnBrowserBack").addEventListener(
+            "click", PipeleyenDirectoryBrowser.fnBrowserNavigateBack
+        );
+        document.getElementById("btnBrowserForward").addEventListener(
+            "click", PipeleyenDirectoryBrowser.fnBrowserNavigateForward
+        );
+    }
+
+    function fnBindAddContainerModal() {
+        document.getElementById("btnAddContainerCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddContainer")
+                    .style.display = "none";
+            }
+        );
+        document.getElementById("btnAddContainerConfirm").addEventListener(
+            "click", PipeleyenDirectoryBrowser.fnSelectDirectory
+        );
+        fnBindAddChoiceModal();
+        VaibifyWorkflowManager.fnBindCreateWizardModal();
+    }
+
+    function fnOpenAddChoice() {
+        document.getElementById("modalAddChoice").style.display = "flex";
+    }
+
+    function fnBindAddChoiceModal() {
+        document.getElementById("btnAddChoiceCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddChoice")
+                    .style.display = "none";
+            }
+        );
+        document.getElementById("btnChoiceAddExisting").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddChoice")
+                    .style.display = "none";
+                PipeleyenDirectoryBrowser.fnOpenDirectoryBrowser();
+            }
+        );
+        document.getElementById("btnChoiceCreateNew").addEventListener(
+            "click", function () {
+                document.getElementById("modalAddChoice")
+                    .style.display = "none";
+                VaibifyWorkflowManager.fnOpenCreateWizard();
+            }
+        );
+    }
+
+    function fsGetSelectedContainerId() {
+        return _sSelectedContainerId;
+    }
+
+    function fsGetSelectedContainerName() {
+        return _sSelectedContainerName;
+    }
+
+    return {
+        fnLoadContainers: fnLoadContainers,
+        fnConnectToContainer: fnConnectToContainer,
+        fnBindContainerLandingEvents: fnBindContainerLandingEvents,
+        fnBindAddContainerModal: fnBindAddContainerModal,
+        fnOpenAddChoice: fnOpenAddChoice,
+        fnBindAddChoiceModal: fnBindAddChoiceModal,
+        fnCreateNewWorkflow: fnCreateNewWorkflow,
+        fsGetSelectedContainerId: fsGetSelectedContainerId,
+        fsGetSelectedContainerName: fsGetSelectedContainerName,
+    };
+})();
