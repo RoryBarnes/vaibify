@@ -132,7 +132,7 @@ var PipeleyenTestManager = (function () {
             if (!dictCatResult) continue;
             if (dictCatResult.sError) {
                 listErrors.push(
-                    PipeleyenApp.fsTestCategoryLabel(sCategory));
+                    VaibifyUtilities.fsTestCategoryLabel(sCategory));
                 var sVerifKey = "s" +
                     sCategory.charAt(0).toUpperCase() +
                     sCategory.slice(1);
@@ -242,7 +242,7 @@ var PipeleyenTestManager = (function () {
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -310,7 +310,7 @@ var PipeleyenTestManager = (function () {
             step.dictVerification.sUnitTest =
                 dictResult.bPassed ? "passed" : "failed";
             step.dictVerification.sLastTestRun =
-                PipeleyenApp.fsFormatUtcTimestamp();
+                VaibifyUtilities.fsFormatUtcTimestamp();
             PipeleyenApp.fnClearOutputModified(iStepIndex);
             var dictStepUpdate = {
                 dictVerification: step.dictVerification,
@@ -331,7 +331,7 @@ var PipeleyenTestManager = (function () {
                 sOutput, dictResult.bPassed);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -385,7 +385,7 @@ var PipeleyenTestManager = (function () {
         dictStep.dictVerification[sKey] =
             dictResult.bPassed ? "passed" : "failed";
         dictStep.dictVerification.sLastTestRun =
-            PipeleyenApp.fsFormatUtcTimestamp();
+            VaibifyUtilities.fsFormatUtcTimestamp();
         var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
             sCategory.slice(1);
         var dictTests = dictStep.dictTests || {};
@@ -402,7 +402,7 @@ var PipeleyenTestManager = (function () {
         }
         PipeleyenApp.fnSaveStepUpdate(iStepIndex, dictCatUpdate);
         PipeleyenApp.fnRenderStepList();
-        var sLabel = PipeleyenApp.fsTestCategoryLabel(sCategory);
+        var sLabel = VaibifyUtilities.fsTestCategoryLabel(sCategory);
         PipeleyenApp.fnShowToast(sLabel + ": " +
             (dictResult.bPassed ? "Passed" : "Failed"),
             dictResult.bPassed ? "success" : "error");
@@ -488,7 +488,7 @@ var PipeleyenTestManager = (function () {
         }
         dictStep.dictVerification.sUnitTest = dictEvent.sResult;
         dictStep.dictVerification.sLastTestRun =
-            PipeleyenApp.fsFormatUtcTimestamp();
+            VaibifyUtilities.fsFormatUtcTimestamp();
         fnApplyTestResultToCategories(
             dictStep, dictEvent.sResult, dictEvent.sOutput || "",
             dictEvent.dictCategoryResults || null);

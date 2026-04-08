@@ -55,11 +55,11 @@ var VaibifySyncManager = (function () {
                 '">' +
                 '<input type="checkbox" class="push-file-checkbox" ' +
                 'data-path="' +
-                PipeleyenApp.fnEscapeHtml(dictFile.sPath) +
+                VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
                 '"' + (bSupporting ? "" : " checked") +
                 (bSupporting ? " disabled" : "") + '>' +
                 '<span class="push-file-name">' +
-                PipeleyenApp.fnEscapeHtml(dictFile.sPath) +
+                VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
                 (bSupporting ? " (supporting)" : "") +
                 '</span></div>';
         }).join("");
@@ -218,7 +218,7 @@ var VaibifySyncManager = (function () {
         elPopup.innerHTML =
             '<div class="help-popup-content">' +
             '<span class="help-popup-close">&times;</span>' +
-            '<p>' + PipeleyenApp.fnEscapeHtml(sText) + '</p></div>';
+            '<p>' + VaibifyUtilities.fnEscapeHtml(sText) + '</p></div>';
         document.body.appendChild(elPopup);
         elPopup.querySelector(".help-popup-close").addEventListener(
             "click", function () { elPopup.remove(); }
@@ -258,10 +258,7 @@ var VaibifySyncManager = (function () {
     }
 
     function _fsSanitizeError(sMessage) {
-        if (typeof PipeleyenApp.fsSanitizeErrorForUser === "function") {
-            return PipeleyenApp.fsSanitizeErrorForUser(sMessage);
-        }
-        return sMessage || "An error occurred.";
+        return VaibifyUtilities.fsSanitizeErrorForUser(sMessage);
     }
 
     function _fnShowErrorModal(sMessage) {

@@ -21,7 +21,7 @@ var PipeleyenFilePull = (function () {
         return '<div class="modal" style="width:480px">' +
             '<h2>Pull to host</h2>' +
             '<p style="margin-bottom:8px;color:var(--text-muted)">' +
-            PipeleyenApp.fnEscapeHtml(sFilename) + '</p>' +
+            VaibifyUtilities.fnEscapeHtml(sFilename) + '</p>' +
             '<div class="pull-breadcrumb" ' +
             'style="margin-bottom:6px;font-size:12px;' +
             'color:var(--text-secondary)"></div>' +
@@ -81,16 +81,16 @@ var PipeleyenFilePull = (function () {
         var sParent = sCurrentPath.replace(/\/[^/]+$/, "");
         if (!sParent || sParent === sCurrentPath) return "";
         return '<div class="pull-dir-entry" data-path="' +
-            PipeleyenApp.fnEscapeHtml(sParent) + '">' +
+            VaibifyUtilities.fnEscapeHtml(sParent) + '">' +
             '<span class="file-icon dir">&#128193;</span> ' +
             '..</div>';
     }
 
     function fsRenderPullDirectoryEntry(entry) {
         return '<div class="pull-dir-entry" data-path="' +
-            PipeleyenApp.fnEscapeHtml(entry.sPath) + '">' +
+            VaibifyUtilities.fnEscapeHtml(entry.sPath) + '">' +
             '<span class="file-icon dir">&#128193;</span> ' +
-            PipeleyenApp.fnEscapeHtml(entry.sName) + '</div>';
+            VaibifyUtilities.fnEscapeHtml(entry.sName) + '</div>';
     }
 
     function fnBindPullDirectoryClicks(elModal, elList) {
@@ -112,9 +112,9 @@ var PipeleyenFilePull = (function () {
             sBuiltPath += "/" + sPart;
             if (iIndex > 0) sHtml += " / ";
             sHtml += '<span class="pull-crumb" data-path="' +
-                PipeleyenApp.fnEscapeHtml(sBuiltPath) + '" style="cursor:' +
+                VaibifyUtilities.fnEscapeHtml(sBuiltPath) + '" style="cursor:' +
                 'pointer;color:var(--highlight-color)">' +
-                PipeleyenApp.fnEscapeHtml(sPart) + '</span>';
+                VaibifyUtilities.fnEscapeHtml(sPart) + '</span>';
         });
         elBreadcrumb.innerHTML = sHtml;
         elBreadcrumb.querySelectorAll(".pull-crumb")

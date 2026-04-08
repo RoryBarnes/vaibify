@@ -52,7 +52,7 @@ var PipeleyenPlotStandards = (function () {
             fnApplyStandardizeResult(iStepIndex, dictResult);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -64,7 +64,7 @@ var PipeleyenPlotStandards = (function () {
         step.dictVerification = step.dictVerification || {};
         step.dictVerification.sLastStandardized =
             dictResult.sTimestamp ||
-            PipeleyenApp.fsFormatUtcTimestamp();
+            VaibifyUtilities.fsFormatUtcTimestamp();
         var listBasenames =
             dictResult.listStandardizedBasenames || [];
         fnMarkStandardsExist(iStepIndex, listBasenames);
@@ -106,7 +106,7 @@ var PipeleyenPlotStandards = (function () {
             }
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -132,7 +132,7 @@ var PipeleyenPlotStandards = (function () {
         var listPlots = dictStep.saPlotFiles || [];
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         for (var i = 0; i < listPlots.length; i++) {
-            var sResolved = PipeleyenApp.fsResolveTemplate(
+            var sResolved = VaibifyUtilities.fsResolveTemplate(
                 listPlots[i], dictVars);
             var sBasename = sResolved.split("/").pop();
             var sKey = iStepIndex + ":" + sBasename;
@@ -149,7 +149,7 @@ var PipeleyenPlotStandards = (function () {
         var listPlots = dictStep.saPlotFiles || [];
         if (listPlots.length === 0) return null;
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
-        var sResolved = PipeleyenApp.fsResolveTemplate(
+        var sResolved = VaibifyUtilities.fsResolveTemplate(
             listPlots[0], dictVars);
         return sResolved.split("/").pop();
     }

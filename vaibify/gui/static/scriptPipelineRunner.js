@@ -72,8 +72,8 @@ var PipeleyenPipelineRunner = (function () {
             PipeleyenApp.fnInvalidateStepFileCache(iFailIdx);
             PipeleyenApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
-            PipeleyenApp.fnStopPipelinePolling();
-            PipeleyenApp.fnStopFileChangePolling();
+            VaibifyPolling.fnStopPipelinePolling();
+            VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
             PipeleyenApp.fnShowToast(
                 "Pipeline started", "success");
@@ -140,15 +140,15 @@ var PipeleyenPipelineRunner = (function () {
         elModal.style.display = "flex";
         elModal.innerHTML =
             '<div class="modal">' +
-            '<h2>' + PipeleyenApp.fnEscapeHtml(sTitle) + '</h2>' +
+            '<h2>' + VaibifyUtilities.fnEscapeHtml(sTitle) + '</h2>' +
             '<p style="white-space:pre-wrap;margin-bottom:16px">' +
-            PipeleyenApp.fnEscapeHtml(sMessage) + '</p>' +
+            VaibifyUtilities.fnEscapeHtml(sMessage) + '</p>' +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnConfirmCancel">' +
-            PipeleyenApp.fnEscapeHtml(sCancelLabel) + '</button>' +
+            VaibifyUtilities.fnEscapeHtml(sCancelLabel) + '</button>' +
             '<button class="btn btn-primary" ' +
             'id="btnConfirmOk">' +
-            PipeleyenApp.fnEscapeHtml(sConfirmLabel) + '</button>' +
+            VaibifyUtilities.fnEscapeHtml(sConfirmLabel) + '</button>' +
             '</div></div>';
         document.body.appendChild(elModal);
         document.getElementById("btnConfirmCancel").addEventListener(
@@ -304,7 +304,7 @@ var PipeleyenPipelineRunner = (function () {
                 return;
             }
             fnApplyRunningState(dictState, true);
-            PipeleyenApp.fnStartPipelinePolling(sId);
+            VaibifyPolling.fnStartPipelinePolling(sId);
         } catch (error) {
             PipeleyenApp.fnStartFileChangePolling();
         }
@@ -313,7 +313,7 @@ var PipeleyenPipelineRunner = (function () {
     function fnHandlePipelinePollResult(dictState) {
         if (!dictState) return;
         if (!dictState.bRunning) {
-            PipeleyenApp.fnStopPipelinePolling();
+            VaibifyPolling.fnStopPipelinePolling();
             fnApplyCompletedState(dictState);
             if (dictState.sLogPath) {
                 fnDisplayLogInViewer(dictState.sLogPath);
@@ -457,10 +457,10 @@ var PipeleyenPipelineRunner = (function () {
         if (!step) return;
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = (step.saDataCommands || []).map(function (c) {
-            return PipeleyenApp.fsResolveTemplate(c, dictVars);
+            return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
         if (listCmds.length === 0) return;
-        var sDir = PipeleyenApp.fsResolveTemplate(
+        var sDir = VaibifyUtilities.fsResolveTemplate(
             step.sDirectory, dictVars);
         var sUuid = _fsGenerateUuid();
         var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
@@ -479,10 +479,10 @@ var PipeleyenPipelineRunner = (function () {
         if (!step) return;
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = (step.saPlotCommands || []).map(function (c) {
-            return PipeleyenApp.fsResolveTemplate(c, dictVars);
+            return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
         if (listCmds.length === 0) return;
-        var sDir = PipeleyenApp.fsResolveTemplate(
+        var sDir = VaibifyUtilities.fsResolveTemplate(
             step.sDirectory, dictVars);
         var sUuid = _fsGenerateUuid();
         var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
@@ -526,7 +526,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = flistResolveStepCommands(step, dictVars);
         if (listCmds.length === 0) return;
-        var sDir = PipeleyenApp.fsResolveTemplate(
+        var sDir = VaibifyUtilities.fsResolveTemplate(
             step.sDirectory, dictVars);
         var sUuid = _fsGenerateUuid();
         var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
@@ -543,11 +543,11 @@ var PipeleyenPipelineRunner = (function () {
         var listCmds = [];
         (step.saDataCommands || []).forEach(function (sCmd) {
             listCmds.push(
-                PipeleyenApp.fsResolveTemplate(sCmd, dictVars));
+                VaibifyUtilities.fsResolveTemplate(sCmd, dictVars));
         });
         (step.saPlotCommands || []).forEach(function (sCmd) {
             listCmds.push(
-                PipeleyenApp.fsResolveTemplate(sCmd, dictVars));
+                VaibifyUtilities.fsResolveTemplate(sCmd, dictVars));
         });
         return listCmds;
     }
@@ -578,7 +578,7 @@ var PipeleyenPipelineRunner = (function () {
         if (step) {
             step.dictRunStats = step.dictRunStats || {};
             step.dictRunStats.sLastRun =
-                PipeleyenApp.fsFormatUtcTimestamp();
+                VaibifyUtilities.fsFormatUtcTimestamp();
         }
         fnResetUserVerification(iStepIndex);
         if (iExitCode === 0) {
@@ -749,7 +749,7 @@ var PipeleyenPipelineRunner = (function () {
                     }
                 } catch (error) {
                     PipeleyenApp.fnShowToast(
-                        PipeleyenApp.fsSanitizeErrorForUser(
+                        VaibifyUtilities.fsSanitizeErrorForUser(
                             error.message), "error");
                 }
             }
@@ -771,7 +771,7 @@ var PipeleyenPipelineRunner = (function () {
             );
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
             return;
         }
@@ -865,7 +865,7 @@ var PipeleyenPipelineRunner = (function () {
             }
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }

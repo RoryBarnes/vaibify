@@ -94,10 +94,10 @@ var PipeleyenDirectoryBrowser = (function () {
                 0, sBuiltPath.lastIndexOf("/"));
             sHtml +=
                 '<span class="breadcrumb-sep" data-path="' +
-                PipeleyenApp.fnEscapeHtml(sNavTarget) + '">/</span>' +
+                VaibifyUtilities.fnEscapeHtml(sNavTarget) + '">/</span>' +
                 '<span class="breadcrumb-segment" data-path="' +
-                PipeleyenApp.fnEscapeHtml(sBuiltPath) + '">' +
-                PipeleyenApp.fnEscapeHtml(listSegments[i]) + "</span>";
+                VaibifyUtilities.fnEscapeHtml(sBuiltPath) + '">' +
+                VaibifyUtilities.fnEscapeHtml(listSegments[i]) + "</span>";
         }
         if (listSegments.length === 0) {
             sHtml = '<span class="breadcrumb-segment" data-path="/">/</span>';
@@ -127,10 +127,10 @@ var PipeleyenDirectoryBrowser = (function () {
             var sConfigClass = entry.bHasConfig ? " has-config" : "";
             return (
                 '<div class="directory-entry' + sConfigClass +
-                '" data-path="' + PipeleyenApp.fnEscapeHtml(entry.sPath) + '">' +
+                '" data-path="' + VaibifyUtilities.fnEscapeHtml(entry.sPath) + '">' +
                 '<span class="directory-entry-icon">&#128193;</span>' +
                 '<span class="directory-entry-name">' +
-                PipeleyenApp.fnEscapeHtml(entry.sName) + "</span>" +
+                VaibifyUtilities.fnEscapeHtml(entry.sName) + "</span>" +
                 (entry.bHasConfig
                     ? '<img src="/static/favicon.png" class="config-indicator" alt="vaibify">'
                     : "") +
@@ -170,9 +170,9 @@ var PipeleyenDirectoryBrowser = (function () {
             document.getElementById("modalAddContainer").style.display = "none";
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message), "error");
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message), "error");
         }
-        PipeleyenApp.fnLoadContainers();
+        PipeleyenContainerManager.fnLoadContainers();
     }
 
     return {

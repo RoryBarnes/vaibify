@@ -970,7 +970,7 @@ const PipeleyenFigureViewer = (function () {
                 throw new Error(sDetail);
             });
             elViewport.classList.remove("viewport-test-generated");
-            PipeleyenApp.fnFinalizeGeneratedTest(iStep);
+            PipeleyenTestManager.fnFinalizeGeneratedTest(iStep);
             PipeleyenApp.fnShowToast("Test saved", "success");
             fnRenderTextWithToolbar(sContent, "", elViewport);
         }).catch(function (error) {
@@ -990,7 +990,7 @@ const PipeleyenFigureViewer = (function () {
         elViewport.classList.remove("viewport-test-generated");
         elViewport.innerHTML =
             '<span class="placeholder">Test generation cancelled</span>';
-        PipeleyenApp.fnCancelGeneratedTest(iStep);
+        PipeleyenTestManager.fnCancelGeneratedTest(iStep);
     }
 
     function fnDisplayTestOutput(sOutput, bPassed) {

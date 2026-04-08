@@ -20,7 +20,7 @@ var PipeleyenDependencyScanner = (function () {
             dictStep.dictVerification = dictStep.dictVerification ||
                 {sUnitTest: "untested", sUser: "untested"};
             dictStep.dictVerification.sLastDepsCheck =
-                PipeleyenApp.fsFormatUtcTimestamp();
+                VaibifyUtilities.fsFormatUtcTimestamp();
             PipeleyenApp.fnSaveStepUpdate(iStep, {
                 dictVerification: dictStep.dictVerification,
             });
@@ -42,12 +42,12 @@ var PipeleyenDependencyScanner = (function () {
                 'data-source="detected" data-dep-index="' + i +
                 '" class="dependency-checkbox">' +
                 '<span class="dependency-step-badge">' +
-                PipeleyenApp.fnEscapeHtml(dictSugg.sSourceStepName) +
+                VaibifyUtilities.fnEscapeHtml(dictSugg.sSourceStepName) +
                 '</span> ' +
-                '<span>' + PipeleyenApp.fnEscapeHtml(dictSugg.sFileName) +
+                '<span>' + VaibifyUtilities.fnEscapeHtml(dictSugg.sFileName) +
                 '</span> ' +
                 '<span style="color:var(--text-secondary)">' +
-                PipeleyenApp.fnEscapeHtml(dictSugg.sLoadFunction) +
+                VaibifyUtilities.fnEscapeHtml(dictSugg.sLoadFunction) +
                 ' (line ' + dictSugg.iLineNumber + ')' +
                 '</span></div>';
         }
@@ -64,10 +64,10 @@ var PipeleyenDependencyScanner = (function () {
                 '<input type="checkbox" data-source="possible" ' +
                 'data-unmatched-idx="' + j +
                 '" class="dependency-checkbox">' +
-                '<span>' + PipeleyenApp.fnEscapeHtml(dictFile.sFileName) +
+                '<span>' + VaibifyUtilities.fnEscapeHtml(dictFile.sFileName) +
                 '</span> ' +
                 '<span style="color:var(--text-secondary)">' +
-                PipeleyenApp.fnEscapeHtml(dictFile.sLoadFunction) +
+                VaibifyUtilities.fnEscapeHtml(dictFile.sLoadFunction) +
                 ' (line ' + dictFile.iLineNumber + ')' +
                 '</span></div>';
         }
@@ -155,12 +155,12 @@ var PipeleyenDependencyScanner = (function () {
                 '<span style="color:var(--color-pale-blue);">' +
                 '&#10003;</span> ' +
                 '<span class="dependency-step-badge">' +
-                PipeleyenApp.fnEscapeHtml(dictDep.sSourceStepName) +
+                VaibifyUtilities.fnEscapeHtml(dictDep.sSourceStepName) +
                 '</span> ' +
                 '<span>' +
-                PipeleyenApp.fnEscapeHtml(dictDep.sFileName) + '</span> ' +
+                VaibifyUtilities.fnEscapeHtml(dictDep.sFileName) + '</span> ' +
                 '<span style="color:var(--text-secondary)">' +
-                PipeleyenApp.fnEscapeHtml(fsSourceLabel(
+                VaibifyUtilities.fnEscapeHtml(fsSourceLabel(
                     dictDep._sSource || "detected")) +
                 '</span></div>';
         }
@@ -196,11 +196,11 @@ var PipeleyenDependencyScanner = (function () {
         elRow.className = "dependency-suggestion";
         elRow.innerHTML =
             '<input type="checkbox" checked data-source="manual" ' +
-            'data-file-path="' + PipeleyenApp.fnEscapeHtml(sFilePath) +
+            'data-file-path="' + VaibifyUtilities.fnEscapeHtml(sFilePath) +
             '" class="dependency-checkbox">' +
-            '<span>' + PipeleyenApp.fnEscapeHtml(sBasename) + '</span> ' +
+            '<span>' + VaibifyUtilities.fnEscapeHtml(sBasename) + '</span> ' +
             '<span style="color:var(--text-secondary)">' +
-            PipeleyenApp.fnEscapeHtml(sFilePath) + '</span>' +
+            VaibifyUtilities.fnEscapeHtml(sFilePath) + '</span>' +
             '<button class="btn btn-small btn-remove-manual" ' +
             'style="margin-left:auto;padding:2px 8px;' +
             'font-size:12px">Remove</button>';
@@ -216,10 +216,10 @@ var PipeleyenDependencyScanner = (function () {
             var sClass = dictEntry.bIsDirectory ?
                 "dep-browser-dir" : "dep-browser-file";
             sHtml += '<div class="' + sClass +
-                '" data-path="' + PipeleyenApp.fnEscapeHtml(dictEntry.sPath) +
+                '" data-path="' + VaibifyUtilities.fnEscapeHtml(dictEntry.sPath) +
                 '" data-is-dir="' + dictEntry.bIsDirectory + '">' +
                 sIcon + ' ' +
-                PipeleyenApp.fnEscapeHtml(dictEntry.sName) + '</div>';
+                VaibifyUtilities.fnEscapeHtml(dictEntry.sName) + '</div>';
         }
         return sHtml;
     }
@@ -235,8 +235,8 @@ var PipeleyenDependencyScanner = (function () {
                 sHtml += '<span class="dep-breadcrumb-sep">/</span>';
             }
             sHtml += '<span class="dep-breadcrumb-part" data-path="' +
-                PipeleyenApp.fnEscapeHtml(sBuilt) + '">' +
-                PipeleyenApp.fnEscapeHtml("/" + listParts[i]) + '</span>';
+                VaibifyUtilities.fnEscapeHtml(sBuilt) + '">' +
+                VaibifyUtilities.fnEscapeHtml("/" + listParts[i]) + '</span>';
         }
         if (!sHtml) {
             sHtml = '<span class="dep-breadcrumb-part" data-path="/">/</span>';

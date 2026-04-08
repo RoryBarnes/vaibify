@@ -44,11 +44,11 @@ var PipeleyenContainerManager = (function () {
         elList.innerHTML = listUnrecognized.map(function (c) {
             return (
                 '<div class="container-card unrecognized" data-id="' +
-                PipeleyenApp.fnEscapeHtml(c.sContainerId) + '">' +
+                VaibifyUtilities.fnEscapeHtml(c.sContainerId) + '">' +
                 '<span class="name">' +
-                PipeleyenApp.fnEscapeHtml(c.sName) + "</span>" +
+                VaibifyUtilities.fnEscapeHtml(c.sName) + "</span>" +
                 '<span class="image">' +
-                PipeleyenApp.fnEscapeHtml(c.sImage) + "</span></div>"
+                VaibifyUtilities.fnEscapeHtml(c.sImage) + "</span></div>"
             );
         }).join("");
         elList.querySelectorAll(".container-card").forEach(function (el) {
@@ -63,12 +63,12 @@ var PipeleyenContainerManager = (function () {
         var sId = dictContainer.sContainerId || "";
         return (
             '<div class="container-tile" data-name="' +
-            PipeleyenApp.fnEscapeHtml(dictContainer.sName) +
-            '" data-container-id="' + PipeleyenApp.fnEscapeHtml(sId) + '">' +
+            VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
+            '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) + '">' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
-            PipeleyenApp.fnEscapeHtml(dictContainer.sName) + "</span>" +
+            VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
             "</div>" +
             '<button class="btn-icon container-tile-gear" ' +
             'title="Actions">&#9881;</button>' +
@@ -172,7 +172,7 @@ var PipeleyenContainerManager = (function () {
             fnShowContainerSettingsModal(sName, dictSettings);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -186,7 +186,7 @@ var PipeleyenContainerManager = (function () {
         elModal.style.display = "flex";
         elModal.innerHTML =
             '<div class="modal">' +
-            '<h2>Settings for ' + PipeleyenApp.fnEscapeHtml(sName) + '</h2>' +
+            '<h2>Settings for ' + VaibifyUtilities.fnEscapeHtml(sName) + '</h2>' +
             '<label class="checkbox-row" ' +
             'style="display:flex;align-items:center;gap:10px;' +
             'margin-bottom:16px">' +
@@ -225,7 +225,7 @@ var PipeleyenContainerManager = (function () {
                 "success");
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -242,7 +242,7 @@ var PipeleyenContainerManager = (function () {
             await fnStartContainer(sName);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         } finally {
             elOverlay.style.display = "none";
@@ -270,7 +270,7 @@ var PipeleyenContainerManager = (function () {
             PipeleyenApp.fnShowToast("Container started", "success");
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         } finally {
             fnLoadContainers();
@@ -287,7 +287,7 @@ var PipeleyenContainerManager = (function () {
             PipeleyenApp.fnShowToast("Container stopped", "success");
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         } finally {
             fnLoadContainers();
@@ -319,7 +319,7 @@ var PipeleyenContainerManager = (function () {
                         "Container removed", "success");
                 } catch (error) {
                     PipeleyenApp.fnShowToast(
-                        PipeleyenApp.fsSanitizeErrorForUser(
+                        VaibifyUtilities.fsSanitizeErrorForUser(
                             error.message), "error");
                 }
                 fnLoadContainers();
@@ -342,7 +342,7 @@ var PipeleyenContainerManager = (function () {
             fnConnectToContainer(dictMatch.sContainerId);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
@@ -365,7 +365,7 @@ var PipeleyenContainerManager = (function () {
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(error.message),
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }

@@ -37,18 +37,52 @@ const PipeleyenApp = (function () {
         return !!elActive.closest("#terminalStrip, .xterm");
     }
 
-    var sSessionToken = "";
-    let sContainerId = null;
-    let dictWorkflow = null;
-    let sWorkflowPath = null;
-    let iSelectedStepIndex = -1;
-    let setExpandedSteps = new Set();
-    var listUndoStack = [];
+    var _dictSessionState = {
+        sSessionToken: "",
+        sContainerId: null,
+        sUserName: "User",
+        dictDashboardMode: null,
+    };
+
+    function _fdictDefaultWorkflowState() {
+        return {
+            dictWorkflow: null,
+            sWorkflowPath: null,
+            dictStepStatus: {},
+            dictScriptModified: {},
+            dictDiscoveredOutputs: {},
+            dictUserVerifiedAt: {},
+            dictFileExistenceCache: {},
+            dictFileModTimes: {},
+            dictOutputMtimes: {},
+            dictPlotMtimes: {},
+            dictPlotStandardExists: {},
+            iFileCheckTimer: null,
+            bFileCheckInProgress: false,
+            iInflightRequests: 0,
+            abortControllerFileCheck: null,
+            bDelegatedEventsInitialized: false,
+            bWasVaibified: false,
+            listUndoStack: [],
+        };
+    }
+
+    var _dictWorkflowState = _fdictDefaultWorkflowState();
+
+    var _dictUiState = {
+        iSelectedStepIndex: -1,
+        setExpandedSteps: new Set(),
+        setExpandedDeps: new Set(),
+        setExpandedQualitative: new Set(),
+        setExpandedQuantitative: new Set(),
+        setExpandedIntegrity: new Set(),
+        bShowTimestamps: false,
+        iContextStepIndex: -1,
+        sContextFilePath: "",
+    };
+
     var I_MAX_UNDO = 50;
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
-    let dictStepStatus = {};
-    var _dictDashboardMode = null;
-    var bShowTimestamps = false;
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
@@ -69,10 +103,10 @@ const PipeleyenApp = (function () {
     async function fnFetchSessionToken() {
         try {
             var data = await VaibifyApi.fdictGet("/api/session-token");
-            sSessionToken = data.sToken || "";
-            fnInstallAuthenticatedFetch(sSessionToken);
+            _dictSessionState.sSessionToken = data.sToken || "";
+            fnInstallAuthenticatedFetch(_dictSessionState.sSessionToken);
         } catch (e) {
-            sSessionToken = "";
+            _dictSessionState.sSessionToken = "";
         }
     }
 
@@ -188,26 +222,33 @@ const PipeleyenApp = (function () {
     }
 
     function _fnResetWorkflowState() {
-        dictStepStatus = {};
-        dictFileExistenceCache = {};
-        dictFileModTimes = {};
-        dictOutputMtimes = {};
-        dictPlotMtimes = {};
-        bFileCheckInProgress = false;
-        bDelegatedEventsInitialized = false;
+        var dictDefaults = _fdictDefaultWorkflowState();
+        for (var sKey in dictDefaults) {
+            _dictWorkflowState[sKey] = dictDefaults[sKey];
+        }
+        _fnResetUiState();
         PipeleyenTestManager.fnResetState();
         PipeleyenPipelineRunner.fnResetState();
         fnStopPipelinePolling();
         fnStopFileChangePolling();
     }
 
+    function _fnResetUiState() {
+        _dictUiState.iSelectedStepIndex = -1;
+        _dictUiState.setExpandedSteps.clear();
+        _dictUiState.setExpandedDeps.clear();
+        _dictUiState.setExpandedQualitative.clear();
+        _dictUiState.setExpandedQuantitative.clear();
+        _dictUiState.setExpandedIntegrity.clear();
+    }
+
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
-        sContainerId = sId;
-        dictWorkflow = data.dictWorkflow;
-        sWorkflowPath = data.sWorkflowPath;
-        _dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnResetWorkflowState();
-        var iStepCount = (dictWorkflow.listSteps || []).length;
+        _dictSessionState.sContainerId = sId;
+        _dictWorkflowState.dictWorkflow = data.dictWorkflow;
+        _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
+        _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
+        var iStepCount = (_dictWorkflowState.dictWorkflow.listSteps || []).length;
         if (iStepCount > 500) {
             fnShowToast(
                 "This workflow has " + iStepCount + " steps. " +
@@ -237,11 +278,11 @@ const PipeleyenApp = (function () {
     async function fnEnterNoWorkflow(sId) {
         try {
             await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
-            sContainerId = sId;
-            dictWorkflow = null;
-            sWorkflowPath = null;
-            _dictDashboardMode = DICT_MODE_NO_WORKFLOW;
-            dictStepStatus = {};
+            _dictSessionState.sContainerId = sId;
+            _dictWorkflowState.dictWorkflow = null;
+            _dictWorkflowState.sWorkflowPath = null;
+            _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
+            _dictWorkflowState.dictStepStatus = {};
             var elWorkflowName = document.getElementById(
                 "activeWorkflowName"
             );
@@ -293,8 +334,8 @@ const PipeleyenApp = (function () {
     }
 
     function fnApplyDashboardMode() {
-        if (!_dictDashboardMode) return;
-        var listLeftTabs = _dictDashboardMode.listLeftTabs;
+        if (!_dictSessionState.dictDashboardMode) return;
+        var listLeftTabs = _dictSessionState.dictDashboardMode.listLeftTabs;
         var listAllTabs = document.querySelectorAll(".left-tab");
         listAllTabs.forEach(function (elTab) {
             var bVisible = listLeftTabs.includes(elTab.dataset.panel);
@@ -304,17 +345,17 @@ const PipeleyenApp = (function () {
         fnReorderLeftPanels(listLeftTabs);
         var elDefaultTab = document.querySelector(
             '.left-tab[data-panel="' +
-            _dictDashboardMode.sDefaultLeftTab + '"]'
+            _dictSessionState.dictDashboardMode.sDefaultLeftTab + '"]'
         );
         if (elDefaultTab) elDefaultTab.click();
-        fnApplyToolbarVisibility(_dictDashboardMode);
+        fnApplyToolbarVisibility(_dictSessionState.dictDashboardMode);
     }
 
     function fnShowContainerLanding() {
         document.getElementById("containerLanding").style.display = "flex";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");
-        _dictDashboardMode = null;
+        _dictSessionState.dictDashboardMode = null;
         document.title = "Vaibify";
     }
 
@@ -336,27 +377,27 @@ const PipeleyenApp = (function () {
         VaibifyWebSocket.fnDisconnect();
         fnStopPipelinePolling();
         fnStopFileChangePolling();
-        if (iFileCheckTimer) {
-            clearTimeout(iFileCheckTimer);
-            iFileCheckTimer = null;
+        if (_dictWorkflowState.iFileCheckTimer) {
+            clearTimeout(_dictWorkflowState.iFileCheckTimer);
+            _dictWorkflowState.iFileCheckTimer = null;
         }
-        if (_abortControllerFileCheck) {
-            _abortControllerFileCheck.abort();
-            _abortControllerFileCheck = null;
+        if (_dictWorkflowState.abortControllerFileCheck) {
+            _dictWorkflowState.abortControllerFileCheck.abort();
+            _dictWorkflowState.abortControllerFileCheck = null;
         }
         PipeleyenPipelineRunner.fnCancelSentinelMonitor();
     }
 
     function fnDisconnect() {
-        sContainerId = null;
-        dictWorkflow = null;
-        sWorkflowPath = null;
-        iSelectedStepIndex = -1;
-        setExpandedSteps.clear();
-        setExpandedDeps.clear();
+        _dictSessionState.sContainerId = null;
+        _dictWorkflowState.dictWorkflow = null;
+        _dictWorkflowState.sWorkflowPath = null;
+        _dictUiState.iSelectedStepIndex = -1;
+        _dictUiState.setExpandedSteps.clear();
+        _dictUiState.setExpandedDeps.clear();
         PipeleyenTestManager.fnResetState();
-        dictPlotStandardExists = {};
-        dictStepStatus = {};
+        _dictWorkflowState.dictPlotStandardExists = {};
+        _dictWorkflowState.dictStepStatus = {};
         document.body.classList.remove("all-verified");
         _fnCancelAllTimers();
         PipeleyenFigureViewer.fnReleaseResources();
@@ -368,7 +409,7 @@ const PipeleyenApp = (function () {
     /* --- Template Resolution --- */
 
     function fdictBuildClientVariables() {
-        if (!dictWorkflow) return {};
+        if (!_dictWorkflowState.dictWorkflow) return {};
         var sWorkflowDir = fsGetWorkflowDirectory();
         var sRepoRoot = sWorkflowDir;
         if (sRepoRoot.endsWith("/.vaibify/workflows")) {
@@ -377,17 +418,17 @@ const PipeleyenApp = (function () {
         } else if (sRepoRoot.endsWith("/.vaibify")) {
             sRepoRoot = sRepoRoot.replace("/.vaibify", "");
         }
-        var sPlotDir = dictWorkflow.sPlotDirectory || "Plot";
+        var sPlotDir = _dictWorkflowState.dictWorkflow.sPlotDirectory || "Plot";
         if (sPlotDir.charAt(0) !== "/") {
             sPlotDir = sRepoRoot + "/" + sPlotDir;
         }
         var dictVars = {
             sPlotDirectory: sPlotDir,
             sRepoRoot: sRepoRoot,
-            iNumberOfCores: dictWorkflow.iNumberOfCores || -1,
-            sFigureType: (dictWorkflow.sFigureType || "pdf").toLowerCase(),
+            iNumberOfCores: _dictWorkflowState.dictWorkflow.iNumberOfCores || -1,
+            sFigureType: (_dictWorkflowState.dictWorkflow.sFigureType || "pdf").toLowerCase(),
         };
-        dictWorkflow.listSteps.forEach(function (step, iIdx) {
+        _dictWorkflowState.dictWorkflow.listSteps.forEach(function (step, iIdx) {
             var sStepDir = step.sDirectory || "";
             var iNum = iIdx + 1;
             var sPrefix = "Step" + String(iNum).padStart(2, "0");
@@ -409,14 +450,7 @@ const PipeleyenApp = (function () {
         return dictVars;
     }
 
-    function fsResolveTemplate(sTemplate, dictVariables) {
-        return sTemplate.replace(/\{([^}]+)\}/g, function (sMatch, sToken) {
-            if (dictVariables.hasOwnProperty(sToken)) {
-                return String(dictVariables[sToken]);
-            }
-            return sMatch;
-        });
-    }
+    var fsResolveTemplate = VaibifyUtilities.fsResolveTemplate;
 
     function fsJoinPath(sDirectory, sFilename) {
         if (sDirectory.endsWith("/")) {
@@ -445,8 +479,8 @@ const PipeleyenApp = (function () {
                 });
                 el.classList.add("active");
                 var sPanel = el.dataset.panel;
-                var bWorkflowMode = _dictDashboardMode &&
-                    _dictDashboardMode.sMode === "workflow";
+                var bWorkflowMode = _dictSessionState.dictDashboardMode &&
+                    _dictSessionState.dictDashboardMode.sMode === "workflow";
                 if (bWorkflowMode) {
                     document.getElementById("panelSteps")
                         .classList.add("active");
@@ -477,9 +511,9 @@ const PipeleyenApp = (function () {
     }
 
     function fsGetWorkflowDirectory() {
-        if (!sWorkflowPath) return "/workspace";
-        var iLastSlash = sWorkflowPath.lastIndexOf("/");
-        return iLastSlash > 0 ? sWorkflowPath.substring(0, iLastSlash) : "/workspace";
+        if (!_dictWorkflowState.sWorkflowPath) return "/workspace";
+        var iLastSlash = _dictWorkflowState.sWorkflowPath.lastIndexOf("/");
+        return iLastSlash > 0 ? _dictWorkflowState.sWorkflowPath.substring(0, iLastSlash) : "/workspace";
     }
 
     /* --- Global Settings --- */
@@ -502,21 +536,21 @@ const PipeleyenApp = (function () {
 
     function fsGlobalSettingsHtml() {
         var iToleranceExp = fsToleranceToExponent(
-            dictWorkflow.fTolerance || 1e-6);
+            _dictWorkflowState.dictWorkflow.fTolerance || 1e-6);
         return fsSettingsRowHtml("Plot Dir",
             '<input class="gs-input" id="gsPlotDirectory" value="' +
-            fnEscapeHtml(dictWorkflow.sPlotDirectory || "Plot") + '">') +
+            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sPlotDirectory || "Plot") + '">') +
             fsSettingsRowHtml("Figure Type",
             '<input class="gs-input" id="gsFigureType" value="' +
-            fnEscapeHtml(dictWorkflow.sFigureType || "pdf") + '">') +
+            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sFigureType || "pdf") + '">') +
             fsSettingsRowHtml("Cores",
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
-            (dictWorkflow.iNumberOfCores || -1) + '">') +
+            (_dictWorkflowState.dictWorkflow.iNumberOfCores || -1) + '">') +
             fsSettingsRowHtml("Tolerance",
             '<input class="gs-input" id="gsTolerance" type="range"' +
             ' min="-16" max="0" step="1" value="' + iToleranceExp +
             '" title="10^' + iToleranceExp +
-            ' = ' + (dictWorkflow.fTolerance || 1e-6) + '">') +
+            ' = ' + (_dictWorkflowState.dictWorkflow.fTolerance || 1e-6) + '">') +
             fsSettingsRowHtml("Poll Interval",
             '<input class="gs-input" id="gsPollInterval" type="range"' +
             ' min="1" max="60" value="' +
@@ -526,7 +560,7 @@ const PipeleyenApp = (function () {
             ' seconds">') +
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (bShowTimestamps ? " checked" : "") + '>');
+            (_dictUiState.bShowTimestamps ? " checked" : "") + '>');
     }
 
     function fnBindSettingsSliders() {
@@ -543,7 +577,7 @@ const PipeleyenApp = (function () {
                 var fVal = Math.pow(10, iExp);
                 elToleranceSlider.title =
                     "10^" + iExp + " = " + fVal;
-                dictWorkflow.fTolerance = fVal;
+                _dictWorkflowState.dictWorkflow.fTolerance = fVal;
             });
         }
         var elTimestampCheckbox = document.getElementById(
@@ -558,7 +592,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnRenderGlobalSettings() {
-        if (!dictWorkflow) return;
+        if (!_dictWorkflowState.dictWorkflow) return;
         var el = document.getElementById("globalSettingsPanel");
         el.innerHTML = fsGlobalSettingsHtml();
         el.querySelectorAll(".gs-input").forEach(function (inp) {
@@ -568,7 +602,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnToggleShowTimestamps(bEnabled) {
-        bShowTimestamps = bEnabled;
+        _dictUiState.bShowTimestamps = bEnabled;
         try {
             localStorage.setItem(
                 "vaibifyShowTimestamps",
@@ -581,7 +615,7 @@ const PipeleyenApp = (function () {
     function fnApplyTimestampVisibility() {
         var elList = document.getElementById("listSteps");
         if (!elList) return;
-        if (bShowTimestamps) {
+        if (_dictUiState.bShowTimestamps) {
             elList.classList.remove("hide-timestamps");
         } else {
             elList.classList.add("hide-timestamps");
@@ -592,7 +626,7 @@ const PipeleyenApp = (function () {
         try {
             var sStored = localStorage.getItem(
                 "vaibifyShowTimestamps");
-            bShowTimestamps = sStored === "true";
+            _dictUiState.bShowTimestamps = sStored === "true";
         } catch (e) { /* localStorage may be unavailable */ }
     }
 
@@ -613,12 +647,12 @@ const PipeleyenApp = (function () {
         };
         try {
             var result = await VaibifyApi.fdictPut(
-                "/api/settings/" + sContainerId, dictUpdates);
-            dictWorkflow.sPlotDirectory = result.sPlotDirectory;
-            dictWorkflow.sFigureType = result.sFigureType;
-            dictWorkflow.iNumberOfCores = result.iNumberOfCores;
+                "/api/settings/" + _dictSessionState.sContainerId, dictUpdates);
+            _dictWorkflowState.dictWorkflow.sPlotDirectory = result.sPlotDirectory;
+            _dictWorkflowState.dictWorkflow.sFigureType = result.sFigureType;
+            _dictWorkflowState.dictWorkflow.iNumberOfCores = result.iNumberOfCores;
             if (result.fTolerance !== undefined) {
-                dictWorkflow.fTolerance = result.fTolerance;
+                _dictWorkflowState.dictWorkflow.fTolerance = result.fTolerance;
             }
             fnShowToast("Settings saved", "success");
             fnRenderStepList();
@@ -631,19 +665,19 @@ const PipeleyenApp = (function () {
 
     function fdictBuildRenderContext() {
         return {
-            dictStepStatus: dictStepStatus,
-            iSelectedStepIndex: iSelectedStepIndex,
-            setExpandedSteps: setExpandedSteps,
-            setExpandedDeps: setExpandedDeps,
+            dictStepStatus: _dictWorkflowState.dictStepStatus,
+            iSelectedStepIndex: _dictUiState.iSelectedStepIndex,
+            setExpandedSteps: _dictUiState.setExpandedSteps,
+            setExpandedDeps: _dictUiState.setExpandedDeps,
             setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
             setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
-            dictPlotStandardExists: dictPlotStandardExists,
-            dictScriptModified: dictScriptModified,
-            dictOutputMtimes: dictOutputMtimes,
-            dictDiscoveredOutputs: dictDiscoveredOutputs,
-            dictWorkflow: dictWorkflow,
-            sUserName: sUserName,
+            dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
+            dictScriptModified: _dictWorkflowState.dictScriptModified,
+            dictOutputMtimes: _dictWorkflowState.dictOutputMtimes,
+            dictDiscoveredOutputs: _dictWorkflowState.dictDiscoveredOutputs,
+            dictWorkflow: _dictWorkflowState.dictWorkflow,
+            sUserName: _dictSessionState.sUserName,
             fsComputeStepDotState: fsComputeStepDotState,
             fsComputeStepLabel: fsComputeStepLabel,
             fsBuildWarningBadge: fsBuildWarningBadge,
@@ -669,9 +703,25 @@ const PipeleyenApp = (function () {
         };
     }
 
+    var _bRenderScheduled = false;
+
     function fnRenderStepList() {
+        if (_bRenderScheduled) return;
+        _bRenderScheduled = true;
+        requestAnimationFrame(function () {
+            _bRenderScheduled = false;
+            _fnRenderStepListImmediate();
+        });
+    }
+
+    function fnRenderStepListSync() {
+        _bRenderScheduled = false;
+        _fnRenderStepListImmediate();
+    }
+
+    function _fnRenderStepListImmediate() {
         var elList = document.getElementById("listSteps");
-        if (!dictWorkflow || !dictWorkflow.listSteps) {
+        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) {
             elList.innerHTML = "";
             return;
         }
@@ -679,7 +729,7 @@ const PipeleyenApp = (function () {
         var dictContext = fdictBuildRenderContext();
         var sHtml = "";
         var bPreviousInteractive = null;
-        dictWorkflow.listSteps.forEach(function (step, iIndex) {
+        _dictWorkflowState.dictWorkflow.listSteps.forEach(function (step, iIndex) {
             var bInteractive = step.bInteractive === true;
             if (bInteractive !== bPreviousInteractive) {
                 sHtml += fsRenderStepTypeBanner(bInteractive);
@@ -700,88 +750,83 @@ const PipeleyenApp = (function () {
         return '<div class="step-type-banner">' + sLabel + '</div>';
     }
 
-    var dictFileExistenceCache = {};
     var I_MAX_FILE_CACHE_ENTRIES = 500;
-    var iFileCheckTimer = null;
-    var bFileCheckInProgress = false;
-    var iInflightRequests = 0;
-    var _abortControllerFileCheck = null;
 
     function fnSetFileExistenceCache(sKey, bValue) {
-        if (Object.keys(dictFileExistenceCache).length >=
+        if (Object.keys(_dictWorkflowState.dictFileExistenceCache).length >=
             I_MAX_FILE_CACHE_ENTRIES) {
-            dictFileExistenceCache = {};
+            _dictWorkflowState.dictFileExistenceCache = {};
         }
-        dictFileExistenceCache[sKey] = bValue;
+        _dictWorkflowState.dictFileExistenceCache[sKey] = bValue;
     }
 
     function fnScheduleFileExistenceCheck() {
-        if (iFileCheckTimer) return;
-        iFileCheckTimer = setTimeout(function () {
-            iFileCheckTimer = null;
-            bFileCheckInProgress = false;
-            iInflightRequests = 0;
+        if (_dictWorkflowState.iFileCheckTimer) return;
+        _dictWorkflowState.iFileCheckTimer = setTimeout(function () {
+            _dictWorkflowState.iFileCheckTimer = null;
+            _dictWorkflowState.bFileCheckInProgress = false;
+            _dictWorkflowState.iInflightRequests = 0;
             var iOutputCount = document.querySelectorAll(
                 ".detail-item.output").length;
             fnCheckOutputFileExistence();
             fnCheckDataFileExistence();
-            if (iInflightRequests === 0) {
-                bFileCheckInProgress = false;
+            if (_dictWorkflowState.iInflightRequests === 0) {
+                _dictWorkflowState.bFileCheckInProgress = false;
             } else {
                 setTimeout(function () {
-                    bFileCheckInProgress = false;
+                    _dictWorkflowState.bFileCheckInProgress = false;
                 }, 10000);
             }
         }, 200);
     }
 
     function fnFileCheckComplete() {
-        iInflightRequests--;
-        if (iInflightRequests <= 0) {
-            bFileCheckInProgress = false;
+        _dictWorkflowState.iInflightRequests--;
+        if (_dictWorkflowState.iInflightRequests <= 0) {
+            _dictWorkflowState.bFileCheckInProgress = false;
         }
     }
 
     function fnClearRunningStatuses() {
-        for (var sKey in dictStepStatus) {
-            var sVal = dictStepStatus[sKey];
+        for (var sKey in _dictWorkflowState.dictStepStatus) {
+            var sVal = _dictWorkflowState.dictStepStatus[sKey];
             if (sVal === "running" || sVal === "queued") {
-                delete dictStepStatus[sKey];
+                delete _dictWorkflowState.dictStepStatus[sKey];
             }
         }
     }
 
     function fnPruneStaleStatuses() {
-        var iStepCount = (dictWorkflow && dictWorkflow.listSteps)
-            ? dictWorkflow.listSteps.length : 0;
-        for (var sKey in dictStepStatus) {
+        var iStepCount = (_dictWorkflowState.dictWorkflow && _dictWorkflowState.dictWorkflow.listSteps)
+            ? _dictWorkflowState.dictWorkflow.listSteps.length : 0;
+        for (var sKey in _dictWorkflowState.dictStepStatus) {
             if (parseInt(sKey, 10) >= iStepCount) {
-                delete dictStepStatus[sKey];
+                delete _dictWorkflowState.dictStepStatus[sKey];
             }
         }
     }
 
     function fnInvalidateStepFileCache(iStep) {
         var sPrefix = iStep + ":";
-        Object.keys(dictFileExistenceCache).forEach(function (sKey) {
+        Object.keys(_dictWorkflowState.dictFileExistenceCache).forEach(function (sKey) {
             if (sKey.indexOf(sPrefix) === 0) {
-                delete dictFileExistenceCache[sKey];
+                delete _dictWorkflowState.dictFileExistenceCache[sKey];
             }
         });
         PipeleyenTestManager.fsetGetStepsWithData().delete(iStep);
     }
 
     function fnPollAllStepFiles() {
-        if (!sContainerId || !dictWorkflow) return;
-        dictWorkflow.listSteps.forEach(function (step, iStep) {
+        if (!_dictSessionState.sContainerId || !_dictWorkflowState.dictWorkflow) return;
+        _dictWorkflowState.dictWorkflow.listSteps.forEach(function (step, iStep) {
             fnCheckStepDataFiles(step, iStep);
         });
     }
 
     function fnCheckDataFileExistence() {
-        if (!sContainerId || !dictWorkflow) return;
-        dictWorkflow.listSteps.forEach(function (step, iStep) {
-            if (!setExpandedSteps.has(iStep)) return;
+        if (!_dictSessionState.sContainerId || !_dictWorkflowState.dictWorkflow) return;
+        _dictWorkflowState.dictWorkflow.listSteps.forEach(function (step, iStep) {
+            if (!_dictUiState.setExpandedSteps.has(iStep)) return;
             fnCheckStepDataFiles(step, iStep);
         });
     }
@@ -795,7 +840,7 @@ const PipeleyenApp = (function () {
         listNecessary.forEach(function (sFile) {
             var sDir = step.sDirectory || "";
             var sCacheKey = iStep + ":" + sFile;
-            if (dictFileExistenceCache[sCacheKey]) {
+            if (_dictWorkflowState.dictFileExistenceCache[sCacheKey]) {
                 iPresent++;
                 if (iPresent >= iTotal) {
                     PipeleyenTestManager.fsetGetStepsWithData().add(iStep);
@@ -803,10 +848,10 @@ const PipeleyenApp = (function () {
                 }
                 return;
             }
-            var sUrl = "/api/figure/" + sContainerId +
+            var sUrl = "/api/figure/" + _dictSessionState.sContainerId +
                 "/" + sFile + "?sWorkdir=" +
                 encodeURIComponent(sDir);
-            iInflightRequests++;
+            _dictWorkflowState.iInflightRequests++;
             VaibifyApi.fbHead(sUrl).then(
                 function (bExists) {
                     if (bExists) {
@@ -851,7 +896,7 @@ const PipeleyenApp = (function () {
             dictDataCounts[iStep] =
                 (dictDataCounts[iStep] || 0) + 1;
         }
-        if (dictFileExistenceCache[sCacheKey] === true) {
+        if (_dictWorkflowState.dictFileExistenceCache[sCacheKey] === true) {
             fnUpdateFileStatus(el, true);
             fnTrackDataPresence(
                 iStep, bNecessaryData,
@@ -859,15 +904,15 @@ const PipeleyenApp = (function () {
             );
             return;
         }
-        if (dictFileExistenceCache[sCacheKey] === false) {
+        if (_dictWorkflowState.dictFileExistenceCache[sCacheKey] === false) {
             fnUpdateFileStatus(el, false);
             return;
         }
-        var sUrl = "/api/figure/" + sContainerId + "/" + sResolved;
+        var sUrl = "/api/figure/" + _dictSessionState.sContainerId + "/" + sResolved;
         if (sWorkdir) {
             sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
         }
-        iInflightRequests++;
+        _dictWorkflowState.iInflightRequests++;
         VaibifyApi.fbHead(sUrl, {signal: signalFileCheck})
             .then(function (bExists) {
                 if (bExists) {
@@ -891,12 +936,12 @@ const PipeleyenApp = (function () {
     }
 
     function fnCheckOutputFileExistence() {
-        if (!sContainerId) return;
-        if (_abortControllerFileCheck) {
-            _abortControllerFileCheck.abort();
+        if (!_dictSessionState.sContainerId) return;
+        if (_dictWorkflowState.abortControllerFileCheck) {
+            _dictWorkflowState.abortControllerFileCheck.abort();
         }
-        _abortControllerFileCheck = new AbortController();
-        var signalFileCheck = _abortControllerFileCheck.signal;
+        _dictWorkflowState.abortControllerFileCheck = new AbortController();
+        var signalFileCheck = _dictWorkflowState.abortControllerFileCheck.signal;
         var dictDataCounts = {};
         var dictDataPresent = {};
         document.querySelectorAll(
@@ -983,7 +1028,7 @@ const PipeleyenApp = (function () {
 
     function fsNecessaryFileClass(iStep, sResolved, bExists) {
         if (!bExists) return "file-necessary-red";
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (fbFileInModifiedList(sResolved, listModified)) {
@@ -1027,7 +1072,7 @@ const PipeleyenApp = (function () {
         var sResolved = elItem.dataset.resolved || "";
         var sCacheKey = elItem.dataset.step + ":" +
             sResolved + ":" + (elItem.dataset.workdir || "");
-        return dictFileExistenceCache[sCacheKey] === false;
+        return _dictWorkflowState.dictFileExistenceCache[sCacheKey] === false;
     }
 
     function fsInitialFileStatusClass(iStep, sArrayKey, sRaw) {
@@ -1036,7 +1081,7 @@ const PipeleyenApp = (function () {
     }
 
     function fsComputeStepLabel(iIndex) {
-        var listSteps = dictWorkflow.listSteps;
+        var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         var bInteractive = listSteps[iIndex].bInteractive === true;
         var sPrefix = bInteractive ? "I" : "A";
         var iCount = 0;
@@ -1110,14 +1155,7 @@ const PipeleyenApp = (function () {
         return dictVerify[sKey] || "untested";
     }
 
-    function fsTestCategoryLabel(sCategory) {
-        var dictLabels = {
-            qualitative: "Qualitative Tests",
-            quantitative: "Quantitative Tests",
-            integrity: "Integrity Tests",
-        };
-        return dictLabels[sCategory] || sCategory;
-    }
+    var fsTestCategoryLabel = VaibifyUtilities.fsTestCategoryLabel;
 
     function fsVerificationStateLabel(sState) {
         var dictLabels = {
@@ -1137,17 +1175,11 @@ const PipeleyenApp = (function () {
         return dictIcons[sState] || "\u2014";
     }
 
-    var setExpandedDeps = new Set();
-    var dictPlotStandardExists = {};
-    var setExpandedQualitative = new Set();
-    var setExpandedQuantitative = new Set();
-    var setExpandedIntegrity = new Set();
-
     function fsetGetExpandedCategory(sCategory) {
         var dictSets = {
-            qualitative: setExpandedQualitative,
-            quantitative: setExpandedQuantitative,
-            integrity: setExpandedIntegrity,
+            qualitative: _dictUiState.setExpandedQualitative,
+            quantitative: _dictUiState.setExpandedQuantitative,
+            integrity: _dictUiState.setExpandedIntegrity,
         };
         return dictSets[sCategory] || new Set();
     }
@@ -1184,8 +1216,8 @@ const PipeleyenApp = (function () {
     }
 
     function flistGetStepDependencies(iStep) {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return [];
-        var step = dictWorkflow.listSteps[iStep];
+        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return [];
+        var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
             "saTestCommands", "saDataFiles", "saPlotFiles",
@@ -1206,12 +1238,12 @@ const PipeleyenApp = (function () {
     }
 
     function fbStepFullyPassing(iStep, dictVisited) {
-        if (!dictWorkflow || !dictWorkflow.listSteps[iStep]) {
+        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps[iStep]) {
             return false;
         }
         if (dictVisited[iStep]) return dictVisited[iStep] === "pass";
         dictVisited[iStep] = "checking";
-        var step = dictWorkflow.listSteps[iStep];
+        var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(step);
         var bInteractive = step.bInteractive === true;
         var bPlotOnly = (step.saDataCommands || []).length === 0;
@@ -1248,7 +1280,7 @@ const PipeleyenApp = (function () {
         var listDeps = flistGetStepDependencies(iStep);
         for (var i = 0; i < listDeps.length; i++) {
             var dictV = fdictGetVerification(
-                dictWorkflow.listSteps[listDeps[i]]);
+                _dictWorkflowState.dictWorkflow.listSteps[listDeps[i]]);
             var listMod = dictV.listModifiedFiles || [];
             if (listMod.length > 0) return true;
         }
@@ -1272,7 +1304,7 @@ const PipeleyenApp = (function () {
             return "";
         }
         if (bPassing) return "dep-status-blue";
-        var depStep = dictWorkflow.listSteps[iDep];
+        var depStep = _dictWorkflowState.dictWorkflow.listSteps[iDep];
         if (!depStep) return "dep-status-red";
         var sDepState = fsDepStepOverallState(depStep, iDep);
         if (sDepState === "partial") return "dep-status-orange";
@@ -1292,10 +1324,8 @@ const PipeleyenApp = (function () {
         return "failed";
     }
 
-    var sUserName = "User";
-
     function fnSetVerificationUserName(sName) {
-        sUserName = sName || "User";
+        _dictSessionState.sUserName = sName || "User";
     }
 
     function fsComputeStepDotState(step, iIndex) {
@@ -1306,10 +1336,10 @@ const PipeleyenApp = (function () {
         var listModified = dictVerify.listModifiedFiles || [];
         var bDirty = listModified.length > 0 ||
             fbAnyUpstreamModified(iIndex) ||
-            dictScriptModified[iIndex] === "modified";
+            _dictWorkflowState.dictScriptModified[iIndex] === "modified";
         var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
             !!(step.dictRunStats || {}).sLastRun ||
-            !!dictOutputMtimes[String(iIndex)];
+            !!_dictWorkflowState.dictOutputMtimes[String(iIndex)];
 
         if (!bHasData) return "";
 
@@ -1341,16 +1371,7 @@ const PipeleyenApp = (function () {
         return Math.floor(dtParsed.getTime() / 1000);
     }
 
-    function fsFormatUtcTimestamp() {
-        var d = new Date();
-        var sPad = function (i) { return String(i).padStart(2, "0"); };
-        return d.getUTCFullYear() + "-" +
-            sPad(d.getUTCMonth() + 1) + "-" +
-            sPad(d.getUTCDate()) + " " +
-            sPad(d.getUTCHours()) + ":" +
-            sPad(d.getUTCMinutes()) + ":" +
-            sPad(d.getUTCSeconds()) + " UTC";
-    }
+    var fsFormatUtcTimestamp = VaibifyUtilities.fsFormatUtcTimestamp;
 
     function fsFirstPlotBasename(iStepIndex) {
         return PipeleyenPlotStandards.fsFirstPlotBasename(iStepIndex);
@@ -1361,7 +1382,7 @@ const PipeleyenApp = (function () {
     }
 
     function fsGetFileCategory(iStep, sFilePath, sArrayKey) {
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (sArrayKey === "saPlotFiles") {
             var dictPlot = dictStep.dictPlotFileCategories || {};
             return dictPlot[sFilePath] || "archive";
@@ -1373,7 +1394,7 @@ const PipeleyenApp = (function () {
     async function fnToggleArchiveCategory(
         iStep, sFilePath, sArrayKey
     ) {
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var sDictKey = sArrayKey === "saDataFiles" ?
             "dictDataFileCategories" : "dictPlotFileCategories";
         if (!dictStep[sDictKey]) {
@@ -1393,11 +1414,9 @@ const PipeleyenApp = (function () {
 
     /* --- Step Event Binding (delegated) --- */
 
-    var bDelegatedEventsInitialized = false;
-
     function fnBindStepEvents() {
-        if (bDelegatedEventsInitialized) return;
-        bDelegatedEventsInitialized = true;
+        if (_dictWorkflowState.bDelegatedEventsInitialized) return;
+        _dictWorkflowState.bDelegatedEventsInitialized = true;
         var elList = document.getElementById("listSteps");
         fnSetupDelegatedEvents(elList);
     }
@@ -1607,7 +1626,7 @@ const PipeleyenApp = (function () {
     function _fnHandleTestLogLink(event, elMatch) {
         var iLogStep = parseInt(elMatch.dataset.step, 10);
         var sCatKey = elMatch.dataset.category;
-        var dictLogStep = dictWorkflow.listSteps[iLogStep];
+        var dictLogStep = _dictWorkflowState.dictWorkflow.listSteps[iLogStep];
         var dictLogTests = fdictGetTests(dictLogStep);
         var sLogCatKey = "dict" + sCatKey.charAt(0)
             .toUpperCase() + sCatKey.slice(1);
@@ -1824,10 +1843,10 @@ const PipeleyenApp = (function () {
     }
 
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
-        dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
+        _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
         try {
             await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iStep,
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
                 {bPlotOnly: bPlotOnly}
             );
         } catch (error) {
@@ -1836,10 +1855,10 @@ const PipeleyenApp = (function () {
     }
 
     function fnToggleDepsExpand(iStep) {
-        if (setExpandedDeps.has(iStep)) {
-            setExpandedDeps.delete(iStep);
+        if (_dictUiState.setExpandedDeps.has(iStep)) {
+            _dictUiState.setExpandedDeps.delete(iStep);
         } else {
-            setExpandedDeps.add(iStep);
+            _dictUiState.setExpandedDeps.add(iStep);
         }
         fnRenderStepList();
     }
@@ -1861,11 +1880,9 @@ const PipeleyenApp = (function () {
         PipeleyenTestManager.fnGenerateTests(iStep);
     }
 
-    var dictDiscoveredOutputs = {};
-
     function fnHandleDiscoveredOutputs(dictEvent) {
         var iStep = dictEvent.iStepNumber - 1;
-        dictDiscoveredOutputs[iStep] = dictEvent.listDiscovered;
+        _dictWorkflowState.dictDiscoveredOutputs[iStep] = dictEvent.listDiscovered;
         fnRenderStepList();
         fnShowToast(
             "Step " + dictEvent.iStepNumber +
@@ -1877,14 +1894,14 @@ const PipeleyenApp = (function () {
     async function fnAddDiscoveredOutput(
         iStep, sFile, sTargetArray
     ) {
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (!dictStep[sTargetArray]) dictStep[sTargetArray] = [];
         dictStep[sTargetArray].push(sFile);
         var dictUpdate = {};
         dictUpdate[sTargetArray] = dictStep[sTargetArray];
         await fnSaveStepUpdate(iStep, dictUpdate);
-        var listDisc = dictDiscoveredOutputs[iStep] || [];
-        dictDiscoveredOutputs[iStep] = listDisc.filter(
+        var listDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] || [];
+        _dictWorkflowState.dictDiscoveredOutputs[iStep] = listDisc.filter(
             function (d) { return d.sFilePath !== sFile; }
         );
         fnRenderStepList();
@@ -1975,17 +1992,15 @@ const PipeleyenApp = (function () {
     async function fnSaveStepUpdate(iStep, dictUpdate) {
         try {
             await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iStep,
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
                 dictUpdate);
         } catch (error) {
             fnShowToast("Save failed", "error");
         }
     }
 
-    var dictUserVerifiedAt = {};
-
     async function fnCycleUserVerification(iStep) {
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
         var listStates = [
             "untested", "passed", "failed", "error"
@@ -1999,10 +2014,10 @@ const PipeleyenApp = (function () {
             delete dictVerify.bOutputModified;
         }
         dictStep.dictVerification = dictVerify;
-        dictUserVerifiedAt[iStep] = Date.now();
+        _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
         try {
             await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iStep,
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
                 {dictVerification: dictVerify}
             );
         } catch (error) {
@@ -2013,8 +2028,8 @@ const PipeleyenApp = (function () {
     }
 
     function fbIsWorkflowFullyVerified() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return false;
-        var listSteps = dictWorkflow.listSteps;
+        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return false;
+        var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         if (listSteps.length === 0) return false;
         for (var i = 0; i < listSteps.length; i++) {
             var step = listSteps[i];
@@ -2025,8 +2040,6 @@ const PipeleyenApp = (function () {
     }
 
     /* fnCheckVaibified inlined to fnUpdateHighlightState */
-
-    var _bWasVaibified = false;
 
     function fnUpdateHighlightState() {
         var bVerified = fbIsWorkflowFullyVerified();
@@ -2039,7 +2052,7 @@ const PipeleyenApp = (function () {
             PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
         }
         fnRecolorVisibleDagEdges();
-        _bWasVaibified = bVerified;
+        _dictWorkflowState.bWasVaibified = bVerified;
     }
 
     function fnRecolorVisibleDagEdges() {
@@ -2049,7 +2062,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnTriggerBloomIfNeeded(bVerified) {
-        if (bVerified && !_bWasVaibified) {
+        if (bVerified && !_dictWorkflowState.bWasVaibified) {
             fnAnimateBloomOverlay();
             fnAnimatePanelBorderCascade();
         }
@@ -2092,7 +2105,7 @@ const PipeleyenApp = (function () {
     /* --- Detail Item Actions --- */
 
     function fnInlineEditItem(el, iStep, sArray, iIdx) {
-        var sRaw = dictWorkflow.listSteps[iStep][sArray][iIdx];
+        var sRaw = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray][iIdx];
         var elText = el.querySelector(".detail-text");
         var elActions = el.querySelector(".detail-actions");
         elActions.style.display = "none";
@@ -2112,7 +2125,7 @@ const PipeleyenApp = (function () {
             bFinished = true;
             var sNewValue = elInput.value.trim();
             if (sNewValue && sNewValue !== sRaw) {
-                dictWorkflow.listSteps[iStep][sArray][iIdx] = sNewValue;
+                _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray][iIdx] = sNewValue;
                 fnSaveStepArray(iStep, sArray, true);
             }
             elInput.removeEventListener("blur", fnFinishEdit);
@@ -2136,7 +2149,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnDeleteDetailItem(iStep, sArray, iIdx) {
-        var sValue = dictWorkflow.listSteps[iStep][sArray][iIdx];
+        var sValue = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray][iIdx];
         var dictVars = fdictBuildClientVariables();
         var sDisplay = fsResolveTemplate(sValue, dictVars);
         fnShowConfirmModal("Delete Item", sDisplay, function () {
@@ -2145,7 +2158,7 @@ const PipeleyenApp = (function () {
     }
 
     async function _fnExecuteDeleteItem(iStep, sArray, iIdx, sValue) {
-        dictWorkflow.listSteps[iStep][sArray].splice(iIdx, 1);
+        _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray].splice(iIdx, 1);
         fnPushUndo({
             sAction: "delete",
             iStep: iStep,
@@ -2160,13 +2173,13 @@ const PipeleyenApp = (function () {
     function fnMoveDetailToStep(dictDrag, iTargetStep) {
         var iSource = dictDrag.iStep;
         var sArray = dictDrag.sArray;
-        var sValue = dictWorkflow.listSteps[iSource][sArray].splice(
+        var sValue = _dictWorkflowState.dictWorkflow.listSteps[iSource][sArray].splice(
             dictDrag.iIdx, 1
         )[0];
-        if (!dictWorkflow.listSteps[iTargetStep][sArray]) {
-            dictWorkflow.listSteps[iTargetStep][sArray] = [];
+        if (!_dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray]) {
+            _dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray] = [];
         }
-        dictWorkflow.listSteps[iTargetStep][sArray].unshift(sValue);
+        _dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray].unshift(sValue);
         fnPushUndo({
             sAction: "move",
             iStep: iSource,
@@ -2196,11 +2209,11 @@ const PipeleyenApp = (function () {
         var sArray = fnMoveDetailToStep(dictDrag, iTargetStep);
         await fnSaveStepArray(dictDrag.iStep, sArray);
         await fnSaveStepArray(iTargetStep, sArray);
-        setExpandedSteps.add(iTargetStep);
-        fnRenderStepList();
+        _dictUiState.setExpandedSteps.add(iTargetStep);
+        fnRenderStepListSync();
         fnHighlightItem(iTargetStep, sArray, 0);
         fnShowToast(
-            "Moved to " + dictWorkflow.listSteps[iTargetStep].sName,
+            "Moved to " + _dictWorkflowState.dictWorkflow.listSteps[iTargetStep].sName,
             "success"
         );
         fnShowToast(
@@ -2278,15 +2291,15 @@ const PipeleyenApp = (function () {
     }
 
     async function fnCommitNewItem(iStep, sArrayKey, sValue) {
-        if (!dictWorkflow.listSteps[iStep][sArrayKey]) {
-            dictWorkflow.listSteps[iStep][sArrayKey] = [];
+        if (!_dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey]) {
+            _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey] = [];
         }
-        dictWorkflow.listSteps[iStep][sArrayKey].push(sValue);
+        _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey].push(sValue);
         fnPushUndo({
             sAction: "add",
             iStep: iStep,
             sArray: sArrayKey,
-            iIdx: dictWorkflow.listSteps[iStep][sArrayKey].length - 1,
+            iIdx: _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey].length - 1,
             sValue: sValue,
         });
         await fnSaveStepArray(iStep, sArrayKey, true);
@@ -2297,34 +2310,34 @@ const PipeleyenApp = (function () {
     /* --- Undo Stack --- */
 
     function fnPushUndo(dictAction) {
-        listUndoStack.push(dictAction);
-        if (listUndoStack.length > I_MAX_UNDO) {
-            listUndoStack.shift();
+        _dictWorkflowState.listUndoStack.push(dictAction);
+        if (_dictWorkflowState.listUndoStack.length > I_MAX_UNDO) {
+            _dictWorkflowState.listUndoStack.shift();
         }
     }
 
     async function fnUndo() {
-        if (listUndoStack.length === 0) {
+        if (_dictWorkflowState.listUndoStack.length === 0) {
             fnShowToast("Nothing to undo", "error");
             return;
         }
-        var dictAction = listUndoStack.pop();
+        var dictAction = _dictWorkflowState.listUndoStack.pop();
         if (dictAction.sAction === "add") {
-            dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
+            _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 1);
             await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
         } else if (dictAction.sAction === "delete") {
-            dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
+            _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, dictAction.sValue);
             await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
         } else if (dictAction.sAction === "move") {
-            var sValue = dictWorkflow.listSteps[dictAction.iTargetStep][
+            var sValue = _dictWorkflowState.dictWorkflow.listSteps[dictAction.iTargetStep][
                 dictAction.sArray
             ].splice(dictAction.iTargetIdx, 1)[0];
-            if (!dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]) {
-                dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray] = [];
+            if (!_dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]) {
+                _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray] = [];
             }
-            dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
+            _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, sValue);
             await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
             await fnSaveStepArray(
@@ -2337,10 +2350,10 @@ const PipeleyenApp = (function () {
 
     async function fnSaveStepArray(iStep, sArray, bScanDeps) {
         var dictUpdate = {};
-        dictUpdate[sArray] = dictWorkflow.listSteps[iStep][sArray];
+        dictUpdate[sArray] = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray];
         try {
             await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iStep,
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
                 dictUpdate);
         } catch (error) {
             fnShowToast("Save failed", "error");
@@ -2364,13 +2377,13 @@ const PipeleyenApp = (function () {
     /* --- Step Expand/Collapse --- */
 
     function fnToggleStepExpand(iIndex) {
-        if (setExpandedSteps.has(iIndex)) {
-            setExpandedSteps.delete(iIndex);
+        if (_dictUiState.setExpandedSteps.has(iIndex)) {
+            _dictUiState.setExpandedSteps.delete(iIndex);
         } else {
-            setExpandedSteps.add(iIndex);
+            _dictUiState.setExpandedSteps.add(iIndex);
             fnLoadPlotStandardStatus(iIndex);
         }
-        iSelectedStepIndex = iIndex;
+        _dictUiState.iSelectedStepIndex = iIndex;
         fnRenderStepList();
     }
 
@@ -2381,10 +2394,10 @@ const PipeleyenApp = (function () {
     async function fnToggleStepEnabled(iIndex, bEnabled) {
         try {
             await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iIndex,
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iIndex,
                 {bEnabled: bEnabled}
             );
-            dictWorkflow.listSteps[iIndex].bEnabled = bEnabled;
+            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bEnabled = bEnabled;
         } catch (error) {
             fnShowToast("Failed to update step", "error");
         }
@@ -2393,9 +2406,9 @@ const PipeleyenApp = (function () {
     async function fnReorderStep(iFromIndex, iToIndex) {
         try {
             var result = await VaibifyApi.fdictPost(
-                "/api/steps/" + sContainerId + "/reorder",
+                "/api/steps/" + _dictSessionState.sContainerId + "/reorder",
                 {iFromIndex: iFromIndex, iToIndex: iToIndex});
-            dictWorkflow.listSteps = result.listSteps;
+            _dictWorkflowState.dictWorkflow.listSteps = result.listSteps;
             fnRenderStepList();
             fnShowToast(
                 "Step reordered (references renumbered)",
@@ -2552,7 +2565,7 @@ const PipeleyenApp = (function () {
             btnResetLayout: fnResetLayout,
             btnAdminContainers: fnDisconnect,
             btnAdminWorkflows: function () {
-                if (sContainerId) fnConnectToContainer(sContainerId);
+                if (_dictSessionState.sContainerId) fnConnectToContainer(_dictSessionState.sContainerId);
             },
             btnAdminQuit: function () { window.close(); },
         };
@@ -2574,11 +2587,11 @@ const PipeleyenApp = (function () {
     /* --- Sync Push Modal --- */
 
     async function fnShowDag() {
-        if (!sContainerId) return;
+        if (!_dictSessionState.sContainerId) return;
         fnShowToast("Generating dependency graph...", "success");
         try {
             var sSvgText = await VaibifyApi.fsGetText(
-                "/api/workflow/" + sContainerId + "/dag");
+                "/api/workflow/" + _dictSessionState.sContainerId + "/dag");
             _fnRenderDagInViewer(sSvgText);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -2697,11 +2710,11 @@ const PipeleyenApp = (function () {
     /* --- Creation Wizard (delegated to VaibifyWorkflowManager) --- */
 
     async function fnLoadLogs() {
-        if (!sContainerId) return;
+        if (!_dictSessionState.sContainerId) return;
         var elList = document.getElementById("listLogs");
         try {
             var listLogs = await VaibifyApi.fdictGet(
-                "/api/logs/" + sContainerId);
+                "/api/logs/" + _dictSessionState.sContainerId);
             if (listLogs.length === 0) {
                 elList.innerHTML =
                     '<p class="muted-text">No log files yet.</p>';
@@ -2726,10 +2739,10 @@ const PipeleyenApp = (function () {
     }
 
     async function fnViewLogFile(sFilename) {
-        if (!sContainerId) return;
+        if (!_dictSessionState.sContainerId) return;
         try {
             var sContent = await VaibifyApi.fsGetText(
-                "/api/logs/" + sContainerId + "/" +
+                "/api/logs/" + _dictSessionState.sContainerId + "/" +
                 encodeURIComponent(sFilename));
             var elViewport = document.getElementById("viewportA");
             elViewport.innerHTML =
@@ -2746,17 +2759,12 @@ const PipeleyenApp = (function () {
     /* Test result handling now in scriptTestManager.js */
 
     function fnClearOutputModified(iStep) {
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (dictStep && dictStep.dictVerification) {
             delete dictStep.dictVerification.bOutputModified;
             delete dictStep.dictVerification.listModifiedFiles;
         }
     }
-
-    var dictFileModTimes = {};
-    var dictOutputMtimes = {};
-    var dictPlotMtimes = {};
-    var dictScriptModified = {};
 
     /* Pipeline state recovery now in scriptPipelineRunner.js */
 
@@ -2769,8 +2777,8 @@ const PipeleyenApp = (function () {
     }
 
     function fnStartFileChangePolling() {
-        if (!sContainerId) return;
-        VaibifyPolling.fnStartFilePolling(sContainerId);
+        if (!_dictSessionState.sContainerId) return;
+        VaibifyPolling.fnStartFilePolling(_dictSessionState.sContainerId);
     }
 
     function fnStopFileChangePolling() {
@@ -2780,10 +2788,10 @@ const PipeleyenApp = (function () {
     function fnProcessFileStatusResponse(dictStatus) {
         fnDetectOutputFileChanges(dictStatus.dictModTimes || {});
         if (dictStatus.dictMaxMtimeByStep) {
-            dictOutputMtimes = dictStatus.dictMaxMtimeByStep;
+            _dictWorkflowState.dictOutputMtimes = dictStatus.dictMaxMtimeByStep;
         }
         if (dictStatus.dictMaxPlotMtimeByStep) {
-            dictPlotMtimes = dictStatus.dictMaxPlotMtimeByStep;
+            _dictWorkflowState.dictPlotMtimes = dictStatus.dictMaxPlotMtimeByStep;
         }
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
@@ -2803,15 +2811,15 @@ const PipeleyenApp = (function () {
     }
 
     function fnResetStaleUserVerifications() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return;
+        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return;
         var bChanged = false;
         var iNow = Date.now();
-        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
-            if (dictUserVerifiedAt[i] &&
-                (iNow - dictUserVerifiedAt[i]) < 15000) {
+        for (var i = 0; i < _dictWorkflowState.dictWorkflow.listSteps.length; i++) {
+            if (_dictWorkflowState.dictUserVerifiedAt[i] &&
+                (iNow - _dictWorkflowState.dictUserVerifiedAt[i]) < 15000) {
                 continue;
             }
-            var dictStep = dictWorkflow.listSteps[i];
+            var dictStep = _dictWorkflowState.dictWorkflow.listSteps[i];
             var dictVerify = (dictStep.dictVerification || {});
             if (dictVerify.sUser !== "passed") continue;
             if (_fbOutputNewerThanVerification(i, dictVerify)) {
@@ -2824,7 +2832,7 @@ const PipeleyenApp = (function () {
     }
 
     function _fbOutputNewerThanVerification(iStep, dictVerify) {
-        var sMaxMtime = dictPlotMtimes[String(iStep)];
+        var sMaxMtime = _dictWorkflowState.dictPlotMtimes[String(iStep)];
         if (!sMaxMtime) return false;
         var iOutputEpoch = parseInt(sMaxMtime, 10);
         var iUserEpoch = fiParseUtcTimestamp(
@@ -2841,12 +2849,12 @@ const PipeleyenApp = (function () {
     }
 
     function fnUpdateDepsTimestamps() {
-        if (!dictWorkflow || !dictWorkflow.listSteps) return;
-        for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
+        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return;
+        for (var i = 0; i < _dictWorkflowState.dictWorkflow.listSteps.length; i++) {
             var listDeps = flistGetStepDependencies(i);
             if (listDeps.length === 0) continue;
             var sDepsState = fsComputeDepsState(i);
-            var dictStep = dictWorkflow.listSteps[i];
+            var dictStep = _dictWorkflowState.dictWorkflow.listSteps[i];
             var dictVerify = dictStep.dictVerification || {};
             var sOld = dictVerify.sLastDepsCheck || "";
             if (sDepsState === "passed" && !sOld) {
@@ -2861,9 +2869,9 @@ const PipeleyenApp = (function () {
 
     function fnDetectOutputFileChanges(dictNewMods) {
         for (var sPath in dictNewMods) {
-            if (dictFileModTimes[sPath] !== dictNewMods[sPath]) {
-                dictFileModTimes = dictNewMods;
-                dictFileExistenceCache = {};
+            if (_dictWorkflowState.dictFileModTimes[sPath] !== dictNewMods[sPath]) {
+                _dictWorkflowState.dictFileModTimes = dictNewMods;
+                _dictWorkflowState.dictFileExistenceCache = {};
                 fnScheduleFileExistenceCheck();
                 fnRenderStepList();
                 return;
@@ -2873,9 +2881,9 @@ const PipeleyenApp = (function () {
 
     function fnUpdateScriptStatus(dictNewScriptStatus) {
         if (!dictNewScriptStatus) return;
-        var dictPrev = JSON.stringify(dictScriptModified);
-        dictScriptModified = dictNewScriptStatus;
-        if (JSON.stringify(dictScriptModified) !== dictPrev) {
+        var dictPrev = JSON.stringify(_dictWorkflowState.dictScriptModified);
+        _dictWorkflowState.dictScriptModified = dictNewScriptStatus;
+        if (JSON.stringify(_dictWorkflowState.dictScriptModified) !== dictPrev) {
             fnRenderStepList();
         }
     }
@@ -2893,7 +2901,7 @@ const PipeleyenApp = (function () {
             if (_fbWithinGracePeriod(iStep, iNow, iGraceMs)) {
                 continue;
             }
-            var dictStep = dictWorkflow.listSteps[iStep];
+            var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
             if (!dictStep) continue;
             var sOldUser = (dictStep.dictVerification || {}).sUser;
             var sNewUser = (dictStepVerifications[sIndex] || {}).sUser;
@@ -2915,7 +2923,7 @@ const PipeleyenApp = (function () {
         if (iAckedAt && (iNow - iAckedAt) < iGraceMs) {
             return true;
         }
-        var iVerifiedAt = dictUserVerifiedAt[iStep];
+        var iVerifiedAt = _dictWorkflowState.dictUserVerifiedAt[iStep];
         if (iVerifiedAt && (iNow - iVerifiedAt) < iGraceMs) {
             return true;
         }
@@ -3023,7 +3031,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnOpenVsCode() {
-        var sHexId = sContainerId.replace(/-/g, "");
+        var sHexId = _dictSessionState.sContainerId.replace(/-/g, "");
         var sUri =
             "vscode://ms-vscode-remote.remote-containers/attach?containerId=" +
             sHexId;
@@ -3033,27 +3041,19 @@ const PipeleyenApp = (function () {
 
     /* --- Context Menu --- */
 
-    var iContextStepIndex = -1;
-
     function fnShowContextMenu(iX, iY, iIndex) {
-        iContextStepIndex = iIndex;
+        _dictUiState.iContextStepIndex = iIndex;
         var el = document.getElementById("contextMenu");
         el.style.left = iX + "px";
         el.style.top = iY + "px";
         el.classList.add("active");
     }
 
-    var sContextFilePath = "";
-    var sContextFileWorkdir = "";
-    var iContextFileStepIndex = -1;
-
     function fnShowFileContextMenu(
         iX, iY, sFilePath, sWorkdir, iStepIndex
     ) {
         fnHideContextMenu();
-        sContextFilePath = sFilePath;
-        sContextFileWorkdir = sWorkdir;
-        iContextFileStepIndex = iStepIndex;
+        _dictUiState.sContextFilePath = sFilePath;
         var el = document.getElementById("fileContextMenu");
         el.style.left = iX + "px";
         el.style.top = iY + "px";
@@ -3074,7 +3074,7 @@ const PipeleyenApp = (function () {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
                     fnHandleContextAction(
-                        el.dataset.action, iContextStepIndex);
+                        el.dataset.action, _dictUiState.iContextStepIndex);
                     fnHideContextMenu();
                 });
             });
@@ -3091,19 +3091,19 @@ const PipeleyenApp = (function () {
 
     async function fnHandleFileContextAction(sAction) {
         if (sAction === "pullToHost") {
-            fnPromptPullToHost(sContextFilePath);
+            fnPromptPullToHost(_dictUiState.sContextFilePath);
             return;
         }
         if (sAction === "copyPath") {
-            fnCopyToClipboard(sContextFilePath);
+            fnCopyToClipboard(_dictUiState.sContextFilePath);
             return;
         }
         if (sAction === "addToGit") {
             fnShowToast("Adding to Git...", "success");
             try {
                 var dictResult = await VaibifyApi.fdictPost(
-                    "/api/github/" + sContainerId + "/add-file",
-                    {sFilePath: sContextFilePath}
+                    "/api/github/" + _dictSessionState.sContainerId + "/add-file",
+                    {sFilePath: _dictUiState.sContextFilePath}
                 );
                 if (dictResult.bSuccess) {
                     fnShowToast("Added to Git", "success");
@@ -3120,8 +3120,8 @@ const PipeleyenApp = (function () {
             fnShowToast("Archiving to Zenodo...", "success");
             try {
                 var dictZenodoResult = await VaibifyApi.fdictPost(
-                    "/api/zenodo/" + sContainerId + "/archive",
-                    {listFilePaths: [sContextFilePath]}
+                    "/api/zenodo/" + _dictSessionState.sContainerId + "/archive",
+                    {listFilePaths: [_dictUiState.sContextFilePath]}
                 );
                 if (dictZenodoResult.bSuccess) {
                     fnShowToast("Archived to Zenodo", "success");
@@ -3159,7 +3159,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnDeleteStep(iIndex) {
-        var sName = dictWorkflow.listSteps[iIndex].sName;
+        var sName = _dictWorkflowState.dictWorkflow.listSteps[iIndex].sName;
         fnShowConfirmModal(
             "Delete Step",
             'Delete step "' + sName + '"?',
@@ -3170,10 +3170,10 @@ const PipeleyenApp = (function () {
     async function _fnExecuteDeleteStep(iIndex) {
         try {
             var result = await VaibifyApi.fnDelete(
-                "/api/steps/" + sContainerId + "/" + iIndex);
-            dictWorkflow.listSteps = result.listSteps;
-            if (iSelectedStepIndex === iIndex) iSelectedStepIndex = -1;
-            setExpandedSteps.delete(iIndex);
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iIndex);
+            _dictWorkflowState.dictWorkflow.listSteps = result.listSteps;
+            if (_dictUiState.iSelectedStepIndex === iIndex) _dictUiState.iSelectedStepIndex = -1;
+            _dictUiState.setExpandedSteps.delete(iIndex);
             fnPruneStaleStatuses();
             fnRenderStepList();
             fnShowToast(
@@ -3200,27 +3200,7 @@ const PipeleyenApp = (function () {
             'File cannot be viewed.</span>';
     }
 
-    function fsSanitizeErrorForUser(sRawError) {
-        if (!sRawError) return "An error occurred.";
-        if (sRawError.indexOf("no space left on device") >= 0) {
-            return "Docker disk is full. Run 'docker image " +
-                "prune -f' to free space.";
-        }
-        if (sRawError.indexOf("No such container") >= 0) {
-            return "Container not found. It may have stopped.";
-        }
-        if (sRawError.indexOf("connection refused") >= 0 ||
-            sRawError.indexOf("Cannot connect") >= 0) {
-            return "Cannot connect to Docker. Is it running?";
-        }
-        if (sRawError.indexOf("permission denied") >= 0) {
-            return "Permission denied. Check Docker access.";
-        }
-        if (sRawError.length > 200) {
-            return sRawError.substring(0, 200) + "...";
-        }
-        return sRawError;
-    }
+    var fsSanitizeErrorForUser = VaibifyUtilities.fsSanitizeErrorForUser;
 
     function fnShowToast(sMessage, sType) {
         var el = document.createElement("div");
@@ -3239,72 +3219,48 @@ const PipeleyenApp = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
-    function fsGetDashboardMode() {
-        return _dictDashboardMode ? _dictDashboardMode.sMode : null;
-    }
-
     /* --- Public API --- */
 
     return {
         fnInitialize: fnInitialize,
         fnShowToast: fnShowToast,
         fnRenderStepList: fnRenderStepList,
-        fnEscapeHtml: fnEscapeHtml,
-        fsGetContainerId: function () { return sContainerId; },
-        fsGetSessionToken: function () { return sSessionToken; },
-        fdictGetWorkflow: function () { return dictWorkflow; },
-        fsGetWorkflowPath: function () { return sWorkflowPath; },
-        fiGetSelectedStepIndex: function () { return iSelectedStepIndex; },
+        fsGetContainerId: function () { return _dictSessionState.sContainerId; },
+        fsGetSessionToken: function () { return _dictSessionState.sSessionToken; },
+        fdictGetWorkflow: function () { return _dictWorkflowState.dictWorkflow; },
+        fsGetWorkflowPath: function () { return _dictWorkflowState.sWorkflowPath; },
+        fiGetSelectedStepIndex: function () { return _dictUiState.iSelectedStepIndex; },
         fdictBuildClientVariables: fdictBuildClientVariables,
-        fsResolveTemplate: fsResolveTemplate,
         fnShowConfirmModal: fnShowConfirmModal,
         fnShowInputModal: fnShowInputModal,
-        fnPromptPullToHost: fnPromptPullToHost,
         fnClearOutputModified: fnClearOutputModified,
-        fnFinalizeGeneratedTest: function (iStep) {
-            PipeleyenTestManager.fnFinalizeGeneratedTest(iStep);
-        },
-        fnCancelGeneratedTest: function (iStep) {
-            PipeleyenTestManager.fnCancelGeneratedTest(iStep);
-        },
-        fbIsTestPending: function (iStep) {
-            return PipeleyenTestManager.fbIsTestPending(iStep);
-        },
-        fsGetDashboardMode: fsGetDashboardMode,
-        fsSanitizeErrorForUser: fsSanitizeErrorForUser,
         fnActivateWorkflow: _fnActivateWorkflow,
         fnEnterNoWorkflow: fnEnterNoWorkflow,
-        fnLoadContainers: fnLoadContainers,
         fnSaveStepUpdate: fnSaveStepUpdate,
-        fsFormatUtcTimestamp: fsFormatUtcTimestamp,
         fnShowWorkflowPicker: fnShowWorkflowPicker,
         fnSetPlotStandardExists: function (sKey, bValue) {
-            dictPlotStandardExists[sKey] = bValue;
+            _dictWorkflowState.dictPlotStandardExists[sKey] = bValue;
         },
         fbGetPlotStandardExists: function (sKey) {
-            return dictPlotStandardExists[sKey];
+            return _dictWorkflowState.dictPlotStandardExists[sKey];
         },
         fnShowErrorModal: fnShowErrorModal,
         fnUpdateHighlightState: fnUpdateHighlightState,
         fsComputeStepLabel: fsComputeStepLabel,
-        fsTestCategoryLabel: fsTestCategoryLabel,
         fdictGetVerification: fdictGetVerification,
         fdictGetTests: fdictGetTests,
         fnInvalidateStepFileCache: fnInvalidateStepFileCache,
         fnSetStepStatus: function (iIndex, sStatus) {
-            dictStepStatus[iIndex] = sStatus;
+            _dictWorkflowState.dictStepStatus[iIndex] = sStatus;
         },
         fnClearRunningStatuses: fnClearRunningStatuses,
         fnClearAllStepStatuses: function () {
-            dictStepStatus = {};
+            _dictWorkflowState.dictStepStatus = {};
         },
         fnStartFileChangePolling: fnStartFileChangePolling,
-        fnStopFileChangePolling: fnStopFileChangePolling,
-        fnStartPipelinePolling: fnStartPipelinePolling,
-        fnStopPipelinePolling: fnStopPipelinePolling,
         fnToggleStepEnabled: fnToggleStepEnabled,
         fnClearFileExistenceCache: function () {
-            dictFileExistenceCache = {};
+            _dictWorkflowState.dictFileExistenceCache = {};
         },
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
     };

@@ -27,12 +27,12 @@ var VaibifyWorkflowManager = (function () {
         var sRepo = dictWf.sRepoName || "";
         return (
             '<div class="container-card" data-path="' +
-            PipeleyenApp.fnEscapeHtml(dictWf.sPath) + '">' +
+            VaibifyUtilities.fnEscapeHtml(dictWf.sPath) + '">' +
             '<span class="name">' +
-            PipeleyenApp.fnEscapeHtml(dictWf.sName) +
+            VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
             '</span>' +
             '<span class="image">' +
-            PipeleyenApp.fnEscapeHtml(sRepo) + '</span></div>'
+            VaibifyUtilities.fnEscapeHtml(sRepo) + '</span></div>'
         );
     }
 
@@ -115,7 +115,7 @@ var VaibifyWorkflowManager = (function () {
                 dictResult.sName);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(
+                VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         }
     }
@@ -135,7 +135,7 @@ var VaibifyWorkflowManager = (function () {
                 sId, dictResult, sWorkflowName);
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(
+                VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         }
     }
@@ -183,15 +183,15 @@ var VaibifyWorkflowManager = (function () {
                 '<div class="workflow-dropdown-item' +
                 (bCurrent ? " current" : "") +
                 '" data-path="' +
-                PipeleyenApp.fnEscapeHtml(dictWf.sPath) +
+                VaibifyUtilities.fnEscapeHtml(dictWf.sPath) +
                 '" data-name="' +
-                PipeleyenApp.fnEscapeHtml(dictWf.sName) +
+                VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
                 '">' +
                 '<span class="wf-name">' +
-                PipeleyenApp.fnEscapeHtml(dictWf.sName) +
+                VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
                 '</span>' +
                 '<span class="wf-path">' +
-                PipeleyenApp.fnEscapeHtml(dictWf.sPath) +
+                VaibifyUtilities.fnEscapeHtml(dictWf.sPath) +
                 '</span></div>'
             );
         }).join("");
@@ -396,10 +396,10 @@ var VaibifyWorkflowManager = (function () {
                         : "";
                 return '<div class="add-choice-card" ' +
                     'data-template="' +
-                    PipeleyenApp.fnEscapeHtml(sName) + '"' +
+                    VaibifyUtilities.fnEscapeHtml(sName) + '"' +
                     sActive + '>' +
                     '<div class="add-choice-title">' +
-                    PipeleyenApp.fnEscapeHtml(sName) +
+                    VaibifyUtilities.fnEscapeHtml(sName) +
                     '</div></div>';
             }).join("") + '</div>';
         _fnBindTemplateCardClicks(elContent);
@@ -488,20 +488,20 @@ var VaibifyWorkflowManager = (function () {
             '<div style="font-size:13px;' +
             'color:var(--text-secondary);">' +
             '<p><strong>Directory:</strong> ' +
-            PipeleyenApp.fnEscapeHtml(
+            VaibifyUtilities.fnEscapeHtml(
                 _dictWizardData.sDirectory) + '</p>' +
             '<p><strong>Template:</strong> ' +
-            PipeleyenApp.fnEscapeHtml(
+            VaibifyUtilities.fnEscapeHtml(
                 _dictWizardData.sTemplateName) + '</p>' +
             '<p><strong>Project Name:</strong> ' +
-            PipeleyenApp.fnEscapeHtml(
+            VaibifyUtilities.fnEscapeHtml(
                 _dictWizardData.sProjectName) + '</p>' +
             '<p><strong>Python:</strong> ' +
-            PipeleyenApp.fnEscapeHtml(
+            VaibifyUtilities.fnEscapeHtml(
                 _dictWizardData.sPythonVersion) + '</p>' +
             '<p><strong>Repositories:</strong> ' +
             (_dictWizardData.listRepositories.length > 0
-                ? PipeleyenApp.fnEscapeHtml(
+                ? VaibifyUtilities.fnEscapeHtml(
                     _dictWizardData.listRepositories.join(
                         ", "))
                 : '<em>None</em>') +
@@ -563,10 +563,10 @@ var VaibifyWorkflowManager = (function () {
             _fnCloseWizard();
             PipeleyenApp.fnShowToast(
                 "Project created successfully.");
-            PipeleyenApp.fnLoadContainers();
+            PipeleyenContainerManager.fnLoadContainers();
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                PipeleyenApp.fsSanitizeErrorForUser(
+                VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         } finally {
             elButton.disabled = false;

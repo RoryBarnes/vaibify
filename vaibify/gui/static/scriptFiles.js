@@ -106,7 +106,7 @@ var PipeleyenFiles = (function () {
             var elItem = event.target.closest(".file-item");
             if (!elItem || elItem.dataset.isDir === "true") return;
             event.preventDefault();
-            PipeleyenApp.fnPromptPullToHost(elItem.dataset.path);
+            PipeleyenFilePull.fnPromptPullToHost(elItem.dataset.path);
         });
     }
 
