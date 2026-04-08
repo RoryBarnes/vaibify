@@ -363,7 +363,7 @@ def _fnInvalidateDownstreamStep(dictStep):
 
 def _fbStepScriptsModified(dictStep, dictCurrentHashes):
     """Return True if any script hash differs from stored hashes."""
-    from .syncDispatcher import _fsNormalizePath
+    from .fileIntegrity import _fsNormalizePath
     from .commandUtilities import flistExtractScripts
     dictStoredHashes = dictStep.get(
         "dictRunStats", {}

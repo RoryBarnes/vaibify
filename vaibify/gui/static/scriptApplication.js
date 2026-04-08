@@ -46,7 +46,6 @@ const PipeleyenApp = (function () {
     var listUndoStack = [];
     var I_MAX_UNDO = 50;
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
-    let wsPipeline = null;
     let dictStepStatus = {};
     var _dictDashboardMode = null;
     var bShowTimestamps = false;
@@ -92,10 +91,42 @@ const PipeleyenApp = (function () {
         };
     }
 
+    /* --- WebSocket and Polling Registration --- */
+
+    function fnRegisterWebSocketHandlers() {
+        VaibifyWebSocket.fnOnEvent("*", fnHandlePipelineEvent);
+        VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
+            fnClearRunningStatuses();
+            fnRenderStepList();
+            if (dictEvent.bActionsDropped) {
+                fnShowToast(
+                    "Pipeline connection closed (code "
+                    + dictEvent.iCode +
+                    "). Reselect the workflow.", "error");
+            }
+        });
+        VaibifyWebSocket.fnOnEvent("_wsError", function (dictEvent) {
+            if (dictEvent.bActionsDropped) {
+                fnShowToast(
+                    "Pipeline connection error. "
+                    + "Reselect the workflow.", "error");
+            }
+        });
+    }
+
+    function fnRegisterPollingHandlers() {
+        VaibifyPolling.fnSetPipelineStateHandler(
+            fnHandlePipelinePollResult);
+        VaibifyPolling.fnSetFileStatusHandler(
+            fnProcessFileStatusResponse);
+    }
+
     /* --- Initialization --- */
 
     async function fnInitialize() {
         await fnFetchSessionToken();
+        fnRegisterWebSocketHandlers();
+        fnRegisterPollingHandlers();
         fnLoadUserName();
         fnLoadTimestampSetting();
         fnLoadContainers();
@@ -142,8 +173,7 @@ const PipeleyenApp = (function () {
     async function fnLoadContainers() {
         var elList = document.getElementById("listContainers");
         try {
-            var response = await fetch("/api/registry");
-            var dictResult = await response.json();
+            var dictResult = await VaibifyApi.fdictGet("/api/registry");
             fnRenderContainerList(dictResult.listContainers || []);
             fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
         } catch (error) {
@@ -991,10 +1021,7 @@ const PipeleyenApp = (function () {
     }
 
     function _fnCancelAllTimers() {
-        if (wsPipeline) {
-            wsPipeline.close();
-            wsPipeline = null;
-        }
+        VaibifyWebSocket.fnDisconnect();
         fnStopPipelinePolling();
         fnStopFileChangePolling();
         if (iFileCheckTimer) {
@@ -1183,8 +1210,11 @@ const PipeleyenApp = (function () {
             ' = ' + (dictWorkflow.fTolerance || 1e-6) + '">') +
             fsSettingsRowHtml("Poll Interval",
             '<input class="gs-input" id="gsPollInterval" type="range"' +
-            ' min="1" max="60" value="' + (iPollIntervalMs / 1000) +
-            '" title="' + (iPollIntervalMs / 1000) + ' seconds">') +
+            ' min="1" max="60" value="' +
+            (VaibifyPolling.fiGetPollIntervalMs() / 1000) +
+            '" title="' +
+            (VaibifyPolling.fiGetPollIntervalMs() / 1000) +
+            ' seconds">') +
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
             (bShowTimestamps ? " checked" : "") + '>');
@@ -1273,25 +1303,16 @@ const PipeleyenApp = (function () {
             fTolerance: Math.pow(10, iExp),
         };
         try {
-            var response = await fetch(
-                "/api/settings/" + sContainerId,
-                {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(dictUpdates),
-                }
-            );
-            if (response.ok) {
-                var result = await response.json();
-                dictWorkflow.sPlotDirectory = result.sPlotDirectory;
-                dictWorkflow.sFigureType = result.sFigureType;
-                dictWorkflow.iNumberOfCores = result.iNumberOfCores;
-                if (result.fTolerance !== undefined) {
-                    dictWorkflow.fTolerance = result.fTolerance;
-                }
-                fnShowToast("Settings saved", "success");
-                fnRenderStepList();
+            var result = await VaibifyApi.fdictPut(
+                "/api/settings/" + sContainerId, dictUpdates);
+            dictWorkflow.sPlotDirectory = result.sPlotDirectory;
+            dictWorkflow.sFigureType = result.sFigureType;
+            dictWorkflow.iNumberOfCores = result.iNumberOfCores;
+            if (result.fTolerance !== undefined) {
+                dictWorkflow.fTolerance = result.fTolerance;
             }
+            fnShowToast("Settings saved", "success");
+            fnRenderStepList();
         } catch (error) {
             fnShowToast("Failed to save settings", "error");
         }
@@ -3679,14 +3700,9 @@ const PipeleyenApp = (function () {
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
         try {
-            await fetch(
+            await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iStep,
-                {
-                    method: "PUT",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify(dictUpdate),
-                }
-            );
+                dictUpdate);
         } catch (error) {
             fnShowToast("Save failed", "error");
         }
@@ -4061,14 +4077,9 @@ const PipeleyenApp = (function () {
         var dictUpdate = {};
         dictUpdate[sArray] = dictWorkflow.listSteps[iStep][sArray];
         try {
-            await fetch(
+            await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iStep,
-                {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(dictUpdate),
-                }
-            );
+                dictUpdate);
         } catch (error) {
             fnShowToast("Save failed", "error");
         }
@@ -4512,18 +4523,10 @@ const PipeleyenApp = (function () {
     }
 
     async function fnSaveDependencies(iStep, saDependencies) {
-        var dictUpdate = { saDependencies: saDependencies };
         try {
-            await fetch(
+            await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iStep,
-                {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(dictUpdate),
-                }
-            );
+                {saDependencies: saDependencies});
             fnRenderStepList();
         } catch (error) {
             fnShowToast("Failed to save dependencies", "error");
@@ -4584,26 +4587,14 @@ const PipeleyenApp = (function () {
 
     async function fnReorderStep(iFromIndex, iToIndex) {
         try {
-            var response = await fetch(
+            var result = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/reorder",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        iFromIndex: iFromIndex,
-                        iToIndex: iToIndex,
-                    }),
-                }
-            );
-            if (response.ok) {
-                var result = await response.json();
-                dictWorkflow.listSteps = result.listSteps;
-                fnRenderStepList();
-                fnShowToast(
-                    "Step reordered (references renumbered)",
-                    "success"
-                );
-            }
+                {iFromIndex: iFromIndex, iToIndex: iToIndex});
+            dictWorkflow.listSteps = result.listSteps;
+            fnRenderStepList();
+            fnShowToast(
+                "Step reordered (references renumbered)",
+                "success");
         } catch (error) {
             fnShowToast("Reorder failed", "error");
         }
@@ -4769,7 +4760,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnSetPollInterval(iSeconds) {
-        iPollIntervalMs = iSeconds * 1000;
+        VaibifyPolling.fnSetPollInterval(iSeconds);
         var elSlider = document.getElementById("gsPollInterval");
         if (elSlider) elSlider.title = iSeconds + " seconds";
         fnStartFileChangePolling();
@@ -4781,11 +4772,8 @@ const PipeleyenApp = (function () {
         if (!sContainerId) return;
         fnShowToast("Generating dependency graph...", "success");
         try {
-            var response = await fetch(
-                "/api/workflow/" + sContainerId + "/dag"
-            );
-            if (!response.ok) throw new Error("DAG failed");
-            var sSvgText = await response.text();
+            var sSvgText = await VaibifyApi.fsGetText(
+                "/api/workflow/" + sContainerId + "/dag");
             _fnRenderDagInViewer(sSvgText);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -5605,8 +5593,8 @@ const PipeleyenApp = (function () {
         if (!sContainerId) return;
         var elList = document.getElementById("listLogs");
         try {
-            var response = await fetch("/api/logs/" + sContainerId);
-            var listLogs = await response.json();
+            var listLogs = await VaibifyApi.fdictGet(
+                "/api/logs/" + sContainerId);
             if (listLogs.length === 0) {
                 elList.innerHTML =
                     '<p class="muted-text">No log files yet.</p>';
@@ -5633,11 +5621,9 @@ const PipeleyenApp = (function () {
     async function fnViewLogFile(sFilename) {
         if (!sContainerId) return;
         try {
-            var response = await fetch(
+            var sContent = await VaibifyApi.fsGetText(
                 "/api/logs/" + sContainerId + "/" +
-                encodeURIComponent(sFilename)
-            );
-            var sContent = await response.text();
+                encodeURIComponent(sFilename));
             var elViewport = document.getElementById("viewportA");
             elViewport.innerHTML =
                 '<pre class="pipeline-output">' +
@@ -5648,59 +5634,8 @@ const PipeleyenApp = (function () {
     }
 
     function fnConnectPipelineWebSocket() {
-        if (wsPipeline && (
-            wsPipeline.readyState === WebSocket.OPEN ||
-            wsPipeline.readyState === WebSocket.CONNECTING
-        )) {
-            return wsPipeline;
-        }
-        if (wsPipeline) {
-            try { wsPipeline.close(); } catch (e) { /* ignore */ }
-            wsPipeline = null;
-        }
-        var sProtocol =
-            window.location.protocol === "https:" ? "wss:" : "ws:";
-        var sUrl = sProtocol + "//" + window.location.host +
-            "/ws/pipeline/" + sContainerId +
-            "?sToken=" + encodeURIComponent(sSessionToken);
-        wsPipeline = new WebSocket(sUrl);
-        wsPipeline.onopen = function () {
-            console.log("[WS] open, flushing",
-                _listPendingPipelineActions.length, "pending actions");
-            _fnFlushPendingPipelineActions();
-        };
-        wsPipeline.onmessage = function (event) {
-            console.log("[WS] message:", event.data.substring(0, 200));
-            fnHandlePipelineEvent(JSON.parse(event.data));
-        };
-        wsPipeline.onclose = function (event) {
-            console.log("[WS] close, code:", event.code);
-            wsPipeline = null;
-            var bActionsDropped =
-                _listPendingPipelineActions.length > 0;
-            _listPendingPipelineActions.length = 0;
-            fnClearRunningStatuses();
-            fnRenderStepList();
-            if (bActionsDropped) {
-                fnShowToast(
-                    "Pipeline connection closed (code "
-                    + event.code + "). Reselect the workflow.",
-                    "error");
-            }
-        };
-        wsPipeline.onerror = function () {
-            wsPipeline = null;
-            var bActionsDropped =
-                _listPendingPipelineActions.length > 0;
-            _listPendingPipelineActions.length = 0;
-            if (bActionsDropped) {
-                fnShowToast(
-                    "Pipeline connection error. "
-                    + "Reselect the workflow.",
-                    "error");
-            }
-        };
-        return wsPipeline;
+        return VaibifyWebSocket.fnConnect(
+            sContainerId, sSessionToken);
     }
 
     function fnHandlePipelineEvent(dictEvent) {
@@ -5838,9 +5773,7 @@ const PipeleyenApp = (function () {
     }
 
     function _fnSendPipelineMessage(sAction) {
-        if (wsPipeline) {
-            wsPipeline.send(JSON.stringify({sAction: sAction}));
-        }
+        VaibifyWebSocket.fnSendDirect({sAction: sAction});
     }
 
     function fnRunInteractiveInTerminal(dictEvent) {
@@ -5930,12 +5863,10 @@ const PipeleyenApp = (function () {
     }
 
     function _fnSendInteractiveComplete(iExitCode) {
-        if (wsPipeline) {
-            wsPipeline.send(JSON.stringify({
-                sAction: "interactiveComplete",
-                iExitCode: iExitCode,
-            }));
-        }
+        VaibifyWebSocket.fnSendDirect({
+            sAction: "interactiveComplete",
+            iExitCode: iExitCode,
+        });
     }
 
     function fnApplyTestResultToCategories(
@@ -6038,10 +5969,7 @@ const PipeleyenApp = (function () {
             dictEvent.sResult === "passed" ? "success" : "error");
     }
 
-    var iPipelinePollTimer = null;
     var iPreviousOutputCount = 0;
-    var iFileChangePollTimer = null;
-    var iPollIntervalMs = 5000;
     var dictFileModTimes = {};
     var dictOutputMtimes = {};
     var dictPlotMtimes = {};
@@ -6050,10 +5978,8 @@ const PipeleyenApp = (function () {
 
     async function fnRecoverPipelineState(sId) {
         try {
-            var response = await fetch(
-                "/api/pipeline/" + sId + "/state"
-            );
-            var dictState = await response.json();
+            var dictState = await VaibifyApi.fdictGet(
+                "/api/pipeline/" + sId + "/state");
             if (!dictState || !dictState.bRunning) {
                 if (dictState && dictState.sLogPath &&
                     dictState.iExitCode >= 0) {
@@ -6070,46 +5996,32 @@ const PipeleyenApp = (function () {
     }
 
     function fnStartPipelinePolling(sId) {
-        fnStopPipelinePolling();
-        iPipelinePollTimer = setInterval(function () {
-            fnPollPipelineState(sId);
-        }, 10000);
+        VaibifyPolling.fnStartPipelinePolling(sId);
     }
 
     function fnStopPipelinePolling() {
-        if (iPipelinePollTimer) {
-            clearInterval(iPipelinePollTimer);
-            iPipelinePollTimer = null;
-        }
+        VaibifyPolling.fnStopPipelinePolling();
     }
 
-    async function fnPollPipelineState(sId) {
-        try {
-            var response = await fetch(
-                "/api/pipeline/" + sId + "/state"
-            );
-            var dictState = await response.json();
-            if (!dictState) return;
-            if (!dictState.bRunning) {
-                fnStopPipelinePolling();
-                fnApplyCompletedState(dictState);
-                if (dictState.sLogPath) {
-                    fnDisplayLogInViewer(dictState.sLogPath);
-                }
-                fnShowToast(
-                    dictState.iExitCode === 0 ?
-                        "Pipeline completed" :
-                        "Pipeline failed (exit " +
-                        dictState.iExitCode + ")",
-                    dictState.iExitCode === 0 ? "success" : "error"
-                );
-                fnStartFileChangePolling();
-                return;
+    function fnHandlePipelinePollResult(dictState) {
+        if (!dictState) return;
+        if (!dictState.bRunning) {
+            fnStopPipelinePolling();
+            fnApplyCompletedState(dictState);
+            if (dictState.sLogPath) {
+                fnDisplayLogInViewer(dictState.sLogPath);
             }
-            fnApplyRunningState(dictState, false);
-        } catch (error) {
-            /* poll failed, try again next interval */
+            fnShowToast(
+                dictState.iExitCode === 0 ?
+                    "Pipeline completed" :
+                    "Pipeline failed (exit " +
+                    dictState.iExitCode + ")",
+                dictState.iExitCode === 0 ? "success" : "error"
+            );
+            fnStartFileChangePolling();
+            return;
         }
+        fnApplyRunningState(dictState, false);
     }
 
     function fnApplyRunningState(dictState, bInitial) {
@@ -6182,18 +6094,12 @@ const PipeleyenApp = (function () {
     }
 
     function fnStartFileChangePolling() {
-        fnStopFileChangePolling();
-        fnPollFileChanges();
-        iFileChangePollTimer = setInterval(function () {
-            fnPollFileChanges();
-        }, iPollIntervalMs);
+        if (!sContainerId) return;
+        VaibifyPolling.fnStartFilePolling(sContainerId);
     }
 
     function fnStopFileChangePolling() {
-        if (iFileChangePollTimer) {
-            clearInterval(iFileChangePollTimer);
-            iFileChangePollTimer = null;
-        }
+        VaibifyPolling.fnStopFilePolling();
     }
 
     function fnProcessFileStatusResponse(dictStatus) {
@@ -6297,18 +6203,6 @@ const PipeleyenApp = (function () {
         }
     }
 
-    async function fnPollFileChanges() {
-        if (!sContainerId || !dictWorkflow) return;
-        try {
-            var response = await fetch(
-                "/api/pipeline/" + sContainerId + "/file-status"
-            );
-            var dictStatus = await response.json();
-            fnProcessFileStatusResponse(dictStatus);
-        } catch (error) {
-            /* poll failed, try again next interval */
-        }
-    }
 
     function fbApplyStepMarker(iStep, dictEntry) {
         var dictMarker = dictEntry.dictMarker || {};
@@ -6580,26 +6474,9 @@ const PipeleyenApp = (function () {
         elOutput.scrollTop = elOutput.scrollHeight;
     }
 
-    var _listPendingPipelineActions = [];
-
     function fnSendPipelineAction(dictAction) {
-        var ws = fnConnectPipelineWebSocket();
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(dictAction));
-        } else {
-            if (_listPendingPipelineActions.length < 100) {
-                _listPendingPipelineActions.push(dictAction);
-            }
-        }
-    }
-
-    function _fnFlushPendingPipelineActions() {
-        while (_listPendingPipelineActions.length > 0) {
-            var dictAction = _listPendingPipelineActions.shift();
-            if (wsPipeline && wsPipeline.readyState === WebSocket.OPEN) {
-                wsPipeline.send(JSON.stringify(dictAction));
-            }
-        }
+        fnConnectPipelineWebSocket();
+        VaibifyWebSocket.fnSend(dictAction);
     }
 
     function fnEditTestFile(iStepIndex, iCmdIdx) {
@@ -7263,18 +7140,16 @@ const PipeleyenApp = (function () {
     }
 
     function fnRunAllTests() {
-        console.log("[RUN-ALL-TESTS] sending action, wsPipeline:",
-            wsPipeline ? wsPipeline.readyState : "null");
+        console.log("[RUN-ALL-TESTS] sending action, wsState:",
+            VaibifyWebSocket.fiGetReadyState());
         fnSendPipelineAction({ sAction: "runAllTests" });
     }
 
     async function fnValidateReferences() {
         if (!sContainerId) return;
         try {
-            var response = await fetch(
-                "/api/steps/" + sContainerId + "/validate"
-            );
-            var result = await response.json();
+            var result = await VaibifyApi.fdictGet(
+                "/api/steps/" + sContainerId + "/validate");
             var listWarnings = result.listWarnings;
             if (listWarnings.length === 0) {
                 fnShowToast(
@@ -7604,22 +7479,16 @@ const PipeleyenApp = (function () {
 
     async function _fnExecuteDeleteStep(iIndex) {
         try {
-            var response = await fetch(
-                "/api/steps/" + sContainerId + "/" + iIndex,
-                { method: "DELETE" }
-            );
-            if (response.ok) {
-                var result = await response.json();
-                dictWorkflow.listSteps = result.listSteps;
-                if (iSelectedStepIndex === iIndex) iSelectedStepIndex = -1;
-                setExpandedSteps.delete(iIndex);
-                fnPruneStaleStatuses();
-                fnRenderStepList();
-                fnShowToast(
-                    "Step deleted (references renumbered)",
-                    "success"
-                );
-            }
+            var result = await VaibifyApi.fnDelete(
+                "/api/steps/" + sContainerId + "/" + iIndex);
+            dictWorkflow.listSteps = result.listSteps;
+            if (iSelectedStepIndex === iIndex) iSelectedStepIndex = -1;
+            setExpandedSteps.delete(iIndex);
+            fnPruneStaleStatuses();
+            fnRenderStepList();
+            fnShowToast(
+                "Step deleted (references renumbered)",
+                "success");
         } catch (error) {
             fnShowToast("Delete failed", "error");
         }
