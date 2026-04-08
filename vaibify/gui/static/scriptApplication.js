@@ -68,8 +68,7 @@ const PipeleyenApp = (function () {
 
     async function fnFetchSessionToken() {
         try {
-            var response = await fetch("/api/session-token");
-            var data = await response.json();
+            var data = await VaibifyApi.fdictGet("/api/session-token");
             sSessionToken = data.sToken || "";
             fnInstallAuthenticatedFetch(sSessionToken);
         } catch (e) {
@@ -160,8 +159,7 @@ const PipeleyenApp = (function () {
 
     async function fnLoadUserName() {
         try {
-            var response = await fetch("/api/user");
-            var dictUser = await response.json();
+            var dictUser = await VaibifyApi.fdictGet("/api/user");
             fnSetVerificationUserName(dictUser.sUserName);
         } catch (error) {
             fnSetVerificationUserName("User");
@@ -329,15 +327,10 @@ const PipeleyenApp = (function () {
 
     async function fnShowContainerSettings(sName) {
         try {
-            var response = await fetch(
+            var dictSettings = await VaibifyApi.fdictGet(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/settings"
             );
-            if (!response.ok) {
-                fnShowToast("Cannot load settings", "error");
-                return;
-            }
-            var dictSettings = await response.json();
             fnShowContainerSettingsModal(sName, dictSettings);
         } catch (error) {
             fnShowToast(
@@ -383,23 +376,11 @@ const PipeleyenApp = (function () {
 
     async function fnSaveContainerSettings(sName, dictSettings) {
         try {
-            var response = await fetch(
+            await VaibifyApi.fdictPost(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/settings",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(dictSettings),
-                }
+                dictSettings
             );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Save failed",
-                    "error");
-                return;
-            }
             fnShowToast(
                 "Settings saved. Stop and start to apply.",
                 "success");
@@ -413,15 +394,10 @@ const PipeleyenApp = (function () {
         var elOverlay = document.getElementById("modalBuildProgress");
         elOverlay.style.display = "flex";
         try {
-            var response = await fetch(
-                "/api/containers/" + encodeURIComponent(sName) + "/build",
-                { method: "POST" }
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/build"
             );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Build failed", "error");
-                return;
-            }
             fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
@@ -445,16 +421,11 @@ const PipeleyenApp = (function () {
     async function fnStartContainer(sName) {
         fnSetTilePending(sName);
         try {
-            var response = await fetch(
-                "/api/containers/" + encodeURIComponent(sName) + "/start",
-                { method: "POST" }
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/start"
             );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Start failed", "error");
-            } else {
-                fnShowToast("Container started", "success");
-            }
+            fnShowToast("Container started", "success");
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         } finally {
@@ -465,16 +436,11 @@ const PipeleyenApp = (function () {
     async function fnStopContainer(sName) {
         fnSetTilePending(sName);
         try {
-            var response = await fetch(
-                "/api/containers/" + encodeURIComponent(sName) + "/stop",
-                { method: "POST" }
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/stop"
             );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Stop failed", "error");
-            } else {
-                fnShowToast("Container stopped", "success");
-            }
+            fnShowToast("Container stopped", "success");
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         } finally {
@@ -499,15 +465,10 @@ const PipeleyenApp = (function () {
             "Remove '" + sName + "' from the container list?",
             async function () {
                 try {
-                    var response = await fetch(
-                        "/api/registry/" + encodeURIComponent(sName),
-                        { method: "DELETE" }
+                    await VaibifyApi.fnDelete(
+                        "/api/registry/"
+                        + encodeURIComponent(sName)
                     );
-                    if (!response.ok) {
-                        var detail = await response.json();
-                        fnShowToast(detail.detail || "Remove failed", "error");
-                        return;
-                    }
                     fnShowToast("Container removed", "success");
                 } catch (error) {
                     fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -588,13 +549,8 @@ const PipeleyenApp = (function () {
         try {
             var sUrl = "/api/host-directories";
             if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);
-            var response = await fetch(sUrl);
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Browse failed", "error");
-                return;
-            }
-            _fnApplyBrowseResult(await response.json());
+            var dictResult = await VaibifyApi.fdictGet(sUrl);
+            _fnApplyBrowseResult(dictResult);
         } catch (error) {
             elEntries.innerHTML =
                 '<p style="color:var(--color-red);">Error loading</p>';
@@ -685,18 +641,9 @@ const PipeleyenApp = (function () {
     async function fnSelectDirectory() {
         if (!_sBrowserCurrentPath) return;
         try {
-            var response = await fetch("/api/registry", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    sDirectory: _sBrowserCurrentPath,
-                }),
+            await VaibifyApi.fdictPost("/api/registry", {
+                sDirectory: _sBrowserCurrentPath,
             });
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(detail.detail || "Add failed", "error");
-                return;
-            }
             fnShowToast("Container added", "success");
             document.getElementById("modalAddContainer").style.display = "none";
         } catch (error) {
@@ -707,8 +654,7 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainerByName(sName) {
         try {
-            var response = await fetch("/api/registry");
-            var dictResult = await response.json();
+            var dictResult = await VaibifyApi.fdictGet("/api/registry");
             var listAll = dictResult.listContainers || [];
             var dictMatch = listAll.find(function (c) {
                 return c.sName === sName && c.sContainerId;
@@ -728,8 +674,8 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainer(sId) {
         try {
-            var responseWorkflows = await fetch("/api/workflows/" + sId);
-            var listWorkflows = await responseWorkflows.json();
+            var listWorkflows = await VaibifyApi.fdictGet(
+                "/api/workflows/" + sId);
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
             fnShowWorkflowPicker(_sSelectedContainerName);
@@ -798,14 +744,11 @@ const PipeleyenApp = (function () {
     async function _fnPromptForRepoDirectory(sName, sFileName) {
         var sSuggestion = "";
         try {
-            var response = await fetch(
+            var dictRepos = await VaibifyApi.fdictGet(
                 "/api/repos/" + _sSelectedContainerId
             );
-            if (response.ok) {
-                var dictRepos = await response.json();
-                if (dictRepos.listRepos && dictRepos.listRepos.length) {
-                    sSuggestion = dictRepos.listRepos[0];
-                }
+            if (dictRepos.listRepos && dictRepos.listRepos.length) {
+                sSuggestion = dictRepos.listRepos[0];
             }
         } catch (error) { /* fall through */ }
         fnShowInputModal(
@@ -820,26 +763,14 @@ const PipeleyenApp = (function () {
 
     async function _fnSubmitNewWorkflow(sName, sFileName, sRepo) {
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/workflows/" + _sSelectedContainerId + "/create",
                 {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        sWorkflowName: sName,
-                        sFileName: sFileName,
-                        sRepoDirectory: sRepo,
-                    }),
+                    sWorkflowName: sName,
+                    sFileName: sFileName,
+                    sRepoDirectory: sRepo,
                 }
             );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(
-                    detail.detail || "Create failed", "error"
-                );
-                return;
-            }
-            var dictResult = await response.json();
             fnShowToast("Workflow created", "success");
             fnSelectWorkflow(
                 _sSelectedContainerId, dictResult.sPath, dictResult.sName
@@ -896,18 +827,11 @@ const PipeleyenApp = (function () {
 
     async function fnSelectWorkflow(sId, sWorkflowPathArg, sWorkflowName) {
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPostRaw(
                 "/api/connect/" + sId +
-                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPathArg),
-                { method: "POST" }
+                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPathArg)
             );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(fsSanitizeErrorForUser(
-                    detail.detail || "Connection failed"), "error");
-                return;
-            }
-            _fnActivateWorkflow(sId, await response.json(), sWorkflowName);
+            _fnActivateWorkflow(sId, dictResult, sWorkflowName);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
@@ -915,16 +839,7 @@ const PipeleyenApp = (function () {
 
     async function fnEnterNoWorkflow(sId) {
         try {
-            var response = await fetch(
-                "/api/connect/" + sId,
-                { method: "POST" }
-            );
-            if (!response.ok) {
-                var detail = await response.json();
-                fnShowToast(fsSanitizeErrorForUser(
-                    detail.detail || "Connection failed"), "error");
-                return;
-            }
+            await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
             sContainerId = sId;
             dictWorkflow = null;
             sWorkflowPath = null;
@@ -1320,6 +1235,46 @@ const PipeleyenApp = (function () {
 
     /* --- Step List --- */
 
+    function fdictBuildRenderContext() {
+        return {
+            dictStepStatus: dictStepStatus,
+            iSelectedStepIndex: iSelectedStepIndex,
+            setExpandedSteps: setExpandedSteps,
+            setExpandedDeps: setExpandedDeps,
+            setExpandedUnitTests: setExpandedUnitTests,
+            setStepsWithData: setStepsWithData,
+            setGeneratingInFlight: setGeneratingInFlight,
+            dictPlotStandardExists: dictPlotStandardExists,
+            dictScriptModified: dictScriptModified,
+            dictOutputMtimes: dictOutputMtimes,
+            dictDiscoveredOutputs: dictDiscoveredOutputs,
+            dictWorkflow: dictWorkflow,
+            sUserName: sUserName,
+            fsComputeStepDotState: fsComputeStepDotState,
+            fsComputeStepLabel: fsComputeStepLabel,
+            fsBuildWarningBadge: fsBuildWarningBadge,
+            fsResolveTemplate: fsResolveTemplate,
+            fsJoinPath: fsJoinPath,
+            fsShortenPath: fsShortenPath,
+            fsInitialFileStatusClass: fsInitialFileStatusClass,
+            fsGetFileCategory: fsGetFileCategory,
+            fdictGetVerification: fdictGetVerification,
+            fdictGetTests: fdictGetTests,
+            fsEffectiveTestState: fsEffectiveTestState,
+            fsComputeDepsState: fsComputeDepsState,
+            fsGetCategoryState: fsGetCategoryState,
+            fsTestCategoryLabel: fsTestCategoryLabel,
+            fsVerificationStateLabel: fsVerificationStateLabel,
+            fsVerificationStateIcon: fsVerificationStateIcon,
+            flistGetStepDependencies: flistGetStepDependencies,
+            fbStepFullyPassing: fbStepFullyPassing,
+            fbAnyUpstreamModified: fbAnyUpstreamModified,
+            fsDepLabelColorClass: fsDepLabelColorClass,
+            fsetGetExpandedCategory: fsetGetExpandedCategory,
+            fdictBuildClientVariables: fdictBuildClientVariables,
+        };
+    }
+
     function fnRenderStepList() {
         var elList = document.getElementById("listSteps");
         if (!dictWorkflow || !dictWorkflow.listSteps) {
@@ -1327,6 +1282,7 @@ const PipeleyenApp = (function () {
             return;
         }
         var dictVars = fdictBuildClientVariables();
+        var dictContext = fdictBuildRenderContext();
         var sHtml = "";
         var bPreviousInteractive = null;
         dictWorkflow.listSteps.forEach(function (step, iIndex) {
@@ -1335,7 +1291,8 @@ const PipeleyenApp = (function () {
                 sHtml += fsRenderStepTypeBanner(bInteractive);
                 bPreviousInteractive = bInteractive;
             }
-            sHtml += fsRenderStepItem(step, iIndex, dictVars);
+            sHtml += VaibifyStepRenderer.fsRenderStepItem(
+                step, iIndex, dictVars, dictContext);
         });
         elList.innerHTML = sHtml;
         fnApplyTimestampVisibility();
@@ -1461,9 +1418,9 @@ const PipeleyenApp = (function () {
                 "/" + sFile + "?sWorkdir=" +
                 encodeURIComponent(sDir);
             iInflightRequests++;
-            fetch(sUrl, { method: "HEAD" }).then(
-                function (r) {
-                    if (r.ok) {
+            VaibifyApi.fbHead(sUrl).then(
+                function (bExists) {
+                    if (bExists) {
                         fnSetFileExistenceCache(sCacheKey, true);
                         iPresent++;
                         if (iPresent >= iTotal) {
@@ -1522,21 +1479,20 @@ const PipeleyenApp = (function () {
             sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
         }
         iInflightRequests++;
-        fetch(sUrl, {
-            method: "HEAD", signal: signalFileCheck,
-        }).then(function (r) {
-            if (r.ok) {
-                fnSetFileExistenceCache(sCacheKey, true);
-                fnUpdateFileStatus(el, true);
-                fnTrackDataPresence(
-                    iStep, bNecessaryData,
-                    dictDataCounts, dictDataPresent
-                );
-            } else {
-                fnSetFileExistenceCache(sCacheKey, false);
-                fnUpdateFileStatus(el, false);
-            }
-            fnFileCheckComplete();
+        VaibifyApi.fbHead(sUrl, {signal: signalFileCheck})
+            .then(function (bExists) {
+                if (bExists) {
+                    fnSetFileExistenceCache(sCacheKey, true);
+                    fnUpdateFileStatus(el, true);
+                    fnTrackDataPresence(
+                        iStep, bNecessaryData,
+                        dictDataCounts, dictDataPresent
+                    );
+                } else {
+                    fnSetFileExistenceCache(sCacheKey, false);
+                    fnUpdateFileStatus(el, false);
+                }
+                fnFileCheckComplete();
             }).catch(function (err) {
                 if (err.name === "AbortError") return;
                 fnSetFileExistenceCache(sCacheKey, false);
@@ -1737,205 +1693,6 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fsRenderStepItem(step, iIndex, dictVars) {
-        var bInteractive = step.bInteractive === true;
-        var sRunStatus = dictStepStatus[iIndex] || "";
-        var sStatusClass = "";
-        if (sRunStatus === "running" || sRunStatus === "queued") {
-            sStatusClass = sRunStatus;
-        } else if (sRunStatus === "pass") {
-            var sVerifyState = fsComputeStepDotState(step, iIndex);
-            sStatusClass = (sVerifyState === "verified")
-                ? "verified" : "partial";
-        } else if (sRunStatus === "fail") {
-            var sVerifyOnFail = fsComputeStepDotState(step, iIndex);
-            sStatusClass = (sVerifyOnFail === "partial" ||
-                sVerifyOnFail === "verified") ? "partial" : "fail";
-        } else {
-            sStatusClass = fsComputeStepDotState(step, iIndex);
-        }
-        var bEnabled = step.bEnabled !== false;
-        var bSelected = iIndex === iSelectedStepIndex;
-        var bExpanded = setExpandedSteps.has(iIndex);
-
-        var sVerifiedBadge = "";
-        if (sStatusClass === "verified") {
-            sVerifiedBadge = '<img src="/static/favicon.png" ' +
-                'class="vaib-verified-badge" alt="verified">';
-        }
-
-        var sStepNumber = fsComputeStepLabel(iIndex);
-
-        var sHtml = '<div class="step-wrapper">' +
-            '<div class="step-item' + (bSelected ? " selected" : "") +
-            (bInteractive ? " interactive" : "") +
-            '" data-index="' + iIndex + '" draggable="true">' +
-            '<input type="checkbox" class="step-checkbox"' +
-            (bEnabled ? " checked" : "") + ">" +
-            '<span class="step-number">' +
-            sStepNumber + "</span>" +
-            '<span class="step-name" title="' +
-            fnEscapeHtml(step.sName) + '">' +
-            fnEscapeHtml(step.sName) + "</span>" +
-            (dictScriptModified[iIndex] === "modified" ?
-                '<span class="script-modified-badge" ' +
-                'title="Scripts modified since last run">' +
-                '&#9998;</span>' : '') +
-            fsBuildWarningBadge(step, iIndex) +
-            (sStatusClass === "verified" ? "" :
-                '<span class="step-status ' + sStatusClass +
-                '"></span>') +
-            sVerifiedBadge +
-            '<span class="step-actions">' +
-            '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
-            "</span></div>";
-
-        if (!bExpanded) {
-            return sHtml + '</div>';
-        }
-
-        sHtml += '<div class="step-detail expanded' +
-            '" data-index="' + iIndex + '">';
-
-        /* Directory */
-        var sResolvedDir = fsResolveTemplate(step.sDirectory, dictVars);
-        sHtml += '<div class="detail-label">Directory</div>';
-        sHtml += '<div class="detail-field" data-view="field">' +
-            fnEscapeHtml(sResolvedDir) + "</div>";
-        if (!bInteractive) {
-            sHtml += '<div class="detail-label plot-only-row">' +
-                '<label class="plot-only-toggle">' +
-                '<input type="checkbox" class="plot-only-checkbox"' +
-                ' data-step="' + iIndex + '"' +
-                (step.bPlotOnly !== false ? " checked" : "") + '>' +
-                ' Plot only (skip data analysis)</label></div>';
-        }
-
-        if (bInteractive) {
-            var bHasPlots = (step.saPlotCommands || []).length > 0;
-            sHtml += '<div class="interactive-run-section">' +
-                '<button class="btn btn-interactive-run" ' +
-                'data-index="' + iIndex + '">' +
-                '&#9654; Run in Terminal</button>';
-            if (bHasPlots) {
-                sHtml += ' <button class="btn btn-interactive-plots" ' +
-                    'data-index="' + iIndex + '">' +
-                    '&#9654; Run Plots</button>';
-            }
-            sHtml += '<div class="detail-note">This step requires ' +
-                'human judgment. It will run in the terminal ' +
-                'with X11 display forwarding.</div></div>';
-        }
-
-        /* Data Analysis Commands */
-        sHtml += fsRenderSectionLabel(
-            "Data Analysis Commands", iIndex, "saDataCommands"
-        );
-        if (step.saDataCommands) {
-            step.saDataCommands.forEach(function (sCmd, iCmdIdx) {
-                sHtml += fsRenderDetailItem(
-                    sCmd, dictVars, "command", "saDataCommands",
-                    iIndex, iCmdIdx
-                );
-            });
-        }
-        if ((step.saDataCommands || []).length > 0) {
-            sHtml += '<button class="btn btn-run-data" ' +
-                'data-step="' + iIndex +
-                '">Run Data Analysis</button>';
-        }
-
-        /* Data Analysis Timing */
-        if ((step.saDataCommands || []).length > 0) {
-            sHtml += '<div class="timestamp-field">' +
-                fsRenderRunStats(step) +
-                fsRenderOutputMtime(iIndex) + '</div>';
-        }
-
-        /* Data Files */
-        sHtml += fsRenderSectionLabel(
-            "Data Files", iIndex, "saDataFiles"
-        );
-        if (step.saDataFiles) {
-            step.saDataFiles.forEach(function (sFile, iFileIdx) {
-                sHtml += fsRenderDetailItem(
-                    sFile, dictVars, "output", "saDataFiles",
-                    iIndex, iFileIdx, sResolvedDir
-                );
-            });
-        }
-
-        /* Plot Commands */
-        sHtml += fsRenderSectionLabel(
-            "Plot Commands", iIndex, "saPlotCommands"
-        );
-        if (step.saPlotCommands) {
-            step.saPlotCommands.forEach(function (sCmd, iCmdIdx) {
-                sHtml += fsRenderDetailItem(
-                    sCmd, dictVars, "command", "saPlotCommands",
-                    iIndex, iCmdIdx
-                );
-            });
-        }
-        if ((step.saPlotCommands || []).length > 0) {
-            sHtml += '<button class="btn btn-run-plots" ' +
-                'data-step="' + iIndex +
-                '">Run Plots</button>';
-        }
-
-        /* Plot Files */
-        sHtml += fsRenderSectionLabel(
-            "Plot Files", iIndex, "saPlotFiles"
-        );
-        if (step.saPlotFiles) {
-            step.saPlotFiles.forEach(function (sFile, iFileIdx) {
-                sHtml += fsRenderDetailItem(
-                    sFile, dictVars, "output", "saPlotFiles",
-                    iIndex, iFileIdx, sResolvedDir
-                );
-            });
-        }
-
-        if ((step.saPlotFiles || []).length > 0) {
-            sHtml += fsRenderPlotStandardButtons(iIndex);
-        }
-
-        /* Plot Timing */
-        if ((step.saPlotFiles || []).length > 0) {
-            var dictPlotStats = step.dictRunStats || {};
-            var sPlotMtime = (step.saDataCommands || []).length === 0 ?
-                fsRenderOutputMtime(iIndex) : "";
-            sHtml += '<div class="timestamp-field">' +
-                '<div class="run-stats">' +
-                '<span class="run-stat">Plots created: ' +
-                (dictPlotStats.sLastRun || "—") +
-                '</span></div>' + sPlotMtime + '</div>';
-        }
-
-        /* Verification */
-        sHtml += fsRenderVerificationBlock(step, iIndex);
-
-        /* Discovered outputs */
-        sHtml += fsRenderDiscoveredOutputs(iIndex);
-
-        /* Run Step button */
-        sHtml += fsRenderRunStepButton(step, iIndex);
-
-        sHtml += "</div>";
-        sHtml += "</div>";
-        return sHtml;
-    }
-
-    function fsRenderRunStepButton(step, iIndex) {
-        if (step.bInteractive) return "";
-        var bHasDataCmds = (step.saDataCommands || []).length > 0;
-        var bHasPlotCmds = (step.saPlotCommands || []).length > 0;
-        if (!bHasDataCmds && !bHasPlotCmds) return "";
-        return '<button class="btn btn-primary btn-run-step" ' +
-            'data-step="' + iIndex +
-            '">&#9654; Run Step</button>';
-    }
-
     function fdictGetVerification(step) {
         return step.dictVerification || {
             sUnitTest: "untested", sUser: "untested",
@@ -2125,200 +1882,6 @@ const PipeleyenApp = (function () {
         return "passed";
     }
 
-    function fsRenderVerificationBlock(step, iIndex) {
-        var bInteractive = step.bInteractive === true;
-        var bPlotOnly = (step.saDataCommands || []).length === 0;
-        var dictVerify = fdictGetVerification(step);
-        var sHtml = '<div class="detail-label">Verification</div>';
-        sHtml += '<div class="verification-block" data-step="' +
-            iIndex + '">';
-        var listModified = dictVerify.listModifiedFiles || [];
-        if (listModified.length > 0) {
-            var listNames = listModified.map(function (sPath) {
-                return sPath.split("/").pop();
-            });
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Modified: ' +
-                fnEscapeHtml(listNames.join(", ")) + '</div>';
-        }
-        if (fbAnyUpstreamModified(iIndex)) {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Upstream step outputs changed</div>';
-        }
-        if (!bInteractive && !bPlotOnly &&
-            fsEffectiveTestState(step) === "failed") {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Unit tests failing</div>';
-        }
-        if (fsComputeDepsState(iIndex) === "failed") {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Dependencies failing</div>';
-        }
-        if (!bInteractive && !bPlotOnly) {
-            var sUnitState = fsEffectiveTestState(step);
-            sHtml += fsRenderVerificationRow(
-                "Unit Tests", sUnitState, "unitTest", iIndex
-            );
-            sHtml += '<div class="timestamp-field">' +
-                fsRenderVerificationTimestamp(
-                    "Last run", dictVerify.sLastTestRun) +
-                '</div>';
-            if (setGeneratingInFlight.has(iIndex)) {
-                sHtml += '<div class="unit-tests-expanded">' +
-                    '<button class="btn-generate-test" disabled>' +
-                    '<span class="spinner"></span> ' +
-                    'Building Tests\u2026</button></div>';
-            } else if (setExpandedUnitTests.has(iIndex)) {
-                sHtml += fsRenderUnitTestsExpanded(step, iIndex);
-            }
-        }
-        var bHasDeps = flistGetStepDependencies(iIndex).length > 0;
-        if (bHasDeps) {
-            var sDepsState = fsComputeDepsState(iIndex);
-            sHtml += fsRenderVerificationRow(
-                "Dependencies", sDepsState, "deps", iIndex
-            );
-            sHtml += '<div class="timestamp-field">' +
-                fsRenderVerificationTimestamp(
-                    "Last checked", dictVerify.sLastDepsCheck) +
-                '</div>';
-            if (setExpandedDeps.has(iIndex)) {
-                sHtml += fsRenderDepsExpanded(iIndex);
-            }
-        }
-        sHtml += fsRenderVerificationRow(
-            sUserName, dictVerify.sUser, "user", iIndex
-        );
-        sHtml += '<div class="timestamp-field">' +
-            fsRenderVerificationTimestamp(
-                "Last updated", dictVerify.sLastUserUpdate) +
-            '</div>';
-        sHtml += '</div>';
-        return sHtml;
-    }
-
-    function fsRenderUnitTestsExpanded(step, iIndex) {
-        var sHtml = '<div class="unit-tests-expanded">';
-        var listCategories = [
-            "qualitative", "quantitative", "integrity"];
-        var bAnyTests = false;
-        for (var i = 0; i < listCategories.length; i++) {
-            var sCategory = listCategories[i];
-            var sCatState = fsGetCategoryState(step, sCategory);
-            var sLabel = fsTestCategoryLabel(sCategory);
-            sHtml += fsRenderSubTestRow(
-                sLabel, sCatState, sCategory, iIndex);
-            var setExp = fsetGetExpandedCategory(sCategory);
-            if (setExp.has(iIndex)) {
-                sHtml += fsRenderSubTestExpanded(
-                    step, iIndex, sCategory);
-            }
-            var dictTests = fdictGetTests(step);
-            var sCatKey = "dict" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
-            if (((dictTests[sCatKey] || {}).saCommands ||
-                []).length > 0) {
-                bAnyTests = true;
-            }
-        }
-        if (bAnyTests) {
-            sHtml += '<button class="btn btn-run-all-tests" ' +
-                'data-step="' + iIndex +
-                '">Run All Tests</button>';
-        }
-        sHtml += fsRenderGenerateButton(step, iIndex);
-        sHtml += '</div>';
-        return sHtml;
-    }
-
-    function fsRenderSubTestRow(
-        sLabel, sState, sCategory, iIndex
-    ) {
-        var setExp = fsetGetExpandedCategory(sCategory);
-        var bExpanded = setExp.has(iIndex);
-        var sTriangle = '<span class="expand-triangle">' +
-            (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
-        return '<div class="sub-test-row expandable" data-step="' +
-            iIndex + '" data-approver="' + sCategory + '">' +
-            '<span class="verification-label">' +
-            sTriangle + fnEscapeHtml(sLabel) + '</span>' +
-            '<span class="verification-badge state-' +
-            sState + '">' +
-            fsVerificationStateIcon(sState) + ' ' +
-            fsVerificationStateLabel(sState) +
-            '</span></div>';
-    }
-
-    function fsRenderSubTestExpanded(step, iIndex, sCategory) {
-        var dictTests = fdictGetTests(step);
-        var sCatKey = "dict" +
-            sCategory.charAt(0).toUpperCase() +
-            sCategory.slice(1);
-        var dictCat = dictTests[sCatKey] || {};
-        var sStandardsPath = dictCat.sStandardsPath || "";
-        var sHtml = '<div class="sub-test-expanded sub-test-column">';
-        if (sStandardsPath) {
-            sHtml += '<div><span class="test-standards-link" ' +
-                'data-step="' + iIndex +
-                '" data-category="' + sCategory +
-                '" data-path="' +
-                fnEscapeHtml(sStandardsPath) +
-                '">Standards</span></div>';
-        }
-        var sLastOutput = dictCat.sLastOutput || "";
-        if (sLastOutput) {
-            sHtml += '<div><span class="test-log-link" ' +
-                'data-step="' + iIndex +
-                '" data-category="' + sCategory +
-                '" data-log="' +
-                fnEscapeHtml(sCategory) +
-                '">Log</span></div>';
-        }
-        if ((dictCat.saCommands || []).length > 0) {
-            sHtml += '<div><button class="btn btn-run-category" ' +
-                'data-step="' + iIndex +
-                '" data-category="' + sCategory +
-                '">Run</button></div>';
-        }
-        sHtml += '</div>';
-        return sHtml;
-    }
-
-    function fsRenderDepsExpanded(iIndex) {
-        var listDeps = flistGetStepDependencies(iIndex);
-        var sHtml = '<div class="deps-expanded">';
-        var dictVisited = {};
-        for (var i = 0; i < listDeps.length; i++) {
-            var iDep = listDeps[i];
-            if (iDep === iIndex) continue;
-            var depStep = dictWorkflow.listSteps[iDep];
-            if (!depStep) continue;
-            var bPassing = fbStepFullyPassing(iDep, dictVisited);
-            var sState = bPassing ? "passed" : "failed";
-            var sColorClass = fsDepLabelColorClass(
-                iDep, bPassing);
-            var sNum = fsComputeStepLabel(iDep);
-            sHtml += '<div class="dep-item">' +
-                '<span class="dep-label ' + sColorClass +
-                '">' + sNum + ' ' +
-                fnEscapeHtml(depStep.sName) + '</span>' +
-                '<span class="verification-badge state-' +
-                sState + '">' +
-                fsVerificationStateIcon(sState) + ' ' +
-                fsVerificationStateLabel(sState) +
-                '</span></div>';
-        }
-        sHtml += '<button class="btn btn-small btn-add-deps" ' +
-            'data-step="' + iIndex + '" ' +
-            'style="margin-top:6px">Update Dependencies</button>';
-        sHtml += ' <button class="btn btn-small btn-show-deps" ' +
-            'data-step="' + iIndex + '" ' +
-            'style="margin-top:6px">Show Dependencies</button>';
-        sHtml += '</div>';
-        return sHtml;
-    }
-
     function fsDepLabelColorClass(iDep, bPassing) {
         if (document.body.classList.contains("all-verified")) {
             return "";
@@ -2342,77 +1905,6 @@ const PipeleyenApp = (function () {
         if (bAllPassed) return "passed";
         if (bAnyPassed) return "partial";
         return "failed";
-    }
-
-    function fsRenderVerificationRow(
-        sLabel, sState, sApprover, iIndex
-    ) {
-        var sClickClass = sApprover === "user" ? " clickable" :
-            " expandable";
-        var sTriangle = "";
-        if (sApprover === "unitTest") {
-            var bExpanded = setExpandedUnitTests.has(iIndex);
-            sTriangle = '<span class="expand-triangle">' +
-                (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
-        }
-        if (sApprover === "deps") {
-            var bDepsExpanded = setExpandedDeps.has(iIndex);
-            sTriangle = '<span class="expand-triangle">' +
-                (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
-        }
-        return '<div class="verification-row' + sClickClass +
-            '" data-step="' + iIndex +
-            '" data-approver="' + sApprover + '">' +
-            '<span class="verification-label">' +
-            sTriangle + fnEscapeHtml(sLabel) + '</span>' +
-            '<span class="verification-badge state-' + sState + '">' +
-            fsVerificationStateIcon(sState) + ' ' +
-            fsVerificationStateLabel(sState) + '</span></div>';
-    }
-
-
-    function fsRenderGenerateButton(step, iIndex) {
-        if ((step.saDataCommands || []).length === 0) return "";
-        if (setGeneratingInFlight.has(iIndex)) {
-            return '<button class="btn-generate-test" data-step="' +
-                iIndex + '" id="btnGenTest' + iIndex +
-                '" disabled>' +
-                '<span class="spinner"></span> Building Tests' +
-                '</button>';
-        }
-        var bDisabled = !setStepsWithData.has(iIndex);
-        var sLabel = bDisabled ? "No Data for Tests" : "Generate Tests";
-        return '<button class="btn-generate-test" data-step="' +
-            iIndex + '"' +
-            (bDisabled ? " disabled" : "") +
-            ' id="btnGenTest' + iIndex + '">' +
-            sLabel + '</button>';
-    }
-
-    function fsRenderTestSection(sLabel, listItems, iIndex, sType) {
-        var sHtml = '<div class="test-section-label">' + sLabel +
-            ' <button class="section-add test-add" data-step="' +
-            iIndex + '" data-test-type="' + sType +
-            '" title="Add">+</button></div>';
-        if (!listItems || listItems.length === 0) return sHtml;
-        for (var i = 0; i < listItems.length; i++) {
-            var sCls = sType === "file" ?
-                "test-file-item" : "test-command-item";
-            sHtml += '<div class="' + sCls + '" data-step="' +
-                iIndex + '" data-idx="' + i + '">' +
-                '<span class="test-item-text">' +
-                fnEscapeHtml(fsResolveTemplate(listItems[i],
-                    fdictBuildClientVariables())) + '</span>' +
-                '<span class="test-item-actions">' +
-                '<button class="btn-icon test-edit-cmd" ' +
-                'data-step="' + iIndex + '" data-idx="' + i +
-                '" title="Edit test file">&#9998;</button>' +
-                '<button class="btn-icon test-delete-cmd" ' +
-                'data-step="' + iIndex + '" data-idx="' + i +
-                '" title="Delete test">&times;</button>' +
-                '</span></div>';
-        }
-        return sHtml;
     }
 
     var sUserName = "User";
@@ -2456,41 +1948,6 @@ const PipeleyenApp = (function () {
         return "fail";
     }
 
-    function fsRenderRunStats(step) {
-        var dictStats = step.dictRunStats || {};
-        var sLastRun = dictStats.sLastRun || "";
-        var sWallClock = dictStats.fWallClock !== undefined ?
-            fsFormatDuration(dictStats.fWallClock) : "";
-        var sCpuTime = dictStats.fCpuTime !== undefined ?
-            fsFormatDuration(dictStats.fCpuTime) : "";
-        return '<div class="run-stats">' +
-            '<span class="run-stat">Last run: ' +
-            (sLastRun || "—") + '</span>' +
-            '<span class="run-stat">Wall-clock: ' +
-            (sWallClock || "—") + '</span>' +
-            '<span class="run-stat">CPU time: ' +
-            (sCpuTime || "—") + '</span></div>';
-    }
-
-    function fsRenderOutputMtime(iIndex) {
-        var sOutputMtime = dictOutputMtimes[String(iIndex)];
-        if (!sOutputMtime) return "";
-        return '<div class="run-stats"><span class="run-stat">' +
-            'Outputs modified: ' +
-            fsFormatUnixTimestamp(sOutputMtime) +
-            '</span></div>';
-    }
-
-    function fsFormatDuration(fSeconds) {
-        if (fSeconds < 60) return fSeconds.toFixed(1) + "s";
-        var iMinutes = Math.floor(fSeconds / 60);
-        var fRemainder = (fSeconds % 60).toFixed(0);
-        if (iMinutes < 60) return iMinutes + "m " + fRemainder + "s";
-        var iHours = Math.floor(iMinutes / 60);
-        iMinutes = iMinutes % 60;
-        return iHours + "h " + iMinutes + "m";
-    }
-
     function fiParseUtcTimestamp(sTimestamp) {
         if (!sTimestamp) return 0;
         var sClean = sTimestamp.replace(" UTC", "").trim();
@@ -2508,127 +1965,6 @@ const PipeleyenApp = (function () {
             sPad(d.getUTCHours()) + ":" +
             sPad(d.getUTCMinutes()) + ":" +
             sPad(d.getUTCSeconds()) + " UTC";
-    }
-
-    function fsFormatUnixTimestamp(sEpoch) {
-        var d = new Date(parseInt(sEpoch, 10) * 1000);
-        var sPad = function (i) { return String(i).padStart(2, "0"); };
-        return d.getUTCFullYear() + "-" +
-            sPad(d.getUTCMonth() + 1) + "-" +
-            sPad(d.getUTCDate()) + " " +
-            sPad(d.getUTCHours()) + ":" +
-            sPad(d.getUTCMinutes()) + " UTC";
-    }
-
-    function fsRenderVerificationTimestamp(sLabel, sTimestamp) {
-        return '<div class="verification-timestamp">' +
-            fnEscapeHtml(sLabel) + ": " +
-            fnEscapeHtml(sTimestamp || "\u2014") + '</div>';
-    }
-
-    function fsRenderSectionLabel(sLabel, iStepIdx, sArrayKey) {
-        return '<div class="detail-label">' +
-            '<span>' + sLabel + '</span>' +
-            '<button class="section-add" data-step="' + iStepIdx +
-            '" data-array="' + sArrayKey +
-            '" title="Add item">+</button>' +
-            '</div>';
-    }
-
-    function fbIsInvalidOutputPath(sRaw, sResolved, sWorkdir) {
-        if (!sResolved || sResolved.length === 0) return true;
-        if (sRaw.includes("{")) return false;
-        if (sResolved.startsWith("/")) return false;
-        if (sWorkdir) return false;
-        return true;
-    }
-
-    function fsRenderDetailItem(
-        sRaw, dictVars, sType, sArrayKey, iStepIdx, iItemIdx,
-        sWorkdir
-    ) {
-        var sResolved = fsResolveTemplate(sRaw, dictVars);
-        if (sType === "output" && sWorkdir &&
-            !sResolved.startsWith("/")) {
-            sResolved = fsJoinPath(sWorkdir, sResolved);
-        }
-        var sFileClass = "";
-        var bInvalid = false;
-        if (sType === "output") {
-            if (fbIsInvalidOutputPath(sRaw, sResolved, sWorkdir)) {
-                sFileClass = " file-invalid";
-                bInvalid = true;
-            }
-        }
-
-        var sHtml = '<div class="detail-item ' + sType +
-            '" data-step="' + iStepIdx +
-            '" data-array="' + sArrayKey +
-            '" data-idx="' + iItemIdx +
-            '" data-raw="' + fnEscapeHtml(sRaw) +
-            '" data-resolved="' + fnEscapeHtml(sResolved) +
-            '" data-workdir="' + fnEscapeHtml(sWorkdir || "") +
-            '" draggable="true">';
-
-        if (sType === "output" && !bInvalid) {
-            sFileClass = " " + fsInitialFileStatusClass(
-                iStepIdx, sArrayKey, sRaw
-            );
-        }
-        if ((sArrayKey === "saPlotFiles" ||
-            sArrayKey === "saDataFiles") && !bInvalid) {
-            var sCategory = fsGetFileCategory(
-                iStepIdx, sRaw, sArrayKey
-            );
-            var bArchive = sCategory === "archive";
-            var sFileLabel = sArrayKey === "saPlotFiles" ?
-                "plot" : "data file";
-            sHtml += '<span class="archive-star ' +
-                (bArchive ? "active" : "inactive") +
-                '" data-step="' + iStepIdx +
-                '" data-file="' + fnEscapeHtml(sRaw) +
-                '" data-array="' + sArrayKey +
-                '" title="' +
-                (bArchive ?
-                    "Archive " + sFileLabel :
-                    "Supporting " + sFileLabel) +
-                '">' + (bArchive ? "\u2605" : "\u2606") +
-                '</span>';
-        }
-        var sDisplayPath = fsShortenPath(sResolved, sWorkdir);
-        if (bInvalid) {
-            sHtml += '<div class="detail-text file-invalid' +
-                '" title="Output path is not absolute">' +
-                '<em>' + fnEscapeHtml(sResolved) + '</em></div>';
-        } else {
-            sHtml += '<div class="detail-text' + sFileClass +
-                '" title="' + fnEscapeHtml(sResolved) + '">' +
-                fnEscapeHtml(sDisplayPath) + '</div>';
-        }
-
-        sHtml += '<div class="detail-actions">';
-        if (sType === "output") {
-            sHtml += '<button class="action-download" ' +
-                'title="Download to host">' +
-                '&#8615;</button>';
-        }
-        sHtml += '<button class="action-edit" title="Edit">&#9998;</button>' +
-            '<button class="action-copy" title="Copy">&#9112;</button>' +
-            '<button class="action-delete" title="Delete">&#10005;</button>' +
-            '</div>';
-
-        sHtml += '</div>';
-        return sHtml;
-    }
-
-    function fsRenderPlotStandardButtons(iStepIndex) {
-        return '<div class="plot-standard-button-row">' +
-            '<button class="btn btn-make-standard" ' +
-            'data-step="' + iStepIndex +
-            '">Make Standard</button>' +
-            '<button class="btn btn-compare-standard" ' +
-            'data-step="' + iStepIndex +
-            '">Compare to Standard</button></div>';
     }
 
     function fsFirstPlotBasename(iStepIndex) {
@@ -3121,13 +2457,9 @@ const PipeleyenApp = (function () {
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
         dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
         try {
-            await fetch(
+            await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iStep,
-                {
-                    method: "PUT",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({bPlotOnly: bPlotOnly}),
-                }
+                {bPlotOnly: bPlotOnly}
             );
         } catch (error) {
             fnShowToast("Save failed", "error");
@@ -3171,14 +2503,11 @@ const PipeleyenApp = (function () {
         setGeneratingInFlight.add(iStep);
         fnRenderStepList();
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generate-test",
-                { method: "POST",
-                  headers: {"Content-Type": "application/json"},
-                  body: JSON.stringify({}) }
+                {}
             );
-            var dictResult = await response.json();
             setGeneratingInFlight.delete(iStep);
             if (dictResult.bNeedsFallback) {
                 fnRenderStepList();
@@ -3241,20 +2570,12 @@ const PipeleyenApp = (function () {
         setGeneratingInFlight.add(iStep);
         fnRenderStepList();
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generate-test",
-                { method: "POST",
-                  headers: {"Content-Type": "application/json"},
-                  body: JSON.stringify({bForceOverwrite: true}) }
+                {bForceOverwrite: true}
             );
-            var dictResult = await response.json();
             setGeneratingInFlight.delete(iStep);
-            if (!response.ok) {
-                fnRenderStepList();
-                fnShowToast("Test generation failed", "error");
-                return;
-            }
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
             setGeneratingInFlight.delete(iStep);
@@ -3277,27 +2598,6 @@ const PipeleyenApp = (function () {
             ": " + dictEvent.listDiscovered.length +
             " new output(s) discovered", "success"
         );
-    }
-
-    function fsRenderDiscoveredOutputs(iStep) {
-        var listDiscovered = dictDiscoveredOutputs[iStep];
-        if (!listDiscovered || listDiscovered.length === 0) return "";
-        var sHtml = '<div class="detail-label discovered-label">' +
-            'Discovered Outputs</div>';
-        for (var i = 0; i < listDiscovered.length; i++) {
-            var sFile = listDiscovered[i].sFilePath;
-            sHtml += '<div class="discovered-item" data-step="' +
-                iStep + '" data-file="' +
-                fnEscapeHtml(sFile) + '">' +
-                '<span class="discovered-file">[+] ' +
-                fnEscapeHtml(sFile) + '</span>' +
-                '<button class="btn-discovered" ' +
-                'data-target="saDataFiles">Add as data</button>' +
-                '<button class="btn-discovered" ' +
-                'data-target="saPlotFiles">Add as plot</button>' +
-                '</div>';
-        }
-        return sHtml;
     }
 
     async function fnAddDiscoveredOutput(
@@ -3412,10 +2712,9 @@ const PipeleyenApp = (function () {
     async function fnCancelGeneratedTest(iStep) {
         setGeneratedTestsPending.delete(iStep);
         try {
-            await fetch(
+            await VaibifyApi.fnDelete(
                 "/api/steps/" + sContainerId + "/" + iStep +
-                "/generated-test",
-                { method: "DELETE" }
+                "/generated-test"
             );
         } catch (error) {
             fnShowToast("Delete failed", "error");
@@ -3436,19 +2735,11 @@ const PipeleyenApp = (function () {
 
     async function fnRunCategoryTests(iStepIndex, sCategory) {
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStepIndex +
                 "/run-test-category",
-                { method: "POST",
-                  headers: {"Content-Type": "application/json"},
-                  body: JSON.stringify({sCategory: sCategory}) }
+                {sCategory: sCategory}
             );
-            var dictResult = await response.json();
-            if (!response.ok) {
-                fnShowErrorModal("Test run failed: " +
-                    (dictResult.detail || "Unknown error"));
-                return;
-            }
             fnUpdateCategoryTestState(
                 iStepIndex, sCategory, dictResult);
         } catch (error) {
@@ -3727,15 +3018,9 @@ const PipeleyenApp = (function () {
         dictStep.dictVerification = dictVerify;
         dictUserVerifiedAt[iStep] = Date.now();
         try {
-            await fetch(
+            await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iStep,
-                {
-                    method: "PUT",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        dictVerification: dictVerify,
-                    }),
-                }
+                {dictVerification: dictVerify}
             );
         } catch (error) {
             fnShowToast("Save failed", "error");
@@ -4095,18 +3380,11 @@ const PipeleyenApp = (function () {
             return;
         }
         try {
-            var responseHttp = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/scan-dependencies",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        saDataCommands: saCommands,
-                    }),
-                }
+                {saDataCommands: saCommands}
             );
-            var dictResult = await responseHttp.json();
             dictStep.dictVerification = dictStep.dictVerification ||
                 {sUnitTest: "untested", sUser: "untested"};
             dictStep.dictVerification.sLastDepsCheck =
@@ -4339,8 +3617,7 @@ const PipeleyenApp = (function () {
             'Loading...</div>';
         try {
             var sUrl = "/api/files/" + sContainerId + sPath;
-            var resp = await fetch(sUrl);
-            var listEntries = await resp.json();
+            var listEntries = await VaibifyApi.fdictGet(sUrl);
             elBrowser.innerHTML = fsRenderBreadcrumb(sPath) +
                 '<div class="dep-browser-list">' +
                 fsRenderBrowserEntries(listEntries) + '</div>';
@@ -4551,12 +3828,10 @@ const PipeleyenApp = (function () {
         var step = dictWorkflow.listSteps[iStepIndex];
         if (!step || (step.saPlotFiles || []).length === 0) return;
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictGet(
                 "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/plot-standards",
-                {headers: {"Content-Type": "application/json"}}
+                iStepIndex + "/plot-standards"
             );
-            var dictResult = await response.json();
             var dictStandards = dictResult.dictStandards || {};
             for (var sBasename in dictStandards) {
                 var sKey = iStepIndex + ":" + sBasename;
@@ -4571,13 +3846,9 @@ const PipeleyenApp = (function () {
 
     async function fnToggleStepEnabled(iIndex, bEnabled) {
         try {
-            await fetch(
+            await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iIndex,
-                {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ bEnabled: bEnabled }),
-                }
+                {bEnabled: bEnabled}
             );
             dictWorkflow.listSteps[iIndex].bEnabled = bEnabled;
         } catch (error) {
@@ -4836,10 +4107,9 @@ const PipeleyenApp = (function () {
 
     async function fnOpenPushModal(sService) {
         if (!sContainerId) return;
-        var response = await fetch(
+        var dictResult = await VaibifyApi.fdictGet(
             "/api/sync/" + sContainerId + "/check/" + sService
         );
-        var dictResult = await response.json();
         if (!dictResult.bConnected) {
             fnShowConnectionSetup(sService);
             return;
@@ -4849,10 +4119,9 @@ const PipeleyenApp = (function () {
     }
 
     async function fnPopulatePushModal(sService) {
-        var response = await fetch(
+        var listFiles = await VaibifyApi.fdictGet(
             "/api/sync/" + sContainerId + "/files"
         );
-        var listFiles = await response.json();
         var dictNames = {
             overleaf: "Overleaf", zenodo: "Zenodo",
             github: "GitHub",
@@ -4901,18 +4170,11 @@ const PipeleyenApp = (function () {
         var sEndpoint = _fsServiceEndpoint(sPushService);
         var sAction = _fsServiceAction(sPushService);
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 sEndpoint + sContainerId + "/" + sAction,
-                {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        listFilePaths: listPaths,
-                    }),
-                }
+                {listFilePaths: listPaths}
             );
-            var dictResult = await response.json();
-            if (!response.ok || !dictResult.bSuccess) {
+            if (!dictResult.bSuccess) {
                 fnShowSyncError(dictResult, sPushService);
                 return;
             }
@@ -5061,15 +4323,10 @@ const PipeleyenApp = (function () {
         if (sProjectId) dictBody.sProjectId = sProjectId;
         if (sToken) dictBody.sToken = sToken;
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/sync/" + sContainerId + "/setup",
-                {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify(dictBody),
-                }
+                dictBody
             );
-            var dictResult = await response.json();
             elModal.style.display = "none";
             if (dictResult.bConnected) {
                 fnShowToast("Connected!", "success");
@@ -5128,8 +4385,8 @@ const PipeleyenApp = (function () {
         }
         if (!sContainerId) return;
         try {
-            var response = await fetch("/api/workflows/" + sContainerId);
-            var listWorkflows = await response.json();
+            var listWorkflows = await VaibifyApi.fdictGet(
+                "/api/workflows/" + sContainerId);
             fnRenderWorkflowDropdown(listWorkflows);
             elDropdown.classList.add("active");
         } catch (error) {
@@ -5200,10 +4457,9 @@ const PipeleyenApp = (function () {
     async function fnSaveCurrentWorkflow() {
         if (!sContainerId || !dictWorkflow || !sWorkflowPath) return;
         try {
-            await fetch(
+            await VaibifyApi.fdictPostRaw(
                 "/api/connect/" + sContainerId +
-                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPath),
-                { method: "POST" }
+                "?sWorkflowPath=" + encodeURIComponent(sWorkflowPath)
             );
         } catch (error) {
             fnShowToast("Could not save workflow", "error");
@@ -5400,9 +4656,8 @@ const PipeleyenApp = (function () {
 
     async function _fnFetchAndRenderTemplates(elContent) {
         try {
-            var response = await fetch("/api/setup/templates");
-            if (!response.ok) throw new Error("Fetch failed");
-            var dictResult = await response.json();
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/setup/templates");
             _fnBuildTemplateCards(elContent, dictResult.listTemplates);
         } catch (error) {
             elContent.innerHTML =
@@ -5566,23 +4821,14 @@ const PipeleyenApp = (function () {
         elButton.disabled = true;
         elButton.textContent = "Creating...";
         try {
-            var response = await fetch("/api/projects/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(_dictWizardData),
-            });
-            if (!response.ok) {
-                var dictError = await response.json();
-                fnShowToast(
-                    dictError.detail || "Creation failed", "error"
-                );
-                return;
-            }
+            await VaibifyApi.fdictPost(
+                "/api/projects/create", _dictWizardData);
             _fnCloseWizard();
             fnShowToast("Project created successfully.");
             fnLoadContainers();
         } catch (error) {
-            fnShowToast("Network error creating project.", "error");
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
         } finally {
             elButton.disabled = false;
             elButton.textContent = "Create";
@@ -5921,10 +5167,9 @@ const PipeleyenApp = (function () {
     function fnAcknowledgeStepCompletion(iStepIndex) {
         if (!sContainerId) return;
         dictAcknowledgedAt[iStepIndex] = Date.now();
-        fetch(
+        VaibifyApi.fdictPostRaw(
             "/api/pipeline/" + sContainerId +
-            "/acknowledge-step/" + iStepIndex,
-            { method: "POST" }
+            "/acknowledge-step/" + iStepIndex
         ).then(function () {
             fnClearOutputModified(iStepIndex);
         }).catch(function () { /* best effort */ });
@@ -6420,22 +5665,11 @@ const PipeleyenApp = (function () {
     async function fnGenerateTestsWithApi(iStep, sApiKey) {
         fnShowToast("Generating tests via API...", "success");
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generate-test",
-                { method: "POST",
-                  headers: {"Content-Type": "application/json"},
-                  body: JSON.stringify({
-                      bUseApi: true, sApiKey: sApiKey,
-                  }) }
+                {bUseApi: true, sApiKey: sApiKey}
             );
-            var dictResult = await response.json();
-            if (!response.ok) {
-                fnShowToast(
-                    dictResult.detail || "Generation failed", "error"
-                );
-                return;
-            }
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -6541,12 +5775,10 @@ const PipeleyenApp = (function () {
         fnShowToast("Running tests for Step " +
             (iStepIndex + 1) + "...", "success");
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPostRaw(
                 "/api/steps/" + sContainerId + "/" +
-                iStepIndex + "/run-tests",
-                { method: "POST" }
+                iStepIndex + "/run-tests"
             );
-            var dictResult = await response.json();
             step.dictVerification = step.dictVerification || {};
             fnApplyCategoryResults(
                 step, dictResult.dictCategoryResults);
@@ -6583,16 +5815,11 @@ const PipeleyenApp = (function () {
         fnShowToast("Standardizing " + sFileName + "\u2026",
             "success");
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" +
                 iStepIndex + "/standardize-plots",
-                {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({sFileName: sFileName}),
-                }
+                {sFileName: sFileName}
             );
-            var dictResult = await response.json();
             fnApplyStandardizeResult(iStepIndex, dictResult);
         } catch (error) {
             fnShowToast(
@@ -6615,16 +5842,11 @@ const PipeleyenApp = (function () {
     async function fnExecuteStandardizeAllPlots(iStepIndex) {
         fnShowToast("Standardizing plots\u2026", "success");
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" +
                 iStepIndex + "/standardize-plots",
-                {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({}),
-                }
+                {}
             );
-            var dictResult = await response.json();
             fnApplyStandardizeResult(iStepIndex, dictResult);
         } catch (error) {
             fnShowToast(
@@ -6658,16 +5880,11 @@ const PipeleyenApp = (function () {
     async function fnComparePlotToStandard(iStepIndex, sFileName) {
         if (!sContainerId) return;
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" +
                 iStepIndex + "/compare-plot",
-                {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({sFileName: sFileName}),
-                }
+                {sFileName: sFileName}
             );
-            var dictResult = await response.json();
             if (dictResult.sPlotPath && dictResult.sStandardPath) {
                 PipeleyenFigureViewer.fnDisplayFileFromContainer(
                     dictResult.sPlotPath);
@@ -6958,8 +6175,8 @@ const PipeleyenApp = (function () {
         var fTotalSeconds = fsEstimateRunTimeSeconds();
         if (fTotalSeconds < 3600) return "";
         try {
-            var response = await fetch("/api/runtime");
-            var dictRuntime = await response.json();
+            var dictRuntime = await VaibifyApi.fdictGet(
+                "/api/runtime");
             return "\n\n" + (dictRuntime.sSleepWarning || "");
         } catch (e) {
             return "";
@@ -7039,11 +6256,9 @@ const PipeleyenApp = (function () {
             "Any in-progress computations will be lost.",
             async function () {
                 try {
-                    var response = await fetch(
-                        "/api/pipeline/" + sContainerId + "/kill",
-                        { method: "POST" }
+                    var dictResult = await VaibifyApi.fdictPostRaw(
+                        "/api/pipeline/" + sContainerId + "/kill"
                     );
-                    var dictResult = await response.json();
                     if (dictResult.bSuccess) {
                         dictStepStatus = {};
                         fnRenderStepList();
@@ -7063,16 +6278,14 @@ const PipeleyenApp = (function () {
     async function _fnExecuteForceRunAll() {
         fnShowToast("Stopping running tasks...", "success");
         try {
-            await fetch(
-                "/api/pipeline/" + sContainerId + "/kill",
-                { method: "POST" }
+            await VaibifyApi.fdictPostRaw(
+                "/api/pipeline/" + sContainerId + "/kill"
             );
         } catch (error) { /* continue even if kill fails */ }
         fnShowToast("Cleaning outputs...", "success");
         try {
-            await fetch(
-                "/api/pipeline/" + sContainerId + "/clean",
-                { method: "POST" }
+            await VaibifyApi.fdictPostRaw(
+                "/api/pipeline/" + sContainerId + "/clean"
             );
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
@@ -7245,19 +6458,10 @@ const PipeleyenApp = (function () {
         if (sAction === "addToGit") {
             fnShowToast("Adding to Git...", "success");
             try {
-                var response = await fetch(
+                var dictResult = await VaibifyApi.fdictPost(
                     "/api/github/" + sContainerId + "/add-file",
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                            sFilePath: sContextFilePath,
-                        }),
-                    }
+                    {sFilePath: sContextFilePath}
                 );
-                var dictResult = await response.json();
                 if (dictResult.bSuccess) {
                     fnShowToast("Added to Git", "success");
                     fnRenderStepList();
@@ -7272,19 +6476,10 @@ const PipeleyenApp = (function () {
         if (sAction === "archiveToZenodo") {
             fnShowToast("Archiving to Zenodo...", "success");
             try {
-                var zenodoResponse = await fetch(
+                var dictZenodoResult = await VaibifyApi.fdictPost(
                     "/api/zenodo/" + sContainerId + "/archive",
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                            listFilePaths: [sContextFilePath],
-                        }),
-                    }
+                    {listFilePaths: [sContextFilePath]}
                 );
-                var dictZenodoResult = await zenodoResponse.json();
                 if (dictZenodoResult.bSuccess) {
                     fnShowToast("Archived to Zenodo", "success");
                     fnRenderStepList();
@@ -7351,8 +6546,7 @@ const PipeleyenApp = (function () {
         var sUrl = "/api/host-directories";
         if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);
         try {
-            var response = await fetch(sUrl);
-            var dictResult = await response.json();
+            var dictResult = await VaibifyApi.fdictGet(sUrl);
             fnRenderPullDirectoryList(elModal, dictResult);
         } catch (error) {
             fnShowToast("Cannot browse host", "error");
@@ -7425,23 +6619,13 @@ const PipeleyenApp = (function () {
     ) {
         fnShowToast("Pulling " + sContainerPath + "...", "success");
         try {
-            var response = await fetch(
+            var dictResult = await VaibifyApi.fdictPost(
                 "/api/files/" + sContainerId + "/pull",
                 {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        sContainerPath: sContainerPath,
-                        sHostDestination: sHostDestination,
-                    }),
+                    sContainerPath: sContainerPath,
+                    sHostDestination: sHostDestination,
                 }
             );
-            var dictResult = await response.json();
-            if (!response.ok) {
-                fnShowToast(dictResult.detail || "Pull failed",
-                    "error");
-                return;
-            }
             fnShowToast("Pulled to " + dictResult.sHostPath,
                 "success");
         } catch (error) {
@@ -7594,10 +6778,9 @@ var PipeleyenFiles = (function () {
         fnRenderBreadcrumb(sCurrentPath);
 
         try {
-            var response = await fetch(
+            var listEntries = await VaibifyApi.fdictGet(
                 "/api/files/" + sContainerId + sCurrentPath
             );
-            var listEntries = await response.json();
             fnRenderFileList(listEntries);
         } catch (error) {
             document.getElementById("listFiles").innerHTML =
@@ -7735,16 +6918,12 @@ var PipeleyenFiles = (function () {
     async function fnUploadOneFile(sContainerId, file) {
         var sContentBase64 = await fsEncodeFileBase64(file);
         try {
-            await fetch(
+            await VaibifyApi.fdictPost(
                 "/api/files/" + sContainerId + "/upload",
                 {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        sFilename: file.name,
-                        sDestination: sCurrentPath,
-                        sContentBase64: sContentBase64,
-                    }),
+                    sFilename: file.name,
+                    sDestination: sCurrentPath,
+                    sContentBase64: sContentBase64,
                 }
             );
         } catch (error) {

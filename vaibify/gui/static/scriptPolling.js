@@ -33,10 +33,9 @@ var VaibifyPolling = (function () {
 
     async function _fnPollPipelineState(sContainerId) {
         try {
-            var response = await fetch(
+            var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/state"
             );
-            var dictState = await response.json();
             if (_fnOnPipelineState) {
                 _fnOnPipelineState(dictState);
             }
@@ -62,10 +61,9 @@ var VaibifyPolling = (function () {
 
     async function _fnPollFileChanges(sContainerId) {
         try {
-            var response = await fetch(
+            var dictStatus = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/file-status"
             );
-            var dictStatus = await response.json();
             if (_fnOnFileStatus) {
                 _fnOnFileStatus(dictStatus);
             }
