@@ -42,6 +42,22 @@ vaibify init [--template NAME] [--force]
 Creates `vaibify.yml`, `container.conf`, and `workflow.json` in the current
 directory.
 
+### `vaibify register`
+
+Register an existing project directory in the global registry so it
+can be targeted with `--project/-p` from any directory. Unlike
+`vaibify init`, this does not create or overwrite any files.
+
+```bash
+vaibify register [DIRECTORY]
+```
+
+| Argument      | Description                                       |
+|---------------|---------------------------------------------------|
+| `DIRECTORY`   | Path to the project directory (default: `.`)      |
+
+The directory must contain a `vaibify.yml` file.
+
 ### `vaibify setup`
 
 Launch the interactive setup wizard in a browser (port 8051). The wizard
@@ -175,8 +191,10 @@ vaibify verify [--project/-p NAME]
 
 ### `vaibify gui`
 
-Launch the pipeline viewer in a browser (port 8050). See [Workflow
-Viewer](gui.md) for details.
+Launch the pipeline viewer in a browser (port 8050). When run without
+a project, the landing page opens and displays all registered
+containers. Use the **+** button to add an existing project or create
+a new one. See [Workflow Viewer](gui.md) for details.
 
 ```bash
 vaibify gui [--project/-p NAME]

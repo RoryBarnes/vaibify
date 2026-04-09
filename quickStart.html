@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quick Start &mdash; Vaibify 0.0.1.dev50 documentation</title>
+  <title>Quick Start &mdash; Vaibify 0.0.1.dev51 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1cceda9d"></script>
+      <script src="_static/documentation_options.js?v=b8b65e84"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -46,7 +46,8 @@
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#initialize-a-project">Initialize a Project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#option-a-build-from-an-existing-configuration">Option A: Build from an Existing Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#option-b-initialize-a-new-project">Option B: Initialize a New Project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#build-the-image">Build the Image</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#start-and-connect">Start and Connect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#transfer-files">Transfer Files</a></li>
@@ -98,8 +99,44 @@
 running on your machine. See <a class="reference internal" href="install.html"><span class="std std-doc">Installing Vaibify</span></a> for
 detailed installation instructions, or <a class="reference internal" href="setupWizard.html"><span class="std std-doc">Setup Wizard</span></a>
 for the interactive configuration walkthrough.</p>
-<section id="initialize-a-project">
-<h2>Initialize a Project<a class="headerlink" href="#initialize-a-project" title="Link to this heading"></a></h2>
+<section id="option-a-build-from-an-existing-configuration">
+<h2>Option A: Build from an Existing Configuration<a class="headerlink" href="#option-a-build-from-an-existing-configuration" title="Link to this heading"></a></h2>
+<p>If a repository already contains a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (and optionally a
+<code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>), you can build and run the container directly — no
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> required.</p>
+<p>Clone the repository and navigate into it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:user/my-project.git
+<span class="nb">cd</span><span class="w"> </span>my-project
+</pre></div>
+</div>
+<p>Then build and start:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build
+vaibify<span class="w"> </span>start
+</pre></div>
+</div>
+<p>Any command run from inside a directory that contains a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>
+will use that file automatically. No registration step is needed.</p>
+<p>To target this project from other directories with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>,
+register it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>register
+</pre></div>
+</div>
+<p>Or register a project in a different directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>register<span class="w"> </span>/path/to/my-project
+</pre></div>
+</div>
+<p>If the configuration lists private repositories (URLs starting with
+<code class="docutils literal notranslate"><span class="pre">git&#64;github.com:</span></code>), the build needs SSH key access. Ensure your SSH
+agent is running and the relevant keys are loaded:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ssh-add<span class="w"> </span>-l<span class="w">          </span><span class="c1"># verify keys are loaded</span>
+vaibify<span class="w"> </span>build<span class="w">       </span><span class="c1"># SSH agent is forwarded into the build</span>
+</pre></div>
+</div>
+<p>Skip ahead to <a class="reference internal" href="#start-and-connect"><span class="xref myst">Start and Connect</span></a> once the build
+completes.</p>
+</section>
+<section id="option-b-initialize-a-new-project">
+<h2>Option B: Initialize a New Project<a class="headerlink" href="#option-b-initialize-a-new-project" title="Link to this heading"></a></h2>
 <p>Navigate to your project directory and run:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init
 </pre></div>
