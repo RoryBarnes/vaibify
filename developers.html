@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev3 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev49 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4229184f"></script>
+      <script src="_static/documentation_options.js?v=ffeabdcf"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -62,7 +62,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#running-tests">Running Tests</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#portability">Portability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#portability-and-ci">Portability and CI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pull-request-workflow">Pull Request Workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-layout">Project Layout</a></li>
 </ul>
@@ -150,11 +150,14 @@ function.</p></li>
 </pre></div>
 </div>
 </section>
-<section id="portability">
-<h2>Portability<a class="headerlink" href="#portability" title="Link to this heading"></a></h2>
+<section id="portability-and-ci">
+<h2>Portability and CI<a class="headerlink" href="#portability-and-ci" title="Link to this heading"></a></h2>
 <p>All code must work on both macOS and Linux, and with Python versions
-3.9 through 3.14. The project uses GitHub Actions to test all permutations
-of OS and Python version.</p>
+3.9 through 3.14. GitHub Actions runs unit tests on every pull request
+across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and
+Python 3.9 through 3.14. Tests that require a running Docker daemon
+are excluded from CI and run locally. Documentation is rebuilt and
+deployed automatically on every merge to main.</p>
 </section>
 <section id="pull-request-workflow">
 <h2>Pull Request Workflow<a class="headerlink" href="#pull-request-workflow" title="Link to this heading"></a></h2>
@@ -170,17 +173,32 @@ of the change.</p></li>
 <section id="project-layout">
 <h2>Project Layout<a class="headerlink" href="#project-layout" title="Link to this heading"></a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vaibify</span><span class="o">/</span>
-  <span class="n">cli</span><span class="o">/</span>              <span class="n">Command</span><span class="o">-</span><span class="n">line</span> <span class="n">interface</span> <span class="p">(</span><span class="n">Click</span><span class="p">)</span>
-  <span class="n">config</span><span class="o">/</span>           <span class="n">Configuration</span> <span class="n">dataclasses</span> <span class="ow">and</span> <span class="n">parsers</span>
-  <span class="n">docker</span><span class="o">/</span>           <span class="n">Container</span> <span class="n">lifecycle</span> <span class="n">management</span>
-  <span class="n">gui</span><span class="o">/</span>              <span class="n">FastAPI</span> <span class="n">web</span> <span class="n">application</span> <span class="ow">and</span> <span class="n">pipeline</span> <span class="n">runner</span>
-  <span class="n">install</span><span class="o">/</span>          <span class="n">Setup</span> <span class="n">wizard</span> <span class="ow">and</span> <span class="n">shell</span> <span class="n">installer</span>
-  <span class="n">reproducibility</span><span class="o">/</span>  <span class="n">Zenodo</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="ow">and</span> <span class="n">LaTeX</span> <span class="n">integration</span>
-<span class="n">templates</span><span class="o">/</span>          <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">sandbox</span><span class="p">,</span> <span class="n">workflow</span><span class="p">)</span>
-<span class="n">tests</span><span class="o">/</span>              <span class="n">Pytest</span> <span class="n">test</span> <span class="n">suite</span>
-<span class="n">docs</span><span class="o">/</span>               <span class="n">Sphinx</span> <span class="n">documentation</span> <span class="p">(</span><span class="n">this</span> <span class="n">site</span><span class="p">)</span>
+  <span class="n">cli</span><span class="o">/</span>                <span class="n">Command</span><span class="o">-</span><span class="n">line</span> <span class="n">interface</span> <span class="p">(</span><span class="n">Click</span><span class="p">)</span>
+  <span class="n">config</span><span class="o">/</span>             <span class="n">Configuration</span> <span class="n">dataclasses</span> <span class="ow">and</span> <span class="n">parsers</span>
+  <span class="n">docker</span><span class="o">/</span>             <span class="n">Container</span> <span class="n">lifecycle</span> <span class="n">management</span>
+  <span class="n">gui</span><span class="o">/</span>                <span class="n">FastAPI</span> <span class="n">web</span> <span class="n">application</span> <span class="ow">and</span> <span class="n">pipeline</span> <span class="n">runner</span>
+    <span class="n">routes</span><span class="o">/</span>           <span class="mi">12</span> <span class="n">route</span> <span class="n">modules</span> <span class="p">(</span><span class="n">stepRoutes</span><span class="p">,</span> <span class="n">fileRoutes</span><span class="p">,</span> <span class="n">etc</span><span class="o">.</span><span class="p">)</span>
+    <span class="n">static</span><span class="o">/</span>           <span class="mi">24</span> <span class="n">JavaScript</span> <span class="n">IIFE</span> <span class="n">modules</span> <span class="o">+</span> <span class="n">CSS</span> <span class="o">+</span> <span class="n">HTML</span>
+    <span class="n">pipelineServer</span><span class="o">.</span><span class="n">py</span> <span class="n">App</span> <span class="n">factory</span><span class="p">,</span> <span class="n">shared</span> <span class="n">utilities</span><span class="p">,</span> <span class="n">WebSocket</span> <span class="n">dispatch</span>
+    <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">py</span> <span class="n">Pipeline</span> <span class="n">step</span> <span class="n">execution</span> <span class="n">orchestrator</span>
+    <span class="n">pipelineUtils</span><span class="o">.</span><span class="n">py</span>  <span class="n">Shared</span> <span class="n">leaf</span> <span class="n">utilities</span> <span class="p">(</span><span class="n">fsShellQuote</span><span class="p">,</span> <span class="n">emitters</span><span class="p">)</span>
+    <span class="n">workflowManager</span><span class="o">.</span><span class="n">py</span> <span class="n">Workflow</span> <span class="n">CRUD</span><span class="p">,</span> <span class="n">variable</span> <span class="n">resolution</span><span class="p">,</span> <span class="n">dependency</span> <span class="n">graph</span>
+    <span class="n">fileStatusManager</span><span class="o">.</span><span class="n">py</span> <span class="n">File</span> <span class="n">polling</span><span class="p">,</span> <span class="n">mtime</span> <span class="n">tracking</span><span class="p">,</span> <span class="n">step</span> <span class="n">invalidation</span>
+    <span class="n">testGenerator</span><span class="o">.</span><span class="n">py</span>  <span class="n">Test</span> <span class="n">generation</span> <span class="n">orchestrator</span>
+    <span class="n">dataLoaders</span><span class="o">.</span><span class="n">py</span>    <span class="n">Data</span> <span class="nb">format</span> <span class="n">dispatch</span> <span class="n">table</span> <span class="p">(</span><span class="mi">50</span> <span class="n">extensions</span><span class="p">)</span>
+    <span class="n">syncDispatcher</span><span class="o">.</span><span class="n">py</span> <span class="n">Sync</span> <span class="n">operations</span> <span class="p">(</span><span class="n">GitHub</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="n">Zenodo</span><span class="p">)</span>
+    <span class="o">...</span>               <span class="n">See</span> <span class="n">CLAUDE</span><span class="o">.</span><span class="n">md</span> <span class="n">at</span> <span class="n">repo</span> <span class="n">root</span> <span class="k">for</span> <span class="n">the</span> <span class="n">full</span> <span class="n">module</span> <span class="nb">map</span>
+  <span class="n">install</span><span class="o">/</span>            <span class="n">Setup</span> <span class="n">wizard</span> <span class="ow">and</span> <span class="n">shell</span> <span class="n">installer</span>
+  <span class="n">reproducibility</span><span class="o">/</span>    <span class="n">Zenodo</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="ow">and</span> <span class="n">LaTeX</span> <span class="n">integration</span>
+<span class="n">templates</span><span class="o">/</span>            <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">sandbox</span><span class="p">,</span> <span class="n">workflow</span><span class="p">)</span>
+<span class="n">tests</span><span class="o">/</span>                <span class="n">Pytest</span> <span class="n">test</span> <span class="n">suite</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">200</span><span class="o">+</span> <span class="n">tests</span><span class="p">)</span>
+<span class="n">docs</span><span class="o">/</span>                 <span class="n">Sphinx</span> <span class="n">documentation</span> <span class="p">(</span><span class="n">this</span> <span class="n">site</span><span class="p">)</span>
+<span class="n">CLAUDE</span><span class="o">.</span><span class="n">md</span>             <span class="n">Architecture</span> <span class="n">guide</span> <span class="k">with</span> <span class="n">module</span> <span class="nb">map</span> <span class="ow">and</span> <span class="n">data</span> <span class="n">flows</span>
 </pre></div>
 </div>
+<p>For a detailed architecture overview including module dependency graphs,
+state management patterns, and data flow diagrams, see <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> at
+the repository root.</p>
 </section>
 </section>
 
