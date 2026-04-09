@@ -393,6 +393,8 @@ async def _fsMissingDependencyFile(
     listAllCommands = (
         dictStep.get("saDataCommands", [])
         + dictStep.get("saPlotCommands", [])
+        + dictStep.get("saSetupCommands", [])
+        + dictStep.get("saCommands", [])
     )
     setChecked = set()
     for sCmd in listAllCommands:

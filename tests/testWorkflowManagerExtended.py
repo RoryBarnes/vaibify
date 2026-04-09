@@ -15,6 +15,9 @@ from vaibify.gui.workflowManager import (
     fdictGetSyncStatus,
     fnUpdateSyncStatus,
     flistResolveOutputFiles,
+    _flistResolveOutputPaths,
+    fdictBuildImplicitDependencies,
+    fdictBuildDirectDependencies,
 )
 
 
@@ -468,6 +471,139 @@ def test_fsGetFileCategory_from_data_categories():
 
 
 # -----------------------------------------------------------------------
+# _flistResolveOutputPaths
+# -----------------------------------------------------------------------
+
+
+def test_flistResolveOutputPaths_basic():
+    dictStep = {
+        "sDirectory": "/workspace/step01",
+        "saDataFiles": ["results.csv"],
+        "saPlotFiles": ["fig.pdf"],
+    }
+    listPaths = _flistResolveOutputPaths(dictStep)
+    assert "/workspace/step01/results.csv" in listPaths
+    assert "/workspace/step01/fig.pdf" in listPaths
+
+
+def test_flistResolveOutputPaths_skips_templates():
+    dictStep = {
+        "sDirectory": "/workspace/step01",
+        "saPlotFiles": ["{sPlotDirectory}/fig.pdf", "local.png"],
+    }
+    listPaths = _flistResolveOutputPaths(dictStep)
+    assert len(listPaths) == 1
+    assert "local.png" in listPaths[0]
+
+
+def test_flistResolveOutputPaths_empty_directory():
+    dictStep = {"sDirectory": "", "saDataFiles": ["data.csv"]}
+    assert _flistResolveOutputPaths(dictStep) == []
+
+
+# -----------------------------------------------------------------------
+# fdictBuildImplicitDependencies
+# -----------------------------------------------------------------------
+
+
+def test_fdictBuildImplicitDependencies_shared_directory():
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "Produce",
+                "sDirectory": "/workspace/analysis/sub",
+                "saDataFiles": ["output.csv"],
+            },
+            {
+                "sName": "Consume",
+                "sDirectory": "/workspace/analysis",
+                "saDataFiles": [],
+            },
+        ],
+    }
+    dictImplicit = fdictBuildImplicitDependencies(dictWorkflow)
+    assert 0 in dictImplicit
+    assert 1 in dictImplicit[0]
+
+
+def test_fdictBuildImplicitDependencies_no_overlap():
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "A",
+                "sDirectory": "/workspace/alpha",
+                "saDataFiles": ["a.csv"],
+            },
+            {
+                "sName": "B",
+                "sDirectory": "/workspace/beta",
+                "saDataFiles": [],
+            },
+        ],
+    }
+    dictImplicit = fdictBuildImplicitDependencies(dictWorkflow)
+    assert dictImplicit == {}
+
+
+def test_fdictBuildImplicitDependencies_template_excluded():
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "A",
+                "sDirectory": "/workspace/step01",
+                "saPlotFiles": ["{sPlotDirectory}/fig.pdf"],
+            },
+            {
+                "sName": "B",
+                "sDirectory": "/workspace",
+                "saDataFiles": [],
+            },
+        ],
+    }
+    dictImplicit = fdictBuildImplicitDependencies(dictWorkflow)
+    assert dictImplicit == {}
+
+
+# -----------------------------------------------------------------------
+# fdictBuildDirectDependencies (integration: explicit + implicit)
+# -----------------------------------------------------------------------
+
+
+def test_fdictBuildDirectDependencies_includes_implicit():
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "Upstream",
+                "sDirectory": "/workspace/shared/sub",
+                "saDataFiles": ["data.csv"],
+                "saPlotFiles": [],
+                "saPlotCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "Explicit",
+                "sDirectory": "/workspace/other",
+                "saDataCommands": ["{Step01.data}"],
+                "saPlotCommands": [],
+                "saDataFiles": [],
+                "saPlotFiles": [],
+            },
+            {
+                "sName": "Implicit",
+                "sDirectory": "/workspace/shared",
+                "saDataCommands": [],
+                "saPlotCommands": [],
+                "saDataFiles": [],
+                "saPlotFiles": [],
+            },
+        ],
+    }
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    assert 1 in dictDirect.get(0, set())
+    assert 2 in dictDirect.get(0, set())
+
+
+# -----------------------------------------------------------------------
 # _fsResolveStepOutputPath — absolute path (line 425)
 # -----------------------------------------------------------------------
 
@@ -613,3 +749,31 @@ def test_fnInsertStep_renumbers():
     assert len(dictWorkflow["listSteps"]) == 3
     sBCommand = dictWorkflow["listSteps"][2]["saPlotCommands"][0]
     assert "Step01" in sBCommand
+
+
+# -----------------------------------------------------------------------
+# Manual step dependency token: {StepNN.manual}
+# -----------------------------------------------------------------------
+
+
+def test_fsetExtractUpstreamIndices_manual_token():
+    """Manual dep token {Step01.manual} is detected as an upstream dep."""
+    from vaibify.gui.workflowManager import fsetExtractUpstreamIndices
+    setResult = fsetExtractUpstreamIndices("{Step01.manual}")
+    assert setResult == {0}
+
+
+def test_fdictBuildDirectDependencies_manual_token():
+    """saDependencies with {Step01.manual} creates a dependency edge."""
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "A", "sDirectory": "dirA",
+             "saPlotCommands": [], "saPlotFiles": []},
+            {"sName": "B", "sDirectory": "dirB",
+             "saPlotCommands": [], "saPlotFiles": [],
+             "saDependencies": ["{Step01.manual}"]},
+        ],
+    }
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    assert 1 in dictDirect.get(0, set())

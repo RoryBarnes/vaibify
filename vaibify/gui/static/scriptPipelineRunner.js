@@ -846,7 +846,7 @@ var PipeleyenPipelineRunner = (function () {
         fnSendPipelineAction({ sAction: "runAllTests" });
     }
 
-    async function fnValidateReferences() {
+    async function fnVerifyDependencies() {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
@@ -863,6 +863,7 @@ var PipeleyenPipelineRunner = (function () {
                     PipeleyenApp.fnShowToast(sWarning, "error");
                 });
             }
+            PipeleyenApp.fnStartFileChangePolling();
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
@@ -930,7 +931,7 @@ var PipeleyenPipelineRunner = (function () {
         fsFormatDurationLong: fsFormatDurationLong,
         fnVerify: fnVerify,
         fnRunAllTests: fnRunAllTests,
-        fnValidateReferences: fnValidateReferences,
+        fnVerifyDependencies: fnVerifyDependencies,
         fnDisplayLogInViewer: fnDisplayLogInViewer,
         fnResetState: fnResetState,
         fnCancelSentinelMonitor: fnCancelSentinelMonitor,

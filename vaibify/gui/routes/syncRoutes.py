@@ -229,14 +229,53 @@ def _fnRegisterDag(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
+        dictCachedDeps = dictCtx.get(
+            "sourceCodeDeps", {}).get(sContainerId)
         iExit, result = await asyncio.to_thread(
             syncDispatcher.ftResultGenerateDagSvg,
             dictCtx["docker"], sContainerId, dictWorkflow,
+            dictCachedDeps,
         )
         if iExit != 0:
             raise HTTPException(500, f"DAG failed: {result}")
         return Response(
             content=result, media_type="image/svg+xml")
+
+
+def _fnRegisterDagExport(app, dictCtx):
+    """Register DAG export endpoint in configurable format."""
+    from .. import syncDispatcher
+
+    @app.get("/api/workflow/{sContainerId}/dag/export")
+    async def fnExportDag(
+        sContainerId: str, sFormat: str = "svg",
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId
+        )
+        dictCachedDeps = dictCtx.get(
+            "sourceCodeDeps", {}).get(sContainerId)
+        iExit, result = await asyncio.to_thread(
+            syncDispatcher.ftResultExportDag,
+            dictCtx["docker"], sContainerId,
+            dictWorkflow, sFormat, dictCachedDeps,
+        )
+        if iExit != 0:
+            raise HTTPException(500, f"DAG export failed: {result}")
+        sMediaType = syncDispatcher.DICT_DAG_MEDIA_TYPES.get(
+            sFormat.lower().lstrip("."), "application/octet-stream"
+        )
+        sFilename = f"dag.{sFormat.lower().lstrip('.')}"
+        return Response(
+            content=result,
+            media_type=sMediaType,
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{sFilename}"'
+                )
+            },
+        )
 
 
 def _fnRegisterDatasetDownload(app, dictCtx):
@@ -268,4 +307,5 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterGithubAddFile(app, dictCtx)
     _fnRegisterSyncRoutes(app, dictCtx)
     _fnRegisterDag(app, dictCtx)
+    _fnRegisterDagExport(app, dictCtx)
     _fnRegisterDatasetDownload(app, dictCtx)

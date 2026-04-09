@@ -116,6 +116,9 @@ def fdictLoadWorkflow(sWorkflowPath):
     if not fbValidateWorkflow(dictWorkflow):
         print("ERROR: Invalid workflow file.")
         sys.exit(1)
+    from .workflowManager import fnNormalizeSceneReferences
+    for dictStep in dictWorkflow.get("listSteps", []):
+        fnNormalizeSceneReferences(dictStep)
     return dictWorkflow
 
 

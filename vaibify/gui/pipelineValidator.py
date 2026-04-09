@@ -43,7 +43,8 @@ def _fnValidateStepCommands(
     sStepDirectory, dictVariables, iStepNumber, listErrors,
 ):
     """Check that command scripts exist in the step directory."""
-    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands"):
+    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands",
+                 "saSetupCommands", "saCommands"):
         for sCommand in dictStep.get(sKey, []):
             sResolved = workflowManager.fsResolveCommand(
                 sCommand, dictVariables

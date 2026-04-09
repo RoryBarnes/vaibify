@@ -375,7 +375,8 @@ def _fbStepScriptsModified(dictStep, dictCurrentHashes):
     if not dictStoredHashes:
         return None
     sDirectory = dictStep.get("sDirectory", "")
-    for sKey in ("saDataCommands", "saPlotCommands"):
+    for sKey in ("saDataCommands", "saPlotCommands",
+                 "saSetupCommands", "saCommands"):
         for sScript in flistExtractScripts(dictStep.get(sKey, [])):
             sPath = _fsNormalizePath(sDirectory, sScript)
             if dictStoredHashes.get(sPath) != dictCurrentHashes.get(sPath):

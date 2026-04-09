@@ -38,7 +38,8 @@ def _flistExtractKillPatterns(dictWorkflow):
     """Extract unique command patterns from workflow steps."""
     setPatterns = set()
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sKey in ("saDataCommands", "saPlotCommands"):
+        for sKey in ("saDataCommands", "saPlotCommands",
+                     "saSetupCommands", "saCommands"):
             for sCommand in dictStep.get(sKey, []):
                 listTokens = sCommand.split()
                 if not listTokens:

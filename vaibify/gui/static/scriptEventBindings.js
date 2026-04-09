@@ -107,6 +107,8 @@ var PipeleyenEventBindings = (function () {
         var iStep = parseInt(elMatch.dataset.step);
         if (sApprover === "unitTest") {
             PipeleyenApp.fnToggleUnitTestExpand(iStep);
+        } else if (sApprover === "deps") {
+            PipeleyenApp.fnToggleDepsExpand(iStep);
         }
     }
 
@@ -521,8 +523,8 @@ var PipeleyenEventBindings = (function () {
             btnRunAllTests: function () {
                 PipeleyenPipelineRunner.fnRunAllTests();
             },
-            btnValidateReferences: function () {
-                PipeleyenPipelineRunner.fnValidateReferences();
+            btnVerifyDependencies: function () {
+                PipeleyenPipelineRunner.fnVerifyDependencies();
             },
             btnStandardizeAllPlots: function () {
                 PipeleyenPlotStandards

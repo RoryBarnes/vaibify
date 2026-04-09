@@ -1,6 +1,6 @@
 """Script detection and dependency scanning route handlers."""
 
-__all__ = ["fnRegisterAll"]
+__all__ = ["fnRegisterAll", "fdictScanAllDependencies"]
 
 import asyncio
 import os
@@ -109,6 +109,60 @@ async def _fdictScanDependencies(
             )
         )
     return dictResult
+
+
+def _flistCollectAllCommands(dictStep):
+    """Gather all command fields from a single step."""
+    listCommands = []
+    for sKey in ("saDataCommands", "saPlotCommands",
+                 "saSetupCommands", "saCommands"):
+        listCommands.extend(dictStep.get(sKey, []))
+    return listCommands
+
+
+def _fsetExtractUpstreamIndices(dictResult):
+    """Return set of 0-based upstream step indices from suggestions."""
+    setIndices = set()
+    for dictSuggestion in dictResult.get("listSuggestions", []):
+        iStepNumber = dictSuggestion.get("iSourceStep", 0)
+        if iStepNumber > 0:
+            setIndices.add(iStepNumber - 1)
+    return setIndices
+
+
+async def fdictScanAllDependencies(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Scan all steps for source-code file dependencies."""
+    dictDeps = {}
+    listSteps = dictWorkflow.get("listSteps", [])
+    for iStep, dictStep in enumerate(listSteps):
+        listCommands = _flistCollectAllCommands(dictStep)
+        if not listCommands:
+            continue
+        setUpstream = await _fsetScanOneStep(
+            dictCtx, sContainerId, dictWorkflow,
+            iStep, listCommands,
+        )
+        for iUpstream in setUpstream:
+            dictDeps.setdefault(iUpstream, set()).add(iStep)
+    return dictDeps
+
+
+async def _fsetScanOneStep(
+    dictCtx, sContainerId, dictWorkflow,
+    iStep, listCommands,
+):
+    """Scan one step's commands and return upstream indices."""
+    listDetected = await _flistDetectLoadsInCommands(
+        dictCtx, sContainerId, listCommands,
+        dictWorkflow.get("listSteps", [])[iStep].get(
+            "sDirectory", ""),
+    )
+    dictResult = _fdictCrossReferenceFiles(
+        listDetected, dictWorkflow, iStep,
+    )
+    return _fsetExtractUpstreamIndices(dictResult)
 
 
 async def _flistDetectLoadsInCommands(

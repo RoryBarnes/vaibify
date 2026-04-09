@@ -57,7 +57,8 @@ def flistExtractAllScriptPaths(dictWorkflow):
     setAdded = set()
     for dictStep in dictWorkflow.get("listSteps", []):
         sDirectory = dictStep.get("sDirectory", "")
-        for sKey in ("saDataCommands", "saPlotCommands"):
+        for sKey in ("saDataCommands", "saPlotCommands",
+                     "saSetupCommands", "saCommands"):
             for sScript in _flistCommandScripts(
                 dictStep.get(sKey, [])
             ):

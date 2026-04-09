@@ -218,7 +218,7 @@ const PipeleyenApp = (function () {
         fnUpdateHighlightState();
         fnPollAllStepFiles();
         fnStartFileChangePolling();
-        PipeleyenTerminal.fnCreateTab();
+        PipeleyenTerminal.fnEnsureTab();
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
     }
 
@@ -236,7 +236,7 @@ const PipeleyenApp = (function () {
             elWorkflowName.textContent = "No Workflow";
             document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
-            PipeleyenTerminal.fnCreateTab();
+            PipeleyenTerminal.fnEnsureTab();
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
@@ -850,13 +850,30 @@ const PipeleyenApp = (function () {
         return "untested";
     }
 
+    function fbDirectoryOverlap(dictEarlierStep, sCurrentDirectory) {
+        if (!dictEarlierStep.sDirectory) return false;
+        var sPrefix = sCurrentDirectory + "/";
+        var listFileKeys = ["saDataFiles", "saPlotFiles", "saOutputFiles"];
+        for (var iKey = 0; iKey < listFileKeys.length; iKey++) {
+            var listFiles = dictEarlierStep[listFileKeys[iKey]] || [];
+            for (var iFile = 0; iFile < listFiles.length; iFile++) {
+                if (listFiles[iFile].indexOf("{") !== -1) continue;
+                var sJoined = dictEarlierStep.sDirectory + "/" + listFiles[iFile];
+                if (sJoined.indexOf(sPrefix) === 0) return true;
+            }
+        }
+        return false;
+    }
+
     function flistGetStepDependencies(iStep) {
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return [];
-        var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
+        var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
+        var step = listSteps[iStep];
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
             "saTestCommands", "saDataFiles", "saPlotFiles",
-            "saDependencies"];
+            "saDependencies", "saSetupCommands", "saCommands",
+            "saOutputFiles"];
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
                 var rRef = /\{Step(\d+)\.\w+\}/g;
@@ -866,6 +883,16 @@ const PipeleyenApp = (function () {
                     if (iDep !== iStep) setDeps[iDep] = true;
                 }
             });
+        });
+        if (step.sDirectory) {
+            for (var j = 0; j < iStep; j++) {
+                if (fbDirectoryOverlap(listSteps[j], step.sDirectory))
+                    setDeps[j] = true;
+            }
+        }
+        (step.saSourceCodeDeps || []).forEach(function (iDepNumber) {
+            var iDep = iDepNumber - 1;
+            if (iDep >= 0 && iDep !== iStep) setDeps[iDep] = true;
         });
         return Object.keys(setDeps).map(Number).sort(
             function (a, b) { return a - b; }
@@ -1461,6 +1488,38 @@ const PipeleyenApp = (function () {
         _fnRenderDagWithZoom(sSvgText, dScale);
     }
 
+    async function _fnExportDag() {
+        var sFormat = "svg";
+        if (_dictWorkflowState.dictWorkflow) {
+            sFormat = (
+                _dictWorkflowState.dictWorkflow.sFigureType || "pdf"
+            ).toLowerCase();
+        }
+        var sUrl = "/api/workflow/" +
+            _dictSessionState.sContainerId +
+            "/dag/export?sFormat=" + encodeURIComponent(sFormat);
+        try {
+            var response = await fetch(sUrl);
+            if (!response.ok) {
+                throw new Error("Export failed (" +
+                    response.status + ")");
+            }
+            var blob = await response.blob();
+            var sBlobUrl = URL.createObjectURL(blob);
+            var elLink = document.createElement("a");
+            elLink.href = sBlobUrl;
+            elLink.download = "dag." + sFormat;
+            document.body.appendChild(elLink);
+            elLink.click();
+            document.body.removeChild(elLink);
+            URL.revokeObjectURL(sBlobUrl);
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error"
+            );
+        }
+    }
+
     function _fnRenderDagWithZoom(sSvgText, dScale) {
         var elViewport = document.getElementById("viewportA");
         elViewport.innerHTML = "";
@@ -1474,6 +1533,12 @@ const PipeleyenApp = (function () {
                 _fnRenderDagWithZoom(sSvgText, dNewScale);
             }
         );
+        var elExportButton = document.createElement("button");
+        elExportButton.className = "btn btn-sm";
+        elExportButton.textContent = "Export";
+        elExportButton.title = "Export DAG in settings figure format";
+        elExportButton.addEventListener("click", _fnExportDag);
+        elToolbar.appendChild(elExportButton);
         elViewport.appendChild(elToolbar);
         var elContainer = document.createElement("div");
         elContainer.className = "dag-container";
@@ -1968,6 +2033,7 @@ const PipeleyenApp = (function () {
             return _dictUiState.setExpandedSteps;
         },
         fnSaveStepArray: fnSaveStepArray,
+        flistGetStepDependencies: flistGetStepDependencies,
     };
 })();
 

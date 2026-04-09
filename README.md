@@ -26,18 +26,11 @@
 </p>
 
 
-### Why Vaibify?
-
-Data scientists increasingly rely on AI coding agents to build and iterate on analysis pipelines. But running AI-generated code raises real concerns:
-
-- **Safety** — AI agents need broad permissions to be effective, but broad permissions on your host are dangerous. Vaibify runs everything inside an isolated Docker container with no access to your host filesystem, network, or credentials beyond what you explicitly grant.
-- **Reproducibility** — Vaibify tracks provenance (SHA-256 hashes of every input and output), archives results to Zenodo with a DOI, syncs figures to Overleaf, and generates GitHub Actions workflows so anyone can reproduce your pipeline.
-- **Iteration** — Decompose your project into steps, run them in parallel, inspect the outputs in the workflow viewer GUI, and re-run individual steps until you're satisfied.
-- **Generality** — Vaibify is not tied to any specific domain. Configure your repositories, packages, languages (Python, R, Julia), and secrets in a single YAML file. Templates get you started fast.
+`vaibify` creates secure, containerized environments for AI-assisted data analysis that can be accessed through a GUI or the command line. While it fully embraces agentic AI code development, `vaibify` also recognizes that a human must verify all results. `vaibify` solves these challanges by configuring Docker containers that prevent AI agents from harming your sensitive data, povides a GUI that supports terminal window(s) for running agents like Claude Code, and includes "viewing windows" that allow users to inspect results (data files, figures, animations). A "Workflow" mode decomposes projects into automatic vs. interactive steps, and verifies the output via unit tests, dependency checks, and user validation. `vaibify` also seamlessly integrates with external resources like GitHub, Overleaf, and Zenodo so you can easily write articles/reports, manage your work with version control, and archive your data. `vaibify` allows you to vibe code with confidence: your host machine stays safe while the agents develop code and build your analysis pipeline — all with minimal IDE interaction — enabling you to focus on vetting the results via visual inspection, writing up a summary, and deciding your next steps.
 
 ### Features
 
-`Vaibify` provides a complete workflow for containerized scientific computing:
+`vaibify` provides a complete workflow for containerized scientific computing:
 
 **Container Management** — Build, start, stop, and connect to Docker environments defined by a single `vaibify.yml` configuration file. Multiple projects can run simultaneously, each with its own container, image, and workspace volume. Target any project from any directory with `--project/-p`. Clone and install repositories, system packages, and Python/R/Julia dependencies automatically.
 
@@ -51,14 +44,7 @@ Data scientists increasingly rely on AI coding agents to build and iterate on an
 
 **Templates** — Two project templates ship with Vaibify: `sandbox` (no workflow, for exploration) and `workflow` (pipeline steps for reproducible analysis).
 
-### Quick Start
-
-```bash
-pip install vaibify
-vaibify init --template workflow
-vaibify build
-vaibify start --gui
-```
+### Learn More
 
 See the [full documentation](https://RoryBarnes.github.io/vaibify) for
 CLI reference, configuration, security model, and contributor guidelines.

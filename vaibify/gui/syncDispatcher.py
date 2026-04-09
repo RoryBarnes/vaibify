@@ -29,6 +29,8 @@ __all__ = [
     "ftResultAddFileToGithub",
     "ftResultArchiveProject",
     "ftResultArchiveToZenodo",
+    "DICT_DAG_MEDIA_TYPES",
+    "ftResultExportDag",
     "ftResultGenerateDagSvg",
     "ftResultGenerateLatex",
     "ftResultPullFromOverleaf",
@@ -566,27 +568,24 @@ def fdictParseTestMarkerOutput(sOutput):
         return {"markers": {}, "testFiles": {}, "missingConftest": []}
 
 
-def _flistBuildDagEdges(listSteps):
-    """Extract dependency edges from step commands and saDependencies."""
+def _flistBuildDagEdges(dictWorkflow, dictCachedDeps=None):
+    """Build DAG edges from explicit, implicit, and cached deps."""
+    dictDirect = workflowManager.fdictBuildDirectDependencies(
+        dictWorkflow
+    )
+    if dictCachedDeps:
+        for iUp, setDown in dictCachedDeps.items():
+            dictDirect.setdefault(iUp, set()).update(setDown)
     listEdgeLines = []
-    setEdges = set()
-    for iIndex, dictStep in enumerate(listSteps):
-        sTarget = f"step{iIndex + 1}"
-        for sKey in ("saDataCommands", "saPlotCommands",
-                      "saTestCommands", "saDependencies"):
-            for sText in dictStep.get(sKey, []):
-                for match in re.finditer(
-                    r"\{Step(\d+)\.\w+\}", sText
-                ):
-                    iSource = int(match.group(1))
-                    sEdge = f"  step{iSource} -> {sTarget};"
-                    if sEdge not in setEdges:
-                        setEdges.add(sEdge)
-                        listEdgeLines.append(sEdge)
+    for iUpstream in sorted(dictDirect):
+        for iDown in sorted(dictDirect[iUpstream]):
+            listEdgeLines.append(
+                f"  step{iUpstream + 1} -> step{iDown + 1};"
+            )
     return listEdgeLines
 
 
-def fsBuildDagDot(dictWorkflow):
+def fsBuildDagDot(dictWorkflow, dictCachedDeps=None):
     """Build a Graphviz DOT string from workflow step references."""
     listLines = [
         "digraph workflow {",
@@ -601,16 +600,18 @@ def fsBuildDagDot(dictWorkflow):
         sNodeId = f"step{iIndex + 1}"
         sSafeLabel = sLabel.replace('"', '\\"')
         listLines.append(f'  {sNodeId} [label="{sSafeLabel}"];')
-    listLines.extend(_flistBuildDagEdges(listSteps))
+    listLines.extend(
+        _flistBuildDagEdges(dictWorkflow, dictCachedDeps))
     listLines.append("}")
     return "\n".join(listLines)
 
 
 def ftResultGenerateDagSvg(
     connectionDocker, sContainerId, dictWorkflow,
+    dictCachedDeps=None,
 ):
     """Write DOT to container, convert to SVG, return bytes."""
-    sDotContent = fsBuildDagDot(dictWorkflow)
+    sDotContent = fsBuildDagDot(dictWorkflow, dictCachedDeps)
     sDotPath = "/tmp/_vaibify_dag.dot"
     sSvgPath = "/tmp/_vaibify_dag.svg"
     connectionDocker.fnWriteFile(
@@ -628,6 +629,43 @@ def ftResultGenerateDagSvg(
         return (iExitCode, sOutput)
     baSvg = connectionDocker.fbaFetchFile(sContainerId, sSvgPath)
     return (0, baSvg)
+
+
+DICT_DAG_MEDIA_TYPES = {
+    "svg": "image/svg+xml",
+    "png": "image/png",
+    "pdf": "application/pdf",
+}
+
+
+def ftResultExportDag(
+    connectionDocker, sContainerId, dictWorkflow, sFormat,
+    dictCachedDeps=None,
+):
+    """Export DAG in the requested format (svg, png, or pdf)."""
+    sFormat = sFormat.lower().lstrip(".")
+    if sFormat not in DICT_DAG_MEDIA_TYPES:
+        return (1, f"Unsupported DAG format: {sFormat}")
+    sDotContent = fsBuildDagDot(dictWorkflow, dictCachedDeps)
+    sDotPath = "/tmp/_vaibify_dag.dot"
+    sOutPath = f"/tmp/_vaibify_dag.{sFormat}"
+    connectionDocker.fnWriteFile(
+        sContainerId, sDotPath, sDotContent.encode("utf-8")
+    )
+    sPersistPath = f"/workspace/.vaibify/dag.{sFormat}"
+    sConvert = (
+        f"dot -T{sFormat} {sDotPath} -o {sOutPath} && "
+        f"cp {sOutPath} {sPersistPath}"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sConvert
+    )
+    if iExitCode != 0:
+        return (iExitCode, sOutput)
+    baContent = connectionDocker.fbaFetchFile(
+        sContainerId, sOutPath
+    )
+    return (0, baContent)
 
 
 def ftResultArchiveProject(

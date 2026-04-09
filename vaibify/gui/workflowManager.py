@@ -1,15 +1,19 @@
 """Load, validate, and CRUD operations on workflow.json."""
 
+import copy
 import json
 import os
 import posixpath
 import re
+
+S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
 
 __all__ = [
     "fbStepRequiresTests",
     "fbValidateWorkflow",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
+    "fdictBuildImplicitDependencies",
     "fdictBuildDownstreamMap",
     "fdictBuildGlobalVariables",
     "fdictBuildStepDirectoryMap",
@@ -19,6 +23,7 @@ __all__ = [
     "fdictGetSyncStatus",
     "fdictLoadWorkflowFromContainer",
     "fdictMigrateTestFormat",
+    "fnNormalizeSceneReferences",
     "flistBuildTestCommands",
     "flistCollectArchiveDataFiles",
     "flistCollectArchiveFiles",
@@ -129,6 +134,7 @@ def fdictLoadWorkflowFromContainer(
         raise ValueError(f"Invalid workflow.json: {sWorkflowPath}")
     for dictStep in dictWorkflow.get("listSteps", []):
         fdictMigrateTestFormat(dictStep)
+        fnNormalizeSceneReferences(dictStep)
     return dictWorkflow
 
 
@@ -271,7 +277,7 @@ def fsRemapStepReferences(sText, fnRemap):
             return resultMatch.group(0)
         return "{" + f"Step{iNewNumber:02d}" + "." + sVariable + "}"
 
-    return re.sub(r"\{Step(\d+)\.([^}]+)\}", fnReplace, sText)
+    return re.sub(S_STEP_REF_PATTERN, fnReplace, sText)
 
 
 def fnRenumberAllReferences(dictWorkflow, fnRemap):
@@ -279,7 +285,8 @@ def fnRenumberAllReferences(dictWorkflow, fnRemap):
     for dictStep in dictWorkflow["listSteps"]:
         for sKey in ("saDataCommands", "saTestCommands",
                      "saPlotCommands", "saPlotFiles",
-                     "saDependencies"):
+                     "saDependencies", "saSetupCommands",
+                     "saCommands", "saOutputFiles"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
                     fsRemapStepReferences(sItem, fnRemap)
@@ -360,13 +367,22 @@ def fnReorderStep(dictWorkflow, iFromIndex, iToIndex):
     fnRenumberAllReferences(dictWorkflow, fnRemap)
 
 
+def _fdictStripComputedFields(dictWorkflow):
+    """Return a deep copy with transient fields removed from steps."""
+    dictClean = copy.deepcopy(dictWorkflow)
+    for dictStep in dictClean.get("listSteps", []):
+        dictStep.pop("saSourceCodeDeps", None)
+    return dictClean
+
+
 def fnSaveWorkflowToContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None
 ):
     """Serialize dictWorkflow to JSON and write to container."""
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
-    sJson = json.dumps(dictWorkflow, indent=2) + "\n"
+    dictClean = _fdictStripComputedFields(dictWorkflow)
+    sJson = json.dumps(dictClean, indent=2) + "\n"
     connectionDocker.fnWriteFile(
         sContainerId, sWorkflowPath, sJson.encode("utf-8")
     )
@@ -374,7 +390,7 @@ def fnSaveWorkflowToContainer(
 
 def fsetExtractStepReferences(sText):
     """Return all {StepNN.variable} tokens found in sText as tuples."""
-    return set(re.findall(r"\{Step(\d+)\.([^}]+)\}", sText))
+    return set(re.findall(S_STEP_REF_PATTERN, sText))
 
 
 def fdictBuildStemRegistry(dictWorkflow):
@@ -385,19 +401,20 @@ def fdictBuildStemRegistry(dictWorkflow):
         listAllOutputs = (
             dictStep.get("saDataFiles", [])
             + dictStep.get("saPlotFiles", [])
+            + dictStep.get("saOutputFiles", [])
         )
         for sOutputFile in listAllOutputs:
             sBasename = posixpath.basename(sOutputFile)
             sStem = posixpath.splitext(sBasename)[0]
-            sKey = f"Step{iNumber:02d}.{sStem}"
-            dictRegistry[sKey] = iNumber
+            dictRegistry[f"Step{iNumber:02d}.{sStem}"] = iNumber
     return dictRegistry
 
 
 def flistCollectReferenceStrings(dictStep):
     """Return all strings that may contain {StepNN.variable} references."""
     listStrings = []
-    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands"):
+    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands",
+                 "saSetupCommands", "saCommands"):
         listStrings.extend(dictStep.get(sKey, []))
     listStrings.extend(dictStep.get("saDependencies", []))
     return listStrings
@@ -459,6 +476,7 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
         listAllOutputs = (
             dictStep.get("saDataFiles", [])
             + dictStep.get("saPlotFiles", [])
+            + dictStep.get("saOutputFiles", [])
         )
         for sOutputFile in listAllOutputs:
             sResolved = fsResolveVariables(sOutputFile, dictGlobalVars)
@@ -466,8 +484,7 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
                 sResolved, sStepDirectory, dictGlobalVars
             )
             sStem = posixpath.splitext(posixpath.basename(sAbsPath))[0]
-            sKey = f"Step{iNumber:02d}.{sStem}"
-            dictStepVars[sKey] = sAbsPath
+            dictStepVars[f"Step{iNumber:02d}.{sStem}"] = sAbsPath
     return dictStepVars
 
 
@@ -649,6 +666,46 @@ def fsetExtractUpstreamIndices(sText):
     return set(int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText))
 
 
+def _flistResolveOutputPaths(dictStep):
+    """Return normalized paths for non-template output files."""
+    sDirectory = dictStep.get("sDirectory", "")
+    if not sDirectory:
+        return []
+    listPaths = []
+    for sKey in ("saDataFiles", "saPlotFiles", "saOutputFiles"):
+        for sFile in dictStep.get(sKey, []):
+            if "{" in sFile:
+                continue
+            listPaths.append(
+                posixpath.normpath(posixpath.join(sDirectory, sFile))
+            )
+    return listPaths
+
+
+def fdictBuildImplicitDependencies(dictWorkflow):
+    """Detect deps where an earlier step outputs into a later step's dir."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    dictImplicit = {}
+    for iIndex, dictStep in enumerate(listSteps):
+        sDirectory = dictStep.get("sDirectory", "")
+        if not sDirectory:
+            continue
+        sPrefix = posixpath.normpath(sDirectory) + "/"
+        for iOther in range(iIndex):
+            for sPath in _flistResolveOutputPaths(listSteps[iOther]):
+                if sPath.startswith(sPrefix) or sPath == sPrefix[:-1]:
+                    dictImplicit.setdefault(iOther, set()).add(iIndex)
+                    break
+    return dictImplicit
+
+
+def _fnMergeImplicitDependencies(dictDirect, dictWorkflow):
+    """Merge directory-overlap deps into dictDirect."""
+    dictImplicit = fdictBuildImplicitDependencies(dictWorkflow)
+    for iUpstream, setDownstream in dictImplicit.items():
+        dictDirect.setdefault(iUpstream, set()).update(setDownstream)
+
+
 def fdictBuildDirectDependencies(dictWorkflow):
     """Return {iUpstreamIndex: set(iDirectDownstreamIndices)}."""
     dictDirect = {}
@@ -656,13 +713,15 @@ def fdictBuildDirectDependencies(dictWorkflow):
         setUpstream = set()
         for sKey in ("saDataCommands", "saPlotCommands",
                      "saTestCommands", "saDataFiles", "saPlotFiles",
-                     "saDependencies"):
+                     "saDependencies", "saSetupCommands",
+                     "saCommands", "saOutputFiles"):
             for sItem in dictStep.get(sKey, []):
                 setUpstream |= fsetExtractUpstreamIndices(sItem)
         for iUpstream in setUpstream:
             if iUpstream not in dictDirect:
                 dictDirect[iUpstream] = set()
             dictDirect[iUpstream].add(iIndex)
+    _fnMergeImplicitDependencies(dictDirect, dictWorkflow)
     return dictDirect
 
 
@@ -725,6 +784,20 @@ def flistResolveTestCommands(dictStep):
 def fsTestsDirectory(sStepDirectory):
     """Return the tests subdirectory path for a step."""
     return posixpath.join(sStepDirectory, "tests")
+
+
+def fnNormalizeSceneReferences(dictStep):
+    """Replace deprecated {SceneNN.var} tokens with {StepNN.var}."""
+    for sKey in ("saDataCommands", "saPlotCommands", "saTestCommands",
+                 "saSetupCommands", "saCommands", "saDependencies",
+                 "saDataFiles", "saPlotFiles", "saOutputFiles"):
+        listValues = dictStep.get(sKey)
+        if not listValues:
+            continue
+        dictStep[sKey] = [
+            re.sub(r"\{Scene(\d+)\.", r"{Step\1.", s)
+            for s in listValues
+        ]
 
 
 def fdictMigrateTestFormat(dictStep):

@@ -584,6 +584,11 @@ const PipeleyenTerminal = (function () {
                 fnCreateTab(0);
             }
         },
+        fnEnsureTab: function () {
+            if (listPanes.length === 0) {
+                fnCreatePane();
+            }
+        },
         fnCreatePane: fnCreatePane,
         fnCloseAll: fnCloseAll,
         fnFitActiveTerminal: fnFitAllTerminals,

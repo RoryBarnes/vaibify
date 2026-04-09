@@ -85,7 +85,7 @@ class TestFlistBuildDagEdges:
             {"sName": "A", "saDataCommands": ["python run.py"],
              "saPlotCommands": [], "saTestCommands": []},
         ]
-        assert _flistBuildDagEdges(listSteps) == []
+        assert _flistBuildDagEdges({"listSteps": listSteps}) == []
 
     def test_simple_dependency(self):
         listSteps = [
@@ -95,7 +95,7 @@ class TestFlistBuildDagEdges:
              "saDataCommands": ["python run.py {Step1.sOutput}"],
              "saPlotCommands": [], "saTestCommands": []},
         ]
-        listEdges = _flistBuildDagEdges(listSteps)
+        listEdges = _flistBuildDagEdges({"listSteps": listSteps})
         assert len(listEdges) == 1
         assert "step1 -> step2" in listEdges[0]
 
@@ -110,7 +110,7 @@ class TestFlistBuildDagEdges:
                  "python {Step1.sData} {Step2.sPlot}"],
              "saPlotCommands": [], "saTestCommands": []},
         ]
-        listEdges = _flistBuildDagEdges(listSteps)
+        listEdges = _flistBuildDagEdges({"listSteps": listSteps})
         assert len(listEdges) == 2
 
     def test_no_duplicate_edges(self):
@@ -122,7 +122,7 @@ class TestFlistBuildDagEdges:
                  "cmd {Step1.sA} {Step1.sB}"],
              "saPlotCommands": [], "saTestCommands": []},
         ]
-        listEdges = _flistBuildDagEdges(listSteps)
+        listEdges = _flistBuildDagEdges({"listSteps": listSteps})
         assert len(listEdges) == 1
 
     def test_dependency_in_plot_commands(self):
@@ -133,7 +133,7 @@ class TestFlistBuildDagEdges:
              "saPlotCommands": ["plot {Step1.sFile}"],
              "saTestCommands": []},
         ]
-        assert len(_flistBuildDagEdges(listSteps)) == 1
+        assert len(_flistBuildDagEdges({"listSteps": listSteps})) == 1
 
     def test_dependency_in_sa_dependencies(self):
         listSteps = [
@@ -144,7 +144,7 @@ class TestFlistBuildDagEdges:
              "saPlotCommands": [], "saTestCommands": [],
              "saDependencies": ["{Step1.sOutput}"]},
         ]
-        assert len(_flistBuildDagEdges(listSteps)) == 1
+        assert len(_flistBuildDagEdges({"listSteps": listSteps})) == 1
 
 
 class TestFlistExtractAllScriptPaths:

@@ -662,6 +662,41 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId):
     }
 
 
+async def _fnScanDependenciesBackground(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Scan source-code dependencies and cache results."""
+    from .routes.scriptRoutes import fdictScanAllDependencies
+    try:
+        dictDeps = await fdictScanAllDependencies(
+            dictCtx, sContainerId, dictWorkflow,
+        )
+        dictCtx["sourceCodeDeps"][sContainerId] = dictDeps
+        _fnAnnotateStepsWithDeps(dictWorkflow, dictDeps)
+    except Exception as error:
+        logger.warning("Source-code dep scan failed: %s", error)
+
+
+def _fnAnnotateStepsWithDeps(dictWorkflow, dictDeps):
+    """Add saSourceCodeDeps to each step from scan results."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    dictDownToUp = _fdictInvertDeps(dictDeps, len(listSteps))
+    for iStep, dictStep in enumerate(listSteps):
+        listUpstream = sorted(dictDownToUp.get(iStep, set()))
+        dictStep["saSourceCodeDeps"] = [
+            i + 1 for i in listUpstream
+        ]
+
+
+def _fdictInvertDeps(dictUpToDown, iStepCount):
+    """Invert {upstream: set(downstream)} to {downstream: set(upstream)}."""
+    dictResult = {}
+    for iUpstream, setDownstream in dictUpToDown.items():
+        for iDown in setDownstream:
+            dictResult.setdefault(iDown, set()).add(iUpstream)
+    return dictResult
+
+
 def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
@@ -676,6 +711,9 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["paths"][sContainerId] = sResolved
+        _fnLaunchDependencyScan(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         return {
             "sContainerId": sContainerId,
             "sWorkflowPath": sResolved,
@@ -685,6 +723,21 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         logger.error("Workflow load failed: %s", error)
         sUserMessage = _fsSanitizeServerError(str(error))
         raise HTTPException(400, sUserMessage)
+
+
+def _fnLaunchDependencyScan(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Schedule background source-code dependency scan."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(
+            _fnScanDependenciesBackground(
+                dictCtx, sContainerId, dictWorkflow,
+            )
+        )
+    except RuntimeError:
+        logger.debug("No event loop for dependency scan")
 
 
 # ---------------------------------------------------------------
@@ -1010,6 +1063,7 @@ def fdictBuildContext(connectionDocker):
         "terminals": dictTerminals,
         "containerUsers": {},
         "pipelineTasks": {},
+        "sourceCodeDeps": {},
         "require": fnRequire,
         "save": fnSave,
         "variables": fnVariables,
