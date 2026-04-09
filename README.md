@@ -62,50 +62,9 @@ vaibify build
 vaibify start --gui
 ```
 
-### CLI Commands
-
-```
-vaibify init [--template NAME]          Create a project from a template
-vaibify setup                           Launch the setup wizard GUI
-vaibify build [-p NAME] [--no-cache]    Build the Docker image
-vaibify start [-p NAME] [--gui]         Start the container
-vaibify stop [-p NAME]                  Stop the container
-vaibify status [-p NAME]                Show environment status
-vaibify connect [-p NAME]               Shell into the container
-vaibify verify [-p NAME]                Run the isolation security audit
-vaibify gui [-p NAME]                   Launch the workflow viewer
-vaibify push [-p NAME] <src> <dest>     Copy files into the container
-vaibify pull [-p NAME] <src> <dest>     Copy files out of the container
-vaibify config [edit|export|import]
-vaibify publish [archive|workflow]
-```
-
-The shorthand `vaib` is also available.
-
-### Resources
-
-The [docs/](docs/) directory contains the full Sphinx documentation, also available [online](https://RoryBarnes.github.io/vaibify). The [templates/](templates/) directory contains the project templates. The [tests/](tests/) directory contains the pytest test suite.
-
-### Code Integrity
-
-The `Vaibify` team maintains code integrity through automatic checks at every pull request. Unit tests run across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and Python 3.9 through 3.14. Tests that require a running Docker daemon are excluded from CI and run locally. Documentation is rebuilt and deployed automatically on every merge to main.
-
-### Community
-
-`Vaibify` is a community project. We welcome pull requests — please issue them to the `main` branch. See the [Contributor's Guide](https://RoryBarnes.github.io/vaibify/developers.html) for style conventions and testing instructions.
-
-If you have questions or are running into issues, post to a [Discussion](https://github.com/RoryBarnes/vaibify/discussions).
-
-If you believe you have encountered a bug, please raise an issue using the [Issues](https://github.com/RoryBarnes/vaibify/issues) tab.
-
-### Requirements
-
-- Python 3.9+
-- Docker (or Colima on macOS)
-- macOS or Linux
+See the [full documentation](https://RoryBarnes.github.io/vaibify) for
+CLI reference, configuration, security model, and contributor guidelines.
 
 ### License
 
-MIT
-
-© 2025 Rory Barnes.
+MIT. © 2025 Rory Barnes.

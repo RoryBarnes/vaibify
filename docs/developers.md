@@ -53,11 +53,14 @@ Run with coverage:
 pytest --cov=vaibify tests/
 ```
 
-## Portability
+## Portability and CI
 
 All code must work on both macOS and Linux, and with Python versions
-3.9 through 3.14. The project uses GitHub Actions to test all permutations
-of OS and Python version.
+3.9 through 3.14. GitHub Actions runs unit tests on every pull request
+across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and
+Python 3.9 through 3.14. Tests that require a running Docker daemon
+are excluded from CI and run locally. Documentation is rebuilt and
+deployed automatically on every merge to main.
 
 ## Pull Request Workflow
 
