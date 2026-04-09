@@ -194,10 +194,24 @@ def _fsStartOrCreate(configProject, sContainerName, sDockerDir):
             f"Container '{sContainerName}' is already running"
         )
     if dictStatus["bExists"]:
-        if _fbContainerHasTty(sContainerName):
+        if _fbContainerCanRestart(sContainerName):
             return _fsDockerStartExisting(sContainerName)
         _fnRemoveContainer(sContainerName)
     return fsStartContainerDetached(configProject, sDockerDir)
+
+
+def _fbContainerCanRestart(sContainerName):
+    """Return True if the container can be restarted as-is.
+
+    A container is restartable when it has a TTY and uses
+    ``sleep infinity`` as its command.  Containers created
+    before the sleep-infinity change used ``/bin/bash`` which
+    can exit in detached mode, so those are replaced.
+    """
+    import subprocess
+    if not _fbContainerHasTty(sContainerName):
+        return False
+    return _fbContainerUsesSleepInfinity(sContainerName)
 
 
 def _fbContainerHasTty(sContainerName):
@@ -211,6 +225,20 @@ def _fbContainerHasTty(sContainerName):
     if resultProcess.returncode != 0:
         return False
     return resultProcess.stdout.strip() == "true"
+
+
+def _fbContainerUsesSleepInfinity(sContainerName):
+    """Return True if the container's command is sleep infinity."""
+    import subprocess
+    resultProcess = subprocess.run(
+        ["docker", "inspect", "--format",
+         "{{join .Config.Cmd \" \"}}",
+         sContainerName],
+        capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        return False
+    return resultProcess.stdout.strip() == "sleep infinity"
 
 
 def _fnRemoveContainer(sContainerName):

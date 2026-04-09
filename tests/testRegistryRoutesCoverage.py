@@ -130,6 +130,9 @@ class TestStartOrCreate:
             "vaibify.gui.registryRoutes._fbContainerHasTty",
             return_value=True,
         ), patch(
+            "vaibify.gui.registryRoutes._fbContainerUsesSleepInfinity",
+            return_value=True,
+        ), patch(
             "vaibify.gui.registryRoutes._fsDockerStartExisting",
             return_value="xyz789",
         ) as mockStart:
