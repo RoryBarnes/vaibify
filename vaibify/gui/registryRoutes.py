@@ -229,16 +229,20 @@ def _fbContainerHasTty(sContainerName):
 
 def _fbContainerUsesSleepInfinity(sContainerName):
     """Return True if the container's command is sleep infinity."""
+    import json
     import subprocess
     resultProcess = subprocess.run(
         ["docker", "inspect", "--format",
-         "{{join .Config.Cmd \" \"}}",
-         sContainerName],
+         "{{json .Config.Cmd}}", sContainerName],
         capture_output=True, text=True,
     )
     if resultProcess.returncode != 0:
         return False
-    return resultProcess.stdout.strip() == "sleep infinity"
+    try:
+        listCmd = json.loads(resultProcess.stdout.strip())
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return listCmd == ["sleep", "infinity"]
 
 
 def _fnRemoveContainer(sContainerName):
