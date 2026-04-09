@@ -122,21 +122,48 @@ var VaibifyWorkflowManager = (function () {
 
     /* --- Workflow Selection --- */
 
+    function _fdictFetchWorkflow(sId, sPath) {
+        return VaibifyApi.fdictPostRaw(
+            "/api/connect/" + sId +
+            "?sWorkflowPath=" + encodeURIComponent(sPath)
+        );
+    }
+
     async function fnSelectWorkflow(
         sId, sWorkflowPathArg, sWorkflowName
     ) {
         try {
-            var dictResult = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId +
-                "?sWorkflowPath=" +
-                encodeURIComponent(sWorkflowPathArg)
-            );
+            var dictResult = await _fdictFetchWorkflow(
+                sId, sWorkflowPathArg);
             PipeleyenApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
+        }
+    }
+
+    var _bRefreshing = false;
+
+    async function fnRefreshWorkflow() {
+        if (_bRefreshing) return;
+        var sId = PipeleyenApp.fsGetContainerId();
+        var sPath = PipeleyenApp.fsGetWorkflowPath();
+        if (!sId || !sPath) return;
+        _bRefreshing = true;
+        try {
+            var dictResult = await _fdictFetchWorkflow(
+                sId, sPath);
+            PipeleyenApp.fnRefreshWorkflowData(dictResult);
+            PipeleyenApp.fnShowToast(
+                "Workflow refreshed", "info");
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+        } finally {
+            _bRefreshing = false;
         }
     }
 
@@ -578,6 +605,7 @@ var VaibifyWorkflowManager = (function () {
         fnRenderWorkflowList: fnRenderWorkflowList,
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fnSelectWorkflow: fnSelectWorkflow,
+        fnRefreshWorkflow: fnRefreshWorkflow,
         fnToggleWorkflowDropdown: fnToggleWorkflowDropdown,
         fnHideWorkflowDropdown: fnHideWorkflowDropdown,
         fnSaveCurrentWorkflow: fnSaveCurrentWorkflow,

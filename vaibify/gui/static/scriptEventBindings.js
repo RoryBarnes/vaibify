@@ -784,6 +784,15 @@ var PipeleyenEventBindings = (function () {
         );
     }
 
+    /* --- Refresh Workflow --- */
+
+    function fnBindRefreshWorkflow() {
+        document.getElementById("btnRefreshWorkflow")
+            .addEventListener("click", function () {
+                VaibifyWorkflowManager.fnRefreshWorkflow();
+            });
+    }
+
     /* --- Error Modal --- */
 
     function fnBindErrorModal() {
@@ -803,6 +812,7 @@ var PipeleyenEventBindings = (function () {
         fnBindLeftPanelTabs: fnBindLeftPanelTabs,
         fnBindResizeHandles: fnBindResizeHandles,
         fnBindGlobalSettingsToggle: fnBindGlobalSettingsToggle,
+        fnBindRefreshWorkflow: fnBindRefreshWorkflow,
         fnBindErrorModal: fnBindErrorModal,
     };
 })();

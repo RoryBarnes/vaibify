@@ -146,6 +146,7 @@ const PipeleyenApp = (function () {
         PipeleyenEventBindings.fnBindLeftPanelTabs();
         PipeleyenEventBindings.fnBindResizeHandles();
         PipeleyenEventBindings.fnBindGlobalSettingsToggle();
+        PipeleyenEventBindings.fnBindRefreshWorkflow();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -220,6 +221,22 @@ const PipeleyenApp = (function () {
         fnStartFileChangePolling();
         PipeleyenTerminal.fnEnsureTab();
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
+    }
+
+    function fnRefreshWorkflowData(dictData) {
+        _dictWorkflowState.dictWorkflow = dictData.dictWorkflow;
+        _dictWorkflowState.sWorkflowPath = dictData.sWorkflowPath;
+        _fnClearFileCaches();
+        fnRenderStepList();
+        fnPollAllStepFiles();
+    }
+
+    function _fnClearFileCaches() {
+        _dictWorkflowState.dictFileExistenceCache = {};
+        _dictWorkflowState.dictFileModTimes = {};
+        _dictWorkflowState.dictOutputMtimes = {};
+        _dictWorkflowState.dictPlotMtimes = {};
+        _dictWorkflowState.dictPlotStandardExists = {};
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -1953,6 +1970,7 @@ const PipeleyenApp = (function () {
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
+        fnRefreshWorkflowData: fnRefreshWorkflowData,
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,
         fnShowWorkflowPicker: fnShowWorkflowPicker,
