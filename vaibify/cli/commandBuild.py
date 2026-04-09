@@ -48,6 +48,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     from vaibify.config.containerConfig import (
         fnGenerateContainerConf,
     )
+    fnIncludeProjectRepo(config)
     fnGenerateContainerConf(
         config, os.path.join(sDockerDir, "container.conf")
     )
@@ -102,6 +103,77 @@ def fnCopyDirectorScript(sDockerDir):
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
     shutil.copy2(sSourcePath, sDestPath)
+
+
+def fnIncludeProjectRepo(config):
+    """Add the project directory as a reference repo if not listed.
+
+    Detects the git remote and branch of the project directory
+    and appends it to the repository list so the entrypoint
+    clones it into the container automatically.
+    """
+    sProjectDir = _fsProjectDirectory()
+    sUrl = _fsGitRemoteUrl(sProjectDir)
+    if not sUrl:
+        return
+    if _fbRepoAlreadyListed(config, sUrl):
+        return
+    sName = _fsRepoNameFromUrl(sUrl)
+    sBranch = _fsGitBranch(sProjectDir)
+    config.listRepositories.append({
+        "name": sName, "url": sUrl,
+        "branch": sBranch, "installMethod": "reference",
+    })
+
+
+def _fsGitRemoteUrl(sDirectory):
+    """Return the git remote origin URL, or empty string."""
+    import subprocess
+    try:
+        resultProcess = subprocess.run(
+            ["git", "-C", sDirectory, "remote",
+             "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if resultProcess.returncode == 0:
+            return resultProcess.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return ""
+
+
+def _fsGitBranch(sDirectory):
+    """Return the current git branch, defaulting to main."""
+    import subprocess
+    try:
+        resultProcess = subprocess.run(
+            ["git", "-C", sDirectory, "rev-parse",
+             "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if resultProcess.returncode == 0:
+            return resultProcess.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return "main"
+
+
+def _fsRepoNameFromUrl(sUrl):
+    """Extract the repository name from a git URL."""
+    sName = sUrl.rstrip("/").rsplit("/", 1)[-1]
+    if sName.endswith(".git"):
+        sName = sName[:-4]
+    return sName
+
+
+def _fbRepoAlreadyListed(config, sUrl):
+    """Return True if the URL is already in the repo list."""
+    sNormalized = sUrl.rstrip("/")
+    for dictRepo in config.listRepositories:
+        sExisting = dictRepo.get("url", "").rstrip("/")
+        if sExisting == sNormalized:
+            return True
+    return False
 
 
 def fnCopyHostWorkflows(sDockerDir):
