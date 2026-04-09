@@ -264,7 +264,9 @@ fnPipInstall() {
     local sName="$2"
     shift 2
     echo "[vaib] Installing ${sName}..."
-    pip install -e "${sRepoPath}" "$@" -q
+    if ! pip install -e "${sRepoPath}" "$@" -q; then
+        echo "[vaib]   WARNING: Failed to install ${sName}. Continuing."
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -345,7 +347,9 @@ fnInstallRepoRequirements() {
         local sRepoName
         sRepoName=$(basename "${sRepoDir}")
         echo "[vaib] Installing requirements for ${sRepoName}..."
-        pip install -r "${sReqFile}" -q
+        if ! pip install -r "${sReqFile}" -q; then
+            echo "[vaib]   WARNING: Failed to install requirements for ${sRepoName}. Continuing."
+        fi
         bFoundAny=true
     done
     if [ "${bFoundAny}" = true ]; then

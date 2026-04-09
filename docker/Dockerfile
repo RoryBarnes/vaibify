@@ -95,7 +95,8 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
     && apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
     && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade setuptools pip
 
 # Conditional conda/mamba install for non-pip package managers
 RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
