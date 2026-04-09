@@ -136,6 +136,7 @@ RUN mkdir -p /etc/vaibify
 COPY container.conf /etc/vaibify/container.conf
 COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
+COPY workflows/ /usr/share/vaibify/workflows/
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod +x /home/${CONTAINER_USER}/checkIsolation.sh \

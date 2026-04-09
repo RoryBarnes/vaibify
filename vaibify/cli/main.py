@@ -31,6 +31,7 @@ from .commandConfig import config
 from .commandDestroy import destroy
 from .commandInit import init
 from .commandLs import ls
+from .commandRegister import register
 from .commandPublish import publish
 from .commandRun import run
 from .commandStart import start
@@ -109,6 +110,7 @@ main.add_command(workflow)
 main.add_command(verify_step)
 main.add_command(ls)
 main.add_command(cat)
+main.add_command(register)
 main.add_command(test)
 
 
@@ -184,21 +186,17 @@ def setup():
 @main.command("gui")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
-    help="Project name (omit if in a project directory "
-    "or only one project exists).",
+    help="Project name (omit to show the landing page).",
 )
 def gui(sProjectName):
     """Launch the Vaibify pipeline viewer GUI."""
-    configProject = fconfigResolveProject(sProjectName)
     from vaibify.gui.pipelineServer import fappCreateApplication
-    import logging
     import threading
     import time
     import uvicorn
     import webbrowser
     _fnConfigureErrorLogging()
-    sRoot = configProject.sWorkspaceRoot
-    sTerminalUser = configProject.sContainerUser
+    sRoot, sTerminalUser = _ftResolveGuiConfig(sProjectName)
     sUrl = "http://127.0.0.1:8050"
     click.echo(f"Starting pipeline viewer at {sUrl}")
     app = fappCreateApplication(
@@ -209,6 +207,22 @@ def gui(sProjectName):
         daemon=True,
     ).start()
     uvicorn.run(app, host="127.0.0.1", port=8050, log_level="warning")
+
+
+def _ftResolveGuiConfig(sProjectName):
+    """Return (sWorkspaceRoot, sContainerUser) for the GUI.
+
+    When a project is specified or discoverable, use its
+    config. Otherwise fall back to defaults so the landing
+    page can still launch.
+    """
+    try:
+        configProject = fconfigResolveProject(sProjectName)
+        return configProject.sWorkspaceRoot, configProject.sContainerUser
+    except SystemExit:
+        if sProjectName is not None:
+            raise
+        return "/workspace", "researcher"
 
 
 @main.command("push")

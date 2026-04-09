@@ -40,7 +40,7 @@ def fsStartContainerDetached(config, sDockerDir):
         saRunArgs = flistBuildRunArgs(config, bDetached=True)
         fnMountSecrets(config, saRunArgs, listCleanupFiles)
         saFullCommand = _flistAssembleRunCommand(
-            config, saRunArgs, None,
+            config, saRunArgs, ["sleep", "infinity"],
         )
         return _fsRunDetachedCommand(saFullCommand)
     finally:

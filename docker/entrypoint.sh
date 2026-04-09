@@ -469,6 +469,21 @@ fnCreateVaibifyDirectory() {
         cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
         chmod +x "${WORKSPACE}/.vaibify/director.py"
     fi
+    fnCopyHostWorkflows
+}
+
+# ---------------------------------------------------------------------------
+# fnCopyHostWorkflows: Copy workflows baked into the image at build time
+# ---------------------------------------------------------------------------
+fnCopyHostWorkflows() {
+    local sStagedDir="/usr/share/vaibify/workflows"
+    local sTargetDir="${WORKSPACE}/.vaibify/workflows"
+    if [ -d "${sStagedDir}" ]; then
+        for sFile in "${sStagedDir}"/*.json; do
+            [ -f "${sFile}" ] || continue
+            cp -n "${sFile}" "${sTargetDir}/"
+        done
+    fi
 }
 
 # ---------------------------------------------------------------------------

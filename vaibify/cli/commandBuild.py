@@ -56,6 +56,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
+    fnCopyHostWorkflows(sDockerDir)
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -101,6 +102,37 @@ def fnCopyDirectorScript(sDockerDir):
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
     shutil.copy2(sSourcePath, sDestPath)
+
+
+def fnCopyHostWorkflows(sDockerDir):
+    """Copy host .vaibify/workflows/ into the build context.
+
+    Searches the project directory for workflow JSON files and
+    stages them so the Dockerfile can bake them into the image.
+    The entrypoint copies them into the workspace volume on
+    first start, making workflows available without manual
+    file transfer.
+    """
+    import glob
+    import shutil
+    sProjectDir = _fsProjectDirectory()
+    sHostWorkflows = os.path.join(
+        sProjectDir, ".vaibify", "workflows",
+    )
+    sDestDir = os.path.join(sDockerDir, "workflows")
+    if os.path.isdir(sDestDir):
+        shutil.rmtree(sDestDir)
+    os.makedirs(sDestDir, exist_ok=True)
+    if not os.path.isdir(sHostWorkflows):
+        return
+    for sFile in glob.glob(os.path.join(sHostWorkflows, "*.json")):
+        shutil.copy2(sFile, sDestDir)
+
+
+def _fsProjectDirectory():
+    """Return the host project directory for the current build."""
+    from .configLoader import fsConfigPath
+    return str(os.path.dirname(os.path.abspath(fsConfigPath())))
 
 
 def _fnWriteFile(sPath, sContent):

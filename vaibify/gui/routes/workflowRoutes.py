@@ -17,6 +17,12 @@ from ..pipelineServer import (
 )
 
 
+def _fbIsContainerStopped(error):
+    """Return True if the error indicates a stopped container."""
+    sMessage = str(error).lower()
+    return "409" in sMessage and "conflict" in sMessage
+
+
 def _fnRejectDuplicateWorkflowName(
     connectionDocker, sContainerId, sWorkflowName
 ):
@@ -70,6 +76,10 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
                 dictCtx["docker"], sContainerId
             )
         except Exception as error:
+            if _fbIsContainerStopped(error):
+                raise HTTPException(
+                    409, "Container is not running. "
+                    "Start it before selecting a workflow.")
             raise HTTPException(
                 500, f"Search failed: "
                 f"{_fsSanitizeServerError(str(error))}")

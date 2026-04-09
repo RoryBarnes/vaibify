@@ -59,7 +59,6 @@ def _fnRegisterGetRegistry(app, dictCtx):
 
     @app.get("/api/registry")
     async def fnGetRegistry():
-        dictCtx["require"]()
         from vaibify.config.registryManager import (
             flistGetAllProjectsWithStatus,
         )
@@ -81,7 +80,6 @@ def _fnRegisterAddProject(app, dictCtx):
 
     @app.post("/api/registry")
     async def fnAddProject(request: AddProjectRequest):
-        dictCtx["require"]()
         from vaibify.config.registryManager import (
             fnAddProject, fdictGetProject,
         )
@@ -111,7 +109,6 @@ def _fnRegisterRemoveProject(app, dictCtx):
 
     @app.delete("/api/registry/{sName}")
     async def fnRemoveProject(sName: str):
-        dictCtx["require"]()
         from vaibify.config.registryManager import (
             fnRemoveProject,
         )
@@ -291,7 +288,6 @@ def _fnRegisterContainerSettings(app, dictCtx):
 
     @app.get("/api/containers/{sName}/settings")
     async def fnGetContainerSettings(sName: str):
-        dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         from vaibify.config.projectConfig import fconfigLoadFromFile
         configProject = fconfigLoadFromFile(
@@ -303,7 +299,6 @@ def _fnRegisterContainerSettings(app, dictCtx):
     async def fnSetContainerSettings(
         sName: str, request: ContainerSettingsRequest
     ):
-        dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         _fnUpdateYamlBoolField(
             dictProject["sConfigPath"], "neverSleep",
@@ -447,7 +442,6 @@ def _fnRegisterHostDirectories(app, dictCtx):
     async def fnGetHostDirectories(
         sPath: Optional[str] = None,
     ):
-        dictCtx["require"]()
         sAbsPath = sPath or os.path.expanduser("~")
         _fnValidateHostPath(sAbsPath)
         listEntries = flistQueryHostDirectory(sAbsPath)
@@ -531,7 +525,6 @@ def _fnRegisterGetTemplates(app, dictCtx):
 
     @app.get("/api/setup/templates")
     async def fnGetTemplates():
-        dictCtx["require"]()
         from vaibify.config.templateManager import (
             flistAvailableTemplates,
         )
@@ -547,7 +540,6 @@ def _fnRegisterGetTemplateConfig(app, dictCtx):
 
     @app.get("/api/setup/templates/{sName}")
     async def fnGetTemplateConfig(sName: str):
-        dictCtx["require"]()
         from vaibify.config.templateManager import (
             fdictLoadTemplateConfig,
         )
@@ -563,7 +555,6 @@ def _fnRegisterCreateProject(app, dictCtx):
 
     @app.post("/api/projects/create")
     async def fnCreateProject(request: CreateProjectRequest):
-        dictCtx["require"]()
         _fnValidateCreateDirectory(request.sDirectory)
         _fnRejectDuplicateProjectName(request.sProjectName)
         _fnScaffoldProject(request)
