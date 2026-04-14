@@ -230,14 +230,14 @@ var PipeleyenContainerManager = (function () {
         }
     }
 
-    async function fnBuildContainer(sName) {
+    async function fnBuildContainer(sName, bNoCache) {
         var elOverlay = document.getElementById("modalBuildProgress");
         elOverlay.style.display = "flex";
         try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/build"
-            );
+            var sUrl = "/api/containers/" +
+                encodeURIComponent(sName) + "/build";
+            if (bNoCache) sUrl += "?bNoCache=true";
+            await VaibifyApi.fdictPostRaw(sUrl);
             PipeleyenApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
@@ -279,6 +279,7 @@ var PipeleyenContainerManager = (function () {
 
     async function fnStopContainer(sName) {
         fnSetTilePending(sName);
+        PipeleyenTerminal.fnCloseAll();
         try {
             await VaibifyApi.fdictPostRaw(
                 "/api/containers/" + encodeURIComponent(sName)
@@ -297,10 +298,13 @@ var PipeleyenContainerManager = (function () {
     async function fnRebuildContainer(sName) {
         PipeleyenApp.fnShowConfirmModal(
             "Rebuild Container",
-            "Rebuild will stop and rebuild the container. Continue?",
+            "Rebuild will stop and rebuild the container " +
+            "without cache. All terminal sessions will be " +
+            "closed. Continue?",
             async function () {
+                PipeleyenTerminal.fnCloseAll();
                 await fnStopContainer(sName);
-                await fnBuildContainer(sName);
+                await fnBuildContainer(sName, true);
             }
         );
     }

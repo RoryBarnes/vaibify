@@ -374,7 +374,7 @@ def testBuildContainerSuccess(fixtureClient, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject: None,
+        lambda dictProject, bNoCache=False: None,
     )
     response = fixtureClient.post(
         "/api/containers/build-proj/build",
@@ -392,7 +392,7 @@ def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject: (_ for _ in ()).throw(
+        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
             RuntimeError("build error")
         ),
     )

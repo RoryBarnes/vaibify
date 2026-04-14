@@ -351,7 +351,8 @@ var VaibifyWorkflowManager = (function () {
         '<p>A list of git URLs that will be cloned into ' +
         '<code>/workspace/&lt;repo-name&gt;</code> inside the container ' +
         'at startup. Public HTTPS URLs work without any setup; private ' +
-        'repos need the GitHub authentication toggle on the next step.</p>' +
+        'repos need the GitHub authentication toggle on the next step ' +
+        '(also required for pushing to any repo, public or private).</p>' +
         '<p><strong>How repos are installed:</strong> by default, the ' +
         'wizard sets each repo\'s install method to ' +
         '<code>pip_editable</code>, which runs <code>pip install -e .</code> ' +
@@ -378,10 +379,12 @@ var VaibifyWorkflowManager = (function () {
         '<strong>NVIDIA GPU</strong> are independent toggles. Enabling a ' +
         'feature adds build time but makes the tool immediately available.</p>' +
         '<p><strong>GitHub authentication</strong>: delegates to your ' +
-        'host\'s <code>gh auth</code> to provide a token for cloning ' +
-        'private repositories. Leave this on (the default) &mdash; if ' +
-        '<code>gh auth login</code> is set up on your host, it will Just ' +
-        'Work. If not, only public repos will clone.</p>' +
+        'host\'s <code>gh auth</code> to provide a token. Required for ' +
+        'pushing to any repository (public or private) and for cloning ' +
+        'private repositories. Leave this on unless you are certain you ' +
+        'will never need to push from inside the container. If ' +
+        '<code>gh auth login</code> is not set up on your host, the ' +
+        'container will still work but git push will fail.</p>' +
         '<p>The <strong>macOS sleep prevention</strong> toggle (only ' +
         'shown on macOS) is recommended for long builds. The ' +
         '<strong>network isolation</strong> toggle blocks all outbound ' +
@@ -797,11 +800,12 @@ var VaibifyWorkflowManager = (function () {
         return '<div class="form-group"><label>' +
             'GitHub authentication</label>' +
             '<label class="wizard-toggle-row" title="Required for ' +
-            'cloning private repositories.">' +
+            'pushing to repos and accessing private repos.">' +
             '<input type="checkbox" id="wizardUseGithubAuth"' +
             (bChecked ? " checked" : "") + '>' +
-            '<span>Use my GitHub credentials (gh auth) ' +
-            'for private repos</span></label></div>';
+            '<span>GitHub authentication ' +
+            '(push to repos, access private repos)' +
+            '</span></label></div>';
     }
 
     function _fsRenderRuntimeTogglesSection() {

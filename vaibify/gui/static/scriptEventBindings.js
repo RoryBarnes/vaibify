@@ -550,10 +550,18 @@ var PipeleyenEventBindings = (function () {
                 PipeleyenApp.fnResetLayout();
             },
             btnAdminContainers: function () {
-                PipeleyenApp.fnDisconnect();
+                PipeleyenModals.fnShowConfirmModal(
+                    "Leave Dashboard",
+                    "This will disconnect from the container " +
+                    "and end any running sessions. Continue?",
+                    PipeleyenApp.fnDisconnect);
             },
             btnAdminWorkflows: function () {
-                PipeleyenApp.fnReconnectToCurrentContainer();
+                PipeleyenModals.fnShowConfirmModal(
+                    "Switch Workflow",
+                    "This will leave the current dashboard " +
+                    "and end any running sessions. Continue?",
+                    PipeleyenApp.fnReconnectToCurrentContainer);
             },
             btnAdminQuit: function () { window.close(); },
         };

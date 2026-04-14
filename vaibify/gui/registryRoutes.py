@@ -145,18 +145,20 @@ def _fnRegisterBuildContainer(app, dictCtx):
     """Register POST /api/containers/{sName}/build."""
 
     @app.post("/api/containers/{sName}/build")
-    async def fnBuildContainer(sName: str):
+    async def fnBuildContainer(
+        sName: str, bNoCache: bool = False,
+    ):
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         try:
-            _fnExecuteBuild(dictProject)
+            _fnExecuteBuild(dictProject, bNoCache)
         except Exception as error:
             logger.error("Build failed for %s: %s", sName, error)
             raise HTTPException(500, "Build failed")
         return {"bSuccess": True, "sMessage": "Build complete"}
 
 
-def _fnExecuteBuild(dictProject):
+def _fnExecuteBuild(dictProject, bNoCache=False):
     """Load config and run the Docker image build."""
     from vaibify.cli.configLoader import (
         fconfigLoadFromPath, fsDockerDir,
@@ -166,7 +168,7 @@ def _fnExecuteBuild(dictProject):
         dictProject["sConfigPath"],
     )
     sDockerDir = fsDockerDir()
-    fnBuildFromConfig(configProject, sDockerDir, bNoCache=False)
+    fnBuildFromConfig(configProject, sDockerDir, bNoCache=bNoCache)
 
 
 def _fnRegisterStartContainer(app, dictCtx):

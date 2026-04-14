@@ -16,7 +16,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN NPM_PREFIX="/home/${CONTAINER_USER}/.npm-global" \
     && mkdir -p "${NPM_PREFIX}" \
     && npm config set prefix "${NPM_PREFIX}" \
-    && npm install -g @anthropic-ai/claude-code \
+    && npm install -g @anthropic-ai/claude-code@2.1.104 \
     && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${NPM_PREFIX}"
 
 ENV PATH="/home/${CONTAINER_USER}/.npm-global/bin:${PATH}"
