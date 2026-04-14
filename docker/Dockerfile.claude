@@ -1,6 +1,8 @@
 # Vaibify — Claude Code overlay
 #
 # Adds Node.js and the Claude Code CLI on top of the base image.
+# Claude is installed to a user-writable directory so the container
+# user can auto-update without sudo.
 
 ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
@@ -9,5 +11,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @anthropic-ai/claude-code \
     && rm -rf /var/lib/apt/lists/*
+
+RUN NPM_PREFIX="/home/${CONTAINER_USER}/.npm-global" \
+    && mkdir -p "${NPM_PREFIX}" \
+    && npm config set prefix "${NPM_PREFIX}" \
+    && npm install -g @anthropic-ai/claude-code \
+    && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${NPM_PREFIX}"
+
+ENV PATH="/home/${CONTAINER_USER}/.npm-global/bin:${PATH}"
