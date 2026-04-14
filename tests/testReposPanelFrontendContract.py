@@ -94,6 +94,30 @@ def test_index_html_script_order_for_repos_panel():
     assert iRepos < iApp, "repos must load before scriptApplication"
 
 
+def test_toolbar_title_has_container_and_workflow_names():
+    sSource = _fsReadStaticFile("index.html")
+    assert 'id="activeContainerName"' in sSource
+    assert 'id="activeWorkflowName"' in sSource
+    assert 'class="toolbar-title-group"' in sSource
+    assert 'class="toolbar-label"' in sSource
+    assert 'class="toolbar-value"' in sSource
+
+
+def test_application_sets_container_name():
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    assert "activeContainerName" in sSource
+
+
+def test_toolbar_workflow_name_is_clickable_dropdown():
+    sSource = _fsReadStaticFile("index.html")
+    assert 'id="activeWorkflowName"' in sSource
+    assert 'class="toolbar-workflow"' in sSource
+    assert 'id="workflowDropdown"' in sSource
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert "activeWorkflowName" in sBindings
+    assert "fnToggleWorkflowDropdown" in sBindings
+
+
 def test_repos_panel_functions_under_twenty_lines():
     import re
     sSource = _fsReadStaticFile("scriptReposPanel.js")

@@ -211,8 +211,10 @@ const PipeleyenApp = (function () {
                 "error"
             );
         }
-        var elWorkflowName = document.getElementById("activeWorkflowName");
-        elWorkflowName.textContent = sWorkflowName || "";
+        document.getElementById("activeContainerName").textContent =
+            PipeleyenContainerManager.fsGetSelectedContainerName() || "";
+        document.getElementById("activeWorkflowName").textContent =
+            sWorkflowName || "";
         document.title = (PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify") +
             (sWorkflowName ? ": " + sWorkflowName : "");
         fnShowMainLayout();
@@ -248,10 +250,10 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.sWorkflowPath = null;
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             _dictWorkflowState.dictStepStatus = {};
-            var elWorkflowName = document.getElementById(
-                "activeWorkflowName"
-            );
-            elWorkflowName.textContent = "No Workflow";
+            document.getElementById("activeContainerName").textContent =
+                PipeleyenContainerManager.fsGetSelectedContainerName() || "";
+            document.getElementById("activeWorkflowName").textContent =
+                "None";
             document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
             PipeleyenTerminal.fnEnsureTab();
@@ -322,6 +324,8 @@ const PipeleyenApp = (function () {
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");
         _dictSessionState.dictDashboardMode = null;
+        document.getElementById("activeContainerName").textContent = "";
+        document.getElementById("activeWorkflowName").textContent = "";
         document.title = "Vaibify";
     }
 

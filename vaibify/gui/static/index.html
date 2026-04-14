@@ -187,13 +187,18 @@
     <div id="toolbar">
         <img src="/static/vaibify_logo_paleblue.png" alt="Vaibify"
              class="toolbar-logo">
-        <div id="workflowSwitcher" class="workflow-switcher">
-            <span id="activeWorkflowName" class="toolbar-workflow"
-                  title="Click to switch workflow"></span>
-            <span class="vaibify-checkmark" id="vaibifyCheckmark"
-                  title="Workflow fully verified"><img
-                  src="/static/favicon.png" alt="verified"></span>
-            <div id="workflowDropdown" class="workflow-dropdown"></div>
+        <div class="toolbar-title-group">
+            <span class="toolbar-label">Container:</span>
+            <span id="activeContainerName" class="toolbar-value"></span>
+            <span class="toolbar-label">Workflow:</span>
+            <div id="workflowSwitcher" class="workflow-switcher">
+                <span id="activeWorkflowName" class="toolbar-workflow"
+                      title="Click to switch workflow"></span>
+                <span class="vaibify-checkmark" id="vaibifyCheckmark"
+                      title="Workflow fully verified"><img
+                      src="/static/favicon.png" alt="verified"></span>
+                <div id="workflowDropdown" class="workflow-dropdown"></div>
+            </div>
         </div>
         <!-- Run Menu -->
         <div class="toolbar-menu" id="toolbarMenuRun">

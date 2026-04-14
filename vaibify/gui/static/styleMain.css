@@ -352,24 +352,41 @@ html, body {
     letter-spacing: 1px;
 }
 
-#toolbar .toolbar-workflow {
-    color: #e0e0e8;
+.toolbar-title-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
-    cursor: pointer;
     margin-right: auto;
+}
+.toolbar-label {
+    color: var(--highlight-color);
+}
+.toolbar-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+body.all-verified .toolbar-value,
+body.all-verified .toolbar-workflow {
+    color: #b39ddb;
+}
+body.all-verified .toolbar-label {
+    color: #b39ddb;
+}
+.toolbar-workflow {
+    color: var(--text-primary);
+    font-weight: 500;
+    cursor: pointer;
     padding: 2px 8px;
     border-radius: 4px;
 }
-
-#toolbar .toolbar-workflow:hover {
-    color: var(--text-primary);
+.toolbar-workflow:hover {
     background: var(--bg-hover);
 }
-
-#toolbar .toolbar-workflow::after {
+.toolbar-workflow::after {
     content: " \25BE";
     font-size: 10px;
-    color: #e0e0e8;
+    color: var(--text-secondary);
 }
 
 /* --- Toolbar Dropdown Menus --- */
@@ -426,7 +443,6 @@ html, body {
 
 .workflow-switcher {
     position: relative;
-    margin-right: auto;
 }
 
 .workflow-dropdown {
