@@ -20,7 +20,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ..config.projectConfig import fbValidateConfig
+from ..config.projectConfig import (
+    fbValidateConfig,
+    fconfigFromYamlDict,
+    fnSaveToFile,
+)
 
 
 STATIC_DIRECTORY = os.path.join(os.path.dirname(__file__), "static")
@@ -126,16 +130,11 @@ def fdictProcessBuild(sProjectDirectory):
 
 
 def fnWriteConfigToDirectory(sProjectDirectory, dictConfig):
-    """Write a YAML config file into the specified project directory."""
-    import yaml
-
+    """Write a validated YAML config file into the project directory."""
     sConfigPath = os.path.join(sProjectDirectory, "vaibify.yml")
     os.makedirs(sProjectDirectory, exist_ok=True)
-    with open(sConfigPath, "w") as fileHandle:
-        yaml.safe_dump(
-            dictConfig, fileHandle,
-            default_flow_style=False, sort_keys=False,
-        )
+    configProject = fconfigFromYamlDict(dictConfig)
+    fnSaveToFile(configProject, sConfigPath)
 
 
 def ftResultRunBuild(sProjectDirectory):

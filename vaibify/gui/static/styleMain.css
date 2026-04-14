@@ -3064,3 +3064,279 @@ body.all-verified .vaibify-checkmark {
     background: var(--bg-hover);
     color: var(--highlight-color);
 }
+
+/* --- Repos Panel (Phase F) --- */
+
+#panelRepos {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+#panelRepos.active {
+    display: flex;
+}
+
+#reposPanelContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+}
+
+.repos-panel-title {
+    font-weight: 600;
+    color: var(--highlight-color);
+    flex: 1;
+}
+
+.repos-badge {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 12px;
+    margin-right: 8px;
+}
+
+.repos-empty {
+    padding: 14px;
+    color: var(--text-muted);
+}
+
+.repos-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.repo-tile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    position: relative;
+    transition: all var(--transition-speed);
+}
+
+.repo-tile:hover {
+    border-color: var(--highlight-color);
+    background: var(--bg-hover);
+}
+
+.repo-tile.missing {
+    opacity: 0.55;
+}
+
+.repo-tile-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.repo-tile-name {
+    font-weight: 600;
+    color: var(--highlight-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.repo-tile-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.repo-tile-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.repo-push-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.repo-gear-menu {
+    position: absolute;
+    right: 10px;
+    top: 100%;
+    z-index: 100;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dirty-file-list {
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 6px 8px;
+}
+
+.dirty-file-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.dirty-file-status {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--color-orange);
+    width: 24px;
+    flex-shrink: 0;
+}
+
+.dirty-file-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+/* Wizard directory picker selected-path label */
+.wizard-selected-path {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+/* Wizard expanded steps: features, packages, and summary */
+.wizard-feature-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 14px;
+    margin-top: 6px;
+}
+.modal label.wizard-feature-row,
+.modal label.wizard-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 0;
+    margin-bottom: 0;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.modal label.wizard-feature-row input[type="checkbox"],
+.modal label.wizard-toggle-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    flex-shrink: 0;
+    accent-color: var(--color-pale-blue);
+}
+.wizard-helper-text {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted, var(--text-secondary));
+    opacity: 0.8;
+}
+.wizard-advanced {
+    margin-top: 12px;
+    padding: 8px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+.wizard-advanced > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    user-select: none;
+}
+.wizard-advanced[open] > summary {
+    margin-bottom: 8px;
+}
+.wizard-summary-block {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.wizard-summary-block p {
+    margin: 4px 0;
+}
+
+/* Wizard step help icon and info modal */
+.wizard-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.wizard-title-row h2 {
+    margin: 0;
+    flex: 1;
+}
+.wizard-help-button {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+}
+.wizard-help-button:hover {
+    background: var(--bg-hover);
+    color: var(--color-pale-blue);
+    border-color: var(--color-pale-blue);
+}
+.wizard-help-button:focus-visible {
+    outline: 2px solid var(--color-pale-blue);
+    outline-offset: 2px;
+}
+.modal-info .modal-info-body {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    max-height: 50vh;
+    overflow-y: auto;
+    margin-bottom: 16px;
+}
+.modal-info .modal-info-body p {
+    margin: 0 0 10px 0;
+}
+.modal-info .modal-info-body p:last-child {
+    margin-bottom: 0;
+}
+.modal-info .modal-info-body code {
+    background: var(--bg-input);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--color-pale-blue);
+}
+.modal-info .modal-info-body strong {
+    color: var(--text-primary, var(--color-pale-blue));
+}

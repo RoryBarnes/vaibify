@@ -5,9 +5,11 @@ var VaibifyPolling = (function () {
 
     var _iPipelinePollTimer = null;
     var _iFileChangePollTimer = null;
+    var _iReposPollTimer = null;
     var _iPollIntervalMs = 5000;
     var _fnOnPipelineState = null;
     var _fnOnFileStatus = null;
+    var _fnOnReposStatus = null;
 
     function fnSetPipelineStateHandler(fnHandler) {
         _fnOnPipelineState = fnHandler;
@@ -72,6 +74,38 @@ var VaibifyPolling = (function () {
         }
     }
 
+    function fnSetReposHandler(fnHandler) {
+        _fnOnReposStatus = fnHandler;
+    }
+
+    function fnStartReposPolling(sContainerId) {
+        fnStopReposPolling();
+        _fnPollReposStatus(sContainerId);
+        _iReposPollTimer = setInterval(function () {
+            _fnPollReposStatus(sContainerId);
+        }, _iPollIntervalMs);
+    }
+
+    function fnStopReposPolling() {
+        if (_iReposPollTimer) {
+            clearInterval(_iReposPollTimer);
+            _iReposPollTimer = null;
+        }
+    }
+
+    async function _fnPollReposStatus(sContainerId) {
+        try {
+            var dictStatus = await VaibifyApi.fdictGet(
+                "/api/repos/" + sContainerId + "/status"
+            );
+            if (_fnOnReposStatus) {
+                _fnOnReposStatus(dictStatus);
+            }
+        } catch (error) {
+            /* poll failed, try again next interval */
+        }
+    }
+
     function fnSetPollInterval(iSeconds) {
         _iPollIntervalMs = iSeconds * 1000;
     }
@@ -87,6 +121,9 @@ var VaibifyPolling = (function () {
         fnStopPipelinePolling: fnStopPipelinePolling,
         fnStartFilePolling: fnStartFilePolling,
         fnStopFilePolling: fnStopFilePolling,
+        fnSetReposHandler: fnSetReposHandler,
+        fnStartReposPolling: fnStartReposPolling,
+        fnStopReposPolling: fnStopReposPolling,
         fnSetPollInterval: fnSetPollInterval,
         fiGetPollIntervalMs: fiGetPollIntervalMs,
     };

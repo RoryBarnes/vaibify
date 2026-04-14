@@ -20,6 +20,7 @@ __all__ = [
     "fdictSyncResult",
     "flistCollectOutputFiles",
     "flistExtractAllScriptPaths",
+    "flistGetDirtyFiles",
     "fnStoreCredentialInContainer",
     "fnValidateOverleafProjectId",
     "fnValidateServiceName",
@@ -35,6 +36,7 @@ __all__ = [
     "ftResultGenerateLatex",
     "ftResultPullFromOverleaf",
     "ftResultPushScriptsToGithub",
+    "ftResultPushStagedToGithub",
     "ftResultPushToGithub",
     "ftResultPushToOverleaf",
 ]
@@ -219,6 +221,62 @@ def ftResultPushToGithub(
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
+
+
+def ftResultPushStagedToGithub(
+    connectionDocker, sContainerId, sCommitMessage, sWorkdir,
+):
+    """Commit whatever is staged in sWorkdir and push to origin.
+
+    Does NOT run `git add`. Returns (iExitCode, sCombinedOutput).
+    """
+    sCommand = (
+        f"cd {fsShellQuote(sWorkdir)} && "
+        f"git commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git push && "
+        f"git rev-parse --short HEAD"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+
+
+_DICT_PORCELAIN_STATUS = {
+    "M": "modified", "A": "added", "D": "deleted",
+    "R": "renamed", "C": "copied", "U": "unmerged",
+    "?": "untracked", "!": "ignored", "T": "modified",
+}
+
+
+def _fdictParsePorcelainLine(sLine):
+    """Parse a single `git status --porcelain` line into a dict."""
+    if len(sLine) < 4:
+        return None
+    sCodes = sLine[:2]
+    sPath = sLine[3:].strip()
+    if sCodes == "??":
+        return {"sPath": sPath, "sStatus": "untracked"}
+    sPrimary = sCodes[0] if sCodes[0] != " " else sCodes[1]
+    sStatus = _DICT_PORCELAIN_STATUS.get(sPrimary, "unknown")
+    return {"sPath": sPath, "sStatus": sStatus}
+
+
+def flistGetDirtyFiles(connectionDocker, sContainerId, sWorkdir):
+    """List uncommitted files in sWorkdir as status dicts."""
+    sCommand = f"git -C {fsShellQuote(sWorkdir)} status --porcelain"
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode != 0:
+        return []
+    listResults = []
+    for sLine in (sOutput or "").splitlines():
+        if not sLine.strip():
+            continue
+        dictEntry = _fdictParsePorcelainLine(sLine)
+        if dictEntry is not None:
+            listResults.append(dictEntry)
+    return listResults
 
 
 def _flistBuildStepCopyCommandList(dictWorkflow):

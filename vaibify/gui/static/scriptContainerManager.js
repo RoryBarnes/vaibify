@@ -414,14 +414,17 @@ var PipeleyenContainerManager = (function () {
 
     function fnBindAddContainerModal() {
         document.getElementById("btnAddContainerCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddContainer")
-                    .style.display = "none";
-            }
+            "click", PipeleyenDirectoryBrowser.fnHandleModalClose
         );
         document.getElementById("btnAddContainerConfirm").addEventListener(
             "click", PipeleyenDirectoryBrowser.fnSelectDirectory
         );
+        var elNewFolder = document.getElementById("btnDirectoryNewFolder");
+        if (elNewFolder) {
+            elNewFolder.addEventListener(
+                "click", PipeleyenDirectoryBrowser.fnPromptCreateFolder
+            );
+        }
         fnBindAddChoiceModal();
         VaibifyWorkflowManager.fnBindCreateWizardModal();
     }
@@ -451,7 +454,36 @@ var PipeleyenContainerManager = (function () {
                 VaibifyWorkflowManager.fnOpenCreateWizard();
             }
         );
+        var elHelp = document.getElementById("btnAddChoiceHelp");
+        if (elHelp) {
+            elHelp.addEventListener("click", _fnShowAddChoiceHelp);
+        }
     }
+
+    function _fnShowAddChoiceHelp() {
+        PipeleyenModals.fnShowInfoModal(
+            "Add Container — Help", _S_ADD_CHOICE_HELP);
+        var elInfo = document.getElementById("modalInfo");
+        if (elInfo) elInfo.style.zIndex = "1200";
+    }
+
+    var _S_ADD_CHOICE_HELP =
+        '<p><strong>Add Existing</strong> &mdash; point vaibify at a ' +
+        'directory on your host that already contains a ' +
+        '<code>vaibify.yml</code> file. The directory might be a ' +
+        'project a collaborator shared with you, a project you cloned ' +
+        'from GitHub, or one you created previously and removed from ' +
+        'the registry. Vaibify reads the existing config and registers ' +
+        'the project &mdash; nothing is overwritten.</p>' +
+        '<p><strong>Create New</strong> &mdash; launch the wizard that ' +
+        'walks you through creating a brand new project from scratch. ' +
+        'You pick a directory (existing or new), choose a starter ' +
+        'template, configure features and packages, and vaibify writes ' +
+        'a fresh <code>vaibify.yml</code> for you. Use this when you ' +
+        'are starting a project, not when you already have one.</p>' +
+        '<p>Both paths produce the same kind of registered project ' +
+        'afterward; the only difference is whether the configuration ' +
+        'file already exists.</p>';
 
     function fsGetSelectedContainerId() {
         return _sSelectedContainerId;

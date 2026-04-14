@@ -667,11 +667,19 @@ var PipeleyenEventBindings = (function () {
                             .classList.toggle("active",
                                 sPanel === "logs");
                     }
+                    var elPanelRepos = document.getElementById(
+                        "panelRepos");
+                    if (elPanelRepos) {
+                        elPanelRepos.classList.toggle(
+                            "active", sPanel === "repos");
+                    }
                     if (sPanel === "files") {
                         PipeleyenFiles.fnLoadDirectory(
                             "/workspace");
                     } else if (sPanel === "logs") {
                         PipeleyenApp.fnLoadLogs();
+                    } else if (sPanel === "repos") {
+                        PipeleyenReposPanel.fnRender();
                     }
                 });
             });

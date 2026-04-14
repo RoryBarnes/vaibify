@@ -5,6 +5,7 @@ import json
 from vaibify.gui.syncDispatcher import (
     _fbSafeDirectoryName,
     _fdictParseHashOutput,
+    _fdictParsePorcelainLine,
     _flistArchivePlotPaths,
     _flistBuildDagEdges,
     _fsBuildStepCopyCommands,
@@ -15,8 +16,22 @@ from vaibify.gui.syncDispatcher import (
     fdictParseTestMarkerOutput,
     flistCollectOutputFiles,
     flistExtractAllScriptPaths,
+    flistGetDirtyFiles,
     fsBuildTestMarkerCheckCommand,
+    ftResultPushStagedToGithub,
 )
+
+
+class _FakeDockerConnection:
+    """Mock connectionDocker capturing commands and returning canned results."""
+
+    def __init__(self, tResult=(0, "")):
+        self._tResult = tResult
+        self.listCommands = []
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        self.listCommands.append((sContainerId, sCommand))
+        return self._tResult
 
 
 class TestFdictParseHashOutput:
@@ -367,3 +382,157 @@ class TestFsBuildTestMarkerCheckCommand:
             ["/workspace/A01", "/workspace/A02"])
         assert "A01" in sCmd
         assert "A02" in sCmd
+
+
+class TestFtResultPushStagedToGithub:
+    def test_success_returns_zero(self):
+        fake = _FakeDockerConnection((0, "abc1234\n"))
+        iExit, sOut = ftResultPushStagedToGithub(
+            fake, "cid", "Fix bug", "/workspace/proj")
+        assert iExit == 0
+        assert "abc1234" in sOut
+
+    def test_does_not_run_git_add(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git add" not in sCommand
+
+    def test_command_contains_commit_push_revparse(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git commit -m" in sCommand
+        assert "git push" in sCommand
+        assert "git rev-parse --short HEAD" in sCommand
+        assert "cd '/workspace/proj'" in sCommand
+
+    def test_chained_with_and_operator(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert " && " in sCommand
+
+    def test_commit_failure_surfaced(self):
+        fake = _FakeDockerConnection(
+            (1, "nothing to commit, working tree clean"))
+        iExit, sOut = ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        assert iExit == 1
+        assert "nothing to commit" in sOut
+
+    def test_push_failure_surfaced(self):
+        fake = _FakeDockerConnection((128, "fatal: unable to access"))
+        iExit, sOut = ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        assert iExit == 128
+        assert "fatal" in sOut
+
+    def test_shell_quotes_single_quote_message(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "it's a fix", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "'it'\\''s a fix'" in sCommand
+
+    def test_shell_quotes_workdir_with_spaces(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/work space/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "'/work space/proj'" in sCommand
+
+
+class TestFdictParsePorcelainLine:
+    def test_modified(self):
+        dictEntry = _fdictParsePorcelainLine(" M path/to/file.py")
+        assert dictEntry == {
+            "sPath": "path/to/file.py", "sStatus": "modified"}
+
+    def test_added(self):
+        dictEntry = _fdictParsePorcelainLine("A  new.py")
+        assert dictEntry["sStatus"] == "added"
+        assert dictEntry["sPath"] == "new.py"
+
+    def test_deleted(self):
+        dictEntry = _fdictParsePorcelainLine(" D gone.py")
+        assert dictEntry["sStatus"] == "deleted"
+
+    def test_untracked(self):
+        dictEntry = _fdictParsePorcelainLine("?? unknown.py")
+        assert dictEntry["sStatus"] == "untracked"
+
+    def test_renamed(self):
+        dictEntry = _fdictParsePorcelainLine("R  old -> new")
+        assert dictEntry["sStatus"] == "renamed"
+
+    def test_unknown_code(self):
+        dictEntry = _fdictParsePorcelainLine("ZZ foo.py")
+        assert dictEntry["sStatus"] == "unknown"
+
+    def test_too_short(self):
+        assert _fdictParsePorcelainLine("M") is None
+
+
+class TestFlistGetDirtyFiles:
+    def test_empty_workdir_returns_empty_list(self):
+        fake = _FakeDockerConnection((0, ""))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert listResult == []
+
+    def test_uses_git_c_workdir(self):
+        fake = _FakeDockerConnection((0, ""))
+        flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git -C '/workspace/proj' status --porcelain" in sCommand
+
+    def test_parses_mixed_statuses(self):
+        sOutput = (
+            " M scripts/foo.py\n"
+            "A  scripts/new.py\n"
+            " D old.py\n"
+            "?? notes.txt\n"
+            "R  a.py -> b.py\n"
+        )
+        fake = _FakeDockerConnection((0, sOutput))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert len(listResult) == 5
+        listStatuses = [d["sStatus"] for d in listResult]
+        assert "modified" in listStatuses
+        assert "added" in listStatuses
+        assert "deleted" in listStatuses
+        assert "untracked" in listStatuses
+        assert "renamed" in listStatuses
+
+    def test_non_zero_exit_returns_empty(self):
+        fake = _FakeDockerConnection((128, "not a git repository"))
+        listResult = flistGetDirtyFiles(fake, "cid", "/tmp/nowhere")
+        assert listResult == []
+
+    def test_path_with_spaces(self):
+        fake = _FakeDockerConnection((0, " M my script.py\n"))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert len(listResult) == 1
+        assert listResult[0]["sPath"] == "my script.py"
+        assert listResult[0]["sStatus"] == "modified"
+
+    def test_blank_lines_skipped(self):
+        fake = _FakeDockerConnection((0, "\n M foo.py\n\n"))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert len(listResult) == 1
+
+    def test_shell_quotes_workdir(self):
+        fake = _FakeDockerConnection((0, ""))
+        flistGetDirtyFiles(fake, "cid", "/work space/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "'/work space/proj'" in sCommand
+
+
+class TestSyncDispatcherExports:
+    def test_new_symbols_in_all(self):
+        from vaibify.gui import syncDispatcher
+        assert "ftResultPushStagedToGithub" in syncDispatcher.__all__
+        assert "flistGetDirtyFiles" in syncDispatcher.__all__

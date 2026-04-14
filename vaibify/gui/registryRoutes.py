@@ -4,6 +4,7 @@ __all__ = [
     "AddProjectRequest",
     "CreateProjectRequest",
     "ContainerSettingsRequest",
+    "CreateHostDirectoryRequest",
     "fnRegisterRegistryRoutes",
     "flistQueryHostDirectory",
     "fbDirectoryHasConfig",
@@ -11,12 +12,15 @@ __all__ = [
 
 import logging
 import os
+import re
 
 from fastapi import HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 
 logger = logging.getLogger("vaibify")
+
+_RE_FOLDER_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\- ]*$")
 
 
 class AddProjectRequest(BaseModel):
@@ -28,11 +32,28 @@ class CreateProjectRequest(BaseModel):
     sProjectName: str
     sTemplateName: str
     sPythonVersion: str = "3.12"
-    listRepositories: list = []
+    listRepositories: List[str] = []
+    listFeatures: List[str] = []
+    bUseGithubAuth: bool = True
+    bNeverSleep: bool = False
+    bNetworkIsolation: bool = False
+    listSystemPackages: List[str] = []
+    listPythonPackages: List[str] = []
+    listCondaPackages: List[str] = []
+    sPackageManager: str = "pip"
+    sPipInstallFlags: str = ""
+    sContainerUser: str = "researcher"
+    sBaseImage: str = "ubuntu:24.04"
+    sWorkspaceRoot: str = "/workspace"
 
 
 class ContainerSettingsRequest(BaseModel):
     bNeverSleep: bool = False
+
+
+class CreateHostDirectoryRequest(BaseModel):
+    sParentPath: str
+    sFolderName: str
 
 
 def fnRegisterRegistryRoutes(app, dictCtx):
@@ -48,6 +69,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetTemplates(app, dictCtx)
     _fnRegisterGetTemplateConfig(app, dictCtx)
     _fnRegisterCreateProject(app, dictCtx)
+    _fnRegisterCreateHostDirectory(app, dictCtx)
 
 
 def _fnRegisterGetRegistry(app, dictCtx):
@@ -484,6 +506,46 @@ def _fnRegisterHostDirectories(app, dictCtx):
         }
 
 
+def _fnRegisterCreateHostDirectory(app, dictCtx):
+    """Register POST /api/host-directories/create."""
+
+    @app.post("/api/host-directories/create")
+    async def fnCreateHostDirectory(request: CreateHostDirectoryRequest):
+        _fnValidateHostPath(request.sParentPath)
+        _fnValidateFolderName(request.sFolderName)
+        sNewPath = _fnCreateHostFolder(
+            request.sParentPath, request.sFolderName,
+        )
+        return {"sNewPath": sNewPath}
+
+
+def _fnValidateFolderName(sFolderName):
+    """Raise HTTPException if folder name is unsafe or malformed."""
+    sStripped = (sFolderName or "").strip()
+    if not sStripped:
+        raise HTTPException(400, "Folder name is required")
+    if "/" in sStripped or "\\" in sStripped:
+        raise HTTPException(400, "Folder name cannot contain slashes")
+    if sStripped in (".", ".."):
+        raise HTTPException(400, "Invalid folder name")
+    if sStripped.startswith("."):
+        raise HTTPException(400, "Folder name cannot start with a dot")
+    if not _RE_FOLDER_NAME.match(sStripped):
+        raise HTTPException(400, "Invalid folder name")
+
+
+def _fnCreateHostFolder(sParentPath, sFolderName):
+    """Create a new directory under sParentPath; return the new path."""
+    sNewPath = os.path.join(sParentPath, sFolderName.strip())
+    if os.path.exists(sNewPath):
+        raise HTTPException(409, "Directory already exists")
+    try:
+        os.makedirs(sNewPath, exist_ok=False)
+    except (PermissionError, OSError):
+        raise HTTPException(403, "Cannot create directory")
+    return sNewPath
+
+
 def _fnValidateHostPath(sPath):
     """Raise HTTPException if the path is invalid or escapes home."""
     if not os.path.isabs(sPath):
@@ -648,13 +710,88 @@ def _fnScaffoldProject(request):
 
 def _fnWriteProjectConfig(request):
     """Write vaibify.yml with project settings."""
+    from vaibify.config.projectConfig import (
+        fconfigFromYamlDict,
+        fnSaveToFile,
+    )
     sConfigPath = os.path.join(request.sDirectory, "vaibify.yml")
-    listLines = [
-        f"projectName: {request.sProjectName}",
-        f"pythonVersion: \"{request.sPythonVersion}\"",
-    ]
-    with open(sConfigPath, "w") as fileHandle:
-        fileHandle.write("\n".join(listLines) + "\n")
+    dictYaml = _fdictBuildYamlFromRequest(request)
+    configProject = fconfigFromYamlDict(dictYaml)
+    fnSaveToFile(configProject, sConfigPath)
+
+
+def _fdictBuildYamlFromRequest(request):
+    """Translate a CreateProjectRequest into a camelCase YAML dict."""
+    dictYaml = {
+        "projectName": request.sProjectName,
+        "containerUser": request.sContainerUser,
+        "pythonVersion": request.sPythonVersion,
+        "baseImage": request.sBaseImage,
+        "workspaceRoot": request.sWorkspaceRoot,
+        "packageManager": request.sPackageManager,
+        "repositories": _flistRepositoriesFromUrls(
+            request.listRepositories
+        ),
+        "features": _fdictFeaturesFromList(request.listFeatures),
+        "secrets": _flistSecretsFromAuthFlag(request.bUseGithubAuth),
+        "neverSleep": request.bNeverSleep,
+        "networkIsolation": request.bNetworkIsolation,
+    }
+    _fnAttachOptionalPackages(dictYaml, request)
+    return dictYaml
+
+
+def _fnAttachOptionalPackages(dictYaml, request):
+    """Attach package and pip-flag fields when present."""
+    if request.listSystemPackages:
+        dictYaml["systemPackages"] = list(request.listSystemPackages)
+    if request.listPythonPackages:
+        dictYaml["pythonPackages"] = list(request.listPythonPackages)
+    if request.listCondaPackages:
+        dictYaml["condaPackages"] = list(request.listCondaPackages)
+    if request.sPipInstallFlags:
+        dictYaml["pipInstallFlags"] = request.sPipInstallFlags
+
+
+_LIST_FEATURE_NAMES = [
+    "jupyter", "rLanguage", "julia", "database",
+    "dvc", "latex", "claude", "gpu",
+]
+
+
+def _fdictFeaturesFromList(listFeatures):
+    """Convert a feature-name list into the boolean YAML dict."""
+    setEnabled = set(listFeatures or [])
+    return {sName: sName in setEnabled
+            for sName in _LIST_FEATURE_NAMES}
+
+
+def _flistSecretsFromAuthFlag(bUseGithubAuth):
+    """Return secret entries that match the GitHub auth toggle."""
+    if not bUseGithubAuth:
+        return []
+    return [{"name": "gh_token", "method": "gh_auth"}]
+
+
+def _flistRepositoriesFromUrls(listUrls):
+    """Convert a list of git URL strings to vaibify.yml repository dicts."""
+    listRepositories = []
+    for sUrl in listUrls:
+        listRepositories.append({
+            "name": _fsRepositoryNameFromUrl(sUrl),
+            "url": sUrl,
+            "branch": "main",
+            "installMethod": "pip_editable",
+        })
+    return listRepositories
+
+
+def _fsRepositoryNameFromUrl(sUrl):
+    """Extract a repository name from a git URL."""
+    sName = sUrl.rstrip("/").rsplit("/", 1)[-1]
+    if sName.endswith(".git"):
+        sName = sName[:-4]
+    return sName
 
 
 def _fnRegisterNewProject(sDirectory):

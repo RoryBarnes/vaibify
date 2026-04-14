@@ -74,6 +74,26 @@ def test_fnSaveToFile_roundtrip():
         assert configLoaded.sProjectName == "roundtrip"
 
 
+def test_fnSaveToFile_roundtrip_full():
+    listRepositories = [{
+        "name": "foo",
+        "url": "https://github.com/example/foo.git",
+        "branch": "main",
+        "installMethod": "pip_editable",
+    }]
+    config = ProjectConfig(
+        sProjectName="fullproj",
+        listRepositories=listRepositories,
+        bNeverSleep=True,
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.listRepositories == listRepositories
+    assert configLoaded.bNeverSleep is True
+
+
 def test_fconfigLoadFromFile_missing():
     with pytest.raises(FileNotFoundError):
         fconfigLoadFromFile("/nonexistent/vaibify.yml")

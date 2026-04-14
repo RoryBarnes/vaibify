@@ -72,11 +72,62 @@ var PipeleyenModals = (function () {
         }
     }
 
+    function _felBuildChoiceButton(dictChoice, elModal) {
+        var elButton = document.createElement("button");
+        elButton.className = "btn " + (dictChoice.sStyleClass || "");
+        elButton.textContent = dictChoice.sLabel;
+        elButton.addEventListener("click", function () {
+            elModal.remove();
+            if (dictChoice.fnCallback) dictChoice.fnCallback();
+        });
+        return elButton;
+    }
+
+    function fnShowChoiceModal(sTitle, sMessage, listChoices) {
+        var elExisting = document.getElementById("modalChoice");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalChoice";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
+            '<p style="white-space:pre-wrap;margin-bottom:16px">' +
+            fnEscapeHtml(sMessage) + '</p>' +
+            '<div class="modal-actions" id="choiceModalActions"></div>' +
+            '</div>';
+        document.body.appendChild(elModal);
+        var elActions = document.getElementById("choiceModalActions");
+        listChoices.forEach(function (dictChoice) {
+            elActions.appendChild(_felBuildChoiceButton(dictChoice, elModal));
+        });
+    }
+
     function fnShowErrorModal(sMessage) {
         var elModal = document.getElementById("modalError");
         var elContent = document.getElementById("modalErrorContent");
         elContent.textContent = fsSanitizeErrorForUser(sMessage);
         elModal.style.display = "flex";
+    }
+
+    function fnShowInfoModal(sTitle, sMessageHtml) {
+        var elExisting = document.getElementById("modalInfo");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalInfo";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal modal-info">' +
+            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
+            '<div class="modal-info-body">' + sMessageHtml + '</div>' +
+            '<div class="modal-actions">' +
+            '<button class="btn btn-primary" id="btnInfoClose">' +
+            'Got it</button></div></div>';
+        document.body.appendChild(elModal);
+        document.getElementById("btnInfoClose").addEventListener(
+            "click", function () { elModal.remove(); });
     }
 
     function fnShowInlineInput(iStep, sArrayKey, sPlaceholder) {
@@ -133,7 +184,9 @@ var PipeleyenModals = (function () {
     return {
         fnShowConfirmModal: fnShowConfirmModal,
         fnShowInputModal: fnShowInputModal,
+        fnShowChoiceModal: fnShowChoiceModal,
         fnShowErrorModal: fnShowErrorModal,
+        fnShowInfoModal: fnShowInfoModal,
         fnShowInlineInput: fnShowInlineInput,
     };
 })();

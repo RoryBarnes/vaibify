@@ -66,7 +66,7 @@ const PipeleyenApp = (function () {
 
     var DICT_MODE_NO_WORKFLOW = {
         sMode: "noWorkflow",
-        listLeftTabs: ["files", "logs"],
+        listLeftTabs: ["files", "repos", "logs"],
         sDefaultLeftTab: "files",
         bShowRunMenu: false,
         bShowDagButton: false,
@@ -184,6 +184,7 @@ const PipeleyenApp = (function () {
         PipeleyenPipelineRunner.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        PipeleyenReposPanel.fnTeardown();
     }
 
     function _fnResetUiState() {
@@ -254,6 +255,7 @@ const PipeleyenApp = (function () {
             document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
             PipeleyenTerminal.fnEnsureTab();
+            await PipeleyenReposPanel.fnInit(sId);
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
@@ -341,6 +343,7 @@ const PipeleyenApp = (function () {
         VaibifyWebSocket.fnDisconnect();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        PipeleyenReposPanel.fnTeardown();
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
             _dictWorkflowState.iFileCheckTimer = null;

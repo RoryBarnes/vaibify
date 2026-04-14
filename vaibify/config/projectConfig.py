@@ -179,6 +179,23 @@ def fnSaveToFile(config, sFilePath):
         )
 
 
+def fconfigFromYamlDict(dictRaw):
+    """Merge a camelCase YAML dict with defaults and return ProjectConfig.
+
+    Parameters
+    ----------
+    dictRaw : dict
+        Raw camelCase configuration dictionary (may be partial).
+
+    Returns
+    -------
+    ProjectConfig
+        Fully-populated configuration dataclass instance.
+    """
+    dictMerged = _fdictMergeWithDefaults(dictRaw)
+    return _fconfigFromYamlDict(dictMerged)
+
+
 def fbValidateConfig(dictConfig):
     """Validate required fields and types in a camelCase config dict."""
     if not isinstance(dictConfig, dict):
@@ -366,6 +383,7 @@ def _fdictScalarFieldsToYaml(config):
         "bindMounts": config.listBindMounts,
         "secrets": config.listSecrets,
         "networkIsolation": config.bNetworkIsolation,
+        "neverSleep": config.bNeverSleep,
     }
 
 

@@ -46,7 +46,8 @@
 <div class="modal-overlay" id="modalAddContainer" style="display: none;">
     <div class="modal modal-directory-browser">
         <h2 style="color: var(--color-pale-blue);">Select Directory</h2>
-        <p style="font-size: 13px; color: var(--text-secondary);
+        <p id="directoryBrowserSubtitle"
+           style="font-size: 13px; color: var(--text-secondary);
                   margin-bottom: 12px;">
             Navigate to a directory containing
             <code>vaibify.yml</code>.
@@ -56,6 +57,8 @@
                     title="Back" disabled>&#9664;</button>
             <button class="btn-icon browser-nav-button" id="btnBrowserForward"
                     title="Forward" disabled>&#9654;</button>
+            <button class="btn btn-small" id="btnDirectoryNewFolder"
+                    style="display: none; margin-left: auto;">+ New folder</button>
         </div>
         <div class="breadcrumb-bar" id="directoryBreadcrumb"></div>
         <div class="directory-browser" id="directoryEntries">
@@ -78,7 +81,13 @@
 <!-- Add Choice Modal -->
 <div class="modal-overlay" id="modalAddChoice" style="display: none;">
     <div class="modal modal-small">
-        <h2 style="color: var(--color-pale-blue);">Add Container</h2>
+        <div class="wizard-title-row">
+            <h2 style="color: var(--color-pale-blue);">Add Container</h2>
+            <button type="button" id="btnAddChoiceHelp"
+                    class="wizard-help-button"
+                    title="What's the difference?"
+                    aria-label="Show help for add container choice">?</button>
+        </div>
         <div class="add-choice-cards">
             <div class="add-choice-card" id="btnChoiceAddExisting">
                 <div class="add-choice-icon">&#128193;</div>
@@ -104,10 +113,17 @@
 <!-- Creation Wizard Modal -->
 <div class="modal-overlay" id="modalCreateWizard" style="display: none;">
     <div class="modal">
-        <h2 id="wizardStepTitle" style="color: var(--color-pale-blue);">
-            Create Project</h2>
+        <div class="wizard-title-row">
+            <h2 id="wizardStepTitle" style="color: var(--color-pale-blue);">
+                Create Project</h2>
+            <button type="button" id="btnWizardHelp" class="wizard-help-button"
+                    title="What does this step do?"
+                    aria-label="Show help for this step">?</button>
+        </div>
         <div class="wizard-progress">
             <span class="wizard-progress-step active"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
             <span class="wizard-progress-step"></span>
             <span class="wizard-progress-step"></span>
             <span class="wizard-progress-step"></span>
@@ -130,6 +146,11 @@
         <p id="buildProgressMessage" style="font-size: 13px;
            color: var(--text-secondary); text-align: center;">
             Building image, please wait...
+        </p>
+        <p style="font-size: 12px; color: var(--text-secondary);
+           text-align: center; margin-top: 8px; opacity: 0.8;">
+            This typically takes 5&ndash;15 minutes depending on
+            enabled features and network speed.
         </p>
         <div class="build-spinner"></div>
     </div>
@@ -252,6 +273,7 @@
         <div id="leftPanelTabs">
             <div class="left-tab active" data-panel="steps">Steps</div>
             <div class="left-tab" data-panel="files">Files</div>
+            <div class="left-tab" data-panel="repos">Repos</div>
             <div class="left-tab" data-panel="logs">Logs</div>
         </div>
 
@@ -273,6 +295,13 @@
         <div id="panelFiles">
             <div id="fileBreadcrumb"></div>
             <div id="listFiles"></div>
+        </div>
+
+        <!-- Repos sub-panel -->
+        <div id="panelRepos">
+            <div id="tabContentRepos" class="tab-content">
+                <div id="reposPanelContainer"></div>
+            </div>
         </div>
 
         <!-- Logs sub-panel -->
@@ -551,6 +580,7 @@
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFileOperations.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptEventBindings.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptReposPanel.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApplication.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptTestManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPipelineRunner.js?v=__CACHE_VERSION__"></script>

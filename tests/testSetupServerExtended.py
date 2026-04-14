@@ -64,6 +64,28 @@ def test_fnWriteConfigToDirectory_content(tmp_path):
     assert "test" in sContent
 
 
+def test_fnWriteConfigToDirectory_roundtrip(tmp_path):
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    sDir = str(tmp_path / "project")
+    listRepositories = [{
+        "name": "foo",
+        "url": "https://github.com/example/foo.git",
+        "branch": "main",
+        "installMethod": "pip_editable",
+    }]
+    dictConfig = {
+        "projectName": "roundtrip",
+        "pythonVersion": "3.12",
+        "repositories": listRepositories,
+    }
+    fnWriteConfigToDirectory(sDir, dictConfig)
+    configLoaded = fconfigLoadFromFile(
+        os.path.join(sDir, "vaibify.yml")
+    )
+    assert configLoaded.sProjectName == "roundtrip"
+    assert configLoaded.listRepositories == listRepositories
+
+
 # -----------------------------------------------------------------------
 # ftResultRunBuild
 # -----------------------------------------------------------------------
