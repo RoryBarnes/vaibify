@@ -208,7 +208,13 @@ def _fsExecuteStart(dictProject):
 
 
 def _fsStartOrCreate(configProject, sContainerName, sDockerDir):
-    """Restart an exited container or create a new one."""
+    """Remove any stopped container and create a fresh one.
+
+    Always creates a new container so that secrets are mounted
+    via volume args at creation time.  Restarting an existing
+    container with ``docker start`` skips secret mounts and
+    leaves ``/run/secrets/`` empty.
+    """
     from vaibify.docker.containerManager import (
         fdictGetContainerStatus, fsStartContainerDetached,
     )
@@ -218,55 +224,8 @@ def _fsStartOrCreate(configProject, sContainerName, sDockerDir):
             f"Container '{sContainerName}' is already running"
         )
     if dictStatus["bExists"]:
-        if _fbContainerCanRestart(sContainerName):
-            return _fsDockerStartExisting(sContainerName)
         _fnRemoveContainer(sContainerName)
     return fsStartContainerDetached(configProject, sDockerDir)
-
-
-def _fbContainerCanRestart(sContainerName):
-    """Return True if the container can be restarted as-is.
-
-    A container is restartable when it has a TTY and uses
-    ``sleep infinity`` as its command.  Containers created
-    before the sleep-infinity change used ``/bin/bash`` which
-    can exit in detached mode, so those are replaced.
-    """
-    import subprocess
-    if not _fbContainerHasTty(sContainerName):
-        return False
-    return _fbContainerUsesSleepInfinity(sContainerName)
-
-
-def _fbContainerHasTty(sContainerName):
-    """Return True if the container was created with a TTY."""
-    import subprocess
-    resultProcess = subprocess.run(
-        ["docker", "inspect", "--format", "{{.Config.Tty}}",
-         sContainerName],
-        capture_output=True, text=True,
-    )
-    if resultProcess.returncode != 0:
-        return False
-    return resultProcess.stdout.strip() == "true"
-
-
-def _fbContainerUsesSleepInfinity(sContainerName):
-    """Return True if the container's command is sleep infinity."""
-    import json
-    import subprocess
-    resultProcess = subprocess.run(
-        ["docker", "inspect", "--format",
-         "{{json .Config.Cmd}}", sContainerName],
-        capture_output=True, text=True,
-    )
-    if resultProcess.returncode != 0:
-        return False
-    try:
-        listCmd = json.loads(resultProcess.stdout.strip())
-    except (json.JSONDecodeError, TypeError):
-        return False
-    return listCmd == ["sleep", "infinity"]
 
 
 def _fnRemoveContainer(sContainerName):
@@ -276,21 +235,6 @@ def _fnRemoveContainer(sContainerName):
         ["docker", "rm", sContainerName],
         capture_output=True, text=True,
     )
-
-
-def _fsDockerStartExisting(sContainerName):
-    """Start a previously-created container by name."""
-    import subprocess
-    resultProcess = subprocess.run(
-        ["docker", "start", sContainerName],
-        capture_output=True, text=True,
-    )
-    if resultProcess.returncode != 0:
-        raise RuntimeError(
-            f"docker start failed: "
-            f"{resultProcess.stderr.strip()}"
-        )
-    return resultProcess.stdout.strip()
 
 
 def _fnRegisterStopContainer(app, dictCtx):
