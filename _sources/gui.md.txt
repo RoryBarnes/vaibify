@@ -102,6 +102,33 @@ The toolbar includes buttons for:
 
 These actions are also available via the CLI (`vaibify publish`).
 
+## Repos Panel
+
+The Repos panel appears in the left sidebar when a container is opened
+without a workflow (sandbox or toolkit mode). It lists all tracked git
+repositories in `/workspace` with branch, dirty status, and per-repo
+push controls.
+
+**Tracking**: when you first open a container, any git repositories
+already in `/workspace` (cloned by the entrypoint from `vaibify.yml`)
+are automatically tracked. If you clone additional repos from the
+terminal, vaibify detects them within a few seconds and prompts you
+to **Track** or **Ignore** them.
+
+**Dirty detection** reflects whether the user has made source-level
+changes to a repository. Build artifacts produced by package managers
+and compilers (e.g. `*.egg-info/`, `*.o`, `*.aux`, `__pycache__/`)
+are filtered out automatically. A freshly cloned and installed repo
+will show as clean unless you have edited its source files. The
+complete list of filtered patterns is defined in
+`trackedReposManager.FROZENSET_ARTIFACT_PATTERNS`.
+
+**Push** commits and pushes changes to a tracked repository's remote.
+The default Push button commits whatever you have staged in the
+terminal (`git add` + `git commit` + `git push`). A secondary
+"Push files..." option in the gear menu opens a file picker for
+selecting specific files to commit.
+
 ## Hub Mode
 
 When Vaibify is invoked with no subcommand, it starts in **hub mode** -- a

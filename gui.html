@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Workflow Viewer &mdash; Vaibify 0.0.1.dev57 documentation</title>
+  <title>Workflow Viewer &mdash; Vaibify 0.0.1.dev58 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d7474a50"></script>
+      <script src="_static/documentation_options.js?v=3f5de992"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -62,6 +62,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#resource-monitor">Resource Monitor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#test-generation">Test Generation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#sync-controls">Sync Controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos Panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub Mode</a></li>
 </ul>
 </li>
@@ -196,6 +197,30 @@ types the test generator can read.</p>
 <li><p><strong>Generate LaTeX</strong> – create <code class="docutils literal notranslate"><span class="pre">\includegraphics</span></code> commands for all figures.</p></li>
 </ul>
 <p>These actions are also available via the CLI (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code>).</p>
+</section>
+<section id="repos-panel">
+<h2>Repos Panel<a class="headerlink" href="#repos-panel" title="Link to this heading"></a></h2>
+<p>The Repos panel appears in the left sidebar when a container is opened
+without a workflow (sandbox or toolkit mode). It lists all tracked git
+repositories in <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> with branch, dirty status, and per-repo
+push controls.</p>
+<p><strong>Tracking</strong>: when you first open a container, any git repositories
+already in <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> (cloned by the entrypoint from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>)
+are automatically tracked. If you clone additional repos from the
+terminal, vaibify detects them within a few seconds and prompts you
+to <strong>Track</strong> or <strong>Ignore</strong> them.</p>
+<p><strong>Dirty detection</strong> reflects whether the user has made source-level
+changes to a repository. Build artifacts produced by package managers
+and compilers (e.g. <code class="docutils literal notranslate"><span class="pre">*.egg-info/</span></code>, <code class="docutils literal notranslate"><span class="pre">*.o</span></code>, <code class="docutils literal notranslate"><span class="pre">*.aux</span></code>, <code class="docutils literal notranslate"><span class="pre">__pycache__/</span></code>)
+are filtered out automatically. A freshly cloned and installed repo
+will show as clean unless you have edited its source files. The
+complete list of filtered patterns is defined in
+<code class="docutils literal notranslate"><span class="pre">trackedReposManager.FROZENSET_ARTIFACT_PATTERNS</span></code>.</p>
+<p><strong>Push</strong> commits and pushes changes to a tracked repository’s remote.
+The default Push button commits whatever you have staged in the
+terminal (<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">add</span></code> + <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">commit</span></code> + <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code>). A secondary
+“Push files…” option in the gear menu opens a file picker for
+selecting specific files to commit.</p>
 </section>
 <section id="hub-mode">
 <h2>Hub Mode<a class="headerlink" href="#hub-mode" title="Link to this heading"></a></h2>
