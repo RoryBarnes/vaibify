@@ -319,3 +319,108 @@ def test_fsInspectContainerState_failure(mockRun):
     mockRun.return_value = mockResult
     sResult = _fsInspectContainerState("testproj")
     assert sResult == ""
+
+
+# -----------------------------------------------------------------------
+# fsStartContainerDetached (lines 38-46)
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.docker.containerManager._fnDeferSecretCleanup")
+@patch("vaibify.docker.containerManager._fsRunDetachedCommand",
+       return_value="container-abc-123")
+@patch("vaibify.docker.containerManager.fnMountSecrets")
+@patch("vaibify.docker.containerManager.flistBuildRunArgs",
+       return_value=["--name", "testproj"])
+def test_fsStartContainerDetached_returns_container_id(
+    mockBuild, mockSecrets, mockRun, mockDefer,
+):
+    from vaibify.docker.containerManager import fsStartContainerDetached
+    config = _fConfigMinimal()
+    sResult = fsStartContainerDetached(config, "/docker")
+    assert sResult == "container-abc-123"
+    # bDetached=True is passed to the run-args builder.
+    assert mockBuild.call_args[1]["bDetached"] is True
+    mockDefer.assert_called_once()
+
+
+@patch("vaibify.docker.containerManager._fsRunDetachedCommand",
+       return_value="container-xyz\n")
+def test_fsStartContainerDetached_appends_sleep_infinity(mockRun):
+    from vaibify.docker.containerManager import fsStartContainerDetached
+    config = _fConfigMinimal()
+    with patch(
+        "vaibify.docker.containerManager.fnMountSecrets"
+    ), patch(
+        "vaibify.docker.containerManager.flistBuildRunArgs",
+        return_value=[],
+    ):
+        fsStartContainerDetached(config, "/docker")
+    saCommand = mockRun.call_args[0][0]
+    assert saCommand[-2:] == ["sleep", "infinity"]
+
+
+# -----------------------------------------------------------------------
+# _fnDeferSecretCleanup (lines 51-62)
+# -----------------------------------------------------------------------
+
+
+def test_fnDeferSecretCleanup_no_files_is_noop():
+    from vaibify.docker.containerManager import _fnDeferSecretCleanup
+    # Empty list returns before the ``import threading`` statement.
+    # Calling this must not raise even if no thread was started.
+    _fnDeferSecretCleanup([], "cid-x")
+
+
+def test_fnDeferSecretCleanup_spawns_daemon_thread(tmp_path):
+    from vaibify.docker.containerManager import _fnDeferSecretCleanup
+    import threading as realThreading
+    listSpawned = []
+    original = realThreading.Thread
+
+    class _FakeThread:
+        def __init__(self, target, daemon):
+            listSpawned.append((target, daemon))
+            self.target = target
+
+        def start(self):
+            listSpawned.append("started")
+
+    # _fnDeferSecretCleanup does ``import threading`` inside the function,
+    # so we override the Thread attribute on the real threading module.
+    with patch.object(realThreading, "Thread", _FakeThread):
+        _fnDeferSecretCleanup(["/tmp/secret.txt"], "cid-x")
+    # One entry for constructor, one for start call.
+    assert len(listSpawned) == 2
+    _tTarget, bDaemon = listSpawned[0]
+    assert bDaemon is True
+
+
+# -----------------------------------------------------------------------
+# _fsRunDetachedCommand raises on non-zero exit
+# -----------------------------------------------------------------------
+
+
+@patch("subprocess.run")
+def test_fsRunDetachedCommand_success(mockRun):
+    from vaibify.docker.containerManager import _fsRunDetachedCommand
+    mockResult = MagicMock()
+    mockResult.returncode = 0
+    mockResult.stdout = "abc123\n"
+    mockResult.stderr = ""
+    mockRun.return_value = mockResult
+    assert _fsRunDetachedCommand(["docker", "run", "-d"]) == "abc123"
+
+
+@patch("subprocess.run")
+def test_fsRunDetachedCommand_failure_raises(mockRun):
+    from vaibify.docker.containerManager import _fsRunDetachedCommand
+    mockResult = MagicMock()
+    mockResult.returncode = 125
+    mockResult.stdout = ""
+    mockResult.stderr = "unknown image\n"
+    mockRun.return_value = mockResult
+    with pytest.raises(RuntimeError) as excInfo:
+        _fsRunDetachedCommand(["docker", "run", "-d"])
+    assert "Docker run failed" in str(excInfo.value)
+    assert "unknown image" in str(excInfo.value)
