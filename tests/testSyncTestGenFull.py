@@ -22,8 +22,6 @@ from vaibify.gui.syncDispatcher import (
     fnValidateOverleafProjectId,
     ftResultGenerateDagSvg,
     ftResultArchiveProject,
-    fbStepInputsUnchanged,
-    fdictComputeInputHashes,
     _fdictCheckGithub,
     _fdictCheckKeyring,
 )
@@ -341,84 +339,6 @@ def test_ftResultGenerateDagSvg_failure():
         mockDocker, "cid", dictWorkflow
     )
     assert iExit == 1
-
-
-# -----------------------------------------------------------------------
-# syncDispatcher: fbStepInputsUnchanged
-# -----------------------------------------------------------------------
-
-
-def test_fbStepInputsUnchanged_no_hashes():
-    mockDocker = _fMockDocker()
-    dictStep = {"dictRunStats": {}}
-    bResult = fbStepInputsUnchanged(
-        mockDocker, "cid", dictStep, 1
-    )
-    assert bResult is False
-
-
-def test_fbStepInputsUnchanged_matching():
-    mockDocker = _fMockDocker(0, "abc123\n")
-    dictStep = {
-        "sDirectory": "/workspace",
-        "saDataCommands": ["python script.py"],
-        "dictRunStats": {
-            "dictInputHashes": {
-                "/workspace/script.py": "abc123",
-            },
-        },
-    }
-    bResult = fbStepInputsUnchanged(
-        mockDocker, "cid", dictStep, 1
-    )
-    assert bResult is True
-
-
-def test_fbStepInputsUnchanged_changed():
-    mockDocker = _fMockDocker(0, "xyz789\n")
-    dictStep = {
-        "sDirectory": "/workspace",
-        "saDataCommands": ["python script.py"],
-        "dictRunStats": {
-            "dictInputHashes": {
-                "/workspace/script.py": "abc123",
-            },
-        },
-    }
-    bResult = fbStepInputsUnchanged(
-        mockDocker, "cid", dictStep, 1
-    )
-    assert bResult is False
-
-
-# -----------------------------------------------------------------------
-# syncDispatcher: fdictComputeInputHashes
-# -----------------------------------------------------------------------
-
-
-def test_fdictComputeInputHashes_computes():
-    mockDocker = _fMockDocker(0, "hash123\n")
-    dictStep = {
-        "sDirectory": "/workspace",
-        "saDataCommands": ["python script.py"],
-    }
-    dictResult = fdictComputeInputHashes(
-        mockDocker, "cid", dictStep
-    )
-    assert "/workspace/script.py" in dictResult
-    assert dictResult["/workspace/script.py"] == "hash123"
-
-
-def test_fdictComputeInputHashes_failure():
-    mockDocker = _fMockDocker(1, "")
-    dictStep = {
-        "sDirectory": "/workspace",
-        "saDataCommands": ["python script.py"],
-    }
-    dictResult = fdictComputeInputHashes(
-        mockDocker, "cid", dictStep
-    )
-    assert len(dictResult) == 0
 
 
 # -----------------------------------------------------------------------

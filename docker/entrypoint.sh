@@ -45,8 +45,7 @@ fnConfigureGit() {
         echo "${sCredLine}" > "${HOME}/.git-credentials"
         chmod 600 "${HOME}/.git-credentials"
         local sContainerUser
-        sContainerUser=$(grep "^VC_USER=" /etc/environment 2>/dev/null \
-            | cut -d= -f2 || echo "")
+        sContainerUser="${CONTAINER_USER:-}"
         if [ -n "${sContainerUser}" ] && [ "${sContainerUser}" != "root" ]; then
             local sUserHome
             sUserHome=$(eval echo "~${sContainerUser}")
@@ -729,7 +728,7 @@ fnLinkRepoClaudeMd() {
 # fnConfigureClaudeTheme: Set Claude Code to dark theme for container terminal
 # ---------------------------------------------------------------------------
 fnConfigureClaudeTheme() {
-    local sConfigDir="${HOME}/.claude"
+    local sConfigDir="/home/${CONTAINER_USER}/.claude"
     local sSettingsFile="${sConfigDir}/settings.json"
     if [ -f "${sSettingsFile}" ]; then
         return
@@ -743,6 +742,28 @@ SETTINGS
     echo "[vaib] Set Claude Code theme to dark for container terminal."
 }
 
+# ---------------------------------------------------------------------------
+# fnConfigureClaudeAutoUpdate: Merge autoUpdates key into Claude settings.json
+# ---------------------------------------------------------------------------
+fnConfigureClaudeAutoUpdate() {
+    local sFlag="${VAIBIFY_CLAUDE_AUTO_UPDATE:-true}"
+    local sConfigDir="/home/${CONTAINER_USER}/.claude"
+    local sSettingsFile="${sConfigDir}/settings.json"
+    mkdir -p "${sConfigDir}"
+    [ -f "${sSettingsFile}" ] || echo '{}' > "${sSettingsFile}"
+    VAIB_SETTINGS="${sSettingsFile}" VAIB_FLAG="${sFlag}" python3 - << 'PYEOF'
+import json, os
+sSettings = os.environ["VAIB_SETTINGS"]
+bAutoUpdate = os.environ["VAIB_FLAG"] == "true"
+with open(sSettings) as fileHandle:
+    dictContents = json.load(fileHandle)
+dictContents["autoUpdates"] = bAutoUpdate
+with open(sSettings, "w") as fileHandle:
+    json.dump(dictContents, fileHandle, indent=2)
+PYEOF
+    echo "[vaib] Claude auto-update set to ${sFlag}."
+}
+
 # ===========================================================================
 # Main — only runs when executed directly (not when sourced by tests)
 # ===========================================================================
@@ -751,13 +772,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnPrintBanner
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
-    fnConfigureClaudeTheme
     fnPersistGitConfig
     fnConfigureGit
     fnParseReposConf
     fnSyncAllRepos
     if command -v claude > /dev/null 2>&1; then
         fnPersistClaudeConfig
+        fnConfigureClaudeTheme
+        fnConfigureClaudeAutoUpdate
     fi
     fnBuildBinaries
     fnLoadBinariesEnv

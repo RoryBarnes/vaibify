@@ -240,8 +240,6 @@ async def _fiRunStepTests(
     dictWorkflow,
 ):
     """Run tests for a single step and emit results."""
-    from .pipelineRunner import _fnRecordInputHashes
-
     sStepDirectory = dictStep.get("sDirectory", "")
     await _fnEmitStepBanner(
         fnStatusCallback, iStepNumber, dictStep, dictWorkflow,
@@ -250,9 +248,6 @@ async def _fiRunStepTests(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVars, fnStatusCallback,
         iStepNumber,
-    )
-    await _fnRecordInputHashes(
-        connectionDocker, sContainerId, dictStep,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode

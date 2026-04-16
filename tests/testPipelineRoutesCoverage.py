@@ -18,13 +18,12 @@ from vaibify.gui.routes.pipelineRoutes import (
     _fnApplyMarkerCategory,
     _fnEnsureConftestTemplate,
     _fnMarkPipelineStopped,
-    _fnRefreshStepInputHashes,
     _fsetExtractRegisteredTestFiles,
-    _fsMarkerNameFromDirectory,
     _fiCountMatchingProcesses,
     _fnKillMatchingProcesses,
     _fnBackfillMissingConftest,
     _fdictFetchOutputStatus,
+    fdictComputeFileStatus,
 )
 
 
@@ -316,13 +315,6 @@ class TestAcknowledgeStepRoute:
             "._fnClearStepModificationState",
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._fnRecordStepRunTimestamp",
-        ), patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            "._fnRefreshStepInputHashes",
-            new_callable=AsyncMock,
-        ), patch(
-            "vaibify.gui.routes.pipelineRoutes"
             "._flistCollectOutputPaths",
             return_value=["/workspace/out.dat"],
         ), patch(
@@ -343,51 +335,6 @@ class TestAcknowledgeStepRoute:
             )
             assert response.status_code == 200
             assert response.json()["bSuccess"] is True
-
-
-# ── Lines 264-275: _fnRefreshStepInputHashes ─────────────────────
-
-class TestFnRefreshStepInputHashes:
-    @pytest.mark.asyncio
-    async def test_valid_index_computes_hashes(self):
-        """Cover lines 264-275."""
-        dictStep = {"dictRunStats": {}}
-        dictWorkflow = {"listSteps": [dictStep]}
-        dictCtx = {"docker": MagicMock()}
-        with patch(
-            "vaibify.gui.syncDispatcher.fdictComputeInputHashes",
-            return_value={"script.py": "abc123"},
-        ):
-            await _fnRefreshStepInputHashes(
-                dictCtx, "cid1", dictWorkflow, 0
-            )
-            assert dictStep["dictRunStats"]["dictInputHashes"] == {
-                "script.py": "abc123"
-            }
-
-    @pytest.mark.asyncio
-    async def test_invalid_index_returns_early(self):
-        """Cover line 266-267: out-of-range early return."""
-        dictWorkflow = {"listSteps": []}
-        dictCtx = {"docker": MagicMock()}
-        await _fnRefreshStepInputHashes(
-            dictCtx, "cid1", dictWorkflow, 5
-        )
-
-    @pytest.mark.asyncio
-    async def test_missing_run_stats_creates_dict(self):
-        """Cover lines 273-274: dictRunStats not present."""
-        dictStep = {}
-        dictWorkflow = {"listSteps": [dictStep]}
-        dictCtx = {"docker": MagicMock()}
-        with patch(
-            "vaibify.gui.syncDispatcher.fdictComputeInputHashes",
-            return_value={},
-        ):
-            await _fnRefreshStepInputHashes(
-                dictCtx, "cid1", dictWorkflow, 0
-            )
-            assert "dictRunStats" in dictStep
 
 
 # ── Lines 314-318, 324-329: _fdictFetchOutputStatus branches ────
@@ -415,15 +362,15 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
+            ".fnCollectMarkerPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
             "._fbCheckStaleUserVerification",
             return_value=True,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             "._flistDetectAndInvalidate",
-            return_value={},
-        ), patch(
-            "vaibify.gui.syncDispatcher"
-            ".fdictComputeAllScriptHashes",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -432,6 +379,14 @@ class TestFdictFetchOutputStatus:
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             "._fdictComputeMaxPlotMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxDataMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMarkerMtimeByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -471,6 +426,10 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
+            ".fnCollectMarkerPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
             "._fbCheckStaleUserVerification",
             return_value=False,
         ), patch(
@@ -478,16 +437,20 @@ class TestFdictFetchOutputStatus:
             "._flistDetectAndInvalidate",
             return_value=dictInvalidated,
         ), patch(
-            "vaibify.gui.syncDispatcher"
-            ".fdictComputeAllScriptHashes",
-            return_value={},
-        ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             "._fdictComputeMaxMtimeByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             "._fdictComputeMaxPlotMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxDataMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMarkerMtimeByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -500,6 +463,74 @@ class TestFdictFetchOutputStatus:
             assert dictResult["dictInvalidatedSteps"] == (
                 dictInvalidated
             )
+            assert "dictMaxDataMtimeByStep" in dictResult
+            assert "dictMarkerMtimeByStep" in dictResult
+
+    @pytest.mark.asyncio
+    async def test_marker_paths_batched_into_mod_times_call(self):
+        """Marker file paths are included in the batched stat call."""
+        dictWorkflow = {"listSteps": []}
+        dictCtx = {
+            "docker": MagicMock(),
+            "save": MagicMock(),
+        }
+        sMarkerPath = (
+            "/workspace/.vaibify/test_markers/"
+            "workspace_step01.json"
+        )
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistCollectOutputPaths",
+            return_value=["/workspace/step01/out.dat"],
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".flistExtractAllScriptPaths",
+            return_value=["/workspace/step01/run.py"],
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fnCollectMarkerPathsByStep",
+            return_value={0: sMarkerPath},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
+            return_value={},
+        ) as mockModTimes, patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fdictCollectOutputPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fbCheckStaleUserVerification",
+            return_value=False,
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistDetectAndInvalidate",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxPlotMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxDataMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMarkerMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictBuildScriptStatus",
+            return_value={},
+        ):
+            await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+            listBatchedPaths = mockModTimes.call_args[0][2]
+            assert sMarkerPath in listBatchedPaths
 
 
 # ── Line 400: _fdictFetchTestMarkers non-zero exit ──────────────
@@ -649,3 +680,51 @@ class TestFdictBuildTestFileChanges:
             assert "test_integrity.py" in (
                 dictResult["0"]["listCustom"]
             )
+
+
+# ── fdictComputeFileStatus wrapper ───────────────────────────────
+
+class TestFdictComputeFileStatus:
+    @pytest.mark.asyncio
+    async def test_merges_output_and_test_status(self):
+        dictOutputStatus = {
+            "dictModTimes": {"/workspace/a.dat": 10},
+            "dictMaxMtimeByStep": {"0": 10},
+            "dictMaxPlotMtimeByStep": {},
+            "dictMaxDataMtimeByStep": {"0": 10},
+            "dictMarkerMtimeByStep": {},
+            "dictInvalidatedSteps": {},
+            "dictScriptStatus": {},
+        }
+        dictTestStatus = {
+            "dictTestMarkers": {"0": {"sUnitTest": "passed"}},
+            "dictTestFileChanges": {},
+        }
+        dictCtx = {"docker": MagicMock()}
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictFetchOutputStatus",
+            new=AsyncMock(return_value=dictOutputStatus),
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictFetchTestStatus",
+            new=AsyncMock(return_value=dictTestStatus),
+        ):
+            dictResult = await fdictComputeFileStatus(
+                dictCtx, "cid1", {"listSteps": []}, {},
+            )
+        for sKey in (
+            "dictModTimes",
+            "dictMaxMtimeByStep",
+            "dictMaxPlotMtimeByStep",
+            "dictMaxDataMtimeByStep",
+            "dictMarkerMtimeByStep",
+            "dictInvalidatedSteps",
+            "dictScriptStatus",
+            "dictTestMarkers",
+            "dictTestFileChanges",
+        ):
+            assert sKey in dictResult, sKey
+        assert dictResult["dictTestMarkers"] == (
+            {"0": {"sUnitTest": "passed"}}
+        )

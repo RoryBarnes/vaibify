@@ -54,7 +54,7 @@ def _fConfigFull():
     features = SimpleNamespace(
         bJupyter=False, bRLanguage=False, bJulia=False,
         bDatabase=False, bDvc=False, bLatex=True,
-        bClaude=False, bGpu=False,
+        bClaude=False, bClaudeAutoUpdate=True, bGpu=False,
     )
     reproducibility = SimpleNamespace(
         overleaf=SimpleNamespace(sProjectId="abc123"),
@@ -474,7 +474,10 @@ def test_fsGetTempDirectory_darwin():
     )
     with patch("platform.system", return_value="Darwin"):
         sResult = _fsGetTempDirectory()
-    assert sResult == "/tmp"
+    assert sResult.endswith(".vaibify/tmp"), (
+        "macOS temp dir should be under ~/.vaibify/tmp, "
+        "got: " + str(sResult)
+    )
 
 
 def test_fsGetTempDirectory_linux():
@@ -1034,13 +1037,9 @@ def test_fiRunStepList_records_failure(mockShould, mockRunOne):
 
 @patch("vaibify.gui.pipelineRunner._fiExecuteAndRecord",
        new_callable=AsyncMock, return_value=0)
-@patch("vaibify.gui.pipelineRunner._fbShouldSkipStep",
-       new_callable=AsyncMock, return_value=False)
 @patch("vaibify.gui.pipelineRunner._fiCheckDependencies",
        new_callable=AsyncMock, return_value=0)
-def test_fnRunOneStep_executes(
-    mockDeps, mockSkip, mockExecute,
-):
+def test_fnRunOneStep_executes(mockDeps, mockExecute):
     from vaibify.gui.pipelineRunner import _fnRunOneStep
     mockDocker = _fMockDocker()
     fnCallback, listCaptured = _fMockCallback()
@@ -1057,27 +1056,6 @@ def test_fnRunOneStep_executes(
     assert "stepStarted" in listTypes
 
 
-@patch("vaibify.gui.pipelineRunner._fbShouldSkipStep",
-       new_callable=AsyncMock, return_value=True)
-@patch("vaibify.gui.pipelineRunner._fiCheckDependencies",
-       new_callable=AsyncMock, return_value=0)
-def test_fnRunOneStep_skips_unchanged(mockDeps, mockSkip):
-    from vaibify.gui.pipelineRunner import _fnRunOneStep
-    mockDocker = _fMockDocker()
-    fnCallback, listCaptured = _fMockCallback()
-    dictStep = {
-        "sName": "Cached", "bEnabled": True,
-        "sDirectory": "/w",
-    }
-    iResult = _fnRunAsync(_fnRunOneStep(
-        mockDocker, "cid", dictStep, 1,
-        "/work", {}, fnCallback,
-    ))
-    assert iResult == 0
-    listTypes = [d["sType"] for d in listCaptured]
-    assert "stepSkipped" in listTypes
-
-
 def test_fnRunOneStep_interactive_returns_zero():
     from vaibify.gui.pipelineRunner import _fnRunOneStep
     mockDocker = _fMockDocker()
@@ -1092,14 +1070,12 @@ def test_fnRunOneStep_interactive_returns_zero():
 
 @patch("vaibify.gui.pipelineRunner._fnEmitDiscoveredOutputs",
        new_callable=AsyncMock)
-@patch("vaibify.gui.pipelineRunner._fnRecordInputHashes",
-       new_callable=AsyncMock)
 @patch("vaibify.gui.pipelineRunner.fiRunStepCommands",
        new_callable=AsyncMock, return_value=(0, 1.5))
 @patch("vaibify.gui.pipelineRunner._fsetSnapshotDirectory",
        new_callable=AsyncMock, return_value=set())
 def test_fiExecuteAndRecord_records_timing(
-    mockSnap, mockRun, mockHash, mockDiscover,
+    mockSnap, mockRun, mockDiscover,
 ):
     from vaibify.gui.pipelineRunner import _fiExecuteAndRecord
     mockDocker = _fMockDocker()

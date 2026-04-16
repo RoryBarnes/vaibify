@@ -23,14 +23,13 @@ Each step carries a ``dictVerification`` with orthogonal state fields:
 **Timestamps** (set by UI / polling):
 - ``sLastUserUpdate``:  UTC timestamp when user last set sUser
 - ``sLastDepsCheck``:   UTC timestamp when dependencies last passed
-- ``sLastTestRun``:     UTC timestamp of last test execution
 
 State Transitions
 ~~~~~~~~~~~~~~~~~
 - Step executes      -> sUser resets to "untested"
-- Data file changes  -> sUnitTest resets to "untested"
+- Data file changes  -> sUnitTest, sIntegrity, sQualitative, sQuantitative reset to "untested"
 - Plot file changes  -> sUser resets to "untested" (if newer than sLastUserUpdate)
-- Upstream changes   -> bUpstreamModified = True, sUnitTest -> "untested"
+- Upstream changes   -> same resets as data file changes, plus bUpstreamModified = True
 - Tests pass/fail    -> sUnitTest, sIntegrity, sQualitative, sQuantitative updated
 - User clicks verify -> sUser cycles: untested -> passed -> failed -> untested
 """
@@ -38,9 +37,41 @@ State Transitions
 import logging
 import posixpath
 
+_LIST_CATEGORY_KEYS = (
+    ("dictIntegrity", "sIntegrity"),
+    ("dictQualitative", "sQualitative"),
+    ("dictQuantitative", "sQuantitative"),
+)
+
 __all__ = [
     "fdictCollectOutputPathsByStep",
+    "fnCollectScriptPathsByStep",
+    "fnCollectMarkerPathsByStep",
+    "fsMarkerNameFromStepDirectory",
 ]
+
+_S_MARKER_DIRECTORY = "/workspace/.vaibify/test_markers"
+
+
+def fsMarkerNameFromStepDirectory(sStepDirectory):
+    """Return the marker filename for a step directory."""
+    return sStepDirectory.strip("/").replace("/", "_") + ".json"
+
+
+def fnCollectMarkerPathsByStep(dictWorkflow):
+    """Return {iStepIndex: sMarkerPath} for each step with a directory."""
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sStepDirectory = dictStep.get("sDirectory", "")
+        if not sStepDirectory:
+            continue
+        sMarkerName = fsMarkerNameFromStepDirectory(sStepDirectory)
+        dictResult[iIndex] = posixpath.join(
+            _S_MARKER_DIRECTORY, sMarkerName,
+        )
+    return dictResult
 
 from . import pipelineState
 from . import workflowManager
@@ -48,21 +79,38 @@ from .commandUtilities import flistExtractScripts
 from .fileIntegrity import _fsNormalizePath
 from .pipelineUtils import fsShellQuote
 
+
+_T_DATA_SCRIPT_KEYS = ("saDataCommands", "saSetupCommands", "saCommands")
+_T_PLOT_SCRIPT_KEYS = ("saPlotCommands",)
+
+
+def fnCollectScriptPathsByStep(dictWorkflow):
+    """Return {iStepIndex: {"data": [paths...], "plot": [paths...]}}."""
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        sDir = dictStep.get("sDirectory", "")
+        dictResult[iIndex] = {
+            "data": _flistScriptPaths(dictStep, sDir, _T_DATA_SCRIPT_KEYS),
+            "plot": _flistScriptPaths(dictStep, sDir, _T_PLOT_SCRIPT_KEYS),
+        }
+    return dictResult
+
+
+def _flistScriptPaths(dictStep, sDirectory, tKeys):
+    """Return normalized script paths for a subset of command categories."""
+    listPaths = []
+    setAdded = set()
+    for sKey in tKeys:
+        for sScript in flistExtractScripts(dictStep.get(sKey, [])):
+            sPath = _fsNormalizePath(sDirectory, sScript)
+            if sPath not in setAdded:
+                listPaths.append(sPath)
+                setAdded.add(sPath)
+    return listPaths
+
 logger = logging.getLogger("vaibify")
-
-
-def _fnRecordStepRunTimestamp(dictWorkflow, iStepIndex):
-    """Set sLastRun on the step's dictRunStats."""
-    from datetime import datetime, timezone
-    listSteps = dictWorkflow.get("listSteps", [])
-    if iStepIndex < 0 or iStepIndex >= len(listSteps):
-        return
-    dictStep = listSteps[iStepIndex]
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["sLastRun"] = (
-        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    )
 
 
 def _fnClearStepModificationState(dictWorkflow, iStepIndex):
@@ -186,6 +234,47 @@ def _fdictComputeMaxPlotMtimeByStep(dictWorkflow, dictModTimes,
         ]
         if listMtimes:
             dictResult[str(iIndex)] = str(max(listMtimes))
+    return dictResult
+
+
+def _fdictComputeMaxDataMtimeByStep(dictWorkflow, dictModTimes,
+                                     dictVars=None):
+    """Return {stepIndex: maxDataMtimeString} using only data files."""
+    if dictVars is None:
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        listDataPaths = _flistResolveDataPaths(dictStep, dictVars)
+        listMtimes = [
+            int(dictModTimes[sPath])
+            for sPath in listDataPaths if sPath in dictModTimes
+        ]
+        if listMtimes:
+            dictResult[str(iIndex)] = str(max(listMtimes))
+    return dictResult
+
+
+def _flistResolveDataPaths(dictStep, dictVars):
+    """Return resolved data file paths for a single step."""
+    sStepDir = dictStep.get("sDirectory", "")
+    listPaths = []
+    for sFile in dictStep.get("saDataFiles", []):
+        sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
+        if not sResolved.startswith("/"):
+            sResolved = posixpath.join(sStepDir, sResolved)
+        listPaths.append(sResolved)
+    return listPaths
+
+
+def _fdictComputeMarkerMtimeByStep(dictMarkerPathsByStep, dictModTimes):
+    """Return {stepIndex: markerMtimeString} for steps whose marker exists."""
+    dictResult = {}
+    for iIndex, sMarkerPath in dictMarkerPathsByStep.items():
+        sMtime = dictModTimes.get(sMarkerPath)
+        if sMtime:
+            dictResult[str(iIndex)] = str(sMtime)
     return dictResult
 
 
@@ -334,6 +423,9 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
     if dictVerification.get("sUnitTest") == "passed":
         if _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
             dictVerification["sUnitTest"] = "untested"
+            for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
+                if sVerifKey in dictVerification:
+                    dictVerification[sVerifKey] = "untested"
     if dictVerification.get("sUser") == "passed":
         bPlotNewer = _fbPlotNewerThanUserVerification(
             dictStep, listChangedPaths, dictModTimes
@@ -363,41 +455,187 @@ def _fnInvalidateDownstreamStep(dictStep):
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUnitTest") == "passed":
         dictVerification["sUnitTest"] = "untested"
+        for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
+            if sVerifKey in dictVerification:
+                dictVerification[sVerifKey] = "untested"
     dictVerification["bUpstreamModified"] = True
     dictStep["dictVerification"] = dictVerification
 
 
-def _fbStepScriptsModified(dictStep, dictCurrentHashes):
-    """Return True if any script hash differs from stored hashes."""
-    dictStoredHashes = dictStep.get(
-        "dictRunStats", {}
-    ).get("dictInputHashes", {})
-    if not dictStoredHashes:
+def _flistNewerPaths(listPaths, dictModTimes, iThreshold):
+    """Return paths whose mtime (in dictModTimes) is strictly > iThreshold."""
+    listNewer = []
+    for sPath in listPaths:
+        sMtime = dictModTimes.get(sPath)
+        if sMtime is None:
+            continue
+        try:
+            iMtime = int(sMtime)
+        except (TypeError, ValueError):
+            continue
+        if iMtime > iThreshold:
+            listNewer.append(sPath)
+    return listNewer
+
+
+def _fiValidatorEpoch(dictVerification, sKey):
+    """Return epoch of a validator timestamp, or None if unset."""
+    sValue = dictVerification.get(sKey, "")
+    if not sValue:
         return None
-    sDirectory = dictStep.get("sDirectory", "")
-    for sKey in ("saDataCommands", "saPlotCommands",
-                 "saSetupCommands", "saCommands"):
-        for sScript in flistExtractScripts(dictStep.get(sKey, [])):
-            sPath = _fsNormalizePath(sDirectory, sScript)
-            if dictStoredHashes.get(sPath) != dictCurrentHashes.get(sPath):
-                return True
-    return False
+    return _fiParseUtcTimestamp(sValue)
 
 
-def _fdictBuildScriptStatus(dictWorkflow, dictCurrentHashes):
-    """Compare current script hashes against stored run hashes."""
+def _fnAppendStaleArtifacts(
+    listTarget, listPaths, sValidator, sCategory,
+):
+    """Append {sValidator, sCategory, sPath} entries to listTarget."""
+    for sPath in listPaths:
+        listTarget.append({
+            "sValidator": sValidator,
+            "sCategory": sCategory,
+            "sPath": sPath,
+        })
+
+
+def _fnAppendTestStale(listStale, listBuckets, iEpoch, dictModTimes):
+    """Append test-validator stale artifacts for data scripts and files."""
+    _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
+        listBuckets["dataScript"], dictModTimes, iEpoch,
+    ), "test", "dataScript")
+    _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
+        listBuckets["dataFile"], dictModTimes, iEpoch,
+    ), "test", "dataFile")
+
+
+def _fnAppendUserStale(listStale, listBuckets, iEpoch, dictModTimes):
+    """Append user-validator stale artifacts for all four categories."""
+    for sCategory in ("dataScript", "dataFile",
+                      "plotScript", "plotFile"):
+        _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
+            listBuckets[sCategory], dictModTimes, iEpoch,
+        ), "user", sCategory)
+
+
+def _fbStepIsPencilStale(
+    dictStep, dictStepScripts, listStepOutputPaths, dictModTimes,
+    iMarkerMtime=None, setResolvedPlotPaths=None,
+):
+    """Return (bStale, listStaleArtifacts) via timestamp comparisons."""
+    dictVerify = dictStep.get("dictVerification", {})
+    iLastUser = _fiValidatorEpoch(dictVerify, "sLastUserUpdate")
+    listBuckets = _fdictBuildArtifactBuckets(
+        dictStep, dictStepScripts, listStepOutputPaths,
+        setResolvedPlotPaths,
+    )
+    listStale = []
+    if iMarkerMtime is not None:
+        _fnAppendTestStale(
+            listStale, listBuckets, iMarkerMtime, dictModTimes)
+    if iLastUser is not None:
+        _fnAppendUserStale(
+            listStale, listBuckets, iLastUser, dictModTimes)
+    return (len(listStale) > 0, listStale)
+
+
+def _fdictBuildArtifactBuckets(
+    dictStep, dictStepScripts, listStepOutputPaths,
+    setResolvedPlotPaths,
+):
+    """Return {category: [paths]} for each of the four artifact buckets."""
+    listDataFiles, listPlotFiles = _flistSplitOutputPaths(
+        dictStep, listStepOutputPaths, setResolvedPlotPaths,
+    )
+    return {
+        "dataScript": dictStepScripts.get("data", []),
+        "plotScript": dictStepScripts.get("plot", []),
+        "dataFile": listDataFiles,
+        "plotFile": listPlotFiles,
+    }
+
+
+def _fbPathIsPlot(sPath, setResolvedPlotPaths, bByBasename):
+    """Return True if sPath should be classified as a plot file."""
+    sKey = posixpath.basename(sPath) if bByBasename else sPath
+    return sKey in setResolvedPlotPaths
+
+
+def _flistSplitOutputPaths(
+    dictStep, listOutputPaths, setResolvedPlotPaths=None,
+):
+    """Split a step's output-path list into (data_files, plot_files)."""
+    bByBasename = setResolvedPlotPaths is None
+    if bByBasename:
+        setResolvedPlotPaths = {
+            posixpath.basename(sFile)
+            for sFile in dictStep.get("saPlotFiles", [])
+        }
+    listDataFiles = []
+    listPlotFiles = []
+    for sPath in listOutputPaths:
+        if _fbPathIsPlot(
+            sPath, setResolvedPlotPaths, bByBasename,
+        ):
+            listPlotFiles.append(sPath)
+        else:
+            listDataFiles.append(sPath)
+    return listDataFiles, listPlotFiles
+
+
+def _fdictBuildStepStatusEntry(
+    dictStep, dictStepScripts, listOutputs, dictModTimes,
+    dictResolvedVars, iMarkerMtime=None,
+):
+    """Compute {sStatus, listStaleArtifacts} for a single step."""
+    setPlotPaths = {
+        sResolved for sResolved, _sBase
+        in _flistResolvePlotPaths(dictStep, dictResolvedVars)
+    }
+    bStale, listStale = _fbStepIsPencilStale(
+        dictStep, dictStepScripts, listOutputs, dictModTimes,
+        iMarkerMtime=iMarkerMtime,
+        setResolvedPlotPaths=setPlotPaths,
+    )
+    return {
+        "sStatus": "modified" if bStale else "unchanged",
+        "listStaleArtifacts": listStale,
+    }
+
+
+def _fdictBuildScriptStatus(
+    dictWorkflow, dictModTimes, dictVars=None,
+    dictMarkerMtimeByStep=None,
+):
+    """Return per-step pencil status via timestamp staleness comparison."""
+    dictScriptsByStep = fnCollectScriptPathsByStep(dictWorkflow)
+    dictOutputsByStep = fdictCollectOutputPathsByStep(
+        dictWorkflow, dictVars,
+    )
+    dictResolvedVars = dictVars or _fdictBuildFileStatusVars(dictWorkflow)
+    dictMarkerMtimes = dictMarkerMtimeByStep or {}
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
-        bModified = _fbStepScriptsModified(dictStep, dictCurrentHashes)
-        if bModified is None:
-            dictResult[iIndex] = "unknown"
-        elif bModified:
-            dictResult[iIndex] = "modified"
-        else:
-            dictResult[iIndex] = "unchanged"
+        dictResult[iIndex] = _fdictBuildStepStatusEntry(
+            dictStep,
+            dictScriptsByStep.get(iIndex, {}),
+            dictOutputsByStep.get(iIndex, []),
+            dictModTimes, dictResolvedVars,
+            iMarkerMtime=_fiMarkerMtime(dictMarkerMtimes, iIndex),
+        )
     return dictResult
+
+
+def _fiMarkerMtime(dictMarkerMtimeByStep, iIndex):
+    """Return marker mtime as int for step index, or None if absent."""
+    sMtime = dictMarkerMtimeByStep.get(str(iIndex))
+    if sMtime is None:
+        return None
+    try:
+        return int(sMtime)
+    except (TypeError, ValueError):
+        return None
 
 
 def _fdictDetectChangedFiles(dictCtx, sContainerId,
@@ -463,16 +701,28 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
     return dictInvalidated
 
 
+_I_STAT_BATCH_SIZE = 200
+
+
 def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
     """Return {path: mtime_string} for each file that exists."""
+    dictResult = {}
+    for iStart in range(0, len(listPaths), _I_STAT_BATCH_SIZE):
+        dictResult.update(_fdictStatBatch(
+            connectionDocker, sContainerId,
+            listPaths[iStart:iStart + _I_STAT_BATCH_SIZE],
+        ))
+    return dictResult
+
+
+def _fdictStatBatch(connectionDocker, sContainerId, listPaths):
+    """Run stat on a single batch of paths; parse 'name mtime' lines."""
     if not listPaths:
         return {}
-    sPathArgs = " ".join(
-        fsShellQuote(s) for s in listPaths[:200]
-    )
+    sPathArgs = " ".join(fsShellQuote(s) for s in listPaths)
     sCmd = f"stat -c '%n %Y' {sPathArgs} 2>/dev/null || true"
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCmd
+    _iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCmd,
     )
     dictResult = {}
     for sLine in (sOutput or "").strip().split("\n"):

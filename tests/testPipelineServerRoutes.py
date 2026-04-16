@@ -174,6 +174,40 @@ def test_connect_caches_workflow(clientHttp):
     assert responseHttp.status_code == 200
 
 
+def test_connect_includes_file_status(clientHttp):
+    dictResult = _fnConnectToContainer(clientHttp)
+    assert "dictFileStatus" in dictResult
+    dictFileStatus = dictResult["dictFileStatus"]
+    assert dictFileStatus is not None
+    for sKey in (
+        "dictModTimes",
+        "dictMaxMtimeByStep",
+        "dictMaxPlotMtimeByStep",
+        "dictMaxDataMtimeByStep",
+        "dictMarkerMtimeByStep",
+        "dictInvalidatedSteps",
+        "dictScriptStatus",
+        "dictTestMarkers",
+        "dictTestFileChanges",
+    ):
+        assert sKey in dictFileStatus, sKey
+
+
+def test_connect_survives_file_status_failure(clientHttp):
+    with patch(
+        "vaibify.gui.routes.pipelineRoutes.fdictComputeFileStatus",
+        side_effect=RuntimeError("boom"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/connect/{S_CONTAINER_ID}",
+            params={"sWorkflowPath": S_WORKFLOW_PATH},
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["dictWorkflow"] is not None
+    assert dictResult["dictFileStatus"] is None
+
+
 # ── User info ─────────────────────────────────────────────────
 
 

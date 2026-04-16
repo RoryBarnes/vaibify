@@ -165,3 +165,18 @@ def test_fbImageExists_returns_true_when_subprocess_succeeds():
         bExists = fbImageExists("myproject:latest")
 
     assert bExists is True
+
+
+def test_dockerfile_claude_is_unpinned():
+    """Ensure Dockerfile.claude installs @latest and not the old pin."""
+    import os
+    sPath = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "docker",
+            "Dockerfile.claude",
+        )
+    )
+    with open(sPath) as fileHandle:
+        sContent = fileHandle.read()
+    assert "@anthropic-ai/claude-code@latest" in sContent
+    assert "2.1.104" not in sContent

@@ -17,7 +17,6 @@ from vaibify.gui.pipelineRunner import (
     fnVerifyOnly,
     _fbVerifyStepOutputs,
     _fsetSnapshotDirectory,
-    _fnRecordInputHashes,
     _fnEmitDiscoveredOutputs,
     _fsMissingDependencyFile,
     _fiReportPreflightFailure,
@@ -229,33 +228,6 @@ def test_fnEmitDiscoveredOutputs_expected():
         if d.get("sType") == "discoveredOutputs"
     ]
     assert len(listDiscovery) == 0
-
-
-# -----------------------------------------------------------------------
-# _fnRecordInputHashes
-# -----------------------------------------------------------------------
-
-
-@patch("vaibify.gui.syncDispatcher.fdictComputeInputHashes",
-       return_value={"/workspace/script.py": "abc123"})
-def test_fnRecordInputHashes_stores_hashes(mockCompute):
-    mockDocker = _fMockDocker()
-    dictStep = {"saDataCommands": ["python script.py"]}
-    _fnRunAsync(_fnRecordInputHashes(
-        mockDocker, "cid", dictStep,
-    ))
-    assert "dictInputHashes" in dictStep["dictRunStats"]
-
-
-@patch("vaibify.gui.syncDispatcher.fdictComputeInputHashes",
-       return_value={})
-def test_fnRecordInputHashes_creates_run_stats(mockCompute):
-    mockDocker = _fMockDocker()
-    dictStep = {}
-    _fnRunAsync(_fnRecordInputHashes(
-        mockDocker, "cid", dictStep,
-    ))
-    assert "dictRunStats" in dictStep
 
 
 # -----------------------------------------------------------------------

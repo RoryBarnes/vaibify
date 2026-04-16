@@ -3,7 +3,6 @@
 import asyncio
 import json
 import posixpath
-from datetime import datetime, timezone
 
 from . import pipelineState
 from . import workflowManager
@@ -78,12 +77,6 @@ from .interactiveSteps import (  # noqa: F401
     fdictCreateInteractiveContext,
     fnSetInteractiveResponse,
 )
-
-from .fileIntegrity import (  # noqa: F401
-    fbStepInputsUnchanged,
-    fdictComputeInputHashes,
-)
-
 
 # ---------------------------------------------------------------------------
 # Preflight validation (kept here for mockability via module namespace).
@@ -415,27 +408,6 @@ async def _fsMissingDependencyFile(
     return ""
 
 
-async def _fbShouldSkipStep(
-    connectionDocker, sContainerId, dictStep, iStepNumber,
-):
-    """Return True if the step's inputs are unchanged."""
-    return fbStepInputsUnchanged(
-        connectionDocker, sContainerId, dictStep, iStepNumber
-    )
-
-
-async def _fnRecordInputHashes(
-    connectionDocker, sContainerId, dictStep,
-):
-    """Compute and store input hashes after a step runs."""
-    dictHashes = fdictComputeInputHashes(
-        connectionDocker, sContainerId, dictStep
-    )
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
-
-
 # ---------------------------------------------------------------------------
 # Dependency check with banner
 # ---------------------------------------------------------------------------
@@ -488,13 +460,6 @@ async def _fnRunOneStep(
     await _fnEmitBanner(
         fnStatusCallback, iStepNumber, sStepName, sStepLabel,
     )
-    if await _fbShouldSkipStep(
-        connectionDocker, sContainerId, dictStep, iStepNumber
-    ):
-        await fnStatusCallback({
-            "sType": "stepSkipped", "iStepNumber": iStepNumber,
-        })
-        return 0
     await fnStatusCallback({
         "sType": "stepStarted", "iStepNumber": iStepNumber,
     })
@@ -511,9 +476,6 @@ async def _fiExecuteAndRecord(
     """Execute step commands, record timing, emit results."""
     import time
     fStartTime = time.time()
-    sStartTimestamp = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S UTC"
-    )
     sStepDir = dictStep.get("sDirectory", sWorkdir)
     setFilesBefore = await _fsetSnapshotDirectory(
         connectionDocker, sContainerId, sStepDir
@@ -523,15 +485,11 @@ async def _fiExecuteAndRecord(
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber,
     )
-    _fnRecordRunStats(
-        dictStep, sStartTimestamp, fStartTime, fCpuTime)
+    _fnRecordRunStats(dictStep, fStartTime, fCpuTime)
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
     })
-    await _fnRecordInputHashes(
-        connectionDocker, sContainerId, dictStep
-    )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,

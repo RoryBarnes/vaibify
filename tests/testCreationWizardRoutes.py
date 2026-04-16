@@ -215,6 +215,32 @@ def testCreateProjectPersistsFeatures(
     assert config.features.bGpu is True
     assert config.features.bRLanguage is False
     assert config.features.bJulia is False
+    assert config.features.bClaudeAutoUpdate is True
+
+
+def testCreateProjectDisablesClaudeAutoUpdate(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    _fnPrepSandboxTemplate(tmp_path, monkeypatch)
+    sProjectDir = str(tmp_path / "claude-noauto")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": sProjectDir,
+            "sProjectName": "claude-noauto",
+            "sTemplateName": "sandbox",
+            "sPythonVersion": "3.12",
+            "listRepositories": [],
+            "listFeatures": ["claude"],
+            "bClaudeAutoUpdate": False,
+        },
+    )
+    assert response.status_code == 200
+    config = fconfigLoadFromFile(
+        os.path.join(sProjectDir, "vaibify.yml"))
+    assert config.features.bClaude is True
+    assert config.features.bClaudeAutoUpdate is False
 
 
 def testCreateProjectPersistsGithubAuthSecret(

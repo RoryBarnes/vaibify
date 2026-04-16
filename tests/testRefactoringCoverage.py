@@ -17,7 +17,6 @@ from vaibify.gui.pipelineServer import (
     _flistResolveStepPaths,
     _flistStandardizedBasenames,
     _fnClearStepModificationState,
-    _fnRecordStepRunTimestamp,
     _fnRegisterTestCommand,
     _fnUpdateModTimeBaseline,
     _fsBuildPytestCommand,
@@ -429,28 +428,6 @@ class TestFdictBuildFileStatusVars:
         dictResult = _fdictBuildFileStatusVars(dictWorkflow)
         assert dictResult["sPlotDirectory"] == "Figures"
         assert dictResult["sFigureType"] == "png"
-
-
-class TestFnRecordStepRunTimestamp:
-    def test_records_timestamp(self):
-        dictWorkflow = {"listSteps": [{}]}
-        _fnRecordStepRunTimestamp(dictWorkflow, 0)
-        sLastRun = dictWorkflow["listSteps"][0][
-            "dictRunStats"]["sLastRun"]
-        assert "UTC" in sLastRun
-
-    def test_out_of_range_no_crash(self):
-        dictWorkflow = {"listSteps": []}
-        _fnRecordStepRunTimestamp(dictWorkflow, 5)
-
-    def test_negative_index_no_crash(self):
-        dictWorkflow = {"listSteps": [{}]}
-        _fnRecordStepRunTimestamp(dictWorkflow, -1)
-
-    def test_creates_dict_run_stats(self):
-        dictWorkflow = {"listSteps": [{"sName": "A"}]}
-        _fnRecordStepRunTimestamp(dictWorkflow, 0)
-        assert "dictRunStats" in dictWorkflow["listSteps"][0]
 
 
 class TestFnClearStepModificationState:

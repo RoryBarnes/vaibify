@@ -339,11 +339,10 @@ class TestFiRunStepTests:
     """Cover the single-step test runner."""
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepResult", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
     def test_runs_tests_and_records_hashes(
-        self, mockBanner, mockRunTests, mockHashes, mockEmitResult,
+        self, mockBanner, mockRunTests, mockEmitResult,
     ):
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 
@@ -360,15 +359,13 @@ class TestFiRunStepTests:
         assert iResult == 0
         mockBanner.assert_awaited_once()
         mockRunTests.assert_awaited_once()
-        mockHashes.assert_awaited_once()
         mockEmitResult.assert_awaited_once()
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepResult", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
     def test_propagates_nonzero_exit_code(
-        self, mockBanner, mockRunTests, mockHashes, mockEmitResult,
+        self, mockBanner, mockRunTests, mockEmitResult,
     ):
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 
@@ -385,11 +382,10 @@ class TestFiRunStepTests:
         assert iResult == 1
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepResult", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
     def test_uses_empty_directory_when_missing(
-        self, mockBanner, mockRunTests, mockHashes, mockEmitResult,
+        self, mockBanner, mockRunTests, mockEmitResult,
     ):
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 

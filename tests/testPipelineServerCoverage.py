@@ -6,7 +6,7 @@ from vaibify.gui.pipelineServer import (
     _fbAnyDataFileChanged,
     _fbAnyMtimeNewerThan,
     _fbAnyPlotFileChanged,
-    _fbStepScriptsModified,
+    _fbStepIsPencilStale,
     _fdictBuildScriptStatus,
     _fdictFindChangedFiles,
     _fiParseUtcTimestamp,
@@ -439,6 +439,38 @@ class TestFnInvalidateStepFiles:
         assert "/work/new.txt" in listModified
 
 
+    def test_data_change_resets_category_states(self):
+        dictStep = {
+            "saDataFiles": ["data.h5"],
+            "saPlotFiles": [],
+            "dictVerification": {
+                "sUnitTest": "passed",
+                "sIntegrity": "passed",
+                "sQualitative": "passed",
+                "sQuantitative": "passed",
+            },
+        }
+        _fnInvalidateStepFiles(
+            dictStep, ["/work/data.h5"])
+        dictVerif = dictStep["dictVerification"]
+        assert dictVerif["sUnitTest"] == "untested"
+        assert dictVerif["sIntegrity"] == "untested"
+        assert dictVerif["sQualitative"] == "untested"
+        assert dictVerif["sQuantitative"] == "untested"
+
+    def test_data_change_skips_absent_categories(self):
+        dictStep = {
+            "saDataFiles": ["data.h5"],
+            "saPlotFiles": [],
+            "dictVerification": {"sUnitTest": "passed"},
+        }
+        _fnInvalidateStepFiles(
+            dictStep, ["/work/data.h5"])
+        dictVerif = dictStep["dictVerification"]
+        assert dictVerif["sUnitTest"] == "untested"
+        assert "sIntegrity" not in dictVerif
+
+
 class TestFnInvalidateDownstreamStep:
     def test_sets_upstream_modified(self):
         dictStep = {"dictVerification": {}}
@@ -459,6 +491,22 @@ class TestFnInvalidateDownstreamStep:
         }
         _fnInvalidateDownstreamStep(dictStep)
         assert dictStep["dictVerification"]["sUnitTest"] == "failed"
+
+    def test_downstream_resets_category_states(self):
+        dictStep = {
+            "dictVerification": {
+                "sUnitTest": "passed",
+                "sIntegrity": "passed",
+                "sQualitative": "failed",
+                "sQuantitative": "passed",
+            },
+        }
+        _fnInvalidateDownstreamStep(dictStep)
+        dictVerif = dictStep["dictVerification"]
+        assert dictVerif["sUnitTest"] == "untested"
+        assert dictVerif["sIntegrity"] == "untested"
+        assert dictVerif["sQualitative"] == "untested"
+        assert dictVerif["sQuantitative"] == "untested"
 
 
 class TestFlistExtractKillPatterns:
@@ -595,51 +643,18 @@ class TestFlistBuildFigureCheckPaths:
         assert len(listPaths) == 1
 
 
-class TestFbStepScriptsModified:
-    def test_no_stored_hashes(self):
-        dictStep = {"saDataCommands": [], "saPlotCommands": []}
-        assert _fbStepScriptsModified(dictStep, {}) is None
-
-    def test_matching_hashes(self):
-        dictStep = {
-            "sDirectory": "/work",
-            "saDataCommands": ["python run.py"],
-            "saPlotCommands": [],
-            "dictRunStats": {
-                "dictInputHashes": {"/work/run.py": "abc123"},
-            },
-        }
-        assert _fbStepScriptsModified(
-            dictStep, {"/work/run.py": "abc123"}) is False
-
-    def test_changed_hash(self):
-        dictStep = {
-            "sDirectory": "/work",
-            "saDataCommands": ["python run.py"],
-            "saPlotCommands": [],
-            "dictRunStats": {
-                "dictInputHashes": {"/work/run.py": "abc123"},
-            },
-        }
-        assert _fbStepScriptsModified(
-            dictStep, {"/work/run.py": "def456"}) is True
-
-
-class TestFdictBuildScriptStatus:
+class TestFdictBuildScriptStatusEmpty:
     def test_empty_workflow(self):
         dictResult = _fdictBuildScriptStatus(
             {"listSteps": []}, {})
         assert dictResult == {}
 
-    def test_detects_modification(self):
+    def test_step_without_validators_is_unchanged(self):
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work",
-             "saDataCommands": ["python run.py"],
-             "saPlotCommands": [],
-             "dictRunStats": {
-                 "dictInputHashes": {"/work/run.py": "old"},
-             }},
+             "saDataCommands": ["python run.py"]},
         ]}
         dictResult = _fdictBuildScriptStatus(
-            dictWorkflow, {"/work/run.py": "new"})
-        assert dictResult.get(0) == "modified"
+            dictWorkflow, {"/work/run.py": "100"})
+        assert dictResult.get(0)["sStatus"] == "unchanged"
+        assert dictResult.get(0)["listStaleArtifacts"] == []

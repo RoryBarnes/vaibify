@@ -4,7 +4,6 @@ import pytest
 
 from vaibify.gui.syncDispatcher import (
     fsPythonCommand,
-    _fsHashFileCommand,
     _fsNormalizePath,
     _fsGenerateGitIgnore,
     _fsGenerateReadme,
@@ -32,22 +31,6 @@ def test_fsPythonCommand_basic():
 def test_fsPythonCommand_semicolon_separation():
     sResult = fsPythonCommand("import sys", "sys.exit(0)")
     assert "; " in sResult
-
-
-# -----------------------------------------------------------------------
-# _fsHashFileCommand
-# -----------------------------------------------------------------------
-
-
-def test_fsHashFileCommand_contains_sha256():
-    sResult = _fsHashFileCommand("/workspace/data.npy")
-    assert "sha256" in sResult
-    assert "/workspace/data.npy" in sResult
-
-
-def test_fsHashFileCommand_returns_python_command():
-    sResult = _fsHashFileCommand("/tmp/test.py")
-    assert sResult.startswith("python3 -c")
 
 
 # -----------------------------------------------------------------------

@@ -103,10 +103,18 @@ def fsMountSecret(sName, sMethod):
 
 
 def _fsGetTempDirectory():
-    """Return a temp directory that Docker can reliably bind-mount."""
+    """Return a temp directory that Docker can reliably bind-mount.
+
+    On macOS with Colima, only $HOME is shared into the VM by
+    default.  /tmp -> /private/tmp is outside this share, so
+    bind mounts from /tmp silently produce empty directories
+    inside the container.  Use a directory under $HOME instead.
+    """
     import platform
     if platform.system() == "Darwin":
-        return "/tmp"
+        sDir = os.path.join(os.path.expanduser("~"), ".vaibify", "tmp")
+        os.makedirs(sDir, mode=0o700, exist_ok=True)
+        return sDir
     return None
 
 

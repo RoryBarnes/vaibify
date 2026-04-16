@@ -22,12 +22,15 @@ const PipeleyenApp = (function () {
             sWorkflowPath: null,
             dictStepStatus: {},
             dictScriptModified: {},
+            dictStaleArtifacts: {},
             dictDiscoveredOutputs: {},
             dictUserVerifiedAt: {},
             dictFileExistenceCache: {},
             dictFileModTimes: {},
             dictOutputMtimes: {},
             dictPlotMtimes: {},
+            dictMaxDataMtimeByStep: {},
+            dictMarkerMtimeByStep: {},
             dictPlotStandardExists: {},
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
@@ -36,6 +39,8 @@ const PipeleyenApp = (function () {
             bDelegatedEventsInitialized: false,
             bWasVaibified: false,
             listUndoStack: [],
+            dictContainerSettings: null,
+            bClaudeRestartNeeded: false,
         };
     }
 
@@ -202,6 +207,9 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
+        if (data.dictFileStatus) {
+            fnProcessFileStatusResponse(data.dictFileStatus);
+        }
         var iStepCount = (_dictWorkflowState.dictWorkflow.listSteps || []).length;
         if (iStepCount > 500) {
             fnShowToast(
@@ -224,6 +232,7 @@ const PipeleyenApp = (function () {
         fnStartFileChangePolling();
         PipeleyenTerminal.fnEnsureTab();
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
+        fnLoadContainerSettings();
     }
 
     function fnRefreshWorkflowData(dictData) {
@@ -239,6 +248,8 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictFileModTimes = {};
         _dictWorkflowState.dictOutputMtimes = {};
         _dictWorkflowState.dictPlotMtimes = {};
+        _dictWorkflowState.dictMaxDataMtimeByStep = {};
+        _dictWorkflowState.dictMarkerMtimeByStep = {};
         _dictWorkflowState.dictPlotStandardExists = {};
     }
 
@@ -480,7 +491,25 @@ const PipeleyenApp = (function () {
             ' seconds">') +
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (_dictUiState.bShowTimestamps ? " checked" : "") + '>');
+            (_dictUiState.bShowTimestamps ? " checked" : "") + '>') +
+            fsClaudeSettingsHtml();
+    }
+
+    function fsClaudeSettingsHtml() {
+        var dictSettings = _dictWorkflowState.dictContainerSettings;
+        if (!dictSettings || !dictSettings.bClaudeInstalled) {
+            return "";
+        }
+        var sChecked = dictSettings.bClaudeAutoUpdate ? " checked" : "";
+        var sNotice = _dictWorkflowState.bClaudeRestartNeeded
+            ? '<div class="gs-notice">Restart the container to '
+              + 'apply the new Claude auto-update setting.</div>'
+            : "";
+        return '<div class="gs-section-heading">Container</div>' +
+            fsSettingsRowHtml("Claude auto-update",
+                '<input type="checkbox" id="gsClaudeAutoUpdate"'
+                + sChecked + '>') +
+            sNotice;
     }
 
     function fnBindSettingsSliders() {
@@ -508,6 +537,54 @@ const PipeleyenApp = (function () {
                     fnToggleShowTimestamps(
                         elTimestampCheckbox.checked);
                 });
+        }
+        var elClaudeAuto = document.getElementById(
+            "gsClaudeAutoUpdate");
+        if (elClaudeAuto) {
+            elClaudeAuto.addEventListener(
+                "change", function () {
+                    fnSaveClaudeAutoUpdate(elClaudeAuto.checked);
+                });
+        }
+    }
+
+    async function fnLoadContainerSettings() {
+        var sId = _dictSessionState.sContainerId;
+        if (!sId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/containers/"
+                + encodeURIComponent(sId) + "/settings");
+            _dictWorkflowState.dictContainerSettings = dictResult;
+            fnRenderGlobalSettings();
+        } catch (error) {
+            _dictWorkflowState.dictContainerSettings = null;
+        }
+    }
+
+    function fnApplyClaudeSaveResult(bValue, dictResult) {
+        if (_dictWorkflowState.dictContainerSettings) {
+            _dictWorkflowState.dictContainerSettings
+                .bClaudeAutoUpdate = bValue;
+        }
+        _dictWorkflowState.bClaudeRestartNeeded =
+            Boolean(dictResult && dictResult.bRestartRequired);
+        fnRenderGlobalSettings();
+        fnShowToast("Claude setting saved", "success");
+    }
+
+    async function fnSaveClaudeAutoUpdate(bValue) {
+        var sId = _dictSessionState.sContainerId;
+        if (!sId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/containers/"
+                + encodeURIComponent(sId) + "/settings",
+                { bClaudeAutoUpdate: bValue });
+            fnApplyClaudeSaveResult(bValue, dictResult);
+        } catch (error) {
+            fnShowToast(
+                "Failed to save Claude setting", "error");
         }
     }
 
@@ -594,7 +671,13 @@ const PipeleyenApp = (function () {
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
             dictScriptModified: _dictWorkflowState.dictScriptModified,
+            dictStaleArtifacts: _dictWorkflowState.dictStaleArtifacts,
             dictOutputMtimes: _dictWorkflowState.dictOutputMtimes,
+            dictMaxDataMtimeByStep:
+                _dictWorkflowState.dictMaxDataMtimeByStep,
+            dictMaxPlotMtimeByStep: _dictWorkflowState.dictPlotMtimes,
+            dictMarkerMtimeByStep:
+                _dictWorkflowState.dictMarkerMtimeByStep,
             dictDiscoveredOutputs: _dictWorkflowState.dictDiscoveredOutputs,
             dictWorkflow: _dictWorkflowState.dictWorkflow,
             sUserName: _dictSessionState.sUserName,
@@ -722,6 +805,9 @@ const PipeleyenApp = (function () {
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
         if (fbAnyUpstreamModified(iStep)) return false;
+        if (_dictWorkflowState.dictScriptModified[iStep] === "modified") {
+            return false;
+        }
         var sUser = dictVerify.sUser;
         var sDeps = fsComputeDepsState(iStep);
         if (sUser !== "passed" || sDeps === "failed") return false;
@@ -1024,7 +1110,6 @@ const PipeleyenApp = (function () {
             fbAnyUpstreamModified(iIndex) ||
             _dictWorkflowState.dictScriptModified[iIndex] === "modified";
         var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
-            !!(step.dictRunStats || {}).sLastRun ||
             !!_dictWorkflowState.dictOutputMtimes[String(iIndex)];
 
         if (!bHasData) return "";
@@ -1664,6 +1749,14 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxPlotMtimeByStep) {
             _dictWorkflowState.dictPlotMtimes =
                 dictStatus.dictMaxPlotMtimeByStep;
+        }
+        if (dictStatus.dictMaxDataMtimeByStep) {
+            _dictWorkflowState.dictMaxDataMtimeByStep =
+                dictStatus.dictMaxDataMtimeByStep;
+        }
+        if (dictStatus.dictMarkerMtimeByStep) {
+            _dictWorkflowState.dictMarkerMtimeByStep =
+                dictStatus.dictMarkerMtimeByStep;
         }
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;

@@ -268,6 +268,7 @@ class TestContainerSettings:
         )
         mockConfig = MagicMock()
         mockConfig.bNeverSleep = True
+        mockConfig.features.bClaude = False
         with patch(
             "vaibify.config.projectConfig.fconfigLoadFromFile",
             return_value=mockConfig,
@@ -276,7 +277,10 @@ class TestContainerSettings:
                 "/api/containers/settings-proj/settings",
             )
         assert response.status_code == 200
-        assert response.json()["bNeverSleep"] is True
+        dictBody = response.json()
+        assert dictBody["bNeverSleep"] is True
+        assert dictBody["bClaudeInstalled"] is False
+        assert "bClaudeAutoUpdate" not in dictBody
 
     def test_post_settings(
         self, fixtureSettingsClient, tmp_path,
@@ -311,6 +315,97 @@ class TestContainerSettings:
             json={"bNeverSleep": False},
         )
         assert response.status_code == 404
+
+
+def _fnWriteClaudeConfig(tmp_path, sProjectName, bAutoUpdate):
+    """Create a minimal vaibify.yml with Claude enabled."""
+    sProjectDir = str(tmp_path / sProjectName)
+    os.makedirs(sProjectDir, exist_ok=True)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write(
+            f"projectName: {sProjectName}\n"
+            "features:\n"
+            "  claude: true\n"
+            f"  claudeAutoUpdate: {'true' if bAutoUpdate else 'false'}\n"
+        )
+    return sProjectDir
+
+
+class TestClaudeAutoUpdateSettings:
+    def test_get_includes_auto_update_when_claude_on(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteClaudeConfig(
+            tmp_path, "claude-proj", True,
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.get(
+            "/api/containers/claude-proj/settings",
+        )
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert dictBody["bClaudeInstalled"] is True
+        assert dictBody["bClaudeAutoUpdate"] is True
+
+    def test_post_updates_auto_update_and_signals_restart(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteClaudeConfig(
+            tmp_path, "claude-proj-flip", True,
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/claude-proj-flip/settings",
+            json={"bClaudeAutoUpdate": False},
+        )
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert dictBody["bSuccess"] is True
+        assert dictBody["bRestartRequired"] is True
+        response = fixtureSettingsClient.get(
+            "/api/containers/claude-proj-flip/settings",
+        )
+        assert response.json()["bClaudeAutoUpdate"] is False
+
+    def test_post_unchanged_value_signals_no_restart(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteClaudeConfig(
+            tmp_path, "claude-proj-same", True,
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/claude-proj-same/settings",
+            json={"bClaudeAutoUpdate": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["bRestartRequired"] is False
+
+    def test_post_rejects_when_claude_disabled(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteMinimalConfig(
+            tmp_path, "no-claude",
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/no-claude/settings",
+            json={"bClaudeAutoUpdate": True},
+        )
+        assert response.status_code == 409
 
 
 # ---------------------------------------------------------------

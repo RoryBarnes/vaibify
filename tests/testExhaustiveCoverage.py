@@ -7,6 +7,7 @@ pipelineServer, pipelineRunner, syncDispatcher, and workflowManager.
 import json
 from unittest.mock import MagicMock
 
+from vaibify.gui.fileStatusManager import fsMarkerNameFromStepDirectory
 from vaibify.gui.pipelineServer import (
     _fbCancelPipelineTask,
     _fbMarkerStale,
@@ -17,7 +18,6 @@ from vaibify.gui.pipelineServer import (
     _fnApplyAllMarkerCategories,
     _fnHandleInteractiveComplete,
     _fnHandleInteractiveResponse,
-    _fsMarkerNameFromDirectory,
     _fsResolveLanguage,
     _fsSanitizeServerError,
     fsComputeStaticCacheVersion,
@@ -46,20 +46,20 @@ from vaibify.gui.workflowManager import (
 
 class TestFsMarkerNameFromDirectory:
     def test_simple_path(self):
-        assert _fsMarkerNameFromDirectory(
+        assert fsMarkerNameFromStepDirectory(
             "/workspace/step01") == "workspace_step01.json"
 
     def test_trailing_slash(self):
-        assert _fsMarkerNameFromDirectory(
+        assert fsMarkerNameFromStepDirectory(
             "/workspace/step01/") == "workspace_step01.json"
 
     def test_nested_path(self):
-        sResult = _fsMarkerNameFromDirectory(
+        sResult = fsMarkerNameFromStepDirectory(
             "/workspace/GJ1132/XUV")
         assert sResult == "workspace_GJ1132_XUV.json"
 
     def test_no_leading_slash(self):
-        assert _fsMarkerNameFromDirectory(
+        assert fsMarkerNameFromStepDirectory(
             "step01") == "step01.json"
 
 

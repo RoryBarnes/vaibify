@@ -4,14 +4,12 @@ import json
 
 from vaibify.gui.syncDispatcher import (
     _fbSafeDirectoryName,
-    _fdictParseHashOutput,
     _fdictParsePorcelainLine,
     _flistArchivePlotPaths,
     _flistBuildDagEdges,
     _fsBuildStepCopyCommands,
     _fsGenerateGitIgnore,
     _fsGenerateReadme,
-    _fsHashFileCommand,
     _fsNormalizePath,
     fdictParseTestMarkerOutput,
     flistCollectOutputFiles,
@@ -34,37 +32,6 @@ class _FakeDockerConnection:
         return self._tResult
 
 
-class TestFdictParseHashOutput:
-    def test_valid_output(self):
-        sOutput = "/work/run.py abc123\n/work/plot.py def456\n"
-        dictResult = _fdictParseHashOutput(sOutput)
-        assert dictResult == {
-            "/work/run.py": "abc123",
-            "/work/plot.py": "def456",
-        }
-
-    def test_missing_file_skipped(self):
-        sOutput = "/work/run.py abc123\n/work/gone.py MISSING\n"
-        dictResult = _fdictParseHashOutput(sOutput)
-        assert "/work/gone.py" not in dictResult
-        assert dictResult["/work/run.py"] == "abc123"
-
-    def test_empty_output(self):
-        assert _fdictParseHashOutput("") == {}
-
-    def test_none_output(self):
-        assert _fdictParseHashOutput(None) == {}
-
-    def test_blank_lines_ignored(self):
-        sOutput = "\n\n/work/a.py hash1\n\n"
-        assert len(_fdictParseHashOutput(sOutput)) == 1
-
-    def test_path_with_spaces(self):
-        sOutput = "/work/my script.py abc123\n"
-        dictResult = _fdictParseHashOutput(sOutput)
-        assert dictResult["/work/my script.py"] == "abc123"
-
-
 class TestFsNormalizePath:
     def test_absolute_path_unchanged(self):
         assert _fsNormalizePath("/work", "/usr/bin/python") == (
@@ -81,17 +48,6 @@ class TestFsNormalizePath:
     def test_empty_directory(self):
         sResult = _fsNormalizePath("", "run.py")
         assert sResult == "run.py"
-
-
-class TestFsHashFileCommand:
-    def test_contains_hashlib(self):
-        sCmd = _fsHashFileCommand("/work/run.py")
-        assert "hashlib" in sCmd
-        assert "sha256" in sCmd
-
-    def test_contains_file_path(self):
-        sCmd = _fsHashFileCommand("/work/my_script.py")
-        assert "/work/my_script.py" in sCmd
 
 
 class TestFlistBuildDagEdges:

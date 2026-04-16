@@ -297,6 +297,7 @@ def test_get_file_status(clientHttp):
 
 
 def test_fdictHandleConnect_error():
+    import asyncio
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.side_effect = (
         RuntimeError("fail")
@@ -308,8 +309,10 @@ def test_fdictHandleConnect_error():
         "paths": {},
     }
     with pytest.raises(Exception):
-        pipelineServer.fdictHandleConnect(
-            dictCtx, "bad-id", "/wf.json"
+        asyncio.run(
+            pipelineServer.fdictHandleConnect(
+                dictCtx, "bad-id", "/wf.json"
+            )
         )
 
 

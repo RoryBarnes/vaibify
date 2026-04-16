@@ -37,6 +37,7 @@ class CreateProjectRequest(BaseModel):
     bUseGithubAuth: bool = True
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
+    bClaudeAutoUpdate: bool = True
     listSystemPackages: List[str] = []
     listPythonPackages: List[str] = []
     listCondaPackages: List[str] = []
@@ -48,7 +49,8 @@ class CreateProjectRequest(BaseModel):
 
 
 class ContainerSettingsRequest(BaseModel):
-    bNeverSleep: bool = False
+    bNeverSleep: Optional[bool] = None
+    bClaudeAutoUpdate: Optional[bool] = None
 
 
 class CreateHostDirectoryRequest(BaseModel):
@@ -293,18 +295,67 @@ def _fnRegisterContainerSettings(app, dictCtx):
         configProject = fconfigLoadFromFile(
             dictProject["sConfigPath"]
         )
-        return {"bNeverSleep": configProject.bNeverSleep}
+        dictResult = {
+            "bNeverSleep": configProject.bNeverSleep,
+            "bClaudeInstalled": configProject.features.bClaude,
+        }
+        if configProject.features.bClaude:
+            dictResult["bClaudeAutoUpdate"] = (
+                configProject.features.bClaudeAutoUpdate
+            )
+        return dictResult
 
     @app.post("/api/containers/{sName}/settings")
     async def fnSetContainerSettings(
         sName: str, request: ContainerSettingsRequest
     ):
         dictProject = _fdictRequireProject(sName)
-        _fnUpdateYamlBoolField(
-            dictProject["sConfigPath"], "neverSleep",
-            request.bNeverSleep,
+        bRestartRequired = False
+        if request.bNeverSleep is not None:
+            _fnUpdateYamlBoolField(
+                dictProject["sConfigPath"], "neverSleep",
+                request.bNeverSleep,
+            )
+        if request.bClaudeAutoUpdate is not None:
+            bRestartRequired = _fbApplyClaudeAutoUpdate(
+                dictProject["sConfigPath"],
+                request.bClaudeAutoUpdate,
+            )
+        return {
+            "bSuccess": True,
+            "bRestartRequired": bRestartRequired,
+        }
+
+
+def _fbApplyClaudeAutoUpdate(sConfigPath, bNewValue):
+    """Apply claudeAutoUpdate; 409 if Claude absent. Return bChanged."""
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    configProject = fconfigLoadFromFile(sConfigPath)
+    if not configProject.features.bClaude:
+        raise HTTPException(
+            409,
+            "Claude Code is not installed in this project.",
         )
-        return {"bSuccess": True}
+    if configProject.features.bClaudeAutoUpdate == bNewValue:
+        return False
+    _fnUpdateFeaturesBoolField(
+        sConfigPath, "claudeAutoUpdate", bNewValue,
+    )
+    return True
+
+
+def _fnUpdateFeaturesBoolField(sConfigPath, sKey, bValue):
+    """Update a nested features.<key> bool in a YAML file."""
+    import yaml
+    with open(sConfigPath, "r") as fileHandle:
+        dictConfig = yaml.safe_load(fileHandle) or {}
+    dictConfig.setdefault("features", {})
+    dictConfig["features"][sKey] = bValue
+    with open(sConfigPath, "w") as fileHandle:
+        yaml.safe_dump(
+            dictConfig, fileHandle,
+            default_flow_style=False, sort_keys=False,
+        )
 
 
 def _fnUpdateYamlBoolField(sConfigPath, sKey, bValue):
@@ -668,6 +719,8 @@ def _fnWriteProjectConfig(request):
 
 def _fdictBuildYamlFromRequest(request):
     """Translate a CreateProjectRequest into a camelCase YAML dict."""
+    dictFeatures = _fdictFeaturesFromList(request.listFeatures)
+    dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
     dictYaml = {
         "projectName": request.sProjectName,
         "containerUser": request.sContainerUser,
@@ -678,7 +731,7 @@ def _fdictBuildYamlFromRequest(request):
         "repositories": _flistRepositoriesFromUrls(
             request.listRepositories
         ),
-        "features": _fdictFeaturesFromList(request.listFeatures),
+        "features": dictFeatures,
         "secrets": _flistSecretsFromAuthFlag(request.bUseGithubAuth),
         "neverSleep": request.bNeverSleep,
         "networkIsolation": request.bNetworkIsolation,

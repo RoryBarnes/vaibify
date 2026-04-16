@@ -141,7 +141,7 @@ def _fnRegisterConnect(app, dictCtx):
         sWorkflowPath: Optional[str] = None,
     ):
         dictCtx["require"]()
-        return fdictHandleConnect(
+        return await fdictHandleConnect(
             dictCtx, sContainerId, sWorkflowPath)
 
 

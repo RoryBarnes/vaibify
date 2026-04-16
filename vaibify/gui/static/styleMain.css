@@ -366,10 +366,6 @@ html, body {
     color: var(--text-primary);
     font-weight: 500;
 }
-body.all-verified .toolbar-value,
-body.all-verified .toolbar-workflow {
-    color: #b39ddb;
-}
 body.all-verified .toolbar-label {
     color: #b39ddb;
 }
@@ -684,6 +680,23 @@ body.all-verified .toolbar-label {
     border-radius: 4px;
     font-size: 12px;
     font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.global-settings .gs-section-heading {
+    font-size: 11px;
+    color: var(--color-label);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 10px 0 6px 0;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
+}
+
+.global-settings .gs-notice {
+    font-size: 11px;
+    color: var(--text-muted, #888);
+    font-style: italic;
+    margin-top: 4px;
 }
 
 .global-settings .gs-input:focus {

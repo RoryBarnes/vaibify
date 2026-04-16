@@ -9,13 +9,10 @@ from . import workflowManager
 from .pipelineUtils import fsShellQuote
 
 __all__ = [
-    "fbStepInputsUnchanged",
     "fbValidateOverleafCredentials",
     "fbValidateZenodoToken",
     "fdictCheckConnectivity",
     "fdictClassifyError",
-    "fdictComputeAllScriptHashes",
-    "fdictComputeInputHashes",
     "fdictParseTestMarkerOutput",
     "fdictSyncResult",
     "flistCollectOutputFiles",
@@ -774,11 +771,6 @@ def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
 # Re-export file integrity functions for backward compatibility.
 # Canonical implementations live in fileIntegrity.py.
 from .fileIntegrity import (  # noqa: F401
-    _fdictParseHashOutput,
-    _fsHashFileCommand,
     _fsNormalizePath,
-    fbStepInputsUnchanged,
-    fdictComputeAllScriptHashes,
-    fdictComputeInputHashes,
     flistExtractAllScriptPaths,
 )

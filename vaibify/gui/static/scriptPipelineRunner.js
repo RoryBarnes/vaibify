@@ -573,13 +573,6 @@ var PipeleyenPipelineRunner = (function () {
     function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
         var sStatus = iExitCode === 0 ? "pass" : "fail";
         PipeleyenApp.fnSetStepStatus(iStepIndex, sStatus);
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (step) {
-            step.dictRunStats = step.dictRunStats || {};
-            step.dictRunStats.sLastRun =
-                VaibifyUtilities.fsFormatUtcTimestamp();
-        }
         fnResetUserVerification(iStepIndex);
         if (iExitCode === 0) {
             PipeleyenApp.fnClearOutputModified(iStepIndex);

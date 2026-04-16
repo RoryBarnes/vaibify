@@ -24,7 +24,9 @@ from vaibify.docker.containerManager import (
 
 def _fConfigMinimal():
     """Return a minimal mock config."""
-    features = SimpleNamespace(bGpu=False)
+    features = SimpleNamespace(
+        bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
+    )
     return SimpleNamespace(
         sProjectName="testproj",
         sWorkspaceRoot="/workspace",

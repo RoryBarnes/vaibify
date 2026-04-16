@@ -5,6 +5,45 @@ var VaibifyStepRenderer = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
+    var _DICT_STALE_ROW_LABELS = {
+        "test|dataScript": "Tests older than data scripts",
+        "test|dataFile": "Tests older than data files",
+        "user|dataScript": "User verification older than data scripts",
+        "user|dataFile": "User verification older than data files",
+        "user|plotScript": "User verification older than plot scripts",
+        "user|plotFile": "User verification older than plot files",
+    };
+
+    function _fdictGroupStaleArtifacts(listArtifacts) {
+        var dictGrouped = {};
+        for (var i = 0; i < listArtifacts.length; i++) {
+            var dictItem = listArtifacts[i];
+            var sKey = dictItem.sValidator + "|" + dictItem.sCategory;
+            if (!dictGrouped[sKey]) dictGrouped[sKey] = [];
+            dictGrouped[sKey].push(dictItem.sPath);
+        }
+        return dictGrouped;
+    }
+
+    function fsRenderStaleArtifactRows(dictContext, iIndex) {
+        var listArtifacts =
+            (dictContext.dictStaleArtifacts || {})[iIndex] || [];
+        if (listArtifacts.length === 0) return "";
+        var dictGrouped = _fdictGroupStaleArtifacts(listArtifacts);
+        var sHtml = "";
+        Object.keys(_DICT_STALE_ROW_LABELS).forEach(function (sKey) {
+            var listPaths = dictGrouped[sKey];
+            if (!listPaths || listPaths.length === 0) return;
+            var listNames = listPaths.map(function (sPath) {
+                return sPath.split("/").pop();
+            });
+            sHtml += '<div class="output-modified-warning">' +
+                '\u26A0 ' + _DICT_STALE_ROW_LABELS[sKey] + ': ' +
+                fnEscapeHtml(listNames.join(", ")) + '</div>';
+        });
+        return sHtml;
+    }
+
     function fsRenderStepItem(step, iIndex, dictVars, dictContext) {
         var bInteractive = step.bInteractive === true;
         var sRunStatus = dictContext.dictStepStatus[iIndex] || "";
@@ -118,7 +157,7 @@ var VaibifyStepRenderer = (function () {
         if ((step.saDataCommands || []).length > 0) {
             sHtml += '<div class="timestamp-field">' +
                 fsRenderRunStats(step) +
-                fsRenderOutputMtime(iIndex, dictContext) + '</div>';
+                fsRenderDataMtime(iIndex, dictContext) + '</div>';
         }
 
         sHtml += fsRenderSectionLabel(
@@ -167,14 +206,8 @@ var VaibifyStepRenderer = (function () {
         }
 
         if ((step.saPlotFiles || []).length > 0) {
-            var dictPlotStats = step.dictRunStats || {};
-            var sPlotMtime = (step.saDataCommands || []).length === 0 ?
-                fsRenderOutputMtime(iIndex, dictContext) : "";
             sHtml += '<div class="timestamp-field">' +
-                '<div class="run-stats">' +
-                '<span class="run-stat">Plots created: ' +
-                (dictPlotStats.sLastRun || "\u2014") +
-                '</span></div>' + sPlotMtime + '</div>';
+                fsRenderPlotMtime(iIndex, dictContext) + '</div>';
         }
 
         sHtml += fsRenderVerificationBlock(step, iIndex, dictContext);
@@ -216,6 +249,8 @@ var VaibifyStepRenderer = (function () {
             sHtml += '<div class="output-modified-warning">' +
                 '\u26A0 Upstream step outputs changed</div>';
         }
+        sHtml += fsRenderStaleArtifactRows(
+            dictContext, iIndex);
         if (!bInteractive && !bPlotOnly &&
             dictContext.fsEffectiveTestState(step) === "failed") {
             sHtml += '<div class="output-modified-warning">' +
@@ -231,9 +266,14 @@ var VaibifyStepRenderer = (function () {
                 "Unit Tests", sUnitState, "unitTest", iIndex,
                 dictContext
             );
+            var sMarkerMtime = (
+                dictContext.dictMarkerMtimeByStep || {}
+            )[String(iIndex)];
             sHtml += '<div class="timestamp-field">' +
                 fsRenderVerificationTimestamp(
-                    "Last run", dictVerify.sLastTestRun) +
+                    "Last run",
+                    sMarkerMtime ?
+                        fsFormatUnixTimestamp(sMarkerMtime) : "") +
                 '</div>';
             if (dictContext.setGeneratingInFlight.has(iIndex)) {
                 sHtml += '<div class="unit-tests-expanded">' +
@@ -479,18 +519,37 @@ var VaibifyStepRenderer = (function () {
 
     function fsRenderRunStats(step) {
         var dictStats = step.dictRunStats || {};
-        var sLastRun = dictStats.sLastRun || "";
         var sWallClock = dictStats.fWallClock !== undefined ?
             fsFormatDuration(dictStats.fWallClock) : "";
         var sCpuTime = dictStats.fCpuTime !== undefined ?
             fsFormatDuration(dictStats.fCpuTime) : "";
         return '<div class="run-stats">' +
-            '<span class="run-stat">Last run: ' +
-            (sLastRun || "\u2014") + '</span>' +
             '<span class="run-stat">Wall-clock: ' +
             (sWallClock || "\u2014") + '</span>' +
             '<span class="run-stat">CPU time: ' +
             (sCpuTime || "\u2014") + '</span></div>';
+    }
+
+    function fsRenderDataMtime(iIndex, dictContext) {
+        var sMtime = (
+            dictContext.dictMaxDataMtimeByStep || {}
+        )[String(iIndex)];
+        if (!sMtime) return "";
+        return '<div class="run-stats"><span class="run-stat">' +
+            'Data files last modified: ' +
+            fsFormatUnixTimestamp(sMtime) +
+            '</span></div>';
+    }
+
+    function fsRenderPlotMtime(iIndex, dictContext) {
+        var sMtime = (
+            dictContext.dictMaxPlotMtimeByStep || {}
+        )[String(iIndex)];
+        if (!sMtime) return "";
+        return '<div class="run-stats"><span class="run-stat">' +
+            'Plot files last modified: ' +
+            fsFormatUnixTimestamp(sMtime) +
+            '</span></div>';
     }
 
     function fsRenderOutputMtime(iIndex, dictContext) {
@@ -664,6 +723,8 @@ var VaibifyStepRenderer = (function () {
         fsRenderRunStepButton: fsRenderRunStepButton,
         fsRenderRunStats: fsRenderRunStats,
         fsRenderOutputMtime: fsRenderOutputMtime,
+        fsRenderDataMtime: fsRenderDataMtime,
+        fsRenderPlotMtime: fsRenderPlotMtime,
         fsRenderSectionLabel: fsRenderSectionLabel,
         fsRenderPlotStandardButtons: fsRenderPlotStandardButtons,
         fsRenderDiscoveredOutputs: fsRenderDiscoveredOutputs,

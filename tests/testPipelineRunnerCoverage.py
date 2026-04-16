@@ -59,29 +59,21 @@ class TestFsComputeStepLabel:
 
 
 class TestFnRecordRunStats:
-    def test_records_timestamp(self):
-        dictStep = {}
-        fStartTime = time.time()
-        _fnRecordRunStats(dictStep, "2026-04-07 12:00:00 UTC",
-                          fStartTime, 1.5)
-        assert dictStep["dictRunStats"]["sLastRun"] == (
-            "2026-04-07 12:00:00 UTC")
-
     def test_records_cpu_time(self):
         dictStep = {}
-        _fnRecordRunStats(dictStep, "2026-04-07", time.time(), 3.14)
+        _fnRecordRunStats(dictStep, time.time(), 3.14)
         assert dictStep["dictRunStats"]["fCpuTime"] == 3.1
 
     def test_records_wall_clock(self):
         dictStep = {}
         fStart = time.time() - 2.0
-        _fnRecordRunStats(dictStep, "now", fStart, 0.0)
+        _fnRecordRunStats(dictStep, fStart, 0.0)
         assert dictStep["dictRunStats"]["fWallClock"] >= 1.9
 
     def test_overwrites_existing_stats(self):
-        dictStep = {"dictRunStats": {"sLastRun": "old"}}
-        _fnRecordRunStats(dictStep, "new", time.time(), 0.0)
-        assert dictStep["dictRunStats"]["sLastRun"] == "new"
+        dictStep = {"dictRunStats": {"fWallClock": 99.0}}
+        _fnRecordRunStats(dictStep, time.time(), 0.0)
+        assert dictStep["dictRunStats"]["fWallClock"] < 1.0
 
 
 class TestFParseCpuTime:

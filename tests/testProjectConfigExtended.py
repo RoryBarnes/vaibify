@@ -110,3 +110,51 @@ def test_fconfigLoadFromFile_features():
         configLoaded = fconfigLoadFromFile(sPath)
         assert configLoaded.features.bJupyter is True
         assert configLoaded.features.bGpu is False
+
+
+def test_claude_auto_update_default_true():
+    config = ProjectConfig(sProjectName="claudedefault")
+    assert config.features.bClaudeAutoUpdate is True
+
+
+def test_claude_auto_update_yaml_roundtrip_true():
+    config = ProjectConfig(
+        sProjectName="claudeon",
+        features=FeaturesConfig(
+            bClaude=True, bClaudeAutoUpdate=True,
+        ),
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.features.bClaude is True
+    assert configLoaded.features.bClaudeAutoUpdate is True
+
+
+def test_claude_auto_update_yaml_roundtrip_false():
+    config = ProjectConfig(
+        sProjectName="claudeoff",
+        features=FeaturesConfig(
+            bClaude=True, bClaudeAutoUpdate=False,
+        ),
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.features.bClaudeAutoUpdate is False
+
+
+def test_claude_auto_update_missing_key_defaults_true():
+    import yaml
+    dictConfig = {
+        "projectName": "legacy",
+        "features": {"claude": True},
+    }
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        with open(sPath, "w") as fileHandle:
+            yaml.safe_dump(dictConfig, fileHandle)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.features.bClaudeAutoUpdate is True

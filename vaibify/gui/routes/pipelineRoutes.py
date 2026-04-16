@@ -1,6 +1,6 @@
 """Pipeline control route handlers."""
 
-__all__ = ["fnRegisterAll"]
+__all__ = ["fnRegisterAll", "fdictComputeFileStatus"]
 
 import asyncio
 import logging
@@ -20,16 +20,20 @@ from ..pipelineServer import (
 from ..fileStatusManager import (
     _fbCheckStaleUserVerification,
     _fdictBuildScriptStatus,
+    _fdictComputeMarkerMtimeByStep,
+    _fdictComputeMaxDataMtimeByStep,
     _fdictComputeMaxMtimeByStep,
     _fdictComputeMaxPlotMtimeByStep,
     _fdictGetModTimes,
     _flistCollectOutputPaths,
     _flistDetectAndInvalidate,
     _fnClearStepModificationState,
-    _fnRecordStepRunTimestamp,
     _fnUpdateModTimeBaseline,
     fdictCollectOutputPathsByStep,
+    fnCollectMarkerPathsByStep,
+    fsMarkerNameFromStepDirectory,
 )
+from ..fileIntegrity import flistExtractAllScriptPaths
 
 logger = logging.getLogger("vaibify")
 
@@ -241,10 +245,6 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         _fnClearStepModificationState(
             dictWorkflow, iStepIndex,
         )
-        _fnRecordStepRunTimestamp(dictWorkflow, iStepIndex)
-        await _fnRefreshStepInputHashes(
-            dictCtx, sContainerId, dictWorkflow, iStepIndex,
-        )
         dictVars = dictCtx["variables"](sContainerId)
         listPaths = _flistCollectOutputPaths(
             dictWorkflow, dictVars)
@@ -258,22 +258,18 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         return {"bSuccess": True}
 
 
-async def _fnRefreshStepInputHashes(
-    dictCtx, sContainerId, dictWorkflow, iStepIndex,
+async def fdictComputeFileStatus(
+    dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
-    """Recompute input hashes for a step after execution."""
-    from .. import syncDispatcher as _syncDispatcher
-    listSteps = dictWorkflow.get("listSteps", [])
-    if iStepIndex < 0 or iStepIndex >= len(listSteps):
-        return
-    dictStep = listSteps[iStepIndex]
-    dictHashes = await asyncio.to_thread(
-        _syncDispatcher.fdictComputeInputHashes,
-        dictCtx["docker"], sContainerId, dictStep,
+    """Return merged output-status and test-status payload."""
+    dictOutputStatus = await _fdictFetchOutputStatus(
+        dictCtx, sContainerId, dictWorkflow, dictVars,
     )
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
+    dictTestStatus = await _fdictFetchTestStatus(
+        dictCtx, sContainerId, dictWorkflow,
+    )
+    dictOutputStatus.update(dictTestStatus)
+    return dictOutputStatus
 
 
 def _fnRegisterFileStatus(app, dictCtx):
@@ -285,29 +281,32 @@ def _fnRegisterFileStatus(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictVars = dictCtx["variables"](sContainerId)
-        dictOutputStatus = await _fdictFetchOutputStatus(
+        return await fdictComputeFileStatus(
             dictCtx, sContainerId, dictWorkflow, dictVars,
         )
-        dictTestStatus = await _fdictFetchTestStatus(
-            dictCtx, sContainerId, dictWorkflow,
-        )
-        dictOutputStatus.update(dictTestStatus)
-        return dictOutputStatus
 
 
 async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
-    """Fetch output file mod times, invalidations, and script hashes."""
-    from .. import syncDispatcher as _syncDispatcher
-    listPaths = _flistCollectOutputPaths(
+    """Fetch output + script mtimes, invalidations, and staleness."""
+    listOutputPaths = _flistCollectOutputPaths(
         dictWorkflow, dictVars)
+    listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
+    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(dictWorkflow)
+    listMarkerPaths = list(dictMarkerPathsByStep.values())
+    listUnionPaths = list(set(
+        listOutputPaths + listScriptPaths + listMarkerPaths,
+    ))
     dictModTimes = await asyncio.to_thread(
         _fdictGetModTimes,
-        dictCtx["docker"], sContainerId, listPaths,
+        dictCtx["docker"], sContainerId, listUnionPaths,
     )
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
+    )
+    dictMarkerMtimeByStep = _fdictComputeMarkerMtimeByStep(
+        dictMarkerPathsByStep, dictModTimes,
     )
     bStaleReset = _fbCheckStaleUserVerification(
         dictWorkflow, dictModTimes, dictVars)
@@ -332,10 +331,6 @@ async def _fdictFetchOutputStatus(
                 sIdx, dictV.get("sUser"),
                 dictV.get("listModifiedFiles", []),
             )
-    dictCurrentHashes = await asyncio.to_thread(
-        _syncDispatcher.fdictComputeAllScriptHashes,
-        dictCtx["docker"], sContainerId, dictWorkflow,
-    )
     return {
         "dictModTimes": dictModTimes,
         "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
@@ -344,9 +339,14 @@ async def _fdictFetchOutputStatus(
         "dictMaxPlotMtimeByStep": _fdictComputeMaxPlotMtimeByStep(
             dictWorkflow, dictModTimes, dictVars,
         ),
+        "dictMaxDataMtimeByStep": _fdictComputeMaxDataMtimeByStep(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
+        "dictMarkerMtimeByStep": dictMarkerMtimeByStep,
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
-            dictWorkflow, dictCurrentHashes,
+            dictWorkflow, dictModTimes, dictVars,
+            dictMarkerMtimeByStep=dictMarkerMtimeByStep,
         ),
     }
 
@@ -459,11 +459,6 @@ def _fnEnsureConftestTemplate(
     )
 
 
-def _fsMarkerNameFromDirectory(sDirectory):
-    """Convert a step directory path to a marker filename."""
-    return sDirectory.strip("/").replace("/", "_") + ".json"
-
-
 def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
     """Map test markers to step indices and check staleness."""
     dictMarkers = dictTestInfo.get("markers", {})
@@ -475,7 +470,7 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
         sDir = dictStep.get("sDirectory", "")
         if not sDir:
             continue
-        sMarkerName = _fsMarkerNameFromDirectory(sDir)
+        sMarkerName = fsMarkerNameFromStepDirectory(sDir)
         if sMarkerName not in dictMarkers:
             continue
         dictMarker = dictMarkers[sMarkerName]

@@ -12,7 +12,6 @@ from vaibify.gui.routes.testRoutes import (
     _fdictRunOneTestCategory,
     _fdictRunTestGeneration,
     _fnApplyGeneratedTests,
-    _fnUpdateInputHashes,
 )
 
 
@@ -317,47 +316,6 @@ class TestGenerateTestRoute:
             dictResult = await fnHandler("cid-1", 0, mockRequest)
 
         assert dictResult["bNeedsFallback"] is True
-
-
-# -------------------------------------------------------------------
-# _fnUpdateInputHashes (lines 252-261)
-# -------------------------------------------------------------------
-
-class TestFnUpdateInputHashes:
-    @pytest.mark.asyncio
-    async def test_creates_run_stats_if_missing(self):
-        """Line 259-260: dictRunStats created when absent."""
-        dictCtx = _fdictBuildContext()
-        dictStep = {"sDirectory": "/ws"}
-        dictHashes = {"script.py": "abc123"}
-
-        with patch(
-            "vaibify.gui.syncDispatcher.fdictComputeInputHashes",
-            return_value=dictHashes,
-        ):
-            await _fnUpdateInputHashes(
-                dictCtx, "cid-1", dictStep)
-
-        assert dictStep["dictRunStats"]["dictInputHashes"] == dictHashes
-
-    @pytest.mark.asyncio
-    async def test_preserves_existing_run_stats(self):
-        dictCtx = _fdictBuildContext()
-        dictStep = {
-            "sDirectory": "/ws",
-            "dictRunStats": {"sExistingKey": "value"},
-        }
-
-        with patch(
-            "vaibify.gui.syncDispatcher.fdictComputeInputHashes",
-            return_value={"x.py": "h"},
-        ):
-            await _fnUpdateInputHashes(
-                dictCtx, "cid-1", dictStep)
-
-        assert dictStep["dictRunStats"]["sExistingKey"] == "value"
-        assert dictStep["dictRunStats"]["dictInputHashes"] == {
-            "x.py": "h"}
 
 
 # -------------------------------------------------------------------
@@ -860,9 +818,6 @@ class TestRunTestsRoute:
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRecordTestResult",
         ), patch(
-            "vaibify.gui.routes.testRoutes._fnUpdateInputHashes",
-            new_callable=AsyncMock,
-        ), patch(
             "vaibify.gui.routes.testRoutes._fdictBuildTestResponse",
             return_value={"bAllPassed": True},
         ) as mockBuild, patch(
@@ -906,9 +861,6 @@ class TestRunTestsRoute:
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRecordTestResult",
         ) as mockRecord, patch(
-            "vaibify.gui.routes.testRoutes._fnUpdateInputHashes",
-            new_callable=AsyncMock,
-        ), patch(
             "vaibify.gui.routes.testRoutes._fdictBuildTestResponse",
             return_value={"bAllPassed": False},
         ), patch(

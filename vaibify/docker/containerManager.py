@@ -36,15 +36,30 @@ def fsStartContainerDetached(config, sDockerDir):
         The Docker container ID.
     """
     listCleanupFiles = []
-    try:
-        saRunArgs = flistBuildRunArgs(config, bDetached=True)
-        fnMountSecrets(config, saRunArgs, listCleanupFiles)
-        saFullCommand = _flistAssembleRunCommand(
-            config, saRunArgs, ["sleep", "infinity"],
-        )
-        return _fsRunDetachedCommand(saFullCommand)
-    finally:
+    saRunArgs = flistBuildRunArgs(config, bDetached=True)
+    fnMountSecrets(config, saRunArgs, listCleanupFiles)
+    saFullCommand = _flistAssembleRunCommand(
+        config, saRunArgs, ["sleep", "infinity"],
+    )
+    sContainerId = _fsRunDetachedCommand(saFullCommand)
+    _fnDeferSecretCleanup(listCleanupFiles, sContainerId)
+    return sContainerId
+
+
+def _fnDeferSecretCleanup(listCleanupFiles, sContainerId):
+    """Wait for the entrypoint to read secrets, then clean up."""
+    if not listCleanupFiles:
+        return
+    import threading
+
+    def _fnCleanupAfterDelay():
+        import time
+        time.sleep(30)
         _fnCleanupTempFiles(listCleanupFiles)
+
+    thread = threading.Thread(
+        target=_fnCleanupAfterDelay, daemon=True)
+    thread.start()
 
 
 def _fsRunDetachedCommand(saCommand):
@@ -77,6 +92,7 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddPortForwarding(config, saRunArgs)
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
+    _fnAddClaudeEnv(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
@@ -116,6 +132,14 @@ def _fnAddGpuPassthrough(config, saRunArgs):
     """Add GPU passthrough flag if GPU feature is enabled."""
     if config.features.bGpu:
         saRunArgs.extend(["--gpus", "all"])
+
+
+def _fnAddClaudeEnv(config, saRunArgs):
+    """Pass Claude Code auto-update flag into the container via env var."""
+    if not config.features.bClaude:
+        return
+    sFlag = "true" if config.features.bClaudeAutoUpdate else "false"
+    saRunArgs.extend(["-e", f"VAIBIFY_CLAUDE_AUTO_UPDATE={sFlag}"])
 
 
 def _fnAddNetworkIsolation(config, saRunArgs):

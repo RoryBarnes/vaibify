@@ -415,11 +415,22 @@ var PipeleyenFileOps = (function () {
         dictNewScriptStatus, dictState
     ) {
         if (!dictNewScriptStatus) return;
-        var dictPrev = JSON.stringify(
-            dictState.dictScriptModified);
-        dictState.dictScriptModified = dictNewScriptStatus;
-        if (JSON.stringify(
-            dictState.dictScriptModified) !== dictPrev) {
+        var dictModified = {};
+        var dictStaleArtifacts = {};
+        Object.keys(dictNewScriptStatus).forEach(function (sKey) {
+            var dictEntry = dictNewScriptStatus[sKey];
+            dictModified[sKey] = dictEntry.sStatus;
+            dictStaleArtifacts[sKey] =
+                dictEntry.listStaleArtifacts || [];
+        });
+        var sPrev = JSON.stringify(dictState.dictScriptModified);
+        var sPrevStale = JSON.stringify(
+            dictState.dictStaleArtifacts);
+        dictState.dictScriptModified = dictModified;
+        dictState.dictStaleArtifacts = dictStaleArtifacts;
+        if (JSON.stringify(dictState.dictScriptModified) !== sPrev ||
+                JSON.stringify(dictState.dictStaleArtifacts) !==
+                sPrevStale) {
             PipeleyenApp.fnRenderStepList();
         }
     }

@@ -17,6 +17,7 @@ class FeaturesConfig:
     bDvc: bool = False
     bLatex: bool = True
     bClaude: bool = False
+    bClaudeAutoUpdate: bool = True
     bGpu: bool = False
 
 
@@ -112,6 +113,7 @@ _FEATURES_YAML_TO_HUNGARIAN = {
     "dvc": "bDvc",
     "latex": "bLatex",
     "claude": "bClaude",
+    "claudeAutoUpdate": "bClaudeAutoUpdate",
     "gpu": "bGpu",
 }
 
@@ -397,6 +399,7 @@ def _fdictFeaturesToYaml(features):
         "dvc": features.bDvc,
         "latex": features.bLatex,
         "claude": features.bClaude,
+        "claudeAutoUpdate": features.bClaudeAutoUpdate,
         "gpu": features.bGpu,
     }
 

@@ -40,12 +40,9 @@ def fsComputeStepLabel(dictWorkflow, iStepNumber):
     return f"{sPrefix}{iCount:02d}"
 
 
-def _fnRecordRunStats(
-    dictStep, sStartTimestamp, fStartTime, fCpuTime=0.0,
-):
+def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0):
     """Store timing information in the step's run stats."""
     dictStep["dictRunStats"] = {
-        "sLastRun": sStartTimestamp,
         "fWallClock": round(time.time() - fStartTime, 1),
         "fCpuTime": round(fCpuTime, 1),
     }

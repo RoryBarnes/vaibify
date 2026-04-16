@@ -41,7 +41,9 @@ def test_fdictParseContainerState_empty():
 
 def _fConfigMinimal():
     """Return a minimal mock config for flistBuildRunArgs."""
-    features = SimpleNamespace(bGpu=False)
+    features = SimpleNamespace(
+        bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
+    )
     return SimpleNamespace(
         sProjectName="testproj",
         sWorkspaceRoot="/workspace",
@@ -99,3 +101,39 @@ def test_flistBuildRunArgs_detached(mockX11):
     assert "--rm" not in saArgs
     assert "-d" in saArgs
     assert "-it" not in saArgs
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_no_claude_env_when_disabled(mockX11):
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    assert not any(
+        "VAIBIFY_CLAUDE_AUTO_UPDATE" in s for s in saArgs
+    )
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_claude_auto_update_true(mockX11):
+    config = _fConfigMinimal()
+    config.features.bClaude = True
+    config.features.bClaudeAutoUpdate = True
+    saArgs = flistBuildRunArgs(config)
+    assert "VAIBIFY_CLAUDE_AUTO_UPDATE=true" in saArgs
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_claude_auto_update_false(mockX11):
+    config = _fConfigMinimal()
+    config.features.bClaude = True
+    config.features.bClaudeAutoUpdate = False
+    saArgs = flistBuildRunArgs(config)
+    assert "VAIBIFY_CLAUDE_AUTO_UPDATE=false" in saArgs

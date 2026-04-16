@@ -192,7 +192,9 @@ def test_flistBuildRunArgs_detached_no_rm(mockX11):
     """Detached mode must not include --rm flag."""
     from types import SimpleNamespace
     from vaibify.docker.containerManager import flistBuildRunArgs
-    features = SimpleNamespace(bGpu=False)
+    features = SimpleNamespace(
+        bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
+    )
     config = SimpleNamespace(
         sProjectName="proj",
         sWorkspaceRoot="/workspace",
@@ -216,7 +218,9 @@ def test_flistBuildRunArgs_interactive_has_rm(mockX11):
     """Interactive mode must include --rm and -it."""
     from types import SimpleNamespace
     from vaibify.docker.containerManager import flistBuildRunArgs
-    features = SimpleNamespace(bGpu=False)
+    features = SimpleNamespace(
+        bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
+    )
     config = SimpleNamespace(
         sProjectName="proj",
         sWorkspaceRoot="/workspace",

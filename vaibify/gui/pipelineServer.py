@@ -697,7 +697,7 @@ def _fdictInvertDeps(dictUpToDown, iStepCount):
     return dictResult
 
 
-def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
+async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
         return _fdictConnectNoWorkflow(dictCtx, sContainerId)
@@ -714,15 +714,36 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )
+        dictFileStatus = await _fdictComputeConnectFileStatus(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         return {
             "sContainerId": sContainerId,
             "sWorkflowPath": sResolved,
             "dictWorkflow": dictWorkflow,
+            "dictFileStatus": dictFileStatus,
         }
     except Exception as error:
         logger.error("Workflow load failed: %s", error)
         sUserMessage = _fsSanitizeServerError(str(error))
         raise HTTPException(400, sUserMessage)
+
+
+async def _fdictComputeConnectFileStatus(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Compute file-status payload for the connect response."""
+    from .routes.pipelineRoutes import fdictComputeFileStatus
+    try:
+        dictVars = dictCtx["variables"](sContainerId)
+        return await fdictComputeFileStatus(
+            dictCtx, sContainerId, dictWorkflow, dictVars,
+        )
+    except Exception as error:
+        logger.warning(
+            "Connect file-status precompute failed: %s", error,
+        )
+        return None
 
 
 def _fnLaunchDependencyScan(
@@ -879,7 +900,7 @@ from .fileStatusManager import (  # noqa: F401
     _fbCheckStaleUserVerification,
     _fbPipelineIsRunning,
     _fbPlotNewerThanUserVerification,
-    _fbStepScriptsModified,
+    _fbStepIsPencilStale,
     _fdictBuildFileStatusVars,
     _fdictBuildScriptStatus,
     _fdictComputeMaxMtimeByStep,
@@ -896,9 +917,9 @@ from .fileStatusManager import (  # noqa: F401
     _fnClearStepModificationState,
     _fnInvalidateDownstreamStep,
     _fnInvalidateStepFiles,
-    _fnRecordStepRunTimestamp,
     _fnUpdateModTimeBaseline,
     fdictCollectOutputPathsByStep,
+    fnCollectScriptPathsByStep,
 )
 
 from .testStatusManager import (  # noqa: F401
@@ -933,7 +954,6 @@ _DICT_ROUTE_RE_EXPORTS = {
     "_fnApplyExternalTestResults": "routes.pipelineRoutes",
     "_fnApplyMarkerCategory": "routes.pipelineRoutes",
     "_fnMarkPipelineStopped": "routes.pipelineRoutes",
-    "_fsMarkerNameFromDirectory": "routes.pipelineRoutes",
     "_fsetExtractRegisteredTestFiles": "routes.pipelineRoutes",
     # syncRoutes
     "_fdictBuildOverleafArgs": "routes.syncRoutes",

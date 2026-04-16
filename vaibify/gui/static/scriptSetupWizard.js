@@ -85,6 +85,14 @@ var VaibifySetup = (function () {
         }
     }
 
+    function fnToggleClaudeAutoUpdateVisibility() {
+        var elClaude = document.getElementById("featureClaude");
+        var elRow = document.getElementById("claudeAutoUpdateRow");
+        if (elClaude && elRow) {
+            elRow.style.display = elClaude.checked ? "" : "none";
+        }
+    }
+
     function fnBindFormEvents() {
         document.querySelectorAll(
             '.feature-card input[type="checkbox"]'
@@ -93,6 +101,12 @@ var VaibifySetup = (function () {
                 fnSyncFeatureCardCheckedClass(elCheckbox);
             });
         });
+        var elClaude = document.getElementById("featureClaude");
+        if (elClaude) {
+            elClaude.addEventListener(
+                "change", fnToggleClaudeAutoUpdateVisibility
+            );
+        }
 
         document.getElementById("btnAddRepo").addEventListener(
             "click", fnAddRepository
@@ -186,6 +200,8 @@ var VaibifySetup = (function () {
             fnSetFeatureCheckboxes(dictConfig.listFeatures);
         }
 
+        fnSetClaudeAutoUpdate(dictConfig.bClaudeAutoUpdate);
+
         if (dictConfig.listPipPackages) {
             document.getElementById("pipPackages").value =
                 dictConfig.listPipPackages.join("\n");
@@ -201,6 +217,14 @@ var VaibifySetup = (function () {
         if (el && sValue !== undefined && sValue !== null) {
             el.value = sValue;
         }
+    }
+
+    function fnSetClaudeAutoUpdate(bValue) {
+        var el = document.getElementById("claudeAutoUpdate");
+        if (el) {
+            el.checked = bValue !== false;
+        }
+        fnToggleClaudeAutoUpdateVisibility();
     }
 
     function fnSetFeatureCheckboxes(listFeatures) {
@@ -261,7 +285,13 @@ var VaibifySetup = (function () {
             bNeverSleep: document.getElementById(
                 "neverSleep"
             ).checked,
+            bClaudeAutoUpdate: fbReadClaudeAutoUpdate(),
         };
+    }
+
+    function fbReadClaudeAutoUpdate() {
+        var el = document.getElementById("claudeAutoUpdate");
+        return el ? el.checked : true;
     }
 
     function flistParseTextarea(sElementId) {

@@ -249,18 +249,6 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         }
 
 
-async def _fnUpdateInputHashes(dictCtx, sContainerId, dictStep):
-    """Recompute and store input script hashes after test execution."""
-    from .. import syncDispatcher as _syncDispatcher
-    dictHashes = await asyncio.to_thread(
-        _syncDispatcher.fdictComputeInputHashes,
-        dictCtx["docker"], sContainerId, dictStep,
-    )
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
-
-
 def _fnRegisterTestRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-tests."""
 
@@ -286,9 +274,6 @@ def _fnRegisterTestRun(app, dictCtx):
         )
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
-        await _fnUpdateInputHashes(
-            dictCtx, sContainerId, dictStep,
-        )
         dictCtx["save"](sContainerId, dictWorkflow)
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
