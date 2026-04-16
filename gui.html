@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Workflow Viewer &mdash; Vaibify 0.0.1.dev64 documentation</title>
+  <title>Workflow Viewer &mdash; Vaibify 0.0.1.dev65 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4defb0f6"></script>
+      <script src="_static/documentation_options.js?v=e99734ef"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -54,6 +54,13 @@
 <li class="toctree-l2"><a class="reference internal" href="#pipeline-panel">Pipeline Panel</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#adding-a-step">Adding a Step</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#interactive-steps">Interactive Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#step-verification-status">Step Verification Status</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#status-indicator">Status Indicator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pencil-icon">Pencil Icon</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#clearing-a-pencil">Clearing a Pencil</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#expanded-step-timestamps">Expanded-Step Timestamps</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#figure-viewer">Figure Viewer</a></li>
@@ -134,6 +141,123 @@ plotting script.</p>
 pipeline reaches an interactive step it pauses and waits for the user to
 confirm before continuing. This is useful for manual inspection or
 parameter adjustment between automated stages.</p>
+</section>
+</section>
+<section id="step-verification-status">
+<h2>Step Verification Status<a class="headerlink" href="#step-verification-status" title="Link to this heading"></a></h2>
+<p>Vaibify’s core job is to track <strong>what has happened on disk</strong> and flag any
+drift between a step’s current filesystem state and the last time it was
+validated. Two visual indicators communicate this state: a coloured
+<strong>status dot</strong> on the right of each step row, and an optional <strong>pencil
+icon</strong> (✏) next to the step name.</p>
+<section id="status-indicator">
+<h3>Status Indicator<a class="headerlink" href="#status-indicator" title="Link to this heading"></a></h3>
+<p>Each step row ends with one of three indicators:</p>
+<ul class="simple">
+<li><p><strong>Nothing</strong> – the step has not yet produced any output, so there is
+nothing to verify.</p></li>
+<li><p><strong>Orange dot</strong> – the step is <em>partially verified</em>. Some of user
+verification, unit tests, and dependency analysis pass, or one or more
+on-disk changes have been detected since the last full pass.</p></li>
+<li><p><strong>Accent-colored badge</strong> (the vaibify favicon; accent colour is
+configurable and defaults to purple) – the step is <em>fully verified</em>:
+user, unit tests, and dependencies all pass and no on-disk drift has
+been detected.</p></li>
+</ul>
+<p>When every enabled step is fully verified, the workflow name and the
+“Workflow” label in the top toolbar also shift to the accent colour,
+giving an at-a-glance sign that the whole pipeline is in a trusted state.</p>
+</section>
+<section id="pencil-icon">
+<h3>Pencil Icon<a class="headerlink" href="#pencil-icon" title="Link to this heading"></a></h3>
+<p>A pencil next to a step’s name means <strong>the step’s on-disk state has moved
+out of sync with its last validation event</strong>. The pencil is derived
+entirely from filesystem modification times compared against two
+validation anchors:</p>
+<ul class="simple">
+<li><p><strong>The test-marker file</strong> (<code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers/&lt;step&gt;.json</span></code>),
+written by vaibify’s pytest plugin whenever <code class="docutils literal notranslate"><span class="pre">pytest</span></code> finishes. This
+captures any test invocation, whether from the GUI, a terminal, Claude
+Code, or CI.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">sLastUserUpdate</span></code></strong>, set when the researcher clicks the verification
+badge in the GUI to attest that the outputs have been inspected.</p></li>
+</ul>
+<p>The pencil lights up when any of the following are true:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Drift</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>A data script is newer than the test marker</p></td>
+<td><p>Tests need to be rerun against the updated script.</p></td>
+</tr>
+<tr class="row-odd"><td><p>A data file is newer than the test marker</p></td>
+<td><p>Tests need to be rerun against the updated output.</p></td>
+</tr>
+<tr class="row-even"><td><p>A data script or data file is newer than <code class="docutils literal notranslate"><span class="pre">sLastUserUpdate</span></code></p></td>
+<td><p>Re-inspect the outputs and re-attest.</p></td>
+</tr>
+<tr class="row-odd"><td><p>A plot script or plot file is newer than <code class="docutils literal notranslate"><span class="pre">sLastUserUpdate</span></code></p></td>
+<td><p>Re-inspect the figures and re-attest.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Expanding the step shows a human-readable list of the specific files
+causing each condition. Because every condition is disk-derived, edits
+made outside the GUI are caught automatically – a terminal edit, a
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">pull</span></code>, or a Claude Code session that touches a script will advance
+the mtime and surface the pencil on the next polling cycle, without any
+UI action.</p>
+</section>
+<section id="clearing-a-pencil">
+<h3>Clearing a Pencil<a class="headerlink" href="#clearing-a-pencil" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Re-run tests</strong> for the step (from the GUI or a terminal). Successful
+completion advances the test-marker file’s mtime and clears any
+“… newer than the test marker” drift.</p></li>
+<li><p><strong>Re-verify</strong> by clicking the verification badge in the GUI after
+inspecting the outputs. This advances <code class="docutils literal notranslate"><span class="pre">sLastUserUpdate</span></code> and clears any
+“… newer than <code class="docutils literal notranslate"><span class="pre">sLastUserUpdate</span></code>” drift.</p></li>
+</ul>
+</section>
+<section id="expanded-step-timestamps">
+<h3>Expanded-Step Timestamps<a class="headerlink" href="#expanded-step-timestamps" title="Link to this heading"></a></h3>
+<p>Clicking a step expands its detail view, which includes four UTC
+timestamps. Three are derived directly from the container’s filesystem;
+the fourth is the one field stored in the workflow as a user attestation.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Row</p></th>
+<th class="head"><p>Source</p></th>
+<th class="head"><p>What it records</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Last tests</strong></p></td>
+<td><p>mtime of <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers/&lt;step&gt;.json</span></code></p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">pytest</span></code> for this step last finished, regardless of who ran it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Data files last modified</strong></p></td>
+<td><p>max mtime over the step’s <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code></p></td>
+<td><p>When any of the step’s data outputs was last written to disk.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Plot files last modified</strong></p></td>
+<td><p>max mtime over the step’s <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code></p></td>
+<td><p>When any of the step’s plot outputs was last written.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Last verified</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dictVerification.sLastUserUpdate</span></code></p></td>
+<td><p>When the researcher last clicked the verification badge. The only timestamp stored as a workflow variable rather than read from disk.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Because the first three are disk-derived, they remain accurate even for
+changes vaibify did not directly observe: a <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">pull</span></code> that updates a
+data file, a manual <code class="docutils literal notranslate"><span class="pre">pytest</span></code> at a terminal, or an edit from Claude Code
+will all be reflected in the displayed timestamps on the next polling
+cycle.</p>
 </section>
 </section>
 <section id="figure-viewer">
