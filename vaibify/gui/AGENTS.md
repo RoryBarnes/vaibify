@@ -125,7 +125,7 @@ the user before proceeding.
 ## Required after backend edits
 
 ```bash
-python -m pytest tests/ -q --ignore=tests/testGJ1132Build.py
+python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py
 python -m pytest tests/testArchitecturalInvariants.py -v
 ```
 

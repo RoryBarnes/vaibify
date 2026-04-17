@@ -4,7 +4,7 @@ Vaibify is a GUI tool for building, running, and verifying reproducible
 scientific pipelines inside Docker containers. Backend: FastAPI
 (Python). Frontend: vanilla JavaScript using IIFE modules.
 
-This file is the entry point for any AI coding agent working on this
+This file is the entry point for anyone (human or agent) working on this
 repository. It states the rules; `docs/architecture.md` explains the
 reasoning; `tests/testArchitecturalInvariants.py` enforces the
 structural invariants; `tools/listModules.py` reports the current
@@ -25,29 +25,56 @@ methodology behind this structure.
 6. If the task touches an architectural contract (route registration,
    leaf modules, path-module choice, science-agnostic source),
    `tests/testArchitecturalInvariants.py` is the executable
-   specification. Run it to see current state.
+   specification. Run it to see the current state.
 
 ## Style guide
 
-Follow the user's global conventions (Hungarian notation with camelCase,
-functions under 20 lines, no abbreviations for words under 8
-characters). The canonical rules live in the user's global
-`CLAUDE.md`. Do not duplicate them here; do not re-derive them from
-the code.
+The source code shall adhere to the following conventions: 
+
+1. Functions should be short (less than 20 lines), orthogonal, and  single-purposed. If identical lines exist in the codebase, make a new function that contains those lines, i.e., don't repeat yourself.
+
+2. Variable names should be camel-case and should have prefixes that 
+correspond to the variable type or cast, i.e. Hungarian notation. Use the following guide:
+
+- Boolean = "b"
+- Integer = "i"
+- Float = "f"
+- Double = "d"
+- Arrays should include an "a", e.g., an array of doubles starts with "da"
+- Dictionary = "dict"
+- List = "list"
+- JSON = "json"
+- Tuple = "t"
+
+If a cast is not listed above, ask me.
+
+3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix.
+
+4. Functions should never be more than 20 lines long. More than this amount, and it will be challenging for a developer to keep track of how the function is accomplishing its task. When a function is over 20 lines, identify the block(s) of code that are most likey to be of broader use and create (a) new function(s).
+
+5. File names should be camelcase, but should not use Hungarian prefixes.
+
+6. Don't abbreviate any word less than 8 characters long. Function names must have an action verb in them (except for main).
+
+7. Use inline documentation sparingly. Clear, long variable and function names allow the developer to understand how the code is executing just by reading the source code.
+
+8. Do not allow a developer's personal style preferences supersede these rules. 
 
 ## Required after edits
 
 - After any Python change:
-  `python -m pytest tests/ -q --ignore=tests/testGJ1132Build.py`
+  `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`
 - After changes that touch structural invariants (adding a route,
   adjusting import graphs, touching `workflowManager.py` or
   `director.py`):
   `python -m pytest tests/testArchitecturalInvariants.py -v`
 - After JS changes: exercise the feature in the running GUI. Type
   checking does not validate UI correctness.
-- Docker-dependent tests (`tests/testGJ1132Build.py`) are excluded
-  from routine runs and are the only tests that require a live
-  container.
+- Docker-dependent tests (`tests/testContainerBuildIntegration.py`)
+  are excluded from routine runs and are the only tests that require
+  a live container. They are parametrized via the
+  `VAIBIFY_INTEGRATION_CONFIG` environment variable and skip when it
+  is unset.
 
 ## Traps
 
@@ -56,8 +83,8 @@ repository. Read them before you start editing.
 
 **Never hard-code science-specific examples.** Vaibify is for the
 general problem of containerized scientific workflows. Specific
-planets, specific stellar systems, specific datasets, and specific
-experiment repos must not appear in vaibify source, templates,
+datasets, specific experimental setups, specific user projects, and
+specific target systems must not appear in vaibify source, templates,
 tests-of-record, or docs. When a specific example helps during
 development, keep it in a scratch branch or a user-owned workflow
 repo, never in vaibify itself.
@@ -71,8 +98,15 @@ containers, acting on user-owned host data, with credentials for
 Overleaf, GitHub, and Zenodo. Failure modes to audit against:
 
 - Command injection through user-provided workflow fields
-- Path traversal via `sPath` parameters — particularly anywhere the
-  host filesystem is touched
+- Path traversal via `sPath` parameters. Vaibify's backend and CLI
+  run on the host, not inside the container, and they handle host
+  paths in file pulls, directory browsing, sync, and workspace
+  mounts. Any path that originated from a user-facing source (HTTP
+  request body, workflow.json, config file) must be validated
+  against its intended root before being opened, read, written, or
+  listed. The existing helper `fnValidatePathWithinRoot(sAbsPath,
+  WORKSPACE_ROOT)` in `pipelineServer.py` does this — do not remove
+  or weaken it.
 - Credential leakage through logs, error messages, or generated test
   code
 - Mounting host paths outside the workspace volume
@@ -80,10 +114,10 @@ Overleaf, GitHub, and Zenodo. Failure modes to audit against:
 - Network egress where the container is meant to be isolated
 - Embedding secrets in source, commit messages, or CI output
 
-If a change expands attack surface, call it out explicitly in the plan
+If a change expands the attack surface, call it out explicitly in the plan
 before implementing.
 
-**Never suppress or misrepresent container or workflow state in the
+**Never suppress or misrepresent the container or workflow state in the
 dashboard.** The GUI is the user's ground truth. Step status, file
 staleness, verification state, test results, and container health must
 always reflect reality. Do not cache state beyond its natural lifetime;
@@ -119,19 +153,24 @@ breaks rendering; use `.clear()` and mutate in place. The
 `_fnResetWorkflowState()` factory pattern is how state is cleared
 across workflow switches.
 
+**Do not delete or silence a test to make a failure go away.** A
+failing test is signalling one of three things: a bug in the code
+under test, a bug in the test's assertion, or a legitimate behavior
+change that the test predates. The fix is to investigate and address
+the right one, not to remove the test. Deleting or disabling a test to
+unblock a run is effectively unrecoverable: future regressions have no
+guardrail.
+
 ## Ask first
 
 The following actions have outsized blast radius and require explicit
 user confirmation before execution:
 
-- Deleting or significantly rewriting existing tests.
 - Changing the verification state machine semantics (`fileStatusManager.py`).
 - Modifying Docker security capabilities, user namespace, or network
   isolation.
 - Touching the reproducibility pipeline (`vaibify/reproducibility/`,
   Zenodo, Overleaf, LaTeX integration).
-- Editing `vplanet` C source code when working in a combined
-  vaibify + vplanet context.
 - Force-pushing, rewriting shared git history, or changing CI
   workflows beyond the documentation path-check added alongside this
   guide.

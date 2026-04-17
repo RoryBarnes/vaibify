@@ -58,8 +58,7 @@ current list and each module's `__all__`.
 
 ### Domain modules
 
-These carry the core execution logic that used to live in monolithic
-files and were extracted during the 2026-01 refactor:
+These carry the core execution logic:
 
 - `pipelineRunner.py` — pipeline step execution orchestrator. Public API:
   `fnRunAllSteps`, `fnRunFromStep`, `fnRunSelectedSteps`, `fnVerifyOnly`,
@@ -92,7 +91,8 @@ files and were extracted during the 2026-01 refactor:
 
 ### Test generation modules
 
-These were extracted from the former 3,652-line `testGenerator.py`:
+`Vaibify` attempts to generate tests deterministically from data. The
+following files control test generation:
 
 - `testGenerator.py` — orchestrator for test generation. Re-exports all
   symbols from the five modules below.
@@ -352,11 +352,13 @@ Every 5 seconds (VaibifyPolling):
 The test suite lives in `tests/`. Run all non-Docker tests with:
 
 ```bash
-python -m pytest tests/ -q --ignore=tests/testGJ1132Build.py
+python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py
 ```
 
-The `testGJ1132Build.py` tests require a running Docker container and
-are excluded from routine runs.
+The `testContainerBuildIntegration.py` tests require a running Docker
+container and a configuration passed via the
+`VAIBIFY_INTEGRATION_CONFIG` environment variable; they are excluded
+from routine runs.
 
 Architectural invariants are encoded as tests in
 `tests/testArchitecturalInvariants.py`. That file is the authoritative

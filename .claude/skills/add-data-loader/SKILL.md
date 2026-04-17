@@ -140,7 +140,7 @@ triple quotes that confuse the outer f-string in
 
 ```bash
 python -m pytest tests/testDataLoader<FormatName>.py -v
-python -m pytest tests/ -q --ignore=tests/testGJ1132Build.py
+python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py
 ```
 
 ### 8. Exercise via generated tests if possible

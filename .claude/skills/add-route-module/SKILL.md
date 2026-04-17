@@ -84,7 +84,7 @@ Create `tests/test<Name>Routes.py`. At minimum:
   for mocking patterns for the Docker context.
 
 Do not add Docker-dependent tests here — those go under the
-`testGJ1132Build.py`-style exclusions.
+`testContainerBuildIntegration.py`-style exclusions.
 
 ### 4. Run the contract tests
 
@@ -103,7 +103,7 @@ Expect these to pass without modification:
 
 ```bash
 python -m pytest tests/test<Name>Routes.py -v
-python -m pytest tests/ -q --ignore=tests/testGJ1132Build.py
+python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py
 ```
 
 ### 6. Exercise the endpoint end-to-end if possible

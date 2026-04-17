@@ -107,7 +107,7 @@ pattern wholesale.
 
 - Run the full backend test suite if the change could affect backend
   contracts (e.g., a new API call or WebSocket message shape):
-  `python -m pytest tests/ -q --ignore=tests/testGJ1132Build.py`.
+  `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`.
 - Exercise the feature in a running GUI against a real container.
   There is no automated browser testing — visual confirmation is
   required for UI changes.
