@@ -6,20 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev65 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev66 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e99734ef"></script>
+      <script src="_static/documentation_options.js?v=de6fbe85"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="Reproducibility" href="reproducibility.html" /> 
+    <link rel="prev" title="Vibe coding with verification" href="vibeCoding.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -54,13 +54,10 @@
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Contributor’s Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#style-guide">Style Guide</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#naming-conventions">Naming Conventions</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#functions">Functions</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#code-clarity">Code Clarity</a></li>
-</ul>
-</li>
+<li class="toctree-l2"><a class="reference internal" href="#style-guide">Style Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-tests">Running Tests</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#portability-and-ci">Portability and CI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pull-request-workflow">Pull Request Workflow</a></li>
@@ -104,36 +101,13 @@ proposed changes are not duplicating work and will be of general interest.</p>
 <section id="style-guide">
 <h2>Style Guide<a class="headerlink" href="#style-guide" title="Link to this heading"></a></h2>
 <p>Vaibify follows the style conventions described in the project’s global
-development standards. The key rules are summarized here.</p>
-<section id="naming-conventions">
-<h3>Naming Conventions<a class="headerlink" href="#naming-conventions" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><strong>Variables</strong> use camelCase with Hungarian prefixes: <code class="docutils literal notranslate"><span class="pre">bEnabled</span></code>,
-<code class="docutils literal notranslate"><span class="pre">iCount</span></code>, <code class="docutils literal notranslate"><span class="pre">sName</span></code>, <code class="docutils literal notranslate"><span class="pre">fValue</span></code>, <code class="docutils literal notranslate"><span class="pre">daWeights</span></code>, <code class="docutils literal notranslate"><span class="pre">dictConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">listItems</span></code>.</p></li>
-<li><p><strong>Functions</strong> begin with <code class="docutils literal notranslate"><span class="pre">f</span></code> followed by lowercase letter(s) indicating
-the return type: <code class="docutils literal notranslate"><span class="pre">fbIsValid()</span></code>, <code class="docutils literal notranslate"><span class="pre">fsGetName()</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunStep()</span></code> (no return).</p></li>
-<li><p><strong>Files</strong> use camelCase without Hungarian prefixes: <code class="docutils literal notranslate"><span class="pre">pipelineRunner.py</span></code>,
-<code class="docutils literal notranslate"><span class="pre">containerManager.py</span></code>.</p></li>
-</ul>
-</section>
-<section id="functions">
-<h3>Functions<a class="headerlink" href="#functions" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p>Functions should be fewer than 20 lines.</p></li>
-<li><p>Each function should have a single, clear purpose.</p></li>
-<li><p>If the same lines appear in multiple places, extract them into a new
-function.</p></li>
-</ul>
-</section>
-<section id="code-clarity">
-<h3>Code Clarity<a class="headerlink" href="#code-clarity" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p>Variable and function names should be self-explanatory.</p></li>
-<li><p>Use inline comments sparingly – clear naming replaces most comments.</p></li>
-<li><p>Do not abbreviate any word shorter than 8 characters.</p></li>
-<li><p>Function names must contain an action verb (except <code class="docutils literal notranslate"><span class="pre">main</span></code>).</p></li>
-</ul>
-</section>
+development standards: camelCase with Hungarian prefixes for variables,
+<code class="docutils literal notranslate"><span class="pre">f</span></code>-prefixed names for functions (with a return-type letter), files in
+camelCase without Hungarian prefixes, functions under 20 lines, no
+abbreviations for words shorter than 8 characters, and clear naming in
+preference to inline comments. If you are developing with an AI coding
+agent, read <span class="xref myst"><code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code></span> at the repo root for the rules,
+traps, and discovery commands the agent should follow.</p>
 </section>
 <section id="running-tests">
 <h2>Running Tests<a class="headerlink" href="#running-tests" title="Link to this heading"></a></h2>
@@ -149,6 +123,12 @@ function.</p></li>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>--cov<span class="o">=</span>vaibify<span class="w"> </span>tests/
 </pre></div>
 </div>
+<p>Run the architectural invariant tests directly to verify that route
+registration, leaf-module discipline, and the science-agnostic source
+rule are intact:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py<span class="w"> </span>-v
+</pre></div>
+</div>
 </section>
 <section id="portability-and-ci">
 <h2>Portability and CI<a class="headerlink" href="#portability-and-ci" title="Link to this heading"></a></h2>
@@ -158,6 +138,10 @@ across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and
 Python 3.9 through 3.14. Tests that require a running Docker daemon
 are excluded from CI and run locally. Documentation is rebuilt and
 deployed automatically on every merge to main.</p>
+<p>A separate CI job (<code class="docutils literal notranslate"><span class="pre">agent-docs-path-check</span></code>) verifies that every path
+reference in <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">SKILL.md</span></code> files resolves to an existing
+file. This catches stale references after refactors rename or delete
+files.</p>
 </section>
 <section id="pull-request-workflow">
 <h2>Pull Request Workflow<a class="headerlink" href="#pull-request-workflow" title="Link to this heading"></a></h2>
@@ -177,28 +161,31 @@ of the change.</p></li>
   <span class="n">config</span><span class="o">/</span>             <span class="n">Configuration</span> <span class="n">dataclasses</span> <span class="ow">and</span> <span class="n">parsers</span>
   <span class="n">docker</span><span class="o">/</span>             <span class="n">Container</span> <span class="n">lifecycle</span> <span class="n">management</span>
   <span class="n">gui</span><span class="o">/</span>                <span class="n">FastAPI</span> <span class="n">web</span> <span class="n">application</span> <span class="ow">and</span> <span class="n">pipeline</span> <span class="n">runner</span>
-    <span class="n">routes</span><span class="o">/</span>           <span class="mi">12</span> <span class="n">route</span> <span class="n">modules</span> <span class="p">(</span><span class="n">stepRoutes</span><span class="p">,</span> <span class="n">fileRoutes</span><span class="p">,</span> <span class="n">etc</span><span class="o">.</span><span class="p">)</span>
-    <span class="n">static</span><span class="o">/</span>           <span class="mi">24</span> <span class="n">JavaScript</span> <span class="n">IIFE</span> <span class="n">modules</span> <span class="o">+</span> <span class="n">CSS</span> <span class="o">+</span> <span class="n">HTML</span>
-    <span class="n">pipelineServer</span><span class="o">.</span><span class="n">py</span> <span class="n">App</span> <span class="n">factory</span><span class="p">,</span> <span class="n">shared</span> <span class="n">utilities</span><span class="p">,</span> <span class="n">WebSocket</span> <span class="n">dispatch</span>
-    <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">py</span> <span class="n">Pipeline</span> <span class="n">step</span> <span class="n">execution</span> <span class="n">orchestrator</span>
-    <span class="n">pipelineUtils</span><span class="o">.</span><span class="n">py</span>  <span class="n">Shared</span> <span class="n">leaf</span> <span class="n">utilities</span> <span class="p">(</span><span class="n">fsShellQuote</span><span class="p">,</span> <span class="n">emitters</span><span class="p">)</span>
-    <span class="n">workflowManager</span><span class="o">.</span><span class="n">py</span> <span class="n">Workflow</span> <span class="n">CRUD</span><span class="p">,</span> <span class="n">variable</span> <span class="n">resolution</span><span class="p">,</span> <span class="n">dependency</span> <span class="n">graph</span>
-    <span class="n">fileStatusManager</span><span class="o">.</span><span class="n">py</span> <span class="n">File</span> <span class="n">polling</span><span class="p">,</span> <span class="n">mtime</span> <span class="n">tracking</span><span class="p">,</span> <span class="n">step</span> <span class="n">invalidation</span>
-    <span class="n">testGenerator</span><span class="o">.</span><span class="n">py</span>  <span class="n">Test</span> <span class="n">generation</span> <span class="n">orchestrator</span>
-    <span class="n">dataLoaders</span><span class="o">.</span><span class="n">py</span>    <span class="n">Data</span> <span class="nb">format</span> <span class="n">dispatch</span> <span class="n">table</span> <span class="p">(</span><span class="mi">50</span> <span class="n">extensions</span><span class="p">)</span>
-    <span class="n">syncDispatcher</span><span class="o">.</span><span class="n">py</span> <span class="n">Sync</span> <span class="n">operations</span> <span class="p">(</span><span class="n">GitHub</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="n">Zenodo</span><span class="p">)</span>
-    <span class="o">...</span>               <span class="n">See</span> <span class="n">CLAUDE</span><span class="o">.</span><span class="n">md</span> <span class="n">at</span> <span class="n">repo</span> <span class="n">root</span> <span class="k">for</span> <span class="n">the</span> <span class="n">full</span> <span class="n">module</span> <span class="nb">map</span>
+    <span class="n">routes</span><span class="o">/</span>           <span class="n">Route</span> <span class="n">modules</span> <span class="p">(</span><span class="n">one</span> <span class="n">per</span> <span class="n">endpoint</span> <span class="n">group</span><span class="p">)</span>
+    <span class="n">static</span><span class="o">/</span>           <span class="n">JavaScript</span> <span class="n">IIFE</span> <span class="n">modules</span> <span class="o">+</span> <span class="n">CSS</span> <span class="o">+</span> <span class="n">HTML</span>
+    <span class="n">AGENTS</span><span class="o">.</span><span class="n">md</span>         <span class="n">Backend</span> <span class="n">subtree</span> <span class="n">rules</span> <span class="k">for</span> <span class="n">coding</span> <span class="n">agents</span>
+    <span class="n">static</span><span class="o">/</span><span class="n">AGENTS</span><span class="o">.</span><span class="n">md</span>  <span class="n">Frontend</span> <span class="n">subtree</span> <span class="n">rules</span> <span class="k">for</span> <span class="n">coding</span> <span class="n">agents</span>
   <span class="n">install</span><span class="o">/</span>            <span class="n">Setup</span> <span class="n">wizard</span> <span class="ow">and</span> <span class="n">shell</span> <span class="n">installer</span>
   <span class="n">reproducibility</span><span class="o">/</span>    <span class="n">Zenodo</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="ow">and</span> <span class="n">LaTeX</span> <span class="n">integration</span>
-<span class="n">templates</span><span class="o">/</span>            <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">sandbox</span><span class="p">,</span> <span class="n">workflow</span><span class="p">)</span>
-<span class="n">tests</span><span class="o">/</span>                <span class="n">Pytest</span> <span class="n">test</span> <span class="n">suite</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">200</span><span class="o">+</span> <span class="n">tests</span><span class="p">)</span>
-<span class="n">docs</span><span class="o">/</span>                 <span class="n">Sphinx</span> <span class="n">documentation</span> <span class="p">(</span><span class="n">this</span> <span class="n">site</span><span class="p">)</span>
-<span class="n">CLAUDE</span><span class="o">.</span><span class="n">md</span>             <span class="n">Architecture</span> <span class="n">guide</span> <span class="k">with</span> <span class="n">module</span> <span class="nb">map</span> <span class="ow">and</span> <span class="n">data</span> <span class="n">flows</span>
+<span class="n">templates</span><span class="o">/</span>            <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">sandbox</span><span class="p">,</span> <span class="n">workflow</span><span class="p">,</span> <span class="n">toolkit</span><span class="p">)</span>
+<span class="n">tests</span><span class="o">/</span>                <span class="n">Pytest</span> <span class="n">test</span> <span class="n">suite</span><span class="p">,</span> <span class="n">including</span>
+                      <span class="n">testArchitecturalInvariants</span><span class="o">.</span><span class="n">py</span>
+<span class="n">tools</span><span class="o">/</span>                <span class="n">On</span><span class="o">-</span><span class="n">demand</span> <span class="n">helper</span> <span class="n">scripts</span> <span class="p">(</span><span class="n">listModules</span><span class="o">.</span><span class="n">py</span><span class="p">,</span>
+                      <span class="n">checkAgentDocsPaths</span><span class="o">.</span><span class="n">py</span><span class="p">)</span>
+<span class="n">docs</span><span class="o">/</span>                 <span class="n">Sphinx</span> <span class="n">documentation</span> <span class="p">(</span><span class="n">this</span> <span class="n">site</span><span class="p">)</span> <span class="n">including</span>
+                      <span class="n">architecture</span><span class="o">.</span><span class="n">md</span> <span class="ow">and</span> <span class="n">vibeCoding</span><span class="o">.</span><span class="n">md</span>
+<span class="o">.</span><span class="n">claude</span><span class="o">/</span><span class="n">skills</span><span class="o">/</span>       <span class="n">Conditional</span> <span class="n">recipes</span> <span class="k">for</span> <span class="n">recurring</span> <span class="n">extension</span> <span class="n">tasks</span>
+<span class="n">AGENTS</span><span class="o">.</span><span class="n">md</span>             <span class="n">Repo</span><span class="o">-</span><span class="n">wide</span> <span class="n">rules</span><span class="p">,</span> <span class="n">traps</span><span class="p">,</span> <span class="ow">and</span> <span class="n">discovery</span> <span class="n">commands</span>
+                      <span class="k">for</span> <span class="n">AI</span> <span class="n">coding</span> <span class="n">agents</span> <span class="p">(</span><span class="n">symlinked</span> <span class="kn">from</span><span class="w"> </span><span class="nn">CLAUDE.md</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>For a detailed architecture overview including module dependency graphs,
-state management patterns, and data flow diagrams, see <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> at
-the repository root.</p>
+<p>For the full architectural narrative including module responsibilities,
+dependency graph, state machine, and known technical debt, see
+<a class="reference internal" href="architecture.html"><span class="std std-doc">architecture.md</span></a>. For the methodology behind the
+agent documentation system, see <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a>.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span> <span class="pre">&lt;subtree&gt;</span></code> to print the current
+module layout with <code class="docutils literal notranslate"><span class="pre">__all__</span></code> exports and docstring summaries, rather
+than relying on a static module map that can drift.</p>
 </section>
 </section>
 
@@ -206,7 +193,7 @@ the repository root.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="reproducibility.html" class="btn btn-neutral float-left" title="Reproducibility" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vibeCoding.html" class="btn btn-neutral float-left" title="Vibe coding with verification" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
     </div>
 
   <hr/>

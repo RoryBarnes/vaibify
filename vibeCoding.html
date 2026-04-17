@@ -1,0 +1,509 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vibe coding with verification &mdash; Vaibify 0.0.1.dev66 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=de6fbe85"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Contributor’s Guide" href="developers.html" />
+    <link rel="prev" title="Architecture" href="architecture.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Vibe coding with verification</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#motivation-why-agent-docs-drift">1. Motivation: why agent docs drift</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#deterministic-versus-stochastic-documentation">2. Deterministic versus stochastic documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-four-layer-framework">3. The four-layer framework</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#layer-1-always-on-semantic">Layer 1: always-on, semantic</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#layer-2-enforced-deterministic">Layer 2: enforced, deterministic</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#layer-3-on-demand-deterministic">Layer 3: on-demand, deterministic</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#layer-4-conditional-semantic">Layer 4: conditional, semantic</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#summary">Summary</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-scoping-test">4. The scoping test</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#traps-over-rules">5. Traps over rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-feedback-principle">6. The feedback principle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#tradeoffs-and-limits">7. Tradeoffs and limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#practical-playbook">8. Practical playbook</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#worked-examples-vaibify-as-reference">9. Worked examples: vaibify as reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-closing-thought">10. A closing thought</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Vibe coding with verification</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/vibeCoding.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="vibe-coding-with-verification">
+<h1>Vibe coding with verification<a class="headerlink" href="#vibe-coding-with-verification" title="Link to this heading"></a></h1>
+<p>Vaibify’s tagline is <em>Vibe boldly. Verify everything.</em> This document
+is about the second half. It describes a methodology for writing
+agent-facing documentation so that an AI coding agent can contribute
+safely to a scientific software repository, and so that the
+documentation itself never drifts away from the code it describes.</p>
+<p>The principles are repository-agnostic. Vaibify is used as a worked
+example because it is a mid-sized Python and JavaScript codebase with
+more than two thousand unit tests, frequent refactors, and several
+collaborators of mixed software backgrounds. The same patterns apply
+to <code class="docutils literal notranslate"><span class="pre">alabi</span></code>, <code class="docutils literal notranslate"><span class="pre">vplot</span></code>, <code class="docutils literal notranslate"><span class="pre">vspace</span></code>, <code class="docutils literal notranslate"><span class="pre">multiplanet</span></code>, <code class="docutils literal notranslate"><span class="pre">bigplanet</span></code>, <code class="docutils literal notranslate"><span class="pre">vconverge</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">vplanet_inference</span></code>, and to any scientific codebase with a similar
+shape.</p>
+<p>This is a methodology guide, not a quick reference. Expect to read it
+in one sitting, then come back to individual sections when you are
+setting up a new repository.</p>
+<section id="motivation-why-agent-docs-drift">
+<h2>1. Motivation: why agent docs drift<a class="headerlink" href="#motivation-why-agent-docs-drift" title="Link to this heading"></a></h2>
+<p>AI coding agents are stochastic. The same prompt, run twice, can
+produce different code, different file names, and different imports.
+This is not a defect of any particular model; it is a property of how
+these systems sample from a distribution of plausible completions.</p>
+<p>Scientific software tolerates stochasticity poorly. A simulation that
+gives a slightly different answer each time it runs is not a
+simulation, it is a hazard. The same is true for a codebase: if an
+agent silently rewrites a helper function the wrong way on Tuesday
+because Monday’s prompt happened to produce a different result, a
+human reviewer will not catch it until a test fails months later. The
+most dangerous mistakes are the ones that are plausible.</p>
+<p>The natural response is to write more documentation. Tell the agent
+where everything lives, what the modules are called, how many files
+are in each package, what the imports look like. This works for one
+afternoon. Then somebody refactors a module, or adds a new route, or
+splits a file in two, and the documentation quietly becomes wrong.</p>
+<p>Vaibify’s previous <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> hard-coded line counts for more than
+thirty-five Python modules. Within a few weeks the counts were off by
+ten to forty percent, and a newly added <code class="docutils literal notranslate"><span class="pre">scriptReposPanel.js</span></code> module
+was missing entirely from the map. An agent reading that file had two
+bad choices: trust the stale data and generate confidently wrong code,
+or ignore the map and re-derive the architecture from scratch every
+session, producing inconsistent results. Neither is acceptable in a
+scientific setting where reproducibility is a primary value.</p>
+<p>The root cause is that the documentation was trying to do two jobs at
+once: it was stating rules that cannot be tested, and it was reciting
+facts that should never have been typed by hand. Untangling those two
+jobs is the core of the methodology.</p>
+</section>
+<section id="deterministic-versus-stochastic-documentation">
+<h2>2. Deterministic versus stochastic documentation<a class="headerlink" href="#deterministic-versus-stochastic-documentation" title="Link to this heading"></a></h2>
+<p>There are two fundamentally different kinds of content in any
+architecture document.</p>
+<p><strong>Deterministic signals</strong> are facts that the code unambiguously is:
+the list of modules in a package, the symbols each module exports,
+the type of an argument, the presence or absence of a test, the
+result of running a linter. Machines extract these reliably. They
+cannot drift relative to the code because they are derived from the
+code. If you write them down by hand, you are creating a second
+source of truth that is guaranteed to diverge.</p>
+<p><strong>Stochastic signals</strong> are rules, contracts, intents, hazards, and
+invariants that span multiple files. They cannot be extracted from
+any single file or from any mechanical scan. They have to be written
+by humans who know the system. They are load-bearing <em>precisely
+because</em> an agent cannot infer them from reading the code.</p>
+<p>Examples of stochastic signals in vaibify:</p>
+<ul class="simple">
+<li><p>“Container paths use <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>; host paths use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>.”</p></li>
+<li><p>“Never reassign <code class="docutils literal notranslate"><span class="pre">setExpandedSteps</span></code>; mutate it in place.”</p></li>
+<li><p>“<code class="docutils literal notranslate"><span class="pre">director.py</span></code> intentionally duplicates two functions from
+<code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> because it operates on host filesystem paths.”</p></li>
+</ul>
+<p>None of those rules are visible by reading any one file. All three
+have caused real bugs when an agent or a new developer ignored them.</p>
+<p>A documentation system that mixes these two categories in one
+hand-written file gets the worst of both worlds. The deterministic
+parts drift, training the reader to distrust the file. The stochastic
+parts, which are the whole point, get buried under rotting module
+maps and stale line counts.</p>
+<p>The analogy to scientific computing is almost too on-the-nose.
+Deterministic components of a physical model (conservation laws,
+boundary conditions, unit conversions) are handled by code and
+checked by tests. Stochastic components (priors, parameter ranges,
+stopping criteria) are handled by the researcher. You do not ask
+your simulation to invent its own priors and you should not ask your
+documentation to invent its own module map.</p>
+</section>
+<section id="the-four-layer-framework">
+<h2>3. The four-layer framework<a class="headerlink" href="#the-four-layer-framework" title="Link to this heading"></a></h2>
+<p>Vaibify’s agent documentation is organized into four layers. Each
+layer has a different trigger (when the agent sees it), a different
+source of truth, and a different failure mode. Keeping them separate
+is what makes the whole system stable.</p>
+<section id="layer-1-always-on-semantic">
+<h3>Layer 1: always-on, semantic<a class="headerlink" href="#layer-1-always-on-semantic" title="Link to this heading"></a></h3>
+<p>Short prose files stating rules that cannot be tested. These live
+at <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> in the repository root, with nested <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> files
+in subtrees that have their own conventions (for example,
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/AGENTS.md</span></code> for the FastAPI backend and
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/static/AGENTS.md</span></code> for the JavaScript frontend).</p>
+<p>These files are loaded every turn of an agent session. They should
+contain only content that is load-bearing and cannot be expressed as
+a test: style contracts, the handful of cross-cutting rules a
+newcomer would miss, the traps listed in section 5.</p>
+<p><strong>Failure mode:</strong> silent. When a Layer 1 file is wrong, the agent
+trusts it and produces subtly wrong code. This is why Layer 1 should
+stay small.</p>
+</section>
+<section id="layer-2-enforced-deterministic">
+<h3>Layer 2: enforced, deterministic<a class="headerlink" href="#layer-2-enforced-deterministic" title="Link to this heading"></a></h3>
+<p>Architectural invariants expressed as pytest assertions. A single
+file like <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> contains tests that
+assert things like “no module under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/routes/</span></code> imports
+from <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code>” or “every route module defines
+<code class="docutils literal notranslate"><span class="pre">fnRegisterAll</span></code>” or “no JavaScript file in <code class="docutils literal notranslate"><span class="pre">static/</span></code> exceeds two
+thousand lines”.</p>
+<p>These cannot drift. When the rule changes, the test changes in the
+same commit. The test name, docstring, and assertion together <em>are</em>
+the rule, which means the rule is self-documenting and executable at
+the same time.</p>
+<p><strong>Failure mode:</strong> loud. When a Layer 2 invariant breaks, CI turns
+red. This is exactly what you want.</p>
+</section>
+<section id="layer-3-on-demand-deterministic">
+<h3>Layer 3: on-demand, deterministic<a class="headerlink" href="#layer-3-on-demand-deterministic" title="Link to this heading"></a></h3>
+<p>Discovery scripts that extract structural facts from the current
+code. Vaibify ships <code class="docutils literal notranslate"><span class="pre">tools/listModules.py</span></code>, which walks the package
+with Python’s <code class="docutils literal notranslate"><span class="pre">ast</span></code> module and prints the current module map — path,
+public symbols (from <code class="docutils literal notranslate"><span class="pre">__all__</span></code>), and a one-line purpose from each
+module’s docstring. Line counts and import edges are deliberately
+excluded as drift bait; if an agent needs either, it should run a
+targeted tool at the moment of need rather than read a persisted
+summary. An agent runs this script when it needs the current state of
+the codebase.</p>
+<p>Nothing is persisted. The output is regenerated on every invocation
+from the live source tree, so it cannot be stale. Other examples
+include a script that lists all pytest markers, a script that
+prints the route graph, or a grep that enumerates TODOs.</p>
+<p><strong>Failure mode:</strong> rare. When a discovery script is wrong, it fails at
+the moment of use and the agent notices immediately.</p>
+</section>
+<section id="layer-4-conditional-semantic">
+<h3>Layer 4: conditional, semantic<a class="headerlink" href="#layer-4-conditional-semantic" title="Link to this heading"></a></h3>
+<p>Multi-step recipes for recurring tasks, loaded only when the task
+matches. Anthropic Skills (<code class="docutils literal notranslate"><span class="pre">.claude/skills/*/SKILL.md</span></code>), Cursor
+rules, and similar tool-specific formats belong here. A skill might
+encode the steps for adding a new module, reviewing a pull request,
+or running a security audit.</p>
+<p><strong>Failure mode:</strong> silent, like Layer 1, because skills are prose. Use
+sparingly and only for genuinely recurring multi-step work. A skill
+that fires on every task is just Layer 1 wearing a costume.</p>
+</section>
+<section id="summary">
+<h3>Summary<a class="headerlink" href="#summary" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Layer</p></th>
+<th class="head"><p>Trigger</p></th>
+<th class="head"><p>Source of truth</p></th>
+<th class="head"><p>Failure mode</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>Every turn</p></td>
+<td><p>Hand-written prose</p></td>
+<td><p>Silent</p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>Every commit</p></td>
+<td><p>The assertion itself</p></td>
+<td><p>Loud (CI)</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>On demand</p></td>
+<td><p>The live source tree</p></td>
+<td><p>At point of use</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>Task match</p></td>
+<td><p>Hand-written prose</p></td>
+<td><p>Silent</p></td>
+</tr>
+</tbody>
+</table>
+<p>The important property is that Layers 2 and 3, which cannot drift,
+carry most of the deterministic content, while Layers 1 and 4,
+which can drift, carry only the irreducibly stochastic content.</p>
+</section>
+</section>
+<section id="the-scoping-test">
+<h2>4. The scoping test<a class="headerlink" href="#the-scoping-test" title="Link to this heading"></a></h2>
+<p>When you are tempted to add content to an agent-facing document, run
+it through four questions in order.</p>
+<ol class="arabic simple">
+<li><p><strong>Would a new developer, reading the code alone for twenty
+minutes, miss this?</strong> If the answer is no, do not write it at all.
+A document full of content that a careful reader could have
+inferred trains its readers (human and agent) to skim.</p></li>
+<li><p><strong>Can the rule be expressed as an assertion on the code?</strong> If yes,
+it belongs in Layer 2. Promote aggressively. Tests are the only
+documentation artifact that cannot lie.</p></li>
+<li><p><strong>Is the fact extractable from the code?</strong> If yes, it belongs in
+Layer 3. Write a script, do not persist the output. If you catch
+yourself typing a module list or a line count, stop.</p></li>
+<li><p><strong>Otherwise, is it a single-step rule or a multi-step recipe?</strong>
+Single-step rules go in Layer 1. Multi-step recurring recipes go
+in Layer 4.</p></li>
+</ol>
+<p>The common failure is to skip straight to Layer 1 for everything,
+because prose is easy to write and tests are hard. Resist this. The
+cost of writing a test once is far less than the cost of a stale
+paragraph misleading an agent every day for a year.</p>
+</section>
+<section id="traps-over-rules">
+<h2>5. Traps over rules<a class="headerlink" href="#traps-over-rules" title="Link to this heading"></a></h2>
+<p>The highest-value prose content in an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> is almost never a
+list of rules. It is a list of <em>traps</em>: places where the code does
+the opposite of what a careful reader would expect, or where two
+things look alike but behave differently.</p>
+<p>Traps are what a new contributor cannot discover by reading
+carefully. They have to be told. A good trap entry names the two
+things that look alike, says which one does what, and gives the
+consequence of getting it wrong.</p>
+<p>Examples from vaibify:</p>
+<ul class="simple">
+<li><p>Container paths use <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>; host paths use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>.
+<code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> and <code class="docutils literal notranslate"><span class="pre">director.py</span></code> contain similarly named
+functions because one operates on container paths and the other
+on host paths. Using the wrong one silently produces wrong file
+paths on Windows, or on any host where the separator differs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">director.py</span></code> looks like a CLI helper but is actually a parallel
+workflow runner with its own variable resolution. Do not unify it
+with <code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> without understanding why the two
+resolve variables differently.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">_dictUiState</span></code> contains several <code class="docutils literal notranslate"><span class="pre">Set</span></code> objects. These sets are
+captured by reference in the render closure. Reassigning a set
+(<code class="docutils literal notranslate"><span class="pre">_dictUiState.setExpandedSteps</span> <span class="pre">=</span> <span class="pre">new</span> <span class="pre">Set()</span></code>) silently breaks the
+render, which continues to read the old set. Always call
+<code class="docutils literal notranslate"><span class="pre">.clear()</span></code> instead.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">introspectionScript.py</span></code> duplicates format-handling logic from
+<code class="docutils literal notranslate"><span class="pre">dataLoaders.py</span></code>. This is not a refactoring opportunity; the
+introspection script runs inside Docker containers that cannot
+import from the host environment.</p></li>
+</ul>
+<p>The exercise, when starting an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, is to ask: what are the
+five mistakes I would be most annoyed to see an agent make in this
+repository next week? Write those. Everything else can wait.</p>
+</section>
+<section id="the-feedback-principle">
+<h2>6. The feedback principle<a class="headerlink" href="#the-feedback-principle" title="Link to this heading"></a></h2>
+<p>When an agent makes the same mistake twice, the documentation system
+should absorb the lesson. There are three ways to do that, in order
+of preference.</p>
+<p>First, promote the mistake into a Layer 2 test. If the mistake is
+“an agent keeps importing from <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code> in a route module,”
+add an architectural invariant that fails when any route module
+imports from <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code>. The mistake becomes a permanent guard
+rail; no future agent can repeat it without turning CI red.</p>
+<p>Second, if the mistake cannot be tested, add it to the <code class="docutils literal notranslate"><span class="pre">Lessons</span></code>
+section of the relevant <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>. One paragraph per lesson. State
+the mistake, state the correct behavior, state the consequence of
+getting it wrong.</p>
+<p>Third, if the mistake is a multi-step task being done inconsistently,
+add a Layer 4 skill.</p>
+<p>Without this loop, documentation stagnates at initial quality. The
+test-promotion path is the most valuable because it converts
+stochastic prose (which can be ignored) into deterministic enforcement
+(which cannot). Over time, a repository that uses the feedback loop
+well will find that most of its Layer 1 content slowly migrates into
+Layer 2 tests, leaving behind only the rules that genuinely resist
+mechanization.</p>
+</section>
+<section id="tradeoffs-and-limits">
+<h2>7. Tradeoffs and limits<a class="headerlink" href="#tradeoffs-and-limits" title="Link to this heading"></a></h2>
+<p>Honest caveats, because nothing in this space is free.</p>
+<p>Tests cover maybe forty percent of the rules in a typical research
+codebase. The rest stays as prose. It is tempting to over-promise
+determinism and claim that the right architecture can test
+everything, but invariants about intent, taste, and scientific
+meaning resist assertion. Do not pretend otherwise.</p>
+<p>One-line module docstrings drift less than paragraph-length ones.
+Keep docstrings short for routine modules; reserve longer docstrings
+for the modules that encode emergent semantics a reader cannot infer
+by reading the functions in order. <code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code> in vaibify
+has a long module docstring because it documents a state machine that
+spans five files; most modules have one-line docstrings because
+their behavior is visible in their function signatures.</p>
+<p>Context-window economics matter less at frontier-model scale than
+they did a year ago. A two-hundred-line <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> that is correct
+beats a sixty-line <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> that omits load-bearing context.
+Optimize for correctness, not brevity. That said, every sentence you
+add is a future drift liability, so only add content that is
+load-bearing.</p>
+<p>Skills are tool-specific. Claude Code’s skill format differs from
+Cursor’s rules format, and both differ from whatever the next tool
+will ship. If cross-tool portability matters, stick to <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>
+plus tests plus scripts. Skills are a convenience on top, not a
+foundation.</p>
+</section>
+<section id="practical-playbook">
+<h2>8. Practical playbook<a class="headerlink" href="#practical-playbook" title="Link to this heading"></a></h2>
+<p>Here is a checklist for applying this methodology to your own
+repository. Do the items in order.</p>
+<ol class="arabic simple">
+<li><p>List the three to five traps you would be most annoyed to see an
+agent fall into. Write those first as the core of your
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>. Do not start with style rules or module maps.</p></li>
+<li><p>List the architectural invariants you rely on. For each, ask
+“can this be a test?” Promote the ones that can. Create a file
+like <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> even if it only
+contains three tests on day one.</p></li>
+<li><p>Do not write a module map. Write a <code class="docutils literal notranslate"><span class="pre">tools/listModules.py</span></code> (or
+equivalent) that prints the current state on demand. If you
+cannot resist persisting a map somewhere, persist the <em>script’s
+output</em> rather than a hand-written version, and regenerate it on
+every commit via a pre-commit hook.</p></li>
+<li><p>Symlink <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> to <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> so every agent tool reads the
+same file. If your tool of choice uses yet another filename,
+symlink that too. One source of truth per repository.</p></li>
+<li><p>Set up a CI path check that greps your <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> files for
+file paths and fails on dangling references. This catches the
+most common silent drift: a module gets moved and the doc still
+points at the old location.</p></li>
+<li><p>Iterate on <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> every time you catch yourself correcting
+an agent on the same thing twice. Apply the feedback principle:
+promote to a test if possible, otherwise add a Lessons entry.</p></li>
+<li><p>Resist the urge to add everything. Each new sentence is a future
+drift liability. Read the scoping test in section 4 before
+adding content.</p></li>
+</ol>
+</section>
+<section id="worked-examples-vaibify-as-reference">
+<h2>9. Worked examples: vaibify as reference<a class="headerlink" href="#worked-examples-vaibify-as-reference" title="Link to this heading"></a></h2>
+<p>The patterns in this document are visible in vaibify’s own repository.
+Cross-references so you can see how they look in practice:</p>
+<ul class="simple">
+<li><p><span class="xref myst">AGENTS.md</span>: the Layer 1 semantic doc at the
+repository root.</p></li>
+<li><p><span class="xref myst">vaibify/gui/AGENTS.md</span> and
+<span class="xref myst">vaibify/gui/static/AGENTS.md</span>:
+nested subtree docs that state conventions specific to the
+FastAPI backend and the JavaScript frontend.</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/52b218dea71c082daa7cafd52476cbd1/testArchitecturalInvariants.py"><span class="xref download myst">tests/testArchitecturalInvariants.py</span></a>:
+the Layer 2 file that encodes every testable invariant.</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/1716a3ee6387ae8b3ce7fea225888065/listModules.py"><span class="xref download myst">tools/listModules.py</span></a>: the Layer 3
+discovery script. Run it when you need a module map; do not paste
+its output anywhere.</p></li>
+<li><p><a class="reference internal" href="#../.claude/skills/"><span class="xref myst">.claude/skills/</span></a>: Layer 4 recipes for
+recurring multi-step tasks.</p></li>
+</ul>
+<p>Some of these files are being checked in alongside this document, so
+a reference may briefly fail to resolve. Once the full set lands,
+each link above points at the concrete artifact that corresponds to
+the abstract layer.</p>
+</section>
+<section id="a-closing-thought">
+<h2>10. A closing thought<a class="headerlink" href="#a-closing-thought" title="Link to this heading"></a></h2>
+<p>This methodology is not really about agents. It is about making code
+legible to any reader, human or machine, without sacrificing the
+honesty that scientific software requires. In a scientific context,
+documentation that drifts from code is a reproducibility hazard:
+future readers (including future you) use the docs to understand what
+the code did, and a docs-code gap quietly corrupts the record.
+Agent-friendly docs and reproducibility-friendly docs turn out to be
+the same thing. The discipline required to keep an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>
+correct is the same discipline required to keep a methods section
+correct. Vibe boldly. Verify everything.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="architecture.html" class="btn btn-neutral float-left" title="Architecture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="developers.html" class="btn btn-neutral float-right" title="Contributor’s Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

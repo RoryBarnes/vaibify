@@ -1,0 +1,452 @@
+"""Architectural invariants for the vaibify package encoded as pytest tests."""
+
+import ast
+import importlib
+import re
+from pathlib import Path
+
+
+__all__ = [
+    "testLeafModuleHasNoIntraPackageImports",
+    "testEveryRouteModuleExportsRegisterAll",
+    "testAllRouteModulesRegisteredInInit",
+    "testAllPackageModulesDefineDunderAll",
+    "testWorkflowManagerUsesPosixPath",
+    "testDirectorUsesOsPath",
+    "testNoScienceSpecificIdentifiersInSource",
+    "testRouteModulesDoNotImportSiblings",
+    "testNoRawFetchInFeatureModules",
+    "testNoRawOnMessageInFeatureModules",
+    "testOrchestratorReExportsAreComplete",
+    "testEveryJsFileIsRecognizedAsIIFE",
+]
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+GUI_DIR = REPO_ROOT / "vaibify" / "gui"
+ROUTES_DIR = GUI_DIR / "routes"
+STATIC_DIR = GUI_DIR / "static"
+
+# Modules that may legitimately omit __all__ (only dunder-init shims).
+SET_DUNDER_ALL_EXCEPTIONS = {"__init__.py"}
+
+# Science-specific identifiers forbidden in vaibify source. Extend freely.
+LIST_FORBIDDEN_SCIENCE_TERMS = [
+    "gj1132",
+    "kepler",
+    "trappist",
+    "proxima",
+]
+
+# Directories excluded from source scans (virtualenvs, build artifacts, caches).
+SET_EXCLUDED_SCAN_DIRECTORY_FRAGMENTS = (
+    "/tests/",
+    "/templates/",
+    "/docs/",
+    "/.venv/",
+    "/venv/",
+    "/build/",
+    "/dist/",
+    "/_build/",
+    "/__pycache__/",
+    "/.git/",
+    "/node_modules/",
+    "/.pytest_cache/",
+)
+
+# Route modules that import from a sibling route module with explicit intent.
+# syncRoutes re-uses _fnStoreCommitHash from scriptRoutes to persist the
+# upstream commit hash when a sync completes; this helper lives in scriptRoutes
+# because the same behaviour runs for non-sync actions as well. Remove the
+# entry once the helper is hoisted to a shared non-route module.
+SET_ALLOWED_SIBLING_ROUTE_IMPORTS = {
+    ("syncRoutes", "scriptRoutes"),
+}
+
+# Orchestrator modules and the child modules whose __all__ they re-export.
+# pipelineRunner does not re-export pipelineState (it uses it as a namespace
+# module via `from . import pipelineState`, not symbol-by-symbol).
+DICT_ORCHESTRATOR_CHILDREN = {
+    "pipelineRunner": [
+        "pipelineValidator",
+        "pipelineLogger",
+        "pipelineTestRunner",
+        "interactiveSteps",
+        "pipelineUtils",
+    ],
+    "pipelineServer": [
+        "fileStatusManager",
+        "testStatusManager",
+    ],
+    "testGenerator": [
+        "testParser",
+        "dataPreview",
+        "conftestManager",
+        "llmInvoker",
+        "templateManager",
+    ],
+    "syncDispatcher": [
+        "fileIntegrity",
+    ],
+}
+
+# JS files exempt from the raw-fetch ban.
+# scriptApiClient.js implements the VaibifyApi wrapper every other module
+# must call through. The remaining entries predate the wrapper and are
+# tracked technical debt (see the architecture notes about pre-existing,
+# unrefactored modules). Do not add new entries to this set; migrate the
+# module onto VaibifyApi instead.
+SET_FETCH_EXEMPT_JS_FILES = {
+    "scriptApiClient.js",
+    "scriptApplication.js",
+    "scriptFigureViewer.js",
+    "scriptResourceMonitor.js",
+    "scriptSetupWizard.js",
+    "scriptStepEditor.js",
+}
+
+# JS files exempt from the raw-onmessage ban: scriptWebSocket.js implements
+# the VaibifyWebSocket dispatcher, and scriptTerminal.js runs xterm.js over a
+# dedicated terminal WebSocket that predates the dispatcher.
+SET_ONMESSAGE_EXEMPT_JS_FILES = {
+    "scriptWebSocket.js",
+    "scriptTerminal.js",
+}
+
+REGEX_RAW_FETCH = re.compile(r"\bfetch\s*\(")
+REGEX_RAW_ONMESSAGE = re.compile(r"\.onmessage\b")
+REGEX_IIFE_DECLARATION = re.compile(
+    r"^\s*(?:var|const|let)\s+\w+\s*=\s*\(\s*function"
+)
+
+
+def fsReadSource(sPath):
+    """Return the full text content of a file at sPath."""
+    return Path(sPath).read_text(encoding="utf-8")
+
+
+def flistExtractImports(treeAst):
+    """Return a list of (moduleName, iLineNo) tuples for every import node."""
+    listImports = []
+    for node in ast.walk(treeAst):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                listImports.append((alias.name, node.lineno))
+        elif isinstance(node, ast.ImportFrom):
+            sModule = node.module or ""
+            iLevel = node.level or 0
+            sPrefix = "." * iLevel
+            listImports.append((sPrefix + sModule, node.lineno))
+    return listImports
+
+
+def fbHasTopLevelFunction(treeAst, sName):
+    """Return True if treeAst defines a top-level function named sName."""
+    for node in treeAst.body:
+        bMatch = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        if bMatch and node.name == sName:
+            return True
+    return False
+
+
+def fbHasTopLevelDunderAll(treeAst):
+    """Return True if treeAst defines a module-level __all__ assignment."""
+    for node in treeAst.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "__all__":
+                    return True
+        if isinstance(node, ast.AnnAssign):
+            target = node.target
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                return True
+    return False
+
+
+def ftParseFile(sPath):
+    """Return (sourceText, astTree) for the file at sPath."""
+    sSource = fsReadSource(sPath)
+    return sSource, ast.parse(sSource, filename=str(sPath))
+
+
+def testLeafModuleHasNoIntraPackageImports():
+    """pipelineUtils.py must not import from the vaibify package."""
+    sPath = GUI_DIR / "pipelineUtils.py"
+    _, treeAst = ftParseFile(sPath)
+    listImports = flistExtractImports(treeAst)
+    listViolations = [
+        (sName, iLine) for sName, iLine in listImports
+        if sName.startswith("vaibify") or sName.startswith(".")
+    ]
+    assert listViolations == [], (
+        f"pipelineUtils.py must be a leaf module but imports: "
+        f"{listViolations}"
+    )
+
+
+def testEveryRouteModuleExportsRegisterAll():
+    """Every vaibify/gui/routes/*Routes.py defines fnRegisterAll at top level."""
+    listRouteFiles = sorted(ROUTES_DIR.glob("*Routes.py"))
+    assert listRouteFiles, "No *Routes.py modules found under routes/"
+    listMissing = []
+    for pathRoute in listRouteFiles:
+        _, treeAst = ftParseFile(pathRoute)
+        if not fbHasTopLevelFunction(treeAst, "fnRegisterAll"):
+            listMissing.append(pathRoute.name)
+    assert listMissing == [], (
+        f"Route modules missing fnRegisterAll: {listMissing}"
+    )
+
+
+def _fsetGetImportedRouteNames(treeAst):
+    """Extract names imported from the routes package in an __init__ AST."""
+    setImported = set()
+    for node in ast.walk(treeAst):
+        if isinstance(node, ast.ImportFrom):
+            bRelative = (node.level or 0) >= 1
+            if bRelative and (node.module is None or node.module == ""):
+                for alias in node.names:
+                    setImported.add(alias.name)
+    return setImported
+
+
+def testAllRouteModulesRegisteredInInit():
+    """Every *Routes.py is imported by vaibify/gui/routes/__init__.py."""
+    sPath = ROUTES_DIR / "__init__.py"
+    _, treeAst = ftParseFile(sPath)
+    setImported = _fsetGetImportedRouteNames(treeAst)
+    listRouteFiles = sorted(ROUTES_DIR.glob("*Routes.py"))
+    listMissing = [
+        pathRoute.stem for pathRoute in listRouteFiles
+        if pathRoute.stem not in setImported
+    ]
+    assert listMissing == [], (
+        f"Route modules not imported in routes/__init__.py: {listMissing}"
+    )
+
+
+def testAllPackageModulesDefineDunderAll():
+    """Direct-child modules of vaibify/gui/ declare __all__ (except exceptions)."""
+    listModules = sorted(GUI_DIR.glob("*.py"))
+    assert listModules, "No python modules found under vaibify/gui/"
+    listViolations = []
+    for pathModule in listModules:
+        if pathModule.name in SET_DUNDER_ALL_EXCEPTIONS:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        if not fbHasTopLevelDunderAll(treeAst):
+            listViolations.append(pathModule.name)
+    assert listViolations == [], (
+        f"Modules missing __all__: {listViolations}. "
+        f"Add __all__ to each, or extend SET_DUNDER_ALL_EXCEPTIONS "
+        f"with justification."
+    )
+
+
+def testWorkflowManagerUsesPosixPath():
+    """workflowManager.py imports posixpath for container-path manipulation."""
+    sPath = GUI_DIR / "workflowManager.py"
+    sSource = fsReadSource(sPath)
+    assert "import posixpath" in sSource, (
+        "workflowManager.py must import posixpath for container paths"
+    )
+
+
+def testDirectorUsesOsPath():
+    """director.py uses os.path (host filesystem), not posixpath."""
+    sPath = GUI_DIR / "director.py"
+    sSource, treeAst = ftParseFile(sPath)
+    listImports = flistExtractImports(treeAst)
+    setTopNames = {sName for sName, _ in listImports}
+    bImportsPosix = any(
+        sName == "posixpath" or sName.startswith("posixpath.")
+        for sName in setTopNames
+    )
+    assert not bImportsPosix, (
+        "director.py must not import posixpath; host paths use os.path"
+    )
+    assert "os.path." in sSource, (
+        "director.py must actually reference os.path.* for host paths"
+    )
+
+
+def _fbIsRouteSiblingImport(sModulePath, sOwnStem):
+    """Return True when sModulePath resolves to a vaibify.gui.routes sibling."""
+    sCandidate = sModulePath
+    if sCandidate.startswith("."):
+        sCandidate = sCandidate.lstrip(".")
+    if not sCandidate:
+        return False
+    if sCandidate.startswith("vaibify.gui.routes."):
+        sTail = sCandidate.split(".", 3)[-1]
+    elif sModulePath.startswith(".") and not sModulePath.startswith(".."):
+        sTail = sCandidate
+    else:
+        return False
+    sSibling = sTail.split(".", 1)[0]
+    return sSibling != "" and sSibling != sOwnStem
+
+
+def _fsExtractSiblingName(sModulePath):
+    """Return the route-module stem referenced by a sibling import path."""
+    sStripped = sModulePath.lstrip(".")
+    if sStripped.startswith("vaibify.gui.routes."):
+        return sStripped.split(".", 3)[-1].split(".", 1)[0]
+    return sStripped.split(".", 1)[0]
+
+
+def testRouteModulesDoNotImportSiblings():
+    """Route modules must not import from another vaibify/gui/routes/*Routes.py."""
+    listRouteFiles = sorted(ROUTES_DIR.glob("*Routes.py"))
+    listViolations = []
+    for pathRoute in listRouteFiles:
+        _, treeAst = ftParseFile(pathRoute)
+        for sName, iLine in flistExtractImports(treeAst):
+            if not _fbIsRouteSiblingImport(sName, pathRoute.stem):
+                continue
+            sSibling = _fsExtractSiblingName(sName)
+            if (pathRoute.stem, sSibling) in SET_ALLOWED_SIBLING_ROUTE_IMPORTS:
+                continue
+            listViolations.append((pathRoute.name, sName, iLine))
+    assert listViolations == [], (
+        "Route modules must not import from sibling routes/*Routes.py:\n"
+        + "\n".join(f"  {n}:{ln}: {m}" for n, m, ln in listViolations)
+    )
+
+
+def _flistJsFeatureFiles(setExemptFilenames):
+    """Return JS files under static/ excluding the given exempt filenames."""
+    return [
+        pathFile for pathFile in sorted(STATIC_DIR.glob("*.js"))
+        if pathFile.name not in setExemptFilenames
+    ]
+
+
+def _flistRegexHits(pathFile, regexPattern):
+    """Return (iLine, sText) hits of regexPattern in the file at pathFile."""
+    listHits = []
+    sSource = fsReadSource(pathFile)
+    for iLineNo, sLine in enumerate(sSource.splitlines(), start=1):
+        if regexPattern.search(sLine):
+            listHits.append((iLineNo, sLine.strip()))
+    return listHits
+
+
+def testNoRawFetchInFeatureModules():
+    """JS feature modules must call VaibifyApi, not fetch() directly."""
+    listFeatureFiles = _flistJsFeatureFiles(SET_FETCH_EXEMPT_JS_FILES)
+    listViolations = []
+    for pathFile in listFeatureFiles:
+        for iLine, sText in _flistRegexHits(pathFile, REGEX_RAW_FETCH):
+            listViolations.append((pathFile.name, iLine, sText))
+    assert listViolations == [], (
+        "JS feature modules must route HTTP through VaibifyApi, not fetch():\n"
+        + "\n".join(f"  {n}:{ln}: {t}" for n, ln, t in listViolations)
+    )
+
+
+def testNoRawOnMessageInFeatureModules():
+    """JS feature modules must route WS events through VaibifyWebSocket."""
+    listFeatureFiles = _flistJsFeatureFiles(SET_ONMESSAGE_EXEMPT_JS_FILES)
+    listViolations = []
+    for pathFile in listFeatureFiles:
+        for iLine, sText in _flistRegexHits(pathFile, REGEX_RAW_ONMESSAGE):
+            listViolations.append((pathFile.name, iLine, sText))
+    assert listViolations == [], (
+        "JS feature modules must subscribe via VaibifyWebSocket, "
+        "not attach raw .onmessage handlers:\n"
+        + "\n".join(f"  {n}:{ln}: {t}" for n, ln, t in listViolations)
+    )
+
+
+def _flistMissingReExports(sOrchestrator, listChildNames):
+    """Return (sChild, sSymbol) pairs the orchestrator fails to re-export."""
+    moduleOrchestrator = importlib.import_module(
+        "vaibify.gui." + sOrchestrator
+    )
+    listMissing = []
+    for sChild in listChildNames:
+        moduleChild = importlib.import_module("vaibify.gui." + sChild)
+        for sSymbol in getattr(moduleChild, "__all__", []):
+            if not hasattr(moduleOrchestrator, sSymbol):
+                listMissing.append((sChild, sSymbol))
+    return listMissing
+
+
+def testOrchestratorReExportsAreComplete():
+    """Every symbol in each child's __all__ resolves on its orchestrator."""
+    listViolations = []
+    for sOrch, listChildren in DICT_ORCHESTRATOR_CHILDREN.items():
+        for sChild, sSymbol in _flistMissingReExports(sOrch, listChildren):
+            listViolations.append((sOrch, sChild, sSymbol))
+    assert listViolations == [], (
+        "Orchestrator re-export shims are incomplete:\n"
+        + "\n".join(
+            f"  {sOrch} does not expose {sChild}.{sSymbol}"
+            for sOrch, sChild, sSymbol in listViolations
+        )
+    )
+
+
+def testEveryJsFileIsRecognizedAsIIFE():
+    """Every vaibify/gui/static/*.js declares an IIFE module at its top."""
+    listJsFiles = sorted(STATIC_DIR.glob("*.js"))
+    assert listJsFiles, "No JavaScript modules found under static/"
+    listViolations = []
+    for pathFile in listJsFiles:
+        sSource = fsReadSource(pathFile)
+        if not any(
+            REGEX_IIFE_DECLARATION.match(sLine)
+            for sLine in sSource.splitlines()
+        ):
+            listViolations.append(pathFile.name)
+    assert listViolations == [], (
+        f"JavaScript modules missing IIFE declaration: {listViolations}"
+    )
+
+
+def _fbIsExcludedScanPath(pathFile):
+    """Return True when pathFile lives in an excluded build/vendor directory."""
+    sPosix = pathFile.as_posix().lower()
+    return any(
+        sFragment in sPosix
+        for sFragment in SET_EXCLUDED_SCAN_DIRECTORY_FRAGMENTS
+    )
+
+
+def _flistScanForTerm(pathRoot, sTerm):
+    """Return (pathFile, iLineNo, sLine, sMatchedToken) matches for sTerm."""
+    regexTerm = re.compile(r"\b" + re.escape(sTerm) + r"\b", re.IGNORECASE)
+    listHits = []
+    for pathFile in pathRoot.rglob("*.py"):
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        try:
+            sSource = fsReadSource(pathFile)
+        except (OSError, UnicodeDecodeError):
+            continue
+        for iLineNo, sLine in enumerate(sSource.splitlines(), start=1):
+            matchTerm = regexTerm.search(sLine)
+            if matchTerm:
+                listHits.append(
+                    (pathFile, iLineNo, sLine.strip(), matchTerm.group(0))
+                )
+    return listHits
+
+
+def testNoScienceSpecificIdentifiersInSource():
+    """Vaibify source contains no hard-coded science-mission identifiers."""
+    pathRoot = REPO_ROOT / "vaibify"
+    listViolations = []
+    for sTerm in LIST_FORBIDDEN_SCIENCE_TERMS:
+        listViolations.extend(
+            (sTerm, p, iLine, sText, sToken)
+            for p, iLine, sText, sToken in _flistScanForTerm(pathRoot, sTerm)
+        )
+    assert listViolations == [], (
+        "Science-specific identifiers found in vaibify source:\n"
+        + "\n".join(
+            f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
+            for sTerm, p, iLine, sText, sToken in listViolations
+        )
+    )

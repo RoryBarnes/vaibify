@@ -8,30 +8,13 @@ proposed changes are not duplicating work and will be of general interest.
 ## Style Guide
 
 Vaibify follows the style conventions described in the project's global
-development standards. The key rules are summarized here.
-
-### Naming Conventions
-
-- **Variables** use camelCase with Hungarian prefixes: `bEnabled`,
-  `iCount`, `sName`, `fValue`, `daWeights`, `dictConfig`, `listItems`.
-- **Functions** begin with `f` followed by lowercase letter(s) indicating
-  the return type: `fbIsValid()`, `fsGetName()`, `fnRunStep()` (no return).
-- **Files** use camelCase without Hungarian prefixes: `pipelineRunner.py`,
-  `containerManager.py`.
-
-### Functions
-
-- Functions should be fewer than 20 lines.
-- Each function should have a single, clear purpose.
-- If the same lines appear in multiple places, extract them into a new
-  function.
-
-### Code Clarity
-
-- Variable and function names should be self-explanatory.
-- Use inline comments sparingly -- clear naming replaces most comments.
-- Do not abbreviate any word shorter than 8 characters.
-- Function names must contain an action verb (except `main`).
+development standards: camelCase with Hungarian prefixes for variables,
+`f`-prefixed names for functions (with a return-type letter), files in
+camelCase without Hungarian prefixes, functions under 20 lines, no
+abbreviations for words shorter than 8 characters, and clear naming in
+preference to inline comments. If you are developing with an AI coding
+agent, read [`AGENTS.md`](../AGENTS.md) at the repo root for the rules,
+traps, and discovery commands the agent should follow.
 
 ## Running Tests
 
@@ -53,6 +36,14 @@ Run with coverage:
 pytest --cov=vaibify tests/
 ```
 
+Run the architectural invariant tests directly to verify that route
+registration, leaf-module discipline, and the science-agnostic source
+rule are intact:
+
+```bash
+pytest tests/testArchitecturalInvariants.py -v
+```
+
 ## Portability and CI
 
 All code must work on both macOS and Linux, and with Python versions
@@ -61,6 +52,11 @@ across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and
 Python 3.9 through 3.14. Tests that require a running Docker daemon
 are excluded from CI and run locally. Documentation is rebuilt and
 deployed automatically on every merge to main.
+
+A separate CI job (`agent-docs-path-check`) verifies that every path
+reference in `AGENTS.md` and `SKILL.md` files resolves to an existing
+file. This catches stale references after refactors rename or delete
+files.
 
 ## Pull Request Workflow
 
@@ -79,25 +75,29 @@ vaibify/
   config/             Configuration dataclasses and parsers
   docker/             Container lifecycle management
   gui/                FastAPI web application and pipeline runner
-    routes/           12 route modules (stepRoutes, fileRoutes, etc.)
-    static/           24 JavaScript IIFE modules + CSS + HTML
-    pipelineServer.py App factory, shared utilities, WebSocket dispatch
-    pipelineRunner.py Pipeline step execution orchestrator
-    pipelineUtils.py  Shared leaf utilities (fsShellQuote, emitters)
-    workflowManager.py Workflow CRUD, variable resolution, dependency graph
-    fileStatusManager.py File polling, mtime tracking, step invalidation
-    testGenerator.py  Test generation orchestrator
-    dataLoaders.py    Data format dispatch table (50 extensions)
-    syncDispatcher.py Sync operations (GitHub, Overleaf, Zenodo)
-    ...               See CLAUDE.md at repo root for the full module map
+    routes/           Route modules (one per endpoint group)
+    static/           JavaScript IIFE modules + CSS + HTML
+    AGENTS.md         Backend subtree rules for coding agents
+    static/AGENTS.md  Frontend subtree rules for coding agents
   install/            Setup wizard and shell installer
   reproducibility/    Zenodo, Overleaf, and LaTeX integration
-templates/            Project templates (sandbox, workflow)
-tests/                Pytest test suite (2,200+ tests)
-docs/                 Sphinx documentation (this site)
-CLAUDE.md             Architecture guide with module map and data flows
+templates/            Project templates (sandbox, workflow, toolkit)
+tests/                Pytest test suite, including
+                      testArchitecturalInvariants.py
+tools/                On-demand helper scripts (listModules.py,
+                      checkAgentDocsPaths.py)
+docs/                 Sphinx documentation (this site) including
+                      architecture.md and vibeCoding.md
+.claude/skills/       Conditional recipes for recurring extension tasks
+AGENTS.md             Repo-wide rules, traps, and discovery commands
+                      for AI coding agents (symlinked from CLAUDE.md)
 ```
 
-For a detailed architecture overview including module dependency graphs,
-state management patterns, and data flow diagrams, see `CLAUDE.md` at
-the repository root.
+For the full architectural narrative including module responsibilities,
+dependency graph, state machine, and known technical debt, see
+[architecture.md](architecture.md). For the methodology behind the
+agent documentation system, see [vibeCoding.md](vibeCoding.md).
+
+Run `python tools/listModules.py <subtree>` to print the current
+module layout with `__all__` exports and docstring summaries, rather
+than relying on a static module map that can drift.
