@@ -19,6 +19,15 @@ ENV PIP_ROOT_USER_ACTION=ignore
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Disable the _apt sandbox user for apt-get. In containerised environments
+# the unprivileged _apt user's home is /nonexistent, which makes gpgv fail
+# signature verification with an empty error summary — apt reports
+# "At least one invalid signature was encountered" even though the signature
+# is valid and gpgv run directly as root succeeds. Running apt as root is
+# already the norm during image build; the sandbox provides no additional
+# isolation here.
+RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
+
 # Generic build tools required by the base image
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
