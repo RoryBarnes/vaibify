@@ -1,0 +1,24 @@
+name: agent-docs-path-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  path-check:
+    name: "Check AGENTS.md path references"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify referenced paths exist
+        run: python tools/checkAgentDocsPaths.py

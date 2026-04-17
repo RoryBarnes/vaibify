@@ -919,7 +919,9 @@ from .fileStatusManager import (  # noqa: F401
     _fnInvalidateStepFiles,
     _fnUpdateModTimeBaseline,
     fdictCollectOutputPathsByStep,
+    fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,
+    fsMarkerNameFromStepDirectory,
 )
 
 from .testStatusManager import (  # noqa: F401

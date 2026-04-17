@@ -27,6 +27,8 @@ pipeline can benefit from containerized reproducibility.
    templates
    security
    reproducibility
+   architecture
+   vibeCoding
    developers
    GitHub <https://github.com/RoryBarnes/Vaibify>
    PyPI <https://pypi.org/project/vaibify/>
