@@ -3,6 +3,7 @@
 import json
 import posixpath
 import re
+import subprocess
 import uuid
 
 from . import workflowManager
@@ -18,6 +19,7 @@ __all__ = [
     "flistCollectOutputFiles",
     "flistExtractAllScriptPaths",
     "flistGetDirtyFiles",
+    "fnDeleteCredentialFromContainer",
     "fnStoreCredentialInContainer",
     "fnValidateOverleafProjectId",
     "fnValidateServiceName",
@@ -112,23 +114,46 @@ def ftResultPushToOverleaf(
     )
 
 
+_S_OVERLEAF_SCRIPT = "/usr/share/vaibify/overleafSync.py"
+
+
+def _fsOverleafCliBase(sSubcommand, sProjectId, sTargetDirectory=None):
+    """Build the python3 invocation prefix for an overleafSync CLI call."""
+    listParts = [
+        "python3", _S_OVERLEAF_SCRIPT, sSubcommand,
+        "--project", fsShellQuote(sProjectId),
+    ]
+    if sTargetDirectory is not None:
+        listParts += ["--target", fsShellQuote(sTargetDirectory)]
+    return " ".join(listParts)
+
+
+def _fsPipeStdinCommand(sStdinData, sCommand):
+    """Compose a ``printf ... | command`` string with safe quoting."""
+    return f"printf '%s' {fsShellQuote(sStdinData)} | {sCommand}"
+
+
+def _fsFetchOverleafToken():
+    """Fetch the Overleaf token from the host keyring for per-push use."""
+    from vaibify.config.secretManager import fsRetrieveSecret
+    return fsRetrieveSecret("overleaf_token", "keyring")
+
+
+def _fsPrependToken(sToken, sPayload):
+    """Prepend the token as the first stdin line before a payload."""
+    return sToken + "\n" + sPayload
+
+
 def _ftResultPlainPush(
     connectionDocker, sContainerId,
     listFilePaths, sProjectId, sTargetDirectory,
 ):
     """Push figures without TeX annotation."""
-    sImport = (
-        "from vaibify.reproducibility.overleafSync "
-        "import fnPushFiguresToOverleaf"
-    )
-    sCall = (
-        f"fnPushFiguresToOverleaf("
-        f"{repr(listFilePaths)}, "
-        f"{repr(sProjectId)}, "
-        f"{repr(sTargetDirectory)})"
-    )
+    sStdin = _fsPrependToken(
+        _fsFetchOverleafToken(), "\n".join(listFilePaths))
+    sCli = _fsOverleafCliBase("push", sProjectId, sTargetDirectory)
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
 
 
@@ -138,25 +163,20 @@ def _ftResultAnnotatedPush(
     sGithubBaseUrl, sDoi, sTexFilename,
 ):
     """Push figures and annotate the TeX with source links."""
-    import json
-    sWorkflowJson = json.dumps(dictWorkflow)
-    sImport = (
-        "import json; "
-        "from vaibify.reproducibility.overleafSync "
-        "import fnPushAnnotatedToOverleaf"
-    )
-    sCall = (
-        f"fnPushAnnotatedToOverleaf("
-        f"{repr(listFilePaths)}, "
-        f"{repr(sProjectId)}, "
-        f"{repr(sTargetDirectory)}, "
-        f"json.loads({repr(sWorkflowJson)}), "
-        f"{repr(sGithubBaseUrl)}, "
-        f"{repr(sDoi)}, "
-        f"{repr(sTexFilename)})"
+    sPayload = json.dumps({
+        "listFigurePaths": listFilePaths,
+        "dictWorkflow": dictWorkflow,
+    })
+    sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
+    sCli = (
+        _fsOverleafCliBase(
+            "push-annotated", sProjectId, sTargetDirectory)
+        + f" --github-base-url {fsShellQuote(sGithubBaseUrl)}"
+        + f" --doi {fsShellQuote(sDoi)}"
+        + f" --tex-filename {fsShellQuote(sTexFilename)}"
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
 
 
@@ -166,18 +186,11 @@ def ftResultPullFromOverleaf(
 ):
     """Pull TeX files from Overleaf inside the container."""
     fnValidateOverleafProjectId(sProjectId)
-    sImport = (
-        "from vaibify.reproducibility.overleafSync "
-        "import fnPullTexFromOverleaf"
-    )
-    sCall = (
-        f"fnPullTexFromOverleaf("
-        f"{repr(sProjectId)}, "
-        f"{repr(listPullPaths)}, "
-        f"{repr(sTargetDirectory)})"
-    )
+    sStdin = _fsPrependToken(
+        _fsFetchOverleafToken(), "\n".join(listPullPaths))
+    sCli = _fsOverleafCliBase("pull", sProjectId, sTargetDirectory)
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
 
 
@@ -432,14 +445,20 @@ def fdictCheckConnectivity(
     if sService == "github":
         return _fdictCheckGithub(connectionDocker, sContainerId)
     if sService == "overleaf":
-        return _fdictCheckKeyring(
-            connectionDocker, sContainerId, "overleaf_token"
-        )
+        return _fdictCheckHostKeyring("overleaf_token")
     if sService == "zenodo":
         return _fdictCheckKeyring(
             connectionDocker, sContainerId, "zenodo_token"
         )
     return {"bConnected": False, "sMessage": "Unknown service"}
+
+
+def _fdictCheckHostKeyring(sTokenName):
+    """Check whether a credential exists in the host OS keyring."""
+    from vaibify.config.secretManager import fbSecretExists
+    if fbSecretExists(sTokenName, "keyring"):
+        return {"bConnected": True, "sMessage": "Connected"}
+    return {"bConnected": False, "sMessage": "Token not found"}
 
 
 def _fdictCheckGithub(connectionDocker, sContainerId):
@@ -464,18 +483,42 @@ def _fdictCheckGithub(connectionDocker, sContainerId):
     }
 
 
-def _fdictCheckKeyring(
+S_KEYRING_BACKEND_FAIL_MESSAGE = (
+    "Container keyring backend is unavailable. Rebuild the container "
+    "image to install keyrings.alt."
+)
+
+
+def _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+    """Return True if the container keyring backend is usable."""
+    sCommand = fsPythonCommand(
+        "import keyring",
+        "print(type(keyring.get_keyring()).__module__, "
+        "type(keyring.get_keyring()).__name__)",
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode != 0:
+        return False
+    sCombined = (sOutput or "").strip().lower()
+    if "keyring.backends.fail" in sCombined:
+        return False
+    if "fail.keyring" in sCombined.replace(" ", "."):
+        return False
+    return True
+
+
+def _fdictProbeKeyringToken(
     connectionDocker, sContainerId, sTokenName,
 ):
-    """Check if a keyring token exists inside the container."""
-    if sTokenName not in SET_VALID_TOKEN_NAMES:
-        raise ValueError(f"Invalid token name: {sTokenName}")
+    """Query the container keyring for a specific token."""
     sCommand = fsPythonCommand(
         "import keyring",
         f"t=keyring.get_password('vaibify',{repr(sTokenName)}); "
         f"print('ok' if t else 'missing')",
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+    _, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
     bConnected = "ok" in sOutput
@@ -483,6 +526,22 @@ def _fdictCheckKeyring(
         "bConnected": bConnected,
         "sMessage": "Connected" if bConnected else "Token not found",
     }
+
+
+def _fdictCheckKeyring(
+    connectionDocker, sContainerId, sTokenName,
+):
+    """Check if a keyring token exists inside the container."""
+    if sTokenName not in SET_VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sTokenName}")
+    if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+        return {
+            "bConnected": False,
+            "sMessage": S_KEYRING_BACKEND_FAIL_MESSAGE,
+        }
+    return _fdictProbeKeyringToken(
+        connectionDocker, sContainerId, sTokenName,
+    )
 
 
 def fnStoreCredentialInContainer(
@@ -501,29 +560,128 @@ def fnStoreCredentialInContainer(
         sContainerId, sTempPath, sValue.encode("utf-8")
     )
     try:
-        connectionDocker.ftResultExecuteCommand(
+        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCommand
         )
+        if iExitCode != 0:
+            raise RuntimeError(
+                f"Keyring storage failed: {(sOutput or '').strip()}"
+            )
     finally:
         connectionDocker.ftResultExecuteCommand(
             sContainerId, f"rm -f {fsShellQuote(sTempPath)}"
         )
 
 
+def fnDeleteCredentialFromContainer(
+    connectionDocker, sContainerId, sName,
+):
+    """Delete a credential from the container's keyring.
+
+    Tolerates the case where the credential does not exist
+    (keyring raises PasswordDeleteError); re-raises any other
+    failure so the caller can surface it.
+    """
+    if sName not in SET_VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sName}")
+    sCommand = fsPythonCommand(
+        "import keyring; "
+        "from keyring.errors import PasswordDeleteError",
+        f"t=keyring.delete_password('vaibify', {repr(sName)})",
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode == 0:
+        return
+    if "PasswordDeleteError" in (sOutput or ""):
+        return
+    raise RuntimeError(
+        f"Keyring deletion failed: {(sOutput or '').strip()}"
+    )
+
+
 def fbValidateOverleafCredentials(
     connectionDocker, sContainerId, sProjectId,
 ):
-    """Test Overleaf credentials with git ls-remote."""
+    """Test Overleaf credentials on the host using the stored token.
+
+    Runs ``git ls-remote`` against the Overleaf project from the host
+    using a transient GIT_ASKPASS helper that reads the token out of
+    the host OS keyring. ``connectionDocker`` and ``sContainerId`` are
+    retained for signature compatibility but are unused: validation is
+    entirely host-side now that tokens are stored on the host.
+
+    Returns ``(bSuccess, sStderr)``.
+    """
     fnValidateOverleafProjectId(sProjectId)
-    sCommand = (
-        f"git ls-remote "
-        f"https://git.overleaf.com/{sProjectId} "
-        f"HEAD >/dev/null 2>&1"
+    return _fbValidateOverleafOnHost(sProjectId)
+
+
+_S_OVERLEAF_HOST = "git.overleaf.com"
+
+
+def _fbValidateOverleafOnHost(sProjectId):
+    """Run git ls-remote from the host with a transient askpass helper."""
+    from vaibify.config.secretManager import fbSecretExists
+    if not fbSecretExists("overleaf_token", "keyring"):
+        return (False, "No Overleaf token stored on host")
+    sAskpass = _fsWriteAskpassScript()
+    try:
+        return _ftRunHostLsRemote(sProjectId, sAskpass)
+    finally:
+        _fnRemovePath(sAskpass)
+
+
+def _ftRunHostLsRemote(sProjectId, sAskpass):
+    """Execute git ls-remote under the prepared askpass and env."""
+    import os
+    sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
+    dictEnv = os.environ.copy()
+    dictEnv["GIT_ASKPASS"] = sAskpass
+    dictEnv["GIT_TERMINAL_PROMPT"] = "0"
+    resultProcess = subprocess.run(
+        ["git", "ls-remote", sUrl, "HEAD"],
+        capture_output=True, text=True, env=dictEnv,
     )
-    iExit, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
+    sDetail = (resultProcess.stderr or "").strip()
+    return (resultProcess.returncode == 0, sDetail)
+
+
+def _fsWriteAskpassScript():
+    """Write a mode-700 askpass script that prints the stored token."""
+    import os
+    import stat
+    import sys as sysModule
+    import tempfile
+    sScript = (
+        f"#!{sysModule.executable}\n"
+        "import sys\n"
+        "from vaibify.config.secretManager import fsRetrieveSecret\n"
+        "prompt = sys.argv[1] if len(sys.argv) > 1 else ''\n"
+        "if 'Username' in prompt:\n"
+        "    print('git')\n"
+        "else:\n"
+        "    print(fsRetrieveSecret('overleaf_token', 'keyring'))\n"
     )
-    return iExit == 0
+    iFileDescriptor, sPath = tempfile.mkstemp(
+        prefix="vc_askpass_", suffix=".py",
+    )
+    try:
+        os.write(iFileDescriptor, sScript.encode("utf-8"))
+    finally:
+        os.close(iFileDescriptor)
+    os.chmod(sPath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+    return sPath
+
+
+def _fnRemovePath(sPath):
+    """Remove a file, ignoring absent paths."""
+    import os
+    try:
+        os.remove(sPath)
+    except FileNotFoundError:
+        pass
 
 
 def fbValidateZenodoToken(connectionDocker, sContainerId):
@@ -749,23 +907,104 @@ def ftResultArchiveProject(
     )
 
 
-def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
-    """Collect all output files with their sync and category info."""
+_FROZENSET_OVERLEAF_EXTENSIONS = frozenset({
+    ".tex", ".pdf", ".png", ".jpg", ".jpeg",
+    ".eps", ".svg", ".bib",
+})
+
+
+def flistCollectOutputFiles(
+    dictWorkflow, dictSyncStatus, dictVars=None, sService=None,
+    sWorkflowRoot=None,
+):
+    """Collect output files with resolved paths and service filtering.
+
+    When ``sWorkflowRoot`` is provided, each path is made absolute by
+    joining the workflow root with the step directory and the
+    variable-resolved file path. The container CLI expects absolute
+    paths; relative paths resolve against the container's WORKDIR
+    which is rarely the workflow root.
+    """
+    listFiles = _flistCollectRawOutputFiles(
+        dictWorkflow, dictSyncStatus, dictVars or {},
+        sWorkflowRoot or "",
+    )
+    if sService == "overleaf":
+        return _flistFilterByExtension(
+            listFiles, _FROZENSET_OVERLEAF_EXTENSIONS)
+    return listFiles
+
+
+def _flistCollectRawOutputFiles(
+    dictWorkflow, dictSyncStatus, dictVars, sWorkflowRoot,
+):
+    """Collect raw (resolved) output-file entries across every step."""
     listFiles = []
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sKey in ("saDataFiles", "saPlotFiles"):
-            for sFile in dictStep.get(sKey, []):
-                dictSync = dictSyncStatus.get(sFile, {})
-                sCategory = "archive"
-                if sKey == "saPlotFiles":
-                    sCategory = workflowManager.fsGetPlotCategory(
-                        dictStep, sFile)
-                listFiles.append({
-                    "sPath": sFile,
-                    "sCategory": sCategory,
-                    "dictSync": dictSync,
-                })
+        _fnAppendStepOutputFiles(
+            dictStep, dictSyncStatus, dictVars,
+            sWorkflowRoot, listFiles,
+        )
     return listFiles
+
+
+def _fnAppendStepOutputFiles(
+    dictStep, dictSyncStatus, dictVars, sWorkflowRoot, listFiles,
+):
+    """Append one step's data and plot files with resolved paths."""
+    for sKey in ("saDataFiles", "saPlotFiles"):
+        for sFile in dictStep.get(sKey, []):
+            listFiles.append(_fdictBuildOutputEntry(
+                dictStep, sKey, sFile, dictSyncStatus,
+                dictVars, sWorkflowRoot,
+            ))
+
+
+def _fsResolveAbsoluteStepPath(
+    sStepDir, sResolvedFile, sWorkflowRoot,
+):
+    """Join workflow root + step dir + file into an absolute path."""
+    import posixpath
+    if sResolvedFile.startswith("/"):
+        return sResolvedFile
+    if not sStepDir.startswith("/") and sWorkflowRoot:
+        sStepDir = posixpath.join(sWorkflowRoot, sStepDir)
+    if sStepDir:
+        return posixpath.join(sStepDir, sResolvedFile)
+    return sResolvedFile
+
+
+def _fdictBuildOutputEntry(
+    dictStep, sKey, sFile, dictSyncStatus, dictVars, sWorkflowRoot,
+):
+    """Build one resolved output-file entry for the sync modal."""
+    sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
+    sStepDir = dictStep.get("sDirectory", "")
+    sAbsolute = _fsResolveAbsoluteStepPath(
+        sStepDir, sResolved, sWorkflowRoot,
+    )
+    sCategory = "archive"
+    if sKey == "saPlotFiles":
+        sCategory = workflowManager.fsGetPlotCategory(
+            dictStep, sFile)
+    return {
+        "sPath": sAbsolute,
+        "sCategory": sCategory,
+        "dictSync": dictSyncStatus.get(sAbsolute, {}),
+    }
+
+
+def _flistFilterByExtension(listFiles, frozensetExtensions):
+    """Return only entries whose resolved path ends with an allowed ext."""
+    listFiltered = []
+    for dictFile in listFiles:
+        sPath = dictFile.get("sPath", "")
+        iDot = sPath.rfind(".")
+        if iDot < 0:
+            continue
+        if sPath[iDot:].lower() in frozensetExtensions:
+            listFiltered.append(dictFile)
+    return listFiltered
 
 
 # Re-export file integrity functions for backward compatibility.

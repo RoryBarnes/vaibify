@@ -6,7 +6,7 @@ var PipeleyenModals = (function () {
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
     var fsSanitizeErrorForUser = VaibifyUtilities.fsSanitizeErrorForUser;
 
-    function fnShowConfirmModal(sTitle, sMessage, fnOnConfirm) {
+    function fnShowConfirmModal(sTitle, sMessage, fnOnConfirm, dictDetails) {
         var elExisting = document.getElementById("modalConfirm");
         if (elExisting) elExisting.remove();
         var elModal = document.createElement("div");
@@ -18,6 +18,7 @@ var PipeleyenModals = (function () {
             '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
             '<p style="white-space:pre-wrap;margin-bottom:16px">' +
             fnEscapeHtml(sMessage) + '</p>' +
+            _fsBuildConfirmDetails(dictDetails) +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnConfirmCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
@@ -32,6 +33,34 @@ var PipeleyenModals = (function () {
                 elModal.remove();
                 fnOnConfirm();
             }
+        );
+    }
+
+    function _fsBuildConfirmDetails(dictDetails) {
+        if (!dictDetails) return "";
+        var sBody = "";
+        if (dictDetails.sDetails) {
+            sBody += '<p class="confirm-details-text">' +
+                fnEscapeHtml(dictDetails.sDetails) + '</p>';
+        }
+        if (dictDetails.sCommand) {
+            sBody += '<p class="confirm-details-label">' +
+                'Equivalent command:</p>' +
+                '<pre class="confirm-details-command">' +
+                fnEscapeHtml(dictDetails.sCommand) + '</pre>';
+        } else if (dictDetails.bNoCommand) {
+            sBody += '<p class="confirm-details-label">' +
+                'Equivalent command:</p>' +
+                '<p class="confirm-details-text">' +
+                'No direct command &mdash; this action only ' +
+                'affects the dashboard.</p>';
+        }
+        if (!sBody) return "";
+        return (
+            '<details class="confirm-details">' +
+            '<summary>Learn more</summary>' +
+            sBody +
+            '</details>'
         );
     }
 

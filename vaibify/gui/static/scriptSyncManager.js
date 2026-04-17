@@ -32,7 +32,8 @@ var VaibifySyncManager = (function () {
     async function fnPopulatePushModal(sService) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         var listFiles = await VaibifyApi.fdictGet(
-            "/api/sync/" + sContainerId + "/files"
+            "/api/sync/" + sContainerId + "/files" +
+            "?sService=" + encodeURIComponent(sService)
         );
         var dictNames = {
             overleaf: "Overleaf", zenodo: "Zenodo",
@@ -138,7 +139,7 @@ var VaibifySyncManager = (function () {
         fnBindConnectionSetupEvents();
     }
 
-    function fnShowConnectionSetup(sService) {
+    async function fnShowConnectionSetup(sService) {
         var elModal = document.getElementById("modalConnectionSetup");
         elModal.dataset.service = sService;
         var elProjectId = document.getElementById(
@@ -147,7 +148,7 @@ var VaibifySyncManager = (function () {
         elProjectId.style.display = "none";
         elToken.style.display = "none";
         if (sService === "overleaf") {
-            _fnSetupOverleafFields(elProjectId, elToken, elModal);
+            await _fnSetupOverleafFields(elProjectId, elToken, elModal);
         } else if (sService === "zenodo") {
             _fnSetupZenodoFields(elToken, elModal);
         } else {
@@ -160,22 +161,105 @@ var VaibifySyncManager = (function () {
         elModal.style.display = "flex";
     }
 
-    function _fnSetupOverleafFields(elProjectId, elToken, elModal) {
+    async function _fnSetupOverleafFields(elProjectId, elToken, elModal) {
         elProjectId.style.display = "";
         elToken.style.display = "";
-        var elLabel = document.getElementById("labelSetupToken");
-        var elHelp = document.getElementById("helpSetupToken");
-        elLabel.textContent = "Overleaf Password ";
-        if (elHelp) {
-            elHelp.setAttribute("title",
-                "Enter your Overleaf account password. " +
-                "Overleaf uses this as the git password " +
-                "for its git bridge. Go to Account > " +
-                "Password to set or reset it.");
-            elLabel.appendChild(elHelp);
-        }
+        _fnApplyOverleafLabels();
         document.getElementById("modalConnectionTitle")
             .textContent = "Connect to Overleaf";
+        _fnRemoveOverleafReuseRow();
+        var bHasStored = await _fbHostHasOverleafCredential();
+        if (bHasStored) {
+            _fnShowOverleafReuseOption(elModal);
+        }
+    }
+
+    function _fnApplyOverleafLabels() {
+        var elLabel = document.getElementById("labelSetupToken");
+        var elHelp = document.getElementById("helpSetupToken");
+        elLabel.textContent = "Overleaf Git Token ";
+        if (elHelp) {
+            elHelp.setAttribute("title",
+                "Overleaf has no direct upload API, so vaibify " +
+                "pushes via its git bridge. This needs a git " +
+                "authentication token (not your login password). " +
+                "On overleaf.com, open Account Settings and find " +
+                "the Git integration section to generate one. " +
+                "Paste the token here.");
+            elLabel.appendChild(elHelp);
+        }
+    }
+
+    async function _fbHostHasOverleafCredential() {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return false;
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/sync/" + sContainerId +
+                "/has-credential/overleaf"
+            );
+            return !!(dictResult && dictResult.bHasCredential);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function _fnRemoveOverleafReuseRow() {
+        var elExisting = document.getElementById(
+            "rowOverleafReuse");
+        if (elExisting) elExisting.remove();
+    }
+
+    function _fnShowOverleafReuseOption(elModal) {
+        var elToken = document.getElementById("groupSetupToken");
+        elToken.style.display = "none";
+        var elRow = document.createElement("div");
+        elRow.id = "rowOverleafReuse";
+        elRow.className = "setup-reuse-row";
+        elRow.innerHTML =
+            '<p>A saved Overleaf token is already on this host. ' +
+            'You can reuse it or replace it.</p>' +
+            '<div class="setup-reuse-buttons">' +
+            '<button type="button" id="btnOverleafReuse">' +
+            'Reuse saved token</button>' +
+            '<button type="button" id="btnOverleafReplace">' +
+            'Enter new token</button></div>';
+        elToken.parentNode.insertBefore(elRow, elToken);
+        document.getElementById("btnOverleafReuse")
+            .addEventListener("click", _fnHandleOverleafReuse);
+        document.getElementById("btnOverleafReplace")
+            .addEventListener("click", function () {
+                elRow.remove();
+                elToken.style.display = "";
+            });
+    }
+
+    async function _fnHandleOverleafReuse() {
+        var elModal = document.getElementById("modalConnectionSetup");
+        var sProjectId = document.getElementById(
+            "inputSetupProjectId").value.trim();
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var dictBody = {
+            sService: "overleaf", sProjectId: sProjectId,
+        };
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/sync/" + sContainerId + "/setup", dictBody
+            );
+            elModal.style.display = "none";
+            if (dictResult.bConnected) {
+                PipeleyenApp.fnShowToast("Connected!", "success");
+                fnOpenPushModal("overleaf");
+            } else {
+                PipeleyenApp.fnShowToast(
+                    dictResult.sMessage || "Connection failed",
+                    "error"
+                );
+            }
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                _fsSanitizeError(error.message), "error");
+        }
     }
 
     function _fnSetupZenodoFields(elToken, elModal) {

@@ -57,14 +57,8 @@ def _fsRetrieveViaGhAuth():
 
 def _fsRetrieveViaKeyring(sName):
     """Retrieve a secret from the OS keyring."""
-    try:
-        import keyring
-    except ImportError:
-        raise ImportError(
-            "The 'keyring' package is not installed. "
-            "Install with: pip install vaibify[keyring]"
-        )
-    sValue = keyring.get_password("vaibify", sName)
+    keyringModule = _fnLoadKeyringModule()
+    sValue = keyringModule.get_password("vaibify", sName)
     if sValue is None:
         raise KeyError(
             f"No keyring entry found for secret '{sName}' "
@@ -81,6 +75,88 @@ def _fsRetrieveViaDockerSecret(sName):
             f"Docker secret not found: '{pathSecret}'"
         )
     return pathSecret.read_text().strip()
+
+
+def fnStoreSecret(sName, sValue, sMethod):
+    """Persist a secret via the named method."""
+    _fnValidateMethod(sMethod)
+    if sMethod != "keyring":
+        raise NotImplementedError(
+            f"Storing secrets via '{sMethod}' is not supported. "
+            "Use the external credential manager instead."
+        )
+    _fnStoreViaKeyring(sName, sValue)
+
+
+def _fnStoreViaKeyring(sName, sValue):
+    """Set a password in the OS keyring under service 'vaibify'."""
+    keyringModule = _fnLoadKeyringModule()
+    keyringModule.set_password("vaibify", sName, sValue)
+
+
+def fnDeleteSecret(sName, sMethod):
+    """Remove a secret via the named method; idempotent for keyring."""
+    _fnValidateMethod(sMethod)
+    if sMethod != "keyring":
+        raise NotImplementedError(
+            f"Deleting secrets via '{sMethod}' is not supported."
+        )
+    _fnDeleteViaKeyring(sName)
+
+
+def _fnDeleteViaKeyring(sName):
+    """Delete a keyring entry, suppressing the absent-entry error."""
+    keyringModule = _fnLoadKeyringModule()
+    from keyring.errors import PasswordDeleteError
+    try:
+        keyringModule.delete_password("vaibify", sName)
+    except PasswordDeleteError:
+        pass
+
+
+def fbSecretExists(sName, sMethod):
+    """Return True if a secret is available via the named method."""
+    _fnValidateMethod(sMethod)
+    dictProbe = {
+        "keyring": _fbKeyringHasSecret,
+        "gh_auth": lambda sN: _fbGhAuthAvailable(),
+        "docker_secret": _fbDockerSecretExists,
+    }
+    return dictProbe[sMethod](sName)
+
+
+def _fbKeyringHasSecret(sName):
+    """Return True if the OS keyring has an entry for sName."""
+    try:
+        keyringModule = _fnLoadKeyringModule()
+        return keyringModule.get_password("vaibify", sName) is not None
+    except Exception:
+        return False
+
+
+def _fbGhAuthAvailable():
+    """Return True if 'gh auth token' currently yields a token."""
+    try:
+        return bool(_fsRetrieveViaGhAuth())
+    except Exception:
+        return False
+
+
+def _fbDockerSecretExists(sName):
+    """Return True if a Docker secret file exists at /run/secrets/<name>."""
+    return Path(f"/run/secrets/{sName}").exists()
+
+
+def _fnLoadKeyringModule():
+    """Import and return the keyring module with a helpful error."""
+    try:
+        import keyring
+    except ImportError:
+        raise ImportError(
+            "The 'keyring' package is not installed. "
+            "Install with: pip install vaibify[keyring]"
+        )
+    return keyring
 
 
 def fsMountSecret(sName, sMethod):

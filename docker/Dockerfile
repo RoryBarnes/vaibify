@@ -98,6 +98,18 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --upgrade setuptools
 
+# Keyring backend for in-container credential storage.
+# keyrings.alt provides a file-based PlaintextKeyring that works in
+# headless containers where the default SecretService backend is
+# unavailable and where EncryptedKeyring's interactive master-password
+# prompt cannot run. The container is ephemeral and the credential
+# file is chmod 600; nothing leaks to the host. PYTHON_KEYRING_BACKEND
+# pins the backend for every user (including root), which is what
+# vaibify's docker exec defaults to; the keyringrc.cfg written later
+# is a belt-and-suspenders backup for interactive shells that read it.
+RUN pip install --no-cache-dir keyring keyrings.alt
+ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
+
 # Conditional conda/mamba install for non-pip package managers
 RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
         curl -fsSL -o /tmp/miniforge.sh \
@@ -137,6 +149,8 @@ RUN mkdir -p /etc/vaibify
 COPY container.conf /etc/vaibify/container.conf
 COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
+COPY overleafSync.py /usr/share/vaibify/overleafSync.py
+COPY latexConnector.py /usr/share/vaibify/latexConnector.py
 COPY workflows/ /usr/share/vaibify/workflows/
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
@@ -145,7 +159,14 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
     && git config --system advice.detachedHead false \
     && git config --system --add safe.directory '*' \
     && mkdir -p ${WORKSPACE_ROOT} \
-    && chown ${CONTAINER_USER}:${CONTAINER_USER} ${WORKSPACE_ROOT}
+    && chown ${CONTAINER_USER}:${CONTAINER_USER} ${WORKSPACE_ROOT} \
+    && mkdir -p /home/${CONTAINER_USER}/.config/python_keyring \
+    && printf '[backend]\ndefault-keyring=keyrings.alt.file.PlaintextKeyring\n' \
+        > /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg \
+    && chown -R ${CONTAINER_USER}:${CONTAINER_USER} \
+        /home/${CONTAINER_USER}/.config \
+    && chmod 700 /home/${CONTAINER_USER}/.config/python_keyring \
+    && chmod 600 /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg
 
 ENV GIT_EDITOR=nano
 ENV WORKSPACE=${WORKSPACE_ROOT}

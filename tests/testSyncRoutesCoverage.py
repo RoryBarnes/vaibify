@@ -164,13 +164,17 @@ def test_overleaf_push_failure_returns_error(clientHttp):
     _fnConnectToContainer(clientHttp)
     _mockDockerInstance._iSyncExitCode = 1
     _mockDockerInstance._sSyncOutput = "authentication failed"
-    responseHttp = clientHttp.post(
-        f"/api/overleaf/{S_CONTAINER_ID}/push",
-        json={
-            "listFilePaths": ["/workspace/Plot/fig.pdf"],
-            "sCommitMessage": "push figs",
-        },
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is False
@@ -182,13 +186,17 @@ def test_overleaf_push_success(clientHttp):
     _fnConnectToContainer(clientHttp)
     _mockDockerInstance._iSyncExitCode = 0
     _mockDockerInstance._sSyncOutput = "pushed"
-    responseHttp = clientHttp.post(
-        f"/api/overleaf/{S_CONTAINER_ID}/push",
-        json={
-            "listFilePaths": ["/workspace/Plot/fig.pdf"],
-            "sCommitMessage": "push figs",
-        },
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
@@ -260,7 +268,7 @@ def test_setup_connection_token_store_failure(clientHttp):
     """When credential storage raises, return bConnected=False."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        "vaibify.config.secretManager.fnStoreSecret",
         side_effect=RuntimeError("keyring unavailable"),
     ):
         responseHttp = clientHttp.post(
@@ -422,3 +430,306 @@ def test_dataset_download_failure_returns_500(clientHttp):
             },
         )
     assert responseHttp.status_code == 500
+
+
+# ── Overleaf setup: store + validate + cleanup on failure ───────
+
+
+def test_setup_overleaf_validation_passes(clientHttp):
+    """Valid Overleaf token: bConnected True, no cleanup call."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ) as mockStore, patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ), patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "valid_git_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    assert dictResult["sMessage"] == "Connected"
+    mockDelete.assert_not_called()
+    mockStore.assert_called_once_with(
+        "overleaf_token", "valid_git_token", "keyring",
+    )
+
+
+def test_setup_overleaf_validation_fails_cleans_up(clientHttp):
+    """Bad Overleaf token: bConnected False, remediation, cleanup."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(False, ""),
+    ), patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "bad_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "git authentication token" in dictResult["sMessage"]
+    mockDelete.assert_called_once_with("overleaf_token", "keyring")
+
+
+def test_setup_overleaf_validation_fails_embeds_stderr(clientHttp):
+    """Remediation message embeds the git stderr fragment when available."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(False, "fatal: authentication failed for xyz"),
+    ), patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "bad_token",
+            },
+        )
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "Overleaf rejected the token:" in dictResult["sMessage"]
+    assert "authentication failed" in dictResult["sMessage"]
+    assert "git authentication token" in dictResult["sMessage"]
+    assert len(dictResult["sMessage"]) < 600
+
+
+def test_setup_overleaf_store_failure_no_validation(clientHttp):
+    """Store raises: bConnected False, no validation attempt."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        side_effect=RuntimeError("Keyring storage failed: NoKeyringError"),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ) as mockValidate, patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "any_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "Failed to store" in dictResult["sMessage"]
+    assert "NoKeyringError" in dictResult["sMessage"]
+    mockValidate.assert_not_called()
+    mockDelete.assert_not_called()
+
+
+# ── Overleaf host-keyring migration tests ───────────────────────
+
+
+def test_setup_overleaf_writes_host_keyring_not_container(clientHttp):
+    """Overleaf setup with token should call host keyring, not container."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ) as mockHostStore, patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ) as mockContainerStore, patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "t0kEn",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    mockHostStore.assert_called_once_with(
+        "overleaf_token", "t0kEn", "keyring",
+    )
+    mockContainerStore.assert_not_called()
+
+
+def test_setup_overleaf_no_token_uses_stored_credential(clientHttp):
+    """No token + stored credential -> skip store, run validation."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ) as mockHostStore, patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ) as mockValidate:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    mockHostStore.assert_not_called()
+    mockValidate.assert_called_once()
+
+
+def test_check_overleaf_requires_saved_project_id(clientHttp):
+    """check/overleaf returns bConnected=False when project ID missing."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/check/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "project id" in dictResult["sMessage"].lower()
+
+
+def test_check_overleaf_passes_when_project_id_saved(clientHttp):
+    """check/overleaf returns bConnected=True when token + project id both set."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/check/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {
+        "bConnected": True, "sMessage": "Connected",
+    }
+
+
+def test_has_credential_endpoint_true_when_stored(clientHttp):
+    """has-credential reports True when host keyring has the token."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": True}
+
+
+def test_has_credential_endpoint_false_when_absent(clientHttp):
+    """has-credential reports False when host keyring is empty."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": False}
+
+
+def test_has_credential_endpoint_rejects_unknown_service(clientHttp):
+    """Invalid service name triggers a ValueError in the route."""
+    _fnConnectToContainer(clientHttp)
+    with pytest.raises(ValueError):
+        clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/bogus"
+        )
+
+
+def test_setup_zenodo_validation_passes(clientHttp):
+    """Regression: Zenodo setup via shared helper still works."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "good_zenodo_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    mockDelete.assert_not_called()

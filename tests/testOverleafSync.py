@@ -49,15 +49,19 @@ def test_fnPushFiguresToOverleaf_calls_git_with_credential_helper(
             return_value=True,
         ):
             fnPushFiguresToOverleaf(
-                listTempFigures, "abc123proj", "figures"
+                listTempFigures, "abc123proj", "figures",
+                "test-token-xyz",
             )
 
-    bFoundGitConfig = False
+    bFoundCredentialHelperConfig = False
     for listCommand in listCapturedCommands:
         sCommandStr = " ".join(str(s) for s in listCommand)
-        if "git" in sCommandStr and "config" in sCommandStr:
-            bFoundGitConfig = True
-            assert "credential" in sCommandStr
+        if (
+            "git" in sCommandStr
+            and "config" in sCommandStr
+            and "credential" in sCommandStr
+        ):
+            bFoundCredentialHelperConfig = True
             assert _OVERLEAF_GIT_HOST in sCommandStr
 
         if "git" in sCommandStr and "clone" in sCommandStr:
@@ -70,7 +74,7 @@ def test_fnPushFiguresToOverleaf_calls_git_with_credential_helper(
                     sLower = str(sUrlPart).lower()
                     assert "token" not in sLower or "credential" in sLower
 
-    assert bFoundGitConfig
+    assert bFoundCredentialHelperConfig
 
 
 def test_fnPullTexFromOverleaf_copies_specified_files(tmp_path):
@@ -101,6 +105,7 @@ def test_fnPullTexFromOverleaf_copies_specified_files(tmp_path):
             sOverleafId,
             ["main.tex", "refs.bib"],
             sTargetDir,
+            "test-token-xyz",
         )
 
     assert (Path(sTargetDir) / "main.tex").exists()
@@ -115,10 +120,34 @@ def test_commit_marker_detection():
     assert sCommitMessage.startswith("[vaibify]")
 
 
-def test_credential_helper_does_not_embed_token():
-    sHelper = _fsBuildCredentialHelper()
+def test_credential_helper_does_not_embed_token(tmp_path):
+    sTokenFile = str(tmp_path / "tok")
+    sHelper = _fsBuildCredentialHelper(sTokenFile)
 
-    assert "secretManager" in sHelper or "fsRetrieveSecret" in sHelper
+    assert sTokenFile in sHelper
+    assert "password=" in sHelper
     sLower = sHelper.lower()
     assert "ghp_" not in sLower
     assert "access_token=" not in sLower
+
+
+def test_credential_helper_emits_username_and_password(tmp_path):
+    """The helper fragment prints both ``username=git`` and the password.
+
+    Git's credential-helper protocol requires both lines; emitting only
+    the password sends git to its stdin prompt fallback and fails
+    non-interactively with ``could not read Username``.
+    """
+    import subprocess
+    sTokenFile = str(tmp_path / "overleaf_token")
+    (tmp_path / "overleaf_token").write_text("abc-123-xyz")
+    sHelper = _fsBuildCredentialHelper(sTokenFile)
+    sBody = sHelper.lstrip("!")
+    resultProcess = subprocess.run(
+        ["bash", "-c", sBody],
+        capture_output=True, text=True,
+    )
+    assert resultProcess.returncode == 0
+    listLines = resultProcess.stdout.strip().splitlines()
+    assert "username=git" in listLines
+    assert "password=abc-123-xyz" in listLines

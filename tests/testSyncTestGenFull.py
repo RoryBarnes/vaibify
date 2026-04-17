@@ -90,21 +90,29 @@ def test_fnValidateOverleafProjectId_invalid():
 
 def test_ftResultPushToOverleaf_plain():
     mockDocker = _fMockDocker(0, "pushed")
-    iExit, sOut = ftResultPushToOverleaf(
-        mockDocker, "cid", ["fig.pdf"],
-        "projid123", "figures",
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        iExit, sOut = ftResultPushToOverleaf(
+            mockDocker, "cid", ["fig.pdf"],
+            "projid123", "figures",
+        )
     assert iExit == 0
 
 
 def test_ftResultPushToOverleaf_annotated():
     mockDocker = _fMockDocker(0, "annotated")
-    iExit, sOut = ftResultPushToOverleaf(
-        mockDocker, "cid", ["fig.pdf"],
-        "projid123", "figures",
-        dictWorkflow={"sWorkflowName": "T"},
-        sGithubBaseUrl="https://github.com/t",
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        iExit, sOut = ftResultPushToOverleaf(
+            mockDocker, "cid", ["fig.pdf"],
+            "projid123", "figures",
+            dictWorkflow={"sWorkflowName": "T"},
+            sGithubBaseUrl="https://github.com/t",
+        )
     assert iExit == 0
 
 
@@ -115,10 +123,14 @@ def test_ftResultPushToOverleaf_annotated():
 
 def test_ftResultPullFromOverleaf():
     mockDocker = _fMockDocker(0, "pulled")
-    iExit, sOut = ftResultPullFromOverleaf(
-        mockDocker, "cid", "projid123",
-        ["main.tex"], "/workspace/tex",
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        iExit, sOut = ftResultPullFromOverleaf(
+            mockDocker, "cid", "projid123",
+            ["main.tex"], "/workspace/tex",
+        )
     assert iExit == 0
 
 
@@ -278,19 +290,39 @@ def test_fnStoreCredentialInContainer_invalid():
 
 
 def test_fbValidateOverleafCredentials_success():
-    mockDocker = _fMockDocker(0, "")
-    bResult = fbValidateOverleafCredentials(
-        mockDocker, "cid", "projid123"
-    )
+    from unittest.mock import patch, MagicMock
+    mockRun = MagicMock(returncode=0, stderr="")
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.gui.syncDispatcher.subprocess.run",
+        return_value=mockRun,
+    ):
+        bResult, sStderr = fbValidateOverleafCredentials(
+            None, "cid", "projid123"
+        )
     assert bResult is True
+    assert sStderr == ""
 
 
 def test_fbValidateOverleafCredentials_failure():
-    mockDocker = _fMockDocker(1, "")
-    bResult = fbValidateOverleafCredentials(
-        mockDocker, "cid", "projid123"
+    from unittest.mock import patch, MagicMock
+    mockRun = MagicMock(
+        returncode=1, stderr="fatal: authentication failed",
     )
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.gui.syncDispatcher.subprocess.run",
+        return_value=mockRun,
+    ):
+        bResult, sStderr = fbValidateOverleafCredentials(
+            None, "cid", "projid123"
+        )
     assert bResult is False
+    assert "authentication" in sStderr
 
 
 # -----------------------------------------------------------------------

@@ -9,15 +9,18 @@ from .x11Forwarding import flistConfigureX11Args
 
 
 def fnStartContainer(config, sDockerDir, saCommand=None):
-    """Start a container with run args derived from config."""
+    """Start a container with run args derived from config.
+
+    Host secret files are intentionally not cleaned up here. See
+    ``fsStartContainerDetached`` for the rationale (Colima's
+    virtiofs bridge re-resolves bind-mount sources during later
+    operations).
+    """
     listCleanupFiles = []
-    try:
-        saRunArgs = flistBuildRunArgs(config)
-        fnMountSecrets(config, saRunArgs, listCleanupFiles)
-        saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
-        _fnRunDockerCommand(saFullCommand)
-    finally:
-        _fnCleanupTempFiles(listCleanupFiles)
+    saRunArgs = flistBuildRunArgs(config)
+    fnMountSecrets(config, saRunArgs, listCleanupFiles)
+    saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
+    _fnRunDockerCommand(saFullCommand)
 
 
 def fsStartContainerDetached(config, sDockerDir):
@@ -34,6 +37,17 @@ def fsStartContainerDetached(config, sDockerDir):
     -------
     str
         The Docker container ID.
+
+    Note
+    ----
+    The ephemeral host files holding each mounted secret are
+    intentionally NOT cleaned up here. On Colima/macOS the daemon
+    lazily re-resolves bind-mount sources during later operations
+    like ``put_archive``; deleting the host file mid-session makes
+    those operations fail with "not a directory" mount errors. Let
+    the files outlive the container (they are mode 600 in
+    ``~/.vaibify/tmp/`` and get overwritten on the next container
+    start).
     """
     listCleanupFiles = []
     saRunArgs = flistBuildRunArgs(config, bDetached=True)
@@ -41,25 +55,7 @@ def fsStartContainerDetached(config, sDockerDir):
     saFullCommand = _flistAssembleRunCommand(
         config, saRunArgs, ["sleep", "infinity"],
     )
-    sContainerId = _fsRunDetachedCommand(saFullCommand)
-    _fnDeferSecretCleanup(listCleanupFiles, sContainerId)
-    return sContainerId
-
-
-def _fnDeferSecretCleanup(listCleanupFiles, sContainerId):
-    """Wait for the entrypoint to read secrets, then clean up."""
-    if not listCleanupFiles:
-        return
-    import threading
-
-    def _fnCleanupAfterDelay():
-        import time
-        time.sleep(30)
-        _fnCleanupTempFiles(listCleanupFiles)
-
-    thread = threading.Thread(
-        target=_fnCleanupAfterDelay, daemon=True)
-    thread.start()
+    return _fsRunDetachedCommand(saFullCommand)
 
 
 def _fsRunDetachedCommand(saCommand):

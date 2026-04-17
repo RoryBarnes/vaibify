@@ -281,19 +281,17 @@ def test_fnStartContainer_success(
     mockRun.assert_called_once()
 
 
-@patch("vaibify.docker.containerManager._fnCleanupTempFiles")
 @patch("vaibify.docker.containerManager._fnRunDockerCommand",
        side_effect=RuntimeError("fail"))
 @patch("vaibify.docker.containerManager.fnMountSecrets")
 @patch("vaibify.docker.containerManager.flistBuildRunArgs",
        return_value=["--rm"])
-def test_fnStartContainer_cleanup_on_error(
-    mockBuild, mockSecrets, mockRun, mockCleanup,
+def test_fnStartContainer_propagates_docker_error(
+    mockBuild, mockSecrets, mockRun,
 ):
     config = _fConfigMinimal()
     with pytest.raises(RuntimeError):
         fnStartContainer(config, "/docker")
-    mockCleanup.assert_called_once()
 
 
 # -----------------------------------------------------------------------
@@ -326,14 +324,13 @@ def test_fsInspectContainerState_failure(mockRun):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.docker.containerManager._fnDeferSecretCleanup")
 @patch("vaibify.docker.containerManager._fsRunDetachedCommand",
        return_value="container-abc-123")
 @patch("vaibify.docker.containerManager.fnMountSecrets")
 @patch("vaibify.docker.containerManager.flistBuildRunArgs",
        return_value=["--name", "testproj"])
 def test_fsStartContainerDetached_returns_container_id(
-    mockBuild, mockSecrets, mockRun, mockDefer,
+    mockBuild, mockSecrets, mockRun,
 ):
     from vaibify.docker.containerManager import fsStartContainerDetached
     config = _fConfigMinimal()
@@ -341,7 +338,6 @@ def test_fsStartContainerDetached_returns_container_id(
     assert sResult == "container-abc-123"
     # bDetached=True is passed to the run-args builder.
     assert mockBuild.call_args[1]["bDetached"] is True
-    mockDefer.assert_called_once()
 
 
 @patch("vaibify.docker.containerManager._fsRunDetachedCommand",
@@ -360,40 +356,36 @@ def test_fsStartContainerDetached_appends_sleep_infinity(mockRun):
     assert saCommand[-2:] == ["sleep", "infinity"]
 
 
-# -----------------------------------------------------------------------
-# _fnDeferSecretCleanup (lines 51-62)
-# -----------------------------------------------------------------------
+def test_fsStartContainerDetached_does_not_delete_secret_files(tmp_path):
+    """Regression: host temp files must outlive the container start.
 
+    On Colima/macOS the daemon re-resolves bind-mount sources later
+    (during e.g. ``put_archive``). Deleting them after start causes
+    subsequent operations to fail with "not a directory".
+    """
+    from vaibify.docker.containerManager import fsStartContainerDetached
+    sTempPath = str(tmp_path / "vc_secret_probe.tmp")
+    with open(sTempPath, "w") as fh:
+        fh.write("secret-value")
 
-def test_fnDeferSecretCleanup_no_files_is_noop():
-    from vaibify.docker.containerManager import _fnDeferSecretCleanup
-    # Empty list returns before the ``import threading`` statement.
-    # Calling this must not raise even if no thread was started.
-    _fnDeferSecretCleanup([], "cid-x")
+    def _fnRecordMount(config, saRunArgs, listCleanupFiles):
+        listCleanupFiles.append(sTempPath)
+        saRunArgs.extend(["-v", f"{sTempPath}:/run/secrets/probe:ro"])
 
-
-def test_fnDeferSecretCleanup_spawns_daemon_thread(tmp_path):
-    from vaibify.docker.containerManager import _fnDeferSecretCleanup
-    import threading as realThreading
-    listSpawned = []
-    original = realThreading.Thread
-
-    class _FakeThread:
-        def __init__(self, target, daemon):
-            listSpawned.append((target, daemon))
-            self.target = target
-
-        def start(self):
-            listSpawned.append("started")
-
-    # _fnDeferSecretCleanup does ``import threading`` inside the function,
-    # so we override the Thread attribute on the real threading module.
-    with patch.object(realThreading, "Thread", _FakeThread):
-        _fnDeferSecretCleanup(["/tmp/secret.txt"], "cid-x")
-    # One entry for constructor, one for start call.
-    assert len(listSpawned) == 2
-    _tTarget, bDaemon = listSpawned[0]
-    assert bDaemon is True
+    config = _fConfigMinimal()
+    import os
+    with patch(
+        "vaibify.docker.containerManager.fnMountSecrets",
+        side_effect=_fnRecordMount,
+    ), patch(
+        "vaibify.docker.containerManager._fsRunDetachedCommand",
+        return_value="cid-x",
+    ):
+        fsStartContainerDetached(config, "/docker")
+    assert os.path.exists(sTempPath), (
+        "secret temp file was deleted during start; would break "
+        "put_archive on Colima/macOS"
+    )
 
 
 # -----------------------------------------------------------------------
@@ -424,3 +416,5 @@ def test_fsRunDetachedCommand_failure_raises(mockRun):
         _fsRunDetachedCommand(["docker", "run", "-d"])
     assert "Docker run failed" in str(excInfo.value)
     assert "unknown image" in str(excInfo.value)
+
+

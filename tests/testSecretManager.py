@@ -12,6 +12,9 @@ from vaibify.config.secretManager import (
     fsMountSecret,
     fnCleanupSecretFiles,
     flistPrepareDockerSecretArgs,
+    fnStoreSecret,
+    fnDeleteSecret,
+    fbSecretExists,
 )
 
 
@@ -120,3 +123,151 @@ def test_flistPrepareDockerSecretArgs():
 def test_fsRetrieveSecret_rejects_unknown_method():
     with pytest.raises(ValueError, match="Unknown secret method"):
         fsRetrieveSecret("any_name", "env_var")
+
+
+# -----------------------------------------------------------------------
+# fnStoreSecret
+# -----------------------------------------------------------------------
+
+
+def test_fnStoreSecret_keyring_calls_set_password():
+    mockKeyring = MagicMock()
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        return_value=mockKeyring,
+    ):
+        fnStoreSecret("mytoken", "s3cret", "keyring")
+    mockKeyring.set_password.assert_called_once_with(
+        "vaibify", "mytoken", "s3cret",
+    )
+
+
+def test_fnStoreSecret_gh_auth_not_implemented():
+    with pytest.raises(NotImplementedError):
+        fnStoreSecret("gh_token", "val", "gh_auth")
+
+
+def test_fnStoreSecret_docker_secret_not_implemented():
+    with pytest.raises(NotImplementedError):
+        fnStoreSecret("gh_token", "val", "docker_secret")
+
+
+def test_fnStoreSecret_rejects_unknown_method():
+    with pytest.raises(ValueError):
+        fnStoreSecret("gh_token", "val", "bogus")
+
+
+# -----------------------------------------------------------------------
+# fnDeleteSecret
+# -----------------------------------------------------------------------
+
+
+def test_fnDeleteSecret_keyring_calls_delete_password():
+    mockKeyring = MagicMock()
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        return_value=mockKeyring,
+    ):
+        fnDeleteSecret("mytoken", "keyring")
+    mockKeyring.delete_password.assert_called_once_with(
+        "vaibify", "mytoken",
+    )
+
+
+def test_fnDeleteSecret_suppresses_password_delete_error():
+    from keyring.errors import PasswordDeleteError
+    mockKeyring = MagicMock()
+    mockKeyring.delete_password.side_effect = PasswordDeleteError("gone")
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        return_value=mockKeyring,
+    ):
+        fnDeleteSecret("mytoken", "keyring")
+
+
+def test_fnDeleteSecret_reraises_other_exceptions():
+    mockKeyring = MagicMock()
+    mockKeyring.delete_password.side_effect = RuntimeError("kaboom")
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        return_value=mockKeyring,
+    ):
+        with pytest.raises(RuntimeError):
+            fnDeleteSecret("mytoken", "keyring")
+
+
+def test_fnDeleteSecret_gh_auth_not_implemented():
+    with pytest.raises(NotImplementedError):
+        fnDeleteSecret("gh_token", "gh_auth")
+
+
+# -----------------------------------------------------------------------
+# fbSecretExists
+# -----------------------------------------------------------------------
+
+
+def test_fbSecretExists_keyring_true_when_present():
+    mockKeyring = MagicMock()
+    mockKeyring.get_password.return_value = "a_real_token"
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        return_value=mockKeyring,
+    ):
+        assert fbSecretExists("mytoken", "keyring") is True
+
+
+def test_fbSecretExists_keyring_false_when_absent():
+    mockKeyring = MagicMock()
+    mockKeyring.get_password.return_value = None
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        return_value=mockKeyring,
+    ):
+        assert fbSecretExists("mytoken", "keyring") is False
+
+
+def test_fbSecretExists_keyring_false_when_backend_raises():
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        side_effect=ImportError("no keyring"),
+    ):
+        assert fbSecretExists("mytoken", "keyring") is False
+
+
+def test_fbSecretExists_gh_auth_true_when_token_available():
+    with patch(
+        "vaibify.config.secretManager._fsRetrieveViaGhAuth",
+        return_value="gho_xyz",
+    ):
+        assert fbSecretExists("ignored", "gh_auth") is True
+
+
+def test_fbSecretExists_gh_auth_false_when_retrieval_fails():
+    with patch(
+        "vaibify.config.secretManager._fsRetrieveViaGhAuth",
+        side_effect=RuntimeError("not logged in"),
+    ):
+        assert fbSecretExists("ignored", "gh_auth") is False
+
+
+def test_fbSecretExists_docker_secret_true_when_file_present(tmp_path):
+    import pathlib
+    sName = "test_docker_secret_x"
+    pathFake = pathlib.Path("/run/secrets") / sName
+
+    class _FakePath:
+        def __init__(self, sPath):
+            self.sPath = sPath
+
+        def exists(self):
+            return self.sPath == str(pathFake)
+
+    with patch(
+        "vaibify.config.secretManager.Path",
+        lambda sPath: _FakePath(sPath),
+    ):
+        assert fbSecretExists(sName, "docker_secret") is True
+
+
+def test_fbSecretExists_docker_secret_false_when_missing():
+    assert fbSecretExists("does_not_exist_xyz", "docker_secret") is False

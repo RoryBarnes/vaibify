@@ -126,17 +126,25 @@ html, body {
     color: var(--highlight-color);
 }
 
+.container-tile .container-tile-actions,
 .container-tile .container-tile-gear {
     flex-shrink: 0;
     opacity: 0.7;
     transition: opacity var(--transition-speed);
-    font-size: 28px;
+    font-size: 22px;
     line-height: 1;
-    padding: 4px 8px;
+    padding: 4px 6px;
     color: #ffffff;
 }
 
+.container-tile .container-tile-actions {
+    font-size: 26px;
+    padding-right: 2px;
+}
+
+.container-tile:hover .container-tile-actions,
 .container-tile:hover .container-tile-gear,
+.container-tile .container-tile-actions:hover,
 .container-tile .container-tile-gear:hover {
     opacity: 1;
     color: #ffffff;
@@ -3368,4 +3376,87 @@ body.all-verified .vaibify-checkmark {
 }
 .modal-info .modal-info-body strong {
     color: var(--text-primary, var(--color-pale-blue));
+}
+
+.confirm-details {
+    margin: 0 0 16px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+.confirm-details summary {
+    cursor: pointer;
+    color: var(--color-pale-blue);
+    font-size: 12px;
+    padding: 4px 0;
+    user-select: none;
+}
+.confirm-details summary:hover {
+    text-decoration: underline;
+}
+.confirm-details[open] summary {
+    margin-bottom: 8px;
+}
+.confirm-details-text {
+    margin: 0 0 10px 0;
+}
+.confirm-details-label {
+    margin: 10px 0 4px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, var(--text-secondary));
+}
+.confirm-details-command {
+    background: var(--bg-input);
+    color: var(--color-pale-blue);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0 0 4px 0;
+}
+
+.settings-intro {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0 0 18px 0;
+}
+
+.settings-option {
+    margin-bottom: 18px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.settings-option:last-of-type {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.settings-option-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+.settings-option-label {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.settings-option-help {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0 0 0 26px;
+}
+.settings-option-help code {
+    background: var(--bg-input);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--color-pale-blue);
 }

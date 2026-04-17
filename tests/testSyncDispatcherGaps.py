@@ -286,3 +286,337 @@ class TestBuildDagEdgesIncludesImplicitDeps:
         }
         listEdges = _flistBuildDagEdges(dictWorkflow)
         assert any("step1 -> step2" in sEdge for sEdge in listEdges)
+
+
+# ── fnStoreCredentialInContainer: exit-code propagation ─────────
+
+
+class TestStoreCredentialExitCodePropagation:
+    """Non-zero exit from keyring.set_password must raise RuntimeError."""
+
+    def test_nonzero_exit_raises_runtime_error(self):
+        from vaibify.gui.syncDispatcher import (
+            fnStoreCredentialInContainer,
+        )
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (
+            1, "keyring: NoKeyringError: backend unavailable"
+        )
+        mockDocker.fnWriteFile.return_value = None
+        with pytest.raises(RuntimeError) as excInfo:
+            fnStoreCredentialInContainer(
+                mockDocker, "cid", "overleaf_token", "secret-value",
+            )
+        assert "Keyring storage failed" in str(excInfo.value)
+        assert "NoKeyringError" in str(excInfo.value)
+
+    def test_tempfile_cleanup_on_failure(self):
+        from vaibify.gui.syncDispatcher import (
+            fnStoreCredentialInContainer,
+        )
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (
+            1, "error"
+        )
+        mockDocker.fnWriteFile.return_value = None
+        with pytest.raises(RuntimeError):
+            fnStoreCredentialInContainer(
+                mockDocker, "cid", "overleaf_token", "secret-value",
+            )
+        listCalls = [
+            c[0][1] for c in
+            mockDocker.ftResultExecuteCommand.call_args_list
+        ]
+        assert any("rm -f" in s for s in listCalls)
+
+    def test_zero_exit_does_not_raise(self):
+        from vaibify.gui.syncDispatcher import (
+            fnStoreCredentialInContainer,
+        )
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (0, "")
+        mockDocker.fnWriteFile.return_value = None
+        fnStoreCredentialInContainer(
+            mockDocker, "cid", "overleaf_token", "secret-value",
+        )
+
+
+# ── _fdictCheckKeyring: backend health vs token presence ────────
+
+
+class TestCheckKeyringBackendHealth:
+    """Distinguish backend-unavailable from token-missing."""
+
+    def _fmockDockerForScripts(self, dictScriptResults):
+        """Docker mock that returns different results per command."""
+        listResults = []
+
+        def _fnExecute(sContainerId, sCommand):
+            if "get_keyring" in sCommand:
+                return dictScriptResults["backend"]
+            if "get_password" in sCommand:
+                return dictScriptResults["token"]
+            return (0, "")
+
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.side_effect = _fnExecute
+        return mockDocker
+
+    def test_fail_keyring_backend_reports_unavailable(self):
+        from vaibify.gui.syncDispatcher import _fdictCheckKeyring
+        mockDocker = self._fmockDockerForScripts({
+            "backend": (0, "keyring.backends.fail Keyring"),
+            "token": (0, "missing"),
+        })
+        dictResult = _fdictCheckKeyring(
+            mockDocker, "cid", "overleaf_token",
+        )
+        assert dictResult["bConnected"] is False
+        assert "Rebuild" in dictResult["sMessage"]
+
+    def test_healthy_backend_but_missing_token(self):
+        from vaibify.gui.syncDispatcher import _fdictCheckKeyring
+        mockDocker = self._fmockDockerForScripts({
+            "backend": (
+                0, "keyrings.alt.file EncryptedKeyring",
+            ),
+            "token": (0, "missing"),
+        })
+        dictResult = _fdictCheckKeyring(
+            mockDocker, "cid", "overleaf_token",
+        )
+        assert dictResult["bConnected"] is False
+        assert dictResult["sMessage"] == "Token not found"
+
+    def test_healthy_backend_and_present_token(self):
+        from vaibify.gui.syncDispatcher import _fdictCheckKeyring
+        mockDocker = self._fmockDockerForScripts({
+            "backend": (
+                0, "keyrings.alt.file EncryptedKeyring",
+            ),
+            "token": (0, "ok"),
+        })
+        dictResult = _fdictCheckKeyring(
+            mockDocker, "cid", "overleaf_token",
+        )
+        assert dictResult["bConnected"] is True
+        assert dictResult["sMessage"] == "Connected"
+
+    def test_backend_probe_command_failure_reports_unavailable(self):
+        from vaibify.gui.syncDispatcher import _fdictCheckKeyring
+        mockDocker = self._fmockDockerForScripts({
+            "backend": (1, "ImportError: No module named keyring"),
+            "token": (0, "missing"),
+        })
+        dictResult = _fdictCheckKeyring(
+            mockDocker, "cid", "overleaf_token",
+        )
+        assert dictResult["bConnected"] is False
+        assert "Rebuild" in dictResult["sMessage"]
+
+    def test_invalid_token_name_rejected(self):
+        from vaibify.gui.syncDispatcher import _fdictCheckKeyring
+        mockDocker = MagicMock()
+        with pytest.raises(ValueError):
+            _fdictCheckKeyring(mockDocker, "cid", "bogus_token")
+
+
+# ── fnDeleteCredentialFromContainer ─────────────────────────────
+
+
+class TestDeleteCredentialFromContainer:
+    """Delete a stored credential with tolerant error handling."""
+
+    def test_successful_delete_returns_none(self):
+        from vaibify.gui.syncDispatcher import (
+            fnDeleteCredentialFromContainer,
+        )
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (0, "")
+        result = fnDeleteCredentialFromContainer(
+            mockDocker, "cid", "overleaf_token",
+        )
+        assert result is None
+        sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+        assert "delete_password" in sCommand
+        assert "overleaf_token" in sCommand
+
+    def test_missing_credential_suppressed(self):
+        from vaibify.gui.syncDispatcher import (
+            fnDeleteCredentialFromContainer,
+        )
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (
+            1,
+            "keyring.errors.PasswordDeleteError: "
+            "Password not found",
+        )
+        fnDeleteCredentialFromContainer(
+            mockDocker, "cid", "overleaf_token",
+        )
+
+    def test_other_failure_reraises(self):
+        from vaibify.gui.syncDispatcher import (
+            fnDeleteCredentialFromContainer,
+        )
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (
+            1, "PermissionError: read-only filesystem"
+        )
+        with pytest.raises(RuntimeError) as excInfo:
+            fnDeleteCredentialFromContainer(
+                mockDocker, "cid", "overleaf_token",
+            )
+        assert "PermissionError" in str(excInfo.value)
+
+    def test_invalid_token_name_rejected(self):
+        from vaibify.gui.syncDispatcher import (
+            fnDeleteCredentialFromContainer,
+        )
+        mockDocker = MagicMock()
+        with pytest.raises(ValueError):
+            fnDeleteCredentialFromContainer(
+                mockDocker, "cid", "bogus_token",
+            )
+
+
+# ── Overleaf dispatch: CLI invocation shape ─────────────────────
+
+
+_S_OVERLEAF_PATH = "/usr/share/vaibify/overleafSync.py"
+
+
+def _fsCapturedCommand(mockDocker):
+    """Return the first command string passed to ftResultExecuteCommand."""
+    listCall = mockDocker.ftResultExecuteCommand.call_args_list
+    assert listCall, "Expected at least one docker exec call"
+    _, sCommand = listCall[0][0]
+    return sCommand
+
+
+class TestOverleafPushCliShape:
+
+    def test_plain_push_calls_cli(self):
+        from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
+        from unittest.mock import patch
+        mockDocker = _fmockDocker(0, "ok")
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="test-tok",
+        ):
+            ftResultPushToOverleaf(
+                mockDocker, "cid", ["/a/fig.pdf"],
+                "projid123", "figures",
+            )
+        sCommand = _fsCapturedCommand(mockDocker)
+        assert _S_OVERLEAF_PATH in sCommand
+        assert " push " in sCommand
+        assert "projid123" in sCommand
+        assert "figures" in sCommand
+        assert "/a/fig.pdf" in sCommand
+        assert "printf" in sCommand
+        assert "from vaibify" not in sCommand
+        assert "test-tok" in sCommand
+
+    def test_annotated_push_calls_cli(self):
+        from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
+        from unittest.mock import patch
+        mockDocker = _fmockDocker(0, "ok")
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="test-tok",
+        ):
+            ftResultPushToOverleaf(
+                mockDocker, "cid", ["/a/fig.pdf"],
+                "projid123", "figures",
+                dictWorkflow={"sWorkflowName": "T"},
+                sGithubBaseUrl="https://github.com/u/r",
+                sDoi="10.5281/z.1",
+                sTexFilename="main.tex",
+            )
+        sCommand = _fsCapturedCommand(mockDocker)
+        assert _S_OVERLEAF_PATH in sCommand
+        assert "push-annotated" in sCommand
+        assert "--github-base-url" in sCommand
+        assert "--doi" in sCommand
+        assert "--tex-filename" in sCommand
+        assert "from vaibify" not in sCommand
+
+    def test_pull_calls_cli(self):
+        from vaibify.gui.syncDispatcher import ftResultPullFromOverleaf
+        from unittest.mock import patch
+        mockDocker = _fmockDocker(0, "ok")
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="test-tok",
+        ):
+            ftResultPullFromOverleaf(
+                mockDocker, "cid", "projid123",
+                ["main.tex"], "/workspace/tex",
+            )
+        sCommand = _fsCapturedCommand(mockDocker)
+        assert _S_OVERLEAF_PATH in sCommand
+        assert " pull " in sCommand
+        assert "main.tex" in sCommand
+        assert "from vaibify" not in sCommand
+
+    def test_validate_credentials_returns_tuple(self):
+        from unittest.mock import patch, MagicMock
+        from vaibify.gui.syncDispatcher import (
+            fbValidateOverleafCredentials,
+        )
+        mockRun = MagicMock(returncode=0, stderr="")
+        with patch(
+            "vaibify.config.secretManager.fbSecretExists",
+            return_value=True,
+        ), patch(
+            "vaibify.gui.syncDispatcher.subprocess.run",
+            return_value=mockRun,
+        ):
+            tResult = fbValidateOverleafCredentials(
+                None, "cid", "projid123",
+            )
+        assert isinstance(tResult, tuple)
+        assert tResult[0] is True
+
+    def test_validate_credentials_surfaces_stderr_on_failure(self):
+        from unittest.mock import patch, MagicMock
+        from vaibify.gui.syncDispatcher import (
+            fbValidateOverleafCredentials,
+        )
+        mockRun = MagicMock(
+            returncode=128, stderr="fatal: authentication failed",
+        )
+        with patch(
+            "vaibify.config.secretManager.fbSecretExists",
+            return_value=True,
+        ), patch(
+            "vaibify.gui.syncDispatcher.subprocess.run",
+            return_value=mockRun,
+        ):
+            bSuccess, sStderr = fbValidateOverleafCredentials(
+                None, "cid", "projid123",
+            )
+        assert bSuccess is False
+        assert "authentication failed" in sStderr
+
+    def test_validate_uses_cli_not_raw_git(self):
+        from unittest.mock import patch, MagicMock
+        from vaibify.gui.syncDispatcher import (
+            fbValidateOverleafCredentials,
+        )
+        mockRun = MagicMock(returncode=0, stderr="")
+        with patch(
+            "vaibify.config.secretManager.fbSecretExists",
+            return_value=True,
+        ), patch(
+            "vaibify.gui.syncDispatcher.subprocess.run",
+            return_value=mockRun,
+        ) as mockSubprocess:
+            fbValidateOverleafCredentials(
+                None, "cid", "projid123",
+            )
+        listArgs = mockSubprocess.call_args[0][0]
+        assert listArgs[0] == "git"
+        assert "ls-remote" in listArgs
+        assert any("projid123" in s for s in listArgs)

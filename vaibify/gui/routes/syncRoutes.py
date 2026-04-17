@@ -155,6 +155,180 @@ def _fnRegisterGithubAddFile(app, dictCtx):
         return dictResult
 
 
+_S_ZENODO_REMEDIATION = (
+    "Token stored but validation failed. "
+    "Check that the token has deposit scopes."
+)
+_S_OVERLEAF_REMEDIATION = (
+    "Overleaf rejected the token or project ID. Check that the "
+    "project ID matches the one in your Overleaf URL, and that "
+    "the saved git authentication token (Account Settings -> "
+    "Git integration on overleaf.com) has push access to this "
+    "project. Use the Sync menu to replace the saved token if "
+    "needed."
+)
+_I_OVERLEAF_STDERR_MAX = 200
+
+
+async def _fbRunOverleafValidation(
+    syncDispatcher, connectionDocker, sContainerId, sProjectId,
+):
+    """Run Overleaf credential validation in a worker thread.
+
+    Returns ``(bSuccess, sStderr)`` so the caller can surface the
+    underlying git message in the remediation toast.
+    """
+    if not sProjectId:
+        return (False, "")
+    return await asyncio.to_thread(
+        syncDispatcher.fbValidateOverleafCredentials,
+        connectionDocker, sContainerId, sProjectId,
+    )
+
+
+async def _ftRunServiceValidation(
+    syncDispatcher, sService, connectionDocker,
+    sContainerId, sProjectId,
+):
+    """Dispatch to service-specific validator.
+
+    Returns ``(bPass, sDetail)`` where ``sDetail`` is an optional
+    service-supplied error fragment (empty for services that don't
+    capture one).
+    """
+    if sService == "zenodo":
+        bPass = await asyncio.to_thread(
+            syncDispatcher.fbValidateZenodoToken,
+            connectionDocker, sContainerId,
+        )
+        return (bPass, "")
+    if sService == "overleaf":
+        return await _fbRunOverleafValidation(
+            syncDispatcher, connectionDocker,
+            sContainerId, sProjectId,
+        )
+    return (True, "")
+
+
+def _fsOverleafRemediation(sStderrFragment):
+    """Embed a trimmed git error into the Overleaf remediation text."""
+    sTrimmed = (sStderrFragment or "").strip()
+    if not sTrimmed:
+        return _S_OVERLEAF_REMEDIATION
+    if len(sTrimmed) > _I_OVERLEAF_STDERR_MAX:
+        sTrimmed = sTrimmed[:_I_OVERLEAF_STDERR_MAX].rstrip() + "..."
+    return (
+        f"Overleaf rejected the token: {sTrimmed}. "
+        "On overleaf.com, open Account Settings and find the Git "
+        "integration section to generate a git authentication token "
+        "(not your login password). Paste that token above."
+    )
+
+
+def _fsServiceRemediation(sService, sDetail=""):
+    """Return the user-facing remediation message for a service."""
+    if sService == "overleaf":
+        return _fsOverleafRemediation(sDetail)
+    return _S_ZENODO_REMEDIATION
+
+
+def _fnCleanupCredential(
+    syncDispatcher, connectionDocker, sContainerId, sService,
+):
+    """Delete a just-stored credential after validation failure."""
+    sTokenName = f"{sService}_token"
+    if sService == "overleaf":
+        _fnCleanupOverleafHostCredential(sTokenName)
+        return
+    try:
+        syncDispatcher.fnDeleteCredentialFromContainer(
+            connectionDocker, sContainerId, sTokenName,
+        )
+    except Exception:
+        pass
+
+
+def _fnCleanupOverleafHostCredential(sTokenName):
+    """Remove the Overleaf token from the host keyring."""
+    from vaibify.config.secretManager import fnDeleteSecret
+    try:
+        fnDeleteSecret(sTokenName, "keyring")
+    except Exception:
+        pass
+
+
+def _fdictStoreCredentialSafely(
+    syncDispatcher, dictCtx, sContainerId, sService, sToken,
+):
+    """Try to store; return a failure dict or None on success."""
+    try:
+        _fnDispatchStore(
+            syncDispatcher, dictCtx, sContainerId, sService, sToken,
+        )
+    except Exception as error:
+        return {
+            "bConnected": False,
+            "sMessage": f"Failed to store credentials: {error}",
+        }
+    return None
+
+
+def _fnDispatchStore(
+    syncDispatcher, dictCtx, sContainerId, sService, sToken,
+):
+    """Route Overleaf to the host keyring; others to the container."""
+    if sService == "overleaf":
+        from vaibify.config.secretManager import fnStoreSecret
+        fnStoreSecret("overleaf_token", sToken, "keyring")
+        return
+    syncDispatcher.fnStoreCredentialInContainer(
+        dictCtx["docker"], sContainerId,
+        f"{sService}_token", sToken,
+    )
+
+
+async def _fdictStoreValidateCredential(
+    dictCtx, sContainerId, sService, sToken, sProjectId,
+):
+    """Store credential, verify connectivity, validate; clean up on failure."""
+    from .. import syncDispatcher
+    dictStoreFail = _fdictStoreCredentialSafely(
+        syncDispatcher, dictCtx, sContainerId, sService, sToken,
+    )
+    if dictStoreFail is not None:
+        return dictStoreFail
+    dictResult = await _fdictValidateStoredCredential(
+        dictCtx, sContainerId, sService, sProjectId,
+    )
+    if not dictResult["bConnected"]:
+        _fnCleanupCredential(
+            syncDispatcher, dictCtx["docker"],
+            sContainerId, sService,
+        )
+    return dictResult
+
+
+async def _fdictValidateStoredCredential(
+    dictCtx, sContainerId, sService, sProjectId,
+):
+    """Validate an already-stored credential without deleting it on failure."""
+    from .. import syncDispatcher
+    dictResult = syncDispatcher.fdictCheckConnectivity(
+        dictCtx["docker"], sContainerId, sService)
+    if not dictResult["bConnected"]:
+        return dictResult
+    bValid, sDetail = await _ftRunServiceValidation(
+        syncDispatcher, sService, dictCtx["docker"],
+        sContainerId, sProjectId,
+    )
+    if bValid:
+        return {"bConnected": True, "sMessage": "Connected"}
+    return {
+        "bConnected": False,
+        "sMessage": _fsServiceRemediation(sService, sDetail),
+    }
+
+
 def _fnRegisterSyncRoutes(app, dictCtx):
     """Register sync status, file list, setup, and check routes."""
     from .. import syncDispatcher
@@ -166,13 +340,19 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return workflowManager.fdictGetSyncStatus(dictWorkflow)
 
     @app.get("/api/sync/{sContainerId}/files")
-    async def fnGetSyncFiles(sContainerId: str):
+    async def fnGetSyncFiles(
+        sContainerId: str, sService: str = "",
+    ):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictSync = workflowManager.fdictGetSyncStatus(
             dictWorkflow)
+        dictVars = dictCtx["variables"](sContainerId)
+        sWorkflowRoot = dictCtx["workflowDir"](sContainerId)
         return syncDispatcher.flistCollectOutputFiles(
-            dictWorkflow, dictSync)
+            dictWorkflow, dictSync, dictVars,
+            sService or None, sWorkflowRoot,
+        )
 
     @app.post("/api/sync/{sContainerId}/setup")
     async def fnSetupConnection(
@@ -180,34 +360,36 @@ def _fnRegisterSyncRoutes(app, dictCtx):
     ):
         dictCtx["require"]()
         syncDispatcher.fnValidateServiceName(request.sService)
-        if request.sToken:
-            sTokenName = f"{request.sService}_token"
-            try:
-                syncDispatcher.fnStoreCredentialInContainer(
-                    dictCtx["docker"], sContainerId,
-                    sTokenName, request.sToken,
-                )
-            except Exception as error:
-                return {
-                    "bConnected": False,
-                    "sMessage":
-                        f"Failed to store credentials: {error}",
-                }
-        dictResult = syncDispatcher.fdictCheckConnectivity(
-            dictCtx["docker"], sContainerId, request.sService)
-        if (dictResult["bConnected"]
-                and request.sService == "zenodo"):
-            bValid = await asyncio.to_thread(
-                syncDispatcher.fbValidateZenodoToken,
-                dictCtx["docker"], sContainerId,
+        dictResult = await _fdictRunSetup(
+            dictCtx, sContainerId, request,
+        )
+        if dictResult.get("bConnected"):
+            _fnPersistServiceSettings(
+                dictCtx, sContainerId, request,
             )
-            if not bValid:
-                dictResult["bConnected"] = False
-                dictResult["sMessage"] = (
-                    "Token stored but validation failed. "
-                    "Check that the token has deposit scopes."
-                )
         return dictResult
+
+    async def _fdictRunSetup(dictCtx, sContainerId, request):
+        if request.sToken:
+            return await _fdictStoreValidateCredential(
+                dictCtx, sContainerId, request.sService,
+                request.sToken, request.sProjectId or "",
+            )
+        if _fbServiceHasStoredCredential(request.sService):
+            return await _fdictValidateStoredCredential(
+                dictCtx, sContainerId, request.sService,
+                request.sProjectId or "",
+            )
+        return syncDispatcher.fdictCheckConnectivity(
+            dictCtx["docker"], sContainerId, request.sService)
+
+    def _fnPersistServiceSettings(dictCtx, sContainerId, request):
+        if request.sService != "overleaf" or not request.sProjectId:
+            return
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictWorkflow["sOverleafProjectId"] = request.sProjectId
+        dictCtx["save"](sContainerId, dictWorkflow)
 
     @app.get("/api/sync/{sContainerId}/check/{sService}")
     async def fnCheckConnection(
@@ -215,8 +397,43 @@ def _fnRegisterSyncRoutes(app, dictCtx):
     ):
         dictCtx["require"]()
         syncDispatcher.fnValidateServiceName(sService)
-        return syncDispatcher.fdictCheckConnectivity(
+        dictResult = syncDispatcher.fdictCheckConnectivity(
             dictCtx["docker"], sContainerId, sService)
+        if dictResult["bConnected"] and sService == "overleaf":
+            dictResult = _fdictRequireOverleafProjectId(
+                dictCtx, sContainerId, dictResult,
+            )
+        return dictResult
+
+    def _fdictRequireOverleafProjectId(
+        dictCtx, sContainerId, dictResult,
+    ):
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        if not dictWorkflow.get("sOverleafProjectId"):
+            return {
+                "bConnected": False,
+                "sMessage":
+                    "Overleaf project ID not set. Enter the "
+                    "project ID to connect.",
+            }
+        return dictResult
+
+    @app.get("/api/sync/{sContainerId}/has-credential/{sService}")
+    async def fnHasCredential(sContainerId: str, sService: str):
+        dictCtx["require"]()
+        syncDispatcher.fnValidateServiceName(sService)
+        return {
+            "bHasCredential": _fbServiceHasStoredCredential(sService),
+        }
+
+
+def _fbServiceHasStoredCredential(sService):
+    """Return True when the host keyring already has this service's token."""
+    from vaibify.config.secretManager import fbSecretExists
+    if sService != "overleaf":
+        return False
+    return fbSecretExists("overleaf_token", "keyring")
 
 
 def _fnRegisterDag(app, dictCtx):

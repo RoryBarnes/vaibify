@@ -177,6 +177,7 @@ def test_build_cli_command(mockDir, mockConfig, mockBuild):
     result = runner.invoke(build)
     assert result.exit_code == 0
     assert "Build complete" in result.output
+    assert "vaibify stop && vaibify start" in result.output
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")

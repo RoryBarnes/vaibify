@@ -158,10 +158,14 @@ def test_overleaf_push_success(clientHttp):
         "listFilePaths": ["Plot/fig.pdf"],
         "sCommitMessage": "Update figures",
     }
-    responseHttp = clientHttp.post(
-        f"/api/overleaf/{S_CONTAINER_ID}/push",
-        json=dictPayload,
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json=dictPayload,
+        )
     assert responseHttp.status_code == 200
     assert responseHttp.json()["bSuccess"] is True
 

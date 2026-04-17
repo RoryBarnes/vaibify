@@ -57,6 +57,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
+    fnCopyOverleafScripts(sDockerDir)
     fnCopyHostWorkflows(sDockerDir)
 
 
@@ -103,6 +104,24 @@ def fnCopyDirectorScript(sDockerDir):
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
     shutil.copy2(sSourcePath, sDestPath)
+
+
+def fnCopyOverleafScripts(sDockerDir):
+    """Stage overleafSync.py and latexConnector.py for the image.
+
+    Both files run standalone inside the container at
+    /usr/share/vaibify/ — no vaibify package install required.
+    """
+    import shutil
+    import pathlib
+    pathReproducibility = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "reproducibility"
+    )
+    for sFileName in ("overleafSync.py", "latexConnector.py"):
+        sSourcePath = str(pathReproducibility / sFileName)
+        sDestPath = os.path.join(sDockerDir, sFileName)
+        shutil.copy2(sSourcePath, sDestPath)
 
 
 def fnIncludeProjectRepo(config):
@@ -235,3 +254,7 @@ def build(bNoCache, sProjectName):
     )
     fnBuildFromConfig(config, sDockerDir, bNoCache)
     click.echo("Build complete.")
+    click.echo(
+        "Run `vaibify stop && vaibify start` to pick up the new "
+        "image in your container."
+    )
