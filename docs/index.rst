@@ -29,6 +29,7 @@ pipeline can benefit from containerized reproducibility.
    security
    reproducibility
    architecture
+   externalServices
    vibeCoding
    developers
    GitHub <https://github.com/RoryBarnes/Vaibify>
