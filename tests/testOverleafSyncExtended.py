@@ -25,7 +25,7 @@ from vaibify.reproducibility.overleafSync import (
     _fnCopyPulledFile,
     _fbHasUncommittedChanges,
     _fnCommitAndPush,
-    fnConfigureGitCredentials,
+    flistBuildCredentialHelperArgs,
     fnPushAnnotatedToOverleaf,
 )
 
@@ -211,16 +211,24 @@ def test_fnCommitAndPush_skips_when_clean(mockChanges):
 
 
 # -----------------------------------------------------------------------
-# fnConfigureGitCredentials
+# flistBuildCredentialHelperArgs
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.reproducibility.overleafSync._fnRunGitConfig")
-def test_fnConfigureGitCredentials_calls_config(mockConfig):
-    fnConfigureGitCredentials("/tmp/tok-path")
-    mockConfig.assert_called_once()
-    sHelperArg = mockConfig.call_args[0][0]
-    assert "/tmp/tok-path" in sHelperArg
+def test_flistBuildCredentialHelperArgs_embeds_token_path():
+    listArgs = flistBuildCredentialHelperArgs("/tmp/tok-path")
+    assert listArgs[0] == "-c"
+    assert any("/tmp/tok-path" in sArg for sArg in listArgs)
+    assert any("credential.https://" in sArg for sArg in listArgs)
+
+
+def test_flistBuildCredentialHelperArgs_returns_inline_c_args():
+    """Helper args must be inline ``-c`` flags, not a ``git config`` mutation."""
+    listArgs = flistBuildCredentialHelperArgs("/tmp/tok")
+    assert "config" not in listArgs
+    assert "--global" not in listArgs
+    assert len(listArgs) == 2
+    assert listArgs[0] == "-c"
 
 
 # -----------------------------------------------------------------------
@@ -238,7 +246,8 @@ def test_fnConfigureGitCredentials_calls_config(mockConfig):
     "vaibify.reproducibility.overleafSync._fnCloneOverleafRepo",
 )
 @patch(
-    "vaibify.reproducibility.overleafSync.fnConfigureGitCredentials",
+    "vaibify.reproducibility.overleafSync.flistBuildCredentialHelperArgs",
+    return_value=["-c", "credential.https://git.overleaf.com.helper=!f"],
 )
 @patch(
     "vaibify.reproducibility.overleafSync._fnAnnotateTexInRepo",
@@ -335,10 +344,12 @@ def _fsWriteGitShim(pathTmp, iExitCode, sStdout="", sStderr=""):
 
 
 def _fsWriteSubcommandShim(pathTmp, dictSubcommandResults):
-    """Write a git shim that dispatches on the first argument.
+    """Write a git shim that dispatches on the first non-flag argument.
 
     ``dictSubcommandResults`` maps a git subcommand ("config",
-    "ls-remote", ...) to ``(iExit, sStdout, sStderr)``.
+    "ls-remote", ...) to ``(iExit, sStdout, sStderr)``. The shim
+    skips leading ``-c key=value`` pairs so inline credential and
+    hardening flags do not mask the real subcommand.
     """
     pathShim = pathTmp / "git"
     sMap = repr(dictSubcommandResults)
@@ -346,7 +357,15 @@ def _fsWriteSubcommandShim(pathTmp, dictSubcommandResults):
         "#!/usr/bin/env python3\n"
         "import sys\n"
         f"dictMap = {sMap}\n"
-        "sKey = sys.argv[1] if len(sys.argv) > 1 else ''\n"
+        "listArgv = sys.argv[1:]\n"
+        "iIdx = 0\n"
+        "while iIdx < len(listArgv):\n"
+        "    sArg = listArgv[iIdx]\n"
+        "    if sArg == '-c' and iIdx + 1 < len(listArgv):\n"
+        "        iIdx += 2\n"
+        "        continue\n"
+        "    break\n"
+        "sKey = listArgv[iIdx] if iIdx < len(listArgv) else ''\n"
         "iExit, sOut, sErr = dictMap.get(sKey, (0, '', ''))\n"
         "sys.stdout.write(sOut)\n"
         "sys.stderr.write(sErr)\n"
@@ -468,7 +487,8 @@ def test_cli_push_reads_stdin_paths(mockPush):
                 "--target", "figures",
             ])
     mockPush.assert_called_once()
-    listPaths, sProject, sTarget, sToken = mockPush.call_args[0]
+    tPositional = mockPush.call_args[0]
+    listPaths, sProject, sTarget, sToken = tPositional[:4]
     assert listPaths == ["/a/fig1.pdf", "/a/fig2.png"]
     assert sProject == "abc123"
     assert sTarget == "figures"
@@ -530,10 +550,11 @@ def test_cli_push_annotated_reads_json_payload(mockAnnotated):
                 "--tex-filename", "main.tex",
             ])
     mockAnnotated.assert_called_once()
+    tPositional = mockAnnotated.call_args[0]
     (
         listPaths, sProject, sTarget, dictWf,
         sUrl, sDoi, sToken, sTex,
-    ) = mockAnnotated.call_args[0]
+    ) = tPositional[:8]
     assert listPaths == ["/a/fig.pdf"]
     assert sProject == "abc123"
     assert dictWf == {"listSteps": [{"sName": "First"}]}
@@ -583,3 +604,183 @@ def test_cli_generic_overleaf_error_exits_nonzero():
                     "--target", "/work/tex",
                 ])
     assert excInfo.value.code == 1
+
+
+# -----------------------------------------------------------------------
+# Security: pull-path validation, symlink rejection, git hardening
+# -----------------------------------------------------------------------
+
+
+def test_fnValidatePullRelativePath_rejects_leading_slash():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="must not start with a slash"):
+        fnValidatePullRelativePath("/etc/passwd")
+
+
+def test_fnValidatePullRelativePath_rejects_parent_segments():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="must not contain '..'"):
+        fnValidatePullRelativePath("figures/../../secret")
+
+
+def test_fnValidatePullRelativePath_rejects_null_bytes():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="null bytes"):
+        fnValidatePullRelativePath("main\x00.tex")
+
+
+def test_fnValidatePullRelativePath_accepts_valid():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath,
+    )
+    fnValidatePullRelativePath("main.tex")
+    fnValidatePullRelativePath("figures/fig1.pdf")
+    fnValidatePullRelativePath("a/b/c/file.tex")
+
+
+def test_fnPullTexFromOverleaf_rejects_traversal_path(tmp_path, monkeypatch):
+    """Pull must refuse ``..`` entries before any git operation."""
+    from vaibify.reproducibility.overleafSync import (
+        fnPullTexFromOverleaf, OverleafError,
+    )
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(OverleafError, match="must not contain '..'"):
+        fnPullTexFromOverleaf(
+            "proj123", ["../../etc/passwd"],
+            "out", "tok",
+        )
+
+
+def test_fnPullTexFromOverleaf_rejects_null_byte_path(tmp_path, monkeypatch):
+    """Pull must refuse NUL bytes in listPullPaths."""
+    from vaibify.reproducibility.overleafSync import (
+        fnPullTexFromOverleaf, OverleafError,
+    )
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(OverleafError, match="null bytes"):
+        fnPullTexFromOverleaf(
+            "proj123", ["main\x00.tex"], "out", "tok",
+        )
+
+
+def test_fnCopySingleFile_rejects_symlink_source(tmp_path):
+    """Push side: refuse to dereference a symlinked figure."""
+    from vaibify.reproducibility.overleafSync import (
+        _fnCopySingleFile, OverleafError,
+    )
+    sReal = tmp_path / "secret.txt"
+    sReal.write_text("sensitive")
+    sSymlink = tmp_path / "fig.pdf"
+    os.symlink(str(sReal), str(sSymlink))
+    pathTarget = tmp_path / "dest"
+    pathTarget.mkdir()
+    with pytest.raises(OverleafError, match="Refusing to push symlink"):
+        _fnCopySingleFile(str(sSymlink), pathTarget)
+
+
+def test_fnCopyPulledFile_rejects_symlink_source(tmp_path):
+    """Pull side: refuse to copy a symlink out of the cloned repo."""
+    from vaibify.reproducibility.overleafSync import (
+        _fnCopyPulledFile, OverleafError,
+    )
+    sRepo = tmp_path / "repo"
+    sRepo.mkdir()
+    sOutside = tmp_path / "outside.txt"
+    sOutside.write_text("outside secret")
+    sSymlinkPath = sRepo / "main.tex"
+    os.symlink(str(sOutside), str(sSymlinkPath))
+    pathTarget = tmp_path / "out"
+    pathTarget.mkdir()
+    with pytest.raises(OverleafError):
+        _fnCopyPulledFile(str(sRepo), "main.tex", pathTarget)
+
+
+def test_fnCopyPulledFile_rejects_realpath_escape(tmp_path):
+    """Pull side: realpath must stay inside the repo even via symlink dir."""
+    from vaibify.reproducibility.overleafSync import (
+        _fnCopyPulledFile, OverleafError,
+    )
+    sRepo = tmp_path / "repo"
+    sRepo.mkdir()
+    sOutsideDir = tmp_path / "outside"
+    sOutsideDir.mkdir()
+    (sOutsideDir / "secret.tex").write_text("leaked")
+    sSymlinkDir = sRepo / "link"
+    os.symlink(str(sOutsideDir), str(sSymlinkDir))
+    pathTarget = tmp_path / "out"
+    pathTarget.mkdir()
+    with pytest.raises(OverleafError):
+        _fnCopyPulledFile(
+            str(sRepo), "link/secret.tex", pathTarget,
+        )
+
+
+def test_clone_command_includes_hardening_flags(tmp_path):
+    """Every clone invocation must include the submodule/symlink hardening."""
+    from vaibify.reproducibility import overleafSync as mod
+    listCaptured = []
+
+    def fnFake(listCommand, **kwargs):
+        listCaptured.append(listCommand)
+        mockR = MagicMock()
+        mockR.returncode = 0
+        mockR.stdout = ""
+        mockR.stderr = ""
+        if "clone" in listCommand:
+            sDest = listCommand[-1]
+            Path(sDest).mkdir(parents=True, exist_ok=True)
+        return mockR
+
+    with patch.object(mod.subprocess, "run", side_effect=fnFake):
+        with patch.object(
+            mod, "_fbHasUncommittedChanges", return_value=False,
+        ):
+            mod.fnPushFiguresToOverleaf(
+                [], "proj123", "figures", "tok",
+            )
+    listCloneCmd = [c for c in listCaptured if "clone" in c]
+    assert listCloneCmd, "clone must have been invoked"
+    sJoined = " ".join(str(s) for s in listCloneCmd[0])
+    assert "protocol.file.allow=never" in sJoined
+    assert "core.symlinks=false" in sJoined
+    assert "submodule.recurse=false" in sJoined
+    assert "--no-recurse-submodules" in sJoined
+
+
+def test_clone_uses_inline_credential_helper_not_global(tmp_path):
+    """Credential helper is passed as ``-c``, not written to global config."""
+    from vaibify.reproducibility import overleafSync as mod
+    listCaptured = []
+
+    def fnFake(listCommand, **kwargs):
+        listCaptured.append(listCommand)
+        mockR = MagicMock()
+        mockR.returncode = 0
+        mockR.stdout = ""
+        mockR.stderr = ""
+        if "clone" in listCommand:
+            sDest = listCommand[-1]
+            Path(sDest).mkdir(parents=True, exist_ok=True)
+        return mockR
+
+    with patch.object(mod.subprocess, "run", side_effect=fnFake):
+        with patch.object(
+            mod, "_fbHasUncommittedChanges", return_value=False,
+        ):
+            mod.fnPushFiguresToOverleaf(
+                [], "proj123", "figures", "tok",
+            )
+    for listCommand in listCaptured:
+        sJoined = " ".join(str(s) for s in listCommand)
+        assert "config --global" not in sJoined, (
+            f"Must not mutate global git config: {sJoined}"
+        )
+    listCloneCmd = [c for c in listCaptured if "clone" in c]
+    sJoined = " ".join(str(s) for s in listCloneCmd[0])
+    assert "credential.https://git.overleaf.com.helper=" in sJoined

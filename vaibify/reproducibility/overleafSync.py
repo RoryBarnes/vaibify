@@ -43,6 +43,47 @@ _OVERLEAF_GIT_HOST = "git.overleaf.com"
 _COMMIT_MARKER = "[vaibify]"
 _RATE_LIMIT_HINT = "rate limit"
 _PROJECT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+_REGEX_URL_WITH_CREDENTIALS = re.compile(
+    r"https?://[^:@\s]+:[^@\s]+@",
+)
+_LIST_SENSITIVE_KEYWORDS = (
+    "password", "token", "bearer", "authorization",
+)
+
+# Hardening flags prepended to every ``git clone`` / ``git fetch`` run.
+# Block file-transport submodules (``file://`` pointing at host paths),
+# disable local symlink checkout (malicious tree entries cannot write
+# outside the repo), and refuse submodule recursion entirely.
+_LIST_GIT_HARDENING_CONFIG = [
+    "-c", "protocol.file.allow=never",
+    "-c", "protocol.allow=user",
+    "-c", "core.symlinks=false",
+    "-c", "submodule.recurse=false",
+]
+
+
+def _fsRedactStderr(sStderr):
+    """Return sStderr with embedded URL credentials and secrets redacted.
+
+    Applied before any git error text is embedded into an OverleafError
+    that may reach the GUI or stderr. Local duplicate of the host-side
+    helper; overleafSync is shipped into the container as a standalone
+    script and cannot import from ``vaibify.reproducibility``.
+    """
+    if not sStderr:
+        return ""
+    sRedacted = _REGEX_URL_WITH_CREDENTIALS.sub(
+        "https://<redacted>@", sStderr,
+    )
+    listLines = []
+    for sLine in sRedacted.splitlines():
+        sLower = sLine.lower()
+        bSensitive = any(
+            sKeyword in sLower
+            for sKeyword in _LIST_SENSITIVE_KEYWORDS
+        )
+        listLines.append("<redacted>" if bSensitive else sLine)
+    return "\n".join(listLines)
 
 _EXIT_OK = 0
 _EXIT_USAGE = 2
@@ -56,17 +97,74 @@ _EXIT_ERROR = 1
 # ------------------------------------------------------------------
 
 
+def fnValidateTargetDirectory(sTargetDirectory):
+    """Reject target-directory paths that are unsafe or would silently misroute.
+
+    pathlib treats ``Path('/a') / '/b'`` as absolute ``/b``, so a
+    leading ``/`` would copy files outside the cloned repo and produce
+    a deceptively successful but no-op push.
+    """
+    if sTargetDirectory is None:
+        raise OverleafError("Target directory must be provided.")
+    if sTargetDirectory == "":
+        return
+    sFirst = sTargetDirectory[0]
+    if sFirst == "/" or sFirst == "\\":
+        raise OverleafError(
+            f"Target directory must not start with a slash: "
+            f"'{sTargetDirectory}'"
+        )
+    if "\x00" in sTargetDirectory:
+        raise OverleafError(
+            "Target directory must not contain null bytes."
+        )
+    for sSegment in sTargetDirectory.split("/"):
+        if sSegment == "..":
+            raise OverleafError(
+                f"Target directory must not contain '..' segments: "
+                f"'{sTargetDirectory}'"
+            )
+
+
+def fnValidatePullRelativePath(sRelativePath):
+    """Reject pull paths that would escape the cloned repo.
+
+    Enforces: no leading slash/backslash, no ``..`` segments, no NUL
+    bytes. Applied to every entry in ``listPullPaths`` before any
+    filesystem operation.
+    """
+    if sRelativePath is None or sRelativePath == "":
+        raise OverleafError("Pull path must not be empty.")
+    if "\x00" in sRelativePath:
+        raise OverleafError(
+            "Pull path must not contain null bytes."
+        )
+    if sRelativePath[0] == "/" or sRelativePath[0] == "\\":
+        raise OverleafError(
+            f"Pull path must not start with a slash: "
+            f"'{sRelativePath}'"
+        )
+    for sSegment in sRelativePath.replace("\\", "/").split("/"):
+        if sSegment == "..":
+            raise OverleafError(
+                f"Pull path must not contain '..' segments: "
+                f"'{sRelativePath}'"
+            )
+
+
 def fnPushFiguresToOverleaf(
     listFigurePaths, sOverleafId, sTargetDirectory, sToken,
+    sMirrorSha="",
 ):
     """Push figure files into an Overleaf project via git."""
+    fnValidateTargetDirectory(sTargetDirectory)
     sTmpDir = tempfile.mkdtemp(prefix="vc_overleaf_push_")
     sTokenPath = _fsWriteTokenFile(sToken)
     try:
-        fnConfigureGitCredentials(sTokenPath)
-        _fnCloneOverleafRepo(sOverleafId, sTmpDir)
+        listCredArgs = flistBuildCredentialHelperArgs(sTokenPath)
+        _fnCloneOverleafRepo(sOverleafId, sTmpDir, listCredArgs)
         _fnCopyFiguresToRepo(listFigurePaths, sTmpDir, sTargetDirectory)
-        _fnCommitAndPush(sTmpDir)
+        _fnCommitAndPush(sTmpDir, sMirrorSha, listCredArgs)
     finally:
         shutil.rmtree(sTmpDir, ignore_errors=True)
         _fnRemoveTokenFile(sTokenPath)
@@ -75,12 +173,21 @@ def fnPushFiguresToOverleaf(
 def fnPullTexFromOverleaf(
     sOverleafId, listPullPaths, sTargetDirectory, sToken,
 ):
-    """Pull specified files from an Overleaf project."""
+    """Pull specified files from an Overleaf project.
+
+    ``sTargetDirectory`` is a local filesystem location where the
+    pulled files are written; it may be absolute. The per-file
+    ``listPullPaths`` entries address files inside the cloned
+    Overleaf repo and must therefore be relative and free of
+    traversal metacharacters.
+    """
+    for sRelativePath in listPullPaths:
+        fnValidatePullRelativePath(sRelativePath)
     sTmpDir = tempfile.mkdtemp(prefix="vc_overleaf_pull_")
     sTokenPath = _fsWriteTokenFile(sToken)
     try:
-        fnConfigureGitCredentials(sTokenPath)
-        _fnCloneOverleafRepo(sOverleafId, sTmpDir)
+        listCredArgs = flistBuildCredentialHelperArgs(sTokenPath)
+        _fnCloneOverleafRepo(sOverleafId, sTmpDir, listCredArgs)
         _fnCopyPulledFiles(sTmpDir, listPullPaths, sTargetDirectory)
     finally:
         shutil.rmtree(sTmpDir, ignore_errors=True)
@@ -90,20 +197,21 @@ def fnPullTexFromOverleaf(
 def fnPushAnnotatedToOverleaf(
     listFigurePaths, sOverleafId, sTargetDirectory,
     dictWorkflow, sGithubBaseUrl, sDoi, sToken,
-    sTexFilename="main.tex",
+    sTexFilename="main.tex", sMirrorSha="",
 ):
     """Push figures and annotate the TeX file with source links."""
+    fnValidateTargetDirectory(sTargetDirectory)
     sTmpDir = tempfile.mkdtemp(prefix="vc_overleaf_annotate_")
     sTokenPath = _fsWriteTokenFile(sToken)
     try:
-        fnConfigureGitCredentials(sTokenPath)
-        _fnCloneOverleafRepo(sOverleafId, sTmpDir)
+        listCredArgs = flistBuildCredentialHelperArgs(sTokenPath)
+        _fnCloneOverleafRepo(sOverleafId, sTmpDir, listCredArgs)
         _fnCopyFiguresToRepo(
             listFigurePaths, sTmpDir, sTargetDirectory)
         _fnAnnotateTexInRepo(
             sTmpDir, sTexFilename, dictWorkflow,
             sGithubBaseUrl, sDoi)
-        _fnCommitAndPush(sTmpDir)
+        _fnCommitAndPush(sTmpDir, sMirrorSha, listCredArgs)
     finally:
         shutil.rmtree(sTmpDir, ignore_errors=True)
         _fnRemoveTokenFile(sTokenPath)
@@ -127,15 +235,19 @@ def _fnAnnotateTexInRepo(
         pathTex.write_text(sAnnotated, encoding="utf-8")
 
 
-def fnConfigureGitCredentials(sTokenFilePath):
-    """Configure a git credential helper pointing at sTokenFilePath.
+def flistBuildCredentialHelperArgs(sTokenFilePath):
+    """Return git ``-c`` args that wire a one-shot credential helper.
 
-    The helper reads the token out of the supplied file at each git
+    The helper reads the token out of ``sTokenFilePath`` at each git
     credential-helper invocation, so the token is never embedded in a
-    URL, process argv, or shell history.
+    URL, process argv, or shell history. Unlike the previous global
+    ``git config`` approach, this leaves zero residue in the caller's
+    ``~/.gitconfig`` — the helper only applies to git commands that
+    receive these ``-c`` args.
     """
     sHelper = _fsBuildCredentialHelper(sTokenFilePath)
-    _fnRunGitConfig(sHelper)
+    sKey = f"credential.https://{_OVERLEAF_GIT_HOST}.helper"
+    return ["-c", f"{sKey}={sHelper}"]
 
 
 # ------------------------------------------------------------------
@@ -143,12 +255,17 @@ def fnConfigureGitCredentials(sTokenFilePath):
 # ------------------------------------------------------------------
 
 
-def _fnCloneOverleafRepo(sOverleafId, sDestination):
+def _fnCloneOverleafRepo(sOverleafId, sDestination, listCredArgs=None):
     """Clone an Overleaf project into the destination directory."""
     sRepoUrl = f"https://{_OVERLEAF_GIT_HOST}/{sOverleafId}"
-    listCommand = [
-        "git", "clone", "--depth", "1", sRepoUrl, sDestination,
-    ]
+    listCommand = ["git"]
+    if listCredArgs:
+        listCommand.extend(listCredArgs)
+    listCommand.extend(_LIST_GIT_HARDENING_CONFIG)
+    listCommand.extend([
+        "clone", "--depth", "1", "--no-recurse-submodules",
+        sRepoUrl, sDestination,
+    ])
     _fnRunSubprocess(listCommand, "Failed to clone Overleaf project")
 
 
@@ -161,25 +278,91 @@ def _fnCopyFiguresToRepo(listFigurePaths, sRepoDir, sTargetDirectory):
     """Copy figure files into the target subdirectory of the repo."""
     pathTarget = Path(sRepoDir) / sTargetDirectory
     pathTarget.mkdir(parents=True, exist_ok=True)
+    _fnAssertRealPathUnderRoot(str(pathTarget), sRepoDir)
     for sFilePath in listFigurePaths:
         _fnCopySingleFile(sFilePath, pathTarget)
 
 
+def _fnAssertRealPathUnderRoot(sPath, sRoot):
+    """Refuse to proceed when sPath's realpath escapes sRoot.
+
+    Used before writing to the target directory so a symlinked
+    ``pathTarget`` cannot redirect writes outside the cloned repo.
+    """
+    sRealPath = os.path.realpath(sPath)
+    sRealRoot = os.path.realpath(sRoot)
+    if sRealPath == sRealRoot:
+        return
+    if sRealPath.startswith(sRealRoot + os.sep):
+        return
+    raise OverleafError(
+        f"Refusing to traverse symlink out of repo: '{sPath}'"
+    )
+
+
 def _fnCopySingleFile(sFilePath, pathTarget):
-    """Copy one file into the target directory."""
+    """Copy one file into the target directory; refuses to follow symlinks."""
     pathSource = Path(sFilePath)
+    if os.path.islink(sFilePath):
+        raise OverleafError(
+            f"Refusing to push symlink: '{sFilePath}'"
+        )
     if not pathSource.is_file():
         raise FileNotFoundError(f"Figure not found: '{sFilePath}'")
-    shutil.copy2(str(pathSource), str(pathTarget / pathSource.name))
+    sDestination = str(pathTarget / pathSource.name)
+    _fnAssertDestinationParentSafe(sDestination, str(pathTarget))
+    shutil.copy2(
+        str(pathSource), sDestination, follow_symlinks=False,
+    )
 
 
-def _fnCommitAndPush(sRepoDir):
-    """Stage all changes, commit with marker, and push."""
+def _fnAssertDestinationParentSafe(sDestination, sExpectedRoot):
+    """Refuse to write when the destination's parent escapes sExpectedRoot."""
+    sParent = os.path.dirname(sDestination) or "."
+    sRealParent = os.path.realpath(sParent)
+    sRealRoot = os.path.realpath(sExpectedRoot)
+    if sRealParent == sRealRoot:
+        return
+    if sRealParent.startswith(sRealRoot + os.sep):
+        return
+    raise OverleafError(
+        f"Refusing to write via symlink: '{sDestination}'"
+    )
+
+
+def _fnCommitAndPush(sRepoDir, sMirrorSha="", listCredArgs=None):
+    """Stage all changes, commit with marker, and push.
+
+    When ``sMirrorSha`` is set, the commit message records which mirror
+    snapshot the push was built on. After a successful push, the
+    post-push HEAD SHA is emitted to stdout as ``HEAD_SHA=<sha>`` so
+    the host dispatcher can persist it into the sync-status baseline.
+    """
     if not _fbHasUncommittedChanges(sRepoDir):
+        sys.stdout.write("PUSH_STATUS=no-changes\n")
+        _fnEmitHeadSha(sRepoDir)
         return
     _fnGitAdd(sRepoDir)
-    _fnGitCommit(sRepoDir)
-    _fnGitPush(sRepoDir)
+    _fnGitCommit(sRepoDir, sMirrorSha)
+    _fnGitPush(sRepoDir, listCredArgs)
+    sys.stdout.write("PUSH_STATUS=pushed\n")
+    _fnEmitHeadSha(sRepoDir)
+
+
+def _fnEmitHeadSha(sRepoDir):
+    """Print a ``HEAD_SHA=<sha>`` line for the repo's current HEAD."""
+    try:
+        resultProcess = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=sRepoDir, capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        return
+    if resultProcess.returncode != 0:
+        return
+    sHead = (resultProcess.stdout or "").strip()
+    if sHead:
+        sys.stdout.write(f"HEAD_SHA={sHead}\n")
 
 
 def _fbHasUncommittedChanges(sRepoDir):
@@ -214,21 +397,32 @@ def _fnSetLocalCommitIdentity(sRepoDir):
     )
 
 
-def _fnGitCommit(sRepoDir):
-    """Create a commit with the vaibify marker."""
+def _fnGitCommit(sRepoDir, sMirrorSha=""):
+    """Create a commit with the vaibify marker.
+
+    When ``sMirrorSha`` is provided, the short form of the SHA is
+    appended so Overleaf collaborators can see which mirror snapshot
+    the push was built against.
+    """
     _fnSetLocalCommitIdentity(sRepoDir)
     sMessage = f"{_COMMIT_MARKER} Update figures"
+    if sMirrorSha:
+        sMessage += f" (from mirror {sMirrorSha[:7]})"
     _fnRunSubprocess(
         ["git", "commit", "-m", sMessage],
         "git commit failed", sCwd=sRepoDir,
     )
 
 
-def _fnGitPush(sRepoDir):
+def _fnGitPush(sRepoDir, listCredArgs=None):
     """Push to origin, detecting rate limits."""
+    listCommand = ["git"]
+    if listCredArgs:
+        listCommand.extend(listCredArgs)
+    listCommand.append("push")
     try:
         _fnRunSubprocess(
-            ["git", "push"], "git push failed", sCwd=sRepoDir,
+            listCommand, "git push failed", sCwd=sRepoDir,
         )
     except OverleafError as error:
         _fnDetectRateLimit(str(error))
@@ -251,12 +445,22 @@ def _fnCopyPulledFiles(sRepoDir, listPullPaths, sTargetDirectory):
 def _fnCopyPulledFile(sRepoDir, sRelativePath, pathTarget):
     """Copy one file from the repo clone to the target directory."""
     pathSource = Path(sRepoDir) / sRelativePath
+    sSource = str(pathSource)
+    _fnAssertRealPathUnderRoot(sSource, sRepoDir)
+    if os.path.islink(sSource):
+        raise OverleafError(
+            f"Refusing to copy symlink from Overleaf: '{sRelativePath}'"
+        )
     if not pathSource.is_file():
         raise FileNotFoundError(
             f"Overleaf file not found: '{sRelativePath}'"
         )
     pathDestFile = pathTarget / Path(sRelativePath).name
-    shutil.copy2(str(pathSource), str(pathDestFile))
+    sDestination = str(pathDestFile)
+    _fnAssertDestinationParentSafe(sDestination, str(pathTarget))
+    shutil.copy2(
+        sSource, sDestination, follow_symlinks=False,
+    )
 
 
 # ------------------------------------------------------------------
@@ -281,18 +485,6 @@ def _fsBuildCredentialHelper(sTokenFilePath):
         "cat " + shlex.quote(sTokenFilePath)
         + " | sed 's/^/password=/'; "
         "}; f"
-    )
-
-
-def _fnRunGitConfig(sHelper):
-    """Set the credential helper in the global git config."""
-    _fnRunSubprocess(
-        [
-            "git", "config", "--global",
-            f"credential.https://{_OVERLEAF_GIT_HOST}.helper",
-            sHelper,
-        ],
-        "Failed to configure git credentials",
     )
 
 
@@ -338,10 +530,11 @@ def _fnRunSubprocess(listCommand, sErrorMessage, sCwd=None):
 
 
 def _fsCombineErrorOutput(error):
-    """Combine stdout and stderr from a CalledProcessError."""
+    """Combine stdout and stderr from a CalledProcessError; redacted."""
     sStdout = (error.stdout or "").strip()
     sStderr = (error.stderr or "").strip()
-    return f"{sStdout} {sStderr}".strip()
+    sCombined = f"{sStdout} {sStderr}".strip()
+    return _fsRedactStderr(sCombined)
 
 
 def _fnDetectAuthFailure(sOutput):
@@ -402,16 +595,17 @@ def _fnRunLsRemote(args):
     sToken, _ = _ftReadTokenAndRest()
     sTokenPath = _fsWriteTokenFile(sToken)
     try:
-        fnConfigureGitCredentials(sTokenPath)
+        listCredArgs = flistBuildCredentialHelperArgs(sTokenPath)
         sUrl = f"https://{_OVERLEAF_GIT_HOST}/{args.project}"
+        listCommand = ["git"] + listCredArgs + _LIST_GIT_HARDENING_CONFIG
+        listCommand.extend(["ls-remote", sUrl, "HEAD"])
         resultProcess = subprocess.run(
-            ["git", "ls-remote", sUrl, "HEAD"],
-            capture_output=True, text=True,
+            listCommand, capture_output=True, text=True,
         )
     finally:
         _fnRemoveTokenFile(sTokenPath)
     if resultProcess.returncode != 0:
-        sys.stderr.write(resultProcess.stderr or "")
+        sys.stderr.write(_fsRedactStderr(resultProcess.stderr or ""))
         sys.exit(resultProcess.returncode or _EXIT_ERROR)
     sys.exit(_EXIT_OK)
 
@@ -422,7 +616,9 @@ def _fnRunPush(args):
     sToken, sRemainder = _ftReadTokenAndRest()
     listPaths = _flistSplitRemainderLines(sRemainder)
     fnPushFiguresToOverleaf(
-        listPaths, args.project, args.target, sToken)
+        listPaths, args.project, args.target, sToken,
+        getattr(args, "mirror_sha", "") or "",
+    )
     sys.stdout.write("ok\n")
 
 
@@ -437,6 +633,7 @@ def _fnRunPushAnnotated(args):
         dictPayload.get("dictWorkflow", {}),
         args.github_base_url, args.doi, sToken,
         args.tex_filename,
+        getattr(args, "mirror_sha", "") or "",
     )
     sys.stdout.write("ok\n")
 
@@ -481,6 +678,7 @@ def _fnAddPushParser(subparsers):
     )
     sub.add_argument("--project", required=True)
     sub.add_argument("--target", required=True)
+    sub.add_argument("--mirror-sha", default="")
     sub.set_defaults(func=_fnRunPush)
 
 
@@ -495,6 +693,7 @@ def _fnAddPushAnnotatedParser(subparsers):
     sub.add_argument("--github-base-url", required=True)
     sub.add_argument("--doi", default="")
     sub.add_argument("--tex-filename", default="main.tex")
+    sub.add_argument("--mirror-sha", default="")
     sub.set_defaults(func=_fnRunPushAnnotated)
 
 

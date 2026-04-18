@@ -733,3 +733,567 @@ def test_setup_zenodo_validation_passes(clientHttp):
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is True
     mockDelete.assert_not_called()
+
+
+# ── Overleaf mirror endpoints (refresh / tree / diff / delete) ──
+
+
+def test_mirror_refresh_success(clientHttp):
+    """POST /mirror/refresh returns bSuccess True with payload fields."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {
+            "sHeadSha": "abc123",
+            "iFileCount": 3,
+            "sRefreshedAt": "2026-04-17T00:00:00Z",
+        }),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bSuccess"] is True
+    assert dictResult["sHeadSha"] == "abc123"
+    assert dictResult["iFileCount"] == 3
+
+
+def test_mirror_refresh_auth_failure(clientHttp):
+    """On refresh failure, bSuccess False with a message."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(False, "Mirror clone failed: authentication"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bSuccess"] is False
+    assert "authentication" in dictResult["sMessage"]
+
+
+def test_mirror_refresh_missing_project_id_returns_400(clientHttp):
+    """Project ID absent from workflow => HTTP 400 from refresh."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_tree_missing_project_id_returns_400(clientHttp):
+    """Project ID absent => HTTP 400 from tree endpoint."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_diff_missing_project_id_returns_400(clientHttp):
+    """Project ID absent => HTTP 400 from diff endpoint."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_delete_missing_project_id_returns_400(clientHttp):
+    """Project ID absent => HTTP 400 from delete endpoint."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.delete(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror",
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_tree_includes_refreshed_at(clientHttp, tmp_path, monkeypatch):
+    """GET /mirror/tree returns sRefreshedAt ISO timestamp."""
+    _fnConnectToContainer(clientHttp)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    import os
+    from vaibify.reproducibility import overleafMirror
+    sMirrorRoot = overleafMirror.fsGetMirrorRoot()
+    sProjectDir = os.path.join(sMirrorRoot, "abc123proj")
+    sGitDir = os.path.join(sProjectDir, ".git")
+    os.makedirs(sGitDir)
+    with open(os.path.join(sGitDir, "FETCH_HEAD"), "w") as handle:
+        handle.write("")
+    with patch(
+        "vaibify.gui.syncDispatcher.flistListOverleafTree",
+        return_value=[],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="headsha",
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert "sRefreshedAt" in dictResult
+    assert dictResult["sRefreshedAt"].endswith("Z")
+
+
+def test_mirror_tree_returns_entries(clientHttp):
+    """GET /mirror/tree returns listEntries and sHeadSha."""
+    _fnConnectToContainer(clientHttp)
+    listEntries = [
+        {"sPath": "figures/a.pdf", "sType": "blob",
+         "iSize": 10, "sDigest": "sha1"},
+    ]
+    with patch(
+        "vaibify.gui.syncDispatcher.flistListOverleafTree",
+        return_value=listEntries,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="headsha",
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listEntries"] == listEntries
+    assert dictResult["sHeadSha"] == "headsha"
+
+
+def test_mirror_diff_implicit_refresh_and_classify(clientHttp):
+    """POST /diff refreshes mirror then classifies."""
+    _fnConnectToContainer(clientHttp)
+    dictDiff = {
+        "listNew": [], "listOverwrite": [], "listUnchanged": [],
+    }
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ) as mockRefresh, patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value=dictDiff,
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert "listConflicts" in dictResult
+    assert dictResult["sMirrorHeadSha"] == "h"
+    mockRefresh.assert_called_once()
+
+
+def test_mirror_diff_surfaces_conflicts(clientHttp):
+    """Diff result surfaces conflicts from the dispatcher."""
+    _fnConnectToContainer(clientHttp)
+    listConflicts = [{
+        "sLocalPath": "/workspace/Plot/fig.pdf",
+        "sRemotePath": "figures/fig.pdf",
+        "sBaselineDigest": "oldsha",
+        "sCurrentDigest": "newsha",
+    }]
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 1,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=listConflicts,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["listConflicts"] == listConflicts
+
+
+def test_mirror_delete_idempotent(clientHttp):
+    """DELETE /mirror calls fnDeleteMirror and returns bSuccess."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.reproducibility.overleafMirror.fnDeleteMirror",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.delete(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror",
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+    mockDelete.assert_called_once_with("abc123proj")
+
+
+# ── Overleaf push: target directory and digest persistence ──────
+
+
+def test_overleaf_push_uses_request_target_directory(clientHttp):
+    """When sTargetDirectory is provided, workflow is updated and used."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+                "sTargetDirectory": "Figures/v2",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+
+
+def test_overleaf_push_backward_compat_without_target(clientHttp):
+    """Omitting sTargetDirectory falls back to dictWorkflow value."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+
+
+def test_overleaf_push_persists_digests_on_success(clientHttp):
+    """After a successful push, digest baseline is updated."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "HEAD_SHA=abcd1234\nok\n"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="preSha",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ) as mockPersist:
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    mockPersist.assert_called_once()
+
+
+def test_mirror_diff_surfaces_case_collisions(clientHttp):
+    """Diff response includes listCaseCollisions + canonical suggestion."""
+    _fnConnectToContainer(clientHttp)
+    listCollisions = [{
+        "sLocalPath": "/workspace/Plot/fig.pdf",
+        "sTypedRemotePath": "Figures/fig.pdf",
+        "sCanonicalRemotePath": "figures/fig.pdf",
+    }]
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistDetectOverleafCaseCollisions",
+        return_value=listCollisions,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "Figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listCaseCollisions"] == listCollisions
+    assert dictResult["sSuggestedTargetDirectory"] == "figures"
+
+
+def test_mirror_diff_no_collisions_yields_empty_suggestion(clientHttp):
+    """No collisions: listCaseCollisions empty, suggestion empty."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistDetectOverleafCaseCollisions",
+        return_value=[],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listCaseCollisions"] == []
+    assert dictResult["sSuggestedTargetDirectory"] == ""
+
+
+def test_mirror_diff_ambiguous_canonical_yields_empty_suggestion(
+    clientHttp,
+):
+    """When canonical dirs disagree across collisions, suggestion empty."""
+    _fnConnectToContainer(clientHttp)
+    listCollisions = [
+        {
+            "sLocalPath": "/workspace/Plot/a.pdf",
+            "sTypedRemotePath": "Figures/a.pdf",
+            "sCanonicalRemotePath": "figures/a.pdf",
+        },
+        {
+            "sLocalPath": "/workspace/Plot/b.pdf",
+            "sTypedRemotePath": "Figures/b.pdf",
+            "sCanonicalRemotePath": "Figs/b.pdf",
+        },
+    ]
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistDetectOverleafCaseCollisions",
+        return_value=listCollisions,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": [
+                    "/workspace/Plot/a.pdf",
+                    "/workspace/Plot/b.pdf",
+                ],
+                "sTargetDirectory": "Figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sSuggestedTargetDirectory"] == ""
+
+
+def test_overleaf_push_failure_skips_digest_persist(clientHttp):
+    """On push failure, the digest update must not fire."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 1
+    _mockDockerInstance._sSyncOutput = "fatal: not found"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ) as mockPersist:
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is False
+    mockPersist.assert_not_called()
+
+
+# ── Security: validation of listFilePaths and sTargetDirectory ────
+
+
+def test_overleaf_push_rejects_path_outside_workspace(clientHttp):
+    """Push must 400 when listFilePaths contains a host path."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/etc/passwd"],
+                "sCommitMessage": "exploit",
+            },
+        )
+    assert responseHttp.status_code == 400
+    assert "workspace" in responseHttp.json()["detail"].lower()
+
+
+def test_overleaf_push_rejects_dotdot_traversal(clientHttp):
+    """Push must 400 for ``..`` traversal in listFilePaths."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/../etc/passwd"],
+            "sCommitMessage": "exploit",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_push_rejects_null_byte_in_path(clientHttp):
+    """Push must 400 when a file path contains a NUL byte."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/a\x00b.pdf"],
+            "sCommitMessage": "null",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_push_rejects_absolute_target_directory(clientHttp):
+    """Push must 400 when sTargetDirectory starts with a slash."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            "sTargetDirectory": "/etc",
+            "sCommitMessage": "bad target",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_push_rejects_dotdot_target_directory(clientHttp):
+    """Push must 400 when sTargetDirectory contains ``..``."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            "sTargetDirectory": "figures/../../etc",
+            "sCommitMessage": "escape",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_diff_rejects_path_outside_workspace(clientHttp):
+    """Diff must 400 when listFilePaths escapes the workspace."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/diff",
+        json={
+            "listFilePaths": ["/root/.ssh/id_rsa"],
+            "sTargetDirectory": "figures",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_diff_rejects_absolute_target_directory(clientHttp):
+    """Diff must 400 when sTargetDirectory starts with a slash."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/diff",
+        json={
+            "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            "sTargetDirectory": "/etc",
+        },
+    )
+    assert responseHttp.status_code == 400

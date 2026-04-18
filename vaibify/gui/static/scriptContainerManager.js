@@ -404,6 +404,11 @@ var PipeleyenContainerManager = (function () {
             "and can be re-registered later.",
             async function () {
                 try {
+                    await VaibifyOverleafMirror.fnForgetContainer(sName);
+                } catch (error) {
+                    /* mirror deletion is best-effort */
+                }
+                try {
                     await VaibifyApi.fnDelete(
                         "/api/registry/"
                         + encodeURIComponent(sName)

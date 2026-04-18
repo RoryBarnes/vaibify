@@ -88,7 +88,7 @@ def fnLaunchHub(iPort):
     from vaibify.gui.pipelineServer import fappCreateHubApplication
     sUrl = f"http://127.0.0.1:{iPort}"
     click.echo(f"Starting Vaibify hub at {sUrl}")
-    app = fappCreateHubApplication()
+    app = fappCreateHubApplication(iExpectedPort=iPort)
     threading.Thread(
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
         daemon=True,
@@ -201,6 +201,7 @@ def gui(sProjectName):
     click.echo(f"Starting pipeline viewer at {sUrl}")
     app = fappCreateApplication(
         sWorkspaceRoot=sRoot, sTerminalUserArg=sTerminalUser,
+        iExpectedPort=8050,
     )
     threading.Thread(
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),

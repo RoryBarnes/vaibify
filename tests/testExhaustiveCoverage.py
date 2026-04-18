@@ -251,7 +251,7 @@ class TestFdictBuildOverleafArgs:
             "sZenodoDoi": "10.5281/zenodo.123",
             "sTexFilename": "paper.tex",
         }
-        dictResult = _fdictBuildOverleafArgs(dictWorkflow)
+        dictResult = _fdictBuildOverleafArgs(dictWorkflow, "figs")
         assert dictResult["sProjectId"] == "abc123"
         assert dictResult["sTargetDirectory"] == "figs"
         assert dictResult["sGithubBaseUrl"] == (
@@ -261,7 +261,7 @@ class TestFdictBuildOverleafArgs:
         assert dictResult["dictWorkflow"] is dictWorkflow
 
     def test_defaults(self):
-        dictResult = _fdictBuildOverleafArgs({})
+        dictResult = _fdictBuildOverleafArgs({}, "figures")
         assert dictResult["sProjectId"] == ""
         assert dictResult["sTargetDirectory"] == "figures"
         assert dictResult["sTexFilename"] == "main.tex"

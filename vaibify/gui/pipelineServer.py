@@ -21,6 +21,7 @@ WORKSPACE_ROOT = "/workspace"
 
 __all__ = [
     "fCreateApp",
+    "fbIsAllowedHostHeader",
     "fdictBuildContext",
     "fdictHandleConnect",
     "fnDispatchAction",
@@ -164,6 +165,12 @@ class FilePullRequest(BaseModel):
 class SyncPushRequest(BaseModel):
     listFilePaths: List[str]
     sCommitMessage: str = "[vaibify] Update outputs"
+    sTargetDirectory: Optional[str] = None
+
+
+class OverleafDiffRequest(BaseModel):
+    listFilePaths: List[str]
+    sTargetDirectory: str
 
 
 class GitAddFileRequest(BaseModel):
@@ -1130,10 +1137,58 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
 # Middleware
 # ---------------------------------------------------------------
 
+_SET_LOCAL_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
+
+
+def fbIsAllowedHostHeader(sHostHeader, iExpectedPort):
+    """Return True when sHostHeader resolves to a local loopback origin.
+
+    Guards against DNS rebinding: an attacker-controlled domain that
+    has been re-pointed at 127.0.0.1 would send its original name in
+    the ``Host:`` header, so rejecting anything outside the loopback
+    set prevents a remote page from driving local API endpoints.
+    """
+    if not sHostHeader:
+        return False
+    sHostPort = sHostHeader.split(",", 1)[0].strip()
+    sHost, sPort = _ftSplitHostPort(sHostPort)
+    if sHost not in _SET_LOCAL_HOST_NAMES:
+        return False
+    if sPort == "":
+        return True
+    try:
+        iPort = int(sPort)
+    except ValueError:
+        return False
+    return iPort == iExpectedPort
+
+
+def _ftSplitHostPort(sHostPort):
+    """Split host and port, tolerating bracketed IPv6 and bare hosts."""
+    if sHostPort.startswith("["):
+        iBracket = sHostPort.find("]")
+        if iBracket == -1:
+            return (sHostPort, "")
+        sHost = sHostPort[: iBracket + 1]
+        sRest = sHostPort[iBracket + 1:]
+        sPort = sRest.lstrip(":") if sRest.startswith(":") else ""
+        return (sHost, sPort)
+    if ":" in sHostPort:
+        sHost, sPort = sHostPort.rsplit(":", 1)
+        return (sHost, sPort)
+    return (sHostPort, "")
+
+
 class SessionTokenMiddleware(BaseHTTPMiddleware):
-    """Reject /api/ requests missing a valid session token."""
+    """Reject requests with unsafe Host headers or missing session tokens."""
 
     async def dispatch(self, request: Request, call_next):
+        if not _fbRequestHasAllowedHost(request):
+            return Response(
+                status_code=400,
+                content='{"detail":"Invalid Host header"}',
+                media_type="application/json",
+            )
         sPath = request.url.path
         bNeedsToken = (
             sPath.startswith("/api/")
@@ -1157,6 +1212,15 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                     media_type="application/json",
                 )
         return await call_next(request)
+
+
+def _fbRequestHasAllowedHost(request):
+    """Return True when the request Host header is a permitted loopback."""
+    iExpectedPort = getattr(request.app.state, "iExpectedPort", 0)
+    if not iExpectedPort:
+        return True
+    sHostHeader = request.headers.get("host", "")
+    return fbIsAllowedHostHeader(sHostHeader, iExpectedPort)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -1194,14 +1258,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def fappCreateApplication(
     sWorkspaceRoot="/workspace", sTerminalUserArg=None,
+    iExpectedPort=0,
 ):
-    """Build and return the configured FastAPI application."""
+    """Build and return the configured FastAPI application.
+
+    When ``iExpectedPort`` is non-zero, the SessionTokenMiddleware
+    enforces a strict ``Host:`` header check (DNS rebinding defense).
+    CLI launchers pass the real bind port; test fixtures omit the
+    argument so TestClient's default ``testserver`` host is accepted.
+    """
     global sTerminalUser
     sTerminalUser = sTerminalUserArg
     app = FastAPI(title="Vaibify Workflow Viewer")
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
+    app.state.iExpectedPort = iExpectedPort
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
@@ -1211,8 +1283,11 @@ def fappCreateApplication(
     return app
 
 
-def fappCreateHubApplication():
-    """Build a hub-mode FastAPI app with registry support."""
+def fappCreateHubApplication(iExpectedPort=0):
+    """Build a hub-mode FastAPI app with registry support.
+
+    See :func:`fappCreateApplication` for ``iExpectedPort`` semantics.
+    """
     from .registryRoutes import fnRegisterRegistryRoutes
     global sTerminalUser
     sTerminalUser = "researcher"
@@ -1220,6 +1295,7 @@ def fappCreateHubApplication():
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
+    app.state.iExpectedPort = iExpectedPort
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())

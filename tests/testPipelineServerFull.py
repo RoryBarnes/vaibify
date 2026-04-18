@@ -155,7 +155,7 @@ def _fnConnectToContainer(clientHttp):
 def test_overleaf_push_success(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {
-        "listFilePaths": ["Plot/fig.pdf"],
+        "listFilePaths": ["/workspace/Plot/fig.pdf"],
         "sCommitMessage": "Update figures",
     }
     with patch(

@@ -31,7 +31,9 @@ def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
         "uvicorn": mockUvicorn,
     }):
         fnLaunchGui(config)
-    mockCreate.assert_called_once_with(sWorkspaceRoot="/workspace")
+    mockCreate.assert_called_once_with(
+        sWorkspaceRoot="/workspace", iExpectedPort=8050,
+    )
     mockUvicorn.run.assert_called_once()
     tArgs, dictKwargs = mockUvicorn.run.call_args
     assert tArgs[0] is mockApp
@@ -79,5 +81,5 @@ def test_fnLaunchGui_uses_workspace_root_from_config():
     }):
         fnLaunchGui(config)
     mockCreate.assert_called_once_with(
-        sWorkspaceRoot="/custom/workspace",
+        sWorkspaceRoot="/custom/workspace", iExpectedPort=8050,
     )

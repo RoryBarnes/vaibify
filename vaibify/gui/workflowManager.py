@@ -656,9 +656,32 @@ def fdictInitializeSyncEntry():
     """Return a fresh sync entry with all services unsynced."""
     return {
         "bOverleaf": False, "sOverleafTimestamp": "",
+        "sOverleafLastPushedDigest": "",
         "bGithub": False, "sGithubTimestamp": "",
         "bZenodo": False, "sZenodoTimestamp": "",
     }
+
+
+def fnUpdateOverleafDigests(dictWorkflow, dictPathToDigest):
+    """Persist post-push Overleaf blob digests into ``dictSyncStatus``.
+
+    ``dictPathToDigest`` maps local absolute path to the git blob SHA
+    observed in the mirror after the push completed. Files missing
+    from the digest map are left untouched (graceful degradation when
+    the mirror refresh didn't surface the expected path).
+    """
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    for sPath, sDigest in (dictPathToDigest or {}).items():
+        if not sDigest:
+            continue
+        if sPath not in dictWorkflow["dictSyncStatus"]:
+            dictWorkflow["dictSyncStatus"][sPath] = (
+                fdictInitializeSyncEntry()
+            )
+        dictWorkflow["dictSyncStatus"][sPath][
+            "sOverleafLastPushedDigest"
+        ] = sDigest
 
 
 def fsetExtractUpstreamIndices(sText):

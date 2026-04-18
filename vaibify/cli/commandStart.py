@@ -56,7 +56,9 @@ def fnLaunchGui(config):
     )
     import uvicorn
     sRoot = config.sWorkspaceRoot
-    app = fappCreateApplication(sWorkspaceRoot=sRoot)
+    app = fappCreateApplication(
+        sWorkspaceRoot=sRoot, iExpectedPort=8050,
+    )
     uvicorn.run(app, host="127.0.0.1", port=8050)
 
 

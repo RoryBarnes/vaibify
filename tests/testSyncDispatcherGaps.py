@@ -620,3 +620,287 @@ class TestOverleafPushCliShape:
         assert listArgs[0] == "git"
         assert "ls-remote" in listArgs
         assert any("projid123" in s for s in listArgs)
+
+
+# ── Overleaf mirror dispatch ─────────────────────────────────────
+
+
+class TestRefreshOverleafMirror:
+
+    def test_missing_token_returns_false(self):
+        from vaibify.gui.syncDispatcher import (
+            ftRefreshOverleafMirror,
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="",
+        ):
+            bSuccess, result = ftRefreshOverleafMirror("projid123")
+        assert bSuccess is False
+        assert "No Overleaf token" in result
+
+    def test_successful_refresh_returns_payload(self):
+        from vaibify.gui.syncDispatcher import (
+            ftRefreshOverleafMirror,
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="tok",
+        ), patch(
+            "vaibify.reproducibility.overleafMirror.fbRefreshMirror",
+            return_value={
+                "sHeadSha": "abc123",
+                "iFileCount": 5,
+                "sRefreshedAt": "2026-04-17T00:00:00Z",
+            },
+        ):
+            bSuccess, result = ftRefreshOverleafMirror("projid123")
+        assert bSuccess is True
+        assert result["sHeadSha"] == "abc123"
+        assert result["iFileCount"] == 5
+
+    def test_runtime_error_propagated_as_false(self):
+        from vaibify.gui.syncDispatcher import (
+            ftRefreshOverleafMirror,
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="tok",
+        ), patch(
+            "vaibify.reproducibility.overleafMirror.fbRefreshMirror",
+            side_effect=RuntimeError("Mirror clone failed: auth"),
+        ):
+            bSuccess, result = ftRefreshOverleafMirror("projid123")
+        assert bSuccess is False
+        assert "Mirror clone failed" in result
+
+    def test_bad_project_id_rejected(self):
+        from vaibify.gui.syncDispatcher import (
+            ftRefreshOverleafMirror,
+        )
+        with pytest.raises(ValueError):
+            ftRefreshOverleafMirror("../evil")
+
+
+class TestListOverleafTree:
+
+    def test_delegates_to_mirror_module(self):
+        from vaibify.gui.syncDispatcher import flistListOverleafTree
+        with patch(
+            "vaibify.reproducibility.overleafMirror.flistListMirrorTree",
+            return_value=[{"sPath": "a.tex"}],
+        ):
+            listEntries = flistListOverleafTree("projid123")
+        assert listEntries == [{"sPath": "a.tex"}]
+
+    def test_bad_project_id_rejected(self):
+        from vaibify.gui.syncDispatcher import flistListOverleafTree
+        with pytest.raises(ValueError):
+            flistListOverleafTree("/evil")
+
+
+class TestDiffOverleafPush:
+
+    def test_returns_diff_dict(self, tmp_path):
+        from vaibify.gui.syncDispatcher import fdictDiffOverleafPush
+        pathFile = tmp_path / "fig.pdf"
+        pathFile.write_bytes(b"content")
+        with patch(
+            "vaibify.reproducibility.overleafMirror."
+            "fdictDiffAgainstMirror",
+            return_value={
+                "listNew": [], "listOverwrite": [], "listUnchanged": [],
+            },
+        ) as mockDiff:
+            dictResult = fdictDiffOverleafPush(
+                "projid123", [str(pathFile)], "figures",
+            )
+        assert "listNew" in dictResult
+        assert mockDiff.call_args[0][0] == "projid123"
+        dictDigests = mockDiff.call_args[0][1]
+        assert str(pathFile) in dictDigests
+
+    def test_unreadable_file_skipped(self, tmp_path):
+        from vaibify.gui.syncDispatcher import fdictDiffOverleafPush
+        with patch(
+            "vaibify.reproducibility.overleafMirror."
+            "fdictDiffAgainstMirror",
+            return_value={
+                "listNew": [], "listOverwrite": [], "listUnchanged": [],
+            },
+        ) as mockDiff:
+            fdictDiffOverleafPush(
+                "projid123", ["/does/not/exist.pdf"], "figures",
+            )
+        dictDigests = mockDiff.call_args[0][1]
+        assert dictDigests == {}
+
+
+class TestCheckOverleafConflicts:
+
+    def test_delegates_to_mirror_detect_conflicts(self):
+        from vaibify.gui.syncDispatcher import (
+            flistCheckOverleafConflicts,
+        )
+        with patch(
+            "vaibify.reproducibility.overleafMirror."
+            "flistDetectConflicts",
+            return_value=[{"sLocalPath": "/a.pdf"}],
+        ) as mockDetect:
+            listResult = flistCheckOverleafConflicts(
+                "projid123", ["/a.pdf"], "figures", {},
+            )
+        assert listResult == [{"sLocalPath": "/a.pdf"}]
+        mockDetect.assert_called_once()
+
+
+# ── ftResultPushToOverleaf: sMirrorSha + HEAD_SHA parsing ────────
+
+
+class TestPushToOverleafMirrorSha:
+
+    def test_mirror_sha_included_in_cli(self):
+        from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (
+            0, "HEAD_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\nok\n",
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="tok",
+        ):
+            ftResultPushToOverleaf(
+                mockDocker, "cid", ["/a/fig.pdf"],
+                "projid123", "figures", sMirrorSha="abc12345",
+            )
+        sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+        assert "--mirror-sha" in sCommand
+        assert "abc12345" in sCommand
+
+    def test_no_mirror_sha_omits_flag(self):
+        from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (0, "ok\n")
+        with patch(
+            "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+            return_value="tok",
+        ):
+            ftResultPushToOverleaf(
+                mockDocker, "cid", ["/a/fig.pdf"],
+                "projid123", "figures",
+            )
+        sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+        assert "--mirror-sha" not in sCommand
+
+
+def test_fsParseHeadShaFromOutput_extracts_sha():
+    from vaibify.gui.syncDispatcher import fsParseHeadShaFromOutput
+    sOutput = (
+        "some warning\n"
+        "HEAD_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+        "ok\n"
+    )
+    assert fsParseHeadShaFromOutput(sOutput) == (
+        "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    )
+
+
+def test_fsParseHeadShaFromOutput_empty_when_missing():
+    from vaibify.gui.syncDispatcher import fsParseHeadShaFromOutput
+    assert fsParseHeadShaFromOutput("just ok\n") == ""
+    assert fsParseHeadShaFromOutput("") == ""
+
+
+# ── fdictClassifyError conflict pattern ─────────────────────────
+
+
+def test_classify_error_conflict_pattern():
+    from vaibify.gui.syncDispatcher import fdictClassifyError
+    dictResult = fdictClassifyError(
+        1, "! [rejected]        master -> master (non-fast-forward)"
+    )
+    assert dictResult["sErrorType"] == "conflict"
+
+
+def test_classify_error_conflict_updates_rejected():
+    from vaibify.gui.syncDispatcher import fdictClassifyError
+    dictResult = fdictClassifyError(
+        1, "error: updates were rejected because the remote..."
+    )
+    assert dictResult["sErrorType"] == "conflict"
+
+
+# ── fsWriteAskpassScript promotion ──────────────────────────────
+
+
+def test_fsWriteAskpassScript_creates_mode_700_file():
+    import os
+    import stat
+    from vaibify.gui.syncDispatcher import fsWriteAskpassScript
+    sPath = fsWriteAskpassScript()
+    try:
+        iMode = os.stat(sPath).st_mode & 0o777
+        assert iMode == 0o700
+        with open(sPath) as handle:
+            sContent = handle.read()
+        assert "fsRetrieveSecret" in sContent
+    finally:
+        os.remove(sPath)
+
+
+class TestComputeContainerDigests:
+    """fdictComputeContainerDigests runs the SHA python snippet in container."""
+
+    def test_fbParsesShaPathLines(self):
+        from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+        from unittest.mock import MagicMock
+        connectionDocker = MagicMock()
+        connectionDocker.ftResultExecuteCommand.return_value = (
+            0,
+            "aaaa1111 /workspace/a.pdf\n"
+            "bbbb2222 /workspace/b.png\n",
+        )
+        dictResult = fdictComputeContainerDigests(
+            connectionDocker, "cid",
+            ["/workspace/a.pdf", "/workspace/b.png"],
+        )
+        assert dictResult == {
+            "/workspace/a.pdf": "aaaa1111",
+            "/workspace/b.png": "bbbb2222",
+        }
+
+    def test_fbSkipsUnreadableEntries(self):
+        from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+        from unittest.mock import MagicMock
+        connectionDocker = MagicMock()
+        connectionDocker.ftResultExecuteCommand.return_value = (
+            0,
+            "aaaa1111 /workspace/a.pdf\n- /workspace/missing.pdf\n",
+        )
+        dictResult = fdictComputeContainerDigests(
+            connectionDocker, "cid",
+            ["/workspace/a.pdf", "/workspace/missing.pdf"],
+        )
+        assert dictResult == {"/workspace/a.pdf": "aaaa1111"}
+
+    def test_fbEmptyInputShortCircuits(self):
+        from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+        from unittest.mock import MagicMock
+        connectionDocker = MagicMock()
+        dictResult = fdictComputeContainerDigests(
+            connectionDocker, "cid", [],
+        )
+        assert dictResult == {}
+        connectionDocker.ftResultExecuteCommand.assert_not_called()
+
+    def test_fbExitNonZeroReturnsEmpty(self):
+        from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+        from unittest.mock import MagicMock
+        connectionDocker = MagicMock()
+        connectionDocker.ftResultExecuteCommand.return_value = (
+            1, "python not found",
+        )
+        dictResult = fdictComputeContainerDigests(
+            connectionDocker, "cid", ["/workspace/a.pdf"],
+        )
+        assert dictResult == {}

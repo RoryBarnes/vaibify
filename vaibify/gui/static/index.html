@@ -528,13 +528,16 @@
 
 <!-- Push Modal -->
 <div class="modal-overlay" id="modalPush" style="display: none;">
-    <div class="modal">
+    <div class="modal modal-push">
         <h2 id="modalPushTitle">Push Files</h2>
+        <div id="modalPushTargetRow" class="sync-target-container"
+             style="display: none;"></div>
         <div id="modalPushFileList" class="push-file-list"></div>
         <div class="modal-actions">
             <button class="btn" id="btnPushCancel">Cancel</button>
-            <button class="btn" id="btnPushSelectAll">Select All</button>
-            <button class="btn btn-primary" id="btnPushConfirm">
+            <button class="btn" id="btnPushAll" style="display: none;">
+                Push All</button>
+            <button class="btn btn-primary" id="btnPushSelected">
                 Push Selected</button>
         </div>
     </div>
@@ -580,6 +583,7 @@
 <script src="/static/scriptWebSocket.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPolling.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptStepRenderer.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptOverleafMirror.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>

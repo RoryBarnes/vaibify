@@ -6,6 +6,11 @@ import re
 import subprocess
 import uuid
 
+from vaibify.reproducibility.overleafAuth import (
+    fnValidateOverleafProjectId,
+    fsWriteAskpassScript,
+)
+
 from . import workflowManager
 from .pipelineUtils import fsShellQuote
 
@@ -14,11 +19,15 @@ __all__ = [
     "fbValidateZenodoToken",
     "fdictCheckConnectivity",
     "fdictClassifyError",
+    "fdictDiffOverleafPush",
     "fdictParseTestMarkerOutput",
     "fdictSyncResult",
+    "flistCheckOverleafConflicts",
     "flistCollectOutputFiles",
+    "flistDetectOverleafCaseCollisions",
     "flistExtractAllScriptPaths",
     "flistGetDirtyFiles",
+    "flistListOverleafTree",
     "fnDeleteCredentialFromContainer",
     "fnStoreCredentialInContainer",
     "fnValidateOverleafProjectId",
@@ -26,6 +35,8 @@ __all__ = [
     "fsBuildDagDot",
     "fsBuildTestMarkerCheckCommand",
     "fsPythonCommand",
+    "fsWriteAskpassScript",
+    "ftRefreshOverleafMirror",
     "ftResultAddFileToGithub",
     "ftResultArchiveProject",
     "ftResultArchiveToZenodo",
@@ -54,6 +65,11 @@ _LIST_NETWORK_PATTERNS = [
     "timeout", "connection refused", "network",
     "could not resolve", "no route",
 ]
+_LIST_CONFLICT_PATTERNS = [
+    "non-fast-forward", "fetch first",
+    "updates were rejected",
+    "merge conflict",
+]
 
 
 def fdictClassifyError(iExitCode, sOutput):
@@ -71,6 +87,9 @@ def fdictClassifyError(iExitCode, sOutput):
     for sPattern in _LIST_NETWORK_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "network", "sMessage": sOutput}
+    for sPattern in _LIST_CONFLICT_PATTERNS:
+        if sPattern in sLower:
+            return {"sErrorType": "conflict", "sMessage": sOutput}
     return {"sErrorType": "unknown", "sMessage": sOutput}
 
 
@@ -98,26 +117,54 @@ def ftResultPushToOverleaf(
     connectionDocker, sContainerId,
     listFilePaths, sProjectId, sTargetDirectory,
     dictWorkflow=None, sGithubBaseUrl="", sDoi="",
-    sTexFilename="main.tex",
+    sTexFilename="main.tex", sMirrorSha="",
 ):
-    """Push figures to Overleaf, optionally annotating the TeX."""
+    """Push figures to Overleaf, optionally annotating the TeX.
+
+    When ``sMirrorSha`` is provided, the container CLI is invoked with
+    ``--mirror-sha <short>`` so the commit message on Overleaf records
+    which mirror snapshot the push was built on. The command's stdout
+    now contains a ``HEAD_SHA=<40hex>`` line alongside the ``ok``
+    marker; callers that care about the post-push head should consult
+    :func:`fsParseHeadShaFromOutput`.
+    """
     fnValidateOverleafProjectId(sProjectId)
     if dictWorkflow and sGithubBaseUrl:
         return _ftResultAnnotatedPush(
             connectionDocker, sContainerId, listFilePaths,
             sProjectId, sTargetDirectory, dictWorkflow,
-            sGithubBaseUrl, sDoi, sTexFilename,
+            sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
         )
     return _ftResultPlainPush(
         connectionDocker, sContainerId, listFilePaths,
-        sProjectId, sTargetDirectory,
+        sProjectId, sTargetDirectory, sMirrorSha,
     )
+
+
+def fsParseHeadShaFromOutput(sOutput):
+    """Extract a ``HEAD_SHA=<hex>`` line from CLI stdout, or empty."""
+    for sLine in (sOutput or "").splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("HEAD_SHA="):
+            return sStripped.split("=", 1)[1].strip()
+    return ""
+
+
+def fsParsePushStatusFromOutput(sOutput):
+    """Extract a ``PUSH_STATUS=<value>`` line from CLI stdout, or empty."""
+    for sLine in (sOutput or "").splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("PUSH_STATUS="):
+            return sStripped.split("=", 1)[1].strip()
+    return ""
 
 
 _S_OVERLEAF_SCRIPT = "/usr/share/vaibify/overleafSync.py"
 
 
-def _fsOverleafCliBase(sSubcommand, sProjectId, sTargetDirectory=None):
+def _fsOverleafCliBase(
+    sSubcommand, sProjectId, sTargetDirectory=None, sMirrorSha="",
+):
     """Build the python3 invocation prefix for an overleafSync CLI call."""
     listParts = [
         "python3", _S_OVERLEAF_SCRIPT, sSubcommand,
@@ -125,6 +172,8 @@ def _fsOverleafCliBase(sSubcommand, sProjectId, sTargetDirectory=None):
     ]
     if sTargetDirectory is not None:
         listParts += ["--target", fsShellQuote(sTargetDirectory)]
+    if sMirrorSha:
+        listParts += ["--mirror-sha", fsShellQuote(sMirrorSha)]
     return " ".join(listParts)
 
 
@@ -146,12 +195,14 @@ def _fsPrependToken(sToken, sPayload):
 
 def _ftResultPlainPush(
     connectionDocker, sContainerId,
-    listFilePaths, sProjectId, sTargetDirectory,
+    listFilePaths, sProjectId, sTargetDirectory, sMirrorSha="",
 ):
     """Push figures without TeX annotation."""
     sStdin = _fsPrependToken(
         _fsFetchOverleafToken(), "\n".join(listFilePaths))
-    sCli = _fsOverleafCliBase("push", sProjectId, sTargetDirectory)
+    sCli = _fsOverleafCliBase(
+        "push", sProjectId, sTargetDirectory, sMirrorSha,
+    )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
@@ -160,7 +211,7 @@ def _ftResultPlainPush(
 def _ftResultAnnotatedPush(
     connectionDocker, sContainerId, listFilePaths,
     sProjectId, sTargetDirectory, dictWorkflow,
-    sGithubBaseUrl, sDoi, sTexFilename,
+    sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha="",
 ):
     """Push figures and annotate the TeX with source links."""
     sPayload = json.dumps({
@@ -170,7 +221,7 @@ def _ftResultAnnotatedPush(
     sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
     sCli = (
         _fsOverleafCliBase(
-            "push-annotated", sProjectId, sTargetDirectory)
+            "push-annotated", sProjectId, sTargetDirectory, sMirrorSha)
         + f" --github-base-url {fsShellQuote(sGithubBaseUrl)}"
         + f" --doi {fsShellQuote(sDoi)}"
         + f" --tex-filename {fsShellQuote(sTexFilename)}"
@@ -626,7 +677,7 @@ def _fbValidateOverleafOnHost(sProjectId):
     from vaibify.config.secretManager import fbSecretExists
     if not fbSecretExists("overleaf_token", "keyring"):
         return (False, "No Overleaf token stored on host")
-    sAskpass = _fsWriteAskpassScript()
+    sAskpass = fsWriteAskpassScript()
     try:
         return _ftRunHostLsRemote(sProjectId, sAskpass)
     finally:
@@ -636,6 +687,7 @@ def _fbValidateOverleafOnHost(sProjectId):
 def _ftRunHostLsRemote(sProjectId, sAskpass):
     """Execute git ls-remote under the prepared askpass and env."""
     import os
+    from vaibify.reproducibility.overleafMirror import fsRedactStderr
     sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
     dictEnv = os.environ.copy()
     dictEnv["GIT_ASKPASS"] = sAskpass
@@ -644,35 +696,8 @@ def _ftRunHostLsRemote(sProjectId, sAskpass):
         ["git", "ls-remote", sUrl, "HEAD"],
         capture_output=True, text=True, env=dictEnv,
     )
-    sDetail = (resultProcess.stderr or "").strip()
+    sDetail = fsRedactStderr((resultProcess.stderr or "").strip())
     return (resultProcess.returncode == 0, sDetail)
-
-
-def _fsWriteAskpassScript():
-    """Write a mode-700 askpass script that prints the stored token."""
-    import os
-    import stat
-    import sys as sysModule
-    import tempfile
-    sScript = (
-        f"#!{sysModule.executable}\n"
-        "import sys\n"
-        "from vaibify.config.secretManager import fsRetrieveSecret\n"
-        "prompt = sys.argv[1] if len(sys.argv) > 1 else ''\n"
-        "if 'Username' in prompt:\n"
-        "    print('git')\n"
-        "else:\n"
-        "    print(fsRetrieveSecret('overleaf_token', 'keyring'))\n"
-    )
-    iFileDescriptor, sPath = tempfile.mkstemp(
-        prefix="vc_askpass_", suffix=".py",
-    )
-    try:
-        os.write(iFileDescriptor, sScript.encode("utf-8"))
-    finally:
-        os.close(iFileDescriptor)
-    os.chmod(sPath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-    return sPath
 
 
 def _fnRemovePath(sPath):
@@ -698,12 +723,146 @@ def fbValidateZenodoToken(connectionDocker, sContainerId):
     return iExit == 0 and "ok" in sOut
 
 
-def fnValidateOverleafProjectId(sProjectId):
-    """Raise ValueError if the Overleaf project ID is malformed."""
-    if not re.match(r"^[a-zA-Z0-9_-]+$", sProjectId):
-        raise ValueError(
-            f"Invalid Overleaf project ID: {sProjectId}"
+# ---------------------------------------------------------------------------
+# Overleaf mirror dispatch (host-side)
+# ---------------------------------------------------------------------------
+
+
+def ftRefreshOverleafMirror(sProjectId):
+    """Refresh the host-side partial-clone mirror for this project.
+
+    Returns ``(bSuccess, dictOrMessage)``. On success the second item
+    is a dict with ``sHeadSha``, ``iFileCount``, ``sRefreshedAt``. On
+    failure it is a string with a classified error message suitable
+    for surfacing to the UI.
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    sToken = _fsFetchOverleafToken()
+    if not sToken:
+        return (False, "No Overleaf token stored on host")
+    from vaibify.reproducibility import overleafMirror
+    try:
+        dictResult = overleafMirror.fbRefreshMirror(sProjectId, sToken)
+    except RuntimeError as error:
+        return (False, str(error))
+    return (True, dictResult)
+
+
+def flistListOverleafTree(sProjectId):
+    """Return mirror tree entries (no network call)."""
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    return overleafMirror.flistListMirrorTree(sProjectId)
+
+
+def _fdictComputeLocalDigests(listAbsPaths):
+    """Compute git-blob digests for local files on disk (host)."""
+    from vaibify.reproducibility import overleafMirror
+    dictDigests = {}
+    for sPath in listAbsPaths:
+        try:
+            dictDigests[sPath] = overleafMirror.fsComputeBlobSha(sPath)
+        except OSError:
+            continue
+    return dictDigests
+
+
+_S_DIGEST_SCRIPT = (
+    "import hashlib,sys,os\n"
+    "for p in sys.argv[1:]:\n"
+    "    try:\n"
+    "        with open(p,'rb') as f: b=f.read()\n"
+    "        s=hashlib.sha1(b'blob '+str(len(b)).encode()"
+    "+b'\\x00'+b).hexdigest()\n"
+    "        print(s+' '+p)\n"
+    "    except OSError:\n"
+    "        print('- '+p)\n"
+)
+
+
+def fdictComputeContainerDigests(
+    connectionDocker, sContainerId, listAbsPaths,
+):
+    """Compute git-blob digests for files inside the container.
+
+    Runs a single docker exec that iterates the paths and prints one
+    ``<sha> <path>`` line per file (or ``- <path>`` for unreadable ones).
+    Unreadable entries are omitted from the returned dict.
+    """
+    if not listAbsPaths:
+        return {}
+    sScript = _S_DIGEST_SCRIPT
+    listArgs = [fsShellQuote(p) for p in listAbsPaths]
+    sCommand = (
+        "python3 -c " + fsShellQuote(sScript)
+        + " " + " ".join(listArgs)
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    dictDigests = {}
+    if iExit != 0:
+        return dictDigests
+    for sLine in (sOutput or "").splitlines():
+        sStripped = sLine.strip()
+        if not sStripped or sStripped.startswith("- "):
+            continue
+        iSpace = sStripped.find(" ")
+        if iSpace <= 0:
+            continue
+        dictDigests[sStripped[iSpace + 1:]] = sStripped[:iSpace]
+    return dictDigests
+
+
+def fdictDiffOverleafPush(
+    sProjectId, listAbsPaths, sTargetDirectory,
+    connectionDocker=None, sContainerId="",
+):
+    """Classify a proposed push into new/overwrite/unchanged buckets.
+
+    When ``connectionDocker`` + ``sContainerId`` are given, digests are
+    computed inside the container (frontend-sent paths are
+    container-absolute). Falls back to host-side digest computation
+    when no docker context is provided.
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    if connectionDocker is not None and sContainerId:
+        dictDigests = fdictComputeContainerDigests(
+            connectionDocker, sContainerId, listAbsPaths,
         )
+    else:
+        dictDigests = _fdictComputeLocalDigests(listAbsPaths)
+    return overleafMirror.fdictDiffAgainstMirror(
+        sProjectId, dictDigests, sTargetDirectory,
+    )
+
+
+def flistCheckOverleafConflicts(
+    sProjectId, listAbsPaths, sTargetDirectory, dictSyncStatus,
+):
+    """Return remote-versus-baseline conflicts for a proposed push."""
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    return overleafMirror.flistDetectConflicts(
+        sProjectId, listAbsPaths, sTargetDirectory, dictSyncStatus,
+    )
+
+
+def flistDetectOverleafCaseCollisions(
+    sProjectId, listAbsPaths, sTargetDirectory,
+):
+    """Return per-file case-collision records for a proposed push.
+
+    Thin dispatcher wrapper that delegates to the overleafMirror
+    adapter. See ``overleafMirror.flistDetectCaseCollisions`` for
+    the collision rule and record shape.
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    return overleafMirror.flistDetectCaseCollisions(
+        sProjectId, listAbsPaths, sTargetDirectory,
+    )
 
 
 def _fbSafeDirectoryName(sDirectory):

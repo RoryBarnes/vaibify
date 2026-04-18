@@ -3,7 +3,19 @@
 var VaibifySyncManager = (function () {
     "use strict";
 
+    var _I_DIFF_DEBOUNCE_MS = 300;
+
     var _sPushService = "";
+    var _sPushTargetDirectory = "";
+    var _listPushFiles = [];
+    var _dictPushStatusByPath = {};
+    var _setUserTickedPaths = new Set();
+    var _setUserUntickedPaths = new Set();
+    var _listCaseCollisions = [];
+    var _sSuggestedTargetDirectory = "";
+    var _listConflicts = [];
+    var _iDiffRequestToken = 0;
+    var _timerDiffDebounce = null;
 
     var _DICT_SYNC_ERROR_MESSAGES = {
         auth: "Authentication failed. Check your credentials " +
@@ -29,64 +41,621 @@ var VaibifySyncManager = (function () {
         fnPopulatePushModal(sService);
     }
 
+    var _I_SLOW_DIFF_TOAST_MS = 5000;
+
     async function fnPopulatePushModal(sService) {
+        _fnResetPushState();
         var sContainerId = PipeleyenApp.fsGetContainerId();
         var listFiles = await VaibifyApi.fdictGet(
             "/api/sync/" + sContainerId + "/files" +
             "?sService=" + encodeURIComponent(sService)
         );
+        _listPushFiles = listFiles || [];
         var dictNames = {
             overleaf: "Overleaf", zenodo: "Zenodo",
             github: "GitHub",
         };
         document.getElementById("modalPushTitle").textContent =
             "Push to " + dictNames[sService];
-        _fnRenderPushFileList(listFiles);
+        _fnRenderOverleafTargetRow(sService, sContainerId);
+        _fnRenderPushAnnotationHost(sService);
+        _fnRenderPushFileList();
+        _fnApplyButtonLabels();
+        _fnUpdatePushButtonStates();
+        if (sService === "overleaf") {
+            await _fnRunInitialDiffThenShowModal(sContainerId);
+            return;
+        }
         document.getElementById("modalPush").style.display = "flex";
     }
 
-    function _fnRenderPushFileList(listFiles) {
-        var elList = document.getElementById("modalPushFileList");
-        var bOverleaf = _sPushService === "overleaf";
-        elList.innerHTML = listFiles.map(function (dictFile) {
-            var bSupporting = bOverleaf &&
-                dictFile.sCategory === "supporting";
-            return '<div class="push-file-row' +
-                (bSupporting ? " push-file-supporting" : "") +
-                '">' +
-                '<input type="checkbox" class="push-file-checkbox" ' +
-                'data-path="' +
-                VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
-                '"' + (bSupporting ? "" : " checked") +
-                (bSupporting ? " disabled" : "") + '>' +
-                '<span class="push-file-name">' +
-                VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
-                (bSupporting ? " (supporting)" : "") +
-                '</span></div>';
-        }).join("");
+    async function _fnRunInitialDiffThenShowModal(sContainerId) {
+        var elToast = null;
+        var iSlowTimer = setTimeout(function () {
+            elToast = _fnShowStickyDiffToast();
+        }, _I_SLOW_DIFF_TOAST_MS);
+        try {
+            await _fnPerformDiffRefresh(sContainerId);
+        } finally {
+            clearTimeout(iSlowTimer);
+            if (elToast && elToast.parentNode) elToast.remove();
+        }
+        document.getElementById("modalPush").style.display = "flex";
     }
 
-    async function fnHandlePushConfirm() {
+    function _fnShowStickyDiffToast() {
+        var elContainer = document.getElementById("toastContainer");
+        if (!elContainer) return null;
+        var el = document.createElement("div");
+        el.className = "toast sticky-diff-toast";
+        el.innerHTML =
+            '<span class="spinner"></span>' +
+            '<span class="sticky-diff-toast-label">' +
+            'Checking Overleaf remote\u2026' +
+            '</span>';
+        elContainer.appendChild(el);
+        return el;
+    }
+
+    function _fnResetPushState() {
+        _listPushFiles = [];
+        _dictPushStatusByPath = {};
+        _setUserTickedPaths.clear();
+        _setUserUntickedPaths.clear();
+        _listCaseCollisions = [];
+        _sSuggestedTargetDirectory = "";
+        _listConflicts = [];
+        _iDiffRequestToken = 0;
+        if (_timerDiffDebounce) {
+            clearTimeout(_timerDiffDebounce);
+            _timerDiffDebounce = null;
+        }
+    }
+
+    function _fnApplyButtonLabels() {
+        var elSelected = document.getElementById("btnPushSelected");
+        var elAll = document.getElementById("btnPushAll");
+        if (_sPushService === "overleaf") {
+            if (elAll) elAll.style.display = "";
+            if (elSelected) elSelected.textContent = "Push Selected";
+        } else {
+            if (elAll) elAll.style.display = "none";
+            if (elSelected) elSelected.textContent = "Push Selected";
+        }
+    }
+
+    function _fsCurrentOverleafTarget() {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        if (!dictWorkflow) return "figures";
+        return dictWorkflow.sOverleafFigureDirectory || "figures";
+    }
+
+    function _fnRenderOverleafTargetRow(sService, sContainerId) {
+        var elHost = document.getElementById("modalPushTargetRow");
+        if (!elHost) return;
+        if (sService !== "overleaf") {
+            elHost.innerHTML = "";
+            elHost.style.display = "none";
+            return;
+        }
+        elHost.style.display = "";
+        _sPushTargetDirectory = _fsCurrentOverleafTarget();
+        elHost.innerHTML =
+            '<label class="sync-target-label" ' +
+            'for="inputPushTarget">Target directory</label>' +
+            '<div class="sync-target-row">' +
+            '<input type="text" class="sync-target-input" ' +
+            'id="inputPushTarget" ' +
+            'placeholder="figures">' +
+            '<button type="button" class="btn btn-small" ' +
+            'id="btnPushTargetBrowse">Browse</button>' +
+            '</div>' +
+            '<div class="freshness-indicator" ' +
+            'id="pushFreshnessIndicator"></div>';
+        _fnUpdateTargetDisplay();
+        _fnBindTargetInput(sContainerId);
+        _fnBindTargetBrowse(sContainerId);
+        _fnRefreshFreshnessIndicatorInModal(sContainerId);
+    }
+
+    function _fnRenderPushAnnotationHost(sService) {
+        var elList = document.getElementById("modalPushFileList");
+        if (!elList) return;
+        var elExisting = document.getElementById("pushAnnotationHost");
+        if (elExisting) elExisting.remove();
+        if (sService !== "overleaf") return;
+        var elHost = document.createElement("div");
+        elHost.id = "pushAnnotationHost";
+        elHost.className = "push-annotation-host";
+        elList.parentNode.insertBefore(elHost, elList);
+    }
+
+    function _fnUpdateTargetDisplay() {
+        var elInput = document.getElementById("inputPushTarget");
+        if (elInput) {
+            elInput.value = _sPushTargetDirectory || "";
+        }
+    }
+
+    function _fnBindTargetInput(sContainerId) {
+        var elInput = document.getElementById("inputPushTarget");
+        if (!elInput) return;
+        elInput.addEventListener("input", function () {
+            _sPushTargetDirectory = elInput.value.trim();
+            _fnScheduleDiffRefresh(sContainerId);
+        });
+    }
+
+    function _fnBindTargetBrowse(sContainerId) {
+        var elBtn = document.getElementById("btnPushTargetBrowse");
+        if (!elBtn) return;
+        elBtn.addEventListener("click", function () {
+            VaibifyOverleafMirror.fnOpenTreePicker(
+                sContainerId,
+                _sPushTargetDirectory,
+                function (sPath) {
+                    _sPushTargetDirectory = sPath;
+                    _fnUpdateTargetDisplay();
+                    _fnScheduleDiffRefresh(sContainerId);
+                }
+            );
+        });
+    }
+
+    function _fnRefreshFreshnessIndicatorInModal(sContainerId) {
+        var elHost = document.getElementById("pushFreshnessIndicator");
+        if (!elHost) return;
+        (async function () {
+            try {
+                await VaibifyOverleafMirror.fnFetchMirrorTree(
+                    sContainerId);
+            } catch (error) {
+                /* graceful: indicator will show "never" */
+            }
+            VaibifyOverleafMirror.fnRenderFreshnessIndicator(
+                elHost, sContainerId);
+        })();
+    }
+
+    async function _fnInitialOverleafDiff(sContainerId) {
+        _fnShowAnnotationPending();
+        await _fnPerformDiffRefresh(sContainerId);
+    }
+
+    function _fnScheduleDiffRefresh(sContainerId) {
+        if (_sPushService !== "overleaf") return;
+        _fnShowAnnotationPending();
+        if (_timerDiffDebounce) clearTimeout(_timerDiffDebounce);
+        _timerDiffDebounce = setTimeout(function () {
+            _timerDiffDebounce = null;
+            _fnPerformDiffRefresh(sContainerId);
+        }, _I_DIFF_DEBOUNCE_MS);
+    }
+
+    async function _fnPerformDiffRefresh(sContainerId) {
+        var iToken = ++_iDiffRequestToken;
+        var listPaths = _listPushFiles.map(function (dictFile) {
+            return dictFile.sPath;
+        });
+        if (listPaths.length === 0) {
+            _fnApplyDiffResult({
+                listNew: [], listOverwrite: [], listUnchanged: [],
+                listConflicts: [], listCaseCollisions: [],
+                sSuggestedTargetDirectory: "",
+            }, iToken);
+            return;
+        }
+        try {
+            var dictResult =
+                await VaibifyOverleafMirror.fdictFetchDiffFromServer(
+                    sContainerId, listPaths, _sPushTargetDirectory);
+            _fnApplyDiffResult(dictResult, iToken);
+        } catch (error) {
+            if (iToken !== _iDiffRequestToken) return;
+            PipeleyenApp.fnShowToast(
+                _fsDescribeDiffError(error), "error");
+            _fnShowAnnotationError();
+        }
+    }
+
+    function _fsDescribeDiffError(error) {
+        var sMessage = error && error.message ? error.message : "";
+        if (sMessage.indexOf("Overleaf project ID not set") !== -1) {
+            return "Connect Overleaf first (Sync \u2192 Connect) " +
+                "to set the project ID before pushing.";
+        }
+        return sMessage || "Unable to fetch diff from Overleaf";
+    }
+
+    function _fnApplyDiffResult(dictResult, iToken) {
+        if (iToken !== _iDiffRequestToken) return;
+        _dictPushStatusByPath = _fdictIndexStatuses(dictResult);
+        _listConflicts = dictResult.listConflicts || [];
+        _listCaseCollisions = dictResult.listCaseCollisions || [];
+        _sSuggestedTargetDirectory =
+            dictResult.sSuggestedTargetDirectory || "";
+        _fnReconcileTickStateForStatusTransitions();
+        _fnRenderPushAnnotations();
+        _fnRenderPushFileList();
+        _fnUpdatePushButtonStates();
+    }
+
+    function _fdictIndexStatuses(dictResult) {
+        var dictMap = {};
+        (dictResult.listNew || []).forEach(function (d) {
+            dictMap[d.sLocalPath] = "new";
+        });
+        (dictResult.listOverwrite || []).forEach(function (d) {
+            dictMap[d.sLocalPath] = "overwrite";
+        });
+        (dictResult.listUnchanged || []).forEach(function (d) {
+            dictMap[d.sLocalPath] = "unchanged";
+        });
+        return dictMap;
+    }
+
+    function _fnReconcileTickStateForStatusTransitions() {
+        _listPushFiles.forEach(function (dictFile) {
+            var sStatus = _dictPushStatusByPath[dictFile.sPath];
+            if (sStatus === "unchanged") {
+                _setUserTickedPaths.delete(dictFile.sPath);
+                _setUserUntickedPaths.delete(dictFile.sPath);
+            }
+        });
+    }
+
+    function _fnShowAnnotationPending() {
+        var elHost = document.getElementById("pushAnnotationHost");
+        if (!elHost) return;
+        elHost.innerHTML =
+            '<div class="push-annotation-pending">' +
+            'Checking remote\u2026</div>';
+    }
+
+    function _fnShowAnnotationError() {
+        var elHost = document.getElementById("pushAnnotationHost");
+        if (!elHost) return;
+        elHost.innerHTML =
+            '<div class="push-annotation-pending">' +
+            'Remote check failed.</div>';
+    }
+
+    function _fnRenderPushAnnotations() {
+        var elHost = document.getElementById("pushAnnotationHost");
+        if (!elHost) return;
+        elHost.innerHTML =
+            _fsBuildCaseCollisionBannerHtml() +
+            _fsBuildConflictBannerHtml();
+        _fnWireCollisionBanner();
+        _fnWireConflictCheckbox();
+    }
+
+    function _fsBuildCaseCollisionBannerHtml() {
+        if (!_listCaseCollisions || _listCaseCollisions.length === 0) {
+            return "";
+        }
+        var sCount = fsFormatFileCount(_listCaseCollisions.length);
+        var sButton = "";
+        if (_sSuggestedTargetDirectory) {
+            sButton =
+                '<button type="button" class="btn btn-small" ' +
+                'id="btnUseCanonicalCase">Use ' +
+                VaibifyUtilities.fnEscapeHtml(
+                    _sSuggestedTargetDirectory) + '/</button>';
+        }
+        return (
+            '<div class="case-collision-banner" role="status">' +
+            '<div class="case-collision-heading">' +
+            'Case mismatch with Overleaf (' + sCount + ')' +
+            '</div>' +
+            '<p class="case-collision-intro">' +
+            'Overleaf treats directory names case-insensitively. ' +
+            'Pushing to a different case than the existing entry ' +
+            'can create phantom duplicate files.</p>' +
+            sButton +
+            '</div>'
+        );
+    }
+
+    function _fsBuildConflictBannerHtml() {
+        if (!_listConflicts || _listConflicts.length === 0) return "";
+        var sRows = _listConflicts.map(
+            _fsBuildConflictRowHtml).join("");
+        return (
+            '<div class="conflict-block" role="alert">' +
+            '<div class="conflict-block-heading">' +
+            'Conflicts detected (' + _listConflicts.length + ')' +
+            '</div>' +
+            '<p class="conflict-block-intro">' +
+            'These files have been modified on Overleaf since ' +
+            'your last push. Pushing will overwrite those changes.' +
+            '</p>' +
+            sRows +
+            '<label class="conflict-override-label">' +
+            '<input type="checkbox" id="inputConflictOverride"> ' +
+            'Overwrite conflicts anyway' +
+            '</label>' +
+            '</div>'
+        );
+    }
+
+    function _fsBuildConflictRowHtml(dictConflict) {
+        var sBaseline = (dictConflict.sBaselineDigest || "")
+            .substring(0, 8) || "(none)";
+        var sCurrent = (dictConflict.sCurrentDigest || "")
+            .substring(0, 8) || "(missing)";
+        var sLocal = dictConflict.sLocalPath || "";
+        var sRemote = dictConflict.sRemotePath || "";
+        return (
+            '<div class="conflict-row">' +
+            '<div class="conflict-row-name">' +
+            VaibifyUtilities.fnEscapeHtml(sLocal) +
+            ' <span class="diff-remote-path">&rarr; ' +
+            VaibifyUtilities.fnEscapeHtml(sRemote) + '</span></div>' +
+            '<div class="conflict-row-digests">' +
+            '<span>Last pushed: <code>' +
+            VaibifyUtilities.fnEscapeHtml(sBaseline) + '</code></span>' +
+            '<span>Current remote: <code>' +
+            VaibifyUtilities.fnEscapeHtml(sCurrent) + '</code></span>' +
+            '</div></div>'
+        );
+    }
+
+    function _fnWireCollisionBanner() {
+        var elBtn = document.getElementById("btnUseCanonicalCase");
+        if (!elBtn) return;
+        elBtn.addEventListener("click", function () {
+            _sPushTargetDirectory = _sSuggestedTargetDirectory;
+            _fnUpdateTargetDisplay();
+            var sContainerId = PipeleyenApp.fsGetContainerId();
+            _fnScheduleDiffRefresh(sContainerId);
+        });
+    }
+
+    function _fnWireConflictCheckbox() {
+        var elCheckbox = document.getElementById(
+            "inputConflictOverride");
+        if (!elCheckbox) return;
+        elCheckbox.addEventListener("change",
+            _fnUpdatePushButtonStates);
+    }
+
+    function _fnRenderPushFileList() {
+        var elList = document.getElementById("modalPushFileList");
+        if (!elList) return;
+        var bOverleaf = _sPushService === "overleaf";
+        elList.innerHTML = _listPushFiles.map(function (dictFile) {
+            return _fsBuildPushFileRowHtml(dictFile, bOverleaf);
+        }).join("");
+        _fnBindPushFileRowEvents();
+    }
+
+    function _fsBuildPushFileRowHtml(dictFile, bOverleaf) {
+        var bSupporting = bOverleaf &&
+            dictFile.sCategory === "supporting";
+        if (bSupporting) {
+            return _fsBuildSupportingRowHtml(dictFile);
+        }
+        var sStatus = _dictPushStatusByPath[dictFile.sPath] || "";
+        var bUnchanged = sStatus === "unchanged";
+        var bChecked = _fbRowShouldBeChecked(
+            dictFile.sPath, sStatus);
+        var sClass = "push-file-row" +
+            (bUnchanged ? " push-file-unchanged" : "");
+        var sBadge = sStatus
+            ? _fsBuildStatusBadgeHtml(sStatus)
+            : "";
+        return (
+            '<div class="' + sClass + '">' +
+            '<input type="checkbox" class="push-file-checkbox" ' +
+            'data-path="' +
+            VaibifyUtilities.fnEscapeHtml(dictFile.sPath) + '"' +
+            (bChecked ? " checked" : "") +
+            (bUnchanged ? " disabled" : "") + '>' +
+            '<span class="push-file-name">' +
+            VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
+            '</span>' + sBadge +
+            '</div>'
+        );
+    }
+
+    function _fsBuildSupportingRowHtml(dictFile) {
+        return (
+            '<div class="push-file-row push-file-supporting">' +
+            '<input type="checkbox" class="push-file-checkbox" ' +
+            'data-path="' +
+            VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
+            '" disabled>' +
+            '<span class="push-file-name">' +
+            VaibifyUtilities.fnEscapeHtml(dictFile.sPath) +
+            ' (supporting)</span></div>'
+        );
+    }
+
+    function _fsBuildStatusBadgeHtml(sStatus) {
+        var dictLabels = {
+            "new": "new",
+            "overwrite": "overwrite",
+            "unchanged": "unchanged",
+        };
+        var sLabel = dictLabels[sStatus] || sStatus;
+        return (
+            '<span class="push-file-status-badge badge-' +
+            VaibifyUtilities.fnEscapeHtml(sStatus) + '">' +
+            VaibifyUtilities.fnEscapeHtml(sLabel) + '</span>'
+        );
+    }
+
+    function _fbRowShouldBeChecked(sPath, sStatus) {
+        if (sStatus === "unchanged") return false;
+        if (sStatus === "new" || sStatus === "overwrite") {
+            if (_setUserUntickedPaths.has(sPath)) return false;
+            return true;
+        }
+        if (_setUserTickedPaths.has(sPath)) return true;
+        if (_setUserUntickedPaths.has(sPath)) return false;
+        return true;
+    }
+
+    function _fnBindPushFileRowEvents() {
+        document.querySelectorAll(".push-file-checkbox").forEach(
+            function (elCheckbox) {
+                elCheckbox.addEventListener(
+                    "change", _fnHandleRowToggle);
+            });
+    }
+
+    function _fnHandleRowToggle(event) {
+        var sPath = event.currentTarget.dataset.path;
+        if (!sPath) return;
+        if (event.currentTarget.checked) {
+            _setUserTickedPaths.add(sPath);
+            _setUserUntickedPaths.delete(sPath);
+        } else {
+            _setUserUntickedPaths.add(sPath);
+            _setUserTickedPaths.delete(sPath);
+        }
+        _fnUpdatePushButtonStates();
+    }
+
+    function _flistSelectedPaths() {
         var listPaths = [];
         document.querySelectorAll(
             ".push-file-checkbox:checked"
         ).forEach(function (el) {
             listPaths.push(el.dataset.path);
         });
+        return listPaths;
+    }
+
+    function _flistAllPushablePaths() {
+        var listPaths = [];
+        _listPushFiles.forEach(function (dictFile) {
+            var sStatus = _dictPushStatusByPath[dictFile.sPath];
+            if (sStatus === "new" || sStatus === "overwrite") {
+                listPaths.push(dictFile.sPath);
+            }
+        });
+        return listPaths;
+    }
+
+    function _fbSubmissionIsBlockedByConflicts(listPaths) {
+        if (!_listConflicts || _listConflicts.length === 0) {
+            return false;
+        }
+        var setPaths = new Set(listPaths);
+        var bAnyConflicted = _listConflicts.some(function (dict) {
+            return setPaths.has(dict.sLocalPath);
+        });
+        if (!bAnyConflicted) return false;
+        var elCheckbox = document.getElementById(
+            "inputConflictOverride");
+        return !(elCheckbox && elCheckbox.checked);
+    }
+
+    function _fnUpdatePushButtonStates() {
+        var elSelected = document.getElementById("btnPushSelected");
+        var elAll = document.getElementById("btnPushAll");
+        if (_sPushService !== "overleaf") {
+            if (elSelected) {
+                elSelected.disabled =
+                    _flistSelectedPaths().length === 0;
+            }
+            return;
+        }
+        var listSelected = _flistSelectedPaths();
+        var listAll = _flistAllPushablePaths();
+        if (elSelected) {
+            elSelected.disabled =
+                listSelected.length === 0 ||
+                _fbSubmissionIsBlockedByConflicts(listSelected);
+        }
+        if (elAll) {
+            elAll.disabled =
+                listAll.length === 0 ||
+                _fbSubmissionIsBlockedByConflicts(listAll);
+        }
+    }
+
+    async function fnHandlePushSelected() {
+        var listPaths = _flistSelectedPaths();
+        await _fnBeginPush(listPaths);
+    }
+
+    async function fnHandlePushAll() {
+        if (_sPushService !== "overleaf") {
+            await fnHandlePushSelected();
+            return;
+        }
+        var listPaths = _flistAllPushablePaths();
+        await _fnBeginPush(listPaths);
+    }
+
+    async function _fnBeginPush(listPaths) {
         if (listPaths.length === 0) {
             PipeleyenApp.fnShowToast("No files selected", "error");
             return;
         }
+        if (_sPushService === "overleaf") {
+            if (!_fbValidateTargetDirectory()) return;
+            _fnConfirmAndDispatchOverleafPush(listPaths);
+            return;
+        }
+        await _fnDispatchPush(listPaths);
+    }
+
+    function _fbValidateTargetDirectory() {
+        var sTarget = (_sPushTargetDirectory || "").trim();
+        if (sTarget === "") return true;
+        if (sTarget.charAt(0) === "/" || sTarget.charAt(0) === "\\") {
+            PipeleyenApp.fnShowToast(
+                "Target directory must not start with a slash.",
+                "error");
+            return false;
+        }
+        var listSegments = sTarget.split("/");
+        for (var iIndex = 0; iIndex < listSegments.length; iIndex += 1) {
+            if (listSegments[iIndex] === "..") {
+                PipeleyenApp.fnShowToast(
+                    "Target directory must not contain '..'.",
+                    "error");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function _fnConfirmAndDispatchOverleafPush(listPaths) {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var sProjectId = dictWorkflow.sOverleafProjectId || "";
+        var sMessage = "Push " + fsFormatFileCount(listPaths.length) +
+            " to Overleaf project `" + sProjectId + "`?";
+        var dictDetails = {
+            sDetails: listPaths.join("\n"),
+        };
+        PipeleyenModals.fnShowConfirmModal(
+            "Confirm Overleaf push",
+            sMessage,
+            function () { _fnDispatchPush(listPaths); },
+            dictDetails
+        );
+    }
+
+    async function _fnDispatchPush(listPaths) {
         document.getElementById("modalPush").style.display = "none";
         PipeleyenApp.fnShowToast(
-            "Pushing " + listPaths.length + " files...", "success");
+            "Pushing " + fsFormatFileCount(listPaths.length) +
+            "...", "success");
         var sEndpoint = _fsServiceEndpoint(_sPushService);
         var sAction = _fsServiceAction(_sPushService);
         var sContainerId = PipeleyenApp.fsGetContainerId();
+        var dictBody = {listFilePaths: listPaths};
+        if (_sPushService === "overleaf" && _sPushTargetDirectory) {
+            dictBody.sTargetDirectory = _sPushTargetDirectory;
+        }
         try {
             var dictResult = await VaibifyApi.fdictPost(
-                sEndpoint + sContainerId + "/" + sAction,
-                {listFilePaths: listPaths}
+                sEndpoint + sContainerId + "/" + sAction, dictBody
             );
             if (!dictResult.bSuccess) {
                 fnShowSyncError(dictResult, _sPushService);
@@ -98,6 +667,11 @@ var VaibifySyncManager = (function () {
             PipeleyenApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
+    }
+
+    function fsFormatFileCount(iCount) {
+        if (iCount === 1) return "1 file";
+        return iCount + " files";
     }
 
     function fnShowSyncError(dictResult, sService) {
@@ -127,15 +701,12 @@ var VaibifySyncManager = (function () {
                     .style.display = "none";
             }
         );
-        document.getElementById("btnPushConfirm").addEventListener(
-            "click", fnHandlePushConfirm
-        );
-        document.getElementById("btnPushSelectAll").addEventListener(
-            "click", function () {
-                document.querySelectorAll(".push-file-checkbox")
-                    .forEach(function (el) { el.checked = true; });
-            }
-        );
+        document.getElementById("btnPushSelected").addEventListener(
+            "click", fnHandlePushSelected);
+        var elAll = document.getElementById("btnPushAll");
+        if (elAll) {
+            elAll.addEventListener("click", fnHandlePushAll);
+        }
         fnBindConnectionSetupEvents();
     }
 
@@ -357,5 +928,6 @@ var VaibifySyncManager = (function () {
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,
         fnShowHelpPopup: fnShowHelpPopup,
+        fsFormatFileCount: fsFormatFileCount,
     };
 })();
