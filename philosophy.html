@@ -1,0 +1,237 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Philosophy &mdash; Vaibify 0.0.1.dev71 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=7129fe0c"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installing Vaibify" href="install.html" />
+    <link rel="prev" title="Code of Conduct" href="conduct.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Philosophy</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-problem">The problem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-opportunity">The opportunity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-central-assumption">The central assumption</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-results-can-be-trusted">How the results can be trusted</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ai-assisted-development-as-practice">AI-assisted development as practice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-tagline-is-the-architecture-spec">The tagline is the architecture spec</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Philosophy</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/philosophy.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="philosophy">
+<h1>Philosophy<a class="headerlink" href="#philosophy" title="Link to this heading"></a></h1>
+<p>This document explains why Vaibify exists and what it believes about
+AI-assisted scientific computing. For the implementation that flows
+from these beliefs, see <a class="reference internal" href="architecture.html"><span class="std std-doc">architecture.md</span></a>. For the
+methodology behind the project’s own agent documentation, see
+<a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a>.</p>
+<section id="the-problem">
+<h2>The problem<a class="headerlink" href="#the-problem" title="Link to this heading"></a></h2>
+<p>AI coding agents are remarkably capable and remarkably dangerous. An
+agent running loose in a researcher’s home directory can read SSH
+keys, overwrite datasets built over months, or push a half-finished
+branch to a shared repository. Treating a scientific workstation as
+an agent’s playground places years of careful work at risk for a few
+hours of convenience. Vaibify’s first job is to contain AI agents to
+a secure environment.</p>
+</section>
+<section id="the-opportunity">
+<h2>The opportunity<a class="headerlink" href="#the-opportunity" title="Link to this heading"></a></h2>
+<p>Once contained, you can safely allow AI coding agents to freely build
+code, monitor long-running jobs, and generate figures and TeX for
+manuscripts. Experiment with confidence and push the limits of the
+combined abilities of your brain and AI.</p>
+<p>Vaibify is based on the assumption that code is written by agents
+now. While access to an IDE is included, vaibify is optimized for
+command-line agents like Claude Code. The command line is ground
+truth for the operating system. It will always be the fundamental
+representation of a filesystem.</p>
+</section>
+<section id="the-central-assumption">
+<h2>The central assumption<a class="headerlink" href="#the-central-assumption" title="Link to this heading"></a></h2>
+<p>Agent-written code must pass different validation tests than
+human-written code, and AI-assisted science must pass higher
+thresholds than human-only science. The central assumption of vaibify
+is:</p>
+<blockquote>
+<div><p><em>Visually verifying the outputs of AI-written software is a faster
+and more reliable path to good science than analyzing data with
+only human-written code.</em></p>
+</div></blockquote>
+<p>The value proposition follows: after an hour of setup, users can
+obtain better results in a shorter amount of time than they could
+working from a human-only codebase.</p>
+<p>This is a falsifiable claim. If it turns out that code written only
+by humans reliably outperforms code written by agents and verified
+by humans, the whole architecture of vaibify is wasted effort. The
+bet is that verification of outputs is the part of science that
+genuinely benefits from human attention, and that delegating the
+mechanical code-writing to agents frees a researcher to spend more
+time on the parts that actually matter: asking the right questions,
+inspecting the results, and deciding what to do next.</p>
+</section>
+<section id="how-the-results-can-be-trusted">
+<h2>How the results can be trusted<a class="headerlink" href="#how-the-results-can-be-trusted" title="Link to this heading"></a></h2>
+<p>The same way they always have been: through visually inspecting
+scripts, plots, and even raw data. Vaibify is more explicit about
+the practice because an agent has an outsized capacity to veer off
+course and change scripts or files that apply to other steps,
+silently breaking downstream work.</p>
+<p>Three mechanisms operate together:</p>
+<ul class="simple">
+<li><p><strong>Rigorous testing of produced datasets.</strong> Every step produces
+outputs that are checked against deterministic assertions at test
+time. When a file changes, its associated tests become stale and
+re-run.</p></li>
+<li><p><strong>Dependency monitoring.</strong> When an upstream step is modified, every
+downstream step is flagged as potentially invalidated. The
+researcher sees which steps need attention.</p></li>
+<li><p><strong>Per-step sign-off by the user.</strong> After inspecting the outputs of
+a step, the researcher marks it verified. That sign-off is a
+first-class artifact alongside the code and the data, not a memory
+in somebody’s head.</p></li>
+</ul>
+<p>The three together close the loop: an AI writes the code, the
+container constrains where it can reach, the test suite catches
+regressions, dependency tracking surfaces knock-on effects, and the
+researcher signs off on each step only after looking at it.</p>
+</section>
+<section id="ai-assisted-development-as-practice">
+<h2>AI-assisted development as practice<a class="headerlink" href="#ai-assisted-development-as-practice" title="Link to this heading"></a></h2>
+<p>Vaibify is developed primarily through AI-assisted coding with
+Claude Code, under human review and direction. This is not
+incidental to the project — it is the practice the tool was built
+to enable. Vaibify’s own codebase is one of the first tests of the
+central assumption above.</p>
+<p>The structure of the documentation in this repository mirrors the
+same principles the tool asks researchers to adopt: separate what
+can be tested from what cannot, never trust what can drift, and
+make the human’s verification role explicit. <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a>
+describes this methodology in detail so that other scientific
+software projects can adopt the same approach.</p>
+</section>
+<section id="the-tagline-is-the-architecture-spec">
+<h2>The tagline is the architecture spec<a class="headerlink" href="#the-tagline-is-the-architecture-spec" title="Link to this heading"></a></h2>
+<p>The tagline <em>“Vibe boldly. Verify everything.”</em> is not marketing.
+It is the architectural specification for the entire project. Bold
+vibing happens inside a Docker container the agent cannot escape.
+Verification happens in a browser dashboard that makes the
+researcher’s “yes, I looked at this” a first-class artifact
+alongside the code and the data. Every design choice downstream —
+the containerization model, the verification state machine, the
+polling cadence, the rule that the dashboard never lies — falls out
+of taking both halves of the tagline seriously at the same time.</p>
+<p>For how that specification becomes code, read
+<a class="reference internal" href="architecture.html"><span class="std std-doc">architecture.md</span></a> next.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="conduct.html" class="btn btn-neutral float-left" title="Code of Conduct" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="install.html" class="btn btn-neutral float-right" title="Installing Vaibify" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

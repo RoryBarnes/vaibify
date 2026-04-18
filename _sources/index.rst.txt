@@ -16,6 +16,7 @@ pipeline can benefit from containerized reproducibility.
    :maxdepth: 1
 
    conduct
+   philosophy
    install
    quickStart
    setupWizard

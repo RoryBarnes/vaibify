@@ -19,6 +19,7 @@ __all__ = [
     "testNoRawOnMessageInFeatureModules",
     "testOrchestratorReExportsAreComplete",
     "testEveryJsFileIsRecognizedAsIIFE",
+    "testDockerfileDisablesAptSandboxBeforeFirstUpdate",
 ]
 
 
@@ -449,4 +450,33 @@ def testNoScienceSpecificIdentifiersInSource():
             f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
             for sTerm, p, iLine, sText, sToken in listViolations
         )
+    )
+
+
+def testDockerfileDisablesAptSandboxBeforeFirstUpdate():
+    """Dockerfile must disable the _apt sandbox before any apt-get update.
+
+    The unprivileged _apt user (home: /nonexistent) causes gpgv to fail
+    signature verification under certain apt 2.x versions inside
+    containers, producing a misleading 'invalid signature' error. The
+    workaround is to run apt as root via APT::Sandbox::User "root"; this
+    test guards against the line being removed or relocated below the
+    first apt-get update, which would silently regress the fix.
+    """
+    sDockerfile = fsReadSource(REPO_ROOT / "docker" / "Dockerfile")
+    matchSandbox = re.search(
+        r'APT::Sandbox::User\s+"root"', sDockerfile
+    )
+    assert matchSandbox, (
+        "Dockerfile must set 'APT::Sandbox::User \"root\"' to work around "
+        "the _apt/gpgv signature-verification bug in container builds"
+    )
+    matchFirstUpdate = re.search(r"apt-get\s+update", sDockerfile)
+    assert matchFirstUpdate, (
+        "Dockerfile missing any apt-get update — unexpected state"
+    )
+    assert matchSandbox.start() < matchFirstUpdate.start(), (
+        "APT::Sandbox::User directive must appear before the first "
+        "apt-get update; otherwise the first update runs under the "
+        "broken sandbox and fails with an 'invalid signature' error"
     )

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev66 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev71 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=de6fbe85"></script>
+      <script src="_static/documentation_options.js?v=7129fe0c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
@@ -56,7 +57,14 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Architecture</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#python-backend">Python Backend</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#preface">Preface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-happy-path">The happy path</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#file-status-polling">File-status polling</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#python-backend">Python backend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#application-layer">Application layer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#route-modules">Route modules</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#domain-modules">Domain modules</a></li>
@@ -67,19 +75,12 @@
 <li class="toctree-l2"><a class="reference internal" href="#dependency-graph">Dependency graph</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#re-export-pattern">Re-export pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification-state-machine">Verification state machine</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#javascript-frontend">JavaScript Frontend</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#javascript-frontend">JavaScript frontend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#foundation-modules-loaded-first">Foundation modules (loaded first)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#rendering-modules">Rendering modules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#feature-modules">Feature modules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#pre-existing-modules-not-refactored">Pre-existing modules (not refactored)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#rendering-feature-and-pre-existing-modules">Rendering, feature, and pre-existing modules</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#core-application">Core application</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#state-management">State management</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#rendering">Rendering</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#data-flows">Data flows</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#pipeline-run">Pipeline run</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#file-status-polling">File-status polling</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#testing">Testing</a></li>
@@ -123,62 +124,251 @@ exist, how they depend on each other, how state flows, and where the
 load-bearing invariants live. It is the “why” companion to the <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>
 files, which state the rules; this file explains the reasoning behind them.</p>
 <p>Vaibify is a GUI tool for building, running, and verifying reproducible
-scientific pipelines inside Docker containers. The backend is a FastAPI
+scientific software and data analysis pipelines inside Docker containers. The backend is a FastAPI
 server (Python); the frontend is plain JavaScript using IIFE modules
 (no bundler, no npm, no ES modules).</p>
 <p>For the human contributor workflow (how to run tests, submit PRs, follow
 the style guide) see <a class="reference internal" href="developers.html"><span class="std std-doc">developers.md</span></a>. For the methodology
 behind the agent documentation, see <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a>.</p>
+<section id="preface">
+<h2>Preface<a class="headerlink" href="#preface" title="Link to this heading"></a></h2>
+<p>For the full argument of why vaibify exists and what it believes about
+AI-assisted scientific computing, see <a class="reference internal" href="philosophy.html"><span class="std std-doc">philosophy.md</span></a>.
+The short version: the tagline <em>“Vibe boldly. Verify everything.”</em> is
+the architecture specification. Bold vibing happens inside a Docker
+container the agent cannot escape. Verification happens in a browser
+dashboard that makes the researcher’s “yes, I looked at this” a
+first-class artifact alongside the code and the data. Every design
+choice below — the containerization model, the verification state
+machine, the polling cadence, the rule that the dashboard never lies —
+falls out of taking both halves of the tagline seriously at the same
+time.</p>
+</section>
+<section id="mental-model">
+<h2>Mental model<a class="headerlink" href="#mental-model" title="Link to this heading"></a></h2>
+<p>A handful of concepts run through the whole codebase. Understanding
+them in the abstract makes the module layout below much easier to read.</p>
+<p><strong>Container.</strong> A Docker sandbox, one per project. It holds the
+researcher’s scripts, their Python environment, and any ephemeral files
+the agent produces. The agent launched inside the container sees only what is inside. The host sees
+the container through a narrow, audited interface.</p>
+<p><strong>Workflow.</strong> A <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> file that declares an ordered sequence
+of steps. Workflows are checked into git, travel with the project, and
+reconstruct the same pipeline on a different machine. A workflow is a
+portable unit of reproducibility.</p>
+<p><strong>Step.</strong> One unit of work in a workflow: typically a data command, a
+plot command, or a test command. Steps declare their script and their
+outputs, and they carry dependencies on the outputs of earlier steps.
+Each step carries verification state.</p>
+<p><strong>Verification state.</strong> A structured record per step that answers three
+questions. Did the unit tests pass the last time they ran? Has the
+researcher looked at the output since it last changed? Has an upstream
+step been modified without this step being rerun? Verification state
+lives on the step, is persisted with the workflow, and degrades
+automatically when the world underneath it changes. The full state
+machine is defined in <a class="reference download internal" download="" href="_downloads/c35e2a74c4d39c4c220409f084c354cb/fileStatusManager.py"><span class="xref download myst">fileStatusManager.py</span></a>.</p>
+<p><strong>Dashboard as ground truth.</strong> The browser GUI is the only place where
+container status, workflow state, and verification state are surfaced
+together. This is a rule, not an aesthetic. Nothing in vaibify may lie
+to the dashboard: no optimistic status, no cached-past-lifetime state,
+no quietly swallowed errors. If the truth is slow or ugly, the
+dashboard shows it slow and ugly. The <span class="xref myst">AGENTS.md</span> trap
+list treats dashboard honesty as a hard invariant.</p>
+</section>
+<section id="the-happy-path">
+<h2>The happy path<a class="headerlink" href="#the-happy-path" title="Link to this heading"></a></h2>
+<p>The most concrete way to understand how vaibify verifies a workflow is to watch what happens
+when a researcher clicks <strong>Run All</strong> in the browser.</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">PipeleyenPipelineRunner.fnRunAll()</span></code> fires in <code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code>.
+The click was registered by the delegated handlers in
+<code class="docutils literal notranslate"><span class="pre">scriptEventBindings.js</span></code> and dispatched through <code class="docutils literal notranslate"><span class="pre">scriptApplication.js</span></code>.</p></li>
+<li><p>The runner sends a single WebSocket message through <code class="docutils literal notranslate"><span class="pre">VaibifyWebSocket</span></code>,
+the singleton in <code class="docutils literal notranslate"><span class="pre">scriptWebSocket.js</span></code> that owns the connection to the
+backend. The payload is <code class="docutils literal notranslate"><span class="pre">{sAction:</span> <span class="pre">&quot;runAll&quot;}</span></code>.</p></li>
+<li><p>On the backend, the WebSocket handler in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code>
+dispatches actions to <code class="docutils literal notranslate"><span class="pre">pipelineRunner.fnRunAllSteps()</span></code>. The runner
+validates the workflow (via <code class="docutils literal notranslate"><span class="pre">pipelineValidator</span></code>), opens a log file
+(via <code class="docutils literal notranslate"><span class="pre">pipelineLogger</span></code>), and walks the step list.</p></li>
+<li><p>For each step, the runner executes the step’s command inside the
+container, streaming stdout and stderr back over the same WebSocket
+as <code class="docutils literal notranslate"><span class="pre">output</span></code> events. It emits <code class="docutils literal notranslate"><span class="pre">stepStarted</span></code> before the command runs,
+and <code class="docutils literal notranslate"><span class="pre">stepPass</span></code> or <code class="docutils literal notranslate"><span class="pre">stepFail</span></code> after it returns. Interactive steps
+pause and wait for the researcher via the protocol in
+<code class="docutils literal notranslate"><span class="pre">interactiveSteps.py</span></code>.</p></li>
+<li><p>The frontend dispatches these events through <code class="docutils literal notranslate"><span class="pre">VaibifyWebSocket</span></code> to
+handlers registered by <code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code>. Each handler
+updates the step’s status via <code class="docutils literal notranslate"><span class="pre">PipeleyenApp.fnSetStepStatus()</span></code> and
+requests a render.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fnRenderStepList()</span></code> is debounced with <code class="docutils literal notranslate"><span class="pre">requestAnimationFrame</span></code>, so
+a burst of events from a fast step coalesces into one DOM rebuild.
+<code class="docutils literal notranslate"><span class="pre">VaibifyStepRenderer.fsRenderStepItem()</span></code> produces the HTML for each
+step, including its verification badges.</p></li>
+<li><p>When the run completes, the backend emits a terminal <code class="docutils literal notranslate"><span class="pre">runComplete</span></code>
+event. The next file-status poll (below) detects any new or modified
+output files and degrades stale verifications.</p></li>
+</ol>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">User</span> <span class="n">clicks</span> <span class="s2">&quot;Run All&quot;</span>
+  <span class="o">-&gt;</span> <span class="n">PipeleyenPipelineRunner</span><span class="o">.</span><span class="n">fnRunAll</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyWebSocket</span><span class="o">.</span><span class="n">fnSend</span><span class="p">({</span><span class="n">sAction</span><span class="p">:</span> <span class="s2">&quot;runAll&quot;</span><span class="p">})</span>
+  <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineServer</span> <span class="n">WebSocket</span> <span class="n">handler</span>
+  <span class="o">-&gt;</span> <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">fnRunAllSteps</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">For</span> <span class="n">each</span> <span class="n">step</span><span class="p">:</span> <span class="n">backend</span> <span class="n">emits</span> <span class="n">stepStarted</span><span class="p">,</span> <span class="n">output</span><span class="p">,</span> <span class="n">stepPass</span> <span class="ow">or</span>
+     <span class="n">stepFail</span> <span class="n">via</span> <span class="n">WebSocket</span>
+  <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">VaibifyWebSocket</span> <span class="n">dispatches</span> <span class="n">to</span> <span class="n">registered</span> <span class="n">handlers</span>
+  <span class="o">-&gt;</span> <span class="n">PipeleyenPipelineRunner</span><span class="o">.</span><span class="n">fnHandlePipelineEvent</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnSetStepStatus</span><span class="p">()</span> <span class="o">+</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyStepRenderer</span><span class="o">.</span><span class="n">fsRenderStepItem</span><span class="p">()</span> <span class="n">generates</span> <span class="n">HTML</span>
+  <span class="o">-&gt;</span> <span class="n">DOM</span> <span class="n">updated</span> <span class="p">(</span><span class="n">debounced</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>A reader who absorbs this path has the working model of vaibify:
+browser event, WebSocket, orchestrator, extracted executor, event
+stream back, debounced render.</p>
+<section id="file-status-polling">
+<h3>File-status polling<a class="headerlink" href="#file-status-polling" title="Link to this heading"></a></h3>
+<p>Running the pipeline is only half the story. The other half is keeping
+the dashboard honest while nothing is running — the researcher is
+editing a script in the container terminal, or the agent just finished
+a long analysis off-dashboard. Every five seconds the frontend polls
+the backend for the current state of every file the workflow cares
+about.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Every</span> <span class="mi">5</span> <span class="n">seconds</span> <span class="p">(</span><span class="n">VaibifyPolling</span><span class="p">):</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyApi</span><span class="o">.</span><span class="n">fdictGet</span><span class="p">(</span><span class="s2">&quot;/api/pipeline/</span><span class="si">{id}</span><span class="s2">/file-status&quot;</span><span class="p">)</span>
+  <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineRoutes</span><span class="o">.</span><span class="n">_fnRegisterFileStatus</span> <span class="n">handler</span>
+  <span class="o">-&gt;</span> <span class="n">fileStatusManager</span><span class="p">:</span> <span class="n">compute</span> <span class="n">mtimes</span><span class="p">,</span> <span class="n">detect</span> <span class="n">changes</span><span class="p">,</span> <span class="n">check</span> <span class="n">stale</span>
+     <span class="n">verifications</span>
+  <span class="o">-&gt;</span> <span class="n">Response</span><span class="p">:</span> <span class="p">{</span><span class="n">dictModTimes</span><span class="p">,</span> <span class="n">dictInvalidatedSteps</span><span class="p">,</span> <span class="n">dictTestMarkers</span><span class="p">,</span> <span class="o">...</span><span class="p">}</span>
+  <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnProcessFileStatusResponse</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">Updates</span> <span class="n">caches</span><span class="p">,</span> <span class="n">applies</span> <span class="n">invalidations</span><span class="p">,</span> <span class="n">applies</span> <span class="n">test</span> <span class="n">markers</span>
+  <span class="o">-&gt;</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span> <span class="p">(</span><span class="n">debounced</span><span class="p">,</span> <span class="n">cascading</span> <span class="n">updates</span>
+     <span class="n">coalesce</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>When a file changes, the affected step’s unit-test state resets to
+<code class="docutils literal notranslate"><span class="pre">untested</span></code>. When a plot changes, the user-verification state resets.
+When an upstream step is modified, downstream steps are flagged as
+upstream-modified. The researcher sees verification badges dim
+automatically; no one has to remember to invalidate anything by hand.</p>
+</section>
+</section>
+<section id="architectural-decisions-with-tradeoffs">
+<h2>Architectural decisions with tradeoffs<a class="headerlink" href="#architectural-decisions-with-tradeoffs" title="Link to this heading"></a></h2>
+<p>Each choice below has a reasonable-looking alternative. The paragraphs
+explain what that alternative would cost.</p>
+<p><strong>Vanilla JavaScript IIFE frontend, not React or Vue.</strong> The frontend
+uses the pattern <code class="docutils literal notranslate"><span class="pre">var</span> <span class="pre">ModuleName</span> <span class="pre">=</span> <span class="pre">(function</span> <span class="pre">()</span> <span class="pre">{</span> <span class="pre">...</span> <span class="pre">})();</span></code> with
+script tags loaded in a fixed order. There is no build step, no
+<code class="docutils literal notranslate"><span class="pre">package.json</span></code>, no node_modules tree. This gives up ergonomic
+components, reactive state, and the broader ecosystem of a framework.
+In exchange, a new contributor who knows plain JavaScript can read any
+file top-to-bottom and understand it without learning a framework’s
+conventions; the repository has no build pipeline to break on CI; and
+the frontend has zero transitive npm dependencies to audit, update, or
+worry about at install time. For a research tool with a long expected
+lifetime and a small contributor pool, the tradeoff favors legibility
+over ergonomics.</p>
+<p><strong>FastAPI backend running on the host, not inside the container.</strong> The
+backend orchestrates containers, so it cannot live inside one of the
+containers it orchestrates. It needs the Docker socket, it needs to
+read and write the workspace volume from the host side, and it needs
+to serve the GUI over localhost. This is what makes features like pull
+files to host, browse host directories, and sync to GitHub possible at
+all. The cost is that path traversal is a live concern: any path that
+originates from an HTTP request body, a <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> field, or a
+config file must be validated against its intended root before the
+backend opens it. <code class="docutils literal notranslate"><span class="pre">fnValidatePathWithinRoot(sAbsPath,</span> <span class="pre">WORKSPACE_ROOT)</span></code>
+in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> is the canonical guard; the trap list in
+<span class="xref myst">AGENTS.md</span> flags this explicitly.</p>
+<p><strong>Docker containers, not Python-level sandboxing.</strong> Vaibify does not
+try to sandbox the agent with a virtualenv, a restricted subprocess
+environment, or a library like <code class="docutils literal notranslate"><span class="pre">RestrictedPython</span></code>. Language-level
+sandboxes are shallow: a determined agent can import <code class="docutils literal notranslate"><span class="pre">ctypes</span></code>, spawn a
+child process, or exploit a parsing quirk and escape. Docker’s
+isolation is an industry-standard kernel-level boundary, and the
+container ships with an unprivileged user plus <code class="docutils literal notranslate"><span class="pre">gosu</span></code> as a second
+layer. The cost is that users need Docker installed and running, but
+for a tool whose primary job is preventing an autonomous agent from
+touching the host, a shallower boundary would defeat the point.</p>
+<p><strong>Polling for file status, not push notifications.</strong> The frontend polls
+<code class="docutils literal notranslate"><span class="pre">/api/pipeline/{id}/file-status</span></code> every five seconds instead of
+subscribing to file-change events over the WebSocket. Polling loses
+sub-second responsiveness: a file that changes just after a poll will
+show as stale for up to five seconds. What it gains is simplicity and
+robustness. A push channel would have to survive container restarts,
+reconnects, sleep and wake on the host, and the many edge cases where
+file-watching APIs miss events on bind-mounted volumes. Polling just
+works; it is cheap; and five seconds is faster than a human can notice
+in practice. When the dashboard’s single job is honesty, a boring
+mechanism that cannot lie beats a clever one that occasionally does.</p>
+<p><strong>Leaf modules and the re-export pattern.</strong> The backend’s orchestrator
+modules (<code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code>, <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code>, <code class="docutils literal notranslate"><span class="pre">testGenerator</span></code>,
+<code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>) re-export symbols from extracted child modules. The
+alternative would be to update every caller to import from the new
+canonical locations directly. That migration is happening, but
+gradually: the re-exports keep external and legacy callers working
+while the internal structure is cleaned up. In parallel,
+<code class="docutils literal notranslate"><span class="pre">pipelineUtils.py</span></code> and a handful of other files are deliberate leaf
+modules with zero intra-package imports, which exist to break
+circular-dependency cycles. Removing either pattern naively —
+collapsing the leaves or deleting the re-exports — breaks real
+callers. <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> encodes both
+invariants as executable rules.</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">posixpath</span></code> in <code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code>, <code class="docutils literal notranslate"><span class="pre">os.path</span></code> in <code class="docutils literal notranslate"><span class="pre">director.py</span></code>.</strong>
+These two modules contain similarly named functions and look like
+natural candidates for deduplication. They are not. <code class="docutils literal notranslate"><span class="pre">workflowManager</span></code>
+manipulates container paths, which are POSIX on every host operating
+system. <code class="docutils literal notranslate"><span class="pre">director</span></code> manipulates host paths, which use the host’s native
+separator. Unifying them would either mangle Windows host paths or
+mangle container paths on any host, and the failure would be silent
+until a cross-platform user hit it. The divergence is load-bearing;
+the <span class="xref myst">AGENTS.md</span> trap list and
+<code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> both guard it.</p>
+</section>
 <section id="python-backend">
-<h2>Python Backend<a class="headerlink" href="#python-backend" title="Link to this heading"></a></h2>
-<p>The backend lives under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> and is organized into four layers
-by responsibility.</p>
+<h2>Python backend<a class="headerlink" href="#python-backend" title="Link to this heading"></a></h2>
+<p>The backend lives under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> and is organized into four
+layers by responsibility. Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span> <span class="pre">vaibify/gui</span></code>
+for the current module list with <code class="docutils literal notranslate"><span class="pre">__all__</span></code> exports and docstring
+summaries.</p>
 <section id="application-layer">
 <h3>Application layer<a class="headerlink" href="#application-layer" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> — FastAPI app factory, Pydantic models, shared
 utilities, WebSocket dispatch. Creates the app via
-<code class="docutils literal notranslate"><span class="pre">fappCreateApplication()</span></code>. Routes are delegated to the <code class="docutils literal notranslate"><span class="pre">routes/</span></code> package.</p></li>
+<code class="docutils literal notranslate"><span class="pre">fappCreateApplication()</span></code>. Routes are delegated to the <code class="docutils literal notranslate"><span class="pre">routes/</span></code>
+package.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">routeContext.py</span></code> — typed <code class="docutils literal notranslate"><span class="pre">RouteContext</span></code> wrapper for the <code class="docutils literal notranslate"><span class="pre">dictCtx</span></code>
-dict. Provides both attribute access (<code class="docutils literal notranslate"><span class="pre">dictCtx.docker</span></code>) and dict access
-(<code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;docker&quot;]</span></code>).</p></li>
+dict. Provides both attribute access (<code class="docutils literal notranslate"><span class="pre">dictCtx.docker</span></code>) and dict
+access (<code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;docker&quot;]</span></code>).</p></li>
 </ul>
 </section>
 <section id="route-modules">
 <h3>Route modules<a class="headerlink" href="#route-modules" title="Link to this heading"></a></h3>
 <p>Route modules live under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/routes/</span></code>. Each file matching
 <code class="docutils literal notranslate"><span class="pre">*Routes.py</span></code> exports an <code class="docutils literal notranslate"><span class="pre">fnRegisterAll(app,</span> <span class="pre">dictCtx)</span></code> function that
-registers its endpoints on the FastAPI application at startup. The
+registers its endpoints on the FastAPI application at startup.
 <code class="docutils literal notranslate"><span class="pre">routes/__init__.py</span></code> imports every route module eagerly so that import
 errors surface at startup rather than on first request.</p>
-<p>Current route modules:</p>
+<p>Two route modules deserve a mention because their names do not fully
+give them away:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">stepRoutes.py</span></code> — step CRUD (create, read, update, delete, reorder)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fileRoutes.py</span></code> — file upload, download, pull, directory listing</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">syncRoutes.py</span></code> — Overleaf, Zenodo, GitHub push/pull</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">testRoutes.py</span></code> — test generation, save-and-run, run categories</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">plotRoutes.py</span></code> — plot standardization, comparison, PNG conversion</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineRoutes.py</span></code> — pipeline state, kill, clean, acknowledge,
-file-status polling, test markers</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">terminalRoutes.py</span></code> — terminal WebSocket session</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">workflowRoutes.py</span></code> — workflow search, create, connect</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">settingsRoutes.py</span></code> — settings get/put, log routes</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">figureRoutes.py</span></code> — figure HEAD/GET serving</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptRoutes.py</span></code> — script detection, dependency scanning</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">systemRoutes.py</span></code> — monitor, runtime info, user info</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">repoRoutes.py</span></code> — repository panel API for multi-repo workflows</p></li>
+file-status polling, test markers. This is where the polling
+endpoint lives.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">syncRoutes.py</span></code> — Overleaf, Zenodo, and GitHub push and pull; the
+thin HTTP layer over <code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>.</p></li>
 </ul>
-<p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span> <span class="pre">vaibify/gui/routes</span></code> to print the
-current list and each module’s <code class="docutils literal notranslate"><span class="pre">__all__</span></code>.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span> <span class="pre">vaibify/gui/routes</span></code> for the current
+list and each module’s public API.</p>
 </section>
 <section id="domain-modules">
 <h3>Domain modules<a class="headerlink" href="#domain-modules" title="Link to this heading"></a></h3>
-<p>These carry the core execution logic that used to live in monolithic
-files and were extracted during the 2026-01 refactor:</p>
+<p>These carry the core execution logic:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">pipelineRunner.py</span></code> — pipeline step execution orchestrator. Public API:
-<code class="docutils literal notranslate"><span class="pre">fnRunAllSteps</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunFromStep</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunSelectedSteps</span></code>, <code class="docutils literal notranslate"><span class="pre">fnVerifyOnly</span></code>,
-<code class="docutils literal notranslate"><span class="pre">fnRunAllTests</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pipelineRunner.py</span></code> — pipeline step execution orchestrator. Public
+API: <code class="docutils literal notranslate"><span class="pre">fnRunAllSteps</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunFromStep</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunSelectedSteps</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fnVerifyOnly</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunAllTests</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineUtils.py</span></code> — deliberate leaf module with zero intra-package
 imports. Contains <code class="docutils literal notranslate"><span class="pre">fsShellQuote</span></code> and all <code class="docutils literal notranslate"><span class="pre">_fnEmit*</span></code> event helpers.
 Exists to break circular import cycles. Do not add imports from
@@ -189,12 +379,13 @@ scripts exist).</p></li>
 updates during execution.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineTestRunner.py</span></code> — test execution within pipeline runs
 (per-category, legacy format).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">interactiveSteps.py</span></code> — interactive step pause/resume/complete protocol.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">interactiveSteps.py</span></code> — interactive step pause/resume/complete
+protocol.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineState.py</span></code> — pipeline state persistence to
 <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/pipeline_state.json</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> — workflow CRUD, variable resolution, step
-references, dependency graph. Uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code> because it operates on
-container paths.</p></li>
+references, dependency graph. Uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code> because it operates
+on container paths.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code> — file-status polling, mtime tracking, step
 invalidation, verification freshness. The formal verification state
 machine is documented in its module docstring.</p></li>
@@ -202,29 +393,31 @@ machine is documented in its module docstring.</p></li>
 computation, test file cleanup.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fileIntegrity.py</span></code> — SHA-256 script hashing, path normalization,
 change detection.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">syncDispatcher.py</span></code> — sync operations (Overleaf, GitHub, Zenodo), DAG
-visualization, test marker commands.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">syncDispatcher.py</span></code> — sync operations (Overleaf, GitHub, Zenodo),
+DAG visualization, test marker commands.</p></li>
 </ul>
 </section>
 <section id="test-generation-modules">
 <h3>Test generation modules<a class="headerlink" href="#test-generation-modules" title="Link to this heading"></a></h3>
-<p>These were extracted from the former 3,652-line <code class="docutils literal notranslate"><span class="pre">testGenerator.py</span></code>:</p>
+<p>Vaibify attempts to generate tests deterministically from data. The
+following files control test generation:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">testGenerator.py</span></code> — orchestrator for test generation. Re-exports all
-symbols from the five modules below.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">testGenerator.py</span></code> — orchestrator for test generation. Re-exports
+all symbols from the five modules below.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">testParser.py</span></code> — Python syntax validation, import repair, code
 extraction. Zero intra-package imports.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dataPreview.py</span></code> — file preview generation (numpy, HDF5, text).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">conftestManager.py</span></code> — pytest conftest.py plugin template and marker
-writing.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">llmInvoker.py</span></code> — Claude API calls, prompt building, CLAUDE.md
+<li><p><code class="docutils literal notranslate"><span class="pre">conftestManager.py</span></code> — pytest <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> plugin template and
+marker writing.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">llmInvoker.py</span></code> — Claude API calls, prompt building, <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>
 management.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">templateManager.py</span></code> — template hashing, test code builders, template
-constants.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">introspectionScript.py</span></code> — builds a self-contained Python script (as
-an f-string) that runs inside Docker containers to introspect data
-files. This intentionally duplicates format-handling logic from
-<code class="docutils literal notranslate"><span class="pre">dataLoaders.py</span></code> because container scripts cannot import from the host.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">templateManager.py</span></code> — template hashing, test code builders,
+template constants.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">introspectionScript.py</span></code> — builds a self-contained Python script
+(as an f-string) that runs inside Docker containers to introspect
+data files. Intentionally duplicates format-handling logic from
+<code class="docutils literal notranslate"><span class="pre">dataLoaders.py</span></code> because container scripts cannot import from the
+host.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dataLoaders.py</span></code> — dispatch table mapping file extensions to loader
 functions. Used both at runtime and embedded in generated test code
 via <code class="docutils literal notranslate"><span class="pre">fsReadLoaderSource()</span></code>.</p></li>
@@ -237,14 +430,12 @@ via <code class="docutils literal notranslate"><span class="pre">fsReadLoaderSou
 <li><p><code class="docutils literal notranslate"><span class="pre">dependencyScanner.py</span></code> — code dependency analysis for scripts.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">director.py</span></code> — standalone CLI runner. Has intentionally divergent
 <code class="docutils literal notranslate"><span class="pre">fbValidateWorkflow</span></code> and <code class="docutils literal notranslate"><span class="pre">fdictBuildGlobalVariables</span></code> from
-<code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> because it operates on the host filesystem with
-<code class="docutils literal notranslate"><span class="pre">os.path</span></code> and <code class="docutils literal notranslate"><span class="pre">os.makedirs</span></code>, while <code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>
-for container paths. This is a live trap; see the <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> traps
-section.</p></li>
+<code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> because it operates on the host filesystem. See
+the tradeoff note above and the <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> trap list.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">registryRoutes.py</span></code> — project registry API.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">terminalSession.py</span></code> — PTY bridge for terminal WebSocket.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">resourceMonitor.py</span></code> — container CPU/memory stats.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">figureServer.py</span></code> — MIME type lookup.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">resourceMonitor.py</span></code> — container CPU and memory stats.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">figureServer.py</span></code> — small utility; see source.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">setupServer.py</span></code> — setup wizard host-side server.</p></li>
 </ul>
 </section>
@@ -273,15 +464,15 @@ pipelineServer           &lt;-- app entry point, imports everything
 routes/*                 &lt;-- imported by pipelineServer via routes/__init__.py
 </pre></div>
 </div>
-<p>All imports are acyclic at module load time. One deferred import remains:
-<code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code> defers importing <code class="docutils literal notranslate"><span class="pre">_ftRunCommandList</span></code> from
-<code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> to avoid a cycle (<code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> eagerly re-exports
-<code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code>).</p>
+<p>All imports are acyclic at module load time. One deferred import
+remains: <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code> defers importing <code class="docutils literal notranslate"><span class="pre">_ftRunCommandList</span></code>
+from <code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> to avoid a cycle (<code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> eagerly
+re-exports <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code>).</p>
 </section>
 <section id="re-export-pattern">
 <h2>Re-export pattern<a class="headerlink" href="#re-export-pattern" title="Link to this heading"></a></h2>
-<p>Several orchestrator modules re-export symbols from their extracted child
-modules for backward compatibility:</p>
+<p>Several orchestrator modules re-export symbols from their extracted
+child modules for backward compatibility:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> re-exports from <code class="docutils literal notranslate"><span class="pre">pipelineValidator</span></code>, <code class="docutils literal notranslate"><span class="pre">pipelineLogger</span></code>,
 <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code>, <code class="docutils literal notranslate"><span class="pre">interactiveSteps</span></code>, <code class="docutils literal notranslate"><span class="pre">pipelineUtils</span></code>, and
@@ -300,12 +491,12 @@ layout.</p>
 <section id="verification-state-machine">
 <h2>Verification state machine<a class="headerlink" href="#verification-state-machine" title="Link to this heading"></a></h2>
 <p>Each workflow step carries a <code class="docutils literal notranslate"><span class="pre">dictVerification</span></code> dict. The formal state
-machine is documented in <code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code>’s module docstring. Key
-fields:</p>
+machine is documented in <code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code>’s module docstring.
+Key fields:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">sUnitTest</span></code> — <code class="docutils literal notranslate"><span class="pre">untested</span> <span class="pre">|</span> <span class="pre">passed</span> <span class="pre">|</span> <span class="pre">failed</span></code>, set by the test runner.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sUser</span></code> — <code class="docutils literal notranslate"><span class="pre">untested</span> <span class="pre">|</span> <span class="pre">passed</span> <span class="pre">|</span> <span class="pre">failed</span></code>, set by the researcher clicking
-the UI badge.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sUser</span></code> — <code class="docutils literal notranslate"><span class="pre">untested</span> <span class="pre">|</span> <span class="pre">passed</span> <span class="pre">|</span> <span class="pre">failed</span></code>, set by the researcher
+clicking the UI badge.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">sIntegrity</span></code>, <code class="docutils literal notranslate"><span class="pre">sQualitative</span></code>, <code class="docutils literal notranslate"><span class="pre">sQuantitative</span></code> — per-category test
 results.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">bUpstreamModified</span></code> — <code class="docutils literal notranslate"><span class="pre">True</span></code> when an upstream step’s outputs changed.</p></li>
@@ -316,23 +507,27 @@ results.</p></li>
 <li><p>Step executes → <code class="docutils literal notranslate"><span class="pre">sUser</span></code> resets to <code class="docutils literal notranslate"><span class="pre">untested</span></code>.</p></li>
 <li><p>Data file changes → <code class="docutils literal notranslate"><span class="pre">sUnitTest</span></code> resets to <code class="docutils literal notranslate"><span class="pre">untested</span></code>.</p></li>
 <li><p>Plot file newer than <code class="docutils literal notranslate"><span class="pre">sLastUserUpdate</span></code> → <code class="docutils literal notranslate"><span class="pre">sUser</span></code> resets to <code class="docutils literal notranslate"><span class="pre">untested</span></code>.</p></li>
-<li><p>Upstream changes → <code class="docutils literal notranslate"><span class="pre">bUpstreamModified</span> <span class="pre">=</span> <span class="pre">True</span></code>, <code class="docutils literal notranslate"><span class="pre">sUnitTest</span></code> → <code class="docutils literal notranslate"><span class="pre">untested</span></code>.</p></li>
+<li><p>Upstream changes → <code class="docutils literal notranslate"><span class="pre">bUpstreamModified</span> <span class="pre">=</span> <span class="pre">True</span></code>, <code class="docutils literal notranslate"><span class="pre">sUnitTest</span></code> →
+<code class="docutils literal notranslate"><span class="pre">untested</span></code>.</p></li>
 </ul>
-<p>This state machine is load-bearing for the dashboard’s honesty guarantee:
-the GUI must always reflect the true state of the workflow. See the
-relevant trap in <span class="xref myst">../AGENTS.md</span>.</p>
+<p>This state machine is load-bearing for the dashboard’s honesty
+guarantee: the GUI must always reflect the true state of the workflow.
+See the relevant trap in <span class="xref myst">../AGENTS.md</span>.</p>
 </section>
 <section id="javascript-frontend">
-<h2>JavaScript Frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>
-<p>The frontend lives under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/static/</span></code> and uses the IIFE pattern:</p>
+<h2>JavaScript frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>
+<p>The frontend lives under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/static/</span></code> and uses the IIFE
+pattern:</p>
 <div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="kd">var</span><span class="w"> </span><span class="nx">ModuleName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kd">function</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="c1">// private state</span>
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">publicApi</span><span class="w"> </span><span class="p">};</span>
 <span class="p">})();</span>
 </pre></div>
 </div>
-<p>There are no build tools, no npm, no ES modules. Modules are loaded via
-script tags in the HTML in a specific order.</p>
+<p>There are no build tools, no npm, no ES modules. Modules are loaded
+via script tags in the HTML in a specific order. Run
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span> <span class="pre">vaibify/gui/static</span> <span class="pre">--format</span> <span class="pre">json</span></code> for the
+current module list with public exports.</p>
 <section id="foundation-modules-loaded-first">
 <h3>Foundation modules (loaded first)<a class="headerlink" href="#foundation-modules-loaded-first" title="Link to this heading"></a></h3>
 <ul class="simple">
@@ -349,50 +544,18 @@ action queue.</p></li>
 file-status (5 s) and pipeline-state (10 s) intervals.</p></li>
 </ul>
 </section>
-<section id="rendering-modules">
-<h3>Rendering modules<a class="headerlink" href="#rendering-modules" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptStepRenderer.js</span></code> — <code class="docutils literal notranslate"><span class="pre">VaibifyStepRenderer</span></code>: HTML generation for
-step list items, verification blocks, detail items, run stats.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptStepEditor.js</span></code> — <code class="docutils literal notranslate"><span class="pre">PipeleyenStepEditor</span></code>: step editing form.</p></li>
-</ul>
-</section>
-<section id="feature-modules">
-<h3>Feature modules<a class="headerlink" href="#feature-modules" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code> — pipeline execution, WebSocket event
-handling, interactive steps, state recovery, run/kill/verify actions.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptTestManager.js</span></code> — test generation, running, markers,
-verification state updates.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptContainerManager.js</span></code> — container landing page, build, start,
-stop, remove.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptWorkflowManager.js</span></code> — workflow selection, creation wizard,
-dropdown switcher.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptSyncManager.js</span></code> — push modal, connection setup, sync error
-display.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptDependencyScanner.js</span></code> — dependency detection modal.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptPlotStandards.js</span></code> — plot standardization and comparison.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptEventBindings.js</span></code> — all delegated event handlers (click
-registry pattern), toolbar, menu, context, and resize bindings.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptFileOperations.js</span></code> — file existence checking, status coloring,
-change detection, clipboard.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptModals.js</span></code> — confirm, input, error modals.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptFiles.js</span></code> — in-container file browser panel.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptDirectoryBrowser.js</span></code> — host directory browser modal.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptFilePull.js</span></code> — pull-to-host modal.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptReposPanel.js</span></code> — multi-repo panel for toolkit-style workflows.</p></li>
-</ul>
-</section>
-<section id="pre-existing-modules-not-refactored">
-<h3>Pre-existing modules (not refactored)<a class="headerlink" href="#pre-existing-modules-not-refactored" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptFigureViewer.js</span></code> — PDF and image rendering, dual viewer,
-history. Kept as a single cohesive module rather than split.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptTerminal.js</span></code> — xterm.js terminal pane management.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptResourceMonitor.js</span></code> — <code class="docutils literal notranslate"><span class="pre">VaibifyMonitor</span></code>: container resource
-monitoring panel.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptSetupWizard.js</span></code> — <code class="docutils literal notranslate"><span class="pre">VaibifySetup</span></code>: initial setup wizard.</p></li>
-</ul>
+<section id="rendering-feature-and-pre-existing-modules">
+<h3>Rendering, feature, and pre-existing modules<a class="headerlink" href="#rendering-feature-and-pre-existing-modules" title="Link to this heading"></a></h3>
+<p>The rest of the frontend splits into rendering modules
+(<code class="docutils literal notranslate"><span class="pre">scriptStepRenderer.js</span></code>, <code class="docutils literal notranslate"><span class="pre">scriptStepEditor.js</span></code>), feature modules (one
+per panel or workflow: pipeline runner, test manager, container
+manager, workflow manager, sync manager, dependency scanner, plot
+standards, event bindings, file operations, modals, file browser,
+directory browser, file pull, repos panel), and pre-existing modules
+that predate the 2026-01 refactor (<code class="docutils literal notranslate"><span class="pre">scriptFigureViewer.js</span></code>,
+<code class="docutils literal notranslate"><span class="pre">scriptTerminal.js</span></code>, <code class="docutils literal notranslate"><span class="pre">scriptResourceMonitor.js</span></code>,
+<code class="docutils literal notranslate"><span class="pre">scriptSetupWizard.js</span></code>). <code class="docutils literal notranslate"><span class="pre">scriptFigureViewer.js</span></code> in particular is kept
+as a single cohesive module; see the technical-debt list below.</p>
 </section>
 <section id="core-application">
 <h3>Core application<a class="headerlink" href="#core-application" title="Link to this heading"></a></h3>
@@ -428,58 +591,26 @@ render context stay valid.</p>
 </section>
 <section id="rendering">
 <h3>Rendering<a class="headerlink" href="#rendering" title="Link to this heading"></a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">fnRenderStepList()</span></code> is debounced via <code class="docutils literal notranslate"><span class="pre">requestAnimationFrame</span></code>: multiple
-rapid calls (from WebSocket events, polling, user clicks) coalesce into
-a single DOM rebuild. <code class="docutils literal notranslate"><span class="pre">fnRenderStepListSync()</span></code> is available for the rare
-case where the DOM must be read immediately after rendering.</p>
-<p>Every render calls <code class="docutils literal notranslate"><span class="pre">fnUpdateHighlightState()</span></code> to synchronize the toolbar
-verification indicator (checkmark and color shift) with the current
-workflow state.</p>
-</section>
-</section>
-<section id="data-flows">
-<h2>Data flows<a class="headerlink" href="#data-flows" title="Link to this heading"></a></h2>
-<section id="pipeline-run">
-<h3>Pipeline run<a class="headerlink" href="#pipeline-run" title="Link to this heading"></a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">User</span> <span class="n">clicks</span> <span class="s2">&quot;Run All&quot;</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenPipelineRunner</span><span class="o">.</span><span class="n">fnRunAll</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">VaibifyWebSocket</span><span class="o">.</span><span class="n">fnSend</span><span class="p">({</span><span class="n">sAction</span><span class="p">:</span> <span class="s2">&quot;runAll&quot;</span><span class="p">})</span>
-  <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineServer</span> <span class="n">WebSocket</span> <span class="n">handler</span>
-  <span class="o">-&gt;</span> <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">fnRunAllSteps</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">For</span> <span class="n">each</span> <span class="n">step</span><span class="p">:</span> <span class="n">backend</span> <span class="n">emits</span> <span class="n">stepStarted</span><span class="p">,</span> <span class="n">output</span><span class="p">,</span> <span class="n">stepPass</span> <span class="ow">or</span>
-     <span class="n">stepFail</span> <span class="n">via</span> <span class="n">WebSocket</span>
-  <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">VaibifyWebSocket</span> <span class="n">dispatches</span> <span class="n">to</span> <span class="n">registered</span> <span class="n">handlers</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenPipelineRunner</span><span class="o">.</span><span class="n">fnHandlePipelineEvent</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnSetStepStatus</span><span class="p">()</span> <span class="o">+</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">VaibifyStepRenderer</span><span class="o">.</span><span class="n">fsRenderStepItem</span><span class="p">()</span> <span class="n">generates</span> <span class="n">HTML</span>
-  <span class="o">-&gt;</span> <span class="n">DOM</span> <span class="n">updated</span> <span class="p">(</span><span class="n">debounced</span><span class="p">)</span>
-</pre></div>
-</div>
-</section>
-<section id="file-status-polling">
-<h3>File-status polling<a class="headerlink" href="#file-status-polling" title="Link to this heading"></a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Every</span> <span class="mi">5</span> <span class="n">seconds</span> <span class="p">(</span><span class="n">VaibifyPolling</span><span class="p">):</span>
-  <span class="o">-&gt;</span> <span class="n">VaibifyApi</span><span class="o">.</span><span class="n">fdictGet</span><span class="p">(</span><span class="s2">&quot;/api/pipeline/</span><span class="si">{id}</span><span class="s2">/file-status&quot;</span><span class="p">)</span>
-  <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineRoutes</span><span class="o">.</span><span class="n">_fnRegisterFileStatus</span> <span class="n">handler</span>
-  <span class="o">-&gt;</span> <span class="n">fileStatusManager</span><span class="p">:</span> <span class="n">compute</span> <span class="n">mtimes</span><span class="p">,</span> <span class="n">detect</span> <span class="n">changes</span><span class="p">,</span> <span class="n">check</span> <span class="n">stale</span>
-     <span class="n">verifications</span>
-  <span class="o">-&gt;</span> <span class="n">Response</span><span class="p">:</span> <span class="p">{</span><span class="n">dictModTimes</span><span class="p">,</span> <span class="n">dictInvalidatedSteps</span><span class="p">,</span> <span class="n">dictTestMarkers</span><span class="p">,</span> <span class="o">...</span><span class="p">}</span>
-  <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnProcessFileStatusResponse</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">Updates</span> <span class="n">caches</span><span class="p">,</span> <span class="n">applies</span> <span class="n">invalidations</span><span class="p">,</span> <span class="n">applies</span> <span class="n">test</span> <span class="n">markers</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span> <span class="p">(</span><span class="n">debounced</span><span class="p">,</span> <span class="n">cascading</span> <span class="n">updates</span>
-     <span class="n">coalesce</span><span class="p">)</span>
-</pre></div>
-</div>
+<p><code class="docutils literal notranslate"><span class="pre">fnRenderStepList()</span></code> is debounced via <code class="docutils literal notranslate"><span class="pre">requestAnimationFrame</span></code>:
+multiple rapid calls (from WebSocket events, polling, user clicks)
+coalesce into a single DOM rebuild. <code class="docutils literal notranslate"><span class="pre">fnRenderStepListSync()</span></code> is
+available for the rare case where the DOM must be read immediately
+after rendering.</p>
+<p>Every render calls <code class="docutils literal notranslate"><span class="pre">fnUpdateHighlightState()</span></code> to synchronize the
+toolbar verification indicator (checkmark and color shift) with the
+current workflow state.</p>
 </section>
 </section>
 <section id="testing">
 <h2>Testing<a class="headerlink" href="#testing" title="Link to this heading"></a></h2>
 <p>The test suite lives in <code class="docutils literal notranslate"><span class="pre">tests/</span></code>. Run all non-Docker tests with:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-q<span class="w"> </span>--ignore<span class="o">=</span>tests/testGJ1132Build.py
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-q<span class="w"> </span>--ignore<span class="o">=</span>tests/testContainerBuildIntegration.py
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">testGJ1132Build.py</span></code> tests require a running Docker container and
-are excluded from routine runs.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">testContainerBuildIntegration.py</span></code> tests require a running Docker
+container and a configuration passed via the
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_INTEGRATION_CONFIG</span></code> environment variable; they are excluded
+from routine runs.</p>
 <p>Architectural invariants are encoded as tests in
 <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code>. That file is the authoritative
 source for structural rules about the codebase (leaf modules, route
