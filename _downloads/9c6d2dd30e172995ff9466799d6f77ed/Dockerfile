@@ -1,0 +1,191 @@
+# Vaibify — Parameterized base image for scientific computing containers
+#
+# Build ARGs allow projects to customize the image without editing this file.
+# Application-specific packages belong in a config-generated requirements.txt.
+
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
+
+ARG PYTHON_VERSION=3.12
+ARG CONTAINER_USER=researcher
+ARG WORKSPACE_ROOT=/workspace
+ARG INSTALL_LATEX=true
+ARG INSTALL_X11=true
+ARG PACKAGE_MANAGER=pip
+ARG VC_PROJECT_NAME=Vaibify
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_ROOT_USER_ACTION=ignore
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Disable the _apt sandbox user for apt-get. In containerised environments
+# the unprivileged _apt user's home is /nonexistent, which makes gpgv fail
+# signature verification with an empty error summary — apt reports
+# "At least one invalid signature was encountered" even though the signature
+# is valid and gpgv run directly as root succeeds. Running apt as root is
+# already the norm during image build; the sandbox provides no additional
+# isolation here.
+RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
+
+# Generic build tools required by the base image
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    make \
+    git \
+    openssh-client \
+    curl \
+    ca-certificates \
+    gnupg \
+    software-properties-common \
+    gosu \
+    sudo \
+    nano \
+    vim \
+    pkg-config \
+    graphviz \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Project-specific system packages from vaibify.yml systemPackages
+COPY system-packages.txt /tmp/system-packages.txt
+RUN if [ -s /tmp/system-packages.txt ]; then \
+        apt-get update \
+        && xargs -a /tmp/system-packages.txt \
+           apt-get install -y --no-install-recommends \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi \
+    && rm -f /tmp/system-packages.txt
+
+# Create HDF5 symlinks if libhdf5-dev was installed (h5py needs them)
+RUN if [ -d /usr/include/hdf5/serial ]; then \
+        ln -sf /usr/include/hdf5/serial/*.h /usr/include/ \
+        && ln -sf /usr/lib/"$(uname -m)"-linux-gnu/hdf5/serial/libhdf5*.so* \
+                  /usr/lib/"$(uname -m)"-linux-gnu/ 2>/dev/null || true; \
+    fi
+
+# Conditional X11 viewers for displaying figures and documents on the host
+RUN if [ "${INSTALL_X11}" = "true" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            eog \
+            evince \
+            feh \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Conditional LaTeX for matplotlib tex rendering
+RUN if [ "${INSTALL_LATEX}" = "true" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            texlive-latex-base \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            cm-super \
+            dvipng \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Python from deadsnakes PPA
+RUN add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+        python${PYTHON_VERSION}-tk \
+        tk-dev \
+    && (apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION}-distutils 2>/dev/null || true) \
+    && rm -rf /var/lib/apt/lists/*
+
+# Make the selected Python version the default and install pip
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade setuptools
+
+# Keyring backend for in-container credential storage.
+# keyrings.alt provides a file-based PlaintextKeyring that works in
+# headless containers where the default SecretService backend is
+# unavailable and where EncryptedKeyring's interactive master-password
+# prompt cannot run. The container is ephemeral and the credential
+# file is chmod 600; nothing leaks to the host. PYTHON_KEYRING_BACKEND
+# pins the backend for every user (including root), which is what
+# vaibify's docker exec defaults to; the keyringrc.cfg written later
+# is a belt-and-suspenders backup for interactive shells that read it.
+RUN pip install --no-cache-dir keyring keyrings.alt
+ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
+
+# Conditional conda/mamba install for non-pip package managers
+RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
+        curl -fsSL -o /tmp/miniforge.sh \
+            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh" \
+        && bash /tmp/miniforge.sh -b -p /opt/conda \
+        && rm /tmp/miniforge.sh \
+        && /opt/conda/bin/conda init bash \
+        && /opt/conda/bin/conda clean -afy; \
+    fi
+
+ENV PATH="${PACKAGE_MANAGER:+/opt/conda/bin:}${PATH}"
+
+# Project-specific Python packages from vaibify.yml pythonPackages
+COPY requirements.txt /tmp/requirements.txt
+COPY pip-flags.txt /tmp/pip-flags.txt
+RUN if [ -s /tmp/requirements.txt ]; then \
+        PIP_FLAGS="$(cat /tmp/pip-flags.txt 2>/dev/null | tr -d '\n')" \
+        && pip install --no-cache-dir ${PIP_FLAGS} -r /tmp/requirements.txt; \
+    fi \
+    && rm -f /tmp/requirements.txt /tmp/pip-flags.txt
+
+# Create non-root user with UID 1000 (remove default ubuntu user if needed)
+RUN if id -u ${CONTAINER_USER} >/dev/null 2>&1; then \
+        true; \
+    else \
+        userdel -r ubuntu 2>/dev/null || true; \
+        useradd -m -s /bin/bash -u 1000 ${CONTAINER_USER}; \
+    fi \
+    && echo "${CONTAINER_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${CONTAINER_USER}
+
+# Copy entrypoint and configuration files
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY checkIsolation.sh /home/${CONTAINER_USER}/checkIsolation.sh
+
+RUN mkdir -p /etc/vaibify
+# Config files generated by 'vaibify build' into this context
+COPY container.conf /etc/vaibify/container.conf
+COPY binaries.env /etc/vaibify/binaries.env
+COPY director.py /usr/share/vaibify/director.py
+COPY overleafSync.py /usr/share/vaibify/overleafSync.py
+COPY latexConnector.py /usr/share/vaibify/latexConnector.py
+COPY workflows/ /usr/share/vaibify/workflows/
+
+RUN chmod +x /usr/local/bin/entrypoint.sh \
+    && chmod +x /home/${CONTAINER_USER}/checkIsolation.sh \
+    && chown ${CONTAINER_USER}:${CONTAINER_USER} /home/${CONTAINER_USER}/checkIsolation.sh \
+    && git config --system advice.detachedHead false \
+    && git config --system --add safe.directory '*' \
+    && mkdir -p ${WORKSPACE_ROOT} \
+    && chown ${CONTAINER_USER}:${CONTAINER_USER} ${WORKSPACE_ROOT} \
+    && mkdir -p /home/${CONTAINER_USER}/.config/python_keyring \
+    && printf '[backend]\ndefault-keyring=keyrings.alt.file.PlaintextKeyring\n' \
+        > /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg \
+    && chown -R ${CONTAINER_USER}:${CONTAINER_USER} \
+        /home/${CONTAINER_USER}/.config \
+    && chmod 700 /home/${CONTAINER_USER}/.config/python_keyring \
+    && chmod 600 /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg
+
+ENV GIT_EDITOR=nano
+ENV WORKSPACE=${WORKSPACE_ROOT}
+ENV VC_PROJECT_NAME=${VC_PROJECT_NAME}
+ENV CONTAINER_USER=${CONTAINER_USER}
+ENV PACKAGE_MANAGER=${PACKAGE_MANAGER}
+
+WORKDIR ${WORKSPACE_ROOT}
+
+LABEL devcontainer.metadata="[{\"workspaceFolder\": \"${WORKSPACE_ROOT}\", \"remoteUser\": \"${CONTAINER_USER}\", \"extensions\": [\"ms-python.python\", \"ms-vscode.cpptools\"]}]"
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/bin/bash"]

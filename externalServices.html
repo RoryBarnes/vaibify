@@ -1,0 +1,543 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>External-service integrations: lessons from Overleaf &mdash; Vaibify 0.0.1.dev72 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=46d17466"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Vibe coding with verification" href="vibeCoding.html" />
+    <link rel="prev" title="Architecture" href="architecture.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">External-service integrations: lessons from Overleaf</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-to-reuse-from-overleaf">What to reuse from Overleaf</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#token-auth-plumbing">Token + auth plumbing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#error-classification">Error classification</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#git-hardening-github">Git hardening (GitHub)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#credential-helper-scoping">Credential helper scoping</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#path-validation-defense-in-depth">Path validation (defense in depth)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#host-container-digest-computation">Host/container digest computation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#route-layer-patterns">Route layer patterns</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#frontend-unified-push-modal">Frontend unified push modal</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#gotchas-likely-to-recur">Gotchas likely to recur</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#case-folding-overleaf-specific-but-watch-for-echoes">Case folding (Overleaf-specific, but watch for echoes)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#silent-no-op-success-universal">Silent no-op success (universal)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#layer-cache-masking-of-base-image-bugs">Layer-cache masking of base-image bugs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#container-cli-hot-patching-during-dev">Container CLI hot-patching during dev</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#dns-rebinding-host-header-checks">DNS rebinding / Host-header checks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#stderr-leaks-tokens">Stderr leaks tokens</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pathlib-absolute-rhs-trap">Pathlib absolute-RHS trap</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-to-modularize-vs-what-to-write-fresh">What to modularize vs. what to write fresh</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#modularize-now-two-service-common-core">Modularize now (two-service common core)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#write-fresh-for-github">Write fresh for GitHub</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#write-fresh-for-zenodo">Write fresh for Zenodo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#do-not-modularize-yet-wait-for-three">Do NOT modularize yet (wait for three)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#architectural-invariants-to-respect">Architectural invariants to respect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#testing-discipline">Testing discipline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-files-current-overleaf-implementation">Related files (current Overleaf implementation)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#known-follow-ups-from-the-security-audit">Known follow-ups from the security audit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recommended-sequence">Recommended sequence</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">External-service integrations: lessons from Overleaf</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/externalServices.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="external-service-integrations-lessons-from-overleaf">
+<h1>External-service integrations: lessons from Overleaf<a class="headerlink" href="#external-service-integrations-lessons-from-overleaf" title="Link to this heading"></a></h1>
+<p>This document captures what we learned while building vaibify’s Overleaf
+integration so that the next implementer — connecting GitHub and Zenodo
+— can reuse the shape, avoid the traps, and know which abstractions are
+ready to extract vs. which should stay local until a third service
+forces the pattern.</p>
+<p>It is written to be <strong>actionable</strong>, not exhaustive. If a section seems
+too short, that’s intentional: the full source is the source of truth.</p>
+<section id="mental-model">
+<h2>Mental model<a class="headerlink" href="#mental-model" title="Link to this heading"></a></h2>
+<p>Every external-service integration in vaibify is four concentric layers,
+ordered from the user’s action inward:</p>
+<ol class="arabic simple">
+<li><p><strong>Frontend modal</strong> (IIFE JS) — connect, target selection, per-file
+diff, confirm.</p></li>
+<li><p><strong>FastAPI route</strong> — HTTP endpoint, pydantic validation, dispatches
+to layer 3.</p></li>
+<li><p><strong>Host-side dispatcher</strong> (<code class="docutils literal notranslate"><span class="pre">vaibify/gui/syncDispatcher.py</span></code>) — the
+mediator that stitches together host-side operations (mirror
+refresh, digest computation, credential lookup) with container-side
+operations (running the actual push inside the container).</p></li>
+<li><p><strong>Container CLI</strong> — a self-contained Python script shipped into
+<code class="docutils literal notranslate"><span class="pre">/usr/share/vaibify/</span></code> that performs the network write (git push, API
+upload). Imports <strong>only</strong> stdlib + keyring + a handful of allowed
+adapters.</p></li>
+</ol>
+<p>The <strong>container/host boundary is load-bearing</strong>: code that runs inside
+the container cannot import <code class="docutils literal notranslate"><span class="pre">vaibify.*</span></code> because vaibify is not
+installed in the container. Anything that needs vaibify internals
+(workflow manager, route helpers) lives host-side. Respect this
+boundary religiously — several rounds of debugging went into
+restoring it.</p>
+</section>
+<section id="what-to-reuse-from-overleaf">
+<h2>What to reuse from Overleaf<a class="headerlink" href="#what-to-reuse-from-overleaf" title="Link to this heading"></a></h2>
+<p>These modules and patterns are <strong>ready to generalize</strong> as-is:</p>
+<section id="token-auth-plumbing">
+<h3>Token + auth plumbing<a class="headerlink" href="#token-auth-plumbing" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/overleafAuth.py</span></code> — <code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code>
+writes a mode-700 temp file that the git subprocess consults for
+credentials; the token never touches argv or environment. Reuse for
+GitHub directly. For Zenodo (REST API, not git) the askpass pattern
+doesn’t apply, but the mode-600 temp-file discipline does.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">vaibify/config/secretManager.py::fnStoreSecret</span> <span class="pre">/</span> <span class="pre">fsRetrieveSecret</span> <span class="pre">/</span> <span class="pre">fbSecretExists</span> <span class="pre">/</span> <span class="pre">fnDeleteSecret</span></code> — host OS keyring backend.
+<strong>Change one thing</strong>: the current Overleaf integration uses a single
+keyring slot <code class="docutils literal notranslate"><span class="pre">vaibify:overleaf_token</span></code>. This was a known smell (audit
+finding #7) and will collide across projects. For GitHub and Zenodo,
+namespace by service + project: key
+<code class="docutils literal notranslate"><span class="pre">&lt;service&gt;_token:&lt;projectOrRepoId&gt;</span></code>. Do this from the start.</p></li>
+</ul>
+</section>
+<section id="error-classification">
+<h3>Error classification<a class="headerlink" href="#error-classification" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">syncDispatcher.fdictClassifyError</span></code> has extensible pattern lists
+(<code class="docutils literal notranslate"><span class="pre">_LIST_AUTH_PATTERNS</span></code>, <code class="docutils literal notranslate"><span class="pre">_LIST_RATE_LIMIT_PATTERNS</span></code>, etc.). Add
+service-specific patterns alongside; keep the dict shape
+<code class="docutils literal notranslate"><span class="pre">{sErrorType,</span> <span class="pre">sMessage}</span></code> identical across services so the frontend’s
+<code class="docutils literal notranslate"><span class="pre">_DICT_SYNC_ERROR_MESSAGES</span></code> can stay DRY.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">syncDispatcher.fsRedactStderr</span></code> (via overleafMirror) redacts
+credentials from stderr before surfacing to the UI. Always run
+service-boundary output through it or an equivalent.</p></li>
+</ul>
+</section>
+<section id="git-hardening-github">
+<h3>Git hardening (GitHub)<a class="headerlink" href="#git-hardening-github" title="Link to this heading"></a></h3>
+<p>Every <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">fetch</span></code>, and <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">ls-remote</span></code> in vaibify must
+carry these flags:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">-</span><span class="n">c</span> <span class="n">protocol</span><span class="o">.</span><span class="n">file</span><span class="o">.</span><span class="n">allow</span><span class="o">=</span><span class="n">never</span>
+<span class="o">-</span><span class="n">c</span> <span class="n">protocol</span><span class="o">.</span><span class="n">allow</span><span class="o">=</span><span class="n">user</span>
+<span class="o">-</span><span class="n">c</span> <span class="n">core</span><span class="o">.</span><span class="n">symlinks</span><span class="o">=</span><span class="n">false</span>
+<span class="o">-</span><span class="n">c</span> <span class="n">submodule</span><span class="o">.</span><span class="n">recurse</span><span class="o">=</span><span class="n">false</span>
+</pre></div>
+</div>
+<p>and <code class="docutils literal notranslate"><span class="pre">--no-recurse-submodules</span></code> on clones. These defend against
+malicious-repo attacks (<code class="docutils literal notranslate"><span class="pre">.gitmodules</span></code> with <code class="docutils literal notranslate"><span class="pre">file://</span></code> URLs,
+cross-tree symlinks, hook execution). Overleaf uses
+<code class="docutils literal notranslate"><span class="pre">_LIST_GIT_HARDENING_CONFIG</span></code> in both <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code>; lift these to a shared constant when you add
+GitHub.</p>
+</section>
+<section id="credential-helper-scoping">
+<h3>Credential helper scoping<a class="headerlink" href="#credential-helper-scoping" title="Link to this heading"></a></h3>
+<p>Never mutate the container’s or host’s <strong>global</strong> git config. Always
+use <code class="docutils literal notranslate"><span class="pre">-c</span> <span class="pre">credential.https://&lt;host&gt;/.helper=...</span></code> inline on the single
+git command. The Overleaf implementation originally wrote a global
+helper; removing it was a security fix. Don’t repeat the mistake.</p>
+</section>
+<section id="path-validation-defense-in-depth">
+<h3>Path validation (defense in depth)<a class="headerlink" href="#path-validation-defense-in-depth" title="Link to this heading"></a></h3>
+<p>Validate at three layers, every time:</p>
+<ol class="arabic simple">
+<li><p><strong>Route</strong> (<code class="docutils literal notranslate"><span class="pre">syncRoutes.py</span></code>): pydantic types + explicit
+<code class="docutils literal notranslate"><span class="pre">fnValidatePathWithinRoot</span></code> against <code class="docutils literal notranslate"><span class="pre">WORKSPACE_ROOT</span></code> for every
+file path in the request. Also reject <code class="docutils literal notranslate"><span class="pre">\x00</span></code>, leading <code class="docutils literal notranslate"><span class="pre">/</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">..</span></code> segments for target directories.</p></li>
+<li><p><strong>Dispatcher</strong> (<code class="docutils literal notranslate"><span class="pre">syncDispatcher.py</span></code>): validate the projectId /
+repoId / conceptRecId regex before it reaches any filesystem or
+shell.</p></li>
+<li><p><strong>Container CLI</strong> (<code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code>): validate again before the
+<code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> join, because <code class="docutils literal notranslate"><span class="pre">Path('/tmp/clone')</span> <span class="pre">/</span> <span class="pre">'/Figures'</span></code>
+evaluates to <code class="docutils literal notranslate"><span class="pre">/Figures</span></code> (pathlib’s absolute-RHS semantics — a
+silent misroute trap).</p></li>
+</ol>
+<p>Symlink handling: on push, refuse any source where <code class="docutils literal notranslate"><span class="pre">os.path.islink</span></code>
+is True. On pull, after clone, realpath-compare every file to the
+repo root and refuse anything that escapes. Always pass
+<code class="docutils literal notranslate"><span class="pre">follow_symlinks=False</span></code> to <code class="docutils literal notranslate"><span class="pre">shutil.copy*</span></code>.</p>
+</section>
+<section id="host-container-digest-computation">
+<h3>Host/container digest computation<a class="headerlink" href="#host-container-digest-computation" title="Link to this heading"></a></h3>
+<p>When the frontend sends container-absolute paths to the server, the
+server cannot compute digests host-side — those files don’t exist
+there. <code class="docutils literal notranslate"><span class="pre">syncDispatcher.fdictComputeContainerDigests</span></code> runs a single
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span> <span class="pre">python3</span> <span class="pre">-c</span> <span class="pre">&quot;...&quot;</span></code> that hashes all requested files in
+one round-trip. Same shape will work for GitHub (git blob SHAs) and
+for Zenodo (file content SHA256 — whatever Zenodo returns in its
+file-list API; match that algorithm).</p>
+</section>
+<section id="route-layer-patterns">
+<h3>Route layer patterns<a class="headerlink" href="#route-layer-patterns" title="Link to this heading"></a></h3>
+<p>Every state-changing endpoint is behind <code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;require&quot;]()</span></code> (CSRF
+session token) AND the new <code class="docutils literal notranslate"><span class="pre">_fbRequestHasAllowedHost</span></code> middleware (DNS
+rebinding defense). Keep both.</p>
+</section>
+<section id="frontend-unified-push-modal">
+<h3>Frontend unified push modal<a class="headerlink" href="#frontend-unified-push-modal" title="Link to this heading"></a></h3>
+<p>The current push modal (<code class="docutils literal notranslate"><span class="pre">scriptSyncManager.js</span></code>) is service-aware:</p>
+<ul class="simple">
+<li><p>For Overleaf it renders a target-directory input, a diff summary
+(new / overwrite / unchanged with greyed-unchanged rows), a
+case-collision banner if applicable, a conflict banner with
+“Overwrite anyway” gating, and a “Push All” / “Push Selected” pair.</p></li>
+<li><p>For GitHub and Zenodo today it renders a simpler list without diff.</p></li>
+</ul>
+<p>When you add GitHub, reuse the Overleaf flow — GitHub diff maps
+cleanly. For Zenodo the diff concept is slightly different (deposits
+are bundled and versioned; the unit of comparison is usually
+“existing file with same name” vs “new file”). The modal can still
+host the same inline-status UI.</p>
+</section>
+</section>
+<section id="gotchas-likely-to-recur">
+<h2>Gotchas likely to recur<a class="headerlink" href="#gotchas-likely-to-recur" title="Link to this heading"></a></h2>
+<section id="case-folding-overleaf-specific-but-watch-for-echoes">
+<h3>Case folding (Overleaf-specific, but watch for echoes)<a class="headerlink" href="#case-folding-overleaf-specific-but-watch-for-echoes" title="Link to this heading"></a></h3>
+<p>Overleaf’s underlying storage is case-insensitive. Its git bridge
+surfaces both case-variants (<code class="docutils literal notranslate"><span class="pre">Figures/</span></code> and <code class="docutils literal notranslate"><span class="pre">figures/</span></code>) as separate
+tree entries with the same tree SHA. This produced a spectacular
+“12 unchanged” debugging session. <strong>Detect and warn at the adapter
+boundary</strong>: <code class="docutils literal notranslate"><span class="pre">overleafMirror.flistDetectCaseCollisions</span></code> returns a list
+of <code class="docutils literal notranslate"><span class="pre">{sLocalPath,</span> <span class="pre">sTypedRemotePath,</span> <span class="pre">sCanonicalRemotePath}</span></code>. The diff
+endpoint returns these plus <code class="docutils literal notranslate"><span class="pre">sSuggestedTargetDirectory</span></code>, and the
+frontend shows a banner with a one-click “Use canonical case” button.</p>
+<p><strong>GitHub is case-sensitive</strong> in its storage, so this specific quirk
+probably won’t surface. But: don’t assume; Windows-hosted GitHub
+repos through GitHub Desktop can introduce case weirdness, and macOS
+development filesystems are case-insensitive. Add the detection
+anyway; it’s cheap.</p>
+<p><strong>Zenodo</strong> is REST-API-only with a flat file list per deposition, so
+no directory cases at all — irrelevant for Zenodo.</p>
+</section>
+<section id="silent-no-op-success-universal">
+<h3>Silent no-op success (universal)<a class="headerlink" href="#silent-no-op-success-universal" title="Link to this heading"></a></h3>
+<p>The most dangerous error class: a push that “succeeds” but changed
+nothing remotely. Overleaf hit this when <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span> <span class="pre">--porcelain</span></code>
+came back empty because files copied to the wrong place (pathlib
+absolute-join trap) or were byte-identical to existing remote files.
+<strong>Every container CLI that mutates remote state must emit an
+unambiguous status signal on stdout</strong>: overleafSync.py emits
+<code class="docutils literal notranslate"><span class="pre">PUSH_STATUS=pushed</span></code> or <code class="docutils literal notranslate"><span class="pre">PUSH_STATUS=no-changes</span></code>, parsed host-side.
+Apply the same pattern to GitHub push (commit count) and Zenodo
+upload (did a new version get published? was anything new added to
+a draft?).</p>
+</section>
+<section id="layer-cache-masking-of-base-image-bugs">
+<h3>Layer-cache masking of base-image bugs<a class="headerlink" href="#layer-cache-masking-of-base-image-bugs" title="Link to this heading"></a></h3>
+<p>Docker caches RUN layers aggressively. Once a base layer succeeds,
+it gets reused forever until the cache is invalidated. We had an
+apt/gpgv sandbox bug latent in every Ubuntu 24.04 base image we
+built; it only surfaced when the user clicked Force Rebuild
+(<code class="docutils literal notranslate"><span class="pre">--no-cache</span></code>) after weeks of cached-layer reuse. <strong>Lesson</strong>: don’t
+interpret “this has been working for weeks” as “the layer is
+correct.” When adding GitHub/Zenodo, if you change anything in the
+Dockerfile (new packages, new config), test with Force Rebuild at
+least once before shipping.</p>
+</section>
+<section id="container-cli-hot-patching-during-dev">
+<h3>Container CLI hot-patching during dev<a class="headerlink" href="#container-cli-hot-patching-during-dev" title="Link to this heading"></a></h3>
+<p>For fast iteration: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">cp</span> <span class="pre">vaibify/reproducibility/&lt;cli&gt;.py</span> <span class="pre">&lt;container&gt;:/usr/share/vaibify/&lt;cli&gt;.py</span></code> is the answer. The
+Dockerfile’s <code class="docutils literal notranslate"><span class="pre">COPY</span></code> is the permanent solution. Expect this cycle
+during development. Don’t be fooled when your host-side tests pass
+but the container still runs an older CLI — <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span> <span class="pre">&lt;cid&gt;</span> <span class="pre">python3</span> <span class="pre">/usr/share/vaibify/&lt;cli&gt;.py</span> <span class="pre">--help</span></code> to check.</p>
+</section>
+<section id="dns-rebinding-host-header-checks">
+<h3>DNS rebinding / Host-header checks<a class="headerlink" href="#dns-rebinding-host-header-checks" title="Link to this heading"></a></h3>
+<p>Any localhost-bound server is vulnerable to DNS rebinding. We added
+<code class="docutils literal notranslate"><span class="pre">fbIsAllowedHostHeader</span></code> middleware that rejects requests whose Host
+header isn’t <code class="docutils literal notranslate"><span class="pre">127.0.0.1:&lt;port&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">localhost:&lt;port&gt;</span></code>, or <code class="docutils literal notranslate"><span class="pre">[::1]:&lt;port&gt;</span></code>.
+If you add any new endpoint, it gets this defense for free; don’t
+undo it.</p>
+</section>
+<section id="stderr-leaks-tokens">
+<h3>Stderr leaks tokens<a class="headerlink" href="#stderr-leaks-tokens" title="Link to this heading"></a></h3>
+<p>Git sometimes echoes URLs with embedded credentials on auth failure:
+<code class="docutils literal notranslate"><span class="pre">fatal:</span> <span class="pre">Authentication</span> <span class="pre">failed</span> <span class="pre">for</span> <span class="pre">'https://git:&lt;token&gt;&#64;github.com/...'</span></code>.
+The existing redactor handles URL creds + “password/token/bearer/authorization”
+keyword lines. GitHub’s REST API may surface raw tokens in different
+error shapes (JSON bodies with <code class="docutils literal notranslate"><span class="pre">&quot;message&quot;</span></code> fields); extend the
+redactor to cover those before exposing to the UI.</p>
+</section>
+<section id="pathlib-absolute-rhs-trap">
+<h3>Pathlib absolute-RHS trap<a class="headerlink" href="#pathlib-absolute-rhs-trap" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">Path(&quot;/tmp/clone&quot;)</span> <span class="pre">/</span> <span class="pre">&quot;/Figures&quot;</span></code> is <code class="docutils literal notranslate"><span class="pre">/Figures</span></code>, not
+<code class="docutils literal notranslate"><span class="pre">/tmp/clone/Figures</span></code>. Pathlib discards the left side when the right
+starts with a separator. Every target-directory validator MUST
+reject leading slashes before any join. This was the root cause of
+Overleaf’s “phantom push with no remote change” bug.</p>
+</section>
+</section>
+<section id="what-to-modularize-vs-what-to-write-fresh">
+<h2>What to modularize vs. what to write fresh<a class="headerlink" href="#what-to-modularize-vs-what-to-write-fresh" title="Link to this heading"></a></h2>
+<section id="modularize-now-two-service-common-core">
+<h3>Modularize now (two-service common core)<a class="headerlink" href="#modularize-now-two-service-common-core" title="Link to this heading"></a></h3>
+<p>After GitHub is working, extract these into a shared module (probably
+<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/serviceAuth.py</span></code> or similar):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code> (already separate, just widen its scope)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fsRedactStderr</span></code> helper</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fnValidateTargetDirectory</span></code> (currently in <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fnValidatePullRelativePath</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">_LIST_GIT_HARDENING_CONFIG</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fdictComputeContainerDigests</span></code> (the digest-compute docker-exec helper)</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">PUSH_STATUS=</span></code> + <code class="docutils literal notranslate"><span class="pre">HEAD_SHA=</span></code> stdout protocol</p></li>
+<li><p>Host header / session token middleware (already shared)</p></li>
+</ul>
+</section>
+<section id="write-fresh-for-github">
+<h3>Write fresh for GitHub<a class="headerlink" href="#write-fresh-for-github" title="Link to this heading"></a></h3>
+<p>GitHub is git-native, so <code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code> is <strong>nearly</strong> reusable.
+Differences: no case folding (likely), branch selection, commit
+message conventions, PR vs. direct push, GitHub Apps vs. PATs. Keep
+<code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code> Overleaf-specific (it has Overleaf’s quirks in
+its docstring); write <code class="docutils literal notranslate"><span class="pre">githubMirror.py</span></code> alongside and see what
+common shape emerges. After TWO mirrors exist, extract a
+<code class="docutils literal notranslate"><span class="pre">serviceMirror.py</span></code> base.</p>
+</section>
+<section id="write-fresh-for-zenodo">
+<h3>Write fresh for Zenodo<a class="headerlink" href="#write-fresh-for-zenodo" title="Link to this heading"></a></h3>
+<p>Zenodo is <strong>not git</strong>. No clone, no blob SHAs, no tree. Its REST API
+returns a deposition with a file list; you’ll POST new files and
+PUT metadata. The “mirror” concept becomes “cached deposition
+state”: a JSON blob at <code class="docutils literal notranslate"><span class="pre">~/.vaibify/zenodo-cache/&lt;depositId&gt;.json</span></code>
+with file names + sizes + checksums. Diff logic still applies, but
+the primitives are different. Don’t try to share code between the
+git services and Zenodo except at the highest layers (route
+signatures, frontend modal).</p>
+</section>
+<section id="do-not-modularize-yet-wait-for-three">
+<h3>Do NOT modularize yet (wait for three)<a class="headerlink" href="#do-not-modularize-yet-wait-for-three" title="Link to this heading"></a></h3>
+<p>These felt common but might really be Overleaf-specific:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">flistDetectCaseCollisions</span></code> — may not apply to either other service</p></li>
+<li><p>The specific <code class="docutils literal notranslate"><span class="pre">OverleafBehavior</span></code> fixture pattern — worth replicating
+per service, but don’t force a shared API</p></li>
+<li><p>Target-directory selection UI — GitHub has branches, not
+directories; Zenodo has no directory concept at all</p></li>
+</ul>
+<p><strong>Rule of thumb</strong>: write GitHub fresh, steal code, then write Zenodo
+fresh, steal code. After both are working, look for the true common
+patterns and extract. Three concrete instances is the right time to
+abstract; two is premature.</p>
+</section>
+</section>
+<section id="architectural-invariants-to-respect">
+<h2>Architectural invariants to respect<a class="headerlink" href="#architectural-invariants-to-respect" title="Link to this heading"></a></h2>
+<p>Run these after every change:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">pytest</span> <span class="n">tests</span><span class="o">/</span><span class="n">testArchitecturalInvariants</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">v</span>
+</pre></div>
+</div>
+<p>The ones most relevant to new services:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">testNoRawFetchInFeatureModules</span></code> — use <code class="docutils literal notranslate"><span class="pre">VaibifyApi.*</span></code> wrappers in
+the frontend.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">testDirectorUsesOsPath</span></code> — host-side Python uses <code class="docutils literal notranslate"><span class="pre">os.path</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">testLeafModuleHasNoIntraPackageImports</span></code> — don’t add vaibify-gui
+imports to any file that ships into the container.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">testEveryJsFileIsRecognizedAsIIFE</span></code> — register new JS modules in
+<code class="docutils literal notranslate"><span class="pre">index.html</span></code> and follow the IIFE convention.</p></li>
+</ul>
+</section>
+<section id="testing-discipline">
+<h2>Testing discipline<a class="headerlink" href="#testing-discipline" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Mock <code class="docutils literal notranslate"><span class="pre">subprocess.run</span></code> at the module boundary.</strong> Never invoke real
+git or make real network calls in unit tests.</p></li>
+<li><p><strong>Use <code class="docutils literal notranslate"><span class="pre">tmp_path</span></code> fixtures</strong> for anything filesystem-related.</p></li>
+<li><p><strong>Behavior-adapter tests</strong> (<code class="docutils literal notranslate"><span class="pre">testOverleafBehavior.py</span></code>): static
+fixture strings that simulate the external service’s output,
+asserting the adapter interprets them correctly. These fail loudly
+when the external service changes. Create one of these per service.</p></li>
+<li><p><strong>Route tests</strong> use FastAPI’s TestClient with sessions —
+<code class="docutils literal notranslate"><span class="pre">testSyncRoutesCoverage.py</span></code> is the model.</p></li>
+<li><p><strong>Don’t weaken existing tests</strong> to make new ones pass. If a security
+fix makes an existing test’s input now invalid, update the test
+narrowly to use valid input that still exercises the same behavior.</p></li>
+</ul>
+</section>
+<section id="related-files-current-overleaf-implementation">
+<h2>Related files (current Overleaf implementation)<a class="headerlink" href="#related-files-current-overleaf-implementation" title="Link to this heading"></a></h2>
+<p>Backend:</p>
+<ul class="simple">
+<li><p><a class="reference download internal" download="" href="_downloads/1ae75908aea21574aa8bee9e6a8af331/overleafAuth.py"><span class="xref download myst">vaibify/reproducibility/overleafAuth.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/c6860652d411ed1b1cbeed4cab0a0726/overleafMirror.py"><span class="xref download myst">vaibify/reproducibility/overleafMirror.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/67fdbb52e3b381085b5d12868c559c73/overleafSync.py"><span class="xref download myst">vaibify/reproducibility/overleafSync.py</span></a> (container CLI)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/b562d40d1242a24442e8d7f7a29bdad5/latexConnector.py"><span class="xref download myst">vaibify/reproducibility/latexConnector.py</span></a> (container CLI helper)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">vaibify/gui/syncDispatcher.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">vaibify/gui/routes/syncRoutes.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/6db00b295236147ad59b28dd68c00960/pipelineServer.py"><span class="xref download myst">vaibify/gui/pipelineServer.py</span></a> (pydantic models, host-header middleware)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/580a2d297ab6b43f2a5f0ae25d3fc4c3/workflowManager.py"><span class="xref download myst">vaibify/gui/workflowManager.py</span></a> (sync-status persistence)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/a71dab4c014549fb377b64864c085ec8/secretManager.py"><span class="xref download myst">vaibify/config/secretManager.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/9c6d2dd30e172995ff9466799d6f77ed/Dockerfile"><span class="xref download myst">docker/Dockerfile</span></a> (ships the container CLIs)</p></li>
+</ul>
+<p>Frontend:</p>
+<ul class="simple">
+<li><p><a class="reference download internal" download="" href="_downloads/86246c36cf9ddf57ac89c18c78938978/scriptSyncManager.js"><span class="xref download myst">vaibify/gui/static/scriptSyncManager.js</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/41d3bebc1c2006ef94c75e4777e4a0ff/scriptOverleafMirror.js"><span class="xref download myst">vaibify/gui/static/scriptOverleafMirror.js</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/84f2edb151f5cbee246c4944c7d1edfd/scriptModals.js"><span class="xref download myst">vaibify/gui/static/scriptModals.js</span></a></p></li>
+</ul>
+<p>Tests:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#../tests/testOverleafAuth.py"><span class="xref myst">tests/testOverleafAuth.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/3405b5846375450e67875d28d8ab9cae/testOverleafMirror.py"><span class="xref download myst">tests/testOverleafMirror.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/c96bc5ff6b3d91d83518369915e75795/testOverleafBehavior.py"><span class="xref download myst">tests/testOverleafBehavior.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/9b82805d3df028c1866109c76660de6a/testOverleafSync.py"><span class="xref download myst">tests/testOverleafSync.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/9ab355cacb5f4995b404da05db8ee510/testOverleafSyncExtended.py"><span class="xref download myst">tests/testOverleafSyncExtended.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/6b5ada3463224fb0947c5e35adbf5c93/testSyncDispatcherGaps.py"><span class="xref download myst">tests/testSyncDispatcherGaps.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/5901eed23a6fb167172a960b349b0829/testSyncRoutesCoverage.py"><span class="xref download myst">tests/testSyncRoutesCoverage.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/a6ab3b44a4acb55186d4fbf5d77fbbb0/testHostHeaderCheck.py"><span class="xref download myst">tests/testHostHeaderCheck.py</span></a></p></li>
+</ul>
+</section>
+<section id="known-follow-ups-from-the-security-audit">
+<h2>Known follow-ups from the security audit<a class="headerlink" href="#known-follow-ups-from-the-security-audit" title="Link to this heading"></a></h2>
+<p>These were flagged but deferred during Overleaf’s final push. They
+will almost certainly bite GitHub and Zenodo too; fix them during
+those integrations rather than leaving three partial implementations:</p>
+<ol class="arabic simple">
+<li><p><strong>Single keyring slot across projects</strong> — namespace by service +
+project from day one.</p></li>
+<li><p><strong>Token files leak to <code class="docutils literal notranslate"><span class="pre">/tmp</span></code> on SIGKILL</strong> — add a startup sweep
+of <code class="docutils literal notranslate"><span class="pre">/tmp/_vc_*tok*</span></code> and <code class="docutils literal notranslate"><span class="pre">/tmp/vc_askpass_*</span></code>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">fsRedactStderr</span></code> misses bare-token lines</strong> — when a service
+emits a raw token on a line by itself (no label keyword),
+redaction won’t catch it. Consider blanket-replacing the
+just-used token string.</p></li>
+<li><p><strong>Pydantic models without <code class="docutils literal notranslate"><span class="pre">extra=&quot;forbid&quot;</span></code></strong> — hardening, not
+exploitable.</p></li>
+</ol>
+</section>
+<section id="recommended-sequence">
+<h2>Recommended sequence<a class="headerlink" href="#recommended-sequence" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Read this doc.</p></li>
+<li><p>Read the Overleaf implementation top to bottom, especially
+<a class="reference download internal" download="" href="_downloads/c6860652d411ed1b1cbeed4cab0a0726/overleafMirror.py"><span class="xref download myst">overleafMirror.py</span></a>
+and <a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">syncDispatcher.py</span></a>.</p></li>
+<li><p>Read the two relevant plan files in <code class="docutils literal notranslate"><span class="pre">.claude/plans/</span></code> for the
+Overleaf push and mirror plans — they show the level of detail
+expected.</p></li>
+<li><p>Write GitHub first (closer shape to Overleaf), landing in small
+commits.</p></li>
+<li><p>Write Zenodo (different shape entirely).</p></li>
+<li><p>Extract shared helpers into a <code class="docutils literal notranslate"><span class="pre">serviceAuth.py</span></code> / <code class="docutils literal notranslate"><span class="pre">serviceMirror.py</span></code>
+after both are working.</p></li>
+<li><p>Run the security audit prompt (ask the user for the one we used
+on Overleaf) against the new code.</p></li>
+</ol>
+<p>Good luck. The Overleaf round took longer than estimated because of
+the seven or eight quirks documented above; budget accordingly for
+the next two services.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="architecture.html" class="btn btn-neutral float-left" title="Architecture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vibeCoding.html" class="btn btn-neutral float-right" title="Vibe coding with verification" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
