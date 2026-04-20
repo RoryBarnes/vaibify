@@ -62,10 +62,14 @@ var VaibifyPolling = (function () {
     }
 
     async function _fnPollFileChanges(sContainerId) {
+        var pBadges = (typeof VaibifyGitBadges !== "undefined")
+            ? VaibifyGitBadges.fnRefresh(sContainerId)
+            : Promise.resolve();
         try {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/file-status"
             );
+            try { await pBadges; } catch (e) { /* badges optional */ }
             if (_fnOnFileStatus) {
                 _fnOnFileStatus(dictStatus);
             }

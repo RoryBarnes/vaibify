@@ -8,7 +8,6 @@ from vaibify.gui.syncDispatcher import (
     _flistArchivePlotPaths,
     _flistBuildDagEdges,
     _fsBuildStepCopyCommands,
-    _fsGenerateGitIgnore,
     _fsGenerateReadme,
     _fsNormalizePath,
     fdictParseTestMarkerOutput,
@@ -228,18 +227,6 @@ class TestFsBuildStepCopyCommands:
         assert "mkdir -p" in sResult
 
 
-class TestFsGenerateGitIgnore:
-    def test_contains_common_patterns(self):
-        sResult = _fsGenerateGitIgnore()
-        assert "*.npy" in sResult
-        assert "*.h5" in sResult
-        assert ".vaibify/logs/" in sResult
-
-    def test_contains_plot_pdf(self):
-        sResult = _fsGenerateGitIgnore()
-        assert "Plot/*.pdf" in sResult
-
-
 class TestFsGenerateReadme:
     def test_contains_workflow_name(self):
         dictWorkflow = {
@@ -360,9 +347,9 @@ class TestFtResultPushStagedToGithub:
         ftResultPushStagedToGithub(
             fake, "cid", "msg", "/workspace/proj")
         sCommand = fake.listCommands[0][1]
-        assert "git commit -m" in sCommand
-        assert "git push" in sCommand
-        assert "git rev-parse --short HEAD" in sCommand
+        assert "commit -m 'msg'" in sCommand
+        assert " push " in sCommand
+        assert "rev-parse --short HEAD" in sCommand
         assert "cd '/workspace/proj'" in sCommand
 
     def test_chained_with_and_operator(self):

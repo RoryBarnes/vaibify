@@ -37,6 +37,12 @@ var VaibifySyncManager = (function () {
             fnShowConnectionSetup(sService);
             return;
         }
+        if (typeof VaibifyManifestCheck !== "undefined") {
+            var bProceed = await VaibifyManifestCheck.fbRunBeforePush(
+                sContainerId
+            );
+            if (!bProceed) return;
+        }
         _sPushService = sService;
         fnPopulatePushModal(sService);
     }

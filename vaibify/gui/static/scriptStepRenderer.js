@@ -657,6 +657,12 @@ var VaibifyStepRenderer = (function () {
                     "Supporting " + sFileLabel) +
                 '">' + (bArchive ? "\u2605" : "\u2606") +
                 '</span>';
+            if (typeof VaibifyGitBadges !== "undefined") {
+                var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
+                    sResolved, sWorkdir
+                );
+                sHtml += VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
+            }
         }
         var sDisplayPath = dictContext.fsShortenPath(
             sResolved, sWorkdir);

@@ -1035,6 +1035,122 @@ body.all-verified .toolbar-label {
     color: var(--text-muted);
 }
 
+/* Per-remote sync badges (G/O/Z) — Phase 4 workspace-as-git-repo */
+.remote-badges {
+    display: inline-flex;
+    gap: 2px;
+    margin-left: 4px;
+    font-size: 10px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.remote-badge {
+    padding: 1px 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    line-height: 1.3;
+    cursor: default;
+}
+
+.remote-badge.badge-synced {
+    background: rgba(46, 160, 67, 0.15);
+    border-color: rgba(46, 160, 67, 0.45);
+    color: #2ea043;
+}
+
+.remote-badge.badge-drifted {
+    background: rgba(212, 160, 23, 0.15);
+    border-color: rgba(212, 160, 23, 0.45);
+    color: #d4a017;
+}
+
+.remote-badge.badge-dirty {
+    background: rgba(203, 36, 49, 0.12);
+    border-color: rgba(203, 36, 49, 0.45);
+    color: #cb2431;
+}
+
+.remote-badge.badge-untracked {
+    background: rgba(31, 111, 235, 0.12);
+    border-color: rgba(31, 111, 235, 0.45);
+    color: #1f6feb;
+}
+
+.remote-badge.badge-ignored {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+}
+
+.remote-badge.badge-none {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+    opacity: 0.6;
+}
+
+/* Pre-push manifest check dialog — Phase 5 */
+.manifest-check-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.manifest-check-dialog {
+    background: var(--panel-bg, #fff);
+    color: var(--text-primary, #222);
+    padding: 20px 24px;
+    border-radius: 6px;
+    max-width: 560px;
+    width: 92%;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.manifest-check-dialog h2 {
+    margin-top: 0;
+    font-size: 16px;
+}
+
+.manifest-check-dialog p {
+    font-size: 13px;
+    color: var(--text-secondary, #555);
+}
+
+.manifest-check-list {
+    margin: 10px 0 16px;
+    padding-left: 18px;
+    font-size: 12px;
+}
+
+.manifest-check-list li {
+    margin: 3px 0;
+}
+
+.manifest-check-list code {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.manifest-state-tag {
+    font-size: 10px;
+    color: var(--text-muted, #888);
+    margin-left: 6px;
+}
+
+.manifest-check-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
 .detail-item .detail-text {
     flex: 1;
     padding: 2px 6px;

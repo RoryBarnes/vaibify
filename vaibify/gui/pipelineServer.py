@@ -1130,6 +1130,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.pipelineRoutes.fnRegisterAll(app, dictCtx)
     routes.terminalRoutes.fnRegisterAll(app, dictCtx)
     routes.repoRoutes.fnRegisterAll(app, dictCtx)
+    routes.gitRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

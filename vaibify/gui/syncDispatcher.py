@@ -11,6 +11,7 @@ from vaibify.reproducibility.overleafAuth import (
     fsWriteAskpassScript,
 )
 
+from . import stateContract
 from . import workflowManager
 from .pipelineUtils import fsShellQuote
 
@@ -266,18 +267,37 @@ def ftResultArchiveToZenodo(
     )
 
 
+_LIST_GITHUB_HARDENING_CONFIG = [
+    "-c", "protocol.file.allow=never",
+    "-c", "protocol.allow=user",
+    "-c", "core.symlinks=false",
+    "-c", "submodule.recurse=false",
+]
+
+
+def _fsGithubHardeningFlags():
+    """Return the hardening ``-c`` flags joined for shell invocation."""
+    return " ".join(fsShellQuote(s) for s in _LIST_GITHUB_HARDENING_CONFIG)
+
+
 def ftResultPushToGithub(
     connectionDocker, sContainerId,
     listFilePaths, sCommitMessage, sWorkdir,
 ):
-    """Git add, commit, and push files inside the container."""
+    """Git add, commit, and push files inside the container.
+
+    Hardened in Phase 6: every git invocation carries the shared
+    protocol/symlink/submodule guards so a malicious .gitmodules or
+    hostile symlink target cannot hijack the push.
+    """
     sQuotedPaths = " ".join(fsShellQuote(s) for s in listFilePaths)
+    sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git add {sQuotedPaths} && "
-        f"git commit -m {fsShellQuote(sCommitMessage)} && "
-        f"git push && "
-        f"git rev-parse --short HEAD"
+        f"git {sHardening} add {sQuotedPaths} && "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -289,13 +309,15 @@ def ftResultPushStagedToGithub(
 ):
     """Commit whatever is staged in sWorkdir and push to origin.
 
-    Does NOT run `git add`. Returns (iExitCode, sCombinedOutput).
+    Does NOT run ``git add``. Returns (iExitCode, sCombinedOutput).
+    Hardened alongside ``ftResultPushToGithub``.
     """
+    sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git commit -m {fsShellQuote(sCommitMessage)} && "
-        f"git push && "
-        f"git rev-parse --short HEAD"
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -368,11 +390,17 @@ def ftResultPushScriptsToGithub(
     connectionDocker, sContainerId,
     dictWorkflow, sCommitMessage, sWorkdir,
 ):
-    """Organize scripts + archive PNGs into camelCase dirs and push."""
+    """Organize scripts + archive PNGs into camelCase dirs and push.
+
+    Deprecated: the workspace-as-git-repo model (Phase 1+) treats the
+    workspace itself as the repo. Retained for one release cycle so
+    existing callers keep working; prefer direct ``git push`` plus the
+    dashboard manifest check.
+    """
     listCommands = _flistBuildStepCopyCommandList(dictWorkflow)
     if not listCommands:
         return (1, "No scripts found to push")
-    sGitIgnore = _fsGenerateGitIgnore()
+    sGitIgnore = stateContract.fsGenerateGitignore(dictWorkflow)
     sReadme = _fsGenerateReadme(dictWorkflow)
     sSetup = " && ".join(listCommands)
     sGitCommand = (
@@ -427,18 +455,6 @@ def _fsBuildStepCopyCommands(
     return " && ".join(listCopy)
 
 
-def _fsGenerateGitIgnore():
-    """Return a .gitignore for vaibified repos."""
-    return (
-        "# Generated outputs\n"
-        "Plot/*.pdf\n"
-        "*.npy\n*.npz\n*.h5\n*.hdf5\n*.pkl\n*.pickle\n"
-        "*.bpa\n*.csv\n"
-        "# Logs\n"
-        ".vaibify/logs/\n"
-    )
-
-
 def _fsGenerateReadme(dictWorkflow):
     """Return a README.md summarizing the workflow."""
     sName = dictWorkflow.get("sWorkflowName", "Vaibify Workflow")
@@ -459,12 +475,17 @@ def ftResultAddFileToGithub(
     connectionDocker, sContainerId,
     sFilePath, sCommitMessage, sWorkdir,
 ):
-    """Git add, commit, push a single file inside the container."""
+    """Git add, commit, push a single file inside the container.
+
+    Shares the hardening-flag discipline with ``ftResultPushToGithub``.
+    """
+    sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git add {fsShellQuote(sFilePath)} && "
-        f"git commit -m {fsShellQuote(sCommitMessage)} && "
-        f"git push && git rev-parse --short HEAD"
+        f"git {sHardening} add {fsShellQuote(sFilePath)} && "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand

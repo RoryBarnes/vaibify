@@ -5,7 +5,6 @@ import pytest
 from vaibify.gui.syncDispatcher import (
     fsPythonCommand,
     _fsNormalizePath,
-    _fsGenerateGitIgnore,
     _fsGenerateReadme,
     _fsBuildStepCopyCommands,
     _flistArchivePlotPaths,
@@ -51,19 +50,6 @@ def test_fsNormalizePath_relative_joined():
 def test_fsNormalizePath_dotdot_normalized():
     sResult = _fsNormalizePath("/workspace/step1", "../lib/util.py")
     assert sResult == "/workspace/lib/util.py"
-
-
-# -----------------------------------------------------------------------
-# _fsGenerateGitIgnore
-# -----------------------------------------------------------------------
-
-
-def test_fsGenerateGitIgnore_contains_patterns():
-    sResult = _fsGenerateGitIgnore()
-    assert "*.npy" in sResult
-    assert "*.h5" in sResult
-    assert "Plot/*.pdf" in sResult
-    assert ".vaibify/logs/" in sResult
 
 
 # -----------------------------------------------------------------------
