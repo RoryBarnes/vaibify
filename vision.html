@@ -1,0 +1,395 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vision &mdash; Vaibify 0.0.1.dev74 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=292060b2"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: lessons from Overleaf</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Vision</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/vision.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="vision">
+<h1>Vision<a class="headerlink" href="#vision" title="Link to this heading"></a></h1>
+<p>Vaibify is a harness for making computational science reproducible in
+a world where AI agents are first-class participants in the research
+process. This document describes what that means, the graded framework
+we use to reason about reproducibility, and where vaibify sits on it.</p>
+<p>For the motivation that preceded vaibify — why secure containment and
+agent-assisted computing matter — see
+<a class="reference internal" href="philosophy.html"><span class="std std-doc">philosophy.md</span></a>. For the day-to-day mechanics of the
+reproducibility stack, see <a class="reference internal" href="reproducibility.html"><span class="std std-doc">reproducibility.md</span></a>.
+This document is intentionally higher-level and forward-looking, so
+that it can be cited independently of any single vaibify release.</p>
+<section id="the-problem">
+<h2>The problem<a class="headerlink" href="#the-problem" title="Link to this heading"></a></h2>
+<p>Two concurrent shifts make the existing reproducibility story
+insufficient.</p>
+<p><strong>Agentic contributors.</strong> AI systems now produce plausible scientific
+output at speeds that overwhelm peer review and without the informal
+trust signals (reputation, institution, career-staking) that human
+science relies on. A paper generated by an agent has no career at
+stake; its reliability has to come from the work itself, not the
+author. See
+<a class="reference external" href="https://arxiv.org/abs/2511.05524">EviBound (arXiv 2511.05524)</a> for
+the architectural framing and
+<a class="reference external" href="https://arxiv.org/abs/2507.18901">REPRO-Bench (arXiv 2507.18901)</a>
+for empirical evidence that agents cannot reliably self-assess
+reproducibility.</p>
+<p><strong>Cryptographic possibility.</strong> The building blocks for
+machine-verifiable scientific claims now exist in production —
+content-addressed storage (git), immutable archival (Zenodo DOIs,
+Software Heritage), supply-chain attestation (Sigstore, SLSA),
+deterministic container builds, and in the longer term zero-knowledge
+proofs of computation. None of this infrastructure was realistic for
+working scientists a decade ago.</p>
+<p>The opening is therefore to treat a reproducible scientific artifact
+not as a PDF plus some code, but as a content-addressed chain of
+evidence whose integrity any third party — human or agent — can
+verify without rerunning the computation.</p>
+</section>
+<section id="the-reproducibility-ladder">
+<h2>The reproducibility ladder<a class="headerlink" href="#the-reproducibility-ladder" title="Link to this heading"></a></h2>
+<p>Reproducibility is not a binary. We distinguish five levels, each
+strictly harder than the last. The structure follows the pattern
+used in other trust-across-boundaries domains: SLSA in software
+supply-chain security, evidence-based medicine hierarchies, NIST
+metrological traceability, art-world provenance. At each level we
+state what it proves and, equally important, what it does not.</p>
+<section id="l1-locally-verified">
+<h3>L1 — Locally verified<a class="headerlink" href="#l1-locally-verified" title="Link to this heading"></a></h3>
+<p>All workflow tests pass. Every file declared as canonical matches
+the workspace’s last local commit. Test markers reproduce on a
+fresh clone: the recorded content hashes match what the author
+verified.</p>
+<ul class="simple">
+<li><p><strong>Proves</strong>: the author has not silently modified anything between
+verification and hand-off.</p></li>
+<li><p><strong>Does not prove</strong>: that the author’s state is consistent with
+anything outside the author’s own machine.</p></li>
+</ul>
+</section>
+<section id="l2-published">
+<h3>L2 — Published<a class="headerlink" href="#l2-published" title="Link to this heading"></a></h3>
+<p>Every canonical file’s content hash matches what is published at a
+specific, immutable remote authority: GitHub’s blob at a committed
+commit SHA; Overleaf’s referenced revision; the Zenodo DOI’s archive
+for bundled data. The commit SHA is reachable on the public branch.</p>
+<ul class="simple">
+<li><p><strong>Proves</strong>: a third party can verify the published record matches
+the author’s container using only hash fetches from public
+authorities. No trust in the author’s environment required.</p></li>
+<li><p><strong>Does not prove</strong>: that the computation producing those files can
+be re-executed to yield the same bits.</p></li>
+</ul>
+</section>
+<section id="l3-reproducible">
+<h3>L3 — Reproducible<a class="headerlink" href="#l3-reproducible" title="Link to this heading"></a></h3>
+<p>The Docker image is reproducibly buildable: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">build</span> <span class="pre">.</span></code> at the
+committed Dockerfile produces a byte-identical image hash on any
+capable host. The workflow is deterministic — random seeds declared,
+BLAS threading pinned, no nondeterministic libraries. Running
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">&lt;url&gt;</span></code> on a fresh clone regenerates output files
+whose hashes match the committed baseline.</p>
+<ul class="simple">
+<li><p><strong>Proves</strong>: a third party can <em>regenerate</em> the author’s outputs
+from source + inputs and get identical bits.</p></li>
+<li><p><strong>Does not prove</strong>: that the inputs themselves are authentic.</p></li>
+</ul>
+<p>The jump L2 → L3 is genuinely hard. Deterministic numerics on modern
+hardware requires care (<code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS=1</span></code> or <code class="docutils literal notranslate"><span class="pre">MKL_CBWR=COMPATIBLE</span></code>,
+avoidance of nondeterministic CUDA operations); reproducible Docker
+builds require pinned apt versions and <code class="docutils literal notranslate"><span class="pre">SOURCE_DATE_EPOCH</span></code>. Much of
+this tooling exists in the
+<a class="reference external" href="https://reproducible-builds.org/">reproducible-builds</a> community;
+vaibify’s role is to package it for working scientists.</p>
+</section>
+<section id="l4-archived">
+<h3>L4 — Archived<a class="headerlink" href="#l4-archived" title="Link to this heading"></a></h3>
+<p>Every external input is recorded with <code class="docutils literal notranslate"><span class="pre">(source</span> <span class="pre">URL,</span> <span class="pre">fetch</span> <span class="pre">timestamp,</span> <span class="pre">content</span> <span class="pre">hash)</span></code> in a committed manifest. Re-fetching the URL produces
+a matching hash; archival services (Zenodo, Software Heritage, Wayback
+Machine) hold snapshots in case the source disappears.</p>
+<ul class="simple">
+<li><p><strong>Proves</strong>: the full causal chain from raw observation to published
+plot is tamper-evident.</p></li>
+<li><p><strong>Does not prove</strong>: that anyone besides the author has independently
+verified the re-execution.</p></li>
+</ul>
+</section>
+<section id="l5-attested">
+<h3>L5 — Attested<a class="headerlink" href="#l5-attested" title="Link to this heading"></a></h3>
+<p>Independent third parties — CI services, collaborators, archival
+bots — have re-run the workflow and published signed attestations
+that their output hashes match the committed baseline. Attestations
+are in a transparency log (Sigstore / Rekor style), so revocation
+and provenance of the attestation itself are public.</p>
+<ul class="simple">
+<li><p><strong>Proves</strong>: reproducibility is no longer the author’s claim alone;
+it is community-verified and the community verification is itself
+publicly auditable.</p></li>
+<li><p><strong>Does not prove</strong>: anything deeper. This is the ceiling of what
+hashes and signatures alone can guarantee.</p></li>
+</ul>
+</section>
+</section>
+<section id="what-this-framework-is-and-is-not">
+<h2>What this framework is and is not<a class="headerlink" href="#what-this-framework-is-and-is-not" title="Link to this heading"></a></h2>
+<p>The framework is a vocabulary for stating, and checking, the
+reproducibility rigor of a computational result. It is strictly
+independent of vaibify. Any tool that implements container packaging,
+external hash fetches, reproducible builds, and attestation logs
+could claim levels on it. Vaibify is <em>an</em> implementation, not <em>the</em>
+implementation.</p>
+<p>Two properties we deliberately keep off the ladder:</p>
+<ul class="simple">
+<li><p><strong>Test meaningfulness.</strong> Whether a workflow’s tests are actually
+strong enough to catch subtle errors (mutation-testing coverage,
+adversarial robustness) is a property a workflow should have at
+any level. It is a property of the tests, not of reproducibility.</p></li>
+<li><p><strong>Physics-informed validation.</strong> Whether the numerical result
+respects conservation laws, symmetries, or asymptotic limits is a
+correctness claim about the science, not a reproducibility claim
+about the bits. Results can be perfectly reproducible and
+scientifically wrong.</p></li>
+</ul>
+<p>Both deserve attention; neither is a rung on this ladder.</p>
+</section>
+<section id="where-vaibify-sits">
+<h2>Where vaibify sits<a class="headerlink" href="#where-vaibify-sits" title="Link to this heading"></a></h2>
+<p>At time of writing, vaibify targets <strong>L1 working, L2 as the
+near-term goal, L3 as a stretch goal for a companion demonstration</strong>
+(the GJ 1132 XUV paper appendix). L4 and L5 are described here for
+completeness; the 2026 development effort does not attempt them.</p>
+<p>Two deliberate design choices shape the implementation.</p>
+<p><strong>Local-first.</strong> The workspace is a directory on the scientist’s
+own machine, mounted into a container; artifacts stay on the
+scientist’s disk and under the scientist’s control. Contrast with
+hosted platforms (Whole Tale, Renku, Code Ocean) that require
+uploading work to run it. Local-first is more architecturally
+demanding — notably, workspace storage varies across host operating
+systems — but it respects how working scientists already organize
+their work and avoids creating yet another platform lock-in.</p>
+<p><strong>AI agents as equal participants in the authorship graph.</strong>
+Infrastructure that assumes “the author” is a human and “tools” are
+what agents use cannot cleanly accommodate a future where significant
+portions of a workflow are produced by agents. Vaibify’s pre-push
+manifest check, content-hash-bound test markers, and per-remote
+freshness badges exist so that agent output is subject to the same
+verification gates as human output, with no special privilege in
+either direction.</p>
+</section>
+<section id="scope-and-non-goals">
+<h2>Scope and non-goals<a class="headerlink" href="#scope-and-non-goals" title="Link to this heading"></a></h2>
+<p>Vaibify is:</p>
+<ul class="simple">
+<li><p>A harness for containerizing a scientific workflow, recording its
+state in a content-addressed way, and verifying it against
+external authorities.</p></li>
+<li><p>An implementation of the reproducibility ladder for a working
+scientist’s daily use.</p></li>
+<li><p>A bridge between existing infrastructure (git, Zenodo, Overleaf,
+Docker) and the reproducibility claims a working scientist wants
+to make about their own work.</p></li>
+</ul>
+<p>Vaibify is not:</p>
+<ul class="simple">
+<li><p>A workflow management system. Nextflow, Snakemake, CWL, and Galaxy
+exist and are better at workflow orchestration. Vaibify uses a
+minimal JSON pipeline description because the target user is
+writing Python or shell scripts, not DSLs.</p></li>
+<li><p>An AI agent. Vaibify does not generate code, reason about
+experiments, or draft papers. Systems like
+<a class="reference external" href="https://github.com/AstroPilot-AI/Denario">Denario</a>,
+<a class="reference external" href="https://github.com/CMBAgents/cmbagent">CMBAgent</a>, and
+<a class="reference external" href="https://sakana.ai/ai-scientist/">Sakana’s AI Scientist</a> do that.
+Vaibify is the verification harness their output should pass
+through.</p></li>
+<li><p>A hosted reproducibility platform. Whole Tale, Renku, and Code
+Ocean exist and serve users who want cloud-first workflows.
+Vaibify is local-first by design.</p></li>
+<li><p>A cryptographic attestation service. Sigstore, Rekor, and in-toto
+exist for that. Vaibify integrates with them (or will, at L5); it
+does not replace them.</p></li>
+</ul>
+</section>
+<section id="related-work">
+<h2>Related work<a class="headerlink" href="#related-work" title="Link to this heading"></a></h2>
+<p>Many pieces of this vision exist independently; what has been
+missing is a working-scientist harness that integrates them and a
+graded framework that makes reproducibility claims legible across
+tools. The closest adjacent work:</p>
+<ul class="simple">
+<li><p><strong>Governance for agentic research.</strong>
+<a class="reference external" href="https://arxiv.org/abs/2511.05524">EviBound (arXiv 2511.05524)</a>
+articulates the architectural stance — “research integrity is an
+architectural property, achieved through governance gates rather
+than emergent from model scale.” Vaibify’s manifest check and
+verification endpoints are intellectually continuous with
+EviBound’s approval / verification gate design.</p></li>
+<li><p><strong>Reproducibility platforms.</strong>
+<a class="reference external" href="https://wholetale.org/">Whole Tale</a>,
+<a class="reference external" href="https://renkulab.io/">Renku</a>,
+<a class="reference external" href="https://codeocean.com/">Code Ocean</a>,
+and <a class="reference external" href="https://dl.acm.org/doi/10.1145/2882903.2899401">ReproZip</a>
+pursue similar aims through different design choices (hosted
+platforms, automatic dependency capture, R-based compendia).</p></li>
+<li><p><strong>Workflow provenance.</strong>
+<a class="reference external" href="https://www.nextflow.io/">Nextflow</a> and
+<a class="reference external" href="https://snakemake.readthedocs.io/">Snakemake</a> implement
+hash-based task identity with mature provenance tracking,
+primarily in bioinformatics.</p></li>
+<li><p><strong>Supply-chain security as a model.</strong>
+<a class="reference external" href="https://slsa.dev/">SLSA</a> and
+<a class="reference external" href="https://www.sigstore.dev/">Sigstore</a> define the leveling and
+attestation patterns our ladder adapts for science.</p></li>
+<li><p><strong>Verifiable computation.</strong>
+<a class="reference external" href="https://arxiv.org/abs/2502.18535">A Survey of zkML (arXiv 2502.18535)</a>
+and
+<a class="reference external" href="https://arxiv.org/html/2511.12592">zkML at the LHC (arXiv 2511.12592)</a>
+point toward a future where L3 verification need not require
+re-execution.</p></li>
+<li><p><strong>Foundational reproducibility scholarship.</strong>
+<a class="reference external" href="https://scholar.google.com/citations?user=LWw60SgAAAAJ&amp;amp;hl=en">Victoria Stodden’s body of work</a>
+and the
+<a class="reference external" href="https://www.nature.com/articles/sdata201618">FAIR Guiding Principles</a>
+establish the scientific-data vocabulary this framework aims to
+align with rather than replace.</p></li>
+<li><p><strong>Evidence that the problem is real.</strong>
+<a class="reference external" href="https://www.cell.com/patterns/fulltext/S2666-3899(23)00159-9">Kapoor &amp; Narayanan (Patterns, 2023)</a>
+document the reproducibility crisis in ML-based science across 17
+fields.
+<a class="reference external" href="https://arxiv.org/abs/2502.14297">Evaluating Sakana’s AI Scientist (arXiv 2502.14297)</a>
+shows that existing agentic systems produce output with the exact
+failure modes an L2+ framework would catch.</p></li>
+</ul>
+</section>
+<section id="the-larger-bet">
+<h2>The larger bet<a class="headerlink" href="#the-larger-bet" title="Link to this heading"></a></h2>
+<p>The scientific community’s trust infrastructure was built on the
+implicit assumption of human authorship: tenure, journal prestige,
+institutional affiliation, citation graphs. That infrastructure
+scales roughly linearly with human reviewers. Agentic research
+threatens to produce work at rates where reputation-based filtering
+is structurally unable to keep up.</p>
+<p>The bet underlying vaibify is that the locus of scientific
+credibility will shift, over the next decade, from human expertise
+to machine-verifiable reproducibility — not replacing peer review,
+but supplementing it with a verifiable substrate that a reviewer
+(human or agent) can check in seconds rather than days. Getting
+astrophysics to L2 in 2026 is a small step toward that substrate.
+Getting the field to L5 by the time a remote-sensing result needs
+to be trusted as evidence for life beyond Earth is the ambition
+this framework anchors.</p>
+<p>Vaibify’s contribution is intentionally modest: a working harness
+that one scientist can use today, shaped by the graded framework
+above, built to compose with the larger trust infrastructure as it
+emerges.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
