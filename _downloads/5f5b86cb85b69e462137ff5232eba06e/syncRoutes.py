@@ -55,6 +55,43 @@ def _fnValidateOverleafFilePaths(listFilePaths):
             ) from error
 
 
+def _fnValidateGithubPushPaths(listFilePaths, sWorkdir):
+    """Validate paths submitted to the GitHub push endpoint.
+
+    Accepts workdir-relative paths (the common case) and absolute
+    paths. Each is resolved against sWorkdir before being checked
+    against WORKSPACE_ROOT so a payload like
+    ``{"listFilePaths": ["../../etc/passwd"]}`` is rejected at the
+    route layer, before any git subprocess runs.
+    """
+    if listFilePaths is None:
+        return
+    for sFilePath in listFilePaths:
+        if not isinstance(sFilePath, str) or sFilePath == "":
+            raise HTTPException(
+                status_code=400,
+                detail="File path must be a non-empty string.",
+            )
+        if "\x00" in sFilePath:
+            raise HTTPException(
+                status_code=400,
+                detail="File path must not contain null bytes.",
+            )
+        if sFilePath.startswith("/"):
+            sAbs = sFilePath
+        else:
+            sAbs = posixpath.normpath(
+                posixpath.join(sWorkdir or WORKSPACE_ROOT, sFilePath)
+            )
+        try:
+            fnValidatePathWithinRoot(sAbs, WORKSPACE_ROOT)
+        except HTTPException as error:
+            raise HTTPException(
+                status_code=400,
+                detail="File path must be within workspace root.",
+            ) from error
+
+
 def _fnValidateOverleafTargetDirectory(sTargetDirectory):
     """Reject target directories that escape the Overleaf repo root.
 
@@ -291,6 +328,7 @@ def _fnRegisterGithubPush(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         sWorkdir = posixpath.dirname(
             dictCtx["paths"].get(sContainerId, ""))
+        _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultPushToGithub,
             dictCtx["docker"], sContainerId,

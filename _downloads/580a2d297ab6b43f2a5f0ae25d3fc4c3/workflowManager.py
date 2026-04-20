@@ -653,12 +653,19 @@ def fdictGetSyncStatus(dictWorkflow):
 
 
 def fdictInitializeSyncEntry():
-    """Return a fresh sync entry with all services unsynced."""
+    """Return a fresh sync entry with all services unsynced.
+
+    GitHub sync state is derived from git itself (commit + push),
+    so no separate ``sGithubLastPushedDigest`` field is stored.
+    Overleaf and Zenodo hold their own last-pushed digests since
+    git is not the transport for those services.
+    """
     return {
         "bOverleaf": False, "sOverleafTimestamp": "",
         "sOverleafLastPushedDigest": "",
         "bGithub": False, "sGithubTimestamp": "",
         "bZenodo": False, "sZenodoTimestamp": "",
+        "sZenodoLastPushedDigest": "",
     }
 
 
