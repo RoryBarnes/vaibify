@@ -600,6 +600,73 @@ def test_ftResultArchiveToZenodo_surfaces_http_errors():
     assert "r.text[:500]" in sScript
 
 
+# ----------------------------------------------------------------------
+# Phase 6 — error recovery / draft cleanup
+# ----------------------------------------------------------------------
+
+
+def test_archive_script_wraps_uploads_in_try_except():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "except SystemExit" in sScript
+    assert "except Exception" in sScript
+
+
+def test_archive_script_defines_cleanup_and_abort_helpers():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "def _cleanup_draft" in sScript
+    assert "def _abort" in sScript
+    assert "requests.delete" in sScript
+
+
+def test_archive_script_cleanup_reports_both_success_and_failure():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    # Success path mentions the draft id being deleted
+    assert "orphan draft" in sScript
+    # Failure path tells the user the draft is still on Zenodo
+    assert "still on Zenodo" in sScript
+
+
+def test_archive_script_cleanup_excepts_after_draft_is_known():
+    """The try/except must wrap uploads+publish, not draft creation.
+
+    Creating the draft can't orphan anything (nothing was made yet);
+    the cleanup scope starts after the first POST returns an id.
+    """
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    iCleanup = sScript.find("def _cleanup_draft")
+    iExceptSysExit = sScript.find("except SystemExit as _se:")
+    # Upload loop uses bucket + basename; metadata PUT doesn't.
+    iBucketPut = sScript.find("sBucket + '/' + posixpath.basename")
+    assert iCleanup > 0 and iExceptSysExit > 0 and iBucketPut > 0
+    assert iCleanup < iBucketPut < iExceptSysExit, (
+        "helpers, then bucket upload inside try, then except-block"
+    )
+
+
 def test_fdictCheckConnectivity_zenodo_probes_namespaced_slots():
     from vaibify.gui.syncDispatcher import fdictCheckConnectivity
     mockDocker = MagicMock()
