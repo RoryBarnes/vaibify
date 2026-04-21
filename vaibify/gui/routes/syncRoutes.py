@@ -360,6 +360,31 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         return dictResult
 
 
+def _fnRegisterZenodoDeposit(app, dictCtx):
+    """Register GET /api/zenodo/{id}/deposit endpoint."""
+
+    @app.get("/api/zenodo/{sContainerId}/deposit")
+    async def fnGetZenodoDeposit(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        return _fdictBuildDepositSummary(dictWorkflow)
+
+
+def _fdictBuildDepositSummary(dictWorkflow):
+    """Return the Zenodo deposit summary stored on the workflow."""
+    return {
+        "sDepositionId": dictWorkflow.get(
+            "sZenodoDepositionId", ""
+        ),
+        "sDoi": dictWorkflow.get("sZenodoLatestDoi", ""),
+        "sConceptDoi": dictWorkflow.get("sZenodoConceptDoi", ""),
+        "sHtmlUrl": dictWorkflow.get("sZenodoLatestUrl", ""),
+        "sService": dictWorkflow.get("sZenodoService", ""),
+    }
+
+
 def _fnRegisterZenodoMetadata(app, dictCtx):
     """Register GET/POST /api/zenodo/{id}/metadata endpoints."""
 
@@ -1198,6 +1223,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterOverleafMirrorDelete(app, dictCtx)
     _fnRegisterZenodoArchive(app, dictCtx)
     _fnRegisterZenodoMetadata(app, dictCtx)
+    _fnRegisterZenodoDeposit(app, dictCtx)
     _fnRegisterGithubPush(app, dictCtx)
     _fnRegisterGithubAddFile(app, dictCtx)
     _fnRegisterSyncRoutes(app, dictCtx)

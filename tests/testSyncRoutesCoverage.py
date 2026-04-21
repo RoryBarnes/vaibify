@@ -1642,3 +1642,79 @@ def test_fdictResolveZenodoMetadataForArchive_fills_missing_title():
         dictMeta = _fdictResolveZenodoMetadataForArchive(dictWf)
     assert dictMeta["sTitle"] == "fallback-name"
     assert dictMeta["listCreators"][0]["sName"] == "Jane"
+
+
+# ----------------------------------------------------------------------
+# Zenodo deposit summary endpoint (Phase 3)
+# ----------------------------------------------------------------------
+
+
+def test_get_zenodo_deposit_empty_when_never_published(clientHttp):
+    """Workflow with no deposit yields empty strings for all fields."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/zenodo/{S_CONTAINER_ID}/deposit"
+    )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sDoi"] == ""
+    assert dictResult["sHtmlUrl"] == ""
+    assert dictResult["sDepositionId"] == ""
+
+
+def test_get_zenodo_deposit_returns_stored_fields(clientHttp):
+    """After a push writes deposit fields, GET surfaces them."""
+    _fnConnectToContainer(clientHttp)
+    dictWf = {
+        "sZenodoDepositionId": "491655",
+        "sZenodoLatestDoi": "10.5072/zenodo.491655",
+        "sZenodoConceptDoi": "10.5072/zenodo.100000",
+        "sZenodoLatestUrl": (
+            "https://sandbox.zenodo.org/records/491655"
+        ),
+        "sZenodoService": "sandbox",
+    }
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/zenodo/{S_CONTAINER_ID}/deposit"
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sDoi"] == "10.5072/zenodo.491655"
+    assert dictResult["sConceptDoi"] == "10.5072/zenodo.100000"
+    assert dictResult["sHtmlUrl"] == (
+        "https://sandbox.zenodo.org/records/491655"
+    )
+    assert dictResult["sService"] == "sandbox"
+
+
+def test_fdictBuildDepositSummary_returns_empty_for_unpublished():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictBuildDepositSummary,
+    )
+    dictSummary = _fdictBuildDepositSummary({})
+    assert dictSummary == {
+        "sDepositionId": "",
+        "sDoi": "",
+        "sConceptDoi": "",
+        "sHtmlUrl": "",
+        "sService": "",
+    }
+
+
+def test_fdictBuildDepositSummary_reads_all_fields():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictBuildDepositSummary,
+    )
+    dictSummary = _fdictBuildDepositSummary({
+        "sZenodoDepositionId": "42",
+        "sZenodoLatestDoi": "10.5281/zenodo.42",
+        "sZenodoConceptDoi": "10.5281/zenodo.1",
+        "sZenodoLatestUrl": "https://zenodo.org/records/42",
+        "sZenodoService": "zenodo",
+    })
+    assert dictSummary["sDoi"] == "10.5281/zenodo.42"
+    assert dictSummary["sService"] == "zenodo"

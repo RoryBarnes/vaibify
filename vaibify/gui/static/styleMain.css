@@ -2028,6 +2028,87 @@ body.all-verified .toolbar-label {
     border-color: var(--text-primary);
 }
 
+.zenodo-deposit-card {
+    margin: 8px 10px 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    font-size: 12px;
+}
+
+.zdc-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.zdc-badge {
+    background: var(--color-pale-blue);
+    color: var(--bg-primary);
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.zdc-title {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.zdc-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.zdc-label {
+    color: var(--text-secondary);
+    font-size: 11px;
+    min-width: 78px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.zdc-row code {
+    background: var(--bg-input);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.zdc-copy {
+    background: transparent;
+    color: var(--highlight-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 1px 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.zdc-copy:hover {
+    border-color: var(--highlight-color);
+}
+
+.zdc-link {
+    color: var(--highlight-color);
+    text-decoration: none;
+    font-size: 12px;
+}
+
+.zdc-link:hover {
+    text-decoration: underline;
+}
+
 .modal.modal-directory-browser {
     width: 520px;
 }
