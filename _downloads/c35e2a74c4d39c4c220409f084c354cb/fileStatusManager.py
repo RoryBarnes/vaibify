@@ -145,18 +145,30 @@ def _fdictBuildFileStatusVars(dictWorkflow):
     return {
         "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+        "sRepoRoot": dictWorkflow.get("sProjectRepoPath", ""),
     }
+
+
+def _fsResolveStepFilePath(sFile, sStepDir, dictVars):
+    """Resolve a step-output file to an absolute container path."""
+    sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
+    if posixpath.isabs(sResolved):
+        return sResolved
+    if sStepDir:
+        sResolved = posixpath.join(sStepDir, sResolved)
+    if posixpath.isabs(sResolved):
+        return sResolved
+    sRepoRoot = (dictVars or {}).get("sRepoRoot", "")
+    if sRepoRoot:
+        sResolved = posixpath.join(sRepoRoot, sResolved)
+    return sResolved
 
 
 def fdictCollectOutputPathsByStep(dictWorkflow, dictVars=None):
     """Return {iStepIndex: [resolved_paths]} for each step."""
     dictResult = {}
     if dictVars is None:
-        dictVars = {
-            "sPlotDirectory": dictWorkflow.get(
-                "sPlotDirectory", "Plot"),
-            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-        }
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
@@ -172,11 +184,9 @@ def _flistResolveStepPaths(dictStep, dictGlobalVars):
     listPaths = []
     for sFile in (dictStep.get("saDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
-        sResolved = workflowManager.fsResolveVariables(
-            sFile, dictGlobalVars)
-        if not sResolved.startswith("/"):
-            sResolved = posixpath.join(sStepDir, sResolved)
-        listPaths.append(sResolved)
+        listPaths.append(_fsResolveStepFilePath(
+            sFile, sStepDir, dictGlobalVars,
+        ))
     return listPaths
 
 
@@ -194,9 +204,7 @@ def _flistResolvePlotPaths(dictStep, dictVars):
     sStepDir = dictStep.get("sDirectory", "")
     listResult = []
     for sFile in dictStep.get("saPlotFiles", []):
-        sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
-        if not sResolved.startswith("/"):
-            sResolved = posixpath.join(sStepDir, sResolved)
+        sResolved = _fsResolveStepFilePath(sFile, sStepDir, dictVars)
         sBasename = posixpath.basename(sResolved)
         listResult.append((sResolved, sBasename))
     return listResult
@@ -228,11 +236,7 @@ def _fdictComputeMaxPlotMtimeByStep(dictWorkflow, dictModTimes,
                                      dictVars=None):
     """Return {stepIndex: maxPlotMtimeString} using only plot files."""
     if dictVars is None:
-        dictVars = {
-            "sPlotDirectory": dictWorkflow.get(
-                "sPlotDirectory", "Plot"),
-            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-        }
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
@@ -271,10 +275,9 @@ def _flistResolveDataPaths(dictStep, dictVars):
     sStepDir = dictStep.get("sDirectory", "")
     listPaths = []
     for sFile in dictStep.get("saDataFiles", []):
-        sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
-        if not sResolved.startswith("/"):
-            sResolved = posixpath.join(sStepDir, sResolved)
-        listPaths.append(sResolved)
+        listPaths.append(_fsResolveStepFilePath(
+            sFile, sStepDir, dictVars,
+        ))
     return listPaths
 
 
