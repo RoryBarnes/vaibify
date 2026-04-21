@@ -1181,7 +1181,13 @@ def _fdictBuildOutputEntry(
     return {
         "sPath": sAbsolute,
         "sCategory": sCategory,
-        "dictSync": dictSyncStatus.get(sAbsolute, {}),
+        "dictSync": workflowManager.fdictLookupSyncEntry(
+            dictSyncStatus,
+            workflowManager.fsToSyncStatusKey(
+                sAbsolute, sWorkflowRoot,
+            ),
+            sWorkflowRoot,
+        ),
     }
 
 

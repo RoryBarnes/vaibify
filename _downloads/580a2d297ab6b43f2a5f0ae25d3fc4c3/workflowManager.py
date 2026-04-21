@@ -23,6 +23,7 @@ __all__ = [
     "fdictGetStep",
     "fdictGetSyncStatus",
     "fdictLoadWorkflowFromContainer",
+    "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
     "fnNormalizeSceneReferences",
     "flistBuildTestCommands",
@@ -47,8 +48,10 @@ __all__ = [
     "fnRenumberAllReferences",
     "fnReorderStep",
     "fnSaveWorkflowToContainer",
+    "fnUpdateOverleafDigests",
     "fnUpdateStep",
     "fnUpdateSyncStatus",
+    "fnUpdateZenodoDigests",
     "fsCamelCaseDirectory",
     "fsGetFileCategory",
     "fsGetPlotCategory",
@@ -56,6 +59,7 @@ __all__ = [
     "fsResolveStepWorkdir",
     "fsResolveVariables",
     "fsTestsDirectory",
+    "fsToSyncStatusKey",
 ]
 
 DEFAULT_SEARCH_ROOT = "/workspace"
@@ -812,26 +816,93 @@ def fdictInitializeSyncEntry():
     }
 
 
-def fnUpdateOverleafDigests(dictWorkflow, dictPathToDigest):
-    """Persist post-push Overleaf blob digests into ``dictSyncStatus``.
+def fsToSyncStatusKey(sPath, sProjectRepoPath):
+    """Normalize a file path to the repo-relative form used as dictSyncStatus key."""
+    if not sPath:
+        return sPath
+    if not sProjectRepoPath:
+        return sPath
+    sPrefix = sProjectRepoPath.rstrip("/") + "/"
+    if sPath.startswith(sPrefix):
+        return sPath[len(sPrefix):]
+    return sPath
 
-    ``dictPathToDigest`` maps local absolute path to the git blob SHA
-    observed in the mirror after the push completed. Files missing
-    from the digest map are left untouched (graceful degradation when
-    the mirror refresh didn't surface the expected path).
+
+def fdictLookupSyncEntry(dictSyncStatus, sPath, sProjectRepoPath=""):
+    """Find a sync entry, tolerating historical path-shape drift.
+
+    ``dictSyncStatus`` keys should be repo-relative going forward, but
+    legacy workflows may hold container-absolute or project-rooted
+    paths. This helper tries each plausible shape before giving up.
     """
+    dictSync = dictSyncStatus or {}
+    if sPath in dictSync:
+        return dictSync[sPath]
+    sContainerAbs = "/workspace/" + sPath
+    if sContainerAbs in dictSync:
+        return dictSync[sContainerAbs]
+    sLeadingSlash = "/" + sPath
+    if sLeadingSlash in dictSync:
+        return dictSync[sLeadingSlash]
+    if sProjectRepoPath:
+        sProjectAbs = sProjectRepoPath.rstrip("/") + "/" + sPath
+        if sProjectAbs in dictSync:
+            return dictSync[sProjectAbs]
+    return {}
+
+
+def _fnUpdateServiceDigests(
+    dictWorkflow, sService, dictPathToDigest, sProjectRepoPath=None,
+):
+    """Write per-file last-pushed digests for one service."""
     if "dictSyncStatus" not in dictWorkflow:
         dictWorkflow["dictSyncStatus"] = {}
+    if sProjectRepoPath is None:
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sDigestKey = f"s{sService}LastPushedDigest"
     for sPath, sDigest in (dictPathToDigest or {}).items():
         if not sDigest:
             continue
-        if sPath not in dictWorkflow["dictSyncStatus"]:
-            dictWorkflow["dictSyncStatus"][sPath] = (
+        sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
+        if sKey not in dictWorkflow["dictSyncStatus"]:
+            dictWorkflow["dictSyncStatus"][sKey] = (
                 fdictInitializeSyncEntry()
             )
-        dictWorkflow["dictSyncStatus"][sPath][
-            "sOverleafLastPushedDigest"
-        ] = sDigest
+        dictWorkflow["dictSyncStatus"][sKey][sDigestKey] = sDigest
+
+
+def fnUpdateOverleafDigests(
+    dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
+):
+    """Persist post-push Overleaf blob digests into ``dictSyncStatus``.
+
+    ``dictPathToDigest`` maps local path to the git blob SHA observed
+    in the Overleaf mirror after the push completed. Files missing
+    from the digest map are left untouched (graceful degradation when
+    the mirror refresh didn't surface the expected path). Keys are
+    normalized to repo-relative form using ``sProjectRepoPath`` (falls
+    back to ``dictWorkflow['sProjectRepoPath']`` when omitted) so
+    badge lookups find the entry regardless of the caller's path
+    shape.
+    """
+    _fnUpdateServiceDigests(
+        dictWorkflow, "Overleaf", dictPathToDigest, sProjectRepoPath,
+    )
+
+
+def fnUpdateZenodoDigests(
+    dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
+):
+    """Persist post-archive Zenodo blob digests into ``dictSyncStatus``.
+
+    The digest is the file's git blob SHA at the moment of the
+    archive; Zenodo deposits are immutable, so this snapshot is the
+    authoritative "what was published" state. Keys are normalized the
+    same way as Overleaf digests.
+    """
+    _fnUpdateServiceDigests(
+        dictWorkflow, "Zenodo", dictPathToDigest, sProjectRepoPath,
+    )
 
 
 def fsetExtractUpstreamIndices(sText):
@@ -917,24 +988,33 @@ def fdictBuildDownstreamMap(dictWorkflow):
     return dictDownstream
 
 
-def fnUpdateSyncStatus(dictWorkflow, listFilePaths, sService):
-    """Mark files as synced to sService with current timestamp."""
+def fnUpdateSyncStatus(
+    dictWorkflow, listFilePaths, sService, sProjectRepoPath=None,
+):
+    """Mark files as synced to sService with current timestamp.
+
+    Keys are normalized to repo-relative form so per-file badges can
+    resolve them back from the canonical repo-relative path list.
+    """
     from datetime import datetime, timezone
 
     if "dictSyncStatus" not in dictWorkflow:
         dictWorkflow["dictSyncStatus"] = {}
+    if sProjectRepoPath is None:
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sTimestamp = datetime.now(timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     sBoolKey = f"b{sService}"
     sTimeKey = f"s{sService}Timestamp"
     for sPath in listFilePaths:
-        if sPath not in dictWorkflow["dictSyncStatus"]:
-            dictWorkflow["dictSyncStatus"][sPath] = (
+        sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
+        if sKey not in dictWorkflow["dictSyncStatus"]:
+            dictWorkflow["dictSyncStatus"][sKey] = (
                 fdictInitializeSyncEntry()
             )
-        dictWorkflow["dictSyncStatus"][sPath][sBoolKey] = True
-        dictWorkflow["dictSyncStatus"][sPath][sTimeKey] = sTimestamp
+        dictWorkflow["dictSyncStatus"][sKey][sBoolKey] = True
+        dictWorkflow["dictSyncStatus"][sKey][sTimeKey] = sTimestamp
 
 
 def flistBuildTestCommands(dictStep):
