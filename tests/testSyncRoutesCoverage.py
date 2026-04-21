@@ -1813,3 +1813,444 @@ def test_zenodo_archive_passes_zero_when_no_prior_deposit(clientHttp):
         )
     listArgs = mockArchive.call_args[0]
     assert listArgs[5] == 0
+
+
+# ----------------------------------------------------------------------
+# Path/target-directory validator helpers (non-Zenodo coverage)
+# ----------------------------------------------------------------------
+
+
+def test_fnValidateOverleafFilePaths_none_returns_silently():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafFilePaths,
+    )
+    _fnValidateOverleafFilePaths(None)
+
+
+def test_fnValidateOverleafFilePaths_rejects_empty_string():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafFilePaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateOverleafFilePaths([""])
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_none_returns_silently():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    _fnValidateGithubPushPaths(None, "/workspace/repo")
+
+
+def test_fnValidateGithubPushPaths_rejects_empty_string():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths([""], "/workspace/repo")
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_rejects_non_string():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths([123], "/workspace/repo")
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_rejects_null_byte():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths(
+            ["bad\x00name"], "/workspace/repo"
+        )
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_rejects_traversal_to_host_root():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths(
+            ["../../etc/passwd"], "/workspace/repo"
+        )
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_accepts_relative_inside_workspace():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    _fnValidateGithubPushPaths(
+        ["step01/output.dat"], "/workspace/repo"
+    )
+
+
+def test_fnValidateGithubPushPaths_accepts_absolute_inside_workspace():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    _fnValidateGithubPushPaths(
+        ["/workspace/repo/step01/output.dat"], "/workspace/repo",
+    )
+
+
+def test_fnValidateOverleafTargetDirectory_empty_string_ok():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafTargetDirectory,
+    )
+    _fnValidateOverleafTargetDirectory("")
+
+
+def test_fnValidateOverleafTargetDirectory_rejects_null_byte():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafTargetDirectory,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateOverleafTargetDirectory("bad\x00dir")
+    assert excInfo.value.status_code == 400
+
+
+# ----------------------------------------------------------------------
+# Overleaf mirror helpers (non-Zenodo coverage)
+# ----------------------------------------------------------------------
+
+
+def test_fsCapturePreMirrorSha_returns_empty_for_empty_project_id():
+    from vaibify.gui.routes.syncRoutes import _fsCapturePreMirrorSha
+    assert _fsCapturePreMirrorSha("") == ""
+
+
+def test_fsCapturePreMirrorSha_reads_existing_mirror_head():
+    """Non-empty mirror tree: skip refresh and read HEAD directly."""
+    from vaibify.gui.routes import syncRoutes
+    with patch(
+        "vaibify.reproducibility.overleafMirror.flistListMirrorTree",
+        return_value=[{"sPath": "main.tex", "sSha": "abc"}],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="abc123head",
+    ):
+        sSha = syncRoutes._fsCapturePreMirrorSha("proj1")
+    assert sSha == "abc123head"
+
+
+def test_fdictCollectPostPushDigests_scopes_to_target_directory():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictCollectPostPushDigests,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={
+            "figures/fig.pdf": "sha-fig",
+            "notes.tex": "sha-notes",
+        },
+    ):
+        dictDigests = _fdictCollectPostPushDigests(
+            "proj1",
+            ["/workspace/fig.pdf"],
+            "figures",
+        )
+    assert dictDigests == {"/workspace/fig.pdf": "sha-fig"}
+
+
+def test_fdictCollectPostPushDigests_no_target_directory():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictCollectPostPushDigests,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={"notes.tex": "sha-notes"},
+    ):
+        dictDigests = _fdictCollectPostPushDigests(
+            "proj1", ["/workspace/notes.tex"], "",
+        )
+    assert dictDigests == {"/workspace/notes.tex": "sha-notes"}
+
+
+def test_fdictCollectPostPushDigests_drops_missing_files():
+    """Files absent from the mirror blob index are omitted."""
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictCollectPostPushDigests,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={},
+    ):
+        dictDigests = _fdictCollectPostPushDigests(
+            "proj1", ["/workspace/absent.pdf"], "figures",
+        )
+    assert dictDigests == {}
+
+
+def test_fnPersistPostPushDigests_refresh_fail_returns_silently():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistPostPushDigests,
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(False, "mirror clone failed"),
+    ), patch(
+        "vaibify.gui.workflowManager.fnUpdateOverleafDigests",
+    ) as mockUpdate:
+        _fnPersistPostPushDigests({}, "proj1", [], "figures")
+    mockUpdate.assert_not_called()
+
+
+def test_fnPersistPostPushDigests_success_writes_digests():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistPostPushDigests,
+    )
+    dictWorkflow = {}
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "new"}),
+    ), patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={"figures/fig.pdf": "sha1"},
+    ), patch(
+        "vaibify.gui.workflowManager.fnUpdateOverleafDigests",
+    ) as mockUpdate:
+        _fnPersistPostPushDigests(
+            dictWorkflow, "proj1",
+            ["/workspace/fig.pdf"], "figures",
+        )
+    mockUpdate.assert_called_once()
+    dictDigests = mockUpdate.call_args[0][1]
+    assert dictDigests == {"/workspace/fig.pdf": "sha1"}
+
+
+# ----------------------------------------------------------------------
+# Overleaf push no-changes classification
+# ----------------------------------------------------------------------
+
+
+def test_overleaf_push_no_changes_reports_friendly_error(clientHttp):
+    """PUSH_STATUS=no-changes converts to a bSuccess False result."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=no-changes\nHEAD_SHA=abc\n"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bSuccess"] is False
+    assert dictResult["sErrorType"] == "noChanges"
+    assert "No changes were pushed" in dictResult["sMessage"]
+
+
+# ----------------------------------------------------------------------
+# Zenodo post-archive digests with a project repo
+# ----------------------------------------------------------------------
+
+
+def test_fdictComputePostArchiveZenodoDigests_scopes_to_repo():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictComputePostArchiveZenodoDigests,
+    )
+    mockDocker = MagicMock()
+    dictCtx = {"docker": mockDocker}
+    dictWorkflow = {"sProjectRepoPath": "/workspace/repo"}
+    with patch(
+        "vaibify.gui.containerGit"
+        ".fdictComputeBlobShasInContainer",
+        return_value={"step01/out.dat": "sha-out"},
+    ) as mockShas:
+        dictDigests = _fdictComputePostArchiveZenodoDigests(
+            dictCtx, "cid", dictWorkflow,
+            ["/workspace/repo/step01/out.dat"],
+        )
+    mockShas.assert_called_once()
+    assert dictDigests == {
+        "/workspace/repo/step01/out.dat": "sha-out",
+    }
+
+
+def test_fdictComputePostArchiveZenodoDigests_missing_sha_yields_empty():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictComputePostArchiveZenodoDigests,
+    )
+    dictCtx = {"docker": MagicMock()}
+    dictWorkflow = {"sProjectRepoPath": "/workspace/repo"}
+    with patch(
+        "vaibify.gui.containerGit"
+        ".fdictComputeBlobShasInContainer",
+        return_value={},
+    ):
+        dictDigests = _fdictComputePostArchiveZenodoDigests(
+            dictCtx, "cid", dictWorkflow,
+            ["/workspace/repo/step01/missing.dat"],
+        )
+    assert dictDigests == {
+        "/workspace/repo/step01/missing.dat": "",
+    }
+
+
+# ----------------------------------------------------------------------
+# Credential helpers (non-Zenodo coverage)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fbRunOverleafValidation_empty_project_returns_false():
+    from vaibify.gui.routes.syncRoutes import (
+        _fbRunOverleafValidation,
+    )
+    from unittest.mock import MagicMock as _MM
+    bPass, sDetail = await _fbRunOverleafValidation(
+        _MM(), _MM(), "cid", "",
+    )
+    assert bPass is False
+    assert sDetail == ""
+
+
+@pytest.mark.asyncio
+async def test_ftRunServiceValidation_unknown_service_returns_pass():
+    """Services other than zenodo/overleaf skip validation."""
+    from vaibify.gui.routes.syncRoutes import _ftRunServiceValidation
+    from unittest.mock import MagicMock as _MM
+    bPass, sDetail = await _ftRunServiceValidation(
+        _MM(), "github", _MM(), "cid", "",
+    )
+    assert bPass is True
+    assert sDetail == ""
+
+
+def test_fsOverleafRemediation_truncates_long_stderr():
+    from vaibify.gui.routes.syncRoutes import _fsOverleafRemediation
+    sLong = "x" * 400
+    sRemediation = _fsOverleafRemediation(sLong)
+    assert "xxxx" in sRemediation
+    assert "..." in sRemediation
+    # The embedded stderr fragment should not carry all 400 chars.
+    assert len(sRemediation) < 600
+
+
+def test_fsOverleafRemediation_whitespace_only_falls_back_to_default():
+    from vaibify.gui.routes.syncRoutes import (
+        _fsOverleafRemediation,
+        _S_OVERLEAF_REMEDIATION,
+    )
+    assert _fsOverleafRemediation("   \n\t  ") == (
+        _S_OVERLEAF_REMEDIATION
+    )
+
+
+def test_fnCleanupCredential_swallows_delete_failure():
+    """Container delete raising keeps the caller resilient."""
+    from vaibify.gui.routes.syncRoutes import _fnCleanupCredential
+    mockSyncDispatcher = MagicMock()
+    mockSyncDispatcher.fnDeleteCredentialFromContainer.side_effect = (
+        RuntimeError("nope")
+    )
+    # Should not raise
+    _fnCleanupCredential(
+        mockSyncDispatcher, MagicMock(), "cid", "zenodo", "sandbox",
+    )
+
+
+def test_fnCleanupOverleafHostCredential_swallows_delete_failure():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnCleanupOverleafHostCredential,
+    )
+    with patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        side_effect=RuntimeError("boom"),
+    ):
+        # Should not raise
+        _fnCleanupOverleafHostCredential("overleaf_token")
+
+
+@pytest.mark.asyncio
+async def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictValidateStoredCredential,
+    )
+    dictCtx = {"docker": MagicMock()}
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={
+            "bConnected": False, "sMessage": "no backend",
+        },
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._ftRunServiceValidation",
+    ) as mockValidate:
+        dictResult = await _fdictValidateStoredCredential(
+            dictCtx, "cid", "zenodo", "", "sandbox",
+        )
+    assert dictResult["bConnected"] is False
+    mockValidate.assert_not_called()
+
+
+# ----------------------------------------------------------------------
+# Zenodo service persistence early-return
+# ----------------------------------------------------------------------
+
+
+def test_fnPersistZenodoService_non_zenodo_request_is_noop():
+    from vaibify.gui.routes.syncRoutes import _fnPersistZenodoService
+    requestOther = MagicMock()
+    requestOther.sService = "github"
+    requestOther.sZenodoInstance = None
+    dictCtx = {
+        "workflows": {},
+        "save": MagicMock(),
+    }
+    _fnPersistZenodoService(dictCtx, "cid", requestOther)
+    dictCtx["save"].assert_not_called()
+
+
+# ----------------------------------------------------------------------
+# Overleaf canonical-target suggestion
+# ----------------------------------------------------------------------
+
+
+def test_fsSuggestCanonicalTarget_same_as_typed_returns_empty():
+    """No suggestion when canonical dir matches what the user typed."""
+    from vaibify.gui.routes.syncRoutes import _fsSuggestCanonicalTarget
+    listCaseCollisions = [{
+        "sCanonicalRemotePath": "figures/Fig1.pdf",
+    }]
+    assert _fsSuggestCanonicalTarget(
+        listCaseCollisions, "figures",
+    ) == ""
+
+
+def test_fsSuggestCanonicalTarget_surfaces_different_dir():
+    from vaibify.gui.routes.syncRoutes import _fsSuggestCanonicalTarget
+    listCaseCollisions = [{
+        "sCanonicalRemotePath": "Figures/Fig1.pdf",
+    }]
+    assert _fsSuggestCanonicalTarget(
+        listCaseCollisions, "figures",
+    ) == "Figures"
+
+
+def test_fsSuggestCanonicalTarget_multiple_dirs_returns_empty():
+    from vaibify.gui.routes.syncRoutes import _fsSuggestCanonicalTarget
+    listCaseCollisions = [
+        {"sCanonicalRemotePath": "Figures/A.pdf"},
+        {"sCanonicalRemotePath": "Plots/B.pdf"},
+    ]
+    assert _fsSuggestCanonicalTarget(
+        listCaseCollisions, "figures",
+    ) == ""
