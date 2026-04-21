@@ -252,6 +252,8 @@
                     Open in VS Code</div>
                 <div class="toolbar-menu-item" id="btnMonitor">
                     Resource Monitor</div>
+                <div class="toolbar-menu-item" id="btnZenodoStatus">
+                    Zenodo Status</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnResetLayout">
                     Default Layout</div>
@@ -293,8 +295,6 @@
                         title="Create new step">+</button>
             </div>
             <div id="globalSettingsPanel" class="global-settings"></div>
-            <div id="zenodoDepositCard" class="zenodo-deposit-card"
-                 style="display: none;"></div>
             <div id="listSteps"></div>
         </div>
 
@@ -654,6 +654,21 @@
         <div class="modal-actions">
             <button class="btn" id="btnZmCancel">Cancel</button>
             <button class="btn btn-primary" id="btnZmSave">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Zenodo Status Modal -->
+<div class="modal-overlay" id="modalZenodoStatus" style="display: none;">
+    <div class="modal modal-small">
+        <h2 style="color: var(--color-pale-blue);">
+            Zenodo Status
+            <span class="help-icon" title="Shows the latest Zenodo deposit published from this workflow: its DOI, concept DOI (shared across all versions), and a link to the Zenodo record. Empty until you publish for the first time.">?</span>
+        </h2>
+        <div id="modalZenodoStatusBody"></div>
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="btnZenodoStatusClose">
+                Close</button>
         </div>
     </div>
 </div>

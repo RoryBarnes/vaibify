@@ -2028,36 +2028,15 @@ body.all-verified .toolbar-label {
     border-color: var(--text-primary);
 }
 
-.zenodo-deposit-card {
-    margin: 8px 10px 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-panel);
-    font-size: 12px;
+.zdc-empty {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 6px 0 12px;
+    line-height: 1.5;
 }
 
-.zdc-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-.zdc-badge {
-    background: var(--color-pale-blue);
-    color: var(--bg-primary);
-    padding: 1px 7px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-}
-
-.zdc-title {
+.zdc-empty strong {
     color: var(--text-primary);
-    font-weight: 500;
 }
 
 .zdc-row {

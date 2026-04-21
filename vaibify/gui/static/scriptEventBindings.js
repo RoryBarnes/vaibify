@@ -551,6 +551,17 @@ var PipeleyenEventBindings = (function () {
                 PipeleyenApp.fnOpenVsCode();
             },
             btnMonitor: function () {},
+            btnZenodoStatus: function () {
+                if (typeof VaibifyZenodoDepositCard ===
+                    "undefined") return;
+                VaibifyZenodoDepositCard.fnOpen(
+                    PipeleyenApp.fsGetContainerId());
+            },
+            btnZenodoStatusClose: function () {
+                if (typeof VaibifyZenodoDepositCard ===
+                    "undefined") return;
+                VaibifyZenodoDepositCard.fnClose();
+            },
             btnResetLayout: function () {
                 PipeleyenApp.fnResetLayout();
             },

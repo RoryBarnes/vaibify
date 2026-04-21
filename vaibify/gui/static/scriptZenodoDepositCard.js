@@ -1,18 +1,21 @@
-/* Vaibify — persistent Zenodo deposit card.
+/* Vaibify — Zenodo Status modal.
 
-   Phase 3 of the Zenodo integration plan. A small always-visible
-   block that tells the user which Zenodo deposit their workflow
-   is currently linked to, with the DOI, concept DOI, and a link
-   to the record. Hidden when the workflow has never been published.
+   Phase 3 of the Zenodo integration plan, repositioned into a
+   View menu entry. Shows the workflow's latest Zenodo deposit
+   (DOI, concept DOI, record link) on demand rather than always
+   taking screen space. Getting to Level 2 is a final archival
+   step, not something the user needs to monitor continuously.
 
    Public surface:
-   - VaibifyZenodoDepositCard.fnRefresh(sContainerId)
-       Fetch the deposit summary from the server and render.
+   - VaibifyZenodoDepositCard.fnOpen(sContainerId)
+       Fetch the deposit summary and open the modal. Opens with a
+       "not yet published" message when no deposit exists.
+   - VaibifyZenodoDepositCard.fnClose()
+       Hide the modal.
    - VaibifyZenodoDepositCard.fnUpdateFromPushResult(dictResult)
-       Update in place from the POST /archive response so the card
-       refreshes without a second server round-trip after a push.
-   - VaibifyZenodoDepositCard.fnClear()
-       Hide the card (e.g. on workflow switch).
+       If the modal is currently open, refresh its contents from a
+       /archive POST response without a second round-trip. No-op
+       when the modal is closed (the post-push toast is enough).
 */
 
 var VaibifyZenodoDepositCard = (function () {
@@ -22,20 +25,30 @@ var VaibifyZenodoDepositCard = (function () {
         return VaibifyUtilities.fnEscapeHtml(sText || "");
     }
 
-    async function fnRefresh(sContainerId) {
-        if (!sContainerId) { fnClear(); return; }
+    async function fnOpen(sContainerId) {
+        if (!sContainerId) return;
+        var dictSummary;
         try {
-            var dictSummary = await VaibifyApi.fdictGet(
+            dictSummary = await VaibifyApi.fdictGet(
                 "/api/zenodo/" + encodeURIComponent(sContainerId) +
                 "/deposit"
             );
-            _fnRender(dictSummary || {});
         } catch (error) {
-            fnClear();
+            dictSummary = {};
         }
+        _fnRender(dictSummary || {});
+        _fnShowModal();
+    }
+
+    function fnClose() {
+        var elModal = document.getElementById("modalZenodoStatus");
+        if (!elModal) return;
+        elModal.style.display = "none";
     }
 
     function fnUpdateFromPushResult(dictResult) {
+        var elModal = document.getElementById("modalZenodoStatus");
+        if (!elModal || elModal.style.display === "none") return;
         if (!dictResult || !dictResult.sDoi) return;
         _fnRender({
             sDepositionId: String(dictResult.iDepositId || ""),
@@ -45,40 +58,47 @@ var VaibifyZenodoDepositCard = (function () {
         });
     }
 
-    function fnClear() {
-        var elCard = document.getElementById("zenodoDepositCard");
-        if (!elCard) return;
-        elCard.style.display = "none";
-        elCard.innerHTML = "";
+    function _fnShowModal() {
+        var elModal = document.getElementById("modalZenodoStatus");
+        if (elModal) elModal.style.display = "flex";
     }
 
     function _fnRender(dictSummary) {
-        var elCard = document.getElementById("zenodoDepositCard");
-        if (!elCard) return;
-        if (!dictSummary.sDoi) { fnClear(); return; }
-        elCard.innerHTML = _fsBuildCardHtml(dictSummary);
-        elCard.style.display = "";
-        _fnBindCardButtons(elCard, dictSummary);
+        var elBody = document.getElementById("modalZenodoStatusBody");
+        if (!elBody) return;
+        if (!dictSummary.sDoi) {
+            elBody.innerHTML = _fsBuildEmptyHtml();
+            return;
+        }
+        elBody.innerHTML = _fsBuildCardHtml(dictSummary);
+        _fnBindCardButtons(elBody, dictSummary);
+    }
+
+    function _fsBuildEmptyHtml() {
+        return (
+            '<p class="zdc-empty">' +
+            'This workflow has not been published to Zenodo yet. ' +
+            'Use <strong>Sync \u2192 Archive to Zenodo</strong> to ' +
+            'publish the tracked files and mint a DOI.' +
+            '</p>'
+        );
     }
 
     function _fsBuildCardHtml(dictSummary) {
         var sUrl = _fbSafeZenodoUrl(dictSummary.sHtmlUrl)
             ? dictSummary.sHtmlUrl : "";
         var sLinkRow = sUrl
-            ? '<a class="zdc-link" href="' + _fsEscape(sUrl) +
-              '" target="_blank" rel="noopener">Open on Zenodo \u2197</a>'
+            ? '<div class="zdc-row"><a class="zdc-link" href="' +
+              _fsEscape(sUrl) + '" target="_blank" rel="noopener">' +
+              'Open on Zenodo \u2197</a></div>'
             : "";
         var sConceptRow = dictSummary.sConceptDoi
-            ? '<div class="zdc-row zdc-concept">' +
+            ? '<div class="zdc-row">' +
               '<span class="zdc-label">Concept DOI</span>' +
               '<code>' + _fsEscape(dictSummary.sConceptDoi) +
               '</code></div>'
             : "";
         return (
-            '<div class="zdc-head">' +
-            '<span class="zdc-badge">Zenodo</span>' +
-            '<span class="zdc-title">Published deposit</span>' +
-            '</div>' +
             '<div class="zdc-row">' +
             '<span class="zdc-label">DOI</span>' +
             '<code class="zdc-doi">' + _fsEscape(dictSummary.sDoi) +
@@ -87,14 +107,12 @@ var VaibifyZenodoDepositCard = (function () {
             'data-doi="' + _fsEscape(dictSummary.sDoi) +
             '">Copy</button>' +
             '</div>' +
-            sConceptRow +
-            (sLinkRow ? '<div class="zdc-row">' + sLinkRow +
-                        '</div>' : "")
+            sConceptRow + sLinkRow
         );
     }
 
-    function _fnBindCardButtons(elCard, dictSummary) {
-        var elCopy = elCard.querySelector(".zdc-copy");
+    function _fnBindCardButtons(elBody, dictSummary) {
+        var elCopy = elBody.querySelector(".zdc-copy");
         if (!elCopy) return;
         elCopy.addEventListener("click", function () {
             _fnCopyToClipboard(dictSummary.sDoi || "");
@@ -127,8 +145,8 @@ var VaibifyZenodoDepositCard = (function () {
     }
 
     return {
-        fnRefresh: fnRefresh,
+        fnOpen: fnOpen,
+        fnClose: fnClose,
         fnUpdateFromPushResult: fnUpdateFromPushResult,
-        fnClear: fnClear,
     };
 })();

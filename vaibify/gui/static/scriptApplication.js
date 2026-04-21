@@ -234,9 +234,6 @@ const PipeleyenApp = (function () {
         PipeleyenTerminal.fnEnsureTab();
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
-        if (typeof VaibifyZenodoDepositCard !== "undefined") {
-            VaibifyZenodoDepositCard.fnRefresh(sId);
-        }
     }
 
     function fnRefreshWorkflowData(dictData) {
@@ -245,10 +242,6 @@ const PipeleyenApp = (function () {
         _fnClearFileCaches();
         fnRenderStepList();
         fnPollAllStepFiles();
-        if (typeof VaibifyZenodoDepositCard !== "undefined") {
-            VaibifyZenodoDepositCard.fnRefresh(
-                _dictSessionState.sContainerId);
-        }
     }
 
     function _fnClearFileCaches() {
@@ -277,9 +270,6 @@ const PipeleyenApp = (function () {
             fnShowMainLayout();
             PipeleyenTerminal.fnEnsureTab();
             await PipeleyenReposPanel.fnInit(sId);
-            if (typeof VaibifyZenodoDepositCard !== "undefined") {
-                VaibifyZenodoDepositCard.fnClear();
-            }
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
