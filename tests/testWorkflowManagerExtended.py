@@ -192,6 +192,75 @@ def test_fnUpdateSyncStatus_multiple():
     assert dictWorkflow["dictSyncStatus"]["b.pdf"]["bGithub"] is True
 
 
+def test_fnUpdateSyncStatus_normalizes_absolute_to_repo_relative():
+    from vaibify.gui.workflowManager import fnUpdateOverleafDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateSyncStatus(
+        dictWorkflow,
+        ["/workspace/Proj/Plot/fig.pdf"],
+        "Overleaf",
+    )
+    assert "Plot/fig.pdf" in dictWorkflow["dictSyncStatus"]
+    assert "/workspace/Proj/Plot/fig.pdf" not in (
+        dictWorkflow["dictSyncStatus"])
+
+
+def test_fnUpdateOverleafDigests_keys_are_repo_relative():
+    from vaibify.gui.workflowManager import fnUpdateOverleafDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateOverleafDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "abc123"},
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sOverleafLastPushedDigest"] == "abc123"
+
+
+def test_fnUpdateZenodoDigests_records_blob_sha():
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "def456"},
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sZenodoLastPushedDigest"] == "def456"
+    assert dictEntry["sOverleafLastPushedDigest"] == ""
+
+
+def test_fnUpdateZenodoDigests_skips_empty_digests():
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": ""},
+    )
+    assert dictWorkflow.get("dictSyncStatus", {}) == {}
+
+
+def test_fdictLookupSyncEntry_matches_repo_rel_first():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"Plot/fig.pdf": {"bGithub": True}}
+    assert fdictLookupSyncEntry(
+        dictSync, "Plot/fig.pdf", "/workspace/Proj",
+    ) == {"bGithub": True}
+
+
+def test_fdictLookupSyncEntry_falls_back_to_project_absolute():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {
+        "/workspace/Proj/Plot/fig.pdf": {"bOverleaf": True},
+    }
+    assert fdictLookupSyncEntry(
+        dictSync, "Plot/fig.pdf", "/workspace/Proj",
+    ) == {"bOverleaf": True}
+
+
+def test_fdictLookupSyncEntry_returns_empty_when_missing():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    assert fdictLookupSyncEntry({}, "Plot/fig.pdf", "") == {}
+
+
 def test_flistResolveOutputFiles_resolves():
     dictStep = {"saPlotFiles": ["{sPlotDirectory}/fig.pdf"]}
     dictVars = {"sPlotDirectory": "Figures"}

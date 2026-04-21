@@ -290,6 +290,34 @@ def _fnRegisterOverleafPush(app, dictCtx):
         )
 
 
+def _fdictComputePostArchiveZenodoDigests(
+    dictCtx, sContainerId, dictWorkflow, listFilePaths,
+):
+    """Return {local-path: blob-sha} for each pushed file.
+
+    Uses ``containerGit.fdictComputeBlobShasInContainer`` scoped to
+    the workflow's project repo to capture the exact content that was
+    archived to Zenodo.
+    """
+    from .. import containerGit
+    sRepo = dictWorkflow.get("sProjectRepoPath", "")
+    if not sRepo:
+        return {}
+    listRepoRel = [
+        workflowManager.fsToSyncStatusKey(sPath, sRepo)
+        for sPath in listFilePaths
+    ]
+    dictShas = containerGit.fdictComputeBlobShasInContainer(
+        dictCtx["docker"], sContainerId, listRepoRel, sWorkspace=sRepo,
+    )
+    return {
+        sPath: dictShas.get(
+            workflowManager.fsToSyncStatusKey(sPath, sRepo), "",
+        )
+        for sPath in listFilePaths
+    }
+
+
 def _fnRegisterZenodoArchive(app, dictCtx):
     """Register POST /api/zenodo/{id}/archive endpoint."""
     from .. import syncDispatcher
@@ -311,6 +339,13 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             return dictResult
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, request.listFilePaths, "Zenodo")
+        dictDigests = await asyncio.to_thread(
+            _fdictComputePostArchiveZenodoDigests,
+            dictCtx, sContainerId, dictWorkflow,
+            request.listFilePaths,
+        )
+        workflowManager.fnUpdateZenodoDigests(
+            dictWorkflow, dictDigests)
         dictCtx["save"](sContainerId, dictWorkflow)
         return dictResult
 

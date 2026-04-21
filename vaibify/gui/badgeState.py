@@ -17,6 +17,7 @@ Badge values:
 """
 
 from . import mtimeCache
+from . import workflowManager
 
 __all__ = [
     "S_BADGE_SYNCED",
@@ -99,7 +100,7 @@ def fdictBadgesForFile(
 
 def fdictBadgeStateForWorkspace(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
-    sWorkspaceRoot, dictMtimeCache,
+    sWorkspaceRoot, dictMtimeCache, sProjectRepoPath="",
 ):
     """Return {repo-rel-path: badge-triple} for each file in the list.
 
@@ -109,7 +110,9 @@ def fdictBadgeStateForWorkspace(
     dictResult = {}
     dictSync = dictSyncStatus or {}
     for sRelPath in listRepoRelPaths:
-        dictEntry = _fdictLookupSyncEntry(dictSync, sRelPath)
+        dictEntry = workflowManager.fdictLookupSyncEntry(
+            dictSync, sRelPath, sProjectRepoPath,
+        )
         dictResult[sRelPath] = fdictBadgesForFile(
             sRelPath, dictGitStatus, dictEntry,
             sWorkspaceRoot, dictMtimeCache,
@@ -118,7 +121,8 @@ def fdictBadgeStateForWorkspace(
 
 
 def fdictBadgeStateFromHashes(
-    listRepoRelPaths, dictGitStatus, dictSyncStatus, dictCurrentHashes,
+    listRepoRelPaths, dictGitStatus, dictSyncStatus,
+    dictCurrentHashes, sProjectRepoPath="",
 ):
     """Compute badges when current hashes were obtained by some other means.
 
@@ -132,7 +136,9 @@ def fdictBadgeStateFromHashes(
     dictSync = dictSyncStatus or {}
     dictHashes = dictCurrentHashes or {}
     for sRelPath in listRepoRelPaths:
-        dictEntry = _fdictLookupSyncEntry(dictSync, sRelPath)
+        dictEntry = workflowManager.fdictLookupSyncEntry(
+            dictSync, sRelPath, sProjectRepoPath,
+        )
         sCurrentSha = dictHashes.get(sRelPath, "")
         dictResult[sRelPath] = {
             "sGithub": _fsGitBadge(sRelPath, dictGitStatus),
@@ -146,22 +152,3 @@ def fdictBadgeStateFromHashes(
             ),
         }
     return dictResult
-
-
-def _fdictLookupSyncEntry(dictSyncStatus, sRepoRelPath):
-    """Find the sync entry matching a repo-relative path.
-
-    ``dictSyncStatus`` is keyed by whatever path shape the original
-    push recorded — container-absolute, host-absolute, or repo-
-    relative. Tries each common variant before giving up so badges
-    stay accurate across path-format drift.
-    """
-    if sRepoRelPath in dictSyncStatus:
-        return dictSyncStatus[sRepoRelPath]
-    sContainerAbs = "/workspace/" + sRepoRelPath
-    if sContainerAbs in dictSyncStatus:
-        return dictSyncStatus[sContainerAbs]
-    sLeadingSlash = "/" + sRepoRelPath
-    if sLeadingSlash in dictSyncStatus:
-        return dictSyncStatus[sLeadingSlash]
-    return {}

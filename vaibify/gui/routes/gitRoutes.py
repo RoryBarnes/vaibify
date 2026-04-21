@@ -133,6 +133,7 @@ def _fnRegisterGitBadges(app, dictCtx):
         dictSync = dictWorkflow.get("dictSyncStatus", {}) or {}
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit, dictSync, dictHashes,
+            sProjectRepoPath=sRepo,
         )
         return {
             "dictGit": {
