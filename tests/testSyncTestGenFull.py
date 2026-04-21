@@ -450,36 +450,59 @@ def test_ftResultArchiveToZenodo_rejects_quote_in_path():
 
 
 def test_ftResultArchiveToZenodo_injects_title_into_metadata():
-    mockDocker = _fMockDocker(0, "Published deposit: 1 10.5281/zenodo.1\n")
+    import base64, json
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
-        sTitle="My Workflow",
+        dictMetadata={
+            "sTitle": "My Workflow",
+            "listCreators": [{"sName": "Jane Doe"}],
+        },
     )
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "'title': 'My Workflow'" in sCommand
+    import re
+    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
+    assert sMatch is not None
+    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+    assert dictApi["title"] == "My Workflow"
 
 
-def test_ftResultArchiveToZenodo_rejects_empty_title():
-    mockDocker = _fMockDocker()
-    with pytest.raises(ValueError):
-        ftResultArchiveToZenodo(
-            mockDocker, "cid", "sandbox", ["/a.txt"], sTitle="   ",
-        )
+def test_ftResultArchiveToZenodo_accepts_tricky_strings_via_base64():
+    """Quotes, backslashes, unicode in user strings are safe."""
+    import base64, json, re
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        dictMetadata={
+            "sTitle": "Rory's \"tricky\" Title",
+            "sDescription": "contains \\ backslash",
+            "listCreators": [{"sName": "O'Brien"}],
+        },
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
+    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+    assert dictApi["title"] == "Rory's \"tricky\" Title"
+    assert dictApi["creators"][0]["name"] == "O'Brien"
 
 
-def test_ftResultArchiveToZenodo_rejects_quote_in_title():
-    mockDocker = _fMockDocker()
-    with pytest.raises(ValueError):
-        ftResultArchiveToZenodo(
-            mockDocker, "cid", "sandbox", ["/a.txt"],
-            sTitle="He's a Title",
-        )
+def test_ftResultArchiveToZenodo_default_metadata_uses_placeholders():
+    import base64, json, re
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
+    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+    assert dictApi["title"] == "Vaibify archive"
+    assert dictApi["creators"] == [{"name": "Vaibify User"}]
 
 
 def test_ftResultArchiveToZenodo_surfaces_http_errors():
-    mockDocker = _fMockDocker(0, "Published deposit: 1 \n")
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"], sTitle="X",
+        mockDocker, "cid", "sandbox", ["/a.txt"],
     )
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
     # _fail helper turns HTTP failures into sys.exit with the body
@@ -775,28 +798,54 @@ def test_fdictGenerateTest_via_claude():
 
 
 def test_ftResultArchiveToZenodo_injects_creator_into_metadata():
+    import base64, json, re
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
-        sTitle="T", sCreatorName="Jane Doe",
+        dictMetadata={
+            "sTitle": "T",
+            "listCreators": [{
+                "sName": "Jane Doe",
+                "sAffiliation": "UW",
+                "sOrcid": "0000-0001-2345-6789",
+            }],
+        },
     )
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "'creators': [{'name': 'Jane Doe'}]" in sCommand
+    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
+    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+    assert dictApi["creators"] == [{
+        "name": "Jane Doe",
+        "affiliation": "UW",
+        "orcid": "0000-0001-2345-6789",
+    }]
 
 
-def test_ftResultArchiveToZenodo_rejects_quote_in_creator():
-    mockDocker = _fMockDocker()
-    with pytest.raises(ValueError):
-        ftResultArchiveToZenodo(
-            mockDocker, "cid", "sandbox", ["/a.txt"],
-            sTitle="T", sCreatorName="O'Brien",
-        )
+def test_ftResultArchiveToZenodo_includes_keywords_and_related_url():
+    import base64, json, re
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        dictMetadata={
+            "sTitle": "T",
+            "listCreators": [{"sName": "Jane Doe"}],
+            "listKeywords": ["alpha", "beta"],
+            "sRelatedGithubUrl": "https://github.com/u/r",
+        },
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
+    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+    assert dictApi["keywords"] == ["alpha", "beta"]
+    assert dictApi["related_identifiers"][0]["identifier"] == (
+        "https://github.com/u/r"
+    )
 
 
 def test_ftResultArchiveToZenodo_prints_zenodo_result_marker():
     mockDocker = _fMockDocker(0, "")
     ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"], sTitle="T",
+        mockDocker, "cid", "sandbox", ["/a.txt"],
     )
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
     assert "ZENODO_RESULT=" in sCommand

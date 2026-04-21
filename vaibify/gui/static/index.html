@@ -535,6 +535,9 @@
         <div id="modalPushFileList" class="push-file-list"></div>
         <div class="modal-actions">
             <button class="btn" id="btnPushCancel">Cancel</button>
+            <button class="btn" id="btnPushEditZenodoMetadata"
+                    style="display: none;">
+                Edit Zenodo metadata</button>
             <button class="btn" id="btnPushAll" style="display: none;">
                 Push All</button>
             <button class="btn btn-primary" id="btnPushSelected">
@@ -593,6 +596,62 @@
             <button class="btn" id="btnSetupCancel">Cancel</button>
             <button class="btn btn-primary" id="btnSetupSave">
                 Connect</button>
+        </div>
+    </div>
+</div>
+
+<!-- Zenodo Metadata Modal -->
+<div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
+    <div class="modal modal-medium">
+        <h2 style="color: var(--color-pale-blue);">
+            Zenodo deposit metadata
+            <span class="help-icon" title="Zenodo requires a title, description, creators, and a license before a deposit can be published. These fields are saved in your workflow.json and reused on every Zenodo push. You can edit them anytime.">?</span>
+        </h2>
+        <div class="form-group">
+            <label for="zmTitle">Title <span class="required">*</span></label>
+            <input type="text" id="zmTitle"
+                   placeholder="e.g. GJ 1132 b XUV evolution (reproducibility archive)">
+        </div>
+        <div class="form-group">
+            <label for="zmDescription">Description</label>
+            <textarea id="zmDescription"
+                      placeholder="A short description of what is being archived..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Creators <span class="required">*</span></label>
+            <div id="zmCreators"></div>
+            <button type="button" class="btn btn-small"
+                    id="btnZmAddCreator">+ Add creator</button>
+        </div>
+        <div class="form-group">
+            <label for="zmLicense">License</label>
+            <select id="zmLicense">
+                <option value="CC-BY-4.0">CC-BY-4.0 (attribution)</option>
+                <option value="CC0-1.0">CC0-1.0 (no rights reserved)</option>
+                <option value="MIT">MIT (software)</option>
+                <option value="Apache-2.0">Apache-2.0 (software)</option>
+                <option value="GPL-3.0-or-later">GPL-3.0-or-later</option>
+                <option value="BSD-3-Clause">BSD-3-Clause</option>
+                <option value="__custom__">Custom (SPDX identifier)</option>
+            </select>
+            <input type="text" id="zmLicenseCustom"
+                   style="display: none; margin-top: 6px;"
+                   placeholder="e.g. LGPL-3.0-or-later">
+        </div>
+        <div class="form-group">
+            <label for="zmKeywords">Keywords (comma-separated)</label>
+            <input type="text" id="zmKeywords"
+                   placeholder="e.g. exoplanet, xuv, astrobiology">
+        </div>
+        <div class="form-group">
+            <label for="zmRelatedUrl">Related GitHub URL</label>
+            <input type="text" id="zmRelatedUrl"
+                   placeholder="https://github.com/you/project">
+        </div>
+        <div id="zmError" class="modal-error" style="display: none;"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnZmCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnZmSave">Save</button>
         </div>
     </div>
 </div>

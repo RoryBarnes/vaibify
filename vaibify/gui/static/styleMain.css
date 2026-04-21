@@ -1975,6 +1975,59 @@ body.all-verified .toolbar-label {
     width: 360px;
 }
 
+.modal.modal-medium {
+    width: 560px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.modal .required {
+    color: var(--color-orange, #ff9a3c);
+    margin-left: 2px;
+}
+
+.modal .modal-error {
+    background: rgba(255, 100, 100, 0.12);
+    border: 1px solid rgba(255, 100, 100, 0.4);
+    color: #ff9a9a;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.btn.btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.zm-creator-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+    margin-bottom: 6px;
+    align-items: center;
+}
+
+.zm-creator-row input {
+    width: 100%;
+}
+
+.zm-creator-remove {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 3px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.zm-creator-remove:hover {
+    color: var(--text-primary);
+    border-color: var(--text-primary);
+}
+
 .modal.modal-directory-browser {
     width: 520px;
 }

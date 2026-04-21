@@ -883,3 +883,125 @@ def test_fdictBuildDirectDependencies_manual_token():
     }
     dictDirect = fdictBuildDirectDependencies(dictWorkflow)
     assert 1 in dictDirect.get(0, set())
+
+
+# ----------------------------------------------------------------------
+# Zenodo metadata helpers (Phase 2)
+# ----------------------------------------------------------------------
+
+
+def test_fdictInitializeZenodoMetadata_shape():
+    from vaibify.gui.workflowManager import (
+        fdictInitializeZenodoMetadata,
+    )
+    dictMeta = fdictInitializeZenodoMetadata()
+    assert dictMeta["sTitle"] == ""
+    assert dictMeta["sLicense"] == "CC-BY-4.0"
+    assert dictMeta["listCreators"] == [
+        {"sName": "", "sAffiliation": "", "sOrcid": ""},
+    ]
+    assert dictMeta["listKeywords"] == []
+
+
+def test_fdictGetZenodoMetadata_returns_default_when_absent():
+    from vaibify.gui.workflowManager import fdictGetZenodoMetadata
+    dictMeta = fdictGetZenodoMetadata({})
+    assert dictMeta["sTitle"] == ""
+    assert dictMeta["sLicense"] == "CC-BY-4.0"
+
+
+def test_fdictGetZenodoMetadata_returns_stored_value():
+    from vaibify.gui.workflowManager import fdictGetZenodoMetadata
+    dictStored = {
+        "sTitle": "X", "sDescription": "",
+        "listCreators": [{"sName": "N"}],
+        "sLicense": "MIT",
+        "listKeywords": [], "sRelatedGithubUrl": "",
+    }
+    dictMeta = fdictGetZenodoMetadata(
+        {"dictZenodoMetadata": dictStored})
+    assert dictMeta["sTitle"] == "X"
+    assert dictMeta["sLicense"] == "MIT"
+
+
+def test_fnSetZenodoMetadata_writes_normalized():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    dictWf = {}
+    fnSetZenodoMetadata(dictWf, {
+        "sTitle": "  Title  ",
+        "sDescription": "  desc  ",
+        "listCreators": [
+            {"sName": "  Jane  ", "sAffiliation": " UW "},
+            {"sName": ""},  # dropped
+        ],
+        "sLicense": "MIT",
+        "listKeywords": ["  a  ", "", "b"],
+        "sRelatedGithubUrl": "  https://github.com/u/r  ",
+    })
+    dictStored = dictWf["dictZenodoMetadata"]
+    assert dictStored["sTitle"] == "Title"
+    assert dictStored["sDescription"] == "desc"
+    assert dictStored["listCreators"] == [
+        {"sName": "Jane", "sAffiliation": "UW", "sOrcid": ""},
+    ]
+    assert dictStored["listKeywords"] == ["a", "b"]
+    assert dictStored["sRelatedGithubUrl"] == (
+        "https://github.com/u/r"
+    )
+
+
+def test_fnSetZenodoMetadata_requires_title():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="Title"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+        })
+
+
+def test_fnSetZenodoMetadata_requires_at_least_one_creator():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="creator"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "X",
+            "listCreators": [{"sName": ""}, {"sName": "   "}],
+            "sLicense": "MIT",
+        })
+
+
+def test_fnSetZenodoMetadata_requires_license():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="License"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "X",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "",
+        })
+
+
+def test_fnSetZenodoMetadata_rejects_non_http_related_url():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="Related URL"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "X",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+            "sRelatedGithubUrl": "ftp://example.com/repo",
+        })
+
+
+def test_fnSetZenodoMetadata_accepts_http_and_https():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    for sUrl in (
+        "http://example.com/repo",
+        "https://github.com/u/r",
+    ):
+        dictWf = {}
+        fnSetZenodoMetadata(dictWf, {
+            "sTitle": "X",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+            "sRelatedGithubUrl": sUrl,
+        })
+        assert dictWf["dictZenodoMetadata"]["sRelatedGithubUrl"] == sUrl

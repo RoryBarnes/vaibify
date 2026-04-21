@@ -19,6 +19,7 @@ from ..pipelineServer import (
     SyncSetupRequest,
     SyncTrackingRequest,
     WORKSPACE_ROOT,
+    ZenodoMetadataRequest,
     fdictRequireWorkflow,
     fnValidatePathWithinRoot,
 )
@@ -333,13 +334,13 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         sZenodoService = dictWorkflow.get(
             "sZenodoService", "sandbox",
         )
-        sTitle = _fsBuildZenodoTitle(dictWorkflow)
-        sCreatorName = _fsReadHostGitUserName()
+        dictMetadata = _fdictResolveZenodoMetadataForArchive(
+            dictWorkflow,
+        )
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultArchiveToZenodo,
             dictCtx["docker"], sContainerId,
-            sZenodoService, request.listFilePaths, sTitle,
-            sCreatorName,
+            sZenodoService, request.listFilePaths, dictMetadata,
         )
         dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
         if not dictResult["bSuccess"]:
@@ -357,6 +358,63 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             dictWorkflow, dictDigests)
         dictCtx["save"](sContainerId, dictWorkflow)
         return dictResult
+
+
+def _fnRegisterZenodoMetadata(app, dictCtx):
+    """Register GET/POST /api/zenodo/{id}/metadata endpoints."""
+
+    @app.get("/api/zenodo/{sContainerId}/metadata")
+    async def fnGetZenodoMetadata(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictResponse = dict(
+            workflowManager.fdictGetZenodoMetadata(dictWorkflow)
+        )
+        dictResponse["sDefaultCreatorName"] = (
+            _fsReadHostGitUserName()
+        )
+        return dictResponse
+
+    @app.post("/api/zenodo/{sContainerId}/metadata")
+    async def fnSetZenodoMetadata(
+        sContainerId: str, request: ZenodoMetadataRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictMetadata = _fdictMetadataRequestToDict(request)
+        try:
+            workflowManager.fnSetZenodoMetadata(
+                dictWorkflow, dictMetadata,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=400, detail=str(error),
+            )
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return workflowManager.fdictGetZenodoMetadata(dictWorkflow)
+
+
+def _fdictMetadataRequestToDict(request):
+    """Convert a ``ZenodoMetadataRequest`` into the vaibify metadata dict."""
+    return {
+        "sTitle": request.sTitle,
+        "sDescription": request.sDescription or "",
+        "listCreators": [
+            {
+                "sName": dictC.sName,
+                "sAffiliation": dictC.sAffiliation or "",
+                "sOrcid": dictC.sOrcid or "",
+            }
+            for dictC in (request.listCreators or [])
+        ],
+        "sLicense": request.sLicense or "CC-BY-4.0",
+        "listKeywords": list(request.listKeywords or []),
+        "sRelatedGithubUrl": request.sRelatedGithubUrl or "",
+    }
 
 
 def _fnRegisterGithubPush(app, dictCtx):
@@ -804,18 +862,38 @@ def _fsReadHostGitUserName():
 def _fsBuildZenodoTitle(dictWorkflow):
     """Pick a non-empty Zenodo deposition title from workflow fields.
 
-    Zenodo rejects publishes with empty titles. Until Phase 2 wires a
-    metadata form, fall back to whatever identifier we have on hand so
-    the publish step succeeds. Single quotes are stripped because the
-    inline archive command is single-quoted.
+    Fallback for workflows whose ``dictZenodoMetadata.sTitle`` is
+    empty. Prefers the user-facing project title, then the workflow
+    file's name, then a generic label. Base64-encoded transport means
+    no character stripping is required.
     """
-    sTitle = (
+    return (
         dictWorkflow.get("sProjectTitle")
         or dictWorkflow.get("sWorkflowName")
         or "Vaibify archive"
-    )
-    sTitle = sTitle.replace("'", "").replace("\\", "").strip()
-    return sTitle or "Vaibify archive"
+    ).strip() or "Vaibify archive"
+
+
+def _fdictResolveZenodoMetadataForArchive(dictWorkflow):
+    """Merge stored metadata with fallbacks needed to pass publish validation.
+
+    Returns a metadata dict suitable for
+    ``ftResultArchiveToZenodo``. When the user has not filled the
+    metadata form, backfills the minimum required for a successful
+    publish (title from the workflow name, creator from the host's
+    git user.name) while preserving everything they did set.
+    """
+    dictStored = dict(workflowManager.fdictGetZenodoMetadata(dictWorkflow))
+    if not (dictStored.get("sTitle") or "").strip():
+        dictStored["sTitle"] = _fsBuildZenodoTitle(dictWorkflow)
+    listCreators = dictStored.get("listCreators") or []
+    if not any((c.get("sName") or "").strip() for c in listCreators):
+        dictStored["listCreators"] = [{
+            "sName": _fsReadHostGitUserName(),
+            "sAffiliation": "",
+            "sOrcid": "",
+        }]
+    return dictStored
 
 
 def _fsResolveZenodoInstance(request):
@@ -1119,6 +1197,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterOverleafDiff(app, dictCtx)
     _fnRegisterOverleafMirrorDelete(app, dictCtx)
     _fnRegisterZenodoArchive(app, dictCtx)
+    _fnRegisterZenodoMetadata(app, dictCtx)
     _fnRegisterGithubPush(app, dictCtx)
     _fnRegisterGithubAddFile(app, dictCtx)
     _fnRegisterSyncRoutes(app, dictCtx)
