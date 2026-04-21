@@ -713,6 +713,10 @@ var VaibifySyncManager = (function () {
             }
             if (_sPushService === "zenodo" && dictResult.sDoi) {
                 _fnShowZenodoSuccessToast(dictResult);
+                if (typeof VaibifyZenodoDepositCard !== "undefined") {
+                    VaibifyZenodoDepositCard.fnUpdateFromPushResult(
+                        dictResult);
+                }
             } else {
                 PipeleyenApp.fnShowToast(
                     "Push complete!", "success");
