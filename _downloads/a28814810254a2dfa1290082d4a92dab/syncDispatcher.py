@@ -291,19 +291,20 @@ _DICT_ZENODO_API_BASE = {
 
 def ftResultArchiveToZenodo(
     connectionDocker, sContainerId, sZenodoService, listFilePaths,
-    dictMetadata=None,
+    dictMetadata=None, iParentDepositId=0,
 ):
     """Upload files to Zenodo inside the container.
 
     ``sZenodoService`` is the ZenodoClient service key
-    (``"sandbox"`` or ``"zenodo"``) that selects which instance to
-    publish to and which keyring slot to read the token from.
-    ``dictMetadata`` is the vaibify-side metadata block (see
-    ``workflowManager.fdictInitializeZenodoMetadata``); it is
-    translated to Zenodo API shape and base64-embedded so user-
-    supplied strings cannot break shell or Python quoting. The
-    inline command uses only ``keyring`` and ``requests`` because
-    the container does not have the vaibify package installed.
+    (``"sandbox"`` or ``"zenodo"``). ``dictMetadata`` is the
+    vaibify-side metadata block; it is translated to Zenodo API
+    shape and embedded (base64) so user-supplied strings cannot
+    break shell or Python quoting. ``iParentDepositId`` drives the
+    versioning flow: when 0 (or absent) the command creates a fresh
+    deposit; when a positive int, it calls the parent's
+    ``actions/newversion``, clears inherited files, updates the
+    metadata, uploads the new files, and publishes. Returns the
+    same ``(iExitCode, sOutput)`` tuple for both paths.
     """
     if sZenodoService not in _DICT_ZENODO_API_BASE:
         raise ValueError(
@@ -322,6 +323,7 @@ def ftResultArchiveToZenodo(
         sContainerId,
         _fsBuildZenodoArchiveCommand(
             sBaseApi, sSlot, listFilePaths, dictApi,
+            iParentDepositId,
         ),
     )
 
@@ -399,60 +401,116 @@ def _fnValidateApiMetadata(dictApi):
 
 
 def _fnValidateArchiveFilePaths(listFilePaths):
-    """Reject paths with characters that would break inline-command quoting."""
+    """Reject paths that could cause open() or the shell to misbehave."""
     for sPath in listFilePaths:
         if not isinstance(sPath, str) or not sPath:
             raise ValueError("Archive file path must be non-empty string")
-        if "'" in sPath or "\\" in sPath or "\x00" in sPath:
+        if "\x00" in sPath:
             raise ValueError(
-                f"Unsupported character in archive path: {sPath!r}"
+                f"Null byte in archive path: {sPath!r}"
             )
+
+
+_S_ARCHIVE_SCRIPT_TEMPLATE = '''import keyring, requests, sys, posixpath, json
+_SLOT = %(slot)s
+_BASE = %(base)s
+_META = json.loads(%(meta)s)
+_PARENT = %(parent)s
+_PATHS = %(paths)s
+
+_t = (keyring.get_password('vaibify', _SLOT)
+      or keyring.get_password('vaibify', 'zenodo_token')
+      or sys.exit('no-token'))
+H = {'Authorization': 'Bearer ' + _t}
+
+
+def _fail(r):
+    sys.exit('HTTP ' + str(r.status_code) + ' ' + r.url
+             + ': ' + r.text[:500])
+
+
+if _PARENT:
+    r = requests.post(
+        _BASE + '/deposit/depositions/' + str(_PARENT)
+        + '/actions/newversion', headers=H)
+    r.ok or _fail(r)
+    sDraftUrl = r.json()['links']['latest_draft']
+    r = requests.get(sDraftUrl, headers=H)
+    r.ok or _fail(r)
+    _d = r.json()
+    iDid = _d['id']
+    sBucket = _d['links']['bucket']
+    for _f in _d.get('files', []):
+        _fid = _f.get('id') or _f.get('file_id')
+        if not _fid:
+            continue
+        rd = requests.delete(
+            _BASE + '/deposit/depositions/' + str(iDid)
+            + '/files/' + str(_fid), headers=H)
+        rd.ok or _fail(rd)
+    rm = requests.put(
+        _BASE + '/deposit/depositions/' + str(iDid),
+        headers=H, json={'metadata': _META})
+    rm.ok or _fail(rm)
+else:
+    r = requests.post(
+        _BASE + '/deposit/depositions', headers=H,
+        json={'metadata': _META})
+    r.ok or _fail(r)
+    _d = r.json()
+    iDid = _d['id']
+    sBucket = _d['links']['bucket']
+
+for _p in _PATHS:
+    with open(_p, 'rb') as _fh:
+        ru = requests.put(
+            sBucket + '/' + posixpath.basename(_p),
+            headers=H, data=_fh)
+    ru.ok or _fail(ru)
+
+rp = requests.post(
+    _BASE + '/deposit/depositions/' + str(iDid) + '/actions/publish',
+    headers=H)
+rp.ok or _fail(rp)
+
+_r = rp.json()
+print('ZENODO_RESULT=' + json.dumps({
+    'iDepositId': iDid,
+    'sDoi': _r.get('doi', ''),
+    'sConceptDoi': _r.get('conceptdoi', ''),
+    'sHtmlUrl': _r.get('links', {}).get('html', ''),
+}))
+'''
 
 
 def _fsBuildZenodoArchiveCommand(
     sBaseApi, sSlot, listFilePaths, dictApiMetadata,
+    iParentDepositId=0,
 ):
-    """Build a self-contained python3 command that publishes a deposit.
+    """Build a python3 command that runs the base64-encoded archive script.
 
-    Metadata is base64-encoded so user-provided strings cannot break
-    shell or Python quoting regardless of what characters they contain.
+    The script itself is parameterized via ``%%(name)s`` substitutions
+    filled with ``repr()``-quoted Python literals, then base64-encoded
+    and executed inside the container via ``exec``. Every user-provided
+    value travels as opaque data; no shell or Python quoting depends
+    on the input contents.
     """
     import base64
-    sMetadataB64 = base64.b64encode(
-        json.dumps(dictApiMetadata).encode("utf-8")
+    iParent = int(iParentDepositId or 0)
+    sScript = _S_ARCHIVE_SCRIPT_TEMPLATE % {
+        "slot": repr(sSlot),
+        "base": repr(sBaseApi),
+        "meta": repr(json.dumps(dictApiMetadata)),
+        "parent": repr(iParent if iParent > 0 else 0),
+        "paths": repr(list(listFilePaths)),
+    }
+    sScriptB64 = base64.b64encode(
+        sScript.encode("utf-8")
     ).decode("ascii")
-    sImport = (
-        "import keyring, requests, sys, posixpath, json, base64"
+    return (
+        "python3 -c \"import base64; "
+        f"exec(base64.b64decode('{sScriptB64}').decode())\""
     )
-    sPaths = repr(list(listFilePaths))
-    sDraftUrl = repr(sBaseApi + "/deposit/depositions")
-    sPublishPrefix = repr(sBaseApi + "/deposit/depositions/")
-    sCall = (
-        f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
-        "or keyring.get_password('vaibify', 'zenodo_token') "
-        "or sys.exit('no-token'); "
-        "H={'Authorization': 'Bearer '+_t}; "
-        "_fail=lambda r: sys.exit('HTTP '+str(r.status_code)+' '"
-        "+r.url+': '+r.text[:500]); "
-        f"_meta=json.loads(base64.b64decode('{sMetadataB64}')"
-        ".decode('utf-8')); "
-        f"r=requests.post({sDraftUrl}, headers=H, "
-        "json={'metadata': _meta}); "
-        "r.ok or _fail(r); d=r.json(); "
-        "iDid=d['id']; sBucket=d['links']['bucket']; "
-        "[ru.ok or _fail(ru) for ru in "
-        "(requests.put(sBucket+'/'+posixpath.basename(p), headers=H, "
-        f"data=open(p,'rb')) for p in {sPaths})]; "
-        f"rp=requests.post({sPublishPrefix}+str(iDid)+'/actions/publish', "
-        "headers=H); rp.ok or _fail(rp); "
-        "_p=rp.json(); "
-        "print('ZENODO_RESULT=' + json.dumps({"
-        "'iDepositId': iDid, "
-        "'sDoi': _p.get('doi', ''), "
-        "'sConceptDoi': _p.get('conceptdoi', ''), "
-        "'sHtmlUrl': _p.get('links', {}).get('html', '')}))"
-    )
-    return fsPythonCommand(sImport, sCall)
 
 
 _LIST_GITHUB_HARDENING_CONFIG = [
