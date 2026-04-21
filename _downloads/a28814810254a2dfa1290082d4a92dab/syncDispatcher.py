@@ -461,17 +461,39 @@ else:
     iDid = _d['id']
     sBucket = _d['links']['bucket']
 
-for _p in _PATHS:
-    with open(_p, 'rb') as _fh:
-        ru = requests.put(
-            sBucket + '/' + posixpath.basename(_p),
-            headers=H, data=_fh)
-    ru.ok or _fail(ru)
+def _cleanup_draft():
+    try:
+        _rd = requests.delete(
+            _BASE + '/deposit/depositions/' + str(iDid), headers=H)
+        return bool(getattr(_rd, 'ok', False))
+    except Exception:
+        return False
 
-rp = requests.post(
-    _BASE + '/deposit/depositions/' + str(iDid) + '/actions/publish',
-    headers=H)
-rp.ok or _fail(rp)
+
+def _abort(sOrig):
+    if _cleanup_draft():
+        sys.exit(str(sOrig) + ' | orphan draft ' + str(iDid)
+                 + ' deleted')
+    sys.exit(str(sOrig) + ' | draft ' + str(iDid)
+             + ' still on Zenodo; discard manually')
+
+
+try:
+    for _p in _PATHS:
+        with open(_p, 'rb') as _fh:
+            ru = requests.put(
+                sBucket + '/' + posixpath.basename(_p),
+                headers=H, data=_fh)
+        ru.ok or _fail(ru)
+
+    rp = requests.post(
+        _BASE + '/deposit/depositions/' + str(iDid)
+        + '/actions/publish', headers=H)
+    rp.ok or _fail(rp)
+except SystemExit as _se:
+    _abort(_se.code)
+except Exception as _e:
+    _abort(repr(_e))
 
 _r = rp.json()
 print('ZENODO_RESULT=' + json.dumps({
