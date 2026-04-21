@@ -995,3 +995,156 @@ def test_ftResultArchiveToZenodo_prints_zenodo_result_marker():
     assert "ZENODO_RESULT=" in sScript
     assert "'sDoi'" in sScript
     assert "'sHtmlUrl'" in sScript
+
+
+# ----------------------------------------------------------------------
+# Non-Zenodo coverage gaps (syncDispatcher helpers)
+# ----------------------------------------------------------------------
+
+
+def test_fsFetchOverleafToken_reads_overleaf_keyring_slot():
+    from vaibify.gui.syncDispatcher import _fsFetchOverleafToken
+    with patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="tok123",
+    ) as mockRetrieve:
+        sToken = _fsFetchOverleafToken()
+    assert sToken == "tok123"
+    mockRetrieve.assert_called_once_with(
+        "overleaf_token", "keyring",
+    )
+
+
+def test_fdictCheckHostKeyring_absent_token_returns_disconnected():
+    from vaibify.gui.syncDispatcher import _fdictCheckHostKeyring
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ):
+        dictResult = _fdictCheckHostKeyring("overleaf_token")
+    assert dictResult["bConnected"] is False
+    assert "not found" in dictResult["sMessage"].lower()
+
+
+def test_fdictCheckHostKeyring_present_token_returns_connected():
+    from vaibify.gui.syncDispatcher import _fdictCheckHostKeyring
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ):
+        dictResult = _fdictCheckHostKeyring("overleaf_token")
+    assert dictResult["bConnected"] is True
+
+
+def test_fbValidateOverleafOnHost_missing_token_skips_network():
+    """No token stored => return early, never invoke git/askpass."""
+    from vaibify.gui.syncDispatcher import _fbValidateOverleafOnHost
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fsWriteAskpassScript",
+    ) as mockAskpass:
+        bPass, sDetail = _fbValidateOverleafOnHost("projid")
+    assert bPass is False
+    assert "No Overleaf token" in sDetail
+    mockAskpass.assert_not_called()
+
+
+def test_fnRemovePath_absent_file_silent():
+    from vaibify.gui.syncDispatcher import _fnRemovePath
+    # Path that definitely doesn't exist; must not raise
+    _fnRemovePath("/nonexistent/path/forced/absent.tmp")
+
+
+def test_fnRemovePath_removes_existing_file(tmp_path):
+    from vaibify.gui.syncDispatcher import _fnRemovePath
+    pathFile = tmp_path / "removable.tmp"
+    pathFile.write_text("content")
+    assert pathFile.exists()
+    _fnRemovePath(str(pathFile))
+    assert not pathFile.exists()
+
+
+def test_fdictComputeContainerDigests_skips_lines_without_space():
+    """Malformed output (no space between sha and path) is ignored."""
+    from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+    mockDocker = _fMockDocker(
+        0, "abc123 /good/path.txt\nmalformed-line-no-space\n",
+    )
+    dictDigests = fdictComputeContainerDigests(
+        mockDocker, "cid", ["/good/path.txt", "/bad/path.txt"],
+    )
+    assert dictDigests == {"/good/path.txt": "abc123"}
+
+
+def test_fdictComputeContainerDigests_empty_paths_short_circuits():
+    from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+    mockDocker = MagicMock()
+    dictDigests = fdictComputeContainerDigests(
+        mockDocker, "cid", [],
+    )
+    assert dictDigests == {}
+    mockDocker.ftResultExecuteCommand.assert_not_called()
+
+
+def test_fdictComputeContainerDigests_non_zero_exit_returns_empty():
+    from vaibify.gui.syncDispatcher import fdictComputeContainerDigests
+    mockDocker = _fMockDocker(1, "error")
+    dictDigests = fdictComputeContainerDigests(
+        mockDocker, "cid", ["/a.txt"],
+    )
+    assert dictDigests == {}
+
+
+def test_fdictDiffOverleafPush_with_docker_uses_container_digests():
+    """When docker context is provided, scan inside the container."""
+    from vaibify.gui.syncDispatcher import fdictDiffOverleafPush
+    mockDocker = _fMockDocker(0, "abc /workspace/fig.pdf\n")
+    with patch(
+        "vaibify.reproducibility.overleafMirror.fdictDiffAgainstMirror",
+        return_value={"new": [], "overwrite": [], "unchanged": []},
+    ) as mockMirror:
+        dictDiff = fdictDiffOverleafPush(
+            "projid", ["/workspace/fig.pdf"], "figures",
+            connectionDocker=mockDocker, sContainerId="cid",
+        )
+    assert "new" in dictDiff
+    dictDigestsArg = mockMirror.call_args[0][1]
+    assert dictDigestsArg == {"/workspace/fig.pdf": "abc"}
+
+
+def test_fdictDiffOverleafPush_without_docker_uses_local_digests(tmp_path):
+    """No docker context => hash from the host filesystem."""
+    from vaibify.gui.syncDispatcher import fdictDiffOverleafPush
+    pathFile = tmp_path / "fig.pdf"
+    pathFile.write_bytes(b"fake-pdf-bytes")
+    with patch(
+        "vaibify.reproducibility.overleafMirror.fsComputeBlobSha",
+        return_value="host-sha",
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fdictDiffAgainstMirror",
+        return_value={"new": [], "overwrite": [], "unchanged": []},
+    ) as mockMirror:
+        fdictDiffOverleafPush(
+            "projid", [str(pathFile)], "figures",
+        )
+    dictDigestsArg = mockMirror.call_args[0][1]
+    assert dictDigestsArg == {str(pathFile): "host-sha"}
+
+
+def test_flistBuildDagEdges_merges_cached_deps():
+    """_flistBuildDagEdges must union cached deps into the edge list."""
+    from vaibify.gui.syncDispatcher import _flistBuildDagEdges
+    dictWorkflow = {"listSteps": [
+        {"sName": "A", "saDataCommands": [],
+         "saPlotCommands": [], "saDataFiles": [], "saPlotFiles": []},
+        {"sName": "B", "saDataCommands": [],
+         "saPlotCommands": [], "saDataFiles": [], "saPlotFiles": []},
+        {"sName": "C", "saDataCommands": [],
+         "saPlotCommands": [], "saDataFiles": [], "saPlotFiles": []},
+    ]}
+    # Cached: Step1 (0) -> Step3 (2)
+    dictCached = {0: {2}}
+    listLines = _flistBuildDagEdges(dictWorkflow, dictCached)
+    assert any("step1 -> step3" in sLine for sLine in listLines)

@@ -1005,3 +1005,206 @@ def test_fnSetZenodoMetadata_accepts_http_and_https():
             "sRelatedGithubUrl": sUrl,
         })
         assert dictWf["dictZenodoMetadata"]["sRelatedGithubUrl"] == sUrl
+
+
+# ----------------------------------------------------------------------
+# Non-Zenodo coverage gaps
+# ----------------------------------------------------------------------
+
+
+def test_fdictDetectReposForCandidates_non_zero_exit_returns_empty():
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import (
+        _fdictDetectReposForCandidates,
+    )
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.return_value = (
+        1, "permission denied",
+    )
+    dictResult = _fdictDetectReposForCandidates(
+        mockDocker, "cid", ["/workspace/a.json"],
+    )
+    assert dictResult == {}
+
+
+def test_fbValidateWorkflow_rejects_absolute_output_paths():
+    """flistValidateOutputFilePaths returning warnings => False."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+            "saDataFiles": ["/etc/passwd"],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fbValidateWorkflow_rejects_traversal_step_directories():
+    """flistValidateStepDirectories returning warnings => False."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "../escape",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fnInsertStep_renumbers_downstream_references():
+    """References to Step02 become Step03 when inserting at position 1."""
+    from vaibify.gui.workflowManager import fnInsertStep
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "A", "sDirectory": "a",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "B", "sDirectory": "b",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": ["use {Step2.saDataFiles[0]}"],
+            },
+        ],
+    }
+    fnInsertStep(dictWorkflow, 1, {
+        "sName": "NEW", "sDirectory": "new",
+        "saPlotCommands": [], "saPlotFiles": [],
+        "saDataFiles": [], "saTestCommands": [],
+        "saDataCommands": [],
+    })
+    sCmd = dictWorkflow["listSteps"][2]["saDataCommands"][0]
+    # Remap normalizes to zero-padded format (Step03)
+    assert "{Step03.saDataFiles[0]}" in sCmd
+
+
+def test_fnDeleteStep_renumbers_downstream_references():
+    """References split across the deleted step: upstream stays, downstream shifts."""
+    from vaibify.gui.workflowManager import fnDeleteStep
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "A", "sDirectory": "a",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": ["a.dat"], "saTestCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "B", "sDirectory": "b",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "C", "sDirectory": "c",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": [
+                    "use {Step1.saDataFiles[0]} + {Step3.sName}",
+                ],
+            },
+        ],
+    }
+    fnDeleteStep(dictWorkflow, 1)
+    sCmd = dictWorkflow["listSteps"][1]["saDataCommands"][0]
+    # Downstream ref (Step3) shifts to Step02; upstream ref (Step1)
+    # stays as-is (remap returned the original number untouched).
+    assert "{Step02.sName}" in sCmd
+    assert "{Step1.saDataFiles[0]}" in sCmd
+
+
+def test_fiRemapReorder_unrelated_number_unchanged():
+    """Fall-through: a step number untouched by either reorder endpoint."""
+    from vaibify.gui.workflowManager import _fiRemapReorder
+    # Move step from index 2 (number 3) to index 4 (target 5).
+    # Step number 1 is before the swap range and shouldn't shift.
+    iResult = _fiRemapReorder(1, 3, 2, 4)
+    assert iResult == 1
+
+
+def test_fiRemapReorder_same_position_unchanged():
+    from vaibify.gui.workflowManager import _fiRemapReorder
+    # iFromIndex == iToIndex: fall through, return unchanged.
+    iResult = _fiRemapReorder(2, 1, 0, 0)
+    assert iResult == 2
+
+
+def test_fsToSyncStatusKey_empty_path_returns_empty():
+    from vaibify.gui.workflowManager import fsToSyncStatusKey
+    assert fsToSyncStatusKey("", "/workspace/repo") == ""
+
+
+def test_fsToSyncStatusKey_no_project_repo_returns_path():
+    from vaibify.gui.workflowManager import fsToSyncStatusKey
+    assert fsToSyncStatusKey("step01/out.dat", "") == (
+        "step01/out.dat"
+    )
+
+
+def test_fsToSyncStatusKey_path_without_prefix_returns_unchanged():
+    from vaibify.gui.workflowManager import fsToSyncStatusKey
+    assert fsToSyncStatusKey(
+        "/other/place/out.dat", "/workspace/repo",
+    ) == "/other/place/out.dat"
+
+
+def test_fdictLookupSyncEntry_container_absolute_key_hit():
+    """Legacy key shape '/workspace/<rel>' still resolves."""
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"/workspace/step01/out.dat": {"bZenodo": True}}
+    dictEntry = fdictLookupSyncEntry(dictSync, "step01/out.dat")
+    assert dictEntry == {"bZenodo": True}
+
+
+def test_fdictLookupSyncEntry_leading_slash_key_hit():
+    """Legacy key shape '/<rel>' also resolves."""
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"/step01/out.dat": {"bGithub": True}}
+    dictEntry = fdictLookupSyncEntry(dictSync, "step01/out.dat")
+    assert dictEntry == {"bGithub": True}
+
+
+def test_fdictLookupSyncEntry_project_absolute_key_hit():
+    """Project-absolute key resolves when sProjectRepoPath is given."""
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"/workspace/repo/step01/out.dat": {"bOverleaf": True}}
+    dictEntry = fdictLookupSyncEntry(
+        dictSync, "step01/out.dat", "/workspace/repo",
+    )
+    assert dictEntry == {"bOverleaf": True}
+
+
+def test_fdictLookupSyncEntry_miss_returns_empty_dict():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictEntry = fdictLookupSyncEntry(
+        {"other/path": {"x": 1}}, "step01/out.dat",
+    )
+    assert dictEntry == {}
+
+
+def test_fsJoinRepoRelPath_empty_step_dir_returns_file():
+    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    assert _fsJoinRepoRelPath("", "out.dat") == "out.dat"
+
+
+def test_fsJoinRepoRelPath_absolute_file_returns_file():
+    """Absolute files ignore the step directory."""
+    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    assert _fsJoinRepoRelPath(
+        "step01", "/absolute/path.dat",
+    ) == "/absolute/path.dat"
+
+
+def test_fsJoinRepoRelPath_joins_relative_file_to_step_dir():
+    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    assert _fsJoinRepoRelPath(
+        "step01", "out.dat",
+    ) == "step01/out.dat"
