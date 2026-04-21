@@ -1718,3 +1718,98 @@ def test_fdictBuildDepositSummary_reads_all_fields():
     })
     assert dictSummary["sDoi"] == "10.5281/zenodo.42"
     assert dictSummary["sService"] == "zenodo"
+
+
+# ----------------------------------------------------------------------
+# Versioning: parent deposit id (Phase 5)
+# ----------------------------------------------------------------------
+
+
+def test_fiReadParentDepositId_returns_int():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": "491655"}) == 491655
+
+
+def test_fiReadParentDepositId_absent_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId({}) == 0
+
+
+def test_fiReadParentDepositId_empty_string_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": ""}) == 0
+
+
+def test_fiReadParentDepositId_non_numeric_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": "not-a-number"}) == 0
+
+
+def test_fiReadParentDepositId_negative_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": "-5"}) == 0
+
+
+def test_zenodo_archive_passes_parent_deposit_id_to_dispatcher(clientHttp):
+    """When the workflow has a deposition id, the archive endpoint
+    threads it to the dispatcher so the newversion flow fires."""
+    _fnConnectToContainer(clientHttp)
+    dictWf = {
+        "sWorkflowName": "Test Pipeline",
+        "sZenodoService": "sandbox",
+        "sZenodoDepositionId": "491655",
+    }
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 999, '
+                     '"sDoi": "10.5072/zenodo.999", '
+                     '"sConceptDoi": "", "sHtmlUrl": ""}'),
+    ) as mockArchive, patch(
+        "vaibify.gui.routes.syncRoutes."
+        "_fdictComputePostArchiveZenodoDigests",
+        return_value={},
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.h5"]},
+        )
+    assert responseHttp.status_code == 200
+    # Parent deposit id is the 6th positional arg (after docker,
+    # cid, service, paths, metadata)
+    listArgs = mockArchive.call_args[0]
+    assert listArgs[5] == 491655
+
+
+def test_zenodo_archive_passes_zero_when_no_prior_deposit(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    dictWf = {"sWorkflowName": "Test", "sZenodoService": "sandbox"}
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 1, '
+                     '"sDoi": "10.5072/zenodo.1", '
+                     '"sConceptDoi": "", "sHtmlUrl": ""}'),
+    ) as mockArchive, patch(
+        "vaibify.gui.routes.syncRoutes."
+        "_fdictComputePostArchiveZenodoDigests",
+        return_value={},
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ):
+        clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.h5"]},
+        )
+    listArgs = mockArchive.call_args[0]
+    assert listArgs[5] == 0

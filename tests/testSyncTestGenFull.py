@@ -409,28 +409,41 @@ def test_fsZenodoTokenNameForInstance_production():
     )
 
 
+def _fsDecodeArchiveScript(sCommand):
+    """Extract and base64-decode the archive script from a built command."""
+    import base64, re
+    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
+    assert sMatch is not None, f"No base64 payload: {sCommand!r}"
+    return base64.b64decode(sMatch.group(1)).decode("utf-8")
+
+
 def test_ftResultArchiveToZenodo_hits_production_api():
-    mockDocker = _fMockDocker(0, "Published deposit: 42\n")
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(mockDocker, "cid", "zenodo", ["/a.txt"])
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "//zenodo.org/api/deposit/depositions" in sCommand
-    assert "zenodo_token_production" in sCommand
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "https://zenodo.org/api" in sScript
+    assert "zenodo_token_production" in sScript
 
 
 def test_ftResultArchiveToZenodo_hits_sandbox_api():
-    mockDocker = _fMockDocker(0, "Published deposit: 42\n")
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "sandbox.zenodo.org/api/deposit/depositions" in sCommand
-    assert "zenodo_token_sandbox" in sCommand
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "https://sandbox.zenodo.org/api" in sScript
+    assert "zenodo_token_sandbox" in sScript
 
 
 def test_ftResultArchiveToZenodo_does_not_import_vaibify():
-    mockDocker = _fMockDocker(0, "Published deposit: 42\n")
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "from vaibify" not in sCommand
-    assert "import vaibify" not in sCommand
+    sScript = _fsDecodeArchiveScript(sCommand)
+    assert "from vaibify" not in sScript
+    assert "import vaibify" not in sScript
 
 
 def test_ftResultArchiveToZenodo_rejects_invalid_service():
@@ -441,62 +454,136 @@ def test_ftResultArchiveToZenodo_rejects_invalid_service():
         )
 
 
-def test_ftResultArchiveToZenodo_rejects_quote_in_path():
+def test_ftResultArchiveToZenodo_rejects_null_byte_in_path():
     mockDocker = _fMockDocker()
     with pytest.raises(ValueError):
         ftResultArchiveToZenodo(
-            mockDocker, "cid", "sandbox", ["/with'quote.txt"],
+            mockDocker, "cid", "sandbox", ["/bad\x00path.txt"],
         )
 
 
-def test_ftResultArchiveToZenodo_injects_title_into_metadata():
-    import base64, json
+def test_ftResultArchiveToZenodo_accepts_quote_in_path():
+    """Phase 5 transport base64-encodes the full script; quotes OK."""
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        dictMetadata={
-            "sTitle": "My Workflow",
-            "listCreators": [{"sName": "Jane Doe"}],
-        },
+        mockDocker, "cid", "sandbox", ["/with'quote.txt"],
     )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    import re
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    assert sMatch is not None
-    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "/with'quote.txt" in sScript
+
+
+def test_fdictBuildApiMetadata_injects_title():
+    from vaibify.gui.syncDispatcher import _fdictBuildApiMetadata
+    dictApi = _fdictBuildApiMetadata({
+        "sTitle": "My Workflow",
+        "listCreators": [{"sName": "Jane Doe"}],
+    })
     assert dictApi["title"] == "My Workflow"
 
 
-def test_ftResultArchiveToZenodo_accepts_tricky_strings_via_base64():
-    """Quotes, backslashes, unicode in user strings are safe."""
-    import base64, json, re
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        dictMetadata={
-            "sTitle": "Rory's \"tricky\" Title",
-            "sDescription": "contains \\ backslash",
-            "listCreators": [{"sName": "O'Brien"}],
-        },
-    )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+def test_fdictBuildApiMetadata_defaults_title_and_creator():
+    from vaibify.gui.syncDispatcher import _fdictBuildApiMetadata
+    dictApi = _fdictBuildApiMetadata({})
+    assert dictApi["title"] == "Vaibify archive"
+    assert dictApi["creators"] == [{"name": "Vaibify User"}]
+
+
+def test_fdictBuildApiMetadata_accepts_tricky_strings():
+    """Zenodo API shape survives quotes, backslashes, unicode."""
+    from vaibify.gui.syncDispatcher import _fdictBuildApiMetadata
+    dictApi = _fdictBuildApiMetadata({
+        "sTitle": "Rory's \"tricky\" Title",
+        "sDescription": "contains \\ backslash",
+        "listCreators": [{"sName": "O'Brien"}],
+    })
     assert dictApi["title"] == "Rory's \"tricky\" Title"
     assert dictApi["creators"][0]["name"] == "O'Brien"
 
 
-def test_ftResultArchiveToZenodo_default_metadata_uses_placeholders():
-    import base64, json, re
+def test_ftResultArchiveToZenodo_default_metadata_reaches_script():
+    import json
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
     )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
-    assert dictApi["title"] == "Vaibify archive"
-    assert dictApi["creators"] == [{"name": "Vaibify User"}]
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert '"title": "Vaibify archive"' in sScript or (
+        "'title': 'Vaibify archive'" in sScript
+    )
+
+
+def test_ftResultArchiveToZenodo_first_publish_default_parent_zero():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "_PARENT = 0" in sScript
+
+
+def test_ftResultArchiveToZenodo_versioned_uses_newversion_flow():
+    """When a parent deposit id is given, the script hits newversion."""
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        iParentDepositId=491655,
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "_PARENT = 491655" in sScript
+    assert "actions/newversion" in sScript
+    assert "latest_draft" in sScript
+
+
+def test_ftResultArchiveToZenodo_versioned_deletes_inherited_files():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        iParentDepositId=42,
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "requests.delete" in sScript
+    assert "/files/" in sScript
+
+
+def test_ftResultArchiveToZenodo_versioned_updates_metadata():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        iParentDepositId=42,
+    )
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "requests.put" in sScript
+    assert "'metadata': _META" in sScript
+
+
+def test_ftResultArchiveToZenodo_parent_zero_same_as_no_parent():
+    """Explicit zero should behave identically to omitting the arg."""
+    mockDocker1 = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker1, "cid", "sandbox", ["/a.txt"],
+    )
+    mockDocker2 = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker2, "cid", "sandbox", ["/a.txt"],
+        iParentDepositId=0,
+    )
+    sA = _fsDecodeArchiveScript(
+        mockDocker1.ftResultExecuteCommand.call_args[0][1]
+    )
+    sB = _fsDecodeArchiveScript(
+        mockDocker2.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert sA == sB
 
 
 def test_ftResultArchiveToZenodo_surfaces_http_errors():
@@ -504,11 +591,13 @@ def test_ftResultArchiveToZenodo_surfaces_http_errors():
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
     )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
     # _fail helper turns HTTP failures into sys.exit with the body
-    assert "_fail" in sCommand
-    assert "sys.exit" in sCommand
-    assert "r.text[:500]" in sCommand
+    assert "def _fail" in sScript
+    assert "sys.exit" in sScript
+    assert "r.text[:500]" in sScript
 
 
 def test_fdictCheckConnectivity_zenodo_probes_namespaced_slots():
@@ -797,23 +886,16 @@ def test_fdictGenerateTest_via_claude():
     assert len(dictResult["saCommands"]) > 0
 
 
-def test_ftResultArchiveToZenodo_injects_creator_into_metadata():
-    import base64, json, re
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        dictMetadata={
-            "sTitle": "T",
-            "listCreators": [{
-                "sName": "Jane Doe",
-                "sAffiliation": "UW",
-                "sOrcid": "0000-0001-2345-6789",
-            }],
-        },
-    )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+def test_fdictBuildApiMetadata_includes_creator_affiliation_and_orcid():
+    from vaibify.gui.syncDispatcher import _fdictBuildApiMetadata
+    dictApi = _fdictBuildApiMetadata({
+        "sTitle": "T",
+        "listCreators": [{
+            "sName": "Jane Doe",
+            "sAffiliation": "UW",
+            "sOrcid": "0000-0001-2345-6789",
+        }],
+    })
     assert dictApi["creators"] == [{
         "name": "Jane Doe",
         "affiliation": "UW",
@@ -821,21 +903,14 @@ def test_ftResultArchiveToZenodo_injects_creator_into_metadata():
     }]
 
 
-def test_ftResultArchiveToZenodo_includes_keywords_and_related_url():
-    import base64, json, re
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        dictMetadata={
-            "sTitle": "T",
-            "listCreators": [{"sName": "Jane Doe"}],
-            "listKeywords": ["alpha", "beta"],
-            "sRelatedGithubUrl": "https://github.com/u/r",
-        },
-    )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    dictApi = json.loads(base64.b64decode(sMatch.group(1)))
+def test_fdictBuildApiMetadata_includes_keywords_and_related_url():
+    from vaibify.gui.syncDispatcher import _fdictBuildApiMetadata
+    dictApi = _fdictBuildApiMetadata({
+        "sTitle": "T",
+        "listCreators": [{"sName": "Jane Doe"}],
+        "listKeywords": ["alpha", "beta"],
+        "sRelatedGithubUrl": "https://github.com/u/r",
+    })
     assert dictApi["keywords"] == ["alpha", "beta"]
     assert dictApi["related_identifiers"][0]["identifier"] == (
         "https://github.com/u/r"
@@ -847,7 +922,9 @@ def test_ftResultArchiveToZenodo_prints_zenodo_result_marker():
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
     )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "ZENODO_RESULT=" in sCommand
-    assert "'sDoi':" in sCommand
-    assert "'sHtmlUrl':" in sCommand
+    sScript = _fsDecodeArchiveScript(
+        mockDocker.ftResultExecuteCommand.call_args[0][1]
+    )
+    assert "ZENODO_RESULT=" in sScript
+    assert "'sDoi'" in sScript
+    assert "'sHtmlUrl'" in sScript

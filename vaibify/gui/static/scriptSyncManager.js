@@ -97,6 +97,8 @@ var VaibifySyncManager = (function () {
         _fnRenderOverleafTargetRow(sService, sContainerId);
         _fnRenderPushAnnotationHost(sService);
         _fnRenderPushFileList();
+        _bZenodoHasDeposit = sService === "zenodo" &&
+            await _fbWorkflowHasZenodoDeposit(sContainerId);
         _fnApplyButtonLabels();
         _fnUpdatePushButtonStates();
         if (sService === "overleaf") {
@@ -149,15 +151,33 @@ var VaibifySyncManager = (function () {
         }
     }
 
+    var _bZenodoHasDeposit = false;
+
     function _fnApplyButtonLabels() {
         var elSelected = document.getElementById("btnPushSelected");
         var elAll = document.getElementById("btnPushAll");
         if (_sPushService === "overleaf") {
             if (elAll) elAll.style.display = "";
             if (elSelected) elSelected.textContent = "Push Selected";
-        } else {
-            if (elAll) elAll.style.display = "none";
-            if (elSelected) elSelected.textContent = "Push Selected";
+            return;
+        }
+        if (elAll) elAll.style.display = "none";
+        if (elSelected) {
+            elSelected.textContent = (
+                _sPushService === "zenodo" && _bZenodoHasDeposit
+            ) ? "Publish new version" : "Push Selected";
+        }
+    }
+
+    async function _fbWorkflowHasZenodoDeposit(sContainerId) {
+        try {
+            var dictDeposit = await VaibifyApi.fdictGet(
+                "/api/zenodo/" + encodeURIComponent(sContainerId) +
+                "/deposit"
+            );
+            return !!(dictDeposit && dictDeposit.sDoi);
+        } catch (error) {
+            return false;
         }
     }
 

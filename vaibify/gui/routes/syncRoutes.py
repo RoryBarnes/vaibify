@@ -337,10 +337,12 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         dictMetadata = _fdictResolveZenodoMetadataForArchive(
             dictWorkflow,
         )
+        iParentDepositId = _fiReadParentDepositId(dictWorkflow)
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultArchiveToZenodo,
             dictCtx["docker"], sContainerId,
             sZenodoService, request.listFilePaths, dictMetadata,
+            iParentDepositId,
         )
         dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
         if not dictResult["bSuccess"]:
@@ -897,6 +899,23 @@ def _fsBuildZenodoTitle(dictWorkflow):
         or dictWorkflow.get("sWorkflowName")
         or "Vaibify archive"
     ).strip() or "Vaibify archive"
+
+
+def _fiReadParentDepositId(dictWorkflow):
+    """Return the previous deposit id as an int, or 0 if none.
+
+    Triggers the Zenodo ``newversion`` flow in the dispatcher when
+    positive. Non-numeric or absent values fall back to 0 (first
+    publish) rather than raising, so workflows with corrupted state
+    can still publish -- the next push chains off the resulting new
+    deposit.
+    """
+    sRaw = dictWorkflow.get("sZenodoDepositionId") or ""
+    try:
+        iParent = int(sRaw)
+    except (TypeError, ValueError):
+        return 0
+    return iParent if iParent > 0 else 0
 
 
 def _fdictResolveZenodoMetadataForArchive(dictWorkflow):
