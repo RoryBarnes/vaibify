@@ -36,6 +36,7 @@ class ZenodoClient:
 
     def __init__(self, sService="sandbox"):
         _fnValidateService(sService)
+        self._sService = sService
         self._sBaseUrl = f"{_SERVICES[sService]}/api"
         self._sToken = None
 
@@ -116,7 +117,7 @@ class ZenodoClient:
     def _fsGetToken(self):
         """Lazy-load the Zenodo token via secretManager."""
         if self._sToken is None:
-            self._sToken = _fsRetrieveToken()
+            self._sToken = _fsRetrieveToken(self._sService)
         return self._sToken
 
 
@@ -134,10 +135,32 @@ def _fnValidateService(sService):
         )
 
 
-def _fsRetrieveToken():
-    """Retrieve the Zenodo token through secretManager."""
-    from vaibify.config.secretManager import fsRetrieveSecret
+def fsZenodoTokenName(sService):
+    """Return the keyring slot name for a given Zenodo service.
 
+    ``sService`` is the ZenodoClient service key (``"sandbox"`` or
+    ``"zenodo"``); the keyring slot follows the instance naming the
+    user sees in the UI (``sandbox`` / ``production``).
+    """
+    _fnValidateService(sService)
+    if sService == "zenodo":
+        return "zenodo_token_production"
+    return "zenodo_token_sandbox"
+
+
+def _fsRetrieveToken(sService="sandbox"):
+    """Retrieve the Zenodo token for ``sService`` via secretManager.
+
+    Reads the namespaced slot first (``zenodo_token_sandbox`` or
+    ``zenodo_token_production``) and falls back to the legacy
+    ``zenodo_token`` slot when the namespaced one is empty so users
+    migrating from the pre-namespaced layout keep working.
+    """
+    from vaibify.config.secretManager import fbSecretExists, fsRetrieveSecret
+
+    sNamespaced = fsZenodoTokenName(sService)
+    if fbSecretExists(sNamespaced, "keyring"):
+        return fsRetrieveSecret(sNamespaced, "keyring")
     return fsRetrieveSecret("zenodo_token", "keyring")
 
 

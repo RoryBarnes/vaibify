@@ -342,6 +342,186 @@ def test_fbValidateZenodoToken_failure():
     assert bResult is False
 
 
+def test_fbValidateZenodoToken_hits_sandbox_endpoint():
+    mockDocker = _fMockDocker(0, "ok\n")
+    fbValidateZenodoToken(mockDocker, "cid", "sandbox")
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "sandbox.zenodo.org/api/deposit/depositions" in sCommand
+    assert "zenodo_token_sandbox" in sCommand
+
+
+def test_fbValidateZenodoToken_hits_production_endpoint():
+    mockDocker = _fMockDocker(0, "ok\n")
+    fbValidateZenodoToken(mockDocker, "cid", "zenodo")
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "//zenodo.org/api/deposit/depositions" in sCommand
+    assert "zenodo_token_production" in sCommand
+
+
+def test_fbValidateZenodoToken_does_not_import_vaibify():
+    """Container lacks the vaibify package; validation must not import it."""
+    mockDocker = _fMockDocker(0, "ok\n")
+    fbValidateZenodoToken(mockDocker, "cid", "sandbox")
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "from vaibify" not in sCommand
+    assert "import vaibify" not in sCommand
+
+
+def test_fbValidateZenodoToken_rejects_invalid_service():
+    mockDocker = _fMockDocker()
+    with pytest.raises(ValueError):
+        fbValidateZenodoToken(mockDocker, "cid", "production")
+
+
+def test_fsZenodoInstanceToService_maps_sandbox():
+    from vaibify.gui.syncDispatcher import fsZenodoInstanceToService
+    assert fsZenodoInstanceToService("sandbox") == "sandbox"
+
+
+def test_fsZenodoInstanceToService_maps_production():
+    from vaibify.gui.syncDispatcher import fsZenodoInstanceToService
+    assert fsZenodoInstanceToService("production") == "zenodo"
+
+
+def test_fsZenodoInstanceToService_rejects_service_key():
+    from vaibify.gui.syncDispatcher import fsZenodoInstanceToService
+    with pytest.raises(ValueError):
+        fsZenodoInstanceToService("zenodo")
+
+
+def test_fsZenodoTokenNameForInstance_sandbox():
+    from vaibify.gui.syncDispatcher import (
+        fsZenodoTokenNameForInstance,
+    )
+    assert (
+        fsZenodoTokenNameForInstance("sandbox")
+        == "zenodo_token_sandbox"
+    )
+
+
+def test_fsZenodoTokenNameForInstance_production():
+    from vaibify.gui.syncDispatcher import (
+        fsZenodoTokenNameForInstance,
+    )
+    assert (
+        fsZenodoTokenNameForInstance("production")
+        == "zenodo_token_production"
+    )
+
+
+def test_ftResultArchiveToZenodo_hits_production_api():
+    mockDocker = _fMockDocker(0, "Published deposit: 42\n")
+    ftResultArchiveToZenodo(mockDocker, "cid", "zenodo", ["/a.txt"])
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "//zenodo.org/api/deposit/depositions" in sCommand
+    assert "zenodo_token_production" in sCommand
+
+
+def test_ftResultArchiveToZenodo_hits_sandbox_api():
+    mockDocker = _fMockDocker(0, "Published deposit: 42\n")
+    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "sandbox.zenodo.org/api/deposit/depositions" in sCommand
+    assert "zenodo_token_sandbox" in sCommand
+
+
+def test_ftResultArchiveToZenodo_does_not_import_vaibify():
+    mockDocker = _fMockDocker(0, "Published deposit: 42\n")
+    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "from vaibify" not in sCommand
+    assert "import vaibify" not in sCommand
+
+
+def test_ftResultArchiveToZenodo_rejects_invalid_service():
+    mockDocker = _fMockDocker()
+    with pytest.raises(ValueError):
+        ftResultArchiveToZenodo(
+            mockDocker, "cid", "production", ["/a.txt"],
+        )
+
+
+def test_ftResultArchiveToZenodo_rejects_quote_in_path():
+    mockDocker = _fMockDocker()
+    with pytest.raises(ValueError):
+        ftResultArchiveToZenodo(
+            mockDocker, "cid", "sandbox", ["/with'quote.txt"],
+        )
+
+
+def test_ftResultArchiveToZenodo_injects_title_into_metadata():
+    mockDocker = _fMockDocker(0, "Published deposit: 1 10.5281/zenodo.1\n")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        sTitle="My Workflow",
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "'title': 'My Workflow'" in sCommand
+
+
+def test_ftResultArchiveToZenodo_rejects_empty_title():
+    mockDocker = _fMockDocker()
+    with pytest.raises(ValueError):
+        ftResultArchiveToZenodo(
+            mockDocker, "cid", "sandbox", ["/a.txt"], sTitle="   ",
+        )
+
+
+def test_ftResultArchiveToZenodo_rejects_quote_in_title():
+    mockDocker = _fMockDocker()
+    with pytest.raises(ValueError):
+        ftResultArchiveToZenodo(
+            mockDocker, "cid", "sandbox", ["/a.txt"],
+            sTitle="He's a Title",
+        )
+
+
+def test_ftResultArchiveToZenodo_surfaces_http_errors():
+    mockDocker = _fMockDocker(0, "Published deposit: 1 \n")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"], sTitle="X",
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    # _fail helper turns HTTP failures into sys.exit with the body
+    assert "_fail" in sCommand
+    assert "sys.exit" in sCommand
+    assert "r.text[:500]" in sCommand
+
+
+def test_fdictCheckConnectivity_zenodo_probes_namespaced_slots():
+    from vaibify.gui.syncDispatcher import fdictCheckConnectivity
+    mockDocker = MagicMock()
+    dictResponses = {
+        "import keyring": [(0, "keyring.backends.kwallet KWallet")],
+        "zenodo_token_sandbox": [(0, "ok")],
+    }
+
+    def fnExecute(sContainerId, sCommand):
+        if "type(keyring.get_keyring())" in sCommand:
+            return dictResponses["import keyring"][0]
+        if "zenodo_token_sandbox" in sCommand:
+            return dictResponses["zenodo_token_sandbox"][0]
+        return (0, "missing")
+
+    mockDocker.ftResultExecuteCommand.side_effect = fnExecute
+    dictResult = fdictCheckConnectivity(mockDocker, "cid", "zenodo")
+    assert dictResult["bConnected"] is True
+
+
+def test_fdictCheckConnectivity_zenodo_no_token_anywhere():
+    from vaibify.gui.syncDispatcher import fdictCheckConnectivity
+    mockDocker = MagicMock()
+
+    def fnExecute(sContainerId, sCommand):
+        if "type(keyring.get_keyring())" in sCommand:
+            return (0, "keyring.backends.kwallet KWallet")
+        return (0, "missing")
+
+    mockDocker.ftResultExecuteCommand.side_effect = fnExecute
+    dictResult = fdictCheckConnectivity(mockDocker, "cid", "zenodo")
+    assert dictResult["bConnected"] is False
+
+
 # -----------------------------------------------------------------------
 # syncDispatcher: ftResultGenerateDagSvg
 # -----------------------------------------------------------------------
@@ -592,3 +772,33 @@ def test_fdictGenerateTest_via_claude():
     assert dictResult["sFilePath"].endswith("test_step01.py")
     assert "import pytest" in dictResult["sContent"]
     assert len(dictResult["saCommands"]) > 0
+
+
+def test_ftResultArchiveToZenodo_injects_creator_into_metadata():
+    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"],
+        sTitle="T", sCreatorName="Jane Doe",
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "'creators': [{'name': 'Jane Doe'}]" in sCommand
+
+
+def test_ftResultArchiveToZenodo_rejects_quote_in_creator():
+    mockDocker = _fMockDocker()
+    with pytest.raises(ValueError):
+        ftResultArchiveToZenodo(
+            mockDocker, "cid", "sandbox", ["/a.txt"],
+            sTitle="T", sCreatorName="O'Brien",
+        )
+
+
+def test_ftResultArchiveToZenodo_prints_zenodo_result_marker():
+    mockDocker = _fMockDocker(0, "")
+    ftResultArchiveToZenodo(
+        mockDocker, "cid", "sandbox", ["/a.txt"], sTitle="T",
+    )
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "ZENODO_RESULT=" in sCommand
+    assert "'sDoi':" in sCommand
+    assert "'sHtmlUrl':" in sCommand

@@ -182,6 +182,7 @@ class SyncSetupRequest(BaseModel):
     sService: str
     sProjectId: Optional[str] = None
     sToken: Optional[str] = None
+    sZenodoInstance: Optional[str] = None
 
 
 class SyncTrackingRequest(BaseModel):

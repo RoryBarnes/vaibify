@@ -1542,16 +1542,52 @@ def test_zenodo_download_file_not_in_record():
             client.fnDownloadFile(42, "missing.dat", "/tmp")
 
 
-def test_fsRetrieveToken():
+def test_fsRetrieveToken_falls_back_to_legacy_slot():
     from vaibify.reproducibility.zenodoClient import (
         _fsRetrieveToken,
     )
     with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ), patch(
         "vaibify.config.secretManager.fsRetrieveSecret",
-        return_value="zen_token_123",
-    ):
-        sToken = _fsRetrieveToken()
-    assert sToken == "zen_token_123"
+        return_value="legacy_token",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("sandbox")
+    assert sToken == "legacy_token"
+    assert mockRetrieve.call_args[0][0] == "zenodo_token"
+
+
+def test_fsRetrieveToken_prefers_namespaced_sandbox_slot():
+    from vaibify.reproducibility.zenodoClient import (
+        _fsRetrieveToken,
+    )
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="namespaced_sandbox",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("sandbox")
+    assert sToken == "namespaced_sandbox"
+    assert mockRetrieve.call_args[0][0] == "zenodo_token_sandbox"
+
+
+def test_fsRetrieveToken_prefers_namespaced_production_slot():
+    from vaibify.reproducibility.zenodoClient import (
+        _fsRetrieveToken,
+    )
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="namespaced_prod",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("zenodo")
+    assert sToken == "namespaced_prod"
+    assert mockRetrieve.call_args[0][0] == "zenodo_token_production"
 
 
 def test_zenodo_client_lazy_token():
@@ -1561,10 +1597,22 @@ def test_zenodo_client_lazy_token():
     with patch(
         "vaibify.reproducibility.zenodoClient._fsRetrieveToken",
         return_value="lazy_token",
-    ):
+    ) as mockRetrieve:
         sToken = client._fsGetToken()
     assert sToken == "lazy_token"
     assert client._sToken == "lazy_token"
+    assert mockRetrieve.call_args[0][0] == "sandbox"
+
+
+def test_zenodo_client_passes_production_service_to_retriever():
+    from vaibify.reproducibility.zenodoClient import ZenodoClient
+    client = ZenodoClient(sService="zenodo")
+    with patch(
+        "vaibify.reproducibility.zenodoClient._fsRetrieveToken",
+        return_value="prod_token",
+    ) as mockRetrieve:
+        client._fsGetToken()
+    assert mockRetrieve.call_args[0][0] == "zenodo"
 
 
 def test_zenodo_client_cached_token():

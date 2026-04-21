@@ -22,6 +22,17 @@ var VaibifyManifestCheck = (function () {
         "staged-only": "staged (not committed)",
     };
 
+    var _S_CANONICAL_HELP =
+        "These are the files your workflow.json declares as its own: " +
+        "each step's scripts, data files, plot files, standards, " +
+        "plus workflow state under .vaibify/ and top-level configs. " +
+        "For a Zenodo or Overleaf push, the list is narrowed to " +
+        "files you've opted into that service. " +
+        "They show up here because they differ from your last git " +
+        "commit. You can push to the service without committing " +
+        "(the archive captures the on-disk content), or commit first " +
+        "to pin a reproducible git anchor.";
+
     function _fsEscape(sText) {
         return VaibifyUtilities.fnEscapeHtml(sText || "");
     }
@@ -41,16 +52,19 @@ var VaibifyManifestCheck = (function () {
 
     function _fsRenderDialogHtml(dictReport) {
         var sHtml = '<div class="manifest-check-dialog">' +
-            '<h2>Uncommitted canonical files</h2>' +
-            '<p>These files are part of the workflow but not cleanly ' +
-            'committed. Push anyway, or commit them first?</p>' +
+            '<h2>Uncommitted workflow files ' +
+            '<span class="help-icon" title="' +
+            _fsEscape(_S_CANONICAL_HELP) + '">?</span></h2>' +
+            '<p>These files are part of your workflow but aren\'t ' +
+            'cleanly committed to git. Push anyway, or commit ' +
+            'them first?</p>' +
             _fsRenderFileList(dictReport.listNeedsCommit) +
             '<div class="manifest-check-buttons">' +
             '<button class="btn" data-action="cancel">Cancel</button>' +
             '<button class="btn" data-action="push-anyway">' +
             'Push without committing</button>' +
             '<button class="btn btn-primary" data-action="commit">' +
-            'Commit canonical &amp; continue</button>' +
+            'Commit workflow files &amp; continue</button>' +
             '</div></div>';
         return sHtml;
     }

@@ -330,14 +330,22 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        sZenodoService = dictWorkflow.get(
+            "sZenodoService", "sandbox",
+        )
+        sTitle = _fsBuildZenodoTitle(dictWorkflow)
+        sCreatorName = _fsReadHostGitUserName()
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultArchiveToZenodo,
             dictCtx["docker"], sContainerId,
-            "zenodo", request.listFilePaths,
+            sZenodoService, request.listFilePaths, sTitle,
+            sCreatorName,
         )
         dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
         if not dictResult["bSuccess"]:
             return dictResult
+        dictResult.update(_fdictParseZenodoResult(sOut))
+        _fnPersistZenodoPublishRecord(dictWorkflow, dictResult)
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, request.listFilePaths, "Zenodo")
         dictDigests = await asyncio.to_thread(
@@ -451,7 +459,7 @@ async def _fbRunOverleafValidation(
 
 async def _ftRunServiceValidation(
     syncDispatcher, sService, connectionDocker,
-    sContainerId, sProjectId,
+    sContainerId, sProjectId, sZenodoInstance="",
 ):
     """Dispatch to service-specific validator.
 
@@ -460,9 +468,12 @@ async def _ftRunServiceValidation(
     capture one).
     """
     if sService == "zenodo":
+        sZenodoService = syncDispatcher.fsZenodoInstanceToService(
+            sZenodoInstance or "sandbox"
+        )
         bPass = await asyncio.to_thread(
             syncDispatcher.fbValidateZenodoToken,
-            connectionDocker, sContainerId,
+            connectionDocker, sContainerId, sZenodoService,
         )
         return (bPass, "")
     if sService == "overleaf":
@@ -497,12 +508,17 @@ def _fsServiceRemediation(sService, sDetail=""):
 
 def _fnCleanupCredential(
     syncDispatcher, connectionDocker, sContainerId, sService,
+    sZenodoInstance="",
 ):
     """Delete a just-stored credential after validation failure."""
     sTokenName = f"{sService}_token"
     if sService == "overleaf":
         _fnCleanupOverleafHostCredential(sTokenName)
         return
+    if sService == "zenodo" and sZenodoInstance:
+        sTokenName = syncDispatcher.fsZenodoTokenNameForInstance(
+            sZenodoInstance
+        )
     try:
         syncDispatcher.fnDeleteCredentialFromContainer(
             connectionDocker, sContainerId, sTokenName,
@@ -522,11 +538,13 @@ def _fnCleanupOverleafHostCredential(sTokenName):
 
 def _fdictStoreCredentialSafely(
     syncDispatcher, dictCtx, sContainerId, sService, sToken,
+    sZenodoInstance="",
 ):
     """Try to store; return a failure dict or None on success."""
     try:
         _fnDispatchStore(
             syncDispatcher, dictCtx, sContainerId, sService, sToken,
+            sZenodoInstance,
         )
     except Exception as error:
         return {
@@ -538,41 +556,50 @@ def _fdictStoreCredentialSafely(
 
 def _fnDispatchStore(
     syncDispatcher, dictCtx, sContainerId, sService, sToken,
+    sZenodoInstance="",
 ):
     """Route Overleaf to the host keyring; others to the container."""
     if sService == "overleaf":
         from vaibify.config.secretManager import fnStoreSecret
         fnStoreSecret("overleaf_token", sToken, "keyring")
         return
+    sTokenName = f"{sService}_token"
+    if sService == "zenodo":
+        sTokenName = syncDispatcher.fsZenodoTokenNameForInstance(
+            sZenodoInstance or "sandbox"
+        )
     syncDispatcher.fnStoreCredentialInContainer(
-        dictCtx["docker"], sContainerId,
-        f"{sService}_token", sToken,
+        dictCtx["docker"], sContainerId, sTokenName, sToken,
     )
 
 
 async def _fdictStoreValidateCredential(
     dictCtx, sContainerId, sService, sToken, sProjectId,
+    sZenodoInstance="",
 ):
     """Store credential, verify connectivity, validate; clean up on failure."""
     from .. import syncDispatcher
     dictStoreFail = _fdictStoreCredentialSafely(
         syncDispatcher, dictCtx, sContainerId, sService, sToken,
+        sZenodoInstance,
     )
     if dictStoreFail is not None:
         return dictStoreFail
     dictResult = await _fdictValidateStoredCredential(
         dictCtx, sContainerId, sService, sProjectId,
+        sZenodoInstance,
     )
     if not dictResult["bConnected"]:
         _fnCleanupCredential(
             syncDispatcher, dictCtx["docker"],
-            sContainerId, sService,
+            sContainerId, sService, sZenodoInstance,
         )
     return dictResult
 
 
 async def _fdictValidateStoredCredential(
     dictCtx, sContainerId, sService, sProjectId,
+    sZenodoInstance="",
 ):
     """Validate an already-stored credential without deleting it on failure."""
     from .. import syncDispatcher
@@ -582,7 +609,7 @@ async def _fdictValidateStoredCredential(
         return dictResult
     bValid, sDetail = await _ftRunServiceValidation(
         syncDispatcher, sService, dictCtx["docker"],
-        sContainerId, sProjectId,
+        sContainerId, sProjectId, sZenodoInstance,
     )
     if bValid:
         return {"bConnected": True, "sMessage": "Connected"}
@@ -633,26 +660,31 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return dictResult
 
     async def _fdictRunSetup(dictCtx, sContainerId, request):
+        sZenodoInstance = _fsResolveZenodoInstance(request)
         if request.sToken:
             return await _fdictStoreValidateCredential(
                 dictCtx, sContainerId, request.sService,
                 request.sToken, request.sProjectId or "",
+                sZenodoInstance,
             )
         if _fbServiceHasStoredCredential(request.sService):
             return await _fdictValidateStoredCredential(
                 dictCtx, sContainerId, request.sService,
                 request.sProjectId or "",
+                sZenodoInstance,
             )
         return syncDispatcher.fdictCheckConnectivity(
             dictCtx["docker"], sContainerId, request.sService)
 
     def _fnPersistServiceSettings(dictCtx, sContainerId, request):
-        if request.sService != "overleaf" or not request.sProjectId:
+        if request.sService == "overleaf" and request.sProjectId:
+            dictWorkflow = fdictRequireWorkflow(
+                dictCtx["workflows"], sContainerId)
+            dictWorkflow["sOverleafProjectId"] = request.sProjectId
+            dictCtx["save"](sContainerId, dictWorkflow)
             return
-        dictWorkflow = fdictRequireWorkflow(
-            dictCtx["workflows"], sContainerId)
-        dictWorkflow["sOverleafProjectId"] = request.sProjectId
-        dictCtx["save"](sContainerId, dictWorkflow)
+        if request.sService == "zenodo":
+            _fnPersistZenodoService(dictCtx, sContainerId, request)
 
     @app.get("/api/sync/{sContainerId}/check/{sService}")
     async def fnCheckConnection(
@@ -716,6 +748,104 @@ def _fbServiceHasStoredCredential(sService):
     if sService != "overleaf":
         return False
     return fbSecretExists("overleaf_token", "keyring")
+
+
+def _fdictParseZenodoResult(sOut):
+    """Extract the ZENODO_RESULT=<json> line from the archive stdout."""
+    import json
+    for sLine in reversed((sOut or "").splitlines()):
+        sStripped = sLine.strip()
+        if sStripped.startswith("ZENODO_RESULT="):
+            try:
+                return json.loads(sStripped[len("ZENODO_RESULT="):])
+            except ValueError:
+                return {}
+    return {}
+
+
+def _fnPersistZenodoPublishRecord(dictWorkflow, dictResult):
+    """Store deposit id + DOIs + HTML URL on the workflow."""
+    if dictResult.get("iDepositId"):
+        dictWorkflow["sZenodoDepositionId"] = str(
+            dictResult["iDepositId"]
+        )
+    if dictResult.get("sDoi"):
+        dictWorkflow["sZenodoLatestDoi"] = dictResult["sDoi"]
+    if dictResult.get("sConceptDoi"):
+        dictWorkflow["sZenodoConceptDoi"] = dictResult["sConceptDoi"]
+    if dictResult.get("sHtmlUrl"):
+        dictWorkflow["sZenodoLatestUrl"] = dictResult["sHtmlUrl"]
+
+
+def _fsReadHostGitUserName():
+    """Read the host user's global git user.name.
+
+    The vaibify container has no user.name configured — only credential
+    helpers — so reading from the container yields nothing. The user's
+    actual identity lives in the host's global ``~/.gitconfig``. Falls
+    back to ``"Vaibify User"`` when git is missing, times out, or the
+    config is empty.
+    """
+    import subprocess
+    try:
+        resultProcess = subprocess.run(
+            ["git", "config", "--global", "user.name"],
+            capture_output=True, text=True, timeout=5,
+        )
+        sName = (resultProcess.stdout or "").strip()
+    except (subprocess.SubprocessError, OSError):
+        sName = ""
+    if not sName:
+        return "Vaibify User"
+    sSanitized = sName.replace("'", "").replace("\\", "").strip()
+    return sSanitized or "Vaibify User"
+
+
+def _fsBuildZenodoTitle(dictWorkflow):
+    """Pick a non-empty Zenodo deposition title from workflow fields.
+
+    Zenodo rejects publishes with empty titles. Until Phase 2 wires a
+    metadata form, fall back to whatever identifier we have on hand so
+    the publish step succeeds. Single quotes are stripped because the
+    inline archive command is single-quoted.
+    """
+    sTitle = (
+        dictWorkflow.get("sProjectTitle")
+        or dictWorkflow.get("sWorkflowName")
+        or "Vaibify archive"
+    )
+    sTitle = sTitle.replace("'", "").replace("\\", "").strip()
+    return sTitle or "Vaibify archive"
+
+
+def _fsResolveZenodoInstance(request):
+    """Return the sZenodoInstance field when the request targets Zenodo."""
+    if request.sService != "zenodo":
+        return ""
+    sRequested = getattr(request, "sZenodoInstance", None) or "sandbox"
+    from .. import syncDispatcher
+    if sRequested not in syncDispatcher.SET_VALID_ZENODO_INSTANCES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "sZenodoInstance must be 'sandbox' or 'production'."
+            ),
+        )
+    return sRequested
+
+
+def _fnPersistZenodoService(dictCtx, sContainerId, request):
+    """Record which Zenodo service a successful setup chose."""
+    from .. import syncDispatcher
+    sInstance = _fsResolveZenodoInstance(request)
+    if not sInstance:
+        return
+    dictWorkflow = fdictRequireWorkflow(
+        dictCtx["workflows"], sContainerId)
+    dictWorkflow["sZenodoService"] = (
+        syncDispatcher.fsZenodoInstanceToService(sInstance)
+    )
+    dictCtx["save"](sContainerId, dictWorkflow)
 
 
 def _fnRegisterDag(app, dictCtx):

@@ -556,6 +556,31 @@
             <input type="text" id="inputSetupProjectId"
                    placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1">
         </div>
+        <div class="form-group" id="groupSetupZenodoInstance"
+             style="display: none;">
+            <label>Zenodo Instance</label>
+            <div class="zenodo-instance-choice">
+                <label class="radio-row">
+                    <input type="radio" name="zenodoInstance"
+                           value="sandbox" checked>
+                    <span>Sandbox (sandbox.zenodo.org) — recommended for first-time setup</span>
+                </label>
+                <label class="radio-row">
+                    <input type="radio" name="zenodoInstance"
+                           value="production">
+                    <span>Production (zenodo.org) — public, assigns a real DOI</span>
+                </label>
+            </div>
+            <p class="setup-instance-help" id="helpZenodoInstance">
+                Generate a token at
+                <a id="linkZenodoTokens"
+                   href="https://sandbox.zenodo.org/account/settings/applications/"
+                   target="_blank" rel="noopener">
+                    sandbox.zenodo.org/account/settings/applications/</a>
+                with <code>deposit:write</code> and
+                <code>deposit:actions</code> scopes.
+            </p>
+        </div>
         <div class="form-group" id="groupSetupToken"
              style="display: none;">
             <label id="labelSetupToken">API Token
