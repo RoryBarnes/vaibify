@@ -718,6 +718,12 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["paths"][sContainerId] = sResolved
+        from . import containerGit
+        dictWorkflow["sProjectRepoPath"] = (
+            containerGit.fsDetectProjectRepoInContainer(
+                dictCtx["docker"], sContainerId, sResolved,
+            )
+        )
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )

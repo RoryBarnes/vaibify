@@ -50,17 +50,29 @@ __all__ = [
     "fsMarkerNameFromStepDirectory",
 ]
 
-_S_MARKER_DIRECTORY = "/workspace/.vaibify/test_markers"
-
-
 def fsMarkerNameFromStepDirectory(sStepDirectory):
     """Return the marker filename for a step directory."""
     return sStepDirectory.strip("/").replace("/", "_") + ".json"
 
 
-def fnCollectMarkerPathsByStep(dictWorkflow):
-    """Return {iStepIndex: sMarkerPath} for each step with a directory."""
+def fnCollectMarkerPathsByStep(dictWorkflow, sProjectRepoPath):
+    """Return {iStepIndex: sMarkerPath} for each step with a directory.
+
+    ``sProjectRepoPath`` is the container-absolute path of the active
+    workflow's project repo (auto-detected at connect time and stored
+    on ``dictWorkflow['sProjectRepoPath']``). Marker files live under
+    ``<sProjectRepoPath>/.vaibify/test_markers/`` so that they are
+    committed alongside the rest of the project and survive clone.
+    An empty ``sProjectRepoPath`` yields an empty map — the caller is
+    expected to surface the no-repo state explicitly rather than
+    silently falling back to a workspace-rooted default.
+    """
     dictResult = {}
+    if not sProjectRepoPath:
+        return dictResult
+    sMarkerDir = posixpath.join(
+        sProjectRepoPath, ".vaibify", "test_markers",
+    )
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
@@ -68,9 +80,7 @@ def fnCollectMarkerPathsByStep(dictWorkflow):
         if not sStepDirectory:
             continue
         sMarkerName = fsMarkerNameFromStepDirectory(sStepDirectory)
-        dictResult[iIndex] = posixpath.join(
-            _S_MARKER_DIRECTORY, sMarkerName,
-        )
+        dictResult[iIndex] = posixpath.join(sMarkerDir, sMarkerName)
     return dictResult
 
 from . import pipelineState

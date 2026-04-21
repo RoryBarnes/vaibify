@@ -36,7 +36,7 @@ def _fmockDocker(iExitCode=0, sOutput="", baContent=b"<svg/>"):
 
 DICT_STEP_WITH_SCRIPTS = {
     "sName": "Run Simulation",
-    "sDirectory": "/workspace/step01",
+    "sDirectory": "step01",
     "saDataCommands": ["python run.py"],
     "saPlotCommands": [],
     "saTestCommands": [],
@@ -47,7 +47,7 @@ DICT_STEP_WITH_SCRIPTS = {
 
 DICT_STEP_EMPTY = {
     "sName": "Empty Step",
-    "sDirectory": "/workspace/step02",
+    "sDirectory": "step02",
     "saDataCommands": [],
     "saPlotCommands": [],
     "saTestCommands": [],

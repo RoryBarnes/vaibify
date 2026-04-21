@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev74 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev75 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=292060b2"></script>
+      <script src="_static/documentation_options.js?v=8d58e4ab"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -64,6 +64,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#workflow-git-repo">Workflow = git repo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#python-backend">Python backend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#application-layer">Application layer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#route-modules">Route modules</a></li>
@@ -325,6 +326,83 @@ mangle container paths on any host, and the failure would be silent
 until a cross-platform user hit it. The divergence is load-bearing;
 the <span class="xref myst">AGENTS.md</span> trap list and
 <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> both guard it.</p>
+</section>
+<section id="workflow-git-repo">
+<h2>Workflow = git repo<a class="headerlink" href="#workflow-git-repo" title="Link to this heading"></a></h2>
+<p>Every vaibify workflow lives inside a git repository — its “project
+repo”. The <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> file belongs to that repo, not to the
+container, not to <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>, and not to a shared vaibify-managed
+location. This constraint is enforced at discovery time
+(<code class="docutils literal notranslate"><span class="pre">flistFindWorkflowsInContainer</span></code> drops any candidate not inside a git
+work tree) and at creation time (<code class="docutils literal notranslate"><span class="pre">_fsValidateRepoDirectory</span></code> rejects
+target directories that are not git repos). It maps directly to L1 of
+the reproducibility ladder in <a class="reference internal" href="vision.html"><span class="std std-doc">vision.md</span></a>: a workflow that
+cannot be committed cannot be reproduced.</p>
+<p><code class="docutils literal notranslate"><span class="pre">/workspace</span></code> itself is a Docker-managed named volume, not a repo. It
+is the <em>discovery root</em> — the search origin for workflow.json files —
+but not a git target. Inside a container, <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> contains N
+project-repo subdirectories (each a standalone git clone) plus some
+shared configuration. A single container can therefore host multiple
+workflows: GJ1132_XUV’s paper pipeline today, XUVCatalog’s
+cross-system analysis tomorrow, both reusing the same heavy dependency
+clones without needing a rebuild.</p>
+<p>The <strong>active workflow determines the badge scope</strong>. At connect time,
+<code class="docutils literal notranslate"><span class="pre">fdictHandleConnect</span></code> runs <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">rev-parse</span> <span class="pre">--show-toplevel</span></code> inside the
+container, starting from the directory that contains the loaded
+<code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. The result is stamped on the workflow dict as
+<code class="docutils literal notranslate"><span class="pre">dictWorkflow[&quot;sProjectRepoPath&quot;]</span></code> and every subsequent git / badge /
+manifest call threads it through <code class="docutils literal notranslate"><span class="pre">containerGit</span></code> as the authoritative
+workspace. The helper lives in
+<code class="docutils literal notranslate"><span class="pre">containerGit.fsDetectProjectRepoInContainer</span></code>; the routes read it from
+the active workflow dict.</p>
+<p>Per-step output paths (<code class="docutils literal notranslate"><span class="pre">saOutputFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>)
+must be repo-relative and must stay inside the project repo. Absolute
+paths and <code class="docutils literal notranslate"><span class="pre">..</span></code>-escaping paths are rejected by
+<code class="docutils literal notranslate"><span class="pre">flistValidateOutputFilePaths</span></code> on save. Step directories (<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>
+on each step) are held to the same rule by <code class="docutils literal notranslate"><span class="pre">flistValidateStepDirectories</span></code>
+— a value like <code class="docutils literal notranslate"><span class="pre">/workspace/GJ1132_XUV/KeplerFfdCorner</span></code> is rejected; the
+repo-relative form <code class="docutils literal notranslate"><span class="pre">KeplerFfdCorner</span></code> is required. Input references
+inside <code class="docutils literal notranslate"><span class="pre">saCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code> are
+deliberately <em>not</em> validated — a step may legitimately read an
+absolute <code class="docutils literal notranslate"><span class="pre">/workspace/GJ1132_XUV/Plot/foo.pdf</span></code> produced by a sibling
+workflow. Badges are emitted only for the producing workflow; a
+consumer workflow sees the file as a read path, not as a tracked
+artifact.</p>
+<p>Test markers — JSON files that record the outcome of the last pytest
+session for each step, including <code class="docutils literal notranslate"><span class="pre">dictOutputHashes</span></code> for staleness
+detection — live inside the project repo at
+<code class="docutils literal notranslate"><span class="pre">&lt;sProjectRepoPath&gt;/.vaibify/test_markers/&lt;slug&gt;.json</span></code> where the slug
+is derived from the step’s (repo-relative) <code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>. Marker
+<em>writes</em> (by the conftest plugin deployed into each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code>
+directory) and <em>reads</em> (by <code class="docutils literal notranslate"><span class="pre">fileStatusManager</span></code>, <code class="docutils literal notranslate"><span class="pre">gitRoutes</span></code>,
+<code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>) both resolve the directory through
+<code class="docutils literal notranslate"><span class="pre">dictWorkflow[&quot;sProjectRepoPath&quot;]</span></code> — no module hardcodes
+<code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code>. Together with committing the
+markers alongside the workflow, this makes test-verification state
+survive a clone of the project repo.</p>
+<p>This choice has two architectural consequences worth naming:</p>
+<ul class="simple">
+<li><p><strong>No workspace-root workflows.</strong> A <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> at <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>
+(outside any enclosing git repo) cannot be reproduced and is not
+allowed. The <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code> surfaces this by stamping an empty
+<code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>, at which point the four <code class="docutils literal notranslate"><span class="pre">/api/git/*</span></code> endpoints
+return the explicit “Workflow is not in a git repository” payload
+rather than silently reporting <code class="docutils literal notranslate"><span class="pre">bIsRepo:</span> <span class="pre">false</span></code> against <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>.</p></li>
+<li><p><strong>Forward-compatible multi-workflow model.</strong> The workflow-dict field
+is the anchor for a future workflow-selector UI: when the user
+switches active workflows in a container, the cache key widens to
+<code class="docutils literal notranslate"><span class="pre">(sContainerId,</span> <span class="pre">sWorkflowPath)</span></code> and the badge scope re-scopes
+automatically — no changes to the git, badge, or manifest code.</p></li>
+</ul>
+<p>The invariant <code class="docutils literal notranslate"><span class="pre">testGitRoutesAlwaysPassProjectRepoToContainerGit</span></code> in
+<code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> guards the threading: every
+<code class="docutils literal notranslate"><span class="pre">containerGit.*</span></code> call in <code class="docutils literal notranslate"><span class="pre">gitRoutes.py</span></code> must pass <code class="docutils literal notranslate"><span class="pre">sWorkspace</span></code>
+explicitly. A silent fallback to the <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> default would
+reintroduce the all-grey-badges bug that motivated this design. A
+companion invariant <code class="docutils literal notranslate"><span class="pre">testNoWorkspaceRootedMarkerHardcodeInSource</span></code>
+bans the literal <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code> in any module
+under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> — enforcing that marker paths are always
+resolved from the active workflow’s <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>.</p>
 </section>
 <section id="python-backend">
 <h2>Python backend<a class="headerlink" href="#python-backend" title="Link to this heading"></a></h2>

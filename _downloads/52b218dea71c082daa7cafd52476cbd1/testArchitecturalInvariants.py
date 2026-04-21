@@ -20,6 +20,8 @@ __all__ = [
     "testOrchestratorReExportsAreComplete",
     "testEveryJsFileIsRecognizedAsIIFE",
     "testDockerfileDisablesAptSandboxBeforeFirstUpdate",
+    "testGitRoutesAlwaysPassProjectRepoToContainerGit",
+    "testNoWorkspaceRootedMarkerHardcodeInSource",
 ]
 
 
@@ -449,6 +451,106 @@ def testNoScienceSpecificIdentifiersInSource():
         + "\n".join(
             f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
             for sTerm, p, iLine, sText, sToken in listViolations
+        )
+    )
+
+
+# containerGit helpers that accept sWorkspace (all except the
+# project-repo detector, which consumes sWorkflowPath instead).
+SET_CONTAINER_GIT_WORKSPACE_FUNCTIONS = {
+    "fdictGitStatusInContainer",
+    "fdictComputeBlobShasInContainer",
+    "flistListContainerFiles",
+    "fsGitHeadShaInContainer",
+    "ftResultGitAddInContainer",
+    "ftResultGitCommitInContainer",
+}
+
+
+def _fbCallProvidesWorkspaceKwarg(nodeCall):
+    """Return True when nodeCall passes sWorkspace as a keyword argument."""
+    for keyword in nodeCall.keywords or []:
+        if keyword.arg == "sWorkspace":
+            return True
+    return False
+
+
+def _fbIsContainerGitCall(nodeCall):
+    """Return True when nodeCall is a containerGit.<name>(...) attribute call."""
+    if not isinstance(nodeCall.func, ast.Attribute):
+        return False
+    if not isinstance(nodeCall.func.value, ast.Name):
+        return False
+    return nodeCall.func.value.id == "containerGit"
+
+
+def testGitRoutesAlwaysPassProjectRepoToContainerGit():
+    """Every containerGit.* call in gitRoutes.py passes sWorkspace explicitly.
+
+    The workspace default is ``/workspace`` (a Docker-managed volume
+    that is not itself a git work tree). Routes must resolve the
+    active workflow's project repo and forward it explicitly — a
+    silent fallback to the default would reintroduce the all-grey
+    badge bug where every request runs git against a non-repo path.
+    """
+    sPath = ROUTES_DIR / "gitRoutes.py"
+    _, treeAst = ftParseFile(sPath)
+    listViolations = []
+    for node in ast.walk(treeAst):
+        if not isinstance(node, ast.Call):
+            continue
+        if not _fbIsContainerGitCall(node):
+            continue
+        sAttr = node.func.attr
+        if sAttr not in SET_CONTAINER_GIT_WORKSPACE_FUNCTIONS:
+            continue
+        if not _fbCallProvidesWorkspaceKwarg(node):
+            listViolations.append((sAttr, node.lineno))
+    assert listViolations == [], (
+        "gitRoutes.py must pass sWorkspace=<project-repo> to every "
+        "containerGit.* call; relying on the default reintroduces the "
+        "/workspace-as-repo bug:\n"
+        + "\n".join(
+            f"  {sAttr}() on line {iLine}" for sAttr, iLine in listViolations
+        )
+    )
+
+
+S_MARKER_HARDCODE_FORBIDDEN = "/workspace/.vaibify/test_markers"
+
+SET_MARKER_HARDCODE_EXEMPT_FILES = {
+    "stateContract.py",
+}
+
+
+def testNoWorkspaceRootedMarkerHardcodeInSource():
+    """No vaibify/gui module may hardcode /workspace/.vaibify/test_markers.
+
+    Test markers live under the active workflow's project repo —
+    ``<sProjectRepoPath>/.vaibify/test_markers/`` — resolved from the
+    workflow dict at request time. A string literal like
+    ``/workspace/.vaibify/test_markers`` in module code reintroduces
+    the workspace-rooted layout and causes badges/manifest to look at
+    one directory while step-status reads from another. Keep the
+    single exempt file list tight; ``stateContract.py`` refers to the
+    directory name in a docstring/comment as documentation.
+    """
+    pathGui = GUI_DIR
+    listViolations = []
+    for pathFile in pathGui.rglob("*.py"):
+        if pathFile.name in SET_MARKER_HARDCODE_EXEMPT_FILES:
+            continue
+        sSource = fsReadSource(pathFile)
+        for iLineNo, sLine in enumerate(sSource.splitlines(), start=1):
+            if S_MARKER_HARDCODE_FORBIDDEN in sLine:
+                listViolations.append(
+                    (pathFile.name, iLineNo, sLine.strip())
+                )
+    assert listViolations == [], (
+        f"Modules must not hardcode {S_MARKER_HARDCODE_FORBIDDEN!r}:\n"
+        + "\n".join(
+            f"  {sFile}:{iLine}: {sText}"
+            for sFile, iLine, sText in listViolations
         )
     )
 

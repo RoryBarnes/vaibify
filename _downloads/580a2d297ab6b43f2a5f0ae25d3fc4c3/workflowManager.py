@@ -5,6 +5,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 
 S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
 
@@ -38,7 +39,9 @@ __all__ = [
     "flistFindWorkflowsInContainer",
     "flistResolveOutputFiles",
     "flistResolveTestCommands",
+    "flistValidateOutputFilePaths",
     "flistValidateReferences",
+    "flistValidateStepDirectories",
     "fnDeleteStep",
     "fnInsertStep",
     "fnRenumberAllReferences",
@@ -50,6 +53,7 @@ __all__ = [
     "fsGetFileCategory",
     "fsGetPlotCategory",
     "fsResolveCommand",
+    "fsResolveStepWorkdir",
     "fsResolveVariables",
     "fsTestsDirectory",
 ]
@@ -67,7 +71,13 @@ T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 def flistFindWorkflowsInContainer(
     connectionDocker, sContainerId, sSearchRoot=None
 ):
-    """Search all repos in workspace for workflow JSON files."""
+    """Search for workflow.json files inside git-tracked project repos.
+
+    Candidates outside a git work tree are dropped — every valid
+    vaibify workflow must live inside the project repo it belongs to.
+    Each returned entry carries the auto-detected
+    ``sProjectRepoPath`` so downstream code never has to re-probe.
+    """
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
     sCommand = (
@@ -78,29 +88,70 @@ def flistFindWorkflowsInContainer(
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
+    listCandidates = [
+        sLine.strip() for sLine in sOutput.splitlines()
+        if sLine.strip().endswith(".json")
+    ]
+    if not listCandidates:
+        return []
+    dictRepoByPath = _fdictDetectReposForCandidates(
+        connectionDocker, sContainerId, listCandidates,
+    )
     listResults = []
-    for sLine in sOutput.splitlines():
-        sPath = sLine.strip()
-        if sPath.endswith(".json"):
-            sRepoName = _fsExtractRepoName(sPath, sSearchRoot)
-            sName = _fsReadWorkflowName(
-                connectionDocker, sContainerId, sPath
-            )
-            listResults.append({
-                "sPath": sPath,
-                "sName": sName,
-                "sRepoName": sRepoName,
-            })
+    for sPath in listCandidates:
+        sRepo = dictRepoByPath.get(sPath, "")
+        if not sRepo:
+            continue
+        sName = _fsReadWorkflowName(
+            connectionDocker, sContainerId, sPath,
+        )
+        listResults.append({
+            "sPath": sPath,
+            "sName": sName,
+            "sRepoName": posixpath.basename(sRepo),
+            "sProjectRepoPath": sRepo,
+        })
     return sorted(listResults, key=lambda d: d["sName"])
 
 
-def _fsExtractRepoName(sWorkflowPath, sSearchRoot):
-    """Extract the repo directory name from a workflow path."""
-    sRelative = sWorkflowPath.replace(sSearchRoot + "/", "", 1)
-    listParts = sRelative.split("/")
-    if listParts[0] == ".vaibify":
-        return "(container root)"
-    return listParts[0]
+def _fdictDetectReposForCandidates(
+    connectionDocker, sContainerId, listCandidatePaths,
+):
+    """Return {workflow-path: project-repo-path} via a single docker exec.
+
+    Paths whose parent directory is not inside a git work tree are
+    omitted from the result, so only workflows under version control
+    survive discovery.
+    """
+    sPathsJson = json.dumps(listCandidatePaths)
+    sScript = (
+        "import json, os, subprocess, sys\n"
+        "paths = json.loads(sys.stdin.read())\n"
+        "out = {}\n"
+        "for p in paths:\n"
+        "    d = os.path.dirname(p)\n"
+        "    if not d: continue\n"
+        "    r = subprocess.run(\n"
+        "        ['git', '-C', d, 'rev-parse', '--show-toplevel'],\n"
+        "        capture_output=True, text=True, timeout=5,\n"
+        "    )\n"
+        "    if r.returncode == 0:\n"
+        "        out[p] = r.stdout.strip()\n"
+        "print(json.dumps(out))\n"
+    )
+    sCommand = (
+        "python3 -c " + shlex.quote(sScript) +
+        " <<< " + shlex.quote(sPathsJson)
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        return {}
+    try:
+        return json.loads((sOutput or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {}
 
 
 def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
@@ -147,7 +198,89 @@ def fbValidateWorkflow(dictWorkflow):
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return False
+    if flistValidateOutputFilePaths(dictWorkflow):
+        return False
+    if flistValidateStepDirectories(dictWorkflow):
+        return False
     return True
+
+
+def flistValidateOutputFilePaths(dictWorkflow):
+    """Return warnings for output paths that leave the project repo.
+
+    Scans ``saOutputFiles``, ``saDataFiles``, and ``saPlotFiles`` on
+    every step. Absolute paths and ``..``-escaping paths are flagged;
+    template-bearing paths (containing ``{``) are skipped because
+    they are resolved against the global variables dict at run time.
+    """
+    listWarnings = []
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        sLabel = f"Step{iIndex + 1:02d}"
+        sDirectory = dictStep.get("sDirectory", "")
+        for sKey in ("saOutputFiles", "saDataFiles", "saPlotFiles"):
+            for sPath in dictStep.get(sKey, []):
+                sWarning = _fsCheckOutputPathBoundary(
+                    sPath, sDirectory, sLabel, sKey,
+                )
+                if sWarning:
+                    listWarnings.append(sWarning)
+    return listWarnings
+
+
+def flistValidateStepDirectories(dictWorkflow):
+    """Return warnings for step sDirectory values that leave the project repo.
+
+    Absolute paths (``/``-prefixed) and ``..``-escaping paths are
+    flagged; template-bearing paths (containing ``{``) are skipped
+    because they are resolved against the global variables dict at
+    run time.
+    """
+    listWarnings = []
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        sLabel = f"Step{iIndex + 1:02d}"
+        sDirectory = dictStep.get("sDirectory", "")
+        sWarning = _fsCheckStepDirectoryBoundary(sDirectory, sLabel)
+        if sWarning:
+            listWarnings.append(sWarning)
+    return listWarnings
+
+
+def _fsCheckStepDirectoryBoundary(sDirectory, sLabel):
+    """Return a warning for one sDirectory leaving the project repo, or ''."""
+    if not isinstance(sDirectory, str) or not sDirectory:
+        return ""
+    if "{" in sDirectory:
+        return ""
+    if posixpath.isabs(sDirectory):
+        return (
+            f"{sLabel}: sDirectory '{sDirectory}' must be repo-relative, "
+            f"not absolute"
+        )
+    sNorm = posixpath.normpath(sDirectory)
+    if sNorm == ".." or sNorm.startswith("../"):
+        return (
+            f"{sLabel}: sDirectory '{sDirectory}' escapes the project "
+            f"repo (resolves to '{sNorm}')"
+        )
+    return ""
+
+
+def _fsCheckOutputPathBoundary(sPath, sDirectory, sLabel, sKey):
+    """Return a warning for one path leaving the project repo, or ''."""
+    if not isinstance(sPath, str) or "{" in sPath:
+        return ""
+    if posixpath.isabs(sPath):
+        return (
+            f"{sLabel}: {sKey} entry '{sPath}' must be repo-relative, "
+            f"not absolute"
+        )
+    sJoined = posixpath.normpath(posixpath.join(sDirectory or "", sPath))
+    if sJoined == ".." or sJoined.startswith("../"):
+        return (
+            f"{sLabel}: {sKey} entry '{sPath}' escapes the project "
+            f"repo (resolves to '{sJoined}')"
+        )
+    return ""
 
 
 def fsResolveVariables(sTemplate, dictVariables):
@@ -500,6 +633,16 @@ def _fsResolveStepOutputPath(sResolvedFile, sStepDirectory, dictGlobalVars):
 def fsResolveCommand(sCommand, dictVariables):
     """Resolve template variables in a command string."""
     return fsResolveVariables(sCommand, dictVariables)
+
+
+def fsResolveStepWorkdir(sStepDirectory, dictVariables):
+    """Return absolute container workdir for a step's sDirectory."""
+    if not sStepDirectory or posixpath.isabs(sStepDirectory):
+        return sStepDirectory
+    sRepoRoot = dictVariables.get("sRepoRoot", "") if dictVariables else ""
+    if not sRepoRoot:
+        return sStepDirectory
+    return posixpath.join(sRepoRoot, sStepDirectory)
 
 
 def flistFilterFigureFiles(listOutputPaths):

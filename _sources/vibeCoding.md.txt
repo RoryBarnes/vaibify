@@ -9,10 +9,7 @@ documentation itself never drifts away from the code it describes.
 The principles are repository-agnostic. Vaibify is used as a worked
 example because it is a mid-sized Python and JavaScript codebase with
 more than two thousand unit tests, frequent refactors, and several
-collaborators of mixed software backgrounds. The same patterns apply
-to `alabi`, `vplot`, `vspace`, `multiplanet`, `bigplanet`, `vconverge`,
-and `vplanet_inference`, and to any scientific codebase with a similar
-shape.
+collaborators of mixed software backgrounds. 
 
 This is a methodology guide, not a quick reference. Expect to read it
 in one sitting, then come back to individual sections when you are

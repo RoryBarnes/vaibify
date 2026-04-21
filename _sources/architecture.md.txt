@@ -229,6 +229,88 @@ until a cross-platform user hit it. The divergence is load-bearing;
 the [AGENTS.md](../AGENTS.md) trap list and
 `tests/testArchitecturalInvariants.py` both guard it.
 
+## Workflow = git repo
+
+Every vaibify workflow lives inside a git repository — its "project
+repo". The `workflow.json` file belongs to that repo, not to the
+container, not to `/workspace`, and not to a shared vaibify-managed
+location. This constraint is enforced at discovery time
+(`flistFindWorkflowsInContainer` drops any candidate not inside a git
+work tree) and at creation time (`_fsValidateRepoDirectory` rejects
+target directories that are not git repos). It maps directly to L1 of
+the reproducibility ladder in [vision.md](vision.md): a workflow that
+cannot be committed cannot be reproduced.
+
+`/workspace` itself is a Docker-managed named volume, not a repo. It
+is the *discovery root* — the search origin for workflow.json files —
+but not a git target. Inside a container, `/workspace` contains N
+project-repo subdirectories (each a standalone git clone) plus some
+shared configuration. A single container can therefore host multiple
+workflows: GJ1132_XUV's paper pipeline today, XUVCatalog's
+cross-system analysis tomorrow, both reusing the same heavy dependency
+clones without needing a rebuild.
+
+The **active workflow determines the badge scope**. At connect time,
+`fdictHandleConnect` runs `git rev-parse --show-toplevel` inside the
+container, starting from the directory that contains the loaded
+`workflow.json`. The result is stamped on the workflow dict as
+`dictWorkflow["sProjectRepoPath"]` and every subsequent git / badge /
+manifest call threads it through `containerGit` as the authoritative
+workspace. The helper lives in
+`containerGit.fsDetectProjectRepoInContainer`; the routes read it from
+the active workflow dict.
+
+Per-step output paths (`saOutputFiles`, `saDataFiles`, `saPlotFiles`)
+must be repo-relative and must stay inside the project repo. Absolute
+paths and `..`-escaping paths are rejected by
+`flistValidateOutputFilePaths` on save. Step directories (`sDirectory`
+on each step) are held to the same rule by `flistValidateStepDirectories`
+— a value like `/workspace/GJ1132_XUV/KeplerFfdCorner` is rejected; the
+repo-relative form `KeplerFfdCorner` is required. Input references
+inside `saCommands` / `saPlotCommands` / `saDataCommands` are
+deliberately *not* validated — a step may legitimately read an
+absolute `/workspace/GJ1132_XUV/Plot/foo.pdf` produced by a sibling
+workflow. Badges are emitted only for the producing workflow; a
+consumer workflow sees the file as a read path, not as a tracked
+artifact.
+
+Test markers — JSON files that record the outcome of the last pytest
+session for each step, including `dictOutputHashes` for staleness
+detection — live inside the project repo at
+`<sProjectRepoPath>/.vaibify/test_markers/<slug>.json` where the slug
+is derived from the step's (repo-relative) `sDirectory`. Marker
+*writes* (by the conftest plugin deployed into each step's `tests/`
+directory) and *reads* (by `fileStatusManager`, `gitRoutes`,
+`syncDispatcher`) both resolve the directory through
+`dictWorkflow["sProjectRepoPath"]` — no module hardcodes
+`/workspace/.vaibify/test_markers`. Together with committing the
+markers alongside the workflow, this makes test-verification state
+survive a clone of the project repo.
+
+This choice has two architectural consequences worth naming:
+
+- **No workspace-root workflows.** A `workflow.json` at `/workspace`
+  (outside any enclosing git repo) cannot be reproduced and is not
+  allowed. The `pipelineServer` surfaces this by stamping an empty
+  `sProjectRepoPath`, at which point the four `/api/git/*` endpoints
+  return the explicit "Workflow is not in a git repository" payload
+  rather than silently reporting `bIsRepo: false` against `/workspace`.
+- **Forward-compatible multi-workflow model.** The workflow-dict field
+  is the anchor for a future workflow-selector UI: when the user
+  switches active workflows in a container, the cache key widens to
+  `(sContainerId, sWorkflowPath)` and the badge scope re-scopes
+  automatically — no changes to the git, badge, or manifest code.
+
+The invariant `testGitRoutesAlwaysPassProjectRepoToContainerGit` in
+`tests/testArchitecturalInvariants.py` guards the threading: every
+`containerGit.*` call in `gitRoutes.py` must pass `sWorkspace`
+explicitly. A silent fallback to the `/workspace` default would
+reintroduce the all-grey-badges bug that motivated this design. A
+companion invariant `testNoWorkspaceRootedMarkerHardcodeInSource`
+bans the literal `/workspace/.vaibify/test_markers` in any module
+under `vaibify/gui/` — enforcing that marker paths are always
+resolved from the active workflow's `sProjectRepoPath`.
+
 ## Python backend
 
 The backend lives under `vaibify/gui/` and is organized into four
