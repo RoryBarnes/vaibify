@@ -90,17 +90,31 @@ def fsToRepoRelative(sPath):
     return sNormal.lstrip("/")
 
 
-def _flistStepOutputRepoPaths(dictStep):
-    """Return repo-relative paths of plot + data files for one step."""
+def _flistStepOutputRepoPaths(dictStep, dictVars=None):
+    """Return repo-relative paths of plot + data files for one step.
+
+    Templated entries (``{sPlotDirectory}/foo.pdf``) are expected to
+    resolve to repo-relative paths and are NOT joined with the step
+    directory; non-templated entries are joined with the step
+    directory (where the step actually writes them).
+    """
     sDirectory = dictStep.get("sDirectory", "")
     listPaths = []
     for sKey in ("saDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             if "{" in sFile:
-                continue
-            sJoined = posixpath.normpath(
-                posixpath.join(sDirectory, sFile)
-            )
+                if dictVars is None:
+                    continue
+                sResolved = workflowManager.fsResolveVariables(
+                    sFile, dictVars,
+                )
+                if "{" in sResolved:
+                    continue
+                sJoined = posixpath.normpath(sResolved)
+            else:
+                sJoined = posixpath.normpath(
+                    posixpath.join(sDirectory, sFile)
+                )
             listPaths.append(fsToRepoRelative(sJoined))
     return listPaths
 
@@ -191,6 +205,10 @@ def flistCanonicalTrackedFilesFromScans(
     ``TUPLE_ROOT_CONFIG_FILES`` with what exists at the workspace
     root.
     """
+    dictVars = {
+        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
     listPaths = []
     setSeen = set()
     setExcluded = set()
@@ -209,7 +227,7 @@ def flistCanonicalTrackedFilesFromScans(
             if sPath and sPath not in setSeen and sPath not in setExcluded:
                 listPaths.append(sPath)
                 setSeen.add(sPath)
-        for sPath in _flistStepOutputRepoPaths(dictStep):
+        for sPath in _flistStepOutputRepoPaths(dictStep, dictVars):
             if sPath and sPath not in setSeen and sPath not in setExcluded:
                 listPaths.append(sPath)
                 setSeen.add(sPath)

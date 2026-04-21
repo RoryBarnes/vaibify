@@ -61,10 +61,19 @@ def _fsGitBadge(sRepoRelPath, dictGitStatus):
     return _DICT_GIT_STATE_TO_BADGE.get(sState, S_BADGE_DRIFTED)
 
 
-def _fsRemoteBadge(sCurrentSha, sLastPushedDigest):
-    """Compare current content hash against a remote's last-pushed digest."""
-    if not sLastPushedDigest:
+def _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked):
+    """Three-state icon for one remote: none / drifted / synced.
+
+    ``bTracked`` reflects whether the user opted this file into the
+    remote (today the ``b{Service}`` flag in ``dictSyncStatus``).
+    Without opt-in the icon stays grey even if the file happens to
+    have been pushed previously; with opt-in but no matching digest
+    it paints orange (tracked but not yet in sync).
+    """
+    if not bTracked:
         return S_BADGE_NONE
+    if not sLastPushedDigest:
+        return S_BADGE_DRIFTED
     if not sCurrentSha:
         return S_BADGE_DRIFTED
     if sCurrentSha == sLastPushedDigest:
@@ -90,10 +99,14 @@ def fdictBadgesForFile(
     return {
         "sGithub": _fsGitBadge(sRepoRelPath, dictGitStatus),
         "sOverleaf": _fsRemoteBadge(
-            sCurrentSha, dictEntry.get("sOverleafLastPushedDigest", ""),
+            sCurrentSha,
+            dictEntry.get("sOverleafLastPushedDigest", ""),
+            dictEntry.get("bOverleaf", False),
         ),
         "sZenodo": _fsRemoteBadge(
-            sCurrentSha, dictEntry.get("sZenodoLastPushedDigest", ""),
+            sCurrentSha,
+            dictEntry.get("sZenodoLastPushedDigest", ""),
+            dictEntry.get("bZenodo", False),
         ),
     }
 
@@ -145,10 +158,12 @@ def fdictBadgeStateFromHashes(
             "sOverleaf": _fsRemoteBadge(
                 sCurrentSha,
                 dictEntry.get("sOverleafLastPushedDigest", ""),
+                dictEntry.get("bOverleaf", False),
             ),
             "sZenodo": _fsRemoteBadge(
                 sCurrentSha,
                 dictEntry.get("sZenodoLastPushedDigest", ""),
+                dictEntry.get("bZenodo", False),
             ),
         }
     return dictResult

@@ -640,23 +640,6 @@ var VaibifyStepRenderer = (function () {
         }
         if ((sArrayKey === "saPlotFiles" ||
             sArrayKey === "saDataFiles") && !bInvalid) {
-            var sCategory = dictContext.fsGetFileCategory(
-                iStepIdx, sRaw, sArrayKey
-            );
-            var bArchive = sCategory === "archive";
-            var sFileLabel = sArrayKey === "saPlotFiles" ?
-                "plot" : "data file";
-            sHtml += '<span class="archive-star ' +
-                (bArchive ? "active" : "inactive") +
-                '" data-step="' + iStepIdx +
-                '" data-file="' + fnEscapeHtml(sRaw) +
-                '" data-array="' + sArrayKey +
-                '" title="' +
-                (bArchive ?
-                    "Archive " + sFileLabel :
-                    "Supporting " + sFileLabel) +
-                '">' + (bArchive ? "\u2605" : "\u2606") +
-                '</span>';
             if (typeof VaibifyGitBadges !== "undefined") {
                 var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
                     sResolved, sWorkdir

@@ -122,3 +122,73 @@ def test_fdictBuildManifestReport_handles_missing_workspace():
     )
     assert dictResult["bIsRepo"] is False
     assert dictResult["iCanonicalCount"] == 0
+
+
+# ----------------------------------------------------------------------
+# flistScopeCanonicalToService: per-push-target scoping of the warning
+# ----------------------------------------------------------------------
+
+
+def test_flistScopeCanonicalToService_github_is_unchanged():
+    listCanonical = ["a.py", "b.pdf", "c.bin"]
+    dictWorkflow = {"sProjectRepoPath": "/workspace/P"}
+    assert manifestCheck.flistScopeCanonicalToService(
+        listCanonical, dictWorkflow, "github",
+    ) == listCanonical
+
+
+def test_flistScopeCanonicalToService_empty_service_is_unchanged():
+    listCanonical = ["a.py", "b.pdf"]
+    assert manifestCheck.flistScopeCanonicalToService(
+        listCanonical, {}, "",
+    ) == listCanonical
+
+
+def test_flistScopeCanonicalToService_overleaf_filters_by_extension():
+    listCanonical = [
+        "Plot/fig.pdf", "code/a.py", "Plot/fig.png", "notes.tex",
+    ]
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/P",
+        "dictSyncStatus": {
+            "Plot/fig.pdf": {"bOverleaf": True},
+            "Plot/fig.png": {"bOverleaf": True},
+            "notes.tex": {"bOverleaf": True},
+            "code/a.py": {"bOverleaf": True},
+        },
+    }
+    listScoped = manifestCheck.flistScopeCanonicalToService(
+        listCanonical, dictWorkflow, "overleaf",
+    )
+    assert listScoped == ["Plot/fig.pdf", "Plot/fig.png", "notes.tex"]
+
+
+def test_flistScopeCanonicalToService_overleaf_requires_tracking_flag():
+    listCanonical = ["Plot/fig.pdf", "Plot/other.pdf"]
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/P",
+        "dictSyncStatus": {
+            "Plot/fig.pdf": {"bOverleaf": True},
+            "Plot/other.pdf": {"bOverleaf": False},
+        },
+    }
+    listScoped = manifestCheck.flistScopeCanonicalToService(
+        listCanonical, dictWorkflow, "overleaf",
+    )
+    assert listScoped == ["Plot/fig.pdf"]
+
+
+def test_flistScopeCanonicalToService_zenodo_uses_zenodo_flag():
+    listCanonical = ["Plot/fig.pdf", "data/raw.csv", "other.h5"]
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/P",
+        "dictSyncStatus": {
+            "Plot/fig.pdf": {"bZenodo": True},
+            "data/raw.csv": {"bZenodo": False},
+            "other.h5": {"bZenodo": True},
+        },
+    }
+    listScoped = manifestCheck.flistScopeCanonicalToService(
+        listCanonical, dictWorkflow, "zenodo",
+    )
+    assert listScoped == ["Plot/fig.pdf", "other.h5"]

@@ -45,9 +45,11 @@ __all__ = [
     "flistValidateStepDirectories",
     "fnDeleteStep",
     "fnInsertStep",
+    "fnMigrateArchiveToTracking",
     "fnRenumberAllReferences",
     "fnReorderStep",
     "fnSaveWorkflowToContainer",
+    "fnSetServiceTracking",
     "fnUpdateOverleafDigests",
     "fnUpdateStep",
     "fnUpdateSyncStatus",
@@ -869,6 +871,74 @@ def _fnUpdateServiceDigests(
                 fdictInitializeSyncEntry()
             )
         dictWorkflow["dictSyncStatus"][sKey][sDigestKey] = sDigest
+
+
+def fnSetServiceTracking(
+    dictWorkflow, sPath, sService, bTrack, sProjectRepoPath=None,
+):
+    """Toggle whether a single file is tracked for one remote service.
+
+    ``sService`` is one of ``"Overleaf"`` / ``"Zenodo"`` / ``"Github"``.
+    The flag maps onto ``dictSyncStatus[key]['b{Service}']``. Setting a
+    flag to ``False`` does not clear the digest — a later re-opt-in
+    can still compare against the historical push.
+    """
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    if sProjectRepoPath is None:
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
+    if sKey not in dictWorkflow["dictSyncStatus"]:
+        dictWorkflow["dictSyncStatus"][sKey] = (
+            fdictInitializeSyncEntry()
+        )
+    dictWorkflow["dictSyncStatus"][sKey][f"b{sService}"] = bool(bTrack)
+
+
+def fnMigrateArchiveToTracking(dictWorkflow):
+    """One-shot: promote legacy 'archive' categories to tracking flags.
+
+    Before the badge rework, each output file carried an "archive"
+    vs. "supporting" designation in ``dictPlotFileCategories`` /
+    ``dictDataFileCategories``. Archive files were the ones pushed
+    to Overleaf and Zenodo in batch operations. This function seeds
+    ``dictSyncStatus`` entries with ``bOverleaf=True`` and
+    ``bZenodo=True`` for each previously-archive file so badges
+    render in the expected "tracked" state after the upgrade. Runs
+    at most once per workflow (guarded by ``bArchiveTrackingMigrated``
+    on the top-level dict) to avoid re-tracking files a user has
+    since explicitly un-tracked. Returns True when a migration ran.
+    """
+    if dictWorkflow.get("bArchiveTrackingMigrated"):
+        return False
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sStepDir = dictStep.get("sDirectory", "")
+        for sArrayKey in ("saDataFiles", "saPlotFiles"):
+            for sFile in dictStep.get(sArrayKey, []):
+                if fsGetFileCategory(dictStep, sFile) != "archive":
+                    continue
+                sRepoRel = _fsJoinRepoRelPath(sStepDir, sFile)
+                sKey = fsToSyncStatusKey(sRepoRel, sRepoRoot)
+                if sKey not in dictWorkflow["dictSyncStatus"]:
+                    dictWorkflow["dictSyncStatus"][sKey] = (
+                        fdictInitializeSyncEntry()
+                    )
+                dictWorkflow["dictSyncStatus"][sKey]["bOverleaf"] = True
+                dictWorkflow["dictSyncStatus"][sKey]["bZenodo"] = True
+    dictWorkflow["bArchiveTrackingMigrated"] = True
+    return True
+
+
+def _fsJoinRepoRelPath(sStepDir, sFile):
+    """Join a step dir and a filename into a repo-relative path."""
+    if not sStepDir:
+        return sFile
+    if posixpath.isabs(sFile):
+        return sFile
+    return posixpath.join(sStepDir, sFile)
 
 
 def fnUpdateOverleafDigests(

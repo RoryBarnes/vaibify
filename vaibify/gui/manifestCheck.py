@@ -12,6 +12,7 @@ actual ``git add`` + ``git commit`` side effect when the user accepts.
 """
 
 from . import gitStatus, stateContract
+from . import workflowManager
 
 __all__ = [
     "S_STATE_MODIFIED",
@@ -21,6 +22,7 @@ __all__ = [
     "fdictBuildManifestReport",
     "fdictBuildManifestReportFromStatus",
     "flistFilesNeedingCommit",
+    "flistScopeCanonicalToService",
 ]
 
 
@@ -36,6 +38,52 @@ _DICT_LABEL_MAP = {
     "dirty": S_STATE_DIRTY,
     "untracked": S_STATE_UNTRACKED,
 }
+
+_FROZENSET_OVERLEAF_EXTENSIONS = frozenset({
+    ".tex", ".pdf", ".png", ".jpg", ".jpeg",
+    ".eps", ".svg", ".bib",
+})
+
+
+def flistScopeCanonicalToService(
+    listCanonical, dictWorkflow, sService,
+):
+    """Filter the canonical file list to those relevant to ``sService``.
+
+    GitHub pushes go through git itself, so every canonical path is
+    relevant — the list is returned unchanged. Overleaf only accepts
+    a fixed set of extensions; Zenodo accepts any file but only those
+    the user has explicitly opted into (``bZenodo=True``). Returning
+    an unscoped list here would flood the pre-push warning with
+    files that couldn't possibly be part of the push.
+    """
+    sNormalized = (sService or "").lower()
+    if sNormalized in ("", "github"):
+        return listCanonical
+    dictSyncStatus = dictWorkflow.get("dictSyncStatus", {}) or {}
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    listScoped = []
+    for sPath in listCanonical:
+        if sNormalized == "overleaf":
+            sLower = sPath.lower()
+            iDot = sLower.rfind(".")
+            if iDot < 0 or sLower[iDot:] not in (
+                _FROZENSET_OVERLEAF_EXTENSIONS
+            ):
+                continue
+            dictEntry = workflowManager.fdictLookupSyncEntry(
+                dictSyncStatus, sPath, sProjectRepoPath,
+            )
+            if not dictEntry.get("bOverleaf"):
+                continue
+        elif sNormalized == "zenodo":
+            dictEntry = workflowManager.fdictLookupSyncEntry(
+                dictSyncStatus, sPath, sProjectRepoPath,
+            )
+            if not dictEntry.get("bZenodo"):
+                continue
+        listScoped.append(sPath)
+    return listScoped
 
 
 def flistFilesNeedingCommit(listCanonical, dictGitStatus):

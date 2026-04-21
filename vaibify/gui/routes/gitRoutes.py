@@ -154,7 +154,9 @@ def _fnRegisterManifestCheck(app, dictCtx):
     """Register GET /api/git/{sContainerId}/manifest-check."""
 
     @app.get("/api/git/{sContainerId}/manifest-check")
-    async def fnManifestCheck(sContainerId: str):
+    async def fnManifestCheck(
+        sContainerId: str, sService: str = "",
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -174,8 +176,11 @@ def _fnRegisterManifestCheck(app, dictCtx):
         listTracked = _flistCanonicalFromContainer(
             docker, sContainerId, dictWorkflow, sRepo,
         ) if dictGit.get("bIsRepo") else []
+        listScoped = manifestCheck.flistScopeCanonicalToService(
+            listTracked, dictWorkflow, sService,
+        )
         return manifestCheck.fdictBuildManifestReportFromStatus(
-            dictGit, listTracked,
+            dictGit, listScoped,
         )
 
 

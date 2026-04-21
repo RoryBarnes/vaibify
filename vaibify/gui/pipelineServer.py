@@ -184,6 +184,12 @@ class SyncSetupRequest(BaseModel):
     sToken: Optional[str] = None
 
 
+class SyncTrackingRequest(BaseModel):
+    sPath: str
+    sService: str
+    bTrack: bool
+
+
 class CreateWorkflowRequest(BaseModel):
     sWorkflowName: str
     sFileName: str
@@ -724,6 +730,8 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
                 dictCtx["docker"], sContainerId, sResolved,
             )
         )
+        if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
+            dictCtx["save"](sContainerId, dictWorkflow)
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )

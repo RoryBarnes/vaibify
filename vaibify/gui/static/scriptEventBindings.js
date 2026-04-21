@@ -58,12 +58,17 @@ var PipeleyenEventBindings = (function () {
         );
     }
 
-    function _fnHandleArchiveStar(event, elMatch) {
+    function _fnHandleRemoteBadge(event, elMatch) {
         event.stopPropagation();
-        PipeleyenApp.fnToggleArchiveCategory(
-            parseInt(elMatch.dataset.step),
-            elMatch.dataset.file,
-            elMatch.dataset.array || "saPlotFiles"
+        var sRemoteKey = elMatch.dataset.remote || "";
+        var elItem = elMatch.closest(".detail-item");
+        if (!elItem) return;
+        var sResolved = elItem.dataset.resolved || "";
+        var sWorkdir = elItem.dataset.workdir || "";
+        if (!sResolved || !sRemoteKey) return;
+        VaibifySyncManager.fnToggleRemoteTracking(
+            sRemoteKey, sResolved, sWorkdir,
+            Boolean(event.shiftKey),
         );
     }
 
@@ -244,7 +249,7 @@ var PipeleyenEventBindings = (function () {
         ".action-copy": _fnHandleActionCopy,
         ".action-delete": _fnHandleActionDelete,
         ".btn-discovered": _fnHandleDiscoveredButton,
-        ".archive-star": _fnHandleArchiveStar,
+        ".remote-badge": _fnHandleRemoteBadge,
         ".test-add": _fnHandleTestAdd,
         ".section-add": _fnHandleSectionAdd,
         ".verification-row.clickable":

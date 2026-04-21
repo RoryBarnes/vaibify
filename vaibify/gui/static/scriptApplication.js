@@ -1216,27 +1216,6 @@ const PipeleyenApp = (function () {
         return dictData[sFilePath] || "archive";
     }
 
-    async function fnToggleArchiveCategory(
-        iStep, sFilePath, sArrayKey
-    ) {
-        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
-        var sDictKey = sArrayKey === "saDataFiles" ?
-            "dictDataFileCategories" : "dictPlotFileCategories";
-        if (!dictStep[sDictKey]) {
-            dictStep[sDictKey] = {};
-        }
-        var sCurrentCategory = fsGetFileCategory(
-            iStep, sFilePath, sArrayKey
-        );
-        var sNewCategory = sCurrentCategory === "archive" ?
-            "supporting" : "archive";
-        dictStep[sDictKey][sFilePath] = sNewCategory;
-        var dictUpdate = {};
-        dictUpdate[sDictKey] = dictStep[sDictKey];
-        await fnSaveStepUpdate(iStep, dictUpdate);
-        fnRenderStepList();
-    }
-
     function fnBindStepEvents() {
         if (_dictWorkflowState.bDelegatedEventsInitialized) return;
         _dictWorkflowState.bDelegatedEventsInitialized = true;
@@ -2167,7 +2146,6 @@ const PipeleyenApp = (function () {
         /* New public methods for extracted modules */
         fnDeleteDetailItem: fnDeleteDetailItem,
         fnAddDiscoveredOutput: fnAddDiscoveredOutput,
-        fnToggleArchiveCategory: fnToggleArchiveCategory,
         fnAddNewItem: fnAddNewItem,
         fnCycleUserVerification: fnCycleUserVerification,
         fsetGetExpandedCategory: fsetGetExpandedCategory,

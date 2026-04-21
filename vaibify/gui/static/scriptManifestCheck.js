@@ -115,14 +115,16 @@ var VaibifyManifestCheck = (function () {
         });
     }
 
-    async function fbRunBeforePush(sContainerId) {
+    async function fbRunBeforePush(sContainerId, sService) {
         if (!sContainerId) return true;
         var dictReport;
+        var sUrl = "/api/git/" + encodeURIComponent(sContainerId) +
+            "/manifest-check";
+        if (sService) {
+            sUrl += "?sService=" + encodeURIComponent(sService);
+        }
         try {
-            dictReport = await VaibifyApi.fdictGet(
-                "/api/git/" + encodeURIComponent(sContainerId) +
-                    "/manifest-check"
-            );
+            dictReport = await VaibifyApi.fdictGet(sUrl);
         } catch (error) {
             return true;
         }

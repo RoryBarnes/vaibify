@@ -261,6 +261,57 @@ def test_fdictLookupSyncEntry_returns_empty_when_missing():
     assert fdictLookupSyncEntry({}, "Plot/fig.pdf", "") == {}
 
 
+def test_fnSetServiceTracking_enables_and_disables_overleaf():
+    from vaibify.gui.workflowManager import fnSetServiceTracking
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnSetServiceTracking(
+        dictWorkflow, "/workspace/Proj/Plot/fig.pdf", "Overleaf", True,
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["bOverleaf"] is True
+    fnSetServiceTracking(
+        dictWorkflow, "/workspace/Proj/Plot/fig.pdf", "Overleaf", False,
+    )
+    assert dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"][
+        "bOverleaf"] is False
+
+
+def test_fnMigrateArchiveToTracking_seeds_flags_for_archive_files():
+    from vaibify.gui.workflowManager import fnMigrateArchiveToTracking
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/Proj",
+        "listSteps": [
+            {
+                "sDirectory": "StepA",
+                "saPlotFiles": ["a.pdf"],
+                "saDataFiles": ["a.h5"],
+                "dictPlotFileCategories": {"a.pdf": "archive"},
+                "dictDataFileCategories": {"a.h5": "supporting"},
+            },
+        ],
+    }
+    assert fnMigrateArchiveToTracking(dictWorkflow) is True
+    dictSync = dictWorkflow["dictSyncStatus"]
+    assert dictSync["StepA/a.pdf"]["bOverleaf"] is True
+    assert dictSync["StepA/a.pdf"]["bZenodo"] is True
+    assert "StepA/a.h5" not in dictSync
+
+
+def test_fnMigrateArchiveToTracking_runs_only_once():
+    from vaibify.gui.workflowManager import fnMigrateArchiveToTracking
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/Proj",
+        "listSteps": [
+            {"sDirectory": "X", "saPlotFiles": ["a.pdf"]},
+        ],
+    }
+    assert fnMigrateArchiveToTracking(dictWorkflow) is True
+    dictWorkflow["dictSyncStatus"]["X/a.pdf"]["bOverleaf"] = False
+    assert fnMigrateArchiveToTracking(dictWorkflow) is False
+    assert dictWorkflow["dictSyncStatus"]["X/a.pdf"][
+        "bOverleaf"] is False
+
+
 def test_flistResolveOutputFiles_resolves():
     dictStep = {"saPlotFiles": ["{sPlotDirectory}/fig.pdf"]}
     dictVars = {"sPlotDirectory": "Figures"}

@@ -124,9 +124,42 @@ def test_overleaf_badge_drifted_when_digest_differs(tmp_path):
 
 
 def test_overleaf_badge_drifted_when_file_missing(tmp_path):
-    dictEntry = {"sOverleafLastPushedDigest": "a" * 40}
+    dictEntry = {
+        "bOverleaf": True,
+        "sOverleafLastPushedDigest": "a" * 40,
+    }
     dictResult = badgeState.fdictBadgesForFile(
         "ghost.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), {},
+    )
+    assert dictResult["sOverleaf"] == badgeState.S_BADGE_DRIFTED
+
+
+def test_overleaf_badge_none_when_not_tracked(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictCache = {}
+    sSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "fig.pdf", dictCache,
+    )
+    dictEntry = {
+        "bOverleaf": False,
+        "sOverleafLastPushedDigest": sSha,
+    }
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), dictCache,
+    )
+    assert dictResult["sOverleaf"] == badgeState.S_BADGE_NONE
+
+
+def test_overleaf_badge_drifted_when_tracked_but_never_pushed(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictEntry = {
+        "bOverleaf": True,
+        "sOverleafLastPushedDigest": "",
+    }
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
         str(tmp_path), {},
     )
     assert dictResult["sOverleaf"] == badgeState.S_BADGE_DRIFTED
