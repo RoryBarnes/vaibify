@@ -30,21 +30,46 @@ var VaibifySyncManager = (function () {
     async function fnOpenPushModal(sService) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId) return;
-        var dictResult = await VaibifyApi.fdictGet(
-            "/api/sync/" + sContainerId + "/check/" + sService
-        );
-        if (!dictResult.bConnected) {
-            fnShowConnectionSetup(sService);
-            return;
-        }
-        if (typeof VaibifyManifestCheck !== "undefined") {
-            var bProceed = await VaibifyManifestCheck.fbRunBeforePush(
-                sContainerId
+        var elToast = _fnShowOpeningToast(sService);
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/sync/" + sContainerId + "/check/" + sService
             );
-            if (!bProceed) return;
+            if (!dictResult.bConnected) {
+                fnShowConnectionSetup(sService);
+                return;
+            }
+            if (typeof VaibifyManifestCheck !== "undefined") {
+                var bProceed = await VaibifyManifestCheck.fbRunBeforePush(
+                    sContainerId, sService
+                );
+                if (!bProceed) return;
+            }
+            _sPushService = sService;
+            await fnPopulatePushModal(sService);
+        } finally {
+            if (elToast && elToast.parentNode) elToast.remove();
         }
-        _sPushService = sService;
-        fnPopulatePushModal(sService);
+    }
+
+    function _fnShowOpeningToast(sService) {
+        var elContainer = document.getElementById("toastContainer");
+        if (!elContainer) return null;
+        var dictLabels = {
+            overleaf: "Overleaf",
+            github: "GitHub",
+            zenodo: "Zenodo",
+        };
+        var sLabel = dictLabels[sService] || sService;
+        var el = document.createElement("div");
+        el.className = "toast sticky-diff-toast";
+        el.innerHTML =
+            '<span class="spinner"></span>' +
+            '<span class="sticky-diff-toast-label">' +
+            'Preparing ' + sLabel + ' push\u2026' +
+            '</span>';
+        elContainer.appendChild(el);
+        return el;
     }
 
     var _I_SLOW_DIFF_TOAST_MS = 5000;
@@ -342,12 +367,22 @@ var VaibifySyncManager = (function () {
         }
         var sCount = fsFormatFileCount(_listCaseCollisions.length);
         var sButton = "";
+        var sIfIgnored = "";
         if (_sSuggestedTargetDirectory) {
+            var sSuggested = VaibifyUtilities.fnEscapeHtml(
+                _sSuggestedTargetDirectory);
             sButton =
                 '<button type="button" class="btn btn-small" ' +
                 'id="btnUseCanonicalCase">Use ' +
-                VaibifyUtilities.fnEscapeHtml(
-                    _sSuggestedTargetDirectory) + '/</button>';
+                sSuggested + '/</button>';
+            sIfIgnored =
+                '<p class="case-collision-intro">' +
+                'Click <strong>Use ' + sSuggested + '/</strong> to ' +
+                'snap the target directory to the existing Overleaf ' +
+                'path. If you ignore this, the push will use the ' +
+                'case you have typed above — Overleaf will touch the ' +
+                'existing entry but show it under both spellings, ' +
+                'which usually looks like duplicate files.</p>';
         }
         return (
             '<div class="case-collision-banner" role="status">' +
@@ -358,6 +393,7 @@ var VaibifySyncManager = (function () {
             'Overleaf treats directory names case-insensitively. ' +
             'Pushing to a different case than the existing entry ' +
             'can create phantom duplicate files.</p>' +
+            sIfIgnored +
             sButton +
             '</div>'
         );
@@ -929,11 +965,51 @@ var VaibifySyncManager = (function () {
         elModal.style.display = "flex";
     }
 
+    var _DICT_REMOTE_KEY_TO_SERVICE = {
+        sGithub: "Github",
+        sOverleaf: "Overleaf",
+        sZenodo: "Zenodo",
+    };
+
+    async function fnToggleRemoteTracking(
+        sRemoteKey, sResolved, sWorkdir, bShiftClick,
+    ) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
+            sResolved, sWorkdir);
+        var sCurrentState = dictTriple[sRemoteKey] || "none";
+        var bCurrentlyTracked = sCurrentState !== "none";
+        var listToFlip = [sRemoteKey];
+        if (bShiftClick && !bCurrentlyTracked) {
+            listToFlip = ["sGithub", "sOverleaf", "sZenodo"];
+        }
+        try {
+            for (var i = 0; i < listToFlip.length; i++) {
+                await VaibifyApi.fdictPost(
+                    "/api/sync/" + sContainerId + "/track",
+                    {
+                        sPath: sResolved,
+                        sService:
+                            _DICT_REMOTE_KEY_TO_SERVICE[listToFlip[i]],
+                        bTrack: !bCurrentlyTracked,
+                    }
+                );
+            }
+            await VaibifyGitBadges.fnRefresh(sContainerId);
+            PipeleyenApp.fnRenderStepList();
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                _fsSanitizeError(error.message), "error");
+        }
+    }
+
     return {
         fnOpenPushModal: fnOpenPushModal,
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,
         fnShowHelpPopup: fnShowHelpPopup,
+        fnToggleRemoteTracking: fnToggleRemoteTracking,
         fsFormatFileCount: fsFormatFileCount,
     };
 })();

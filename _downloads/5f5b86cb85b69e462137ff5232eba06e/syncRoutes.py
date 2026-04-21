@@ -17,6 +17,7 @@ from ..pipelineServer import (
     OverleafDiffRequest,
     SyncPushRequest,
     SyncSetupRequest,
+    SyncTrackingRequest,
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
     fnValidatePathWithinRoot,
@@ -688,6 +689,25 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return {
             "bHasCredential": _fbServiceHasStoredCredential(sService),
         }
+
+    @app.post("/api/sync/{sContainerId}/track")
+    async def fnSetTracking(
+        sContainerId: str, request: SyncTrackingRequest,
+    ):
+        dictCtx["require"]()
+        if request.sService not in ("Overleaf", "Zenodo", "Github"):
+            raise HTTPException(
+                400,
+                "sService must be Overleaf, Zenodo, or Github",
+            )
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        workflowManager.fnSetServiceTracking(
+            dictWorkflow, request.sPath, request.sService,
+            request.bTrack,
+        )
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"bSuccess": True}
 
 
 def _fbServiceHasStoredCredential(sService):
