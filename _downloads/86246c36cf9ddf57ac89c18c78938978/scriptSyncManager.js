@@ -685,9 +685,10 @@ var VaibifySyncManager = (function () {
 
     async function _fnDispatchPush(listPaths) {
         document.getElementById("modalPush").style.display = "none";
-        PipeleyenApp.fnShowToast(
-            "Pushing " + fsFormatFileCount(listPaths.length) +
-            "...", "success");
+        var sServiceLabel = _fsServiceLabel(_sPushService);
+        var elProgress = _fnShowPushProgressToast(
+            listPaths.length, sServiceLabel,
+        );
         var sEndpoint = _fsServiceEndpoint(_sPushService);
         var sAction = _fsServiceAction(_sPushService);
         var sContainerId = PipeleyenApp.fsGetContainerId();
@@ -699,16 +700,104 @@ var VaibifySyncManager = (function () {
             var dictResult = await VaibifyApi.fdictPost(
                 sEndpoint + sContainerId + "/" + sAction, dictBody
             );
+            _fnRemoveToast(elProgress);
             if (!dictResult.bSuccess) {
                 fnShowSyncError(dictResult, _sPushService);
                 return;
             }
-            PipeleyenApp.fnShowToast("Push complete!", "success");
+            if (_sPushService === "zenodo" && dictResult.sDoi) {
+                _fnShowZenodoSuccessToast(dictResult);
+            } else {
+                PipeleyenApp.fnShowToast(
+                    "Push complete!", "success");
+            }
             PipeleyenApp.fnRenderStepList();
         } catch (error) {
+            _fnRemoveToast(elProgress);
             PipeleyenApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
+    }
+
+    function _fsServiceLabel(sService) {
+        if (sService === "overleaf") return "Overleaf";
+        if (sService === "zenodo") return "Zenodo";
+        return "GitHub";
+    }
+
+    function _fnShowPushProgressToast(iCount, sServiceLabel) {
+        var elContainer = document.getElementById("toastContainer");
+        if (!elContainer) return null;
+        var elToast = document.createElement("div");
+        elToast.className = "toast toast-progress";
+        elToast.innerHTML =
+            '<span class="toast-spinner" aria-hidden="true"></span>' +
+            '<span class="toast-progress-text">Pushing ' +
+            VaibifyUtilities.fnEscapeHtml(fsFormatFileCount(iCount)) +
+            ' to ' + VaibifyUtilities.fnEscapeHtml(sServiceLabel) +
+            '... this can take a while for large archives.</span>';
+        elContainer.appendChild(elToast);
+        return elToast;
+    }
+
+    function _fnRemoveToast(elToast) {
+        if (elToast && elToast.parentNode) {
+            elToast.parentNode.removeChild(elToast);
+        }
+    }
+
+    function _fnShowZenodoSuccessToast(dictResult) {
+        var elContainer = document.getElementById("toastContainer");
+        if (!elContainer) return;
+        var sDoi = VaibifyUtilities.fnEscapeHtml(dictResult.sDoi || "");
+        var sUrl = dictResult.sHtmlUrl || "";
+        var sSafeUrl = _fbSafeZenodoUrl(sUrl) ?
+            VaibifyUtilities.fnEscapeHtml(sUrl) : "";
+        var elToast = document.createElement("div");
+        elToast.className = "toast success toast-zenodo";
+        elToast.innerHTML =
+            '<div class="toast-zenodo-title">Published to Zenodo</div>' +
+            '<div class="toast-zenodo-doi">DOI: ' +
+            '<code>' + sDoi + '</code> ' +
+            '<button type="button" class="toast-zenodo-copy" ' +
+            'data-doi="' + sDoi + '">Copy</button></div>' +
+            (sSafeUrl
+                ? '<div class="toast-zenodo-link">' +
+                  '<a href="' + sSafeUrl +
+                  '" target="_blank" rel="noopener">' +
+                  'Open on Zenodo</a></div>'
+                : '') +
+            '<button class="toast-close">&times;</button>';
+        elToast.querySelector(".toast-close").addEventListener(
+            "click", function () { elToast.remove(); });
+        var elCopy = elToast.querySelector(".toast-zenodo-copy");
+        if (elCopy) {
+            elCopy.addEventListener("click", function () {
+                _fnCopyToClipboard(dictResult.sDoi || "");
+                elCopy.textContent = "Copied";
+            });
+        }
+        elContainer.appendChild(elToast);
+    }
+
+    function _fbSafeZenodoUrl(sUrl) {
+        if (!sUrl) return false;
+        return sUrl.indexOf("https://zenodo.org/") === 0 ||
+            sUrl.indexOf("https://sandbox.zenodo.org/") === 0;
+    }
+
+    function _fnCopyToClipboard(sText) {
+        if (!sText) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sText);
+            return;
+        }
+        var elTmp = document.createElement("textarea");
+        elTmp.value = sText;
+        document.body.appendChild(elTmp);
+        elTmp.select();
+        try { document.execCommand("copy"); } catch (e) { /* noop */ }
+        document.body.removeChild(elTmp);
     }
 
     function fsFormatFileCount(iCount) {
@@ -758,8 +847,11 @@ var VaibifySyncManager = (function () {
         var elProjectId = document.getElementById(
             "groupSetupProjectId");
         var elToken = document.getElementById("groupSetupToken");
+        var elZenodoInstance = document.getElementById(
+            "groupSetupZenodoInstance");
         elProjectId.style.display = "none";
         elToken.style.display = "none";
+        if (elZenodoInstance) elZenodoInstance.style.display = "none";
         if (sService === "overleaf") {
             await _fnSetupOverleafFields(elProjectId, elToken, elModal);
         } else if (sService === "zenodo") {
@@ -883,6 +975,42 @@ var VaibifySyncManager = (function () {
         if (elHelp) elLabel.appendChild(elHelp);
         document.getElementById("modalConnectionTitle")
             .textContent = "Connect to Zenodo";
+        var elInstance = document.getElementById(
+            "groupSetupZenodoInstance");
+        if (elInstance) {
+            elInstance.style.display = "";
+            _fnBindZenodoInstanceChange();
+            _fnUpdateZenodoTokenLink(_fsReadZenodoInstance());
+        }
+    }
+
+    function _fsReadZenodoInstance() {
+        var elChecked = document.querySelector(
+            'input[name="zenodoInstance"]:checked');
+        if (elChecked && elChecked.value) return elChecked.value;
+        return "sandbox";
+    }
+
+    function _fnBindZenodoInstanceChange() {
+        var listRadios = document.querySelectorAll(
+            'input[name="zenodoInstance"]');
+        for (var iRadio = 0; iRadio < listRadios.length; iRadio += 1) {
+            listRadios[iRadio].onchange = function () {
+                _fnUpdateZenodoTokenLink(_fsReadZenodoInstance());
+            };
+        }
+    }
+
+    function _fnUpdateZenodoTokenLink(sInstance) {
+        var elLink = document.getElementById("linkZenodoTokens");
+        if (!elLink) return;
+        var sHost = (sInstance === "production")
+            ? "zenodo.org" : "sandbox.zenodo.org";
+        var sUrl = "https://" + sHost +
+            "/account/settings/applications/";
+        elLink.href = sUrl;
+        elLink.textContent = sHost +
+            "/account/settings/applications/";
     }
 
     function fnBindConnectionSetupEvents() {
@@ -932,6 +1060,9 @@ var VaibifySyncManager = (function () {
             "inputSetupToken").value.trim();
         if (sProjectId) dictBody.sProjectId = sProjectId;
         if (sToken) dictBody.sToken = sToken;
+        if (sService === "zenodo") {
+            dictBody.sZenodoInstance = _fsReadZenodoInstance();
+        }
         var sContainerId = PipeleyenApp.fsGetContainerId();
         try {
             var dictResult = await VaibifyApi.fdictPost(

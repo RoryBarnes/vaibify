@@ -735,6 +735,102 @@ def test_setup_zenodo_validation_passes(clientHttp):
     mockDelete.assert_not_called()
 
 
+def test_setup_zenodo_stores_token_in_sandbox_slot_by_default(
+    clientHttp,
+):
+    """Default sZenodoInstance is sandbox -> zenodo_token_sandbox."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ) as mockStore, patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ):
+        clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "good_zenodo_token",
+            },
+        )
+    sStoredName = mockStore.call_args[0][2]
+    assert sStoredName == "zenodo_token_sandbox"
+
+
+def test_setup_zenodo_stores_production_token_in_production_slot(
+    clientHttp,
+):
+    """sZenodoInstance=production -> zenodo_token_production slot."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ) as mockStore, patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ) as mockValidate:
+        clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "prod_token",
+                "sZenodoInstance": "production",
+            },
+        )
+    sStoredName = mockStore.call_args[0][2]
+    assert sStoredName == "zenodo_token_production"
+    assert mockValidate.call_args[0][2] == "zenodo"
+
+
+def test_setup_zenodo_persists_service_on_success(clientHttp):
+    """Successful setup writes sZenodoService to the workflow."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ) as mockSave:
+        clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "prod_token",
+                "sZenodoInstance": "production",
+            },
+        )
+    assert mockSave.called
+    dictWorkflow = mockSave.call_args[0][2]
+    assert dictWorkflow.get("sZenodoService") == "zenodo"
+
+
+def test_setup_zenodo_rejects_invalid_instance(clientHttp):
+    """Unknown sZenodoInstance values are rejected with HTTP 400."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/sync/{S_CONTAINER_ID}/setup",
+        json={
+            "sService": "zenodo",
+            "sToken": "whatever",
+            "sZenodoInstance": "devel",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
 # ── Overleaf mirror endpoints (refresh / tree / diff / delete) ──
 
 
@@ -1297,3 +1393,131 @@ def test_overleaf_diff_rejects_absolute_target_directory(clientHttp):
         },
     )
     assert responseHttp.status_code == 400
+
+
+def test_fsBuildZenodoTitle_prefers_project_title():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle({
+        "sProjectTitle": "GJ1132 XUV evolution",
+        "sWorkflowName": "run1",
+    })
+    assert sTitle == "GJ1132 XUV evolution"
+
+
+def test_fsBuildZenodoTitle_falls_back_to_workflow_name():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle({"sWorkflowName": "run1"})
+    assert sTitle == "run1"
+
+
+def test_fsBuildZenodoTitle_falls_back_to_default():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle({})
+    assert sTitle == "Vaibify archive"
+
+
+def test_fsBuildZenodoTitle_strips_single_quote():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle(
+        {"sProjectTitle": "Rory's pipeline"}
+    )
+    assert sTitle == "Rorys pipeline"
+
+
+def test_fdictParseZenodoResult_extracts_fields():
+    from vaibify.gui.routes.syncRoutes import _fdictParseZenodoResult
+    sOut = (
+        "Creating draft...\n"
+        "ZENODO_RESULT={\"iDepositId\": 42, \"sDoi\": "
+        "\"10.5281/zenodo.42\", \"sConceptDoi\": \"\", "
+        "\"sHtmlUrl\": \"https://sandbox.zenodo.org/records/42\"}\n"
+    )
+    dictParsed = _fdictParseZenodoResult(sOut)
+    assert dictParsed["iDepositId"] == 42
+    assert dictParsed["sDoi"] == "10.5281/zenodo.42"
+    assert dictParsed["sHtmlUrl"] == (
+        "https://sandbox.zenodo.org/records/42"
+    )
+
+
+def test_fdictParseZenodoResult_missing_marker_returns_empty():
+    from vaibify.gui.routes.syncRoutes import _fdictParseZenodoResult
+    assert _fdictParseZenodoResult("no marker here\n") == {}
+
+
+def test_fdictParseZenodoResult_malformed_json_returns_empty():
+    from vaibify.gui.routes.syncRoutes import _fdictParseZenodoResult
+    assert _fdictParseZenodoResult(
+        "ZENODO_RESULT={not json}") == {}
+
+
+def test_fnPersistZenodoPublishRecord_writes_fields():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistZenodoPublishRecord,
+    )
+    dictWorkflow = {}
+    _fnPersistZenodoPublishRecord(dictWorkflow, {
+        "iDepositId": 7,
+        "sDoi": "10.5281/zenodo.7",
+        "sConceptDoi": "10.5281/zenodo.6",
+        "sHtmlUrl": "https://sandbox.zenodo.org/records/7",
+    })
+    assert dictWorkflow["sZenodoDepositionId"] == "7"
+    assert dictWorkflow["sZenodoLatestDoi"] == "10.5281/zenodo.7"
+    assert dictWorkflow["sZenodoConceptDoi"] == "10.5281/zenodo.6"
+    assert dictWorkflow["sZenodoLatestUrl"] == (
+        "https://sandbox.zenodo.org/records/7"
+    )
+
+
+def test_fnPersistZenodoPublishRecord_skips_empty_fields():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistZenodoPublishRecord,
+    )
+    dictWorkflow = {"sZenodoLatestDoi": "existing"}
+    _fnPersistZenodoPublishRecord(dictWorkflow, {
+        "sDoi": "", "sHtmlUrl": "", "iDepositId": 0,
+    })
+    assert dictWorkflow.get("sZenodoLatestDoi") == "existing"
+    assert "sZenodoDepositionId" not in dictWorkflow
+
+
+def test_fsReadHostGitUserName_returns_git_output():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    mockResult = MagicMock()
+    mockResult.stdout = "Jane Doe\n"
+    with patch.object(subprocess, "run", return_value=mockResult):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "Jane Doe"
+
+
+def test_fsReadHostGitUserName_falls_back_on_empty():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    mockResult = MagicMock()
+    mockResult.stdout = ""
+    with patch.object(subprocess, "run", return_value=mockResult):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "Vaibify User"
+
+
+def test_fsReadHostGitUserName_falls_back_on_exception():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    with patch.object(
+        subprocess, "run",
+        side_effect=FileNotFoundError("git missing"),
+    ):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "Vaibify User"
+
+
+def test_fsReadHostGitUserName_strips_quote():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    mockResult = MagicMock()
+    mockResult.stdout = "O'Brien\n"
+    with patch.object(subprocess, "run", return_value=mockResult):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "OBrien"

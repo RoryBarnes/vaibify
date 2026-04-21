@@ -18,6 +18,9 @@ from .pipelineUtils import fsShellQuote
 __all__ = [
     "fbValidateOverleafCredentials",
     "fbValidateZenodoToken",
+    "fsZenodoInstanceToService",
+    "fsZenodoTokenNameForInstance",
+    "SET_VALID_ZENODO_INSTANCES",
     "fdictCheckConnectivity",
     "fdictClassifyError",
     "fdictDiffOverleafPush",
@@ -53,7 +56,41 @@ __all__ = [
 ]
 
 SET_VALID_SERVICES = {"github", "overleaf", "zenodo"}
-SET_VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
+SET_VALID_TOKEN_NAMES = {
+    "overleaf_token",
+    "zenodo_token",
+    "zenodo_token_sandbox",
+    "zenodo_token_production",
+    "gh_token",
+}
+SET_VALID_ZENODO_INSTANCES = {"sandbox", "production"}
+_DICT_ZENODO_INSTANCE_TO_SERVICE = {
+    "sandbox": "sandbox",
+    "production": "zenodo",
+}
+_LIST_ZENODO_TOKEN_NAMES = [
+    "zenodo_token_sandbox",
+    "zenodo_token_production",
+    "zenodo_token",
+]
+
+
+def fsZenodoInstanceToService(sZenodoInstance):
+    """Map a UI instance name to the ZenodoClient service key."""
+    if sZenodoInstance not in SET_VALID_ZENODO_INSTANCES:
+        raise ValueError(
+            f"Invalid Zenodo instance: {sZenodoInstance}"
+        )
+    return _DICT_ZENODO_INSTANCE_TO_SERVICE[sZenodoInstance]
+
+
+def fsZenodoTokenNameForInstance(sZenodoInstance):
+    """Return the keyring slot name for a Zenodo UI instance."""
+    if sZenodoInstance not in SET_VALID_ZENODO_INSTANCES:
+        raise ValueError(
+            f"Invalid Zenodo instance: {sZenodoInstance}"
+        )
+    return f"zenodo_token_{sZenodoInstance}"
 
 
 _LIST_AUTH_PATTERNS = [
@@ -246,25 +283,112 @@ def ftResultPullFromOverleaf(
     )
 
 
+_DICT_ZENODO_API_BASE = {
+    "sandbox": "https://sandbox.zenodo.org/api",
+    "zenodo": "https://zenodo.org/api",
+}
+
+
 def ftResultArchiveToZenodo(
-    connectionDocker, sContainerId, sService, listFilePaths,
+    connectionDocker, sContainerId, sZenodoService, listFilePaths,
+    sTitle="Vaibify archive", sCreatorName="Vaibify User",
 ):
-    """Upload files to Zenodo inside the container."""
-    fnValidateServiceName(sService)
-    sImport = (
-        "from vaibify.reproducibility.zenodoClient "
-        "import ZenodoClient"
-    )
-    sCall = (
-        f"c=ZenodoClient({repr(sService)}); "
-        f"d=c.fdictCreateDraft(); "
-        f"[c.fnUploadFile(d['id'], f) for f in {repr(listFilePaths)}]; "
-        f"c.fnPublishDraft(d['id']); "
-        f"print('Published deposit:', d['id'])"
-    )
+    """Upload files to Zenodo inside the container.
+
+    ``sZenodoService`` is the ZenodoClient service key
+    (``"sandbox"`` or ``"zenodo"``) that selects which instance to
+    publish to and which keyring slot to read the token from.
+    ``sTitle`` is sent as the deposition title; Zenodo rejects
+    publishes with empty titles. ``sCreatorName`` is sent as the
+    single creator's ``name`` field (Phase 2 will replace this with
+    a metadata form). The inline command uses only ``keyring`` and
+    ``requests`` because the container does not have the vaibify
+    package installed.
+    """
+    if sZenodoService not in _DICT_ZENODO_API_BASE:
+        raise ValueError(
+            f"Invalid Zenodo service: {sZenodoService}"
+        )
+    _fnValidateArchiveFilePaths(listFilePaths)
+    _fnValidateArchiveTitle(sTitle)
+    _fnValidateArchiveCreator(sCreatorName)
+    sBaseApi = _DICT_ZENODO_API_BASE[sZenodoService]
+    sSlot = f"zenodo_token_{'sandbox' if sZenodoService == 'sandbox' else 'production'}"
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId,
+        _fsBuildZenodoArchiveCommand(
+            sBaseApi, sSlot, listFilePaths, sTitle, sCreatorName,
+        ),
     )
+
+
+def _fnValidateArchiveCreator(sCreatorName):
+    """Reject creator names that would break inline-command quoting."""
+    if not isinstance(sCreatorName, str) or not sCreatorName.strip():
+        raise ValueError("Creator name must be non-empty string")
+    if "'" in sCreatorName or "\\" in sCreatorName or "\x00" in sCreatorName:
+        raise ValueError(
+            f"Unsupported character in creator name: {sCreatorName!r}"
+        )
+
+
+def _fnValidateArchiveTitle(sTitle):
+    """Reject titles that would break inline-command single quoting."""
+    if not isinstance(sTitle, str) or not sTitle.strip():
+        raise ValueError("Archive title must be non-empty string")
+    if "'" in sTitle or "\\" in sTitle or "\x00" in sTitle:
+        raise ValueError(
+            f"Unsupported character in archive title: {sTitle!r}"
+        )
+
+
+def _fnValidateArchiveFilePaths(listFilePaths):
+    """Reject paths with characters that would break inline-command quoting."""
+    for sPath in listFilePaths:
+        if not isinstance(sPath, str) or not sPath:
+            raise ValueError("Archive file path must be non-empty string")
+        if "'" in sPath or "\\" in sPath or "\x00" in sPath:
+            raise ValueError(
+                f"Unsupported character in archive path: {sPath!r}"
+            )
+
+
+def _fsBuildZenodoArchiveCommand(
+    sBaseApi, sSlot, listFilePaths, sTitle, sCreatorName,
+):
+    """Build a self-contained python3 command that publishes a deposit."""
+    sImport = "import keyring, requests, sys, posixpath, json"
+    sPaths = repr(list(listFilePaths))
+    sDraftUrl = repr(sBaseApi + "/deposit/depositions")
+    sPublishPrefix = repr(sBaseApi + "/deposit/depositions/")
+    sDescription = f"Archived by Vaibify ({sTitle})"
+    sCall = (
+        f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
+        "or keyring.get_password('vaibify', 'zenodo_token') "
+        "or sys.exit('no-token'); "
+        "H={'Authorization': 'Bearer '+_t}; "
+        "_fail=lambda r: sys.exit('HTTP '+str(r.status_code)+' '"
+        "+r.url+': '+r.text[:500]); "
+        f"r=requests.post({sDraftUrl}, headers=H, "
+        f"json={{'metadata': {{'title': {repr(sTitle)}, "
+        "'upload_type': 'dataset', "
+        f"'description': {repr(sDescription)}, "
+        f"'creators': [{{'name': {repr(sCreatorName)}}}]}}}}); "
+        "r.ok or _fail(r); d=r.json(); "
+        "iDid=d['id']; sBucket=d['links']['bucket']; "
+        "[ru.ok or _fail(ru) for ru in "
+        "(requests.put(sBucket+'/'+posixpath.basename(p), headers=H, "
+        f"data=open(p,'rb')) for p in {sPaths})]; "
+        f"rp=requests.post({sPublishPrefix}+str(iDid)+'/actions/publish', "
+        "headers=H); rp.ok or _fail(rp); "
+        "_p=rp.json(); "
+        "print('ZENODO_RESULT=' + json.dumps({"
+        "'iDepositId': iDid, "
+        "'sDoi': _p.get('doi', ''), "
+        "'sConceptDoi': _p.get('conceptdoi', ''), "
+        "'sHtmlUrl': _p.get('links', {}).get('html', '')}))"
+    )
+    return fsPythonCommand(sImport, sCall)
 
 
 _LIST_GITHUB_HARDENING_CONFIG = [
@@ -519,10 +643,26 @@ def fdictCheckConnectivity(
     if sService == "overleaf":
         return _fdictCheckHostKeyring("overleaf_token")
     if sService == "zenodo":
-        return _fdictCheckKeyring(
-            connectionDocker, sContainerId, "zenodo_token"
+        return _fdictCheckZenodoKeyring(
+            connectionDocker, sContainerId,
         )
     return {"bConnected": False, "sMessage": "Unknown service"}
+
+
+def _fdictCheckZenodoKeyring(connectionDocker, sContainerId):
+    """Return Connected if any Zenodo token slot is populated."""
+    if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+        return {
+            "bConnected": False,
+            "sMessage": S_KEYRING_BACKEND_FAIL_MESSAGE,
+        }
+    for sName in _LIST_ZENODO_TOKEN_NAMES:
+        dictProbe = _fdictProbeKeyringToken(
+            connectionDocker, sContainerId, sName,
+        )
+        if dictProbe["bConnected"]:
+            return dictProbe
+    return {"bConnected": False, "sMessage": "Token not found"}
 
 
 def _fdictCheckHostKeyring(sTokenName):
@@ -730,18 +870,50 @@ def _fnRemovePath(sPath):
         pass
 
 
-def fbValidateZenodoToken(connectionDocker, sContainerId):
-    """Test Zenodo token with a lightweight API call."""
-    sCommand = fsPythonCommand(
-        "from vaibify.reproducibility.zenodoClient "
-        "import ZenodoClient",
-        "c=ZenodoClient('sandbox'); "
-        "c.fdictListDepositions(iSize=1); print('ok')",
-    )
+_DICT_ZENODO_VALIDATION_ENDPOINT = {
+    "sandbox": (
+        "https://sandbox.zenodo.org/api/deposit/depositions",
+        "zenodo_token_sandbox",
+    ),
+    "zenodo": (
+        "https://zenodo.org/api/deposit/depositions",
+        "zenodo_token_production",
+    ),
+}
+
+
+def fbValidateZenodoToken(
+    connectionDocker, sContainerId, sService="sandbox",
+):
+    """Test a Zenodo token by listing deposits on the chosen service.
+
+    ``sService`` is the ZenodoClient service key (``"sandbox"`` or
+    ``"zenodo"``). Validation hits the same instance the token was
+    issued for; sandbox tokens are rejected by production and vice
+    versa. The inline command uses only ``keyring`` and ``requests``
+    because the container does not have the vaibify package installed.
+    """
+    if sService not in _DICT_ZENODO_VALIDATION_ENDPOINT:
+        raise ValueError(f"Invalid Zenodo service: {sService}")
+    sUrl, sSlot = _DICT_ZENODO_VALIDATION_ENDPOINT[sService]
     iExit, sOut = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
+        sContainerId, _fsBuildZenodoValidationCommand(sUrl, sSlot),
     )
     return iExit == 0 and "ok" in sOut
+
+
+def _fsBuildZenodoValidationCommand(sUrl, sSlot):
+    """Build a self-contained python3 command to validate the token."""
+    sCall = (
+        f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
+        "or keyring.get_password('vaibify', 'zenodo_token') "
+        "or sys.exit('no-token'); "
+        f"r=requests.get({repr(sUrl)}, "
+        "headers={'Authorization': 'Bearer '+_t}, "
+        "params={'size': 1}); "
+        "r.raise_for_status(); print('ok')"
+    )
+    return fsPythonCommand("import keyring, requests, sys", sCall)
 
 
 # ---------------------------------------------------------------------------
