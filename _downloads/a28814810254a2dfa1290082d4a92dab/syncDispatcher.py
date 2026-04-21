@@ -291,54 +291,110 @@ _DICT_ZENODO_API_BASE = {
 
 def ftResultArchiveToZenodo(
     connectionDocker, sContainerId, sZenodoService, listFilePaths,
-    sTitle="Vaibify archive", sCreatorName="Vaibify User",
+    dictMetadata=None,
 ):
     """Upload files to Zenodo inside the container.
 
     ``sZenodoService`` is the ZenodoClient service key
     (``"sandbox"`` or ``"zenodo"``) that selects which instance to
     publish to and which keyring slot to read the token from.
-    ``sTitle`` is sent as the deposition title; Zenodo rejects
-    publishes with empty titles. ``sCreatorName`` is sent as the
-    single creator's ``name`` field (Phase 2 will replace this with
-    a metadata form). The inline command uses only ``keyring`` and
-    ``requests`` because the container does not have the vaibify
-    package installed.
+    ``dictMetadata`` is the vaibify-side metadata block (see
+    ``workflowManager.fdictInitializeZenodoMetadata``); it is
+    translated to Zenodo API shape and base64-embedded so user-
+    supplied strings cannot break shell or Python quoting. The
+    inline command uses only ``keyring`` and ``requests`` because
+    the container does not have the vaibify package installed.
     """
     if sZenodoService not in _DICT_ZENODO_API_BASE:
         raise ValueError(
             f"Invalid Zenodo service: {sZenodoService}"
         )
     _fnValidateArchiveFilePaths(listFilePaths)
-    _fnValidateArchiveTitle(sTitle)
-    _fnValidateArchiveCreator(sCreatorName)
+    dictApi = _fdictBuildApiMetadata(dictMetadata or {})
+    _fnValidateApiMetadata(dictApi)
     sBaseApi = _DICT_ZENODO_API_BASE[sZenodoService]
-    sSlot = f"zenodo_token_{'sandbox' if sZenodoService == 'sandbox' else 'production'}"
+    sSlot = (
+        "zenodo_token_sandbox"
+        if sZenodoService == "sandbox"
+        else "zenodo_token_production"
+    )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId,
         _fsBuildZenodoArchiveCommand(
-            sBaseApi, sSlot, listFilePaths, sTitle, sCreatorName,
+            sBaseApi, sSlot, listFilePaths, dictApi,
         ),
     )
 
 
-def _fnValidateArchiveCreator(sCreatorName):
-    """Reject creator names that would break inline-command quoting."""
-    if not isinstance(sCreatorName, str) or not sCreatorName.strip():
-        raise ValueError("Creator name must be non-empty string")
-    if "'" in sCreatorName or "\\" in sCreatorName or "\x00" in sCreatorName:
-        raise ValueError(
-            f"Unsupported character in creator name: {sCreatorName!r}"
+def _fdictBuildApiMetadata(dictMetadata):
+    """Translate a vaibify metadata dict to the Zenodo API shape."""
+    sTitle = (dictMetadata.get("sTitle") or "").strip() or (
+        "Vaibify archive"
+    )
+    sDescription = (
+        dictMetadata.get("sDescription") or ""
+    ).strip() or f"Archived by Vaibify ({sTitle})"
+    dictApi = {
+        "title": sTitle,
+        "upload_type": "dataset",
+        "description": sDescription,
+        "creators": _flistBuildApiCreators(
+            dictMetadata.get("listCreators") or []
+        ),
+        "license": (
+            dictMetadata.get("sLicense") or "CC-BY-4.0"
+        ).strip(),
+    }
+    listKeywords = [
+        k.strip() for k in (dictMetadata.get("listKeywords") or [])
+        if isinstance(k, str) and k.strip()
+    ]
+    if listKeywords:
+        dictApi["keywords"] = listKeywords
+    sRelatedUrl = (
+        dictMetadata.get("sRelatedGithubUrl") or ""
+    ).strip()
+    if sRelatedUrl:
+        dictApi["related_identifiers"] = [{
+            "identifier": sRelatedUrl,
+            "relation": "isSupplementTo",
+            "resource_type": "software",
+        }]
+    return dictApi
+
+
+def _flistBuildApiCreators(listCreators):
+    """Build the Zenodo creators list; fall back to a placeholder."""
+    listApi = []
+    for dictCreator in listCreators:
+        sName = (dictCreator.get("sName") or "").strip()
+        if not sName:
+            continue
+        listApi.append(
+            _fdictBuildOneApiCreator(dictCreator, sName)
         )
+    return listApi or [{"name": "Vaibify User"}]
 
 
-def _fnValidateArchiveTitle(sTitle):
-    """Reject titles that would break inline-command single quoting."""
-    if not isinstance(sTitle, str) or not sTitle.strip():
-        raise ValueError("Archive title must be non-empty string")
-    if "'" in sTitle or "\\" in sTitle or "\x00" in sTitle:
+def _fdictBuildOneApiCreator(dictCreator, sName):
+    """Build a single Zenodo-shaped creator dict from a vaibify creator."""
+    dictApi = {"name": sName}
+    sAffiliation = (dictCreator.get("sAffiliation") or "").strip()
+    if sAffiliation:
+        dictApi["affiliation"] = sAffiliation
+    sOrcid = (dictCreator.get("sOrcid") or "").strip()
+    if sOrcid:
+        dictApi["orcid"] = sOrcid
+    return dictApi
+
+
+def _fnValidateApiMetadata(dictApi):
+    """Sanity-check the translated API metadata."""
+    if not dictApi.get("title"):
+        raise ValueError("Zenodo metadata title cannot be empty")
+    if not dictApi.get("creators"):
         raise ValueError(
-            f"Unsupported character in archive title: {sTitle!r}"
+            "Zenodo metadata must have at least one creator"
         )
 
 
@@ -354,14 +410,23 @@ def _fnValidateArchiveFilePaths(listFilePaths):
 
 
 def _fsBuildZenodoArchiveCommand(
-    sBaseApi, sSlot, listFilePaths, sTitle, sCreatorName,
+    sBaseApi, sSlot, listFilePaths, dictApiMetadata,
 ):
-    """Build a self-contained python3 command that publishes a deposit."""
-    sImport = "import keyring, requests, sys, posixpath, json"
+    """Build a self-contained python3 command that publishes a deposit.
+
+    Metadata is base64-encoded so user-provided strings cannot break
+    shell or Python quoting regardless of what characters they contain.
+    """
+    import base64
+    sMetadataB64 = base64.b64encode(
+        json.dumps(dictApiMetadata).encode("utf-8")
+    ).decode("ascii")
+    sImport = (
+        "import keyring, requests, sys, posixpath, json, base64"
+    )
     sPaths = repr(list(listFilePaths))
     sDraftUrl = repr(sBaseApi + "/deposit/depositions")
     sPublishPrefix = repr(sBaseApi + "/deposit/depositions/")
-    sDescription = f"Archived by Vaibify ({sTitle})"
     sCall = (
         f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
         "or keyring.get_password('vaibify', 'zenodo_token') "
@@ -369,11 +434,10 @@ def _fsBuildZenodoArchiveCommand(
         "H={'Authorization': 'Bearer '+_t}; "
         "_fail=lambda r: sys.exit('HTTP '+str(r.status_code)+' '"
         "+r.url+': '+r.text[:500]); "
+        f"_meta=json.loads(base64.b64decode('{sMetadataB64}')"
+        ".decode('utf-8')); "
         f"r=requests.post({sDraftUrl}, headers=H, "
-        f"json={{'metadata': {{'title': {repr(sTitle)}, "
-        "'upload_type': 'dataset', "
-        f"'description': {repr(sDescription)}, "
-        f"'creators': [{{'name': {repr(sCreatorName)}}}]}}}}); "
+        "json={'metadata': _meta}); "
         "r.ok or _fail(r); d=r.json(); "
         "iDid=d['id']; sBucket=d['links']['bucket']; "
         "[ru.ok or _fail(ru) for ru in "

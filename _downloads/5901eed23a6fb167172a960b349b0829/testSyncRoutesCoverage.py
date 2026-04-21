@@ -1416,12 +1416,13 @@ def test_fsBuildZenodoTitle_falls_back_to_default():
     assert sTitle == "Vaibify archive"
 
 
-def test_fsBuildZenodoTitle_strips_single_quote():
+def test_fsBuildZenodoTitle_preserves_quotes():
+    """Phase 2 transport is base64, so titles need no sanitization."""
     from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
     sTitle = _fsBuildZenodoTitle(
         {"sProjectTitle": "Rory's pipeline"}
     )
-    assert sTitle == "Rorys pipeline"
+    assert sTitle == "Rory's pipeline"
 
 
 def test_fdictParseZenodoResult_extracts_fields():
@@ -1521,3 +1522,123 @@ def test_fsReadHostGitUserName_strips_quote():
     with patch.object(subprocess, "run", return_value=mockResult):
         sName = syncRoutes._fsReadHostGitUserName()
     assert sName == "OBrien"
+
+
+# ----------------------------------------------------------------------
+# Zenodo metadata endpoints (Phase 2)
+# ----------------------------------------------------------------------
+
+
+def test_get_zenodo_metadata_returns_defaults(clientHttp):
+    """Workflow with no metadata yields the initialized defaults."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fsReadHostGitUserName",
+        return_value="Jane Doe",
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/zenodo/{S_CONTAINER_ID}/metadata"
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sTitle"] == ""
+    assert dictResult["sLicense"] == "CC-BY-4.0"
+    assert dictResult["sDefaultCreatorName"] == "Jane Doe"
+
+
+def test_post_zenodo_metadata_persists_fields(clientHttp):
+    """POST persists normalized metadata into the workflow."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ) as mockSave:
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+            json={
+                "sTitle": "My Dataset",
+                "sDescription": "Hello",
+                "listCreators": [{
+                    "sName": "Jane Doe",
+                    "sAffiliation": "UW",
+                    "sOrcid": "0000-0001-2345-6789",
+                }],
+                "sLicense": "MIT",
+                "listKeywords": ["alpha", "beta"],
+                "sRelatedGithubUrl": "https://github.com/u/r",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictSaved = mockSave.call_args[0][2]
+    dictMeta = dictSaved["dictZenodoMetadata"]
+    assert dictMeta["sTitle"] == "My Dataset"
+    assert dictMeta["listCreators"][0]["sName"] == "Jane Doe"
+    assert dictMeta["sLicense"] == "MIT"
+
+
+def test_post_zenodo_metadata_rejects_empty_title(clientHttp):
+    """Empty title returns HTTP 400."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+        json={
+            "sTitle": "   ",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_post_zenodo_metadata_rejects_missing_creator(clientHttp):
+    """At least one creator with a name is required."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+        json={
+            "sTitle": "X",
+            "listCreators": [{"sName": ""}],
+            "sLicense": "MIT",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+# ----------------------------------------------------------------------
+# Archive-uses-metadata (Phase 2)
+# ----------------------------------------------------------------------
+
+
+def test_fdictResolveZenodoMetadataForArchive_uses_stored_metadata():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictResolveZenodoMetadataForArchive,
+    )
+    dictWf = {
+        "sWorkflowName": "fallback",
+        "dictZenodoMetadata": {
+            "sTitle": "My Title",
+            "listCreators": [{
+                "sName": "Jane Doe",
+                "sAffiliation": "", "sOrcid": "",
+            }],
+            "sLicense": "MIT",
+            "sDescription": "", "listKeywords": [],
+            "sRelatedGithubUrl": "",
+        },
+    }
+    dictMeta = _fdictResolveZenodoMetadataForArchive(dictWf)
+    assert dictMeta["sTitle"] == "My Title"
+    assert dictMeta["listCreators"][0]["sName"] == "Jane Doe"
+
+
+def test_fdictResolveZenodoMetadataForArchive_fills_missing_title():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictResolveZenodoMetadataForArchive,
+    )
+    dictWf = {"sWorkflowName": "fallback-name"}
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fsReadHostGitUserName",
+        return_value="Jane",
+    ):
+        dictMeta = _fdictResolveZenodoMetadataForArchive(dictWf)
+    assert dictMeta["sTitle"] == "fallback-name"
+    assert dictMeta["listCreators"][0]["sName"] == "Jane"

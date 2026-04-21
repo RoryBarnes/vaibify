@@ -191,6 +191,21 @@ class SyncTrackingRequest(BaseModel):
     bTrack: bool
 
 
+class ZenodoCreatorRequest(BaseModel):
+    sName: str
+    sAffiliation: Optional[str] = ""
+    sOrcid: Optional[str] = ""
+
+
+class ZenodoMetadataRequest(BaseModel):
+    sTitle: str
+    sDescription: Optional[str] = ""
+    listCreators: List[ZenodoCreatorRequest] = []
+    sLicense: Optional[str] = "CC-BY-4.0"
+    listKeywords: List[str] = []
+    sRelatedGithubUrl: Optional[str] = ""
+
+
 class CreateWorkflowRequest(BaseModel):
     sWorkflowName: str
     sFileName: str

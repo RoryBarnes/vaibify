@@ -39,6 +39,11 @@ var VaibifySyncManager = (function () {
                 fnShowConnectionSetup(sService);
                 return;
             }
+            if (sService === "zenodo") {
+                var bMetaOk = await _fbEnsureZenodoMetadataBeforePush(
+                    sContainerId);
+                if (!bMetaOk) return;
+            }
             if (typeof VaibifyManifestCheck !== "undefined") {
                 var bProceed = await VaibifyManifestCheck.fbRunBeforePush(
                     sContainerId, sService
@@ -88,6 +93,7 @@ var VaibifySyncManager = (function () {
         };
         document.getElementById("modalPushTitle").textContent =
             "Push to " + dictNames[sService];
+        _fnToggleEditZenodoMetadataButton(sService);
         _fnRenderOverleafTargetRow(sService, sContainerId);
         _fnRenderPushAnnotationHost(sService);
         _fnRenderPushFileList();
@@ -838,6 +844,15 @@ var VaibifySyncManager = (function () {
         if (elAll) {
             elAll.addEventListener("click", fnHandlePushAll);
         }
+        var elEditMeta = document.getElementById(
+            "btnPushEditZenodoMetadata");
+        if (elEditMeta) {
+            elEditMeta.addEventListener("click", async function () {
+                document.getElementById("modalPush")
+                    .style.display = "none";
+                await fnOpenZenodoMetadataModal();
+            });
+        }
         fnBindConnectionSetupEvents();
     }
 
@@ -1135,8 +1150,234 @@ var VaibifySyncManager = (function () {
         }
     }
 
+    function _fnToggleEditZenodoMetadataButton(sService) {
+        var elButton = document.getElementById(
+            "btnPushEditZenodoMetadata");
+        if (!elButton) return;
+        elButton.style.display = sService === "zenodo" ? "" : "none";
+    }
+
+    async function fnOpenZenodoMetadataModal() {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return false;
+        var dictMeta;
+        try {
+            dictMeta = await VaibifyApi.fdictGet(
+                "/api/zenodo/" + sContainerId + "/metadata"
+            );
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                "Failed to load metadata: " +
+                _fsSanitizeError(error.message), "error");
+            return false;
+        }
+        return await _fbRunZenodoMetadataModal(
+            sContainerId, dictMeta || {});
+    }
+
+    function _fbRunZenodoMetadataModal(sContainerId, dictMeta) {
+        return new Promise(function (fnResolve) {
+            _fnPopulateZenodoMetadataForm(dictMeta);
+            var elModal = document.getElementById(
+                "modalZenodoMetadata");
+            elModal.style.display = "flex";
+            _fnBindZenodoMetadataButtons(
+                sContainerId, elModal, fnResolve);
+        });
+    }
+
+    function _fnPopulateZenodoMetadataForm(dictMeta) {
+        document.getElementById("zmTitle").value =
+            dictMeta.sTitle || "";
+        document.getElementById("zmDescription").value =
+            dictMeta.sDescription || "";
+        document.getElementById("zmKeywords").value =
+            (dictMeta.listKeywords || []).join(", ");
+        document.getElementById("zmRelatedUrl").value =
+            dictMeta.sRelatedGithubUrl || "";
+        _fnPopulateZmLicense(
+            dictMeta.sLicense || "CC-BY-4.0");
+        _fnRenderZmCreators(
+            dictMeta.listCreators || [],
+            dictMeta.sDefaultCreatorName || "");
+        var elError = document.getElementById("zmError");
+        elError.style.display = "none";
+        elError.textContent = "";
+    }
+
+    var _LIST_ZM_LICENSE_CHOICES = [
+        "CC-BY-4.0", "CC0-1.0", "MIT", "Apache-2.0",
+        "GPL-3.0-or-later", "BSD-3-Clause",
+    ];
+
+    function _fnPopulateZmLicense(sLicense) {
+        var elSelect = document.getElementById("zmLicense");
+        var elCustom = document.getElementById("zmLicenseCustom");
+        if (_LIST_ZM_LICENSE_CHOICES.indexOf(sLicense) >= 0) {
+            elSelect.value = sLicense;
+            elCustom.style.display = "none";
+            elCustom.value = "";
+        } else {
+            elSelect.value = "__custom__";
+            elCustom.style.display = "";
+            elCustom.value = sLicense;
+        }
+        elSelect.onchange = function () {
+            elCustom.style.display =
+                elSelect.value === "__custom__" ? "" : "none";
+        };
+    }
+
+    function _fnRenderZmCreators(listCreators, sDefaultName) {
+        var elList = document.getElementById("zmCreators");
+        elList.innerHTML = "";
+        var listToRender = listCreators && listCreators.length
+            ? listCreators
+            : [{sName: sDefaultName, sAffiliation: "", sOrcid: ""}];
+        listToRender.forEach(function (dictCreator) {
+            elList.appendChild(_fnBuildZmCreatorRow(dictCreator));
+        });
+    }
+
+    function _fnBuildZmCreatorRow(dictCreator) {
+        var elRow = document.createElement("div");
+        elRow.className = "zm-creator-row";
+        elRow.innerHTML =
+            '<input type="text" class="zm-creator-name" ' +
+            'placeholder="Name (required)" value="' +
+            VaibifyUtilities.fnEscapeHtml(
+                dictCreator.sName || "") + '">' +
+            '<input type="text" class="zm-creator-affiliation" ' +
+            'placeholder="Affiliation" value="' +
+            VaibifyUtilities.fnEscapeHtml(
+                dictCreator.sAffiliation || "") + '">' +
+            '<input type="text" class="zm-creator-orcid" ' +
+            'placeholder="ORCID" value="' +
+            VaibifyUtilities.fnEscapeHtml(
+                dictCreator.sOrcid || "") + '">' +
+            '<button type="button" class="zm-creator-remove" ' +
+            'title="Remove creator">&times;</button>';
+        elRow.querySelector(".zm-creator-remove")
+            .addEventListener("click", function () {
+                var elList = document.getElementById("zmCreators");
+                if (elList.children.length > 1) elRow.remove();
+            });
+        return elRow;
+    }
+
+    function _fnBindZenodoMetadataButtons(
+        sContainerId, elModal, fnResolve,
+    ) {
+        document.getElementById("btnZmAddCreator").onclick =
+            function () {
+                document.getElementById("zmCreators").appendChild(
+                    _fnBuildZmCreatorRow({}));
+            };
+        document.getElementById("btnZmCancel").onclick =
+            function () {
+                elModal.style.display = "none";
+                fnResolve(false);
+            };
+        document.getElementById("btnZmSave").onclick =
+            async function () {
+                var bSaved = await _fbSaveZenodoMetadata(
+                    sContainerId, elModal);
+                if (bSaved) fnResolve(true);
+            };
+    }
+
+    async function _fbSaveZenodoMetadata(sContainerId, elModal) {
+        var dictBody = _fdictCollectZmFormValues();
+        var elError = document.getElementById("zmError");
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/zenodo/" + sContainerId + "/metadata",
+                dictBody);
+        } catch (error) {
+            elError.textContent = _fsSanitizeError(error.message);
+            elError.style.display = "";
+            return false;
+        }
+        elModal.style.display = "none";
+        PipeleyenApp.fnShowToast(
+            "Zenodo metadata saved.", "success");
+        return true;
+    }
+
+    function _fdictCollectZmFormValues() {
+        var sLicenseSelect = document.getElementById(
+            "zmLicense").value;
+        var sLicense = sLicenseSelect === "__custom__"
+            ? document.getElementById("zmLicenseCustom").value.trim()
+            : sLicenseSelect;
+        var sKeywordsRaw = document.getElementById(
+            "zmKeywords").value.trim();
+        var listKeywords = sKeywordsRaw
+            ? sKeywordsRaw.split(",")
+                .map(function (s) { return s.trim(); })
+                .filter(function (s) { return !!s; })
+            : [];
+        return {
+            sTitle: document.getElementById("zmTitle").value.trim(),
+            sDescription: document.getElementById(
+                "zmDescription").value.trim(),
+            listCreators: _flistCollectZmCreators(),
+            sLicense: sLicense,
+            listKeywords: listKeywords,
+            sRelatedGithubUrl: document.getElementById(
+                "zmRelatedUrl").value.trim(),
+        };
+    }
+
+    function _flistCollectZmCreators() {
+        var listRows = document.querySelectorAll(
+            "#zmCreators .zm-creator-row");
+        var listOut = [];
+        for (var iRow = 0; iRow < listRows.length; iRow += 1) {
+            var el = listRows[iRow];
+            var sName = el.querySelector(
+                ".zm-creator-name").value.trim();
+            if (!sName) continue;
+            listOut.push({
+                sName: sName,
+                sAffiliation: el.querySelector(
+                    ".zm-creator-affiliation").value.trim(),
+                sOrcid: el.querySelector(
+                    ".zm-creator-orcid").value.trim(),
+            });
+        }
+        return listOut;
+    }
+
+    async function _fbEnsureZenodoMetadataBeforePush(sContainerId) {
+        try {
+            var dictMeta = await VaibifyApi.fdictGet(
+                "/api/zenodo/" + sContainerId + "/metadata");
+        } catch (error) {
+            return true;
+        }
+        if (_fbZenodoMetadataComplete(dictMeta)) return true;
+        PipeleyenApp.fnShowToast(
+            "Zenodo needs a title and at least one creator. " +
+            "Fill in the metadata form first.", "warning");
+        var bSaved = await _fbRunZenodoMetadataModal(
+            sContainerId, dictMeta || {});
+        return bSaved;
+    }
+
+    function _fbZenodoMetadataComplete(dictMeta) {
+        if (!dictMeta) return false;
+        if (!(dictMeta.sTitle || "").trim()) return false;
+        var listCreators = dictMeta.listCreators || [];
+        for (var iC = 0; iC < listCreators.length; iC += 1) {
+            if ((listCreators[iC].sName || "").trim()) return true;
+        }
+        return false;
+    }
+
     return {
         fnOpenPushModal: fnOpenPushModal,
+        fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,
         fnShowHelpPopup: fnShowHelpPopup,

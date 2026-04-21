@@ -22,6 +22,8 @@ __all__ = [
     "fdictCreateStep",
     "fdictGetStep",
     "fdictGetSyncStatus",
+    "fdictGetZenodoMetadata",
+    "fdictInitializeZenodoMetadata",
     "fdictLoadWorkflowFromContainer",
     "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
@@ -50,6 +52,7 @@ __all__ = [
     "fnReorderStep",
     "fnSaveWorkflowToContainer",
     "fnSetServiceTracking",
+    "fnSetZenodoMetadata",
     "fnUpdateOverleafDigests",
     "fnUpdateStep",
     "fnUpdateSyncStatus",
@@ -973,6 +976,113 @@ def fnUpdateZenodoDigests(
     _fnUpdateServiceDigests(
         dictWorkflow, "Zenodo", dictPathToDigest, sProjectRepoPath,
     )
+
+
+_TUPLE_ZENODO_LICENSE_CHOICES = (
+    "CC-BY-4.0", "CC0-1.0", "MIT", "Apache-2.0",
+    "GPL-3.0-or-later", "BSD-3-Clause",
+)
+
+
+def fdictInitializeZenodoMetadata():
+    """Return a fresh dictZenodoMetadata block with sensible defaults."""
+    return {
+        "sTitle": "",
+        "sDescription": "",
+        "listCreators": [
+            {"sName": "", "sAffiliation": "", "sOrcid": ""},
+        ],
+        "sLicense": "CC-BY-4.0",
+        "listKeywords": [],
+        "sRelatedGithubUrl": "",
+    }
+
+
+def fdictGetZenodoMetadata(dictWorkflow):
+    """Return the workflow's Zenodo metadata, initialized if absent."""
+    dictStored = dictWorkflow.get("dictZenodoMetadata")
+    if not dictStored:
+        return fdictInitializeZenodoMetadata()
+    return dictStored
+
+
+def fnSetZenodoMetadata(dictWorkflow, dictMetadata):
+    """Validate a metadata dict and write it to the workflow."""
+    _fnValidateZenodoMetadata(dictMetadata)
+    dictWorkflow["dictZenodoMetadata"] = _fdictNormalizeZenodoMetadata(
+        dictMetadata
+    )
+
+
+def _fnValidateZenodoMetadata(dictMetadata):
+    """Raise ValueError on missing required fields or malformed input."""
+    if not (dictMetadata.get("sTitle") or "").strip():
+        raise ValueError("Title is required")
+    listCreators = dictMetadata.get("listCreators") or []
+    if not any(
+        (c.get("sName") or "").strip() for c in listCreators
+    ):
+        raise ValueError(
+            "At least one creator with a name is required"
+        )
+    if not (dictMetadata.get("sLicense") or "").strip():
+        raise ValueError("License is required")
+    sUrl = (dictMetadata.get("sRelatedGithubUrl") or "").strip()
+    if sUrl and not sUrl.startswith(("http://", "https://")):
+        raise ValueError(
+            "Related URL must start with http:// or https://"
+        )
+
+
+def _fdictNormalizeZenodoMetadata(dictMetadata):
+    """Return a cleaned copy with stripped strings and dropped empties."""
+    return {
+        "sTitle": (dictMetadata.get("sTitle") or "").strip(),
+        "sDescription": (
+            dictMetadata.get("sDescription") or ""
+        ).strip(),
+        "listCreators": _flistNormalizeCreators(
+            dictMetadata.get("listCreators") or []
+        ),
+        "sLicense": (
+            dictMetadata.get("sLicense") or "CC-BY-4.0"
+        ).strip(),
+        "listKeywords": _flistNormalizeKeywords(
+            dictMetadata.get("listKeywords") or []
+        ),
+        "sRelatedGithubUrl": (
+            dictMetadata.get("sRelatedGithubUrl") or ""
+        ).strip(),
+    }
+
+
+def _flistNormalizeCreators(listCreators):
+    """Drop creators with empty names; strip each field."""
+    listOut = []
+    for dictCreator in listCreators:
+        sName = (dictCreator.get("sName") or "").strip()
+        if not sName:
+            continue
+        listOut.append({
+            "sName": sName,
+            "sAffiliation": (
+                dictCreator.get("sAffiliation") or ""
+            ).strip(),
+            "sOrcid": (dictCreator.get("sOrcid") or "").strip(),
+        })
+    return listOut
+
+
+def _flistNormalizeKeywords(listKeywords):
+    """Drop empty keywords; strip each."""
+    listOut = []
+    for sKeyword in listKeywords:
+        if not isinstance(sKeyword, str):
+            continue
+        sClean = sKeyword.strip()
+        if sClean:
+            listOut.append(sClean)
+    return listOut
 
 
 def fsetExtractUpstreamIndices(sText):
