@@ -159,6 +159,25 @@ class TestFlistResolveStepPaths:
         }
         assert _flistResolveStepPaths(dictStep, {}) == []
 
+    def test_relative_step_dir_joined_onto_repo_root(self):
+        dictStep = {
+            "sDirectory": "StepDir",
+            "saDataFiles": ["data.txt"],
+            "saPlotFiles": [],
+        }
+        dictVars = {"sRepoRoot": "/workspace/Proj"}
+        listPaths = _flistResolveStepPaths(dictStep, dictVars)
+        assert listPaths == ["/workspace/Proj/StepDir/data.txt"]
+
+    def test_relative_step_dir_without_repo_root_stays_relative(self):
+        dictStep = {
+            "sDirectory": "StepDir",
+            "saDataFiles": ["data.txt"],
+            "saPlotFiles": [],
+        }
+        listPaths = _flistResolveStepPaths(dictStep, {})
+        assert listPaths == ["StepDir/data.txt"]
+
 
 class TestFdictCollectOutputPathsByStep:
     def test_multiple_steps(self):

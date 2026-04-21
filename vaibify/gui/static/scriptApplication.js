@@ -809,9 +809,14 @@ const PipeleyenApp = (function () {
         if (_dictWorkflowState.dictScriptModified[iStep] === "modified") {
             return false;
         }
+        var bHasData =
+            PipeleyenTestManager.fsetGetStepsWithData().has(iStep) ||
+            !!_dictWorkflowState.dictOutputMtimes[String(iStep)];
+        if (!bHasData) return false;
         var sUser = dictVerify.sUser;
         var sDeps = fsComputeDepsState(iStep);
-        if (sUser !== "passed" || sDeps === "failed") return false;
+        var bDepsFullyOk = sDeps === "none" || sDeps === "passed";
+        if (sUser !== "passed" || !bDepsFullyOk) return false;
         if (fbStepRequiresUnitTests(dictStep)) {
             return fsEffectiveTestState(dictStep) === "passed";
         }
@@ -1060,16 +1065,71 @@ const PipeleyenApp = (function () {
         return false;
     }
 
+    function fbStepHasExplicitFailure(step) {
+        var dictVerify = fdictGetVerification(step);
+        if (dictVerify.sUser === "failed" ||
+            dictVerify.sUser === "error") {
+            return true;
+        }
+        var bInteractive = step.bInteractive === true;
+        var bPlotOnly = (step.saDataCommands || []).length === 0;
+        if (bInteractive || bPlotOnly) return false;
+        var sUnit = fsEffectiveTestState(step);
+        return sUnit === "failed" || sUnit === "error";
+    }
+
+    function fbAnyDepExplicitlyFailed(iStep, dictVisited) {
+        if (dictVisited[iStep]) {
+            return dictVisited[iStep] === "failed";
+        }
+        dictVisited[iStep] = "checking";
+        var listSteps = _dictWorkflowState.dictWorkflow &&
+            _dictWorkflowState.dictWorkflow.listSteps;
+        var step = listSteps && listSteps[iStep];
+        if (!step) {
+            dictVisited[iStep] = "no";
+            return false;
+        }
+        if (fbStepHasExplicitFailure(step)) {
+            dictVisited[iStep] = "failed";
+            return true;
+        }
+        var listDeps = flistGetStepDependencies(iStep);
+        for (var i = 0; i < listDeps.length; i++) {
+            if (fbAnyDepExplicitlyFailed(listDeps[i], dictVisited)) {
+                dictVisited[iStep] = "failed";
+                return true;
+            }
+        }
+        dictVisited[iStep] = "no";
+        return false;
+    }
+
     function fsComputeDepsState(iStep) {
         var listDeps = flistGetStepDependencies(iStep);
         if (listDeps.length === 0) return "none";
-        var dictVisited = {};
+        var dictPassCheck = {};
+        var bAllPassing = true;
         for (var i = 0; i < listDeps.length; i++) {
-            if (!fbStepFullyPassing(listDeps[i], dictVisited)) {
+            if (!fbStepFullyPassing(listDeps[i], dictPassCheck)) {
+                bAllPassing = false;
+                break;
+            }
+        }
+        if (bAllPassing) return "passed";
+        var dictFailCheck = {};
+        for (var j = 0; j < listDeps.length; j++) {
+            if (fbAnyDepExplicitlyFailed(listDeps[j], dictFailCheck)) {
                 return "failed";
             }
         }
-        return "passed";
+        return "untested";
+    }
+
+    function _fsClassifyVerificationSignal(sState) {
+        if (sState === "passed") return "passed";
+        if (sState === "failed" || sState === "error") return "failed";
+        return "untested";
     }
 
     function fsDepLabelColorClass(iDep, bPassing) {
@@ -1103,7 +1163,6 @@ const PipeleyenApp = (function () {
 
     function fsComputeStepDotState(step, iIndex) {
         var dictVerify = fdictGetVerification(step);
-        var sUser = dictVerify.sUser;
         var bInteractive = step.bInteractive === true;
         var bPlotOnly = (step.saDataCommands || []).length === 0;
         var listModified = dictVerify.listModifiedFiles || [];
@@ -1112,26 +1171,28 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictScriptModified[iIndex] === "modified";
         var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
             !!_dictWorkflowState.dictOutputMtimes[String(iIndex)];
-
         if (!bHasData) return "";
 
-        var bHasUnitTests = !bInteractive && !bPlotOnly;
-        var sUnit = bHasUnitTests ?
-            fsEffectiveTestState(step) : null;
+        var listSignals = [
+            _fsClassifyVerificationSignal(dictVerify.sUser)];
+        if (!bInteractive && !bPlotOnly) {
+            listSignals.push(_fsClassifyVerificationSignal(
+                fsEffectiveTestState(step)));
+        }
         var sDeps = fsComputeDepsState(iIndex);
-        var bHasDeps = sDeps !== "none";
-
-        var bUserPassed = sUser === "passed";
-        var bUnitPassed = !bHasUnitTests || sUnit === "passed";
-        var bDepsPassed = !bHasDeps || sDeps === "passed";
-
-        if (bUserPassed && bUnitPassed && bDepsPassed) {
-            return bDirty ? "partial" : "verified";
+        if (sDeps !== "none") {
+            listSignals.push(_fsClassifyVerificationSignal(sDeps));
         }
-        if (bUserPassed || (bHasUnitTests && sUnit === "passed") ||
-            (bHasDeps && sDeps === "passed")) {
-            return "partial";
-        }
+
+        var bAllPassed = listSignals.every(function (s) {
+            return s === "passed";
+        });
+        var bAnyPassed = listSignals.some(function (s) {
+            return s === "passed";
+        });
+
+        if (bAllPassed) return bDirty ? "partial" : "verified";
+        if (bAnyPassed) return "partial";
         return "fail";
     }
 
