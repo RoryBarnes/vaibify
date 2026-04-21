@@ -251,6 +251,7 @@ def test_writeAllDeterministic_aggregates_needs_confirm_flag():
             [{"sFileName": "a.npy", "bExists": True,
               "sFormat": "npy", "tShape": [10]}],
             fTolerance=1e-6, bForceOverwrite=False,
+            sProjectRepoPath="/workspace/DemoRepo",
         )
     assert dictResult.get("bNeedsOverwriteConfirm") is True
     # All three categories should contribute to listModifiedFiles.
@@ -273,6 +274,7 @@ def test_writeAllDeterministic_force_overwrite_no_confirm():
             [{"sFileName": "a.npy", "bExists": True,
               "sFormat": "npy", "tShape": [10]}],
             fTolerance=1e-6, bForceOverwrite=True,
+            sProjectRepoPath="/workspace/DemoRepo",
         )
     assert "bNeedsOverwriteConfirm" not in dictResult
 

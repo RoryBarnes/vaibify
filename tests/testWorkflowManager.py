@@ -4,6 +4,7 @@ import pytest
 
 from vaibify.gui.workflowManager import (
     fbValidateWorkflow,
+    fsResolveStepWorkdir,
     fsResolveVariables,
     fdictCreateStep,
     fbStepRequiresTests,
@@ -25,11 +26,9 @@ def _fdictBuildMinimalWorkflow(iStepCount=2):
     for iIndex in range(iStepCount):
         listSteps.append({
             "sName": f"Step {iIndex + 1}",
-            "sDirectory": f"/workspace/step{iIndex + 1}",
+            "sDirectory": f"step{iIndex + 1}",
             "saPlotCommands": [f"python run{iIndex + 1}.py"],
-            "saPlotFiles": [
-                f"/workspace/step{iIndex + 1}/output.pdf"
-            ],
+            "saPlotFiles": ["output.pdf"],
         })
     return {
         "sPlotDirectory": "Plot",
@@ -81,6 +80,26 @@ def test_fsResolveVariables_leaves_unknown_tokens():
     sResolved = fsResolveVariables(sTemplate, dictVariables)
 
     assert sResolved == "cp data/{sUnknown} /out/"
+
+
+def test_fsResolveStepWorkdir_joins_relative_onto_repo_root():
+    sResolved = fsResolveStepWorkdir(
+        "StepDir", {"sRepoRoot": "/workspace/Proj"},
+    )
+    assert sResolved == "/workspace/Proj/StepDir"
+
+
+def test_fsResolveStepWorkdir_preserves_absolute():
+    sResolved = fsResolveStepWorkdir(
+        "/workspace/Proj/StepDir", {"sRepoRoot": "/workspace/Other"},
+    )
+    assert sResolved == "/workspace/Proj/StepDir"
+
+
+def test_fsResolveStepWorkdir_empty_inputs():
+    assert fsResolveStepWorkdir("", {"sRepoRoot": "/workspace/Proj"}) == ""
+    assert fsResolveStepWorkdir("StepDir", {}) == "StepDir"
+    assert fsResolveStepWorkdir("StepDir", None) == "StepDir"
 
 
 def test_fdictCreateStep_returns_valid_dict():
@@ -438,3 +457,101 @@ def test_flistBuildTestCommands_empty():
 def test_fsTestsDirectory():
     from vaibify.gui.workflowManager import fsTestsDirectory
     assert fsTestsDirectory("/work/step01") == "/work/step01/tests"
+
+
+# ----------------------------------------------------------------------
+# flistValidateOutputFilePaths
+# ----------------------------------------------------------------------
+
+
+def test_flistValidateOutputFilePaths_accepts_repo_relative():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "Step 1",
+            "sDirectory": "analysis",
+            "saOutputFiles": ["figure.pdf", "data/result.csv"],
+            "saDataFiles": [],
+            "saPlotFiles": [],
+        }],
+    }
+    assert flistValidateOutputFilePaths(dictWorkflow) == []
+
+
+def test_flistValidateOutputFilePaths_rejects_absolute_path():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "Step 1",
+            "sDirectory": "analysis",
+            "saOutputFiles": ["/tmp/leak.pdf"],
+            "saDataFiles": [],
+            "saPlotFiles": [],
+        }],
+    }
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "repo-relative" in listWarnings[0]
+    assert "Step01" in listWarnings[0]
+
+
+def test_flistValidateOutputFilePaths_rejects_escaping_parent():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "Step 1",
+            "sDirectory": "analysis",
+            "saOutputFiles": ["../../escape.pdf"],
+            "saDataFiles": [],
+            "saPlotFiles": [],
+        }],
+    }
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "escapes" in listWarnings[0]
+
+
+def test_flistValidateOutputFilePaths_skips_template_paths():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "Step 1",
+            "sDirectory": "analysis",
+            "saOutputFiles": ["{sPlotDirectory}/foo.pdf"],
+            "saPlotFiles": ["{Step02.result}.png"],
+            "saDataFiles": [],
+        }],
+    }
+    assert flistValidateOutputFilePaths(dictWorkflow) == []
+
+
+def test_flistValidateOutputFilePaths_reports_all_violations():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "Step 1",
+                "sDirectory": "s1",
+                "saOutputFiles": ["/absolute.pdf"],
+                "saDataFiles": [],
+                "saPlotFiles": [],
+            },
+            {
+                "sName": "Step 2",
+                "sDirectory": "s2",
+                "saOutputFiles": [],
+                "saDataFiles": ["../../outside.csv"],
+                "saPlotFiles": [],
+            },
+        ],
+    }
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 2
+    assert "Step01" in listWarnings[0]
+    assert "Step02" in listWarnings[1]
+
+
+def test_flistValidateOutputFilePaths_empty_workflow_returns_empty():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    assert flistValidateOutputFilePaths({}) == []
+    assert flistValidateOutputFilePaths({"listSteps": []}) == []

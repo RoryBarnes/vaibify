@@ -347,7 +347,7 @@ class TestFiRunStepTests:
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 
         mockRunTests.return_value = 0
-        dictStep = {"sName": "Analyze", "sDirectory": "/workspace/analyze"}
+        dictStep = {"sName": "Analyze", "sDirectory": "analyze"}
         dictWorkflow = {"listSteps": [dictStep]}
         fnCallback = AsyncMock()
 

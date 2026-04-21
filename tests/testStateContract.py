@@ -14,7 +14,7 @@ from vaibify.gui import stateContract
 
 def test_fsToRepoRelative_strips_container_prefix():
     assert (
-        stateContract.fsToRepoRelative("/workspace/step1/plot.pdf")
+        stateContract.fsToRepoRelative("step1/plot.pdf")
         == "step1/plot.pdf"
     )
 

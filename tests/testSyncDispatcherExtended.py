@@ -121,7 +121,7 @@ def test_fsBuildStepCopyCommands_copies_scripts():
 def test_fsBuildStepCopyCommands_handles_archive_plots():
     sResult = _fsBuildStepCopyCommands(
         "/workspace/step1", "stepOne",
-        [], ["/workspace/step1/fig.pdf"],
+        [], ["step1/fig.pdf"],
     )
     assert "pdftoppm" in sResult
     assert "fig" in sResult

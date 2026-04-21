@@ -53,6 +53,7 @@ def _fdictBuildWorkflowVars(dictWorkflow):
     return {
         "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+        "sRepoRoot": dictWorkflow.get("sProjectRepoPath", ""),
     }
 
 

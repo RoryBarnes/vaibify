@@ -26,7 +26,7 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Step A",
-            "sDirectory": "/workspace/stepA",
+            "sDirectory": "stepA",
             "bPlotOnly": True,
             "bEnabled": True,
             "bInteractive": False,
@@ -326,7 +326,7 @@ def test_flistCollectOutputPaths():
         "sFigureType": "pdf",
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataFiles": ["data.npy"],
                 "saPlotFiles": [
                     "{sPlotDirectory}/fig.{sFigureType}"
@@ -337,8 +337,8 @@ def test_flistCollectOutputPaths():
     listPaths = pipelineServer._flistCollectOutputPaths(
         dictWorkflow
     )
-    assert "/workspace/step1/data.npy" in listPaths
-    assert "/workspace/step1/Plot/fig.pdf" in listPaths
+    assert "step1/data.npy" in listPaths
+    assert "step1/Plot/fig.pdf" in listPaths
 
 
 def test_fdictGetModTimes_empty():
@@ -363,7 +363,7 @@ def test_fdictGetModTimes_parses_output():
 def test_fnRemoveTestFiles():
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
-    dictStep = {"sDirectory": "/workspace/step1"}
+    dictStep = {"sDirectory": "step1"}
     pipelineServer._fnRemoveTestFiles(
         mockDocker, "cid", dictStep, 0
     )

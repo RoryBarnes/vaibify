@@ -40,7 +40,7 @@ def test_fbValidateWorkflow_valid():
         "sPlotDirectory": "Plot",
         "listSteps": [{
             "sName": "Test",
-            "sDirectory": "/workspace/Test",
+            "sDirectory": "Test",
             "saDataCommands": ["python data.py"],
             "saDataFiles": ["output.npy"],
             "saPlotCommands": ["python plot.py out.pdf"],

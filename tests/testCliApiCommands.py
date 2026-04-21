@@ -83,7 +83,7 @@ def test_fnValidateStepOptions_one_set_ok():
 def _fdictSampleStep():
     return {
         "sName": "Build Data",
-        "sDirectory": "/workspace/step01",
+        "sDirectory": "step01",
         "bEnabled": True,
         "bPlotOnly": False,
         "bInteractive": False,

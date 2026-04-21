@@ -22,7 +22,7 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Step A",
-            "sDirectory": "/workspace/stepA",
+            "sDirectory": "stepA",
             "bPlotOnly": True,
             "bEnabled": True,
             "bInteractive": False,
@@ -650,22 +650,22 @@ def test_fnInvalidateDownstreamStep_marks_upstream():
 
 def test_fdictFindChangedFiles_detects_changes():
     dictPathsByStep = {
-        0: ["/workspace/step1/data.npy"],
-        1: ["/workspace/step2/result.dat"],
+        0: ["step1/data.npy"],
+        1: ["step2/result.dat"],
     }
     dictOldModTimes = {
-        "/workspace/step1/data.npy": "1700000000",
-        "/workspace/step2/result.dat": "1700000000",
+        "step1/data.npy": "1700000000",
+        "step2/result.dat": "1700000000",
     }
     dictNewModTimes = {
-        "/workspace/step1/data.npy": "1700000001",
-        "/workspace/step2/result.dat": "1700000000",
+        "step1/data.npy": "1700000001",
+        "step2/result.dat": "1700000000",
     }
     dictChanged = pipelineServer._fdictFindChangedFiles(
         dictPathsByStep, dictOldModTimes, dictNewModTimes
     )
     assert 0 in dictChanged
-    assert "/workspace/step1/data.npy" in dictChanged[0]
+    assert "step1/data.npy" in dictChanged[0]
     assert 1 not in dictChanged
 
 
@@ -867,7 +867,7 @@ def test_fbaFetchFigureWithFallback_fallback_relative_workdir():
         b"fallback-relative",
     ]
     baResult = pipelineServer.fbaFetchFigureWithFallback(
-        mockDocker, "cid", "/workspace/step1/fig.png",
+        mockDocker, "cid", "step1/fig.png",
         "/workspace/step1", "build", "fig.png",
     )
     assert baResult == b"fallback-relative"

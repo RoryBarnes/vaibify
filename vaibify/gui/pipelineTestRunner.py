@@ -240,7 +240,9 @@ async def _fiRunStepTests(
     dictWorkflow,
 ):
     """Run tests for a single step and emit results."""
-    sStepDirectory = dictStep.get("sDirectory", "")
+    sStepDirectory = workflowManager.fsResolveStepWorkdir(
+        dictStep.get("sDirectory", ""), dictVars,
+    )
     await _fnEmitStepBanner(
         fnStatusCallback, iStepNumber, dictStep, dictWorkflow,
     )

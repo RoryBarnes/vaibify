@@ -36,7 +36,7 @@ DICT_WORKFLOW_MULTI = {
     "listSteps": [
         {
             "sName": "Generate Data",
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "bPlotOnly": False,
             "bEnabled": True,
             "bInteractive": False,
@@ -47,8 +47,8 @@ DICT_WORKFLOW_MULTI = {
             "saPlotFiles": ["{sPlotDirectory}/fig1.{sFigureType}"],
             "dictRunStats": {
                 "dictInputHashes": {
-                    "/workspace/step1/generate.py": "aaa111",
-                    "/workspace/step1/plotData.py": "bbb222",
+                    "step1/generate.py": "aaa111",
+                    "step1/plotData.py": "bbb222",
                 },
             },
             "dictVerification": {
@@ -58,7 +58,7 @@ DICT_WORKFLOW_MULTI = {
         },
         {
             "sName": "Analyze",
-            "sDirectory": "/workspace/step2",
+            "sDirectory": "step2",
             "bPlotOnly": True,
             "bEnabled": True,
             "bInteractive": False,
@@ -77,7 +77,7 @@ DICT_WORKFLOW_MULTI = {
         },
         {
             "sName": "Interactive Review",
-            "sDirectory": "/workspace/step3",
+            "sDirectory": "step3",
             "bPlotOnly": False,
             "bEnabled": True,
             "bInteractive": True,
@@ -128,8 +128,8 @@ class MockDockerBoost:
         if "find" in sCommand:
             return (0, "")
         if "stat -c" in sCommand:
-            return (0, "/workspace/step1/data.csv 1700000000\n"
-                    "/workspace/step1/Plot/fig1.pdf 1700000001\n")
+            return (0, "step1/data.csv 1700000000\n"
+                    "step1/Plot/fig1.pdf 1700000001\n")
         if "cat" in sCommand and "pipeline_state" in sCommand:
             return (1, "")
         if "ps aux" in sCommand and "grep" not in sCommand:
@@ -144,8 +144,8 @@ class MockDockerBoost:
             return (self._iTestExitCode, self._sTestOutput)
         if "python3 -c" in sCommand and "hashlib" in sCommand:
             return (0,
-                    "/workspace/step1/generate.py aaa111\n"
-                    "/workspace/step1/plotData.py bbb222\n")
+                    "step1/generate.py aaa111\n"
+                    "step1/plotData.py bbb222\n")
         if "which claude" in sCommand:
             return (1, "")
         return (0, "")
@@ -360,7 +360,7 @@ def test_fnInvalidateDownstreamStep_no_verification():
 
 def _fdictBuildUnvalidatedStep():
     return {
-        "sDirectory": "/workspace/step1",
+        "sDirectory": "step1",
         "saDataCommands": ["python gen.py"],
         "saPlotCommands": [],
         "dictVerification": {},
@@ -370,7 +370,7 @@ def _fdictBuildUnvalidatedStep():
 def test_fdictBuildScriptStatus_unchanged_without_validators():
     dictWorkflow = {"listSteps": [_fdictBuildUnvalidatedStep()]}
     dictResult = pipelineServer._fdictBuildScriptStatus(
-        dictWorkflow, {"/workspace/step1/gen.py": "200"},
+        dictWorkflow, {"step1/gen.py": "200"},
     )
     assert dictResult[0]["sStatus"] == "unchanged"
 
@@ -382,7 +382,7 @@ def test_fdictBuildScriptStatus_unchanged_when_fresh():
     }
     dictWorkflow = {"listSteps": [dictStep]}
     dictResult = pipelineServer._fdictBuildScriptStatus(
-        dictWorkflow, {"/workspace/step1/gen.py": "100"},
+        dictWorkflow, {"step1/gen.py": "100"},
         dictMarkerMtimeByStep={"0": "1800000000"},
     )
     assert dictResult[0]["sStatus"] == "unchanged"
@@ -397,7 +397,7 @@ def test_fdictBuildScriptStatus_modified_when_test_stale():
     dictWorkflow = {"listSteps": [dictStep]}
     dictResult = pipelineServer._fdictBuildScriptStatus(
         dictWorkflow,
-        {"/workspace/step1/gen.py": "9999999999"},
+        {"step1/gen.py": "9999999999"},
         dictMarkerMtimeByStep={"0": "1"},
     )
     assert dictResult[0]["sStatus"] == "modified"
@@ -521,7 +521,7 @@ def test_save_and_run_test_success(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sContent": "def test_example(): assert True",
-        "sFilePath": "/workspace/step1/test_step01.py",
+        "sFilePath": "step1/test_step01.py",
     }
     responseHttp = clientHttp.post(
         f"/api/steps/{S_CONTAINER_ID}/0/save-and-run-test",
@@ -565,7 +565,7 @@ def test_fnClearDownstreamUpstreamFlags():
         "listSteps": [
             {
                 "sName": "Step1",
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
                 "saDataFiles": ["data.csv"],
                 "saPlotCommands": [],
@@ -575,7 +575,7 @@ def test_fnClearDownstreamUpstreamFlags():
             },
             {
                 "sName": "Step2",
-                "sDirectory": "/workspace/step2",
+                "sDirectory": "step2",
                 "saDataCommands": [
                     "python analyze.py {Step01.data}",
                 ],
@@ -658,7 +658,7 @@ def test_fdictCollectOutputPathsByStep_resolves():
         "sFigureType": "pdf",
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataFiles": ["data.csv"],
                 "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],
             },
@@ -668,15 +668,15 @@ def test_fdictCollectOutputPathsByStep_resolves():
         dictWorkflow,
     )
     assert 0 in dictResult
-    assert "/workspace/step1/data.csv" in dictResult[0]
-    assert "/workspace/step1/Plot/fig.pdf" in dictResult[0]
+    assert "step1/data.csv" in dictResult[0]
+    assert "step1/Plot/fig.pdf" in dictResult[0]
 
 
 def test_fdictCollectOutputPathsByStep_with_vars():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataFiles": ["{sPlotDirectory}/out.dat"],
                 "saPlotFiles": [],
             },
@@ -686,7 +686,7 @@ def test_fdictCollectOutputPathsByStep_with_vars():
     dictResult = pipelineServer.fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
-    assert "/workspace/step1/Results/out.dat" in dictResult[0]
+    assert "step1/Results/out.dat" in dictResult[0]
 
 
 # =======================================================================
@@ -1030,35 +1030,35 @@ def test_flistExtractAllScriptPaths():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
                 "saPlotCommands": ["python plot.py"],
             },
             {
-                "sDirectory": "/workspace/step2",
+                "sDirectory": "step2",
                 "saDataCommands": ["python gen.py"],
                 "saPlotCommands": [],
             },
         ],
     }
     listPaths = flistExtractAllScriptPaths(dictWorkflow)
-    assert "/workspace/step1/gen.py" in listPaths
-    assert "/workspace/step1/plot.py" in listPaths
-    assert "/workspace/step2/gen.py" in listPaths
+    assert "step1/gen.py" in listPaths
+    assert "step1/plot.py" in listPaths
+    assert "step2/gen.py" in listPaths
 
 
 def test_flistExtractAllScriptPaths_no_duplicates():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
                 "saPlotCommands": ["python gen.py"],
             },
         ],
     }
     listPaths = flistExtractAllScriptPaths(dictWorkflow)
-    iCount = listPaths.count("/workspace/step1/gen.py")
+    iCount = listPaths.count("step1/gen.py")
     assert iCount == 1
 
 

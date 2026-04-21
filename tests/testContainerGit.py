@@ -215,3 +215,61 @@ def test_ftResultGitAddInContainer_quotes_paths_with_spaces():
     )
     sCmd = docker.listCommands[0]
     assert "'my file.py'" in sCmd
+
+
+# ----------------------------------------------------------------------
+# fsDetectProjectRepoInContainer
+# ----------------------------------------------------------------------
+
+
+def test_fsDetectProjectRepoInContainer_returns_path_on_success():
+    docker = _FakeDocker([
+        ("rev-parse --show-toplevel", 0, "/workspace/DemoRepo\n"),
+    ])
+    sResult = containerGit.fsDetectProjectRepoInContainer(
+        docker, "cid",
+        "/workspace/DemoRepo/.vaibify/workflows/foo.json",
+    )
+    assert sResult == "/workspace/DemoRepo"
+
+
+def test_fsDetectProjectRepoInContainer_returns_empty_on_failure():
+    docker = _FakeDocker([
+        ("rev-parse --show-toplevel", 128, ""),
+    ])
+    sResult = containerGit.fsDetectProjectRepoInContainer(
+        docker, "cid", "/workspace/workflow.json",
+    )
+    assert sResult == ""
+
+
+def test_fsDetectProjectRepoInContainer_cds_to_workflow_dir():
+    docker = _FakeDocker([
+        ("rev-parse --show-toplevel", 0, "/workspace/DemoRepo\n"),
+    ])
+    containerGit.fsDetectProjectRepoInContainer(
+        docker, "cid",
+        "/workspace/DemoRepo/.vaibify/workflows/foo.json",
+    )
+    sCmd = docker.listCommands[0]
+    assert "cd /workspace/DemoRepo/.vaibify/workflows" in sCmd
+
+
+def test_fsDetectProjectRepoInContainer_empty_path_returns_empty():
+    docker = _FakeDocker([])
+    sResult = containerGit.fsDetectProjectRepoInContainer(
+        docker, "cid", "",
+    )
+    assert sResult == ""
+    assert docker.listCommands == []
+
+
+def test_fsDetectProjectRepoInContainer_strips_trailing_newline():
+    docker = _FakeDocker([
+        ("rev-parse --show-toplevel", 0, "/workspace/DemoRepo\n\n"),
+    ])
+    sResult = containerGit.fsDetectProjectRepoInContainer(
+        docker, "cid",
+        "/workspace/DemoRepo/.vaibify/workflows/foo.json",
+    )
+    assert sResult == "/workspace/DemoRepo"

@@ -43,7 +43,7 @@ def test_fsConftestPath_nested():
 
 
 def test_fsConftestPath_trailing_slash():
-    sResult = fsConftestPath("/workspace/step1/")
+    sResult = fsConftestPath("step1/")
     assert "conftest.py" in sResult
 
 
@@ -69,27 +69,30 @@ def test_conftestTemplate_contains_pytest_hook():
     assert "pytest_sessionfinish" in _CONFTEST_MARKER_TEMPLATE
 
 
-def test_conftestTemplate_contains_marker_dir():
-    assert "test_markers" in _CONFTEST_MARKER_TEMPLATE
+def test_conftestTemplate_references_marker_dir():
+    # Marker dir is now defined in the parameterized prologue that
+    # fsBuildConftestSource prepends; the template body references
+    # _MARKER_DIR as a bare name.
+    assert "_MARKER_DIR" in _CONFTEST_MARKER_TEMPLATE
 
 
 # ---- syncDispatcher: fsBuildTestMarkerCheckCommand ----
 
 def test_fsBuildTestMarkerCheckCommand_non_empty():
-    sCommand = fsBuildTestMarkerCheckCommand(["/workspace/step1"])
+    sCommand = fsBuildTestMarkerCheckCommand(["/workspace/step1"], "/workspace/DemoRepo")
     assert len(sCommand) > 0
     assert "python3" in sCommand
 
 
 def test_fsBuildTestMarkerCheckCommand_includes_directories():
     listDirs = ["/workspace/step1", "/workspace/step2"]
-    sCommand = fsBuildTestMarkerCheckCommand(listDirs)
+    sCommand = fsBuildTestMarkerCheckCommand(listDirs, "/workspace/DemoRepo")
     assert "/workspace/step1" in sCommand
     assert "/workspace/step2" in sCommand
 
 
 def test_fsBuildTestMarkerCheckCommand_empty_list():
-    sCommand = fsBuildTestMarkerCheckCommand([])
+    sCommand = fsBuildTestMarkerCheckCommand([], "/workspace/DemoRepo")
     assert len(sCommand) > 0
 
 
@@ -131,8 +134,8 @@ def test_fdictParseTestMarkerOutput_with_whitespace():
 def test_fdictParseTestMarkerOutput_real_marker_data():
     dictInput = {
         "markers": {
-            "workspace_step1.json": {
-                "sDirectory": "/workspace/step1",
+            "step1.json": {
+                "sDirectory": "step1",
                 "iExitStatus": 0,
                 "fTimestamp": 1700000000.0,
                 "iCollected": 5,
@@ -143,7 +146,7 @@ def test_fdictParseTestMarkerOutput_real_marker_data():
             }
         },
         "testFiles": {
-            "/workspace/step1": {
+            "step1": {
                 "listFiles": ["test_integrity.py", "test_qualitative.py"],
                 "dictMtimes": {
                     "test_integrity.py": 1699999990.0,
@@ -163,24 +166,24 @@ def test_fdictParseTestMarkerOutput_real_marker_data():
 def test_flistExtractStepDirectories_basic():
     dictWorkflow = {
         "listSteps": [
-            {"sDirectory": "/workspace/step1", "sName": "Step 1"},
-            {"sDirectory": "/workspace/step2", "sName": "Step 2"},
+            {"sDirectory": "step1", "sName": "Step 1"},
+            {"sDirectory": "step2", "sName": "Step 2"},
         ]
     }
     listDirs = _flistExtractStepDirectories(dictWorkflow)
-    assert listDirs == ["/workspace/step1", "/workspace/step2"]
+    assert listDirs == ["step1", "step2"]
 
 
 def test_flistExtractStepDirectories_skips_empty():
     dictWorkflow = {
         "listSteps": [
-            {"sDirectory": "/workspace/step1"},
+            {"sDirectory": "step1"},
             {"sDirectory": ""},
             {"sName": "No dir"},
         ]
     }
     listDirs = _flistExtractStepDirectories(dictWorkflow)
-    assert listDirs == ["/workspace/step1"]
+    assert listDirs == ["step1"]
 
 
 def test_flistExtractStepDirectories_empty_workflow():
@@ -193,12 +196,12 @@ def test_flistExtractStepDirectories_empty_workflow():
 def test_fdictBuildTestMarkerStatus_matches_marker():
     dictWorkflow = {
         "listSteps": [
-            {"sDirectory": "/workspace/step1"},
+            {"sDirectory": "step1"},
         ]
     }
     dictTestInfo = {
         "markers": {
-            "workspace_step1.json": {
+            "step1.json": {
                 "fTimestamp": 1700000000.0,
                 "dictCategories": {},
             }
@@ -212,7 +215,7 @@ def test_fdictBuildTestMarkerStatus_matches_marker():
 
 def test_fdictBuildTestMarkerStatus_no_matching_marker():
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "/workspace/step1"}]
+        "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestInfo = {"markers": {}, "testFiles": {}}
     dictResult = _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo)
@@ -221,16 +224,16 @@ def test_fdictBuildTestMarkerStatus_no_matching_marker():
 
 def test_fdictBuildTestMarkerStatus_stale_detection():
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "/workspace/step1"}]
+        "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestInfo = {
         "markers": {
-            "workspace_step1.json": {
+            "step1.json": {
                 "fTimestamp": 1700000000.0,
             }
         },
         "testFiles": {
-            "/workspace/step1": {
+            "step1": {
                 "dictMtimes": {"test_foo.py": 1700000001.0},
             }
         },
@@ -267,7 +270,7 @@ def test_fbMarkerStale_missing_timestamp():
 
 def test_fnApplyExternalTestResults_applies_passed():
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "/workspace/step1"}]
+        "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestMarkers = {
         "0": {
@@ -286,7 +289,7 @@ def test_fnApplyExternalTestResults_applies_passed():
 
 def test_fnApplyExternalTestResults_applies_failed():
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "/workspace/step1"}]
+        "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestMarkers = {
         "0": {
@@ -305,7 +308,7 @@ def test_fnApplyExternalTestResults_applies_failed():
 
 def test_fnApplyExternalTestResults_skips_stale():
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "/workspace/step1"}]
+        "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestMarkers = {
         "0": {
@@ -322,7 +325,7 @@ def test_fnApplyExternalTestResults_skips_stale():
 
 
 def test_fnApplyExternalTestResults_skips_out_of_range():
-    dictWorkflow = {"listSteps": [{"sDirectory": "/workspace/step1"}]}
+    dictWorkflow = {"listSteps": [{"sDirectory": "step1"}]}
     dictTestMarkers = {
         "5": {
             "bStale": False,
@@ -404,7 +407,7 @@ def test_fdictBuildTestFileChanges_detects_new_file():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "dictTests": {
                     "integrity": {
                         "saCommands": ["pytest test_integrity.py"],
@@ -415,7 +418,7 @@ def test_fdictBuildTestFileChanges_detects_new_file():
     }
     dictTestInfo = {
         "testFiles": {
-            "/workspace/step1": {
+            "step1": {
                 "listFiles": ["test_integrity.py", "test_new.py"],
             }
         }
@@ -429,7 +432,7 @@ def test_fdictBuildTestFileChanges_detects_missing_file():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "dictTests": {
                     "integrity": {
                         "saCommands": ["pytest test_integrity.py"],
@@ -440,7 +443,7 @@ def test_fdictBuildTestFileChanges_detects_missing_file():
     }
     dictTestInfo = {
         "testFiles": {
-            "/workspace/step1": {"listFiles": []},
+            "step1": {"listFiles": []},
         }
     }
     dictResult = _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo)
@@ -452,7 +455,7 @@ def test_fdictBuildTestFileChanges_no_changes():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "dictTests": {
                     "integrity": {
                         "saCommands": ["pytest test_integrity.py"],
@@ -463,7 +466,7 @@ def test_fdictBuildTestFileChanges_no_changes():
     }
     dictTestInfo = {
         "testFiles": {
-            "/workspace/step1": {"listFiles": ["test_integrity.py"]},
+            "step1": {"listFiles": ["test_integrity.py"]},
         }
     }
     dictResult = _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo)
@@ -472,7 +475,7 @@ def test_fdictBuildTestFileChanges_no_changes():
 
 def test_fdictBuildTestFileChanges_no_test_info():
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "/workspace/step1"}]
+        "listSteps": [{"sDirectory": "step1"}]
     }
     dictResult = _fdictBuildTestFileChanges(dictWorkflow, {"testFiles": {}})
     assert dictResult == {}
@@ -511,8 +514,16 @@ def test_fdictBuildWorkflowVars_extra_keys_ignored():
         "listSteps": [],
     }
     dictVars = _fdictBuildWorkflowVars(dictWorkflow)
-    assert len(dictVars) == 2
+    assert set(dictVars.keys()) == {
+        "sPlotDirectory", "sFigureType", "sRepoRoot",
+    }
     assert "sWorkflowName" not in dictVars
+
+
+def test_fdictBuildWorkflowVars_includes_repo_root():
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    dictVars = _fdictBuildWorkflowVars(dictWorkflow)
+    assert dictVars["sRepoRoot"] == "/workspace/Proj"
 
 
 # ---- _flistResolveTestCommands (pipelineRunner) ----

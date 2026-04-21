@@ -19,7 +19,7 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Step A",
-            "sDirectory": "/workspace/stepA",
+            "sDirectory": "stepA",
             "bPlotOnly": True,
             "bEnabled": True,
             "bInteractive": False,
@@ -265,7 +265,7 @@ def test_create_step(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sName": "Step B",
-        "sDirectory": "/workspace/stepB",
+        "sDirectory": "stepB",
         "bPlotOnly": False,
         "saPlotCommands": ["python plotB.py"],
         "saPlotFiles": ["figB.pdf"],
@@ -345,7 +345,7 @@ def test_reorder_steps(clientHttp):
         f"/api/steps/{S_CONTAINER_ID}/create",
         json={
             "sName": "Step B",
-            "sDirectory": "/workspace/stepB",
+            "sDirectory": "stepB",
             "saPlotCommands": [],
             "saPlotFiles": [],
         },

@@ -51,7 +51,7 @@ class TestFsMarkerNameFromDirectory:
 
     def test_trailing_slash(self):
         assert fsMarkerNameFromStepDirectory(
-            "/workspace/step01/") == "workspace_step01.json"
+            "step01/") == "step01.json"
 
     def test_nested_path(self):
         sResult = fsMarkerNameFromStepDirectory(
@@ -87,11 +87,11 @@ class TestFbMarkerStale:
 class TestFdictBuildTestMarkerStatus:
     def test_maps_marker_to_step(self):
         dictWorkflow = {"listSteps": [
-            {"sDirectory": "/workspace/step01"},
+            {"sDirectory": "step01"},
         ]}
         dictTestInfo = {
             "markers": {
-                "workspace_step01.json": {
+                "step01.json": {
                     "fTimestamp": 999.0,
                     "dictCategories": {},
                 },
@@ -104,7 +104,7 @@ class TestFdictBuildTestMarkerStatus:
 
     def test_no_matching_marker(self):
         dictWorkflow = {"listSteps": [
-            {"sDirectory": "/workspace/step01"},
+            {"sDirectory": "step01"},
         ]}
         dictTestInfo = {"markers": {}, "testFiles": {}}
         assert _fdictBuildTestMarkerStatus(
@@ -443,25 +443,34 @@ class TestFlistBuildStepCopyCommandList:
 class TestFsBuildTestMarkerScript:
     def test_returns_valid_python(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps(["/workspace/step01"]))
+            json.dumps(["step01"]), "/workspace/DemoRepo")
         assert "import json" in sScript
         assert "print(json.dumps(R))" in sScript
 
     def test_contains_marker_directory(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps([]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
         assert "test_markers" in sScript
 
     def test_no_single_quotes(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps(["/work"]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps(["step"]), "/workspace/DemoRepo")
         assert "'" not in sScript
 
     def test_includes_hash_extraction(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps([]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
         assert "vaibify-template-hash" in sScript
 
     def test_checks_conftest(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps([]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
         assert "conftest.py" in sScript
+
+    def test_embeds_project_repo_path(self):
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
+        assert "/workspace/DemoRepo" in sScript
 
 
 # ---------------------------------------------------------------

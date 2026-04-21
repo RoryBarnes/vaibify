@@ -891,26 +891,35 @@ def _fbSafeDirectoryName(sDirectory):
     return bool(re.match(r'^[A-Za-z0-9_./ -]+$', sDirectory))
 
 
-def fsBuildTestMarkerCheckCommand(listStepDirectories):
+def fsBuildTestMarkerCheckCommand(
+    listStepDirectories, sProjectRepoPath,
+):
     """Build a docker exec command to read test markers and scan dirs."""
     listSafe = [
         s for s in listStepDirectories if _fbSafeDirectoryName(s)
     ]
     sJsonDirs = json.dumps(listSafe)
-    sScript = _fsBuildTestMarkerScript(sJsonDirs)
+    sScript = _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath)
     return "python3 -c " + fsShellQuote(sScript)
 
 
-def _fsBuildTestMarkerScript(sJsonDirs):
+def _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath):
     """Build the Python script that reads markers and scans dirs.
 
     All string literals use double quotes so the script survives
-    single-quote shell wrapping by fsShellQuote.
+    single-quote shell wrapping by fsShellQuote. ``sProjectRepoPath``
+    is inlined via ``json.dumps`` so it becomes a properly escaped
+    Python string literal inside the generated script.
     """
+    sMarkerDirLiteral = json.dumps(
+        sProjectRepoPath + "/.vaibify/test_markers"
+    )
+    sRepoLiteral = json.dumps(sProjectRepoPath)
     return (
         "import json, os\n"
         'R = {"markers": {}, "testFiles": {}, "missingConftest": []}\n'
-        'mdir = "/workspace/.vaibify/test_markers"\n'
+        "mdir = " + sMarkerDirLiteral + "\n"
+        "repo = " + sRepoLiteral + "\n"
         "if os.path.isdir(mdir):\n"
         "    for f in os.listdir(mdir):\n"
         '        if f.endswith(".json"):\n'
@@ -930,7 +939,9 @@ def _fsBuildTestMarkerScript(sJsonDirs):
         "    except Exception: pass\n"
         "    return None\n"
         "for d in json.loads(" + json.dumps(sJsonDirs) + "):\n"
-        '    td = os.path.join(d, "tests")\n'
+        '    abs_d = os.path.join(repo, d) if repo and not '
+        "os.path.isabs(d) else d\n"
+        '    td = os.path.join(abs_d, "tests")\n'
         "    if not os.path.isdir(td):\n"
         "        continue\n"
         "    fs = [f for f in os.listdir(td)"

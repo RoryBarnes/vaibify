@@ -42,7 +42,7 @@ def _fnRejectDuplicateWorkflowName(
 def _fsValidateRepoDirectory(
     connectionDocker, sContainerId, sRepoDirectory
 ):
-    """Validate the repo directory exists under /workspace/."""
+    """Validate the directory exists under /workspace/ and is a git repo."""
     sClean = sRepoDirectory.strip().strip("/")
     if not sClean:
         raise HTTPException(
@@ -61,6 +61,18 @@ def _fsValidateRepoDirectory(
         raise HTTPException(
             404,
             f"Repo directory not found: {sFullPath}",
+        )
+    iGitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        f"git -C {fsShellQuote(sFullPath)} "
+        f"rev-parse --show-toplevel 2>/dev/null",
+    )
+    if iGitCode != 0:
+        raise HTTPException(
+            400,
+            f"Directory '{sFullPath}' is not a git repository. "
+            f"Run 'git init' inside the container at that path "
+            f"first.",
         )
     return sFullPath
 

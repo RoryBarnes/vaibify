@@ -294,7 +294,7 @@ class TestAcknowledgeStepRoute:
         app = FastAPI()
         dictWorkflow = {
             "listSteps": [{
-                "sDirectory": "/workspace/repo/step1",
+                "sDirectory": "step1",
                 "dictRunStats": {},
             }]
         }
@@ -481,11 +481,11 @@ class TestFdictFetchOutputStatus:
         with patch(
             "vaibify.gui.routes.pipelineRoutes"
             "._flistCollectOutputPaths",
-            return_value=["/workspace/step01/out.dat"],
+            return_value=["step01/out.dat"],
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".flistExtractAllScriptPaths",
-            return_value=["/workspace/step01/run.py"],
+            return_value=["step01/run.py"],
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fnCollectMarkerPathsByStep",
@@ -548,7 +548,8 @@ class TestFdictFetchTestMarkers:
             return_value="echo test",
         ):
             dictResult = _fdictFetchTestMarkers(
-                mockDocker, "cid1", ["/workspace/step1"]
+                mockDocker, "cid1", ["/workspace/step1"],
+                "/workspace/DemoRepo",
             )
             assert dictResult == {
                 "markers": {},
@@ -576,6 +577,7 @@ class TestFnBackfillMissingConftest:
             await _fnBackfillMissingConftest(
                 mockDocker, "cid1",
                 ["/workspace/step1", "/workspace/step2"],
+                "/workspace/DemoRepo",
             )
             mockEnsure.assert_called_once()
 
@@ -596,13 +598,16 @@ class TestFnBackfillMissingConftest:
             await _fnBackfillMissingConftest(
                 mockDocker, "cid1",
                 ["/workspace/step1"],
+                "/workspace/DemoRepo",
             )
 
     @pytest.mark.asyncio
     async def test_backfill_empty_list_returns_early(self):
         """Cover lines 415-416: empty list."""
         mockDocker = MagicMock()
-        await _fnBackfillMissingConftest(mockDocker, "cid1", [])
+        await _fnBackfillMissingConftest(
+            mockDocker, "cid1", [], "/workspace/DemoRepo",
+        )
 
 
 # ── Lines 444-455: _fnEnsureConftestTemplate ─────────────────────
@@ -639,7 +644,7 @@ class TestFdictBuildTestFileChanges:
         """Cover line 605: listCustom non-empty."""
         dictWorkflow = {
             "listSteps": [{
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "dictTests": {
                     "integrity": {
                         "saCommands": [
@@ -651,7 +656,7 @@ class TestFdictBuildTestFileChanges:
         }
         dictTestInfo = {
             "testFiles": {
-                "/workspace/step1": {
+                "step1": {
                     "listFiles": ["test_integrity.py"],
                     "dictHashes": {
                         "test_integrity.py": "different_hash",

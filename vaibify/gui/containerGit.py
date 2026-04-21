@@ -1,18 +1,27 @@
-"""Container-side git driver for workspaces that live in Docker volumes.
+"""Container-side git driver for per-workflow project repos.
 
 On macOS and Windows the vaibify workspace is a Docker-managed named
 volume; its source path lives inside the Docker Desktop VM and isn't
 accessible to the host's Python. Host-side git subprocess calls
 (``gitStatus.fsRunGit``) therefore can't see those workspaces at all.
 
-This module reproduces the workspace-level git operations that
+This module reproduces the repo-level git operations that
 ``gitStatus``, ``badgeState``, and ``manifestCheck`` need, but routes
-every git invocation through ``docker exec`` so the container's mounted
-``/workspace`` is the authoritative location. Parsing reuses the
+every git invocation through ``docker exec``. Parsing reuses the
 helpers from ``gitStatus``; only transport differs.
+
+``/workspace`` is the discovery root only — it is a named volume
+containing one or more project-repo subdirectories (plus shared
+config). The authoritative git target for any given workflow is the
+enclosing project repo returned by
+``fsDetectProjectRepoInContainer``; callers pass that path as
+``sWorkspace`` to every function below. ``S_CONTAINER_WORKSPACE`` is
+retained as a fallback for legacy call sites that have no active
+workflow to key off.
 """
 
 import json
+import posixpath
 import shlex
 
 from . import gitStatus
@@ -22,6 +31,7 @@ __all__ = [
     "fdictGitStatusInContainer",
     "fdictComputeBlobShasInContainer",
     "flistListContainerFiles",
+    "fsDetectProjectRepoInContainer",
     "ftResultGitAddInContainer",
     "ftResultGitCommitInContainer",
     "fsGitHeadShaInContainer",
@@ -29,6 +39,32 @@ __all__ = [
 
 
 S_CONTAINER_WORKSPACE = "/workspace"
+
+
+def fsDetectProjectRepoInContainer(
+    connectionDocker, sContainerId, sWorkflowPath,
+):
+    """Return the git work-tree root enclosing sWorkflowPath.
+
+    Runs ``git rev-parse --show-toplevel`` inside the container,
+    starting from the directory containing ``sWorkflowPath``.
+    Returns the absolute container path on success; returns ``""``
+    when the directory is not inside a git work tree (caller decides
+    whether to raise).
+    """
+    sWorkflowDir = posixpath.dirname(sWorkflowPath or "")
+    if not sWorkflowDir:
+        return ""
+    sCommand = (
+        "cd " + shlex.quote(sWorkflowDir) + " && "
+        "git rev-parse --show-toplevel 2>/dev/null"
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        return ""
+    return (sOutput or "").strip()
 
 
 def _fsHardeningPrefix():

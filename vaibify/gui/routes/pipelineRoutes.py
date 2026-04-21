@@ -293,7 +293,9 @@ async def _fdictFetchOutputStatus(
     listOutputPaths = _flistCollectOutputPaths(
         dictWorkflow, dictVars)
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
-    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(dictWorkflow)
+    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
+        dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+    )
     listMarkerPaths = list(dictMarkerPathsByStep.values())
     listUnionPaths = list(set(
         listOutputPaths + listScriptPaths + listMarkerPaths,
@@ -356,13 +358,16 @@ async def _fdictFetchTestStatus(
 ):
     """Fetch test markers, backfill conftest, and build test status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     dictTestInfo = await asyncio.to_thread(
         _fdictFetchTestMarkers,
         dictCtx["docker"], sContainerId, listStepDirs,
+        sProjectRepoPath,
     )
     await _fnBackfillMissingConftest(
         dictCtx["docker"], sContainerId,
         dictTestInfo.get("missingConftest", []),
+        dictWorkflow.get("sProjectRepoPath", ""),
     )
     dictTestMarkers = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
@@ -387,12 +392,12 @@ def _flistExtractStepDirectories(dictWorkflow):
 
 
 def _fdictFetchTestMarkers(
-    connectionDocker, sContainerId, listStepDirs,
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
 ):
     """Run the batched test-marker check command."""
     from .. import syncDispatcher as _syncDispatcher
     sCommand = _syncDispatcher.fsBuildTestMarkerCheckCommand(
-        listStepDirs,
+        listStepDirs, sProjectRepoPath,
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -407,7 +412,7 @@ def _fdictFetchTestMarkers(
 
 
 async def _fnBackfillMissingConftest(
-    connectionDocker, sContainerId, listMissingDirs,
+    connectionDocker, sContainerId, listMissingDirs, sProjectRepoPath,
 ):
     """Write conftest.py into step dirs that have tests/ but no conftest."""
     from ..testGenerator import (
@@ -423,7 +428,7 @@ async def _fnBackfillMissingConftest(
         try:
             await asyncio.to_thread(
                 fnWriteConftestMarker,
-                connectionDocker, sContainerId, sDir,
+                connectionDocker, sContainerId, sDir, sProjectRepoPath,
             )
             logger.info("Wrote conftest.py to %s", sDir)
         except Exception as exc:
@@ -434,7 +439,7 @@ async def _fnBackfillMissingConftest(
     await asyncio.to_thread(
         _fnEnsureConftestTemplate,
         connectionDocker, sContainerId,
-        fsConftestContent(),
+        fsConftestContent(sProjectRepoPath),
     )
 
 

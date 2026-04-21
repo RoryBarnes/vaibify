@@ -361,18 +361,29 @@ def test_compute_marker_mtime_absent_omits_step():
 def test_collect_marker_paths_uses_helper():
     dictWorkflow = {
         "listSteps": [
-            {"sDirectory": "/workspace/stepA"},
+            {"sDirectory": "stepA"},
             {"sDirectory": ""},
-            {"sDirectory": "/workspace/stepB"},
+            {"sDirectory": "stepB"},
         ],
     }
-    dictResult = fnCollectMarkerPathsByStep(dictWorkflow)
-    assert dictResult[0].endswith("workspace_stepA.json")
+    dictResult = fnCollectMarkerPathsByStep(
+        dictWorkflow, "/workspace/DemoRepo",
+    )
+    assert dictResult[0] == (
+        "/workspace/DemoRepo/.vaibify/test_markers/stepA.json"
+    )
     assert 1 not in dictResult
-    assert dictResult[2].endswith("workspace_stepB.json")
+    assert dictResult[2] == (
+        "/workspace/DemoRepo/.vaibify/test_markers/stepB.json"
+    )
+
+
+def test_collect_marker_paths_empty_repo_returns_empty():
+    dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
+    assert fnCollectMarkerPathsByStep(dictWorkflow, "") == {}
 
 
 def test_marker_name_sanitizes_paths():
     assert fsMarkerNameFromStepDirectory("/a/b/c") == "a_b_c.json"
     assert fsMarkerNameFromStepDirectory(
-        "/workspace/step01/") == "workspace_step01.json"
+        "step01/") == "step01.json"

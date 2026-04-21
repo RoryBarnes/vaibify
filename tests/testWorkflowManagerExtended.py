@@ -204,27 +204,6 @@ def test_flistResolveOutputFiles_empty():
 
 
 # -----------------------------------------------------------------------
-# _fsExtractRepoName — container root case (line 55)
-# -----------------------------------------------------------------------
-
-
-def test_fsExtractRepoName_container_root():
-    from vaibify.gui.workflowManager import _fsExtractRepoName
-    sResult = _fsExtractRepoName(
-        "/workspace/.vaibify/workflows/w.json", "/workspace",
-    )
-    assert sResult == "(container root)"
-
-
-def test_fsExtractRepoName_repo_name():
-    from vaibify.gui.workflowManager import _fsExtractRepoName
-    sResult = _fsExtractRepoName(
-        "/workspace/myrepo/.vaibify/workflows/w.json", "/workspace",
-    )
-    assert sResult == "myrepo"
-
-
-# -----------------------------------------------------------------------
 # _fsReadWorkflowName — exception fallback (lines 66-67)
 # -----------------------------------------------------------------------
 
@@ -295,7 +274,7 @@ def test_fdictLoadWorkflowFromContainer_success():
     dictValid = {
         "sPlotDirectory": "Plot",
         "listSteps": [{
-            "sName": "S1", "sDirectory": "/d",
+            "sName": "S1", "sDirectory": "d",
             "saPlotCommands": ["echo"], "saPlotFiles": ["f.pdf"],
         }],
     }
@@ -421,17 +400,17 @@ def test_fdictBuildDownstreamMap_chain():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "A", "sDirectory": "/a",
+                "sName": "A", "sDirectory": "a",
                 "saPlotCommands": ["echo"],
                 "saPlotFiles": ["a.pdf"],
             },
             {
-                "sName": "B", "sDirectory": "/b",
+                "sName": "B", "sDirectory": "b",
                 "saPlotCommands": ["{Step01.a}"],
                 "saPlotFiles": ["b.pdf"],
             },
             {
-                "sName": "C", "sDirectory": "/c",
+                "sName": "C", "sDirectory": "c",
                 "saPlotCommands": ["{Step02.b}"],
                 "saPlotFiles": ["c.pdf"],
             },
@@ -477,18 +456,18 @@ def test_fsGetFileCategory_from_data_categories():
 
 def test_flistResolveOutputPaths_basic():
     dictStep = {
-        "sDirectory": "/workspace/step01",
+        "sDirectory": "step01",
         "saDataFiles": ["results.csv"],
         "saPlotFiles": ["fig.pdf"],
     }
     listPaths = _flistResolveOutputPaths(dictStep)
-    assert "/workspace/step01/results.csv" in listPaths
-    assert "/workspace/step01/fig.pdf" in listPaths
+    assert "step01/results.csv" in listPaths
+    assert "step01/fig.pdf" in listPaths
 
 
 def test_flistResolveOutputPaths_skips_templates():
     dictStep = {
-        "sDirectory": "/workspace/step01",
+        "sDirectory": "step01",
         "saPlotFiles": ["{sPlotDirectory}/fig.pdf", "local.png"],
     }
     listPaths = _flistResolveOutputPaths(dictStep)
@@ -550,12 +529,12 @@ def test_fdictBuildImplicitDependencies_template_excluded():
         "listSteps": [
             {
                 "sName": "A",
-                "sDirectory": "/workspace/step01",
+                "sDirectory": "step01",
                 "saPlotFiles": ["{sPlotDirectory}/fig.pdf"],
             },
             {
                 "sName": "B",
-                "sDirectory": "/workspace",
+                "sDirectory": ".",
                 "saDataFiles": [],
             },
         ],
@@ -659,12 +638,12 @@ def test_fdictBuildDownstreamMap_diamond():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "Root", "sDirectory": "/r",
+                "sName": "Root", "sDirectory": "r",
                 "saPlotCommands": ["echo"],
                 "saPlotFiles": ["root.pdf"],
             },
             {
-                "sName": "Left", "sDirectory": "/l",
+                "sName": "Left", "sDirectory": "l",
                 "saPlotCommands": ["{Step01.root}"],
                 "saPlotFiles": ["left.pdf"],
             },
@@ -674,7 +653,7 @@ def test_fdictBuildDownstreamMap_diamond():
                 "saPlotFiles": ["right.pdf"],
             },
             {
-                "sName": "Join", "sDirectory": "/j",
+                "sName": "Join", "sDirectory": "j",
                 "saPlotCommands": [
                     "{Step02.left} {Step03.right}",
                 ],
@@ -703,15 +682,22 @@ def test_fdictLoadWorkflowFromContainer_auto_discover():
     dictValid = {
         "sPlotDirectory": "Plot",
         "listSteps": [{
-            "sName": "S1", "sDirectory": "/d",
+            "sName": "S1", "sDirectory": "d",
             "saPlotCommands": ["echo"], "saPlotFiles": ["f.pdf"],
         }],
     }
+    sWorkflowPath = "/workspace/repo/.vaibify/workflows/w.json"
+    sProbeOutput = json.dumps({sWorkflowPath: "/workspace/repo"}) + "\n"
+
+    def _fExecuteCommand(sContainerId, sCommand, **_kwargs):
+        if sCommand.startswith("find "):
+            return (0, sWorkflowPath + "\n")
+        if sCommand.startswith("python3 -c "):
+            return (0, sProbeOutput)
+        return (0, "")
+
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (
-        0,
-        "/workspace/repo/.vaibify/workflows/w.json\n",
-    )
+    mockDocker.ftResultExecuteCommand.side_effect = _fExecuteCommand
     sJsonContent = json.dumps(dictValid).encode("utf-8")
     sNameJson = json.dumps({"sWorkflowName": "Auto"}).encode("utf-8")
     mockDocker.fbaFetchFile.side_effect = [sNameJson, sJsonContent]
@@ -733,12 +719,12 @@ def test_fnInsertStep_renumbers():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "A", "sDirectory": "/a",
+                "sName": "A", "sDirectory": "a",
                 "saPlotCommands": ["echo"],
                 "saPlotFiles": ["a.pdf"],
             },
             {
-                "sName": "B", "sDirectory": "/b",
+                "sName": "B", "sDirectory": "b",
                 "saPlotCommands": ["{Step01.a}"],
                 "saPlotFiles": ["b.pdf"],
             },

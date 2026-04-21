@@ -581,7 +581,7 @@ def test_fdictGenerateTest_via_claude():
     mockDocker.fnWriteFile = MagicMock()
     dictWorkflow = {
         "listSteps": [{
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "saDataCommands": ["python analyze.py"],
             "saDataFiles": ["out.npy"],
         }],

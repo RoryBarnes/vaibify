@@ -191,7 +191,7 @@ def test_workspace_badges_tolerate_container_absolute_keys(tmp_path):
         str(tmp_path), "step1/fig.pdf", dictCache,
     )
     dictSync = {
-        "/workspace/step1/fig.pdf": {
+        "step1/fig.pdf": {
             "bOverleaf": True,
             "sOverleafLastPushedDigest": sSha,
         },

@@ -307,22 +307,24 @@ class TestFbSafeDirectoryName:
 
 class TestFsBuildTestMarkerCheckCommand:
     def test_produces_python_command(self):
-        sCmd = fsBuildTestMarkerCheckCommand(["/workspace/step01"])
+        sCmd = fsBuildTestMarkerCheckCommand(["/workspace/step01"], "/workspace/DemoRepo")
         assert sCmd.startswith("python3 -c ")
 
     def test_unsafe_dirs_filtered(self):
         sCmd = fsBuildTestMarkerCheckCommand(
-            ["/workspace/step01", "/bad;rm -rf /"])
+            ["/workspace/step01", "/bad;rm -rf /"],
+            "/workspace/DemoRepo")
         assert "bad" not in sCmd
         assert "step01" in sCmd
 
     def test_empty_dirs(self):
-        sCmd = fsBuildTestMarkerCheckCommand([])
+        sCmd = fsBuildTestMarkerCheckCommand([], "/workspace/DemoRepo")
         assert "python3 -c" in sCmd
 
     def test_multiple_safe_dirs(self):
         sCmd = fsBuildTestMarkerCheckCommand(
-            ["/workspace/A01", "/workspace/A02"])
+            ["/workspace/A01", "/workspace/A02"],
+            "/workspace/DemoRepo")
         assert "A01" in sCmd
         assert "A02" in sCmd
 

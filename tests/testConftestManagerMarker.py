@@ -49,25 +49,36 @@ def test_template_parses_as_valid_python():
     ast.parse(sTemplate)
 
 
-def test_template_uses_workspace_root():
+def test_template_uses_project_repo_placeholder():
+    """The template body references _PROJECT_REPO but doesn't define it.
+
+    The definition lives in a prologue that ``fsBuildConftestSource``
+    prepends with the project-repo path substituted in. Verifying
+    that _PROJECT_REPO is referenced in the body keeps that contract
+    intact.
+    """
     sTemplate = conftestManager.fsConftestContent()
-    assert '_WORKSPACE_ROOT = Path("/workspace")' in sTemplate
+    assert "_PROJECT_REPO" in sTemplate
+    # No workspace-rooted literal should leak through.
+    assert '/workspace/.vaibify' not in sTemplate
+
+
+def test_buildConftestSource_substitutes_project_repo():
+    sSource = conftestManager.fsBuildConftestSource("/workspace/DemoRepo")
+    assert "_PROJECT_REPO = Path('/workspace/DemoRepo')" in sSource
+    ast.parse(sSource)
 
 
 def _fnExecTemplateWithRoot(tmp_path):
-    """Exec the template with _WORKSPACE_ROOT rewritten to tmp_path.
+    """Exec the prologue+template with _PROJECT_REPO = tmp_path.
 
     Returns a module-like namespace containing the helper functions
     so tests can exercise them without a live pytest session.
     """
-    sTemplate = conftestManager.fsConftestContent()
-    sPatched = sTemplate.replace(
-        '_WORKSPACE_ROOT = Path("/workspace")',
-        '_WORKSPACE_ROOT = Path(%r)' % str(tmp_path),
-    )
+    sSource = conftestManager.fsBuildConftestSource(str(tmp_path))
     moduleNs = types.ModuleType("vaibify_conftest_test_ns")
     moduleNs.__dict__["__name__"] = "vaibify_conftest_test_ns"
-    exec(compile(sPatched, "<template>", "exec"), moduleNs.__dict__)
+    exec(compile(sSource, "<template>", "exec"), moduleNs.__dict__)
     return moduleNs
 
 
@@ -85,7 +96,7 @@ def test_flistStepOutputFiles_returns_empty_without_workflows(tmp_path):
 def test_flistStepOutputFiles_matches_step_by_directory(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "saDataFiles": ["data/out.csv"],
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
@@ -99,7 +110,7 @@ def test_flistStepOutputFiles_matches_step_by_directory(tmp_path):
 def test_flistStepOutputFiles_skips_template_placeholders(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "saDataFiles": ["out_{iteration}.csv", "out.csv"],
         }],
     })
@@ -112,11 +123,11 @@ def test_flistStepOutputFiles_ignores_other_steps(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saPlotFiles": ["a.pdf"],
             },
             {
-                "sDirectory": "/workspace/step2",
+                "sDirectory": "step2",
                 "saPlotFiles": ["b.pdf"],
             },
         ],
@@ -139,7 +150,7 @@ def test_flistStepOutputFiles_tolerates_corrupt_workflow(tmp_path):
         f.write("{not-json")
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/good.json", {
         "listSteps": [{
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "saPlotFiles": ["fig.pdf"],
         }],
     })
@@ -191,7 +202,7 @@ def test_marker_round_trip_detects_drift_after_mutation(tmp_path):
     _fsWrite(str(tmp_path), "step1/Plot/fig.pdf", "original")
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
     })
@@ -220,7 +231,7 @@ def test_marker_round_trip_clean_on_fresh_clone(tmp_path):
     _fsWrite(str(tmp_path), "step1/Plot/fig.pdf", "verified-content")
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
     })

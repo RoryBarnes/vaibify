@@ -210,7 +210,9 @@ async def fiRunStepCommands(
     """Run a single step's commands sequentially in its directory."""
     from .pipelineTestRunner import _fiRunTestCommands
 
-    sStepDirectory = dictStep.get("sDirectory", sWorkdir)
+    sStepDirectory = workflowManager.fsResolveStepWorkdir(
+        dictStep.get("sDirectory", sWorkdir), dictVariables,
+    )
     sPlotDirectory = dictVariables.get("sPlotDirectory", "Plot")
     await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,
@@ -314,7 +316,9 @@ async def _fbVerifyStepOutputs(
     dictStep, dictVars, sWorkdir, fnStatusCallback,
 ):
     """Return True if all output files for a step exist."""
-    sStepDirectory = dictStep.get("sDirectory", sWorkdir)
+    sStepDirectory = workflowManager.fsResolveStepWorkdir(
+        dictStep.get("sDirectory", sWorkdir), dictVars,
+    )
     listOutputFiles = (
         dictStep.get("saPlotFiles", [])
         + dictStep.get("saDataFiles", [])
@@ -476,7 +480,9 @@ async def _fiExecuteAndRecord(
     """Execute step commands, record timing, emit results."""
     import time
     fStartTime = time.time()
-    sStepDir = dictStep.get("sDirectory", sWorkdir)
+    sStepDir = workflowManager.fsResolveStepWorkdir(
+        dictStep.get("sDirectory", sWorkdir), dictVariables,
+    )
     setFilesBefore = await _fsetSnapshotDirectory(
         connectionDocker, sContainerId, sStepDir
     )

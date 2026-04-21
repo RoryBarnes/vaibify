@@ -17,6 +17,7 @@ __all__ = [
     "fsBuildQuantitativeTestCode",
     "fsBuildStepContext",
     "fsConftestContent",
+    "fsBuildConftestSource",
     "fsConftestPath",
     "fsGenerateViaApi",
     "fsIntegrityStandardsPath",
@@ -68,6 +69,7 @@ from .dataPreview import (  # noqa: F401
 from .conftestManager import (  # noqa: F401
     fsConftestPath,
     fsConftestContent,
+    fsBuildConftestSource,
     fnWriteConftestMarker,
     _CONFTEST_MARKER_TEMPLATE,
     fnEnsureTestsDirectory,
@@ -432,15 +434,18 @@ def fdictGenerateAllTestsDeterministic(
     return _fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance, bForceOverwrite,
+        dictWorkflow.get("sProjectRepoPath", ""),
     )
 
 
 def _fdictWriteAllDeterministicTests(
     connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance, bForceOverwrite=False,
+    listdictReports, fTolerance, bForceOverwrite, sProjectRepoPath,
 ):
     """Write all three deterministic test files and return result dict."""
-    fnWriteConftestMarker(connectionDocker, sContainerId, sDirectory)
+    fnWriteConftestMarker(
+        connectionDocker, sContainerId, sDirectory, sProjectRepoPath,
+    )
     dictResult = {}
     listModified = []
     dictResult["dictIntegrity"] = _fdictWriteIntegrityTests(
@@ -636,7 +641,10 @@ def _fdictGenerateAllTestsViaLlm(
     if not bUseApi:
         fnEnsureClaudeMdInstructions(connectionDocker, sContainerId)
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
-    fnWriteConftestMarker(connectionDocker, sContainerId, sDirectory)
+    fnWriteConftestMarker(
+        connectionDocker, sContainerId, sDirectory,
+        dictWorkflow.get("sProjectRepoPath", ""),
+    )
     return _fdictDispatchLlmCategories(
         connectionDocker, sContainerId, sDirectory,
         sDataFiles, sScripts, sPreviews,

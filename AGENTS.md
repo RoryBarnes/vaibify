@@ -133,7 +133,30 @@ filesystem using `os.path`. `workflowManager.py` operates on container
 paths using `posixpath`. Similarly named functions
 (`fbValidateWorkflow`, `fdictBuildGlobalVariables`) exist in both and
 are intentionally divergent. Do not "fix" the divergence — it's
-load-bearing.
+load-bearing. They may share *pure* helpers (e.g.
+`flistValidateOutputFilePaths`) without violating this rule; the
+calling conventions remain divergent.
+
+**Do not revert to `/workspace`-as-repo.** Every vaibify workflow
+must live inside a git repository — its "project repo" —
+auto-detected from the workflow.json's parent via
+`containerGit.fsDetectProjectRepoInContainer`. `/workspace` is a
+Docker-managed named volume, not a repo; it is only the discovery
+root. Routes in `vaibify/gui/routes/gitRoutes.py` must thread
+`dictWorkflow["sProjectRepoPath"]` into every `containerGit.*` call
+(`testGitRoutesAlwaysPassProjectRepoToContainerGit` enforces this),
+and no module may hardcode `/workspace/.vaibify/test_markers`
+(`testNoWorkspaceRootedMarkerHardcodeInSource` enforces this — test
+markers live at `<sProjectRepoPath>/.vaibify/test_markers/`). Step
+`sDirectory` values and all `saOutputFiles` / `saDataFiles` /
+`saPlotFiles` paths are repo-relative; absolute or `..`-escaping
+values are rejected at load time. A silent fallback to the
+`/workspace` default reintroduces the all-grey-badges bug and
+desynchronizes marker writes from marker reads. See
+[docs/architecture.md](docs/architecture.md) — the "Workflow = git
+repo" section — for the full rationale. A container may host
+multiple workflows in different project-repo subdirectories; the
+active workflow determines the badge scope.
 
 **`introspectionScript.py` is an f-string executed inside containers.**
 Editing it as ordinary Python loses escape sequences and string

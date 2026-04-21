@@ -36,7 +36,7 @@ DICT_WORKFLOW_SYNC = {
     "listSteps": [
         {
             "sName": "Generate Data",
-            "sDirectory": "/workspace/step01",
+            "sDirectory": "step01",
             "bPlotOnly": False,
             "bEnabled": True,
             "bInteractive": False,

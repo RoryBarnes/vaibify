@@ -132,7 +132,7 @@ def _fMockConnection():
 def test_fsBuildStepContext_reads_scripts():
     mockConn = _fMockConnection()
     dictStep = {
-        "sDirectory": "/workspace/step1",
+        "sDirectory": "step1",
         "saDataCommands": ["python analyze.py"],
         "saDataFiles": ["output.npy"],
     }
@@ -145,7 +145,7 @@ def test_fsBuildStepContext_reads_scripts():
 def test_fsBuildStepContext_no_scripts():
     mockConn = _fMockConnection()
     dictStep = {
-        "sDirectory": "/workspace",
+        "sDirectory": ".",
         "saDataCommands": [],
         "saDataFiles": [],
     }
@@ -160,7 +160,7 @@ def test_fsBuildStepContext_handles_fetch_failure():
     mockConn.fbaFetchFile.side_effect = Exception("not found")
     mockConn.ftResultExecuteCommand.return_value = (1, "")
     dictStep = {
-        "sDirectory": "/workspace",
+        "sDirectory": ".",
         "saDataCommands": ["python missing.py"],
         "saDataFiles": ["data.csv"],
     }

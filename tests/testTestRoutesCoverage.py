@@ -27,7 +27,7 @@ def _fdictBuildContext():
         "variables": MagicMock(return_value={}),
         "workflows": {"cid-1": {"listSteps": [
             {
-                "sDirectory": "/workspace",
+                "sDirectory": ".",
                 "dictTests": {},
                 "dictVerification": {},
             }
@@ -414,7 +414,7 @@ class TestRunTestCategoryRoute:
             return_value={"sCategory": "qualitative"})
 
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {
                 "dictQualitative": {
                     "saCommands": ["pytest test_q.py"],
@@ -463,7 +463,7 @@ class TestRunTestCategoryRoute:
             return_value={"sCategory": "integrity"})
 
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {
                 "dictIntegrity": {
                     "saCommands": ["pytest test_i.py"],
@@ -503,7 +503,7 @@ class TestRunTestCategoryRoute:
             return_value={"sCategory": "quantitative"})
 
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {
                 "dictQuantitative": {
                     "saCommands": ["pytest test_quant.py"],
@@ -544,7 +544,7 @@ class TestRunTestCategoryRoute:
             return_value={"sCategory": "quantitative"})
 
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {
                 "dictQuantitative": {
                     "saCommands": ["pytest test_q.py"],
@@ -598,7 +598,7 @@ class TestDeleteGeneratedTestRoute:
     async def test_delete_resets_step_tests(self):
         dictCtx = _fdictBuildContext()
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {
                 "dictIntegrity": {"saCommands": ["old"]},
                 "dictQualitative": {"saCommands": ["old"]},
@@ -675,7 +675,7 @@ class TestSaveAndRunTestRoute:
         mockRequest.sContent = "import pytest\ndef test_x(): pass"
 
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {},
             "dictVerification": {},
         }
@@ -910,7 +910,7 @@ class TestFdictRunAllTestCategories:
     async def test_runs_categories_and_records(self):
         dictCtx = _fdictBuildContext()
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {
                 "dictIntegrity": {"saCommands": ["pytest"]},
                 "dictQualitative": {"saCommands": ["pytest"]},
@@ -938,7 +938,7 @@ class TestFdictRunAllTestCategories:
     async def test_skips_none_results(self):
         dictCtx = _fdictBuildContext()
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "dictTests": {},
             "dictVerification": {},
         }

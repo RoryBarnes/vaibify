@@ -27,7 +27,7 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Generate Orbits",
-            "sDirectory": "/workspace/orbits",
+            "sDirectory": "orbits",
             "bPlotOnly": False,
             "bEnabled": True,
             "bInteractive": False,
@@ -44,7 +44,7 @@ DICT_WORKFLOW = {
         },
         {
             "sName": "Analyze Results",
-            "sDirectory": "/workspace/analysis",
+            "sDirectory": "analysis",
             "bPlotOnly": False,
             "bEnabled": True,
             "bInteractive": False,
