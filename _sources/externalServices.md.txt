@@ -1,10 +1,10 @@
-# External-service integrations: lessons from Overleaf
+# External-service integrations: Overleaf, GitHub, Zenodo
 
-This document captures what we learned while building vaibify's Overleaf
-integration so that the next implementer — connecting GitHub and Zenodo
-— can reuse the shape, avoid the traps, and know which abstractions are
-ready to extract vs. which should stay local until a third service
-forces the pattern.
+All three integrations are now landed (Overleaf first, then GitHub,
+then Zenodo). This document captures the patterns that survived
+three concrete implementations — the ones you can rely on when adding
+a fourth service — and the traps that only become visible after you
+have built more than one.
 
 It is written to be **actionable**, not exhaustive. If a section seems
 too short, that's intentional: the full source is the source of truth.
@@ -209,53 +209,100 @@ Overleaf's "phantom push with no remote change" bug.
 
 ## What to modularize vs. what to write fresh
 
-### Modularize now (two-service common core)
-After GitHub is working, extract these into shared modules:
-- `fsWriteAskpassScript` — the on-disk temp-file machinery is now
-  in `reproducibility/askpassHelper.py::fsWriteExecutableScript`;
-  the service-specific source builders stay in
-  `githubAuth.py` / `overleafAuth.py`.
-- `LIST_GIT_HARDENING_CONFIG` — already consolidated in
-  `reproducibility/gitHardening.py`.
+### Already consolidated (three-service common core)
+
+These lifted cleanly once the third service was in place:
+
+- **`fsWriteAskpassScript`** — the on-disk temp-file machinery
+  (mkstemp + chmod 700 + return path) now lives in
+  [`reproducibility/askpassHelper.py::fsWriteExecutableScript`](../vaibify/reproducibility/askpassHelper.py).
+  Service-specific askpass source builders stay in
+  [`githubAuth.py`](../vaibify/reproducibility/githubAuth.py) and
+  [`overleafAuth.py`](../vaibify/reproducibility/overleafAuth.py).
+- **`LIST_GIT_HARDENING_CONFIG`** — single list of `-c` flags at
+  [`reproducibility/gitHardening.py`](../vaibify/reproducibility/gitHardening.py),
+  imported by `gui.gitStatus`, `reproducibility.overleafMirror`, and
+  `gui.syncDispatcher`. `overleafSync.py` keeps a local copy because
+  it ships into the container standalone.
+- **`ZenodoClient`** — the host-side Zenodo API wrapper is also
+  [shipped into the container](#ship-the-host-client-dont-reimplement)
+  at `/usr/share/vaibify/zenodoClient.py`. The in-container archive
+  script imports it flat and calls methods instead of
+  reimplementing the HTTP surface. One bearer-token path for both
+  host and container.
+
+### Still candidates to extract (when a fourth service lands)
+
 - `fsRedactStderr` helper (overleafMirror / overleafSync; the
-  container-shipped copy is deliberately divergent)
-- `fnValidateTargetDirectory` (currently in `overleafSync.py`)
-- `fnValidatePullRelativePath`
-- `fdictComputeContainerDigests` (the digest-compute docker-exec helper)
-- The `PUSH_STATUS=` + `HEAD_SHA=` stdout protocol
-- Host header / session token middleware (already shared)
+  container-shipped copy is deliberately divergent).
+- `fnValidateTargetDirectory` (currently in `overleafSync.py`).
+- `fnValidatePullRelativePath`.
+- `fdictComputeContainerDigests` (the digest-compute docker-exec helper).
+- The `PUSH_STATUS=` + `HEAD_SHA=` stdout protocol.
+- Host header / session token middleware (already shared).
 
-### Write fresh for GitHub
-GitHub is git-native, so `overleafMirror.py` is **nearly** reusable.
-Differences: no case folding (likely), branch selection, commit
-message conventions, PR vs. direct push, GitHub Apps vs. PATs. Keep
-`overleafMirror.py` Overleaf-specific (it has Overleaf's quirks in
-its docstring); write `githubMirror.py` alongside and see what
-common shape emerges. After TWO mirrors exist, extract a
-`serviceMirror.py` base.
+### What we wrote fresh per service
 
-### Write fresh for Zenodo
-Zenodo is **not git**. No clone, no blob SHAs, no tree. Its REST API
-returns a deposition with a file list; you'll POST new files and
-PUT metadata. The "mirror" concept becomes "cached deposition
-state": a JSON blob at `~/.vaibify/zenodo-cache/<depositId>.json`
-with file names + sizes + checksums. Diff logic still applies, but
-the primitives are different. Don't try to share code between the
-git services and Zenodo except at the highest layers (route
-signatures, frontend modal).
+**GitHub** — git-native like Overleaf but with a different authentication
+story (`gh auth token` fallback, per-repo keyring slots). We wrote
+[`githubAuth.py`](../vaibify/reproducibility/githubAuth.py),
+[`gitRoutes.py`](../vaibify/gui/routes/gitRoutes.py), and push flows in
+`syncDispatcher.py` fresh, stole the hardening flags and askpass
+machinery, and left `overleafMirror.py` Overleaf-specific (its quirks
+are in the docstring for a reason). No shared `serviceMirror.py`
+emerged — the only true overlap was the hardening flags, and those
+lifted cleanly without a wrapper.
 
-### Do NOT modularize yet (wait for three)
-These felt common but might really be Overleaf-specific:
-- `flistDetectCaseCollisions` — may not apply to either other service
-- The specific `OverleafBehavior` fixture pattern — worth replicating
-  per service, but don't force a shared API
+**Zenodo** — not git. REST API with Bearer tokens, deposits, and
+newversion semantics. First pass implemented the whole API surface
+inline inside a base64-encoded container script because
+`ZenodoClient` needed host-only imports. That left us with two
+implementations of the same Bearer-token logic, which is the
+cross-cutting concern summarized below.
+
+### Ship the host client, don't reimplement
+
+When a host module wraps an external REST API cleanly and a
+container script needs the same API, **ship the host module into
+the container** (the `overleafSync.py` flat-file pattern) instead
+of reimplementing the HTTP calls inline. The cost is one line in
+`docker/Dockerfile` and one entry in
+[`fnCopyContainerScripts`](../vaibify/cli/commandBuild.py); the win
+is a single source of truth for:
+
+- Bearer-token auth construction
+- HTTP error classification (`_fnCheckResponse` → typed exceptions)
+- Response-shape edge cases (`links.latest_draft`, nested `id`
+  fields, 204 handling)
+- Future retry / timeout policy
+
+Prerequisites for ship-in: the module must import **only**
+container-resident packages at top level (no `vaibify.*`, no
+optional deps like `tqdm` unless you lazy-import them). Use the
+same `try: from vaibify.reproducibility.X import ... except
+ImportError: from X import ...` fallback pattern overleafSync uses
+for its siblings.
+
+Zenodo landed this second pass in commit `d0358c3`: `ZenodoClient`
+grew optional `sToken` / `sBaseUrl` kwargs, tqdm moved to lazy
+imports, the archive script dropped from ~90 lines of inline HTTP
+to ~55 lines of method calls.
+
+### Do NOT modularize yet (wait for four)
+
+These felt common across Overleaf and GitHub but may not transfer
+when the fourth service lands:
+
+- `flistDetectCaseCollisions` — Overleaf-specific case folding;
+  didn't need it for GitHub.
+- The specific `OverleafBehavior` fixture pattern — worth
+  replicating per service, but don't force a shared API.
 - Target-directory selection UI — GitHub has branches, not
-  directories; Zenodo has no directory concept at all
+  directories; Zenodo has no directory concept at all.
 
-**Rule of thumb**: write GitHub fresh, steal code, then write Zenodo
-fresh, steal code. After both are working, look for the true common
-patterns and extract. Three concrete instances is the right time to
-abstract; two is premature.
+**Rule of thumb**: three concrete instances is the right time to
+abstract. Two is premature; four starts to feel like you're fighting
+divergence.
 
 ## Architectural invariants to respect
 
@@ -288,19 +335,34 @@ The ones most relevant to new services:
   fix makes an existing test's input now invalid, update the test
   narrowly to use valid input that still exercises the same behavior.
 
-## Related files (current Overleaf implementation)
+## Related files
 
-Backend:
+Shared infrastructure:
+- [vaibify/reproducibility/gitHardening.py](../vaibify/reproducibility/gitHardening.py) (the `-c` flags)
+- [vaibify/reproducibility/askpassHelper.py](../vaibify/reproducibility/askpassHelper.py) (mode-700 temp-file writer)
+- [vaibify/config/secretManager.py](../vaibify/config/secretManager.py) (host OS keyring)
+- [vaibify/gui/syncDispatcher.py](../vaibify/gui/syncDispatcher.py) (host-side dispatcher)
+- [vaibify/gui/routes/syncRoutes.py](../vaibify/gui/routes/syncRoutes.py)
+- [vaibify/gui/pipelineServer.py](../vaibify/gui/pipelineServer.py) (pydantic models, host-header middleware)
+- [vaibify/gui/workflowManager.py](../vaibify/gui/workflowManager.py) (sync-status persistence)
+- [docker/Dockerfile](../docker/Dockerfile) (ships the container CLIs)
+- [vaibify/cli/commandBuild.py::fnCopyContainerScripts](../vaibify/cli/commandBuild.py) (stages ship-ins)
+
+Overleaf:
 - [vaibify/reproducibility/overleafAuth.py](../vaibify/reproducibility/overleafAuth.py)
 - [vaibify/reproducibility/overleafMirror.py](../vaibify/reproducibility/overleafMirror.py)
 - [vaibify/reproducibility/overleafSync.py](../vaibify/reproducibility/overleafSync.py) (container CLI)
 - [vaibify/reproducibility/latexConnector.py](../vaibify/reproducibility/latexConnector.py) (container CLI helper)
-- [vaibify/gui/syncDispatcher.py](../vaibify/gui/syncDispatcher.py)
-- [vaibify/gui/routes/syncRoutes.py](../vaibify/gui/routes/syncRoutes.py)
-- [vaibify/gui/pipelineServer.py](../vaibify/gui/pipelineServer.py) (pydantic models, host-header middleware)
-- [vaibify/gui/workflowManager.py](../vaibify/gui/workflowManager.py) (sync-status persistence)
-- [vaibify/config/secretManager.py](../vaibify/config/secretManager.py)
-- [docker/Dockerfile](../docker/Dockerfile) (ships the container CLIs)
+
+GitHub:
+- [vaibify/reproducibility/githubAuth.py](../vaibify/reproducibility/githubAuth.py)
+- [vaibify/gui/routes/gitRoutes.py](../vaibify/gui/routes/gitRoutes.py)
+- [vaibify/gui/gitStatus.py](../vaibify/gui/gitStatus.py) (host-side status)
+- [vaibify/gui/containerGit.py](../vaibify/gui/containerGit.py) (container-side status)
+
+Zenodo:
+- [vaibify/reproducibility/zenodoClient.py](../vaibify/reproducibility/zenodoClient.py) (host module AND container CLI — shipped in)
+- [vaibify/reproducibility/dataArchiver.py](../vaibify/reproducibility/dataArchiver.py) (host-side archive orchestration)
 
 Frontend:
 - [vaibify/gui/static/scriptSyncManager.js](../vaibify/gui/static/scriptSyncManager.js)

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>External-service integrations: lessons from Overleaf &mdash; Vaibify 0.0.1.dev88 documentation</title>
+  <title>External-service integrations: Overleaf, GitHub, Zenodo &mdash; Vaibify 0.0.1.dev89 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=8340f025"></script>
+      <script src="_static/documentation_options.js?v=2738743c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,7 +57,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">External-service integrations: lessons from Overleaf</a><ul>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">External-service integrations: Overleaf, GitHub, Zenodo</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#what-to-reuse-from-overleaf">What to reuse from Overleaf</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#token-auth-plumbing">Token + auth plumbing</a></li>
@@ -81,15 +81,16 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#what-to-modularize-vs-what-to-write-fresh">What to modularize vs. what to write fresh</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#modularize-now-two-service-common-core">Modularize now (two-service common core)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#write-fresh-for-github">Write fresh for GitHub</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#write-fresh-for-zenodo">Write fresh for Zenodo</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#do-not-modularize-yet-wait-for-three">Do NOT modularize yet (wait for three)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#already-consolidated-three-service-common-core">Already consolidated (three-service common core)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#still-candidates-to-extract-when-a-fourth-service-lands">Still candidates to extract (when a fourth service lands)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-we-wrote-fresh-per-service">What we wrote fresh per service</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ship-the-host-client-don-t-reimplement">Ship the host client, don’t reimplement</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#do-not-modularize-yet-wait-for-four">Do NOT modularize yet (wait for four)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-invariants-to-respect">Architectural invariants to respect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#testing-discipline">Testing discipline</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#related-files-current-overleaf-implementation">Related files (current Overleaf implementation)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-files">Related files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#known-follow-ups-from-the-security-audit">Known follow-ups from the security audit</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-sequence">Recommended sequence</a></li>
 </ul>
@@ -114,7 +115,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">External-service integrations: lessons from Overleaf</li>
+      <li class="breadcrumb-item active">External-service integrations: Overleaf, GitHub, Zenodo</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/externalServices.md.txt" rel="nofollow"> View page source</a>
       </li>
@@ -124,13 +125,13 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="external-service-integrations-lessons-from-overleaf">
-<h1>External-service integrations: lessons from Overleaf<a class="headerlink" href="#external-service-integrations-lessons-from-overleaf" title="Link to this heading"></a></h1>
-<p>This document captures what we learned while building vaibify’s Overleaf
-integration so that the next implementer — connecting GitHub and Zenodo
-— can reuse the shape, avoid the traps, and know which abstractions are
-ready to extract vs. which should stay local until a third service
-forces the pattern.</p>
+  <section id="external-service-integrations-overleaf-github-zenodo">
+<h1>External-service integrations: Overleaf, GitHub, Zenodo<a class="headerlink" href="#external-service-integrations-overleaf-github-zenodo" title="Link to this heading"></a></h1>
+<p>All three integrations are now landed (Overleaf first, then GitHub,
+then Zenodo). This document captures the patterns that survived
+three concrete implementations — the ones you can rely on when adding
+a fourth service — and the traps that only become visible after you
+have built more than one.</p>
 <p>It is written to be <strong>actionable</strong>, not exhaustive. If a section seems
 too short, that’s intentional: the full source is the source of truth.</p>
 <section id="mental-model">
@@ -350,60 +351,100 @@ Overleaf’s “phantom push with no remote change” bug.</p>
 </section>
 <section id="what-to-modularize-vs-what-to-write-fresh">
 <h2>What to modularize vs. what to write fresh<a class="headerlink" href="#what-to-modularize-vs-what-to-write-fresh" title="Link to this heading"></a></h2>
-<section id="modularize-now-two-service-common-core">
-<h3>Modularize now (two-service common core)<a class="headerlink" href="#modularize-now-two-service-common-core" title="Link to this heading"></a></h3>
-<p>After GitHub is working, extract these into shared modules:</p>
+<section id="already-consolidated-three-service-common-core">
+<h3>Already consolidated (three-service common core)<a class="headerlink" href="#already-consolidated-three-service-common-core" title="Link to this heading"></a></h3>
+<p>These lifted cleanly once the third service was in place:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code> — the on-disk temp-file machinery is now
-in <code class="docutils literal notranslate"><span class="pre">reproducibility/askpassHelper.py::fsWriteExecutableScript</span></code>;
-the service-specific source builders stay in
-<code class="docutils literal notranslate"><span class="pre">githubAuth.py</span></code> / <code class="docutils literal notranslate"><span class="pre">overleafAuth.py</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">LIST_GIT_HARDENING_CONFIG</span></code> — already consolidated in
-<code class="docutils literal notranslate"><span class="pre">reproducibility/gitHardening.py</span></code>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code></strong> — the on-disk temp-file machinery
+(mkstemp + chmod 700 + return path) now lives in
+<a class="reference download internal" download="" href="_downloads/74ae03d2dec9edd9b79b474d46e71373/askpassHelper.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">reproducibility/askpassHelper.py::fsWriteExecutableScript</span></code></span></a>.
+Service-specific askpass source builders stay in
+<a class="reference download internal" download="" href="_downloads/1d83a842acb2e755441ec53eac1ba064/githubAuth.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">githubAuth.py</span></code></span></a> and
+<a class="reference download internal" download="" href="_downloads/1ae75908aea21574aa8bee9e6a8af331/overleafAuth.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">overleafAuth.py</span></code></span></a>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">LIST_GIT_HARDENING_CONFIG</span></code></strong> — single list of <code class="docutils literal notranslate"><span class="pre">-c</span></code> flags at
+<a class="reference download internal" download="" href="_downloads/261910b7bc812877113d8f941d31858d/gitHardening.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">reproducibility/gitHardening.py</span></code></span></a>,
+imported by <code class="docutils literal notranslate"><span class="pre">gui.gitStatus</span></code>, <code class="docutils literal notranslate"><span class="pre">reproducibility.overleafMirror</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">gui.syncDispatcher</span></code>. <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> keeps a local copy because
+it ships into the container standalone.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">ZenodoClient</span></code></strong> — the host-side Zenodo API wrapper is also
+<a class="reference internal" href="#ship-the-host-client-dont-reimplement"><span class="xref myst">shipped into the container</span></a>
+at <code class="docutils literal notranslate"><span class="pre">/usr/share/vaibify/zenodoClient.py</span></code>. The in-container archive
+script imports it flat and calls methods instead of
+reimplementing the HTTP surface. One bearer-token path for both
+host and container.</p></li>
+</ul>
+</section>
+<section id="still-candidates-to-extract-when-a-fourth-service-lands">
+<h3>Still candidates to extract (when a fourth service lands)<a class="headerlink" href="#still-candidates-to-extract-when-a-fourth-service-lands" title="Link to this heading"></a></h3>
+<ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">fsRedactStderr</span></code> helper (overleafMirror / overleafSync; the
-container-shipped copy is deliberately divergent)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fnValidateTargetDirectory</span></code> (currently in <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code>)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fnValidatePullRelativePath</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fdictComputeContainerDigests</span></code> (the digest-compute docker-exec helper)</p></li>
-<li><p>The <code class="docutils literal notranslate"><span class="pre">PUSH_STATUS=</span></code> + <code class="docutils literal notranslate"><span class="pre">HEAD_SHA=</span></code> stdout protocol</p></li>
-<li><p>Host header / session token middleware (already shared)</p></li>
+container-shipped copy is deliberately divergent).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fnValidateTargetDirectory</span></code> (currently in <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fnValidatePullRelativePath</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fdictComputeContainerDigests</span></code> (the digest-compute docker-exec helper).</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">PUSH_STATUS=</span></code> + <code class="docutils literal notranslate"><span class="pre">HEAD_SHA=</span></code> stdout protocol.</p></li>
+<li><p>Host header / session token middleware (already shared).</p></li>
 </ul>
 </section>
-<section id="write-fresh-for-github">
-<h3>Write fresh for GitHub<a class="headerlink" href="#write-fresh-for-github" title="Link to this heading"></a></h3>
-<p>GitHub is git-native, so <code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code> is <strong>nearly</strong> reusable.
-Differences: no case folding (likely), branch selection, commit
-message conventions, PR vs. direct push, GitHub Apps vs. PATs. Keep
-<code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code> Overleaf-specific (it has Overleaf’s quirks in
-its docstring); write <code class="docutils literal notranslate"><span class="pre">githubMirror.py</span></code> alongside and see what
-common shape emerges. After TWO mirrors exist, extract a
-<code class="docutils literal notranslate"><span class="pre">serviceMirror.py</span></code> base.</p>
+<section id="what-we-wrote-fresh-per-service">
+<h3>What we wrote fresh per service<a class="headerlink" href="#what-we-wrote-fresh-per-service" title="Link to this heading"></a></h3>
+<p><strong>GitHub</strong> — git-native like Overleaf but with a different authentication
+story (<code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">token</span></code> fallback, per-repo keyring slots). We wrote
+<a class="reference download internal" download="" href="_downloads/1d83a842acb2e755441ec53eac1ba064/githubAuth.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">githubAuth.py</span></code></span></a>,
+<a class="reference download internal" download="" href="_downloads/73a9c5609447cafb4e23b55b950e64dd/gitRoutes.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">gitRoutes.py</span></code></span></a>, and push flows in
+<code class="docutils literal notranslate"><span class="pre">syncDispatcher.py</span></code> fresh, stole the hardening flags and askpass
+machinery, and left <code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code> Overleaf-specific (its quirks
+are in the docstring for a reason). No shared <code class="docutils literal notranslate"><span class="pre">serviceMirror.py</span></code>
+emerged — the only true overlap was the hardening flags, and those
+lifted cleanly without a wrapper.</p>
+<p><strong>Zenodo</strong> — not git. REST API with Bearer tokens, deposits, and
+newversion semantics. First pass implemented the whole API surface
+inline inside a base64-encoded container script because
+<code class="docutils literal notranslate"><span class="pre">ZenodoClient</span></code> needed host-only imports. That left us with two
+implementations of the same Bearer-token logic, which is the
+cross-cutting concern summarized below.</p>
 </section>
-<section id="write-fresh-for-zenodo">
-<h3>Write fresh for Zenodo<a class="headerlink" href="#write-fresh-for-zenodo" title="Link to this heading"></a></h3>
-<p>Zenodo is <strong>not git</strong>. No clone, no blob SHAs, no tree. Its REST API
-returns a deposition with a file list; you’ll POST new files and
-PUT metadata. The “mirror” concept becomes “cached deposition
-state”: a JSON blob at <code class="docutils literal notranslate"><span class="pre">~/.vaibify/zenodo-cache/&lt;depositId&gt;.json</span></code>
-with file names + sizes + checksums. Diff logic still applies, but
-the primitives are different. Don’t try to share code between the
-git services and Zenodo except at the highest layers (route
-signatures, frontend modal).</p>
-</section>
-<section id="do-not-modularize-yet-wait-for-three">
-<h3>Do NOT modularize yet (wait for three)<a class="headerlink" href="#do-not-modularize-yet-wait-for-three" title="Link to this heading"></a></h3>
-<p>These felt common but might really be Overleaf-specific:</p>
+<section id="ship-the-host-client-don-t-reimplement">
+<h3>Ship the host client, don’t reimplement<a class="headerlink" href="#ship-the-host-client-don-t-reimplement" title="Link to this heading"></a></h3>
+<p>When a host module wraps an external REST API cleanly and a
+container script needs the same API, <strong>ship the host module into
+the container</strong> (the <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> flat-file pattern) instead
+of reimplementing the HTTP calls inline. The cost is one line in
+<code class="docutils literal notranslate"><span class="pre">docker/Dockerfile</span></code> and one entry in
+<a class="reference download internal" download="" href="_downloads/9ea80d7618361d0ca2a5866ac7b69ee6/commandBuild.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">fnCopyContainerScripts</span></code></span></a>; the win
+is a single source of truth for:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">flistDetectCaseCollisions</span></code> — may not apply to either other service</p></li>
-<li><p>The specific <code class="docutils literal notranslate"><span class="pre">OverleafBehavior</span></code> fixture pattern — worth replicating
-per service, but don’t force a shared API</p></li>
-<li><p>Target-directory selection UI — GitHub has branches, not
-directories; Zenodo has no directory concept at all</p></li>
+<li><p>Bearer-token auth construction</p></li>
+<li><p>HTTP error classification (<code class="docutils literal notranslate"><span class="pre">_fnCheckResponse</span></code> → typed exceptions)</p></li>
+<li><p>Response-shape edge cases (<code class="docutils literal notranslate"><span class="pre">links.latest_draft</span></code>, nested <code class="docutils literal notranslate"><span class="pre">id</span></code>
+fields, 204 handling)</p></li>
+<li><p>Future retry / timeout policy</p></li>
 </ul>
-<p><strong>Rule of thumb</strong>: write GitHub fresh, steal code, then write Zenodo
-fresh, steal code. After both are working, look for the true common
-patterns and extract. Three concrete instances is the right time to
-abstract; two is premature.</p>
+<p>Prerequisites for ship-in: the module must import <strong>only</strong>
+container-resident packages at top level (no <code class="docutils literal notranslate"><span class="pre">vaibify.*</span></code>, no
+optional deps like <code class="docutils literal notranslate"><span class="pre">tqdm</span></code> unless you lazy-import them). Use the
+same <code class="docutils literal notranslate"><span class="pre">try:</span> <span class="pre">from</span> <span class="pre">vaibify.reproducibility.X</span> <span class="pre">import</span> <span class="pre">...</span> <span class="pre">except</span> <span class="pre">ImportError:</span> <span class="pre">from</span> <span class="pre">X</span> <span class="pre">import</span> <span class="pre">...</span></code> fallback pattern overleafSync uses
+for its siblings.</p>
+<p>Zenodo landed this second pass in commit <code class="docutils literal notranslate"><span class="pre">d0358c3</span></code>: <code class="docutils literal notranslate"><span class="pre">ZenodoClient</span></code>
+grew optional <code class="docutils literal notranslate"><span class="pre">sToken</span></code> / <code class="docutils literal notranslate"><span class="pre">sBaseUrl</span></code> kwargs, tqdm moved to lazy
+imports, the archive script dropped from ~90 lines of inline HTTP
+to ~55 lines of method calls.</p>
+</section>
+<section id="do-not-modularize-yet-wait-for-four">
+<h3>Do NOT modularize yet (wait for four)<a class="headerlink" href="#do-not-modularize-yet-wait-for-four" title="Link to this heading"></a></h3>
+<p>These felt common across Overleaf and GitHub but may not transfer
+when the fourth service lands:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">flistDetectCaseCollisions</span></code> — Overleaf-specific case folding;
+didn’t need it for GitHub.</p></li>
+<li><p>The specific <code class="docutils literal notranslate"><span class="pre">OverleafBehavior</span></code> fixture pattern — worth
+replicating per service, but don’t force a shared API.</p></li>
+<li><p>Target-directory selection UI — GitHub has branches, not
+directories; Zenodo has no directory concept at all.</p></li>
+</ul>
+<p><strong>Rule of thumb</strong>: three concrete instances is the right time to
+abstract. Two is premature; four starts to feel like you’re fighting
+divergence.</p>
 </section>
 </section>
 <section id="architectural-invariants-to-respect">
@@ -440,20 +481,38 @@ fix makes an existing test’s input now invalid, update the test
 narrowly to use valid input that still exercises the same behavior.</p></li>
 </ul>
 </section>
-<section id="related-files-current-overleaf-implementation">
-<h2>Related files (current Overleaf implementation)<a class="headerlink" href="#related-files-current-overleaf-implementation" title="Link to this heading"></a></h2>
-<p>Backend:</p>
+<section id="related-files">
+<h2>Related files<a class="headerlink" href="#related-files" title="Link to this heading"></a></h2>
+<p>Shared infrastructure:</p>
+<ul class="simple">
+<li><p><a class="reference download internal" download="" href="_downloads/261910b7bc812877113d8f941d31858d/gitHardening.py"><span class="xref download myst">vaibify/reproducibility/gitHardening.py</span></a> (the <code class="docutils literal notranslate"><span class="pre">-c</span></code> flags)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/74ae03d2dec9edd9b79b474d46e71373/askpassHelper.py"><span class="xref download myst">vaibify/reproducibility/askpassHelper.py</span></a> (mode-700 temp-file writer)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/a71dab4c014549fb377b64864c085ec8/secretManager.py"><span class="xref download myst">vaibify/config/secretManager.py</span></a> (host OS keyring)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">vaibify/gui/syncDispatcher.py</span></a> (host-side dispatcher)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">vaibify/gui/routes/syncRoutes.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/6db00b295236147ad59b28dd68c00960/pipelineServer.py"><span class="xref download myst">vaibify/gui/pipelineServer.py</span></a> (pydantic models, host-header middleware)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/580a2d297ab6b43f2a5f0ae25d3fc4c3/workflowManager.py"><span class="xref download myst">vaibify/gui/workflowManager.py</span></a> (sync-status persistence)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/9c6d2dd30e172995ff9466799d6f77ed/Dockerfile"><span class="xref download myst">docker/Dockerfile</span></a> (ships the container CLIs)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/9ea80d7618361d0ca2a5866ac7b69ee6/commandBuild.py"><span class="xref download myst">vaibify/cli/commandBuild.py::fnCopyContainerScripts</span></a> (stages ship-ins)</p></li>
+</ul>
+<p>Overleaf:</p>
 <ul class="simple">
 <li><p><a class="reference download internal" download="" href="_downloads/1ae75908aea21574aa8bee9e6a8af331/overleafAuth.py"><span class="xref download myst">vaibify/reproducibility/overleafAuth.py</span></a></p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/c6860652d411ed1b1cbeed4cab0a0726/overleafMirror.py"><span class="xref download myst">vaibify/reproducibility/overleafMirror.py</span></a></p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/67fdbb52e3b381085b5d12868c559c73/overleafSync.py"><span class="xref download myst">vaibify/reproducibility/overleafSync.py</span></a> (container CLI)</p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/b562d40d1242a24442e8d7f7a29bdad5/latexConnector.py"><span class="xref download myst">vaibify/reproducibility/latexConnector.py</span></a> (container CLI helper)</p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">vaibify/gui/syncDispatcher.py</span></a></p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">vaibify/gui/routes/syncRoutes.py</span></a></p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/6db00b295236147ad59b28dd68c00960/pipelineServer.py"><span class="xref download myst">vaibify/gui/pipelineServer.py</span></a> (pydantic models, host-header middleware)</p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/580a2d297ab6b43f2a5f0ae25d3fc4c3/workflowManager.py"><span class="xref download myst">vaibify/gui/workflowManager.py</span></a> (sync-status persistence)</p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/a71dab4c014549fb377b64864c085ec8/secretManager.py"><span class="xref download myst">vaibify/config/secretManager.py</span></a></p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/9c6d2dd30e172995ff9466799d6f77ed/Dockerfile"><span class="xref download myst">docker/Dockerfile</span></a> (ships the container CLIs)</p></li>
+</ul>
+<p>GitHub:</p>
+<ul class="simple">
+<li><p><a class="reference download internal" download="" href="_downloads/1d83a842acb2e755441ec53eac1ba064/githubAuth.py"><span class="xref download myst">vaibify/reproducibility/githubAuth.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/73a9c5609447cafb4e23b55b950e64dd/gitRoutes.py"><span class="xref download myst">vaibify/gui/routes/gitRoutes.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/daf839b140676f9d63b92b342a101c5d/gitStatus.py"><span class="xref download myst">vaibify/gui/gitStatus.py</span></a> (host-side status)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/34ece52405efd401fe12881cb1685ef5/containerGit.py"><span class="xref download myst">vaibify/gui/containerGit.py</span></a> (container-side status)</p></li>
+</ul>
+<p>Zenodo:</p>
+<ul class="simple">
+<li><p><a class="reference download internal" download="" href="_downloads/9d075668f16500f787afd9eab6b69054/zenodoClient.py"><span class="xref download myst">vaibify/reproducibility/zenodoClient.py</span></a> (host module AND container CLI — shipped in)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/a061b691df3dc6e259fab69f3c823928/dataArchiver.py"><span class="xref download myst">vaibify/reproducibility/dataArchiver.py</span></a> (host-side archive orchestration)</p></li>
 </ul>
 <p>Frontend:</p>
 <ul class="simple">
