@@ -12,11 +12,10 @@ never placed on process argv or environment variables: an askpass
 helper script reads them from the OS keyring at subprocess time.
 """
 
-import os
 import re
-import stat
 import sys
-import tempfile
+
+from vaibify.reproducibility.askpassHelper import fsWriteExecutableScript
 
 
 __all__ = [
@@ -44,16 +43,7 @@ def fsWriteAskpassScript():
     script looks up the Overleaf token via the host keyring so the
     token itself never reaches process argv or environment variables.
     """
-    sScript = _fsBuildAskpassSource()
-    iFileDescriptor, sPath = tempfile.mkstemp(
-        prefix="vc_askpass_", suffix=".py",
-    )
-    try:
-        os.write(iFileDescriptor, sScript.encode("utf-8"))
-    finally:
-        os.close(iFileDescriptor)
-    os.chmod(sPath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-    return sPath
+    return fsWriteExecutableScript(_fsBuildAskpassSource(), "vc_askpass_")
 
 
 def _fsBuildAskpassSource():

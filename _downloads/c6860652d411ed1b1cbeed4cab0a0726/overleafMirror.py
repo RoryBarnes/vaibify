@@ -51,6 +51,7 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 
+from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.overleafAuth import (
     fnValidateOverleafProjectId,
     fsWriteAskpassScript,
@@ -90,18 +91,6 @@ _REGEX_URL_WITH_CREDENTIALS = re.compile(
 _LIST_SENSITIVE_KEYWORDS = (
     "password", "token", "bearer", "authorization",
 )
-
-# Hardening flags for every ``git clone`` / ``git fetch`` on an
-# untrusted Overleaf remote. Blocks file-transport submodules,
-# disables checkout symlinks, and prevents submodule recursion so a
-# malicious repo cannot read or write local host paths.
-_LIST_GIT_HARDENING_CONFIG = [
-    "-c", "protocol.file.allow=never",
-    "-c", "protocol.allow=user",
-    "-c", "core.symlinks=false",
-    "-c", "submodule.recurse=false",
-]
-
 
 def fsGetMirrorRoot():
     """Return the root directory that holds every project mirror."""
@@ -213,7 +202,7 @@ def _fnClonePartial(sProjectId, sAskpassPath):
     sMirror = _fsMirrorPath(sProjectId)
     sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
     dictEnv = _fdictBuildGitEnv(sAskpassPath)
-    listArgs = list(_LIST_GIT_HARDENING_CONFIG) + [
+    listArgs = list(LIST_GIT_HARDENING_CONFIG) + [
         "clone", "--filter=blob:none", "--no-checkout",
         "--no-recurse-submodules", sUrl, sMirror,
     ]
@@ -234,7 +223,7 @@ def _fnFetchAndReset(sProjectId, sAskpassPath):
 def _fnFetchOrigin(sProjectId, dictEnv):
     """Run git fetch with blob filtering against the mirror remote."""
     sMirror = _fsMirrorPath(sProjectId)
-    listArgs = list(_LIST_GIT_HARDENING_CONFIG) + [
+    listArgs = list(LIST_GIT_HARDENING_CONFIG) + [
         "fetch", "--filter=blob:none",
         "--no-recurse-submodules", "origin",
     ]
@@ -248,7 +237,7 @@ def _fnFetchOrigin(sProjectId, dictEnv):
 def _fnResetToOriginHead(sProjectId, dictEnv):
     """Hard-reset the mirror working tree to origin/HEAD."""
     sMirror = _fsMirrorPath(sProjectId)
-    listArgs = list(_LIST_GIT_HARDENING_CONFIG) + [
+    listArgs = list(LIST_GIT_HARDENING_CONFIG) + [
         "reset", "--hard", "origin/HEAD",
     ]
     result = _fnRunGit(listArgs, sCwd=sMirror, dictEnv=dictEnv)

@@ -6,6 +6,7 @@ import re
 import subprocess
 import uuid
 
+from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.overleafAuth import (
     fnValidateOverleafProjectId,
     fsWriteAskpassScript,
@@ -535,17 +536,9 @@ def _fsBuildZenodoArchiveCommand(
     )
 
 
-_LIST_GITHUB_HARDENING_CONFIG = [
-    "-c", "protocol.file.allow=never",
-    "-c", "protocol.allow=user",
-    "-c", "core.symlinks=false",
-    "-c", "submodule.recurse=false",
-]
-
-
 def _fsGithubHardeningFlags():
     """Return the hardening ``-c`` flags joined for shell invocation."""
-    return " ".join(fsShellQuote(s) for s in _LIST_GITHUB_HARDENING_CONFIG)
+    return " ".join(fsShellQuote(s) for s in LIST_GIT_HARDENING_CONFIG)
 
 
 def ftResultPushToGithub(

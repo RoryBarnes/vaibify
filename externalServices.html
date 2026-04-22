@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>External-service integrations: lessons from Overleaf &mdash; Vaibify 0.0.1.dev86 documentation</title>
+  <title>External-service integrations: lessons from Overleaf &mdash; Vaibify 0.0.1.dev87 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=cf22d7fe"></script>
+      <script src="_static/documentation_options.js?v=6b5a53e7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -202,10 +202,12 @@ carry these flags:</p>
 </div>
 <p>and <code class="docutils literal notranslate"><span class="pre">--no-recurse-submodules</span></code> on clones. These defend against
 malicious-repo attacks (<code class="docutils literal notranslate"><span class="pre">.gitmodules</span></code> with <code class="docutils literal notranslate"><span class="pre">file://</span></code> URLs,
-cross-tree symlinks, hook execution). Overleaf uses
-<code class="docutils literal notranslate"><span class="pre">_LIST_GIT_HARDENING_CONFIG</span></code> in both <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> and
-<code class="docutils literal notranslate"><span class="pre">overleafMirror.py</span></code>; lift these to a shared constant when you add
-GitHub.</p>
+cross-tree symlinks, hook execution). The canonical list lives at
+<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG</span></code>
+and is imported by <code class="docutils literal notranslate"><span class="pre">gui.gitStatus</span></code>, <code class="docutils literal notranslate"><span class="pre">reproducibility.overleafMirror</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">gui.syncDispatcher</span></code>. <code class="docutils literal notranslate"><span class="pre">reproducibility.overleafSync</span></code> keeps a
+local copy because it ships into the container as a standalone
+script — keep the two lists in lockstep.</p>
 </section>
 <section id="credential-helper-scoping">
 <h3>Credential helper scoping<a class="headerlink" href="#credential-helper-scoping" title="Link to this heading"></a></h3>
@@ -350,14 +352,18 @@ Overleaf’s “phantom push with no remote change” bug.</p>
 <h2>What to modularize vs. what to write fresh<a class="headerlink" href="#what-to-modularize-vs-what-to-write-fresh" title="Link to this heading"></a></h2>
 <section id="modularize-now-two-service-common-core">
 <h3>Modularize now (two-service common core)<a class="headerlink" href="#modularize-now-two-service-common-core" title="Link to this heading"></a></h3>
-<p>After GitHub is working, extract these into a shared module (probably
-<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/serviceAuth.py</span></code> or similar):</p>
+<p>After GitHub is working, extract these into shared modules:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code> (already separate, just widen its scope)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fsRedactStderr</span></code> helper</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code> — the on-disk temp-file machinery is now
+in <code class="docutils literal notranslate"><span class="pre">reproducibility/askpassHelper.py::fsWriteExecutableScript</span></code>;
+the service-specific source builders stay in
+<code class="docutils literal notranslate"><span class="pre">githubAuth.py</span></code> / <code class="docutils literal notranslate"><span class="pre">overleafAuth.py</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LIST_GIT_HARDENING_CONFIG</span></code> — already consolidated in
+<code class="docutils literal notranslate"><span class="pre">reproducibility/gitHardening.py</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fsRedactStderr</span></code> helper (overleafMirror / overleafSync; the
+container-shipped copy is deliberately divergent)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fnValidateTargetDirectory</span></code> (currently in <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code>)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fnValidatePullRelativePath</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">_LIST_GIT_HARDENING_CONFIG</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fdictComputeContainerDigests</span></code> (the digest-compute docker-exec helper)</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">PUSH_STATUS=</span></code> + <code class="docutils literal notranslate"><span class="pre">HEAD_SHA=</span></code> stdout protocol</p></li>
 <li><p>Host header / session token middleware (already shared)</p></li>

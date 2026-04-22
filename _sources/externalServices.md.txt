@@ -73,10 +73,12 @@ carry these flags:
 ```
 and `--no-recurse-submodules` on clones. These defend against
 malicious-repo attacks (`.gitmodules` with `file://` URLs,
-cross-tree symlinks, hook execution). Overleaf uses
-`_LIST_GIT_HARDENING_CONFIG` in both `overleafSync.py` and
-`overleafMirror.py`; lift these to a shared constant when you add
-GitHub.
+cross-tree symlinks, hook execution). The canonical list lives at
+`vaibify/reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG`
+and is imported by `gui.gitStatus`, `reproducibility.overleafMirror`,
+and `gui.syncDispatcher`. `reproducibility.overleafSync` keeps a
+local copy because it ships into the container as a standalone
+script — keep the two lists in lockstep.
 
 ### Credential helper scoping
 Never mutate the container's or host's **global** git config. Always
@@ -208,13 +210,17 @@ Overleaf's "phantom push with no remote change" bug.
 ## What to modularize vs. what to write fresh
 
 ### Modularize now (two-service common core)
-After GitHub is working, extract these into a shared module (probably
-`vaibify/reproducibility/serviceAuth.py` or similar):
-- `fsWriteAskpassScript` (already separate, just widen its scope)
-- `fsRedactStderr` helper
+After GitHub is working, extract these into shared modules:
+- `fsWriteAskpassScript` — the on-disk temp-file machinery is now
+  in `reproducibility/askpassHelper.py::fsWriteExecutableScript`;
+  the service-specific source builders stay in
+  `githubAuth.py` / `overleafAuth.py`.
+- `LIST_GIT_HARDENING_CONFIG` — already consolidated in
+  `reproducibility/gitHardening.py`.
+- `fsRedactStderr` helper (overleafMirror / overleafSync; the
+  container-shipped copy is deliberately divergent)
 - `fnValidateTargetDirectory` (currently in `overleafSync.py`)
 - `fnValidatePullRelativePath`
-- `_LIST_GIT_HARDENING_CONFIG`
 - `fdictComputeContainerDigests` (the digest-compute docker-exec helper)
 - The `PUSH_STATUS=` + `HEAD_SHA=` stdout protocol
 - Host header / session token middleware (already shared)
