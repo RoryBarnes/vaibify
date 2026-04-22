@@ -209,6 +209,27 @@ Overleaf's "phantom push with no remote change" bug.
 
 ## What to modularize vs. what to write fresh
 
+### Credential persistence: where each service's token lives
+
+| Service | Token stored in | Set by | Persists across container rebuild? |
+|---|---|---|---|
+| Overleaf | host OS keychain (`fnStoreSecret("overleaf_token", ...)`) | [syncRoutes.py:649](../vaibify/gui/routes/syncRoutes.py#L649) | Yes — host-side |
+| GitHub | container keyring (`fnStoreCredentialInContainer`) | [syncDispatcher.py:867](../vaibify/gui/syncDispatcher.py#L867) | Yes — via named credentials volume |
+| Zenodo | container keyring (`fnStoreCredentialInContainer`) | [syncDispatcher.py:867](../vaibify/gui/syncDispatcher.py#L867) | Yes — via named credentials volume |
+
+The GUI's Restart and Rebuild actions both do `docker rm + docker
+run`, so in-container writable layers are ephemeral. Container-side
+credential stores must live on a named volume or they vanish every
+time the user Rebuilds. The fix is a second named volume next to the
+workspace mount:
+[`containerManager._fnAddCredentialsVolume`](../vaibify/docker/containerManager.py)
+mounts `{projectName}-credentials` at
+`/home/<user>/.local/share/python_keyring/`. The Dockerfile
+pre-creates the directory with mode 700 and the container user as
+owner; Docker's copy-on-mount copies that into the volume the first
+time it's used, and every subsequent container recreation sees the
+existing tokens.
+
 ### Already consolidated (three-service common core)
 
 These lifted cleanly once the third service was in place:
