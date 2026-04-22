@@ -13,11 +13,10 @@ mode-700 file that git consults synchronously when it needs
 credentials.
 """
 
-import os
 import re
-import stat
 import sys
-import tempfile
+
+from vaibify.reproducibility.askpassHelper import fsWriteExecutableScript
 
 __all__ = [
     "fnValidateOwnerRepo",
@@ -109,15 +108,7 @@ def fsWriteAskpassScript(sKeyringSlot):
     deleting the file once the subprocess that reads it has exited.
     """
     sSource = _fsBuildAskpassSource(sKeyringSlot or "")
-    iFd, sPath = tempfile.mkstemp(
-        prefix="vc_gh_askpass_", suffix=".py",
-    )
-    try:
-        os.write(iFd, sSource.encode("utf-8"))
-    finally:
-        os.close(iFd)
-    os.chmod(sPath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-    return sPath
+    return fsWriteExecutableScript(sSource, "vc_gh_askpass_")
 
 
 def fsResolveToken(sKeyringSlot):

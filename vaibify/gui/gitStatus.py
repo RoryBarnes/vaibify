@@ -22,19 +22,13 @@ import os
 import posixpath
 import subprocess
 
+from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
+
 __all__ = [
     "LIST_GIT_HARDENING_CONFIG",
     "fdictGitStatusForWorkspace",
     "fdictEmptyStatus",
     "fsRunGit",
-]
-
-
-LIST_GIT_HARDENING_CONFIG = [
-    "-c", "protocol.file.allow=never",
-    "-c", "protocol.allow=user",
-    "-c", "core.symlinks=false",
-    "-c", "submodule.recurse=false",
 ]
 
 S_UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"

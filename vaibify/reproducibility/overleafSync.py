@@ -51,9 +51,10 @@ _LIST_SENSITIVE_KEYWORDS = (
 )
 
 # Hardening flags prepended to every ``git clone`` / ``git fetch`` run.
-# Block file-transport submodules (``file://`` pointing at host paths),
-# disable local symlink checkout (malicious tree entries cannot write
-# outside the repo), and refuse submodule recursion entirely.
+# Kept as a local copy of ``reproducibility.gitHardening`` because this
+# module is shipped into the container as a standalone script and
+# cannot import from the ``vaibify`` package at run time. Keep the
+# two lists in lockstep.
 _LIST_GIT_HARDENING_CONFIG = [
     "-c", "protocol.file.allow=never",
     "-c", "protocol.allow=user",
