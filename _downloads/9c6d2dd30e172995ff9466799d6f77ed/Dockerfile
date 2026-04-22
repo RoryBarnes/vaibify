@@ -160,6 +160,7 @@ COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
 COPY overleafSync.py /usr/share/vaibify/overleafSync.py
 COPY latexConnector.py /usr/share/vaibify/latexConnector.py
+COPY zenodoClient.py /usr/share/vaibify/zenodoClient.py
 COPY workflows/ /usr/share/vaibify/workflows/
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
