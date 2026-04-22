@@ -412,7 +412,11 @@ def _fnValidateArchiveFilePaths(listFilePaths):
             )
 
 
-_S_ARCHIVE_SCRIPT_TEMPLATE = '''import keyring, requests, sys, posixpath, json
+_S_ARCHIVE_SCRIPT_TEMPLATE = '''import json, sys
+import keyring
+sys.path.insert(0, '/usr/share/vaibify')
+from zenodoClient import ZenodoClient, ZenodoError
+
 _SLOT = %(slot)s
 _BASE = %(base)s
 _META = json.loads(%(meta)s)
@@ -422,51 +426,25 @@ _PATHS = %(paths)s
 _t = (keyring.get_password('vaibify', _SLOT)
       or keyring.get_password('vaibify', 'zenodo_token')
       or sys.exit('no-token'))
-H = {'Authorization': 'Bearer ' + _t}
 
-
-def _fail(r):
-    sys.exit('HTTP ' + str(r.status_code) + ' ' + r.url
-             + ': ' + r.text[:500])
-
+client = ZenodoClient(sToken=_t, sBaseUrl=_BASE)
 
 if _PARENT:
-    r = requests.post(
-        _BASE + '/deposit/depositions/' + str(_PARENT)
-        + '/actions/newversion', headers=H)
-    r.ok or _fail(r)
-    sDraftUrl = r.json()['links']['latest_draft']
-    r = requests.get(sDraftUrl, headers=H)
-    r.ok or _fail(r)
-    _d = r.json()
-    iDid = _d['id']
-    sBucket = _d['links']['bucket']
-    for _f in _d.get('files', []):
-        _fid = _f.get('id') or _f.get('file_id')
-        if not _fid:
-            continue
-        rd = requests.delete(
-            _BASE + '/deposit/depositions/' + str(iDid)
-            + '/files/' + str(_fid), headers=H)
-        rd.ok or _fail(rd)
-    rm = requests.put(
-        _BASE + '/deposit/depositions/' + str(iDid),
-        headers=H, json={'metadata': _META})
-    rm.ok or _fail(rm)
+    _draft = client.fdictGetNewVersionDraft(_PARENT)
+    iDid = _draft['id']
+    client.fnClearDraftFiles(iDid)
+    client.fnSetMetadata(iDid, _META)
+    sBucket = _draft['links']['bucket']
 else:
-    r = requests.post(
-        _BASE + '/deposit/depositions', headers=H,
-        json={'metadata': _META})
-    r.ok or _fail(r)
-    _d = r.json()
-    iDid = _d['id']
-    sBucket = _d['links']['bucket']
+    _draft = client.fdictCreateDraft(_META)
+    iDid = _draft['id']
+    sBucket = _draft['links']['bucket']
+
 
 def _cleanup_draft():
     try:
-        _rd = requests.delete(
-            _BASE + '/deposit/depositions/' + str(iDid), headers=H)
-        return bool(getattr(_rd, 'ok', False))
+        client.fnDeleteDraft(iDid)
+        return True
     except Exception:
         return False
 
@@ -481,22 +459,15 @@ def _abort(sOrig):
 
 try:
     for _p in _PATHS:
-        with open(_p, 'rb') as _fh:
-            ru = requests.put(
-                sBucket + '/' + posixpath.basename(_p),
-                headers=H, data=_fh)
-        ru.ok or _fail(ru)
-
-    rp = requests.post(
-        _BASE + '/deposit/depositions/' + str(iDid)
-        + '/actions/publish', headers=H)
-    rp.ok or _fail(rp)
+        client.fnUploadToBucket(sBucket, _p)
+    _r = client.fdictPublishDraft(iDid)
 except SystemExit as _se:
     _abort(_se.code)
+except ZenodoError as _ze:
+    _abort('HTTP ' + str(_ze))
 except Exception as _e:
     _abort(repr(_e))
 
-_r = rp.json()
 print('ZENODO_RESULT=' + json.dumps({
     'iDepositId': iDid,
     'sDoi': _r.get('doi', ''),

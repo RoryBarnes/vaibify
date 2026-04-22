@@ -57,7 +57,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
-    fnCopyOverleafScripts(sDockerDir)
+    fnCopyContainerScripts(sDockerDir)
     fnCopyHostWorkflows(sDockerDir)
 
 
@@ -106,11 +106,13 @@ def fnCopyDirectorScript(sDockerDir):
     shutil.copy2(sSourcePath, sDestPath)
 
 
-def fnCopyOverleafScripts(sDockerDir):
-    """Stage overleafSync.py and latexConnector.py for the image.
+def fnCopyContainerScripts(sDockerDir):
+    """Stage the reproducibility modules that ship into the image.
 
-    Both files run standalone inside the container at
-    /usr/share/vaibify/ — no vaibify package install required.
+    Each of these runs inside the container at /usr/share/vaibify/
+    without a vaibify package install; they import from each other
+    as flat top-level names. Add new ship-ins to the tuple below
+    and to the ``COPY`` block in ``docker/Dockerfile``.
     """
     import shutil
     import pathlib
@@ -118,7 +120,9 @@ def fnCopyOverleafScripts(sDockerDir):
         pathlib.Path(__file__).resolve().parents[1]
         / "reproducibility"
     )
-    for sFileName in ("overleafSync.py", "latexConnector.py"):
+    for sFileName in (
+        "overleafSync.py", "latexConnector.py", "zenodoClient.py",
+    ):
         sSourcePath = str(pathReproducibility / sFileName)
         sDestPath = os.path.join(sDockerDir, sFileName)
         shutil.copy2(sSourcePath, sDestPath)

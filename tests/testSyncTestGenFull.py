@@ -526,7 +526,9 @@ def test_ftResultArchiveToZenodo_first_publish_default_parent_zero():
 
 
 def test_ftResultArchiveToZenodo_versioned_uses_newversion_flow():
-    """When a parent deposit id is given, the script hits newversion."""
+    """When a parent deposit id is given, the script calls the newversion
+    helper on ``ZenodoClient`` (which internally POSTs ``actions/newversion``
+    and follows ``links.latest_draft``)."""
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
@@ -536,11 +538,13 @@ def test_ftResultArchiveToZenodo_versioned_uses_newversion_flow():
         mockDocker.ftResultExecuteCommand.call_args[0][1]
     )
     assert "_PARENT = 491655" in sScript
-    assert "actions/newversion" in sScript
-    assert "latest_draft" in sScript
+    assert "client.fdictGetNewVersionDraft(_PARENT)" in sScript
 
 
 def test_ftResultArchiveToZenodo_versioned_deletes_inherited_files():
+    """Newversion flow must clear files inherited from the parent deposit
+    before new uploads; ``ZenodoClient.fnClearDraftFiles`` handles the
+    per-file DELETEs."""
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
@@ -549,11 +553,12 @@ def test_ftResultArchiveToZenodo_versioned_deletes_inherited_files():
     sScript = _fsDecodeArchiveScript(
         mockDocker.ftResultExecuteCommand.call_args[0][1]
     )
-    assert "requests.delete" in sScript
-    assert "/files/" in sScript
+    assert "client.fnClearDraftFiles(iDid)" in sScript
 
 
 def test_ftResultArchiveToZenodo_versioned_updates_metadata():
+    """Newversion flow must re-apply the vaibify metadata onto the new
+    draft; ``ZenodoClient.fnSetMetadata`` handles the PUT."""
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
@@ -562,8 +567,7 @@ def test_ftResultArchiveToZenodo_versioned_updates_metadata():
     sScript = _fsDecodeArchiveScript(
         mockDocker.ftResultExecuteCommand.call_args[0][1]
     )
-    assert "requests.put" in sScript
-    assert "'metadata': _META" in sScript
+    assert "client.fnSetMetadata(iDid, _META)" in sScript
 
 
 def test_ftResultArchiveToZenodo_parent_zero_same_as_no_parent():
@@ -587,6 +591,11 @@ def test_ftResultArchiveToZenodo_parent_zero_same_as_no_parent():
 
 
 def test_ftResultArchiveToZenodo_surfaces_http_errors():
+    """HTTP failures raised by ZenodoClient must be caught and converted
+    into a ``sys.exit`` message that preserves the status + body. The
+    body-truncation logic itself now lives in ``ZenodoClient._fnCheckResponse``;
+    the archive script only needs to catch ``ZenodoError`` and abort
+    with cleanup."""
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
@@ -594,10 +603,9 @@ def test_ftResultArchiveToZenodo_surfaces_http_errors():
     sScript = _fsDecodeArchiveScript(
         mockDocker.ftResultExecuteCommand.call_args[0][1]
     )
-    # _fail helper turns HTTP failures into sys.exit with the body
-    assert "def _fail" in sScript
+    assert "except ZenodoError" in sScript
+    assert "_abort(" in sScript
     assert "sys.exit" in sScript
-    assert "r.text[:500]" in sScript
 
 
 # ----------------------------------------------------------------------
@@ -618,6 +626,8 @@ def test_archive_script_wraps_uploads_in_try_except():
 
 
 def test_archive_script_defines_cleanup_and_abort_helpers():
+    """``_cleanup_draft`` must call ``ZenodoClient.fnDeleteDraft`` on the
+    known draft id so an aborted upload can't leave an orphan behind."""
     mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
     ftResultArchiveToZenodo(
         mockDocker, "cid", "sandbox", ["/a.txt"],
@@ -627,7 +637,7 @@ def test_archive_script_defines_cleanup_and_abort_helpers():
     )
     assert "def _cleanup_draft" in sScript
     assert "def _abort" in sScript
-    assert "requests.delete" in sScript
+    assert "client.fnDeleteDraft(iDid)" in sScript
 
 
 def test_archive_script_cleanup_reports_both_success_and_failure():
@@ -659,8 +669,8 @@ def test_archive_script_cleanup_excepts_after_draft_is_known():
     )
     iCleanup = sScript.find("def _cleanup_draft")
     iExceptSysExit = sScript.find("except SystemExit as _se:")
-    # Upload loop uses bucket + basename; metadata PUT doesn't.
-    iBucketPut = sScript.find("sBucket + '/' + posixpath.basename")
+    # Upload loop is delegated to ``client.fnUploadToBucket``.
+    iBucketPut = sScript.find("client.fnUploadToBucket(sBucket, _p)")
     assert iCleanup > 0 and iExceptSysExit > 0 and iBucketPut > 0
     assert iCleanup < iBucketPut < iExceptSysExit, (
         "helpers, then bucket upload inside try, then except-block"
