@@ -4,7 +4,7 @@ import os
 import subprocess
 
 from . import fnRunDockerCommand
-from .volumeManager import fsGetVolumeName
+from .volumeManager import fsGetCredentialsVolumeName, fsGetVolumeName
 from .x11Forwarding import flistConfigureX11Args
 
 
@@ -85,6 +85,7 @@ def flistBuildRunArgs(config, bDetached=False):
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddCpuAllocation(saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
+    _fnAddCredentialsVolume(config, saRunArgs)
     _fnAddPortForwarding(config, saRunArgs)
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
@@ -105,6 +106,23 @@ def _fnAddVolumeMount(config, saRunArgs):
     sVolumeName = fsGetVolumeName(config)
     sWorkspaceRoot = config.sWorkspaceRoot
     saRunArgs.extend(["-v", f"{sVolumeName}:{sWorkspaceRoot}"])
+
+
+def _fnAddCredentialsVolume(config, saRunArgs):
+    """Mount the credentials volume at the container keyring data dir.
+
+    Persists ``PlaintextKeyring`` passwords across container
+    recreations. The Dockerfile pre-creates
+    ``~/.local/share/python_keyring/`` with mode 700 and the
+    container user as owner; Docker's copy-on-mount behaviour
+    copies that empty directory into the named volume the first
+    time the container runs, so subsequent rebuilds reuse
+    whatever was stored.
+    """
+    sVolumeName = fsGetCredentialsVolumeName(config)
+    sUser = getattr(config, "sContainerUser", "researcher")
+    sContainerPath = f"/home/{sUser}/.local/share/python_keyring"
+    saRunArgs.extend(["-v", f"{sVolumeName}:{sContainerPath}"])
 
 
 def _fnAddPortForwarding(config, saRunArgs):

@@ -47,6 +47,7 @@ def _fConfigMinimal():
     return SimpleNamespace(
         sProjectName="testproj",
         sWorkspaceRoot="/workspace",
+        sContainerUser="researcher",
         listPorts=[],
         listBindMounts=[],
         listSecrets=[],
@@ -137,3 +138,35 @@ def test_flistBuildRunArgs_claude_auto_update_false(mockX11):
     config.features.bClaudeAutoUpdate = False
     saArgs = flistBuildRunArgs(config)
     assert "VAIBIFY_CLAUDE_AUTO_UPDATE=false" in saArgs
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_mounts_credentials_volume(mockX11):
+    """The credentials volume must mount the container keyring data
+    dir so Zenodo/GitHub tokens survive ``docker rm`` + ``docker run``
+    (which is what the GUI's Restart and Rebuild actions both do)."""
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    sExpectedMount = (
+        f"{config.sProjectName}-credentials"
+        f":/home/{config.sContainerUser}/.local/share/python_keyring"
+    )
+    assert sExpectedMount in saArgs
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_credentials_volume_honours_container_user(mockX11):
+    """A non-default sContainerUser routes the mount to that user's home."""
+    config = _fConfigMinimal()
+    config.sContainerUser = "scientist"
+    saArgs = flistBuildRunArgs(config)
+    assert any(
+        "/home/scientist/.local/share/python_keyring" in sArg
+        for sArg in saArgs
+    )

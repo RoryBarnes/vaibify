@@ -176,7 +176,11 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chown -R ${CONTAINER_USER}:${CONTAINER_USER} \
         /home/${CONTAINER_USER}/.config \
     && chmod 700 /home/${CONTAINER_USER}/.config/python_keyring \
-    && chmod 600 /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg
+    && chmod 600 /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg \
+    && mkdir -p /home/${CONTAINER_USER}/.local/share/python_keyring \
+    && chown -R ${CONTAINER_USER}:${CONTAINER_USER} \
+        /home/${CONTAINER_USER}/.local \
+    && chmod 700 /home/${CONTAINER_USER}/.local/share/python_keyring
 
 ENV GIT_EDITOR=nano
 ENV WORKSPACE=${WORKSPACE_ROOT}

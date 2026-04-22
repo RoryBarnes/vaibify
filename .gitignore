@@ -21,6 +21,7 @@ docker/director.py
 docker/latexConnector.py
 docker/overleafSync.py
 docker/pip-flags.txt
+docker/zenodoClient.py
 docker/requirements.txt
 docker/system-packages.txt
 docker/workflows/
