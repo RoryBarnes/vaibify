@@ -82,20 +82,23 @@ def main(ctx, sConfigPath, iPort):
 
 def fnLaunchHub(iExplicitPort):
     """Start the hub-mode server and open the browser."""
+    import os
     import threading
     import time
     import uvicorn
     import webbrowser
     from vaibify.gui.pipelineServer import fappCreateHubApplication
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
     from .portAllocator import fiResolvePort
     iPort = fiResolvePort(iExplicitPort)
     sUrl = f"http://127.0.0.1:{iPort}"
     click.echo(f"Starting Vaibify hub at {sUrl}")
     app = fappCreateHubApplication(iExpectedPort=iPort)
-    threading.Thread(
-        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
-        daemon=True,
-    ).start()
+    if not os.environ.get(S_SUPPRESS_BROWSER_ENV):
+        threading.Thread(
+            target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+            daemon=True,
+        ).start()
     uvicorn.run(
         app, host="127.0.0.1", port=iPort, log_level="warning",
     )

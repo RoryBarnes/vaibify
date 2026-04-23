@@ -9,9 +9,10 @@ route rejects requests carrying the in-container agent token so
 only browser-origin callers can spawn new hubs.
 """
 
-__all__ = ["fnRegisterAll"]
+__all__ = ["fnRegisterAll", "S_SUPPRESS_BROWSER_ENV"]
 
 import asyncio
+import os
 import socket
 import subprocess
 import sys
@@ -24,16 +25,25 @@ _I_MAX_LIVE_SPAWNS = 5
 _S_AGENT_SESSION_HEADER_NAME = "x-vaibify-session"
 _F_READY_TIMEOUT_SECONDS = 5.0
 _F_READY_POLL_INTERVAL_SECONDS = 0.05
+S_SUPPRESS_BROWSER_ENV = "VAIBIFY_SUPPRESS_BROWSER"
 
 
 def _fnLaunchDetachedHub(iPort):
-    """Spawn a detached vaibify hub child on the given port."""
+    """Spawn a detached vaibify hub child on the given port.
+
+    Sets ``VAIBIFY_SUPPRESS_BROWSER=1`` in the child's environment so
+    the spawned hub does not open its own browser tab — the spawning
+    frontend already calls ``window.open`` on the returned URL, and
+    without this suppression the user sees two tabs.
+    """
+    dictChildEnv = {**os.environ, S_SUPPRESS_BROWSER_ENV: "1"}
     return subprocess.Popen(
         [sys.executable, "-m", "vaibify", "--port", str(iPort)],
         start_new_session=True,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=dictChildEnv,
     )
 
 

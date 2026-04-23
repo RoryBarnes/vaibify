@@ -61,7 +61,9 @@ def testSpawnRouteReturnsUrlAndPort(fixtureClient):
 
 def testSpawnRouteLaunchesClosedShapeCommand():
     """_fnLaunchDetachedHub uses sys.executable -m vaibify --port N."""
-    from vaibify.gui.routes.sessionRoutes import _fnLaunchDetachedHub
+    from vaibify.gui.routes.sessionRoutes import (
+        S_SUPPRESS_BROWSER_ENV, _fnLaunchDetachedHub,
+    )
     with patch("subprocess.Popen") as mockPopen:
         _fnLaunchDetachedHub(8099)
     tArgs, dictKwargs = mockPopen.call_args
@@ -70,7 +72,7 @@ def testSpawnRouteLaunchesClosedShapeCommand():
         sys.executable, "-m", "vaibify", "--port", "8099",
     ]
     assert dictKwargs["start_new_session"] is True
-    assert "env" not in dictKwargs
+    assert dictKwargs["env"][S_SUPPRESS_BROWSER_ENV] == "1"
 
 
 def testSpawnRouteRejectsContainerAgentCaller(fixtureApp, fixtureClient):

@@ -307,12 +307,14 @@ def test_main_custom_port_passed_to_launch_hub(mockLaunch):
 
 def test_fnLaunchHub_starts_server():
     """Lines 59-72: fnLaunchHub creates app and runs uvicorn."""
+    import os
     import sys
     mockUvicorn = MagicMock()
     mockWebbrowser = MagicMock()
     with patch.dict(sys.modules, {
         "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }):
+    }), patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("VAIBIFY_SUPPRESS_BROWSER", None)
         with patch(
             "vaibify.gui.pipelineServer.fappCreateHubApplication",
         ) as mockApp:
@@ -323,6 +325,27 @@ def test_fnLaunchHub_starts_server():
             mockUvicorn.run.assert_called_once()
             args = mockUvicorn.run.call_args
             assert args[1]["port"] == 8050
+
+
+def test_fnLaunchHub_suppresses_browser_when_env_set():
+    """VAIBIFY_SUPPRESS_BROWSER=1 means no webbrowser.open thread fires."""
+    import os
+    import sys
+    import time
+    mockUvicorn = MagicMock()
+    mockWebbrowser = MagicMock()
+    with patch.dict(sys.modules, {
+        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
+    }), patch.dict(
+        os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+    ), patch(
+        "vaibify.gui.pipelineServer.fappCreateHubApplication",
+        return_value=MagicMock(),
+    ):
+        from vaibify.cli.main import fnLaunchHub
+        fnLaunchHub(8050)
+    time.sleep(1.2)
+    mockWebbrowser.open.assert_not_called()
 
 
 # -----------------------------------------------------------------------
