@@ -33,7 +33,9 @@ __all__ = [
     "fnTerminalInputLoop",
     "fnTerminalReadLoop",
     "fnValidatePathWithinRoot",
+    "fbHasAgentToken",
     "fbValidateWebSocketOrigin",
+    "fsGetOriginHeader",
     "fdictExtractSettings",
     "fdictFilterNonNone",
     "fdictRequireWorkflow",
@@ -49,6 +51,8 @@ __all__ = [
     "fbaFetchFigureWithFallback",
 ]
 
+from . import actionCatalog
+from . import agentSessionBridge
 from . import workflowManager
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
@@ -679,6 +683,21 @@ def _fnAuthorizeContainer(dictCtx, sContainerId):
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
+    _fnPushAgentSession(dictCtx, sContainerId)
+
+
+def _fnPushAgentSession(dictCtx, sContainerId):
+    """Write the vaibify-do session + catalog into the container."""
+    try:
+        agentSessionBridge.fnPushAgentSessionToContainer(
+            dictCtx["docker"], sContainerId,
+            dictCtx["sSessionToken"], dictCtx.get("iPort", 0),
+        )
+    except Exception as error:
+        logger.warning(
+            "Agent session push failed for %s: %s",
+            sContainerId, error,
+        )
 
 
 def _fdictConnectNoWorkflow(dictCtx, sContainerId):
@@ -863,13 +882,20 @@ def fsDetectDockerRuntime():
 # WebSocket origin validation
 # ---------------------------------------------------------------
 
-def fbValidateWebSocketOrigin(websocket: WebSocket):
-    """Return True only if the WebSocket origin is localhost."""
-    sOrigin = ""
-    for sKey, sVal in websocket.headers.items():
-        if sKey.lower() == "origin":
-            sOrigin = sVal
-            break
+def fbValidateWebSocketOrigin(websocket: WebSocket, sExpectedToken=None):
+    """Return True if the WebSocket carries a trusted origin or agent token.
+
+    Browser clients identify themselves by a loopback ``Origin`` header.
+    In-container ``vaibify-do`` agents dial in via
+    ``host.docker.internal`` and can't set a loopback origin, so they
+    authenticate by presenting the backend's session token in the
+    ``X-Vaibify-Session`` header or ``sToken`` query parameter; when
+    that matches, origin validation is bypassed because the token is
+    already the authoritative credential.
+    """
+    if sExpectedToken and fbHasAgentToken(websocket, sExpectedToken):
+        return True
+    sOrigin = fsGetOriginHeader(websocket)
     if not sOrigin:
         return False
     listAllowed = [
@@ -880,6 +906,28 @@ def fbValidateWebSocketOrigin(websocket: WebSocket):
         if sOrigin.startswith(sAllowed):
             return True
     return False
+
+
+def fsGetOriginHeader(websocket: WebSocket):
+    """Return the Origin header value or empty string."""
+    for sKey, sVal in websocket.headers.items():
+        if sKey.lower() == "origin":
+            return sVal
+    return ""
+
+
+def fbHasAgentToken(websocket: WebSocket, sExpectedToken):
+    """Return True if the WS carries the expected agent token."""
+    sHeaderToken = ""
+    sHeaderName = actionCatalog.S_SESSION_HEADER_NAME.lower()
+    for sKey, sVal in websocket.headers.items():
+        if sKey.lower() == sHeaderName:
+            sHeaderToken = sVal
+            break
+    if sHeaderToken and sHeaderToken == sExpectedToken:
+        return True
+    sQueryToken = websocket.query_params.get("sToken", "")
+    return bool(sQueryToken) and sQueryToken == sExpectedToken
 
 
 # ---------------------------------------------------------------
@@ -1161,6 +1209,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.terminalRoutes.fnRegisterAll(app, dictCtx)
     routes.repoRoutes.fnRegisterAll(app, dictCtx)
     routes.gitRoutes.fnRegisterAll(app, dictCtx)
+    routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 
@@ -1211,9 +1260,21 @@ def _ftSplitHostPort(sHostPort):
 
 
 class SessionTokenMiddleware(BaseHTTPMiddleware):
-    """Reject requests with unsafe Host headers or missing session tokens."""
+    """Reject requests with unsafe Host headers or missing session tokens.
+
+    An in-container ``vaibify-do`` agent authenticates via the
+    ``X-Vaibify-Session`` header and reaches the backend through
+    ``host.docker.internal``, so requests that present a valid agent
+    token bypass the browser-oriented Host-header loopback check.
+    """
 
     async def dispatch(self, request: Request, call_next):
+        sExpected = request.app.state.sSessionToken
+        sAgentToken = request.headers.get(
+            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        )
+        if sAgentToken and sAgentToken == sExpected:
+            return await call_next(request)
         if not _fbRequestHasAllowedHost(request):
             return Response(
                 status_code=400,
@@ -1235,7 +1296,6 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                 if bIsWebSocket or bIsDownload:
                     sToken = request.query_params.get(
                         "sToken", "")
-            sExpected = request.app.state.sSessionToken
             if sToken != sExpected:
                 return Response(
                     status_code=401,
@@ -1309,6 +1369,7 @@ def fappCreateApplication(
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
+    dictCtx["iPort"] = iExpectedPort
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
     return app
@@ -1327,11 +1388,29 @@ def fappCreateHubApplication(iExpectedPort=0):
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
     app.state.iExpectedPort = iExpectedPort
+    app.state.iHubPort = iExpectedPort
+    app.state.dictContainerLocks = {}
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
+    dictCtx["iPort"] = iExpectedPort
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
     fnRegisterRegistryRoutes(app, dictCtx)
+    _fnRegisterHubShutdownReleaseLocks(app)
     return app
+
+
+def _fnRegisterHubShutdownReleaseLocks(app):
+    """Release all held container locks when the hub shuts down."""
+
+    @app.on_event("shutdown")
+    async def fnReleaseAllContainerLocks():
+        from vaibify.config.containerLock import fnReleaseContainerLock
+        for fileHandle in list(app.state.dictContainerLocks.values()):
+            try:
+                fnReleaseContainerLock(fileHandle)
+            except OSError:
+                pass
+        app.state.dictContainerLocks.clear()

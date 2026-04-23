@@ -15,7 +15,9 @@ def _fnRegisterMonitor(app):
 
     @app.get("/api/monitor/{sContainerId}")
     async def fnGetMonitorStats(sContainerId: str):
-        return fdictGetContainerStats(sContainerId)
+        return await asyncio.to_thread(
+            fdictGetContainerStats, sContainerId,
+        )
 
 
 def _fnRegisterRuntimeInfo(app, dictCtx):

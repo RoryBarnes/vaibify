@@ -401,6 +401,46 @@ def test_session_token_endpoint_exempt(clientHttp):
     assert responseHttp.status_code == 200
 
 
+def test_agent_session_header_bypasses_host_and_token_check(clientHttp):
+    """X-Vaibify-Session + non-loopback host succeeds when token matches."""
+    sToken = clientHttp.app.state.sSessionToken
+    clientAgent = TestClient(
+        clientHttp.app,
+        headers={
+            "X-Vaibify-Session": sToken,
+            "Host": "host.docker.internal:8050",
+        },
+    )
+    responseHttp = clientAgent.get("/api/user")
+    assert responseHttp.status_code == 200
+
+
+def test_agent_session_header_empty_does_not_bypass(clientHttp):
+    """Empty X-Vaibify-Session header must fall through to normal flow."""
+    clientEmpty = TestClient(
+        clientHttp.app,
+        headers={
+            "X-Vaibify-Session": "",
+            "Host": "host.docker.internal:8050",
+        },
+    )
+    responseHttp = clientEmpty.get("/api/user")
+    assert responseHttp.status_code in (400, 401)
+
+
+def test_agent_session_header_wrong_token_rejected(clientHttp):
+    """Wrong X-Vaibify-Session token falls through and gets 400/401."""
+    clientBadAgent = TestClient(
+        clientHttp.app,
+        headers={
+            "X-Vaibify-Session": "wrong-token",
+            "Host": "host.docker.internal:8050",
+        },
+    )
+    responseHttp = clientBadAgent.get("/api/user")
+    assert responseHttp.status_code in (400, 401)
+
+
 # ── Hub application creation ─────────────────────────────────
 
 

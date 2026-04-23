@@ -6,6 +6,7 @@ import asyncio
 
 from fastapi import HTTPException, Request
 
+from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
@@ -137,6 +138,7 @@ async def _fdictRunOneTestCategory(
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
+    @fnAgentAction("generate-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/generate-test"
     )
@@ -170,6 +172,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         )
         return _fdictBuildGenerateResponse(dictResult)
 
+    @fnAgentAction("delete-generated-tests")
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
     )
@@ -212,6 +215,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
+    @fnAgentAction("save-and-run-test")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/save-and-run-test"
@@ -252,6 +256,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
 def _fnRegisterTestRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-tests."""
 
+    @fnAgentAction("run-unit-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
     )
@@ -278,6 +283,7 @@ def _fnRegisterTestRun(app, dictCtx):
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
 
+    @fnAgentAction("run-test-category")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/run-test-category"

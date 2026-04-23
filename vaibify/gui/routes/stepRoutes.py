@@ -5,6 +5,7 @@ __all__ = ["fnRegisterAll"]
 from fastapi import HTTPException
 
 from .. import workflowManager
+from ..actionCatalog import fnAgentAction
 from ..pipelineServer import (
     ReorderRequest,
     StepCreateRequest,
@@ -61,6 +62,7 @@ def _fnRegisterStepGet(app, dictCtx):
 def _fnRegisterStepCreate(app, dictCtx):
     """Register POST /api/steps/{id}/create route."""
 
+    @fnAgentAction("create-step")
     @app.post("/api/steps/{sContainerId}/create")
     async def fnCreateStep(
         sContainerId: str, request: StepCreateRequest
@@ -80,6 +82,7 @@ def _fnRegisterStepCreate(app, dictCtx):
 def _fnRegisterStepInsert(app, dictCtx):
     """Register POST /api/steps/{id}/insert route."""
 
+    @fnAgentAction("insert-step")
     @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
     async def fnInsertStep(
         sContainerId: str, iPosition: int,
@@ -102,6 +105,7 @@ def _fnRegisterStepInsert(app, dictCtx):
 def _fnRegisterStepUpdate(app, dictCtx):
     """Register PUT /api/steps/{id}/{index} route."""
 
+    @fnAgentAction("update-step")
     @app.put("/api/steps/{sContainerId}/{iStepIndex}")
     async def fnUpdateStep(
         sContainerId: str, iStepIndex: int,
@@ -124,6 +128,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
 def _fnRegisterStepDelete(app, dictCtx):
     """Register DELETE /api/steps/{id}/{index} route."""
 
+    @fnAgentAction("delete-step")
     @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
     async def fnDeleteStep(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
@@ -144,6 +149,7 @@ def _fnRegisterStepDelete(app, dictCtx):
 def _fnRegisterStepReorder(app, dictCtx):
     """Register POST /api/steps/{id}/reorder route."""
 
+    @fnAgentAction("reorder-steps")
     @app.post("/api/steps/{sContainerId}/reorder")
     async def fnReorderSteps(
         sContainerId: str, request: ReorderRequest

@@ -20,7 +20,9 @@ def _fnRegisterTerminalWs(app, dictCtx):
     async def fnTerminalWs(
         websocket: WebSocket, sContainerId: str
     ):
-        if not fbValidateWebSocketOrigin(websocket):
+        if not fbValidateWebSocketOrigin(
+            websocket, dictCtx["sSessionToken"],
+        ):
             await websocket.close(code=4003)
             return
         sToken = websocket.query_params.get("sToken", "")

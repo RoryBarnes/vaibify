@@ -178,8 +178,9 @@ def _fnRegisterStatus(app, dictCtx):
     @app.get("/api/repos/{sContainerId}/status")
     async def fnRepoStatus(sContainerId: str):
         dictCtx["require"]()
-        return _fdictBuildStatusResponse(
-            dictCtx["docker"], sContainerId
+        return await asyncio.to_thread(
+            _fdictBuildStatusResponse,
+            dictCtx["docker"], sContainerId,
         )
 
 
@@ -206,7 +207,9 @@ def _fnRegisterTrack(app, dictCtx):
     @app.post("/api/repos/{sContainerId}/{sRepoName}/track")
     async def fnTrackRepo(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
-        return _fnDoTrackRepo(dictCtx, sContainerId, sRepoName)
+        return await asyncio.to_thread(
+            _fnDoTrackRepo, dictCtx, sContainerId, sRepoName,
+        )
 
 
 def _fnRegisterIgnore(app, dictCtx):
@@ -216,8 +219,9 @@ def _fnRegisterIgnore(app, dictCtx):
     async def fnIgnoreRepo(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
-        trackedReposManager.fnAddIgnored(
-            dictCtx["docker"], sContainerId, sRepoName
+        await asyncio.to_thread(
+            trackedReposManager.fnAddIgnored,
+            dictCtx["docker"], sContainerId, sRepoName,
         )
         return {"bSuccess": True}
 
@@ -229,8 +233,9 @@ def _fnRegisterUntrack(app, dictCtx):
     async def fnUntrackRepo(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
-        trackedReposManager.fnRemoveTracked(
-            dictCtx["docker"], sContainerId, sRepoName
+        await asyncio.to_thread(
+            trackedReposManager.fnRemoveTracked,
+            dictCtx["docker"], sContainerId, sRepoName,
         )
         return {"bSuccess": True}
 

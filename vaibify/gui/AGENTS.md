@@ -124,6 +124,13 @@ the user before proceeding.
 
 ## Required after backend edits
 
+- If you added a state-mutating route, register it in
+  `actionCatalog.LIST_AGENT_ACTIONS` with a `@fnAgentAction` decorator,
+  OR add `(method, path)` to `SET_INTENTIONALLY_EXCLUDED_PATHS` with a
+  comment explaining why.
+  `tests/testArchitecturalInvariants.py::testAgentActionRegistered`
+  will fail otherwise.
+
 ```bash
 python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py
 python -m pytest tests/testArchitecturalInvariants.py -v

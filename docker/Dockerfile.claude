@@ -20,3 +20,5 @@ RUN NPM_PREFIX="/home/${CONTAINER_USER}/.npm-global" \
     && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${NPM_PREFIX}"
 
 ENV PATH="/home/${CONTAINER_USER}/.npm-global/bin:${PATH}"
+
+COPY --chmod=0755 docker/vaibifyDo.py /usr/local/bin/vaibify-do

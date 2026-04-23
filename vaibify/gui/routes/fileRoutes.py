@@ -8,6 +8,7 @@ import posixpath
 from fastapi import HTTPException
 from fastapi.responses import Response
 
+from ..actionCatalog import fnAgentAction
 from ..figureServer import fsMimeTypeForFile
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
@@ -66,6 +67,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/upload."""
     import base64
 
+    @fnAgentAction("upload-file")
     @app.post("/api/files/{sContainerId}/upload")
     async def fnUploadFile(
         sContainerId: str, request: FileUploadRequest,
@@ -126,6 +128,7 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/pull."""
 
+    @fnAgentAction("pull-file")
     @app.post("/api/files/{sContainerId}/pull")
     async def fnPullFile(
         sContainerId: str, request: FilePullRequest,
@@ -152,6 +155,7 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
 def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
     """Register PUT /api/file route for saving edited text files."""
 
+    @fnAgentAction("write-file")
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
     async def fnWriteFile(
         sContainerId: str, sFilePath: str,

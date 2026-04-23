@@ -2,6 +2,7 @@
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
 import posixpath
 
 from fastapi import HTTPException
@@ -79,8 +80,9 @@ def _fnRegisterLogRoutes(app, dictCtx):
         sLogPath = posixpath.join(sLogsDir, sLogFilename)
         fnValidatePathWithinRoot(sLogPath, sLogsDir)
         try:
-            baContent = dictCtx["docker"].fbaFetchFile(
-                sContainerId, sLogPath
+            baContent = await asyncio.to_thread(
+                dictCtx["docker"].fbaFetchFile,
+                sContainerId, sLogPath,
             )
             return Response(
                 content=baContent, media_type="text/plain"

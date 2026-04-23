@@ -73,7 +73,56 @@ Add the module name to both the `__all__` list and the
 `from . import (...)` block. Preserve the existing order grouping
 where it makes sense; otherwise append.
 
-### 3. Add tests
+### 3. Register state-mutating endpoints with `@fnAgentAction`
+
+If any endpoint on the new module mutates state and a researcher
+could reasonably invoke it from the UI (run, test, verify, commit,
+create, edit, delete, push, publish, upload, write, etc.), it must
+appear in the agent-action catalog so the in-container `vaibify-do`
+CLI can translate researcher intent into the same call.
+
+Two things go together:
+
+1. **Decorate the handler.** Import the decorator and apply it
+   directly above the FastAPI path-op decorator:
+   ```python
+   from ..actionCatalog import fnAgentAction
+
+   @fnAgentAction("my-new-action")
+   @app.post("/api/my-thing/{sContainerId}/do-it")
+   async def fnDoIt(sContainerId: str): ...
+   ```
+
+2. **Add a catalog entry** in
+   `vaibify/gui/actionCatalog.py::LIST_AGENT_ACTIONS`. Copy the shape
+   of existing entries: `sName`, `sCategory`, `sMethod`, `sPath`,
+   `bAgentSafe`, `sDescription`. The `sName` here must match the
+   decorator argument exactly.
+
+Pick `bAgentSafe`:
+
+- **True** — execution, read-side work, test runs, agent authoring
+  (writing files, creating/updating steps the agent is working on),
+  committing canonical state, downloading inputs.
+- **False** — destructive (delete, clean, kill, force), externally
+  visible (push to GitHub/Overleaf, publish to Zenodo), or requiring
+  researcher judgment (accept plots as standard, set Zenodo metadata,
+  reorder pipeline semantics).
+
+If the new route is state-mutating but should NOT be invokable by
+the agent (control-plane, credential setup, poll-driven scan, etc.),
+add its `(sMethod, sPath)` tuple to
+`SET_INTENTIONALLY_EXCLUDED_PATHS` in the same file with a comment
+explaining why. This keeps the invariant test silent on intentional
+omissions.
+
+Confirm registration:
+
+```bash
+python -m pytest tests/testArchitecturalInvariants.py::testAgentActionRegistered -v
+```
+
+### 4. Add tests
 
 Create `tests/test<Name>Routes.py`. At minimum:
 
@@ -86,7 +135,7 @@ Create `tests/test<Name>Routes.py`. At minimum:
 Do not add Docker-dependent tests here — those go under the
 `testContainerBuildIntegration.py`-style exclusions.
 
-### 4. Run the contract tests
+### 5. Run the contract tests
 
 ```bash
 python -m pytest tests/testArchitecturalInvariants.py -v
@@ -99,14 +148,14 @@ Expect these to pass without modification:
 - `testAllPackageModulesDefineDunderAll` (if your file lands outside
   `routes/`, make sure it declares `__all__`)
 
-### 5. Run the new route's tests and the full suite
+### 6. Run the new route's tests and the full suite
 
 ```bash
 python -m pytest tests/test<Name>Routes.py -v
 python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py
 ```
 
-### 6. Exercise the endpoint end-to-end if possible
+### 7. Exercise the endpoint end-to-end if possible
 
 If the route affects the dashboard or reports container state, start a
 real container and confirm the GUI reflects the new data correctly.

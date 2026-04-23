@@ -9,6 +9,7 @@ import re
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
+from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     WORKSPACE_ROOT,
@@ -158,6 +159,7 @@ def _fnRegisterPipelineState(app, dictCtx):
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
+    @fnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
     async def fnKillRunningTasks(sContainerId: str):
         dictCtx["require"]()
@@ -190,6 +192,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
 def _fnRegisterPipelineClean(app, dictCtx):
     """Register POST /api/pipeline/{id}/clean endpoint."""
 
+    @fnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
     async def fnCleanOutputs(sContainerId: str):
         dictCtx["require"]()
@@ -213,7 +216,9 @@ def _fnRegisterPipelineWs(app, dictCtx):
     async def fnPipelineWs(
         websocket: WebSocket, sContainerId: str
     ):
-        if not fbValidateWebSocketOrigin(websocket):
+        if not fbValidateWebSocketOrigin(
+            websocket, dictCtx["sSessionToken"],
+        ):
             await websocket.close(code=4003)
             return
         sToken = websocket.query_params.get("sToken", "")
@@ -231,6 +236,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
 def _fnRegisterAcknowledgeStep(app, dictCtx):
     """Register POST endpoint to acknowledge step completion."""
 
+    @fnAgentAction("acknowledge-step")
     @app.post(
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
