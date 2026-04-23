@@ -299,8 +299,8 @@ def fdictLookupAction(sName):
 
 
 def fdictBuildCatalogJson():
-    """Return the catalog in the shape written into the container."""
+    """Return a deep-copied catalog in the shape written into the container."""
     return {
         "sSchemaVersion": S_CATALOG_SCHEMA_VERSION,
-        "listActions": list(LIST_AGENT_ACTIONS),
+        "listActions": [dict(dictEntry) for dictEntry in LIST_AGENT_ACTIONS],
     }

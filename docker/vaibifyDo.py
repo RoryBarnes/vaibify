@@ -227,7 +227,7 @@ def fnSendHttp(dictTarget, sToken, sMethod, bJsonMode):
 
 def _fnHandleHttpError(errHttp, bJsonMode):
     if errHttp.code == 401:
-        fnFail("vaibify host unreachable at (auth failed); reconnect the "
+        fnFail("vaibify session token rejected; reconnect the "
                "container from the dashboard", iCode=4)
     try:
         dataBody = errHttp.read()
@@ -283,7 +283,7 @@ def fnWebsocketHandshake(sockConn, sHost, iPort, sPath):
         dataResponse += dataChunk
     if b" 101 " not in dataResponse.split(b"\r\n")[0]:
         if b" 401 " in dataResponse.split(b"\r\n")[0]:
-            fnFail("vaibify host unreachable at (auth failed); reconnect "
+            fnFail("vaibify session token rejected; reconnect "
                    "the container from the dashboard", iCode=4)
         fnFail("websocket handshake rejected: "
                + dataResponse.split(b"\r\n")[0].decode(
