@@ -5,12 +5,27 @@ import sys
 import pytest
 from unittest.mock import MagicMock, patch
 
+from vaibify.gui.routes.sessionRoutes import (
+    _fnAwaitChildReady as _FN_AWAIT_REAL,
+)
+
 
 def _fmockAlivePopen():
     """Return a MagicMock resembling a live subprocess.Popen handle."""
     mockPopen = MagicMock()
     mockPopen.poll.return_value = None
     return mockPopen
+
+
+@pytest.fixture(autouse=True)
+def fixtureSkipChildReadyWait(monkeypatch):
+    """Short-circuit the port-ready poll so tests don't block real sockets."""
+    async def _fnReadyNoOp(iPort, fTimeoutSeconds):
+        return True
+    monkeypatch.setattr(
+        "vaibify.gui.routes.sessionRoutes._fnAwaitChildReady",
+        _fnReadyNoOp,
+    )
 
 
 @pytest.fixture
@@ -131,3 +146,78 @@ def testSpawnRouteRegisteredOnWorkflowViewerApplication():
         app = fappCreateApplication(iExpectedPort=0)
     listRoutes = [route.path for route in app.routes]
     assert "/api/session/spawn" in listRoutes
+
+
+def test_fbIsPortAcceptingConnections_detects_listener():
+    """The readiness probe returns True once a listener is bound."""
+    import socket
+    from vaibify.gui.routes.sessionRoutes import (
+        _fbIsPortAcceptingConnections,
+    )
+    sockListener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockListener.bind(("127.0.0.1", 0))
+    sockListener.listen(1)
+    iPort = sockListener.getsockname()[1]
+    try:
+        assert _fbIsPortAcceptingConnections(iPort) is True
+    finally:
+        sockListener.close()
+    assert _fbIsPortAcceptingConnections(iPort) is False
+
+
+def _fbRunCoroutine(coroutine):
+    """Run a coroutine in a fresh event loop and return its result."""
+    import asyncio
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coroutine)
+    finally:
+        loop.close()
+
+
+def test_fnAwaitChildReady_returns_true_when_port_opens(monkeypatch):
+    """_fnAwaitChildReady returns True on the first successful probe."""
+    from vaibify.gui.routes import sessionRoutes as sessionRoutesModule
+    listProbeResults = [False, False, True]
+
+    def _fbFakeProbe(iPort):
+        return listProbeResults.pop(0)
+
+    monkeypatch.setattr(
+        sessionRoutesModule, "_fbIsPortAcceptingConnections", _fbFakeProbe,
+    )
+    assert _fbRunCoroutine(_FN_AWAIT_REAL(8055, 5.0)) is True
+
+
+def test_fnAwaitChildReady_returns_false_on_timeout(monkeypatch):
+    """_fnAwaitChildReady returns False when the port never opens."""
+    from vaibify.gui.routes import sessionRoutes as sessionRoutesModule
+    monkeypatch.setattr(
+        sessionRoutesModule,
+        "_fbIsPortAcceptingConnections",
+        lambda iPort: False,
+    )
+    assert _fbRunCoroutine(_FN_AWAIT_REAL(8055, 0.1)) is False
+
+
+def testSpawnRouteAwaitsChildReadyBeforeReturning(fixtureClient, monkeypatch):
+    """The spawn handler must await _fnAwaitChildReady before returning."""
+    dictProbeCalls = {"iCount": 0}
+
+    async def _fnTrackedAwait(iPort, fTimeoutSeconds):
+        dictProbeCalls["iCount"] += 1
+        return True
+
+    monkeypatch.setattr(
+        "vaibify.gui.routes.sessionRoutes._fnAwaitChildReady",
+        _fnTrackedAwait,
+    )
+    with patch(
+        "vaibify.cli.portAllocator.fiPickFreePort", return_value=8055,
+    ), patch(
+        "vaibify.gui.routes.sessionRoutes._fnLaunchDetachedHub",
+        return_value=_fmockAlivePopen(),
+    ):
+        response = fixtureClient.post("/api/session/spawn")
+    assert response.status_code == 200
+    assert dictProbeCalls["iCount"] == 1

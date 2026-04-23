@@ -11,14 +11,19 @@ only browser-origin callers can spawn new hubs.
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
+import socket
 import subprocess
 import sys
+import time
 
 from fastapi import HTTPException, Request
 
 
 _I_MAX_LIVE_SPAWNS = 5
 _S_AGENT_SESSION_HEADER_NAME = "x-vaibify-session"
+_F_READY_TIMEOUT_SECONDS = 5.0
+_F_READY_POLL_INTERVAL_SECONDS = 0.05
 
 
 def _fnLaunchDetachedHub(iPort):
@@ -50,6 +55,30 @@ def _fnRejectContainerAgentCallers(request):
         )
 
 
+def _fbIsPortAcceptingConnections(iPort):
+    """Return True if 127.0.0.1:iPort accepts a TCP connection now."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.2)
+    try:
+        return sock.connect_ex(("127.0.0.1", iPort)) == 0
+    finally:
+        sock.close()
+
+
+async def _fnAwaitChildReady(iPort, fTimeoutSeconds):
+    """Poll until the child's port accepts connections or timeout elapses.
+
+    Returning early avoids the browser hitting a transient "unable to
+    connect" page while the spawned hub binds its socket.
+    """
+    fDeadline = time.monotonic() + fTimeoutSeconds
+    while time.monotonic() < fDeadline:
+        if _fbIsPortAcceptingConnections(iPort):
+            return True
+        await asyncio.sleep(_F_READY_POLL_INTERVAL_SECONDS)
+    return False
+
+
 def _fnRegisterSpawn(app):
     """Register POST /api/session/spawn on the given app."""
     if not hasattr(app.state, "listSpawnedChildren"):
@@ -70,6 +99,7 @@ def _fnRegisterSpawn(app):
         iPort = fiPickFreePort(iPreferred=8050)
         child = _fnLaunchDetachedHub(iPort)
         listChildren.append(child)
+        await _fnAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
         return {
             "sUrl": f"http://127.0.0.1:{iPort}",
             "iPort": iPort,
