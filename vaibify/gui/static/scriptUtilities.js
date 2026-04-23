@@ -90,7 +90,8 @@ var VaibifyUtilities = (function () {
         try {
             var dictResponse = await VaibifyApi.fdictPost(
                 "/api/session/spawn", {});
-            window.open(dictResponse.sUrl, "_blank", "noopener");
+            var windowChild = window.open(dictResponse.sUrl, "_blank");
+            if (windowChild) windowChild.focus();
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 "Could not open new vaibify window: " +
