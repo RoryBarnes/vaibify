@@ -579,6 +579,9 @@ var PipeleyenEventBindings = (function () {
                     "and end any running sessions. Continue?",
                     PipeleyenApp.fnReconnectToCurrentContainer);
             },
+            btnAdminNewWindow: function () {
+                VaibifyUtilities.fnSpawnNewSession();
+            },
             btnAdminQuit: function () { window.close(); },
         };
         for (var sId in dictActions) {
@@ -620,6 +623,12 @@ var PipeleyenEventBindings = (function () {
                 }
             }
         );
+        var elWorkflowNewWindow = document.getElementById(
+            "btnNewVaibifyWindowWorkflows");
+        if (elWorkflowNewWindow) {
+            elWorkflowNewWindow.addEventListener(
+                "click", VaibifyUtilities.fnSpawnNewSession);
+        }
         document.getElementById("activeWorkflowName")
             .addEventListener("click", function (event) {
                 event.stopPropagation();

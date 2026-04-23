@@ -61,10 +61,18 @@ var PipeleyenContainerManager = (function () {
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
         var sId = dictContainer.sContainerId || "";
+        var bLocked = dictContainer.bLocked === true;
+        var sLockedClass = bLocked ? " container-tile--locked" : "";
+        var sLockedTitle = bLocked
+            ? ' title="Already accessed by another vaibify session"'
+            : "";
+        var sLockedAttr = bLocked ? ' data-locked="true"' : "";
         return (
-            '<div class="container-tile" data-name="' +
+            '<div class="container-tile' + sLockedClass +
+            '" data-name="' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
-            '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) + '">' +
+            '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
+            '"' + sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
@@ -150,6 +158,12 @@ var PipeleyenContainerManager = (function () {
         var elTile = document.querySelector(
             '.container-tile[data-name="' + sName + '"]'
         );
+        if (elTile && elTile.dataset.locked === "true") {
+            PipeleyenApp.fnShowToast(
+                "Container '" + sName + "' is already accessed by "
+                + "another vaibify session.", "warning");
+            return;
+        }
         var elDot = elTile ? elTile.querySelector(".status-dot") : null;
         var bRunning = elDot && elDot.classList.contains("status-running");
         var bNotBuilt = elDot &&
@@ -161,11 +175,41 @@ var PipeleyenContainerManager = (function () {
         if (!bRunning) {
             await fnStartContainer(sName);
         }
+        var bClaimed = await _fbClaimContainer(sName);
+        if (!bClaimed) {
+            await fnLoadContainers();
+            return;
+        }
         var sStoredId = elTile ? elTile.dataset.containerId : "";
         if (sStoredId) {
             fnConnectToContainer(sStoredId);
         } else {
             fnConnectToContainerByName(sName);
+        }
+    }
+
+    async function _fbClaimContainer(sName) {
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) + "/claim",
+                {});
+            return true;
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                "Container '" + sName + "' is already accessed by "
+                + "another vaibify session.", "warning");
+            return false;
+        }
+    }
+
+    async function fnReleaseClaim(sName) {
+        if (!sName) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/release", {});
+        } catch (error) {
+            /* release is best-effort; shutdown will clean up */
         }
     }
 
@@ -497,6 +541,12 @@ var PipeleyenContainerManager = (function () {
         document.getElementById("btnAddContainer").addEventListener(
             "click", fnOpenAddChoice
         );
+        var elNewWindow = document.getElementById("btnNewVaibifyWindow");
+        if (elNewWindow) {
+            elNewWindow.addEventListener(
+                "click", VaibifyUtilities.fnSpawnNewSession,
+            );
+        }
         document.getElementById("btnShowUnrecognized").addEventListener(
             "click", function () {
                 var elList = document.getElementById("listUnrecognized");
@@ -611,5 +661,6 @@ var PipeleyenContainerManager = (function () {
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
+        fnReleaseClaim: fnReleaseClaim,
     };
 })();

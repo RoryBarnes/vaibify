@@ -72,6 +72,8 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetTemplateConfig(app, dictCtx)
     _fnRegisterCreateProject(app, dictCtx)
     _fnRegisterCreateHostDirectory(app, dictCtx)
+    _fnRegisterClaimContainer(app, dictCtx)
+    _fnRegisterReleaseContainer(app, dictCtx)
 
 
 def _fnRegisterGetRegistry(app, dictCtx):
@@ -93,10 +95,83 @@ def _fnRegisterGetRegistry(app, dictCtx):
         listContainers = _flistMergeProjectsAndContainers(
             listRegistered, listVaibify,
         )
+        _fnAnnotateLockState(listContainers)
         return {
             "listContainers": listContainers,
             "listUnrecognized": listUnrecognized,
         }
+
+
+def _fnAnnotateLockState(listContainers):
+    """Populate bLocked / iLockedBy* fields on each container dict."""
+    from vaibify.config.containerLock import fdictReadLockHolder
+    for dictContainer in listContainers:
+        sName = dictContainer.get("sName")
+        if not sName:
+            dictContainer["bLocked"] = False
+            continue
+        dictHolder = fdictReadLockHolder(sName)
+        if dictHolder:
+            dictContainer["bLocked"] = True
+            dictContainer["iLockedByPid"] = dictHolder.get("iPid")
+            dictContainer["iLockedByPort"] = dictHolder.get("iPort")
+        else:
+            dictContainer["bLocked"] = False
+
+
+def _fnRejectInvalidProjectName(sName):
+    """Raise HTTP 400 when sName is unsafe for lock operations."""
+    from vaibify.config.containerLock import fbIsValidProjectName
+    if not fbIsValidProjectName(sName):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid container name: {sName!r}",
+        )
+
+
+def _fnRegisterClaimContainer(app, dictCtx):
+    """Register POST /api/registry/{sName}/claim."""
+    del dictCtx
+
+    @app.post("/api/registry/{sName}/claim")
+    async def fdictClaimContainer(sName: str):
+        from vaibify.config.containerLock import (
+            ContainerLockedError, fnAcquireContainerLock,
+        )
+        _fnRejectInvalidProjectName(sName)
+        dictLocks = app.state.dictContainerLocks
+        if sName in dictLocks:
+            return {"sName": sName, "bClaimed": True}
+        iPort = getattr(app.state, "iHubPort", 0)
+        try:
+            fileHandle = fnAcquireContainerLock(sName, iPort)
+        except ContainerLockedError as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "sName": sName,
+                    "iLockedByPid": error.iHolderPid,
+                    "iLockedByPort": error.iHolderPort,
+                    "sMessage": str(error),
+                },
+            )
+        dictLocks[sName] = fileHandle
+        return {"sName": sName, "bClaimed": True}
+
+
+def _fnRegisterReleaseContainer(app, dictCtx):
+    """Register POST /api/registry/{sName}/release."""
+    del dictCtx
+
+    @app.post("/api/registry/{sName}/release")
+    async def fdictReleaseContainer(sName: str):
+        from vaibify.config.containerLock import fnReleaseContainerLock
+        _fnRejectInvalidProjectName(sName)
+        dictLocks = app.state.dictContainerLocks
+        fileHandle = dictLocks.pop(sName, None)
+        if fileHandle is not None:
+            fnReleaseContainerLock(fileHandle)
+        return {"sName": sName, "bReleased": True}
 
 
 def _fnRegisterAddProject(app, dictCtx):

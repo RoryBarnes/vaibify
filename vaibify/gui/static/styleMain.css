@@ -274,6 +274,20 @@ html, body {
     background: rgba(224, 148, 1, 0.08);
 }
 
+.container-tile--locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.container-tile--locked .container-tile-main {
+    pointer-events: none;
+}
+
+.container-tile--locked .container-tile-actions,
+.container-tile--locked .container-tile-gear {
+    display: none;
+}
+
 /* --- Build Spinner --- */
 
 .build-spinner {

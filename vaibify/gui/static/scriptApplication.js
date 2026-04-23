@@ -332,6 +332,11 @@ const PipeleyenApp = (function () {
     }
 
     function fnShowContainerLanding() {
+        var sActiveName = PipeleyenContainerManager
+            .fsGetSelectedContainerName();
+        if (sActiveName) {
+            PipeleyenContainerManager.fnReleaseClaim(sActiveName);
+        }
         document.getElementById("containerLanding").style.display = "flex";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");

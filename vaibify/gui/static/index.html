@@ -26,6 +26,9 @@
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshContainers"
                         title="Refresh">&#x21bb;</button>
+                <button class="btn-icon"
+                        id="btnNewVaibifyWindow"
+                        title="New vaibify window">&#x29C9;</button>
             </div>
         </div>
         <div id="listContainers">
@@ -163,8 +166,14 @@
     <div class="picker-content">
         <div class="picker-section-header">
             <h3 class="picker-section-label">Available Workflows:</h3>
-            <button class="btn-icon picker-refresh" id="btnRefreshWorkflows"
-                    title="Refresh">&#x21bb;</button>
+            <div style="display: flex; gap: 6px;">
+                <button class="btn-icon picker-refresh"
+                        id="btnRefreshWorkflows"
+                        title="Refresh">&#x21bb;</button>
+                <button class="btn-icon"
+                        id="btnNewVaibifyWindowWorkflows"
+                        title="New vaibify window">&#x29C9;</button>
+            </div>
         </div>
         <div style="margin-bottom: 10px;">
             <div class="container-card" id="btnNoWorkflow">
@@ -268,6 +277,8 @@
                     Containers</div>
                 <div class="toolbar-menu-item" id="btnAdminWorkflows">
                     Workflows</div>
+                <div class="toolbar-menu-item" id="btnAdminNewWindow">
+                    New vaibify window</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnAdminQuit">
                     Quit</div>

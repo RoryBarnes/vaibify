@@ -86,6 +86,19 @@ var VaibifyUtilities = (function () {
         return dictLabels[sCategory] || sCategory;
     }
 
+    async function fnSpawnNewSession() {
+        try {
+            var dictResponse = await VaibifyApi.fdictPost(
+                "/api/session/spawn", {});
+            window.open(dictResponse.sUrl, "_blank", "noopener");
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                "Could not open new vaibify window: " +
+                fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
     return {
         fnEscapeHtml: fnEscapeHtml,
         fbIsFigureFile: fbIsFigureFile,
@@ -94,6 +107,7 @@ var VaibifyUtilities = (function () {
         fsFormatUtcTimestamp: fsFormatUtcTimestamp,
         fsResolveTemplate: fsResolveTemplate,
         fsTestCategoryLabel: fsTestCategoryLabel,
+        fnSpawnNewSession: fnSpawnNewSession,
         SET_FIGURE_EXTENSIONS: SET_FIGURE_EXTENSIONS,
         SET_BINARY_EXTENSIONS: SET_BINARY_EXTENSIONS,
     };

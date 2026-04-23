@@ -14,6 +14,35 @@ def _fConfigStub():
     )
 
 
+def _fdictPatchSysModules(mockCreate, mockUvicorn):
+    """Build the sys.modules patch dict used across tests."""
+    mockPipelineServer = types.ModuleType(
+        "vaibify.gui.pipelineServer",
+    )
+    mockPipelineServer.fappCreateApplication = mockCreate
+    return {
+        "vaibify.gui.pipelineServer": mockPipelineServer,
+        "uvicorn": mockUvicorn,
+    }
+
+
+def _fnPatchLockAndPort(iResolvedPort=8050):
+    """Return patch context managers for lock and port helpers."""
+    mockLockHandle = MagicMock()
+    patchAcquire = patch(
+        "vaibify.config.containerLock.fnAcquireContainerLock",
+        return_value=mockLockHandle,
+    )
+    patchRelease = patch(
+        "vaibify.config.containerLock.fnReleaseContainerLock",
+    )
+    patchResolvePort = patch(
+        "vaibify.cli.commandStart.fiResolvePort",
+        return_value=iResolvedPort,
+    )
+    return patchAcquire, patchRelease, patchResolvePort
+
+
 def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
     """fnLaunchGui creates the app and starts uvicorn on port 8050."""
     from vaibify.cli.commandStart import fnLaunchGui
@@ -22,15 +51,11 @@ def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
     mockCreate = MagicMock(return_value=mockApp)
     mockUvicorn = MagicMock()
     mockUvicorn.run = MagicMock()
-    mockPipelineServer = types.ModuleType(
-        "vaibify.gui.pipelineServer",
-    )
-    mockPipelineServer.fappCreateApplication = mockCreate
-    with patch.dict(sys.modules, {
-        "vaibify.gui.pipelineServer": mockPipelineServer,
-        "uvicorn": mockUvicorn,
-    }):
-        fnLaunchGui(config)
+    patchAcquire, patchRelease, patchResolvePort = _fnPatchLockAndPort()
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchRelease, patchResolvePort:
+        fnLaunchGui(config, None)
     mockCreate.assert_called_once_with(
         sWorkspaceRoot="/workspace", iExpectedPort=8050,
     )
@@ -49,18 +74,13 @@ def test_fnLaunchGui_uvicorn_failure_propagates():
     config = _fConfigStub()
     mockUvicorn = MagicMock()
     mockUvicorn.run.side_effect = OSError("port in use")
-    mockPipelineServer = types.ModuleType(
-        "vaibify.gui.pipelineServer",
-    )
-    mockPipelineServer.fappCreateApplication = MagicMock(
-        return_value=MagicMock(),
-    )
-    with patch.dict(sys.modules, {
-        "vaibify.gui.pipelineServer": mockPipelineServer,
-        "uvicorn": mockUvicorn,
-    }):
+    mockCreate = MagicMock(return_value=MagicMock())
+    patchAcquire, patchRelease, patchResolvePort = _fnPatchLockAndPort()
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchRelease, patchResolvePort:
         with pytest.raises(OSError, match="port in use"):
-            fnLaunchGui(config)
+            fnLaunchGui(config, None)
 
 
 def test_fnLaunchGui_uses_workspace_root_from_config():
@@ -71,15 +91,80 @@ def test_fnLaunchGui_uses_workspace_root_from_config():
     mockApp = MagicMock()
     mockCreate = MagicMock(return_value=mockApp)
     mockUvicorn = MagicMock()
-    mockPipelineServer = types.ModuleType(
-        "vaibify.gui.pipelineServer",
-    )
-    mockPipelineServer.fappCreateApplication = mockCreate
-    with patch.dict(sys.modules, {
-        "vaibify.gui.pipelineServer": mockPipelineServer,
-        "uvicorn": mockUvicorn,
-    }):
-        fnLaunchGui(config)
+    patchAcquire, patchRelease, patchResolvePort = _fnPatchLockAndPort()
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchRelease, patchResolvePort:
+        fnLaunchGui(config, None)
     mockCreate.assert_called_once_with(
         sWorkspaceRoot="/custom/workspace", iExpectedPort=8050,
     )
+
+
+def test_fnLaunchGui_passes_explicit_port_to_uvicorn():
+    """Explicit --port values thread through to uvicorn.run."""
+    from vaibify.cli.commandStart import fnLaunchGui
+    config = _fConfigStub()
+    mockCreate = MagicMock(return_value=MagicMock())
+    mockUvicorn = MagicMock()
+    patchAcquire, patchRelease, patchResolvePort = _fnPatchLockAndPort(
+        iResolvedPort=8062,
+    )
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchRelease, patchResolvePort:
+        fnLaunchGui(config, 8062)
+    mockCreate.assert_called_once_with(
+        sWorkspaceRoot="/workspace", iExpectedPort=8062,
+    )
+    _, dictKwargs = mockUvicorn.run.call_args
+    assert dictKwargs["port"] == 8062
+
+
+def test_fnLaunchGui_exits_when_container_locked():
+    """fnLaunchGui exits nonzero when the container lock is held."""
+    from vaibify.cli.commandStart import fnLaunchGui
+    from vaibify.config.containerLock import ContainerLockedError
+    config = _fConfigStub()
+    mockCreate = MagicMock(return_value=MagicMock())
+    mockUvicorn = MagicMock()
+    patchAcquire = patch(
+        "vaibify.config.containerLock.fnAcquireContainerLock",
+        side_effect=ContainerLockedError("demo", 4242, 8050),
+    )
+    patchResolvePort = patch(
+        "vaibify.cli.commandStart.fiResolvePort", return_value=8050,
+    )
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchResolvePort:
+        with pytest.raises(SystemExit) as exitInfo:
+            fnLaunchGui(config, None)
+    assert exitInfo.value.code == 1
+    mockUvicorn.run.assert_not_called()
+
+
+def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
+    """The lock is released whether uvicorn returns or raises."""
+    from vaibify.cli.commandStart import fnLaunchGui
+    config = _fConfigStub()
+    mockCreate = MagicMock(return_value=MagicMock())
+    mockUvicorn = MagicMock()
+    mockLockHandle = MagicMock()
+    mockRelease = MagicMock()
+    patchAcquire = patch(
+        "vaibify.config.containerLock.fnAcquireContainerLock",
+        return_value=mockLockHandle,
+    )
+    patchRelease = patch(
+        "vaibify.config.containerLock.fnReleaseContainerLock",
+        mockRelease,
+    )
+    patchResolvePort = patch(
+        "vaibify.cli.commandStart.fiResolvePort", return_value=8050,
+    )
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchRelease, patchResolvePort:
+        fnLaunchGui(config, None)
+    mockRelease.assert_called_once_with(mockLockHandle)

@@ -286,10 +286,10 @@ def test_main_config_option_calls_set_path(mockLaunch, tmp_path):
 
 @patch("vaibify.cli.main.fnLaunchHub")
 def test_main_no_subcommand_calls_launch_hub(mockLaunch):
-    """Line 54: no subcommand invokes fnLaunchHub."""
+    """Line 54: no subcommand invokes fnLaunchHub with no explicit port."""
     runner = CliRunner()
     result = runner.invoke(main, [])
-    mockLaunch.assert_called_once_with(8050)
+    mockLaunch.assert_called_once_with(None)
 
 
 @patch("vaibify.cli.main.fnLaunchHub")

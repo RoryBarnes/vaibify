@@ -66,8 +66,9 @@ _fnConfigureErrorLogging()
     help="Path to vaibify.yml (default: ./vaibify.yml).",
 )
 @click.option(
-    "--port", "iPort", default=8050, type=int,
-    help="Port for the hub server (default: 8050).",
+    "--port", "iPort", default=None, type=int,
+    help="Port for the hub server (default: 8050, "
+    "auto-shifts upward if taken).",
 )
 @click.pass_context
 def main(ctx, sConfigPath, iPort):
@@ -79,13 +80,15 @@ def main(ctx, sConfigPath, iPort):
         fnLaunchHub(iPort)
 
 
-def fnLaunchHub(iPort):
+def fnLaunchHub(iExplicitPort):
     """Start the hub-mode server and open the browser."""
     import threading
     import time
     import uvicorn
     import webbrowser
     from vaibify.gui.pipelineServer import fappCreateHubApplication
+    from .portAllocator import fiResolvePort
+    iPort = fiResolvePort(iExplicitPort)
     sUrl = f"http://127.0.0.1:{iPort}"
     click.echo(f"Starting Vaibify hub at {sUrl}")
     app = fappCreateHubApplication(iExpectedPort=iPort)
