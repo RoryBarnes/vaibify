@@ -191,14 +191,29 @@ vaibify verify [--project/-p NAME]
 
 ### `vaibify gui`
 
-Launch the pipeline viewer in a browser (port 8050). When run without
-a project, the landing page opens and displays all registered
-containers. Use the **+** button to add an existing project or create
-a new one. See [Workflow Viewer](gui.md) for details.
+Launch the pipeline viewer in a browser (port 8050 by default). When
+run without a project, the landing page opens and displays all
+registered containers. Use the **+** button to add an existing
+project or create a new one. See [Workflow Viewer](gui.md) for
+details.
 
 ```bash
-vaibify gui [--project/-p NAME]
+vaibify gui [--project/-p NAME] [--port N]
 ```
+
+### Multiple sessions
+
+Several vaibify instances can run on the same host. Typing
+`vaibify` twice in two terminals does not collide — the second
+invocation auto-shifts to the next free port (8051, 8052, …) and
+announces the fallback on stderr. Pass `--port N` to pin an
+explicit port. Any given container may be accessed by only one
+vaibify session at a time: the hub landing page greys out
+containers already held by another session, and a second
+`vaibify start -p X` on the same project refuses to attach.
+The **New vaibify window** button on the container hub, workflow
+picker, and Admin menu spawns a detached hub on a free port and
+opens it in a new browser tab.
 
 ## Publishing
 

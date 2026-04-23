@@ -22,6 +22,8 @@ __all__ = [
     "testDockerfileDisablesAptSandboxBeforeFirstUpdate",
     "testGitRoutesAlwaysPassProjectRepoToContainerGit",
     "testNoWorkspaceRootedMarkerHardcodeInSource",
+    "testAgentActionRegistered",
+    "testAgentActionCatalogShape",
 ]
 
 
@@ -581,4 +583,118 @@ def testDockerfileDisablesAptSandboxBeforeFirstUpdate():
         "APT::Sandbox::User directive must appear before the first "
         "apt-get update; otherwise the first update runs under the "
         "broken sandbox and fails with an 'invalid signature' error"
+    )
+
+
+# ---------------------------------------------------------------
+# Agent-action catalog invariants
+# ---------------------------------------------------------------
+
+_SET_STATE_MUTATING_METHODS = frozenset({"POST", "PUT", "DELETE"})
+
+
+def _flistCollectAppStateMutatingRoutes(app):
+    """Return [(sMethod, sPath, endpoint_fn)] for state-mutating routes."""
+    listResult = []
+    for route in app.routes:
+        if not hasattr(route, "methods") or not hasattr(route, "path"):
+            continue
+        listMutMethods = sorted(
+            _SET_STATE_MUTATING_METHODS & set(route.methods or ())
+        )
+        for sMethod in listMutMethods:
+            listResult.append((sMethod, route.path, route.endpoint))
+    return listResult
+
+
+def _fappBuildApplication():
+    """Build the workflow-viewer FastAPI app with docker mocked."""
+    from unittest.mock import MagicMock, patch
+    from vaibify.gui.pipelineServer import fappCreateApplication
+    with patch(
+        "vaibify.gui.pipelineServer._fconnectionCreateDocker",
+        return_value=MagicMock(),
+    ):
+        return fappCreateApplication(iExpectedPort=0)
+
+
+def testAgentActionRegistered():
+    """Every state-mutating route must be in the agent catalog or excluded.
+
+    The in-container ``vaibify-do`` CLI reads
+    ``vaibify.gui.actionCatalog.LIST_AGENT_ACTIONS`` to translate
+    researcher intent into backend calls. A state-mutating HTTP route
+    that is neither decorated with ``@fnAgentAction`` nor declared in
+    ``SET_INTENTIONALLY_EXCLUDED_PATHS`` is invisible to the agent —
+    and the dashboard silently drifts when the agent improvises.
+    """
+    from vaibify.gui import actionCatalog
+    app = _fappBuildApplication()
+    listRoutes = _flistCollectAppStateMutatingRoutes(app)
+    dictCatalogByPath = {
+        (dictEntry["sMethod"], dictEntry["sPath"]): dictEntry["sName"]
+        for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
+        if dictEntry["sMethod"] != "WS"
+    }
+    listViolations = []
+    for sMethod, sPath, fnEndpoint in listRoutes:
+        tKey = (sMethod, sPath)
+        if tKey in actionCatalog.SET_INTENTIONALLY_EXCLUDED_PATHS:
+            continue
+        sCatalogName = dictCatalogByPath.get(tKey)
+        if sCatalogName is None:
+            listViolations.append(
+                f"{sMethod} {sPath} is not in LIST_AGENT_ACTIONS or "
+                f"SET_INTENTIONALLY_EXCLUDED_PATHS"
+            )
+            continue
+        sDecoratorName = getattr(
+            fnEndpoint, "_sAgentActionName", None,
+        )
+        if sDecoratorName != sCatalogName:
+            listViolations.append(
+                f"{sMethod} {sPath} catalog says sName="
+                f"{sCatalogName!r} but handler has "
+                f"_sAgentActionName={sDecoratorName!r}"
+            )
+    assert listViolations == [], (
+        "Agent-action registration violations:\n  "
+        + "\n  ".join(listViolations)
+    )
+
+
+def testAgentActionCatalogShape():
+    """Catalog entries must have the required fields and consistent types."""
+    from vaibify.gui import actionCatalog
+    setSeenNames = set()
+    listViolations = []
+    for iIndex, dictEntry in enumerate(
+        actionCatalog.LIST_AGENT_ACTIONS
+    ):
+        for sKey in (
+            "sName", "sCategory", "sMethod", "sPath",
+            "bAgentSafe", "sDescription",
+        ):
+            if sKey not in dictEntry:
+                listViolations.append(
+                    f"entry {iIndex}: missing key {sKey!r}"
+                )
+        sName = dictEntry.get("sName", "")
+        if sName in setSeenNames:
+            listViolations.append(
+                f"entry {iIndex}: duplicate sName={sName!r}"
+            )
+        setSeenNames.add(sName)
+        sMethod = dictEntry.get("sMethod", "")
+        if sMethod not in ("WS", "POST", "PUT", "DELETE", "GET"):
+            listViolations.append(
+                f"entry {iIndex} ({sName}): bad sMethod={sMethod!r}"
+            )
+        if not isinstance(dictEntry.get("bAgentSafe"), bool):
+            listViolations.append(
+                f"entry {iIndex} ({sName}): bAgentSafe must be bool"
+            )
+    assert listViolations == [], (
+        "Catalog shape violations:\n  "
+        + "\n  ".join(listViolations)
     )

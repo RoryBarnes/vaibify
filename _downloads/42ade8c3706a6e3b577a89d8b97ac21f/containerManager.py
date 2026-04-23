@@ -90,6 +90,7 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
     _fnAddClaudeEnv(config, saRunArgs)
+    _fnAddAgentHostBridge(saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
@@ -160,6 +161,21 @@ def _fnAddNetworkIsolation(config, saRunArgs):
     """Add network isolation flag if enabled in config."""
     if config.bNetworkIsolation:
         saRunArgs.extend(["--network", "none"])
+
+
+def _fnAddAgentHostBridge(saRunArgs):
+    """Resolve ``host.docker.internal`` to the host gateway.
+
+    The in-container ``vaibify-do`` agent dials back to the host
+    backend through this hostname. Docker Desktop resolves it
+    automatically; explicit ``--add-host`` makes it work on Linux and
+    is harmless elsewhere. When ``--network none`` is also set the
+    hosts-file entry remains but is unreachable by design, which is
+    the correct behavior for a sealed container.
+    """
+    saRunArgs.extend([
+        "--add-host", "host.docker.internal:host-gateway",
+    ])
 
 
 def fnMountSecrets(config, saRunArgs, listCleanupFiles):

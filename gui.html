@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Workflow Viewer &mdash; Vaibify 0.0.1.dev90 documentation</title>
+  <title>Workflow Viewer &mdash; Vaibify 0.0.1.dev93 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c41c136e"></script>
+      <script src="_static/documentation_options.js?v=f3e49904"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -71,7 +71,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#test-generation">Test Generation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#sync-controls">Sync Controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos Panel</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub Mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub Mode</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#one-session-per-container">One session per container</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
@@ -359,8 +362,24 @@ dashboard that lists all Vaibify projects on the host. Hub mode provides:</p>
 <li><p>A directory browser for locating project configuration files.</p></li>
 <li><p>Quick-launch buttons to start, stop, or open the GUI for any project.</p></li>
 </ul>
-<p>Hub mode binds to the same port (8050) and is intended for users who manage
-multiple Vaibify environments.</p>
+<p>Hub mode binds to port 8050 by default and is intended for users who
+manage multiple Vaibify environments. A second <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> invocation
+on the same host auto-shifts to the next free port; pass <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code>
+to pin a specific port.</p>
+<section id="one-session-per-container">
+<h3>One session per container<a class="headerlink" href="#one-session-per-container" title="Link to this heading"></a></h3>
+<p>Each Docker container managed by vaibify may be accessed by only one
+vaibify session at a time. This prevents two browsers from issuing
+conflicting commands to the same container. When a session is
+already attached to a container, that container appears greyed out
+on other hubs’ landing pages with the tooltip <em>“Already accessed by
+another vaibify session.”</em>. The lock is released when the holding
+session navigates back to the landing, or when that vaibify process
+exits (the kernel releases the <code class="docutils literal notranslate"><span class="pre">flock</span></code> automatically).</p>
+<p>The <strong>New vaibify window</strong> icon (⧉) in the container hub, workflow
+picker, and dashboard Admin menu spawns a detached child hub on a
+free port and opens it in a new browser tab.</p>
+</section>
 </section>
 </section>
 

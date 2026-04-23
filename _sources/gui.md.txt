@@ -222,5 +222,22 @@ dashboard that lists all Vaibify projects on the host. Hub mode provides:
 - A directory browser for locating project configuration files.
 - Quick-launch buttons to start, stop, or open the GUI for any project.
 
-Hub mode binds to the same port (8050) and is intended for users who manage
-multiple Vaibify environments.
+Hub mode binds to port 8050 by default and is intended for users who
+manage multiple Vaibify environments. A second `vaibify` invocation
+on the same host auto-shifts to the next free port; pass `--port N`
+to pin a specific port.
+
+### One session per container
+
+Each Docker container managed by vaibify may be accessed by only one
+vaibify session at a time. This prevents two browsers from issuing
+conflicting commands to the same container. When a session is
+already attached to a container, that container appears greyed out
+on other hubs' landing pages with the tooltip *"Already accessed by
+another vaibify session."*. The lock is released when the holding
+session navigates back to the landing, or when that vaibify process
+exits (the kernel releases the `flock` automatically).
+
+The **New vaibify window** icon (⧉) in the container hub, workflow
+picker, and dashboard Admin menu spawns a detached child hub on a
+free port and opens it in a new browser tab.

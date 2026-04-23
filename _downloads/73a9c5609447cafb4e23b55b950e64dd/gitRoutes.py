@@ -21,6 +21,7 @@ reporting "not a git repository" against the wrong root.
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
 import datetime
 
 from fastapi import HTTPException
@@ -33,6 +34,7 @@ from .. import (
     manifestCheck,
     stateContract,
 )
+from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow
 
 
@@ -103,7 +105,8 @@ def _fnRegisterGitStatus(app, dictCtx):
             return gitStatus.fdictEmptyStatus(
                 "Workflow is not in a git repository",
             )
-        return containerGit.fdictGitStatusInContainer(
+        return await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
             dictCtx["docker"], sContainerId, sWorkspace=sRepo,
         )
 
@@ -121,13 +124,16 @@ def _fnRegisterGitBadges(app, dictCtx):
         if not sRepo:
             return _fdictNoProjectRepoResponse()
         docker = dictCtx["docker"]
-        dictGit = containerGit.fdictGitStatusInContainer(
+        dictGit = await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
-        listTracked = _flistCanonicalFromContainer(
+        listTracked = await asyncio.to_thread(
+            _flistCanonicalFromContainer,
             docker, sContainerId, dictWorkflow, sRepo,
         )
-        dictHashes = containerGit.fdictComputeBlobShasInContainer(
+        dictHashes = await asyncio.to_thread(
+            containerGit.fdictComputeBlobShasInContainer,
             docker, sContainerId, listTracked, sWorkspace=sRepo,
         )
         dictSync = dictWorkflow.get("dictSyncStatus", {}) or {}
@@ -170,12 +176,17 @@ def _fnRegisterManifestCheck(app, dictCtx):
                 [],
             )
         docker = dictCtx["docker"]
-        dictGit = containerGit.fdictGitStatusInContainer(
+        dictGit = await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
-        listTracked = _flistCanonicalFromContainer(
-            docker, sContainerId, dictWorkflow, sRepo,
-        ) if dictGit.get("bIsRepo") else []
+        if dictGit.get("bIsRepo"):
+            listTracked = await asyncio.to_thread(
+                _flistCanonicalFromContainer,
+                docker, sContainerId, dictWorkflow, sRepo,
+            )
+        else:
+            listTracked = []
         listScoped = manifestCheck.flistScopeCanonicalToService(
             listTracked, dictWorkflow, sService,
         )
@@ -187,6 +198,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
 def _fnRegisterCommitCanonical(app, dictCtx):
     """Register POST /api/git/{sContainerId}/commit-canonical."""
 
+    @fnAgentAction("commit-canonical")
     @app.post("/api/git/{sContainerId}/commit-canonical")
     async def fnCommitCanonical(
         sContainerId: str, request: CommitCanonicalRequest,
@@ -205,7 +217,8 @@ def _fnRegisterCommitCanonical(app, dictCtx):
                 ),
             )
         docker = dictCtx["docker"]
-        dictGit = containerGit.fdictGitStatusInContainer(
+        dictGit = await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
         if not dictGit.get("bIsRepo"):
@@ -213,7 +226,8 @@ def _fnRegisterCommitCanonical(app, dictCtx):
                 status_code=409,
                 detail="Workspace is not a git repository.",
             )
-        listTracked = _flistCanonicalFromContainer(
+        listTracked = await asyncio.to_thread(
+            _flistCanonicalFromContainer,
             docker, sContainerId, dictWorkflow, sRepo,
         )
         dictReport = manifestCheck.fdictBuildManifestReportFromStatus(
@@ -230,7 +244,8 @@ def _fnRegisterCommitCanonical(app, dictCtx):
                 "iFilesCommitted": 0,
             }
         sMessage = request.sCommitMessage or _fsDefaultCommitMessage()
-        iExit, sOut = containerGit.ftResultGitAddInContainer(
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitAddInContainer,
             docker, sContainerId, listNeedsCommit, sWorkspace=sRepo,
         )
         if iExit != 0:
@@ -238,7 +253,8 @@ def _fnRegisterCommitCanonical(app, dictCtx):
                 status_code=500,
                 detail="git add failed: " + (sOut or "").strip(),
             )
-        iExit, sOut = containerGit.ftResultGitCommitInContainer(
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitCommitInContainer,
             docker, sContainerId, sMessage, sWorkspace=sRepo,
         )
         if iExit != 0:
@@ -246,7 +262,8 @@ def _fnRegisterCommitCanonical(app, dictCtx):
                 status_code=500,
                 detail="git commit failed: " + (sOut or "").strip(),
             )
-        sCommitHash = containerGit.fsGitHeadShaInContainer(
+        sCommitHash = await asyncio.to_thread(
+            containerGit.fsGitHeadShaInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
         return {

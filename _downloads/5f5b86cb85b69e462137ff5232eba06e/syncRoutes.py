@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 
 from .. import workflowManager
+from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     DatasetDownloadRequest,
@@ -283,6 +284,7 @@ def _fnRegisterOverleafPush(app, dictCtx):
     """Register POST /api/overleaf/{id}/push endpoint."""
     from .. import syncDispatcher
 
+    @fnAgentAction("push-to-overleaf")
     @app.post("/api/overleaf/{sContainerId}/push")
     async def fnOverleafPush(
         sContainerId: str, request: SyncPushRequest,
@@ -324,6 +326,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
     """Register POST /api/zenodo/{id}/archive endpoint."""
     from .. import syncDispatcher
 
+    @fnAgentAction("publish-to-zenodo")
     @app.post("/api/zenodo/{sContainerId}/archive")
     async def fnZenodoArchive(
         sContainerId: str, request: SyncPushRequest,
@@ -404,6 +407,7 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
         )
         return dictResponse
 
+    @fnAgentAction("set-zenodo-metadata")
     @app.post("/api/zenodo/{sContainerId}/metadata")
     async def fnSetZenodoMetadata(
         sContainerId: str, request: ZenodoMetadataRequest,
@@ -448,6 +452,7 @@ def _fnRegisterGithubPush(app, dictCtx):
     """Register POST /api/github/{id}/push endpoint."""
     from .. import syncDispatcher
 
+    @fnAgentAction("push-to-github")
     @app.post("/api/github/{sContainerId}/push")
     async def fnGithubPush(
         sContainerId: str, request: SyncPushRequest,
@@ -482,6 +487,7 @@ def _fnRegisterGithubAddFile(app, dictCtx):
     """Register POST /api/github/{id}/add-file endpoint."""
     from .. import syncDispatcher
 
+    @fnAgentAction("add-file-to-github")
     @app.post("/api/github/{sContainerId}/add-file")
     async def fnGithubAddFile(
         sContainerId: str, request: GitAddFileRequest,
@@ -1033,6 +1039,7 @@ def _fnRegisterDatasetDownload(app, dictCtx):
     """Register Zenodo dataset download endpoint."""
     from .. import syncDispatcher
 
+    @fnAgentAction("download-zenodo-dataset")
     @app.post("/api/zenodo/{sContainerId}/download")
     async def fnDownloadDataset(
         sContainerId: str, request: DatasetDownloadRequest,
@@ -1054,6 +1061,7 @@ def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
     """Register POST /api/overleaf/{id}/mirror/refresh endpoint."""
     from .. import syncDispatcher
 
+    @fnAgentAction("refresh-overleaf-mirror")
     @app.post("/api/overleaf/{sContainerId}/mirror/refresh")
     async def fnRefreshMirror(sContainerId: str):
         dictCtx["require"]()
@@ -1208,6 +1216,7 @@ def _fsSuggestCanonicalTarget(listCaseCollisions, sTypedTarget):
 def _fnRegisterOverleafMirrorDelete(app, dictCtx):
     """Register DELETE /api/overleaf/{id}/mirror endpoint."""
 
+    @fnAgentAction("delete-overleaf-mirror")
     @app.delete("/api/overleaf/{sContainerId}/mirror")
     async def fnDeleteMirror(sContainerId: str):
         dictCtx["require"]()
