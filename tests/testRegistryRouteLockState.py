@@ -94,3 +94,18 @@ def testRegistryReportsUnlockedForSelfHeldClaim(
     response = fixtureClient.get("/api/registry")
     dictContainer = response.json()["listContainers"][0]
     assert dictContainer["bLocked"] is False
+
+
+def testRegistryMarksEntryUnlockedWhenNameIsMissing(
+    fixtureClient, monkeypatch,
+):
+    """Containers without sName cannot be locked: bLocked=False, no pid/port."""
+    _fnPatchRegistrySources(
+        monkeypatch,
+        [{"sContainerName": "orphan"}],
+    )
+    response = fixtureClient.get("/api/registry")
+    dictContainer = response.json()["listContainers"][0]
+    assert dictContainer["bLocked"] is False
+    assert "iLockedByPid" not in dictContainer
+    assert "iLockedByPort" not in dictContainer

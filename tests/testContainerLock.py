@@ -192,3 +192,92 @@ def test_fdictReadLockHolder_returns_empty_for_invalid_name(tmp_lock_dir):
     from vaibify.config.containerLock import fdictReadLockHolder
     assert fdictReadLockHolder("../evil") == {}
     assert fdictReadLockHolder("") == {}
+
+
+def test_fnEnsureLockDirectory_swallows_chmod_oserror(
+    tmp_lock_dir, monkeypatch,
+):
+    """os.chmod failures on the lock directory are ignored."""
+    import vaibify.config.containerLock as containerLockModule
+
+    def _fnRaiseOnChmod(sPath, iMode):
+        raise OSError("simulated chmod failure")
+
+    monkeypatch.setattr(os, "chmod", _fnRaiseOnChmod)
+    containerLockModule._fnEnsureLockDirectory()
+    assert os.path.isdir(str(tmp_lock_dir))
+
+
+def test_fdictReadLockHolder_reads_empty_file(tmp_lock_dir):
+    """An existing zero-byte lock file is reported as unheld."""
+    from vaibify.config.containerLock import fdictReadLockHolder
+    sLockPath = str(tmp_lock_dir / "demo.lock")
+    with open(sLockPath, "w") as fileHandleEmpty:
+        pass
+    assert fdictReadLockHolder("demo") == {}
+
+
+def test_fdictReadLockHolder_handles_malformed_json(tmp_lock_dir):
+    """A truncated or corrupt lock file does not crash the caller."""
+    from vaibify.config.containerLock import fdictReadLockHolder
+    sLockPath = str(tmp_lock_dir / "demo.lock")
+    with open(sLockPath, "w") as fileHandleCorrupt:
+        fileHandleCorrupt.write("{not-valid-json")
+    assert fdictReadLockHolder("demo") == {}
+
+
+def test_fdictReadHolderFromHandle_empty_returns_empty_dict(tmp_lock_dir):
+    """_fdictReadHolderFromHandle hits the empty-content branch."""
+    from vaibify.config.containerLock import _fdictReadHolderFromHandle
+    sPath = str(tmp_lock_dir / "empty.lock")
+    with open(sPath, "w"):
+        pass
+    with open(sPath, "r+") as fileHandleEmpty:
+        assert _fdictReadHolderFromHandle(fileHandleEmpty) == {}
+
+
+def test_fdictReadHolderFromHandle_malformed_json_returns_empty_dict(
+    tmp_lock_dir,
+):
+    """Malformed JSON in a lock file yields {} via the except branch."""
+    from vaibify.config.containerLock import _fdictReadHolderFromHandle
+    sPath = str(tmp_lock_dir / "corrupt.lock")
+    with open(sPath, "w") as fileHandleCorrupt:
+        fileHandleCorrupt.write("{not-valid-json")
+    with open(sPath, "r+") as fileHandleRead:
+        assert _fdictReadHolderFromHandle(fileHandleRead) == {}
+
+
+def test_fdictReadLockHolder_returns_empty_when_open_raises(
+    tmp_lock_dir, monkeypatch,
+):
+    """An OSError opening the lock path yields an empty holder dict."""
+    import vaibify.config.containerLock as containerLockModule
+    sLockPath = str(tmp_lock_dir / "demo.lock")
+    with open(sLockPath, "w") as fileHandleCreate:
+        fileHandleCreate.write("{}")
+
+    def _ffileRaiseOnOpen(sPath):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(
+        containerLockModule,
+        "_ffileOpenLockFileNoFollow",
+        _ffileRaiseOnOpen,
+    )
+    from vaibify.config.containerLock import fdictReadLockHolder
+    assert fdictReadLockHolder("demo") == {}
+
+
+def test_fdictReadLockHolder_returns_empty_when_lockfile_is_unheld(
+    tmp_lock_dir,
+):
+    """An existing lock file that no process currently holds reports empty."""
+    from vaibify.config.containerLock import (
+        fdictReadLockHolder, fnAcquireContainerLock,
+        fnReleaseContainerLock,
+    )
+    fileHandleLock = fnAcquireContainerLock("demo", 8050)
+    fnReleaseContainerLock(fileHandleLock)
+    assert os.path.isfile(str(tmp_lock_dir / "demo.lock"))
+    assert fdictReadLockHolder("demo") == {}

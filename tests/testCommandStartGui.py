@@ -168,3 +168,47 @@ def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
     ), patchAcquire, patchRelease, patchResolvePort:
         fnLaunchGui(config, None)
     mockRelease.assert_called_once_with(mockLockHandle)
+
+
+def test_start_command_without_gui_starts_container_only():
+    """`vaibify start` without --gui starts the container, skips the GUI."""
+    from click.testing import CliRunner
+    from vaibify.cli.commandStart import start
+    mockConfig = _fConfigStub()
+    mockStart = MagicMock()
+    mockLaunch = MagicMock()
+    with patch(
+        "vaibify.cli.commandStart.fconfigResolveProject",
+        return_value=mockConfig,
+    ), patch(
+        "vaibify.cli.commandStart.fsDockerDir", return_value="/tmp/docker",
+    ), patch(
+        "vaibify.cli.commandStart._fnStartContainer", mockStart,
+    ), patch(
+        "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
+    ):
+        result = CliRunner().invoke(start, [])
+    assert result.exit_code == 0
+    mockStart.assert_called_once()
+    mockLaunch.assert_not_called()
+
+
+def test_start_command_with_gui_and_port_launches_gui():
+    """`vaibify start --gui --port 8062` forwards the explicit port."""
+    from click.testing import CliRunner
+    from vaibify.cli.commandStart import start
+    mockConfig = _fConfigStub()
+    mockLaunch = MagicMock()
+    with patch(
+        "vaibify.cli.commandStart.fconfigResolveProject",
+        return_value=mockConfig,
+    ), patch(
+        "vaibify.cli.commandStart.fsDockerDir", return_value="/tmp/docker",
+    ), patch(
+        "vaibify.cli.commandStart._fnStartContainer",
+    ), patch(
+        "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
+    ):
+        result = CliRunner().invoke(start, ["--gui", "--port", "8062"])
+    assert result.exit_code == 0
+    mockLaunch.assert_called_once_with(mockConfig, 8062)
