@@ -441,6 +441,9 @@ const PipeleyenApp = (function () {
     var fsResolveTemplate = VaibifyUtilities.fsResolveTemplate;
 
     function fsJoinPath(sDirectory, sFilename) {
+        if (!sDirectory || sDirectory === ".") {
+            return sFilename;
+        }
         if (sDirectory.endsWith("/")) {
             return sDirectory + sFilename;
         }
@@ -2207,7 +2210,25 @@ function fnBlockUnload(event) {
     event.returnValue = "";
 }
 
+function fnReleaseActiveContainerOnUnload() {
+    if (typeof PipeleyenContainerManager === "undefined") return;
+    var sName = PipeleyenContainerManager.fsGetSelectedContainerName();
+    if (!sName) return;
+    try {
+        fetch(
+            "/api/registry/" + encodeURIComponent(sName) + "/release",
+            {method: "POST", keepalive: true},
+        );
+    } catch (error) {
+        /* best-effort: the hub's shutdown hook will catch it later */
+    }
+}
+
 window.addEventListener("beforeunload", fnBlockUnload);
+window.addEventListener("pagehide", function (event) {
+    if (event.persisted) return;
+    fnReleaseActiveContainerOnUnload();
+});
 
 window.addEventListener("keydown", function (event) {
     var bCloseShortcut = (event.metaKey || event.ctrlKey) &&
