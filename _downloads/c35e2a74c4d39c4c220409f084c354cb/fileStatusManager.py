@@ -87,6 +87,7 @@ from . import pipelineState
 from . import workflowManager
 from .commandUtilities import flistExtractScripts
 from .fileIntegrity import _fsNormalizePath
+from .pathContract import flistNormalizeModifiedFiles
 from .pipelineUtils import fsShellQuote
 
 
@@ -427,8 +428,15 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
 
 
 def _fnInvalidateStepFiles(dictStep, listChangedPaths,
-                           dictModTimes=None):
-    """Mark specific files as modified, invalidate verifications."""
+                           dictModTimes=None, sRepoRoot=""):
+    """Mark specific files as modified, invalidate verifications.
+
+    ``listChangedPaths`` contains absolute container paths (the same
+    form the backend uses internally for stat/exec). They are
+    normalized to repo-relative form before persistence so the stored
+    ``listModifiedFiles`` always matches the wire-format contract in
+    ``pathContract``.
+    """
     if dictModTimes is None:
         dictModTimes = {}
     dictVerification = dictStep.get("dictVerification", {})
@@ -457,8 +465,13 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
         if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
             dictVerification["sPlotStandards"] = "stale"
     listExisting = dictVerification.get("listModifiedFiles", [])
-    setModified = set(listExisting)
-    setModified.update(listChangedPaths)
+    listExistingRel = flistNormalizeModifiedFiles(
+        listExisting, sRepoRoot,
+    )
+    listChangedRel = flistNormalizeModifiedFiles(
+        listChangedPaths, sRepoRoot,
+    )
+    setModified = set(listExistingRel) | set(listChangedRel)
     dictVerification["listModifiedFiles"] = sorted(setModified)
     dictStep["dictVerification"] = dictVerification
 
@@ -672,7 +685,7 @@ def _fdictDetectChangedFiles(dictCtx, sContainerId,
 
 
 def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles,
-                                  dictModTimes=None):
+                                  dictModTimes=None, sRepoRoot=""):
     """Invalidate changed and downstream steps, return verification map."""
     dictDownstream = workflowManager.fdictBuildDownstreamMap(
         dictWorkflow)
@@ -685,7 +698,7 @@ def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles,
     for iIndex, listPaths in dictChangedFiles.items():
         if 0 <= iIndex < len(listSteps):
             _fnInvalidateStepFiles(listSteps[iIndex], listPaths,
-                                   dictModTimes)
+                                   dictModTimes, sRepoRoot)
     for iIndex in setDownstream:
         if 0 <= iIndex < len(listSteps):
             _fnInvalidateDownstreamStep(listSteps[iIndex])
@@ -708,8 +721,9 @@ def _flistDetectAndInvalidate(dictCtx, sContainerId,
     )
     if not dictChangedFiles:
         return {}
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     dictInvalidated = _fdictInvalidateAffectedSteps(
-        dictWorkflow, dictChangedFiles, dictNewModTimes)
+        dictWorkflow, dictChangedFiles, dictNewModTimes, sRepoRoot)
     dictCtx["save"](sContainerId, dictWorkflow)
     return dictInvalidated
 

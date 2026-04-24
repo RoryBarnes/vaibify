@@ -1235,8 +1235,17 @@ def _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath):
         "        if h: dh[f] = h\n"
         '    R["testFiles"][d] = '
         '{"listFiles": fs, "dictMtimes": mt, "dictHashes": dh}\n'
-        '    if not os.path.isfile(os.path.join(td, "conftest.py")):\n'
+        '    sConftestPath = os.path.join(td, "conftest.py")\n'
+        "    if not os.path.isfile(sConftestPath):\n"
         '        R["missingConftest"].append(d)\n'
+        "    else:\n"
+        "        try:\n"
+        "            with open(sConftestPath) as fh:\n"
+        "                sConftestSource = fh.read()\n"
+        "        except Exception:\n"
+        "            sConftestSource = \"\"\n"
+        '        if "_PROJECT_REPO" not in sConftestSource:\n'
+        '            R["missingConftest"].append(d)\n'
         "print(json.dumps(R))\n"
     )
 
