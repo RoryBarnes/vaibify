@@ -435,6 +435,25 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnStopAllHubPolling() {
+        _fnStopContainerHubPolling();
+        _fnStopWorkflowHubPolling();
+    }
+
+    function fnResumeHubPollingForCurrentView() {
+        var elLanding = document.getElementById("containerLanding");
+        var elPicker = document.getElementById("workflowPicker");
+        if (elLanding && elLanding.style.display === "flex") {
+            _fnStartContainerHubPolling();
+            return;
+        }
+        if (elPicker && elPicker.style.display === "flex") {
+            var sContainerId = PipeleyenContainerManager
+                .fsGetSelectedContainerId();
+            _fnStartWorkflowHubPolling(sContainerId);
+        }
+    }
+
     function _fnCancelAllTimers() {
         VaibifyWebSocket.fnDisconnect();
         VaibifyPolling.fnStopPipelinePolling();
@@ -2254,6 +2273,9 @@ const PipeleyenApp = (function () {
         },
         fnDisconnect: fnDisconnect,
         fnShowContainerLanding: fnShowContainerLanding,
+        fnStopAllHubPolling: fnStopAllHubPolling,
+        fnResumeHubPollingForCurrentView:
+            fnResumeHubPollingForCurrentView,
         fbIsWorkflowMode: function () {
             return _dictSessionState.dictDashboardMode &&
                 _dictSessionState.dictDashboardMode.sMode ===
@@ -2307,8 +2329,17 @@ function fnReleaseActiveContainerOnUnload() {
 
 window.addEventListener("beforeunload", fnBlockUnload);
 window.addEventListener("pagehide", function (event) {
+    PipeleyenApp.fnStopAllHubPolling();
     if (event.persisted) return;
     fnReleaseActiveContainerOnUnload();
+});
+
+document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+        PipeleyenApp.fnStopAllHubPolling();
+    } else {
+        PipeleyenApp.fnResumeHubPollingForCurrentView();
+    }
 });
 
 window.addEventListener("keydown", function (event) {
