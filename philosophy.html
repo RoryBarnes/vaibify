@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Philosophy &mdash; Vaibify 0.0.1.dev102 documentation</title>
+  <title>Philosophy &mdash; Vaibify 0.0.1.dev103 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7a384828"></script>
+      <script src="_static/documentation_options.js?v=de40cc31"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -45,9 +45,7 @@
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Philosophy</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#the-problem">The problem</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-opportunity">The opportunity</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-central-assumption">The central assumption</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#harnessing-coding-agents-for-scientific-analyses">Harnessing Coding Agents for Scientific Analyses</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-the-results-can-be-trusted">How the results can be trusted</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#ai-assisted-development-as-practice">AI-assisted development as practice</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-tagline-is-the-architecture-spec">The tagline is the architecture spec</a></li>
@@ -98,13 +96,13 @@
              
   <section id="philosophy">
 <h1>Philosophy<a class="headerlink" href="#philosophy" title="Link to this heading"></a></h1>
-<p>This document explains why Vaibify exists and what it believes about
+<p>This document explains the motivation behind Vaibify and how it enables
 AI-assisted scientific computing. For the implementation that flows
 from these beliefs, see <a class="reference internal" href="architecture.html"><span class="std std-doc">architecture.md</span></a>. For the
 methodology behind the project’s own agent documentation, see
 <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a>.</p>
-<section id="the-problem">
-<h2>The problem<a class="headerlink" href="#the-problem" title="Link to this heading"></a></h2>
+<section id="harnessing-coding-agents-for-scientific-analyses">
+<h2>Harnessing Coding Agents for Scientific Analyses<a class="headerlink" href="#harnessing-coding-agents-for-scientific-analyses" title="Link to this heading"></a></h2>
 <p>AI coding agents are remarkably capable and remarkably dangerous. An
 agent running loose in a researcher’s home directory can read SSH
 keys, overwrite datasets built over months, or push a half-finished
@@ -112,9 +110,6 @@ branch to a shared repository. Treating a scientific workstation as
 an agent’s playground places years of careful work at risk for a few
 hours of convenience. Vaibify’s first job is to contain AI agents to
 a secure environment.</p>
-</section>
-<section id="the-opportunity">
-<h2>The opportunity<a class="headerlink" href="#the-opportunity" title="Link to this heading"></a></h2>
 <p>Once contained, you can safely allow AI coding agents to freely build
 code, monitor long-running jobs, and generate figures and TeX for
 manuscripts. Experiment with confidence and push the limits of the
@@ -124,9 +119,6 @@ now. While access to an IDE is included, vaibify is optimized for
 command-line agents like Claude Code. The command line is ground
 truth for the operating system. It will always be the fundamental
 representation of a filesystem.</p>
-</section>
-<section id="the-central-assumption">
-<h2>The central assumption<a class="headerlink" href="#the-central-assumption" title="Link to this heading"></a></h2>
 <p>Agent-written code must pass different validation tests than
 human-written code, and AI-assisted science must pass higher
 thresholds than human-only science. The central assumption of vaibify

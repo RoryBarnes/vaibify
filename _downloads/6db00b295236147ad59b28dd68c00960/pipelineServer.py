@@ -1049,6 +1049,7 @@ from .fileStatusManager import (  # noqa: F401
     _fnInvalidateDownstreamStep,
     _fnInvalidateStepFiles,
     _fnUpdateModTimeBaseline,
+    fbReconcileUpstreamFlags,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,

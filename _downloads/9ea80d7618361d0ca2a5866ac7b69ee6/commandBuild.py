@@ -58,7 +58,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
     fnCopyContainerScripts(sDockerDir)
-    fnCopyHostWorkflows(sDockerDir)
+    fnCopyAgentActionScript(sDockerDir)
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -103,6 +103,18 @@ def fnCopyDirectorScript(sDockerDir):
         / "gui" / "director.py"
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
+    shutil.copy2(sSourcePath, sDestPath)
+
+
+def fnCopyAgentActionScript(sDockerDir):
+    """Stage the in-container vaibify-do CLI into the build context."""
+    import shutil
+    import pathlib
+    sSourcePath = str(
+        pathlib.Path(__file__).resolve().parents[2]
+        / "docker" / "vaibifyDo.py"
+    )
+    sDestPath = os.path.join(sDockerDir, "vaibifyDo.py")
     shutil.copy2(sSourcePath, sDestPath)
 
 
@@ -197,31 +209,6 @@ def _fbRepoAlreadyListed(config, sUrl):
         if sExisting == sNormalized:
             return True
     return False
-
-
-def fnCopyHostWorkflows(sDockerDir):
-    """Copy host .vaibify/workflows/ into the build context.
-
-    Searches the project directory for workflow JSON files and
-    stages them so the Dockerfile can bake them into the image.
-    The entrypoint copies them into the workspace volume on
-    first start, making workflows available without manual
-    file transfer.
-    """
-    import glob
-    import shutil
-    sProjectDir = _fsProjectDirectory()
-    sHostWorkflows = os.path.join(
-        sProjectDir, ".vaibify", "workflows",
-    )
-    sDestDir = os.path.join(sDockerDir, "workflows")
-    if os.path.isdir(sDestDir):
-        shutil.rmtree(sDestDir)
-    os.makedirs(sDestDir, exist_ok=True)
-    if not os.path.isdir(sHostWorkflows):
-        return
-    for sFile in glob.glob(os.path.join(sHostWorkflows, "*.json")):
-        shutil.copy2(sFile, sDestDir)
 
 
 def _fsProjectDirectory():
