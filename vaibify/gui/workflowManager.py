@@ -48,6 +48,7 @@ __all__ = [
     "fnDeleteStep",
     "fnInsertStep",
     "fnMigrateArchiveToTracking",
+    "fbMigrateModifiedFilesToRepoRelative",
     "fnRenumberAllReferences",
     "fnReorderStep",
     "fnSaveWorkflowToContainer",
@@ -942,6 +943,34 @@ def _fsJoinRepoRelPath(sStepDir, sFile):
     if posixpath.isabs(sFile):
         return sFile
     return posixpath.join(sStepDir, sFile)
+
+
+def fbMigrateModifiedFilesToRepoRelative(dictWorkflow):
+    """Normalize legacy abs paths in dictVerification.listModifiedFiles.
+
+    Older workflow.json files stored absolute container paths in
+    ``dictVerification['listModifiedFiles']``. The wire-format contract
+    is now repo-relative (see ``vaibify.gui.pathContract``). This
+    one-shot migration rewrites each step's list in place and returns
+    True if any change was made (so the caller can persist).
+    Idempotent: a workflow already in repo-relative form is unchanged.
+    """
+    from .pathContract import flistNormalizeModifiedFiles
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    bChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictVerify = dictStep.get("dictVerification", {})
+        listExisting = dictVerify.get("listModifiedFiles")
+        if not listExisting:
+            continue
+        listNormalized = flistNormalizeModifiedFiles(
+            listExisting, sRepoRoot,
+        )
+        if listNormalized != listExisting:
+            dictVerify["listModifiedFiles"] = listNormalized
+            dictStep["dictVerification"] = dictVerify
+            bChanged = True
+    return bChanged
 
 
 def fnUpdateOverleafDigests(

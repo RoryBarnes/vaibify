@@ -353,3 +353,284 @@ def test_fbAnyMtimeNewerThan_all_below_threshold():
     assert not _fbAnyMtimeNewerThan(
         ["/a"], {"/a": "5"}, iThreshold=50,
     )
+
+
+# ---------------------------------------------------------------
+# Wire-format: listModifiedFiles is always repo-relative.
+# ---------------------------------------------------------------
+
+
+def test_fnInvalidateStepFiles_writes_repo_relative_paths():
+    """The persisted listModifiedFiles must use repo-relative keys."""
+    dictStep = {
+        "saDataFiles": [],
+        "saPlotFiles": [],
+        "dictVerification": {},
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        ["/workspace/proj/sub/a.dat"],
+        dictModTimes={"/workspace/proj/sub/a.dat": "100"},
+        sRepoRoot="/workspace/proj",
+    )
+    assert dictStep["dictVerification"]["listModifiedFiles"] == [
+        "sub/a.dat",
+    ]
+
+
+def test_fnInvalidateStepFiles_two_files_same_step_both_match():
+    """A09 repro: two changed files in sibling subdirs both stored."""
+    dictStep = {
+        "saDataFiles": [
+            "EngleBarnes/output/Converged_Param_Dictionary.json",
+            "RibasBarnes/output/Converged_Param_Dictionary.json",
+        ],
+        "saPlotFiles": [],
+        "dictVerification": {},
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        [
+            "/workspace/proj/EngleBarnes/output/"
+            "Converged_Param_Dictionary.json",
+            "/workspace/proj/RibasBarnes/output/"
+            "Converged_Param_Dictionary.json",
+        ],
+        dictModTimes={},
+        sRepoRoot="/workspace/proj",
+    )
+    listMod = dictStep["dictVerification"]["listModifiedFiles"]
+    assert listMod == [
+        "EngleBarnes/output/Converged_Param_Dictionary.json",
+        "RibasBarnes/output/Converged_Param_Dictionary.json",
+    ]
+
+
+def test_fnInvalidateStepFiles_dedupes_existing_abs_with_new_rel():
+    """If an old abs entry survives, it merges with the new rel form."""
+    dictStep = {
+        "saDataFiles": [],
+        "saPlotFiles": [],
+        "dictVerification": {
+            "listModifiedFiles": [
+                "/workspace/proj/sub/a.dat",  # legacy abs.
+            ],
+        },
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        ["/workspace/proj/sub/a.dat"],
+        dictModTimes={},
+        sRepoRoot="/workspace/proj",
+    )
+    assert dictStep["dictVerification"]["listModifiedFiles"] == [
+        "sub/a.dat",
+    ]
+
+
+def test_fnInvalidateStepFiles_no_repo_root_keeps_paths():
+    """Pre-repo workflows pass empty sRepoRoot; behavior unchanged."""
+    dictStep = {
+        "saDataFiles": [],
+        "saPlotFiles": [],
+        "dictVerification": {},
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        ["/ws/sub/a.dat"],
+        dictModTimes={},
+        sRepoRoot="",
+    )
+    assert dictStep["dictVerification"]["listModifiedFiles"] == [
+        "/ws/sub/a.dat",
+    ]
+
+
+def test_flistDetectAndInvalidate_threads_repo_root_into_persisted_list():
+    """End-to-end: detect a change and persist a repo-relative entry."""
+    mockSave = MagicMock()
+    dictCtx = {
+        "save": mockSave,
+        "dictPreviousModTimes": {
+            "cid": {"/workspace/proj/step0/out.dat": "100"},
+        },
+    }
+    dictStep = {
+        "sDirectory": "step0",
+        "saDataFiles": ["out.dat"],
+        "saPlotFiles": [],
+        "saDataCommands": [],
+        "saPlotCommands": [],
+        "dictVerification": {"sUnitTest": "passed"},
+    }
+    dictWorkflow = {
+        "listSteps": [dictStep],
+        "sProjectRepoPath": "/workspace/proj",
+    }
+    with patch(
+        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        return_value=False,
+    ):
+        _flistDetectAndInvalidate(
+            dictCtx, "cid", dictWorkflow,
+            {"/workspace/proj/step0/out.dat": "200"},
+            dictVars={
+                "sPlotDirectory": "Plot",
+                "sFigureType": "pdf",
+                "sRepoRoot": "/workspace/proj",
+            },
+        )
+    listMod = dictStep["dictVerification"]["listModifiedFiles"]
+    assert listMod == ["step0/out.dat"]
+    mockSave.assert_called_once_with("cid", dictWorkflow)
+
+
+# ---------------------------------------------------------------
+# Workflow loader migration of legacy listModifiedFiles
+# ---------------------------------------------------------------
+
+
+def test_fbMigrateModifiedFilesToRepoRelative_converts_abs_to_rel():
+    from vaibify.gui.workflowManager import (
+        fbMigrateModifiedFilesToRepoRelative,
+    )
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/proj",
+        "listSteps": [
+            {
+                "dictVerification": {
+                    "listModifiedFiles": [
+                        "/workspace/proj/dir/a.dat",
+                        "/workspace/proj/dir/b.dat",
+                    ],
+                },
+            },
+        ],
+    }
+    bChanged = fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
+    assert bChanged is True
+    assert dictWorkflow["listSteps"][0][
+        "dictVerification"]["listModifiedFiles"] == [
+        "dir/a.dat", "dir/b.dat",
+    ]
+
+
+def test_fbMigrateModifiedFilesToRepoRelative_idempotent():
+    from vaibify.gui.workflowManager import (
+        fbMigrateModifiedFilesToRepoRelative,
+    )
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/proj",
+        "listSteps": [
+            {
+                "dictVerification": {
+                    "listModifiedFiles": ["dir/a.dat"],
+                },
+            },
+        ],
+    }
+    bChanged = fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
+    assert bChanged is False
+
+
+def test_fbMigrateModifiedFilesToRepoRelative_skips_steps_without_list():
+    from vaibify.gui.workflowManager import (
+        fbMigrateModifiedFilesToRepoRelative,
+    )
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/proj",
+        "listSteps": [
+            {"dictVerification": {}},
+            {},
+        ],
+    }
+    bChanged = fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
+    assert bChanged is False
+
+
+def test_fbMigrateModifiedFilesToRepoRelative_no_repo_root_keeps_paths():
+    from vaibify.gui.workflowManager import (
+        fbMigrateModifiedFilesToRepoRelative,
+    )
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "dictVerification": {
+                    "listModifiedFiles": ["/abs/a.dat"],
+                },
+            },
+        ],
+    }
+    bChanged = fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
+    # No root, no normalization possible -> unchanged.
+    assert bChanged is False
+    assert dictWorkflow["listSteps"][0][
+        "dictVerification"]["listModifiedFiles"] == ["/abs/a.dat"]
+
+
+# ---------------------------------------------------------------
+# Edge-case geometry for the path-contract wire format.
+# ---------------------------------------------------------------
+
+
+def test_fnInvalidateStepFiles_step_directory_dot_normalizes_to_basename():
+    """A step at the repo root (sDirectory='.') stores bare filenames."""
+    dictStep = {
+        "sDirectory": ".",
+        "saDataFiles": ["summary.csv"],
+        "saPlotFiles": [],
+        "dictVerification": {},
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        ["/workspace/proj/summary.csv"],
+        dictModTimes={"/workspace/proj/summary.csv": "1"},
+        sRepoRoot="/workspace/proj",
+    )
+    assert dictStep["dictVerification"]["listModifiedFiles"] == [
+        "summary.csv",
+    ]
+
+
+def test_fnInvalidateStepFiles_sibling_directory_plot_path():
+    """A plot file living in a sibling directory under the repo stores
+    the full repo-relative path, not just the basename."""
+    dictStep = {
+        "sDirectory": "stepOne",
+        "saDataFiles": [],
+        "saPlotFiles": ["../shared/figure.pdf"],
+        "dictVerification": {},
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        ["/workspace/proj/shared/figure.pdf"],
+        dictModTimes={"/workspace/proj/shared/figure.pdf": "5"},
+        sRepoRoot="/workspace/proj",
+    )
+    assert dictStep["dictVerification"]["listModifiedFiles"] == [
+        "shared/figure.pdf",
+    ]
+
+
+def test_fnInvalidateStepFiles_wire_format_has_no_absolute_paths():
+    """No entry written by the invalidator may start with '/' when a
+    repo root is supplied — that is the wire-format contract."""
+    dictStep = {
+        "sDirectory": "stepOne",
+        "saDataFiles": ["out.dat"],
+        "saPlotFiles": ["plot.pdf"],
+        "dictVerification": {},
+    }
+    _fnInvalidateStepFiles(
+        dictStep,
+        [
+            "/workspace/proj/stepOne/out.dat",
+            "/workspace/proj/stepOne/plot.pdf",
+        ],
+        dictModTimes={},
+        sRepoRoot="/workspace/proj",
+    )
+    for sPath in dictStep["dictVerification"]["listModifiedFiles"]:
+        assert not sPath.startswith("/"), (
+            f"wire format must be repo-relative, got abs: {sPath}"
+        )

@@ -364,8 +364,15 @@ var PipeleyenFileOps = (function () {
 
     function _fbFileInModifiedList(sResolved, listModified) {
         if (!sResolved || listModified.length === 0) return false;
+        if (listModified.indexOf(sResolved) !== -1) return true;
         for (var i = 0; i < listModified.length; i++) {
-            if (listModified[i] === sResolved) return true;
+            // Legacy fallback: a workflow whose stored
+            // listModifiedFiles still has absolute container paths
+            // (pre-2026-04 wire format) until the loader migration
+            // runs on the next connect.
+            // TODO(2026-07-01): remove — at least one release after
+            // the 2026-04-23 wire-format switchover, by which point
+            // all workflows will have been loaded once and migrated.
             if (listModified[i].endsWith("/" + sResolved)) {
                 return true;
             }

@@ -250,3 +250,53 @@ def test_fdictGenerateAllTests_creates_three_categories(
     assert dictResult["dictQuantitative"]["sFilePath"].endswith(
         "test_quantitative.py"
     )
+
+
+# -----------------------------------------------------------------------
+# fsBuildStepContext: repo-root resolution at the docker boundary
+# -----------------------------------------------------------------------
+
+
+def test_fsBuildStepContext_joins_relative_dir_with_repo_root():
+    """Script lookups must hit absolute container paths, not relative."""
+    mockConn = _fMockConnection()
+    dictStep = {
+        "sDirectory": "XuvEvolution/EngleBarnes",
+        "saDataCommands": ["python analyze.py"],
+        "saDataFiles": [],
+    }
+    fsBuildStepContext(
+        mockConn, "cid123", dictStep,
+        {"sRepoRoot": "/workspace/proj"},
+    )
+    sFetched = mockConn.fbaFetchFile.call_args[0][1]
+    assert sFetched == "/workspace/proj/XuvEvolution/EngleBarnes/analyze.py"
+
+
+def test_fsBuildStepContext_preserves_absolute_step_dir():
+    """An already-absolute sDirectory is not double-prefixed."""
+    mockConn = _fMockConnection()
+    dictStep = {
+        "sDirectory": "/already/abs",
+        "saDataCommands": ["python script.py"],
+        "saDataFiles": [],
+    }
+    fsBuildStepContext(
+        mockConn, "cid123", dictStep,
+        {"sRepoRoot": "/workspace/proj"},
+    )
+    sFetched = mockConn.fbaFetchFile.call_args[0][1]
+    assert sFetched == "/already/abs/script.py"
+
+
+def test_fsBuildStepContext_no_repo_root_keeps_relative():
+    """Backwards compat: empty sRepoRoot leaves the path untouched."""
+    mockConn = _fMockConnection()
+    dictStep = {
+        "sDirectory": "step1",
+        "saDataCommands": ["python script.py"],
+        "saDataFiles": [],
+    }
+    fsBuildStepContext(mockConn, "cid123", dictStep, {})
+    sFetched = mockConn.fbaFetchFile.call_args[0][1]
+    assert sFetched == "step1/script.py"

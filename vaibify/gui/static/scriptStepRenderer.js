@@ -479,7 +479,16 @@ var VaibifyStepRenderer = (function () {
                 '</button>';
         }
         var bDisabled = !dictContext.setStepsWithData.has(iIndex);
-        var sLabel = bDisabled ? "No Data for Tests" : "Generate Tests";
+        var bHasExistingTests =
+            (step.saTestCommands || []).length > 0;
+        var sLabel;
+        if (bDisabled) {
+            sLabel = "No Data for Tests";
+        } else if (bHasExistingTests) {
+            sLabel = "Replace Tests";
+        } else {
+            sLabel = "Generate Tests";
+        }
         return '<button class="btn-generate-test" data-step="' +
             iIndex + '"' +
             (bDisabled ? " disabled" : "") +

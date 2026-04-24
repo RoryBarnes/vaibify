@@ -1011,3 +1011,210 @@ class TestFdictRunOneTestCategory:
         dictResult = await _fdictRunOneTestCategory(
             dictCtx, "cid-1", dictStep, "/ws", "dictIntegrity")
         assert dictResult is None
+
+
+# -------------------------------------------------------------------
+# _fsAbsoluteStepWorkdir + cd-into-project-repo behavior.
+# -------------------------------------------------------------------
+
+
+from vaibify.gui.routes.testRoutes import _fsAbsoluteStepWorkdir
+
+
+def test_fsAbsoluteStepWorkdir_joins_relative_dir_with_repo_root():
+    sResult = _fsAbsoluteStepWorkdir(
+        {"sDirectory": "XuvEvolution/EngleBarnes"},
+        "/workspace/proj",
+    )
+    assert sResult == "/workspace/proj/XuvEvolution/EngleBarnes"
+
+
+def test_fsAbsoluteStepWorkdir_keeps_absolute_dir_unchanged():
+    sResult = _fsAbsoluteStepWorkdir(
+        {"sDirectory": "/workspace/proj/sub"}, "/workspace/proj",
+    )
+    assert sResult == "/workspace/proj/sub"
+
+
+def test_fsAbsoluteStepWorkdir_empty_dir_falls_back_to_workspace():
+    sResult = _fsAbsoluteStepWorkdir({}, "/workspace/proj")
+    assert sResult == "/workspace"
+
+
+def test_fsAbsoluteStepWorkdir_empty_repo_root_returns_relative():
+    sResult = _fsAbsoluteStepWorkdir(
+        {"sDirectory": "sub"}, "",
+    )
+    assert sResult == "sub"
+
+
+class TestRunTestsResolvesRepoRoot:
+    """run-tests action must cd into <sProjectRepoPath>/<sDirectory>."""
+
+    def _fnRegisterAndCapture(self, dictCtx):
+        from vaibify.gui.routes import testRoutes
+
+        app = MagicMock()
+        listHandlers = {}
+
+        def fnCapturePost(sPath):
+            def fnDecorator(fnHandler):
+                listHandlers[sPath] = fnHandler
+                return fnHandler
+            return fnDecorator
+
+        app.post = fnCapturePost
+        testRoutes._fnRegisterTestRun(app, dictCtx)
+        return listHandlers
+
+    @pytest.mark.asyncio
+    async def test_run_tests_cds_into_absolute_repo_path(self):
+        dictCtx = _fdictBuildContext()
+        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
+            return_value=(0, "ok"))
+        listHandlers = self._fnRegisterAndCapture(dictCtx)
+        sPath = "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
+        fnHandler = listHandlers[sPath]
+        dictStep = {
+            "sDirectory": "XuvEvolution/EngleBarnes",
+            "dictTests": {
+                "dictIntegrity": {
+                    "saCommands": ["pytest test_a.py"],
+                },
+            },
+            "dictVerification": {},
+        }
+        dictWorkflow = {
+            "listSteps": [dictStep],
+            "sProjectRepoPath": "/workspace/GJ_proj",
+        }
+        with patch(
+            "vaibify.gui.routes.testRoutes.fdictRequireWorkflow",
+            return_value=dictWorkflow,
+        ), patch(
+            "vaibify.gui.routes.testRoutes._flistResolveTestCommands",
+            return_value=["pytest test_a.py"],
+        ), patch(
+            "vaibify.gui.routes.testRoutes.flistBuildTestCommands",
+            create=True,
+        ), patch(
+            "vaibify.gui.routes.testRoutes._fnRecordTestResult",
+        ), patch(
+            "vaibify.gui.routes.testRoutes."
+            "_fdictBuildTestResponse",
+            return_value={"bPassed": True},
+        ):
+            await fnHandler("cid-1", 0)
+        sCmd = dictCtx["docker"].ftResultExecuteCommand.call_args[0][1]
+        assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
+
+
+class TestRunTestCategoryResolvesRepoRoot:
+    """run-test-category action must cd into <sProjectRepoPath>/<sDirectory>."""
+
+    def _fnRegisterAndCapture(self, dictCtx):
+        from vaibify.gui.routes import testRoutes
+
+        app = MagicMock()
+        listHandlers = {}
+
+        def fnCapturePost(sPath):
+            def fnDecorator(fnHandler):
+                listHandlers[sPath] = fnHandler
+                return fnHandler
+            return fnDecorator
+
+        app.post = fnCapturePost
+        testRoutes._fnRegisterTestRun(app, dictCtx)
+        return listHandlers
+
+    @pytest.mark.asyncio
+    async def test_run_category_cds_into_absolute_repo_path(self):
+        dictCtx = _fdictBuildContext()
+        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
+            return_value=(0, "ok"))
+        listHandlers = self._fnRegisterAndCapture(dictCtx)
+        sPath = (
+            "/api/steps/{sContainerId}/{iStepIndex}"
+            "/run-test-category"
+        )
+        fnHandler = listHandlers[sPath]
+        mockRequest = AsyncMock()
+        mockRequest.json = AsyncMock(
+            return_value={"sCategory": "integrity"})
+        dictStep = {
+            "sDirectory": "XuvEvolution/EngleBarnes",
+            "dictTests": {
+                "dictIntegrity": {"saCommands": ["pytest"]},
+            },
+            "dictVerification": {},
+        }
+        dictWorkflow = {
+            "listSteps": [dictStep],
+            "sProjectRepoPath": "/workspace/GJ_proj",
+        }
+        with patch(
+            "vaibify.gui.routes.testRoutes.fdictRequireWorkflow",
+            return_value=dictWorkflow,
+        ), patch(
+            "vaibify.gui.routes.testRoutes."
+            "_fnUpdateAggregateTestState",
+        ):
+            await fnHandler("cid-1", 0, mockRequest)
+        sCmd = dictCtx["docker"].ftResultExecuteCommand.call_args[0][1]
+        assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
+
+
+class TestSaveAndRunTestResolvesRepoRoot:
+    """save-and-run-test must build a pytest cmd in absolute repo path."""
+
+    def _fnRegisterAndCapture(self, dictCtx):
+        from vaibify.gui.routes import testRoutes
+
+        app = MagicMock()
+        listHandlers = {}
+
+        def fnCapturePost(sPath):
+            def fnDecorator(fnHandler):
+                listHandlers[sPath] = fnHandler
+                return fnHandler
+            return fnDecorator
+
+        app.post = fnCapturePost
+        testRoutes._fnRegisterTestSaveAndRun(app, dictCtx)
+        return listHandlers
+
+    @pytest.mark.asyncio
+    async def test_save_and_run_cds_into_absolute_repo_path(self):
+        dictCtx = _fdictBuildContext()
+        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
+            return_value=(0, "ok"))
+        listHandlers = self._fnRegisterAndCapture(dictCtx)
+        sPath = (
+            "/api/steps/{sContainerId}/{iStepIndex}"
+            "/save-and-run-test"
+        )
+        fnHandler = listHandlers[sPath]
+        mockRequest = MagicMock()
+        mockRequest.sFilePath = "test_x.py"
+        mockRequest.sContent = "x"
+        dictStep = {
+            "sDirectory": "XuvEvolution/EngleBarnes",
+            "dictTests": {},
+            "dictVerification": {},
+        }
+        dictWorkflow = {
+            "listSteps": [dictStep],
+            "sProjectRepoPath": "/workspace/GJ_proj",
+        }
+        with patch(
+            "vaibify.gui.routes.testRoutes.fdictRequireWorkflow",
+            return_value=dictWorkflow,
+        ), patch(
+            "vaibify.gui.routes.testRoutes._fnRecordTestResult",
+        ), patch(
+            "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
+        ):
+            await fnHandler("cid-1", 0, mockRequest)
+        sCmd = dictCtx["docker"].ftResultExecuteCommand.call_args[0][1]
+        assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd

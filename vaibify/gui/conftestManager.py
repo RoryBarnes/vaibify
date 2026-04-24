@@ -47,21 +47,35 @@ def fsBuildConftestSource(sProjectRepoPath):
     return sPrologue + _CONFTEST_MARKER_TEMPLATE
 
 
+def _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath):
+    """Return container-absolute step dir for path ops in this module."""
+    if not sStepDirectory or posixpath.isabs(sStepDirectory):
+        return sStepDirectory
+    if not sProjectRepoPath:
+        return sStepDirectory
+    return posixpath.join(sProjectRepoPath, sStepDirectory)
+
+
 def fnWriteConftestMarker(
     connectionDocker, sContainerId, sStepDirectory, sProjectRepoPath,
 ):
     """Write the conftest.py marker plugin into a step's tests dir."""
-    sPath = fsConftestPath(sStepDirectory)
+    sAbsStepDir = _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath)
+    sPath = fsConftestPath(sAbsStepDir)
     sSource = fsBuildConftestSource(sProjectRepoPath)
     connectionDocker.fnWriteFile(
         sContainerId, sPath, sSource.encode("utf-8"),
     )
 
 
-def fnEnsureTestsDirectory(connectionDocker, sContainerId, sStepDirectory):
+def fnEnsureTestsDirectory(
+    connectionDocker, sContainerId, sStepDirectory,
+    sProjectRepoPath="",
+):
     """Create the tests subdirectory in the container if missing."""
     from .pipelineRunner import fsShellQuote
-    sTestsDir = posixpath.join(sStepDirectory, "tests")
+    sAbsStepDir = _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath)
+    sTestsDir = posixpath.join(sAbsStepDir, "tests")
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"mkdir -p {fsShellQuote(sTestsDir)}"
     )

@@ -168,8 +168,18 @@ def fsQualitativeStandardsPath(sStepDirectory):
 def fsBuildStepContext(
     connectionDocker, sContainerId, dictStep, dictVariables,
 ):
-    """Gather script source code and data file previews for a step."""
+    """Gather script source code and data file previews for a step.
+
+    The step ``sDirectory`` is resolved against ``sRepoRoot`` from
+    ``dictVariables`` so the docker file-fetch APIs see absolute
+    container paths. A repo-relative directory used as-is would be
+    resolved by Docker against ``/`` and miss the project repo,
+    yielding 404 from the archive endpoint.
+    """
     sDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = (dictVariables or {}).get("sRepoRoot", "")
+    if sDirectory and sRepoRoot and not posixpath.isabs(sDirectory):
+        sDirectory = posixpath.join(sRepoRoot, sDirectory)
     sScripts = _fsBuildScriptContents(
         connectionDocker, sContainerId, dictStep, sDirectory
     )
@@ -243,9 +253,21 @@ def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
 
 
 def _ftExtractStepInfo(dictWorkflow, iStepIndex):
-    """Return (dictStep, sDirectory) for the given step index."""
+    """Return (dictStep, sAbsoluteDirectory) for the given step index.
+
+    The directory is resolved to its container-absolute form by
+    joining with ``dictWorkflow['sProjectRepoPath']`` when the
+    workflow's stored ``sDirectory`` is repo-relative. Callers
+    write files and run scripts via Docker APIs that need absolute
+    container paths, so resolution at this single boundary keeps
+    every downstream path correct without spreading the join logic.
+    """
     dictStep = dictWorkflow["listSteps"][iStepIndex]
-    return dictStep, dictStep.get("sDirectory", "")
+    sDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    if sDirectory and sRepoRoot and not posixpath.isabs(sDirectory):
+        sDirectory = posixpath.join(sRepoRoot, sDirectory)
+    return dictStep, sDirectory
 
 
 # ---------------------------------------------------------------------------

@@ -246,3 +246,60 @@ def test_marker_round_trip_clean_on_fresh_clone(tmp_path):
     assert dictFreshCache, (
         "Fresh cache should be populated as a side effect of the check"
     )
+
+
+# ----------------------------------------------------------------------
+# Path-prefix resolution for write helpers (regression: stale-conftest
+# was writing relative paths through Docker put_archive and silently
+# missing the project repo).
+# ----------------------------------------------------------------------
+
+
+from unittest.mock import MagicMock
+
+
+def test_fnWriteConftestMarker_writes_to_absolute_repo_path():
+    mockConn = MagicMock()
+    conftestManager.fnWriteConftestMarker(
+        mockConn, "cid",
+        sStepDirectory="BayesianPosteriors",
+        sProjectRepoPath="/workspace/proj",
+    )
+    sWrittenPath = mockConn.fnWriteFile.call_args[0][1]
+    assert sWrittenPath == (
+        "/workspace/proj/BayesianPosteriors/tests/conftest.py"
+    )
+
+
+def test_fnWriteConftestMarker_keeps_absolute_step_dir_unchanged():
+    mockConn = MagicMock()
+    conftestManager.fnWriteConftestMarker(
+        mockConn, "cid",
+        sStepDirectory="/legacy/abs/step",
+        sProjectRepoPath="/workspace/proj",
+    )
+    sWrittenPath = mockConn.fnWriteFile.call_args[0][1]
+    assert sWrittenPath == "/legacy/abs/step/tests/conftest.py"
+
+
+def test_fnEnsureTestsDirectory_uses_repo_path_when_provided():
+    mockConn = MagicMock()
+    mockConn.ftResultExecuteCommand.return_value = (0, "")
+    conftestManager.fnEnsureTestsDirectory(
+        mockConn, "cid", "BayesianPosteriors",
+        sProjectRepoPath="/workspace/proj",
+    )
+    sCmd = mockConn.ftResultExecuteCommand.call_args[0][1]
+    assert "/workspace/proj/BayesianPosteriors/tests" in sCmd
+
+
+def test_fnEnsureTestsDirectory_omitted_repo_path_keeps_relative():
+    """Backwards compat: callers that already pass an absolute dir
+    should continue to work even without the new parameter."""
+    mockConn = MagicMock()
+    mockConn.ftResultExecuteCommand.return_value = (0, "")
+    conftestManager.fnEnsureTestsDirectory(
+        mockConn, "cid", "/abs/step",
+    )
+    sCmd = mockConn.ftResultExecuteCommand.call_args[0][1]
+    assert "/abs/step/tests" in sCmd

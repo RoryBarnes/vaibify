@@ -24,6 +24,7 @@ __all__ = [
     "testNoWorkspaceRootedMarkerHardcodeInSource",
     "testAgentActionRegistered",
     "testAgentActionCatalogShape",
+    "testWireFormatPathsAreRepoRelative",
 ]
 
 
@@ -696,5 +697,141 @@ def testAgentActionCatalogShape():
             )
     assert listViolations == [], (
         "Catalog shape violations:\n  "
+        + "\n  ".join(listViolations)
+    )
+
+
+_SET_APPROVED_LIST_MODIFIED_WRITERS = frozenset({
+    # Only these two functions may assign directly to
+    # dictVerification['listModifiedFiles']. The first is the
+    # invalidator (which normalizes via flistNormalizeModifiedFiles
+    # before writing); the second is the one-shot loader migration
+    # that rewrites legacy abs paths in place.
+    "_fnInvalidateStepFiles",
+    "fbMigrateModifiedFilesToRepoRelative",
+})
+
+
+_SET_VERIFICATION_DICT_NAMES = frozenset({
+    "dictVerification", "dictVerify", "dictV",
+})
+
+
+def _flistFindListModifiedAssignmentSites(treeAst):
+    """Return [(functionName, lineNumber)] for every subscript assignment
+    to ``<verificationDict>['listModifiedFiles']`` in the AST, scoped
+    to the enclosing function. The receiver must be a bare Name in
+    ``_SET_VERIFICATION_DICT_NAMES`` to avoid matching unrelated keys
+    like ``dictResult['listModifiedFiles']`` used elsewhere.
+    """
+    listSites = []
+    for node in ast.walk(treeAst):
+        if not isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef),
+        ):
+            continue
+        for nodeInner in ast.walk(node):
+            if not isinstance(nodeInner, ast.Assign):
+                continue
+            for nodeTarget in nodeInner.targets:
+                if not isinstance(nodeTarget, ast.Subscript):
+                    continue
+                if not isinstance(nodeTarget.value, ast.Name):
+                    continue
+                if nodeTarget.value.id not in (
+                    _SET_VERIFICATION_DICT_NAMES
+                ):
+                    continue
+                sliceNode = nodeTarget.slice
+                sKey = None
+                if isinstance(sliceNode, ast.Constant):
+                    sKey = sliceNode.value
+                if sKey == "listModifiedFiles":
+                    listSites.append((node.name, nodeInner.lineno))
+    return listSites
+
+
+def _fbCallsHelperOnReturnedKey(treeAst, sFunctionName, sHelperName):
+    """Return True if `sFunctionName` returns a dict whose ``dictModTimes``
+    value is the result of a ``sHelperName(...)`` call.
+    """
+    for node in ast.walk(treeAst):
+        bMatch = isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef),
+        ) and node.name == sFunctionName
+        if not bMatch:
+            continue
+        for nodeReturn in ast.walk(node):
+            if not isinstance(nodeReturn, ast.Return):
+                continue
+            if not isinstance(nodeReturn.value, ast.Dict):
+                continue
+            for keyNode, valueNode in zip(
+                nodeReturn.value.keys,
+                nodeReturn.value.values,
+            ):
+                if not isinstance(keyNode, ast.Constant):
+                    continue
+                if keyNode.value != "dictModTimes":
+                    continue
+                if not isinstance(valueNode, ast.Call):
+                    continue
+                fnNode = valueNode.func
+                if isinstance(fnNode, ast.Name):
+                    if fnNode.id == sHelperName:
+                        return True
+                if isinstance(fnNode, ast.Attribute):
+                    if fnNode.attr == sHelperName:
+                        return True
+    return False
+
+
+def testWireFormatPathsAreRepoRelative():
+    """`_fdictFetchOutputStatus` must convert dictModTimes via the contract.
+
+    The path-contract module owns the abs->repo-relative translation
+    at every wire boundary. This test asserts that the routes module
+    imports the helper *and* uses it on the dictModTimes key of the
+    returned status dict. It also asserts fileStatusManager imports
+    the contract so the invalidator can normalize listModifiedFiles.
+    """
+    sRoutesPath = ROUTES_DIR / "pipelineRoutes.py"
+    sFileStatusPath = GUI_DIR / "fileStatusManager.py"
+    sRoutesSource, treeRoutes = ftParseFile(sRoutesPath)
+    sFileStatusSource = fsReadSource(sFileStatusPath)
+    assert "from ..pathContract import" in sRoutesSource, (
+        "pipelineRoutes.py must import from pathContract for "
+        "wire-format conversion"
+    )
+    assert "from .pathContract import" in sFileStatusSource, (
+        "fileStatusManager.py must import from pathContract for "
+        "listModifiedFiles normalization"
+    )
+    bUsesHelper = _fbCallsHelperOnReturnedKey(
+        treeRoutes,
+        "_fdictFetchOutputStatus",
+        "fdictAbsKeysToRepoRelative",
+    )
+    assert bUsesHelper, (
+        "_fdictFetchOutputStatus must wrap dictModTimes with "
+        "fdictAbsKeysToRepoRelative before returning it"
+    )
+    listViolations = []
+    for pathModule in sorted(GUI_DIR.rglob("*.py")):
+        _, treeModule = ftParseFile(pathModule)
+        for sFunction, iLine in _flistFindListModifiedAssignmentSites(
+            treeModule,
+        ):
+            if sFunction in _SET_APPROVED_LIST_MODIFIED_WRITERS:
+                continue
+            listViolations.append(
+                f"{pathModule.relative_to(REPO_ROOT)}:{iLine} "
+                f"in {sFunction} assigns dictVerification["
+                f"'listModifiedFiles'] outside the approved helpers "
+                f"({sorted(_SET_APPROVED_LIST_MODIFIED_WRITERS)}); "
+                f"route all writes through flistNormalizeModifiedFiles."
+            )
+    assert not listViolations, (
+        "listModifiedFiles write-contract violated:\n  "
         + "\n  ".join(listViolations)
     )

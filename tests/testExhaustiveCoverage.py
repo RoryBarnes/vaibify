@@ -70,12 +70,16 @@ class TestFbMarkerStale:
         assert _fbMarkerStale(dictMarker, dictTestFileInfo) is True
 
     def test_older_test_file(self):
-        dictMarker = {"fTimestamp": 300.0}
+        dictMarker = {
+            "fTimestamp": 300.0, "sRunAtUtc": "2026-04-23T00:00:00Z",
+        }
         dictTestFileInfo = {"dictMtimes": {"test_a.py": 100.0}}
         assert _fbMarkerStale(dictMarker, dictTestFileInfo) is False
 
     def test_no_test_files(self):
-        dictMarker = {"fTimestamp": 100.0}
+        dictMarker = {
+            "fTimestamp": 100.0, "sRunAtUtc": "2026-04-23T00:00:00Z",
+        }
         assert _fbMarkerStale(dictMarker, {}) is False
 
     def test_no_timestamp(self):

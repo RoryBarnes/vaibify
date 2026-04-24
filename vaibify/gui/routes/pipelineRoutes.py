@@ -3,6 +3,7 @@
 __all__ = ["fnRegisterAll", "fdictComputeFileStatus"]
 
 import asyncio
+import json
 import logging
 import posixpath
 import re
@@ -35,6 +36,7 @@ from ..fileStatusManager import (
     fsMarkerNameFromStepDirectory,
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
+from ..pathContract import fdictAbsKeysToRepoRelative
 
 logger = logging.getLogger("vaibify")
 
@@ -273,6 +275,9 @@ async def fdictComputeFileStatus(
     )
     dictTestStatus = await _fdictFetchTestStatus(
         dictCtx, sContainerId, dictWorkflow,
+        dictMaxOutputMtimeByStep=dictOutputStatus.get(
+            "dictMaxMtimeByStep", {},
+        ),
     )
     dictOutputStatus.update(dictTestStatus)
     return dictOutputStatus
@@ -339,8 +344,11 @@ async def _fdictFetchOutputStatus(
                 sIdx, dictV.get("sUser"),
                 dictV.get("listModifiedFiles", []),
             )
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     return {
-        "dictModTimes": dictModTimes,
+        "dictModTimes": fdictAbsKeysToRepoRelative(
+            dictModTimes, sRepoRoot,
+        ),
         "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
             dictPathsByStep, dictModTimes,
         ),
@@ -361,6 +369,7 @@ async def _fdictFetchOutputStatus(
 
 async def _fdictFetchTestStatus(
     dictCtx, sContainerId, dictWorkflow,
+    dictMaxOutputMtimeByStep=None,
 ):
     """Fetch test markers, backfill conftest, and build test status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
@@ -377,8 +386,13 @@ async def _fdictFetchTestStatus(
     )
     dictTestMarkers = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
+        dictMaxOutputMtimeByStep=dictMaxOutputMtimeByStep,
     )
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    bChanged = _fnApplyExternalTestResults(
+        dictWorkflow, dictTestMarkers,
+    )
+    if bChanged:
+        dictCtx["save"](sContainerId, dictWorkflow)
     return {
         "dictTestMarkers": dictTestMarkers,
         "dictTestFileChanges": _fdictBuildTestFileChanges(
@@ -443,10 +457,70 @@ async def _fnBackfillMissingConftest(
                 sDir, exc,
             )
     await asyncio.to_thread(
+        _fnDeleteLegacyMarkers,
+        connectionDocker, sContainerId,
+        listMissingDirs, sProjectRepoPath,
+    )
+    await asyncio.to_thread(
         _fnEnsureConftestTemplate,
         connectionDocker, sContainerId,
         fsConftestContent(sProjectRepoPath),
     )
+
+
+def _fnDeleteLegacyMarkers(
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
+):
+    """Delete markers written by the pre-2026-04 conftest format.
+
+    The legacy conftest produced markers without ``sRunAtUtc`` /
+    ``dictOutputHashes``. Once a step's stale conftest has been
+    overwritten, any leftover legacy marker at the new path no longer
+    reflects reality but the polling reconciliation would still apply
+    its (stale) results — flashing "passed" on the badge before the
+    user runs tests for real. Removing those markers makes the badge
+    show "untested" until a fresh pytest run with the new conftest
+    writes a trustworthy marker.
+    """
+    if not sProjectRepoPath or not listStepDirs:
+        return
+    listMarkerPaths = [
+        posixpath.join(
+            sProjectRepoPath, ".vaibify", "test_markers",
+            fsMarkerNameFromStepDirectory(sDir),
+        )
+        for sDir in listStepDirs
+    ]
+    sScript = (
+        "import json, os, sys\n"
+        "for sPath in json.loads(sys.stdin.read()):\n"
+        "    if not os.path.isfile(sPath):\n"
+        "        continue\n"
+        "    try:\n"
+        "        dictMarker = json.load(open(sPath))\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "    if 'sRunAtUtc' in dictMarker:\n"
+        "        continue\n"
+        "    try:\n"
+        "        os.remove(sPath)\n"
+        "        print(sPath)\n"
+        "    except OSError:\n"
+        "        pass\n"
+    )
+    sCmd = (
+        "python3 -c " + fsShellQuote(sScript)
+        + " <<< " + fsShellQuote(json.dumps(listMarkerPaths))
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCmd,
+    )
+    listDeleted = [s for s in (sOutput or "").splitlines() if s.strip()]
+    if listDeleted:
+        logger.info(
+            "Deleted %d legacy markers: %s",
+            len(listDeleted), listDeleted,
+        )
 
 
 def _fnEnsureConftestTemplate(
@@ -470,10 +544,18 @@ def _fnEnsureConftestTemplate(
     )
 
 
-def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
-    """Map test markers to step indices and check staleness."""
+def _fdictBuildTestMarkerStatus(
+    dictWorkflow, dictTestInfo, dictMaxOutputMtimeByStep=None,
+):
+    """Map test markers to step indices and check staleness.
+
+    ``dictMaxOutputMtimeByStep`` (str step index → mtime string) lets
+    the staleness check recognise a marker as out-of-date when the
+    step's output files have been regenerated since pytest last ran.
+    """
     dictMarkers = dictTestInfo.get("markers", {})
     dictTestFiles = dictTestInfo.get("testFiles", {})
+    dictMaxMtimes = dictMaxOutputMtimeByStep or {}
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
@@ -485,8 +567,12 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
         if sMarkerName not in dictMarkers:
             continue
         dictMarker = dictMarkers[sMarkerName]
+        fMaxOutputMtime = _ffParseMtime(
+            dictMaxMtimes.get(str(iIndex)),
+        )
         bStale = _fbMarkerStale(
             dictMarker, dictTestFiles.get(sDir, {}),
+            fMaxOutputMtime=fMaxOutputMtime,
         )
         dictResult[str(iIndex)] = {
             "dictMarker": dictMarker, "bStale": bStale,
@@ -494,13 +580,37 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
     return dictResult
 
 
-def _fbMarkerStale(dictMarker, dictTestFileInfo):
-    """Return True if any test file is newer than the marker."""
+def _ffParseMtime(sMtime):
+    """Return mtime as float, 0.0 when missing or unparseable."""
+    if not sMtime:
+        return 0.0
+    try:
+        return float(sMtime)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _fbMarkerStale(dictMarker, dictTestFileInfo, fMaxOutputMtime=0):
+    """Return True if the marker no longer reflects the current state.
+
+    A marker is stale when any of:
+
+    1. It lacks ``sRunAtUtc`` (legacy pre-2026-04 conftest format —
+       cannot be trusted to map to any specific data state).
+    2. Any test file is newer than the marker (existing behaviour).
+    3. Any output file is newer than the marker — i.e. the data the
+       step's tests would run against has moved since the recorded
+       result, so the result no longer applies.
+    """
+    if "sRunAtUtc" not in dictMarker:
+        return True
     fMarkerTime = dictMarker.get("fTimestamp", 0)
     dictMtimes = dictTestFileInfo.get("dictMtimes", {})
     for fMtime in dictMtimes.values():
         if fMtime > fMarkerTime:
             return True
+    if fMaxOutputMtime and fMaxOutputMtime > fMarkerTime:
+        return True
     return False
 
 
@@ -513,18 +623,46 @@ _LIST_MARKER_CATEGORY_KEYS = [
 
 def _fnApplyAllMarkerCategories(dictVerify, dictCategories):
     """Apply all marker categories to a verification dict."""
+    bChanged = False
     for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
-        _fnApplyMarkerCategory(
+        if _fnApplyMarkerCategory(
             dictVerify, dictCategories, sCategory, sVerifyKey,
-        )
+        ):
+            bChanged = True
+    return bChanged
+
+
+def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
+    """Reset to "untested" any category the stale marker would touch.
+
+    A stale marker isn't trustworthy enough to apply, but it does tell
+    us *which* categories used to have a result. Resetting those to
+    "untested" makes the badge accurately reflect "no fresh result for
+    the current state" instead of preserving a prior pass/fail value
+    that's now meaningless.
+    """
+    bChanged = False
+    for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
+        if sCategory not in dictCategories:
+            continue
+        if dictVerify.get(sVerifyKey) == "untested":
+            continue
+        dictVerify[sVerifyKey] = "untested"
+        bChanged = True
+    return bChanged
 
 
 def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
-    """Update workflow dictVerification from external test markers."""
+    """Update workflow dictVerification from external test markers.
+
+    Returns True when any verification field was modified, so the
+    caller can persist the workflow.
+    """
     listSteps = dictWorkflow.get("listSteps", [])
+    bChanged = False
     for sIndex, dictEntry in dictTestMarkers.items():
         iIndex = int(sIndex)
-        if dictEntry["bStale"] or iIndex >= len(listSteps):
+        if iIndex >= len(listSteps):
             continue
         dictVerify = listSteps[iIndex].setdefault(
             "dictVerification", {},
@@ -532,21 +670,35 @@ def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
         dictCategories = dictEntry["dictMarker"].get(
             "dictCategories", {},
         )
-        _fnApplyAllMarkerCategories(
-            dictVerify, dictCategories)
+        if dictEntry.get("bStale"):
+            if _fnClearStaleMarkerCategories(
+                dictVerify, dictCategories,
+            ):
+                bChanged = True
+            continue
+        if _fnApplyAllMarkerCategories(
+            dictVerify, dictCategories,
+        ):
+            bChanged = True
+    return bChanged
 
 
 def _fnApplyMarkerCategory(
     dictVerify, dictCategories, sCategory, sVerifyKey,
 ):
-    """Apply a single category result from a marker."""
+    """Apply a single category result from a marker; return True if changed."""
     if sCategory not in dictCategories:
-        return
+        return False
     dictCat = dictCategories[sCategory]
+    sNewValue = None
     if dictCat.get("iFailed", 0) > 0:
-        dictVerify[sVerifyKey] = "failed"
+        sNewValue = "failed"
     elif dictCat.get("iPassed", 0) > 0:
-        dictVerify[sVerifyKey] = "passed"
+        sNewValue = "passed"
+    if sNewValue is None or dictVerify.get(sVerifyKey) == sNewValue:
+        return False
+    dictVerify[sVerifyKey] = sNewValue
+    return True
 
 
 def _fsetExtractRegisteredTestFiles(dictStep):

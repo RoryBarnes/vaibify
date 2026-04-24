@@ -481,3 +481,65 @@ class TestSyncDispatcherExports:
         from vaibify.gui import syncDispatcher
         assert "ftResultPushStagedToGithub" in syncDispatcher.__all__
         assert "flistGetDirtyFiles" in syncDispatcher.__all__
+
+
+# ----------------------------------------------------------------------
+# Stale-conftest detection in the test-marker discovery script
+# (regression: a stale conftest writing markers to the legacy path
+# was leaving the dashboard with stale verification state forever
+# because backfill only triggered for a *missing* conftest.)
+# ----------------------------------------------------------------------
+
+
+def test_test_marker_script_flags_stale_conftest_without_project_repo():
+    """Conftest source missing _PROJECT_REPO must be flagged for backfill."""
+    from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
+    sScript = _fsBuildTestMarkerScript(
+        '["BayesianPosteriors"]', "/workspace/proj",
+    )
+    assert "_PROJECT_REPO" in sScript
+    assert "missingConftest" in sScript
+    assert 'sConftestSource' in sScript
+
+
+def test_test_marker_script_treats_modern_conftest_as_present(tmp_path):
+    """End-to-end: modern conftest source contains _PROJECT_REPO so
+    the discovery script must NOT flag it as missing."""
+    import json
+    import subprocess
+    from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
+    sStepDir = tmp_path / "step1"
+    (sStepDir / "tests").mkdir(parents=True)
+    (sStepDir / "tests" / "conftest.py").write_text(
+        "from pathlib import Path\n"
+        "_PROJECT_REPO = Path('/workspace/proj')\n",
+    )
+    sScript = _fsBuildTestMarkerScript(
+        json.dumps(["step1"]), str(tmp_path),
+    )
+    sOutput = subprocess.check_output(
+        ["python3", "-c", sScript], text=True,
+    )
+    dictResult = json.loads(sOutput)
+    assert dictResult["missingConftest"] == []
+
+
+def test_test_marker_script_flags_legacy_conftest_as_missing(tmp_path):
+    """Legacy conftest without _PROJECT_REPO must be flagged for backfill."""
+    import json
+    import subprocess
+    from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
+    sStepDir = tmp_path / "step1"
+    (sStepDir / "tests").mkdir(parents=True)
+    (sStepDir / "tests" / "conftest.py").write_text(
+        "# legacy conftest, writes to /workspace/.vaibify/test_markers\n"
+        "import json\n",
+    )
+    sScript = _fsBuildTestMarkerScript(
+        json.dumps(["step1"]), str(tmp_path),
+    )
+    sOutput = subprocess.check_output(
+        ["python3", "-c", sScript], text=True,
+    )
+    dictResult = json.loads(sOutput)
+    assert dictResult["missingConftest"] == ["step1"]

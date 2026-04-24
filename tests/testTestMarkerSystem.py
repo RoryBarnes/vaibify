@@ -245,17 +245,18 @@ def test_fdictBuildTestMarkerStatus_stale_detection():
 # ---- pipelineServer: _fbMarkerStale ----
 
 def test_fbMarkerStale_no_files():
-    assert _fbMarkerStale({"fTimestamp": 100.0}, {}) is False
+    dictMarker = {"fTimestamp": 100.0, "sRunAtUtc": "2026-04-23T00:00:00Z"}
+    assert _fbMarkerStale(dictMarker, {}) is False
 
 
 def test_fbMarkerStale_older_files():
-    dictMarker = {"fTimestamp": 100.0}
+    dictMarker = {"fTimestamp": 100.0, "sRunAtUtc": "2026-04-23T00:00:00Z"}
     dictFileInfo = {"dictMtimes": {"test_a.py": 90.0, "test_b.py": 95.0}}
     assert _fbMarkerStale(dictMarker, dictFileInfo) is False
 
 
 def test_fbMarkerStale_newer_file():
-    dictMarker = {"fTimestamp": 100.0}
+    dictMarker = {"fTimestamp": 100.0, "sRunAtUtc": "2026-04-23T00:00:00Z"}
     dictFileInfo = {"dictMtimes": {"test_a.py": 90.0, "test_b.py": 110.0}}
     assert _fbMarkerStale(dictMarker, dictFileInfo) is True
 
@@ -306,9 +307,16 @@ def test_fnApplyExternalTestResults_applies_failed():
     assert dictVerify["sQualitative"] == "failed"
 
 
-def test_fnApplyExternalTestResults_skips_stale():
+def test_fnApplyExternalTestResults_resets_stale_categories_to_untested():
+    """A stale marker's categories are reset to "untested" rather than
+    leaving stale "passed"/"failed" values in place."""
     dictWorkflow = {
-        "listSteps": [{"sDirectory": "step1"}]
+        "listSteps": [
+            {
+                "sDirectory": "step1",
+                "dictVerification": {"sIntegrity": "passed"},
+            },
+        ],
     }
     dictTestMarkers = {
         "0": {
@@ -316,12 +324,13 @@ def test_fnApplyExternalTestResults_skips_stale():
             "dictMarker": {
                 "dictCategories": {
                     "integrity": {"iPassed": 3, "iFailed": 0},
-                }
+                },
             },
-        }
+        },
     }
     _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
-    assert "dictVerification" not in dictWorkflow["listSteps"][0]
+    dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictVerify["sIntegrity"] == "untested"
 
 
 def test_fnApplyExternalTestResults_skips_out_of_range():

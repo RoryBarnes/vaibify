@@ -22,6 +22,7 @@ from vaibify.gui.routes.pipelineRoutes import (
     _fiCountMatchingProcesses,
     _fnKillMatchingProcesses,
     _fnBackfillMissingConftest,
+    _fnDeleteLegacyMarkers,
     _fdictFetchOutputStatus,
     fdictComputeFileStatus,
 )
@@ -572,6 +573,9 @@ class TestFnBackfillMissingConftest:
             return_value="# conftest",
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
+            "._fnDeleteLegacyMarkers",
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
             "._fnEnsureConftestTemplate",
         ) as mockEnsure:
             await _fnBackfillMissingConftest(
@@ -593,6 +597,9 @@ class TestFnBackfillMissingConftest:
             return_value="# conftest",
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
+            "._fnDeleteLegacyMarkers",
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
             "._fnEnsureConftestTemplate",
         ):
             await _fnBackfillMissingConftest(
@@ -607,6 +614,107 @@ class TestFnBackfillMissingConftest:
         mockDocker = MagicMock()
         await _fnBackfillMissingConftest(
             mockDocker, "cid1", [], "/workspace/DemoRepo",
+        )
+
+
+# ── _fnDeleteLegacyMarkers: stale-marker cleanup after backfill ──
+
+
+class TestFnDeleteLegacyMarkers:
+    def test_builds_marker_paths_under_project_repo(self):
+        """The deletion script must target markers in the new path."""
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (0, "")
+        _fnDeleteLegacyMarkers(
+            mockDocker, "cid",
+            ["BayesianPosteriors", "XuvEvolution"],
+            "/workspace/proj",
+        )
+        sCmd = mockDocker.ftResultExecuteCommand.call_args[0][1]
+        assert (
+            "/workspace/proj/.vaibify/test_markers/"
+            "BayesianPosteriors.json" in sCmd
+        )
+        assert (
+            "/workspace/proj/.vaibify/test_markers/"
+            "XuvEvolution.json" in sCmd
+        )
+
+    def test_no_op_for_empty_list(self):
+        mockDocker = MagicMock()
+        _fnDeleteLegacyMarkers(
+            mockDocker, "cid", [], "/workspace/proj",
+        )
+        mockDocker.ftResultExecuteCommand.assert_not_called()
+
+    def test_no_op_for_empty_repo_path(self):
+        """Empty sProjectRepoPath skips deletion entirely."""
+        mockDocker = MagicMock()
+        _fnDeleteLegacyMarkers(
+            mockDocker, "cid", ["step1"], "",
+        )
+        mockDocker.ftResultExecuteCommand.assert_not_called()
+
+    def test_logs_deleted_paths(self, caplog):
+        """The log line names the markers that were removed."""
+        import logging
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.return_value = (
+            0,
+            "/workspace/proj/.vaibify/test_markers/Step1.json\n",
+        )
+        with caplog.at_level(logging.INFO, logger="vaibify"):
+            _fnDeleteLegacyMarkers(
+                mockDocker, "cid", ["Step1"], "/workspace/proj",
+            )
+        assert any(
+            "Deleted 1 legacy markers" in record.message
+            for record in caplog.records
+        )
+
+    def test_legacy_marker_removed_modern_kept(self, tmp_path):
+        """End-to-end: run the deletion script under a real python.
+
+        Builds two markers in tmp_path, one legacy (no sRunAtUtc),
+        one modern (with sRunAtUtc), then runs the inline deletion
+        script directly. The legacy file disappears; the modern one
+        survives.
+        """
+        import json
+        import subprocess
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fnDeleteLegacyMarkers,
+        )
+        sMarkerDir = tmp_path / ".vaibify" / "test_markers"
+        sMarkerDir.mkdir(parents=True)
+        sLegacy = sMarkerDir / "Legacy.json"
+        sLegacy.write_text(json.dumps({"iCollected": 5}))
+        sModern = sMarkerDir / "Modern.json"
+        sModern.write_text(json.dumps({
+            "sRunAtUtc": "2026-04-23T20:22:40Z",
+            "iCollected": 5,
+        }))
+        # Capture the command the helper would issue and run it locally.
+        captured = {}
+
+        class _FakeDocker:
+            def ftResultExecuteCommand(self, sContainerId, sCommand):
+                captured["cmd"] = sCommand
+                return (0, "")
+
+        _fnDeleteLegacyMarkers(
+            _FakeDocker(), "cid", ["Legacy", "Modern"], str(tmp_path),
+        )
+        # Execute the captured command in a real shell to validate
+        # the deletion logic end-to-end.
+        subprocess.check_call(
+            ["bash", "-c", captured["cmd"]],
+        )
+        assert not sLegacy.exists(), (
+            "legacy marker should have been deleted"
+        )
+        assert sModern.exists(), (
+            "modern marker (has sRunAtUtc) must be preserved"
         )
 
 

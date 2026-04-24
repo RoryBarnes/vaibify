@@ -767,6 +767,10 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         )
         if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
             dictCtx["save"](sContainerId, dictWorkflow)
+        if workflowManager.fbMigrateModifiedFilesToRepoRelative(
+            dictWorkflow,
+        ):
+            dictCtx["save"](sContainerId, dictWorkflow)
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )
