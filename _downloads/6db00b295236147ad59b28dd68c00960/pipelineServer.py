@@ -409,15 +409,53 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
 
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
-    sWorkflowDirectory, fnCallback, dictInteractive=None,
+    dictWorkflow, sWorkflowDirectory, fnCallback,
+    dictInteractive=None,
 ):
     """Dispatch runFrom with the start step from the request."""
+    iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
     await fnRunFromStep(
         connectionDocker, sContainerId,
-        dictRequest.get("iStartStep", 1),
-        sWorkflowDirectory, fnCallback,
+        iStartStep, sWorkflowDirectory, fnCallback,
         dictInteractive=dictInteractive,
     )
+
+
+def _fiResolveStartStep(dictRequest, dictWorkflow):
+    """Return the 1-based start step from index or label in the request.
+
+    ``iStartStep`` is 1-based to match the pipeline runner's convention.
+    A ``sStartStepLabel`` like ``"A09"`` resolves to the 0-based index,
+    then +1 for the 1-based caller.
+    """
+    from .pipelineUtils import fiStepIndexFromLabel
+    sLabel = dictRequest.get("sStartStepLabel")
+    if sLabel:
+        return fiStepIndexFromLabel(dictWorkflow, sLabel) + 1
+    return dictRequest.get("iStartStep", 1)
+
+
+def _flistResolveSelectedIndices(dictRequest, dictWorkflow):
+    """Return the resolved, deduplicated list of 0-based step indices.
+
+    Accepts ``listStepIndices`` (ints) and ``listStepLabels`` (strings
+    like ``"A09"``) together; labels translate via
+    ``fiStepIndexFromLabel``. Order follows indices-first then labels.
+    """
+    from .pipelineUtils import fiStepIndexFromLabel
+    listOut = []
+    setSeen = set()
+    for iValue in dictRequest.get("listStepIndices", []):
+        iIndex = int(iValue)
+        if iIndex not in setSeen:
+            listOut.append(iIndex)
+            setSeen.add(iIndex)
+    for sLabel in dictRequest.get("listStepLabels", []):
+        iIndex = fiStepIndexFromLabel(dictWorkflow, sLabel)
+        if iIndex not in setSeen:
+            listOut.append(iIndex)
+            setSeen.add(iIndex)
+    return listOut
 
 
 async def fnDispatchAction(
@@ -438,7 +476,7 @@ async def fnDispatchAction(
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
-            sWorkflowDirectory, fnCallback,
+            dictWorkflow, sWorkflowDirectory, fnCallback,
             dictInteractive=dictInteractive)
     elif sAction == "verify":
         await fnVerifyOnly(
@@ -460,9 +498,12 @@ async def _fnDispatchSelected(
     sWorkflowDirectory, fnCallback,
 ):
     """Dispatch the runSelected action."""
+    listIndices = _flistResolveSelectedIndices(
+        dictRequest, dictWorkflow,
+    )
     await fnRunSelectedSteps(
         connectionDocker, sContainerId,
-        dictRequest.get("listStepIndices", []),
+        listIndices,
         dictWorkflow, dictWorkflowPathCache.get(sContainerId),
         sWorkflowDirectory, fnCallback,
     )
@@ -777,10 +818,11 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         dictFileStatus = await _fdictComputeConnectFileStatus(
             dictCtx, sContainerId, dictWorkflow,
         )
+        from .pipelineUtils import fdictWorkflowWithLabels
         return {
             "sContainerId": sContainerId,
             "sWorkflowPath": sResolved,
-            "dictWorkflow": dictWorkflow,
+            "dictWorkflow": fdictWorkflowWithLabels(dictWorkflow),
             "dictFileStatus": dictFileStatus,
         }
     except Exception as error:
