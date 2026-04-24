@@ -2611,14 +2611,33 @@ body.all-verified .toolbar-label {
 }
 
 .dep-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 0;
+    padding: 4px 0 6px 0;
+    border-bottom: 1px solid rgba(128, 128, 160, 0.12);
+}
+
+.dep-item:last-of-type {
+    border-bottom: none;
+}
+
+.dep-header {
+    font-weight: 500;
+    margin-bottom: 2px;
 }
 
 .dep-label {
     color: var(--text-secondary);
+}
+
+.dep-axis-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1px 0 1px 16px;
+}
+
+.dep-axis-label {
+    color: var(--text-secondary);
+    opacity: 0.8;
 }
 
 .test-section-label {

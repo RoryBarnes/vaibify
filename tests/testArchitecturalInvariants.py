@@ -26,6 +26,7 @@ __all__ = [
     "testAgentActionCatalogShape",
     "testWireFormatPathsAreRepoRelative",
     "testStepPayloadsCarrySLabel",
+    "testDepsExpandedShowsStepStatusAndTimingAxes",
 ]
 
 
@@ -877,4 +878,64 @@ def testStepPayloadsCarrySLabel():
         "pipelineServer.py's fdictHandleConnect must decorate the "
         "workflow payload with fdictWorkflowWithLabels so every "
         "step reaching the client carries sLabel"
+    )
+
+
+def testDepsExpandedShowsStepStatusAndTimingAxes():
+    """Per-dep expansion must show Step Status + Timing axes.
+
+    Every dependency shown in the expanded Dependencies row must
+    render two sub-axes: Step Status (is the dep itself fully
+    passing) and Timing (was the dep's output produced before or
+    after *this step's own output*). Timing compares dep output
+    mtime to THIS step's output mtime — not the verification time —
+    so the researcher can tell whether my output was built from the
+    dep's current state or from an earlier version.
+
+    ``ftComputeDepAxisStates`` in ``scriptApplication.js`` owns the
+    computation; ``fsRenderDepAxisRow`` in ``scriptStepRenderer.js``
+    owns the rendering. The per-dep breakdown replaces the earlier
+    floating ``"Dependencies failing"`` / ``"Upstream step outputs
+    changed"`` lines inside the verification block — those must not
+    reappear.
+    """
+    sAppSource = fsReadSource(STATIC_DIR / "scriptApplication.js")
+    assert "function ftComputeDepAxisStates" in sAppSource, (
+        "scriptApplication.js must define ftComputeDepAxisStates "
+        "with step-status + timing sub-axes for per-dep breakdown"
+    )
+    assert "function fbAnyDepTimingStale" in sAppSource, (
+        "scriptApplication.js must derive the staleness signal for "
+        "the ⚠ warning badge from per-dep Timing (fresh mtime "
+        "comparison), not from the sticky bUpstreamModified flag — "
+        "the flag lags user attestation and gives false warnings"
+    )
+    assert "iMyOutputMtime" in sAppSource, (
+        "Timing comparison must reference the step's OWN output "
+        "mtime, not its verification time — so 'my output was "
+        "built before dep was regenerated' is caught"
+    )
+    sRendererSource = fsReadSource(
+        STATIC_DIR / "scriptStepRenderer.js",
+    )
+    assert "fsRenderDepAxisRow" in sRendererSource, (
+        "scriptStepRenderer.js must render a sub-row per axis "
+        "(Step Status and Timing) inside each dep-item"
+    )
+    assert "Step Status" in sRendererSource, (
+        "Deps expansion must label the step-passing sub-axis "
+        "as 'Step Status'"
+    )
+    assert "Timing" in sRendererSource, (
+        "Deps expansion must label the output-mtime sub-axis "
+        "as 'Timing'"
+    )
+    assert "Dependencies failing" not in sRendererSource, (
+        "The floating 'Dependencies failing' line must not reappear "
+        "in the verification block — the per-dep expansion now "
+        "explains the aggregate"
+    )
+    assert "Upstream step outputs changed" not in sRendererSource, (
+        "The floating 'Upstream step outputs changed' line must not "
+        "reappear in the verification block — see per-dep Timing axis"
     )

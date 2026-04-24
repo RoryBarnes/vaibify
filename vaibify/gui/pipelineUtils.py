@@ -14,6 +14,7 @@ __all__ = [
     "flistStepsWithLabels",
     "fdictWorkflowWithLabels",
     "fdictStepWithLabel",
+    "fnAttachStepLabels",
     "fnClearOutputModifiedFlags",
 ]
 
@@ -119,6 +120,20 @@ def fdictStepWithLabel(dictWorkflow, iStepIndex):
     dictStep = dict(dictWorkflow["listSteps"][iStepIndex])
     dictStep["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iStepIndex)
     return dictStep
+
+
+def fnAttachStepLabels(dictWorkflow):
+    """Mutate listSteps in place, writing a fresh sLabel on each step.
+
+    Called from the workflow load/save paths so ``sLabel`` persists in
+    ``workflow.json`` and in-memory state stays coherent. Recomputation
+    is always fresh — insertions, deletions, or reorderings produce
+    the correct per-type-sequential label on the next save.
+    """
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []),
+    ):
+        dictStep["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iIndex)
 
 
 def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0):

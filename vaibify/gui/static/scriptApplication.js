@@ -803,7 +803,7 @@ const PipeleyenApp = (function () {
             flistGetStepDependencies: flistGetStepDependencies,
             fbStepFullyPassing: fbStepFullyPassing,
             fbAnyUpstreamModified: fbAnyUpstreamModified,
-            fsDepLabelColorClass: fsDepLabelColorClass,
+            ftComputeDepAxisStates: ftComputeDepAxisStates,
             fsetGetExpandedCategory: fsetGetExpandedCategory,
             fdictBuildClientVariables: fdictBuildClientVariables,
         };
@@ -953,37 +953,33 @@ const PipeleyenApp = (function () {
 
     function fsBuildWarningBadge(step, iIndex) {
         var listWarnings = [];
-        var listMod = (step.dictVerification || {})
-            .listModifiedFiles || [];
+        var dictV = step.dictVerification || {};
+        var listMod = dictV.listModifiedFiles || [];
         if (listMod.length > 0) {
             var sNames = listMod.map(function (s) {
                 return s.split("/").pop();
             }).join(", ");
             listWarnings.push("Modified: " + sNames);
         }
-        fnAppendTestWarning(step, iIndex, listWarnings);
-        fnAppendDepsWarning(iIndex, listWarnings);
+        if (fbAnyDepTimingStale(iIndex)) {
+            listWarnings.push(
+                "Upstream changed; rerun to re-verify");
+        }
         if (listWarnings.length === 0) return "";
         var sTooltip = fnEscapeHtml(listWarnings.join("\n"));
         return '<span class="data-modified-badge" ' +
             'title="' + sTooltip + '">&#9888;</span>';
     }
 
-    function fnAppendTestWarning(step, iIndex, listWarnings) {
-        var bInteractive = step.bInteractive === true;
-        var bPlotOnly = (step.saDataCommands || []).length === 0;
-        if (bInteractive || bPlotOnly) return;
-        var sUnit = fsEffectiveTestState(step);
-        if (sUnit === "failed") {
-            listWarnings.push("Unit tests failing");
+    function fbAnyDepTimingStale(iStep) {
+        var listDeps = flistGetStepDependencies(iStep);
+        for (var i = 0; i < listDeps.length; i++) {
+            var iDep = listDeps[i];
+            if (iDep === iStep) continue;
+            var tStates = ftComputeDepAxisStates(iStep, iDep);
+            if (tStates.sTiming === "failed") return true;
         }
-    }
-
-    function fnAppendDepsWarning(iIndex, listWarnings) {
-        var sDeps = fsComputeDepsState(iIndex);
-        if (sDeps === "failed") {
-            listWarnings.push("Dependencies failing");
-        }
+        return false;
     }
 
     function fdictGetVerification(step) {
@@ -1173,96 +1169,54 @@ const PipeleyenApp = (function () {
         return false;
     }
 
-    function fbStepHasExplicitFailure(step) {
-        var dictVerify = fdictGetVerification(step);
-        if (dictVerify.sUser === "failed" ||
-            dictVerify.sUser === "error") {
-            return true;
-        }
-        var bInteractive = step.bInteractive === true;
-        var bPlotOnly = (step.saDataCommands || []).length === 0;
-        if (bInteractive || bPlotOnly) return false;
-        var sUnit = fsEffectiveTestState(step);
-        return sUnit === "failed" || sUnit === "error";
-    }
-
-    function fbAnyDepExplicitlyFailed(iStep, dictVisited) {
-        if (dictVisited[iStep]) {
-            return dictVisited[iStep] === "failed";
-        }
-        dictVisited[iStep] = "checking";
-        var listSteps = _dictWorkflowState.dictWorkflow &&
-            _dictWorkflowState.dictWorkflow.listSteps;
-        var step = listSteps && listSteps[iStep];
-        if (!step) {
-            dictVisited[iStep] = "no";
-            return false;
-        }
-        if (fbStepHasExplicitFailure(step)) {
-            dictVisited[iStep] = "failed";
-            return true;
-        }
-        var listDeps = flistGetStepDependencies(iStep);
-        for (var i = 0; i < listDeps.length; i++) {
-            if (fbAnyDepExplicitlyFailed(listDeps[i], dictVisited)) {
-                dictVisited[iStep] = "failed";
-                return true;
-            }
-        }
-        dictVisited[iStep] = "no";
-        return false;
-    }
-
     function fsComputeDepsState(iStep) {
         var listDeps = flistGetStepDependencies(iStep);
         if (listDeps.length === 0) return "none";
-        var dictPassCheck = {};
-        var bAllPassing = true;
+        var bAnyFailed = false;
+        var bAnyUnknown = false;
         for (var i = 0; i < listDeps.length; i++) {
-            if (!fbStepFullyPassing(listDeps[i], dictPassCheck)) {
-                bAllPassing = false;
-                break;
+            var iDep = listDeps[i];
+            if (iDep === iStep) continue;
+            var tStates = ftComputeDepAxisStates(iStep, iDep);
+            if (tStates.sStepStatus === "failed" ||
+                    tStates.sTiming === "failed") {
+                bAnyFailed = true;
+            } else if (tStates.sTiming === "unknown") {
+                bAnyUnknown = true;
             }
         }
-        if (bAllPassing) return "passed";
-        var dictFailCheck = {};
-        for (var j = 0; j < listDeps.length; j++) {
-            if (fbAnyDepExplicitlyFailed(listDeps[j], dictFailCheck)) {
-                return "failed";
-            }
+        if (bAnyFailed) return "failed";
+        if (bAnyUnknown) return "untested";
+        return "passed";
+    }
+
+    function ftComputeDepAxisStates(iStep, iDep) {
+        var dictVisited = {};
+        var bStepStatus = fbStepFullyPassing(iDep, dictVisited);
+        var dictMax = _dictWorkflowState.dictOutputMtimes || {};
+        var iDepMtime = parseInt(dictMax[String(iDep)] || "0", 10);
+        var iMyOutputMtime = parseInt(
+            dictMax[String(iStep)] || "0", 10);
+        var sTiming;
+        if (!iDepMtime || !iMyOutputMtime) {
+            sTiming = "unknown";
+        } else if (iDepMtime <= iMyOutputMtime) {
+            sTiming = "passed";
+        } else {
+            sTiming = "failed";
         }
-        return "untested";
+        return {
+            sStepStatus: bStepStatus ? "passed" : "failed",
+            sTiming: sTiming,
+            iDepMtime: iDepMtime,
+            iMyOutputMtime: iMyOutputMtime,
+        };
     }
 
     function _fsClassifyVerificationSignal(sState) {
         if (sState === "passed") return "passed";
         if (sState === "failed" || sState === "error") return "failed";
         return "untested";
-    }
-
-    function fsDepLabelColorClass(iDep, bPassing) {
-        if (document.body.classList.contains("all-verified")) {
-            return "";
-        }
-        if (bPassing) return "dep-status-blue";
-        var depStep = _dictWorkflowState.dictWorkflow.listSteps[iDep];
-        if (!depStep) return "dep-status-red";
-        var sDepState = fsDepStepOverallState(depStep, iDep);
-        if (sDepState === "partial") return "dep-status-orange";
-        return "dep-status-red";
-    }
-
-    function fsDepStepOverallState(depStep, iDep) {
-        var dictVerify = fdictGetVerification(depStep);
-        var bUserPassed = dictVerify.sUser === "passed";
-        var bUnitPassed = fsEffectiveTestState(depStep) === "passed";
-        var sDeps = fsComputeDepsState(iDep);
-        var bDepsPassed = sDeps === "none" || sDeps === "passed";
-        var bAnyPassed = bUserPassed || bUnitPassed || bDepsPassed;
-        var bAllPassed = bUserPassed && bUnitPassed && bDepsPassed;
-        if (bAllPassed) return "passed";
-        if (bAnyPassed) return "partial";
-        return "failed";
     }
 
     function fnSetVerificationUserName(sName) {
@@ -1964,21 +1918,16 @@ const PipeleyenApp = (function () {
     }
 
     function fnUpdateDepsTimestamps() {
-        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return;
+        if (!_dictWorkflowState.dictWorkflow ||
+                !_dictWorkflowState.dictWorkflow.listSteps) return;
+        var sNow = fsFormatUtcTimestamp();
         for (var i = 0; i < _dictWorkflowState.dictWorkflow.listSteps.length; i++) {
             var listDeps = flistGetStepDependencies(i);
             if (listDeps.length === 0) continue;
-            var sDepsState = fsComputeDepsState(i);
             var dictStep = _dictWorkflowState.dictWorkflow.listSteps[i];
             var dictVerify = dictStep.dictVerification || {};
-            var sOld = dictVerify.sLastDepsCheck || "";
-            if (sDepsState === "passed" && !sOld) {
-                dictVerify.sLastDepsCheck = fsFormatUtcTimestamp();
-                dictStep.dictVerification = dictVerify;
-            } else if (sDepsState !== "passed" && sOld) {
-                dictVerify.sLastDepsCheck = "";
-                dictStep.dictVerification = dictVerify;
-            }
+            dictVerify.sLastDepsCheck = sNow;
+            dictStep.dictVerification = dictVerify;
         }
     }
 

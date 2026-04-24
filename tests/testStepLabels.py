@@ -15,6 +15,7 @@ from vaibify.gui.pipelineUtils import (
     fdictWorkflowWithLabels,
     fiStepIndexFromLabel,
     flistStepsWithLabels,
+    fnAttachStepLabels,
     fsLabelFromStepIndex,
 )
 
@@ -173,3 +174,43 @@ class TestFdictStepWithLabel:
         dictStep = fdictStepWithLabel(dictWorkflow, 0)
         dictStep["sName"] = "MUTATED"
         assert dictWorkflow["listSteps"][0]["sName"] != "MUTATED"
+
+
+class TestFnAttachStepLabels:
+
+    def test_mutates_in_place(self):
+        dictWorkflow = _fdictMixedWorkflow()
+        fnAttachStepLabels(dictWorkflow)
+        assert dictWorkflow["listSteps"][0]["sLabel"] == "I01"
+        assert dictWorkflow["listSteps"][1]["sLabel"] == "A01"
+
+    def test_recomputes_after_insertion(self):
+        """Inserting an interactive step shifts subsequent A-labels."""
+        dictWorkflow = _fdictMixedWorkflow()
+        fnAttachStepLabels(dictWorkflow)
+        assert dictWorkflow["listSteps"][9]["sLabel"] == "A09"
+        dictWorkflow["listSteps"].insert(
+            5, {"sName": "NewInter", "bInteractive": True},
+        )
+        fnAttachStepLabels(dictWorkflow)
+        assert dictWorkflow["listSteps"][5]["sLabel"] == "I02"
+        assert dictWorkflow["listSteps"][10]["sLabel"] == "A09"
+
+    def test_overwrites_stale_label(self):
+        dictWorkflow = _fdictMixedWorkflow()
+        dictWorkflow["listSteps"][1]["sLabel"] = "STALE"
+        fnAttachStepLabels(dictWorkflow)
+        assert dictWorkflow["listSteps"][1]["sLabel"] == "A01"
+
+    def test_idempotent(self):
+        dictWorkflow = _fdictTwoInteractivePrefix()
+        fnAttachStepLabels(dictWorkflow)
+        listFirst = [s["sLabel"] for s in dictWorkflow["listSteps"]]
+        fnAttachStepLabels(dictWorkflow)
+        listSecond = [s["sLabel"] for s in dictWorkflow["listSteps"]]
+        assert listFirst == listSecond
+
+    def test_empty_workflow(self):
+        dictWorkflow = {"listSteps": []}
+        fnAttachStepLabels(dictWorkflow)
+        assert dictWorkflow == {"listSteps": []}

@@ -34,6 +34,7 @@ from .pipelineUtils import (  # noqa: F401
     flistStepsWithLabels,
     fdictWorkflowWithLabels,
     fdictStepWithLabel,
+    fnAttachStepLabels,
     _fnRecordRunStats,
     _fdictBuildWorkflowVars,
     fnClearOutputModifiedFlags,

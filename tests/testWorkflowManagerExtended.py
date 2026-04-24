@@ -406,6 +406,55 @@ def test_fdictLoadWorkflowFromContainer_success():
     )
     assert dictResult["sPlotDirectory"] == "Plot"
     assert "dictTests" in dictResult["listSteps"][0]
+    assert dictResult["listSteps"][0]["sLabel"] == "A01"
+
+
+def test_fnSaveWorkflowToContainer_persists_slabel():
+    """Save path recomputes and writes sLabel onto every step."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
+    mockDocker = MagicMock()
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Intro", "bInteractive": True},
+            {"sName": "Run"},
+        ],
+    }
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictWorkflow,
+        sWorkflowPath="/w.json",
+    )
+    assert dictWorkflow["listSteps"][0]["sLabel"] == "I01"
+    assert dictWorkflow["listSteps"][1]["sLabel"] == "A01"
+    (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
+    dictWritten = json.loads(baPayload.decode("utf-8"))
+    assert dictWritten["listSteps"][0]["sLabel"] == "I01"
+    assert dictWritten["listSteps"][1]["sLabel"] == "A01"
+
+
+def test_fnSaveWorkflowToContainer_recomputes_stale_slabel():
+    """Pre-existing sLabel is overwritten on save."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
+    mockDocker = MagicMock()
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Intro", "bInteractive": True, "sLabel": "STALE"},
+            {"sName": "Run", "sLabel": "ALSO_STALE"},
+        ],
+    }
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictWorkflow,
+        sWorkflowPath="/w.json",
+    )
+    (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
+    dictWritten = json.loads(baPayload.decode("utf-8"))
+    assert dictWritten["listSteps"][0]["sLabel"] == "I01"
+    assert dictWritten["listSteps"][1]["sLabel"] == "A01"
 
 
 # -----------------------------------------------------------------------

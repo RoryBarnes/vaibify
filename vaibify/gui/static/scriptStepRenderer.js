@@ -245,20 +245,12 @@ var VaibifyStepRenderer = (function () {
                 '\u26A0 Modified: ' +
                 fnEscapeHtml(listNames.join(", ")) + '</div>';
         }
-        if (dictContext.fbAnyUpstreamModified(iIndex)) {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Upstream step outputs changed</div>';
-        }
         sHtml += fsRenderStaleArtifactRows(
             dictContext, iIndex);
         if (!bInteractive && !bPlotOnly &&
             dictContext.fsEffectiveTestState(step) === "failed") {
             sHtml += '<div class="output-modified-warning">' +
                 '\u26A0 Unit tests failing</div>';
-        }
-        if (dictContext.fsComputeDepsState(iIndex) === "failed") {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Dependencies failing</div>';
         }
         if (!bInteractive && !bPlotOnly) {
             var sUnitState = dictContext.fsEffectiveTestState(step);
@@ -408,27 +400,12 @@ var VaibifyStepRenderer = (function () {
     function fsRenderDepsExpanded(iIndex, dictContext) {
         var listDeps = dictContext.flistGetStepDependencies(iIndex);
         var sHtml = '<div class="deps-expanded">';
-        var dictVisited = {};
         for (var i = 0; i < listDeps.length; i++) {
             var iDep = listDeps[i];
             if (iDep === iIndex) continue;
             var depStep = dictContext.dictWorkflow.listSteps[iDep];
             if (!depStep) continue;
-            var bPassing = dictContext.fbStepFullyPassing(
-                iDep, dictVisited);
-            var sState = bPassing ? "passed" : "failed";
-            var sColorClass = dictContext.fsDepLabelColorClass(
-                iDep, bPassing);
-            var sNum = dictContext.fsComputeStepLabel(iDep);
-            sHtml += '<div class="dep-item">' +
-                '<span class="dep-label ' + sColorClass +
-                '">' + sNum + ' ' +
-                fnEscapeHtml(depStep.sName) + '</span>' +
-                '<span class="verification-badge state-' +
-                sState + '">' +
-                dictContext.fsVerificationStateIcon(sState) + ' ' +
-                dictContext.fsVerificationStateLabel(sState) +
-                '</span></div>';
+            sHtml += fsRenderDepItem(iIndex, iDep, depStep, dictContext);
         }
         sHtml += '<button class="btn btn-small btn-add-deps" ' +
             'data-step="' + iIndex + '" ' +
@@ -438,6 +415,45 @@ var VaibifyStepRenderer = (function () {
             'style="margin-top:6px">Show Dependencies</button>';
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderDepItem(iIndex, iDep, depStep, dictContext) {
+        var tStates = dictContext.ftComputeDepAxisStates(
+            iIndex, iDep);
+        var sNum = dictContext.fsComputeStepLabel(iDep);
+        return '<div class="dep-item">' +
+            '<div class="dep-header"><span class="dep-label">' +
+            sNum + ' ' + fnEscapeHtml(depStep.sName) +
+            '</span></div>' +
+            fsRenderDepAxisRow(
+                "Step Status", tStates.sStepStatus, "", dictContext) +
+            fsRenderDepAxisRow(
+                "Timing", tStates.sTiming,
+                fsFormatTimingDetail(tStates), dictContext) +
+            '</div>';
+    }
+
+    function fsRenderDepAxisRow(sLabel, sState, sDetail, dictContext) {
+        var sBadgeState = sState === "unknown" ? "untested" : sState;
+        var sStateLabel = sState === "unknown" ? "—" :
+            dictContext.fsVerificationStateLabel(sState);
+        var sIcon = sState === "unknown" ? "" :
+            dictContext.fsVerificationStateIcon(sState) + " ";
+        var sExtra = sDetail ? " — " + fnEscapeHtml(sDetail) : "";
+        return '<div class="dep-axis-row">' +
+            '<span class="dep-axis-label">' +
+            fnEscapeHtml(sLabel) + '</span>' +
+            '<span class="verification-badge state-' +
+            sBadgeState + '">' + sIcon + sStateLabel +
+            sExtra + '</span></div>';
+    }
+
+    function fsFormatTimingDetail(tStates) {
+        if (tStates.sTiming !== "failed") return "";
+        if (!tStates.iDepMtime) return "";
+        return "regenerated " +
+            fsFormatUnixTimestamp(String(tStates.iDepMtime)) +
+            " after my output";
     }
 
     function fsRenderVerificationRow(

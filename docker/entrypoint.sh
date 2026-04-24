@@ -464,28 +464,21 @@ fnPrintSummary() {
 
 # ---------------------------------------------------------------------------
 # fnCreateVaibifyDirectory: Create .vaibify structure in workspace
+#
+# Workflows live in each project repo at <repo>/.vaibify/workflows/;
+# /workspace/.vaibify/ holds only container-scoped scratch (logs,
+# director.py). Remove any legacy /workspace/.vaibify/workflows/ left
+# over from pre-2026-04-20 containers so dashboard and agent
+# discovery both resolve to the project-repo location.
 # ---------------------------------------------------------------------------
 fnCreateVaibifyDirectory() {
-    mkdir -p "${WORKSPACE}/.vaibify/workflows"
     mkdir -p "${WORKSPACE}/.vaibify/logs"
+    if [ -d "${WORKSPACE}/.vaibify/workflows" ]; then
+        rm -rf "${WORKSPACE}/.vaibify/workflows"
+    fi
     if [ -f /usr/share/vaibify/director.py ]; then
         cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
         chmod +x "${WORKSPACE}/.vaibify/director.py"
-    fi
-    fnCopyHostWorkflows
-}
-
-# ---------------------------------------------------------------------------
-# fnCopyHostWorkflows: Copy workflows baked into the image at build time
-# ---------------------------------------------------------------------------
-fnCopyHostWorkflows() {
-    local sStagedDir="/usr/share/vaibify/workflows"
-    local sTargetDir="${WORKSPACE}/.vaibify/workflows"
-    if [ -d "${sStagedDir}" ]; then
-        for sFile in "${sStagedDir}"/*.json; do
-            [ -f "${sFile}" ] || continue
-            cp -n "${sFile}" "${sTargetDir}/"
-        done
     fi
 }
 
@@ -499,6 +492,14 @@ fnWriteClaudeMd() {
 
 You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted scientific data analysis.
 
+## How to refer to steps
+
+Every step in a workflow JSON carries an `sLabel` field — `A09` for the 9th *automated* step, `I01` for the 1st *interactive* step. Labels are per-type sequential, so `A09` is **not** `listSteps[9]`; the 0-based index depends on how many interactive steps precede it.
+
+**When you name a step in any output — status reports, tables, summaries, prose, `vaibify-do` arguments — use `sLabel` verbatim.** Never substitute a 0-based or 1-based positional index like `00`, `01`, `Step09`. Read the label straight out of the JSON; do not translate.
+
+The `{StepNN.stem}` tokens you see *inside* command strings (e.g., `python plot.py {Step08.samples}`) are a separate, script-side filename-substitution syntax resolved by the director at run time. They are not how you talk about steps; they are how scripts reference each other's output files. Leave them alone unless you are editing the commands themselves.
+
 ## Interacting with the vaibify dashboard
 
 The vaibify dashboard is the researcher's ground truth; any action you would otherwise perform by clicking a UI button MUST go through the `vaibify-do` CLI so the dashboard stays in sync with reality.
@@ -511,9 +512,7 @@ Usage:
 - Run `vaibify-do --describe <action>` to see the argument shape for one action.
 - Run `vaibify-do <action> [args...]` to execute.
 
-**Step IDs.** Users speak labels, not indices: `A09` is the 9th *automated* step; `I01` is the 1st *interactive* step. These labels are per-type sequential, so `A09` is **not** the same as `listSteps[9]` — the index depends on how many interactive steps precede it in the current workflow. Never translate labels to indices in your head. `vaibify-do` accepts labels directly in every step argument; pass the label through verbatim.
-
-Natural-language intent maps to commands:
+`vaibify-do` accepts `sLabel` values (`A09`, `I01`) directly in every step argument. Natural-language intent maps to commands:
 
 - "run step A09" → `vaibify-do run-step A09`
 - "run steps A09 through A11" → `vaibify-do run-selected-steps A09 A10 A11`
@@ -549,7 +548,7 @@ Each vaibified repository has a `.vaibify/workflows/` directory with JSON files 
 - **Test Commands** (`saTestCommands`): Unit tests for data outputs
 - **Interactive** (`bInteractive`): Steps requiring human judgment
 
-Cross-step references use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`).
+Cross-step filename references inside command strings use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`), where `NN` is the 1-based positional index of the step in `listSteps`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
 
 Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>`
 

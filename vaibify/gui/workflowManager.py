@@ -180,6 +180,7 @@ def fdictLoadWorkflowFromContainer(
     connectionDocker, sContainerId, sWorkflowPath=None
 ):
     """Fetch and parse workflow.json from a Docker container."""
+    from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         listWorkflows = flistFindWorkflowsInContainer(
             connectionDocker, sContainerId
@@ -196,6 +197,7 @@ def fdictLoadWorkflowFromContainer(
     for dictStep in dictWorkflow.get("listSteps", []):
         fdictMigrateTestFormat(dictStep)
         fnNormalizeSceneReferences(dictStep)
+    fnAttachStepLabels(dictWorkflow)
     return dictWorkflow
 
 
@@ -522,8 +524,10 @@ def fnSaveWorkflowToContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None
 ):
     """Serialize dictWorkflow to JSON and write to container."""
+    from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
+    fnAttachStepLabels(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
     sJson = json.dumps(dictClean, indent=2) + "\n"
     connectionDocker.fnWriteFile(

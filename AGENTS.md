@@ -88,10 +88,12 @@ does not mean `listSteps[9]` in general — it lands at
 automated one)]`. Use `fsLabelFromStepIndex` and
 `fiStepIndexFromLabel` from
 [vaibify/gui/pipelineUtils.py](vaibify/gui/pipelineUtils.py) — never
-inline the translation. Every step payload on the wire carries
-`sLabel`; consume it rather than recomputing. Error messages, logs,
-toasts, and agent-facing commands use labels (users speak labels);
-internal code paths keep 0-based indices.
+inline the translation. `sLabel` is persisted in `workflow.json` and
+recomputed on every load/save by `fnAttachStepLabels`, so insertions,
+deletions, and reorderings produce correct labels on the next save
+automatically. Error messages, logs, toasts, and agent-facing
+commands use labels (users speak labels); internal code paths keep
+0-based indices.
 
 **Never hard-code science-specific examples.** Vaibify is for the
 general problem of containerized scientific workflows. Specific

@@ -31,6 +31,7 @@ from ..fileStatusManager import (
     _flistDetectAndInvalidate,
     _fnClearStepModificationState,
     _fnUpdateModTimeBaseline,
+    fbReconcileUpstreamFlags,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
@@ -345,13 +346,16 @@ async def _fdictFetchOutputStatus(
                 dictV.get("listModifiedFiles", []),
             )
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(
+        dictPathsByStep, dictModTimes,
+    )
+    if fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
+        dictCtx["save"](sContainerId, dictWorkflow)
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),
-        "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
-            dictPathsByStep, dictModTimes,
-        ),
+        "dictMaxMtimeByStep": dictMaxMtimeByStep,
         "dictMaxPlotMtimeByStep": _fdictComputeMaxPlotMtimeByStep(
             dictWorkflow, dictModTimes, dictVars,
         ),

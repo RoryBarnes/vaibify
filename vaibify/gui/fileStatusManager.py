@@ -48,6 +48,7 @@ __all__ = [
     "fnCollectScriptPathsByStep",
     "fnCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
+    "fbReconcileUpstreamFlags",
 ]
 
 def fsMarkerNameFromStepDirectory(sStepDirectory):
@@ -486,6 +487,66 @@ def _fnInvalidateDownstreamStep(dictStep):
                 dictVerification[sVerifKey] = "untested"
     dictVerification["bUpstreamModified"] = True
     dictStep["dictVerification"] = dictVerification
+
+
+def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
+    """Sync bUpstreamModified with the current mtime state on every step.
+
+    Makes ``bUpstreamModified`` a pure derived field rather than an
+    edge-triggered flag that lags reality. Sets it on steps whose
+    output is older than any upstream's output; clears it on steps
+    where current mtimes say nothing is stale. Steps with no output
+    mtime (never run) are left alone — no comparison is possible.
+    Returns True when any flag changed so the caller can persist.
+    """
+    dictUpstream = _fdictBuildUpstreamMap(dictWorkflow)
+    listSteps = dictWorkflow.get("listSteps", [])
+    bAnyChanged = False
+    for iStep, dictStep in enumerate(listSteps):
+        dictVerify = dictStep.setdefault("dictVerification", {})
+        iSignal = _fiMtimeStalenessSignal(
+            iStep, dictUpstream, dictMaxMtimeByStep,
+        )
+        if iSignal < 0:
+            continue
+        bHasFlag = dictVerify.get("bUpstreamModified") is True
+        if iSignal == 1 and not bHasFlag:
+            dictVerify["bUpstreamModified"] = True
+            bAnyChanged = True
+        elif iSignal == 0 and bHasFlag:
+            dictVerify.pop("bUpstreamModified", None)
+            bAnyChanged = True
+    return bAnyChanged
+
+
+def _fdictBuildUpstreamMap(dictWorkflow):
+    """Invert fdictBuildDirectDependencies to {iStep: set(iUpstream)}."""
+    dictDirect = workflowManager.fdictBuildDirectDependencies(
+        dictWorkflow,
+    )
+    dictUpstream = {}
+    for iUp, setDown in dictDirect.items():
+        for iDown in setDown:
+            dictUpstream.setdefault(iDown, set()).add(iUp)
+    return dictUpstream
+
+
+def _fiMtimeStalenessSignal(
+    iStep, dictUpstream, dictMaxMtimeByStep,
+):
+    """Return 1 (stale), 0 (fresh), or -1 (unknown — step not run)."""
+    iMyMtime = int(
+        dictMaxMtimeByStep.get(str(iStep), "0") or 0,
+    )
+    if not iMyMtime:
+        return -1
+    for iUp in dictUpstream.get(iStep, set()):
+        iUpMtime = int(
+            dictMaxMtimeByStep.get(str(iUp), "0") or 0,
+        )
+        if iUpMtime and iUpMtime > iMyMtime:
+            return 1
+    return 0
 
 
 def _flistNewerPaths(listPaths, dictModTimes, iThreshold):

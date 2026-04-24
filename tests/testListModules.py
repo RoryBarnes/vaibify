@@ -53,6 +53,7 @@ def testExtractsDunderAll():
         "flistStepsWithLabels",
         "fdictWorkflowWithLabels",
         "fdictStepWithLabel",
+        "fnAttachStepLabels",
         "fnClearOutputModifiedFlags",
     ]
     assert dictEntry["listSymbols"] == listExpected

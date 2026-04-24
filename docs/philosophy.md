@@ -1,12 +1,12 @@
 # Philosophy
 
-This document explains why Vaibify exists and what it believes about
+This document explains the motivation behind Vaibify and how it enables 
 AI-assisted scientific computing. For the implementation that flows
 from these beliefs, see [architecture.md](architecture.md). For the
 methodology behind the project's own agent documentation, see
 [vibeCoding.md](vibeCoding.md).
 
-## The problem
+## Harnessing Coding Agents for Scientific Analyses
 
 AI coding agents are remarkably capable and remarkably dangerous. An
 agent running loose in a researcher's home directory can read SSH
@@ -15,8 +15,6 @@ branch to a shared repository. Treating a scientific workstation as
 an agent's playground places years of careful work at risk for a few
 hours of convenience. Vaibify's first job is to contain AI agents to
 a secure environment.
-
-## The opportunity
 
 Once contained, you can safely allow AI coding agents to freely build
 code, monitor long-running jobs, and generate figures and TeX for
@@ -28,8 +26,6 @@ now. While access to an IDE is included, vaibify is optimized for
 command-line agents like Claude Code. The command line is ground
 truth for the operating system. It will always be the fundamental
 representation of a filesystem.
-
-## The central assumption
 
 Agent-written code must pass different validation tests than
 human-written code, and AI-assisted science must pass higher
