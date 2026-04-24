@@ -80,6 +80,19 @@ def main(ctx, sConfigPath, iPort):
         fnLaunchHub(iPort)
 
 
+def _fnAcquireHubSessionSlotOrExit(sRole, iPort):
+    """Acquire a session slot or exit nonzero with a clear message."""
+    import sys
+    from vaibify.config.sessionRegistry import (
+        SessionLimitExceededError, fnAcquireSessionSlot,
+    )
+    try:
+        return fnAcquireSessionSlot(sRole, iPort)
+    except SessionLimitExceededError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+
+
 def fnLaunchHub(iExplicitPort):
     """Start the hub-mode server and open the browser."""
     import os
@@ -87,21 +100,26 @@ def fnLaunchHub(iExplicitPort):
     import time
     import uvicorn
     import webbrowser
+    from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     from vaibify.gui.pipelineServer import fappCreateHubApplication
     from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
     from .portAllocator import fiResolvePort
     iPort = fiResolvePort(iExplicitPort)
-    sUrl = f"http://127.0.0.1:{iPort}"
-    click.echo(f"Starting Vaibify hub at {sUrl}")
-    app = fappCreateHubApplication(iExpectedPort=iPort)
-    if not os.environ.get(S_SUPPRESS_BROWSER_ENV):
-        threading.Thread(
-            target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
-            daemon=True,
-        ).start()
-    uvicorn.run(
-        app, host="127.0.0.1", port=iPort, log_level="warning",
-    )
+    fileHandleSession = _fnAcquireHubSessionSlotOrExit("hub", iPort)
+    try:
+        sUrl = f"http://127.0.0.1:{iPort}"
+        click.echo(f"Starting Vaibify hub at {sUrl}")
+        app = fappCreateHubApplication(iExpectedPort=iPort)
+        if not os.environ.get(S_SUPPRESS_BROWSER_ENV):
+            threading.Thread(
+                target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+                daemon=True,
+            ).start()
+        uvicorn.run(
+            app, host="127.0.0.1", port=iPort, log_level="warning",
+        )
+    finally:
+        fnReleaseSessionSlot(fileHandleSession)
 
 
 main.add_command(init)

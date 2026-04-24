@@ -66,6 +66,18 @@ def _fnAcquireProjectLockOrExit(sProjectName, iPort):
         sys.exit(1)
 
 
+def _fnAcquireGuiSessionSlotOrExit(iPort):
+    """Acquire a session slot for the workflow viewer or exit nonzero."""
+    from vaibify.config.sessionRegistry import (
+        SessionLimitExceededError, fnAcquireSessionSlot,
+    )
+    try:
+        return fnAcquireSessionSlot("viewer", iPort)
+    except SessionLimitExceededError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+
+
 def fnLaunchGui(config, iExplicitPort):
     """Launch the workflow viewer GUI bound to the given port."""
     click.echo("Launching workflow viewer ...")
@@ -73,19 +85,24 @@ def fnLaunchGui(config, iExplicitPort):
         fappCreateApplication,
     )
     from vaibify.config.containerLock import fnReleaseContainerLock
+    from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     import uvicorn
     iPort = fiResolvePort(iExplicitPort)
-    fileHandleLock = _fnAcquireProjectLockOrExit(
-        config.sProjectName, iPort,
-    )
+    fileHandleSession = _fnAcquireGuiSessionSlotOrExit(iPort)
     try:
-        sRoot = config.sWorkspaceRoot
-        app = fappCreateApplication(
-            sWorkspaceRoot=sRoot, iExpectedPort=iPort,
+        fileHandleLock = _fnAcquireProjectLockOrExit(
+            config.sProjectName, iPort,
         )
-        uvicorn.run(app, host="127.0.0.1", port=iPort)
+        try:
+            sRoot = config.sWorkspaceRoot
+            app = fappCreateApplication(
+                sWorkspaceRoot=sRoot, iExpectedPort=iPort,
+            )
+            uvicorn.run(app, host="127.0.0.1", port=iPort)
+        finally:
+            fnReleaseContainerLock(fileHandleLock)
     finally:
-        fnReleaseContainerLock(fileHandleLock)
+        fnReleaseSessionSlot(fileHandleSession)
 
 
 @click.command("start")

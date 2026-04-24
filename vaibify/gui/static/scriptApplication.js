@@ -59,6 +59,12 @@ const PipeleyenApp = (function () {
     };
 
     var I_MAX_UNDO = 50;
+    var I_HUB_POLL_INTERVAL_MS = 3000;
+    var _dictHubPolling = {
+        iContainerIntervalId: null,
+        iWorkflowIntervalId: null,
+        sWorkflowContainerId: null,
+    };
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
 
     var DICT_MODE_WORKFLOW = {
@@ -344,6 +350,8 @@ const PipeleyenApp = (function () {
         document.getElementById("activeContainerName").textContent = "";
         document.getElementById("activeWorkflowName").textContent = "";
         document.title = "Vaibify";
+        _fnStopWorkflowHubPolling();
+        _fnStartContainerHubPolling();
     }
 
     function fnShowWorkflowPicker(sContainerName) {
@@ -351,6 +359,10 @@ const PipeleyenApp = (function () {
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
         document.title = sContainerName || "Vaibify";
+        _fnStopContainerHubPolling();
+        var sContainerId = PipeleyenContainerManager
+            .fsGetSelectedContainerId();
+        _fnStartWorkflowHubPolling(sContainerId);
     }
 
     function fnShowMainLayout() {
@@ -358,6 +370,69 @@ const PipeleyenApp = (function () {
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.add("active");
         fnApplyDashboardMode();
+        _fnStopContainerHubPolling();
+        _fnStopWorkflowHubPolling();
+    }
+
+    function _fnStartContainerHubPolling() {
+        _fnStopContainerHubPolling();
+        _dictHubPolling.iContainerIntervalId = setInterval(
+            _fnPollContainerHubIfIdle, I_HUB_POLL_INTERVAL_MS,
+        );
+    }
+
+    function _fnPollContainerHubIfIdle() {
+        if (_fbContainerHubHasOpenMenu()) return;
+        PipeleyenContainerManager.fnLoadContainers();
+    }
+
+    function _fbContainerHubHasOpenMenu() {
+        var listMenus = document.querySelectorAll(
+            ".container-tile-menu");
+        for (var i = 0; i < listMenus.length; i++) {
+            if (listMenus[i].style.display !== "none") return true;
+        }
+        return false;
+    }
+
+    function _fnStopContainerHubPolling() {
+        if (_dictHubPolling.iContainerIntervalId !== null) {
+            clearInterval(_dictHubPolling.iContainerIntervalId);
+            _dictHubPolling.iContainerIntervalId = null;
+        }
+    }
+
+    function _fnStartWorkflowHubPolling(sContainerId) {
+        _fnStopWorkflowHubPolling();
+        if (!sContainerId) return;
+        _dictHubPolling.sWorkflowContainerId = sContainerId;
+        _dictHubPolling.iWorkflowIntervalId = setInterval(
+            function () {
+                _fnRefreshWorkflowHubList(
+                    _dictHubPolling.sWorkflowContainerId,
+                );
+            },
+            I_HUB_POLL_INTERVAL_MS,
+        );
+    }
+
+    function _fnStopWorkflowHubPolling() {
+        if (_dictHubPolling.iWorkflowIntervalId !== null) {
+            clearInterval(_dictHubPolling.iWorkflowIntervalId);
+            _dictHubPolling.iWorkflowIntervalId = null;
+        }
+        _dictHubPolling.sWorkflowContainerId = null;
+    }
+
+    async function _fnRefreshWorkflowHubList(sContainerId) {
+        try {
+            var listWorkflows = await VaibifyApi.fdictGet(
+                "/api/workflows/" + encodeURIComponent(sContainerId));
+            VaibifyWorkflowManager.fnRenderWorkflowList(
+                listWorkflows, sContainerId);
+        } catch (error) {
+            /* best-effort: leave the last-rendered list in place */
+        }
     }
 
     function _fnCancelAllTimers() {
@@ -841,7 +916,13 @@ const PipeleyenApp = (function () {
 
     function fsComputeStepLabel(iIndex) {
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
-        var bInteractive = listSteps[iIndex].bInteractive === true;
+        var step = listSteps[iIndex];
+        if (step && typeof step.sLabel === "string" && step.sLabel) {
+            return step.sLabel;
+        }
+        // TODO(2026-07-01): drop this fallback once every response
+        // path carries step.sLabel. Kept as a transition shim.
+        var bInteractive = step.bInteractive === true;
         var sPrefix = bInteractive ? "I" : "A";
         var iCount = 0;
         for (var i = 0; i <= iIndex; i++) {
