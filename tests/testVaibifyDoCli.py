@@ -58,11 +58,15 @@ def dictSampleCatalog():
             {"sName": "run-step", "sCategory": "execution",
              "sMethod": "WS", "sPath": "runSelected",
              "bAgentSafe": True,
-             "sDescription": "Run one step by name or 1-based index."},
+             "sDescription": "Run one step by label or index."},
+            {"sName": "run-selected-steps", "sCategory": "execution",
+             "sMethod": "WS", "sPath": "runSelected",
+             "bAgentSafe": True,
+             "sDescription": "Run multiple steps by label or index."},
             {"sName": "run-from-step", "sCategory": "execution",
              "sMethod": "WS", "sPath": "runFrom",
              "bAgentSafe": True,
-             "sDescription": "Run from given step index to end."},
+             "sDescription": "Run from given step to end."},
             {"sName": "run-unit-tests", "sCategory": "verification",
              "sMethod": "POST",
              "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-tests",
@@ -356,11 +360,22 @@ def test_resolve_ws_payload_run_step_int(modCli, dictSampleCatalog):
     assert dictPayload["sAction"] == "runSelected"
 
 
-def test_resolve_ws_payload_run_step_string(modCli, dictSampleCatalog):
+def test_resolve_ws_payload_run_step_label(modCli, dictSampleCatalog):
+    """A step label routes into listStepLabels for the backend."""
+    dictEntry = modCli.fdictFindAction(dictSampleCatalog, "run-step")
+    dictPayload = modCli.fdictResolveWsPayload(dictEntry, ["A09"])
+    assert dictPayload["listStepLabels"] == ["A09"]
+    assert "listStepIndices" not in dictPayload
+
+
+def test_resolve_ws_payload_run_step_non_label_string(
+    modCli, dictSampleCatalog,
+):
+    """Non-label strings still route through labels; backend rejects."""
     dictEntry = modCli.fdictFindAction(dictSampleCatalog, "run-step")
     dictPayload = modCli.fdictResolveWsPayload(
         dictEntry, ["plot-results"])
-    assert dictPayload["listStepIndices"] == ["plot-results"]
+    assert dictPayload["listStepLabels"] == ["plot-results"]
 
 
 def test_resolve_ws_payload_run_from_step_coerces_int(
@@ -369,6 +384,80 @@ def test_resolve_ws_payload_run_from_step_coerces_int(
     dictEntry = modCli.fdictFindAction(dictSampleCatalog, "run-from-step")
     dictPayload = modCli.fdictResolveWsPayload(dictEntry, ["2"])
     assert dictPayload["iStartStep"] == 2
+
+
+def test_resolve_ws_payload_run_from_step_label(
+    modCli, dictSampleCatalog,
+):
+    dictEntry = modCli.fdictFindAction(dictSampleCatalog, "run-from-step")
+    dictPayload = modCli.fdictResolveWsPayload(dictEntry, ["A09"])
+    assert dictPayload["sStartStepLabel"] == "A09"
+    assert "iStartStep" not in dictPayload
+
+
+def test_resolve_ws_payload_run_selected_all_labels(
+    modCli, dictSampleCatalog,
+):
+    dictEntry = modCli.fdictFindAction(
+        dictSampleCatalog, "run-selected-steps")
+    dictPayload = modCli.fdictResolveWsPayload(
+        dictEntry, ["A09", "A10", "A11"])
+    assert dictPayload["listStepLabels"] == ["A09", "A10", "A11"]
+    assert "listStepIndices" not in dictPayload
+
+
+def test_resolve_ws_payload_run_selected_mixed(
+    modCli, dictSampleCatalog,
+):
+    """Mixing integer indices and labels preserves both fields."""
+    dictEntry = modCli.fdictFindAction(
+        dictSampleCatalog, "run-selected-steps")
+    dictPayload = modCli.fdictResolveWsPayload(
+        dictEntry, ["0", "A09", "2"])
+    assert dictPayload["listStepIndices"] == [0, 2]
+    assert dictPayload["listStepLabels"] == ["A09"]
+
+
+def test_fbIsStepLabel_shapes(modCli):
+    assert modCli.fbIsStepLabel("A09") is True
+    assert modCli.fbIsStepLabel("I01") is True
+    assert modCli.fbIsStepLabel("a1") is True
+    assert modCli.fbIsStepLabel("A123") is True
+    assert modCli.fbIsStepLabel("9") is False
+    assert modCli.fbIsStepLabel("") is False
+    assert modCli.fbIsStepLabel("B01") is False
+    assert modCli.fbIsStepLabel("plot-results") is False
+
+
+def test_resolve_http_target_passes_index_through(
+    modCli, dictSampleCatalog, dictValidEnv,
+):
+    dictEntry = modCli.fdictFindAction(
+        dictSampleCatalog, "run-unit-tests")
+    dictTarget = modCli.fdictResolveHttpTarget(
+        dictEntry, ["5"], dictValidEnv)
+    assert dictTarget["sUrl"].endswith("/api/steps/c-1/5/run-tests")
+
+
+def test_resolve_http_target_resolves_label_via_endpoint(
+    modCli, dictSampleCatalog, dictValidEnv,
+):
+    """Label args call /by-label/ before filling the path."""
+    dictEntry = modCli.fdictFindAction(
+        dictSampleCatalog, "run-unit-tests")
+    mockResp = MagicMock()
+    mockResp.read.return_value = json.dumps(
+        {"iStepIndex": 10, "sLabel": "A09"}).encode("utf-8")
+    mockResp.__enter__ = lambda self: self
+    mockResp.__exit__ = lambda self, *args: False
+    with patch(
+        "urllib.request.urlopen", return_value=mockResp,
+    ) as mockOpen:
+        dictTarget = modCli.fdictResolveHttpTarget(
+            dictEntry, ["A09"], dictValidEnv)
+    assert dictTarget["sUrl"].endswith("/api/steps/c-1/10/run-tests")
+    sResolveUrl = mockOpen.call_args[0][0].full_url
+    assert "/by-label/A09" in sResolveUrl
 
 
 def test_resolve_ws_payload_no_positional_args(modCli, dictSampleCatalog):

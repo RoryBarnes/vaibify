@@ -14,6 +14,10 @@ from ..pipelineServer import (
     fdictRequireWorkflow,
     fdictStepFromRequest,
 )
+from ..pipelineUtils import (
+    fdictStepWithLabel,
+    flistStepsWithLabels,
+)
 
 
 def _fnRegisterStepsList(app, dictCtx):
@@ -36,6 +40,17 @@ def _fnRegisterStepsList(app, dictCtx):
             )
         }
 
+    @app.get("/api/steps/{sContainerId}/by-label/{sLabel}")
+    async def fnResolveStepLabel(sContainerId: str, sLabel: str):
+        from ..pipelineUtils import fiStepIndexFromLabel
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        try:
+            iIndex = fiStepIndexFromLabel(dictWorkflow, sLabel)
+        except ValueError as error:
+            raise HTTPException(404, str(error))
+        return {"iStepIndex": iIndex, "sLabel": sLabel}
+
 
 def _fnRegisterStepGet(app, dictCtx):
     """Register GET /api/steps/{id}/{index} route."""
@@ -48,13 +63,16 @@ def _fnRegisterStepGet(app, dictCtx):
             dictStep = workflowManager.fdictGetStep(
                 dictWorkflow, iStepIndex
             )
-            dictStep["saResolvedOutputFiles"] = (
+            dictDecorated = fdictStepWithLabel(
+                dictWorkflow, iStepIndex,
+            )
+            dictDecorated["saResolvedOutputFiles"] = (
                 workflowManager.flistResolveOutputFiles(
                     dictStep,
                     dictCtx["variables"](sContainerId),
                 )
             )
-            return dictStep
+            return dictDecorated
         except IndexError as error:
             raise HTTPException(404, str(error))
 
@@ -73,9 +91,10 @@ def _fnRegisterStepCreate(app, dictCtx):
         dictStep = fdictStepFromRequest(request)
         dictWorkflow["listSteps"].append(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
+        iIndex = len(dictWorkflow["listSteps"]) - 1
         return {
-            "iIndex": len(dictWorkflow["listSteps"]) - 1,
-            "dictStep": dictStep,
+            "iIndex": iIndex,
+            "dictStep": fdictStepWithLabel(dictWorkflow, iIndex),
         }
 
 
@@ -97,8 +116,8 @@ def _fnRegisterStepInsert(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "iIndex": iPosition,
-            "dictStep": dictStep,
-            "listSteps": dictWorkflow["listSteps"],
+            "dictStep": fdictStepWithLabel(dictWorkflow, iPosition),
+            "listSteps": flistStepsWithLabels(dictWorkflow),
         }
 
 
@@ -122,7 +141,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
         except IndexError as error:
             raise HTTPException(404, str(error))
         dictCtx["save"](sContainerId, dictWorkflow)
-        return dictWorkflow["listSteps"][iStepIndex]
+        return fdictStepWithLabel(dictWorkflow, iStepIndex)
 
 
 def _fnRegisterStepDelete(app, dictCtx):
@@ -142,7 +161,7 @@ def _fnRegisterStepDelete(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "bSuccess": True,
-            "listSteps": dictWorkflow["listSteps"],
+            "listSteps": flistStepsWithLabels(dictWorkflow),
         }
 
 
@@ -165,7 +184,7 @@ def _fnRegisterStepReorder(app, dictCtx):
         except IndexError as error:
             raise HTTPException(400, str(error))
         dictCtx["save"](sContainerId, dictWorkflow)
-        return {"listSteps": dictWorkflow["listSteps"]}
+        return {"listSteps": flistStepsWithLabels(dictWorkflow)}
 
 
 def fnRegisterAll(app, dictCtx):

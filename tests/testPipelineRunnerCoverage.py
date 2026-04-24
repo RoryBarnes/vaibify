@@ -16,26 +16,26 @@ from vaibify.gui.pipelineRunner import (
     _fsWrapWithTime,
     ffBuildLoggingCallback,
     fnClearOutputModifiedFlags,
-    fsComputeStepLabel,
+    fsLabelFromStepIndex,
 )
 
 
-class TestFsComputeStepLabel:
+class TestFsLabelFromStepIndex:
     def test_automatic_step_first(self):
         dictWorkflow = {"listSteps": [{"sName": "A"}]}
-        assert fsComputeStepLabel(dictWorkflow, 1) == "A01"
+        assert fsLabelFromStepIndex(dictWorkflow, 0) == "A01"
 
     def test_automatic_step_second(self):
         dictWorkflow = {"listSteps": [
             {"sName": "A"}, {"sName": "B"},
         ]}
-        assert fsComputeStepLabel(dictWorkflow, 2) == "A02"
+        assert fsLabelFromStepIndex(dictWorkflow, 1) == "A02"
 
     def test_interactive_step(self):
         dictWorkflow = {"listSteps": [
             {"sName": "A", "bInteractive": True},
         ]}
-        assert fsComputeStepLabel(dictWorkflow, 1) == "I01"
+        assert fsLabelFromStepIndex(dictWorkflow, 0) == "I01"
 
     def test_mixed_step_numbering(self):
         dictWorkflow = {"listSteps": [
@@ -44,18 +44,18 @@ class TestFsComputeStepLabel:
             {"sName": "Auto2"},
             {"sName": "Inter2", "bInteractive": True},
         ]}
-        assert fsComputeStepLabel(dictWorkflow, 1) == "A01"
-        assert fsComputeStepLabel(dictWorkflow, 2) == "I01"
-        assert fsComputeStepLabel(dictWorkflow, 3) == "A02"
-        assert fsComputeStepLabel(dictWorkflow, 4) == "I02"
+        assert fsLabelFromStepIndex(dictWorkflow, 0) == "A01"
+        assert fsLabelFromStepIndex(dictWorkflow, 1) == "I01"
+        assert fsLabelFromStepIndex(dictWorkflow, 2) == "A02"
+        assert fsLabelFromStepIndex(dictWorkflow, 3) == "I02"
 
     def test_out_of_range_step(self):
         dictWorkflow = {"listSteps": []}
-        assert fsComputeStepLabel(dictWorkflow, 5) == "05"
+        assert fsLabelFromStepIndex(dictWorkflow, 4) == "05"
 
-    def test_negative_step(self):
+    def test_negative_index(self):
         dictWorkflow = {"listSteps": [{"sName": "A"}]}
-        assert fsComputeStepLabel(dictWorkflow, 0) == "00"
+        assert fsLabelFromStepIndex(dictWorkflow, -1) == "00"
 
 
 class TestFnRecordRunStats:

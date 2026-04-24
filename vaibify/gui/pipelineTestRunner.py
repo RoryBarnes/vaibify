@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from . import workflowManager
 from .pipelineUtils import (
-    fsComputeStepLabel,
+    fsLabelFromStepIndex,
     _fnEmitBanner,
     _fnEmitCompletion,
     _fnEmitStepResult,
@@ -224,7 +224,7 @@ async def _fnEmitStepBanner(
 ):
     """Emit banner and stepStarted event for a step."""
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
-    sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
+    sStepLabel = fsLabelFromStepIndex(dictWorkflow, iStepNumber - 1)
     await _fnEmitBanner(
         fnStatusCallback, iStepNumber, sStepName,
         sStepLabel=sStepLabel,

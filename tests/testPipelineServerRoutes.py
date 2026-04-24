@@ -166,6 +166,16 @@ def test_connect_returns_workflow(clientHttp):
     assert dictResult["sWorkflowPath"] == S_WORKFLOW_PATH
 
 
+def test_connect_steps_carry_slabel(clientHttp):
+    """Every step in the connect response carries sLabel."""
+    dictResult = _fnConnectToContainer(clientHttp)
+    listSteps = dictResult["dictWorkflow"]["listSteps"]
+    assert listSteps, "test fixture should have at least one step"
+    for dictStep in listSteps:
+        assert "sLabel" in dictStep
+        assert dictStep["sLabel"]
+
+
 def test_connect_caches_workflow(clientHttp):
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
@@ -251,6 +261,27 @@ def test_get_step_by_index(clientHttp):
     dictStep = responseHttp.json()
     assert dictStep["sName"] == "Step A"
     assert "saResolvedOutputFiles" in dictStep
+    assert dictStep["sLabel"] == "A01"
+
+
+def test_resolve_step_by_label(clientHttp):
+    """GET /by-label/<sLabel> returns the 0-based index."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/steps/{S_CONTAINER_ID}/by-label/A01"
+    )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult == {"iStepIndex": 0, "sLabel": "A01"}
+
+
+def test_resolve_unknown_step_label(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/steps/{S_CONTAINER_ID}/by-label/A99"
+    )
+    assert responseHttp.status_code == 404
+    assert "A99" in responseHttp.json()["detail"]
 
 
 def test_get_step_invalid_index(clientHttp):

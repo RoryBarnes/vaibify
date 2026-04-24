@@ -76,18 +76,22 @@ LIST_AGENT_ACTIONS = [
     {"sName": "run-from-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runFrom",
      "bAgentSafe": True,
-     "sDescription": "Run from the given step index to the end. "
-                     "Args: {iStartStep: int}."},
+     "sDescription": "Run from the given step to the end. "
+                     "Args: {iStartStep: int} or {sStartStepLabel: 'A09'}. "
+                     "CLI accepts labels directly: run-from-step A09."},
     {"sName": "run-selected-steps", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
-     "sDescription": "Run the listed step indices in order. "
-                     "Args: {listStepIndices: [int, ...]}."},
+     "sDescription": "Run the listed steps in order. "
+                     "Args: {listStepIndices: [int, ...]} or "
+                     "{listStepLabels: ['A09', ...]}; both may be combined. "
+                     "CLI accepts labels as positionals: "
+                     "run-selected-steps A09 A10 A11."},
     {"sName": "run-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
-     "sDescription": "Run a single step by name or 1-based index. "
-                     "Alias for run-selected-steps with one entry."},
+     "sDescription": "Run a single step by label (A09 / I01) or 0-based "
+                     "index. Alias for run-selected-steps with one entry."},
     {"sName": "verify-only", "sCategory": "execution",
      "sMethod": "WS", "sPath": "verify",
      "bAgentSafe": True,

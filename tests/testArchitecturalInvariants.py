@@ -25,6 +25,7 @@ __all__ = [
     "testAgentActionRegistered",
     "testAgentActionCatalogShape",
     "testWireFormatPathsAreRepoRelative",
+    "testStepPayloadsCarrySLabel",
 ]
 
 
@@ -834,4 +835,46 @@ def testWireFormatPathsAreRepoRelative():
     assert not listViolations, (
         "listModifiedFiles write-contract violated:\n  "
         + "\n  ".join(listViolations)
+    )
+
+
+_SET_STEP_LABEL_HELPERS = frozenset({
+    "fdictStepWithLabel",
+    "flistStepsWithLabels",
+    "fdictWorkflowWithLabels",
+})
+
+
+def testStepPayloadsCarrySLabel():
+    """Step payloads on the wire must route through a label decorator.
+
+    User-facing identity for steps is the label (A09, I01); the index
+    is a 0-based internal handle. The pipelineUtils module exposes
+    three non-mutating decorators that attach ``sLabel`` to a shallow
+    copy of the step dict(s) before serialization. Routes that
+    emit step data must reach a decorator somewhere in their return
+    path — a bare ``return dictWorkflow["listSteps"]`` or
+    ``return dictWorkflow`` from a step-emitting route silently drops
+    ``sLabel`` and reintroduces the label-translation bug class.
+    """
+    sStepRoutesSource = fsReadSource(ROUTES_DIR / "stepRoutes.py")
+    assert "flistStepsWithLabels" in sStepRoutesSource, (
+        "stepRoutes.py must import and use flistStepsWithLabels "
+        "for listSteps responses"
+    )
+    assert "fdictStepWithLabel" in sStepRoutesSource, (
+        "stepRoutes.py must import and use fdictStepWithLabel "
+        "for single-step responses"
+    )
+    assert 'return dictWorkflow["listSteps"]' not in sStepRoutesSource, (
+        "stepRoutes.py returns a bare listSteps payload without "
+        "sLabel; route through flistStepsWithLabels instead"
+    )
+    sPipelineServerSource = fsReadSource(
+        GUI_DIR / "pipelineServer.py",
+    )
+    assert "fdictWorkflowWithLabels" in sPipelineServerSource, (
+        "pipelineServer.py's fdictHandleConnect must decorate the "
+        "workflow payload with fdictWorkflowWithLabels so every "
+        "step reaching the client carries sLabel"
     )

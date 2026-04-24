@@ -511,18 +511,20 @@ Usage:
 - Run `vaibify-do --describe <action>` to see the argument shape for one action.
 - Run `vaibify-do <action> [args...]` to execute.
 
+**Step IDs.** Users speak labels, not indices: `A09` is the 9th *automated* step; `I01` is the 1st *interactive* step. These labels are per-type sequential, so `A09` is **not** the same as `listSteps[9]` — the index depends on how many interactive steps precede it in the current workflow. Never translate labels to indices in your head. `vaibify-do` accepts labels directly in every step argument; pass the label through verbatim.
+
 Natural-language intent maps to commands:
 
-- "run step X" → `vaibify-do run-step X`
-- "run steps A09 through A11" → `vaibify-do run-selected-steps 9 10 11`
-- "rerun from step X" → `vaibify-do run-from-step X`
+- "run step A09" → `vaibify-do run-step A09`
+- "run steps A09 through A11" → `vaibify-do run-selected-steps A09 A10 A11`
+- "rerun from step A05" → `vaibify-do run-from-step A05`
 - "run all steps" → `vaibify-do run-all`
 - "verify outputs without rerunning" → `vaibify-do verify-only`
-- "run unit tests on step X" → `vaibify-do run-unit-tests X`
+- "run unit tests on step A09" → `vaibify-do run-unit-tests A09`
 - "run all tests" → `vaibify-do run-all-tests`
 - "commit the current state" → `vaibify-do commit-canonical`
 - "pull a file from the container" → `vaibify-do pull-file <sPath>`
-- "make step X's figures the standard" → `vaibify-do accept-plots-as-standard X` (USER-ONLY — surface the request, do not run)
+- "make step A09's figures the standard" → `vaibify-do accept-plots-as-standard A09` (USER-ONLY — surface the request, do not run)
 - "push to GitHub / Overleaf / Zenodo" → USER-ONLY — surface the request, do not run
 
 **User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.

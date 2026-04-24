@@ -20,6 +20,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import socket
 import sys
@@ -34,6 +35,8 @@ S_SESSION_HEADER_NAME = "X-Vaibify-Session"
 S_EXPECTED_SCHEMA = "1.0"
 F_CONNECT_TIMEOUT = 2.0
 F_READ_TIMEOUT = 600.0
+F_LABEL_LOOKUP_TIMEOUT = 10.0
+RE_STEP_LABEL = re.compile(r"^[AIai]\d{1,3}$")
 
 
 def fnFail(sMessage, iCode=3):
@@ -172,6 +175,46 @@ def fsFillPath(sPath, dictValues):
     return sPath
 
 
+def fbIsStepLabel(sArg):
+    """Return True when sArg looks like a step label (A09, I01)."""
+    return bool(RE_STEP_LABEL.match(sArg or ""))
+
+
+def fiResolveLabelToIndex(sLabel, dictEnv):
+    """Ask the backend to translate a step label to a 0-based index.
+
+    Hits GET ``/api/steps/{id}/by-label/{sLabel}``; raises ``SystemExit``
+    with a readable message on any non-200 response so the CLI fails
+    fast with the server's own description of the mismatch.
+    """
+    sUrl = (
+        dictEnv["VAIBIFY_HOST_URL"].rstrip("/")
+        + "/api/steps/"
+        + urllib.parse.quote(dictEnv["VAIBIFY_CONTAINER_ID"], safe="")
+        + "/by-label/"
+        + urllib.parse.quote(sLabel, safe="")
+    )
+    request = urllib.request.Request(
+        sUrl,
+        headers={S_SESSION_HEADER_NAME: dictEnv["VAIBIFY_SESSION_TOKEN"]},
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=F_LABEL_LOOKUP_TIMEOUT,
+        ) as resp:
+            dictResult = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        fnFail(
+            "label resolution failed for " + sLabel + ": "
+            + error.read().decode("utf-8", errors="replace"),
+            iCode=2,
+        )
+    except urllib.error.URLError as error:
+        fnFail("label resolution failed for " + sLabel
+               + ": " + str(error), iCode=2)
+    return int(dictResult["iStepIndex"])
+
+
 def fdictResolveHttpTarget(dictEntry, listArgs, dictEnv):
     """Build {sUrl, dictBody} for HTTP actions."""
     listPlaceholders = flistPathPlaceholders(dictEntry["sPath"])
@@ -182,10 +225,51 @@ def fdictResolveHttpTarget(dictEntry, listArgs, dictEnv):
         fnFail("action " + dictEntry["sName"] + " needs positional args: "
                + ", ".join(listNeeded), iCode=2)
     for sName, sValue in zip(listNeeded, listPositional):
+        if sName == "iStepIndex" and fbIsStepLabel(sValue):
+            sValue = str(fiResolveLabelToIndex(sValue, dictEnv))
         dictValues[sName] = sValue
     sPath = fsFillPath(dictEntry["sPath"], dictValues)
     sUrl = dictEnv["VAIBIFY_HOST_URL"].rstrip("/") + sPath
     return {"sUrl": sUrl, "dictBody": dictBody}
+
+
+def _fnPopulateRunStep(dictPayload, listPositional):
+    """Place a single run-step positional arg into indices or labels."""
+    sArg = listPositional[0]
+    if fbIsStepLabel(sArg):
+        dictPayload["listStepLabels"] = [sArg]
+        return
+    try:
+        dictPayload["listStepIndices"] = [int(sArg)]
+    except ValueError:
+        dictPayload["listStepLabels"] = [sArg]
+
+
+def _fnPopulateRunSelected(dictPayload, listPositional):
+    """Split run-selected-steps args between indices and labels."""
+    listIndices = []
+    listLabels = []
+    for sArg in listPositional:
+        if fbIsStepLabel(sArg):
+            listLabels.append(sArg)
+        else:
+            try:
+                listIndices.append(int(sArg))
+            except ValueError:
+                listLabels.append(sArg)
+    if listIndices:
+        dictPayload["listStepIndices"] = listIndices
+    if listLabels:
+        dictPayload["listStepLabels"] = listLabels
+
+
+def _fnPopulateRunFromStep(dictPayload, listPositional):
+    """Accept a label or integer for run-from-step's start point."""
+    sArg = listPositional[0]
+    if fbIsStepLabel(sArg):
+        dictPayload["sStartStepLabel"] = sArg
+    else:
+        dictPayload["iStartStep"] = int(sArg)
 
 
 def fdictResolveWsPayload(dictEntry, listArgs):
@@ -193,14 +277,14 @@ def fdictResolveWsPayload(dictEntry, listArgs):
     listPositional, dictBody = ftParsePositionalArgs(listArgs)
     dictPayload = {"sAction": dictEntry["sPath"]}
     dictPayload.update(dictBody)
-    if dictEntry["sName"] == "run-step" and listPositional:
-        sArg = listPositional[0]
-        try:
-            dictPayload["listStepIndices"] = [int(sArg)]
-        except ValueError:
-            dictPayload["listStepIndices"] = [sArg]
-    elif dictEntry["sName"] == "run-from-step" and listPositional:
-        dictPayload["iStartStep"] = int(listPositional[0])
+    if not listPositional:
+        return dictPayload
+    if dictEntry["sName"] == "run-step":
+        _fnPopulateRunStep(dictPayload, listPositional)
+    elif dictEntry["sName"] == "run-selected-steps":
+        _fnPopulateRunSelected(dictPayload, listPositional)
+    elif dictEntry["sName"] == "run-from-step":
+        _fnPopulateRunFromStep(dictPayload, listPositional)
     return dictPayload
 
 

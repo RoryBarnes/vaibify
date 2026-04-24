@@ -235,6 +235,43 @@ def _fdictComputeOutputHashes(sStepDir):
     return dictHashes
 
 
+def _fsLabelForStep(sStepDirRel):
+    """Return a display label (A09, I01) for a step by repo-rel dir.
+
+    Scans workflow JSONs for a step whose directory matches and
+    computes the label from its position among same-type steps.
+    Returns an empty string when no match exists.
+    """
+    if not _WORKFLOWS_DIR.is_dir():
+        return ""
+    for pathJson in sorted(_WORKFLOWS_DIR.glob("*.json")):
+        try:
+            dictWorkflow = json.loads(pathJson.read_text())
+        except (OSError, ValueError):
+            continue
+        sLabel = _fsLabelWithinWorkflow(dictWorkflow, sStepDirRel)
+        if sLabel:
+            return sLabel
+    return ""
+
+
+def _fsLabelWithinWorkflow(dictWorkflow, sStepDirRel):
+    """Return sLabel for sStepDirRel within one workflow, or empty."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    for iIndex, dictStep in enumerate(listSteps):
+        sCandidate = _fsStepDirRepoRel(dictStep.get("sDirectory", ""))
+        if sCandidate != sStepDirRel:
+            continue
+        bInteractive = dictStep.get("bInteractive", False)
+        sPrefix = "I" if bInteractive else "A"
+        iCount = sum(
+            1 for j in range(iIndex + 1)
+            if listSteps[j].get("bInteractive", False) == bInteractive
+        )
+        return "{}{:02d}".format(sPrefix, iCount)
+    return ""
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Write a JSON marker after every pytest run."""
     sStepDir = str(Path(__file__).resolve().parent.parent)
@@ -242,6 +279,7 @@ def pytest_sessionfinish(session, exitstatus):
     fNow = time.time()
     dictMarker = {
         "sDirectory": sStepDirRel,
+        "sLabel": _fsLabelForStep(sStepDirRel),
         "iExitStatus": exitstatus,
         "fTimestamp": fNow,
         "sRunAtUtc": datetime.fromtimestamp(

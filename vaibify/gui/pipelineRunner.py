@@ -17,7 +17,7 @@ __all__ = [
     "fsGenerateLogFilename",
     "fdictCreateInteractiveContext",
     "fnSetInteractiveResponse",
-    "fsComputeStepLabel",
+    "fsLabelFromStepIndex",
     "fnClearOutputModifiedFlags",
     "ffBuildLoggingCallback",
     "fnWriteLogToContainer",
@@ -29,7 +29,11 @@ __all__ = [
 
 from .pipelineUtils import (  # noqa: F401
     fsShellQuote,
-    fsComputeStepLabel,
+    fsLabelFromStepIndex,
+    fiStepIndexFromLabel,
+    flistStepsWithLabels,
+    fdictWorkflowWithLabels,
+    fdictStepWithLabel,
     _fnRecordRunStats,
     _fdictBuildWorkflowVars,
     fnClearOutputModifiedFlags,
@@ -521,7 +525,7 @@ async def _fiRunStepList(
         iStepNumber = iIndex + 1
         if not _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
             continue
-        sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
+        sStepLabel = fsLabelFromStepIndex(dictWorkflow, iIndex)
         if dictStep.get("bInteractive", False):
             iExitCode = await _fiHandleInteractiveStep(
                 connectionDocker, sContainerId, dictStep,

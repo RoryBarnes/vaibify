@@ -48,7 +48,11 @@ def testExtractsDunderAll():
     assert dictEntry["listSymbols"], "Expected non-empty __all__ list"
     listExpected = [
         "fsShellQuote",
-        "fsComputeStepLabel",
+        "fsLabelFromStepIndex",
+        "fiStepIndexFromLabel",
+        "flistStepsWithLabels",
+        "fdictWorkflowWithLabels",
+        "fdictStepWithLabel",
         "fnClearOutputModifiedFlags",
     ]
     assert dictEntry["listSymbols"] == listExpected

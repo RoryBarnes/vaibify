@@ -81,6 +81,18 @@ If a cast is not listed above, ask me.
 These are the mistakes most likely to cause real harm in this
 repository. Read them before you start editing.
 
+**Step labels are per-type sequential, not positional.** `A09` is the
+9th *automated* step, `I01` is the 1st *interactive* step. `A09`
+does not mean `listSteps[9]` in general — it lands at
+`listSteps[9 + (number of interactive steps preceding the 9th
+automated one)]`. Use `fsLabelFromStepIndex` and
+`fiStepIndexFromLabel` from
+[vaibify/gui/pipelineUtils.py](vaibify/gui/pipelineUtils.py) — never
+inline the translation. Every step payload on the wire carries
+`sLabel`; consume it rather than recomputing. Error messages, logs,
+toasts, and agent-facing commands use labels (users speak labels);
+internal code paths keep 0-based indices.
+
 **Never hard-code science-specific examples.** Vaibify is for the
 general problem of containerized scientific workflows. Specific
 datasets, specific experimental setups, specific user projects, and

@@ -293,7 +293,7 @@ class TestFnEmitStepBanner:
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitBanner", new_callable=AsyncMock)
     @patch(
-        "vaibify.gui.pipelineTestRunner.fsComputeStepLabel",
+        "vaibify.gui.pipelineTestRunner.fsLabelFromStepIndex",
         return_value="A01",
     )
     def test_emits_banner_and_step_started(self, mockLabel, mockBanner):
@@ -313,7 +313,7 @@ class TestFnEmitStepBanner:
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitBanner", new_callable=AsyncMock)
     @patch(
-        "vaibify.gui.pipelineTestRunner.fsComputeStepLabel",
+        "vaibify.gui.pipelineTestRunner.fsLabelFromStepIndex",
         return_value="I02",
     )
     def test_uses_default_name_when_missing(self, mockLabel, mockBanner):
