@@ -240,6 +240,59 @@ class TestDispatchSelected:
         # A01 -> 1 is a duplicate of listStepIndices[0]; A02 -> 2.
         assert listIndices == [1, 2]
 
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_default_run_mode_is_full(self, mockRunSelected):
+        """Requests without sRunMode fall back to 'full'."""
+        dictRequest = {"listStepIndices": [0]}
+        dictWorkflow = {"listSteps": [{"sName": "Auto1"}]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        await _fnDispatchSelected(
+            MagicMock(), "ctr1", dictRequest,
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        assert mockRunSelected.call_args.kwargs["sRunMode"] == "full"
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_plotsOnly_threads_through(self, mockRunSelected):
+        dictRequest = {
+            "listStepIndices": [0], "sRunMode": "plotsOnly",
+        }
+        dictWorkflow = {"listSteps": [{"sName": "Auto1"}]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        await _fnDispatchSelected(
+            MagicMock(), "ctr1", dictRequest,
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        assert mockRunSelected.call_args.kwargs["sRunMode"] == "plotsOnly"
+
+    @pytest.mark.asyncio
+    async def test_unknown_run_mode_raises(self):
+        """Bad sRunMode from the wire must fail loudly at the boundary."""
+        dictRequest = {
+            "listStepIndices": [0], "sRunMode": "nonsense",
+        }
+        dictWorkflow = {"listSteps": [{"sName": "Auto1"}]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        with pytest.raises(ValueError, match="Unknown sRunMode"):
+            await _fnDispatchSelected(
+                MagicMock(), "ctr1", dictRequest,
+                dictWorkflow, dictPathCache,
+                "/workspace", AsyncMock(),
+            )
+
 
 # ---------------------------------------------------------------
 # _fnSafeDispatch (lines 485-504)

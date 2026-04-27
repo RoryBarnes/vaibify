@@ -202,6 +202,8 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         _fnRemoveTestDirectory(
             dictCtx["docker"], sContainerId, dictStep,
+            sProjectRepoPath=dictWorkflow.get(
+                "sProjectRepoPath", ""),
         )
         dictStep["dictTests"] = {
             "dictQualitative": {

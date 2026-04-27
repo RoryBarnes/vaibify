@@ -281,6 +281,12 @@ def fdictResolveWsPayload(dictEntry, listArgs):
         return dictPayload
     if dictEntry["sName"] == "run-step":
         _fnPopulateRunStep(dictPayload, listPositional)
+    elif dictEntry["sName"] == "run-data-only":
+        _fnPopulateRunStep(dictPayload, listPositional)
+        dictPayload["sRunMode"] = "dataOnly"
+    elif dictEntry["sName"] == "run-plots-only":
+        _fnPopulateRunStep(dictPayload, listPositional)
+        dictPayload["sRunMode"] = "plotsOnly"
     elif dictEntry["sName"] == "run-selected-steps":
         _fnPopulateRunSelected(dictPayload, listPositional)
     elif dictEntry["sName"] == "run-from-step":

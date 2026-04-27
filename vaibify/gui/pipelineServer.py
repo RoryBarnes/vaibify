@@ -498,14 +498,22 @@ async def _fnDispatchSelected(
     sWorkflowDirectory, fnCallback,
 ):
     """Dispatch the runSelected action."""
+    from .pipelineRunner import SET_VALID_RUN_MODES
     listIndices = _flistResolveSelectedIndices(
         dictRequest, dictWorkflow,
     )
+    sRunMode = dictRequest.get("sRunMode", "full")
+    if sRunMode not in SET_VALID_RUN_MODES:
+        raise ValueError(
+            f"Unknown sRunMode: {sRunMode!r}. "
+            f"Valid values: {sorted(SET_VALID_RUN_MODES)}"
+        )
     await fnRunSelectedSteps(
         connectionDocker, sContainerId,
         listIndices,
         dictWorkflow, dictWorkflowPathCache.get(sContainerId),
         sWorkflowDirectory, fnCallback,
+        sRunMode=sRunMode,
     )
 
 
@@ -1050,6 +1058,7 @@ from .fileStatusManager import (  # noqa: F401
     _fnInvalidateStepFiles,
     _fnUpdateModTimeBaseline,
     fbReconcileUpstreamFlags,
+    fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,

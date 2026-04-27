@@ -59,6 +59,14 @@ def dictSampleCatalog():
              "sMethod": "WS", "sPath": "runSelected",
              "bAgentSafe": True,
              "sDescription": "Run one step by label or index."},
+            {"sName": "run-data-only", "sCategory": "execution",
+             "sMethod": "WS", "sPath": "runSelected",
+             "bAgentSafe": True,
+             "sDescription": "Run only the data commands for one step."},
+            {"sName": "run-plots-only", "sCategory": "execution",
+             "sMethod": "WS", "sPath": "runSelected",
+             "bAgentSafe": True,
+             "sDescription": "Run only the plot commands for one step."},
             {"sName": "run-selected-steps", "sCategory": "execution",
              "sMethod": "WS", "sPath": "runSelected",
              "bAgentSafe": True,
@@ -376,6 +384,24 @@ def test_resolve_ws_payload_run_step_non_label_string(
     dictPayload = modCli.fdictResolveWsPayload(
         dictEntry, ["plot-results"])
     assert dictPayload["listStepLabels"] == ["plot-results"]
+
+
+def test_resolve_ws_payload_run_plots_only(modCli, dictSampleCatalog):
+    dictEntry = modCli.fdictFindAction(
+        dictSampleCatalog, "run-plots-only")
+    dictPayload = modCli.fdictResolveWsPayload(dictEntry, ["A03"])
+    assert dictPayload["sAction"] == "runSelected"
+    assert dictPayload["listStepLabels"] == ["A03"]
+    assert dictPayload["sRunMode"] == "plotsOnly"
+
+
+def test_resolve_ws_payload_run_data_only(modCli, dictSampleCatalog):
+    dictEntry = modCli.fdictFindAction(
+        dictSampleCatalog, "run-data-only")
+    dictPayload = modCli.fdictResolveWsPayload(dictEntry, ["2"])
+    assert dictPayload["sAction"] == "runSelected"
+    assert dictPayload["listStepIndices"] == [2]
+    assert dictPayload["sRunMode"] == "dataOnly"
 
 
 def test_resolve_ws_payload_run_from_step_coerces_int(

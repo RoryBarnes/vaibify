@@ -1893,6 +1893,7 @@ const PipeleyenApp = (function () {
             if (dictVerify.sUser !== "passed") continue;
             if (_fbOutputNewerThanVerification(i, dictVerify)) {
                 dictVerify.sUser = "untested";
+                delete dictVerify.sLastUserUpdate;
                 dictStep.dictVerification = dictVerify;
                 bChanged = true;
             }

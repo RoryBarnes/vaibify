@@ -115,6 +115,66 @@ def test_fiRunStepCommands_runs_plot_when_setup_succeeds():
 
 
 # ---------------------------------------------------------------
+# fiRunStepCommands: sRunMode gates data vs plot sections.
+# ---------------------------------------------------------------
+
+
+def _fdictStepForRunMode():
+    return {
+        "sDirectory": "/ws/step",
+        "saDataCommands": ["python data.py"],
+        "saPlotCommands": ["python plot.py"],
+        "bPlotOnly": False,
+    }
+
+
+def _flistExecutedCommands(mockDocker):
+    return [
+        c.args[1]
+        for c in mockDocker.ftResultExecuteCommand.call_args_list
+    ]
+
+
+def test_fiRunStepCommands_plotsOnly_skips_data_and_tests():
+    mockDocker = _fMockDocker()
+    fnCallback, _ = _fMockCallback()
+    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+        mockDocker, "cid", _fdictStepForRunMode(),
+        "/ws", {}, fnCallback, sRunMode="plotsOnly",
+    ))
+    assert iExitCode == 0
+    listCalls = _flistExecutedCommands(mockDocker)
+    assert not any("data.py" in sCmd for sCmd in listCalls)
+    assert any("plot.py" in sCmd for sCmd in listCalls)
+
+
+def test_fiRunStepCommands_dataOnly_skips_plots():
+    mockDocker = _fMockDocker()
+    fnCallback, _ = _fMockCallback()
+    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+        mockDocker, "cid", _fdictStepForRunMode(),
+        "/ws", {}, fnCallback, sRunMode="dataOnly",
+    ))
+    assert iExitCode == 0
+    listCalls = _flistExecutedCommands(mockDocker)
+    assert any("data.py" in sCmd for sCmd in listCalls)
+    assert not any("plot.py" in sCmd for sCmd in listCalls)
+
+
+def test_fiRunStepCommands_full_runs_both_sections():
+    mockDocker = _fMockDocker()
+    fnCallback, _ = _fMockCallback()
+    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+        mockDocker, "cid", _fdictStepForRunMode(),
+        "/ws", {}, fnCallback, sRunMode="full",
+    ))
+    assert iExitCode == 0
+    listCalls = _flistExecutedCommands(mockDocker)
+    assert any("data.py" in sCmd for sCmd in listCalls)
+    assert any("plot.py" in sCmd for sCmd in listCalls)
+
+
+# ---------------------------------------------------------------
 # _fsMissingDependencyFile: dedupe and empty-path continue
 # (lines 396, 400)
 # ---------------------------------------------------------------

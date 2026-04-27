@@ -32,6 +32,7 @@ from ..fileStatusManager import (
     _fnClearStepModificationState,
     _fnUpdateModTimeBaseline,
     fbReconcileUpstreamFlags,
+    fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
@@ -86,7 +87,13 @@ def _fnMarkPipelineStopped(connectionDocker, sContainerId):
 
 
 def _flistBuildCleanCommands(dictWorkflow):
-    """Build rm commands for all output files and reset step stats."""
+    """Build rm commands for all output files and reset step stats.
+
+    Step directory and output paths are repo-relative; join them
+    with ``sProjectRepoPath`` so the rm targets land in the project
+    repo rather than the container's default CWD.
+    """
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listCleanCommands = []
     for dictStep in dictWorkflow.get("listSteps", []):
         if dictStep.get("bInteractive", False):
@@ -96,9 +103,12 @@ def _flistBuildCleanCommands(dictWorkflow):
             for sFile in dictStep.get(sKey, []):
                 if sFile.startswith("{"):
                     continue
-                sPath = sFile if sFile.startswith("/") else (
+                sRepoRel = sFile if sFile.startswith("/") else (
                     posixpath.join(sDir, sFile) if sDir
                     else sFile)
+                sPath = sRepoRel if (
+                    sRepoRel.startswith("/") or not sRepoRoot
+                ) else posixpath.join(sRepoRoot, sRepoRel)
                 listCleanCommands.append(
                     f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
         dictStep["dictRunStats"] = {}
@@ -349,7 +359,11 @@ async def _fdictFetchOutputStatus(
     dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(
         dictPathsByStep, dictModTimes,
     )
-    if fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
+    bAnyReconciled = (
+        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)
+        | fbReconcileUserVerificationTimestamps(dictWorkflow)
+    )
+    if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(

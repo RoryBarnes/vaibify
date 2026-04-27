@@ -5,6 +5,7 @@ from vaibify.gui.fileStatusManager import (
     _fdictBuildScriptStatus,
     _fdictComputeMarkerMtimeByStep,
     _fdictComputeMaxDataMtimeByStep,
+    fbReconcileUserVerificationTimestamps,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,
     fsMarkerNameFromStepDirectory,
@@ -142,7 +143,10 @@ def test_marker_none_short_circuits_test_branch():
 
 def test_marker_none_but_user_stale_still_fires():
     dictStep = _fdictBuildStep({
-        "dictVerification": {"sLastUserUpdate": _S_STALE},
+        "dictVerification": {
+            "sUser": "passed",
+            "sLastUserUpdate": _S_STALE,
+        },
     })
     dictScripts = _tBuildScriptPaths(dictStep)
     bStale, listStale = _fbStepIsPencilStale(
@@ -165,7 +169,10 @@ def test_marker_none_but_user_stale_still_fires():
 
 def test_stale_user_vs_plot_file_reports_plotfile():
     dictStep = _fdictBuildStep({
-        "dictVerification": {"sLastUserUpdate": _S_STALE},
+        "dictVerification": {
+            "sUser": "passed",
+            "sLastUserUpdate": _S_STALE,
+        },
     })
     dictScripts = _tBuildScriptPaths(dictStep)
     bStale, listStale = _fbStepIsPencilStale(
@@ -185,6 +192,33 @@ def test_stale_user_vs_plot_file_reports_plotfile():
         and d["sCategory"] == "plotFile"
         for d in listStale
     )
+
+
+def test_user_stale_check_skipped_when_sUser_untested():
+    """If sUser is not 'passed', a leftover sLastUserUpdate must not
+    fire a staleness warning — there's nothing to be stale relative
+    to. Prevents ghost warnings when sUser flipped but the timestamp
+    wasn't cleared."""
+    dictStep = _fdictBuildStep({
+        "dictVerification": {
+            "sUser": "untested",
+            "sLastUserUpdate": _S_STALE,
+        },
+    })
+    dictScripts = _tBuildScriptPaths(dictStep)
+    bStale, listStale = _fbStepIsPencilStale(
+        dictStep, dictScripts,
+        ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
+        {
+            "/ws/stepA/data.py": _I_OLDER,
+            "/ws/stepA/plot.py": _I_OLDER,
+            "/ws/stepA/data.out": _I_OLDER,
+            "/ws/stepA/figure.pdf": _I_NEWER,
+        },
+        iMarkerMtime=None,
+    )
+    assert bStale is False
+    assert listStale == []
 
 
 def test_plot_only_step_not_stale_by_test_branch():
@@ -387,3 +421,50 @@ def test_marker_name_sanitizes_paths():
     assert fsMarkerNameFromStepDirectory("/a/b/c") == "a_b_c.json"
     assert fsMarkerNameFromStepDirectory(
         "step01/") == "step01.json"
+
+
+# ---------------------------------------------------------------
+# fbReconcileUserVerificationTimestamps
+# ---------------------------------------------------------------
+
+
+def test_reconcile_strips_timestamp_when_user_untested():
+    dictWorkflow = {"listSteps": [
+        {"dictVerification": {
+            "sUser": "untested", "sLastUserUpdate": _S_STALE}},
+    ]}
+    bChanged = fbReconcileUserVerificationTimestamps(dictWorkflow)
+    assert bChanged is True
+    dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert "sLastUserUpdate" not in dictVerify
+    assert dictVerify["sUser"] == "untested"
+
+
+def test_reconcile_preserves_timestamp_when_user_passed():
+    dictWorkflow = {"listSteps": [
+        {"dictVerification": {
+            "sUser": "passed", "sLastUserUpdate": _S_FRESH}},
+    ]}
+    bChanged = fbReconcileUserVerificationTimestamps(dictWorkflow)
+    assert bChanged is False
+    dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictVerify["sLastUserUpdate"] == _S_FRESH
+
+
+def test_reconcile_noop_when_no_timestamp_present():
+    dictWorkflow = {"listSteps": [
+        {"dictVerification": {"sUser": "untested"}},
+    ]}
+    assert fbReconcileUserVerificationTimestamps(dictWorkflow) is False
+
+
+def test_reconcile_strips_timestamp_when_user_failed():
+    dictWorkflow = {"listSteps": [
+        {"dictVerification": {
+            "sUser": "failed", "sLastUserUpdate": _S_FRESH}},
+    ]}
+    bChanged = fbReconcileUserVerificationTimestamps(dictWorkflow)
+    assert bChanged is True
+    assert "sLastUserUpdate" not in (
+        dictWorkflow["listSteps"][0]["dictVerification"]
+    )

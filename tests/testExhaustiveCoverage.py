@@ -245,6 +245,31 @@ class TestFlistBuildCleanCommands:
     def test_empty_workflow(self):
         assert _flistBuildCleanCommands({"listSteps": []}) == []
 
+    def test_repo_relative_joins_with_project_repo_path(self):
+        """Repo-relative paths must be prefixed with sProjectRepoPath.
+
+        Otherwise rm -f runs against the container's default CWD
+        (/workspace) and the output file at
+        /workspace/<ProjectRepo>/<StepDir>/<file> is never touched.
+        """
+        dictWorkflow = {
+            "sProjectRepoPath": "/workspace/GJ1132_XUV",
+            "listSteps": [
+                {"sDirectory": "TessFlareLightcurves",
+                 "saDataFiles": [],
+                 "saPlotFiles": ["Plot/GJ1132_flares.pdf"],
+                 "dictRunStats": {}, "dictVerification": {}},
+            ],
+        }
+        listCmds = _flistBuildCleanCommands(dictWorkflow)
+        sJoinedPath = (
+            "/workspace/GJ1132_XUV/TessFlareLightcurves/"
+            "Plot/GJ1132_flares.pdf"
+        )
+        assert any(sJoinedPath in s for s in listCmds), (
+            f"Expected absolute path in: {listCmds}"
+        )
+
 
 class TestFdictBuildOverleafArgs:
     def test_extracts_all_fields(self):

@@ -49,6 +49,7 @@ __all__ = [
     "fnCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
     "fbReconcileUpstreamFlags",
+    "fbReconcileUserVerificationTimestamps",
 ]
 
 def fsMarkerNameFromStepDirectory(sStepDirectory):
@@ -417,6 +418,7 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
         )
         if bStale:
             dictVerification["sUser"] = "untested"
+            dictVerification.pop("sLastUserUpdate", None)
             dictStep["dictVerification"] = dictVerification
             bChanged = True
         else:
@@ -461,6 +463,7 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
         )
         if bPlotNewer:
             dictVerification["sUser"] = "untested"
+            dictVerification.pop("sLastUserUpdate", None)
     if dictVerification.get("sPlotStandards") == "passed":
         listPlotFiles = dictStep.get("saPlotFiles", [])
         if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
@@ -487,6 +490,30 @@ def _fnInvalidateDownstreamStep(dictStep):
                 dictVerification[sVerifKey] = "untested"
     dictVerification["bUpstreamModified"] = True
     dictStep["dictVerification"] = dictVerification
+
+
+def fbReconcileUserVerificationTimestamps(dictWorkflow):
+    """Strip ``sLastUserUpdate`` from steps where ``sUser`` is not 'passed'.
+
+    ``sLastUserUpdate`` is only meaningful while the researcher's
+    attestation stands. When ``sUser`` flips to ``untested`` or
+    ``failed`` the timestamp becomes ghost data that misleads the UI
+    ("Last updated 2026-04-07" on a step currently marked untested)
+    and re-introduces stale-artifact warnings via any comparison
+    that still reads the field. Enforces the "no stale timestamps"
+    invariant as a pure derived state, independent of transition
+    sites. Returns True when any step changed so the caller persists.
+    """
+    bAnyChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictVerify = dictStep.get("dictVerification", {})
+        if dictVerify.get("sUser") == "passed":
+            continue
+        if "sLastUserUpdate" in dictVerify:
+            dictVerify.pop("sLastUserUpdate", None)
+            dictStep["dictVerification"] = dictVerify
+            bAnyChanged = True
+    return bAnyChanged
 
 
 def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
@@ -608,9 +635,16 @@ def _fbStepIsPencilStale(
     dictStep, dictStepScripts, listStepOutputPaths, dictModTimes,
     iMarkerMtime=None, setResolvedPlotPaths=None,
 ):
-    """Return (bStale, listStaleArtifacts) via timestamp comparisons."""
+    """Return (bStale, listStaleArtifacts) via timestamp comparisons.
+
+    The ``sLastUserUpdate`` comparison only fires when ``sUser`` is
+    currently ``passed`` — if the researcher has not attested (or has
+    been flipped back to ``untested``), there is nothing for the
+    artifact freshness to be "stale relative to."
+    """
     dictVerify = dictStep.get("dictVerification", {})
     iLastUser = _fiValidatorEpoch(dictVerify, "sLastUserUpdate")
+    bUserPassed = dictVerify.get("sUser") == "passed"
     listBuckets = _fdictBuildArtifactBuckets(
         dictStep, dictStepScripts, listStepOutputPaths,
         setResolvedPlotPaths,
@@ -619,7 +653,7 @@ def _fbStepIsPencilStale(
     if iMarkerMtime is not None:
         _fnAppendTestStale(
             listStale, listBuckets, iMarkerMtime, dictModTimes)
-    if iLastUser is not None:
+    if iLastUser is not None and bUserPassed:
         _fnAppendUserStale(
             listStale, listBuckets, iLastUser, dictModTimes)
     return (len(listStale) > 0, listStale)

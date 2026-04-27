@@ -92,6 +92,18 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Run a single step by label (A09 / I01) or 0-based "
                      "index. Alias for run-selected-steps with one entry."},
+    {"sName": "run-data-only", "sCategory": "execution",
+     "sMethod": "WS", "sPath": "runSelected",
+     "bAgentSafe": True,
+     "sDescription": "Run only the data commands for one step (skip "
+                     "tests and plots). Args: step label or 0-based "
+                     "index. Payload: sRunMode=dataOnly."},
+    {"sName": "run-plots-only", "sCategory": "execution",
+     "sMethod": "WS", "sPath": "runSelected",
+     "bAgentSafe": True,
+     "sDescription": "Run only the plot commands for one step (skip "
+                     "data and tests). Args: step label or 0-based "
+                     "index. Payload: sRunMode=plotsOnly."},
     {"sName": "verify-only", "sCategory": "execution",
      "sMethod": "WS", "sPath": "verify",
      "bAgentSafe": True,
