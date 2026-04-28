@@ -27,6 +27,7 @@ __all__ = [
     "testWireFormatPathsAreRepoRelative",
     "testStepPayloadsCarrySLabel",
     "testDepsExpandedShowsStepStatusAndTimingAxes",
+    "testPipelineStateCarriesLivenessFields",
 ]
 
 
@@ -938,4 +939,53 @@ def testDepsExpandedShowsStepStatusAndTimingAxes():
     assert "Upstream step outputs changed" not in sRendererSource, (
         "The floating 'Upstream step outputs changed' line must not "
         "reappear in the verification block — see per-dep Timing axis"
+    )
+
+
+_TUPLE_LIVENESS_FIELDS = (
+    "iRunnerPid",
+    "sLastHeartbeat",
+    "sFailureReason",
+)
+
+
+def testPipelineStateCarriesLivenessFields():
+    """``pipeline_state.json`` must carry the runner-liveness contract.
+
+    The dashboard's "running" badge depends on three fields written by
+    every fresh state file: ``iRunnerPid`` (diagnostic stamp of the
+    runner process), ``sLastHeartbeat`` (the truth signal that the
+    poll endpoint uses to detect a vanished runner), and
+    ``sFailureReason`` (populated by the poll-side reconciler when it
+    flips ``bRunning`` to False on a stale heartbeat). Dropping any of
+    them silently reintroduces the "dashboard says running for 2
+    hours after the runner died" failure mode.
+    """
+    sPipelineStateSource = fsReadSource(GUI_DIR / "pipelineState.py")
+    for sField in _TUPLE_LIVENESS_FIELDS:
+        assert f'"{sField}"' in sPipelineStateSource, (
+            f"pipelineState.fdictBuildInitialState must include "
+            f"'{sField}' in the schema; the dashboard's runner-liveness "
+            f"contract depends on it."
+        )
+    # The runner side must stamp its PID and the poll side must
+    # reconcile on stale heartbeat — both load-bearing modules must
+    # at least reference the schema fields and the stale-detection
+    # helper.
+    sPipelineRunnerSource = fsReadSource(GUI_DIR / "pipelineRunner.py")
+    assert "iRunnerPid" in sPipelineRunnerSource, (
+        "pipelineRunner must stamp iRunnerPid into the initial state "
+        "(use os.getpid() in fdictBuildInitialState)."
+    )
+    assert "_fnRunHeartbeatLoop" in sPipelineRunnerSource, (
+        "pipelineRunner must spawn a heartbeat loop; without it the "
+        "poll endpoint cannot detect a vanished runner."
+    )
+    sPipelineRoutesSource = fsReadSource(
+        ROUTES_DIR / "pipelineRoutes.py",
+    )
+    assert "fbHeartbeatIsStale" in sPipelineRoutesSource, (
+        "pipelineRoutes.fnGetPipelineState must call "
+        "pipelineState.fbHeartbeatIsStale to reconcile a vanished "
+        "runner before returning state to the frontend."
     )

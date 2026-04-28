@@ -1,7 +1,10 @@
 """Execute workflow steps by running commands directly in containers."""
 
 import asyncio
+import logging
+import os
 import posixpath
+import threading
 
 from . import pipelineState
 from . import workflowManager
@@ -654,28 +657,71 @@ async def _fiRunStepsAndLog(
     """Execute steps, write log, and emit final status."""
     iStepCount = len(dictWorkflow.get("listSteps", []))
     dictState = pipelineState.fdictBuildInitialState(
-        sAction, sLogPath, iStepCount
+        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid()
     )
-    pipelineState.fnWriteState(
-        connectionDocker, sContainerId, dictState
+    lockState = threading.Lock()
+    eventStopHeartbeat = threading.Event()
+    with lockState:
+        pipelineState.fnWriteState(
+            connectionDocker, sContainerId, dictState
+        )
+    threadHeartbeat = _fnStartHeartbeatThread(
+        connectionDocker, sContainerId, dictState,
+        lockState, eventStopHeartbeat,
     )
-    await fnLogging({"sType": "started", "sCommand": sAction})
-    fnLoggingWithFlush = _ffBuildFlushingCallback(
-        fnLogging, connectionDocker, sContainerId,
-        dictState, sLogPath, listLogLines,
-    )
-    iResult = await _fiRunStepList(
-        connectionDocker, sContainerId,
-        dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
-        iStartStep=iStartStep, dictInteractive=dictInteractive,
-        sRunMode=sRunMode, setRunStepIndices=setRunStepIndices,
-    )
-    await _fnFinalizeRun(
-        connectionDocker, sContainerId, dictState, iResult,
-        sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
-        fnStatusCallback,
-    )
+    try:
+        await fnLogging({"sType": "started", "sCommand": sAction})
+        fnLoggingWithFlush = _ffBuildFlushingCallback(
+            fnLogging, connectionDocker, sContainerId,
+            dictState, sLogPath, listLogLines, lockState,
+        )
+        iResult = await _fiRunStepList(
+            connectionDocker, sContainerId,
+            dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
+            iStartStep=iStartStep, dictInteractive=dictInteractive,
+            sRunMode=sRunMode, setRunStepIndices=setRunStepIndices,
+        )
+        await _fnFinalizeRun(
+            connectionDocker, sContainerId, dictState, iResult,
+            sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
+            fnStatusCallback, lockState,
+        )
+    finally:
+        eventStopHeartbeat.set()
+        threadHeartbeat.join(timeout=2)
     return iResult
+
+
+def _fnStartHeartbeatThread(
+    connectionDocker, sContainerId, dictState, lockState, eventStop,
+):
+    """Spawn a daemon thread that refreshes ``sLastHeartbeat`` periodically."""
+    threadHeartbeat = threading.Thread(
+        target=_fnRunHeartbeatLoop,
+        args=(connectionDocker, sContainerId, dictState,
+              lockState, eventStop),
+        name="vaibify-pipeline-heartbeat",
+        daemon=True,
+    )
+    threadHeartbeat.start()
+    return threadHeartbeat
+
+
+def _fnRunHeartbeatLoop(
+    connectionDocker, sContainerId, dictState, lockState, eventStop,
+):
+    """Tick ``sLastHeartbeat`` until ``eventStop`` is set."""
+    fInterval = pipelineState.I_HEARTBEAT_INTERVAL_SECONDS
+    while not eventStop.wait(fInterval):
+        try:
+            with lockState:
+                pipelineState.fnUpdateState(
+                    connectionDocker, sContainerId, dictState,
+                    pipelineState.fdictBuildHeartbeatUpdate(),
+                )
+        except Exception as error:
+            logging.getLogger("vaibify").warning(
+                "pipeline heartbeat write failed: %s", error)
 
 
 async def _fiRunWithLogging(

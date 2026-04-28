@@ -12,6 +12,7 @@ import json
 import logging
 import posixpath
 import re
+import threading
 from datetime import datetime, timezone
 
 from . import pipelineState
@@ -77,13 +78,21 @@ async def _fnEnsureLogsDirectory(connectionDocker, sContainerId):
 
 def _ffBuildFlushingCallback(
     fnLogging, connectionDocker, sContainerId,
-    dictState, sLogPath, listLogLines,
+    dictState, sLogPath, listLogLines, lockState=None,
 ):
-    """Return a callback that logs events and flushes on step results."""
+    """Return a callback that logs events and flushes on step results.
+
+    ``lockState`` is a ``threading.Lock`` shared with the runner's
+    heartbeat thread; pass ``None`` only from legacy callers that do
+    not run a heartbeat (a no-op lock is substituted).
+    """
+    if lockState is None:
+        lockState = threading.Lock()
     async def fnLoggingWithFlush(dictEvent):
         await fnLogging(dictEvent)
         _fnUpdatePipelineState(
-            connectionDocker, sContainerId, dictState, dictEvent
+            connectionDocker, sContainerId, dictState, dictEvent,
+            lockState,
         )
         sEventType = dictEvent.get("sType", "")
         if sEventType in ("stepPass", "stepFail"):
@@ -95,29 +104,40 @@ def _ffBuildFlushingCallback(
 
 
 def _fnUpdatePipelineState(
-    connectionDocker, sContainerId, dictState, dictEvent,
+    connectionDocker, sContainerId, dictState, dictEvent, lockState=None,
 ):
-    """Update pipeline state based on a step event."""
+    """Update pipeline state based on a step event (lock-guarded).
+
+    ``lockState`` is the threading.Lock shared with the runner's
+    heartbeat thread. Callers without a heartbeat (legacy tests, the
+    standalone director) may pass ``None`` and a fresh per-call lock
+    is substituted.
+    """
+    if lockState is None:
+        lockState = threading.Lock()
     sEventType = dictEvent.get("sType", "")
     if sEventType == "output":
-        pipelineState.fnAppendOutput(
-            dictState, dictEvent.get("sLine", ""))
+        with lockState:
+            pipelineState.fnAppendOutput(
+                dictState, dictEvent.get("sLine", ""))
     elif sEventType == "stepStarted":
-        pipelineState.fnUpdateState(
-            connectionDocker, sContainerId, dictState,
-            pipelineState.fdictBuildStepStarted(
-                dictEvent["iStepNumber"]))
+        with lockState:
+            pipelineState.fnUpdateState(
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildStepStarted(
+                    dictEvent["iStepNumber"]))
     elif sEventType in ("stepPass", "stepFail", "stepSkipped"):
         dictStepStatusMap = {
             "stepPass": "passed", "stepFail": "failed",
             "stepSkipped": "skipped",
         }
-        pipelineState.fnRecordStepResult(
-            connectionDocker, sContainerId, dictState,
-            pipelineState.fdictBuildStepResult(
-                dictEvent["iStepNumber"],
-                dictStepStatusMap[sEventType],
-                dictEvent.get("iExitCode", 0)))
+        with lockState:
+            pipelineState.fnRecordStepResult(
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildStepResult(
+                    dictEvent["iStepNumber"],
+                    dictStepStatusMap[sEventType],
+                    dictEvent.get("iExitCode", 0)))
 
 
 def _fnSaveWorkflowStats(
@@ -138,13 +158,16 @@ def _fnSaveWorkflowStats(
 async def _fnFinalizeRun(
     connectionDocker, sContainerId, dictState, iResult,
     sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
-    fnStatusCallback,
+    fnStatusCallback, lockState=None,
 ):
     """Write final state, log, and emit completion event."""
-    pipelineState.fnUpdateState(
-        connectionDocker, sContainerId, dictState,
-        pipelineState.fdictBuildCompletedState(iResult),
-    )
+    if lockState is None:
+        lockState = threading.Lock()
+    with lockState:
+        pipelineState.fnUpdateState(
+            connectionDocker, sContainerId, dictState,
+            pipelineState.fdictBuildCompletedState(iResult),
+        )
     await fnWriteLogToContainer(
         connectionDocker, sContainerId, sLogPath, listLogLines
     )

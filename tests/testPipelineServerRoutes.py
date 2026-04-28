@@ -481,6 +481,97 @@ def test_get_pipeline_state_not_running(clientHttp):
     assert responseHttp.json()["bRunning"] is False
 
 
+def _fdictBuildRunningState(sLastHeartbeat):
+    """Return a synthetic 'running' state with a custom heartbeat."""
+    return {
+        "bRunning": True,
+        "sAction": "runAll",
+        "sLogPath": "/log",
+        "sStartTime": "2026-04-28T18:50:05+00:00",
+        "sEndTime": "",
+        "iExitCode": -1,
+        "iActiveStep": 9,
+        "iStepCount": 13,
+        "dictStepResults": {},
+        "listRecentOutput": [],
+        "iRunnerPid": 12345,
+        "sLastHeartbeat": sLastHeartbeat,
+        "sFailureReason": "",
+    }
+
+
+def test_get_pipeline_state_fresh_heartbeat_left_alone(clientHttp):
+    """A recent heartbeat means the run is still alive — don't reconcile."""
+    from datetime import datetime, timezone
+    from vaibify.gui import pipelineState
+    _fnConnectToContainer(clientHttp)
+    sFresh = datetime.now(timezone.utc).isoformat()
+    with patch.object(
+        pipelineState, "fdictReadState",
+        return_value=_fdictBuildRunningState(sFresh),
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state"
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bRunning"] is True
+    assert dictBody["sFailureReason"] == ""
+
+
+def test_get_pipeline_state_stale_heartbeat_reconciles(clientHttp):
+    """A stale heartbeat flips bRunning to False and stamps a reason."""
+    from datetime import datetime, timedelta, timezone
+    from vaibify.gui import pipelineState
+    _fnConnectToContainer(clientHttp)
+    sStale = (
+        datetime.now(timezone.utc) - timedelta(seconds=120)
+    ).isoformat()
+    listWriteCalls = []
+
+    def fnSpyWriteState(connectionDocker, sContainerId, dictState):
+        listWriteCalls.append(dict(dictState))
+
+    with patch.object(
+        pipelineState, "fdictReadState",
+        return_value=_fdictBuildRunningState(sStale),
+    ), patch.object(
+        pipelineState, "fnWriteState", side_effect=fnSpyWriteState,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state"
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bRunning"] is False
+    assert dictBody["iExitCode"] == (
+        pipelineState.I_EXIT_CODE_RUNNER_DISAPPEARED
+    )
+    assert "heartbeat_stale" in dictBody["sFailureReason"]
+    assert dictBody["sEndTime"], "sEndTime must be stamped on reconcile"
+    # Reconciled state must be persisted so subsequent polls are stable.
+    assert listWriteCalls, "reconciliation must write back to the state file"
+    assert listWriteCalls[-1]["bRunning"] is False
+
+
+def test_get_pipeline_state_legacy_no_heartbeat_left_alone(clientHttp):
+    """Legacy state files (no sLastHeartbeat field) are not reconciled."""
+    from vaibify.gui import pipelineState
+    _fnConnectToContainer(clientHttp)
+    dictLegacyRunning = _fdictBuildRunningState("")
+    del dictLegacyRunning["sLastHeartbeat"]
+    with patch.object(
+        pipelineState, "fdictReadState",
+        return_value=dictLegacyRunning,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state"
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bRunning"] is True
+
+
 # ── File status ───────────────────────────────────────────────
 
 

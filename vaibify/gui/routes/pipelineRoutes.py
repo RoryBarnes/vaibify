@@ -7,6 +7,7 @@ import json
 import logging
 import posixpath
 import re
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
@@ -171,7 +172,55 @@ def _fnRegisterPipelineState(app, dictCtx):
         )
         if dictState is None:
             return {"bRunning": False}
+        return await _fdictReconcileLivenessIfNeeded(
+            dictCtx["docker"], sContainerId, dictState
+        )
+
+
+async def _fdictReconcileLivenessIfNeeded(
+    connectionDocker, sContainerId, dictState,
+):
+    """Detect a runner that vanished without finalizing and update state.
+
+    Pure read-side check: ``sLastHeartbeat`` is the truth signal. If
+    the recorded heartbeat is older than the staleness window and the
+    state still claims ``bRunning: True``, we declare the runner dead,
+    overwrite the state file with ``bRunning: False`` and a populated
+    ``sFailureReason``, then return the reconciled state. Subsequent
+    polls see ``bRunning: False`` and fall through unchanged.
+    """
+    from .. import pipelineState
+    if not dictState.get("bRunning"):
         return dictState
+    if not pipelineState.fbHeartbeatIsStale(dictState):
+        return dictState
+    sFailureReason = _fsBuildHeartbeatStaleReason(dictState)
+    dictReconciled = dict(dictState)
+    dictReconciled.update(
+        pipelineState.fdictBuildCompletedState(
+            pipelineState.I_EXIT_CODE_RUNNER_DISAPPEARED))
+    dictReconciled["sFailureReason"] = sFailureReason
+    await asyncio.to_thread(
+        pipelineState.fnWriteState,
+        connectionDocker, sContainerId, dictReconciled,
+    )
+    return dictReconciled
+
+
+def _fsBuildHeartbeatStaleReason(dictState):
+    """Format a human-readable reason string for a stale heartbeat."""
+    from .. import pipelineState
+    sLastHeartbeat = dictState.get("sLastHeartbeat", "")
+    try:
+        dtBeat = datetime.fromisoformat(sLastHeartbeat)
+        fAgeSeconds = (
+            datetime.now(timezone.utc).timestamp() - dtBeat.timestamp())
+        return (
+            f"heartbeat_stale (last beat {fAgeSeconds:.0f}s ago, "
+            f"window {pipelineState.I_HEARTBEAT_STALE_SECONDS}s)"
+        )
+    except (ValueError, TypeError):
+        return "heartbeat_stale (unparseable timestamp)"
 
 
 def _fnRegisterPipelineKill(app, dictCtx):
