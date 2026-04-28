@@ -842,6 +842,12 @@ body.all-verified .toolbar-label {
     margin-top: 4px;
 }
 
+.test-source-mtime {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-top: 4px;
+}
+
 .step-item .step-name {
     flex: 1;
     font-size: 13px;
@@ -1329,9 +1335,21 @@ body.all-verified .toolbar-label {
     display: flex;
     gap: 8px;
     padding: 4px 0;
+    justify-content: flex-end;
 }
 
-.btn-make-standard,
+.btn-make-standard {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 4px 0;
+}
+
 .btn-compare-standard {
     background: var(--highlight-color);
     color: #000000;
@@ -2638,6 +2656,12 @@ body.all-verified .toolbar-label {
 .dep-axis-label {
     color: var(--text-secondary);
     opacity: 0.8;
+}
+
+.dep-axis-warning {
+    color: var(--color-orange);
+    font-size: 0.75rem;
+    padding: 0 0 2px 16px;
 }
 
 .test-section-label {

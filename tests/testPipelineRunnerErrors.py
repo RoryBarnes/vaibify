@@ -11,27 +11,27 @@ from vaibify.gui.pipelineRunner import (
 
 
 def test_fbShouldRunStep_enabled():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 1, 1) is True
 
 
 def test_fbShouldRunStep_disabled():
-    dictStep = {"bEnabled": False}
+    dictStep = {"bRunEnabled": False}
     assert _fbShouldRunStep(dictStep, 1, 1) is False
 
 
 def test_fbShouldRunStep_before_start():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 1, 3) is False
 
 
 def test_fbShouldRunStep_at_start():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 3, 3) is True
 
 
 def test_fbShouldRunStep_interactive_eligible():
-    dictStep = {"bEnabled": True, "bInteractive": True}
+    dictStep = {"bRunEnabled": True, "bInteractive": True}
     assert _fbShouldRunStep(dictStep, 1, 1) is True
 
 

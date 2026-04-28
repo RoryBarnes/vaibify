@@ -5,6 +5,7 @@ var PipeleyenPipelineRunner = (function () {
 
     var iPreviousOutputCount = 0;
     var _iActiveSentinelMonitor = null;
+    var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
 
@@ -83,9 +84,7 @@ var PipeleyenPipelineRunner = (function () {
             PipeleyenApp.fnShowToast(
                 _fsCompletedToast(dictEvent.sCommand), "success");
             PipeleyenApp.fnRenderStepList();
-            if (dictEvent.sLogPath) {
-                fnDisplayLogInViewer(dictEvent.sLogPath);
-            }
+            _fnFinalizeLogDisplay(dictEvent.sLogPath);
         } else if (dictEvent.sType === "failed") {
             PipeleyenApp.fnClearRunningStatuses();
             PipeleyenApp.fnStartFileChangePolling();
@@ -94,9 +93,7 @@ var PipeleyenPipelineRunner = (function () {
                 "error"
             );
             PipeleyenApp.fnRenderStepList();
-            if (dictEvent.sLogPath) {
-                fnDisplayLogInViewer(dictEvent.sLogPath);
-            }
+            _fnFinalizeLogDisplay(dictEvent.sLogPath);
         } else if (dictEvent.sType === "interactivePause") {
             fnShowInteractivePauseDialog(dictEvent);
         } else if (dictEvent.sType === "interactiveTerminalStart") {
@@ -342,9 +339,7 @@ var PipeleyenPipelineRunner = (function () {
         if (!dictState.bRunning) {
             VaibifyPolling.fnStopPipelinePolling();
             fnApplyCompletedState(dictState);
-            if (dictState.sLogPath) {
-                fnDisplayLogInViewer(dictState.sLogPath);
-            }
+            _fnFinalizeLogDisplay(dictState.sLogPath);
             PipeleyenApp.fnShowToast(
                 dictState.iExitCode === 0 ?
                     "Pipeline completed" :
@@ -431,7 +426,12 @@ var PipeleyenPipelineRunner = (function () {
     /* --- Output --- */
 
     function fnInitPipelineOutput() {
-        var elViewport = document.getElementById("viewportA");
+        if (_sStreamingViewer === null) {
+            _sStreamingViewer =
+                PipeleyenFigureViewer.fsClaimNextViewer();
+        }
+        var elViewport = document.getElementById(
+            "viewport" + _sStreamingViewer);
         elViewport.innerHTML =
             '<pre id="pipelineOutput" class="pipeline-output"></pre>';
         elViewport.scrollTop = 0;
@@ -701,7 +701,7 @@ var PipeleyenPipelineRunner = (function () {
         if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
         var fTotal = 0;
         dictWorkflow.listSteps.forEach(function (step) {
-            if (step.bEnabled === false) return;
+            if (step.bRunEnabled === false) return;
             var dictStats = step.dictRunStats || {};
             if (dictStats.fWallClock) fTotal += dictStats.fWallClock;
         });
@@ -726,7 +726,7 @@ var PipeleyenPipelineRunner = (function () {
                 var listEnablePromises = [];
                 dictWorkflow.listSteps.forEach(
                     function (step, iIndex) {
-                        if (step.bEnabled === false) {
+                        if (step.bRunEnabled === false) {
                             listEnablePromises.push(
                                 PipeleyenApp.fnToggleStepEnabled(
                                     iIndex, true)
@@ -820,7 +820,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var listEnablePromises = [];
         dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            if (step.bEnabled === false) {
+            if (step.bRunEnabled === false) {
                 listEnablePromises.push(
                     PipeleyenApp.fnToggleStepEnabled(iIndex, true)
                 );
@@ -842,7 +842,7 @@ var PipeleyenPipelineRunner = (function () {
         var iStepsWithTime = 0;
         var iEnabledSteps = 0;
         dictWorkflow.listSteps.forEach(function (step) {
-            if (step.bEnabled === false) return;
+            if (step.bRunEnabled === false) return;
             iEnabledSteps++;
             var dictStats = step.dictRunStats || {};
             if (dictStats.fWallClock) {
@@ -917,11 +917,26 @@ var PipeleyenPipelineRunner = (function () {
         PipeleyenFigureViewer.fnDisplayFileFromContainer(sLogPath);
     }
 
+    function _fnFinalizeLogDisplay(sLogPath) {
+        if (!sLogPath) {
+            _sStreamingViewer = null;
+            return;
+        }
+        if (_sStreamingViewer !== null) {
+            PipeleyenFigureViewer.fnDisplayFileInViewer(
+                _sStreamingViewer, sLogPath, "");
+            _sStreamingViewer = null;
+        } else {
+            fnDisplayLogInViewer(sLogPath);
+        }
+    }
+
     /* --- State Management --- */
 
     function fnResetState() {
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
+        _sStreamingViewer = null;
         if (_iActiveSentinelMonitor) {
             clearInterval(_iActiveSentinelMonitor);
             _iActiveSentinelMonitor = null;

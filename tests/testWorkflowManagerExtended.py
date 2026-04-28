@@ -83,7 +83,7 @@ def test_flistExtractStepNames_structure():
 def test_flistExtractStepNames_defaults():
     dictWorkflow = _fdictBuildWorkflow()
     listNames = flistExtractStepNames(dictWorkflow)
-    assert listNames[0]["bEnabled"] is True
+    assert listNames[0]["bRunEnabled"] is True
     assert listNames[0]["bPlotOnly"] is True
 
 

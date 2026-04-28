@@ -29,14 +29,69 @@ var PipeleyenPlotStandards = (function () {
     function fnStandardizeAllPlots(iStepIndex) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId) return;
+        var sMessage = _fsBuildStandardizeMessage(iStepIndex);
         PipeleyenApp.fnShowConfirmModal(
             "Make Standard",
-            "Convert all plots in this step to standard PNGs? " +
-            "This will overwrite any existing standards.",
+            sMessage,
             function () {
                 fnExecuteStandardizeAllPlots(iStepIndex);
             }
         );
+    }
+
+    function _fsBuildStandardizeMessage(iStepIndex) {
+        var sBase = "Convert all plots in this step to standard " +
+            "PNGs? This will overwrite any existing standards.";
+        var sExtra = _fsBuildRemoteWarning(iStepIndex);
+        return sExtra ? sBase + "\n\n" + sExtra : sBase;
+    }
+
+    function _fsBuildRemoteWarning(iStepIndex) {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        if (!dictWorkflow) return "";
+        var step = (dictWorkflow.listSteps || [])[iStepIndex];
+        if (!step) return "";
+        var iOverleaf = _fiCountTrackedPlots(
+            dictWorkflow, step, "bOverleaf");
+        var iZenodo = _fiCountTrackedPlots(
+            dictWorkflow, step, "bZenodo");
+        var listLines = [];
+        if (iOverleaf > 0 && dictWorkflow.sOverleafProjectId) {
+            listLines.push(
+                "Overleaf project " +
+                dictWorkflow.sOverleafProjectId +
+                " tracks " + iOverleaf +
+                " of these plots — the next sync will replace " +
+                "what is currently there.");
+        }
+        if (iZenodo > 0 && dictWorkflow.sZenodoDepositionId) {
+            listLines.push(
+                "Zenodo deposit " +
+                dictWorkflow.sZenodoDepositionId +
+                " tracks " + iZenodo +
+                " of these plots — the next archive will replace " +
+                "what is currently there.");
+        }
+        return listLines.join("\n\n");
+    }
+
+    function _fiCountTrackedPlots(dictWorkflow, step, sFlagKey) {
+        var dictSyncStatus = dictWorkflow.dictSyncStatus || {};
+        var listPlots = step.saPlotFiles || [];
+        var sStepDir = step.sDirectory || "";
+        var iCount = 0;
+        for (var i = 0; i < listPlots.length; i++) {
+            var sKey = _fsRepoRelPath(sStepDir, listPlots[i]);
+            var dictEntry = dictSyncStatus[sKey];
+            if (dictEntry && dictEntry[sFlagKey]) iCount += 1;
+        }
+        return iCount;
+    }
+
+    function _fsRepoRelPath(sStepDir, sPlotFile) {
+        if (!sStepDir) return sPlotFile;
+        var sNormalized = sStepDir.replace(/^\/+|\/+$/g, "");
+        return sNormalized + "/" + sPlotFile;
     }
 
     async function fnExecuteStandardizeAllPlots(iStepIndex) {

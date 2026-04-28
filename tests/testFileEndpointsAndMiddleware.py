@@ -24,7 +24,7 @@ DICT_WORKFLOW = {
             "sName": "Step A",
             "sDirectory": "stepA",
             "bPlotOnly": True,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
             "saDataFiles": ["output.dat"],

@@ -26,7 +26,10 @@ from ..fileStatusManager import (
     _fdictComputeMaxDataMtimeByStep,
     _fdictComputeMaxMtimeByStep,
     _fdictComputeMaxPlotMtimeByStep,
+    _fdictComputeMaxTestSourceMtimeByStep,
+    _fdictComputeTestCategoryMtimes,
     _fdictGetModTimes,
+    _flistResolveTestSourcePaths,
     _flistCollectOutputPaths,
     _flistDetectAndInvalidate,
     _fnClearStepModificationState,
@@ -319,8 +322,14 @@ async def _fdictFetchOutputStatus(
         dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
     )
     listMarkerPaths = list(dictMarkerPathsByStep.values())
+    listTestSourcePaths = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        listTestSourcePaths.extend(
+            _flistResolveTestSourcePaths(dictStep, dictVars),
+        )
     listUnionPaths = list(set(
-        listOutputPaths + listScriptPaths + listMarkerPaths,
+        listOutputPaths + listScriptPaths + listMarkerPaths
+        + listTestSourcePaths,
     ))
     dictModTimes = await asyncio.to_thread(
         _fdictGetModTimes,
@@ -377,6 +386,13 @@ async def _fdictFetchOutputStatus(
             dictWorkflow, dictModTimes, dictVars,
         ),
         "dictMarkerMtimeByStep": dictMarkerMtimeByStep,
+        "dictTestSourceMtimeByStep":
+            _fdictComputeMaxTestSourceMtimeByStep(
+                dictWorkflow, dictModTimes, dictVars,
+            ),
+        "dictTestCategoryMtimes": _fdictComputeTestCategoryMtimes(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
             dictWorkflow, dictModTimes, dictVars,

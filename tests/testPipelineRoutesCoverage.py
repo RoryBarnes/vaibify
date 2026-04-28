@@ -466,6 +466,8 @@ class TestFdictFetchOutputStatus:
             )
             assert "dictMaxDataMtimeByStep" in dictResult
             assert "dictMarkerMtimeByStep" in dictResult
+            assert "dictTestSourceMtimeByStep" in dictResult
+            assert "dictTestCategoryMtimes" in dictResult
 
     @pytest.mark.asyncio
     async def test_marker_paths_batched_into_mod_times_call(self):
@@ -806,6 +808,10 @@ class TestFdictComputeFileStatus:
             "dictMaxPlotMtimeByStep": {},
             "dictMaxDataMtimeByStep": {"0": 10},
             "dictMarkerMtimeByStep": {},
+            "dictTestSourceMtimeByStep": {"0": "5"},
+            "dictTestCategoryMtimes": {
+                "0": {"integrity": "5"},
+            },
             "dictInvalidatedSteps": {},
             "dictScriptStatus": {},
         }
@@ -832,6 +838,8 @@ class TestFdictComputeFileStatus:
             "dictMaxPlotMtimeByStep",
             "dictMaxDataMtimeByStep",
             "dictMarkerMtimeByStep",
+            "dictTestSourceMtimeByStep",
+            "dictTestCategoryMtimes",
             "dictInvalidatedSteps",
             "dictScriptStatus",
             "dictTestMarkers",

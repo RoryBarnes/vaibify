@@ -7,6 +7,7 @@ import asyncio
 from fastapi import HTTPException, Request
 
 from ..actionCatalog import fnAgentAction
+from ..fileStatusManager import fbIsStepFullyVerified, fnMaybeAutoArchive
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import fsResolveStepWorkdir
 from .. import pipelineServer as _pipelineServer
@@ -246,6 +247,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
+        bWasVerified = fbIsStepFullyVerified(dictStep)
         dictCtx["docker"].fnWriteFile(
             sContainerId, request.sFilePath,
             request.sContent.encode("utf-8"),
@@ -267,6 +269,10 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         _fnRegisterTestCommand(
             dictStep, bPassed, request.sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
+        await fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, bWasVerified,
+        )
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,
@@ -292,6 +298,7 @@ def _fnRegisterTestRun(app, dictCtx):
         listCmds = _flistResolveTestCommands(dictStep)
         if not listCmds:
             raise HTTPException(400, "No test commands")
+        bWasVerified = fbIsStepFullyVerified(dictStep)
         dictCategoryResults = await _fdictRunAllTestCategories(
             dictCtx, sContainerId, dictStep,
             sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
@@ -302,6 +309,10 @@ def _fnRegisterTestRun(app, dictCtx):
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
         dictCtx["save"](sContainerId, dictWorkflow)
+        await fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, bWasVerified,
+        )
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
 
@@ -339,6 +350,7 @@ def _fnRegisterTestRun(app, dictCtx):
                 400,
                 f"No commands for category: {sCategory}",
             )
+        bWasVerified = fbIsStepFullyVerified(dictStep)
         sDir = _fsAbsoluteStepWorkdir(
             dictStep,
             dictWorkflow.get("sProjectRepoPath", ""),
@@ -360,6 +372,10 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCat["sLastOutput"] = sOutput
         _fnUpdateAggregateTestState(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
+        await fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, bWasVerified,
+        )
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,

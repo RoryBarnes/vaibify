@@ -885,8 +885,8 @@ def test_flistPreflightValidate_skips_disabled(
     mockDocker = _fMockDocker()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": False},
-            {"sName": "B", "bEnabled": True, "sDirectory": "/w"},
+            {"sName": "A", "bRunEnabled": False},
+            {"sName": "B", "bRunEnabled": True, "sDirectory": "/w"},
         ]
     }
     listErrors = _fnRunAsync(_flistPreflightValidate(
@@ -906,8 +906,8 @@ def test_flistPreflightValidate_skips_before_start(
     mockDocker = _fMockDocker()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": True, "sDirectory": "/a"},
-            {"sName": "B", "bEnabled": True, "sDirectory": "/b"},
+            {"sName": "A", "bRunEnabled": True, "sDirectory": "/a"},
+            {"sName": "B", "bRunEnabled": True, "sDirectory": "/b"},
         ]
     }
     _fnRunAsync(_flistPreflightValidate(
@@ -1006,7 +1006,7 @@ def test_fiRunStepList_runs_steps(mockShould, mockRunOne):
     fnCallback, _ = _fMockCallback()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": True},
+            {"sName": "A", "bRunEnabled": True},
         ]
     }
     iResult = _fnRunAsync(_fiRunStepList(
@@ -1026,7 +1026,7 @@ def test_fiRunStepList_records_failure(mockShould, mockRunOne):
     fnCallback, _ = _fMockCallback()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": True},
+            {"sName": "A", "bRunEnabled": True},
         ]
     }
     iResult = _fnRunAsync(_fiRunStepList(
@@ -1045,7 +1045,7 @@ def test_fnRunOneStep_executes(mockDeps, mockExecute):
     mockDocker = _fMockDocker()
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {
-        "sName": "Compute", "bEnabled": True,
+        "sName": "Compute", "bRunEnabled": True,
         "sDirectory": "/w",
     }
     iResult = _fnRunAsync(_fnRunOneStep(

@@ -68,6 +68,21 @@ var VaibifyUtilities = (function () {
             sPad(d.getUTCSeconds()) + " UTC";
     }
 
+    function fsFormatEpochUtc(iEpochSeconds) {
+        if (iEpochSeconds === undefined || iEpochSeconds === null) {
+            return "";
+        }
+        var iEpoch = parseInt(iEpochSeconds, 10);
+        if (isNaN(iEpoch)) return "";
+        var d = new Date(iEpoch * 1000);
+        var sPad = function (i) { return String(i).padStart(2, "0"); };
+        return d.getUTCFullYear() + "-" +
+            sPad(d.getUTCMonth() + 1) + "-" +
+            sPad(d.getUTCDate()) + " " +
+            sPad(d.getUTCHours()) + ":" +
+            sPad(d.getUTCMinutes()) + " UTC";
+    }
+
     function fsResolveTemplate(sTemplate, dictVariables) {
         return sTemplate.replace(/\{([^}]+)\}/g, function (sMatch, sToken) {
             if (dictVariables.hasOwnProperty(sToken)) {
@@ -106,6 +121,7 @@ var VaibifyUtilities = (function () {
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,
         fsFormatUtcTimestamp: fsFormatUtcTimestamp,
+        fsFormatEpochUtc: fsFormatEpochUtc,
         fsResolveTemplate: fsResolveTemplate,
         fsTestCategoryLabel: fsTestCategoryLabel,
         fnSpawnNewSession: fnSpawnNewSession,

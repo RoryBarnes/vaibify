@@ -214,6 +214,7 @@ class TestFdictExtractSettings:
         assert dictResult["sFigureType"] == "pdf"
         assert dictResult["iNumberOfCores"] == -1
         assert dictResult["fTolerance"] == 1e-6
+        assert dictResult["bAutoArchive"] is False
 
     def test_custom_values(self):
         dictWorkflow = {
@@ -221,10 +222,12 @@ class TestFdictExtractSettings:
             "sFigureType": "png",
             "iNumberOfCores": 4,
             "fTolerance": 0.001,
+            "bAutoArchive": True,
         }
         dictResult = fdictExtractSettings(dictWorkflow)
         assert dictResult["sPlotDirectory"] == "Figures"
         assert dictResult["iNumberOfCores"] == 4
+        assert dictResult["bAutoArchive"] is True
 
 
 class TestFdictFilterNonNone:

@@ -209,8 +209,8 @@ class TestFiRunTestsForAllSteps:
         mockRunStep.return_value = 0
         dictWorkflow = {
             "listSteps": [
-                {"sName": "A", "bEnabled": True},
-                {"sName": "B", "bEnabled": True},
+                {"sName": "A", "bRunEnabled": True},
+                {"sName": "B", "bRunEnabled": True},
             ]
         }
         iResult = _fnRunAsync(
@@ -232,8 +232,8 @@ class TestFiRunTestsForAllSteps:
         mockRunStep.return_value = 0
         dictWorkflow = {
             "listSteps": [
-                {"sName": "A", "bEnabled": False},
-                {"sName": "B", "bEnabled": True},
+                {"sName": "A", "bRunEnabled": False},
+                {"sName": "B", "bRunEnabled": True},
             ]
         }
         iResult = _fnRunAsync(
@@ -252,7 +252,7 @@ class TestFiRunTestsForAllSteps:
         from vaibify.gui.pipelineTestRunner import _fiRunTestsForAllSteps
 
         dictWorkflow = {
-            "listSteps": [{"sName": "A", "bEnabled": True}]
+            "listSteps": [{"sName": "A", "bRunEnabled": True}]
         }
         iResult = _fnRunAsync(
             _fiRunTestsForAllSteps(
@@ -272,8 +272,8 @@ class TestFiRunTestsForAllSteps:
         mockRunStep.side_effect = [0, 1]
         dictWorkflow = {
             "listSteps": [
-                {"sName": "A", "bEnabled": True},
-                {"sName": "B", "bEnabled": True},
+                {"sName": "A", "bRunEnabled": True},
+                {"sName": "B", "bRunEnabled": True},
             ]
         }
         iResult = _fnRunAsync(

@@ -378,7 +378,7 @@ def fnRunVerifyOnly(dictWorkflow, dictVariables, sWorkflowRoot):
     """Check that all expected output files exist without executing."""
     listResults = []
     for iStep, dictStep in enumerate(dictWorkflow["listSteps"]):
-        if not dictStep.get("bEnabled", True):
+        if not dictStep.get("bRunEnabled", True):
             continue
         sLabel = f"Step{iStep + 1:02d}"
         try:
@@ -444,7 +444,7 @@ def fnRunPipeline(dictWorkflow, dictVariables, sWorkflowRoot, iStartStep=1):
     """Execute all enabled steps, halting on first failure."""
     listResults = []
     for iStep, dictStep in enumerate(dictWorkflow["listSteps"]):
-        if not dictStep.get("bEnabled", True):
+        if not dictStep.get("bRunEnabled", True):
             continue
         iStepNumber = iStep + 1
         sLabel = f"Step{iStepNumber:02d}"

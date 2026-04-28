@@ -229,7 +229,7 @@ def test_fnRunPipeline_skips_disabled(
             "sDirectory": ".",
             "saPlotCommands": [],
             "saPlotFiles": [],
-            "bEnabled": False,
+            "bRunEnabled": False,
         }],
     }
     dictVars = {"sFigureType": "pdf"}

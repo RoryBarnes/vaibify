@@ -188,6 +188,10 @@ async def fnRunAllTests(
         {"sType": "started", "sCommand": "runAllTests"}
     )
     dictVars = _fdictBuildWorkflowVars(dictWorkflow)
+    from .pipelineRunner import _fnInjectDeterminismEnvPrefix
+    await _fnInjectDeterminismEnvPrefix(
+        connectionDocker, sContainerId, dictWorkflow, dictVars,
+    )
     iFinalExitCode = await _fiRunTestsForAllSteps(
         connectionDocker, sContainerId, dictWorkflow,
         dictVars, fnStatusCallback,
@@ -204,7 +208,7 @@ async def _fiRunTestsForAllSteps(
     iFinalExitCode = 0
     listSteps = dictWorkflow.get("listSteps", [])
     for iIndex, dictStep in enumerate(listSteps):
-        if not dictStep.get("bEnabled", True):
+        if not dictStep.get("bRunEnabled", True):
             continue
         if not _flistResolveTestCommands(dictStep):
             continue

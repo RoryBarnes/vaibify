@@ -277,7 +277,7 @@ def test_fnRunVerifyOnly_skips_disabled():
                 "sDirectory": ".",
                 "saPlotFiles": ["missing.pdf"],
                 "saPlotCommands": [],
-                "bEnabled": False,
+                "bRunEnabled": False,
             }]
         }
         dictVars = {}

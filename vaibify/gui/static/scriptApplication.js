@@ -31,6 +31,8 @@ const PipeleyenApp = (function () {
             dictPlotMtimes: {},
             dictMaxDataMtimeByStep: {},
             dictMarkerMtimeByStep: {},
+            dictTestSourceMtimeByStep: {},
+            dictTestCategoryMtimes: {},
             dictPlotStandardExists: {},
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
@@ -257,6 +259,8 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictPlotMtimes = {};
         _dictWorkflowState.dictMaxDataMtimeByStep = {};
         _dictWorkflowState.dictMarkerMtimeByStep = {};
+        _dictWorkflowState.dictTestSourceMtimeByStep = {};
+        _dictWorkflowState.dictTestCategoryMtimes = {};
         _dictWorkflowState.dictPlotStandardExists = {};
     }
 
@@ -595,6 +599,11 @@ const PipeleyenApp = (function () {
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
             (_dictUiState.bShowTimestamps ? " checked" : "") + '>') +
+            fsSettingsRowHtml("Auto Archive",
+            '<input type="checkbox" id="gsAutoArchive"' +
+            (_dictWorkflowState.dictWorkflow.bAutoArchive
+                ? " checked" : "") +
+            ' title="Push verified files to Overleaf/Zenodo automatically">') +
             fsClaudeSettingsHtml();
     }
 
@@ -640,6 +649,11 @@ const PipeleyenApp = (function () {
                     fnToggleShowTimestamps(
                         elTimestampCheckbox.checked);
                 });
+        }
+        var elAutoArchive = document.getElementById("gsAutoArchive");
+        if (elAutoArchive) {
+            elAutoArchive.addEventListener(
+                "change", fnSaveGlobalSettings);
         }
         var elClaudeAuto = document.getElementById(
             "gsClaudeAutoUpdate");
@@ -737,6 +751,7 @@ const PipeleyenApp = (function () {
     async function fnSaveGlobalSettings() {
         var iExp = parseInt(
             document.getElementById("gsTolerance").value, 10);
+        var elAutoArchive = document.getElementById("gsAutoArchive");
         var dictUpdates = {
             sPlotDirectory: document.getElementById("gsPlotDirectory").value,
             sFigureType: document.getElementById("gsFigureType").value,
@@ -744,6 +759,8 @@ const PipeleyenApp = (function () {
                 document.getElementById("gsNumberOfCores").value
             ),
             fTolerance: Math.pow(10, iExp),
+            bAutoArchive: elAutoArchive
+                ? elAutoArchive.checked : false,
         };
         try {
             var result = await VaibifyApi.fdictPut(
@@ -753,6 +770,10 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflow.iNumberOfCores = result.iNumberOfCores;
             if (result.fTolerance !== undefined) {
                 _dictWorkflowState.dictWorkflow.fTolerance = result.fTolerance;
+            }
+            if (result.bAutoArchive !== undefined) {
+                _dictWorkflowState.dictWorkflow.bAutoArchive =
+                    result.bAutoArchive;
             }
             fnShowToast("Settings saved", "success");
             fnRenderStepList();
@@ -781,6 +802,8 @@ const PipeleyenApp = (function () {
             dictMaxPlotMtimeByStep: _dictWorkflowState.dictPlotMtimes,
             dictMarkerMtimeByStep:
                 _dictWorkflowState.dictMarkerMtimeByStep,
+            dictTestCategoryMtimes:
+                _dictWorkflowState.dictTestCategoryMtimes,
             dictDiscoveredOutputs: _dictWorkflowState.dictDiscoveredOutputs,
             dictWorkflow: _dictWorkflowState.dictWorkflow,
             sUserName: _dictSessionState.sUserName,
@@ -1197,20 +1220,49 @@ const PipeleyenApp = (function () {
         var iDepMtime = parseInt(dictMax[String(iDep)] || "0", 10);
         var iMyOutputMtime = parseInt(
             dictMax[String(iStep)] || "0", 10);
-        var sTiming;
-        if (!iDepMtime || !iMyOutputMtime) {
-            sTiming = "unknown";
-        } else if (iDepMtime <= iMyOutputMtime) {
-            sTiming = "passed";
-        } else {
-            sTiming = "failed";
-        }
+        var sTiming = _fsComputeDepLineageTiming(
+            iStep, iDep, iDepMtime, iMyOutputMtime,
+        );
+        var dictTestSrc =
+            _dictWorkflowState.dictTestSourceMtimeByStep || {};
+        var sTestSrc = dictTestSrc[String(iDep)];
+        var iDepTestSrcMtime = sTestSrc !== undefined
+            ? parseInt(sTestSrc, 10) : null;
         return {
             sStepStatus: bStepStatus ? "passed" : "failed",
             sTiming: sTiming,
             iDepMtime: iDepMtime,
             iMyOutputMtime: iMyOutputMtime,
+            iDepTestSrcMtime: iDepTestSrcMtime,
         };
+    }
+
+    function _fsComputeDepLineageTiming(
+        iStep, iDep, iDepMtime, iMyOutputMtime,
+    ) {
+        /* The unit-test source mtime is the contract: when the
+           upstream's correctness criteria were last written. If the
+           contract was in force at the moment downstream was built
+           (and is still currently met, captured by sStepStatus
+           passing), the lineage is intact — even if the upstream
+           data was rerun and produced bit-identical bytes with a
+           fresher mtime. Falls back to upstream-output-mtime
+           comparison for steps without a test contract (interactive
+           and plot-only steps). Key-presence (not value > 0) marks
+           "contract exists" so a legitimate mtime=0 (e.g. files
+           placed by a sync that did not preserve mtimes) still
+           satisfies the gate. */
+        if (!iMyOutputMtime) return "unknown";
+        var dictTestSrc =
+            _dictWorkflowState.dictTestSourceMtimeByStep || {};
+        var sTestSrc = dictTestSrc[String(iDep)];
+        if (sTestSrc !== undefined) {
+            var iDepTestSrcMtime = parseInt(sTestSrc, 10);
+            return iDepTestSrcMtime <= iMyOutputMtime
+                ? "passed" : "failed";
+        }
+        if (!iDepMtime) return "unknown";
+        return iDepMtime <= iMyOutputMtime ? "passed" : "failed";
     }
 
     function _fsClassifyVerificationSignal(sState) {
@@ -1388,10 +1440,12 @@ const PipeleyenApp = (function () {
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return false;
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         if (listSteps.length === 0) return false;
+        /* Every step counts toward verification — bRunEnabled is run
+           scope (whether to include in the next run), not verification
+           scope. Disabling a step from the run list does not promote
+           the workflow toward Vaibified. */
         for (var i = 0; i < listSteps.length; i++) {
-            var step = listSteps[i];
-            if (step.bEnabled === false) continue;
-            if (!fbAllVerificationComplete(step, i)) return false;
+            if (!fbAllVerificationComplete(listSteps[i], i)) return false;
         }
         return true;
     }
@@ -1640,13 +1694,13 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    async function fnToggleStepEnabled(iIndex, bEnabled) {
+    async function fnToggleStepEnabled(iIndex, bRunEnabled) {
         try {
             await VaibifyApi.fdictPut(
                 "/api/steps/" + _dictSessionState.sContainerId + "/" + iIndex,
-                {bEnabled: bEnabled}
+                {bRunEnabled: bRunEnabled}
             );
-            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bEnabled = bEnabled;
+            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bRunEnabled = bRunEnabled;
         } catch (error) {
             fnShowToast("Failed to update step", "error");
         }
@@ -1860,6 +1914,14 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMarkerMtimeByStep) {
             _dictWorkflowState.dictMarkerMtimeByStep =
                 dictStatus.dictMarkerMtimeByStep;
+        }
+        if (dictStatus.dictTestSourceMtimeByStep) {
+            _dictWorkflowState.dictTestSourceMtimeByStep =
+                dictStatus.dictTestSourceMtimeByStep;
+        }
+        if (dictStatus.dictTestCategoryMtimes) {
+            _dictWorkflowState.dictTestCategoryMtimes =
+                dictStatus.dictTestCategoryMtimes;
         }
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;

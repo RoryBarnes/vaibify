@@ -560,7 +560,7 @@ class TestCommandWorkflowCli:
         dictStep = {
             "sName": "Analyze",
             "sDirectory": "/workspace/step",
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bPlotOnly": False,
             "bInteractive": True,
             "dictVerification": {"sUser": "untested"},
@@ -615,7 +615,7 @@ class TestCommandWorkflowCli:
                 "sWorkflowName": "TestFlow",
                 "listSteps": [
                     {"sName": "Build", "sDirectory": ".",
-                     "bEnabled": True, "bPlotOnly": False,
+                     "bRunEnabled": True, "bPlotOnly": False,
                      "bInteractive": False,
                      "dictVerification": {}, "dictRunStats": {},
                      "saDataCommands": [], "saPlotCommands": [],
@@ -646,7 +646,7 @@ class TestCommandWorkflowCli:
                 "sWorkflowName": "TestFlow",
                 "listSteps": [
                     {"sName": "Build", "sDirectory": ".",
-                     "bEnabled": True, "bPlotOnly": False,
+                     "bRunEnabled": True, "bPlotOnly": False,
                      "bInteractive": False,
                      "dictVerification": {"sUser": "passed"},
                      "dictRunStats": {"sLastRun": "2025-01-01"},
@@ -699,7 +699,7 @@ class TestCommandWorkflowCli:
                 "sWorkflowName": "TestFlow",
                 "listSteps": [
                     {"sName": "Build", "sDirectory": ".",
-                     "bEnabled": True, "bPlotOnly": True,
+                     "bRunEnabled": True, "bPlotOnly": True,
                      "bInteractive": False,
                      "dictVerification": {}, "dictRunStats": {},
                      "saDataCommands": [], "saPlotCommands": [],
@@ -1342,17 +1342,17 @@ class TestPipelineRunnerHelpers:
 
     def test_fbShouldRunStep_before_start(self):
         from vaibify.gui.pipelineRunner import _fbShouldRunStep
-        dictStep = {"bEnabled": True}
+        dictStep = {"bRunEnabled": True}
         assert _fbShouldRunStep(dictStep, 1, 3) is False
 
     def test_fbShouldRunStep_at_start(self):
         from vaibify.gui.pipelineRunner import _fbShouldRunStep
-        dictStep = {"bEnabled": True}
+        dictStep = {"bRunEnabled": True}
         assert _fbShouldRunStep(dictStep, 3, 3) is True
 
     def test_fbShouldRunStep_disabled(self):
         from vaibify.gui.pipelineRunner import _fbShouldRunStep
-        dictStep = {"bEnabled": False}
+        dictStep = {"bRunEnabled": False}
         assert _fbShouldRunStep(dictStep, 3, 1) is False
 
     def test_fnSetInteractiveResponse_sets_and_triggers(self):

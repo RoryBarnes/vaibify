@@ -4,13 +4,13 @@ import time
 
 from vaibify.gui.pipelineRunner import (
     _fParseCpuTime,
+    _fbStepIncludedInRun,
     _fdictBuildWorkflowVars,
     _fiAggregateTestExitCode,
     _flistCollectCategoryLogs,
     _flistFilterUnexpectedFiles,
     _flistResolveTestCommands,
     _fnRecordRunStats,
-    _fnToggleSelectedSteps,
     _fsExtractLogLine,
     _fsExtractScriptPath,
     _fsWrapWithTime,
@@ -282,24 +282,29 @@ class TestFdictBuildWorkflowVars:
         assert dictResult["sFigureType"] == "png"
 
 
-class TestFnToggleSelectedSteps:
-    def test_enables_selected_only(self):
-        dictWorkflow = {"listSteps": [
-            {"sName": "A", "bEnabled": True},
-            {"sName": "B", "bEnabled": True},
-            {"sName": "C", "bEnabled": True},
-        ]}
-        _fnToggleSelectedSteps(dictWorkflow, [0, 2])
-        assert dictWorkflow["listSteps"][0]["bEnabled"] is True
-        assert dictWorkflow["listSteps"][1]["bEnabled"] is False
-        assert dictWorkflow["listSteps"][2]["bEnabled"] is True
+class TestFbStepIncludedInRun:
+    def test_set_includes_selected_index(self):
+        dictStep = {"bRunEnabled": False}
+        assert _fbStepIncludedInRun(dictStep, 2, {0, 2}) is True
 
-    def test_empty_selection_disables_all(self):
-        dictWorkflow = {"listSteps": [
-            {"sName": "A", "bEnabled": True},
-        ]}
-        _fnToggleSelectedSteps(dictWorkflow, [])
-        assert dictWorkflow["listSteps"][0]["bEnabled"] is False
+    def test_set_excludes_unlisted_index(self):
+        dictStep = {"bRunEnabled": True}
+        assert _fbStepIncludedInRun(dictStep, 1, {0, 2}) is False
+
+    def test_none_falls_back_to_bRunEnabled_true(self):
+        dictStep = {"bRunEnabled": True}
+        assert _fbStepIncludedInRun(dictStep, 0, None) is True
+
+    def test_none_falls_back_to_bRunEnabled_false(self):
+        dictStep = {"bRunEnabled": False}
+        assert _fbStepIncludedInRun(dictStep, 0, None) is False
+
+    def test_none_default_when_bRunEnabled_missing(self):
+        assert _fbStepIncludedInRun({}, 0, None) is True
+
+    def test_empty_set_excludes_all_indices(self):
+        dictStep = {"bRunEnabled": True}
+        assert _fbStepIncludedInRun(dictStep, 0, set()) is False
 
 
 class TestFsExtractLogLine:

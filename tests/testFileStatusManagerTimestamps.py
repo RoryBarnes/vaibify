@@ -5,6 +5,9 @@ from vaibify.gui.fileStatusManager import (
     _fdictBuildScriptStatus,
     _fdictComputeMarkerMtimeByStep,
     _fdictComputeMaxDataMtimeByStep,
+    _fdictComputeMaxTestSourceMtimeByStep,
+    _fdictComputeTestCategoryMtimes,
+    _flistResolveTestSourcePaths,
     fbReconcileUserVerificationTimestamps,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,
@@ -468,3 +471,181 @@ def test_reconcile_strips_timestamp_when_user_failed():
     assert "sLastUserUpdate" not in (
         dictWorkflow["listSteps"][0]["dictVerification"]
     )
+
+
+# ---------------------------------------------------------------
+# Test source mtime helpers (lineage gate)
+# ---------------------------------------------------------------
+
+
+def _fdictBuildStepWithTests(sStepDir="stepA"):
+    return {
+        "sDirectory": sStepDir,
+        "saDataCommands": ["python data.py"],
+        "saPlotCommands": ["python plot.py"],
+        "saDataFiles": ["data.out"],
+        "saPlotFiles": ["figure.pdf"],
+        "dictTests": {
+            "dictQualitative": {"saCommands": [], "sFilePath": ""},
+            "dictQuantitative": {
+                "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+            },
+            "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+            "listUserTests": [],
+        },
+    }
+
+
+def test_resolveTestSourcePaths_returns_three_canonical():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    listPaths = _flistResolveTestSourcePaths(
+        dictStep, {"sRepoRoot": "/repo"},
+    )
+    assert "/repo/stepA/tests/test_integrity.py" in listPaths
+    assert "/repo/stepA/tests/test_qualitative.py" in listPaths
+    assert "/repo/stepA/tests/test_quantitative.py" in listPaths
+
+
+def test_resolveTestSourcePaths_includes_user_tests():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictStep["dictTests"]["listUserTests"] = [
+        {"sFilePath": "stepA/tests/test_extra.py"},
+    ]
+    listPaths = _flistResolveTestSourcePaths(
+        dictStep, {"sRepoRoot": "/repo"},
+    )
+    assert "/repo/stepA/tests/test_extra.py" in listPaths
+
+
+def test_resolveTestSourcePaths_no_directory_empty():
+    dictStep = {"sDirectory": "", "dictTests": {}}
+    assert _flistResolveTestSourcePaths(dictStep, {}) == []
+
+
+def test_computeMaxTestSourceMtime_picks_latest_present():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictModTimes = {
+        "/repo/stepA/tests/test_integrity.py": 1000,
+        "/repo/stepA/tests/test_qualitative.py": 2500,
+        "/repo/stepA/tests/test_quantitative.py": 1700,
+    }
+    dictResult = _fdictComputeMaxTestSourceMtimeByStep(
+        dictWorkflow, dictModTimes,
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {"0": "2500"}
+
+
+def test_computeMaxTestSourceMtime_omits_steps_without_test_files():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeMaxTestSourceMtimeByStep(
+        dictWorkflow, dictModTimes={},
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {}
+
+
+def test_computeMaxTestSourceMtime_subset_present():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeMaxTestSourceMtimeByStep(
+        dictWorkflow,
+        dictModTimes={
+            "/repo/stepA/tests/test_integrity.py": 5000,
+        },
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {"0": "5000"}
+
+
+def test_computeMaxTestSourceMtime_preserves_zero_mtime():
+    """A test source file existing with mtime=0 (e.g. placed by a sync
+    that did not preserve mtimes) is still a valid contract. The
+    helper must return "0" — *key present* — so the frontend can
+    distinguish 'contract exists, ancient' from 'no contract'."""
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeMaxTestSourceMtimeByStep(
+        dictWorkflow,
+        dictModTimes={
+            "/repo/stepA/tests/test_integrity.py": 0,
+            "/repo/stepA/tests/test_qualitative.py": 0,
+            "/repo/stepA/tests/test_quantitative.py": 0,
+        },
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert "0" in dictResult
+    assert dictResult["0"] == "0"
+
+
+# ---------------------------------------------------------------
+# _fdictComputeTestCategoryMtimes (per-category UI display)
+# ---------------------------------------------------------------
+
+
+def test_computeTestCategoryMtimes_includes_all_three():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeTestCategoryMtimes(
+        dictWorkflow,
+        dictModTimes={
+            "/repo/stepA/tests/test_integrity.py": 1000,
+            "/repo/stepA/tests/test_qualitative.py": 2000,
+            "/repo/stepA/tests/test_quantitative.py": 3000,
+        },
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {
+        "0": {
+            "integrity": "1000",
+            "qualitative": "2000",
+            "quantitative": "3000",
+        },
+    }
+
+
+def test_computeTestCategoryMtimes_omits_missing_categories():
+    """Only categories whose source file exists on disk appear in
+    the per-step subdict. The frontend uses key presence to decide
+    whether to display a 'Test file modified' line for the category.
+    """
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeTestCategoryMtimes(
+        dictWorkflow,
+        dictModTimes={
+            "/repo/stepA/tests/test_quantitative.py": 5000,
+        },
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {"0": {"quantitative": "5000"}}
+
+
+def test_computeTestCategoryMtimes_omits_steps_with_no_files():
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeTestCategoryMtimes(
+        dictWorkflow, dictModTimes={},
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {}
+
+
+def test_computeTestCategoryMtimes_preserves_zero_mtime():
+    """Same key-presence-not-truthiness contract as the per-step
+    aggregate. Zero is a real timestamp and must round-trip."""
+    dictStep = _fdictBuildStepWithTests("stepA")
+    dictWorkflow = {"listSteps": [dictStep]}
+    dictResult = _fdictComputeTestCategoryMtimes(
+        dictWorkflow,
+        dictModTimes={
+            "/repo/stepA/tests/test_integrity.py": 0,
+            "/repo/stepA/tests/test_qualitative.py": 1000,
+        },
+        dictVars={"sRepoRoot": "/repo"},
+    )
+    assert dictResult == {
+        "0": {"integrity": "0", "qualitative": "1000"},
+    }

@@ -64,7 +64,7 @@ var VaibifyStepRenderer = (function () {
             sStatusClass = dictContext.fsComputeStepDotState(
                 step, iIndex);
         }
-        var bEnabled = step.bEnabled !== false;
+        var bRunEnabled = step.bRunEnabled !== false;
         var bSelected = iIndex === dictContext.iSelectedStepIndex;
         var bExpanded = dictContext.setExpandedSteps.has(iIndex);
 
@@ -81,7 +81,7 @@ var VaibifyStepRenderer = (function () {
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
             '<input type="checkbox" class="step-checkbox"' +
-            (bEnabled ? " checked" : "") + ">" +
+            (bRunEnabled ? " checked" : "") + ">" +
             '<span class="step-number">' +
             sStepNumber + "</span>" +
             '<span class="step-name" title="' +
@@ -393,8 +393,24 @@ var VaibifyStepRenderer = (function () {
                 '" data-category="' + sCategory +
                 '">Run</button></div>';
         }
+        sHtml += fsRenderTestSourceMtimeLine(
+            iIndex, sCategory, dictContext);
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderTestSourceMtimeLine(
+        iIndex, sCategory, dictContext
+    ) {
+        var dictByStep = dictContext.dictTestCategoryMtimes || {};
+        var dictCats = dictByStep[String(iIndex)] || {};
+        if (!dictCats.hasOwnProperty(sCategory)) return "";
+        var sFormatted = VaibifyUtilities.fsFormatEpochUtc(
+            dictCats[sCategory]);
+        if (!sFormatted) return "";
+        return '<div class="test-source-mtime ' +
+            'detail-note">Test file modified: ' +
+            fnEscapeHtml(sFormatted) + '</div>';
     }
 
     function fsRenderDepsExpanded(iIndex, dictContext) {
@@ -439,19 +455,30 @@ var VaibifyStepRenderer = (function () {
             dictContext.fsVerificationStateLabel(sState);
         var sIcon = sState === "unknown" ? "" :
             dictContext.fsVerificationStateIcon(sState) + " ";
-        var sExtra = sDetail ? " — " + fnEscapeHtml(sDetail) : "";
-        return '<div class="dep-axis-row">' +
+        var sHtml = '<div class="dep-axis-row">' +
             '<span class="dep-axis-label">' +
             fnEscapeHtml(sLabel) + '</span>' +
             '<span class="verification-badge state-' +
             sBadgeState + '">' + sIcon + sStateLabel +
-            sExtra + '</span></div>';
+            '</span></div>';
+        if (sDetail) {
+            sHtml += '<div class="dep-axis-warning">' +
+                '&#9888; ' + fnEscapeHtml(sDetail) + '</div>';
+        }
+        return sHtml;
     }
 
     function fsFormatTimingDetail(tStates) {
         if (tStates.sTiming !== "failed") return "";
+        if (tStates.iDepTestSrcMtime !== null
+                && tStates.iDepTestSrcMtime !== undefined) {
+            return "Unit tests edited " +
+                fsFormatUnixTimestamp(
+                    String(tStates.iDepTestSrcMtime)) +
+                " after my output";
+        }
         if (!tStates.iDepMtime) return "";
-        return "regenerated " +
+        return "Outputs regenerated " +
             fsFormatUnixTimestamp(String(tStates.iDepMtime)) +
             " after my output";
     }

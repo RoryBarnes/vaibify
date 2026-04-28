@@ -6,7 +6,7 @@
         {
             "sName": "AnalyzeData",
             "sDirectory": ".",
-            "bEnabled": true,
+            "bRunEnabled": true,
             "bPlotOnly": false,
             "saDataCommands": [
                 "python runAnalysis.py"

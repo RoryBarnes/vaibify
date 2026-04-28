@@ -10,7 +10,6 @@ from vaibify.gui.pipelineRunner import (
     _fbShouldRunStep,
     fsGenerateLogFilename,
     ffBuildLoggingCallback,
-    _fnToggleSelectedSteps,
     _fnEmitStepResult,
     _fnEmitCompletion,
     _fnEmitCommandHeader,
@@ -60,23 +59,37 @@ def test_fnEmitBanner_separator_length():
 
 
 def test_fbShouldRunStep_equal_to_start():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 5, 5) is True
 
 
 def test_fbShouldRunStep_above_start():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 10, 3) is True
 
 
 def test_fbShouldRunStep_interactive_eligible():
-    dictStep = {"bEnabled": True, "bInteractive": True}
+    dictStep = {"bRunEnabled": True, "bInteractive": True}
     assert _fbShouldRunStep(dictStep, 5, 1) is True
 
 
 def test_fbShouldRunStep_disabled_interactive():
-    dictStep = {"bEnabled": False, "bInteractive": True}
+    dictStep = {"bRunEnabled": False, "bInteractive": True}
     assert _fbShouldRunStep(dictStep, 1, 1) is False
+
+
+def test_fbShouldRunStep_set_overrides_bRunEnabled():
+    dictStep = {"bRunEnabled": False}
+    assert _fbShouldRunStep(
+        dictStep, 3, 1, setRunStepIndices={2}
+    ) is True
+
+
+def test_fbShouldRunStep_set_excludes_index():
+    dictStep = {"bRunEnabled": True}
+    assert _fbShouldRunStep(
+        dictStep, 1, 1, setRunStepIndices={2, 5}
+    ) is False
 
 
 # -----------------------------------------------------------------------
@@ -151,32 +164,42 @@ def test_ffBuildLoggingCallback_forwards_to_original():
 
 
 # -----------------------------------------------------------------------
-# _fnToggleSelectedSteps
+# Selected-step run scope leaves bRunEnabled untouched
 # -----------------------------------------------------------------------
 
 
-def test_fnToggleSelectedSteps_enables_selected():
-    dictWorkflow = {
-        "listSteps": [
-            {"sName": "A", "bEnabled": True},
-            {"sName": "B", "bEnabled": True},
-            {"sName": "C", "bEnabled": True},
-        ]
-    }
-    _fnToggleSelectedSteps(dictWorkflow, [0, 2])
-    assert dictWorkflow["listSteps"][0]["bEnabled"] is True
-    assert dictWorkflow["listSteps"][1]["bEnabled"] is False
-    assert dictWorkflow["listSteps"][2]["bEnabled"] is True
+def test_fnRunSelectedSteps_does_not_mutate_bRunEnabled():
+    """fnRunSelectedSteps must not toggle bRunEnabled on disk.
 
+    Run scope is a per-call parameter; the workflow's persisted
+    bRunEnabled flags survive the call regardless of which indices
+    were selected.
+    """
+    from vaibify.gui import pipelineRunner
 
-def test_fnToggleSelectedSteps_empty_disables_all():
     dictWorkflow = {
+        "sWorkflowName": "test",
         "listSteps": [
-            {"sName": "A", "bEnabled": True},
-        ]
+            {"sName": "A", "bRunEnabled": True},
+            {"sName": "B", "bRunEnabled": True},
+            {"sName": "C", "bRunEnabled": True},
+        ],
     }
-    _fnToggleSelectedSteps(dictWorkflow, [])
-    assert dictWorkflow["listSteps"][0]["bEnabled"] is False
+    fnFakeRun = AsyncMock(return_value=0)
+    with patch.object(
+        pipelineRunner, "_fiRunWithLogging", fnFakeRun,
+    ):
+        _fnRunAsync(pipelineRunner.fnRunSelectedSteps(
+            connectionDocker=MagicMock(), sContainerId="cid",
+            listStepIndices=[0, 2], dictWorkflow=dictWorkflow,
+            sWorkflowPath="/w/wf.json", sWorkdir="/w",
+            fnStatusCallback=AsyncMock(),
+        ))
+    assert dictWorkflow["listSteps"][0]["bRunEnabled"] is True
+    assert dictWorkflow["listSteps"][1]["bRunEnabled"] is True
+    assert dictWorkflow["listSteps"][2]["bRunEnabled"] is True
+    _, kwargs = fnFakeRun.call_args
+    assert kwargs["setRunStepIndices"] == {0, 2}
 
 
 # -----------------------------------------------------------------------

@@ -665,7 +665,7 @@ Add a new entry to `listSteps`:
 {
     "sName": "Human-Readable Step Name",
     "sDirectory": "stepDirectoryName",
-    "bEnabled": true,
+    "bRunEnabled": true,
     "bPlotOnly": false,
     "bInteractive": false,
     "saDataCommands": [

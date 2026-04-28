@@ -114,7 +114,7 @@ def test_fdictCreateStep_returns_valid_dict():
 
     assert dictStep["sName"] == "TestStep"
     assert dictStep["sDirectory"] == "/workspace/test"
-    assert dictStep["bEnabled"] is True
+    assert dictStep["bRunEnabled"] is True
     assert dictStep["bPlotOnly"] is False
     assert dictStep["saDataCommands"] == ["make"]
     assert dictStep["saPlotCommands"] == ["python plot.py"]
@@ -413,6 +413,40 @@ def test_fdictMigrateTestFormat_already_migrated():
     assert dictStep["dictTests"]["dictQualitative"]["saCommands"] == [
         "pytest tests/test_qualitative.py"
     ]
+
+
+def test_fnMigrateRunEnabledKey_renames_legacy():
+    from vaibify.gui.workflowManager import fnMigrateRunEnabledKey
+    dictWorkflow = {"listSteps": [
+        {"sName": "A", "bEnabled": True},
+        {"sName": "B", "bEnabled": False},
+    ]}
+    fnMigrateRunEnabledKey(dictWorkflow)
+    assert dictWorkflow["listSteps"][0]["bRunEnabled"] is True
+    assert dictWorkflow["listSteps"][1]["bRunEnabled"] is False
+    assert "bEnabled" not in dictWorkflow["listSteps"][0]
+    assert "bEnabled" not in dictWorkflow["listSteps"][1]
+
+
+def test_fnMigrateRunEnabledKey_idempotent_on_new_format():
+    from vaibify.gui.workflowManager import fnMigrateRunEnabledKey
+    dictWorkflow = {"listSteps": [
+        {"sName": "A", "bRunEnabled": True},
+    ]}
+    fnMigrateRunEnabledKey(dictWorkflow)
+    assert dictWorkflow["listSteps"][0]["bRunEnabled"] is True
+    assert "bEnabled" not in dictWorkflow["listSteps"][0]
+
+
+def test_fnMigrateRunEnabledKey_prefers_existing_bRunEnabled():
+    """If both keys are present, the new key wins; legacy is removed."""
+    from vaibify.gui.workflowManager import fnMigrateRunEnabledKey
+    dictWorkflow = {"listSteps": [
+        {"sName": "A", "bEnabled": False, "bRunEnabled": True},
+    ]}
+    fnMigrateRunEnabledKey(dictWorkflow)
+    assert dictWorkflow["listSteps"][0]["bRunEnabled"] is True
+    assert "bEnabled" not in dictWorkflow["listSteps"][0]
 
 
 def test_flistBuildTestCommands():

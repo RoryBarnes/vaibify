@@ -1,7 +1,6 @@
 """Execute workflow steps by running commands directly in containers."""
 
 import asyncio
-import json
 import posixpath
 
 from . import pipelineState
@@ -92,13 +91,15 @@ from .interactiveSteps import (  # noqa: F401
 
 async def _flistPreflightValidate(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
-    iStartStep=1,
+    iStartStep=1, setRunStepIndices=None,
 ):
     """Validate step directories and scripts exist before running."""
     listErrors = []
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
-        if not dictStep.get("bEnabled", True):
+        if not _fbStepIncludedInRun(
+            dictStep, iIndex, setRunStepIndices,
+        ):
             continue
         if iStepNumber < iStartStep:
             continue
@@ -134,6 +135,64 @@ def _fdictBuildVariables(dictWorkflow, sWorkdir):
 
 
 # ---------------------------------------------------------------------------
+# Determinism: SOURCE_DATE_EPOCH injection (matplotlib + reproducible builds)
+# ---------------------------------------------------------------------------
+
+S_ENV_PREFIX_KEY = "__sEnvPrefix"
+
+
+async def _fiQueryHeadCommitEpoch(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Return HEAD commit epoch as int, or 0 if unavailable."""
+    if not sProjectRepoPath:
+        return 0
+    sCmd = (
+        f"git -C {fsShellQuote(sProjectRepoPath)} "
+        f"log -1 --format=%ct HEAD 2>/dev/null"
+    )
+    iExitCode, sOutput = await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
+        sContainerId, sCmd,
+    )
+    if iExitCode != 0:
+        return 0
+    try:
+        return int(sOutput.strip())
+    except ValueError:
+        return 0
+
+
+async def _fsBuildDeterminismEnvPrefix(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Return shell prefix that exports SOURCE_DATE_EPOCH for the run.
+
+    The value is the project-repo HEAD commit epoch, so identical
+    source produces byte-stable matplotlib PDFs across reruns.
+    Returns empty string if the epoch cannot be determined; callers
+    must not block step execution on the result.
+    """
+    iEpoch = await _fiQueryHeadCommitEpoch(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+    if iEpoch <= 0:
+        return ""
+    return f"export SOURCE_DATE_EPOCH={iEpoch} && "
+
+
+async def _fnInjectDeterminismEnvPrefix(
+    connectionDocker, sContainerId, dictWorkflow, dictVariables,
+):
+    """Compute the env prefix once and stash it in dictVariables."""
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sEnvPrefix = await _fsBuildDeterminismEnvPrefix(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+    dictVariables[S_ENV_PREFIX_KEY] = sEnvPrefix
+
+
+# ---------------------------------------------------------------------------
 # Core command execution
 # ---------------------------------------------------------------------------
 
@@ -143,6 +202,9 @@ async def _ftRunCommandList(
 ):
     """Execute commands, return (iExitCode, fTotalCpuSeconds)."""
     fTotalCpu = 0.0
+    sEnvPrefix = ""
+    if dictVariables:
+        sEnvPrefix = dictVariables.get(S_ENV_PREFIX_KEY, "")
     for sCommand in listCommands:
         sResolved = workflowManager.fsResolveCommand(
             sCommand, dictVariables
@@ -150,6 +212,7 @@ async def _ftRunCommandList(
         iExitCode, fCpu = await _ftRunSingleCommand(
             connectionDocker, sContainerId,
             sCommand, sResolved, sWorkdir, fnStatusCallback,
+            sEnvPrefix=sEnvPrefix,
         )
         fTotalCpu += fCpu
         if iExitCode != 0:
@@ -160,12 +223,13 @@ async def _ftRunCommandList(
 async def _ftRunSingleCommand(
     connectionDocker, sContainerId,
     sOriginal, sResolved, sWorkdir, fnStatusCallback,
+    sEnvPrefix="",
 ):
     """Execute one command, return (iExitCode, fCpuSeconds)."""
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
     )
-    sTimedCmd = _fsWrapWithTime(sResolved)
+    sTimedCmd = _fsWrapWithTime(sEnvPrefix + sResolved)
     iExitCode, sOutput = await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,
         sContainerId, sTimedCmd, sWorkdir=sWorkdir,
@@ -394,11 +458,28 @@ async def _fbVerifyStepList(
 # Dependency and skip checks
 # ---------------------------------------------------------------------------
 
-def _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
-    """Return True if this step should be executed."""
+def _fbShouldRunStep(
+    dictStep, iStepNumber, iStartStep, setRunStepIndices=None,
+):
+    """Return True if this step should be executed.
+
+    When ``setRunStepIndices`` is supplied (non-None), only those
+    0-based indices run; ``bRunEnabled`` is ignored for that run.
+    Otherwise the step's persisted ``bRunEnabled`` flag controls
+    inclusion.
+    """
     if iStepNumber < iStartStep:
         return False
-    return dictStep.get("bEnabled", True)
+    return _fbStepIncludedInRun(
+        dictStep, iStepNumber - 1, setRunStepIndices,
+    )
+
+
+def _fbStepIncludedInRun(dictStep, iIndex, setRunStepIndices):
+    """Return True when this step is in scope for the current run."""
+    if setRunStepIndices is not None:
+        return iIndex in setRunStepIndices
+    return dictStep.get("bRunEnabled", True)
 
 
 async def _fsMissingDependencyFile(
@@ -533,6 +614,7 @@ async def _fiRunStepList(
     connectionDocker, sContainerId,
     dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
     iStartStep=1, dictInteractive=None, sRunMode="full",
+    setRunStepIndices=None,
 ):
     """Iterate steps, pausing at interactive ones."""
     from .interactiveSteps import _fiHandleInteractiveStep
@@ -540,7 +622,9 @@ async def _fiRunStepList(
     iFinalExitCode = 0
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
-        if not _fbShouldRunStep(dictStep, iStepNumber, iStartStep):
+        if not _fbShouldRunStep(
+            dictStep, iStepNumber, iStartStep, setRunStepIndices,
+        ):
             continue
         sStepLabel = fsLabelFromStepIndex(dictWorkflow, iIndex)
         if dictStep.get("bInteractive", False):
@@ -565,6 +649,7 @@ async def _fiRunStepsAndLog(
     dictVariables, fnLogging, fnStatusCallback,
     sLogPath, listLogLines, sAction, iStartStep,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
+    setRunStepIndices=None,
 ):
     """Execute steps, write log, and emit final status."""
     iStepCount = len(dictWorkflow.get("listSteps", []))
@@ -583,7 +668,7 @@ async def _fiRunStepsAndLog(
         connectionDocker, sContainerId,
         dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
         iStartStep=iStartStep, dictInteractive=dictInteractive,
-        sRunMode=sRunMode,
+        sRunMode=sRunMode, setRunStepIndices=setRunStepIndices,
     )
     await _fnFinalizeRun(
         connectionDocker, sContainerId, dictState, iResult,
@@ -597,6 +682,7 @@ async def _fiRunWithLogging(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
+    setRunStepIndices=None,
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
@@ -608,11 +694,15 @@ async def _fiRunWithLogging(
     listLogLines = []
     fnLogging = ffBuildLoggingCallback(fnStatusCallback, listLogLines)
     dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
+    await _fnInjectDeterminismEnvPrefix(
+        connectionDocker, sContainerId, dictWorkflow, dictVariables,
+    )
     fnClearOutputModifiedFlags(dictWorkflow)
 
     listPreflightErrors = await _flistPreflightValidate(
         connectionDocker, sContainerId, dictWorkflow,
         dictVariables, iStartStep,
+        setRunStepIndices=setRunStepIndices,
     )
     if listPreflightErrors:
         return await _fiReportPreflightFailure(
@@ -627,6 +717,7 @@ async def _fiRunWithLogging(
         sWorkflowPath=sWorkflowPath,
         dictInteractive=dictInteractive,
         sRunMode=sRunMode,
+        setRunStepIndices=setRunStepIndices,
     )
 
 
@@ -718,55 +809,31 @@ async def fnVerifyOnly(
 
 
 # ---------------------------------------------------------------------------
-# Step selection helpers
+# Selected-steps execution
 # ---------------------------------------------------------------------------
-
-def _fnToggleSelectedSteps(dictWorkflow, listStepIndices):
-    """Set bEnabled only for steps whose indices are in the list."""
-    setSelected = set(listStepIndices)
-    for iIndex in range(len(dictWorkflow["listSteps"])):
-        dictWorkflow["listSteps"][iIndex]["bEnabled"] = (
-            iIndex in setSelected
-        )
-
-
-async def _fnExecuteSelectedSteps(
-    connectionDocker, sContainerId, listStepIndices,
-    dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
-    sRunMode="full",
-):
-    """Toggle steps, save, run with logging, and emit completion."""
-    _fnToggleSelectedSteps(dictWorkflow, listStepIndices)
-    workflowManager.fnSaveWorkflowToContainer(
-        connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-    )
-    return await _fiRunWithLogging(
-        connectionDocker, sContainerId, dictWorkflow,
-        sWorkdir, fnStatusCallback, "runSelected",
-        sRunMode=sRunMode,
-    )
-
 
 async def fnRunSelectedSteps(
     connectionDocker, sContainerId, listStepIndices,
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
     sRunMode="full",
 ):
-    """Run only selected steps by toggling bEnabled."""
+    """Run only the listed step indices for this run.
+
+    The workflow's persistent ``bRunEnabled`` flags are not mutated.
+    Run scope is communicated as a parameter set so that an
+    interrupted run cannot leave the workflow definition in a
+    half-toggled state on disk.
+    """
     if sRunMode not in SET_VALID_RUN_MODES:
         raise ValueError(
             f"Unknown sRunMode: {sRunMode!r}. "
             f"Valid values: {sorted(SET_VALID_RUN_MODES)}"
         )
-    dictBackup = json.loads(json.dumps(dictWorkflow))
-    try:
-        iResult = await _fnExecuteSelectedSteps(
-            connectionDocker, sContainerId, listStepIndices,
-            dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
-            sRunMode=sRunMode,
-        )
-    finally:
-        workflowManager.fnSaveWorkflowToContainer(
-            connectionDocker, sContainerId, dictBackup, sWorkflowPath,
-        )
-    return iResult
+    setRunStepIndices = set(listStepIndices)
+    return await _fiRunWithLogging(
+        connectionDocker, sContainerId, dictWorkflow,
+        sWorkdir, fnStatusCallback, "runSelected",
+        sWorkflowPath=sWorkflowPath,
+        sRunMode=sRunMode,
+        setRunStepIndices=setRunStepIndices,
+    )

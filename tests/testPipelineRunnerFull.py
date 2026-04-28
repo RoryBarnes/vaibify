@@ -28,6 +28,10 @@ from vaibify.gui.pipelineRunner import (
     _fnWriteTestLog,
     _fiRunTestCommands,
     _fdictLoadWorkflow,
+    _fiQueryHeadCommitEpoch,
+    _fsBuildDeterminismEnvPrefix,
+    _fnInjectDeterminismEnvPrefix,
+    S_ENV_PREFIX_KEY,
 )
 
 
@@ -477,14 +481,24 @@ def test_fnVerifyOnly_missing_files(mockLoad):
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
 @patch("vaibify.gui.workflowManager.fnSaveWorkflowToContainer")
-def test_fnRunSelectedSteps_restores(mockSave, mockRun):
+def test_fnRunSelectedSteps_does_not_persist_run_scope(
+    mockSave, mockRun,
+):
+    """Run scope is a per-call parameter, not a workflow mutation.
+
+    fnRunSelectedSteps must not save the workflow during the run; the
+    pre-refactor implementation toggled bEnabled and then restored it
+    via finally, which corrupted on-disk state when restoration was
+    interrupted. The new implementation passes setRunStepIndices into
+    the runner directly.
+    """
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [
-            {"sName": "A", "bEnabled": True},
-            {"sName": "B", "bEnabled": True},
+            {"sName": "A", "bRunEnabled": True},
+            {"sName": "B", "bRunEnabled": True},
         ],
     }
     iResult = _fnRunAsync(fnRunSelectedSteps(
@@ -492,7 +506,11 @@ def test_fnRunSelectedSteps_restores(mockSave, mockRun):
         "/wf.json", "/work", fnCallback,
     ))
     assert iResult == 0
-    assert mockSave.call_count == 2
+    assert mockSave.call_count == 0
+    assert dictWorkflow["listSteps"][0]["bRunEnabled"] is True
+    assert dictWorkflow["listSteps"][1]["bRunEnabled"] is True
+    _, kwargs = mockRun.call_args
+    assert kwargs["setRunStepIndices"] == {0}
 
 
 # -----------------------------------------------------------------------
@@ -665,3 +683,104 @@ def test_fnWriteTestLog_writes_file():
         mockDocker, "cid", 1, ["test passed"],
     ))
     mockDocker.fnWriteFile.assert_called_once()
+
+
+# -----------------------------------------------------------------------
+# Determinism helpers: SOURCE_DATE_EPOCH injection
+# -----------------------------------------------------------------------
+
+
+def test_fiQueryHeadCommitEpoch_returns_int_on_success():
+    mockDocker = _fMockDocker(0, "1745798400\n")
+    iEpoch = _fnRunAsync(_fiQueryHeadCommitEpoch(
+        mockDocker, "cid", "/workspace/repo",
+    ))
+    assert iEpoch == 1745798400
+
+
+def test_fiQueryHeadCommitEpoch_returns_zero_when_repo_path_empty():
+    mockDocker = _fMockDocker()
+    iEpoch = _fnRunAsync(_fiQueryHeadCommitEpoch(
+        mockDocker, "cid", "",
+    ))
+    assert iEpoch == 0
+    mockDocker.ftResultExecuteCommand.assert_not_called()
+
+
+def test_fiQueryHeadCommitEpoch_returns_zero_on_git_failure():
+    mockDocker = _fMockDocker(128, "")
+    iEpoch = _fnRunAsync(_fiQueryHeadCommitEpoch(
+        mockDocker, "cid", "/workspace/repo",
+    ))
+    assert iEpoch == 0
+
+
+def test_fiQueryHeadCommitEpoch_returns_zero_on_unparseable_output():
+    mockDocker = _fMockDocker(0, "not-a-number\n")
+    iEpoch = _fnRunAsync(_fiQueryHeadCommitEpoch(
+        mockDocker, "cid", "/workspace/repo",
+    ))
+    assert iEpoch == 0
+
+
+def test_fsBuildDeterminismEnvPrefix_with_valid_epoch():
+    mockDocker = _fMockDocker(0, "1745798400\n")
+    sPrefix = _fnRunAsync(_fsBuildDeterminismEnvPrefix(
+        mockDocker, "cid", "/workspace/repo",
+    ))
+    assert sPrefix == "export SOURCE_DATE_EPOCH=1745798400 && "
+
+
+def test_fsBuildDeterminismEnvPrefix_empty_when_unavailable():
+    mockDocker = _fMockDocker(128, "")
+    sPrefix = _fnRunAsync(_fsBuildDeterminismEnvPrefix(
+        mockDocker, "cid", "/workspace/repo",
+    ))
+    assert sPrefix == ""
+
+
+def test_fnInjectDeterminismEnvPrefix_writes_to_dictVariables():
+    mockDocker = _fMockDocker(0, "1745798400\n")
+    dictWorkflow = {"sProjectRepoPath": "/workspace/repo"}
+    dictVariables = {}
+    _fnRunAsync(_fnInjectDeterminismEnvPrefix(
+        mockDocker, "cid", dictWorkflow, dictVariables,
+    ))
+    assert S_ENV_PREFIX_KEY in dictVariables
+    assert "SOURCE_DATE_EPOCH=1745798400" in (
+        dictVariables[S_ENV_PREFIX_KEY]
+    )
+
+
+def test_fnInjectDeterminismEnvPrefix_empty_when_no_repo_path():
+    mockDocker = _fMockDocker()
+    dictWorkflow = {}
+    dictVariables = {}
+    _fnRunAsync(_fnInjectDeterminismEnvPrefix(
+        mockDocker, "cid", dictWorkflow, dictVariables,
+    ))
+    assert dictVariables[S_ENV_PREFIX_KEY] == ""
+
+
+def test_ftRunCommandList_threads_env_prefix_to_executed_command():
+    mockDocker = _fMockDocker(0, "")
+    fnCallback, _ = _fMockCallback()
+    dictVariables = {
+        S_ENV_PREFIX_KEY: "export SOURCE_DATE_EPOCH=42 && ",
+    }
+    _fnRunAsync(_ftRunCommandList(
+        mockDocker, "cid", ["echo hi"],
+        "/work", dictVariables, fnCallback,
+    ))
+    sExecuted = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "SOURCE_DATE_EPOCH=42" in sExecuted
+
+
+def test_ftRunSingleCommand_no_env_prefix_by_default():
+    mockDocker = _fMockDocker(0, "")
+    fnCallback, _ = _fMockCallback()
+    _fnRunAsync(_ftRunSingleCommand(
+        mockDocker, "cid", "echo hi", "echo hi", "/work", fnCallback,
+    ))
+    sExecuted = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "SOURCE_DATE_EPOCH" not in sExecuted

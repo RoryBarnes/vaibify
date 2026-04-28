@@ -109,7 +109,7 @@ class StepUpdateRequest(BaseModel):
     sDirectory: Optional[str] = None
     bPlotOnly: Optional[bool] = None
     bInteractive: Optional[bool] = None
-    bEnabled: Optional[bool] = None
+    bRunEnabled: Optional[bool] = None
     saDataCommands: Optional[List[str]] = None
     saDataFiles: Optional[List[str]] = None
     saTestCommands: Optional[List[str]] = None
@@ -133,6 +133,7 @@ class WorkflowSettingsRequest(BaseModel):
     sFigureType: Optional[str] = None
     iNumberOfCores: Optional[int] = None
     fTolerance: Optional[float] = None
+    bAutoArchive: Optional[bool] = None
 
 
 class RunRequest(BaseModel):
@@ -249,6 +250,7 @@ def fdictExtractSettings(dictWorkflow):
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
         "fTolerance": dictWorkflow.get("fTolerance", 1e-6),
+        "bAutoArchive": dictWorkflow.get("bAutoArchive", False),
     }
 
 
@@ -1057,11 +1059,14 @@ from .fileStatusManager import (  # noqa: F401
     _fnInvalidateDownstreamStep,
     _fnInvalidateStepFiles,
     _fnUpdateModTimeBaseline,
+    fbIsStepFullyVerified,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
+    flistStepRemoteFiles,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,
+    fnMaybeAutoArchive,
     fsMarkerNameFromStepDirectory,
 )
 

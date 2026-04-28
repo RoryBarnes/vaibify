@@ -44,7 +44,7 @@ def _fdictBuildTestStep(sName, sDirectory, listCommands=None):
     return {
         "sName": sName,
         "sDirectory": sDirectory,
-        "bEnabled": True,
+        "bRunEnabled": True,
         "bPlotOnly": True,
         "saDataCommands": [],
         "saPlotCommands": listCommands or [],
@@ -195,7 +195,7 @@ async def test_preflight_resolves_repo_relative_step_directory():
 async def test_preflight_skips_disabled_steps():
     dictStep = _fdictBuildTestStep("Disabled", "/nonexistent",
                                    ["python nope.py"])
-    dictStep["bEnabled"] = False
+    dictStep["bRunEnabled"] = False
     dictWorkflow = _fdictBuildTestWorkflow([dictStep])
     mockConnection = MockDockerConnection({
         "test -d /nonexistent": 1,
