@@ -784,3 +784,165 @@ def test_clone_uses_inline_credential_helper_not_global(tmp_path):
     listCloneCmd = [c for c in listCaptured if "clone" in c]
     sJoined = " ".join(str(s) for s in listCloneCmd[0])
     assert "credential.https://git.overleaf.com.helper=" in sJoined
+
+
+# -----------------------------------------------------------------------
+# fnValidateTargetDirectory: previously-uncovered exception branches
+# -----------------------------------------------------------------------
+
+
+def test_fnValidateTargetDirectory_rejects_none():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidateTargetDirectory,
+    )
+    with pytest.raises(OverleafError, match="must be provided"):
+        fnValidateTargetDirectory(None)
+
+
+def test_fnValidateTargetDirectory_rejects_null_bytes():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidateTargetDirectory,
+    )
+    with pytest.raises(OverleafError, match="null bytes"):
+        fnValidateTargetDirectory("figures/\x00malicious")
+
+
+def test_fnValidateTargetDirectory_accepts_empty_string():
+    """Empty string is the documented no-op (push to repo root)."""
+    from vaibify.reproducibility.overleafSync import (
+        fnValidateTargetDirectory,
+    )
+    fnValidateTargetDirectory("")
+
+
+# -----------------------------------------------------------------------
+# fnValidatePullRelativePath: previously-uncovered empty-path branch
+# -----------------------------------------------------------------------
+
+
+def test_fnValidatePullRelativePath_rejects_none():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath,
+    )
+    with pytest.raises(OverleafError, match="must not be empty"):
+        fnValidatePullRelativePath(None)
+
+
+def test_fnValidatePullRelativePath_rejects_empty_string():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath,
+    )
+    with pytest.raises(OverleafError, match="must not be empty"):
+        fnValidatePullRelativePath("")
+
+
+# -----------------------------------------------------------------------
+# _fnAssertRealPathUnderRoot: symlink-escape detection
+# -----------------------------------------------------------------------
+
+
+def test_fnAssertRealPathUnderRoot_accepts_root_itself(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAssertRealPathUnderRoot,
+    )
+    _fnAssertRealPathUnderRoot(str(tmp_path), str(tmp_path))
+
+
+def test_fnAssertRealPathUnderRoot_accepts_path_inside_root(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAssertRealPathUnderRoot,
+    )
+    pathInside = tmp_path / "figures"
+    pathInside.mkdir()
+    _fnAssertRealPathUnderRoot(str(pathInside), str(tmp_path))
+
+
+def test_fnAssertRealPathUnderRoot_rejects_symlink_escape(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAssertRealPathUnderRoot,
+    )
+    pathRoot = tmp_path / "repo"
+    pathRoot.mkdir()
+    pathOutside = tmp_path / "outside"
+    pathOutside.mkdir()
+    pathTarget = pathRoot / "figures"
+    pathTarget.symlink_to(pathOutside, target_is_directory=True)
+    with pytest.raises(OverleafError, match="symlink"):
+        _fnAssertRealPathUnderRoot(str(pathTarget), str(pathRoot))
+
+
+# -----------------------------------------------------------------------
+# _fnRunSubprocess: error mapping and credential redaction
+# -----------------------------------------------------------------------
+
+
+def test_fnRunSubprocess_raises_overleaf_error_on_missing_binary():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+    with pytest.raises(OverleafError, match="command not found"):
+        _fnRunSubprocess(
+            ["definitely-not-a-real-binary-xyz"], "git add failed",
+        )
+
+
+def test_fnRunSubprocess_raises_overleaf_error_on_called_process_error():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr="fatal: not a git repository",
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        with pytest.raises(OverleafError, match="git add failed"):
+            _fnRunSubprocess(["git", "add", "-A"], "git add failed")
+
+
+def test_fnRunSubprocess_redacts_credentials_in_error_message():
+    """Tokens embedded in git URLs must not surface in OverleafError."""
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    sLeakyStderr = (
+        "fatal: unable to access "
+        "'https://x:supersecrettoken123@git.overleaf.com/proj/.git'"
+    )
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr=sLeakyStderr,
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        try:
+            _fnRunSubprocess(["git", "fetch"], "git fetch failed")
+        except OverleafError as error:
+            sMessage = str(error)
+            assert "supersecrettoken123" not in sMessage
+            assert "<redacted>" in sMessage
+        else:
+            pytest.fail("Expected OverleafError")
+
+
+def test_fnRunSubprocess_maps_auth_failure_to_auth_error():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr="fatal: Authentication failed",
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        with pytest.raises(OverleafAuthError):
+            _fnRunSubprocess(["git", "push"], "git push failed")
+
+
+def test_fnRunSubprocess_maps_rate_limit_to_rate_limit_error():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr="error: rate limit exceeded",
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        with pytest.raises(OverleafRateLimitError):
+            _fnRunSubprocess(["git", "push"], "git push failed")

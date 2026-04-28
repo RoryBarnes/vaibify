@@ -2,6 +2,7 @@
 
 import os
 import stat
+from unittest.mock import patch
 
 import pytest
 
@@ -188,6 +189,79 @@ def test_dispatcher_github_staged_push_uses_hardening_flags():
     sCmd = docker.listCommands[0]
     assert "protocol.file.allow=never" in sCmd
     assert "core.symlinks=false" in sCmd
+
+
+# ----------------------------------------------------------------------
+# fsKeyringSlotFromRemoteUrl: defensive ValueError catch
+# ----------------------------------------------------------------------
+
+
+def test_fsKeyringSlotFromRemoteUrl_catches_validate_failure():
+    """Belt-and-suspenders: if fsKeyringSlotFor raises, return ''."""
+    with patch.object(
+        githubAuth, "fsKeyringSlotFor", side_effect=ValueError("synthetic")
+    ):
+        assert githubAuth.fsKeyringSlotFromRemoteUrl(
+            "https://github.com/owner/repo.git"
+        ) == ""
+
+
+# ----------------------------------------------------------------------
+# fsResolveToken: keyring/gh fallback paths
+# ----------------------------------------------------------------------
+
+
+def test_fsResolveToken_returns_keyring_token_when_present():
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="kr-token",
+    ):
+        assert githubAuth.fsResolveToken(
+            "github_token:o/r"
+        ) == "kr-token"
+
+
+def test_fsResolveToken_falls_back_to_gh_when_keyring_raises():
+    def _fsRetrieve(sName, sMethod):
+        if sMethod == "keyring":
+            raise RuntimeError("keyring locked")
+        return "gh-token"
+
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        side_effect=_fsRetrieve,
+    ):
+        assert githubAuth.fsResolveToken(
+            "github_token:o/r"
+        ) == "gh-token"
+
+
+def test_fsResolveToken_uses_gh_when_keyring_slot_empty():
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="gh-token",
+    ):
+        assert githubAuth.fsResolveToken("") == "gh-token"
+
+
+def test_fsResolveToken_returns_empty_when_both_unavailable():
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        side_effect=RuntimeError("gh not installed"),
+    ):
+        assert githubAuth.fsResolveToken("github_token:o/r") == ""
 
 
 def test_dispatcher_github_add_file_uses_hardening_flags():
