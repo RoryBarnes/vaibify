@@ -57,7 +57,7 @@ def test_fsGenerateViaApi_calls_client_and_returns_text():
 def test_fnEnsureClaudeMdInstructions_skips_when_marker_present():
     """Line 238: if marker already in file, return without writing."""
     mockDocker = MagicMock()
-    sExistingContent = "existing text\n<!-- vaibify-test-instructions-v10 -->\n"
+    sExistingContent = "existing text\n<!-- vaibify-test-instructions-v11 -->\n"
     with patch(
         "vaibify.gui.llmInvoker.fsReadFileFromContainer",
         return_value=sExistingContent,
@@ -76,7 +76,7 @@ def test_fnEnsureClaudeMdInstructions_writes_when_marker_absent():
     mockDocker.fnWriteFile.assert_called_once()
     _tArgs, _dictKw = mockDocker.fnWriteFile.call_args
     sContent = _tArgs[2].decode("utf-8")
-    assert "<!-- vaibify-test-instructions-v10 -->" in sContent
+    assert "<!-- vaibify-test-instructions-v11 -->" in sContent
 
 
 # ---------------------------------------------------------------

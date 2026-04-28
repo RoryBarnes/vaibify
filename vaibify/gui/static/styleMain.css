@@ -917,6 +917,13 @@ body.all-verified .toolbar-label {
     cursor: help;
 }
 
+.script-unseeded-badge {
+    color: var(--color-yellow, #d4a017);
+    font-size: 0.85em;
+    margin-left: 4px;
+    cursor: help;
+}
+
 .vaib-verified-badge {
     width: 14px;
     height: 14px;

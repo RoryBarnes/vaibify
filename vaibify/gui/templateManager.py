@@ -1,4 +1,29 @@
-"""Manage deterministic test file templates and their content hashes."""
+"""Manage deterministic test file templates and their content hashes.
+
+The quantitative standards JSON consumed by the parametrized
+``test_quantitative_benchmark`` template carries the following
+required fields per entry: ``sName``, ``sDataFile``, ``sAccessPath``,
+``fValue``, ``sUnit``. Optional fields recognized by the template:
+
+- ``sFormat``     — explicit format override
+- ``fRtol``       — per-entry relative tolerance (defaults to
+  ``fDefaultRtol`` from the top-level dict)
+- ``fAtol``       — per-entry absolute tolerance (defaults ``1e-8``)
+- ``sMetricKind`` — ``single`` / ``mean`` / ``std`` /
+  ``percentile_5`` / ``percentile_25`` / ``percentile_50`` /
+  ``percentile_75`` / ``percentile_95``
+- ``iSampleSize`` — N from the pilot run (used to audit ``fRtol``)
+- ``fObservedCv`` — pilot-run coefficient of variation (or ``null``)
+- ``sNote``       — free-form annotation, e.g. unseeded-randomness
+  placeholder warning
+
+The top-level dict also carries an optional
+``sStochasticityClassification`` (``deterministic`` / ``stochastic``
+/ ``stochastic_unseeded`` / ``unintrospectable``) and, when the
+classification is ``unintrospectable``, an ``sIntrospectorError``
+string. Adding new optional fields does not require a template-hash
+bump; the runtime ignores fields it does not consume.
+"""
 
 __all__ = [
     "fsQuantitativeTemplateHash",

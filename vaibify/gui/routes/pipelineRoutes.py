@@ -42,6 +42,8 @@ from ..fileStatusManager import (
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
 from ..pathContract import fdictAbsKeysToRepoRelative
+from ..randomnessLint import fnApplyRandomnessLintToWorkflow
+from ..llmInvoker import fsReadFileFromContainer
 
 logger = logging.getLogger("vaibify")
 
@@ -297,6 +299,37 @@ async def fdictComputeFileStatus(
     return dictOutputStatus
 
 
+def _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow):
+    """Run the unseeded-randomness lint, return True if any flag changed.
+
+    The lint reads referenced configuration files from the container.
+    Skipped entirely when the workflow declares no ``dictRandomnessLint``
+    block, keeping the polling cost zero for workflows that opt out.
+    """
+    if not dictWorkflow.get("dictRandomnessLint"):
+        return False
+    listSnapshot = [
+        dictStep.get("dictVerification", {}).get(
+            "bUnseededRandomnessWarning", False,
+        )
+        for dictStep in dictWorkflow.get("listSteps", [])
+    ]
+
+    def fnReadFile(sPath):
+        return fsReadFileFromContainer(
+            dictCtx["docker"], sContainerId, sPath,
+        )
+
+    fnApplyRandomnessLintToWorkflow(dictWorkflow, fnReadFile)
+    listAfter = [
+        dictStep.get("dictVerification", {}).get(
+            "bUnseededRandomnessWarning", False,
+        )
+        for dictStep in dictWorkflow.get("listSteps", [])
+    ]
+    return listAfter != listSnapshot
+
+
 def _fnRegisterFileStatus(app, dictCtx):
     """Register GET /api/pipeline/{id}/file-status endpoint."""
 
@@ -371,6 +404,7 @@ async def _fdictFetchOutputStatus(
     bAnyReconciled = (
         fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)
         | fbReconcileUserVerificationTimestamps(dictWorkflow)
+        | _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow)
     )
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)

@@ -173,8 +173,34 @@ var PipeleyenTestManager = (function () {
             sStepLabel + ": " + iSuccessCount +
             " of 3 test categories generated. Running\u2026",
             iSuccessCount === 3 ? "success" : "error");
+        fnNotifyStochasticity(sStepLabel, dictResult);
         if (listAllCommands.length > 0) {
             fnRunStepTests(iStep);
+        }
+    }
+
+    function fnNotifyStochasticity(sStepLabel, dictResult) {
+        var dictQ = dictResult && dictResult.dictQuantitative;
+        if (!dictQ) return;
+        var sClass = dictQ.sStochasticityClassification || "";
+        if (sClass === "stochastic") {
+            PipeleyenApp.fnShowToast(
+                sStepLabel + ": stochastic outputs detected. " +
+                "Standards use distributional metrics " +
+                "(Mean, P5, P25, P50, P75, P95, std).",
+                "info");
+        } else if (sClass === "stochastic_unseeded") {
+            PipeleyenApp.fnShowToast(
+                sStepLabel + ": stochastic outputs without a fixed " +
+                "seed. Tolerance is a placeholder \u2014 seed the " +
+                "source of randomness, then regenerate.",
+                "warning");
+        } else if (sClass === "unintrospectable") {
+            PipeleyenApp.fnShowToast(
+                sStepLabel + ": introspector could not parse this " +
+                "step's outputs. Standards came from the LLM " +
+                "fallback \u2014 review them carefully.",
+                "warning");
         }
     }
 

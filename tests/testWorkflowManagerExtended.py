@@ -409,6 +409,44 @@ def test_fdictLoadWorkflowFromContainer_success():
     assert dictResult["listSteps"][0]["sLabel"] == "A01"
 
 
+def test_fdictLoadWorkflowFromContainer_preserves_dictRandomnessLint():
+    """Workflow load passes dictRandomnessLint through unchanged.
+
+    dictRandomnessLint is an optional top-level field that the
+    randomness lint reads. Loader must not strip or rename it; the
+    schema validator should silently allow unknown top-level fields.
+    """
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import (
+        fdictLoadWorkflowFromContainer,
+    )
+    mockDocker = MagicMock()
+    dictValid = {
+        "sPlotDirectory": "Plot",
+        "dictRandomnessLint": {
+            "sConfigGlob": "*.in",
+            "sSeedRegex": r"^seed\s+\d+",
+        },
+        "listSteps": [{
+            "sName": "S1", "sDirectory": "d",
+            "saPlotCommands": ["echo"], "saPlotFiles": ["f.pdf"],
+        }],
+    }
+    mockDocker.fbaFetchFile.return_value = (
+        json.dumps(dictValid).encode("utf-8")
+    )
+    dictResult = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid", sWorkflowPath="/w.json",
+    )
+    assert "dictRandomnessLint" in dictResult
+    assert dictResult["dictRandomnessLint"]["sConfigGlob"] == "*.in"
+    assert (
+        dictResult["dictRandomnessLint"]["sSeedRegex"]
+        == r"^seed\s+\d+"
+    )
+
+
 def test_fnSaveWorkflowToContainer_persists_slabel():
     """Save path recomputes and writes sLabel onto every step."""
     import json

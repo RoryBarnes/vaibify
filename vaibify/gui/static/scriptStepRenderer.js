@@ -91,6 +91,12 @@ var VaibifyStepRenderer = (function () {
                 '<span class="script-modified-badge" ' +
                 'title="Scripts modified since last run">' +
                 '&#9998;</span>' : '') +
+            (((step.dictVerification || {})
+                .bUnseededRandomnessWarning === true) ?
+                '<span class="script-unseeded-badge" ' +
+                'title="Unseeded randomness detected: add a seed ' +
+                'so the pilot run is reproducible.">&#9888;</span>' :
+                '') +
             dictContext.fsBuildWarningBadge(step, iIndex) +
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
