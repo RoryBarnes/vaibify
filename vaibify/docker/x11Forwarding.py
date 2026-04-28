@@ -57,15 +57,24 @@ def fnConfigureLinuxX11(saRunArgs):
     saRunArgs.extend(["-v", "/tmp/.X11-unix:/tmp/.X11-unix:ro"])
 
 
+def _fnRunBestEffort(saArgs):
+    """Run a subprocess, ignoring missing binaries and non-zero exits.
+
+    X11 setup is optional: a host without xhost, XQuartz, or pgrep
+    should not crash container start.
+    """
+    try:
+        subprocess.run(saArgs, capture_output=True)
+    except FileNotFoundError:
+        return
+
+
 def _fnGrantLocalUserXhostAccess():
     """Grant the current local user X11 access via xhost."""
     sUser = os.environ.get("USER", "")
     if not sUser:
         return
-    subprocess.run(
-        ["xhost", "+SI:localuser:" + sUser],
-        capture_output=True,
-    )
+    _fnRunBestEffort(["xhost", "+SI:localuser:" + sUser])
 
 
 def fnStartXquartz():
@@ -75,24 +84,21 @@ def fnStartXquartz():
     """
     if _fbProcessIsRunning("Xquartz"):
         return
-    subprocess.run(
-        ["open", "-a", "XQuartz"],
-        capture_output=True,
-    )
+    _fnRunBestEffort(["open", "-a", "XQuartz"])
 
 
 def _fbProcessIsRunning(sProcessName):
     """Check whether a process with the given name is running."""
-    resultProcess = subprocess.run(
-        ["pgrep", "-x", sProcessName],
-        capture_output=True,
-    )
+    try:
+        resultProcess = subprocess.run(
+            ["pgrep", "-x", sProcessName],
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        return False
     return resultProcess.returncode == 0
 
 
 def fnDisableX11Auth():
     """Allow Docker X11 connections on macOS by running xhost +localhost."""
-    subprocess.run(
-        ["xhost", "+localhost"],
-        capture_output=True,
-    )
+    _fnRunBestEffort(["xhost", "+localhost"])

@@ -6,6 +6,10 @@ from vaibify.docker.x11Forwarding import (
     flistConfigureX11Args,
     fnConfigureMacX11,
     fnConfigureLinuxX11,
+    fnDisableX11Auth,
+    fnStartXquartz,
+    _fbProcessIsRunning,
+    _fnGrantLocalUserXhostAccess,
 )
 
 
@@ -48,3 +52,26 @@ def test_fnConfigureLinuxX11_sets_display(mockGrant):
     fnConfigureLinuxX11(saRunArgs)
     assert "DISPLAY=:1" in saRunArgs
     assert "/tmp/.X11-unix:/tmp/.X11-unix:ro" in saRunArgs
+
+
+@patch("vaibify.docker.x11Forwarding.subprocess.run", side_effect=FileNotFoundError)
+@patch.dict("os.environ", {"USER": "alice"})
+def test_grantLocalUserXhostAccess_tolerates_missing_xhost(mockRun):
+    _fnGrantLocalUserXhostAccess()
+    mockRun.assert_called_once()
+
+
+@patch("vaibify.docker.x11Forwarding.subprocess.run", side_effect=FileNotFoundError)
+def test_disableX11Auth_tolerates_missing_xhost(mockRun):
+    fnDisableX11Auth()
+    mockRun.assert_called_once()
+
+
+@patch("vaibify.docker.x11Forwarding.subprocess.run", side_effect=FileNotFoundError)
+def test_processIsRunning_returns_false_when_pgrep_missing(mockRun):
+    assert _fbProcessIsRunning("Xquartz") is False
+
+
+@patch("vaibify.docker.x11Forwarding.subprocess.run", side_effect=FileNotFoundError)
+def test_startXquartz_tolerates_missing_binaries(mockRun):
+    fnStartXquartz()
