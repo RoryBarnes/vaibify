@@ -456,9 +456,10 @@ re-exports `pipelineTestRunner`).
 Several orchestrator modules re-export symbols from their extracted
 child modules for backward compatibility:
 
-- `pipelineRunner` re-exports from `pipelineValidator`, `pipelineLogger`,
-  `pipelineTestRunner`, `interactiveSteps`, `pipelineUtils`, and
-  `pipelineState`.
+- `pipelineRunner` re-exports symbols from `pipelineValidator`,
+  `pipelineLogger`, `pipelineTestRunner`, `interactiveSteps`, and
+  `pipelineUtils`. (`pipelineState` is imported as a namespace
+  module, not re-exported symbol-by-symbol.)
 - `pipelineServer` re-exports from `fileStatusManager` and
   `testStatusManager`, plus lazily via `__getattr__` from route modules.
 - `testGenerator` re-exports from `testParser`, `dataPreview`,
