@@ -20,7 +20,8 @@ from typing import List, Optional
 WORKSPACE_ROOT = "/workspace"
 
 __all__ = [
-    "fCreateApp",
+    "fappCreateApplication",
+    "fappCreateHubApplication",
     "fbIsAllowedHostHeader",
     "fdictBuildContext",
     "fdictHandleConnect",
