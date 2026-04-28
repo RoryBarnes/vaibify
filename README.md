@@ -14,7 +14,7 @@
   </a>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/pip-install.yml/badge.svg">
   <br>
-  <img src="https://img.shields.io/badge/Unit%20Tests-1,818-darkblue.svg">
+  <img src="https://img.shields.io/badge/Unit%20Tests-3,935-darkblue.svg">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-linux.yml/badge.svg">
   <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
   <br>
@@ -31,7 +31,8 @@
 <p align="center">
 <img src="docs/vaibify_screenshot.png">
 </p>
-The steps to your workflow are tracked on the left. View the contents of the `vaibify` container along the top. Manage your agents and navigate the container yourself on the bottom. Use buttons and menus to perform most basic tasks, or ask your agent to make changes. Additional pages allow you to create and manage containers and workflows.
+
+In this screenshot of the `vaibify` dashboard, the steps to your workflow are tracked on the left. View the contents of the `vaibify` container along the top row in "viewing windows". Manage your agents and navigate the container yourself in terminal window(s) in the bottom of the GUI. Use buttons and menus to perform most basic tasks, or ask your agent to make changes. Additional pages allow you to create and manage containers and workflows (see documentation).
 
 Note that `vaibify` can take over an hour to install -- the container requires the installation of a specific operating system. See the [full documentation](https://RoryBarnes.github.io/vaibify) for installation instructions, CLI reference, configuration, security model, and contributor guidelines. But you can get started with just a few commands, depending on your system. Read the [Quick Start Guide](https://RoryBarnes.github.io/vaibify/QuickStart.html), then just run `vaibify` to launch the GUI that will guide you through building containers, creating workflows, synching with external services, and verifying you vibe-coded scientific workflows.
 
