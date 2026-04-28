@@ -49,7 +49,7 @@ to `workflow.json`:
 {
     "sName": "CompileManuscript",
     "sDirectory": "tex",
-    "bEnabled": true,
+    "bRunEnabled": true,
     "bPlotOnly": false,
     "saDataCommands": [],
     "saDataFiles": [],

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.0.1.dev103 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.0.1.dev105 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=de40cc31"></script>
+      <script src="_static/documentation_options.js?v=b1b1d8e5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -173,10 +173,10 @@ four top-level fields:</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bEnabled</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bRunEnabled</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
-<td><p>Whether the step should run</p></td>
+<td><p>Whether the step is included in runs (run scope; verification iterates every step regardless)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bPlotOnly</span></code></p></td>
 <td><p>boolean</p></td>
@@ -216,7 +216,7 @@ four top-level fields:</p>
 <span class="w">        </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RunSimulation&quot;</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;examples/EarthWater&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;bEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;bRunEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">&quot;bPlotOnly&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">&quot;saDataCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                </span><span class="s2">&quot;python runAnalysis.py&quot;</span>
@@ -229,7 +229,7 @@ four top-level fields:</p>
 <span class="w">        </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PlotResults&quot;</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;examples/EarthWater&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;bEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;bRunEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">&quot;bPlotOnly&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">&quot;saDataCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 <span class="w">            </span><span class="nt">&quot;saPlotCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>

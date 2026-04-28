@@ -38,7 +38,7 @@ DICT_WORKFLOW_SYNC = {
             "sName": "Generate Data",
             "sDirectory": "step01",
             "bPlotOnly": False,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python run.py"],
             "saDataFiles": ["output.dat"],

@@ -192,6 +192,7 @@ def fdictLoadWorkflowFromContainer(
         sWorkflowPath = listWorkflows[0]["sPath"]
     baContent = connectionDocker.fbaFetchFile(sContainerId, sWorkflowPath)
     dictWorkflow = json.loads(baContent.decode("utf-8"))
+    fnMigrateRunEnabledKey(dictWorkflow)
     if not fbValidateWorkflow(dictWorkflow):
         raise ValueError(f"Invalid workflow.json: {sWorkflowPath}")
     for dictStep in dictWorkflow.get("listSteps", []):
@@ -199,6 +200,21 @@ def fdictLoadWorkflowFromContainer(
         fnNormalizeSceneReferences(dictStep)
     fnAttachStepLabels(dictWorkflow)
     return dictWorkflow
+
+
+def fnMigrateRunEnabledKey(dictWorkflow):
+    """Rewrite legacy ``bEnabled`` step field to ``bRunEnabled``.
+
+    Older workflow.json files used ``bEnabled`` as the run-scope
+    flag. The field was renamed to keep run scope and verification
+    scope unambiguous. Idempotent on already-migrated steps.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if "bEnabled" not in dictStep:
+            continue
+        if "bRunEnabled" not in dictStep:
+            dictStep["bRunEnabled"] = dictStep["bEnabled"]
+        dictStep.pop("bEnabled", None)
 
 
 def fbValidateWorkflow(dictWorkflow):
@@ -343,7 +359,7 @@ def flistExtractStepNames(dictWorkflow):
                 "iIndex": iIndex,
                 "iNumber": iIndex + 1,
                 "sName": dictStep["sName"],
-                "bEnabled": dictStep.get("bEnabled", True),
+                "bRunEnabled": dictStep.get("bRunEnabled", True),
                 "bPlotOnly": dictStep.get("bPlotOnly", True),
                 "sDirectory": dictStep["sDirectory"],
             }
@@ -376,7 +392,7 @@ def fdictCreateStep(
     return {
         "sName": sName,
         "sDirectory": sDirectory,
-        "bEnabled": True,
+        "bRunEnabled": True,
         "bPlotOnly": bPlotOnly,
         "bInteractive": bInteractive,
         "saDataCommands": saDataCommands if saDataCommands else [],

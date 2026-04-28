@@ -31,7 +31,7 @@ And these optional fields:
 
 | Field              | Type         | Default | Description                    |
 |--------------------|--------------|---------|--------------------------------|
-| `bEnabled`         | boolean      | `true`  | Whether the step should run    |
+| `bRunEnabled`      | boolean      | `true`  | Whether the step is included in runs (run scope; verification iterates every step regardless) |
 | `bPlotOnly`        | boolean      | `true`  | Step produces only plots       |
 | `bInteractive`     | boolean      | `false` | Pause pipeline for user input  |
 | `saDataCommands`   | string array | `[]`    | Commands to run before plots   |
@@ -49,7 +49,7 @@ And these optional fields:
         {
             "sName": "RunSimulation",
             "sDirectory": "examples/EarthWater",
-            "bEnabled": true,
+            "bRunEnabled": true,
             "bPlotOnly": false,
             "saDataCommands": [
                 "python runAnalysis.py"
@@ -62,7 +62,7 @@ And these optional fields:
         {
             "sName": "PlotResults",
             "sDirectory": "examples/EarthWater",
-            "bEnabled": true,
+            "bRunEnabled": true,
             "bPlotOnly": true,
             "saDataCommands": [],
             "saPlotCommands": [

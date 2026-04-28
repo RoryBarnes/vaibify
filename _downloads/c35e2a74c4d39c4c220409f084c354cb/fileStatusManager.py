@@ -49,6 +49,10 @@ __all__ = [
     "fnCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
     "fbReconcileUpstreamFlags",
+    "fbReconcileUserVerificationTimestamps",
+    "fbIsStepFullyVerified",
+    "flistStepRemoteFiles",
+    "fnMaybeAutoArchive",
 ]
 
 def fsMarkerNameFromStepDirectory(sStepDirectory):
@@ -272,6 +276,134 @@ def _fdictComputeMaxDataMtimeByStep(dictWorkflow, dictModTimes,
     return dictResult
 
 
+def _flistResolveTestSourcePaths(dictStep, dictVars):
+    """Return container-absolute paths to a step's test source files.
+
+    The test SOURCE mtime represents when the unit-test contract was
+    last written. Compared against a downstream step's output mtimes,
+    it answers: was the current contract in force when the downstream
+    consumed me? Falls back to the empty list when the step defines
+    no tests (interactive / plot-only).
+    """
+    from .testGenerator import (
+        fsIntegrityTestPath, fsQualitativeTestPath,
+        fsQuantitativeTestPath,
+    )
+    sStepDir = dictStep.get("sDirectory", "")
+    if not sStepDir:
+        return []
+    sRepoRoot = (dictVars or {}).get("sRepoRoot", "")
+    listSources = [
+        fsIntegrityTestPath(sStepDir),
+        fsQualitativeTestPath(sStepDir),
+        fsQuantitativeTestPath(sStepDir),
+    ]
+    for dictUserTest in dictStep.get(
+        "dictTests", {}).get("listUserTests", []):
+        sFilePath = dictUserTest.get("sFilePath", "")
+        if sFilePath:
+            listSources.append(sFilePath)
+    return [
+        _fsAbsolutizeTestPath(sPath, sRepoRoot)
+        for sPath in listSources
+    ]
+
+
+def _fsAbsolutizeTestPath(sPath, sRepoRoot):
+    """Resolve a repo-relative or absolute test path into container abs."""
+    if posixpath.isabs(sPath):
+        return sPath
+    if sRepoRoot:
+        return posixpath.join(sRepoRoot, sPath)
+    return sPath
+
+
+def _fdictComputeMaxTestSourceMtimeByStep(
+    dictWorkflow, dictModTimes, dictVars=None,
+):
+    """Return {stepIndex: maxTestSourceMtimeString} per step.
+
+    Steps with no test source files on disk (i.e. none of the
+    candidate paths are present in ``dictModTimes``) are omitted from
+    the result, signalling "no contract" to the caller.
+    """
+    if dictVars is None:
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []),
+    ):
+        listSources = _flistResolveTestSourcePaths(dictStep, dictVars)
+        listMtimes = [
+            int(dictModTimes[sPath])
+            for sPath in listSources if sPath in dictModTimes
+        ]
+        if listMtimes:
+            dictResult[str(iIndex)] = str(max(listMtimes))
+    return dictResult
+
+
+_T_TEST_CATEGORY_KEYS = ("integrity", "qualitative", "quantitative")
+
+
+def _fdictResolveCategoryTestPaths(dictStep, dictVars):
+    """Return {category: container_abs_path} for the canonical 3.
+
+    Excludes user-provided tests; those don't fit the per-category
+    UI display, which is keyed on the three canonical categories
+    surfaced as Run buttons in the step renderer.
+    """
+    from .testGenerator import (
+        fsIntegrityTestPath, fsQualitativeTestPath,
+        fsQuantitativeTestPath,
+    )
+    sStepDir = dictStep.get("sDirectory", "")
+    if not sStepDir:
+        return {}
+    sRepoRoot = (dictVars or {}).get("sRepoRoot", "")
+    return {
+        "integrity": _fsAbsolutizeTestPath(
+            fsIntegrityTestPath(sStepDir), sRepoRoot,
+        ),
+        "qualitative": _fsAbsolutizeTestPath(
+            fsQualitativeTestPath(sStepDir), sRepoRoot,
+        ),
+        "quantitative": _fsAbsolutizeTestPath(
+            fsQuantitativeTestPath(sStepDir), sRepoRoot,
+        ),
+    }
+
+
+def _fdictComputeTestCategoryMtimes(
+    dictWorkflow, dictModTimes, dictVars=None,
+):
+    """Return {stepIndex: {category: mtimeString}} per step.
+
+    Only includes categories whose source file is present in
+    ``dictModTimes`` (i.e. exists on disk). Steps with no canonical
+    test files are omitted entirely. Surfaces per-category contract
+    age to the dashboard so a single stale category can be diagnosed
+    without inspecting the container by hand.
+    """
+    if dictVars is None:
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []),
+    ):
+        dictCategoryPaths = _fdictResolveCategoryTestPaths(
+            dictStep, dictVars,
+        )
+        dictPresent = {
+            sCategory: str(int(dictModTimes[sPath]))
+            for sCategory, sPath in dictCategoryPaths.items()
+            if sPath in dictModTimes
+        }
+        if dictPresent:
+            dictResult[str(iIndex)] = dictPresent
+    return dictResult
+
+
 def _flistResolveDataPaths(dictStep, dictVars):
     """Return resolved data file paths for a single step."""
     sStepDir = dictStep.get("sDirectory", "")
@@ -417,6 +549,7 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
         )
         if bStale:
             dictVerification["sUser"] = "untested"
+            dictVerification.pop("sLastUserUpdate", None)
             dictStep["dictVerification"] = dictVerification
             bChanged = True
         else:
@@ -461,6 +594,7 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
         )
         if bPlotNewer:
             dictVerification["sUser"] = "untested"
+            dictVerification.pop("sLastUserUpdate", None)
     if dictVerification.get("sPlotStandards") == "passed":
         listPlotFiles = dictStep.get("saPlotFiles", [])
         if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
@@ -487,6 +621,30 @@ def _fnInvalidateDownstreamStep(dictStep):
                 dictVerification[sVerifKey] = "untested"
     dictVerification["bUpstreamModified"] = True
     dictStep["dictVerification"] = dictVerification
+
+
+def fbReconcileUserVerificationTimestamps(dictWorkflow):
+    """Strip ``sLastUserUpdate`` from steps where ``sUser`` is not 'passed'.
+
+    ``sLastUserUpdate`` is only meaningful while the researcher's
+    attestation stands. When ``sUser`` flips to ``untested`` or
+    ``failed`` the timestamp becomes ghost data that misleads the UI
+    ("Last updated 2026-04-07" on a step currently marked untested)
+    and re-introduces stale-artifact warnings via any comparison
+    that still reads the field. Enforces the "no stale timestamps"
+    invariant as a pure derived state, independent of transition
+    sites. Returns True when any step changed so the caller persists.
+    """
+    bAnyChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictVerify = dictStep.get("dictVerification", {})
+        if dictVerify.get("sUser") == "passed":
+            continue
+        if "sLastUserUpdate" in dictVerify:
+            dictVerify.pop("sLastUserUpdate", None)
+            dictStep["dictVerification"] = dictVerify
+            bAnyChanged = True
+    return bAnyChanged
 
 
 def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
@@ -608,9 +766,16 @@ def _fbStepIsPencilStale(
     dictStep, dictStepScripts, listStepOutputPaths, dictModTimes,
     iMarkerMtime=None, setResolvedPlotPaths=None,
 ):
-    """Return (bStale, listStaleArtifacts) via timestamp comparisons."""
+    """Return (bStale, listStaleArtifacts) via timestamp comparisons.
+
+    The ``sLastUserUpdate`` comparison only fires when ``sUser`` is
+    currently ``passed`` — if the researcher has not attested (or has
+    been flipped back to ``untested``), there is nothing for the
+    artifact freshness to be "stale relative to."
+    """
     dictVerify = dictStep.get("dictVerification", {})
     iLastUser = _fiValidatorEpoch(dictVerify, "sLastUserUpdate")
+    bUserPassed = dictVerify.get("sUser") == "passed"
     listBuckets = _fdictBuildArtifactBuckets(
         dictStep, dictStepScripts, listStepOutputPaths,
         setResolvedPlotPaths,
@@ -619,7 +784,7 @@ def _fbStepIsPencilStale(
     if iMarkerMtime is not None:
         _fnAppendTestStale(
             listStale, listBuckets, iMarkerMtime, dictModTimes)
-    if iLastUser is not None:
+    if iLastUser is not None and bUserPassed:
         _fnAppendUserStale(
             listStale, listBuckets, iLastUser, dictModTimes)
     return (len(listStale) > 0, listStale)
@@ -821,3 +986,163 @@ def _fdictStatBatch(connectionDocker, sContainerId, listPaths):
         if len(listParts) == 2:
             dictResult[listParts[0]] = listParts[1]
     return dictResult
+
+
+# ---------------------------------------------------------------------------
+# Auto Archive: full-verification transition trigger
+# ---------------------------------------------------------------------------
+
+_T_TEST_VERIF_KEYS = (
+    "sUnitTest", "sIntegrity", "sQualitative", "sQuantitative",
+)
+
+
+def fbIsStepFullyVerified(dictStep):
+    """Return True iff user has attested AND every defined test passed.
+
+    "Defined" means the verification field is present. An absent field
+    means no tests in that category — silent pass for verification
+    purposes. Present-but-not-passed (untested, failed, stale) blocks
+    the all-green state.
+    """
+    dictV = dictStep.get("dictVerification", {})
+    if dictV.get("sUser") != "passed":
+        return False
+    for sKey in _T_TEST_VERIF_KEYS:
+        if sKey in dictV and dictV[sKey] != "passed":
+            return False
+    return True
+
+
+def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
+    """Return repo-relative paths for a step's files tracked on sService.
+
+    ``sService`` is "Overleaf" or "Zenodo". Files are enumerated from
+    the step's saPlotFiles + saDataFiles, resolved against the repo
+    root, then filtered by the matching b<Service> flag in
+    dictSyncStatus.
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return []
+    sBoolKey = f"b{sService}"
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictSyncStatus = dictWorkflow.get("dictSyncStatus", {}) or {}
+    dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+    listResolved = _flistResolveStepPaths(
+        listSteps[iStepIndex], dictVars,
+    )
+    listResult = []
+    for sAbs in listResolved:
+        sRel = workflowManager.fsToSyncStatusKey(sAbs, sRepoRoot)
+        dictEntry = workflowManager.fdictLookupSyncEntry(
+            dictSyncStatus, sRel, sRepoRoot,
+        )
+        if dictEntry and dictEntry.get(sBoolKey):
+            listResult.append(sRel)
+    return listResult
+
+
+async def _fnPushOverleafForAutoArchive(
+    connectionDocker, sContainerId, dictWorkflow, listFiles,
+):
+    """Push files to Overleaf for the auto-archive flow."""
+    import asyncio
+    from . import syncDispatcher
+    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
+    if not sProjectId or not listFiles:
+        return False
+    sTargetDirectory = dictWorkflow.get(
+        "sOverleafTargetDirectory", ""
+    )
+    iExit, _sOut = await asyncio.to_thread(
+        syncDispatcher.ftResultPushToOverleaf,
+        connectionDocker, sContainerId,
+        listFiles, sProjectId, sTargetDirectory,
+        dictWorkflow,
+    )
+    if iExit != 0:
+        return False
+    workflowManager.fnUpdateSyncStatus(
+        dictWorkflow, listFiles, "Overleaf",
+    )
+    return True
+
+
+async def _fnArchiveZenodoForAutoArchive(
+    connectionDocker, sContainerId, dictWorkflow, listFiles,
+):
+    """Archive files to Zenodo for the auto-archive flow."""
+    import asyncio
+    from . import syncDispatcher
+    if not listFiles:
+        return False
+    sZenodoService = dictWorkflow.get("sZenodoService", "sandbox")
+    iParentDepositId = int(
+        dictWorkflow.get("sZenodoDepositionId", "0") or 0
+    )
+    iExit, _sOut = await asyncio.to_thread(
+        syncDispatcher.ftResultArchiveToZenodo,
+        connectionDocker, sContainerId,
+        sZenodoService, listFiles, None, iParentDepositId,
+    )
+    if iExit != 0:
+        return False
+    workflowManager.fnUpdateSyncStatus(
+        dictWorkflow, listFiles, "Zenodo",
+    )
+    return True
+
+
+async def fnMaybeAutoArchive(
+    connectionDocker, sContainerId, dictWorkflow, iStepIndex,
+    bWasFullyVerifiedBefore,
+):
+    """Push step's tracked files to Overleaf/Zenodo on verify transition.
+
+    Fires only when the step transitions from not-fully-verified to
+    fully-verified AND the workflow's bAutoArchive setting is True.
+    Pushes never block the caller: failures are logged and the manual
+    sync UI remains the recovery path. Returns True when at least one
+    remote was pushed (callers can use this to know whether to refresh
+    badges).
+    """
+    if not dictWorkflow.get("bAutoArchive"):
+        return False
+    if bWasFullyVerifiedBefore:
+        return False
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return False
+    if not fbIsStepFullyVerified(listSteps[iStepIndex]):
+        return False
+    bAnyPushed = False
+    listOverleaf = flistStepRemoteFiles(
+        dictWorkflow, iStepIndex, "Overleaf",
+    )
+    if listOverleaf:
+        try:
+            bAnyPushed |= await _fnPushOverleafForAutoArchive(
+                connectionDocker, sContainerId,
+                dictWorkflow, listOverleaf,
+            )
+        except Exception as error:
+            logger.warning(
+                "Auto Archive: Overleaf push failed for step %d: %s",
+                iStepIndex, error,
+            )
+    listZenodo = flistStepRemoteFiles(
+        dictWorkflow, iStepIndex, "Zenodo",
+    )
+    if listZenodo:
+        try:
+            bAnyPushed |= await _fnArchiveZenodoForAutoArchive(
+                connectionDocker, sContainerId,
+                dictWorkflow, listZenodo,
+            )
+        except Exception as error:
+            logger.warning(
+                "Auto Archive: Zenodo push failed for step %d: %s",
+                iStepIndex, error,
+            )
+    return bAnyPushed
