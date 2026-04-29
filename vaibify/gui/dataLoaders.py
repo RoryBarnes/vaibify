@@ -102,9 +102,18 @@ def _fsInferFormat(sFullPath):
 
 
 def _fdictParseAccessPath(sAccessPath):
-    """Parse an access path string into a dict of components."""
+    """Parse an access path string into a dict of components.
+
+    The ``key:`` capture is greedy until a recognised ``,index:``,
+    ``,column:``, ``,dataset:``, ``,section:``, or ``,hdu:`` boundary
+    so JSON keys may themselves contain commas (e.g. vconverge's
+    ``"compound,key,name"`` payload format).
+    """
     dictResult = {}
-    matchKey = re.match(r"key:([^,]+)", sAccessPath)
+    matchKey = re.match(
+        r"key:(.+?)(?:,(?:index|column|dataset|section|hdu):|$)",
+        sAccessPath,
+    )
     if matchKey:
         dictResult["key"] = matchKey.group(1)
     matchColumn = re.search(r"column:([^,]+)", sAccessPath)
@@ -312,7 +321,12 @@ def _fLoadKeyvalueValue(sFullPath, dictAccess):
 
 
 def _fLoadJsonValue(sFullPath, dictAccess):
-    """Load a value from a JSON file."""
+    """Load a value from a JSON file.
+
+    Tolerates doubly-serialised payloads: when the file's top-level
+    JSON is a string (vconverge's ``json.dumps(json.dumps(...))``
+    convention), it is parsed a second time before navigation.
+    """
     try:
         with open(sFullPath, encoding="utf-8", errors="replace") as fh:
             dictData = json.load(fh)
@@ -320,6 +334,14 @@ def _fLoadJsonValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as json: {exc}",
         ) from exc
+    if isinstance(dictData, str):
+        try:
+            dictData = json.loads(dictData)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Failed to re-parse doubly-serialised json in "
+                f"{sFullPath}: {exc}",
+            ) from exc
     try:
         return _fNavigateJsonValue(dictData, dictAccess)
     except (KeyError, IndexError, TypeError) as exc:
@@ -1017,13 +1039,21 @@ _DICT_LOADERS = {
 
 
 def _fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
-    """Load a single value from a data file using the access path."""
+    """Load a single value from a data file using the access path.
+
+    A ``.txt`` / ``.dat`` file with a ``key:`` access path is treated as
+    a structured ``key = value`` report (vconverge-style). Without this
+    heuristic, key-only access paths would silently dispatch to the
+    whitespace loader and read random columns.
+    """
     sFullPath = str(pathlib.Path(sStepDirectory) / sDataFile)
     dictAccess = _fdictParseAccessPath(sAccessPath)
     if not sFormat:
         sFormat = _fsInferFormat(sFullPath)
     if sFormat is None:
         sFormat = "whitespace"
+    if sFormat == "whitespace" and "key" in dictAccess:
+        sFormat = "keyvalue"
     fLoader = _DICT_LOADERS.get(sFormat)
     if fLoader is None:
         raise ValueError(f"Unsupported format: {sFormat}")
