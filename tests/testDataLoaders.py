@@ -976,3 +976,171 @@ def test_loader_bam_success_with_one_read(tmp_path):
         "a.bam", "key:mapq,index:0", str(tmp_path),
     )
     assert fResult == 42.0
+
+
+# ----------------------------------------------------------------------
+# _fApplyAggregate: std and percentile branches (lines 160-166)
+# ----------------------------------------------------------------------
+
+
+def test_fApplyAggregate_std_uses_sample_std():
+    """Line 160-161: std branch returns ddof=1 standard deviation."""
+    daValues = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    fResult = dataLoaders._fApplyAggregate(daValues, "std")
+    assert abs(fResult - float(daValues.std(ddof=1))) < 1e-12
+
+
+def test_fApplyAggregate_percentile_branches(tmp_path):
+    """Lines 162-165: percentile aggregates dispatch to np.percentile."""
+    daValues = np.arange(101, dtype=float)
+    for sName, fExpected in [
+        ("p5", 5.0), ("p25", 25.0),
+        ("p50", 50.0), ("p75", 75.0), ("p95", 95.0),
+    ]:
+        fActual = dataLoaders._fApplyAggregate(daValues, sName)
+        assert abs(fActual - fExpected) < 1e-9
+
+
+def test_fApplyAggregate_unknown_raises():
+    """Line 166: an unknown aggregate name raises ValueError."""
+    daValues = np.array([1.0, 2.0])
+    with pytest.raises(ValueError, match="Unknown aggregate"):
+        dataLoaders._fApplyAggregate(daValues, "kurtosis")
+
+
+# ----------------------------------------------------------------------
+# JSON loader: re-parse failure on doubly-serialised junk (lines 340-341)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadJsonValue_raises_when_doubly_serialised_inner_invalid(
+    tmp_path,
+):
+    """A top-level JSON string whose inner content is not JSON raises."""
+    sPath = str(tmp_path / "bad.json")
+    with open(sPath, "w", encoding="utf-8") as fh:
+        # The outer string parses but the inner re-parse fails.
+        json.dump("this is not nested json", fh)
+    with pytest.raises(ValueError, match="re-parse"):
+        fLoadValue("bad.json", "key:x", str(tmp_path))
+
+
+# ----------------------------------------------------------------------
+# CSV loader: malformed file raises csv.Error → ValueError (363-364)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadCsvValue_raises_value_error_when_csv_unreadable(tmp_path):
+    """An OSError during open should be raised as ValueError after wrapping.
+
+    A directory-as-file triggers IsADirectoryError, which the loader
+    will not catch. csv.Error is hard to provoke without nul bytes; we
+    simulate that path through monkeypatching csv.DictReader instead.
+    """
+    import csv
+    import unittest.mock as _mock
+    sPath = tmp_path / "readme.csv"
+    sPath.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    def fnReaderRaises(*args, **kwargs):
+        raise csv.Error("badly formed csv")
+
+    with _mock.patch("csv.DictReader", side_effect=fnReaderRaises):
+        with pytest.raises(ValueError, match="csv"):
+            fLoadValue("readme.csv", "column:a,index:0", str(tmp_path))
+
+
+# ----------------------------------------------------------------------
+# Whitespace loader: OSError on read raises ValueError (lines 403-404)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadWhitespaceValue_raises_value_error_on_oserror(tmp_path):
+    """An OSError while reading the whitespace file becomes ValueError."""
+    sPath = tmp_path / "ws.dat"
+    sPath.write_text("1 2 3\n4 5 6\n", encoding="utf-8")
+    import unittest.mock as _mock
+
+    fOriginalOpen = open
+
+    def fnRaisingOpen(sFile, *args, **kwargs):
+        if str(sFile).endswith("ws.dat") and "encoding" in kwargs:
+            raise OSError("simulated read failure")
+        return fOriginalOpen(sFile, *args, **kwargs)
+
+    with _mock.patch("builtins.open", side_effect=fnRaisingOpen):
+        with pytest.raises(ValueError, match="whitespace"):
+            fLoadValue("ws.dat", "column:c1,index:0", str(tmp_path))
+
+
+# ----------------------------------------------------------------------
+# Fixed-width loader: empty file raises (line 699)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadFixedwidthValue_raises_on_empty_file(tmp_path):
+    """An empty fixed-width file raises ValueError immediately."""
+    sPath = tmp_path / "empty.fwf"
+    sPath.write_text("\n  \n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Empty fixed-width"):
+        dataLoaders._fLoadFixedwidthValue(str(sPath), {})
+
+
+# ----------------------------------------------------------------------
+# Multitable loader: aggregate branch (lines 727-728)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadMultitableValue_aggregate_branch(tmp_path):
+    """sAggregate over a multi-table column dispatches to _fApplyAggregate."""
+    sPath = tmp_path / "tables.txt"
+    sPath.write_text(
+        "name value\nalpha 1\nbeta 2\ngamma 3\n",
+        encoding="utf-8",
+    )
+    fResult = dataLoaders._fLoadMultitableValue(
+        str(sPath),
+        {"iSection": 0, "column": "value", "sAggregate": "mean"},
+    )
+    assert abs(fResult - 2.0) < 1e-9
+
+
+# ----------------------------------------------------------------------
+# Excel aggregate branch (lines 479-480)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadExcelValue_aggregate_branch(tmp_path):
+    """sAggregate over an Excel column dispatches to _fApplyAggregate."""
+    openpyxl = pytest.importorskip("openpyxl")
+    sPath = tmp_path / "agg.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["name", "value"])
+    ws.append(["a", 1.0])
+    ws.append(["b", 3.0])
+    ws.append(["c", 5.0])
+    wb.save(str(sPath))
+    fResult = fLoadValue(
+        "agg.xlsx", "column:value,index:mean", str(tmp_path),
+    )
+    assert abs(fResult - 3.0) < 1e-9
+
+
+# ----------------------------------------------------------------------
+# FASTQ aggregate branch (line 620)
+# ----------------------------------------------------------------------
+
+
+def test_fLoadFastqValue_aggregate_branch(tmp_path):
+    """sAggregate over fastq lengths dispatches to _fApplyAggregate."""
+    sPath = tmp_path / "reads.fastq"
+    sPath.write_text(
+        "@r1\nACGT\n+\nIIII\n@r2\nACGTACGT\n+\nIIIIIIII\n",
+        encoding="utf-8",
+    )
+    fResult = dataLoaders._fLoadFastqValue(
+        str(sPath),
+        {"key": "length", "sAggregate": "mean"},
+    )
+    assert abs(fResult - 6.0) < 1e-9

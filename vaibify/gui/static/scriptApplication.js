@@ -1370,11 +1370,16 @@ const PipeleyenApp = (function () {
 
     function fnHandleDiscoveredOutputs(dictEvent) {
         var iStep = dictEvent.iStepNumber - 1;
-        _dictWorkflowState.dictDiscoveredOutputs[iStep] = dictEvent.listDiscovered;
+        var iTotal = (typeof dictEvent.iTotalDiscovered === "number") ?
+            dictEvent.iTotalDiscovered : dictEvent.listDiscovered.length;
+        _dictWorkflowState.dictDiscoveredOutputs[iStep] = {
+            listDiscovered: dictEvent.listDiscovered,
+            iTotalDiscovered: iTotal,
+        };
         fnRenderStepList();
         fnShowToast(
             "Step " + dictEvent.iStepNumber +
-            ": " + dictEvent.listDiscovered.length +
+            ": " + iTotal +
             " new output(s) discovered", "success"
         );
     }
@@ -1388,10 +1393,15 @@ const PipeleyenApp = (function () {
         var dictUpdate = {};
         dictUpdate[sTargetArray] = dictStep[sTargetArray];
         await fnSaveStepUpdate(iStep, dictUpdate);
-        var listDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] || [];
-        _dictWorkflowState.dictDiscoveredOutputs[iStep] = listDisc.filter(
+        var dictDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] ||
+            {listDiscovered: [], iTotalDiscovered: 0};
+        var listFiltered = (dictDisc.listDiscovered || []).filter(
             function (d) { return d.sFilePath !== sFile; }
         );
+        _dictWorkflowState.dictDiscoveredOutputs[iStep] = {
+            listDiscovered: listFiltered,
+            iTotalDiscovered: dictDisc.iTotalDiscovered || 0,
+        };
         fnRenderStepList();
     }
 

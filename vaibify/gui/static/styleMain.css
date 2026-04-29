@@ -1052,6 +1052,13 @@ body.all-verified .toolbar-label {
     color: var(--highlight-color);
 }
 
+.discovered-summary {
+    padding: 4px 6px;
+    font-size: 11px;
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
 /* Per-remote sync badges (G/O/Z) — Phase 4 workspace-as-git-repo */
 .remote-badges {
     position: absolute;

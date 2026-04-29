@@ -743,8 +743,12 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderDiscoveredOutputs(iIndex, dictContext) {
-        var listDiscovered = dictContext.dictDiscoveredOutputs[iIndex];
-        if (!listDiscovered || listDiscovered.length === 0) return "";
+        var dictDisc = dictContext.dictDiscoveredOutputs[iIndex];
+        if (!dictDisc) return "";
+        var listDiscovered = dictDisc.listDiscovered || [];
+        if (listDiscovered.length === 0) return "";
+        var iTotal = (typeof dictDisc.iTotalDiscovered === "number") ?
+            dictDisc.iTotalDiscovered : listDiscovered.length;
         var sHtml = '<div class="detail-label discovered-label">' +
             'Discovered Outputs</div>';
         for (var i = 0; i < listDiscovered.length; i++) {
@@ -758,6 +762,13 @@ var VaibifyStepRenderer = (function () {
                 'data-target="saDataFiles">Add as data</button>' +
                 '<button class="btn-discovered" ' +
                 'data-target="saPlotFiles">Add as plot</button>' +
+                '</div>';
+        }
+        if (iTotal > listDiscovered.length) {
+            sHtml += '<div class="discovered-summary">' +
+                'Showing ' + listDiscovered.length + ' of ' + iTotal +
+                '. To see them all, raise iDiscoveryMaxDepth on this ' +
+                'step or add a glob to saDataFiles / saPlotFiles.' +
                 '</div>';
         }
         return sHtml;

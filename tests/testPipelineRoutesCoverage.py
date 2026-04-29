@@ -849,3 +849,109 @@ class TestFdictComputeFileStatus:
         assert dictResult["dictTestMarkers"] == (
             {"0": {"sUnitTest": "passed"}}
         )
+
+
+# ── _fbApplyRandomnessLint ────────────────────────────────────────
+
+
+from vaibify.gui.routes.pipelineRoutes import (
+    _fbApplyRandomnessLint,
+    _fdictReconcileLivenessIfNeeded,
+    _fsBuildHeartbeatStaleReason,
+    _ffParseMtime,
+)
+
+
+class TestFbApplyRandomnessLint:
+    def test_returns_false_when_no_lint_block(self):
+        """Workflows without dictRandomnessLint short-circuit (line 358)."""
+        dictCtx = {"docker": MagicMock()}
+        dictWorkflow = {"listSteps": [{"sName": "A"}]}
+        bChanged = _fbApplyRandomnessLint(dictCtx, "cid", dictWorkflow)
+        assert bChanged is False
+
+    def test_returns_true_when_flag_changes(self):
+        """Snapshot-vs-after diff flips True when lint adds the flag."""
+        dictCtx = {"docker": MagicMock()}
+        dictCtx["docker"].ftResultExecuteCommand.return_value = (
+            0, "name foo\n",
+        )
+        dictWorkflow = {
+            "sProjectRepoPath": "/repo",
+            "dictRandomnessLint": {
+                "sConfigGlob": "*.in",
+                "sSeedRegex": r"^seed\s+\d+",
+            },
+            "listSteps": [{
+                "sName": "A", "sDirectory": "sweep",
+                "saSetupCommands": ["vspace vspace.in"],
+                "saDataCommands": [], "saCommands": [],
+            }],
+        }
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes.fsReadFileFromContainer",
+            return_value="name foo\n",
+        ):
+            bChanged = _fbApplyRandomnessLint(
+                dictCtx, "cid", dictWorkflow,
+            )
+        assert bChanged is True
+        assert dictWorkflow["listSteps"][0]["dictVerification"][
+            "bUnseededRandomnessWarning"] is True
+
+    def test_returns_false_when_state_unchanged(self):
+        """No flips means listAfter == listSnapshot (line 379)."""
+        dictCtx = {"docker": MagicMock()}
+        dictWorkflow = {
+            "sProjectRepoPath": "/repo",
+            "dictRandomnessLint": {
+                "sConfigGlob": "*.in",
+                "sSeedRegex": r"^seed\s+\d+",
+            },
+            "listSteps": [{
+                "sName": "A", "sDirectory": "sweep",
+                "saSetupCommands": ["vspace vspace.in"],
+                "saDataCommands": [], "saCommands": [],
+            }],
+        }
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes.fsReadFileFromContainer",
+            return_value="seed 42\nname foo\n",
+        ):
+            bChanged = _fbApplyRandomnessLint(
+                dictCtx, "cid", dictWorkflow,
+            )
+        assert bChanged is False
+
+
+class TestFdictReconcileLivenessIfNeeded:
+    def test_not_running_returns_state_unchanged(self):
+        """Line 194: bRunning False short-circuits."""
+        import asyncio
+        dictState = {"bRunning": False}
+        dictResult = asyncio.run(
+            _fdictReconcileLivenessIfNeeded(
+                MagicMock(), "cid", dictState,
+            ),
+        )
+        assert dictResult is dictState
+
+
+class TestFsBuildHeartbeatStaleReason:
+    def test_unparseable_timestamp_returns_safe_string(self):
+        """Line 222-223: bad isoformat falls back to a generic reason."""
+        dictState = {"sLastHeartbeat": "not-a-timestamp"}
+        sReason = _fsBuildHeartbeatStaleReason(dictState)
+        assert "unparseable" in sReason
+
+
+class TestFfParseMtime:
+    def test_returns_zero_for_unparseable_mtime(self):
+        """Lines 706-707: float() failure returns 0.0."""
+        assert _ffParseMtime("not-a-float") == 0.0
+
+    def test_returns_zero_for_none(self):
+        assert _ffParseMtime(None) == 0.0
+
+    def test_parses_valid_string(self):
+        assert _ffParseMtime("123.5") == 123.5

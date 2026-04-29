@@ -2732,3 +2732,224 @@ def test_loader_npy_std_aggregate(tmp_path):
         "data.npy", "index:std", str(tmp_path),
     )
     assert abs(fStd - float(daValues.std(ddof=1))) < 1e-9
+
+
+# -----------------------------------------------------------------------
+# Tolerance branches in _ftolMeanFromCv / _ftolStdFromN / etc.
+# -----------------------------------------------------------------------
+
+
+from vaibify.gui.testGenerator import (
+    _F_UNSEEDED_RTOL,
+    _fbBenchmarkPassesFilter,
+    _fdictAssignTolerance,
+    _fdictMergeWithExistingStandards,
+    _fdictGenerateSingleCategory,
+    _fdictGenerateQuantitativeCategory,
+    _fdictErrorResult,
+    _fnAppendErrorLog,
+    _ftolForStochasticKind,
+    _ftExtractStepInfo,
+)
+
+
+def test_ftolMeanFromCv_returns_floor_when_sample_size_zero():
+    """Line 445: iSampleSize <= 0 returns the floor rtol."""
+    assert _ftolMeanFromCv(0.05, 0) == _F_FLOOR_RTOL
+
+
+def test_ftolMeanFromCv_returns_floor_when_sample_size_negative():
+    assert _ftolMeanFromCv(0.05, -3) == _F_FLOOR_RTOL
+
+
+def test_ftolStdFromN_returns_floor_when_sample_size_below_two():
+    """Line 459: N < 2 returns the floor rtol."""
+    assert _ftolStdFromN(1) == _F_FLOOR_RTOL
+    assert _ftolStdFromN(0) == _F_FLOOR_RTOL
+
+
+def test_ftolForStochasticKind_returns_default_for_unknown_kind():
+    """Line 499: an unrecognised sMetricKind falls through to default."""
+    dictStandard = {
+        "sMetricKind": "kurtosis", "iSampleSize": 100,
+        "fObservedCv": 0.05, "fValue": 1.0,
+    }
+    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    assert fRtol == 0.123
+
+
+def test_ftolForStochasticKind_dispatches_to_std_for_std_kind():
+    dictStandard = {
+        "sMetricKind": "std", "iSampleSize": 1000,
+        "fObservedCv": 0.05, "fValue": 1.0,
+    }
+    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    assert fRtol != 0.123
+    assert fRtol > 0
+
+
+def test_fbBenchmarkPassesFilter_unknown_classification_excludes_all():
+    """Line 530: an unknown sClassification rejects every benchmark."""
+    dictBench = {"sMetricKind": "mean"}
+    assert _fbBenchmarkPassesFilter(dictBench, "unintrospectable") is False
+    assert _fbBenchmarkPassesFilter(dictBench, "garbage_label") is False
+
+
+def test_fbBenchmarkPassesFilter_deterministic_admits_single_and_mean():
+    assert _fbBenchmarkPassesFilter(
+        {"sMetricKind": "single"}, "deterministic",
+    ) is True
+    assert _fbBenchmarkPassesFilter(
+        {"sMetricKind": "mean"}, "deterministic",
+    ) is True
+
+
+def test_fdictAssignTolerance_unseeded_tags_placeholder():
+    dictResult = _fdictAssignTolerance(
+        {"sMetricKind": "mean", "iSampleSize": 1000, "fObservedCv": 0.1},
+        "stochastic_unseeded", 1e-6,
+    )
+    assert dictResult["fRtol"] == _F_UNSEEDED_RTOL
+    assert "Placeholder" in dictResult["sNote"]
+
+
+def test_fdictMergePreservingOverrides_continues_when_no_prior_match():
+    """Line 599: a benchmark not present in dictOld is left as-is."""
+    dictNew = {"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 1e-6},
+        {"sName": "fNew", "fValue": 2.0, "fRtol": 1e-6},
+    ]}
+    dictOld = {"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 0.05},
+    ]}
+    dictResult = _fdictMergePreservingOverrides(dictNew, dictOld)
+    dictByName = {s["sName"]: s for s in dictResult["listStandards"]}
+    assert dictByName["fX"]["fRtol"] == 0.05
+    assert dictByName["fNew"]["fRtol"] == 1e-6
+
+
+def test_fdictMergeWithExistingStandards_merges_when_prior_file_exists():
+    """Line 795: existing standards on disk feed into the merge."""
+    sExisting = json.dumps({"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 0.42, "sNote": "kept"},
+    ]})
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator.fsReadFileFromContainer",
+            lambda *args, **kwargs: sExisting,
+        )
+        dictResult = _fdictMergeWithExistingStandards(
+            mockDocker, "cid", "/sweep/tests/quantitative_standards.json",
+            {"listStandards": [
+                {"sName": "fX", "fValue": 1.0, "fRtol": 1e-6},
+            ]},
+        )
+    assert dictResult["listStandards"][0]["fRtol"] == 0.42
+    assert dictResult["listStandards"][0]["sNote"] == "kept"
+
+
+def test_fdictMergeWithExistingStandards_returns_input_when_no_existing():
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator.fsReadFileFromContainer",
+            lambda *args, **kwargs: "",
+        )
+        dictInput = {"listStandards": []}
+        dictResult = _fdictMergeWithExistingStandards(
+            mockDocker, "cid", "/sweep/tests/quantitative_standards.json",
+            dictInput,
+        )
+    assert dictResult is dictInput
+
+
+def test_fdictMergeWithExistingStandards_returns_input_on_invalid_json():
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator.fsReadFileFromContainer",
+            lambda *args, **kwargs: "{ invalid json",
+        )
+        dictInput = {"listStandards": []}
+        dictResult = _fdictMergeWithExistingStandards(
+            mockDocker, "cid", "/sweep/tests/quantitative_standards.json",
+            dictInput,
+        )
+    assert dictResult is dictInput
+
+
+def test_ftExtractStepInfo_joins_repo_root_for_relative_directory():
+    """Line 293: relative sDirectory is joined with sProjectRepoPath."""
+    dictWorkflow = {
+        "sProjectRepoPath": "/repo",
+        "listSteps": [{"sDirectory": "sweep"}],
+    }
+    dictStep, sDir = _ftExtractStepInfo(dictWorkflow, 0)
+    assert sDir == "/repo/sweep"
+    assert dictStep["sDirectory"] == "sweep"
+
+
+def test_ftExtractStepInfo_preserves_absolute_directory():
+    dictWorkflow = {
+        "sProjectRepoPath": "/repo",
+        "listSteps": [{"sDirectory": "/abs/sweep"}],
+    }
+    _, sDir = _ftExtractStepInfo(dictWorkflow, 0)
+    assert sDir == "/abs/sweep"
+
+
+def test_fdictErrorResult_returns_standard_shape():
+    dictResult = _fdictErrorResult("kaboom")
+    assert dictResult["sFilePath"] == ""
+    assert dictResult["sError"] == "kaboom"
+    assert dictResult["saCommands"] == []
+
+
+def test_fnAppendErrorLog_swallows_filesystem_errors(tmp_path):
+    """Lines 1051-1052: the helper must not raise when log write fails."""
+    import tempfile
+    import unittest.mock as _mock
+    with _mock.patch(
+        "tempfile.gettempdir", return_value=str(tmp_path / "missing"),
+    ):
+        # The directory does not exist; open() will raise FileNotFoundError
+        # which the helper swallows.
+        _fnAppendErrorLog("error message")  # must not raise
+
+
+def test_fdictGenerateSingleCategory_returns_error_when_llm_raises():
+    """Lines 993-998: LLM exception inside category generation."""
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator._fsInvokeLlm",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                RuntimeError("llm down"),
+            ),
+        )
+        dictResult = _fdictGenerateSingleCategory(
+            mockDocker, "cid", "/sweep", "integrity",
+            "data files", "scripts", "previews",
+            False, None, None,
+        )
+    assert dictResult["sError"] == "llm down"
+    assert dictResult["sFilePath"] == ""
+
+
+def test_fdictGenerateQuantitativeCategory_returns_error_on_failure():
+    """Lines 1023-1024: quantitative LLM exception falls through."""
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator._fsInvokeLlm",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                ValueError("bad prompt"),
+            ),
+        )
+        dictResult = _fdictGenerateQuantitativeCategory(
+            mockDocker, "cid", "/sweep",
+            "data files", "scripts", "previews",
+            1e-6, False, None, None,
+        )
+    assert dictResult["sError"] == "bad prompt"

@@ -31,6 +31,10 @@ from vaibify.gui.pipelineRunner import (
     _fiQueryHeadCommitEpoch,
     _fsBuildDeterminismEnvPrefix,
     _fnInjectDeterminismEnvPrefix,
+    _fiDiscoveryMaxDepthForStep,
+    _ftCapDiscoveredFiles,
+    _I_DISCOVERY_DEFAULT_MAX_DEPTH,
+    _I_DISCOVERY_MAX_FILES,
     S_ENV_PREFIX_KEY,
 )
 
@@ -159,7 +163,7 @@ def test_fiRunSetupIfNeeded_runs_data():
 def test_fsetSnapshotDirectory_returns_files():
     mockDocker = _fMockDocker(0, "/a/b.txt\n/a/c.py\n")
     setFiles = _fnRunAsync(_fsetSnapshotDirectory(
-        mockDocker, "cid", "/a",
+        mockDocker, "cid", "/a", 1,
     ))
     assert "/a/b.txt" in setFiles
     assert "/a/c.py" in setFiles
@@ -168,7 +172,7 @@ def test_fsetSnapshotDirectory_returns_files():
 def test_fsetSnapshotDirectory_empty_on_failure():
     mockDocker = _fMockDocker(1, "")
     setFiles = _fnRunAsync(_fsetSnapshotDirectory(
-        mockDocker, "cid", "/missing",
+        mockDocker, "cid", "/missing", 1,
     ))
     assert setFiles == set()
 
@@ -176,9 +180,28 @@ def test_fsetSnapshotDirectory_empty_on_failure():
 def test_fsetSnapshotDirectory_empty_output():
     mockDocker = _fMockDocker(0, "  \n  ")
     setFiles = _fnRunAsync(_fsetSnapshotDirectory(
-        mockDocker, "cid", "/empty",
+        mockDocker, "cid", "/empty", 1,
     ))
     assert setFiles == set()
+
+
+def test_fsetSnapshotDirectory_passes_maxdepth():
+    mockDocker = _fMockDocker(0, "/a/b.txt\n")
+    _fnRunAsync(_fsetSnapshotDirectory(
+        mockDocker, "cid", "/a", 1,
+    ))
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "-maxdepth 1" in sCommand
+    assert "-type f" in sCommand
+
+
+def test_fsetSnapshotDirectory_honours_custom_depth():
+    mockDocker = _fMockDocker(0, "")
+    _fnRunAsync(_fsetSnapshotDirectory(
+        mockDocker, "cid", "/a", 4,
+    ))
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "-maxdepth 4" in sCommand
 
 
 # -----------------------------------------------------------------------
@@ -216,6 +239,7 @@ def test_fnEmitDiscoveredOutputs_unexpected():
         if d.get("sType") == "discoveredOutputs"
     ]
     assert len(listDiscovery) == 1
+    assert listDiscovery[0]["iTotalDiscovered"] == 1
 
 
 def test_fnEmitDiscoveredOutputs_expected():
@@ -232,6 +256,78 @@ def test_fnEmitDiscoveredOutputs_expected():
         if d.get("sType") == "discoveredOutputs"
     ]
     assert len(listDiscovery) == 0
+
+
+def test_fnEmitDiscoveredOutputs_caps_at_five():
+    listFiles = [f"/a/sub_{i:03d}.dat" for i in range(12)]
+    mockDocker = _fMockDocker(0, "\n".join(listFiles) + "\n")
+    fnCallback, listCaptured = _fMockCallback()
+    setBefore = set()
+    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    _fnRunAsync(_fnEmitDiscoveredOutputs(
+        mockDocker, "cid", "/a",
+        setBefore, dictStep, 1, fnCallback,
+    ))
+    dictEvent = [
+        d for d in listCaptured
+        if d.get("sType") == "discoveredOutputs"
+    ][0]
+    assert len(dictEvent["listDiscovered"]) == _I_DISCOVERY_MAX_FILES
+    assert dictEvent["iTotalDiscovered"] == 12
+
+
+def test_fnEmitDiscoveredOutputs_under_cap_unchanged():
+    listFiles = ["/a/x.dat", "/a/y.dat", "/a/z.dat"]
+    mockDocker = _fMockDocker(0, "\n".join(listFiles) + "\n")
+    fnCallback, listCaptured = _fMockCallback()
+    setBefore = set()
+    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    _fnRunAsync(_fnEmitDiscoveredOutputs(
+        mockDocker, "cid", "/a",
+        setBefore, dictStep, 1, fnCallback,
+    ))
+    dictEvent = [
+        d for d in listCaptured
+        if d.get("sType") == "discoveredOutputs"
+    ][0]
+    assert len(dictEvent["listDiscovered"]) == 3
+    assert dictEvent["iTotalDiscovered"] == 3
+
+
+# -----------------------------------------------------------------------
+# Discovery depth helpers
+# -----------------------------------------------------------------------
+
+
+def test_iDiscoveryMaxDepthForStep_uses_step_override():
+    assert _fiDiscoveryMaxDepthForStep({"iDiscoveryMaxDepth": 4}) == 4
+
+
+def test_iDiscoveryMaxDepthForStep_falls_back_to_default():
+    assert _fiDiscoveryMaxDepthForStep({}) == _I_DISCOVERY_DEFAULT_MAX_DEPTH
+
+
+def test_iDiscoveryMaxDepthForStep_ignores_invalid_values():
+    assert _fiDiscoveryMaxDepthForStep(
+        {"iDiscoveryMaxDepth": "two"},
+    ) == _I_DISCOVERY_DEFAULT_MAX_DEPTH
+    assert _fiDiscoveryMaxDepthForStep(
+        {"iDiscoveryMaxDepth": 0},
+    ) == _I_DISCOVERY_DEFAULT_MAX_DEPTH
+
+
+def test_ftCapDiscoveredFiles_below_cap_unchanged():
+    listInput = [{"sFilePath": f"f{i}"} for i in range(3)]
+    listCapped, iTotal = _ftCapDiscoveredFiles(listInput)
+    assert len(listCapped) == 3
+    assert iTotal == 3
+
+
+def test_ftCapDiscoveredFiles_above_cap_truncates():
+    listInput = [{"sFilePath": f"f{i}"} for i in range(20)]
+    listCapped, iTotal = _ftCapDiscoveredFiles(listInput)
+    assert len(listCapped) == _I_DISCOVERY_MAX_FILES
+    assert iTotal == 20
 
 
 # -----------------------------------------------------------------------
@@ -784,3 +880,115 @@ def test_ftRunSingleCommand_no_env_prefix_by_default():
     ))
     sExecuted = mockDocker.ftResultExecuteCommand.call_args[0][1]
     assert "SOURCE_DATE_EPOCH" not in sExecuted
+
+
+# -----------------------------------------------------------------------
+# fnRunSelectedSteps: invalid sRunMode rejection
+# -----------------------------------------------------------------------
+
+
+def test_fnRunSelectedSteps_rejects_unknown_run_mode():
+    """Line 898: an unknown sRunMode raises ValueError before dispatch."""
+    mockDocker = _fMockDocker()
+    fnCallback, _ = _fMockCallback()
+    with pytest.raises(ValueError) as excinfo:
+        _fnRunAsync(fnRunSelectedSteps(
+            mockDocker, "cid", [0],
+            {"sWorkflowName": "T", "listSteps": [{"sName": "A"}]},
+            "/wf.json", "/work", fnCallback,
+            sRunMode="bogus",
+        ))
+    assert "bogus" in str(excinfo.value)
+    assert "sRunMode" in str(excinfo.value)
+
+
+# -----------------------------------------------------------------------
+# _fiRunStepList: skip filter and interactive dispatch
+# -----------------------------------------------------------------------
+
+
+from vaibify.gui.pipelineRunner import _fiRunStepList
+
+
+def test_fiRunStepList_skips_step_outside_run_scope():
+    """Line 655: setRunStepIndices excludes steps."""
+    mockDocker = _fMockDocker()
+    fnCallback, listCaptured = _fMockCallback()
+    dictWorkflow = {
+        "listSteps": [
+            {"sName": "A", "bRunEnabled": True,
+             "sDirectory": "/work", "saCommands": ["echo skip-me"]},
+        ],
+    }
+    iResult = _fnRunAsync(_fiRunStepList(
+        mockDocker, "cid", dictWorkflow, "/work", {}, fnCallback,
+        setRunStepIndices=set(),  # exclude every step
+    ))
+    assert iResult == 0
+    # No commands executed because the step was skipped.
+    assert mockDocker.ftResultExecuteCommand.call_count == 0
+
+
+@patch(
+    "vaibify.gui.interactiveSteps._fiHandleInteractiveStep",
+    new_callable=AsyncMock, return_value=0,
+)
+def test_fiRunStepList_dispatches_to_interactive_handler(mockHandle):
+    """Line 658: bInteractive routes to _fiHandleInteractiveStep."""
+    mockDocker = _fMockDocker()
+    fnCallback, _ = _fMockCallback()
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "Confirm", "bInteractive": True,
+                "sDirectory": "/work",
+            },
+        ],
+    }
+    iResult = _fnRunAsync(_fiRunStepList(
+        mockDocker, "cid", dictWorkflow, "/work", {}, fnCallback,
+        dictInteractive={"some": "ctx"},
+    ))
+    assert iResult == 0
+    mockHandle.assert_awaited_once()
+
+
+# -----------------------------------------------------------------------
+# Heartbeat loop: exception branch (lines 746-747)
+# -----------------------------------------------------------------------
+
+
+from vaibify.gui.pipelineRunner import _fnRunHeartbeatLoop
+
+
+def test_fnRunHeartbeatLoop_logs_and_continues_on_write_failure(caplog):
+    """Lines 746-747: an exception in fnUpdateState is logged not raised."""
+    import logging as _logging
+    mockDocker = _fMockDocker()
+    eventStop = threading.Event()
+    lockState = threading.Lock()
+    iCallCount = [0]
+
+    def fnRaiseOnce(*args, **kwargs):
+        iCallCount[0] += 1
+        if iCallCount[0] == 1:
+            raise OSError("disk full")
+        eventStop.set()
+
+    with patch(
+        "vaibify.gui.pipelineState.fnUpdateState",
+        side_effect=fnRaiseOnce,
+    ), patch(
+        "vaibify.gui.pipelineState.I_HEARTBEAT_INTERVAL_SECONDS", 0.01,
+    ), caplog.at_level(_logging.WARNING, logger="vaibify"):
+        _fnRunHeartbeatLoop(
+            mockDocker, "cid", {}, lockState, eventStop,
+        )
+    assert iCallCount[0] >= 1
+    assert any(
+        "heartbeat" in rec.message for rec in caplog.records
+    )
+
+
+# Need to import threading at module level for the heartbeat test
+import threading  # noqa: E402

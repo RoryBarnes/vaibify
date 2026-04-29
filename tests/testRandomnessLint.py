@@ -150,3 +150,52 @@ def test_apply_lint_clears_flag_when_seed_added():
         "bUnseededRandomnessWarning"
         not in dictWorkflow["listSteps"][0]["dictVerification"]
     )
+
+
+def test_lint_recovers_from_unbalanced_quote_in_command():
+    """Malformed shlex input should fall back to whitespace split.
+
+    A shell command with an unbalanced quote raises ValueError from
+    shlex.split; the lint recovers by tokenising on whitespace so the
+    file path argument is still inspected.
+    """
+    dictStep = {
+        "sName": "Sweep", "sDirectory": "/repo/sweep",
+        "saSetupCommands": ["vspace 'vspace.in"],
+        "saDataCommands": [], "saCommands": [],
+    }
+    listFiles = flistConfigFilesForStep(
+        dictStep, "/repo/sweep", "*.in",
+    )
+    assert any(s.endswith("vspace.in") for s in listFiles)
+
+
+def test_flistConfigFilesForStep_returns_empty_when_glob_blank():
+    """An empty glob short-circuits before tokenisation (line 56)."""
+    dictStep = _fdictMakeStep("vspace vspace.in")
+    assert flistConfigFilesForStep(dictStep, "/repo/sweep", "") == []
+
+
+def test_flistConfigFilesForStep_deduplicates_repeated_paths():
+    """Repeated mentions of the same config file deduplicate (line 66)."""
+    dictStep = {
+        "sName": "Sweep", "sDirectory": "/repo/sweep",
+        "saSetupCommands": ["vspace vspace.in"],
+        "saDataCommands": ["echo vspace.in"],
+        "saCommands": ["touch vspace.in"],
+    }
+    listFiles = flistConfigFilesForStep(
+        dictStep, "/repo/sweep", "*.in",
+    )
+    assert listFiles == ["/repo/sweep/vspace.in"]
+
+
+def test_lint_returns_warning_when_file_content_empty():
+    """Empty file content cannot match the seed regex (line 81)."""
+    dictStep = _fdictMakeStep("vspace vspace.in")
+    dictLint = {"sConfigGlob": "*.in", "sSeedRegex": r"^seed\s+\d+"}
+    fnReadFile = _fnReadFromMap({"/repo/sweep/vspace.in": ""})
+    bWarn = fbStepHasUnseededRandomness(
+        dictStep, "/repo/sweep", dictLint, fnReadFile,
+    )
+    assert bWarn is True

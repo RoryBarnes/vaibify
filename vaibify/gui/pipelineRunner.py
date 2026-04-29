@@ -342,14 +342,27 @@ async def _fiRunSetupIfNeeded(
 # Output discovery and verification
 # ---------------------------------------------------------------------------
 
+_I_DISCOVERY_DEFAULT_MAX_DEPTH = 1
+_I_DISCOVERY_MAX_FILES = 5
+
+
+def _fiDiscoveryMaxDepthForStep(dictStep):
+    """Return the snapshot recursion depth for a step (override or default)."""
+    iDepth = dictStep.get("iDiscoveryMaxDepth")
+    if isinstance(iDepth, int) and iDepth > 0:
+        return iDepth
+    return _I_DISCOVERY_DEFAULT_MAX_DEPTH
+
+
 async def _fsetSnapshotDirectory(
-    connectionDocker, sContainerId, sDirectory,
+    connectionDocker, sContainerId, sDirectory, iMaxDepth,
 ):
-    """Return a set of file paths in a directory."""
+    """Return a set of file paths up to ``iMaxDepth`` levels deep."""
     iExit, sOutput = await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,
         sContainerId,
-        f"find {fsShellQuote(sDirectory)} -type f 2>/dev/null",
+        f"find {fsShellQuote(sDirectory)} -maxdepth {iMaxDepth} "
+        f"-type f 2>/dev/null",
     )
     if iExit != 0 or not sOutput.strip():
         return set()
@@ -376,25 +389,35 @@ def _flistFilterUnexpectedFiles(setNewFiles, sDirectory, dictStep):
     return listUnexpected
 
 
+def _ftCapDiscoveredFiles(listUnexpected):
+    """Return ``(listCapped, iTotal)`` slicing to ``_I_DISCOVERY_MAX_FILES``."""
+    iTotal = len(listUnexpected)
+    return listUnexpected[:_I_DISCOVERY_MAX_FILES], iTotal
+
+
 async def _fnEmitDiscoveredOutputs(
     connectionDocker, sContainerId, sDirectory,
     setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
 ):
-    """Diff directory and emit discovered output files."""
+    """Diff directory and emit discovered output files (capped for UI)."""
+    iMaxDepth = _fiDiscoveryMaxDepthForStep(dictStep)
     setFilesAfter = await _fsetSnapshotDirectory(
-        connectionDocker, sContainerId, sDirectory
+        connectionDocker, sContainerId, sDirectory, iMaxDepth,
     )
     setNewFiles = setFilesAfter - setFilesBefore
     if not setNewFiles:
         return
     listUnexpected = _flistFilterUnexpectedFiles(
         setNewFiles, sDirectory, dictStep)
-    if listUnexpected:
-        await fnStatusCallback({
-            "sType": "discoveredOutputs",
-            "iStepNumber": iStepNumber,
-            "listDiscovered": listUnexpected,
-        })
+    if not listUnexpected:
+        return
+    listCapped, iTotal = _ftCapDiscoveredFiles(listUnexpected)
+    await fnStatusCallback({
+        "sType": "discoveredOutputs",
+        "iStepNumber": iStepNumber,
+        "listDiscovered": listCapped,
+        "iTotalDiscovered": iTotal,
+    })
 
 
 async def _fbVerifyStepOutputs(
@@ -589,7 +612,8 @@ async def _fiExecuteAndRecord(
         dictStep.get("sDirectory", sWorkdir), dictVariables,
     )
     setFilesBefore = await _fsetSnapshotDirectory(
-        connectionDocker, sContainerId, sStepDir
+        connectionDocker, sContainerId, sStepDir,
+        _fiDiscoveryMaxDepthForStep(dictStep),
     )
     iExitCode, fCpuTime = await fiRunStepCommands(
         connectionDocker, sContainerId,
