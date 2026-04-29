@@ -61,8 +61,8 @@ Three mechanisms operate together:
 
 - **Rigorous testing of produced datasets.** Every step produces
   outputs that are checked against deterministic assertions at test
-  time. When a file changes, its associated tests become stale and
-  re-run.
+  time. When a file changes, its associated tests become stale and 
+  the test must be re-run.
 - **Dependency monitoring.** When an upstream step is modified, every
   downstream step is flagged as potentially invalidated. The
   researcher sees which steps need attention.
