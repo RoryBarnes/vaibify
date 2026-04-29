@@ -101,18 +101,12 @@ def _dictLoadJson(sFilePath):
 
 def _daLoadWhitespace(sFilePath):
     """Load whitespace-delimited text into a 2D array."""
-    daData = np.loadtxt(sFilePath, ndmin=2)
-    if daData.ndim == 1:
-        daData = daData.reshape(-1, 1)
-    return daData
+    return np.loadtxt(sFilePath, ndmin=2)
 
 
 def _daLoadCsv(sFilePath):
     """Load a CSV with one header row into a 2D array."""
-    daData = np.loadtxt(sFilePath, delimiter=",", skiprows=1, ndmin=2)
-    if daData.ndim == 1:
-        daData = daData.reshape(-1, 1)
-    return daData
+    return np.loadtxt(sFilePath, delimiter=",", skiprows=1, ndmin=2)
 
 
 def _dictLoadKeyValueText(sFilePath):
