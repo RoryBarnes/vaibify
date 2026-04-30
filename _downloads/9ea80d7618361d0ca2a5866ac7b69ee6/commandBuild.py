@@ -58,7 +58,6 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
     fnCopyContainerScripts(sDockerDir)
-    fnCopyAgentActionScript(sDockerDir)
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -103,18 +102,6 @@ def fnCopyDirectorScript(sDockerDir):
         / "gui" / "director.py"
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
-    shutil.copy2(sSourcePath, sDestPath)
-
-
-def fnCopyAgentActionScript(sDockerDir):
-    """Stage the in-container vaibify-do CLI into the build context."""
-    import shutil
-    import pathlib
-    sSourcePath = str(
-        pathlib.Path(__file__).resolve().parents[2]
-        / "docker" / "vaibifyDo.py"
-    )
-    sDestPath = os.path.join(sDockerDir, "vaibifyDo.py")
     shutil.copy2(sSourcePath, sDestPath)
 
 
