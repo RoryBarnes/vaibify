@@ -193,6 +193,73 @@ def testLeafModuleHasNoIntraPackageImports():
     )
 
 
+def testStateManagerHasNoTopLevelIntraPackageImports():
+    """stateManager.py must not import from vaibify.gui at module top.
+
+    The dashboard depends on it being importable from
+    workflowManager without a cycle. The bootstrap helper imports
+    ``containerGit`` lazily inside the function body so the cycle
+    is broken at module load time; the test only checks top-level
+    nodes (``tree.body``), letting that exception through.
+    """
+    import ast
+    sPath = GUI_DIR / "stateManager.py"
+    sSource = sPath.read_text(encoding="utf-8")
+    treeAst = ast.parse(sSource)
+    listViolations = []
+    for node in treeAst.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("vaibify"):
+                    listViolations.append(
+                        (alias.name, node.lineno),
+                    )
+        elif isinstance(node, ast.ImportFrom):
+            sModule = node.module or ""
+            iLevel = node.level or 0
+            sFull = ("." * iLevel) + sModule
+            if sFull.startswith("vaibify") or sFull.startswith("."):
+                listViolations.append((sFull, node.lineno))
+    assert listViolations == [], (
+        f"stateManager.py top-level imports must be leaf-pure; "
+        f"violations: {listViolations}"
+    )
+
+
+def testWorkflowJsonHasNoStatefulFieldsAfterSave():
+    """The split must remove dictVerification/dictRunStats/sLabel from workflow.json.
+
+    Asserts the contract by exercising ftSplitMergedDict on a
+    representative merged dict and inspecting the declarative half.
+    Catches regressions where a future change writes runtime state
+    back into the persisted declarative file.
+    """
+    from vaibify.gui import stateManager
+    dictMerged = {
+        "sPlotDirectory": "Plot",
+        "bArchiveTrackingMigrated": True,
+        "listSteps": [
+            {
+                "sName": "A", "sDirectory": "A",
+                "sLabel": "A01",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "dictVerification": {"sUser": "passed"},
+                "dictRunStats": {"fLastRunSeconds": 1.0},
+            },
+        ],
+    }
+    dictDeclarative, _ = stateManager.ftSplitMergedDict(dictMerged)
+    assert "bArchiveTrackingMigrated" not in dictDeclarative
+    for dictStep in dictDeclarative["listSteps"]:
+        for sField in (
+            "sLabel", "dictVerification", "dictRunStats",
+        ):
+            assert sField not in dictStep, (
+                f"step {dictStep['sName']} retained stateful "
+                f"field {sField!r} after split"
+            )
+
+
 def testWorkflowMigrationsImportsOnlyLeafModules():
     """workflowMigrations.py must only depend on documented leaf modules.
 

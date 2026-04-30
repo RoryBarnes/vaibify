@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 2
+I_CURRENT_WORKFLOW_VERSION = 3
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -381,7 +381,22 @@ def _fnMigrateV1ToV2(dictWorkflow, sProjectRepoPath):
     fnMigrateAbsoluteContainerPaths(dictWorkflow, sProjectRepoPath)
 
 
+def _fnMigrateV2ToV3(dictWorkflow, sProjectRepoPath):
+    """Mark the workflow as ready for the workflow/state file split.
+
+    No in-memory transformation is needed: the stateful fields stay
+    on the merged dict so route handlers and tests keep seeing the
+    historical shape. The next save splits ``dictVerification``,
+    ``dictRunStats``, ``bArchiveTrackingMigrated``, and the transient
+    ``sLabel`` out into ``.vaibify/state.json``. The dict's transient
+    ``sProjectRepoPath`` field is dropped — it's recomputed at load
+    time and was never authoritative.
+    """
+    dictWorkflow.pop("sProjectRepoPath", None)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
+    (2, _fnMigrateV2ToV3),
 )

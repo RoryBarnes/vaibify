@@ -7,7 +7,7 @@ import posixpath
 import re
 import shlex
 
-from . import workflowMigrations
+from . import stateManager, workflowMigrations
 from .workflowMigrations import (
     fbMigrateModifiedFilesToRepoRelative,
     fdictMigrateTestFormat,
@@ -191,7 +191,13 @@ def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
 def fdictLoadWorkflowFromContainer(
     connectionDocker, sContainerId, sWorkflowPath=None
 ):
-    """Fetch, migrate, validate, and parse workflow.json."""
+    """Fetch, migrate, validate, and parse workflow.json.
+
+    Also reads the sibling ``state.json`` (or bootstraps from
+    committed test-markers when absent) and merges machine-local
+    runtime state into the returned dict so route handlers and the
+    frontend continue to see one merged shape.
+    """
     from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         listWorkflows = flistFindWorkflowsInContainer(
@@ -213,8 +219,34 @@ def fdictLoadWorkflowFromContainer(
         raise ValueError(
             f"Invalid workflow.json at {sWorkflowPath}: {sFailure}"
         )
+    _fnLoadAndMergeState(
+        connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+    )
     fnAttachStepLabels(dictWorkflow)
     return dictWorkflow
+
+
+def _fnLoadAndMergeState(
+    connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+):
+    """Load .vaibify/state.json (or bootstrap from markers) and merge in."""
+    if not sRepoPath:
+        return
+    sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
+    dictState = stateManager.fdictLoadStateFromContainer(
+        connectionDocker, sContainerId, sStatePath,
+    )
+    if dictState is None:
+        dictState = stateManager.fdictBootstrapStateFromMarkers(
+            connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+        )
+        stateManager.fnSaveStateToContainer(
+            connectionDocker, sContainerId, sStatePath, dictState,
+        )
+    stateManager.fnMergeStateIntoWorkflow(dictWorkflow, dictState)
+    stateManager.fnEnsureVaibifyGitignore(
+        connectionDocker, sContainerId, sRepoPath,
+    )
 
 
 def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
@@ -570,17 +602,35 @@ def _fdictStripComputedFields(dictWorkflow):
 def fnSaveWorkflowToContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None
 ):
-    """Serialize dictWorkflow to JSON and write to container."""
+    """Serialize the merged workflow dict and persist it.
+
+    Splits the in-memory dict between ``workflow.json`` (declarative
+    fields) and ``.vaibify/state.json`` (per-machine runtime state)
+    before writing. Callers continue to mutate one merged dict; the
+    split is invisible upstream.
+    """
     from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     fnAttachStepLabels(dictWorkflow)
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
-    sJson = json.dumps(dictClean, indent=2) + "\n"
+    dictDeclarative, dictState = stateManager.ftSplitMergedDict(
+        dictClean,
+    )
+    sJson = json.dumps(dictDeclarative, indent=2) + "\n"
     connectionDocker.fnWriteFile(
         sContainerId, sWorkflowPath, sJson.encode("utf-8")
     )
+    sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
+    sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
+    if sStatePath:
+        stateManager.fnSaveStateToContainer(
+            connectionDocker, sContainerId, sStatePath, dictState,
+        )
+        stateManager.fnEnsureVaibifyGitignore(
+            connectionDocker, sContainerId, sRepoPath,
+        )
 
 
 def fsetExtractStepReferences(sText):
