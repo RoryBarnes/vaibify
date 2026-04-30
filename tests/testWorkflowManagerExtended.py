@@ -1278,20 +1278,20 @@ def test_fdictLookupSyncEntry_miss_returns_empty_dict():
 
 
 def test_fsJoinRepoRelPath_empty_step_dir_returns_file():
-    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    from vaibify.gui.workflowMigrations import _fsJoinRepoRelPath
     assert _fsJoinRepoRelPath("", "out.dat") == "out.dat"
 
 
 def test_fsJoinRepoRelPath_absolute_file_returns_file():
     """Absolute files ignore the step directory."""
-    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    from vaibify.gui.workflowMigrations import _fsJoinRepoRelPath
     assert _fsJoinRepoRelPath(
         "step01", "/absolute/path.dat",
     ) == "/absolute/path.dat"
 
 
 def test_fsJoinRepoRelPath_joins_relative_file_to_step_dir():
-    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    from vaibify.gui.workflowMigrations import _fsJoinRepoRelPath
     assert _fsJoinRepoRelPath(
         "step01", "out.dat",
     ) == "step01/out.dat"

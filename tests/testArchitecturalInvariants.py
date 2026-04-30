@@ -193,6 +193,31 @@ def testLeafModuleHasNoIntraPackageImports():
     )
 
 
+def testWorkflowMigrationsImportsOnlyLeafModules():
+    """workflowMigrations.py must only depend on documented leaf modules.
+
+    The migration registry is imported by workflowManager.py and
+    director.py, so it must sit at the bottom of the dependency graph
+    or those callers form a cycle. ``pathContract`` is the only other
+    leaf module the migrators need; new intra-package imports here
+    are almost always a sign that the migrator should pull state from
+    its caller instead of reaching back into the package.
+    """
+    setAllowedLeaves = {".pathContract"}
+    sPath = GUI_DIR / "workflowMigrations.py"
+    _, treeAst = ftParseFile(sPath)
+    listImports = flistExtractImports(treeAst)
+    listViolations = [
+        (sName, iLine) for sName, iLine in listImports
+        if (sName.startswith("vaibify") or sName.startswith("."))
+        and sName not in setAllowedLeaves
+    ]
+    assert listViolations == [], (
+        f"workflowMigrations.py may only import from leaf modules "
+        f"({setAllowedLeaves}); violations: {listViolations}"
+    )
+
+
 def testEveryRouteModuleExportsRegisterAll():
     """Every vaibify/gui/routes/*Routes.py defines fnRegisterAll at top level."""
     listRouteFiles = sorted(ROUTES_DIR.glob("*Routes.py"))
