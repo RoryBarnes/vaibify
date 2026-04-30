@@ -100,6 +100,61 @@ def test_fdictGitStatusInContainer_cds_to_workspace():
 
 
 # ----------------------------------------------------------------------
+# ftResultGitFetchInContainer / ftResultGitPullFastForwardInContainer
+# ----------------------------------------------------------------------
+
+
+def test_ftResultGitFetchInContainer_runs_fetch_with_no_tags():
+    docker = _FakeDocker([
+        ("fetch --no-tags origin", 0, ""),
+    ])
+    iExit, _ = containerGit.ftResultGitFetchInContainer(
+        docker, "cid", sWorkspace="/workspace/Project",
+    )
+    assert iExit == 0
+    sCmd = docker.listCommands[0]
+    assert "cd /workspace/Project" in sCmd
+    assert "fetch --no-tags origin" in sCmd
+    assert "protocol.file.allow=never" in sCmd
+
+
+def test_ftResultGitFetchInContainer_propagates_failure():
+    docker = _FakeDocker([
+        ("fetch --no-tags origin", 1, "fatal: bad remote\n"),
+    ])
+    iExit, sOut = containerGit.ftResultGitFetchInContainer(
+        docker, "cid", sWorkspace="/workspace/Project",
+    )
+    assert iExit == 1
+    assert "fatal" in sOut
+
+
+def test_ftResultGitPullFastForwardInContainer_uses_ff_only():
+    docker = _FakeDocker([
+        ("pull --ff-only", 0, "Already up to date.\n"),
+    ])
+    iExit, _ = containerGit.ftResultGitPullFastForwardInContainer(
+        docker, "cid", sWorkspace="/workspace/Project",
+    )
+    assert iExit == 0
+    sCmd = docker.listCommands[0]
+    assert "pull --ff-only" in sCmd
+    assert "cd /workspace/Project" in sCmd
+
+
+def test_ftResultGitPullFastForwardInContainer_passes_through_failure():
+    docker = _FakeDocker([
+        ("pull --ff-only", 128,
+         "fatal: Not possible to fast-forward, aborting.\n"),
+    ])
+    iExit, sOut = containerGit.ftResultGitPullFastForwardInContainer(
+        docker, "cid", sWorkspace="/workspace/Project",
+    )
+    assert iExit == 128
+    assert "Not possible to fast-forward" in sOut
+
+
+# ----------------------------------------------------------------------
 # fdictComputeBlobShasInContainer
 # ----------------------------------------------------------------------
 
