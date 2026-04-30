@@ -4,38 +4,38 @@ import time
 
 from vaibify.gui.pipelineRunner import (
     _fParseCpuTime,
+    _fbStepIncludedInRun,
     _fdictBuildWorkflowVars,
     _fiAggregateTestExitCode,
     _flistCollectCategoryLogs,
     _flistFilterUnexpectedFiles,
     _flistResolveTestCommands,
     _fnRecordRunStats,
-    _fnToggleSelectedSteps,
     _fsExtractLogLine,
     _fsExtractScriptPath,
     _fsWrapWithTime,
     ffBuildLoggingCallback,
     fnClearOutputModifiedFlags,
-    fsComputeStepLabel,
+    fsLabelFromStepIndex,
 )
 
 
-class TestFsComputeStepLabel:
+class TestFsLabelFromStepIndex:
     def test_automatic_step_first(self):
         dictWorkflow = {"listSteps": [{"sName": "A"}]}
-        assert fsComputeStepLabel(dictWorkflow, 1) == "A01"
+        assert fsLabelFromStepIndex(dictWorkflow, 0) == "A01"
 
     def test_automatic_step_second(self):
         dictWorkflow = {"listSteps": [
             {"sName": "A"}, {"sName": "B"},
         ]}
-        assert fsComputeStepLabel(dictWorkflow, 2) == "A02"
+        assert fsLabelFromStepIndex(dictWorkflow, 1) == "A02"
 
     def test_interactive_step(self):
         dictWorkflow = {"listSteps": [
             {"sName": "A", "bInteractive": True},
         ]}
-        assert fsComputeStepLabel(dictWorkflow, 1) == "I01"
+        assert fsLabelFromStepIndex(dictWorkflow, 0) == "I01"
 
     def test_mixed_step_numbering(self):
         dictWorkflow = {"listSteps": [
@@ -44,44 +44,36 @@ class TestFsComputeStepLabel:
             {"sName": "Auto2"},
             {"sName": "Inter2", "bInteractive": True},
         ]}
-        assert fsComputeStepLabel(dictWorkflow, 1) == "A01"
-        assert fsComputeStepLabel(dictWorkflow, 2) == "I01"
-        assert fsComputeStepLabel(dictWorkflow, 3) == "A02"
-        assert fsComputeStepLabel(dictWorkflow, 4) == "I02"
+        assert fsLabelFromStepIndex(dictWorkflow, 0) == "A01"
+        assert fsLabelFromStepIndex(dictWorkflow, 1) == "I01"
+        assert fsLabelFromStepIndex(dictWorkflow, 2) == "A02"
+        assert fsLabelFromStepIndex(dictWorkflow, 3) == "I02"
 
     def test_out_of_range_step(self):
         dictWorkflow = {"listSteps": []}
-        assert fsComputeStepLabel(dictWorkflow, 5) == "05"
+        assert fsLabelFromStepIndex(dictWorkflow, 4) == "05"
 
-    def test_negative_step(self):
+    def test_negative_index(self):
         dictWorkflow = {"listSteps": [{"sName": "A"}]}
-        assert fsComputeStepLabel(dictWorkflow, 0) == "00"
+        assert fsLabelFromStepIndex(dictWorkflow, -1) == "00"
 
 
 class TestFnRecordRunStats:
-    def test_records_timestamp(self):
-        dictStep = {}
-        fStartTime = time.time()
-        _fnRecordRunStats(dictStep, "2026-04-07 12:00:00 UTC",
-                          fStartTime, 1.5)
-        assert dictStep["dictRunStats"]["sLastRun"] == (
-            "2026-04-07 12:00:00 UTC")
-
     def test_records_cpu_time(self):
         dictStep = {}
-        _fnRecordRunStats(dictStep, "2026-04-07", time.time(), 3.14)
+        _fnRecordRunStats(dictStep, time.time(), 3.14)
         assert dictStep["dictRunStats"]["fCpuTime"] == 3.1
 
     def test_records_wall_clock(self):
         dictStep = {}
         fStart = time.time() - 2.0
-        _fnRecordRunStats(dictStep, "now", fStart, 0.0)
+        _fnRecordRunStats(dictStep, fStart, 0.0)
         assert dictStep["dictRunStats"]["fWallClock"] >= 1.9
 
     def test_overwrites_existing_stats(self):
-        dictStep = {"dictRunStats": {"sLastRun": "old"}}
-        _fnRecordRunStats(dictStep, "new", time.time(), 0.0)
-        assert dictStep["dictRunStats"]["sLastRun"] == "new"
+        dictStep = {"dictRunStats": {"fWallClock": 99.0}}
+        _fnRecordRunStats(dictStep, time.time(), 0.0)
+        assert dictStep["dictRunStats"]["fWallClock"] < 1.0
 
 
 class TestFParseCpuTime:
@@ -290,24 +282,29 @@ class TestFdictBuildWorkflowVars:
         assert dictResult["sFigureType"] == "png"
 
 
-class TestFnToggleSelectedSteps:
-    def test_enables_selected_only(self):
-        dictWorkflow = {"listSteps": [
-            {"sName": "A", "bEnabled": True},
-            {"sName": "B", "bEnabled": True},
-            {"sName": "C", "bEnabled": True},
-        ]}
-        _fnToggleSelectedSteps(dictWorkflow, [0, 2])
-        assert dictWorkflow["listSteps"][0]["bEnabled"] is True
-        assert dictWorkflow["listSteps"][1]["bEnabled"] is False
-        assert dictWorkflow["listSteps"][2]["bEnabled"] is True
+class TestFbStepIncludedInRun:
+    def test_set_includes_selected_index(self):
+        dictStep = {"bRunEnabled": False}
+        assert _fbStepIncludedInRun(dictStep, 2, {0, 2}) is True
 
-    def test_empty_selection_disables_all(self):
-        dictWorkflow = {"listSteps": [
-            {"sName": "A", "bEnabled": True},
-        ]}
-        _fnToggleSelectedSteps(dictWorkflow, [])
-        assert dictWorkflow["listSteps"][0]["bEnabled"] is False
+    def test_set_excludes_unlisted_index(self):
+        dictStep = {"bRunEnabled": True}
+        assert _fbStepIncludedInRun(dictStep, 1, {0, 2}) is False
+
+    def test_none_falls_back_to_bRunEnabled_true(self):
+        dictStep = {"bRunEnabled": True}
+        assert _fbStepIncludedInRun(dictStep, 0, None) is True
+
+    def test_none_falls_back_to_bRunEnabled_false(self):
+        dictStep = {"bRunEnabled": False}
+        assert _fbStepIncludedInRun(dictStep, 0, None) is False
+
+    def test_none_default_when_bRunEnabled_missing(self):
+        assert _fbStepIncludedInRun({}, 0, None) is True
+
+    def test_empty_set_excludes_all_indices(self):
+        dictStep = {"bRunEnabled": True}
+        assert _fbStepIncludedInRun(dictStep, 0, set()) is False
 
 
 class TestFsExtractLogLine:

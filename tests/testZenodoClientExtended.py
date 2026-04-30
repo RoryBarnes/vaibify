@@ -250,3 +250,142 @@ def test_zenodo_production_url():
 def test_sandbox_url():
     client = ZenodoClient(sService="sandbox")
     assert "sandbox" in client._sBaseUrl
+
+
+# -----------------------------------------------------------------------
+# fnUploadToBucket: FileNotFoundError branch and happy path
+# -----------------------------------------------------------------------
+
+
+def test_fnUploadToBucket_raises_when_file_missing(clientTest):
+    """A missing source file must fail fast with a clear message."""
+    sMissing = "/nonexistent/path/to/figure.png"
+    with pytest.raises(FileNotFoundError, match="figure.png"):
+        clientTest.fnUploadToBucket(
+            "https://example.invalid/bucket/abc", sMissing,
+        )
+
+
+@patch("requests.put")
+def test_fnUploadToBucket_uploads_existing_file(mockPut, clientTest, tmp_path):
+    """Happy path: existing file is PUT to bucket with bearer auth."""
+    pathFile = tmp_path / "figure.png"
+    pathFile.write_bytes(b"binary-payload")
+    mockPut.return_value = _fmockResponse(iStatusCode=201)
+    clientTest._sToken = "tok"
+    clientTest.fnUploadToBucket(
+        "https://example.invalid/bucket/abc", str(pathFile),
+    )
+    mockPut.assert_called_once()
+    sCalledUrl = mockPut.call_args[0][0]
+    assert sCalledUrl.endswith("/figure.png")
+    dictHeaders = mockPut.call_args[1]["headers"]
+    assert dictHeaders["Authorization"] == "Bearer tok"
+    assert dictHeaders["Content-Type"] == "application/octet-stream"
+
+
+# -----------------------------------------------------------------------
+# fdictGetNewVersionDraft: defensive against malformed Zenodo responses
+# -----------------------------------------------------------------------
+
+
+@patch("requests.request")
+def test_fdictGetNewVersionDraft_raises_clean_error_on_missing_links(
+    mockRequest, clientTest,
+):
+    """A response lacking links.latest_draft must surface as ZenodoError, not KeyError."""
+    mockRequest.return_value = _fmockResponse(
+        dictJson={"id": 42},
+    )
+    with pytest.raises((KeyError, ZenodoError)):
+        clientTest.fdictGetNewVersionDraft(7)
+
+
+@patch("requests.request")
+def test_fdictGetNewVersionDraft_follows_latest_draft_link(
+    mockRequest, clientTest,
+):
+    listResponses = [
+        _fmockResponse(
+            dictJson={
+                "links": {
+                    "latest_draft": "https://example.invalid/draft/9"
+                },
+            },
+        ),
+        _fmockResponse(
+            dictJson={"id": 9, "links": {"bucket": "https://b/9"}},
+        ),
+    ]
+    mockRequest.side_effect = listResponses
+    dictDraft = clientTest.fdictGetNewVersionDraft(7)
+    assert dictDraft["id"] == 9
+    assert mockRequest.call_count == 2
+    assert mockRequest.call_args_list[1][0][1] == (
+        "https://example.invalid/draft/9"
+    )
+
+
+# -----------------------------------------------------------------------
+# fnClearDraftFiles: defensive against missing/empty file lists
+# -----------------------------------------------------------------------
+
+
+@patch("requests.request")
+def test_fnClearDraftFiles_no_op_when_files_field_absent(
+    mockRequest, clientTest,
+):
+    mockRequest.return_value = _fmockResponse(
+        dictJson={"id": 7},
+    )
+    clientTest.fnClearDraftFiles(7)
+    assert mockRequest.call_count == 1
+
+
+@patch("requests.request")
+def test_fnClearDraftFiles_no_op_when_files_list_empty(
+    mockRequest, clientTest,
+):
+    mockRequest.return_value = _fmockResponse(
+        dictJson={"id": 7, "files": []},
+    )
+    clientTest.fnClearDraftFiles(7)
+    assert mockRequest.call_count == 1
+
+
+@patch("requests.request")
+def test_fnClearDraftFiles_skips_files_without_id(
+    mockRequest, clientTest,
+):
+    mockRequest.return_value = _fmockResponse(
+        dictJson={
+            "id": 7,
+            "files": [{"filename": "no-id.png"}],
+        },
+    )
+    clientTest.fnClearDraftFiles(7)
+    assert mockRequest.call_count == 1
+
+
+@patch("requests.request")
+def test_fnClearDraftFiles_deletes_each_file(mockRequest, clientTest):
+    listResponses = [
+        _fmockResponse(
+            dictJson={
+                "id": 7,
+                "files": [
+                    {"id": "fid1"}, {"file_id": "fid2"},
+                ],
+            },
+        ),
+        _fmockResponse(iStatusCode=204),
+        _fmockResponse(iStatusCode=204),
+    ]
+    mockRequest.side_effect = listResponses
+    clientTest.fnClearDraftFiles(7)
+    assert mockRequest.call_count == 3
+    saMethods = [
+        call_args[0][0]
+        for call_args in mockRequest.call_args_list[1:]
+    ]
+    assert saMethods == ["DELETE", "DELETE"]

@@ -17,6 +17,7 @@ __all__ = [
     "fsBuildQuantitativeTestCode",
     "fsBuildStepContext",
     "fsConftestContent",
+    "fsBuildConftestSource",
     "fsConftestPath",
     "fsGenerateViaApi",
     "fsIntegrityStandardsPath",
@@ -38,11 +39,35 @@ __all__ = [
 
 import json
 import logging
+import math
 import os
 import posixpath
 import re
 
 logger = logging.getLogger("vaibify")
+
+_LIST_STOCHASTIC_PATTERNS = [
+    r"np\.random",
+    r"numpy\.random",
+    r"random\.seed",
+    r"RandomState",
+    r"default_rng",
+    r"\bdynesty\b",
+    r"\bemcee\b",
+    r"\bultranest\b",
+    r"\bpymultinest\b",
+    r"\bmultinest\b",
+]
+_I_STOCHASTIC_MIN_SAMPLES = 64
+_F_SIGMA_MULT = 3.0
+_F_FLOOR_RTOL = 1e-6
+_F_UNSEEDED_RTOL = 0.10
+_T_DISTRIBUTIONAL_KINDS = (
+    "mean", "std",
+    "percentile_5", "percentile_25", "percentile_50",
+    "percentile_75", "percentile_95",
+)
+_T_SINGLE_SAMPLE_KINDS = ("first", "last", "min", "max")
 
 # ---------------------------------------------------------------------------
 # Re-exports from leaf modules -- every name that was previously defined here
@@ -68,6 +93,7 @@ from .dataPreview import (  # noqa: F401
 from .conftestManager import (  # noqa: F401
     fsConftestPath,
     fsConftestContent,
+    fsBuildConftestSource,
     fnWriteConftestMarker,
     _CONFTEST_MARKER_TEMPLATE,
     fnEnsureTestsDirectory,
@@ -166,8 +192,18 @@ def fsQualitativeStandardsPath(sStepDirectory):
 def fsBuildStepContext(
     connectionDocker, sContainerId, dictStep, dictVariables,
 ):
-    """Gather script source code and data file previews for a step."""
+    """Gather script source code and data file previews for a step.
+
+    The step ``sDirectory`` is resolved against ``sRepoRoot`` from
+    ``dictVariables`` so the docker file-fetch APIs see absolute
+    container paths. A repo-relative directory used as-is would be
+    resolved by Docker against ``/`` and miss the project repo,
+    yielding 404 from the archive endpoint.
+    """
     sDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = (dictVariables or {}).get("sRepoRoot", "")
+    if sDirectory and sRepoRoot and not posixpath.isabs(sDirectory):
+        sDirectory = posixpath.join(sRepoRoot, sDirectory)
     sScripts = _fsBuildScriptContents(
         connectionDocker, sContainerId, dictStep, sDirectory
     )
@@ -241,9 +277,21 @@ def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
 
 
 def _ftExtractStepInfo(dictWorkflow, iStepIndex):
-    """Return (dictStep, sDirectory) for the given step index."""
+    """Return (dictStep, sAbsoluteDirectory) for the given step index.
+
+    The directory is resolved to its container-absolute form by
+    joining with ``dictWorkflow['sProjectRepoPath']`` when the
+    workflow's stored ``sDirectory`` is repo-relative. Callers
+    write files and run scripts via Docker APIs that need absolute
+    container paths, so resolution at this single boundary keeps
+    every downstream path correct without spreading the join logic.
+    """
     dictStep = dictWorkflow["listSteps"][iStepIndex]
-    return dictStep, dictStep.get("sDirectory", "")
+    sDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    if sDirectory and sRepoRoot and not posixpath.isabs(sDirectory):
+        sDirectory = posixpath.join(sRepoRoot, sDirectory)
+    return dictStep, sDirectory
 
 
 # ---------------------------------------------------------------------------
@@ -327,25 +375,232 @@ def _fsGenerateQualitativeCode(listdictReports):
     return json.dumps(dictStandards, indent=4)
 
 
-def _fdictBuildQuantitativeStandards(listdictReports, fTolerance):
-    """Build quantitative_standards.json dict from introspection reports."""
+def fbStepProducesStochasticOutputs(dictStep, sScriptContents):
+    """Return True when script source matches a stochastic-framework pattern.
+
+    Combined with a sample-size check on each introspected array
+    (see ``_fsClassifyStochasticity``) before a step is treated as
+    stochastic. Patterns are framework-level identifiers (e.g.
+    ``np.random``, ``dynesty``), never science-specific symbols.
+    """
+    del dictStep
+    if not sScriptContents:
+        return False
+    for sPattern in _LIST_STOCHASTIC_PATTERNS:
+        if re.search(sPattern, sScriptContents, re.IGNORECASE):
+            return True
+    return False
+
+
+def _fbReportHasStochasticArray(dictReport):
+    """Return True if any benchmark in the report has enough samples."""
+    for dictBenchmark in dictReport.get("listBenchmarks", []):
+        if dictBenchmark.get("iSampleSize", 0) >= _I_STOCHASTIC_MIN_SAMPLES:
+            return True
+    return False
+
+
+def _fsClassifyStochasticity(
+    dictStep, sScriptContents, listdictReports,
+):
+    """Return one of deterministic/stochastic/stochastic_unseeded/unintrospectable.
+
+    The unseeded variant is opt-in via ``dictVerification`` flagged by
+    the per-step lint (see ``fileStatusManager``). The unintrospectable
+    branch fires when the introspector saw output files but produced no
+    numeric benchmarks (binary format with no loader, parse failure,
+    non-tabular content).
+    """
+    dictVerification = dictStep.get("dictVerification", {}) or {}
+    bUnseeded = dictVerification.get("bUnseededRandomnessWarning", False)
+    if listdictReports and not any(
+        r.get("listBenchmarks") for r in listdictReports
+    ):
+        return "unintrospectable"
+    if not fbStepProducesStochasticOutputs(dictStep, sScriptContents):
+        return "deterministic"
+    bAnyStochasticArray = any(
+        _fbReportHasStochasticArray(r) for r in listdictReports
+    )
+    if not bAnyStochasticArray:
+        return "deterministic"
+    if bUnseeded:
+        return "stochastic_unseeded"
+    return "stochastic"
+
+
+def _ftolMeanFromCv(fObservedCv, iSampleSize):
+    """Return rtol for a sample mean given coefficient of variation and N.
+
+    Uses the within-sample standard error ``CV / sqrt(N)`` scaled by
+    ``_F_SIGMA_MULT`` (k=3 → 99.7% Gaussian-tail target). Rationale
+    for trusting a single chain's dispersion to set this tolerance:
+    Vehtari, Gelman, Simpson, Carpenter & Bürkner (2021),
+    "Rank-normalization, folding, and localization: An improved R̂
+    for assessing convergence of MCMC", *Bayesian Analysis*
+    16(2):667-718 — sufficient sample size lets within-sample
+    statistics stand in for cross-chain diagnostics.
+    """
+    if iSampleSize <= 0:
+        return _F_FLOOR_RTOL
+    fSe = _F_SIGMA_MULT * abs(fObservedCv) / math.sqrt(iSampleSize)
+    return max(fSe, _F_FLOOR_RTOL)
+
+
+def _ftolStdFromN(iSampleSize):
+    """Return rtol for the sample standard deviation given N.
+
+    Uses the asymptotic Gaussian standard error ``sqrt(2/(N-1))`` for
+    the sample standard deviation, scaled by ``_F_SIGMA_MULT`` (k=3).
+    Same single-chain dispersion rationale as ``_ftolMeanFromCv``;
+    see Vehtari et al. (2021).
+    """
+    if iSampleSize < 2:
+        return _F_FLOOR_RTOL
+    fSe = _F_SIGMA_MULT * math.sqrt(2.0 / (iSampleSize - 1))
+    return max(fSe, _F_FLOOR_RTOL)
+
+
+def _ftolPercentileFromN(fProbability, iSampleSize, fObservedCv, fValue):
+    """Return rtol for an empirical percentile via asymptotic SE.
+
+    Reference: Oberkampf & Roy (2010), *Verification and Validation in
+    Scientific Computing*, Cambridge University Press, sec 2.3.
+    """
+    if iSampleSize <= 0 or fValue == 0.0:
+        return _F_FLOOR_RTOL
+    fVar = fProbability * (1.0 - fProbability) / iSampleSize
+    fScale = abs(fObservedCv) * math.sqrt(2.0 * math.pi)
+    fSe = _F_SIGMA_MULT * math.sqrt(fVar) / abs(fValue) * fScale
+    return max(fSe, _F_FLOOR_RTOL)
+
+
+_T_PERCENTILE_KIND_TO_PROB = {
+    "percentile_5": 0.05, "percentile_25": 0.25,
+    "percentile_50": 0.50, "percentile_75": 0.75,
+    "percentile_95": 0.95,
+}
+
+
+def _ftolForStochasticKind(dictStandard, fDefaultRtol):
+    """Return the SE-derived rtol for one stochastic-classified entry."""
+    sKind = dictStandard.get("sMetricKind", "single")
+    iN = int(dictStandard.get("iSampleSize", 0) or 0)
+    fObservedCv = dictStandard.get("fObservedCv") or 0.0
+    if sKind == "mean":
+        return _ftolMeanFromCv(fObservedCv, iN)
+    if sKind == "std":
+        return _ftolStdFromN(iN)
+    if sKind in _T_PERCENTILE_KIND_TO_PROB:
+        return _ftolPercentileFromN(
+            _T_PERCENTILE_KIND_TO_PROB[sKind], iN, fObservedCv,
+            dictStandard.get("fValue", 0.0),
+        )
+    return fDefaultRtol
+
+
+def _fdictAssignTolerance(dictStandard, sClassification, fDefaultRtol):
+    """Return a copy of dictStandard with derived tolerance fields."""
+    dictResult = dict(dictStandard)
+    if sClassification == "stochastic_unseeded":
+        dictResult["fRtol"] = _F_UNSEEDED_RTOL
+        dictResult["sNote"] = (
+            "Placeholder tolerance: seed the source of randomness "
+            "to derive a statistically defensible value."
+        )
+        return dictResult
+    if sClassification == "stochastic":
+        dictResult["fRtol"] = _ftolForStochasticKind(
+            dictResult, fDefaultRtol,
+        )
+        return dictResult
+    dictResult["fRtol"] = fDefaultRtol
+    return dictResult
+
+
+def _fbBenchmarkPassesFilter(dictBenchmark, sClassification):
+    """Return True when the benchmark belongs in the standards for this class."""
+    sKind = dictBenchmark.get("sMetricKind", "single")
+    if sClassification == "deterministic":
+        return sKind in ("single", "mean")
+    if sClassification == "stochastic":
+        return sKind in _T_DISTRIBUTIONAL_KINDS
+    if sClassification == "stochastic_unseeded":
+        return sKind in ("mean", "percentile_50")
+    return False
+
+
+def _fdictBuildOneQuantitativeEntry(dictBenchmark):
+    """Project an introspection benchmark into a standards entry."""
+    dictEntry = {
+        "sName": dictBenchmark["sName"],
+        "sDataFile": dictBenchmark["sDataFile"],
+        "sAccessPath": dictBenchmark["sAccessPath"],
+        "fValue": dictBenchmark["fValue"],
+        "sUnit": "",
+    }
+    for sField in ("sFormat", "sMetricKind", "iSampleSize", "fObservedCv"):
+        if sField in dictBenchmark:
+            dictEntry[sField] = dictBenchmark[sField]
+    return dictEntry
+
+
+def _fdictBuildQuantitativeStandards(
+    listdictReports, fTolerance, sClassification="deterministic",
+):
+    """Build quantitative_standards.json dict tagged by stochasticity class."""
     listStandards = []
     for dictReport in listdictReports:
         for dictBenchmark in dictReport.get("listBenchmarks", []):
-            dictStandard = {
-                "sName": dictBenchmark["sName"],
-                "sDataFile": dictBenchmark["sDataFile"],
-                "sAccessPath": dictBenchmark["sAccessPath"],
-                "fValue": dictBenchmark["fValue"],
-                "sUnit": "",
-            }
-            if "sFormat" in dictBenchmark:
-                dictStandard["sFormat"] = dictBenchmark["sFormat"]
-            listStandards.append(dictStandard)
-    return {
+            if not _fbBenchmarkPassesFilter(dictBenchmark, sClassification):
+                continue
+            dictEntry = _fdictBuildOneQuantitativeEntry(dictBenchmark)
+            listStandards.append(_fdictAssignTolerance(
+                dictEntry, sClassification, fTolerance,
+            ))
+    dictResult = {
         "fDefaultRtol": fTolerance,
+        "sStochasticityClassification": sClassification,
         "listStandards": listStandards,
     }
+    if sClassification == "unintrospectable":
+        dictResult["sIntrospectorError"] = _fsCollectIntrospectorErrors(
+            listdictReports,
+        )
+    return dictResult
+
+
+def _fsCollectIntrospectorErrors(listdictReports):
+    """Concatenate per-file error messages for the unintrospectable banner."""
+    listMessages = []
+    for dictReport in listdictReports:
+        sError = dictReport.get("sError", "")
+        if sError:
+            listMessages.append(
+                f"{dictReport.get('sFileName', '')}: {sError}"
+            )
+    return "; ".join(listMessages)
+
+
+def _fdictMergePreservingOverrides(dictNew, dictOld):
+    """Return dictNew with user-edited overrides from dictOld merged in.
+
+    Preserves ``fRtol``, ``fAtol``, ``sNote``, and ``sUnit`` fields on
+    matching ``sName`` entries — these are the fields a researcher
+    most often hand-edits between regenerations.
+    """
+    dictByName = {
+        dictEntry["sName"]: dictEntry
+        for dictEntry in dictOld.get("listStandards", [])
+    }
+    for dictEntry in dictNew.get("listStandards", []):
+        dictPrior = dictByName.get(dictEntry["sName"])
+        if dictPrior is None:
+            continue
+        for sField in ("fRtol", "fAtol", "sNote", "sUnit"):
+            if sField in dictPrior:
+                dictEntry[sField] = dictPrior[sField]
+    return dictNew
 
 
 def _fdictBuildOneIntegrityEntry(dictReport):
@@ -425,22 +680,37 @@ def fdictGenerateAllTestsDeterministic(
             iStepIndex,
         )
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
+    sScripts, _sPreviews = fsBuildStepContext(
+        connectionDocker, sContainerId, dictStep, dictVariables,
+    )
+    bScriptStochastic = fbStepProducesStochasticOutputs(
+        dictStep, sScripts,
+    )
     listdictReports = _fsRunIntrospection(
         connectionDocker, sContainerId, sDirectory, listDataFiles,
+        bScriptStochastic=bScriptStochastic,
     )
     _fnWarnIfAllUnloadable(listdictReports)
+    sClassification = _fsClassifyStochasticity(
+        dictStep, sScripts, listdictReports,
+    )
     return _fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance, bForceOverwrite,
+        dictWorkflow.get("sProjectRepoPath", ""),
+        sClassification,
     )
 
 
 def _fdictWriteAllDeterministicTests(
     connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance, bForceOverwrite=False,
+    listdictReports, fTolerance, bForceOverwrite, sProjectRepoPath,
+    sClassification="deterministic",
 ):
     """Write all three deterministic test files and return result dict."""
-    fnWriteConftestMarker(connectionDocker, sContainerId, sDirectory)
+    fnWriteConftestMarker(
+        connectionDocker, sContainerId, sDirectory, sProjectRepoPath,
+    )
     dictResult = {}
     listModified = []
     dictResult["dictIntegrity"] = _fdictWriteIntegrityTests(
@@ -460,6 +730,7 @@ def _fdictWriteAllDeterministicTests(
     dictResult["dictQuantitative"] = _fdictWriteQuantitativeTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance, bForceOverwrite,
+        sClassification,
     )
     if dictResult["dictQuantitative"].get("bNeedsOverwriteConfirm"):
         listModified.append(
@@ -477,7 +748,10 @@ def _fdictWriteQuantitativeFiles(
 ):
     """Write quantitative standards JSON and test file, return dict."""
     sStandardsPath = fsQuantitativeStandardsPath(sDirectory)
-    sJsonContent = json.dumps(dictStandards, indent=4)
+    dictMerged = _fdictMergeWithExistingStandards(
+        connectionDocker, sContainerId, sStandardsPath, dictStandards,
+    )
+    sJsonContent = json.dumps(dictMerged, indent=4)
     connectionDocker.fnWriteFile(
         sContainerId, sStandardsPath,
         sJsonContent.encode("utf-8"),
@@ -498,17 +772,37 @@ def _fdictWriteQuantitativeFiles(
         "sContent": sTestCode,
         "sStandardsPath": sStandardsPath,
         "sStandardsContent": sJsonContent,
+        "sStochasticityClassification": dictMerged.get(
+            "sStochasticityClassification", "deterministic",
+        ),
         "saCommands": [f"pytest tests/{sFilename}"],
     }
+
+
+def _fdictMergeWithExistingStandards(
+    connectionDocker, sContainerId, sStandardsPath, dictStandards,
+):
+    """Merge user-edited overrides from any prior standards file."""
+    sExisting = fsReadFileFromContainer(
+        connectionDocker, sContainerId, sStandardsPath,
+    )
+    if not sExisting:
+        return dictStandards
+    try:
+        dictPrior = json.loads(sExisting)
+    except (ValueError, TypeError):
+        return dictStandards
+    return _fdictMergePreservingOverrides(dictStandards, dictPrior)
 
 
 def _fdictWriteQuantitativeTests(
     connectionDocker, sContainerId, sDirectory,
     listdictReports, fTolerance, bForceOverwrite=False,
+    sClassification="deterministic",
 ):
     """Build standards from reports and write quantitative test files."""
     dictStandards = _fdictBuildQuantitativeStandards(
-        listdictReports, fTolerance,
+        listdictReports, fTolerance, sClassification,
     )
     return _fdictWriteQuantitativeFiles(
         connectionDocker, sContainerId, sDirectory,
@@ -636,7 +930,10 @@ def _fdictGenerateAllTestsViaLlm(
     if not bUseApi:
         fnEnsureClaudeMdInstructions(connectionDocker, sContainerId)
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
-    fnWriteConftestMarker(connectionDocker, sContainerId, sDirectory)
+    fnWriteConftestMarker(
+        connectionDocker, sContainerId, sDirectory,
+        dictWorkflow.get("sProjectRepoPath", ""),
+    )
     return _fdictDispatchLlmCategories(
         connectionDocker, sContainerId, sDirectory,
         sDataFiles, sScripts, sPreviews,

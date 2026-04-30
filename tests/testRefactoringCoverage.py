@@ -17,7 +17,6 @@ from vaibify.gui.pipelineServer import (
     _flistResolveStepPaths,
     _flistStandardizedBasenames,
     _fnClearStepModificationState,
-    _fnRecordStepRunTimestamp,
     _fnRegisterTestCommand,
     _fnUpdateModTimeBaseline,
     _fsBuildPytestCommand,
@@ -159,6 +158,25 @@ class TestFlistResolveStepPaths:
             "saPlotFiles": [],
         }
         assert _flistResolveStepPaths(dictStep, {}) == []
+
+    def test_relative_step_dir_joined_onto_repo_root(self):
+        dictStep = {
+            "sDirectory": "StepDir",
+            "saDataFiles": ["data.txt"],
+            "saPlotFiles": [],
+        }
+        dictVars = {"sRepoRoot": "/workspace/Proj"}
+        listPaths = _flistResolveStepPaths(dictStep, dictVars)
+        assert listPaths == ["/workspace/Proj/StepDir/data.txt"]
+
+    def test_relative_step_dir_without_repo_root_stays_relative(self):
+        dictStep = {
+            "sDirectory": "StepDir",
+            "saDataFiles": ["data.txt"],
+            "saPlotFiles": [],
+        }
+        listPaths = _flistResolveStepPaths(dictStep, {})
+        assert listPaths == ["StepDir/data.txt"]
 
 
 class TestFdictCollectOutputPathsByStep:
@@ -429,28 +447,6 @@ class TestFdictBuildFileStatusVars:
         dictResult = _fdictBuildFileStatusVars(dictWorkflow)
         assert dictResult["sPlotDirectory"] == "Figures"
         assert dictResult["sFigureType"] == "png"
-
-
-class TestFnRecordStepRunTimestamp:
-    def test_records_timestamp(self):
-        dictWorkflow = {"listSteps": [{}]}
-        _fnRecordStepRunTimestamp(dictWorkflow, 0)
-        sLastRun = dictWorkflow["listSteps"][0][
-            "dictRunStats"]["sLastRun"]
-        assert "UTC" in sLastRun
-
-    def test_out_of_range_no_crash(self):
-        dictWorkflow = {"listSteps": []}
-        _fnRecordStepRunTimestamp(dictWorkflow, 5)
-
-    def test_negative_index_no_crash(self):
-        dictWorkflow = {"listSteps": [{}]}
-        _fnRecordStepRunTimestamp(dictWorkflow, -1)
-
-    def test_creates_dict_run_stats(self):
-        dictWorkflow = {"listSteps": [{"sName": "A"}]}
-        _fnRecordStepRunTimestamp(dictWorkflow, 0)
-        assert "dictRunStats" in dictWorkflow["listSteps"][0]
 
 
 class TestFnClearStepModificationState:

@@ -142,7 +142,7 @@ def test_fnRegisterStepOutputs_registers_plot_files():
             "sDirectory": ".",
             "saPlotFiles": ["plot.pdf"],
         }
-        dictVars = {}
+        dictVars = {"sRepoRoot": sTmpDir}
         fnRegisterStepOutputs(
             dictStep, dictVars, "Step01", sTmpDir)
         assert "Step01.plot" in dictVars
@@ -158,7 +158,7 @@ def test_fnRegisterStepOutputs_registers_data_files():
             "saDataFiles": ["data.npy"],
             "saPlotFiles": [],
         }
-        dictVars = {}
+        dictVars = {"sRepoRoot": sTmpDir}
         fnRegisterStepOutputs(
             dictStep, dictVars, "Step01", sTmpDir)
         assert "Step01.data" in dictVars
@@ -247,7 +247,7 @@ def test_fnRunVerifyOnly_all_present():
                 "saPlotCommands": [],
             }]
         }
-        dictVars = {}
+        dictVars = {"sRepoRoot": sTmpDir}
         bResult = fnRunVerifyOnly(
             dictWorkflow, dictVars, sTmpDir)
         assert bResult is True
@@ -277,7 +277,7 @@ def test_fnRunVerifyOnly_skips_disabled():
                 "sDirectory": ".",
                 "saPlotFiles": ["missing.pdf"],
                 "saPlotCommands": [],
-                "bEnabled": False,
+                "bRunEnabled": False,
             }]
         }
         dictVars = {}
@@ -302,7 +302,7 @@ def test_fbSkipAndRegisterStep_success():
             "saPlotFiles": ["out.pdf"],
         }
         listResults = []
-        dictVars = {}
+        dictVars = {"sRepoRoot": sTmpDir}
         bOk = _fbSkipAndRegisterStep(
             dictStep, dictVars, "Step01", sTmpDir, listResults)
         assert bOk is True

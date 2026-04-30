@@ -2,8 +2,19 @@
 
 __all__ = []
 
+import posixpath
+
 from . import workflowManager
 from .pipelineUtils import fsShellQuote
+
+
+def _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath):
+    """Return container-absolute step dir for path ops in this module."""
+    if not sStepDirectory or posixpath.isabs(sStepDirectory):
+        return sStepDirectory
+    if not sProjectRepoPath:
+        return sStepDirectory
+    return posixpath.join(sProjectRepoPath, sStepDirectory)
 
 
 _LIST_TEST_CATEGORIES = (
@@ -80,23 +91,31 @@ def _fnClearDownstreamUpstreamFlags(dictWorkflow, iStepIndex):
 
 def _fnRemoveTestFiles(
     connectionDocker, sContainerId, dictStep, iStepIndex,
+    sProjectRepoPath="",
 ):
     """Remove generated test file from the container. Deprecated."""
     from .testGenerator import fsTestFilePath
 
-    sDirectory = dictStep.get("sDirectory", "")
-    sPath = fsTestFilePath(sDirectory, iStepIndex)
+    sAbsStepDir = _fsAbsoluteStepDir(
+        dictStep.get("sDirectory", ""), sProjectRepoPath,
+    )
+    sPath = fsTestFilePath(sAbsStepDir, iStepIndex)
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"rm -f {fsShellQuote(sPath)}"
     )
 
 
-def _fnRemoveTestDirectory(connectionDocker, sContainerId, dictStep):
+def _fnRemoveTestDirectory(
+    connectionDocker, sContainerId, dictStep,
+    sProjectRepoPath="",
+):
     """Remove the entire tests subdirectory from the container."""
     from .workflowManager import fsTestsDirectory
 
-    sDirectory = dictStep.get("sDirectory", "")
-    sTestsDir = fsTestsDirectory(sDirectory)
+    sAbsStepDir = _fsAbsoluteStepDir(
+        dictStep.get("sDirectory", ""), sProjectRepoPath,
+    )
+    sTestsDir = fsTestsDirectory(sAbsStepDir)
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"rm -rf {fsShellQuote(sTestsDir)}"
     )

@@ -21,6 +21,34 @@ Together, these four files constitute a reproducibility manifest. Sharing
 them (or the repository that contains them) is sufficient for anyone with
 Docker to reproduce the results.
 
+### L1 precondition: workflows live inside a git repo
+
+Vaibify enforces the lowest rung of the reproducibility ladder as a
+precondition, not a best practice. Every workflow must live inside a
+git repository — its *project repo* — which vaibify auto-detects as
+the git work tree enclosing the `workflow.json` file. A workflow saved
+to a directory that is not a git work tree is rejected at both
+creation and connect time with a clear error pointing the user to run
+`git init`. The dashboard cannot display a meaningful reproducibility
+level for code that cannot be committed, so asking for one would be
+dishonest.
+
+The project-repo path is auto-detected once per connect via
+`git rev-parse --show-toplevel`, stamped on the in-memory workflow
+dict, and threaded through every subsequent status, badge, and
+manifest call. A single container may host multiple workflows in
+separate project-repo subdirectories (for example, a paper pipeline
+and a follow-on cross-system analysis that share the same dependency
+clones); the active workflow determines the scope of every per-file
+badge.
+
+Test markers (the JSON files that record the last pytest outcome +
+output-file hashes for each step) live inside the project repo under
+`.vaibify/test_markers/` and are committed alongside `workflow.json`.
+This makes a workflow's verification state — which tests have run,
+what they produced, whether the outputs have drifted — reproducible
+from a fresh clone without rerunning anything.
+
 ## Publishing a Workflow
 
 Generate a GitHub Actions workflow that automates the entire pipeline:

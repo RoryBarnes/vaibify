@@ -16,8 +16,6 @@ from vaibify.gui import pipelineServer
 from vaibify.gui import workflowManager
 from vaibify.gui.syncDispatcher import (
     _fsNormalizePath,
-    _fdictParseHashOutput,
-    fdictComputeAllScriptHashes,
     flistExtractAllScriptPaths,
 )
 from vaibify.gui.pipelineRunner import fnClearOutputModifiedFlags
@@ -38,9 +36,9 @@ DICT_WORKFLOW_MULTI = {
     "listSteps": [
         {
             "sName": "Generate Data",
-            "sDirectory": "/workspace/step1",
+            "sDirectory": "step1",
             "bPlotOnly": False,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python generate.py"],
             "saDataFiles": ["data.csv"],
@@ -49,8 +47,8 @@ DICT_WORKFLOW_MULTI = {
             "saPlotFiles": ["{sPlotDirectory}/fig1.{sFigureType}"],
             "dictRunStats": {
                 "dictInputHashes": {
-                    "/workspace/step1/generate.py": "aaa111",
-                    "/workspace/step1/plotData.py": "bbb222",
+                    "step1/generate.py": "aaa111",
+                    "step1/plotData.py": "bbb222",
                 },
             },
             "dictVerification": {
@@ -60,9 +58,9 @@ DICT_WORKFLOW_MULTI = {
         },
         {
             "sName": "Analyze",
-            "sDirectory": "/workspace/step2",
+            "sDirectory": "step2",
             "bPlotOnly": True,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": [],
             "saDataFiles": [],
@@ -79,9 +77,9 @@ DICT_WORKFLOW_MULTI = {
         },
         {
             "sName": "Interactive Review",
-            "sDirectory": "/workspace/step3",
+            "sDirectory": "step3",
             "bPlotOnly": False,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": True,
             "saDataCommands": [],
             "saDataFiles": ["review.txt"],
@@ -130,8 +128,8 @@ class MockDockerBoost:
         if "find" in sCommand:
             return (0, "")
         if "stat -c" in sCommand:
-            return (0, "/workspace/step1/data.csv 1700000000\n"
-                    "/workspace/step1/Plot/fig1.pdf 1700000001\n")
+            return (0, "step1/data.csv 1700000000\n"
+                    "step1/Plot/fig1.pdf 1700000001\n")
         if "cat" in sCommand and "pipeline_state" in sCommand:
             return (1, "")
         if "ps aux" in sCommand and "grep" not in sCommand:
@@ -146,8 +144,8 @@ class MockDockerBoost:
             return (self._iTestExitCode, self._sTestOutput)
         if "python3 -c" in sCommand and "hashlib" in sCommand:
             return (0,
-                    "/workspace/step1/generate.py aaa111\n"
-                    "/workspace/step1/plotData.py bbb222\n")
+                    "step1/generate.py aaa111\n"
+                    "step1/plotData.py bbb222\n")
         if "which claude" in sCommand:
             return (1, "")
         return (0, "")
@@ -356,96 +354,59 @@ def test_fnInvalidateDownstreamStep_no_verification():
 
 
 # =======================================================================
-# pipelineServer: _fdictBuildScriptStatus (lines 1317-1345)
+# pipelineServer: _fdictBuildScriptStatus (timestamp-based)
 # =======================================================================
 
 
-def test_fdictBuildScriptStatus_unknown_no_hashes():
-    dictWorkflow = {
-        "listSteps": [
-            {
-                "sDirectory": "/workspace/step1",
-                "saDataCommands": ["python gen.py"],
-                "saPlotCommands": [],
-                "dictRunStats": {},
-            },
-        ],
+def _fdictBuildUnvalidatedStep():
+    return {
+        "sDirectory": "step1",
+        "saDataCommands": ["python gen.py"],
+        "saPlotCommands": [],
+        "dictVerification": {},
     }
+
+
+def test_fdictBuildScriptStatus_unchanged_without_validators():
+    dictWorkflow = {"listSteps": [_fdictBuildUnvalidatedStep()]}
     dictResult = pipelineServer._fdictBuildScriptStatus(
-        dictWorkflow, {},
+        dictWorkflow, {"step1/gen.py": "200"},
     )
-    assert dictResult[0] == "unknown"
+    assert dictResult[0]["sStatus"] == "unchanged"
 
 
-def test_fdictBuildScriptStatus_unchanged():
-    dictWorkflow = {
-        "listSteps": [
-            {
-                "sDirectory": "/workspace/step1",
-                "saDataCommands": ["python gen.py"],
-                "saPlotCommands": [],
-                "dictRunStats": {
-                    "dictInputHashes": {
-                        "/workspace/step1/gen.py": "hash123",
-                    },
-                },
-            },
-        ],
+def test_fdictBuildScriptStatus_unchanged_when_fresh():
+    dictStep = _fdictBuildUnvalidatedStep()
+    dictStep["dictVerification"] = {
+        "sLastUserUpdate": "2026-04-16 12:00:00 UTC",
     }
-    dictCurrentHashes = {
-        "/workspace/step1/gen.py": "hash123",
-    }
+    dictWorkflow = {"listSteps": [dictStep]}
     dictResult = pipelineServer._fdictBuildScriptStatus(
-        dictWorkflow, dictCurrentHashes,
+        dictWorkflow, {"step1/gen.py": "100"},
+        dictMarkerMtimeByStep={"0": "1800000000"},
     )
-    assert dictResult[0] == "unchanged"
+    assert dictResult[0]["sStatus"] == "unchanged"
+    assert dictResult[0]["listStaleArtifacts"] == []
 
 
-def test_fdictBuildScriptStatus_modified():
-    dictWorkflow = {
-        "listSteps": [
-            {
-                "sDirectory": "/workspace/step1",
-                "saDataCommands": ["python gen.py"],
-                "saPlotCommands": ["python plot.py"],
-                "dictRunStats": {
-                    "dictInputHashes": {
-                        "/workspace/step1/gen.py": "hash123",
-                        "/workspace/step1/plot.py": "hash456",
-                    },
-                },
-            },
-        ],
+def test_fdictBuildScriptStatus_modified_when_test_stale():
+    dictStep = _fdictBuildUnvalidatedStep()
+    dictStep["dictVerification"] = {
+        "sLastUserUpdate": "2030-01-01 00:00:00 UTC",
     }
-    dictCurrentHashes = {
-        "/workspace/step1/gen.py": "hash123",
-        "/workspace/step1/plot.py": "CHANGED",
-    }
+    dictWorkflow = {"listSteps": [dictStep]}
     dictResult = pipelineServer._fdictBuildScriptStatus(
-        dictWorkflow, dictCurrentHashes,
+        dictWorkflow,
+        {"step1/gen.py": "9999999999"},
+        dictMarkerMtimeByStep={"0": "1"},
     )
-    assert dictResult[0] == "modified"
-
-
-def test_fdictBuildScriptStatus_missing_current():
-    dictWorkflow = {
-        "listSteps": [
-            {
-                "sDirectory": "/workspace/step1",
-                "saDataCommands": ["python gen.py"],
-                "saPlotCommands": [],
-                "dictRunStats": {
-                    "dictInputHashes": {
-                        "/workspace/step1/gen.py": "hash123",
-                    },
-                },
-            },
-        ],
-    }
-    dictResult = pipelineServer._fdictBuildScriptStatus(
-        dictWorkflow, {},
+    assert dictResult[0]["sStatus"] == "modified"
+    listStale = dictResult[0]["listStaleArtifacts"]
+    assert any(
+        d["sValidator"] == "test"
+        and d["sCategory"] == "dataScript"
+        for d in listStale
     )
-    assert dictResult[0] == "modified"
 
 
 # =======================================================================
@@ -560,7 +521,7 @@ def test_save_and_run_test_success(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sContent": "def test_example(): assert True",
-        "sFilePath": "/workspace/step1/test_step01.py",
+        "sFilePath": "step1/test_step01.py",
     }
     responseHttp = clientHttp.post(
         f"/api/steps/{S_CONTAINER_ID}/0/save-and-run-test",
@@ -604,7 +565,7 @@ def test_fnClearDownstreamUpstreamFlags():
         "listSteps": [
             {
                 "sName": "Step1",
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
                 "saDataFiles": ["data.csv"],
                 "saPlotCommands": [],
@@ -614,7 +575,7 @@ def test_fnClearDownstreamUpstreamFlags():
             },
             {
                 "sName": "Step2",
-                "sDirectory": "/workspace/step2",
+                "sDirectory": "step2",
                 "saDataCommands": [
                     "python analyze.py {Step01.data}",
                 ],
@@ -697,7 +658,7 @@ def test_fdictCollectOutputPathsByStep_resolves():
         "sFigureType": "pdf",
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataFiles": ["data.csv"],
                 "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],
             },
@@ -707,15 +668,15 @@ def test_fdictCollectOutputPathsByStep_resolves():
         dictWorkflow,
     )
     assert 0 in dictResult
-    assert "/workspace/step1/data.csv" in dictResult[0]
-    assert "/workspace/step1/Plot/fig.pdf" in dictResult[0]
+    assert "step1/data.csv" in dictResult[0]
+    assert "step1/Plot/fig.pdf" in dictResult[0]
 
 
 def test_fdictCollectOutputPathsByStep_with_vars():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataFiles": ["{sPlotDirectory}/out.dat"],
                 "saPlotFiles": [],
             },
@@ -725,7 +686,7 @@ def test_fdictCollectOutputPathsByStep_with_vars():
     dictResult = pipelineServer.fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
-    assert "/workspace/step1/Results/out.dat" in dictResult[0]
+    assert "step1/Results/out.dat" in dictResult[0]
 
 
 # =======================================================================
@@ -1061,90 +1022,6 @@ def test_fsNormalizePath_normalizes():
 
 
 # =======================================================================
-# syncDispatcher: _fdictParseHashOutput (lines 670-680)
-# =======================================================================
-
-
-def test_fdictParseHashOutput_normal():
-    sOutput = (
-        "/workspace/gen.py abc123\n"
-        "/workspace/plot.py def456\n"
-    )
-    dictResult = _fdictParseHashOutput(sOutput)
-    assert dictResult["/workspace/gen.py"] == "abc123"
-    assert dictResult["/workspace/plot.py"] == "def456"
-
-
-def test_fdictParseHashOutput_missing():
-    sOutput = "/workspace/gen.py MISSING\n"
-    dictResult = _fdictParseHashOutput(sOutput)
-    assert "/workspace/gen.py" not in dictResult
-
-
-def test_fdictParseHashOutput_empty():
-    assert _fdictParseHashOutput("") == {}
-    assert _fdictParseHashOutput(None) == {}
-
-
-def test_fdictParseHashOutput_blank_lines():
-    sOutput = "\n  \n/a.py hash1\n\n"
-    dictResult = _fdictParseHashOutput(sOutput)
-    assert dictResult["/a.py"] == "hash1"
-
-
-# =======================================================================
-# syncDispatcher: fdictComputeAllScriptHashes (lines 648-667)
-# =======================================================================
-
-
-def test_fdictComputeAllScriptHashes_success():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (
-        0, "/workspace/step1/gen.py abc123\n"
-    )
-    dictWorkflow = {
-        "listSteps": [
-            {
-                "sDirectory": "/workspace/step1",
-                "saDataCommands": ["python gen.py"],
-                "saPlotCommands": [],
-            },
-        ],
-    }
-    dictResult = fdictComputeAllScriptHashes(
-        mockDocker, "cid", dictWorkflow,
-    )
-    assert "/workspace/step1/gen.py" in dictResult
-
-
-def test_fdictComputeAllScriptHashes_empty_workflow():
-    mockDocker = MagicMock()
-    dictWorkflow = {"listSteps": []}
-    dictResult = fdictComputeAllScriptHashes(
-        mockDocker, "cid", dictWorkflow,
-    )
-    assert dictResult == {}
-
-
-def test_fdictComputeAllScriptHashes_exec_failure():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (1, "error")
-    dictWorkflow = {
-        "listSteps": [
-            {
-                "sDirectory": "/workspace/step1",
-                "saDataCommands": ["python gen.py"],
-                "saPlotCommands": [],
-            },
-        ],
-    }
-    dictResult = fdictComputeAllScriptHashes(
-        mockDocker, "cid", dictWorkflow,
-    )
-    assert dictResult == {}
-
-
-# =======================================================================
 # syncDispatcher: flistExtractAllScriptPaths (lines 625-645)
 # =======================================================================
 
@@ -1153,35 +1030,35 @@ def test_flistExtractAllScriptPaths():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
                 "saPlotCommands": ["python plot.py"],
             },
             {
-                "sDirectory": "/workspace/step2",
+                "sDirectory": "step2",
                 "saDataCommands": ["python gen.py"],
                 "saPlotCommands": [],
             },
         ],
     }
     listPaths = flistExtractAllScriptPaths(dictWorkflow)
-    assert "/workspace/step1/gen.py" in listPaths
-    assert "/workspace/step1/plot.py" in listPaths
-    assert "/workspace/step2/gen.py" in listPaths
+    assert "step1/gen.py" in listPaths
+    assert "step1/plot.py" in listPaths
+    assert "step2/gen.py" in listPaths
 
 
 def test_flistExtractAllScriptPaths_no_duplicates():
     dictWorkflow = {
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
                 "saPlotCommands": ["python gen.py"],
             },
         ],
     }
     listPaths = flistExtractAllScriptPaths(dictWorkflow)
-    iCount = listPaths.count("/workspace/step1/gen.py")
+    iCount = listPaths.count("step1/gen.py")
     assert iCount == 1
 
 

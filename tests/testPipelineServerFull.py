@@ -26,9 +26,9 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Step A",
-            "sDirectory": "/workspace/stepA",
+            "sDirectory": "stepA",
             "bPlotOnly": True,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
             "saDataFiles": ["output.dat"],
@@ -155,13 +155,17 @@ def _fnConnectToContainer(clientHttp):
 def test_overleaf_push_success(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {
-        "listFilePaths": ["Plot/fig.pdf"],
+        "listFilePaths": ["/workspace/Plot/fig.pdf"],
         "sCommitMessage": "Update figures",
     }
-    responseHttp = clientHttp.post(
-        f"/api/overleaf/{S_CONTAINER_ID}/push",
-        json=dictPayload,
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json=dictPayload,
+        )
     assert responseHttp.status_code == 200
     assert responseHttp.json()["bSuccess"] is True
 
@@ -297,6 +301,7 @@ def test_get_file_status(clientHttp):
 
 
 def test_fdictHandleConnect_error():
+    import asyncio
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.side_effect = (
         RuntimeError("fail")
@@ -308,8 +313,10 @@ def test_fdictHandleConnect_error():
         "paths": {},
     }
     with pytest.raises(Exception):
-        pipelineServer.fdictHandleConnect(
-            dictCtx, "bad-id", "/wf.json"
+        asyncio.run(
+            pipelineServer.fdictHandleConnect(
+                dictCtx, "bad-id", "/wf.json"
+            )
         )
 
 
@@ -319,7 +326,7 @@ def test_flistCollectOutputPaths():
         "sFigureType": "pdf",
         "listSteps": [
             {
-                "sDirectory": "/workspace/step1",
+                "sDirectory": "step1",
                 "saDataFiles": ["data.npy"],
                 "saPlotFiles": [
                     "{sPlotDirectory}/fig.{sFigureType}"
@@ -330,8 +337,8 @@ def test_flistCollectOutputPaths():
     listPaths = pipelineServer._flistCollectOutputPaths(
         dictWorkflow
     )
-    assert "/workspace/step1/data.npy" in listPaths
-    assert "/workspace/step1/Plot/fig.pdf" in listPaths
+    assert "step1/data.npy" in listPaths
+    assert "step1/Plot/fig.pdf" in listPaths
 
 
 def test_fdictGetModTimes_empty():
@@ -356,7 +363,7 @@ def test_fdictGetModTimes_parses_output():
 def test_fnRemoveTestFiles():
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
-    dictStep = {"sDirectory": "/workspace/step1"}
+    dictStep = {"sDirectory": "step1"}
     pipelineServer._fnRemoveTestFiles(
         mockDocker, "cid", dictStep, 0
     )

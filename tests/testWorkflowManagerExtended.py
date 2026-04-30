@@ -83,7 +83,7 @@ def test_flistExtractStepNames_structure():
 def test_flistExtractStepNames_defaults():
     dictWorkflow = _fdictBuildWorkflow()
     listNames = flistExtractStepNames(dictWorkflow)
-    assert listNames[0]["bEnabled"] is True
+    assert listNames[0]["bRunEnabled"] is True
     assert listNames[0]["bPlotOnly"] is True
 
 
@@ -192,6 +192,126 @@ def test_fnUpdateSyncStatus_multiple():
     assert dictWorkflow["dictSyncStatus"]["b.pdf"]["bGithub"] is True
 
 
+def test_fnUpdateSyncStatus_normalizes_absolute_to_repo_relative():
+    from vaibify.gui.workflowManager import fnUpdateOverleafDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateSyncStatus(
+        dictWorkflow,
+        ["/workspace/Proj/Plot/fig.pdf"],
+        "Overleaf",
+    )
+    assert "Plot/fig.pdf" in dictWorkflow["dictSyncStatus"]
+    assert "/workspace/Proj/Plot/fig.pdf" not in (
+        dictWorkflow["dictSyncStatus"])
+
+
+def test_fnUpdateOverleafDigests_keys_are_repo_relative():
+    from vaibify.gui.workflowManager import fnUpdateOverleafDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateOverleafDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "abc123"},
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sOverleafLastPushedDigest"] == "abc123"
+
+
+def test_fnUpdateZenodoDigests_records_blob_sha():
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "def456"},
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sZenodoLastPushedDigest"] == "def456"
+    assert dictEntry["sOverleafLastPushedDigest"] == ""
+
+
+def test_fnUpdateZenodoDigests_skips_empty_digests():
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": ""},
+    )
+    assert dictWorkflow.get("dictSyncStatus", {}) == {}
+
+
+def test_fdictLookupSyncEntry_matches_repo_rel_first():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"Plot/fig.pdf": {"bGithub": True}}
+    assert fdictLookupSyncEntry(
+        dictSync, "Plot/fig.pdf", "/workspace/Proj",
+    ) == {"bGithub": True}
+
+
+def test_fdictLookupSyncEntry_falls_back_to_project_absolute():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {
+        "/workspace/Proj/Plot/fig.pdf": {"bOverleaf": True},
+    }
+    assert fdictLookupSyncEntry(
+        dictSync, "Plot/fig.pdf", "/workspace/Proj",
+    ) == {"bOverleaf": True}
+
+
+def test_fdictLookupSyncEntry_returns_empty_when_missing():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    assert fdictLookupSyncEntry({}, "Plot/fig.pdf", "") == {}
+
+
+def test_fnSetServiceTracking_enables_and_disables_overleaf():
+    from vaibify.gui.workflowManager import fnSetServiceTracking
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnSetServiceTracking(
+        dictWorkflow, "/workspace/Proj/Plot/fig.pdf", "Overleaf", True,
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["bOverleaf"] is True
+    fnSetServiceTracking(
+        dictWorkflow, "/workspace/Proj/Plot/fig.pdf", "Overleaf", False,
+    )
+    assert dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"][
+        "bOverleaf"] is False
+
+
+def test_fnMigrateArchiveToTracking_seeds_flags_for_archive_files():
+    from vaibify.gui.workflowManager import fnMigrateArchiveToTracking
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/Proj",
+        "listSteps": [
+            {
+                "sDirectory": "StepA",
+                "saPlotFiles": ["a.pdf"],
+                "saDataFiles": ["a.h5"],
+                "dictPlotFileCategories": {"a.pdf": "archive"},
+                "dictDataFileCategories": {"a.h5": "supporting"},
+            },
+        ],
+    }
+    assert fnMigrateArchiveToTracking(dictWorkflow) is True
+    dictSync = dictWorkflow["dictSyncStatus"]
+    assert dictSync["StepA/a.pdf"]["bOverleaf"] is True
+    assert dictSync["StepA/a.pdf"]["bZenodo"] is True
+    assert "StepA/a.h5" not in dictSync
+
+
+def test_fnMigrateArchiveToTracking_runs_only_once():
+    from vaibify.gui.workflowManager import fnMigrateArchiveToTracking
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/Proj",
+        "listSteps": [
+            {"sDirectory": "X", "saPlotFiles": ["a.pdf"]},
+        ],
+    }
+    assert fnMigrateArchiveToTracking(dictWorkflow) is True
+    dictWorkflow["dictSyncStatus"]["X/a.pdf"]["bOverleaf"] = False
+    assert fnMigrateArchiveToTracking(dictWorkflow) is False
+    assert dictWorkflow["dictSyncStatus"]["X/a.pdf"][
+        "bOverleaf"] is False
+
+
 def test_flistResolveOutputFiles_resolves():
     dictStep = {"saPlotFiles": ["{sPlotDirectory}/fig.pdf"]}
     dictVars = {"sPlotDirectory": "Figures"}
@@ -201,27 +321,6 @@ def test_flistResolveOutputFiles_resolves():
 
 def test_flistResolveOutputFiles_empty():
     assert flistResolveOutputFiles({}, {}) == []
-
-
-# -----------------------------------------------------------------------
-# _fsExtractRepoName — container root case (line 55)
-# -----------------------------------------------------------------------
-
-
-def test_fsExtractRepoName_container_root():
-    from vaibify.gui.workflowManager import _fsExtractRepoName
-    sResult = _fsExtractRepoName(
-        "/workspace/.vaibify/workflows/w.json", "/workspace",
-    )
-    assert sResult == "(container root)"
-
-
-def test_fsExtractRepoName_repo_name():
-    from vaibify.gui.workflowManager import _fsExtractRepoName
-    sResult = _fsExtractRepoName(
-        "/workspace/myrepo/.vaibify/workflows/w.json", "/workspace",
-    )
-    assert sResult == "myrepo"
 
 
 # -----------------------------------------------------------------------
@@ -295,7 +394,7 @@ def test_fdictLoadWorkflowFromContainer_success():
     dictValid = {
         "sPlotDirectory": "Plot",
         "listSteps": [{
-            "sName": "S1", "sDirectory": "/d",
+            "sName": "S1", "sDirectory": "d",
             "saPlotCommands": ["echo"], "saPlotFiles": ["f.pdf"],
         }],
     }
@@ -307,6 +406,93 @@ def test_fdictLoadWorkflowFromContainer_success():
     )
     assert dictResult["sPlotDirectory"] == "Plot"
     assert "dictTests" in dictResult["listSteps"][0]
+    assert dictResult["listSteps"][0]["sLabel"] == "A01"
+
+
+def test_fdictLoadWorkflowFromContainer_preserves_dictRandomnessLint():
+    """Workflow load passes dictRandomnessLint through unchanged.
+
+    dictRandomnessLint is an optional top-level field that the
+    randomness lint reads. Loader must not strip or rename it; the
+    schema validator should silently allow unknown top-level fields.
+    """
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import (
+        fdictLoadWorkflowFromContainer,
+    )
+    mockDocker = MagicMock()
+    dictValid = {
+        "sPlotDirectory": "Plot",
+        "dictRandomnessLint": {
+            "sConfigGlob": "*.in",
+            "sSeedRegex": r"^seed\s+\d+",
+        },
+        "listSteps": [{
+            "sName": "S1", "sDirectory": "d",
+            "saPlotCommands": ["echo"], "saPlotFiles": ["f.pdf"],
+        }],
+    }
+    mockDocker.fbaFetchFile.return_value = (
+        json.dumps(dictValid).encode("utf-8")
+    )
+    dictResult = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid", sWorkflowPath="/w.json",
+    )
+    assert "dictRandomnessLint" in dictResult
+    assert dictResult["dictRandomnessLint"]["sConfigGlob"] == "*.in"
+    assert (
+        dictResult["dictRandomnessLint"]["sSeedRegex"]
+        == r"^seed\s+\d+"
+    )
+
+
+def test_fnSaveWorkflowToContainer_persists_slabel():
+    """Save path recomputes and writes sLabel onto every step."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
+    mockDocker = MagicMock()
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Intro", "bInteractive": True},
+            {"sName": "Run"},
+        ],
+    }
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictWorkflow,
+        sWorkflowPath="/w.json",
+    )
+    assert dictWorkflow["listSteps"][0]["sLabel"] == "I01"
+    assert dictWorkflow["listSteps"][1]["sLabel"] == "A01"
+    (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
+    dictWritten = json.loads(baPayload.decode("utf-8"))
+    assert dictWritten["listSteps"][0]["sLabel"] == "I01"
+    assert dictWritten["listSteps"][1]["sLabel"] == "A01"
+
+
+def test_fnSaveWorkflowToContainer_recomputes_stale_slabel():
+    """Pre-existing sLabel is overwritten on save."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
+    mockDocker = MagicMock()
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Intro", "bInteractive": True, "sLabel": "STALE"},
+            {"sName": "Run", "sLabel": "ALSO_STALE"},
+        ],
+    }
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictWorkflow,
+        sWorkflowPath="/w.json",
+    )
+    (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
+    dictWritten = json.loads(baPayload.decode("utf-8"))
+    assert dictWritten["listSteps"][0]["sLabel"] == "I01"
+    assert dictWritten["listSteps"][1]["sLabel"] == "A01"
 
 
 # -----------------------------------------------------------------------
@@ -421,17 +607,17 @@ def test_fdictBuildDownstreamMap_chain():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "A", "sDirectory": "/a",
+                "sName": "A", "sDirectory": "a",
                 "saPlotCommands": ["echo"],
                 "saPlotFiles": ["a.pdf"],
             },
             {
-                "sName": "B", "sDirectory": "/b",
+                "sName": "B", "sDirectory": "b",
                 "saPlotCommands": ["{Step01.a}"],
                 "saPlotFiles": ["b.pdf"],
             },
             {
-                "sName": "C", "sDirectory": "/c",
+                "sName": "C", "sDirectory": "c",
                 "saPlotCommands": ["{Step02.b}"],
                 "saPlotFiles": ["c.pdf"],
             },
@@ -477,18 +663,18 @@ def test_fsGetFileCategory_from_data_categories():
 
 def test_flistResolveOutputPaths_basic():
     dictStep = {
-        "sDirectory": "/workspace/step01",
+        "sDirectory": "step01",
         "saDataFiles": ["results.csv"],
         "saPlotFiles": ["fig.pdf"],
     }
     listPaths = _flistResolveOutputPaths(dictStep)
-    assert "/workspace/step01/results.csv" in listPaths
-    assert "/workspace/step01/fig.pdf" in listPaths
+    assert "step01/results.csv" in listPaths
+    assert "step01/fig.pdf" in listPaths
 
 
 def test_flistResolveOutputPaths_skips_templates():
     dictStep = {
-        "sDirectory": "/workspace/step01",
+        "sDirectory": "step01",
         "saPlotFiles": ["{sPlotDirectory}/fig.pdf", "local.png"],
     }
     listPaths = _flistResolveOutputPaths(dictStep)
@@ -550,12 +736,12 @@ def test_fdictBuildImplicitDependencies_template_excluded():
         "listSteps": [
             {
                 "sName": "A",
-                "sDirectory": "/workspace/step01",
+                "sDirectory": "step01",
                 "saPlotFiles": ["{sPlotDirectory}/fig.pdf"],
             },
             {
                 "sName": "B",
-                "sDirectory": "/workspace",
+                "sDirectory": ".",
                 "saDataFiles": [],
             },
         ],
@@ -659,12 +845,12 @@ def test_fdictBuildDownstreamMap_diamond():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "Root", "sDirectory": "/r",
+                "sName": "Root", "sDirectory": "r",
                 "saPlotCommands": ["echo"],
                 "saPlotFiles": ["root.pdf"],
             },
             {
-                "sName": "Left", "sDirectory": "/l",
+                "sName": "Left", "sDirectory": "l",
                 "saPlotCommands": ["{Step01.root}"],
                 "saPlotFiles": ["left.pdf"],
             },
@@ -674,7 +860,7 @@ def test_fdictBuildDownstreamMap_diamond():
                 "saPlotFiles": ["right.pdf"],
             },
             {
-                "sName": "Join", "sDirectory": "/j",
+                "sName": "Join", "sDirectory": "j",
                 "saPlotCommands": [
                     "{Step02.left} {Step03.right}",
                 ],
@@ -703,15 +889,22 @@ def test_fdictLoadWorkflowFromContainer_auto_discover():
     dictValid = {
         "sPlotDirectory": "Plot",
         "listSteps": [{
-            "sName": "S1", "sDirectory": "/d",
+            "sName": "S1", "sDirectory": "d",
             "saPlotCommands": ["echo"], "saPlotFiles": ["f.pdf"],
         }],
     }
+    sWorkflowPath = "/workspace/repo/.vaibify/workflows/w.json"
+    sProbeOutput = json.dumps({sWorkflowPath: "/workspace/repo"}) + "\n"
+
+    def _fExecuteCommand(sContainerId, sCommand, **_kwargs):
+        if sCommand.startswith("find "):
+            return (0, sWorkflowPath + "\n")
+        if sCommand.startswith("python3 -c "):
+            return (0, sProbeOutput)
+        return (0, "")
+
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (
-        0,
-        "/workspace/repo/.vaibify/workflows/w.json\n",
-    )
+    mockDocker.ftResultExecuteCommand.side_effect = _fExecuteCommand
     sJsonContent = json.dumps(dictValid).encode("utf-8")
     sNameJson = json.dumps({"sWorkflowName": "Auto"}).encode("utf-8")
     mockDocker.fbaFetchFile.side_effect = [sNameJson, sJsonContent]
@@ -733,12 +926,12 @@ def test_fnInsertStep_renumbers():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "A", "sDirectory": "/a",
+                "sName": "A", "sDirectory": "a",
                 "saPlotCommands": ["echo"],
                 "saPlotFiles": ["a.pdf"],
             },
             {
-                "sName": "B", "sDirectory": "/b",
+                "sName": "B", "sDirectory": "b",
                 "saPlotCommands": ["{Step01.a}"],
                 "saPlotFiles": ["b.pdf"],
             },
@@ -777,3 +970,328 @@ def test_fdictBuildDirectDependencies_manual_token():
     }
     dictDirect = fdictBuildDirectDependencies(dictWorkflow)
     assert 1 in dictDirect.get(0, set())
+
+
+# ----------------------------------------------------------------------
+# Zenodo metadata helpers (Phase 2)
+# ----------------------------------------------------------------------
+
+
+def test_fdictInitializeZenodoMetadata_shape():
+    from vaibify.gui.workflowManager import (
+        fdictInitializeZenodoMetadata,
+    )
+    dictMeta = fdictInitializeZenodoMetadata()
+    assert dictMeta["sTitle"] == ""
+    assert dictMeta["sLicense"] == "CC-BY-4.0"
+    assert dictMeta["listCreators"] == [
+        {"sName": "", "sAffiliation": "", "sOrcid": ""},
+    ]
+    assert dictMeta["listKeywords"] == []
+
+
+def test_fdictGetZenodoMetadata_returns_default_when_absent():
+    from vaibify.gui.workflowManager import fdictGetZenodoMetadata
+    dictMeta = fdictGetZenodoMetadata({})
+    assert dictMeta["sTitle"] == ""
+    assert dictMeta["sLicense"] == "CC-BY-4.0"
+
+
+def test_fdictGetZenodoMetadata_returns_stored_value():
+    from vaibify.gui.workflowManager import fdictGetZenodoMetadata
+    dictStored = {
+        "sTitle": "X", "sDescription": "",
+        "listCreators": [{"sName": "N"}],
+        "sLicense": "MIT",
+        "listKeywords": [], "sRelatedGithubUrl": "",
+    }
+    dictMeta = fdictGetZenodoMetadata(
+        {"dictZenodoMetadata": dictStored})
+    assert dictMeta["sTitle"] == "X"
+    assert dictMeta["sLicense"] == "MIT"
+
+
+def test_fnSetZenodoMetadata_writes_normalized():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    dictWf = {}
+    fnSetZenodoMetadata(dictWf, {
+        "sTitle": "  Title  ",
+        "sDescription": "  desc  ",
+        "listCreators": [
+            {"sName": "  Jane  ", "sAffiliation": " UW "},
+            {"sName": ""},  # dropped
+        ],
+        "sLicense": "MIT",
+        "listKeywords": ["  a  ", "", "b"],
+        "sRelatedGithubUrl": "  https://github.com/u/r  ",
+    })
+    dictStored = dictWf["dictZenodoMetadata"]
+    assert dictStored["sTitle"] == "Title"
+    assert dictStored["sDescription"] == "desc"
+    assert dictStored["listCreators"] == [
+        {"sName": "Jane", "sAffiliation": "UW", "sOrcid": ""},
+    ]
+    assert dictStored["listKeywords"] == ["a", "b"]
+    assert dictStored["sRelatedGithubUrl"] == (
+        "https://github.com/u/r"
+    )
+
+
+def test_fnSetZenodoMetadata_requires_title():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="Title"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+        })
+
+
+def test_fnSetZenodoMetadata_requires_at_least_one_creator():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="creator"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "X",
+            "listCreators": [{"sName": ""}, {"sName": "   "}],
+            "sLicense": "MIT",
+        })
+
+
+def test_fnSetZenodoMetadata_requires_license():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="License"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "X",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "",
+        })
+
+
+def test_fnSetZenodoMetadata_rejects_non_http_related_url():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    with pytest.raises(ValueError, match="Related URL"):
+        fnSetZenodoMetadata({}, {
+            "sTitle": "X",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+            "sRelatedGithubUrl": "ftp://example.com/repo",
+        })
+
+
+def test_fnSetZenodoMetadata_accepts_http_and_https():
+    from vaibify.gui.workflowManager import fnSetZenodoMetadata
+    for sUrl in (
+        "http://example.com/repo",
+        "https://github.com/u/r",
+    ):
+        dictWf = {}
+        fnSetZenodoMetadata(dictWf, {
+            "sTitle": "X",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+            "sRelatedGithubUrl": sUrl,
+        })
+        assert dictWf["dictZenodoMetadata"]["sRelatedGithubUrl"] == sUrl
+
+
+# ----------------------------------------------------------------------
+# Non-Zenodo coverage gaps
+# ----------------------------------------------------------------------
+
+
+def test_fdictDetectReposForCandidates_non_zero_exit_returns_empty():
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import (
+        _fdictDetectReposForCandidates,
+    )
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.return_value = (
+        1, "permission denied",
+    )
+    dictResult = _fdictDetectReposForCandidates(
+        mockDocker, "cid", ["/workspace/a.json"],
+    )
+    assert dictResult == {}
+
+
+def test_fbValidateWorkflow_rejects_absolute_output_paths():
+    """flistValidateOutputFilePaths returning warnings => False."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+            "saDataFiles": ["/etc/passwd"],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fbValidateWorkflow_rejects_traversal_step_directories():
+    """flistValidateStepDirectories returning warnings => False."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "../escape",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fnInsertStep_renumbers_downstream_references():
+    """References to Step02 become Step03 when inserting at position 1."""
+    from vaibify.gui.workflowManager import fnInsertStep
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "A", "sDirectory": "a",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "B", "sDirectory": "b",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": ["use {Step2.saDataFiles[0]}"],
+            },
+        ],
+    }
+    fnInsertStep(dictWorkflow, 1, {
+        "sName": "NEW", "sDirectory": "new",
+        "saPlotCommands": [], "saPlotFiles": [],
+        "saDataFiles": [], "saTestCommands": [],
+        "saDataCommands": [],
+    })
+    sCmd = dictWorkflow["listSteps"][2]["saDataCommands"][0]
+    # Remap normalizes to zero-padded format (Step03)
+    assert "{Step03.saDataFiles[0]}" in sCmd
+
+
+def test_fnDeleteStep_renumbers_downstream_references():
+    """References split across the deleted step: upstream stays, downstream shifts."""
+    from vaibify.gui.workflowManager import fnDeleteStep
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "A", "sDirectory": "a",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": ["a.dat"], "saTestCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "B", "sDirectory": "b",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": [],
+            },
+            {
+                "sName": "C", "sDirectory": "c",
+                "saPlotCommands": [], "saPlotFiles": [],
+                "saDataFiles": [], "saTestCommands": [],
+                "saDataCommands": [
+                    "use {Step1.saDataFiles[0]} + {Step3.sName}",
+                ],
+            },
+        ],
+    }
+    fnDeleteStep(dictWorkflow, 1)
+    sCmd = dictWorkflow["listSteps"][1]["saDataCommands"][0]
+    # Downstream ref (Step3) shifts to Step02; upstream ref (Step1)
+    # stays as-is (remap returned the original number untouched).
+    assert "{Step02.sName}" in sCmd
+    assert "{Step1.saDataFiles[0]}" in sCmd
+
+
+def test_fiRemapReorder_unrelated_number_unchanged():
+    """Fall-through: a step number untouched by either reorder endpoint."""
+    from vaibify.gui.workflowManager import _fiRemapReorder
+    # Move step from index 2 (number 3) to index 4 (target 5).
+    # Step number 1 is before the swap range and shouldn't shift.
+    iResult = _fiRemapReorder(1, 3, 2, 4)
+    assert iResult == 1
+
+
+def test_fiRemapReorder_same_position_unchanged():
+    from vaibify.gui.workflowManager import _fiRemapReorder
+    # iFromIndex == iToIndex: fall through, return unchanged.
+    iResult = _fiRemapReorder(2, 1, 0, 0)
+    assert iResult == 2
+
+
+def test_fsToSyncStatusKey_empty_path_returns_empty():
+    from vaibify.gui.workflowManager import fsToSyncStatusKey
+    assert fsToSyncStatusKey("", "/workspace/repo") == ""
+
+
+def test_fsToSyncStatusKey_no_project_repo_returns_path():
+    from vaibify.gui.workflowManager import fsToSyncStatusKey
+    assert fsToSyncStatusKey("step01/out.dat", "") == (
+        "step01/out.dat"
+    )
+
+
+def test_fsToSyncStatusKey_path_without_prefix_returns_unchanged():
+    from vaibify.gui.workflowManager import fsToSyncStatusKey
+    assert fsToSyncStatusKey(
+        "/other/place/out.dat", "/workspace/repo",
+    ) == "/other/place/out.dat"
+
+
+def test_fdictLookupSyncEntry_container_absolute_key_hit():
+    """Legacy key shape '/workspace/<rel>' still resolves."""
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"/workspace/step01/out.dat": {"bZenodo": True}}
+    dictEntry = fdictLookupSyncEntry(dictSync, "step01/out.dat")
+    assert dictEntry == {"bZenodo": True}
+
+
+def test_fdictLookupSyncEntry_leading_slash_key_hit():
+    """Legacy key shape '/<rel>' also resolves."""
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"/step01/out.dat": {"bGithub": True}}
+    dictEntry = fdictLookupSyncEntry(dictSync, "step01/out.dat")
+    assert dictEntry == {"bGithub": True}
+
+
+def test_fdictLookupSyncEntry_project_absolute_key_hit():
+    """Project-absolute key resolves when sProjectRepoPath is given."""
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictSync = {"/workspace/repo/step01/out.dat": {"bOverleaf": True}}
+    dictEntry = fdictLookupSyncEntry(
+        dictSync, "step01/out.dat", "/workspace/repo",
+    )
+    assert dictEntry == {"bOverleaf": True}
+
+
+def test_fdictLookupSyncEntry_miss_returns_empty_dict():
+    from vaibify.gui.workflowManager import fdictLookupSyncEntry
+    dictEntry = fdictLookupSyncEntry(
+        {"other/path": {"x": 1}}, "step01/out.dat",
+    )
+    assert dictEntry == {}
+
+
+def test_fsJoinRepoRelPath_empty_step_dir_returns_file():
+    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    assert _fsJoinRepoRelPath("", "out.dat") == "out.dat"
+
+
+def test_fsJoinRepoRelPath_absolute_file_returns_file():
+    """Absolute files ignore the step directory."""
+    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    assert _fsJoinRepoRelPath(
+        "step01", "/absolute/path.dat",
+    ) == "/absolute/path.dat"
+
+
+def test_fsJoinRepoRelPath_joins_relative_file_to_step_dir():
+    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    assert _fsJoinRepoRelPath(
+        "step01", "out.dat",
+    ) == "step01/out.dat"

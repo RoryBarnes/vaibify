@@ -164,3 +164,60 @@ def test_save_includes_all_features_as_bools(tmp_path):
     assert dictFeatures["claude"] is True
     assert dictFeatures["jupyter"] is False
     assert dictFeatures["gpu"] is False
+
+
+def test_save_claude_auto_update_default_true(tmp_path):
+    app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
+    clientHttp = TestClient(app)
+
+    dictPayload = {
+        "sProjectName": "claude_default",
+        "sPackageManager": "pip",
+        "listFeatures": ["claude"],
+    }
+    responseHttp = clientHttp.post(
+        "/api/setup/save", json=dictPayload
+    )
+    assert responseHttp.status_code == 200
+
+    with open(tmp_path / "vaibify.yml", "r") as fileHandle:
+        dictSaved = yaml.safe_load(fileHandle)
+    assert dictSaved["features"]["claudeAutoUpdate"] is True
+
+
+def test_save_claude_auto_update_explicit_false(tmp_path):
+    app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
+    clientHttp = TestClient(app)
+
+    dictPayload = {
+        "sProjectName": "claude_off",
+        "sPackageManager": "pip",
+        "listFeatures": ["claude"],
+        "bClaudeAutoUpdate": False,
+    }
+    responseHttp = clientHttp.post(
+        "/api/setup/save", json=dictPayload
+    )
+    assert responseHttp.status_code == 200
+
+    with open(tmp_path / "vaibify.yml", "r") as fileHandle:
+        dictSaved = yaml.safe_load(fileHandle)
+    assert dictSaved["features"]["claudeAutoUpdate"] is False
+
+
+def test_existing_config_returns_auto_update_flag(tmp_path):
+    app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
+    clientHttp = TestClient(app)
+
+    dictPayload = {
+        "sProjectName": "existing_claude",
+        "sPackageManager": "pip",
+        "listFeatures": ["claude"],
+        "bClaudeAutoUpdate": False,
+    }
+    clientHttp.post("/api/setup/save", json=dictPayload)
+
+    responseHttp = clientHttp.get("/api/setup/config")
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bClaudeAutoUpdate"] is False

@@ -57,7 +57,8 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
-    fnCopyHostWorkflows(sDockerDir)
+    fnCopyContainerScripts(sDockerDir)
+    fnCopyAgentActionScript(sDockerDir)
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -103,6 +104,40 @@ def fnCopyDirectorScript(sDockerDir):
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
     shutil.copy2(sSourcePath, sDestPath)
+
+
+def fnCopyAgentActionScript(sDockerDir):
+    """Stage the in-container vaibify-do CLI into the build context."""
+    import shutil
+    import pathlib
+    sSourcePath = str(
+        pathlib.Path(__file__).resolve().parents[2]
+        / "docker" / "vaibifyDo.py"
+    )
+    sDestPath = os.path.join(sDockerDir, "vaibifyDo.py")
+    shutil.copy2(sSourcePath, sDestPath)
+
+
+def fnCopyContainerScripts(sDockerDir):
+    """Stage the reproducibility modules that ship into the image.
+
+    Each of these runs inside the container at /usr/share/vaibify/
+    without a vaibify package install; they import from each other
+    as flat top-level names. Add new ship-ins to the tuple below
+    and to the ``COPY`` block in ``docker/Dockerfile``.
+    """
+    import shutil
+    import pathlib
+    pathReproducibility = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "reproducibility"
+    )
+    for sFileName in (
+        "overleafSync.py", "latexConnector.py", "zenodoClient.py",
+    ):
+        sSourcePath = str(pathReproducibility / sFileName)
+        sDestPath = os.path.join(sDockerDir, sFileName)
+        shutil.copy2(sSourcePath, sDestPath)
 
 
 def fnIncludeProjectRepo(config):
@@ -176,31 +211,6 @@ def _fbRepoAlreadyListed(config, sUrl):
     return False
 
 
-def fnCopyHostWorkflows(sDockerDir):
-    """Copy host .vaibify/workflows/ into the build context.
-
-    Searches the project directory for workflow JSON files and
-    stages them so the Dockerfile can bake them into the image.
-    The entrypoint copies them into the workspace volume on
-    first start, making workflows available without manual
-    file transfer.
-    """
-    import glob
-    import shutil
-    sProjectDir = _fsProjectDirectory()
-    sHostWorkflows = os.path.join(
-        sProjectDir, ".vaibify", "workflows",
-    )
-    sDestDir = os.path.join(sDockerDir, "workflows")
-    if os.path.isdir(sDestDir):
-        shutil.rmtree(sDestDir)
-    os.makedirs(sDestDir, exist_ok=True)
-    if not os.path.isdir(sHostWorkflows):
-        return
-    for sFile in glob.glob(os.path.join(sHostWorkflows, "*.json")):
-        shutil.copy2(sFile, sDestDir)
-
-
 def _fsProjectDirectory():
     """Return the host project directory for the current build."""
     from .configLoader import fsConfigPath
@@ -235,3 +245,7 @@ def build(bNoCache, sProjectName):
     )
     fnBuildFromConfig(config, sDockerDir, bNoCache)
     click.echo("Build complete.")
+    click.echo(
+        "Run `vaibify stop && vaibify start` to pick up the new "
+        "image in your container."
+    )

@@ -4,20 +4,23 @@ import os
 import subprocess
 
 from . import fnRunDockerCommand
-from .volumeManager import fsGetVolumeName
+from .volumeManager import fsGetCredentialsVolumeName, fsGetVolumeName
 from .x11Forwarding import flistConfigureX11Args
 
 
 def fnStartContainer(config, sDockerDir, saCommand=None):
-    """Start a container with run args derived from config."""
+    """Start a container with run args derived from config.
+
+    Host secret files are intentionally not cleaned up here. See
+    ``fsStartContainerDetached`` for the rationale (Colima's
+    virtiofs bridge re-resolves bind-mount sources during later
+    operations).
+    """
     listCleanupFiles = []
-    try:
-        saRunArgs = flistBuildRunArgs(config)
-        fnMountSecrets(config, saRunArgs, listCleanupFiles)
-        saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
-        _fnRunDockerCommand(saFullCommand)
-    finally:
-        _fnCleanupTempFiles(listCleanupFiles)
+    saRunArgs = flistBuildRunArgs(config)
+    fnMountSecrets(config, saRunArgs, listCleanupFiles)
+    saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
+    _fnRunDockerCommand(saFullCommand)
 
 
 def fsStartContainerDetached(config, sDockerDir):
@@ -34,17 +37,25 @@ def fsStartContainerDetached(config, sDockerDir):
     -------
     str
         The Docker container ID.
+
+    Note
+    ----
+    The ephemeral host files holding each mounted secret are
+    intentionally NOT cleaned up here. On Colima/macOS the daemon
+    lazily re-resolves bind-mount sources during later operations
+    like ``put_archive``; deleting the host file mid-session makes
+    those operations fail with "not a directory" mount errors. Let
+    the files outlive the container (they are mode 600 in
+    ``~/.vaibify/tmp/`` and get overwritten on the next container
+    start).
     """
     listCleanupFiles = []
-    try:
-        saRunArgs = flistBuildRunArgs(config, bDetached=True)
-        fnMountSecrets(config, saRunArgs, listCleanupFiles)
-        saFullCommand = _flistAssembleRunCommand(
-            config, saRunArgs, ["sleep", "infinity"],
-        )
-        return _fsRunDetachedCommand(saFullCommand)
-    finally:
-        _fnCleanupTempFiles(listCleanupFiles)
+    saRunArgs = flistBuildRunArgs(config, bDetached=True)
+    fnMountSecrets(config, saRunArgs, listCleanupFiles)
+    saFullCommand = _flistAssembleRunCommand(
+        config, saRunArgs, ["sleep", "infinity"],
+    )
+    return _fsRunDetachedCommand(saFullCommand)
 
 
 def _fsRunDetachedCommand(saCommand):
@@ -74,9 +85,12 @@ def flistBuildRunArgs(config, bDetached=False):
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddCpuAllocation(saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
+    _fnAddCredentialsVolume(config, saRunArgs)
     _fnAddPortForwarding(config, saRunArgs)
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
+    _fnAddClaudeEnv(config, saRunArgs)
+    _fnAddAgentHostBridge(saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
@@ -93,6 +107,23 @@ def _fnAddVolumeMount(config, saRunArgs):
     sVolumeName = fsGetVolumeName(config)
     sWorkspaceRoot = config.sWorkspaceRoot
     saRunArgs.extend(["-v", f"{sVolumeName}:{sWorkspaceRoot}"])
+
+
+def _fnAddCredentialsVolume(config, saRunArgs):
+    """Mount the credentials volume at the container keyring data dir.
+
+    Persists ``PlaintextKeyring`` passwords across container
+    recreations. The Dockerfile pre-creates
+    ``~/.local/share/python_keyring/`` with mode 700 and the
+    container user as owner; Docker's copy-on-mount behaviour
+    copies that empty directory into the named volume the first
+    time the container runs, so subsequent rebuilds reuse
+    whatever was stored.
+    """
+    sVolumeName = fsGetCredentialsVolumeName(config)
+    sUser = getattr(config, "sContainerUser", "researcher")
+    sContainerPath = f"/home/{sUser}/.local/share/python_keyring"
+    saRunArgs.extend(["-v", f"{sVolumeName}:{sContainerPath}"])
 
 
 def _fnAddPortForwarding(config, saRunArgs):
@@ -118,10 +149,33 @@ def _fnAddGpuPassthrough(config, saRunArgs):
         saRunArgs.extend(["--gpus", "all"])
 
 
+def _fnAddClaudeEnv(config, saRunArgs):
+    """Pass Claude Code auto-update flag into the container via env var."""
+    if not config.features.bClaude:
+        return
+    sFlag = "true" if config.features.bClaudeAutoUpdate else "false"
+    saRunArgs.extend(["-e", f"VAIBIFY_CLAUDE_AUTO_UPDATE={sFlag}"])
+
+
 def _fnAddNetworkIsolation(config, saRunArgs):
     """Add network isolation flag if enabled in config."""
     if config.bNetworkIsolation:
         saRunArgs.extend(["--network", "none"])
+
+
+def _fnAddAgentHostBridge(saRunArgs):
+    """Resolve ``host.docker.internal`` to the host gateway.
+
+    The in-container ``vaibify-do`` agent dials back to the host
+    backend through this hostname. Docker Desktop resolves it
+    automatically; explicit ``--add-host`` makes it work on Linux and
+    is harmless elsewhere. When ``--network none`` is also set the
+    hosts-file entry remains but is unreachable by design, which is
+    the correct behavior for a sealed container.
+    """
+    saRunArgs.extend([
+        "--add-host", "host.docker.internal:host-gateway",
+    ])
 
 
 def fnMountSecrets(config, saRunArgs, listCleanupFiles):

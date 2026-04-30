@@ -5,6 +5,45 @@ var VaibifyStepRenderer = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
+    var _DICT_STALE_ROW_LABELS = {
+        "test|dataScript": "Tests older than data scripts",
+        "test|dataFile": "Tests older than data files",
+        "user|dataScript": "User verification older than data scripts",
+        "user|dataFile": "User verification older than data files",
+        "user|plotScript": "User verification older than plot scripts",
+        "user|plotFile": "User verification older than plot files",
+    };
+
+    function _fdictGroupStaleArtifacts(listArtifacts) {
+        var dictGrouped = {};
+        for (var i = 0; i < listArtifacts.length; i++) {
+            var dictItem = listArtifacts[i];
+            var sKey = dictItem.sValidator + "|" + dictItem.sCategory;
+            if (!dictGrouped[sKey]) dictGrouped[sKey] = [];
+            dictGrouped[sKey].push(dictItem.sPath);
+        }
+        return dictGrouped;
+    }
+
+    function fsRenderStaleArtifactRows(dictContext, iIndex) {
+        var listArtifacts =
+            (dictContext.dictStaleArtifacts || {})[iIndex] || [];
+        if (listArtifacts.length === 0) return "";
+        var dictGrouped = _fdictGroupStaleArtifacts(listArtifacts);
+        var sHtml = "";
+        Object.keys(_DICT_STALE_ROW_LABELS).forEach(function (sKey) {
+            var listPaths = dictGrouped[sKey];
+            if (!listPaths || listPaths.length === 0) return;
+            var listNames = listPaths.map(function (sPath) {
+                return sPath.split("/").pop();
+            });
+            sHtml += '<div class="output-modified-warning">' +
+                '\u26A0 ' + _DICT_STALE_ROW_LABELS[sKey] + ': ' +
+                fnEscapeHtml(listNames.join(", ")) + '</div>';
+        });
+        return sHtml;
+    }
+
     function fsRenderStepItem(step, iIndex, dictVars, dictContext) {
         var bInteractive = step.bInteractive === true;
         var sRunStatus = dictContext.dictStepStatus[iIndex] || "";
@@ -25,7 +64,7 @@ var VaibifyStepRenderer = (function () {
             sStatusClass = dictContext.fsComputeStepDotState(
                 step, iIndex);
         }
-        var bEnabled = step.bEnabled !== false;
+        var bRunEnabled = step.bRunEnabled !== false;
         var bSelected = iIndex === dictContext.iSelectedStepIndex;
         var bExpanded = dictContext.setExpandedSteps.has(iIndex);
 
@@ -42,7 +81,7 @@ var VaibifyStepRenderer = (function () {
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
             '<input type="checkbox" class="step-checkbox"' +
-            (bEnabled ? " checked" : "") + ">" +
+            (bRunEnabled ? " checked" : "") + ">" +
             '<span class="step-number">' +
             sStepNumber + "</span>" +
             '<span class="step-name" title="' +
@@ -52,6 +91,12 @@ var VaibifyStepRenderer = (function () {
                 '<span class="script-modified-badge" ' +
                 'title="Scripts modified since last run">' +
                 '&#9998;</span>' : '') +
+            (((step.dictVerification || {})
+                .bUnseededRandomnessWarning === true) ?
+                '<span class="script-unseeded-badge" ' +
+                'title="Unseeded randomness detected: add a seed ' +
+                'so the pilot run is reproducible.">&#9888;</span>' :
+                '') +
             dictContext.fsBuildWarningBadge(step, iIndex) +
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
@@ -118,7 +163,7 @@ var VaibifyStepRenderer = (function () {
         if ((step.saDataCommands || []).length > 0) {
             sHtml += '<div class="timestamp-field">' +
                 fsRenderRunStats(step) +
-                fsRenderOutputMtime(iIndex, dictContext) + '</div>';
+                fsRenderDataMtime(iIndex, dictContext) + '</div>';
         }
 
         sHtml += fsRenderSectionLabel(
@@ -167,14 +212,8 @@ var VaibifyStepRenderer = (function () {
         }
 
         if ((step.saPlotFiles || []).length > 0) {
-            var dictPlotStats = step.dictRunStats || {};
-            var sPlotMtime = (step.saDataCommands || []).length === 0 ?
-                fsRenderOutputMtime(iIndex, dictContext) : "";
             sHtml += '<div class="timestamp-field">' +
-                '<div class="run-stats">' +
-                '<span class="run-stat">Plots created: ' +
-                (dictPlotStats.sLastRun || "\u2014") +
-                '</span></div>' + sPlotMtime + '</div>';
+                fsRenderPlotMtime(iIndex, dictContext) + '</div>';
         }
 
         sHtml += fsRenderVerificationBlock(step, iIndex, dictContext);
@@ -212,18 +251,12 @@ var VaibifyStepRenderer = (function () {
                 '\u26A0 Modified: ' +
                 fnEscapeHtml(listNames.join(", ")) + '</div>';
         }
-        if (dictContext.fbAnyUpstreamModified(iIndex)) {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Upstream step outputs changed</div>';
-        }
+        sHtml += fsRenderStaleArtifactRows(
+            dictContext, iIndex);
         if (!bInteractive && !bPlotOnly &&
             dictContext.fsEffectiveTestState(step) === "failed") {
             sHtml += '<div class="output-modified-warning">' +
                 '\u26A0 Unit tests failing</div>';
-        }
-        if (dictContext.fsComputeDepsState(iIndex) === "failed") {
-            sHtml += '<div class="output-modified-warning">' +
-                '\u26A0 Dependencies failing</div>';
         }
         if (!bInteractive && !bPlotOnly) {
             var sUnitState = dictContext.fsEffectiveTestState(step);
@@ -231,9 +264,14 @@ var VaibifyStepRenderer = (function () {
                 "Unit Tests", sUnitState, "unitTest", iIndex,
                 dictContext
             );
+            var sMarkerMtime = (
+                dictContext.dictMarkerMtimeByStep || {}
+            )[String(iIndex)];
             sHtml += '<div class="timestamp-field">' +
                 fsRenderVerificationTimestamp(
-                    "Last run", dictVerify.sLastTestRun) +
+                    "Last run",
+                    sMarkerMtime ?
+                        fsFormatUnixTimestamp(sMarkerMtime) : "") +
                 '</div>';
             if (dictContext.setGeneratingInFlight.has(iIndex)) {
                 sHtml += '<div class="unit-tests-expanded">' +
@@ -361,34 +399,35 @@ var VaibifyStepRenderer = (function () {
                 '" data-category="' + sCategory +
                 '">Run</button></div>';
         }
+        sHtml += fsRenderTestSourceMtimeLine(
+            iIndex, sCategory, dictContext);
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderTestSourceMtimeLine(
+        iIndex, sCategory, dictContext
+    ) {
+        var dictByStep = dictContext.dictTestCategoryMtimes || {};
+        var dictCats = dictByStep[String(iIndex)] || {};
+        if (!dictCats.hasOwnProperty(sCategory)) return "";
+        var sFormatted = VaibifyUtilities.fsFormatEpochUtc(
+            dictCats[sCategory]);
+        if (!sFormatted) return "";
+        return '<div class="test-source-mtime ' +
+            'detail-note">Test file modified: ' +
+            fnEscapeHtml(sFormatted) + '</div>';
     }
 
     function fsRenderDepsExpanded(iIndex, dictContext) {
         var listDeps = dictContext.flistGetStepDependencies(iIndex);
         var sHtml = '<div class="deps-expanded">';
-        var dictVisited = {};
         for (var i = 0; i < listDeps.length; i++) {
             var iDep = listDeps[i];
             if (iDep === iIndex) continue;
             var depStep = dictContext.dictWorkflow.listSteps[iDep];
             if (!depStep) continue;
-            var bPassing = dictContext.fbStepFullyPassing(
-                iDep, dictVisited);
-            var sState = bPassing ? "passed" : "failed";
-            var sColorClass = dictContext.fsDepLabelColorClass(
-                iDep, bPassing);
-            var sNum = dictContext.fsComputeStepLabel(iDep);
-            sHtml += '<div class="dep-item">' +
-                '<span class="dep-label ' + sColorClass +
-                '">' + sNum + ' ' +
-                fnEscapeHtml(depStep.sName) + '</span>' +
-                '<span class="verification-badge state-' +
-                sState + '">' +
-                dictContext.fsVerificationStateIcon(sState) + ' ' +
-                dictContext.fsVerificationStateLabel(sState) +
-                '</span></div>';
+            sHtml += fsRenderDepItem(iIndex, iDep, depStep, dictContext);
         }
         sHtml += '<button class="btn btn-small btn-add-deps" ' +
             'data-step="' + iIndex + '" ' +
@@ -398,6 +437,56 @@ var VaibifyStepRenderer = (function () {
             'style="margin-top:6px">Show Dependencies</button>';
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderDepItem(iIndex, iDep, depStep, dictContext) {
+        var tStates = dictContext.ftComputeDepAxisStates(
+            iIndex, iDep);
+        var sNum = dictContext.fsComputeStepLabel(iDep);
+        return '<div class="dep-item">' +
+            '<div class="dep-header"><span class="dep-label">' +
+            sNum + ' ' + fnEscapeHtml(depStep.sName) +
+            '</span></div>' +
+            fsRenderDepAxisRow(
+                "Step Status", tStates.sStepStatus, "", dictContext) +
+            fsRenderDepAxisRow(
+                "Timing", tStates.sTiming,
+                fsFormatTimingDetail(tStates), dictContext) +
+            '</div>';
+    }
+
+    function fsRenderDepAxisRow(sLabel, sState, sDetail, dictContext) {
+        var sBadgeState = sState === "unknown" ? "untested" : sState;
+        var sStateLabel = sState === "unknown" ? "—" :
+            dictContext.fsVerificationStateLabel(sState);
+        var sIcon = sState === "unknown" ? "" :
+            dictContext.fsVerificationStateIcon(sState) + " ";
+        var sHtml = '<div class="dep-axis-row">' +
+            '<span class="dep-axis-label">' +
+            fnEscapeHtml(sLabel) + '</span>' +
+            '<span class="verification-badge state-' +
+            sBadgeState + '">' + sIcon + sStateLabel +
+            '</span></div>';
+        if (sDetail) {
+            sHtml += '<div class="dep-axis-warning">' +
+                '&#9888; ' + fnEscapeHtml(sDetail) + '</div>';
+        }
+        return sHtml;
+    }
+
+    function fsFormatTimingDetail(tStates) {
+        if (tStates.sTiming !== "failed") return "";
+        if (tStates.iDepTestSrcMtime !== null
+                && tStates.iDepTestSrcMtime !== undefined) {
+            return "Unit tests edited " +
+                fsFormatUnixTimestamp(
+                    String(tStates.iDepTestSrcMtime)) +
+                " after my output";
+        }
+        if (!tStates.iDepMtime) return "";
+        return "Outputs regenerated " +
+            fsFormatUnixTimestamp(String(tStates.iDepMtime)) +
+            " after my output";
     }
 
     function fsRenderVerificationRow(
@@ -439,7 +528,16 @@ var VaibifyStepRenderer = (function () {
                 '</button>';
         }
         var bDisabled = !dictContext.setStepsWithData.has(iIndex);
-        var sLabel = bDisabled ? "No Data for Tests" : "Generate Tests";
+        var bHasExistingTests =
+            (step.saTestCommands || []).length > 0;
+        var sLabel;
+        if (bDisabled) {
+            sLabel = "No Data for Tests";
+        } else if (bHasExistingTests) {
+            sLabel = "Replace Tests";
+        } else {
+            sLabel = "Generate Tests";
+        }
         return '<button class="btn-generate-test" data-step="' +
             iIndex + '"' +
             (bDisabled ? " disabled" : "") +
@@ -479,18 +577,37 @@ var VaibifyStepRenderer = (function () {
 
     function fsRenderRunStats(step) {
         var dictStats = step.dictRunStats || {};
-        var sLastRun = dictStats.sLastRun || "";
         var sWallClock = dictStats.fWallClock !== undefined ?
             fsFormatDuration(dictStats.fWallClock) : "";
         var sCpuTime = dictStats.fCpuTime !== undefined ?
             fsFormatDuration(dictStats.fCpuTime) : "";
         return '<div class="run-stats">' +
-            '<span class="run-stat">Last run: ' +
-            (sLastRun || "\u2014") + '</span>' +
             '<span class="run-stat">Wall-clock: ' +
             (sWallClock || "\u2014") + '</span>' +
             '<span class="run-stat">CPU time: ' +
             (sCpuTime || "\u2014") + '</span></div>';
+    }
+
+    function fsRenderDataMtime(iIndex, dictContext) {
+        var sMtime = (
+            dictContext.dictMaxDataMtimeByStep || {}
+        )[String(iIndex)];
+        if (!sMtime) return "";
+        return '<div class="run-stats"><span class="run-stat">' +
+            'Data files last modified: ' +
+            fsFormatUnixTimestamp(sMtime) +
+            '</span></div>';
+    }
+
+    function fsRenderPlotMtime(iIndex, dictContext) {
+        var sMtime = (
+            dictContext.dictMaxPlotMtimeByStep || {}
+        )[String(iIndex)];
+        if (!sMtime) return "";
+        return '<div class="run-stats"><span class="run-stat">' +
+            'Plot files last modified: ' +
+            fsFormatUnixTimestamp(sMtime) +
+            '</span></div>';
     }
 
     function fsRenderOutputMtime(iIndex, dictContext) {
@@ -581,23 +698,12 @@ var VaibifyStepRenderer = (function () {
         }
         if ((sArrayKey === "saPlotFiles" ||
             sArrayKey === "saDataFiles") && !bInvalid) {
-            var sCategory = dictContext.fsGetFileCategory(
-                iStepIdx, sRaw, sArrayKey
-            );
-            var bArchive = sCategory === "archive";
-            var sFileLabel = sArrayKey === "saPlotFiles" ?
-                "plot" : "data file";
-            sHtml += '<span class="archive-star ' +
-                (bArchive ? "active" : "inactive") +
-                '" data-step="' + iStepIdx +
-                '" data-file="' + fnEscapeHtml(sRaw) +
-                '" data-array="' + sArrayKey +
-                '" title="' +
-                (bArchive ?
-                    "Archive " + sFileLabel :
-                    "Supporting " + sFileLabel) +
-                '">' + (bArchive ? "\u2605" : "\u2606") +
-                '</span>';
+            if (typeof VaibifyGitBadges !== "undefined") {
+                var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
+                    sResolved, sWorkdir
+                );
+                sHtml += VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
+            }
         }
         var sDisplayPath = dictContext.fsShortenPath(
             sResolved, sWorkdir);
@@ -637,8 +743,12 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderDiscoveredOutputs(iIndex, dictContext) {
-        var listDiscovered = dictContext.dictDiscoveredOutputs[iIndex];
-        if (!listDiscovered || listDiscovered.length === 0) return "";
+        var dictDisc = dictContext.dictDiscoveredOutputs[iIndex];
+        if (!dictDisc) return "";
+        var listDiscovered = dictDisc.listDiscovered || [];
+        if (listDiscovered.length === 0) return "";
+        var iTotal = (typeof dictDisc.iTotalDiscovered === "number") ?
+            dictDisc.iTotalDiscovered : listDiscovered.length;
         var sHtml = '<div class="detail-label discovered-label">' +
             'Discovered Outputs</div>';
         for (var i = 0; i < listDiscovered.length; i++) {
@@ -654,6 +764,13 @@ var VaibifyStepRenderer = (function () {
                 'data-target="saPlotFiles">Add as plot</button>' +
                 '</div>';
         }
+        if (iTotal > listDiscovered.length) {
+            sHtml += '<div class="discovered-summary">' +
+                'Showing ' + listDiscovered.length + ' of ' + iTotal +
+                '. To see them all, raise iDiscoveryMaxDepth on this ' +
+                'step or add a glob to saDataFiles / saPlotFiles.' +
+                '</div>';
+        }
         return sHtml;
     }
 
@@ -664,6 +781,8 @@ var VaibifyStepRenderer = (function () {
         fsRenderRunStepButton: fsRenderRunStepButton,
         fsRenderRunStats: fsRenderRunStats,
         fsRenderOutputMtime: fsRenderOutputMtime,
+        fsRenderDataMtime: fsRenderDataMtime,
+        fsRenderPlotMtime: fsRenderPlotMtime,
         fsRenderSectionLabel: fsRenderSectionLabel,
         fsRenderPlotStandardButtons: fsRenderPlotStandardButtons,
         fsRenderDiscoveredOutputs: fsRenderDiscoveredOutputs,

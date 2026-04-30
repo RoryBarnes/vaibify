@@ -83,8 +83,8 @@ def test_fnValidateStepOptions_one_set_ok():
 def _fdictSampleStep():
     return {
         "sName": "Build Data",
-        "sDirectory": "/workspace/step01",
-        "bEnabled": True,
+        "sDirectory": "step01",
+        "bRunEnabled": True,
         "bPlotOnly": False,
         "bInteractive": False,
         "dictVerification": {"sUser": "passed"},
@@ -100,7 +100,7 @@ def test_fdictStepDetail_returns_expected_keys():
     dictDetail = _fdictStepDetail(0, dictStep)
     assert dictDetail["iNumber"] == 1
     assert dictDetail["sName"] == "Build Data"
-    assert dictDetail["bEnabled"] is True
+    assert dictDetail["bRunEnabled"] is True
 
 
 def test_fdictWorkflowSummary_counts_steps():

@@ -20,22 +20,22 @@ def test_fsGenerateLogFilename_sanitizes_special_chars():
 
 
 def test_fbShouldRunStep_enabled():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 1, 1) is True
 
 
 def test_fbShouldRunStep_disabled():
-    dictStep = {"bEnabled": False}
+    dictStep = {"bRunEnabled": False}
     assert _fbShouldRunStep(dictStep, 1, 1) is False
 
 
 def test_fbShouldRunStep_below_start_step():
-    dictStep = {"bEnabled": True}
+    dictStep = {"bRunEnabled": True}
     assert _fbShouldRunStep(dictStep, 2, 3) is False
 
 
 def test_fbShouldRunStep_interactive_eligible():
-    dictStep = {"bEnabled": True, "bInteractive": True}
+    dictStep = {"bRunEnabled": True, "bInteractive": True}
     assert _fbShouldRunStep(dictStep, 1, 1) is True
 
 

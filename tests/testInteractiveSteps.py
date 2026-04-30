@@ -129,9 +129,6 @@ async def test_fiRunInteractiveAndRecord_records_and_emits():
     ), patch(
         "vaibify.gui.pipelineUtils._fnRecordRunStats",
     ) as mockRecordStats, patch(
-        "vaibify.gui.pipelineRunner._fnRecordInputHashes",
-        new_callable=AsyncMock,
-    ) as mockRecordHashes, patch(
         "vaibify.gui.pipelineUtils._fnEmitStepResult",
         new_callable=AsyncMock,
     ) as mockEmitResult:
@@ -141,7 +138,6 @@ async def test_fiRunInteractiveAndRecord_records_and_emits():
 
     assert iResult == 0
     mockRecordStats.assert_called_once()
-    mockRecordHashes.assert_awaited_once_with("dockerConn", "cid123", dictStep)
     mockEmitResult.assert_awaited_once_with(fnCallback, 4, 0)
 
     listCalls = fnCallback.call_args_list
@@ -165,9 +161,6 @@ async def test_fiRunInteractiveAndRecord_nonzero_exit():
         side_effect=_fnFakeComplete,
     ), patch(
         "vaibify.gui.pipelineUtils._fnRecordRunStats",
-    ), patch(
-        "vaibify.gui.pipelineRunner._fnRecordInputHashes",
-        new_callable=AsyncMock,
     ), patch(
         "vaibify.gui.pipelineUtils._fnEmitStepResult",
         new_callable=AsyncMock,

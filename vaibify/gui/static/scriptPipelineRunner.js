@@ -5,6 +5,7 @@ var PipeleyenPipelineRunner = (function () {
 
     var iPreviousOutputCount = 0;
     var _iActiveSentinelMonitor = null;
+    var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
 
@@ -76,16 +77,14 @@ var PipeleyenPipelineRunner = (function () {
             VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
             PipeleyenApp.fnShowToast(
-                "Pipeline started", "success");
+                _fsStartedToast(dictEvent.sCommand), "success");
         } else if (dictEvent.sType === "completed") {
             PipeleyenApp.fnClearRunningStatuses();
             PipeleyenApp.fnStartFileChangePolling();
             PipeleyenApp.fnShowToast(
-                "Pipeline completed", "success");
+                _fsCompletedToast(dictEvent.sCommand), "success");
             PipeleyenApp.fnRenderStepList();
-            if (dictEvent.sLogPath) {
-                fnDisplayLogInViewer(dictEvent.sLogPath);
-            }
+            _fnFinalizeLogDisplay(dictEvent.sLogPath);
         } else if (dictEvent.sType === "failed") {
             PipeleyenApp.fnClearRunningStatuses();
             PipeleyenApp.fnStartFileChangePolling();
@@ -94,9 +93,7 @@ var PipeleyenPipelineRunner = (function () {
                 "error"
             );
             PipeleyenApp.fnRenderStepList();
-            if (dictEvent.sLogPath) {
-                fnDisplayLogInViewer(dictEvent.sLogPath);
-            }
+            _fnFinalizeLogDisplay(dictEvent.sLogPath);
         } else if (dictEvent.sType === "interactivePause") {
             fnShowInteractivePauseDialog(dictEvent);
         } else if (dictEvent.sType === "interactiveTerminalStart") {
@@ -107,6 +104,22 @@ var PipeleyenPipelineRunner = (function () {
     function fnSendPipelineAction(dictAction) {
         fnConnectPipelineWebSocket();
         VaibifyWebSocket.fnSend(dictAction);
+    }
+
+    function _fsStartedToast(sCommand) {
+        var sCmd = sCommand || "";
+        if (sCmd === "runSelected") return "Step started";
+        if (sCmd === "verify") return "Verifying outputs";
+        if (sCmd === "runAllTests") return "Running all tests";
+        return "Pipeline started";
+    }
+
+    function _fsCompletedToast(sCommand) {
+        var sCmd = sCommand || "";
+        if (sCmd === "runSelected") return "Step completed";
+        if (sCmd === "verify") return "Verification complete";
+        if (sCmd === "runAllTests") return "All tests complete";
+        return "Pipeline completed";
     }
 
     /* --- Interactive --- */
@@ -191,12 +204,22 @@ var PipeleyenPipelineRunner = (function () {
     function _fsBuildInteractiveCommand(
         sDirectory, listCommands, sSentinel
     ) {
-        var sCd = sDirectory
-            ? "cd '" + sDirectory.replace(/'/g, "'\\''") + "' && "
+        var sAbsDirectory = _fsResolveStepDirectory(sDirectory);
+        var sCd = sAbsDirectory
+            ? "cd '" + sAbsDirectory.replace(/'/g, "'\\''") + "' && "
             : "";
         var sJoined = listCommands.join(" && ");
         return sCd + sJoined +
             "; echo " + sSentinel + "=$?";
+    }
+
+    function _fsResolveStepDirectory(sDirectory) {
+        if (!sDirectory) return "";
+        if (sDirectory.charAt(0) === "/") return sDirectory;
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var sRepo = dictWorkflow.sProjectRepoPath || "";
+        if (!sRepo) return sDirectory;
+        return sRepo.replace(/\/+$/, "") + "/" + sDirectory;
     }
 
     function _fsGenerateUuid() {
@@ -269,6 +292,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictVerify = PipeleyenApp.fdictGetVerification(dictStep);
         if (dictVerify.sUser === "untested") return;
         dictVerify.sUser = "untested";
+        delete dictVerify.sLastUserUpdate;
         dictStep.dictVerification = dictVerify;
         PipeleyenApp.fnSaveStepUpdate(iStepIndex, {
             dictVerification: dictStep.dictVerification,
@@ -315,9 +339,7 @@ var PipeleyenPipelineRunner = (function () {
         if (!dictState.bRunning) {
             VaibifyPolling.fnStopPipelinePolling();
             fnApplyCompletedState(dictState);
-            if (dictState.sLogPath) {
-                fnDisplayLogInViewer(dictState.sLogPath);
-            }
+            _fnFinalizeLogDisplay(dictState.sLogPath);
             PipeleyenApp.fnShowToast(
                 dictState.iExitCode === 0 ?
                     "Pipeline completed" :
@@ -404,7 +426,12 @@ var PipeleyenPipelineRunner = (function () {
     /* --- Output --- */
 
     function fnInitPipelineOutput() {
-        var elViewport = document.getElementById("viewportA");
+        if (_sStreamingViewer === null) {
+            _sStreamingViewer =
+                PipeleyenFigureViewer.fsClaimNextViewer();
+        }
+        var elViewport = document.getElementById(
+            "viewport" + _sStreamingViewer);
         elViewport.innerHTML =
             '<pre id="pipelineOutput" class="pipeline-output"></pre>';
         elViewport.scrollTop = 0;
@@ -455,6 +482,10 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
+        if (!step.bInteractive) {
+            _fnDispatchSingleStep(iIndex, "dataOnly");
+            return;
+        }
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = (step.saDataCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
@@ -477,6 +508,10 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
+        if (!step.bInteractive) {
+            _fnDispatchSingleStep(iIndex, "plotsOnly");
+            return;
+        }
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = (step.saPlotCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
@@ -493,6 +528,16 @@ var PipeleyenPipelineRunner = (function () {
         _fnMonitorStepCompletion(sSentinel, iIndex);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function _fnDispatchSingleStep(iIndex, sRunMode) {
+        PipeleyenApp.fnSetStepStatus(iIndex, "queued");
+        PipeleyenApp.fnRenderStepList();
+        fnSendPipelineAction({
+            sAction: "runSelected",
+            listStepIndices: [iIndex],
+            sRunMode: sRunMode,
+        });
     }
 
     function fnRunStepCombined(iIndex) {
@@ -523,6 +568,10 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
+        if (!step.bInteractive) {
+            _fnDispatchSingleStep(iIndex, "full");
+            return;
+        }
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = flistResolveStepCommands(step, dictVars);
         if (listCmds.length === 0) return;
@@ -573,13 +622,6 @@ var PipeleyenPipelineRunner = (function () {
     function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
         var sStatus = iExitCode === 0 ? "pass" : "fail";
         PipeleyenApp.fnSetStepStatus(iStepIndex, sStatus);
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-        var step = dictWorkflow.listSteps[iStepIndex];
-        if (step) {
-            step.dictRunStats = step.dictRunStats || {};
-            step.dictRunStats.sLastRun =
-                VaibifyUtilities.fsFormatUtcTimestamp();
-        }
         fnResetUserVerification(iStepIndex);
         if (iExitCode === 0) {
             PipeleyenApp.fnClearOutputModified(iStepIndex);
@@ -659,7 +701,7 @@ var PipeleyenPipelineRunner = (function () {
         if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
         var fTotal = 0;
         dictWorkflow.listSteps.forEach(function (step) {
-            if (step.bEnabled === false) return;
+            if (step.bRunEnabled === false) return;
             var dictStats = step.dictRunStats || {};
             if (dictStats.fWallClock) fTotal += dictStats.fWallClock;
         });
@@ -684,7 +726,7 @@ var PipeleyenPipelineRunner = (function () {
                 var listEnablePromises = [];
                 dictWorkflow.listSteps.forEach(
                     function (step, iIndex) {
-                        if (step.bEnabled === false) {
+                        if (step.bRunEnabled === false) {
                             listEnablePromises.push(
                                 PipeleyenApp.fnToggleStepEnabled(
                                     iIndex, true)
@@ -778,7 +820,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var listEnablePromises = [];
         dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            if (step.bEnabled === false) {
+            if (step.bRunEnabled === false) {
                 listEnablePromises.push(
                     PipeleyenApp.fnToggleStepEnabled(iIndex, true)
                 );
@@ -800,7 +842,7 @@ var PipeleyenPipelineRunner = (function () {
         var iStepsWithTime = 0;
         var iEnabledSteps = 0;
         dictWorkflow.listSteps.forEach(function (step) {
-            if (step.bEnabled === false) return;
+            if (step.bRunEnabled === false) return;
             iEnabledSteps++;
             var dictStats = step.dictRunStats || {};
             if (dictStats.fWallClock) {
@@ -875,11 +917,26 @@ var PipeleyenPipelineRunner = (function () {
         PipeleyenFigureViewer.fnDisplayFileFromContainer(sLogPath);
     }
 
+    function _fnFinalizeLogDisplay(sLogPath) {
+        if (!sLogPath) {
+            _sStreamingViewer = null;
+            return;
+        }
+        if (_sStreamingViewer !== null) {
+            PipeleyenFigureViewer.fnDisplayFileInViewer(
+                _sStreamingViewer, sLogPath, "");
+            _sStreamingViewer = null;
+        } else {
+            fnDisplayLogInViewer(sLogPath);
+        }
+    }
+
     /* --- State Management --- */
 
     function fnResetState() {
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
+        _sStreamingViewer = null;
         if (_iActiveSentinelMonitor) {
             clearInterval(_iActiveSentinelMonitor);
             _iActiveSentinelMonitor = null;

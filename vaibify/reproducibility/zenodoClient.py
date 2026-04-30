@@ -3,12 +3,26 @@
 Provides upload, download, draft management, and search operations
 against Zenodo or the Zenodo sandbox. Tokens are retrieved via the
 secretManager module so that credentials never appear in source code.
+
+This module is also shipped into the vaibify workflow container at
+``/usr/share/vaibify/zenodoClient.py`` so the container-side Zenodo
+archive script can call the same API surface instead of re-
+implementing every HTTP path. That deployment has two consequences:
+
+1. Top-level imports must stay container-safe. ``keyring`` is always
+   present; ``requests`` is present when a workflow uses this
+   archive path; ``tqdm`` is optional and is therefore imported
+   lazily inside ``_fnStreamUpload``.
+2. The ``secretManager`` fallback for token acquisition only runs
+   when ``sToken`` is ``None``. Container callers always pass the
+   token explicitly (they read it from the container's keyring
+   themselves), so the deferred ``vaibify.config.secretManager``
+   import never fires inside the container.
 """
 
 from pathlib import Path
 
 import requests
-from tqdm import tqdm
 
 
 class ZenodoError(Exception):
@@ -34,10 +48,11 @@ _CHUNK_SIZE = 1024 * 1024
 class ZenodoClient:
     """Thin wrapper around the Zenodo REST API."""
 
-    def __init__(self, sService="sandbox"):
+    def __init__(self, sService="sandbox", sToken=None, sBaseUrl=None):
         _fnValidateService(sService)
-        self._sBaseUrl = f"{_SERVICES[sService]}/api"
-        self._sToken = None
+        self._sService = sService
+        self._sBaseUrl = sBaseUrl or f"{_SERVICES[sService]}/api"
+        self._sToken = sToken
 
     # ------------------------------------------------------------------
     # Public API
@@ -49,6 +64,27 @@ class ZenodoClient:
         sBucketUrl = _fsExtractBucketUrl(dictDeposit)
         _fnStreamUpload(self, sBucketUrl, sFilePath)
 
+    def fnUploadToBucket(self, sBucketUrl, sFilePath):
+        """Upload a file directly to a known bucket URL.
+
+        Host callers use :meth:`fnUploadFile`, which refetches the
+        deposit to discover the bucket. Container callers already have
+        the bucket URL from the draft they just created, so this path
+        skips the extra GET and the tqdm progress bar (tqdm is not
+        guaranteed to be installed inside the container).
+        """
+        pathFile = Path(sFilePath)
+        if not pathFile.is_file():
+            raise FileNotFoundError(f"File not found: '{sFilePath}'")
+        sUploadUrl = f"{sBucketUrl}/{pathFile.name}"
+        dictHeaders = _fdictBuildAuthHeader(self._fsGetToken())
+        dictHeaders["Content-Type"] = "application/octet-stream"
+        with open(pathFile, "rb") as fileHandle:
+            responseHttp = requests.put(
+                sUploadUrl, headers=dictHeaders, data=fileHandle,
+            )
+        _fnCheckResponse(responseHttp)
+
     def fnDownloadFile(self, iRecordId, sFileName, sDestination):
         """Download a named file from a published record."""
         sUrl = f"{self._sBaseUrl}/records/{iRecordId}"
@@ -56,10 +92,19 @@ class ZenodoClient:
         sFileUrl = _fsFindFileUrl(dictRecord, sFileName)
         _fnStreamDownload(self, sFileUrl, sDestination, sFileName)
 
-    def fdictCreateDraft(self):
-        """Create a new empty deposit draft and return its metadata."""
+    def fdictCreateDraft(self, dictMetadata=None):
+        """Create a new deposit draft and return its metadata.
+
+        ``dictMetadata`` is optional; when ``None`` the draft is
+        created with the minimal placeholder metadata from
+        ``_fdictEmptyMetadata``. The archive flow passes the full
+        Zenodo-shape metadata here so the metadata and the draft are
+        created in a single POST.
+        """
         sUrl = f"{self._sBaseUrl}/deposit/depositions"
-        dictPayload = {"metadata": _fdictEmptyMetadata()}
+        dictPayload = {
+            "metadata": dictMetadata or _fdictEmptyMetadata(),
+        }
         return self._fdictRequest("POST", sUrl, json=dictPayload)
 
     def fnSetMetadata(self, iDepositId, dictMetadata):
@@ -70,11 +115,17 @@ class ZenodoClient:
 
     def fnPublishDraft(self, iDepositId):
         """Publish an existing draft deposit."""
-        sUrl = (
-            f"{self._sBaseUrl}/deposit/depositions"
-            f"/{iDepositId}/actions/publish"
-        )
+        sUrl = self._fsPublishUrl(iDepositId)
         self._fdictRequest("POST", sUrl)
+
+    def fdictPublishDraft(self, iDepositId):
+        """Publish a draft and return the published deposit dict.
+
+        The archive flow needs the ``doi``, ``conceptdoi`` and
+        ``links.html`` fields from the publish response; this is the
+        dict-returning counterpart to :meth:`fnPublishDraft`.
+        """
+        return self._fdictRequest("POST", self._fsPublishUrl(iDepositId))
 
     def fnDeleteDraft(self, iDepositId):
         """Delete an unpublished draft deposit."""
@@ -82,12 +133,48 @@ class ZenodoClient:
         self._fdictRequest("DELETE", sUrl)
 
     def fdictCopyDraft(self, iDepositId):
-        """Create a new version draft from a published deposit."""
+        """Create a new version draft from a published deposit.
+
+        Returns the raw ``newversion`` action response, whose
+        ``links.latest_draft`` points at the new draft. Call
+        :meth:`fdictGetNewVersionDraft` for the complete draft dict in
+        one hop.
+        """
         sUrl = (
             f"{self._sBaseUrl}/deposit/depositions"
             f"/{iDepositId}/actions/newversion"
         )
         return self._fdictRequest("POST", sUrl)
+
+    def fdictGetNewVersionDraft(self, iParentDepositId):
+        """Create a newversion draft and return the draft dict itself.
+
+        Combines the ``actions/newversion`` POST with the
+        ``links.latest_draft`` GET so callers (notably the container-
+        side archive script) get a draft dict with ``id`` and
+        ``links.bucket`` in one call.
+        """
+        dictNewVersion = self.fdictCopyDraft(iParentDepositId)
+        sDraftUrl = dictNewVersion["links"]["latest_draft"]
+        return self._fdictRequest("GET", sDraftUrl)
+
+    def fnClearDraftFiles(self, iDepositId):
+        """Delete every existing file attached to a draft deposit.
+
+        The newversion flow inherits the parent's file list; vaibify
+        re-uploads a fresh set per version, so inherited files must be
+        cleared before the new uploads to avoid duplicates.
+        """
+        dictDeposit = self.fdictGetDeposit(iDepositId)
+        for dictFile in dictDeposit.get("files", []):
+            sFileId = dictFile.get("id") or dictFile.get("file_id")
+            if not sFileId:
+                continue
+            sUrl = (
+                f"{self._sBaseUrl}/deposit/depositions"
+                f"/{iDepositId}/files/{sFileId}"
+            )
+            self._fdictRequest("DELETE", sUrl)
 
     def fdictGetDeposit(self, iDepositId):
         """Retrieve metadata for a deposit."""
@@ -98,6 +185,13 @@ class ZenodoClient:
         """Search deposits and return a list of result dicts."""
         sUrl = f"{self._sBaseUrl}/deposit/depositions"
         return self._fdictRequest("GET", sUrl, params={"q": sQuery})
+
+    def _fsPublishUrl(self, iDepositId):
+        """Return the publish-action URL for a given deposit id."""
+        return (
+            f"{self._sBaseUrl}/deposit/depositions"
+            f"/{iDepositId}/actions/publish"
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -116,7 +210,7 @@ class ZenodoClient:
     def _fsGetToken(self):
         """Lazy-load the Zenodo token via secretManager."""
         if self._sToken is None:
-            self._sToken = _fsRetrieveToken()
+            self._sToken = _fsRetrieveToken(self._sService)
         return self._sToken
 
 
@@ -134,10 +228,32 @@ def _fnValidateService(sService):
         )
 
 
-def _fsRetrieveToken():
-    """Retrieve the Zenodo token through secretManager."""
-    from vaibify.config.secretManager import fsRetrieveSecret
+def fsZenodoTokenName(sService):
+    """Return the keyring slot name for a given Zenodo service.
 
+    ``sService`` is the ZenodoClient service key (``"sandbox"`` or
+    ``"zenodo"``); the keyring slot follows the instance naming the
+    user sees in the UI (``sandbox`` / ``production``).
+    """
+    _fnValidateService(sService)
+    if sService == "zenodo":
+        return "zenodo_token_production"
+    return "zenodo_token_sandbox"
+
+
+def _fsRetrieveToken(sService="sandbox"):
+    """Retrieve the Zenodo token for ``sService`` via secretManager.
+
+    Reads the namespaced slot first (``zenodo_token_sandbox`` or
+    ``zenodo_token_production``) and falls back to the legacy
+    ``zenodo_token`` slot when the namespaced one is empty so users
+    migrating from the pre-namespaced layout keep working.
+    """
+    from vaibify.config.secretManager import fbSecretExists, fsRetrieveSecret
+
+    sNamespaced = fsZenodoTokenName(sService)
+    if fbSecretExists(sNamespaced, "keyring"):
+        return fsRetrieveSecret(sNamespaced, "keyring")
     return fsRetrieveSecret("zenodo_token", "keyring")
 
 
@@ -179,6 +295,7 @@ def _fsFindFileUrl(dictRecord, sFileName):
 
 def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
     """Stream-upload a file to a Zenodo bucket with progress bar."""
+    from tqdm import tqdm
     pathFile = Path(sFilePath)
     if not pathFile.is_file():
         raise FileNotFoundError(f"File not found: '{sFilePath}'")
@@ -226,6 +343,7 @@ def _fnStreamDownload(clientZenodo, sFileUrl, sDestination, sFileName):
 
 def _fnWriteStreamToFile(responseHttp, pathOutput, sFileName, iTotal):
     """Write streaming response content to disk with progress bar."""
+    from tqdm import tqdm
     barProgress = tqdm(
         total=iTotal, unit="B",
         unit_scale=True, desc=sFileName,

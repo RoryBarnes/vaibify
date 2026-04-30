@@ -102,9 +102,18 @@ def _fsInferFormat(sFullPath):
 
 
 def _fdictParseAccessPath(sAccessPath):
-    """Parse an access path string into a dict of components."""
+    """Parse an access path string into a dict of components.
+
+    The ``key:`` capture is greedy until a recognised ``,index:``,
+    ``,column:``, ``,dataset:``, ``,section:``, or ``,hdu:`` boundary
+    so JSON keys may themselves contain commas (e.g. vconverge's
+    ``"compound,key,name"`` payload format).
+    """
     dictResult = {}
-    matchKey = re.match(r"key:([^,]+)", sAccessPath)
+    matchKey = re.match(
+        r"key:(.+?)(?:,(?:index|column|dataset|section|hdu):|$)",
+        sAccessPath,
+    )
     if matchKey:
         dictResult["key"] = matchKey.group(1)
     matchColumn = re.search(r"column:([^,]+)", sAccessPath)
@@ -119,7 +128,10 @@ def _fdictParseAccessPath(sAccessPath):
     matchHdu = re.search(r"hdu:(\d+)", sAccessPath)
     if matchHdu:
         dictResult["iHdu"] = int(matchHdu.group(1))
-    matchAggregate = re.search(r"index:(mean|min|max)", sAccessPath)
+    matchAggregate = re.search(
+        r"index:(mean|min|max|std|p25|p50|p75|p95|p5)\b",
+        sAccessPath,
+    )
     if matchAggregate:
         dictResult["sAggregate"] = matchAggregate.group(1)
     else:
@@ -132,17 +144,35 @@ def _fdictParseAccessPath(sAccessPath):
     return dictResult
 
 
-def _fExtractArrayValue(daData, dictAccess):
-    """Extract a scalar from an array by aggregate or index."""
-    if daData.ndim == 0:
-        return float(daData)
-    sAggregate = dictAccess.get("sAggregate")
+_DICT_PERCENTILE_AGGREGATES = {
+    "p5": 5, "p25": 25, "p50": 50, "p75": 75, "p95": 95,
+}
+
+
+def _fApplyAggregate(daData, sAggregate):
+    """Return a scalar aggregate (mean/min/max/std/percentile) of daData."""
     if sAggregate == "mean":
         return float(daData.mean())
     if sAggregate == "min":
         return float(daData.min())
     if sAggregate == "max":
         return float(daData.max())
+    if sAggregate == "std":
+        return float(daData.std(ddof=1))
+    if sAggregate in _DICT_PERCENTILE_AGGREGATES:
+        return float(np.percentile(
+            daData, _DICT_PERCENTILE_AGGREGATES[sAggregate],
+        ))
+    raise ValueError(f"Unknown aggregate: {sAggregate}")
+
+
+def _fExtractArrayValue(daData, dictAccess):
+    """Extract a scalar from an array by aggregate or index."""
+    if daData.ndim == 0:
+        return float(daData)
+    sAggregate = dictAccess.get("sAggregate")
+    if sAggregate:
+        return _fApplyAggregate(daData, sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     if len(listIndices) == 1 and daData.ndim > 1:
         return float(daData.flat[listIndices[0]])
@@ -159,7 +189,7 @@ def _fExtractTabularValue(listHeaders, listRows, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
         daValues = np.array([float(r[iCol]) for r in listRows])
-        return float(getattr(daValues, sAggregate)())
+        return _fApplyAggregate(daValues, sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     iRow = listIndices[0] if listIndices else -1
     return float(listRows[iRow][iCol])
@@ -171,9 +201,8 @@ def _fExtractDataframeValue(dfData, dictAccess, sFullPath=""):
         sColumn = dictAccess.get("column", dfData.columns[0])
         sAggregate = dictAccess.get("sAggregate")
         if sAggregate:
-            return float(
-                getattr(dfData[sColumn].astype(float), sAggregate)(),
-            )
+            daValues = dfData[sColumn].astype(float).to_numpy()
+            return _fApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [-1])
         iRow = listIndices[0] if listIndices else -1
         return float(dfData[sColumn].iloc[iRow])
@@ -196,7 +225,7 @@ def _fNavigateJsonValue(dictData, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate and isinstance(value, list):
         daArray = np.array(value, dtype=float)
-        return float(getattr(daArray, sAggregate)())
+        return _fApplyAggregate(daArray, sAggregate)
     listIndices = dictAccess.get("listIndices", None)
     if listIndices is not None:
         for iIdx in listIndices:
@@ -292,7 +321,12 @@ def _fLoadKeyvalueValue(sFullPath, dictAccess):
 
 
 def _fLoadJsonValue(sFullPath, dictAccess):
-    """Load a value from a JSON file."""
+    """Load a value from a JSON file.
+
+    Tolerates doubly-serialised payloads: when the file's top-level
+    JSON is a string (vconverge's ``json.dumps(json.dumps(...))``
+    convention), it is parsed a second time before navigation.
+    """
     try:
         with open(sFullPath, encoding="utf-8", errors="replace") as fh:
             dictData = json.load(fh)
@@ -300,6 +334,14 @@ def _fLoadJsonValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as json: {exc}",
         ) from exc
+    if isinstance(dictData, str):
+        try:
+            dictData = json.loads(dictData)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Failed to re-parse doubly-serialised json in "
+                f"{sFullPath}: {exc}",
+            ) from exc
     try:
         return _fNavigateJsonValue(dictData, dictAccess)
     except (KeyError, IndexError, TypeError) as exc:
@@ -326,7 +368,7 @@ def _fLoadCsvValue(sFullPath, dictAccess):
         sAggregate = dictAccess.get("sAggregate")
         if sAggregate and sColumn:
             daValues = np.array([float(r[sColumn]) for r in listRows])
-            return float(getattr(daValues, sAggregate)())
+            return _fApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [-1])
         iIndex = listIndices[0] if listIndices else -1
         return float(listRows[iIndex][sColumn])
@@ -378,7 +420,7 @@ def _fLoadWhitespaceValue(sFullPath, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
         daValues = np.array([float(r[iColumn]) for r in listRows])
-        return float(getattr(daValues, sAggregate)())
+        return _fApplyAggregate(daValues, sAggregate)
     return float(listRows[iIndex][iColumn])
 
 
@@ -398,7 +440,7 @@ def _fLoadJsonlValue(sFullPath, dictAccess):
     try:
         if sAggregate and sKey:
             daValues = np.array([float(r[sKey]) for r in listRecords])
-            return float(getattr(daValues, sAggregate)())
+            return _fApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [0])
         iRow = listIndices[0] if listIndices else 0
         if sKey:
@@ -435,7 +477,7 @@ def _fLoadExcelValue(sFullPath, dictAccess):
         sAggregate = dictAccess.get("sAggregate")
         if sAggregate:
             daValues = np.array([float(r[iCol]) for r in listRows[1:]])
-            return float(getattr(daValues, sAggregate)())
+            return _fApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [-1])
         iRow = listIndices[0] if listIndices else -1
         return float(listRows[1:][iRow][iCol])
@@ -469,7 +511,7 @@ def _fLoadFitsValue(sFullPath, dictAccess):
             f"Failed to load {sFullPath} as fits: {exc}",
         ) from exc
     if sAggregate:
-        return float(getattr(daData, sAggregate)())
+        return _fApplyAggregate(daData, sAggregate)
     iDataIdx = listIndices[1] if len(listIndices) > 1 else 0
     return float(daData[iDataIdx])
 
@@ -553,7 +595,7 @@ def _fLoadFastaValue(sFullPath, dictAccess):
     daLengths = np.array(listLengths, dtype=float)
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
-        return float(getattr(daLengths, sAggregate)())
+        return _fApplyAggregate(daLengths, sAggregate)
     listIndices = dictAccess.get("listIndices", [0])
     return float(daLengths[listIndices[0]])
 
@@ -575,7 +617,7 @@ def _fLoadFastqValue(sFullPath, dictAccess):
     )
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
-        return float(getattr(daValues, sAggregate)())
+        return _fApplyAggregate(daValues, sAggregate)
     listIndices = dictAccess.get("listIndices", [0])
     return float(daValues[listIndices[0]])
 
@@ -683,7 +725,7 @@ def _fLoadMultitableValue(sFullPath, dictAccess):
     listParsedRows = [r.split() for r in listDataRows]
     if sAggregate:
         daValues = np.array([float(r[iCol]) for r in listParsedRows])
-        return float(getattr(daValues, sAggregate)())
+        return _fApplyAggregate(daValues, sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     iRow = listIndices[0] if listIndices else -1
     return float(listParsedRows[iRow][iCol])
@@ -997,13 +1039,21 @@ _DICT_LOADERS = {
 
 
 def _fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
-    """Load a single value from a data file using the access path."""
+    """Load a single value from a data file using the access path.
+
+    A ``.txt`` / ``.dat`` file with a ``key:`` access path is treated as
+    a structured ``key = value`` report (vconverge-style). Without this
+    heuristic, key-only access paths would silently dispatch to the
+    whitespace loader and read random columns.
+    """
     sFullPath = str(pathlib.Path(sStepDirectory) / sDataFile)
     dictAccess = _fdictParseAccessPath(sAccessPath)
     if not sFormat:
         sFormat = _fsInferFormat(sFullPath)
     if sFormat is None:
         sFormat = "whitespace"
+    if sFormat == "whitespace" and "key" in dictAccess:
+        sFormat = "keyvalue"
     fLoader = _DICT_LOADERS.get(sFormat)
     if fLoader is None:
         raise ValueError(f"Unsupported format: {sFormat}")

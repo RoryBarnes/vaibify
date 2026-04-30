@@ -161,9 +161,39 @@ For each significant numerical result visible in the output data:
    "fixedwidth", "multitable".
    Omit this field unless the extension is ambiguous.
 6. Optionally override the default relative tolerance with "fRtol".
+7. Optionally set "sMetricKind" to one of "single", "mean", "std",
+   "percentile_5", "percentile_25", "percentile_50",
+   "percentile_75", "percentile_95". When emitting distributional
+   metrics, also set "iSampleSize" (int) and "fObservedCv" (float
+   coefficient of variation observed in the pilot run, or null if
+   the mean is approximately zero). These let downstream tooling
+   audit whether the chosen tolerance is statistically defensible.
+
+Aggregate access paths supported by every numeric loader:
+   "index:mean", "index:min", "index:max", "index:std",
+   "index:p5", "index:p25", "index:p50", "index:p75", "index:p95".
 
 IMPORTANT: Only use access path formats listed above. Do not invent
 new formats or combine aggregates with indices.
+
+## Conservative Tolerance Rules (when introspector cannot parse outputs)
+
+When the deterministic introspector cannot read a step's output files,
+you are the fallback. Apply these rules to keep stochastic outputs
+from producing false test failures:
+
+- Prefer distributional metrics ("mean", "percentile_*", "std") over
+  single-sample metrics ("first", "last", "min", "max"). Only emit a
+  single-sample metric when the underlying value is verifiably
+  deterministic (e.g. a fitted parameter, not a draw from a
+  posterior).
+- Default tolerance is rtol=0.05 (5%). Tighten to rtol=0.01 only
+  when the data shape justifies it.
+- Never emit rtol < 1e-3 unless the underlying value is integer or
+  the analysis script contains no random-number-generation pattern
+  (np.random, dynesty, emcee, ultranest, etc.).
+- Set "sMetricKind" on every benchmark so the schema stays
+  consistent with the deterministic path.
 
 Return ONLY a JSON object (no markdown fences, no explanation) with this structure:
 ```json
@@ -222,8 +252,8 @@ git commit -m "Extend test infrastructure for [format/edge case]"
 
 
 _CLAUDE_MD_MARKER = "# Vaibify Test Generation Instructions"
-_CLAUDE_MD_VERSION = "v10"
-_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v10 -->"
+_CLAUDE_MD_VERSION = "v11"
+_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v11 -->"
 
 
 def fnEnsureClaudeMdInstructions(

@@ -29,6 +29,7 @@ from .commandBuild import build
 from .commandCat import cat
 from .commandConfig import config
 from .commandDestroy import destroy
+from .commandGenerateStandards import generate_standards
 from .commandInit import init
 from .commandLs import ls
 from .commandRegister import register
@@ -66,8 +67,9 @@ _fnConfigureErrorLogging()
     help="Path to vaibify.yml (default: ./vaibify.yml).",
 )
 @click.option(
-    "--port", "iPort", default=8050, type=int,
-    help="Port for the hub server (default: 8050).",
+    "--port", "iPort", default=None, type=int,
+    help="Port for the hub server (default: 8050, "
+    "auto-shifts upward if taken).",
 )
 @click.pass_context
 def main(ctx, sConfigPath, iPort):
@@ -79,23 +81,46 @@ def main(ctx, sConfigPath, iPort):
         fnLaunchHub(iPort)
 
 
-def fnLaunchHub(iPort):
+def _fnAcquireHubSessionSlotOrExit(sRole, iPort):
+    """Acquire a session slot or exit nonzero with a clear message."""
+    import sys
+    from vaibify.config.sessionRegistry import (
+        SessionLimitExceededError, fnAcquireSessionSlot,
+    )
+    try:
+        return fnAcquireSessionSlot(sRole, iPort)
+    except SessionLimitExceededError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+
+
+def fnLaunchHub(iExplicitPort):
     """Start the hub-mode server and open the browser."""
+    import os
     import threading
     import time
     import uvicorn
     import webbrowser
+    from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     from vaibify.gui.pipelineServer import fappCreateHubApplication
-    sUrl = f"http://127.0.0.1:{iPort}"
-    click.echo(f"Starting Vaibify hub at {sUrl}")
-    app = fappCreateHubApplication()
-    threading.Thread(
-        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
-        daemon=True,
-    ).start()
-    uvicorn.run(
-        app, host="127.0.0.1", port=iPort, log_level="warning",
-    )
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
+    from .portAllocator import fiResolvePort
+    iPort = fiResolvePort(iExplicitPort)
+    fileHandleSession = _fnAcquireHubSessionSlotOrExit("hub", iPort)
+    try:
+        sUrl = f"http://127.0.0.1:{iPort}"
+        click.echo(f"Starting Vaibify hub at {sUrl}")
+        app = fappCreateHubApplication(iExpectedPort=iPort)
+        if not os.environ.get(S_SUPPRESS_BROWSER_ENV):
+            threading.Thread(
+                target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+                daemon=True,
+            ).start()
+        uvicorn.run(
+            app, host="127.0.0.1", port=iPort, log_level="warning",
+        )
+    finally:
+        fnReleaseSessionSlot(fileHandleSession)
 
 
 main.add_command(init)
@@ -112,6 +137,7 @@ main.add_command(ls)
 main.add_command(cat)
 main.add_command(register)
 main.add_command(test)
+main.add_command(generate_standards)
 
 
 @main.command("stop")
@@ -201,6 +227,7 @@ def gui(sProjectName):
     click.echo(f"Starting pipeline viewer at {sUrl}")
     app = fappCreateApplication(
         sWorkspaceRoot=sRoot, sTerminalUserArg=sTerminalUser,
+        iExpectedPort=8050,
     )
     threading.Thread(
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),

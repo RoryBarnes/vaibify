@@ -44,7 +44,7 @@ def _fdictStepDetail(iStepIndex, dictStep):
         "iNumber": iStepIndex + 1,
         "sName": dictStep.get("sName", ""),
         "sDirectory": dictStep.get("sDirectory", ""),
-        "bEnabled": dictStep.get("bEnabled", True),
+        "bRunEnabled": dictStep.get("bRunEnabled", True),
         "bPlotOnly": dictStep.get("bPlotOnly", True),
         "bInteractive": dictStep.get("bInteractive", False),
         "dictVerification": dictStep.get("dictVerification", {}),
@@ -60,7 +60,7 @@ def _fnPrintStepDetail(iStepIndex, dictStep):
     dictDetail = _fdictStepDetail(iStepIndex, dictStep)
     click.echo(f"Step {dictDetail['iNumber']}: {dictDetail['sName']}")
     click.echo(f"  Directory:   {dictDetail['sDirectory']}")
-    click.echo(f"  Enabled:     {dictDetail['bEnabled']}")
+    click.echo(f"  Enabled:     {dictDetail['bRunEnabled']}")
     click.echo(f"  Plot only:   {dictDetail['bPlotOnly']}")
     click.echo(f"  Interactive: {dictDetail['bInteractive']}")
     dictVerification = dictDetail["dictVerification"]

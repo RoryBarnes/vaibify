@@ -20,7 +20,9 @@ from typing import List, Optional
 WORKSPACE_ROOT = "/workspace"
 
 __all__ = [
-    "fCreateApp",
+    "fappCreateApplication",
+    "fappCreateHubApplication",
+    "fbIsAllowedHostHeader",
     "fdictBuildContext",
     "fdictHandleConnect",
     "fnDispatchAction",
@@ -32,7 +34,9 @@ __all__ = [
     "fnTerminalInputLoop",
     "fnTerminalReadLoop",
     "fnValidatePathWithinRoot",
+    "fbHasAgentToken",
     "fbValidateWebSocketOrigin",
+    "fsGetOriginHeader",
     "fdictExtractSettings",
     "fdictFilterNonNone",
     "fdictRequireWorkflow",
@@ -48,6 +52,8 @@ __all__ = [
     "fbaFetchFigureWithFallback",
 ]
 
+from . import actionCatalog
+from . import agentSessionBridge
 from . import workflowManager
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
@@ -104,7 +110,7 @@ class StepUpdateRequest(BaseModel):
     sDirectory: Optional[str] = None
     bPlotOnly: Optional[bool] = None
     bInteractive: Optional[bool] = None
-    bEnabled: Optional[bool] = None
+    bRunEnabled: Optional[bool] = None
     saDataCommands: Optional[List[str]] = None
     saDataFiles: Optional[List[str]] = None
     saTestCommands: Optional[List[str]] = None
@@ -128,6 +134,7 @@ class WorkflowSettingsRequest(BaseModel):
     sFigureType: Optional[str] = None
     iNumberOfCores: Optional[int] = None
     fTolerance: Optional[float] = None
+    bAutoArchive: Optional[bool] = None
 
 
 class RunRequest(BaseModel):
@@ -164,6 +171,12 @@ class FilePullRequest(BaseModel):
 class SyncPushRequest(BaseModel):
     listFilePaths: List[str]
     sCommitMessage: str = "[vaibify] Update outputs"
+    sTargetDirectory: Optional[str] = None
+
+
+class OverleafDiffRequest(BaseModel):
+    listFilePaths: List[str]
+    sTargetDirectory: str
 
 
 class GitAddFileRequest(BaseModel):
@@ -175,6 +188,28 @@ class SyncSetupRequest(BaseModel):
     sService: str
     sProjectId: Optional[str] = None
     sToken: Optional[str] = None
+    sZenodoInstance: Optional[str] = None
+
+
+class SyncTrackingRequest(BaseModel):
+    sPath: str
+    sService: str
+    bTrack: bool
+
+
+class ZenodoCreatorRequest(BaseModel):
+    sName: str
+    sAffiliation: Optional[str] = ""
+    sOrcid: Optional[str] = ""
+
+
+class ZenodoMetadataRequest(BaseModel):
+    sTitle: str
+    sDescription: Optional[str] = ""
+    listCreators: List[ZenodoCreatorRequest] = []
+    sLicense: Optional[str] = "CC-BY-4.0"
+    listKeywords: List[str] = []
+    sRelatedGithubUrl: Optional[str] = ""
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -216,6 +251,7 @@ def fdictExtractSettings(dictWorkflow):
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
         "fTolerance": dictWorkflow.get("fTolerance", 1e-6),
+        "bAutoArchive": dictWorkflow.get("bAutoArchive", False),
     }
 
 
@@ -376,15 +412,53 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
 
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
-    sWorkflowDirectory, fnCallback, dictInteractive=None,
+    dictWorkflow, sWorkflowDirectory, fnCallback,
+    dictInteractive=None,
 ):
     """Dispatch runFrom with the start step from the request."""
+    iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
     await fnRunFromStep(
         connectionDocker, sContainerId,
-        dictRequest.get("iStartStep", 1),
-        sWorkflowDirectory, fnCallback,
+        iStartStep, sWorkflowDirectory, fnCallback,
         dictInteractive=dictInteractive,
     )
+
+
+def _fiResolveStartStep(dictRequest, dictWorkflow):
+    """Return the 1-based start step from index or label in the request.
+
+    ``iStartStep`` is 1-based to match the pipeline runner's convention.
+    A ``sStartStepLabel`` like ``"A09"`` resolves to the 0-based index,
+    then +1 for the 1-based caller.
+    """
+    from .pipelineUtils import fiStepIndexFromLabel
+    sLabel = dictRequest.get("sStartStepLabel")
+    if sLabel:
+        return fiStepIndexFromLabel(dictWorkflow, sLabel) + 1
+    return dictRequest.get("iStartStep", 1)
+
+
+def _flistResolveSelectedIndices(dictRequest, dictWorkflow):
+    """Return the resolved, deduplicated list of 0-based step indices.
+
+    Accepts ``listStepIndices`` (ints) and ``listStepLabels`` (strings
+    like ``"A09"``) together; labels translate via
+    ``fiStepIndexFromLabel``. Order follows indices-first then labels.
+    """
+    from .pipelineUtils import fiStepIndexFromLabel
+    listOut = []
+    setSeen = set()
+    for iValue in dictRequest.get("listStepIndices", []):
+        iIndex = int(iValue)
+        if iIndex not in setSeen:
+            listOut.append(iIndex)
+            setSeen.add(iIndex)
+    for sLabel in dictRequest.get("listStepLabels", []):
+        iIndex = fiStepIndexFromLabel(dictWorkflow, sLabel)
+        if iIndex not in setSeen:
+            listOut.append(iIndex)
+            setSeen.add(iIndex)
+    return listOut
 
 
 async def fnDispatchAction(
@@ -405,7 +479,7 @@ async def fnDispatchAction(
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
-            sWorkflowDirectory, fnCallback,
+            dictWorkflow, sWorkflowDirectory, fnCallback,
             dictInteractive=dictInteractive)
     elif sAction == "verify":
         await fnVerifyOnly(
@@ -427,11 +501,22 @@ async def _fnDispatchSelected(
     sWorkflowDirectory, fnCallback,
 ):
     """Dispatch the runSelected action."""
+    from .pipelineRunner import SET_VALID_RUN_MODES
+    listIndices = _flistResolveSelectedIndices(
+        dictRequest, dictWorkflow,
+    )
+    sRunMode = dictRequest.get("sRunMode", "full")
+    if sRunMode not in SET_VALID_RUN_MODES:
+        raise ValueError(
+            f"Unknown sRunMode: {sRunMode!r}. "
+            f"Valid values: {sorted(SET_VALID_RUN_MODES)}"
+        )
     await fnRunSelectedSteps(
         connectionDocker, sContainerId,
-        dictRequest.get("listStepIndices", []),
+        listIndices,
         dictWorkflow, dictWorkflowPathCache.get(sContainerId),
         sWorkflowDirectory, fnCallback,
+        sRunMode=sRunMode,
     )
 
 
@@ -650,6 +735,21 @@ def _fnAuthorizeContainer(dictCtx, sContainerId):
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
+    _fnPushAgentSession(dictCtx, sContainerId)
+
+
+def _fnPushAgentSession(dictCtx, sContainerId):
+    """Write the vaibify-do session + catalog into the container."""
+    try:
+        agentSessionBridge.fnPushAgentSessionToContainer(
+            dictCtx["docker"], sContainerId,
+            dictCtx["sSessionToken"], dictCtx.get("iPort", 0),
+        )
+    except Exception as error:
+        logger.warning(
+            "Agent session push failed for %s: %s",
+            sContainerId, error,
+        )
 
 
 def _fdictConnectNoWorkflow(dictCtx, sContainerId):
@@ -697,7 +797,7 @@ def _fdictInvertDeps(dictUpToDown, iStepCount):
     return dictResult
 
 
-def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
+async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
         return _fdictConnectNoWorkflow(dictCtx, sContainerId)
@@ -711,18 +811,52 @@ def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["paths"][sContainerId] = sResolved
+        from . import containerGit
+        dictWorkflow["sProjectRepoPath"] = (
+            containerGit.fsDetectProjectRepoInContainer(
+                dictCtx["docker"], sContainerId, sResolved,
+            )
+        )
+        if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
+            dictCtx["save"](sContainerId, dictWorkflow)
+        if workflowManager.fbMigrateModifiedFilesToRepoRelative(
+            dictWorkflow,
+        ):
+            dictCtx["save"](sContainerId, dictWorkflow)
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )
+        dictFileStatus = await _fdictComputeConnectFileStatus(
+            dictCtx, sContainerId, dictWorkflow,
+        )
+        from .pipelineUtils import fdictWorkflowWithLabels
         return {
             "sContainerId": sContainerId,
             "sWorkflowPath": sResolved,
-            "dictWorkflow": dictWorkflow,
+            "dictWorkflow": fdictWorkflowWithLabels(dictWorkflow),
+            "dictFileStatus": dictFileStatus,
         }
     except Exception as error:
         logger.error("Workflow load failed: %s", error)
         sUserMessage = _fsSanitizeServerError(str(error))
         raise HTTPException(400, sUserMessage)
+
+
+async def _fdictComputeConnectFileStatus(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Compute file-status payload for the connect response."""
+    from .routes.pipelineRoutes import fdictComputeFileStatus
+    try:
+        dictVars = dictCtx["variables"](sContainerId)
+        return await fdictComputeFileStatus(
+            dictCtx, sContainerId, dictWorkflow, dictVars,
+        )
+    except Exception as error:
+        logger.warning(
+            "Connect file-status precompute failed: %s", error,
+        )
+        return None
 
 
 def _fnLaunchDependencyScan(
@@ -805,13 +939,20 @@ def fsDetectDockerRuntime():
 # WebSocket origin validation
 # ---------------------------------------------------------------
 
-def fbValidateWebSocketOrigin(websocket: WebSocket):
-    """Return True only if the WebSocket origin is localhost."""
-    sOrigin = ""
-    for sKey, sVal in websocket.headers.items():
-        if sKey.lower() == "origin":
-            sOrigin = sVal
-            break
+def fbValidateWebSocketOrigin(websocket: WebSocket, sExpectedToken=None):
+    """Return True if the WebSocket carries a trusted origin or agent token.
+
+    Browser clients identify themselves by a loopback ``Origin`` header.
+    In-container ``vaibify-do`` agents dial in via
+    ``host.docker.internal`` and can't set a loopback origin, so they
+    authenticate by presenting the backend's session token in the
+    ``X-Vaibify-Session`` header or ``sToken`` query parameter; when
+    that matches, origin validation is bypassed because the token is
+    already the authoritative credential.
+    """
+    if sExpectedToken and fbHasAgentToken(websocket, sExpectedToken):
+        return True
+    sOrigin = fsGetOriginHeader(websocket)
     if not sOrigin:
         return False
     listAllowed = [
@@ -822,6 +963,28 @@ def fbValidateWebSocketOrigin(websocket: WebSocket):
         if sOrigin.startswith(sAllowed):
             return True
     return False
+
+
+def fsGetOriginHeader(websocket: WebSocket):
+    """Return the Origin header value or empty string."""
+    for sKey, sVal in websocket.headers.items():
+        if sKey.lower() == "origin":
+            return sVal
+    return ""
+
+
+def fbHasAgentToken(websocket: WebSocket, sExpectedToken):
+    """Return True if the WS carries the expected agent token."""
+    sHeaderToken = ""
+    sHeaderName = actionCatalog.S_SESSION_HEADER_NAME.lower()
+    for sKey, sVal in websocket.headers.items():
+        if sKey.lower() == sHeaderName:
+            sHeaderToken = sVal
+            break
+    if sHeaderToken and sHeaderToken == sExpectedToken:
+        return True
+    sQueryToken = websocket.query_params.get("sToken", "")
+    return bool(sQueryToken) and sQueryToken == sExpectedToken
 
 
 # ---------------------------------------------------------------
@@ -879,7 +1042,7 @@ from .fileStatusManager import (  # noqa: F401
     _fbCheckStaleUserVerification,
     _fbPipelineIsRunning,
     _fbPlotNewerThanUserVerification,
-    _fbStepScriptsModified,
+    _fbStepIsPencilStale,
     _fdictBuildFileStatusVars,
     _fdictBuildScriptStatus,
     _fdictComputeMaxMtimeByStep,
@@ -896,9 +1059,16 @@ from .fileStatusManager import (  # noqa: F401
     _fnClearStepModificationState,
     _fnInvalidateDownstreamStep,
     _fnInvalidateStepFiles,
-    _fnRecordStepRunTimestamp,
     _fnUpdateModTimeBaseline,
+    fbIsStepFullyVerified,
+    fbReconcileUpstreamFlags,
+    fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
+    flistStepRemoteFiles,
+    fnCollectMarkerPathsByStep,
+    fnCollectScriptPathsByStep,
+    fnMaybeAutoArchive,
+    fsMarkerNameFromStepDirectory,
 )
 
 from .testStatusManager import (  # noqa: F401
@@ -933,7 +1103,6 @@ _DICT_ROUTE_RE_EXPORTS = {
     "_fnApplyExternalTestResults": "routes.pipelineRoutes",
     "_fnApplyMarkerCategory": "routes.pipelineRoutes",
     "_fnMarkPipelineStopped": "routes.pipelineRoutes",
-    "_fsMarkerNameFromDirectory": "routes.pipelineRoutes",
     "_fsetExtractRegisteredTestFiles": "routes.pipelineRoutes",
     # syncRoutes
     "_fdictBuildOverleafArgs": "routes.syncRoutes",
@@ -1100,6 +1269,9 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.systemRoutes.fnRegisterAll(app, dictCtx)
     routes.pipelineRoutes.fnRegisterAll(app, dictCtx)
     routes.terminalRoutes.fnRegisterAll(app, dictCtx)
+    routes.repoRoutes.fnRegisterAll(app, dictCtx)
+    routes.gitRoutes.fnRegisterAll(app, dictCtx)
+    routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 
@@ -1107,10 +1279,70 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
 # Middleware
 # ---------------------------------------------------------------
 
+_SET_LOCAL_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
+
+
+def fbIsAllowedHostHeader(sHostHeader, iExpectedPort):
+    """Return True when sHostHeader resolves to a local loopback origin.
+
+    Guards against DNS rebinding: an attacker-controlled domain that
+    has been re-pointed at 127.0.0.1 would send its original name in
+    the ``Host:`` header, so rejecting anything outside the loopback
+    set prevents a remote page from driving local API endpoints.
+    """
+    if not sHostHeader:
+        return False
+    sHostPort = sHostHeader.split(",", 1)[0].strip()
+    sHost, sPort = _ftSplitHostPort(sHostPort)
+    if sHost not in _SET_LOCAL_HOST_NAMES:
+        return False
+    if sPort == "":
+        return True
+    try:
+        iPort = int(sPort)
+    except ValueError:
+        return False
+    return iPort == iExpectedPort
+
+
+def _ftSplitHostPort(sHostPort):
+    """Split host and port, tolerating bracketed IPv6 and bare hosts."""
+    if sHostPort.startswith("["):
+        iBracket = sHostPort.find("]")
+        if iBracket == -1:
+            return (sHostPort, "")
+        sHost = sHostPort[: iBracket + 1]
+        sRest = sHostPort[iBracket + 1:]
+        sPort = sRest.lstrip(":") if sRest.startswith(":") else ""
+        return (sHost, sPort)
+    if ":" in sHostPort:
+        sHost, sPort = sHostPort.rsplit(":", 1)
+        return (sHost, sPort)
+    return (sHostPort, "")
+
+
 class SessionTokenMiddleware(BaseHTTPMiddleware):
-    """Reject /api/ requests missing a valid session token."""
+    """Reject requests with unsafe Host headers or missing session tokens.
+
+    An in-container ``vaibify-do`` agent authenticates via the
+    ``X-Vaibify-Session`` header and reaches the backend through
+    ``host.docker.internal``, so requests that present a valid agent
+    token bypass the browser-oriented Host-header loopback check.
+    """
 
     async def dispatch(self, request: Request, call_next):
+        sExpected = request.app.state.sSessionToken
+        sAgentToken = request.headers.get(
+            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        )
+        if sAgentToken and sAgentToken == sExpected:
+            return await call_next(request)
+        if not _fbRequestHasAllowedHost(request):
+            return Response(
+                status_code=400,
+                content='{"detail":"Invalid Host header"}',
+                media_type="application/json",
+            )
         sPath = request.url.path
         bNeedsToken = (
             sPath.startswith("/api/")
@@ -1126,7 +1358,6 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                 if bIsWebSocket or bIsDownload:
                     sToken = request.query_params.get(
                         "sToken", "")
-            sExpected = request.app.state.sSessionToken
             if sToken != sExpected:
                 return Response(
                     status_code=401,
@@ -1134,6 +1365,15 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                     media_type="application/json",
                 )
         return await call_next(request)
+
+
+def _fbRequestHasAllowedHost(request):
+    """Return True when the request Host header is a permitted loopback."""
+    iExpectedPort = getattr(request.app.state, "iExpectedPort", 0)
+    if not iExpectedPort:
+        return True
+    sHostHeader = request.headers.get("host", "")
+    return fbIsAllowedHostHeader(sHostHeader, iExpectedPort)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -1171,25 +1411,37 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def fappCreateApplication(
     sWorkspaceRoot="/workspace", sTerminalUserArg=None,
+    iExpectedPort=0,
 ):
-    """Build and return the configured FastAPI application."""
+    """Build and return the configured FastAPI application.
+
+    When ``iExpectedPort`` is non-zero, the SessionTokenMiddleware
+    enforces a strict ``Host:`` header check (DNS rebinding defense).
+    CLI launchers pass the real bind port; test fixtures omit the
+    argument so TestClient's default ``testserver`` host is accepted.
+    """
     global sTerminalUser
     sTerminalUser = sTerminalUserArg
     app = FastAPI(title="Vaibify Workflow Viewer")
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
+    app.state.iExpectedPort = iExpectedPort
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
+    dictCtx["iPort"] = iExpectedPort
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
     return app
 
 
-def fappCreateHubApplication():
-    """Build a hub-mode FastAPI app with registry support."""
+def fappCreateHubApplication(iExpectedPort=0):
+    """Build a hub-mode FastAPI app with registry support.
+
+    See :func:`fappCreateApplication` for ``iExpectedPort`` semantics.
+    """
     from .registryRoutes import fnRegisterRegistryRoutes
     global sTerminalUser
     sTerminalUser = "researcher"
@@ -1197,11 +1449,30 @@ def fappCreateHubApplication():
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
+    app.state.iExpectedPort = iExpectedPort
+    app.state.iHubPort = iExpectedPort
+    app.state.dictContainerLocks = {}
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
+    dictCtx["iPort"] = iExpectedPort
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
     fnRegisterRegistryRoutes(app, dictCtx)
+    _fnRegisterHubShutdownReleaseLocks(app)
     return app
+
+
+def _fnRegisterHubShutdownReleaseLocks(app):
+    """Release all held container locks when the hub shuts down."""
+
+    @app.on_event("shutdown")
+    async def fnReleaseAllContainerLocks():
+        from vaibify.config.containerLock import fnReleaseContainerLock
+        for fileHandle in list(app.state.dictContainerLocks.values()):
+            try:
+                fnReleaseContainerLock(fileHandle)
+            except OSError:
+                pass
+        app.state.dictContainerLocks.clear()

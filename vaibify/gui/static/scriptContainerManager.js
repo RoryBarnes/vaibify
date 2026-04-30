@@ -61,26 +61,38 @@ var PipeleyenContainerManager = (function () {
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
         var sId = dictContainer.sContainerId || "";
+        var bLocked = dictContainer.bLocked === true;
+        var sLockedClass = bLocked ? " container-tile--locked" : "";
+        var sLockedTitle = bLocked
+            ? ' title="Already accessed by another vaibify session"'
+            : "";
+        var sLockedAttr = bLocked ? ' data-locked="true"' : "";
         return (
-            '<div class="container-tile" data-name="' +
+            '<div class="container-tile' + sLockedClass +
+            '" data-name="' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
-            '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) + '">' +
+            '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
+            '"' + sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
             "</div>" +
+            '<button class="btn-icon container-tile-actions" ' +
+            'title="Actions">&#8942;</button>' +
             '<button class="btn-icon container-tile-gear" ' +
-            'title="Actions">&#9881;</button>' +
+            'title="Settings">&#9881;</button>' +
             '<div class="container-tile-menu" style="display:none;">' +
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
             '<div class="container-menu-item" data-action="stop">' +
             "Stop</div>" +
+            '<div class="container-menu-item" data-action="restart">' +
+            "Restart</div>" +
             '<div class="container-menu-item" data-action="rebuild">' +
             "Rebuild</div>" +
-            '<div class="container-menu-item" data-action="settings">' +
-            "Settings</div>" +
+            '<div class="container-menu-item" data-action="force-rebuild">' +
+            "Force Rebuild</div>" +
             '<div class="container-menu-separator"></div>' +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
@@ -102,16 +114,22 @@ var PipeleyenContainerManager = (function () {
                     fnHandleContainerClick(sName);
                 }
             );
-            _fnBindGearMenu(el, sName);
+            _fnBindTileControls(el, sName);
         });
     }
 
-    function _fnBindGearMenu(elTile, sName) {
+    function _fnBindTileControls(elTile, sName) {
+        var elActions = elTile.querySelector(".container-tile-actions");
         var elGear = elTile.querySelector(".container-tile-gear");
         var elMenu = elTile.querySelector(".container-tile-menu");
+        elActions.addEventListener("click", function (event) {
+            event.stopPropagation();
+            _fnToggleActionsMenu(elMenu);
+        });
         elGear.addEventListener("click", function (event) {
             event.stopPropagation();
-            _fnToggleGearMenu(elMenu);
+            _fnCloseAllActionsMenus();
+            fnShowContainerSettings(sName);
         });
         elMenu.querySelectorAll(".container-menu-item").forEach(
             function (elItem) {
@@ -124,11 +142,15 @@ var PipeleyenContainerManager = (function () {
         );
     }
 
-    function _fnToggleGearMenu(elMenu) {
+    function _fnCloseAllActionsMenus() {
         document.querySelectorAll(".container-tile-menu").forEach(
             function (el) { el.style.display = "none"; }
         );
+    }
+
+    function _fnToggleActionsMenu(elMenu) {
         var bVisible = elMenu.style.display !== "none";
+        _fnCloseAllActionsMenus();
         elMenu.style.display = bVisible ? "none" : "";
     }
 
@@ -136,6 +158,12 @@ var PipeleyenContainerManager = (function () {
         var elTile = document.querySelector(
             '.container-tile[data-name="' + sName + '"]'
         );
+        if (elTile && elTile.dataset.locked === "true") {
+            PipeleyenApp.fnShowToast(
+                "Container '" + sName + "' is already accessed by "
+                + "another vaibify session.", "warning");
+            return;
+        }
         var elDot = elTile ? elTile.querySelector(".status-dot") : null;
         var bRunning = elDot && elDot.classList.contains("status-running");
         var bNotBuilt = elDot &&
@@ -147,6 +175,11 @@ var PipeleyenContainerManager = (function () {
         if (!bRunning) {
             await fnStartContainer(sName);
         }
+        var bClaimed = await _fbClaimContainer(sName);
+        if (!bClaimed) {
+            await fnLoadContainers();
+            return;
+        }
         var sStoredId = elTile ? elTile.dataset.containerId : "";
         if (sStoredId) {
             fnConnectToContainer(sStoredId);
@@ -155,11 +188,38 @@ var PipeleyenContainerManager = (function () {
         }
     }
 
+    async function _fbClaimContainer(sName) {
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) + "/claim",
+                {});
+            return true;
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                "Container '" + sName + "' is already accessed by "
+                + "another vaibify session.", "warning");
+            return false;
+        }
+    }
+
+    async function fnReleaseClaim(sName) {
+        if (!sName) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/release", {});
+        } catch (error) {
+            /* release is best-effort; shutdown will clean up */
+        }
+    }
+
     async function fnHandleContainerAction(sName, sAction) {
         if (sAction === "start") await fnStartContainer(sName);
         else if (sAction === "stop") await fnStopContainer(sName);
+        else if (sAction === "restart") await fnRestartContainer(sName);
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
-        else if (sAction === "settings") await fnShowContainerSettings(sName);
+        else if (sAction === "force-rebuild")
+            await fnForceRebuildContainer(sName);
         else if (sAction === "remove") await fnRemoveContainer(sName);
     }
 
@@ -186,14 +246,24 @@ var PipeleyenContainerManager = (function () {
         elModal.style.display = "flex";
         elModal.innerHTML =
             '<div class="modal">' +
-            '<h2>Settings for ' + VaibifyUtilities.fnEscapeHtml(sName) + '</h2>' +
-            '<label class="checkbox-row" ' +
-            'style="display:flex;align-items:center;gap:10px;' +
-            'margin-bottom:16px">' +
+            '<h2>Settings for ' +
+            VaibifyUtilities.fnEscapeHtml(sName) + '</h2>' +
+            '<p class="settings-intro">Configure how this ' +
+            'container behaves while running. Changes take ' +
+            'effect the next time the container starts.</p>' +
+            '<div class="settings-option">' +
+            '<label class="settings-option-row">' +
             '<input type="checkbox" id="settingNeverSleep"' +
             (dictSettings.bNeverSleep ? " checked" : "") + '>' +
-            '<span>Never Sleep (run caffeinate while this ' +
-            'container is running)</span></label>' +
+            '<span class="settings-option-label">' +
+            'Keep host awake while running</span></label>' +
+            '<p class="settings-option-help">' +
+            'On macOS, long simulations can be interrupted ' +
+            'when the laptop sleeps. Enabling this runs ' +
+            '<code>caffeinate</code> on the host for as long ' +
+            'as this container is running, preventing sleep. ' +
+            'Has no effect on Linux.</p>' +
+            '</div>' +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnSettingsCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
@@ -221,7 +291,7 @@ var PipeleyenContainerManager = (function () {
                 dictSettings
             );
             PipeleyenApp.fnShowToast(
-                "Settings saved. Stop and start to apply.",
+                "Settings saved. Use Restart to apply.",
                 "success");
         } catch (error) {
             PipeleyenApp.fnShowToast(
@@ -230,14 +300,14 @@ var PipeleyenContainerManager = (function () {
         }
     }
 
-    async function fnBuildContainer(sName) {
+    async function fnBuildContainer(sName, bNoCache) {
         var elOverlay = document.getElementById("modalBuildProgress");
         elOverlay.style.display = "flex";
         try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/build"
-            );
+            var sUrl = "/api/containers/" +
+                encodeURIComponent(sName) + "/build";
+            if (bNoCache) sUrl += "?bNoCache=true";
+            await VaibifyApi.fdictPostRaw(sUrl);
             PipeleyenApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
@@ -279,6 +349,7 @@ var PipeleyenContainerManager = (function () {
 
     async function fnStopContainer(sName) {
         fnSetTilePending(sName);
+        PipeleyenTerminal.fnCloseAll();
         try {
             await VaibifyApi.fdictPostRaw(
                 "/api/containers/" + encodeURIComponent(sName)
@@ -294,22 +365,93 @@ var PipeleyenContainerManager = (function () {
         }
     }
 
+    async function fnRestartContainer(sName) {
+        PipeleyenApp.fnShowConfirmModal(
+            "Restart Container",
+            "Stop the container and start it again using the " +
+            "current image. Open terminal sessions will close. " +
+            "Workspace files are preserved.",
+            async function () {
+                PipeleyenTerminal.fnCloseAll();
+                await fnStopContainer(sName);
+                await fnStartContainer(sName);
+            },
+            {
+                sDetails:
+                    "Use Restart when you've rebuilt the image from " +
+                    "the command line (vaibify build) and want the " +
+                    "container to switch to the new image, or when " +
+                    "a running container has gotten into a bad state " +
+                    "and needs a fresh process. No image rebuild " +
+                    "happens, so this is fast.",
+                sCommand: "vaibify stop && vaibify start",
+            }
+        );
+    }
+
     async function fnRebuildContainer(sName) {
         PipeleyenApp.fnShowConfirmModal(
             "Rebuild Container",
-            "Rebuild will stop and rebuild the container. Continue?",
+            "Stop the container, rebuild the image with your " +
+            "current vaibify.yml settings, then start a fresh " +
+            "container. Open terminal sessions will close. " +
+            "Workspace files are preserved.",
             async function () {
+                PipeleyenTerminal.fnCloseAll();
                 await fnStopContainer(sName);
-                await fnBuildContainer(sName);
+                await fnBuildContainer(sName, false);
+            },
+            {
+                sDetails:
+                    "Use Rebuild after editing vaibify.yml to change " +
+                    "Python packages, system packages, repositories, " +
+                    "or other project settings. Docker reuses cached " +
+                    "layers where possible, so only the parts that " +
+                    "changed are rebuilt \u2014 usually seconds.",
+                sCommand: "vaibify stop && vaibify build && vaibify start",
+            }
+        );
+    }
+
+    async function fnForceRebuildContainer(sName) {
+        PipeleyenApp.fnShowConfirmModal(
+            "Force Rebuild (Slow)",
+            "Rebuild every layer of the image from scratch, " +
+            "ignoring the build cache. This can take several " +
+            "minutes. Workspace files are preserved.",
+            async function () {
+                PipeleyenTerminal.fnCloseAll();
+                await fnStopContainer(sName);
+                await fnBuildContainer(sName, true);
+            },
+            {
+                sDetails:
+                    "Use Force Rebuild only when the image seems " +
+                    "corrupted, or when a layer needs to re-fetch " +
+                    "from the network \u2014 for example, a " +
+                    "repository pinned to a moving branch like " +
+                    "main. For routine changes, use Rebuild " +
+                    "instead; it is much faster and produces the " +
+                    "same result.",
+                sCommand:
+                    "vaibify stop && vaibify build --no-cache && "
+                    + "vaibify start",
             }
         );
     }
 
     async function fnRemoveContainer(sName) {
         PipeleyenApp.fnShowConfirmModal(
-            "Remove Container",
-            "Remove '" + sName + "' from the container list?",
+            "Remove from List",
+            "Remove '" + sName + "' from the dashboard. The " +
+            "Docker image and workspace files are not deleted " +
+            "and can be re-registered later.",
             async function () {
+                try {
+                    await VaibifyOverleafMirror.fnForgetContainer(sName);
+                } catch (error) {
+                    /* mirror deletion is best-effort */
+                }
                 try {
                     await VaibifyApi.fnDelete(
                         "/api/registry/"
@@ -323,6 +465,16 @@ var PipeleyenContainerManager = (function () {
                             error.message), "error");
                 }
                 fnLoadContainers();
+            },
+            {
+                sDetails:
+                    "This removes the container from vaibify's " +
+                    "dashboard list only. It does not run `docker " +
+                    "rm`, does not delete the image, and does not " +
+                    "touch any files in your workspace. To fully " +
+                    "delete the environment, use `vaibify destroy` " +
+                    "from a terminal.",
+                bNoCommand: true,
             }
         );
     }
@@ -389,6 +541,12 @@ var PipeleyenContainerManager = (function () {
         document.getElementById("btnAddContainer").addEventListener(
             "click", fnOpenAddChoice
         );
+        var elNewWindow = document.getElementById("btnNewVaibifyWindow");
+        if (elNewWindow) {
+            elNewWindow.addEventListener(
+                "click", VaibifyUtilities.fnSpawnNewSession,
+            );
+        }
         document.getElementById("btnShowUnrecognized").addEventListener(
             "click", function () {
                 var elList = document.getElementById("listUnrecognized");
@@ -414,14 +572,17 @@ var PipeleyenContainerManager = (function () {
 
     function fnBindAddContainerModal() {
         document.getElementById("btnAddContainerCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddContainer")
-                    .style.display = "none";
-            }
+            "click", PipeleyenDirectoryBrowser.fnHandleModalClose
         );
         document.getElementById("btnAddContainerConfirm").addEventListener(
             "click", PipeleyenDirectoryBrowser.fnSelectDirectory
         );
+        var elNewFolder = document.getElementById("btnDirectoryNewFolder");
+        if (elNewFolder) {
+            elNewFolder.addEventListener(
+                "click", PipeleyenDirectoryBrowser.fnPromptCreateFolder
+            );
+        }
         fnBindAddChoiceModal();
         VaibifyWorkflowManager.fnBindCreateWizardModal();
     }
@@ -451,7 +612,36 @@ var PipeleyenContainerManager = (function () {
                 VaibifyWorkflowManager.fnOpenCreateWizard();
             }
         );
+        var elHelp = document.getElementById("btnAddChoiceHelp");
+        if (elHelp) {
+            elHelp.addEventListener("click", _fnShowAddChoiceHelp);
+        }
     }
+
+    function _fnShowAddChoiceHelp() {
+        PipeleyenModals.fnShowInfoModal(
+            "Add Container — Help", _S_ADD_CHOICE_HELP);
+        var elInfo = document.getElementById("modalInfo");
+        if (elInfo) elInfo.style.zIndex = "1200";
+    }
+
+    var _S_ADD_CHOICE_HELP =
+        '<p><strong>Add Existing</strong> &mdash; point vaibify at a ' +
+        'directory on your host that already contains a ' +
+        '<code>vaibify.yml</code> file. The directory might be a ' +
+        'project a collaborator shared with you, a project you cloned ' +
+        'from GitHub, or one you created previously and removed from ' +
+        'the registry. Vaibify reads the existing config and registers ' +
+        'the project &mdash; nothing is overwritten.</p>' +
+        '<p><strong>Create New</strong> &mdash; launch the wizard that ' +
+        'walks you through creating a brand new project from scratch. ' +
+        'You pick a directory (existing or new), choose a starter ' +
+        'template, configure features and packages, and vaibify writes ' +
+        'a fresh <code>vaibify.yml</code> for you. Use this when you ' +
+        'are starting a project, not when you already have one.</p>' +
+        '<p>Both paths produce the same kind of registered project ' +
+        'afterward; the only difference is whether the configuration ' +
+        'file already exists.</p>';
 
     function fsGetSelectedContainerId() {
         return _sSelectedContainerId;
@@ -471,5 +661,6 @@ var PipeleyenContainerManager = (function () {
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
+        fnReleaseClaim: fnReleaseClaim,
     };
 })();

@@ -209,8 +209,8 @@ class TestFiRunTestsForAllSteps:
         mockRunStep.return_value = 0
         dictWorkflow = {
             "listSteps": [
-                {"sName": "A", "bEnabled": True},
-                {"sName": "B", "bEnabled": True},
+                {"sName": "A", "bRunEnabled": True},
+                {"sName": "B", "bRunEnabled": True},
             ]
         }
         iResult = _fnRunAsync(
@@ -232,8 +232,8 @@ class TestFiRunTestsForAllSteps:
         mockRunStep.return_value = 0
         dictWorkflow = {
             "listSteps": [
-                {"sName": "A", "bEnabled": False},
-                {"sName": "B", "bEnabled": True},
+                {"sName": "A", "bRunEnabled": False},
+                {"sName": "B", "bRunEnabled": True},
             ]
         }
         iResult = _fnRunAsync(
@@ -252,7 +252,7 @@ class TestFiRunTestsForAllSteps:
         from vaibify.gui.pipelineTestRunner import _fiRunTestsForAllSteps
 
         dictWorkflow = {
-            "listSteps": [{"sName": "A", "bEnabled": True}]
+            "listSteps": [{"sName": "A", "bRunEnabled": True}]
         }
         iResult = _fnRunAsync(
             _fiRunTestsForAllSteps(
@@ -272,8 +272,8 @@ class TestFiRunTestsForAllSteps:
         mockRunStep.side_effect = [0, 1]
         dictWorkflow = {
             "listSteps": [
-                {"sName": "A", "bEnabled": True},
-                {"sName": "B", "bEnabled": True},
+                {"sName": "A", "bRunEnabled": True},
+                {"sName": "B", "bRunEnabled": True},
             ]
         }
         iResult = _fnRunAsync(
@@ -293,7 +293,7 @@ class TestFnEmitStepBanner:
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitBanner", new_callable=AsyncMock)
     @patch(
-        "vaibify.gui.pipelineTestRunner.fsComputeStepLabel",
+        "vaibify.gui.pipelineTestRunner.fsLabelFromStepIndex",
         return_value="A01",
     )
     def test_emits_banner_and_step_started(self, mockLabel, mockBanner):
@@ -313,7 +313,7 @@ class TestFnEmitStepBanner:
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitBanner", new_callable=AsyncMock)
     @patch(
-        "vaibify.gui.pipelineTestRunner.fsComputeStepLabel",
+        "vaibify.gui.pipelineTestRunner.fsLabelFromStepIndex",
         return_value="I02",
     )
     def test_uses_default_name_when_missing(self, mockLabel, mockBanner):
@@ -339,16 +339,15 @@ class TestFiRunStepTests:
     """Cover the single-step test runner."""
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepResult", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
     def test_runs_tests_and_records_hashes(
-        self, mockBanner, mockRunTests, mockHashes, mockEmitResult,
+        self, mockBanner, mockRunTests, mockEmitResult,
     ):
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 
         mockRunTests.return_value = 0
-        dictStep = {"sName": "Analyze", "sDirectory": "/workspace/analyze"}
+        dictStep = {"sName": "Analyze", "sDirectory": "analyze"}
         dictWorkflow = {"listSteps": [dictStep]}
         fnCallback = AsyncMock()
 
@@ -360,15 +359,13 @@ class TestFiRunStepTests:
         assert iResult == 0
         mockBanner.assert_awaited_once()
         mockRunTests.assert_awaited_once()
-        mockHashes.assert_awaited_once()
         mockEmitResult.assert_awaited_once()
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepResult", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
     def test_propagates_nonzero_exit_code(
-        self, mockBanner, mockRunTests, mockHashes, mockEmitResult,
+        self, mockBanner, mockRunTests, mockEmitResult,
     ):
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 
@@ -385,11 +382,10 @@ class TestFiRunStepTests:
         assert iResult == 1
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepResult", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineRunner._fnRecordInputHashes", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
     def test_uses_empty_directory_when_missing(
-        self, mockBanner, mockRunTests, mockHashes, mockEmitResult,
+        self, mockBanner, mockRunTests, mockEmitResult,
     ):
         from vaibify.gui.pipelineTestRunner import _fiRunStepTests
 

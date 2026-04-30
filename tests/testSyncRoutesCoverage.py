@@ -36,9 +36,9 @@ DICT_WORKFLOW_SYNC = {
     "listSteps": [
         {
             "sName": "Generate Data",
-            "sDirectory": "/workspace/step01",
+            "sDirectory": "step01",
             "bPlotOnly": False,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python run.py"],
             "saDataFiles": ["output.dat"],
@@ -164,13 +164,17 @@ def test_overleaf_push_failure_returns_error(clientHttp):
     _fnConnectToContainer(clientHttp)
     _mockDockerInstance._iSyncExitCode = 1
     _mockDockerInstance._sSyncOutput = "authentication failed"
-    responseHttp = clientHttp.post(
-        f"/api/overleaf/{S_CONTAINER_ID}/push",
-        json={
-            "listFilePaths": ["/workspace/Plot/fig.pdf"],
-            "sCommitMessage": "push figs",
-        },
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is False
@@ -182,13 +186,17 @@ def test_overleaf_push_success(clientHttp):
     _fnConnectToContainer(clientHttp)
     _mockDockerInstance._iSyncExitCode = 0
     _mockDockerInstance._sSyncOutput = "pushed"
-    responseHttp = clientHttp.post(
-        f"/api/overleaf/{S_CONTAINER_ID}/push",
-        json={
-            "listFilePaths": ["/workspace/Plot/fig.pdf"],
-            "sCommitMessage": "push figs",
-        },
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
@@ -260,7 +268,7 @@ def test_setup_connection_token_store_failure(clientHttp):
     """When credential storage raises, return bConnected=False."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        "vaibify.config.secretManager.fnStoreSecret",
         side_effect=RuntimeError("keyring unavailable"),
     ):
         responseHttp = clientHttp.post(
@@ -422,3 +430,1827 @@ def test_dataset_download_failure_returns_500(clientHttp):
             },
         )
     assert responseHttp.status_code == 500
+
+
+# ── Overleaf setup: store + validate + cleanup on failure ───────
+
+
+def test_setup_overleaf_validation_passes(clientHttp):
+    """Valid Overleaf token: bConnected True, no cleanup call."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ) as mockStore, patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ), patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "valid_git_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    assert dictResult["sMessage"] == "Connected"
+    mockDelete.assert_not_called()
+    mockStore.assert_called_once_with(
+        "overleaf_token", "valid_git_token", "keyring",
+    )
+
+
+def test_setup_overleaf_validation_fails_cleans_up(clientHttp):
+    """Bad Overleaf token: bConnected False, remediation, cleanup."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(False, ""),
+    ), patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "bad_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "git authentication token" in dictResult["sMessage"]
+    mockDelete.assert_called_once_with("overleaf_token", "keyring")
+
+
+def test_setup_overleaf_validation_fails_embeds_stderr(clientHttp):
+    """Remediation message embeds the git stderr fragment when available."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(False, "fatal: authentication failed for xyz"),
+    ), patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "bad_token",
+            },
+        )
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "Overleaf rejected the token:" in dictResult["sMessage"]
+    assert "authentication failed" in dictResult["sMessage"]
+    assert "git authentication token" in dictResult["sMessage"]
+    assert len(dictResult["sMessage"]) < 600
+
+
+def test_setup_overleaf_store_failure_no_validation(clientHttp):
+    """Store raises: bConnected False, no validation attempt."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        side_effect=RuntimeError("Keyring storage failed: NoKeyringError"),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ) as mockValidate, patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "any_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "Failed to store" in dictResult["sMessage"]
+    assert "NoKeyringError" in dictResult["sMessage"]
+    mockValidate.assert_not_called()
+    mockDelete.assert_not_called()
+
+
+# ── Overleaf host-keyring migration tests ───────────────────────
+
+
+def test_setup_overleaf_writes_host_keyring_not_container(clientHttp):
+    """Overleaf setup with token should call host keyring, not container."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ) as mockHostStore, patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ) as mockContainerStore, patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "t0kEn",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    mockHostStore.assert_called_once_with(
+        "overleaf_token", "t0kEn", "keyring",
+    )
+    mockContainerStore.assert_not_called()
+
+
+def test_setup_overleaf_no_token_uses_stored_credential(clientHttp):
+    """No token + stored credential -> skip store, run validation."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+        return_value=None,
+    ) as mockHostStore, patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(True, ""),
+    ) as mockValidate:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    mockHostStore.assert_not_called()
+    mockValidate.assert_called_once()
+
+
+def test_check_overleaf_requires_saved_project_id(clientHttp):
+    """check/overleaf returns bConnected=False when project ID missing."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/check/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "project id" in dictResult["sMessage"].lower()
+
+
+def test_check_overleaf_passes_when_project_id_saved(clientHttp):
+    """check/overleaf returns bConnected=True when token + project id both set."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/check/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {
+        "bConnected": True, "sMessage": "Connected",
+    }
+
+
+def test_has_credential_endpoint_true_when_stored(clientHttp):
+    """has-credential reports True when host keyring has the token."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": True}
+
+
+def test_has_credential_endpoint_false_when_absent(clientHttp):
+    """has-credential reports False when host keyring is empty."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf"
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": False}
+
+
+def test_has_credential_endpoint_rejects_unknown_service(clientHttp):
+    """Invalid service name triggers a ValueError in the route."""
+    _fnConnectToContainer(clientHttp)
+    with pytest.raises(ValueError):
+        clientHttp.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/bogus"
+        )
+
+
+def test_setup_zenodo_validation_passes(clientHttp):
+    """Regression: Zenodo setup via shared helper still works."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "good_zenodo_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is True
+    mockDelete.assert_not_called()
+
+
+def test_setup_zenodo_stores_token_in_sandbox_slot_by_default(
+    clientHttp,
+):
+    """Default sZenodoInstance is sandbox -> zenodo_token_sandbox."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ) as mockStore, patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ):
+        clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "good_zenodo_token",
+            },
+        )
+    sStoredName = mockStore.call_args[0][2]
+    assert sStoredName == "zenodo_token_sandbox"
+
+
+def test_setup_zenodo_stores_production_token_in_production_slot(
+    clientHttp,
+):
+    """sZenodoInstance=production -> zenodo_token_production slot."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ) as mockStore, patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ) as mockValidate:
+        clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "prod_token",
+                "sZenodoInstance": "production",
+            },
+        )
+    sStoredName = mockStore.call_args[0][2]
+    assert sStoredName == "zenodo_token_production"
+    assert mockValidate.call_args[0][2] == "zenodo"
+
+
+def test_setup_zenodo_persists_service_on_success(clientHttp):
+    """Successful setup writes sZenodoService to the workflow."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        return_value=None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=True,
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ) as mockSave:
+        clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "prod_token",
+                "sZenodoInstance": "production",
+            },
+        )
+    assert mockSave.called
+    dictWorkflow = mockSave.call_args[0][2]
+    assert dictWorkflow.get("sZenodoService") == "zenodo"
+
+
+def test_setup_zenodo_rejects_invalid_instance(clientHttp):
+    """Unknown sZenodoInstance values are rejected with HTTP 400."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/sync/{S_CONTAINER_ID}/setup",
+        json={
+            "sService": "zenodo",
+            "sToken": "whatever",
+            "sZenodoInstance": "devel",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+# ── Overleaf mirror endpoints (refresh / tree / diff / delete) ──
+
+
+def test_mirror_refresh_success(clientHttp):
+    """POST /mirror/refresh returns bSuccess True with payload fields."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {
+            "sHeadSha": "abc123",
+            "iFileCount": 3,
+            "sRefreshedAt": "2026-04-17T00:00:00Z",
+        }),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bSuccess"] is True
+    assert dictResult["sHeadSha"] == "abc123"
+    assert dictResult["iFileCount"] == 3
+
+
+def test_mirror_refresh_auth_failure(clientHttp):
+    """On refresh failure, bSuccess False with a message."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(False, "Mirror clone failed: authentication"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bSuccess"] is False
+    assert "authentication" in dictResult["sMessage"]
+
+
+def test_mirror_refresh_missing_project_id_returns_400(clientHttp):
+    """Project ID absent from workflow => HTTP 400 from refresh."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_tree_missing_project_id_returns_400(clientHttp):
+    """Project ID absent => HTTP 400 from tree endpoint."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_diff_missing_project_id_returns_400(clientHttp):
+    """Project ID absent => HTTP 400 from diff endpoint."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_delete_missing_project_id_returns_400(clientHttp):
+    """Project ID absent => HTTP 400 from delete endpoint."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={"sOverleafProjectId": ""},
+    ):
+        responseHttp = clientHttp.delete(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror",
+        )
+    assert responseHttp.status_code == 400
+
+
+def test_mirror_tree_includes_refreshed_at(clientHttp, tmp_path, monkeypatch):
+    """GET /mirror/tree returns sRefreshedAt ISO timestamp."""
+    _fnConnectToContainer(clientHttp)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    import os
+    from vaibify.reproducibility import overleafMirror
+    sMirrorRoot = overleafMirror.fsGetMirrorRoot()
+    sProjectDir = os.path.join(sMirrorRoot, "abc123proj")
+    sGitDir = os.path.join(sProjectDir, ".git")
+    os.makedirs(sGitDir)
+    with open(os.path.join(sGitDir, "FETCH_HEAD"), "w") as handle:
+        handle.write("")
+    with patch(
+        "vaibify.gui.syncDispatcher.flistListOverleafTree",
+        return_value=[],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="headsha",
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert "sRefreshedAt" in dictResult
+    assert dictResult["sRefreshedAt"].endswith("Z")
+
+
+def test_mirror_tree_returns_entries(clientHttp):
+    """GET /mirror/tree returns listEntries and sHeadSha."""
+    _fnConnectToContainer(clientHttp)
+    listEntries = [
+        {"sPath": "figures/a.pdf", "sType": "blob",
+         "iSize": 10, "sDigest": "sha1"},
+    ]
+    with patch(
+        "vaibify.gui.syncDispatcher.flistListOverleafTree",
+        return_value=listEntries,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="headsha",
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listEntries"] == listEntries
+    assert dictResult["sHeadSha"] == "headsha"
+
+
+def test_mirror_diff_implicit_refresh_and_classify(clientHttp):
+    """POST /diff refreshes mirror then classifies."""
+    _fnConnectToContainer(clientHttp)
+    dictDiff = {
+        "listNew": [], "listOverwrite": [], "listUnchanged": [],
+    }
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ) as mockRefresh, patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value=dictDiff,
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert "listConflicts" in dictResult
+    assert dictResult["sMirrorHeadSha"] == "h"
+    mockRefresh.assert_called_once()
+
+
+def test_mirror_diff_surfaces_conflicts(clientHttp):
+    """Diff result surfaces conflicts from the dispatcher."""
+    _fnConnectToContainer(clientHttp)
+    listConflicts = [{
+        "sLocalPath": "/workspace/Plot/fig.pdf",
+        "sRemotePath": "figures/fig.pdf",
+        "sBaselineDigest": "oldsha",
+        "sCurrentDigest": "newsha",
+    }]
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 1,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=listConflicts,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["listConflicts"] == listConflicts
+
+
+def test_mirror_delete_idempotent(clientHttp):
+    """DELETE /mirror calls fnDeleteMirror and returns bSuccess."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.reproducibility.overleafMirror.fnDeleteMirror",
+        return_value=None,
+    ) as mockDelete:
+        responseHttp = clientHttp.delete(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror",
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+    mockDelete.assert_called_once_with("abc123proj")
+
+
+# ── Overleaf push: target directory and digest persistence ──────
+
+
+def test_overleaf_push_uses_request_target_directory(clientHttp):
+    """When sTargetDirectory is provided, workflow is updated and used."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+                "sTargetDirectory": "Figures/v2",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+
+
+def test_overleaf_push_backward_compat_without_target(clientHttp):
+    """Omitting sTargetDirectory falls back to dictWorkflow value."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+
+
+def test_overleaf_push_persists_digests_on_success(clientHttp):
+    """After a successful push, digest baseline is updated."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "HEAD_SHA=abcd1234\nok\n"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="preSha",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ) as mockPersist:
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    mockPersist.assert_called_once()
+
+
+def test_mirror_diff_surfaces_case_collisions(clientHttp):
+    """Diff response includes listCaseCollisions + canonical suggestion."""
+    _fnConnectToContainer(clientHttp)
+    listCollisions = [{
+        "sLocalPath": "/workspace/Plot/fig.pdf",
+        "sTypedRemotePath": "Figures/fig.pdf",
+        "sCanonicalRemotePath": "figures/fig.pdf",
+    }]
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistDetectOverleafCaseCollisions",
+        return_value=listCollisions,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "Figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listCaseCollisions"] == listCollisions
+    assert dictResult["sSuggestedTargetDirectory"] == "figures"
+
+
+def test_mirror_diff_no_collisions_yields_empty_suggestion(clientHttp):
+    """No collisions: listCaseCollisions empty, suggestion empty."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistDetectOverleafCaseCollisions",
+        return_value=[],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sTargetDirectory": "figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listCaseCollisions"] == []
+    assert dictResult["sSuggestedTargetDirectory"] == ""
+
+
+def test_mirror_diff_ambiguous_canonical_yields_empty_suggestion(
+    clientHttp,
+):
+    """When canonical dirs disagree across collisions, suggestion empty."""
+    _fnConnectToContainer(clientHttp)
+    listCollisions = [
+        {
+            "sLocalPath": "/workspace/Plot/a.pdf",
+            "sTypedRemotePath": "Figures/a.pdf",
+            "sCanonicalRemotePath": "figures/a.pdf",
+        },
+        {
+            "sLocalPath": "/workspace/Plot/b.pdf",
+            "sTypedRemotePath": "Figures/b.pdf",
+            "sCanonicalRemotePath": "Figs/b.pdf",
+        },
+    ]
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "h", "iFileCount": 0,
+                              "sRefreshedAt": "t"}),
+    ), patch(
+        "vaibify.gui.syncDispatcher.fdictDiffOverleafPush",
+        return_value={"listNew": [], "listOverwrite": [],
+                       "listUnchanged": []},
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistCheckOverleafConflicts",
+        return_value=[],
+    ), patch(
+        "vaibify.gui.syncDispatcher.flistDetectOverleafCaseCollisions",
+        return_value=listCollisions,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="h",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": [
+                    "/workspace/Plot/a.pdf",
+                    "/workspace/Plot/b.pdf",
+                ],
+                "sTargetDirectory": "Figures",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sSuggestedTargetDirectory"] == ""
+
+
+def test_overleaf_push_failure_skips_digest_persist(clientHttp):
+    """On push failure, the digest update must not fire."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 1
+    _mockDockerInstance._sSyncOutput = "fatal: not found"
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fsCapturePreMirrorSha",
+        return_value="",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnPersistPostPushDigests",
+        return_value=None,
+    ) as mockPersist:
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is False
+    mockPersist.assert_not_called()
+
+
+# ── Security: validation of listFilePaths and sTargetDirectory ────
+
+
+def test_overleaf_push_rejects_path_outside_workspace(clientHttp):
+    """Push must 400 when listFilePaths contains a host path."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/etc/passwd"],
+                "sCommitMessage": "exploit",
+            },
+        )
+    assert responseHttp.status_code == 400
+    assert "workspace" in responseHttp.json()["detail"].lower()
+
+
+def test_overleaf_push_rejects_dotdot_traversal(clientHttp):
+    """Push must 400 for ``..`` traversal in listFilePaths."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/../etc/passwd"],
+            "sCommitMessage": "exploit",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_push_rejects_null_byte_in_path(clientHttp):
+    """Push must 400 when a file path contains a NUL byte."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/a\x00b.pdf"],
+            "sCommitMessage": "null",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_push_rejects_absolute_target_directory(clientHttp):
+    """Push must 400 when sTargetDirectory starts with a slash."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            "sTargetDirectory": "/etc",
+            "sCommitMessage": "bad target",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_push_rejects_dotdot_target_directory(clientHttp):
+    """Push must 400 when sTargetDirectory contains ``..``."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            "sTargetDirectory": "figures/../../etc",
+            "sCommitMessage": "escape",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_diff_rejects_path_outside_workspace(clientHttp):
+    """Diff must 400 when listFilePaths escapes the workspace."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/diff",
+        json={
+            "listFilePaths": ["/root/.ssh/id_rsa"],
+            "sTargetDirectory": "figures",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_overleaf_diff_rejects_absolute_target_directory(clientHttp):
+    """Diff must 400 when sTargetDirectory starts with a slash."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/overleaf/{S_CONTAINER_ID}/diff",
+        json={
+            "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            "sTargetDirectory": "/etc",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_fsBuildZenodoTitle_prefers_project_title():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle({
+        "sProjectTitle": "GJ1132 XUV evolution",
+        "sWorkflowName": "run1",
+    })
+    assert sTitle == "GJ1132 XUV evolution"
+
+
+def test_fsBuildZenodoTitle_falls_back_to_workflow_name():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle({"sWorkflowName": "run1"})
+    assert sTitle == "run1"
+
+
+def test_fsBuildZenodoTitle_falls_back_to_default():
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle({})
+    assert sTitle == "Vaibify archive"
+
+
+def test_fsBuildZenodoTitle_preserves_quotes():
+    """Phase 2 transport is base64, so titles need no sanitization."""
+    from vaibify.gui.routes.syncRoutes import _fsBuildZenodoTitle
+    sTitle = _fsBuildZenodoTitle(
+        {"sProjectTitle": "Rory's pipeline"}
+    )
+    assert sTitle == "Rory's pipeline"
+
+
+def test_fdictParseZenodoResult_extracts_fields():
+    from vaibify.gui.routes.syncRoutes import _fdictParseZenodoResult
+    sOut = (
+        "Creating draft...\n"
+        "ZENODO_RESULT={\"iDepositId\": 42, \"sDoi\": "
+        "\"10.5281/zenodo.42\", \"sConceptDoi\": \"\", "
+        "\"sHtmlUrl\": \"https://sandbox.zenodo.org/records/42\"}\n"
+    )
+    dictParsed = _fdictParseZenodoResult(sOut)
+    assert dictParsed["iDepositId"] == 42
+    assert dictParsed["sDoi"] == "10.5281/zenodo.42"
+    assert dictParsed["sHtmlUrl"] == (
+        "https://sandbox.zenodo.org/records/42"
+    )
+
+
+def test_fdictParseZenodoResult_missing_marker_returns_empty():
+    from vaibify.gui.routes.syncRoutes import _fdictParseZenodoResult
+    assert _fdictParseZenodoResult("no marker here\n") == {}
+
+
+def test_fdictParseZenodoResult_malformed_json_returns_empty():
+    from vaibify.gui.routes.syncRoutes import _fdictParseZenodoResult
+    assert _fdictParseZenodoResult(
+        "ZENODO_RESULT={not json}") == {}
+
+
+def test_fnPersistZenodoPublishRecord_writes_fields():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistZenodoPublishRecord,
+    )
+    dictWorkflow = {}
+    _fnPersistZenodoPublishRecord(dictWorkflow, {
+        "iDepositId": 7,
+        "sDoi": "10.5281/zenodo.7",
+        "sConceptDoi": "10.5281/zenodo.6",
+        "sHtmlUrl": "https://sandbox.zenodo.org/records/7",
+    })
+    assert dictWorkflow["sZenodoDepositionId"] == "7"
+    assert dictWorkflow["sZenodoLatestDoi"] == "10.5281/zenodo.7"
+    assert dictWorkflow["sZenodoConceptDoi"] == "10.5281/zenodo.6"
+    assert dictWorkflow["sZenodoLatestUrl"] == (
+        "https://sandbox.zenodo.org/records/7"
+    )
+
+
+def test_fnPersistZenodoPublishRecord_skips_empty_fields():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistZenodoPublishRecord,
+    )
+    dictWorkflow = {"sZenodoLatestDoi": "existing"}
+    _fnPersistZenodoPublishRecord(dictWorkflow, {
+        "sDoi": "", "sHtmlUrl": "", "iDepositId": 0,
+    })
+    assert dictWorkflow.get("sZenodoLatestDoi") == "existing"
+    assert "sZenodoDepositionId" not in dictWorkflow
+
+
+def test_fsReadHostGitUserName_returns_git_output():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    mockResult = MagicMock()
+    mockResult.stdout = "Jane Doe\n"
+    with patch.object(subprocess, "run", return_value=mockResult):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "Jane Doe"
+
+
+def test_fsReadHostGitUserName_falls_back_on_empty():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    mockResult = MagicMock()
+    mockResult.stdout = ""
+    with patch.object(subprocess, "run", return_value=mockResult):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "Vaibify User"
+
+
+def test_fsReadHostGitUserName_falls_back_on_exception():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    with patch.object(
+        subprocess, "run",
+        side_effect=FileNotFoundError("git missing"),
+    ):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "Vaibify User"
+
+
+def test_fsReadHostGitUserName_strips_quote():
+    from vaibify.gui.routes import syncRoutes
+    import subprocess
+    mockResult = MagicMock()
+    mockResult.stdout = "O'Brien\n"
+    with patch.object(subprocess, "run", return_value=mockResult):
+        sName = syncRoutes._fsReadHostGitUserName()
+    assert sName == "OBrien"
+
+
+# ----------------------------------------------------------------------
+# Zenodo metadata endpoints (Phase 2)
+# ----------------------------------------------------------------------
+
+
+def test_get_zenodo_metadata_returns_defaults(clientHttp):
+    """Workflow with no metadata yields the initialized defaults."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fsReadHostGitUserName",
+        return_value="Jane Doe",
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/zenodo/{S_CONTAINER_ID}/metadata"
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sTitle"] == ""
+    assert dictResult["sLicense"] == "CC-BY-4.0"
+    assert dictResult["sDefaultCreatorName"] == "Jane Doe"
+
+
+def test_post_zenodo_metadata_persists_fields(clientHttp):
+    """POST persists normalized metadata into the workflow."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ) as mockSave:
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+            json={
+                "sTitle": "My Dataset",
+                "sDescription": "Hello",
+                "listCreators": [{
+                    "sName": "Jane Doe",
+                    "sAffiliation": "UW",
+                    "sOrcid": "0000-0001-2345-6789",
+                }],
+                "sLicense": "MIT",
+                "listKeywords": ["alpha", "beta"],
+                "sRelatedGithubUrl": "https://github.com/u/r",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictSaved = mockSave.call_args[0][2]
+    dictMeta = dictSaved["dictZenodoMetadata"]
+    assert dictMeta["sTitle"] == "My Dataset"
+    assert dictMeta["listCreators"][0]["sName"] == "Jane Doe"
+    assert dictMeta["sLicense"] == "MIT"
+
+
+def test_post_zenodo_metadata_rejects_empty_title(clientHttp):
+    """Empty title returns HTTP 400."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+        json={
+            "sTitle": "   ",
+            "listCreators": [{"sName": "Jane"}],
+            "sLicense": "MIT",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_post_zenodo_metadata_rejects_missing_creator(clientHttp):
+    """At least one creator with a name is required."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+        json={
+            "sTitle": "X",
+            "listCreators": [{"sName": ""}],
+            "sLicense": "MIT",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+# ----------------------------------------------------------------------
+# Archive-uses-metadata (Phase 2)
+# ----------------------------------------------------------------------
+
+
+def test_fdictResolveZenodoMetadataForArchive_uses_stored_metadata():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictResolveZenodoMetadataForArchive,
+    )
+    dictWf = {
+        "sWorkflowName": "fallback",
+        "dictZenodoMetadata": {
+            "sTitle": "My Title",
+            "listCreators": [{
+                "sName": "Jane Doe",
+                "sAffiliation": "", "sOrcid": "",
+            }],
+            "sLicense": "MIT",
+            "sDescription": "", "listKeywords": [],
+            "sRelatedGithubUrl": "",
+        },
+    }
+    dictMeta = _fdictResolveZenodoMetadataForArchive(dictWf)
+    assert dictMeta["sTitle"] == "My Title"
+    assert dictMeta["listCreators"][0]["sName"] == "Jane Doe"
+
+
+def test_fdictResolveZenodoMetadataForArchive_fills_missing_title():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictResolveZenodoMetadataForArchive,
+    )
+    dictWf = {"sWorkflowName": "fallback-name"}
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fsReadHostGitUserName",
+        return_value="Jane",
+    ):
+        dictMeta = _fdictResolveZenodoMetadataForArchive(dictWf)
+    assert dictMeta["sTitle"] == "fallback-name"
+    assert dictMeta["listCreators"][0]["sName"] == "Jane"
+
+
+# ----------------------------------------------------------------------
+# Zenodo deposit summary endpoint (Phase 3)
+# ----------------------------------------------------------------------
+
+
+def test_get_zenodo_deposit_empty_when_never_published(clientHttp):
+    """Workflow with no deposit yields empty strings for all fields."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/zenodo/{S_CONTAINER_ID}/deposit"
+    )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sDoi"] == ""
+    assert dictResult["sHtmlUrl"] == ""
+    assert dictResult["sDepositionId"] == ""
+
+
+def test_get_zenodo_deposit_returns_stored_fields(clientHttp):
+    """After a push writes deposit fields, GET surfaces them."""
+    _fnConnectToContainer(clientHttp)
+    dictWf = {
+        "sZenodoDepositionId": "491655",
+        "sZenodoLatestDoi": "10.5072/zenodo.491655",
+        "sZenodoConceptDoi": "10.5072/zenodo.100000",
+        "sZenodoLatestUrl": (
+            "https://sandbox.zenodo.org/records/491655"
+        ),
+        "sZenodoService": "sandbox",
+    }
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/zenodo/{S_CONTAINER_ID}/deposit"
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["sDoi"] == "10.5072/zenodo.491655"
+    assert dictResult["sConceptDoi"] == "10.5072/zenodo.100000"
+    assert dictResult["sHtmlUrl"] == (
+        "https://sandbox.zenodo.org/records/491655"
+    )
+    assert dictResult["sService"] == "sandbox"
+
+
+def test_fdictBuildDepositSummary_returns_empty_for_unpublished():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictBuildDepositSummary,
+    )
+    dictSummary = _fdictBuildDepositSummary({})
+    assert dictSummary == {
+        "sDepositionId": "",
+        "sDoi": "",
+        "sConceptDoi": "",
+        "sHtmlUrl": "",
+        "sService": "",
+    }
+
+
+def test_fdictBuildDepositSummary_reads_all_fields():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictBuildDepositSummary,
+    )
+    dictSummary = _fdictBuildDepositSummary({
+        "sZenodoDepositionId": "42",
+        "sZenodoLatestDoi": "10.5281/zenodo.42",
+        "sZenodoConceptDoi": "10.5281/zenodo.1",
+        "sZenodoLatestUrl": "https://zenodo.org/records/42",
+        "sZenodoService": "zenodo",
+    })
+    assert dictSummary["sDoi"] == "10.5281/zenodo.42"
+    assert dictSummary["sService"] == "zenodo"
+
+
+# ----------------------------------------------------------------------
+# Versioning: parent deposit id (Phase 5)
+# ----------------------------------------------------------------------
+
+
+def test_fiReadParentDepositId_returns_int():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": "491655"}) == 491655
+
+
+def test_fiReadParentDepositId_absent_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId({}) == 0
+
+
+def test_fiReadParentDepositId_empty_string_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": ""}) == 0
+
+
+def test_fiReadParentDepositId_non_numeric_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": "not-a-number"}) == 0
+
+
+def test_fiReadParentDepositId_negative_returns_zero():
+    from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
+    assert _fiReadParentDepositId(
+        {"sZenodoDepositionId": "-5"}) == 0
+
+
+def test_zenodo_archive_passes_parent_deposit_id_to_dispatcher(clientHttp):
+    """When the workflow has a deposition id, the archive endpoint
+    threads it to the dispatcher so the newversion flow fires."""
+    _fnConnectToContainer(clientHttp)
+    dictWf = {
+        "sWorkflowName": "Test Pipeline",
+        "sZenodoService": "sandbox",
+        "sZenodoDepositionId": "491655",
+    }
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 999, '
+                     '"sDoi": "10.5072/zenodo.999", '
+                     '"sConceptDoi": "", "sHtmlUrl": ""}'),
+    ) as mockArchive, patch(
+        "vaibify.gui.routes.syncRoutes."
+        "_fdictComputePostArchiveZenodoDigests",
+        return_value={},
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.h5"]},
+        )
+    assert responseHttp.status_code == 200
+    # Parent deposit id is the 6th positional arg (after docker,
+    # cid, service, paths, metadata)
+    listArgs = mockArchive.call_args[0]
+    assert listArgs[5] == 491655
+
+
+def test_zenodo_archive_passes_zero_when_no_prior_deposit(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    dictWf = {"sWorkflowName": "Test", "sZenodoService": "sandbox"}
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 1, '
+                     '"sDoi": "10.5072/zenodo.1", '
+                     '"sConceptDoi": "", "sHtmlUrl": ""}'),
+    ) as mockArchive, patch(
+        "vaibify.gui.routes.syncRoutes."
+        "_fdictComputePostArchiveZenodoDigests",
+        return_value={},
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ):
+        clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.h5"]},
+        )
+    listArgs = mockArchive.call_args[0]
+    assert listArgs[5] == 0
+
+
+# ----------------------------------------------------------------------
+# Path/target-directory validator helpers (non-Zenodo coverage)
+# ----------------------------------------------------------------------
+
+
+def test_fnValidateOverleafFilePaths_none_returns_silently():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafFilePaths,
+    )
+    _fnValidateOverleafFilePaths(None)
+
+
+def test_fnValidateOverleafFilePaths_rejects_empty_string():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafFilePaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateOverleafFilePaths([""])
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_none_returns_silently():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    _fnValidateGithubPushPaths(None, "/workspace/repo")
+
+
+def test_fnValidateGithubPushPaths_rejects_empty_string():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths([""], "/workspace/repo")
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_rejects_non_string():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths([123], "/workspace/repo")
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_rejects_null_byte():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths(
+            ["bad\x00name"], "/workspace/repo"
+        )
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_rejects_traversal_to_host_root():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateGithubPushPaths(
+            ["../../etc/passwd"], "/workspace/repo"
+        )
+    assert excInfo.value.status_code == 400
+
+
+def test_fnValidateGithubPushPaths_accepts_relative_inside_workspace():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    _fnValidateGithubPushPaths(
+        ["step01/output.dat"], "/workspace/repo"
+    )
+
+
+def test_fnValidateGithubPushPaths_accepts_absolute_inside_workspace():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateGithubPushPaths,
+    )
+    _fnValidateGithubPushPaths(
+        ["/workspace/repo/step01/output.dat"], "/workspace/repo",
+    )
+
+
+def test_fnValidateOverleafTargetDirectory_empty_string_ok():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafTargetDirectory,
+    )
+    _fnValidateOverleafTargetDirectory("")
+
+
+def test_fnValidateOverleafTargetDirectory_rejects_null_byte():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnValidateOverleafTargetDirectory,
+    )
+    with pytest.raises(Exception) as excInfo:
+        _fnValidateOverleafTargetDirectory("bad\x00dir")
+    assert excInfo.value.status_code == 400
+
+
+# ----------------------------------------------------------------------
+# Overleaf mirror helpers (non-Zenodo coverage)
+# ----------------------------------------------------------------------
+
+
+def test_fsCapturePreMirrorSha_returns_empty_for_empty_project_id():
+    from vaibify.gui.routes.syncRoutes import _fsCapturePreMirrorSha
+    assert _fsCapturePreMirrorSha("") == ""
+
+
+def test_fsCapturePreMirrorSha_reads_existing_mirror_head():
+    """Non-empty mirror tree: skip refresh and read HEAD directly."""
+    from vaibify.gui.routes import syncRoutes
+    with patch(
+        "vaibify.reproducibility.overleafMirror.flistListMirrorTree",
+        return_value=[{"sPath": "main.tex", "sSha": "abc"}],
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsReadMirrorHeadSha",
+        return_value="abc123head",
+    ):
+        sSha = syncRoutes._fsCapturePreMirrorSha("proj1")
+    assert sSha == "abc123head"
+
+
+def test_fdictCollectPostPushDigests_scopes_to_target_directory():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictCollectPostPushDigests,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={
+            "figures/fig.pdf": "sha-fig",
+            "notes.tex": "sha-notes",
+        },
+    ):
+        dictDigests = _fdictCollectPostPushDigests(
+            "proj1",
+            ["/workspace/fig.pdf"],
+            "figures",
+        )
+    assert dictDigests == {"/workspace/fig.pdf": "sha-fig"}
+
+
+def test_fdictCollectPostPushDigests_no_target_directory():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictCollectPostPushDigests,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={"notes.tex": "sha-notes"},
+    ):
+        dictDigests = _fdictCollectPostPushDigests(
+            "proj1", ["/workspace/notes.tex"], "",
+        )
+    assert dictDigests == {"/workspace/notes.tex": "sha-notes"}
+
+
+def test_fdictCollectPostPushDigests_drops_missing_files():
+    """Files absent from the mirror blob index are omitted."""
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictCollectPostPushDigests,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={},
+    ):
+        dictDigests = _fdictCollectPostPushDigests(
+            "proj1", ["/workspace/absent.pdf"], "figures",
+        )
+    assert dictDigests == {}
+
+
+def test_fnPersistPostPushDigests_refresh_fail_returns_silently():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistPostPushDigests,
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(False, "mirror clone failed"),
+    ), patch(
+        "vaibify.gui.workflowManager.fnUpdateOverleafDigests",
+    ) as mockUpdate:
+        _fnPersistPostPushDigests({}, "proj1", [], "figures")
+    mockUpdate.assert_not_called()
+
+
+def test_fnPersistPostPushDigests_success_writes_digests():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistPostPushDigests,
+    )
+    dictWorkflow = {}
+    with patch(
+        "vaibify.gui.syncDispatcher.ftRefreshOverleafMirror",
+        return_value=(True, {"sHeadSha": "new"}),
+    ), patch(
+        "vaibify.reproducibility.overleafMirror"
+        ".fdictIndexMirrorBlobs",
+        return_value={"figures/fig.pdf": "sha1"},
+    ), patch(
+        "vaibify.gui.workflowManager.fnUpdateOverleafDigests",
+    ) as mockUpdate:
+        _fnPersistPostPushDigests(
+            dictWorkflow, "proj1",
+            ["/workspace/fig.pdf"], "figures",
+        )
+    mockUpdate.assert_called_once()
+    dictDigests = mockUpdate.call_args[0][1]
+    assert dictDigests == {"/workspace/fig.pdf": "sha1"}
+
+
+# ----------------------------------------------------------------------
+# Overleaf push no-changes classification
+# ----------------------------------------------------------------------
+
+
+def test_overleaf_push_no_changes_reports_friendly_error(clientHttp):
+    """PUSH_STATUS=no-changes converts to a bSuccess False result."""
+    _fnConnectToContainer(clientHttp)
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="tok",
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=no-changes\nHEAD_SHA=abc\n"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bSuccess"] is False
+    assert dictResult["sErrorType"] == "noChanges"
+    assert "No changes were pushed" in dictResult["sMessage"]
+
+
+# ----------------------------------------------------------------------
+# Zenodo post-archive digests with a project repo
+# ----------------------------------------------------------------------
+
+
+def test_fdictComputePostArchiveZenodoDigests_scopes_to_repo():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictComputePostArchiveZenodoDigests,
+    )
+    mockDocker = MagicMock()
+    dictCtx = {"docker": mockDocker}
+    dictWorkflow = {"sProjectRepoPath": "/workspace/repo"}
+    with patch(
+        "vaibify.gui.containerGit"
+        ".fdictComputeBlobShasInContainer",
+        return_value={"step01/out.dat": "sha-out"},
+    ) as mockShas:
+        dictDigests = _fdictComputePostArchiveZenodoDigests(
+            dictCtx, "cid", dictWorkflow,
+            ["/workspace/repo/step01/out.dat"],
+        )
+    mockShas.assert_called_once()
+    assert dictDigests == {
+        "/workspace/repo/step01/out.dat": "sha-out",
+    }
+
+
+def test_fdictComputePostArchiveZenodoDigests_missing_sha_yields_empty():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictComputePostArchiveZenodoDigests,
+    )
+    dictCtx = {"docker": MagicMock()}
+    dictWorkflow = {"sProjectRepoPath": "/workspace/repo"}
+    with patch(
+        "vaibify.gui.containerGit"
+        ".fdictComputeBlobShasInContainer",
+        return_value={},
+    ):
+        dictDigests = _fdictComputePostArchiveZenodoDigests(
+            dictCtx, "cid", dictWorkflow,
+            ["/workspace/repo/step01/missing.dat"],
+        )
+    assert dictDigests == {
+        "/workspace/repo/step01/missing.dat": "",
+    }
+
+
+# ----------------------------------------------------------------------
+# Credential helpers (non-Zenodo coverage)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fbRunOverleafValidation_empty_project_returns_false():
+    from vaibify.gui.routes.syncRoutes import (
+        _fbRunOverleafValidation,
+    )
+    from unittest.mock import MagicMock as _MM
+    bPass, sDetail = await _fbRunOverleafValidation(
+        _MM(), _MM(), "cid", "",
+    )
+    assert bPass is False
+    assert sDetail == ""
+
+
+@pytest.mark.asyncio
+async def test_ftRunServiceValidation_unknown_service_returns_pass():
+    """Services other than zenodo/overleaf skip validation."""
+    from vaibify.gui.routes.syncRoutes import _ftRunServiceValidation
+    from unittest.mock import MagicMock as _MM
+    bPass, sDetail = await _ftRunServiceValidation(
+        _MM(), "github", _MM(), "cid", "",
+    )
+    assert bPass is True
+    assert sDetail == ""
+
+
+def test_fsOverleafRemediation_truncates_long_stderr():
+    from vaibify.gui.routes.syncRoutes import _fsOverleafRemediation
+    sLong = "x" * 400
+    sRemediation = _fsOverleafRemediation(sLong)
+    assert "xxxx" in sRemediation
+    assert "..." in sRemediation
+    # The embedded stderr fragment should not carry all 400 chars.
+    assert len(sRemediation) < 600
+
+
+def test_fsOverleafRemediation_whitespace_only_falls_back_to_default():
+    from vaibify.gui.routes.syncRoutes import (
+        _fsOverleafRemediation,
+        _S_OVERLEAF_REMEDIATION,
+    )
+    assert _fsOverleafRemediation("   \n\t  ") == (
+        _S_OVERLEAF_REMEDIATION
+    )
+
+
+def test_fnCleanupCredential_swallows_delete_failure():
+    """Container delete raising keeps the caller resilient."""
+    from vaibify.gui.routes.syncRoutes import _fnCleanupCredential
+    mockSyncDispatcher = MagicMock()
+    mockSyncDispatcher.fnDeleteCredentialFromContainer.side_effect = (
+        RuntimeError("nope")
+    )
+    # Should not raise
+    _fnCleanupCredential(
+        mockSyncDispatcher, MagicMock(), "cid", "zenodo", "sandbox",
+    )
+
+
+def test_fnCleanupOverleafHostCredential_swallows_delete_failure():
+    from vaibify.gui.routes.syncRoutes import (
+        _fnCleanupOverleafHostCredential,
+    )
+    with patch(
+        "vaibify.config.secretManager.fnDeleteSecret",
+        side_effect=RuntimeError("boom"),
+    ):
+        # Should not raise
+        _fnCleanupOverleafHostCredential("overleaf_token")
+
+
+@pytest.mark.asyncio
+async def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
+    from vaibify.gui.routes.syncRoutes import (
+        _fdictValidateStoredCredential,
+    )
+    dictCtx = {"docker": MagicMock()}
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={
+            "bConnected": False, "sMessage": "no backend",
+        },
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._ftRunServiceValidation",
+    ) as mockValidate:
+        dictResult = await _fdictValidateStoredCredential(
+            dictCtx, "cid", "zenodo", "", "sandbox",
+        )
+    assert dictResult["bConnected"] is False
+    mockValidate.assert_not_called()
+
+
+# ----------------------------------------------------------------------
+# Zenodo service persistence early-return
+# ----------------------------------------------------------------------
+
+
+def test_fnPersistZenodoService_non_zenodo_request_is_noop():
+    from vaibify.gui.routes.syncRoutes import _fnPersistZenodoService
+    requestOther = MagicMock()
+    requestOther.sService = "github"
+    requestOther.sZenodoInstance = None
+    dictCtx = {
+        "workflows": {},
+        "save": MagicMock(),
+    }
+    _fnPersistZenodoService(dictCtx, "cid", requestOther)
+    dictCtx["save"].assert_not_called()
+
+
+# ----------------------------------------------------------------------
+# Overleaf canonical-target suggestion
+# ----------------------------------------------------------------------
+
+
+def test_fsSuggestCanonicalTarget_same_as_typed_returns_empty():
+    """No suggestion when canonical dir matches what the user typed."""
+    from vaibify.gui.routes.syncRoutes import _fsSuggestCanonicalTarget
+    listCaseCollisions = [{
+        "sCanonicalRemotePath": "figures/Fig1.pdf",
+    }]
+    assert _fsSuggestCanonicalTarget(
+        listCaseCollisions, "figures",
+    ) == ""
+
+
+def test_fsSuggestCanonicalTarget_surfaces_different_dir():
+    from vaibify.gui.routes.syncRoutes import _fsSuggestCanonicalTarget
+    listCaseCollisions = [{
+        "sCanonicalRemotePath": "Figures/Fig1.pdf",
+    }]
+    assert _fsSuggestCanonicalTarget(
+        listCaseCollisions, "figures",
+    ) == "Figures"
+
+
+def test_fsSuggestCanonicalTarget_multiple_dirs_returns_empty():
+    from vaibify.gui.routes.syncRoutes import _fsSuggestCanonicalTarget
+    listCaseCollisions = [
+        {"sCanonicalRemotePath": "Figures/A.pdf"},
+        {"sCanonicalRemotePath": "Plots/B.pdf"},
+    ]
+    assert _fsSuggestCanonicalTarget(
+        listCaseCollisions, "figures",
+    ) == ""

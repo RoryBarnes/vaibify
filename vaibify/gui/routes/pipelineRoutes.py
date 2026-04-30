@@ -1,14 +1,17 @@
 """Pipeline control route handlers."""
 
-__all__ = ["fnRegisterAll"]
+__all__ = ["fnRegisterAll", "fdictComputeFileStatus"]
 
 import asyncio
+import json
 import logging
 import posixpath
 import re
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
+from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     WORKSPACE_ROOT,
@@ -20,16 +23,28 @@ from ..pipelineServer import (
 from ..fileStatusManager import (
     _fbCheckStaleUserVerification,
     _fdictBuildScriptStatus,
+    _fdictComputeMarkerMtimeByStep,
+    _fdictComputeMaxDataMtimeByStep,
     _fdictComputeMaxMtimeByStep,
     _fdictComputeMaxPlotMtimeByStep,
+    _fdictComputeMaxTestSourceMtimeByStep,
+    _fdictComputeTestCategoryMtimes,
     _fdictGetModTimes,
+    _flistResolveTestSourcePaths,
     _flistCollectOutputPaths,
     _flistDetectAndInvalidate,
     _fnClearStepModificationState,
-    _fnRecordStepRunTimestamp,
     _fnUpdateModTimeBaseline,
+    fbReconcileUpstreamFlags,
+    fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
+    fnCollectMarkerPathsByStep,
+    fsMarkerNameFromStepDirectory,
 )
+from ..fileIntegrity import flistExtractAllScriptPaths
+from ..pathContract import fdictAbsKeysToRepoRelative
+from ..randomnessLint import fnApplyRandomnessLintToWorkflow
+from ..llmInvoker import fsReadFileFromContainer
 
 logger = logging.getLogger("vaibify")
 
@@ -78,7 +93,13 @@ def _fnMarkPipelineStopped(connectionDocker, sContainerId):
 
 
 def _flistBuildCleanCommands(dictWorkflow):
-    """Build rm commands for all output files and reset step stats."""
+    """Build rm commands for all output files and reset step stats.
+
+    Step directory and output paths are repo-relative; join them
+    with ``sProjectRepoPath`` so the rm targets land in the project
+    repo rather than the container's default CWD.
+    """
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listCleanCommands = []
     for dictStep in dictWorkflow.get("listSteps", []):
         if dictStep.get("bInteractive", False):
@@ -88,9 +109,12 @@ def _flistBuildCleanCommands(dictWorkflow):
             for sFile in dictStep.get(sKey, []):
                 if sFile.startswith("{"):
                     continue
-                sPath = sFile if sFile.startswith("/") else (
+                sRepoRel = sFile if sFile.startswith("/") else (
                     posixpath.join(sDir, sFile) if sDir
                     else sFile)
+                sPath = sRepoRel if (
+                    sRepoRel.startswith("/") or not sRepoRoot
+                ) else posixpath.join(sRepoRoot, sRepoRel)
                 listCleanCommands.append(
                     f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
         dictStep["dictRunStats"] = {}
@@ -148,12 +172,61 @@ def _fnRegisterPipelineState(app, dictCtx):
         )
         if dictState is None:
             return {"bRunning": False}
+        return await _fdictReconcileLivenessIfNeeded(
+            dictCtx["docker"], sContainerId, dictState
+        )
+
+
+async def _fdictReconcileLivenessIfNeeded(
+    connectionDocker, sContainerId, dictState,
+):
+    """Detect a runner that vanished without finalizing and update state.
+
+    Pure read-side check: ``sLastHeartbeat`` is the truth signal. If
+    the recorded heartbeat is older than the staleness window and the
+    state still claims ``bRunning: True``, we declare the runner dead,
+    overwrite the state file with ``bRunning: False`` and a populated
+    ``sFailureReason``, then return the reconciled state. Subsequent
+    polls see ``bRunning: False`` and fall through unchanged.
+    """
+    from .. import pipelineState
+    if not dictState.get("bRunning"):
         return dictState
+    if not pipelineState.fbHeartbeatIsStale(dictState):
+        return dictState
+    sFailureReason = _fsBuildHeartbeatStaleReason(dictState)
+    dictReconciled = dict(dictState)
+    dictReconciled.update(
+        pipelineState.fdictBuildCompletedState(
+            pipelineState.I_EXIT_CODE_RUNNER_DISAPPEARED))
+    dictReconciled["sFailureReason"] = sFailureReason
+    await asyncio.to_thread(
+        pipelineState.fnWriteState,
+        connectionDocker, sContainerId, dictReconciled,
+    )
+    return dictReconciled
+
+
+def _fsBuildHeartbeatStaleReason(dictState):
+    """Format a human-readable reason string for a stale heartbeat."""
+    from .. import pipelineState
+    sLastHeartbeat = dictState.get("sLastHeartbeat", "")
+    try:
+        dtBeat = datetime.fromisoformat(sLastHeartbeat)
+        fAgeSeconds = (
+            datetime.now(timezone.utc).timestamp() - dtBeat.timestamp())
+        return (
+            f"heartbeat_stale (last beat {fAgeSeconds:.0f}s ago, "
+            f"window {pipelineState.I_HEARTBEAT_STALE_SECONDS}s)"
+        )
+    except (ValueError, TypeError):
+        return "heartbeat_stale (unparseable timestamp)"
 
 
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
+    @fnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
     async def fnKillRunningTasks(sContainerId: str):
         dictCtx["require"]()
@@ -186,6 +259,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
 def _fnRegisterPipelineClean(app, dictCtx):
     """Register POST /api/pipeline/{id}/clean endpoint."""
 
+    @fnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
     async def fnCleanOutputs(sContainerId: str):
         dictCtx["require"]()
@@ -209,7 +283,9 @@ def _fnRegisterPipelineWs(app, dictCtx):
     async def fnPipelineWs(
         websocket: WebSocket, sContainerId: str
     ):
-        if not fbValidateWebSocketOrigin(websocket):
+        if not fbValidateWebSocketOrigin(
+            websocket, dictCtx["sSessionToken"],
+        ):
             await websocket.close(code=4003)
             return
         sToken = websocket.query_params.get("sToken", "")
@@ -227,6 +303,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
 def _fnRegisterAcknowledgeStep(app, dictCtx):
     """Register POST endpoint to acknowledge step completion."""
 
+    @fnAgentAction("acknowledge-step")
     @app.post(
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
@@ -241,10 +318,6 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         _fnClearStepModificationState(
             dictWorkflow, iStepIndex,
         )
-        _fnRecordStepRunTimestamp(dictWorkflow, iStepIndex)
-        await _fnRefreshStepInputHashes(
-            dictCtx, sContainerId, dictWorkflow, iStepIndex,
-        )
         dictVars = dictCtx["variables"](sContainerId)
         listPaths = _flistCollectOutputPaths(
             dictWorkflow, dictVars)
@@ -258,22 +331,52 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         return {"bSuccess": True}
 
 
-async def _fnRefreshStepInputHashes(
-    dictCtx, sContainerId, dictWorkflow, iStepIndex,
+async def fdictComputeFileStatus(
+    dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
-    """Recompute input hashes for a step after execution."""
-    from .. import syncDispatcher as _syncDispatcher
-    listSteps = dictWorkflow.get("listSteps", [])
-    if iStepIndex < 0 or iStepIndex >= len(listSteps):
-        return
-    dictStep = listSteps[iStepIndex]
-    dictHashes = await asyncio.to_thread(
-        _syncDispatcher.fdictComputeInputHashes,
-        dictCtx["docker"], sContainerId, dictStep,
+    """Return merged output-status and test-status payload."""
+    dictOutputStatus = await _fdictFetchOutputStatus(
+        dictCtx, sContainerId, dictWorkflow, dictVars,
     )
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
+    dictTestStatus = await _fdictFetchTestStatus(
+        dictCtx, sContainerId, dictWorkflow,
+        dictMaxOutputMtimeByStep=dictOutputStatus.get(
+            "dictMaxMtimeByStep", {},
+        ),
+    )
+    dictOutputStatus.update(dictTestStatus)
+    return dictOutputStatus
+
+
+def _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow):
+    """Run the unseeded-randomness lint, return True if any flag changed.
+
+    The lint reads referenced configuration files from the container.
+    Skipped entirely when the workflow declares no ``dictRandomnessLint``
+    block, keeping the polling cost zero for workflows that opt out.
+    """
+    if not dictWorkflow.get("dictRandomnessLint"):
+        return False
+    listSnapshot = [
+        dictStep.get("dictVerification", {}).get(
+            "bUnseededRandomnessWarning", False,
+        )
+        for dictStep in dictWorkflow.get("listSteps", [])
+    ]
+
+    def fnReadFile(sPath):
+        return fsReadFileFromContainer(
+            dictCtx["docker"], sContainerId, sPath,
+        )
+
+    fnApplyRandomnessLintToWorkflow(dictWorkflow, fnReadFile)
+    listAfter = [
+        dictStep.get("dictVerification", {}).get(
+            "bUnseededRandomnessWarning", False,
+        )
+        for dictStep in dictWorkflow.get("listSteps", [])
+    ]
+    return listAfter != listSnapshot
 
 
 def _fnRegisterFileStatus(app, dictCtx):
@@ -285,29 +388,40 @@ def _fnRegisterFileStatus(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictVars = dictCtx["variables"](sContainerId)
-        dictOutputStatus = await _fdictFetchOutputStatus(
+        return await fdictComputeFileStatus(
             dictCtx, sContainerId, dictWorkflow, dictVars,
         )
-        dictTestStatus = await _fdictFetchTestStatus(
-            dictCtx, sContainerId, dictWorkflow,
-        )
-        dictOutputStatus.update(dictTestStatus)
-        return dictOutputStatus
 
 
 async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
-    """Fetch output file mod times, invalidations, and script hashes."""
-    from .. import syncDispatcher as _syncDispatcher
-    listPaths = _flistCollectOutputPaths(
+    """Fetch output + script mtimes, invalidations, and staleness."""
+    listOutputPaths = _flistCollectOutputPaths(
         dictWorkflow, dictVars)
+    listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
+    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
+        dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+    )
+    listMarkerPaths = list(dictMarkerPathsByStep.values())
+    listTestSourcePaths = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        listTestSourcePaths.extend(
+            _flistResolveTestSourcePaths(dictStep, dictVars),
+        )
+    listUnionPaths = list(set(
+        listOutputPaths + listScriptPaths + listMarkerPaths
+        + listTestSourcePaths,
+    ))
     dictModTimes = await asyncio.to_thread(
         _fdictGetModTimes,
-        dictCtx["docker"], sContainerId, listPaths,
+        dictCtx["docker"], sContainerId, listUnionPaths,
     )
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
+    )
+    dictMarkerMtimeByStep = _fdictComputeMarkerMtimeByStep(
+        dictMarkerPathsByStep, dictModTimes,
     )
     bStaleReset = _fbCheckStaleUserVerification(
         dictWorkflow, dictModTimes, dictVars)
@@ -332,42 +446,70 @@ async def _fdictFetchOutputStatus(
                 sIdx, dictV.get("sUser"),
                 dictV.get("listModifiedFiles", []),
             )
-    dictCurrentHashes = await asyncio.to_thread(
-        _syncDispatcher.fdictComputeAllScriptHashes,
-        dictCtx["docker"], sContainerId, dictWorkflow,
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(
+        dictPathsByStep, dictModTimes,
     )
+    bAnyReconciled = (
+        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)
+        | fbReconcileUserVerificationTimestamps(dictWorkflow)
+        | _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow)
+    )
+    if bAnyReconciled:
+        dictCtx["save"](sContainerId, dictWorkflow)
     return {
-        "dictModTimes": dictModTimes,
-        "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
-            dictPathsByStep, dictModTimes,
+        "dictModTimes": fdictAbsKeysToRepoRelative(
+            dictModTimes, sRepoRoot,
         ),
+        "dictMaxMtimeByStep": dictMaxMtimeByStep,
         "dictMaxPlotMtimeByStep": _fdictComputeMaxPlotMtimeByStep(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
+        "dictMaxDataMtimeByStep": _fdictComputeMaxDataMtimeByStep(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
+        "dictMarkerMtimeByStep": dictMarkerMtimeByStep,
+        "dictTestSourceMtimeByStep":
+            _fdictComputeMaxTestSourceMtimeByStep(
+                dictWorkflow, dictModTimes, dictVars,
+            ),
+        "dictTestCategoryMtimes": _fdictComputeTestCategoryMtimes(
             dictWorkflow, dictModTimes, dictVars,
         ),
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
-            dictWorkflow, dictCurrentHashes,
+            dictWorkflow, dictModTimes, dictVars,
+            dictMarkerMtimeByStep=dictMarkerMtimeByStep,
         ),
     }
 
 
 async def _fdictFetchTestStatus(
     dictCtx, sContainerId, dictWorkflow,
+    dictMaxOutputMtimeByStep=None,
 ):
     """Fetch test markers, backfill conftest, and build test status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     dictTestInfo = await asyncio.to_thread(
         _fdictFetchTestMarkers,
         dictCtx["docker"], sContainerId, listStepDirs,
+        sProjectRepoPath,
     )
     await _fnBackfillMissingConftest(
         dictCtx["docker"], sContainerId,
         dictTestInfo.get("missingConftest", []),
+        dictWorkflow.get("sProjectRepoPath", ""),
     )
     dictTestMarkers = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
+        dictMaxOutputMtimeByStep=dictMaxOutputMtimeByStep,
     )
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    bChanged = _fnApplyExternalTestResults(
+        dictWorkflow, dictTestMarkers,
+    )
+    if bChanged:
+        dictCtx["save"](sContainerId, dictWorkflow)
     return {
         "dictTestMarkers": dictTestMarkers,
         "dictTestFileChanges": _fdictBuildTestFileChanges(
@@ -387,12 +529,12 @@ def _flistExtractStepDirectories(dictWorkflow):
 
 
 def _fdictFetchTestMarkers(
-    connectionDocker, sContainerId, listStepDirs,
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
 ):
     """Run the batched test-marker check command."""
     from .. import syncDispatcher as _syncDispatcher
     sCommand = _syncDispatcher.fsBuildTestMarkerCheckCommand(
-        listStepDirs,
+        listStepDirs, sProjectRepoPath,
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -407,7 +549,7 @@ def _fdictFetchTestMarkers(
 
 
 async def _fnBackfillMissingConftest(
-    connectionDocker, sContainerId, listMissingDirs,
+    connectionDocker, sContainerId, listMissingDirs, sProjectRepoPath,
 ):
     """Write conftest.py into step dirs that have tests/ but no conftest."""
     from ..testGenerator import (
@@ -423,7 +565,7 @@ async def _fnBackfillMissingConftest(
         try:
             await asyncio.to_thread(
                 fnWriteConftestMarker,
-                connectionDocker, sContainerId, sDir,
+                connectionDocker, sContainerId, sDir, sProjectRepoPath,
             )
             logger.info("Wrote conftest.py to %s", sDir)
         except Exception as exc:
@@ -432,10 +574,70 @@ async def _fnBackfillMissingConftest(
                 sDir, exc,
             )
     await asyncio.to_thread(
+        _fnDeleteLegacyMarkers,
+        connectionDocker, sContainerId,
+        listMissingDirs, sProjectRepoPath,
+    )
+    await asyncio.to_thread(
         _fnEnsureConftestTemplate,
         connectionDocker, sContainerId,
-        fsConftestContent(),
+        fsConftestContent(sProjectRepoPath),
     )
+
+
+def _fnDeleteLegacyMarkers(
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
+):
+    """Delete markers written by the pre-2026-04 conftest format.
+
+    The legacy conftest produced markers without ``sRunAtUtc`` /
+    ``dictOutputHashes``. Once a step's stale conftest has been
+    overwritten, any leftover legacy marker at the new path no longer
+    reflects reality but the polling reconciliation would still apply
+    its (stale) results — flashing "passed" on the badge before the
+    user runs tests for real. Removing those markers makes the badge
+    show "untested" until a fresh pytest run with the new conftest
+    writes a trustworthy marker.
+    """
+    if not sProjectRepoPath or not listStepDirs:
+        return
+    listMarkerPaths = [
+        posixpath.join(
+            sProjectRepoPath, ".vaibify", "test_markers",
+            fsMarkerNameFromStepDirectory(sDir),
+        )
+        for sDir in listStepDirs
+    ]
+    sScript = (
+        "import json, os, sys\n"
+        "for sPath in json.loads(sys.stdin.read()):\n"
+        "    if not os.path.isfile(sPath):\n"
+        "        continue\n"
+        "    try:\n"
+        "        dictMarker = json.load(open(sPath))\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "    if 'sRunAtUtc' in dictMarker:\n"
+        "        continue\n"
+        "    try:\n"
+        "        os.remove(sPath)\n"
+        "        print(sPath)\n"
+        "    except OSError:\n"
+        "        pass\n"
+    )
+    sCmd = (
+        "python3 -c " + fsShellQuote(sScript)
+        + " <<< " + fsShellQuote(json.dumps(listMarkerPaths))
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCmd,
+    )
+    listDeleted = [s for s in (sOutput or "").splitlines() if s.strip()]
+    if listDeleted:
+        logger.info(
+            "Deleted %d legacy markers: %s",
+            len(listDeleted), listDeleted,
+        )
 
 
 def _fnEnsureConftestTemplate(
@@ -459,15 +661,18 @@ def _fnEnsureConftestTemplate(
     )
 
 
-def _fsMarkerNameFromDirectory(sDirectory):
-    """Convert a step directory path to a marker filename."""
-    return sDirectory.strip("/").replace("/", "_") + ".json"
+def _fdictBuildTestMarkerStatus(
+    dictWorkflow, dictTestInfo, dictMaxOutputMtimeByStep=None,
+):
+    """Map test markers to step indices and check staleness.
 
-
-def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
-    """Map test markers to step indices and check staleness."""
+    ``dictMaxOutputMtimeByStep`` (str step index → mtime string) lets
+    the staleness check recognise a marker as out-of-date when the
+    step's output files have been regenerated since pytest last ran.
+    """
     dictMarkers = dictTestInfo.get("markers", {})
     dictTestFiles = dictTestInfo.get("testFiles", {})
+    dictMaxMtimes = dictMaxOutputMtimeByStep or {}
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
@@ -475,12 +680,16 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
         sDir = dictStep.get("sDirectory", "")
         if not sDir:
             continue
-        sMarkerName = _fsMarkerNameFromDirectory(sDir)
+        sMarkerName = fsMarkerNameFromStepDirectory(sDir)
         if sMarkerName not in dictMarkers:
             continue
         dictMarker = dictMarkers[sMarkerName]
+        fMaxOutputMtime = _ffParseMtime(
+            dictMaxMtimes.get(str(iIndex)),
+        )
         bStale = _fbMarkerStale(
             dictMarker, dictTestFiles.get(sDir, {}),
+            fMaxOutputMtime=fMaxOutputMtime,
         )
         dictResult[str(iIndex)] = {
             "dictMarker": dictMarker, "bStale": bStale,
@@ -488,13 +697,37 @@ def _fdictBuildTestMarkerStatus(dictWorkflow, dictTestInfo):
     return dictResult
 
 
-def _fbMarkerStale(dictMarker, dictTestFileInfo):
-    """Return True if any test file is newer than the marker."""
+def _ffParseMtime(sMtime):
+    """Return mtime as float, 0.0 when missing or unparseable."""
+    if not sMtime:
+        return 0.0
+    try:
+        return float(sMtime)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _fbMarkerStale(dictMarker, dictTestFileInfo, fMaxOutputMtime=0):
+    """Return True if the marker no longer reflects the current state.
+
+    A marker is stale when any of:
+
+    1. It lacks ``sRunAtUtc`` (legacy pre-2026-04 conftest format —
+       cannot be trusted to map to any specific data state).
+    2. Any test file is newer than the marker (existing behaviour).
+    3. Any output file is newer than the marker — i.e. the data the
+       step's tests would run against has moved since the recorded
+       result, so the result no longer applies.
+    """
+    if "sRunAtUtc" not in dictMarker:
+        return True
     fMarkerTime = dictMarker.get("fTimestamp", 0)
     dictMtimes = dictTestFileInfo.get("dictMtimes", {})
     for fMtime in dictMtimes.values():
         if fMtime > fMarkerTime:
             return True
+    if fMaxOutputMtime and fMaxOutputMtime > fMarkerTime:
+        return True
     return False
 
 
@@ -507,18 +740,46 @@ _LIST_MARKER_CATEGORY_KEYS = [
 
 def _fnApplyAllMarkerCategories(dictVerify, dictCategories):
     """Apply all marker categories to a verification dict."""
+    bChanged = False
     for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
-        _fnApplyMarkerCategory(
+        if _fnApplyMarkerCategory(
             dictVerify, dictCategories, sCategory, sVerifyKey,
-        )
+        ):
+            bChanged = True
+    return bChanged
+
+
+def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
+    """Reset to "untested" any category the stale marker would touch.
+
+    A stale marker isn't trustworthy enough to apply, but it does tell
+    us *which* categories used to have a result. Resetting those to
+    "untested" makes the badge accurately reflect "no fresh result for
+    the current state" instead of preserving a prior pass/fail value
+    that's now meaningless.
+    """
+    bChanged = False
+    for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
+        if sCategory not in dictCategories:
+            continue
+        if dictVerify.get(sVerifyKey) == "untested":
+            continue
+        dictVerify[sVerifyKey] = "untested"
+        bChanged = True
+    return bChanged
 
 
 def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
-    """Update workflow dictVerification from external test markers."""
+    """Update workflow dictVerification from external test markers.
+
+    Returns True when any verification field was modified, so the
+    caller can persist the workflow.
+    """
     listSteps = dictWorkflow.get("listSteps", [])
+    bChanged = False
     for sIndex, dictEntry in dictTestMarkers.items():
         iIndex = int(sIndex)
-        if dictEntry["bStale"] or iIndex >= len(listSteps):
+        if iIndex >= len(listSteps):
             continue
         dictVerify = listSteps[iIndex].setdefault(
             "dictVerification", {},
@@ -526,21 +787,35 @@ def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
         dictCategories = dictEntry["dictMarker"].get(
             "dictCategories", {},
         )
-        _fnApplyAllMarkerCategories(
-            dictVerify, dictCategories)
+        if dictEntry.get("bStale"):
+            if _fnClearStaleMarkerCategories(
+                dictVerify, dictCategories,
+            ):
+                bChanged = True
+            continue
+        if _fnApplyAllMarkerCategories(
+            dictVerify, dictCategories,
+        ):
+            bChanged = True
+    return bChanged
 
 
 def _fnApplyMarkerCategory(
     dictVerify, dictCategories, sCategory, sVerifyKey,
 ):
-    """Apply a single category result from a marker."""
+    """Apply a single category result from a marker; return True if changed."""
     if sCategory not in dictCategories:
-        return
+        return False
     dictCat = dictCategories[sCategory]
+    sNewValue = None
     if dictCat.get("iFailed", 0) > 0:
-        dictVerify[sVerifyKey] = "failed"
+        sNewValue = "failed"
     elif dictCat.get("iPassed", 0) > 0:
-        dictVerify[sVerifyKey] = "passed"
+        sNewValue = "passed"
+    if sNewValue is None or dictVerify.get(sVerifyKey) == sNewValue:
+        return False
+    dictVerify[sVerifyKey] = sNewValue
+    return True
 
 
 def _fsetExtractRegisteredTestFiles(dictStep):

@@ -7,6 +7,7 @@ pipelineServer, pipelineRunner, syncDispatcher, and workflowManager.
 import json
 from unittest.mock import MagicMock
 
+from vaibify.gui.fileStatusManager import fsMarkerNameFromStepDirectory
 from vaibify.gui.pipelineServer import (
     _fbCancelPipelineTask,
     _fbMarkerStale,
@@ -17,7 +18,6 @@ from vaibify.gui.pipelineServer import (
     _fnApplyAllMarkerCategories,
     _fnHandleInteractiveComplete,
     _fnHandleInteractiveResponse,
-    _fsMarkerNameFromDirectory,
     _fsResolveLanguage,
     _fsSanitizeServerError,
     fsComputeStaticCacheVersion,
@@ -46,20 +46,20 @@ from vaibify.gui.workflowManager import (
 
 class TestFsMarkerNameFromDirectory:
     def test_simple_path(self):
-        assert _fsMarkerNameFromDirectory(
+        assert fsMarkerNameFromStepDirectory(
             "/workspace/step01") == "workspace_step01.json"
 
     def test_trailing_slash(self):
-        assert _fsMarkerNameFromDirectory(
-            "/workspace/step01/") == "workspace_step01.json"
+        assert fsMarkerNameFromStepDirectory(
+            "step01/") == "step01.json"
 
     def test_nested_path(self):
-        sResult = _fsMarkerNameFromDirectory(
+        sResult = fsMarkerNameFromStepDirectory(
             "/workspace/GJ1132/XUV")
         assert sResult == "workspace_GJ1132_XUV.json"
 
     def test_no_leading_slash(self):
-        assert _fsMarkerNameFromDirectory(
+        assert fsMarkerNameFromStepDirectory(
             "step01") == "step01.json"
 
 
@@ -70,12 +70,16 @@ class TestFbMarkerStale:
         assert _fbMarkerStale(dictMarker, dictTestFileInfo) is True
 
     def test_older_test_file(self):
-        dictMarker = {"fTimestamp": 300.0}
+        dictMarker = {
+            "fTimestamp": 300.0, "sRunAtUtc": "2026-04-23T00:00:00Z",
+        }
         dictTestFileInfo = {"dictMtimes": {"test_a.py": 100.0}}
         assert _fbMarkerStale(dictMarker, dictTestFileInfo) is False
 
     def test_no_test_files(self):
-        dictMarker = {"fTimestamp": 100.0}
+        dictMarker = {
+            "fTimestamp": 100.0, "sRunAtUtc": "2026-04-23T00:00:00Z",
+        }
         assert _fbMarkerStale(dictMarker, {}) is False
 
     def test_no_timestamp(self):
@@ -87,11 +91,11 @@ class TestFbMarkerStale:
 class TestFdictBuildTestMarkerStatus:
     def test_maps_marker_to_step(self):
         dictWorkflow = {"listSteps": [
-            {"sDirectory": "/workspace/step01"},
+            {"sDirectory": "step01"},
         ]}
         dictTestInfo = {
             "markers": {
-                "workspace_step01.json": {
+                "step01.json": {
                     "fTimestamp": 999.0,
                     "dictCategories": {},
                 },
@@ -104,7 +108,7 @@ class TestFdictBuildTestMarkerStatus:
 
     def test_no_matching_marker(self):
         dictWorkflow = {"listSteps": [
-            {"sDirectory": "/workspace/step01"},
+            {"sDirectory": "step01"},
         ]}
         dictTestInfo = {"markers": {}, "testFiles": {}}
         assert _fdictBuildTestMarkerStatus(
@@ -241,6 +245,31 @@ class TestFlistBuildCleanCommands:
     def test_empty_workflow(self):
         assert _flistBuildCleanCommands({"listSteps": []}) == []
 
+    def test_repo_relative_joins_with_project_repo_path(self):
+        """Repo-relative paths must be prefixed with sProjectRepoPath.
+
+        Otherwise rm -f runs against the container's default CWD
+        (/workspace) and the output file at
+        /workspace/<ProjectRepo>/<StepDir>/<file> is never touched.
+        """
+        dictWorkflow = {
+            "sProjectRepoPath": "/workspace/GJ1132_XUV",
+            "listSteps": [
+                {"sDirectory": "TessFlareLightcurves",
+                 "saDataFiles": [],
+                 "saPlotFiles": ["Plot/GJ1132_flares.pdf"],
+                 "dictRunStats": {}, "dictVerification": {}},
+            ],
+        }
+        listCmds = _flistBuildCleanCommands(dictWorkflow)
+        sJoinedPath = (
+            "/workspace/GJ1132_XUV/TessFlareLightcurves/"
+            "Plot/GJ1132_flares.pdf"
+        )
+        assert any(sJoinedPath in s for s in listCmds), (
+            f"Expected absolute path in: {listCmds}"
+        )
+
 
 class TestFdictBuildOverleafArgs:
     def test_extracts_all_fields(self):
@@ -251,7 +280,7 @@ class TestFdictBuildOverleafArgs:
             "sZenodoDoi": "10.5281/zenodo.123",
             "sTexFilename": "paper.tex",
         }
-        dictResult = _fdictBuildOverleafArgs(dictWorkflow)
+        dictResult = _fdictBuildOverleafArgs(dictWorkflow, "figs")
         assert dictResult["sProjectId"] == "abc123"
         assert dictResult["sTargetDirectory"] == "figs"
         assert dictResult["sGithubBaseUrl"] == (
@@ -261,7 +290,7 @@ class TestFdictBuildOverleafArgs:
         assert dictResult["dictWorkflow"] is dictWorkflow
 
     def test_defaults(self):
-        dictResult = _fdictBuildOverleafArgs({})
+        dictResult = _fdictBuildOverleafArgs({}, "figures")
         assert dictResult["sProjectId"] == ""
         assert dictResult["sTargetDirectory"] == "figures"
         assert dictResult["sTexFilename"] == "main.tex"
@@ -443,25 +472,34 @@ class TestFlistBuildStepCopyCommandList:
 class TestFsBuildTestMarkerScript:
     def test_returns_valid_python(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps(["/workspace/step01"]))
+            json.dumps(["step01"]), "/workspace/DemoRepo")
         assert "import json" in sScript
         assert "print(json.dumps(R))" in sScript
 
     def test_contains_marker_directory(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps([]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
         assert "test_markers" in sScript
 
     def test_no_single_quotes(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps(["/work"]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps(["step"]), "/workspace/DemoRepo")
         assert "'" not in sScript
 
     def test_includes_hash_extraction(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps([]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
         assert "vaibify-template-hash" in sScript
 
     def test_checks_conftest(self):
-        sScript = _fsBuildTestMarkerScript(json.dumps([]))
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
         assert "conftest.py" in sScript
+
+    def test_embeds_project_repo_path(self):
+        sScript = _fsBuildTestMarkerScript(
+            json.dumps([]), "/workspace/DemoRepo")
+        assert "/workspace/DemoRepo" in sScript
 
 
 # ---------------------------------------------------------------

@@ -42,7 +42,7 @@ def _fnRejectDuplicateWorkflowName(
 def _fsValidateRepoDirectory(
     connectionDocker, sContainerId, sRepoDirectory
 ):
-    """Validate the repo directory exists under /workspace/."""
+    """Validate the directory exists under /workspace/ and is a git repo."""
     sClean = sRepoDirectory.strip().strip("/")
     if not sClean:
         raise HTTPException(
@@ -61,6 +61,18 @@ def _fsValidateRepoDirectory(
         raise HTTPException(
             404,
             f"Repo directory not found: {sFullPath}",
+        )
+    iGitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        f"git -C {fsShellQuote(sFullPath)} "
+        f"rev-parse --show-toplevel 2>/dev/null",
+    )
+    if iGitCode != 0:
+        raise HTTPException(
+            400,
+            f"Directory '{sFullPath}' is not a git repository. "
+            f"Run 'git init' inside the container at that path "
+            f"first.",
         )
     return sFullPath
 
@@ -83,30 +95,6 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
             raise HTTPException(
                 500, f"Search failed: "
                 f"{_fsSanitizeServerError(str(error))}")
-
-
-def _fnRegisterRepoList(app, dictCtx):
-    """Register GET /api/repos/{id} to list top-level repo dirs."""
-
-    @app.get("/api/repos/{sContainerId}")
-    async def fnListRepos(sContainerId: str):
-        dictCtx["require"]()
-        sCommand = (
-            "find /workspace -mindepth 1 -maxdepth 1 -type d "
-            "-not -name '.*' -printf '%f\\n' 2>/dev/null"
-        )
-        iExitCode, sOutput = (
-            dictCtx["docker"].ftResultExecuteCommand(
-                sContainerId, sCommand
-            )
-        )
-        if iExitCode != 0:
-            raise HTTPException(500, "Failed to list repos")
-        listRepos = sorted([
-            sLine.strip() for sLine in sOutput.splitlines()
-            if sLine.strip()
-        ])
-        return {"listRepos": listRepos}
 
 
 def _fnRegisterWorkflowCreate(app, dictCtx):
@@ -165,13 +153,12 @@ def _fnRegisterConnect(app, dictCtx):
         sWorkflowPath: Optional[str] = None,
     ):
         dictCtx["require"]()
-        return fdictHandleConnect(
+        return await fdictHandleConnect(
             dictCtx, sContainerId, sWorkflowPath)
 
 
 def fnRegisterAll(app, dictCtx):
     """Register all workflow management routes."""
     _fnRegisterWorkflowSearch(app, dictCtx)
-    _fnRegisterRepoList(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)

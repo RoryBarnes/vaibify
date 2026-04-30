@@ -22,12 +22,17 @@ const PipeleyenApp = (function () {
             sWorkflowPath: null,
             dictStepStatus: {},
             dictScriptModified: {},
+            dictStaleArtifacts: {},
             dictDiscoveredOutputs: {},
             dictUserVerifiedAt: {},
             dictFileExistenceCache: {},
             dictFileModTimes: {},
             dictOutputMtimes: {},
             dictPlotMtimes: {},
+            dictMaxDataMtimeByStep: {},
+            dictMarkerMtimeByStep: {},
+            dictTestSourceMtimeByStep: {},
+            dictTestCategoryMtimes: {},
             dictPlotStandardExists: {},
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
@@ -36,6 +41,8 @@ const PipeleyenApp = (function () {
             bDelegatedEventsInitialized: false,
             bWasVaibified: false,
             listUndoStack: [],
+            dictContainerSettings: null,
+            bClaudeRestartNeeded: false,
         };
     }
 
@@ -54,6 +61,12 @@ const PipeleyenApp = (function () {
     };
 
     var I_MAX_UNDO = 50;
+    var I_HUB_POLL_INTERVAL_MS = 3000;
+    var _dictHubPolling = {
+        iContainerIntervalId: null,
+        iWorkflowIntervalId: null,
+        sWorkflowContainerId: null,
+    };
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
 
     var DICT_MODE_WORKFLOW = {
@@ -66,7 +79,7 @@ const PipeleyenApp = (function () {
 
     var DICT_MODE_NO_WORKFLOW = {
         sMode: "noWorkflow",
-        listLeftTabs: ["files", "logs"],
+        listLeftTabs: ["files", "repos", "logs"],
         sDefaultLeftTab: "files",
         bShowRunMenu: false,
         bShowDagButton: false,
@@ -182,8 +195,10 @@ const PipeleyenApp = (function () {
         _fnResetUiState();
         PipeleyenTestManager.fnResetState();
         PipeleyenPipelineRunner.fnResetState();
+        VaibifyOverleafMirror.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        PipeleyenReposPanel.fnTeardown();
     }
 
     function _fnResetUiState() {
@@ -201,6 +216,9 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
+        if (data.dictFileStatus) {
+            fnProcessFileStatusResponse(data.dictFileStatus);
+        }
         var iStepCount = (_dictWorkflowState.dictWorkflow.listSteps || []).length;
         if (iStepCount > 500) {
             fnShowToast(
@@ -210,8 +228,10 @@ const PipeleyenApp = (function () {
                 "error"
             );
         }
-        var elWorkflowName = document.getElementById("activeWorkflowName");
-        elWorkflowName.textContent = sWorkflowName || "";
+        document.getElementById("activeContainerName").textContent =
+            PipeleyenContainerManager.fsGetSelectedContainerName() || "";
+        document.getElementById("activeWorkflowName").textContent =
+            sWorkflowName || "";
         document.title = (PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify") +
             (sWorkflowName ? ": " + sWorkflowName : "");
         fnShowMainLayout();
@@ -221,6 +241,7 @@ const PipeleyenApp = (function () {
         fnStartFileChangePolling();
         PipeleyenTerminal.fnEnsureTab();
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
+        fnLoadContainerSettings();
     }
 
     function fnRefreshWorkflowData(dictData) {
@@ -236,6 +257,10 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictFileModTimes = {};
         _dictWorkflowState.dictOutputMtimes = {};
         _dictWorkflowState.dictPlotMtimes = {};
+        _dictWorkflowState.dictMaxDataMtimeByStep = {};
+        _dictWorkflowState.dictMarkerMtimeByStep = {};
+        _dictWorkflowState.dictTestSourceMtimeByStep = {};
+        _dictWorkflowState.dictTestCategoryMtimes = {};
         _dictWorkflowState.dictPlotStandardExists = {};
     }
 
@@ -247,13 +272,14 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.sWorkflowPath = null;
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             _dictWorkflowState.dictStepStatus = {};
-            var elWorkflowName = document.getElementById(
-                "activeWorkflowName"
-            );
-            elWorkflowName.textContent = "No Workflow";
+            document.getElementById("activeContainerName").textContent =
+                PipeleyenContainerManager.fsGetSelectedContainerName() || "";
+            document.getElementById("activeWorkflowName").textContent =
+                "None";
             document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
             PipeleyenTerminal.fnEnsureTab();
+            await PipeleyenReposPanel.fnInit(sId);
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
@@ -316,11 +342,20 @@ const PipeleyenApp = (function () {
     }
 
     function fnShowContainerLanding() {
+        var sActiveName = PipeleyenContainerManager
+            .fsGetSelectedContainerName();
+        if (sActiveName) {
+            PipeleyenContainerManager.fnReleaseClaim(sActiveName);
+        }
         document.getElementById("containerLanding").style.display = "flex";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");
         _dictSessionState.dictDashboardMode = null;
+        document.getElementById("activeContainerName").textContent = "";
+        document.getElementById("activeWorkflowName").textContent = "";
         document.title = "Vaibify";
+        _fnStopWorkflowHubPolling();
+        _fnStartContainerHubPolling();
     }
 
     function fnShowWorkflowPicker(sContainerName) {
@@ -328,6 +363,10 @@ const PipeleyenApp = (function () {
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
         document.title = sContainerName || "Vaibify";
+        _fnStopContainerHubPolling();
+        var sContainerId = PipeleyenContainerManager
+            .fsGetSelectedContainerId();
+        _fnStartWorkflowHubPolling(sContainerId);
     }
 
     function fnShowMainLayout() {
@@ -335,12 +374,95 @@ const PipeleyenApp = (function () {
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.add("active");
         fnApplyDashboardMode();
+        _fnStopContainerHubPolling();
+        _fnStopWorkflowHubPolling();
+    }
+
+    function _fnStartContainerHubPolling() {
+        _fnStopContainerHubPolling();
+        _dictHubPolling.iContainerIntervalId = setInterval(
+            _fnPollContainerHubIfIdle, I_HUB_POLL_INTERVAL_MS,
+        );
+    }
+
+    function _fnPollContainerHubIfIdle() {
+        if (_fbContainerHubHasOpenMenu()) return;
+        PipeleyenContainerManager.fnLoadContainers();
+    }
+
+    function _fbContainerHubHasOpenMenu() {
+        var listMenus = document.querySelectorAll(
+            ".container-tile-menu");
+        for (var i = 0; i < listMenus.length; i++) {
+            if (listMenus[i].style.display !== "none") return true;
+        }
+        return false;
+    }
+
+    function _fnStopContainerHubPolling() {
+        if (_dictHubPolling.iContainerIntervalId !== null) {
+            clearInterval(_dictHubPolling.iContainerIntervalId);
+            _dictHubPolling.iContainerIntervalId = null;
+        }
+    }
+
+    function _fnStartWorkflowHubPolling(sContainerId) {
+        _fnStopWorkflowHubPolling();
+        if (!sContainerId) return;
+        _dictHubPolling.sWorkflowContainerId = sContainerId;
+        _dictHubPolling.iWorkflowIntervalId = setInterval(
+            function () {
+                _fnRefreshWorkflowHubList(
+                    _dictHubPolling.sWorkflowContainerId,
+                );
+            },
+            I_HUB_POLL_INTERVAL_MS,
+        );
+    }
+
+    function _fnStopWorkflowHubPolling() {
+        if (_dictHubPolling.iWorkflowIntervalId !== null) {
+            clearInterval(_dictHubPolling.iWorkflowIntervalId);
+            _dictHubPolling.iWorkflowIntervalId = null;
+        }
+        _dictHubPolling.sWorkflowContainerId = null;
+    }
+
+    async function _fnRefreshWorkflowHubList(sContainerId) {
+        try {
+            var listWorkflows = await VaibifyApi.fdictGet(
+                "/api/workflows/" + encodeURIComponent(sContainerId));
+            VaibifyWorkflowManager.fnRenderWorkflowList(
+                listWorkflows, sContainerId);
+        } catch (error) {
+            /* best-effort: leave the last-rendered list in place */
+        }
+    }
+
+    function fnStopAllHubPolling() {
+        _fnStopContainerHubPolling();
+        _fnStopWorkflowHubPolling();
+    }
+
+    function fnResumeHubPollingForCurrentView() {
+        var elLanding = document.getElementById("containerLanding");
+        var elPicker = document.getElementById("workflowPicker");
+        if (elLanding && elLanding.style.display === "flex") {
+            _fnStartContainerHubPolling();
+            return;
+        }
+        if (elPicker && elPicker.style.display === "flex") {
+            var sContainerId = PipeleyenContainerManager
+                .fsGetSelectedContainerId();
+            _fnStartWorkflowHubPolling(sContainerId);
+        }
     }
 
     function _fnCancelAllTimers() {
         VaibifyWebSocket.fnDisconnect();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        PipeleyenReposPanel.fnTeardown();
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
             _dictWorkflowState.iFileCheckTimer = null;
@@ -417,6 +539,9 @@ const PipeleyenApp = (function () {
     var fsResolveTemplate = VaibifyUtilities.fsResolveTemplate;
 
     function fsJoinPath(sDirectory, sFilename) {
+        if (!sDirectory || sDirectory === ".") {
+            return sFilename;
+        }
         if (sDirectory.endsWith("/")) {
             return sDirectory + sFilename;
         }
@@ -473,7 +598,30 @@ const PipeleyenApp = (function () {
             ' seconds">') +
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (_dictUiState.bShowTimestamps ? " checked" : "") + '>');
+            (_dictUiState.bShowTimestamps ? " checked" : "") + '>') +
+            fsSettingsRowHtml("Auto Archive",
+            '<input type="checkbox" id="gsAutoArchive"' +
+            (_dictWorkflowState.dictWorkflow.bAutoArchive
+                ? " checked" : "") +
+            ' title="Push verified files to Overleaf/Zenodo automatically">') +
+            fsClaudeSettingsHtml();
+    }
+
+    function fsClaudeSettingsHtml() {
+        var dictSettings = _dictWorkflowState.dictContainerSettings;
+        if (!dictSettings || !dictSettings.bClaudeInstalled) {
+            return "";
+        }
+        var sChecked = dictSettings.bClaudeAutoUpdate ? " checked" : "";
+        var sNotice = _dictWorkflowState.bClaudeRestartNeeded
+            ? '<div class="gs-notice">Restart the container to '
+              + 'apply the new Claude auto-update setting.</div>'
+            : "";
+        return '<div class="gs-section-heading">Container</div>' +
+            fsSettingsRowHtml("Claude auto-update",
+                '<input type="checkbox" id="gsClaudeAutoUpdate"'
+                + sChecked + '>') +
+            sNotice;
     }
 
     function fnBindSettingsSliders() {
@@ -501,6 +649,59 @@ const PipeleyenApp = (function () {
                     fnToggleShowTimestamps(
                         elTimestampCheckbox.checked);
                 });
+        }
+        var elAutoArchive = document.getElementById("gsAutoArchive");
+        if (elAutoArchive) {
+            elAutoArchive.addEventListener(
+                "change", fnSaveGlobalSettings);
+        }
+        var elClaudeAuto = document.getElementById(
+            "gsClaudeAutoUpdate");
+        if (elClaudeAuto) {
+            elClaudeAuto.addEventListener(
+                "change", function () {
+                    fnSaveClaudeAutoUpdate(elClaudeAuto.checked);
+                });
+        }
+    }
+
+    async function fnLoadContainerSettings() {
+        var sId = _dictSessionState.sContainerId;
+        if (!sId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/containers/"
+                + encodeURIComponent(sId) + "/settings");
+            _dictWorkflowState.dictContainerSettings = dictResult;
+            fnRenderGlobalSettings();
+        } catch (error) {
+            _dictWorkflowState.dictContainerSettings = null;
+        }
+    }
+
+    function fnApplyClaudeSaveResult(bValue, dictResult) {
+        if (_dictWorkflowState.dictContainerSettings) {
+            _dictWorkflowState.dictContainerSettings
+                .bClaudeAutoUpdate = bValue;
+        }
+        _dictWorkflowState.bClaudeRestartNeeded =
+            Boolean(dictResult && dictResult.bRestartRequired);
+        fnRenderGlobalSettings();
+        fnShowToast("Claude setting saved", "success");
+    }
+
+    async function fnSaveClaudeAutoUpdate(bValue) {
+        var sId = _dictSessionState.sContainerId;
+        if (!sId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/containers/"
+                + encodeURIComponent(sId) + "/settings",
+                { bClaudeAutoUpdate: bValue });
+            fnApplyClaudeSaveResult(bValue, dictResult);
+        } catch (error) {
+            fnShowToast(
+                "Failed to save Claude setting", "error");
         }
     }
 
@@ -550,6 +751,7 @@ const PipeleyenApp = (function () {
     async function fnSaveGlobalSettings() {
         var iExp = parseInt(
             document.getElementById("gsTolerance").value, 10);
+        var elAutoArchive = document.getElementById("gsAutoArchive");
         var dictUpdates = {
             sPlotDirectory: document.getElementById("gsPlotDirectory").value,
             sFigureType: document.getElementById("gsFigureType").value,
@@ -557,6 +759,8 @@ const PipeleyenApp = (function () {
                 document.getElementById("gsNumberOfCores").value
             ),
             fTolerance: Math.pow(10, iExp),
+            bAutoArchive: elAutoArchive
+                ? elAutoArchive.checked : false,
         };
         try {
             var result = await VaibifyApi.fdictPut(
@@ -566,6 +770,10 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflow.iNumberOfCores = result.iNumberOfCores;
             if (result.fTolerance !== undefined) {
                 _dictWorkflowState.dictWorkflow.fTolerance = result.fTolerance;
+            }
+            if (result.bAutoArchive !== undefined) {
+                _dictWorkflowState.dictWorkflow.bAutoArchive =
+                    result.bAutoArchive;
             }
             fnShowToast("Settings saved", "success");
             fnRenderStepList();
@@ -587,7 +795,15 @@ const PipeleyenApp = (function () {
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
             dictScriptModified: _dictWorkflowState.dictScriptModified,
+            dictStaleArtifacts: _dictWorkflowState.dictStaleArtifacts,
             dictOutputMtimes: _dictWorkflowState.dictOutputMtimes,
+            dictMaxDataMtimeByStep:
+                _dictWorkflowState.dictMaxDataMtimeByStep,
+            dictMaxPlotMtimeByStep: _dictWorkflowState.dictPlotMtimes,
+            dictMarkerMtimeByStep:
+                _dictWorkflowState.dictMarkerMtimeByStep,
+            dictTestCategoryMtimes:
+                _dictWorkflowState.dictTestCategoryMtimes,
             dictDiscoveredOutputs: _dictWorkflowState.dictDiscoveredOutputs,
             dictWorkflow: _dictWorkflowState.dictWorkflow,
             sUserName: _dictSessionState.sUserName,
@@ -610,7 +826,7 @@ const PipeleyenApp = (function () {
             flistGetStepDependencies: flistGetStepDependencies,
             fbStepFullyPassing: fbStepFullyPassing,
             fbAnyUpstreamModified: fbAnyUpstreamModified,
-            fsDepLabelColorClass: fsDepLabelColorClass,
+            ftComputeDepAxisStates: ftComputeDepAxisStates,
             fsetGetExpandedCategory: fsetGetExpandedCategory,
             fdictBuildClientVariables: fdictBuildClientVariables,
         };
@@ -715,9 +931,17 @@ const PipeleyenApp = (function () {
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
         if (fbAnyUpstreamModified(iStep)) return false;
+        if (_dictWorkflowState.dictScriptModified[iStep] === "modified") {
+            return false;
+        }
+        var bHasData =
+            PipeleyenTestManager.fsetGetStepsWithData().has(iStep) ||
+            !!_dictWorkflowState.dictOutputMtimes[String(iStep)];
+        if (!bHasData) return false;
         var sUser = dictVerify.sUser;
         var sDeps = fsComputeDepsState(iStep);
-        if (sUser !== "passed" || sDeps === "failed") return false;
+        var bDepsFullyOk = sDeps === "none" || sDeps === "passed";
+        if (sUser !== "passed" || !bDepsFullyOk) return false;
         if (fbStepRequiresUnitTests(dictStep)) {
             return fsEffectiveTestState(dictStep) === "passed";
         }
@@ -734,7 +958,13 @@ const PipeleyenApp = (function () {
 
     function fsComputeStepLabel(iIndex) {
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
-        var bInteractive = listSteps[iIndex].bInteractive === true;
+        var step = listSteps[iIndex];
+        if (step && typeof step.sLabel === "string" && step.sLabel) {
+            return step.sLabel;
+        }
+        // TODO(2026-07-01): drop this fallback once every response
+        // path carries step.sLabel. Kept as a transition shim.
+        var bInteractive = step.bInteractive === true;
         var sPrefix = bInteractive ? "I" : "A";
         var iCount = 0;
         for (var i = 0; i <= iIndex; i++) {
@@ -746,37 +976,33 @@ const PipeleyenApp = (function () {
 
     function fsBuildWarningBadge(step, iIndex) {
         var listWarnings = [];
-        var listMod = (step.dictVerification || {})
-            .listModifiedFiles || [];
+        var dictV = step.dictVerification || {};
+        var listMod = dictV.listModifiedFiles || [];
         if (listMod.length > 0) {
             var sNames = listMod.map(function (s) {
                 return s.split("/").pop();
             }).join(", ");
             listWarnings.push("Modified: " + sNames);
         }
-        fnAppendTestWarning(step, iIndex, listWarnings);
-        fnAppendDepsWarning(iIndex, listWarnings);
+        if (fbAnyDepTimingStale(iIndex)) {
+            listWarnings.push(
+                "Upstream changed; rerun to re-verify");
+        }
         if (listWarnings.length === 0) return "";
         var sTooltip = fnEscapeHtml(listWarnings.join("\n"));
         return '<span class="data-modified-badge" ' +
             'title="' + sTooltip + '">&#9888;</span>';
     }
 
-    function fnAppendTestWarning(step, iIndex, listWarnings) {
-        var bInteractive = step.bInteractive === true;
-        var bPlotOnly = (step.saDataCommands || []).length === 0;
-        if (bInteractive || bPlotOnly) return;
-        var sUnit = fsEffectiveTestState(step);
-        if (sUnit === "failed") {
-            listWarnings.push("Unit tests failing");
+    function fbAnyDepTimingStale(iStep) {
+        var listDeps = flistGetStepDependencies(iStep);
+        for (var i = 0; i < listDeps.length; i++) {
+            var iDep = listDeps[i];
+            if (iDep === iStep) continue;
+            var tStates = ftComputeDepAxisStates(iStep, iDep);
+            if (tStates.sTiming === "failed") return true;
         }
-    }
-
-    function fnAppendDepsWarning(iIndex, listWarnings) {
-        var sDeps = fsComputeDepsState(iIndex);
-        if (sDeps === "failed") {
-            listWarnings.push("Dependencies failing");
-        }
+        return false;
     }
 
     function fdictGetVerification(step) {
@@ -969,38 +1195,80 @@ const PipeleyenApp = (function () {
     function fsComputeDepsState(iStep) {
         var listDeps = flistGetStepDependencies(iStep);
         if (listDeps.length === 0) return "none";
-        var dictVisited = {};
+        var bAnyFailed = false;
+        var bAnyUnknown = false;
         for (var i = 0; i < listDeps.length; i++) {
-            if (!fbStepFullyPassing(listDeps[i], dictVisited)) {
-                return "failed";
+            var iDep = listDeps[i];
+            if (iDep === iStep) continue;
+            var tStates = ftComputeDepAxisStates(iStep, iDep);
+            if (tStates.sStepStatus === "failed" ||
+                    tStates.sTiming === "failed") {
+                bAnyFailed = true;
+            } else if (tStates.sTiming === "unknown") {
+                bAnyUnknown = true;
             }
         }
+        if (bAnyFailed) return "failed";
+        if (bAnyUnknown) return "untested";
         return "passed";
     }
 
-    function fsDepLabelColorClass(iDep, bPassing) {
-        if (document.body.classList.contains("all-verified")) {
-            return "";
-        }
-        if (bPassing) return "dep-status-blue";
-        var depStep = _dictWorkflowState.dictWorkflow.listSteps[iDep];
-        if (!depStep) return "dep-status-red";
-        var sDepState = fsDepStepOverallState(depStep, iDep);
-        if (sDepState === "partial") return "dep-status-orange";
-        return "dep-status-red";
+    function ftComputeDepAxisStates(iStep, iDep) {
+        var dictVisited = {};
+        var bStepStatus = fbStepFullyPassing(iDep, dictVisited);
+        var dictMax = _dictWorkflowState.dictOutputMtimes || {};
+        var iDepMtime = parseInt(dictMax[String(iDep)] || "0", 10);
+        var iMyOutputMtime = parseInt(
+            dictMax[String(iStep)] || "0", 10);
+        var sTiming = _fsComputeDepLineageTiming(
+            iStep, iDep, iDepMtime, iMyOutputMtime,
+        );
+        var dictTestSrc =
+            _dictWorkflowState.dictTestSourceMtimeByStep || {};
+        var sTestSrc = dictTestSrc[String(iDep)];
+        var iDepTestSrcMtime = sTestSrc !== undefined
+            ? parseInt(sTestSrc, 10) : null;
+        return {
+            sStepStatus: bStepStatus ? "passed" : "failed",
+            sTiming: sTiming,
+            iDepMtime: iDepMtime,
+            iMyOutputMtime: iMyOutputMtime,
+            iDepTestSrcMtime: iDepTestSrcMtime,
+        };
     }
 
-    function fsDepStepOverallState(depStep, iDep) {
-        var dictVerify = fdictGetVerification(depStep);
-        var bUserPassed = dictVerify.sUser === "passed";
-        var bUnitPassed = fsEffectiveTestState(depStep) === "passed";
-        var sDeps = fsComputeDepsState(iDep);
-        var bDepsPassed = sDeps === "none" || sDeps === "passed";
-        var bAnyPassed = bUserPassed || bUnitPassed || bDepsPassed;
-        var bAllPassed = bUserPassed && bUnitPassed && bDepsPassed;
-        if (bAllPassed) return "passed";
-        if (bAnyPassed) return "partial";
-        return "failed";
+    function _fsComputeDepLineageTiming(
+        iStep, iDep, iDepMtime, iMyOutputMtime,
+    ) {
+        /* The unit-test source mtime is the contract: when the
+           upstream's correctness criteria were last written. If the
+           contract was in force at the moment downstream was built
+           (and is still currently met, captured by sStepStatus
+           passing), the lineage is intact — even if the upstream
+           data was rerun and produced bit-identical bytes with a
+           fresher mtime. Falls back to upstream-output-mtime
+           comparison for steps without a test contract (interactive
+           and plot-only steps). Key-presence (not value > 0) marks
+           "contract exists" so a legitimate mtime=0 (e.g. files
+           placed by a sync that did not preserve mtimes) still
+           satisfies the gate. */
+        if (!iMyOutputMtime) return "unknown";
+        var dictTestSrc =
+            _dictWorkflowState.dictTestSourceMtimeByStep || {};
+        var sTestSrc = dictTestSrc[String(iDep)];
+        if (sTestSrc !== undefined) {
+            var iDepTestSrcMtime = parseInt(sTestSrc, 10);
+            return iDepTestSrcMtime <= iMyOutputMtime
+                ? "passed" : "failed";
+        }
+        if (!iDepMtime) return "unknown";
+        return iDepMtime <= iMyOutputMtime ? "passed" : "failed";
+    }
+
+    function _fsClassifyVerificationSignal(sState) {
+        if (sState === "passed") return "passed";
+        if (sState === "failed" || sState === "error") return "failed";
+        return "untested";
     }
 
     function fnSetVerificationUserName(sName) {
@@ -1009,7 +1277,6 @@ const PipeleyenApp = (function () {
 
     function fsComputeStepDotState(step, iIndex) {
         var dictVerify = fdictGetVerification(step);
-        var sUser = dictVerify.sUser;
         var bInteractive = step.bInteractive === true;
         var bPlotOnly = (step.saDataCommands || []).length === 0;
         var listModified = dictVerify.listModifiedFiles || [];
@@ -1017,28 +1284,29 @@ const PipeleyenApp = (function () {
             fbAnyUpstreamModified(iIndex) ||
             _dictWorkflowState.dictScriptModified[iIndex] === "modified";
         var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
-            !!(step.dictRunStats || {}).sLastRun ||
             !!_dictWorkflowState.dictOutputMtimes[String(iIndex)];
-
         if (!bHasData) return "";
 
-        var bHasUnitTests = !bInteractive && !bPlotOnly;
-        var sUnit = bHasUnitTests ?
-            fsEffectiveTestState(step) : null;
+        var listSignals = [
+            _fsClassifyVerificationSignal(dictVerify.sUser)];
+        if (!bInteractive && !bPlotOnly) {
+            listSignals.push(_fsClassifyVerificationSignal(
+                fsEffectiveTestState(step)));
+        }
         var sDeps = fsComputeDepsState(iIndex);
-        var bHasDeps = sDeps !== "none";
-
-        var bUserPassed = sUser === "passed";
-        var bUnitPassed = !bHasUnitTests || sUnit === "passed";
-        var bDepsPassed = !bHasDeps || sDeps === "passed";
-
-        if (bUserPassed && bUnitPassed && bDepsPassed) {
-            return bDirty ? "partial" : "verified";
+        if (sDeps !== "none") {
+            listSignals.push(_fsClassifyVerificationSignal(sDeps));
         }
-        if (bUserPassed || (bHasUnitTests && sUnit === "passed") ||
-            (bHasDeps && sDeps === "passed")) {
-            return "partial";
-        }
+
+        var bAllPassed = listSignals.every(function (s) {
+            return s === "passed";
+        });
+        var bAnyPassed = listSignals.some(function (s) {
+            return s === "passed";
+        });
+
+        if (bAllPassed) return bDirty ? "partial" : "verified";
+        if (bAnyPassed) return "partial";
         return "fail";
     }
 
@@ -1060,27 +1328,6 @@ const PipeleyenApp = (function () {
         }
         var dictData = dictStep.dictDataFileCategories || {};
         return dictData[sFilePath] || "archive";
-    }
-
-    async function fnToggleArchiveCategory(
-        iStep, sFilePath, sArrayKey
-    ) {
-        var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
-        var sDictKey = sArrayKey === "saDataFiles" ?
-            "dictDataFileCategories" : "dictPlotFileCategories";
-        if (!dictStep[sDictKey]) {
-            dictStep[sDictKey] = {};
-        }
-        var sCurrentCategory = fsGetFileCategory(
-            iStep, sFilePath, sArrayKey
-        );
-        var sNewCategory = sCurrentCategory === "archive" ?
-            "supporting" : "archive";
-        dictStep[sDictKey][sFilePath] = sNewCategory;
-        var dictUpdate = {};
-        dictUpdate[sDictKey] = dictStep[sDictKey];
-        await fnSaveStepUpdate(iStep, dictUpdate);
-        fnRenderStepList();
     }
 
     function fnBindStepEvents() {
@@ -1123,11 +1370,16 @@ const PipeleyenApp = (function () {
 
     function fnHandleDiscoveredOutputs(dictEvent) {
         var iStep = dictEvent.iStepNumber - 1;
-        _dictWorkflowState.dictDiscoveredOutputs[iStep] = dictEvent.listDiscovered;
+        var iTotal = (typeof dictEvent.iTotalDiscovered === "number") ?
+            dictEvent.iTotalDiscovered : dictEvent.listDiscovered.length;
+        _dictWorkflowState.dictDiscoveredOutputs[iStep] = {
+            listDiscovered: dictEvent.listDiscovered,
+            iTotalDiscovered: iTotal,
+        };
         fnRenderStepList();
         fnShowToast(
             "Step " + dictEvent.iStepNumber +
-            ": " + dictEvent.listDiscovered.length +
+            ": " + iTotal +
             " new output(s) discovered", "success"
         );
     }
@@ -1141,10 +1393,15 @@ const PipeleyenApp = (function () {
         var dictUpdate = {};
         dictUpdate[sTargetArray] = dictStep[sTargetArray];
         await fnSaveStepUpdate(iStep, dictUpdate);
-        var listDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] || [];
-        _dictWorkflowState.dictDiscoveredOutputs[iStep] = listDisc.filter(
+        var dictDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] ||
+            {listDiscovered: [], iTotalDiscovered: 0};
+        var listFiltered = (dictDisc.listDiscovered || []).filter(
             function (d) { return d.sFilePath !== sFile; }
         );
+        _dictWorkflowState.dictDiscoveredOutputs[iStep] = {
+            listDiscovered: listFiltered,
+            iTotalDiscovered: dictDisc.iTotalDiscovered || 0,
+        };
         fnRenderStepList();
     }
 
@@ -1193,10 +1450,12 @@ const PipeleyenApp = (function () {
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return false;
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         if (listSteps.length === 0) return false;
+        /* Every step counts toward verification — bRunEnabled is run
+           scope (whether to include in the next run), not verification
+           scope. Disabling a step from the run list does not promote
+           the workflow toward Vaibified. */
         for (var i = 0; i < listSteps.length; i++) {
-            var step = listSteps[i];
-            if (step.bEnabled === false) continue;
-            if (!fbAllVerificationComplete(step, i)) return false;
+            if (!fbAllVerificationComplete(listSteps[i], i)) return false;
         }
         return true;
     }
@@ -1445,13 +1704,13 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    async function fnToggleStepEnabled(iIndex, bEnabled) {
+    async function fnToggleStepEnabled(iIndex, bRunEnabled) {
         try {
             await VaibifyApi.fdictPut(
                 "/api/steps/" + _dictSessionState.sContainerId + "/" + iIndex,
-                {bEnabled: bEnabled}
+                {bRunEnabled: bRunEnabled}
             );
-            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bEnabled = bEnabled;
+            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bRunEnabled = bRunEnabled;
         } catch (error) {
             fnShowToast("Failed to update step", "error");
         }
@@ -1658,6 +1917,22 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictPlotMtimes =
                 dictStatus.dictMaxPlotMtimeByStep;
         }
+        if (dictStatus.dictMaxDataMtimeByStep) {
+            _dictWorkflowState.dictMaxDataMtimeByStep =
+                dictStatus.dictMaxDataMtimeByStep;
+        }
+        if (dictStatus.dictMarkerMtimeByStep) {
+            _dictWorkflowState.dictMarkerMtimeByStep =
+                dictStatus.dictMarkerMtimeByStep;
+        }
+        if (dictStatus.dictTestSourceMtimeByStep) {
+            _dictWorkflowState.dictTestSourceMtimeByStep =
+                dictStatus.dictTestSourceMtimeByStep;
+        }
+        if (dictStatus.dictTestCategoryMtimes) {
+            _dictWorkflowState.dictTestCategoryMtimes =
+                dictStatus.dictTestCategoryMtimes;
+        }
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
@@ -1690,6 +1965,7 @@ const PipeleyenApp = (function () {
             if (dictVerify.sUser !== "passed") continue;
             if (_fbOutputNewerThanVerification(i, dictVerify)) {
                 dictVerify.sUser = "untested";
+                delete dictVerify.sLastUserUpdate;
                 dictStep.dictVerification = dictVerify;
                 bChanged = true;
             }
@@ -1715,21 +1991,16 @@ const PipeleyenApp = (function () {
     }
 
     function fnUpdateDepsTimestamps() {
-        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return;
+        if (!_dictWorkflowState.dictWorkflow ||
+                !_dictWorkflowState.dictWorkflow.listSteps) return;
+        var sNow = fsFormatUtcTimestamp();
         for (var i = 0; i < _dictWorkflowState.dictWorkflow.listSteps.length; i++) {
             var listDeps = flistGetStepDependencies(i);
             if (listDeps.length === 0) continue;
-            var sDepsState = fsComputeDepsState(i);
             var dictStep = _dictWorkflowState.dictWorkflow.listSteps[i];
             var dictVerify = dictStep.dictVerification || {};
-            var sOld = dictVerify.sLastDepsCheck || "";
-            if (sDepsState === "passed" && !sOld) {
-                dictVerify.sLastDepsCheck = fsFormatUtcTimestamp();
-                dictStep.dictVerification = dictVerify;
-            } else if (sDepsState !== "passed" && sOld) {
-                dictVerify.sLastDepsCheck = "";
-                dictStep.dictVerification = dictVerify;
-            }
+            dictVerify.sLastDepsCheck = sNow;
+            dictStep.dictVerification = dictVerify;
         }
     }
 
@@ -2005,7 +2276,6 @@ const PipeleyenApp = (function () {
         /* New public methods for extracted modules */
         fnDeleteDetailItem: fnDeleteDetailItem,
         fnAddDiscoveredOutput: fnAddDiscoveredOutput,
-        fnToggleArchiveCategory: fnToggleArchiveCategory,
         fnAddNewItem: fnAddNewItem,
         fnCycleUserVerification: fnCycleUserVerification,
         fsetGetExpandedCategory: fsetGetExpandedCategory,
@@ -2025,6 +2295,9 @@ const PipeleyenApp = (function () {
         },
         fnDisconnect: fnDisconnect,
         fnShowContainerLanding: fnShowContainerLanding,
+        fnStopAllHubPolling: fnStopAllHubPolling,
+        fnResumeHubPollingForCurrentView:
+            fnResumeHubPollingForCurrentView,
         fbIsWorkflowMode: function () {
             return _dictSessionState.dictDashboardMode &&
                 _dictSessionState.dictDashboardMode.sMode ===
@@ -2062,7 +2335,34 @@ function fnBlockUnload(event) {
     event.returnValue = "";
 }
 
+function fnReleaseActiveContainerOnUnload() {
+    if (typeof PipeleyenContainerManager === "undefined") return;
+    var sName = PipeleyenContainerManager.fsGetSelectedContainerName();
+    if (!sName) return;
+    try {
+        fetch(
+            "/api/registry/" + encodeURIComponent(sName) + "/release",
+            {method: "POST", keepalive: true},
+        );
+    } catch (error) {
+        /* best-effort: the hub's shutdown hook will catch it later */
+    }
+}
+
 window.addEventListener("beforeunload", fnBlockUnload);
+window.addEventListener("pagehide", function (event) {
+    PipeleyenApp.fnStopAllHubPolling();
+    if (event.persisted) return;
+    fnReleaseActiveContainerOnUnload();
+});
+
+document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+        PipeleyenApp.fnStopAllHubPolling();
+    } else {
+        PipeleyenApp.fnResumeHubPollingForCurrentView();
+    }
+});
 
 window.addEventListener("keydown", function (event) {
     var bCloseShortcut = (event.metaKey || event.ctrlKey) &&

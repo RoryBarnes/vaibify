@@ -7,7 +7,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from vaibify.gui.registryRoutes import (
-    _fbContainerHasTty,
     _fbDockerContainerExists,
     _fdictRequireProject,
     _fnDockerStopCommand,
@@ -17,7 +16,6 @@ from vaibify.gui.registryRoutes import (
     _fnRejectDuplicateProjectName,
     _fnRemoveContainer,
     _fnUpdateYamlBoolField,
-    _fsDockerStartExisting,
     _fsExecuteStart,
     _fsStartOrCreate,
 )
@@ -122,31 +120,10 @@ class TestStartOrCreate:
             with pytest.raises(RuntimeError, match="already running"):
                 _fsStartOrCreate(MagicMock(), "proj", "/docker")
 
-    def test_starts_existing_with_tty(self):
+    def test_removes_existing_and_creates_fresh(self):
         with patch(
             "vaibify.docker.containerManager.fdictGetContainerStatus",
             return_value={"bRunning": False, "bExists": True},
-        ), patch(
-            "vaibify.gui.registryRoutes._fbContainerHasTty",
-            return_value=True,
-        ), patch(
-            "vaibify.gui.registryRoutes._fbContainerUsesSleepInfinity",
-            return_value=True,
-        ), patch(
-            "vaibify.gui.registryRoutes._fsDockerStartExisting",
-            return_value="xyz789",
-        ) as mockStart:
-            sResult = _fsStartOrCreate(MagicMock(), "proj", "/docker")
-            assert sResult == "xyz789"
-            mockStart.assert_called_once_with("proj")
-
-    def test_removes_and_creates_without_tty(self):
-        with patch(
-            "vaibify.docker.containerManager.fdictGetContainerStatus",
-            return_value={"bRunning": False, "bExists": True},
-        ), patch(
-            "vaibify.gui.registryRoutes._fbContainerHasTty",
-            return_value=False,
         ), patch(
             "vaibify.gui.registryRoutes._fnRemoveContainer",
         ) as mockRemove, patch(
@@ -170,34 +147,7 @@ class TestStartOrCreate:
 
 
 # ---------------------------------------------------------------
-# _fbContainerHasTty (lines 208-216)
-# ---------------------------------------------------------------
-
-class TestContainerHasTty:
-    def test_returns_true_for_true_output(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 0
-        mockResult.stdout = "true\n"
-        with patch("subprocess.run", return_value=mockResult):
-            assert _fbContainerHasTty("proj") is True
-
-    def test_returns_false_for_false_output(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 0
-        mockResult.stdout = "false\n"
-        with patch("subprocess.run", return_value=mockResult):
-            assert _fbContainerHasTty("proj") is False
-
-    def test_returns_false_on_failure(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 1
-        mockResult.stdout = ""
-        with patch("subprocess.run", return_value=mockResult):
-            assert _fbContainerHasTty("proj") is False
-
-
-# ---------------------------------------------------------------
-# _fnRemoveContainer (lines 221-222)
+# _fnRemoveContainer
 # ---------------------------------------------------------------
 
 class TestRemoveContainer:
@@ -210,29 +160,7 @@ class TestRemoveContainer:
 
 
 # ---------------------------------------------------------------
-# _fsDockerStartExisting (lines 230-240)
-# ---------------------------------------------------------------
-
-class TestDockerStartExisting:
-    def test_returns_container_id(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 0
-        mockResult.stdout = "abc123\n"
-        with patch("subprocess.run", return_value=mockResult):
-            sResult = _fsDockerStartExisting("proj")
-            assert sResult == "abc123"
-
-    def test_raises_on_failure(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 1
-        mockResult.stderr = "Error response\n"
-        with patch("subprocess.run", return_value=mockResult):
-            with pytest.raises(RuntimeError, match="docker start failed"):
-                _fsDockerStartExisting("proj")
-
-
-# ---------------------------------------------------------------
-# _fnExecuteStop (lines 261-272)
+# _fnExecuteStop
 # ---------------------------------------------------------------
 
 class TestExecuteStop:
@@ -340,6 +268,7 @@ class TestContainerSettings:
         )
         mockConfig = MagicMock()
         mockConfig.bNeverSleep = True
+        mockConfig.features.bClaude = False
         with patch(
             "vaibify.config.projectConfig.fconfigLoadFromFile",
             return_value=mockConfig,
@@ -348,7 +277,10 @@ class TestContainerSettings:
                 "/api/containers/settings-proj/settings",
             )
         assert response.status_code == 200
-        assert response.json()["bNeverSleep"] is True
+        dictBody = response.json()
+        assert dictBody["bNeverSleep"] is True
+        assert dictBody["bClaudeInstalled"] is False
+        assert "bClaudeAutoUpdate" not in dictBody
 
     def test_post_settings(
         self, fixtureSettingsClient, tmp_path,
@@ -383,6 +315,97 @@ class TestContainerSettings:
             json={"bNeverSleep": False},
         )
         assert response.status_code == 404
+
+
+def _fnWriteClaudeConfig(tmp_path, sProjectName, bAutoUpdate):
+    """Create a minimal vaibify.yml with Claude enabled."""
+    sProjectDir = str(tmp_path / sProjectName)
+    os.makedirs(sProjectDir, exist_ok=True)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write(
+            f"projectName: {sProjectName}\n"
+            "features:\n"
+            "  claude: true\n"
+            f"  claudeAutoUpdate: {'true' if bAutoUpdate else 'false'}\n"
+        )
+    return sProjectDir
+
+
+class TestClaudeAutoUpdateSettings:
+    def test_get_includes_auto_update_when_claude_on(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteClaudeConfig(
+            tmp_path, "claude-proj", True,
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.get(
+            "/api/containers/claude-proj/settings",
+        )
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert dictBody["bClaudeInstalled"] is True
+        assert dictBody["bClaudeAutoUpdate"] is True
+
+    def test_post_updates_auto_update_and_signals_restart(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteClaudeConfig(
+            tmp_path, "claude-proj-flip", True,
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/claude-proj-flip/settings",
+            json={"bClaudeAutoUpdate": False},
+        )
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert dictBody["bSuccess"] is True
+        assert dictBody["bRestartRequired"] is True
+        response = fixtureSettingsClient.get(
+            "/api/containers/claude-proj-flip/settings",
+        )
+        assert response.json()["bClaudeAutoUpdate"] is False
+
+    def test_post_unchanged_value_signals_no_restart(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteClaudeConfig(
+            tmp_path, "claude-proj-same", True,
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/claude-proj-same/settings",
+            json={"bClaudeAutoUpdate": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["bRestartRequired"] is False
+
+    def test_post_rejects_when_claude_disabled(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteMinimalConfig(
+            tmp_path, "no-claude",
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/no-claude/settings",
+            json={"bClaudeAutoUpdate": True},
+        )
+        assert response.status_code == 409
 
 
 # ---------------------------------------------------------------

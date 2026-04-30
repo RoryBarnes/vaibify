@@ -37,13 +37,14 @@ class TestDispatchRunFrom:
         sContainerId = "ctr1"
         dictRequest = {"iStartStep": 3}
         fnCallback = AsyncMock()
+        dictWorkflow = {"listSteps": []}
         with patch(
             "vaibify.gui.pipelineServer.fnRunFromStep",
             new_callable=AsyncMock,
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
                 mockDocker, sContainerId, dictRequest,
-                "/workspace", fnCallback,
+                dictWorkflow, "/workspace", fnCallback,
             )
             mockRunFrom.assert_called_once_with(
                 mockDocker, sContainerId, 3, "/workspace",
@@ -54,15 +55,37 @@ class TestDispatchRunFrom:
     async def test_defaults_to_step_one(self):
         mockDocker = MagicMock()
         fnCallback = AsyncMock()
+        dictWorkflow = {"listSteps": []}
         with patch(
             "vaibify.gui.pipelineServer.fnRunFromStep",
             new_callable=AsyncMock,
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
                 mockDocker, "ctr1", {},
-                "/workspace", fnCallback,
+                dictWorkflow, "/workspace", fnCallback,
             )
             assert mockRunFrom.call_args[0][2] == 1
+
+    @pytest.mark.asyncio
+    async def test_resolves_start_step_label(self):
+        """sStartStepLabel 'A01' resolves to iStartStep=2 (1-based)."""
+        mockDocker = MagicMock()
+        fnCallback = AsyncMock()
+        dictWorkflow = {"listSteps": [
+            {"sName": "Intro", "bInteractive": True},
+            {"sName": "Auto1"},
+        ]}
+        dictRequest = {"sStartStepLabel": "A01"}
+        with patch(
+            "vaibify.gui.pipelineServer.fnRunFromStep",
+            new_callable=AsyncMock,
+        ) as mockRunFrom:
+            await _fnDispatchRunFrom(
+                mockDocker, "ctr1", dictRequest,
+                dictWorkflow, "/workspace", fnCallback,
+            )
+            # A01 is listSteps[1] (index 1); 1-based = 2.
+            assert mockRunFrom.call_args[0][2] == 2
 
 
 # ---------------------------------------------------------------
@@ -164,6 +187,111 @@ class TestDispatchSelected:
         mockRunSelected.assert_called_once()
         listIndices = mockRunSelected.call_args[0][2]
         assert listIndices == [1, 3]
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_resolves_step_labels(self, mockRunSelected):
+        """listStepLabels translate via the canonical helper."""
+        dictRequest = {"listStepLabels": ["A01", "A02"]}
+        dictWorkflow = {"listSteps": [
+            {"sName": "Intro", "bInteractive": True},
+            {"sName": "Auto1"},
+            {"sName": "Auto2"},
+        ]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        await _fnDispatchSelected(
+            MagicMock(), "ctr1", dictRequest,
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        listIndices = mockRunSelected.call_args[0][2]
+        assert listIndices == [1, 2]
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_merges_indices_and_labels_deduplicated(
+        self, mockRunSelected,
+    ):
+        """Indices first, labels second, duplicates dropped."""
+        dictRequest = {
+            "listStepIndices": [1],
+            "listStepLabels": ["A01", "A02"],
+        }
+        dictWorkflow = {"listSteps": [
+            {"sName": "Intro", "bInteractive": True},
+            {"sName": "Auto1"},
+            {"sName": "Auto2"},
+        ]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        await _fnDispatchSelected(
+            MagicMock(), "ctr1", dictRequest,
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        listIndices = mockRunSelected.call_args[0][2]
+        # A01 -> 1 is a duplicate of listStepIndices[0]; A02 -> 2.
+        assert listIndices == [1, 2]
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_default_run_mode_is_full(self, mockRunSelected):
+        """Requests without sRunMode fall back to 'full'."""
+        dictRequest = {"listStepIndices": [0]}
+        dictWorkflow = {"listSteps": [{"sName": "Auto1"}]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        await _fnDispatchSelected(
+            MagicMock(), "ctr1", dictRequest,
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        assert mockRunSelected.call_args.kwargs["sRunMode"] == "full"
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_plotsOnly_threads_through(self, mockRunSelected):
+        dictRequest = {
+            "listStepIndices": [0], "sRunMode": "plotsOnly",
+        }
+        dictWorkflow = {"listSteps": [{"sName": "Auto1"}]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        await _fnDispatchSelected(
+            MagicMock(), "ctr1", dictRequest,
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        assert mockRunSelected.call_args.kwargs["sRunMode"] == "plotsOnly"
+
+    @pytest.mark.asyncio
+    async def test_unknown_run_mode_raises(self):
+        """Bad sRunMode from the wire must fail loudly at the boundary."""
+        dictRequest = {
+            "listStepIndices": [0], "sRunMode": "nonsense",
+        }
+        dictWorkflow = {"listSteps": [{"sName": "Auto1"}]}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        from vaibify.gui.pipelineServer import _fnDispatchSelected
+        with pytest.raises(ValueError, match="Unknown sRunMode"):
+            await _fnDispatchSelected(
+                MagicMock(), "ctr1", dictRequest,
+                dictWorkflow, dictPathCache,
+                "/workspace", AsyncMock(),
+            )
 
 
 # ---------------------------------------------------------------

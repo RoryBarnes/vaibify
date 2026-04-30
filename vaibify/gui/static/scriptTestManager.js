@@ -20,9 +20,10 @@ var PipeleyenTestManager = (function () {
         if (step && (step.saTestCommands || []).length > 0) {
             var bConfirmed = await new Promise(function (resolve) {
                 PipeleyenApp.fnShowConfirmModal(
-                    "Overwrite Tests",
+                    "Replace Tests",
                     "Tests already exist for this step. " +
-                    "Generate new tests will overwrite them.",
+                    "Replacing them will overwrite the " +
+                    "existing test files.",
                     function () { resolve(true); },
                     function () { resolve(false); }
                 );
@@ -172,8 +173,34 @@ var PipeleyenTestManager = (function () {
             sStepLabel + ": " + iSuccessCount +
             " of 3 test categories generated. Running\u2026",
             iSuccessCount === 3 ? "success" : "error");
+        fnNotifyStochasticity(sStepLabel, dictResult);
         if (listAllCommands.length > 0) {
             fnRunStepTests(iStep);
+        }
+    }
+
+    function fnNotifyStochasticity(sStepLabel, dictResult) {
+        var dictQ = dictResult && dictResult.dictQuantitative;
+        if (!dictQ) return;
+        var sClass = dictQ.sStochasticityClassification || "";
+        if (sClass === "stochastic") {
+            PipeleyenApp.fnShowToast(
+                sStepLabel + ": stochastic outputs detected. " +
+                "Standards use distributional metrics " +
+                "(Mean, P5, P25, P50, P75, P95, std).",
+                "info");
+        } else if (sClass === "stochastic_unseeded") {
+            PipeleyenApp.fnShowToast(
+                sStepLabel + ": stochastic outputs without a fixed " +
+                "seed. Tolerance is a placeholder \u2014 seed the " +
+                "source of randomness, then regenerate.",
+                "warning");
+        } else if (sClass === "unintrospectable") {
+            PipeleyenApp.fnShowToast(
+                sStepLabel + ": introspector could not parse this " +
+                "step's outputs. Standards came from the LLM " +
+                "fallback \u2014 review them carefully.",
+                "warning");
         }
     }
 
@@ -309,8 +336,6 @@ var PipeleyenTestManager = (function () {
                 step, dictResult.dictCategoryResults);
             step.dictVerification.sUnitTest =
                 dictResult.bPassed ? "passed" : "failed";
-            step.dictVerification.sLastTestRun =
-                VaibifyUtilities.fsFormatUtcTimestamp();
             PipeleyenApp.fnClearOutputModified(iStepIndex);
             var dictStepUpdate = {
                 dictVerification: step.dictVerification,
@@ -384,8 +409,6 @@ var PipeleyenTestManager = (function () {
             sCategory.slice(1);
         dictStep.dictVerification[sKey] =
             dictResult.bPassed ? "passed" : "failed";
-        dictStep.dictVerification.sLastTestRun =
-            VaibifyUtilities.fsFormatUtcTimestamp();
         var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
             sCategory.slice(1);
         var dictTests = dictStep.dictTests || {};
@@ -487,8 +510,6 @@ var PipeleyenTestManager = (function () {
             };
         }
         dictStep.dictVerification.sUnitTest = dictEvent.sResult;
-        dictStep.dictVerification.sLastTestRun =
-            VaibifyUtilities.fsFormatUtcTimestamp();
         fnApplyTestResultToCategories(
             dictStep, dictEvent.sResult, dictEvent.sOutput || "",
             dictEvent.dictCategoryResults || null);
@@ -647,10 +668,13 @@ var PipeleyenTestManager = (function () {
         var bAnyChanged = false;
         for (var sIndex in dictMarkers) {
             var iStep = parseInt(sIndex, 10);
-            if (!fbApplyStepMarker(iStep, dictMarkers[sIndex]))
-                continue;
+            var dictEntry = dictMarkers[sIndex];
+            if (!fbApplyStepMarker(iStep, dictEntry)) continue;
             bAnyChanged = true;
-            var dictMarker = dictMarkers[sIndex].dictMarker || {};
+            // Stale resets are silent — they restore "untested" and
+            // any toast about pass/fail would be misleading.
+            if (dictEntry.bStale) continue;
+            var dictMarker = dictEntry.dictMarker || {};
             var sLabel = PipeleyenApp.fsComputeStepLabel(iStep);
             var iExitStatus = dictMarker.iExitStatus || 0;
             var sVerb = iExitStatus === 0 ? "passed" : "failed";
@@ -666,20 +690,49 @@ var PipeleyenTestManager = (function () {
     function fbApplyStepMarker(iStep, dictEntry) {
         var dictMarker = dictEntry.dictMarker || {};
         var sIndex = String(iStep);
-        var fTimestamp = dictMarker.fTimestamp || 0;
-        if (fTimestamp <= (dictTestMarkerTimestamps[sIndex] || 0))
-            return false;
-        dictTestMarkerTimestamps[sIndex] = fTimestamp;
-        if (dictEntry.bStale) return false;
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-        var dictStep = dictWorkflow.listSteps[iStep];
+        var dictStep = dictWorkflow && dictWorkflow.listSteps
+            ? dictWorkflow.listSteps[iStep] : null;
         if (!dictStep) return false;
         var dictVerify = dictStep.dictVerification || {};
         dictStep.dictVerification = dictVerify;
         var dictCategories = dictMarker.dictCategories || {};
+        if (dictEntry.bStale) {
+            // Mirror backend _fnClearStaleMarkerCategories: a stale
+            // marker's previously-applied "passed"/"failed" no longer
+            // reflects current state, so reset to "untested" here too.
+            // Without this, the in-memory dictVerification keeps the
+            // last applied value forever after the backend has cleared
+            // it, producing a UI/backend desync.
+            return fbClearStaleMarkerCategories(
+                dictVerify, dictCategories
+            );
+        }
+        var fTimestamp = dictMarker.fTimestamp || 0;
+        if (fTimestamp <= (dictTestMarkerTimestamps[sIndex] || 0))
+            return false;
+        dictTestMarkerTimestamps[sIndex] = fTimestamp;
         return fbApplyAllMarkerCategories(
             dictVerify, dictCategories
         );
+    }
+
+    function fbClearStaleMarkerCategories(dictVerify, dictCategories) {
+        var listKeys = [
+            ["integrity", "sIntegrity"],
+            ["qualitative", "sQualitative"],
+            ["quantitative", "sQuantitative"],
+        ];
+        var bChanged = false;
+        for (var i = 0; i < listKeys.length; i++) {
+            var sCategory = listKeys[i][0];
+            var sVerifyKey = listKeys[i][1];
+            if (!dictCategories[sCategory]) continue;
+            if (dictVerify[sVerifyKey] === "untested") continue;
+            dictVerify[sVerifyKey] = "untested";
+            bChanged = true;
+        }
+        return bChanged;
     }
 
     function fbApplyAllMarkerCategories(dictVerify, dictCategories) {

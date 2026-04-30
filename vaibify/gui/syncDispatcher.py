@@ -3,29 +3,45 @@
 import json
 import posixpath
 import re
+import subprocess
 import uuid
 
+from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
+from vaibify.reproducibility.overleafAuth import (
+    fnValidateOverleafProjectId,
+    fsWriteAskpassScript,
+)
+
+from . import stateContract
 from . import workflowManager
 from .pipelineUtils import fsShellQuote
 
 __all__ = [
-    "fbStepInputsUnchanged",
     "fbValidateOverleafCredentials",
     "fbValidateZenodoToken",
+    "fsZenodoInstanceToService",
+    "fsZenodoTokenNameForInstance",
+    "SET_VALID_ZENODO_INSTANCES",
     "fdictCheckConnectivity",
     "fdictClassifyError",
-    "fdictComputeAllScriptHashes",
-    "fdictComputeInputHashes",
+    "fdictDiffOverleafPush",
     "fdictParseTestMarkerOutput",
     "fdictSyncResult",
+    "flistCheckOverleafConflicts",
     "flistCollectOutputFiles",
+    "flistDetectOverleafCaseCollisions",
     "flistExtractAllScriptPaths",
+    "flistGetDirtyFiles",
+    "flistListOverleafTree",
+    "fnDeleteCredentialFromContainer",
     "fnStoreCredentialInContainer",
     "fnValidateOverleafProjectId",
     "fnValidateServiceName",
     "fsBuildDagDot",
     "fsBuildTestMarkerCheckCommand",
     "fsPythonCommand",
+    "fsWriteAskpassScript",
+    "ftRefreshOverleafMirror",
     "ftResultAddFileToGithub",
     "ftResultArchiveProject",
     "ftResultArchiveToZenodo",
@@ -35,12 +51,47 @@ __all__ = [
     "ftResultGenerateLatex",
     "ftResultPullFromOverleaf",
     "ftResultPushScriptsToGithub",
+    "ftResultPushStagedToGithub",
     "ftResultPushToGithub",
     "ftResultPushToOverleaf",
 ]
 
 SET_VALID_SERVICES = {"github", "overleaf", "zenodo"}
-SET_VALID_TOKEN_NAMES = {"overleaf_token", "zenodo_token", "gh_token"}
+SET_VALID_TOKEN_NAMES = {
+    "overleaf_token",
+    "zenodo_token",
+    "zenodo_token_sandbox",
+    "zenodo_token_production",
+    "gh_token",
+}
+SET_VALID_ZENODO_INSTANCES = {"sandbox", "production"}
+_DICT_ZENODO_INSTANCE_TO_SERVICE = {
+    "sandbox": "sandbox",
+    "production": "zenodo",
+}
+_LIST_ZENODO_TOKEN_NAMES = [
+    "zenodo_token_sandbox",
+    "zenodo_token_production",
+    "zenodo_token",
+]
+
+
+def fsZenodoInstanceToService(sZenodoInstance):
+    """Map a UI instance name to the ZenodoClient service key."""
+    if sZenodoInstance not in SET_VALID_ZENODO_INSTANCES:
+        raise ValueError(
+            f"Invalid Zenodo instance: {sZenodoInstance}"
+        )
+    return _DICT_ZENODO_INSTANCE_TO_SERVICE[sZenodoInstance]
+
+
+def fsZenodoTokenNameForInstance(sZenodoInstance):
+    """Return the keyring slot name for a Zenodo UI instance."""
+    if sZenodoInstance not in SET_VALID_ZENODO_INSTANCES:
+        raise ValueError(
+            f"Invalid Zenodo instance: {sZenodoInstance}"
+        )
+    return f"zenodo_token_{sZenodoInstance}"
 
 
 _LIST_AUTH_PATTERNS = [
@@ -52,6 +103,11 @@ _LIST_NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
 _LIST_NETWORK_PATTERNS = [
     "timeout", "connection refused", "network",
     "could not resolve", "no route",
+]
+_LIST_CONFLICT_PATTERNS = [
+    "non-fast-forward", "fetch first",
+    "updates were rejected",
+    "merge conflict",
 ]
 
 
@@ -70,6 +126,9 @@ def fdictClassifyError(iExitCode, sOutput):
     for sPattern in _LIST_NETWORK_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "network", "sMessage": sOutput}
+    for sPattern in _LIST_CONFLICT_PATTERNS:
+        if sPattern in sLower:
+            return {"sErrorType": "conflict", "sMessage": sOutput}
     return {"sErrorType": "unknown", "sMessage": sOutput}
 
 
@@ -97,67 +156,117 @@ def ftResultPushToOverleaf(
     connectionDocker, sContainerId,
     listFilePaths, sProjectId, sTargetDirectory,
     dictWorkflow=None, sGithubBaseUrl="", sDoi="",
-    sTexFilename="main.tex",
+    sTexFilename="main.tex", sMirrorSha="",
 ):
-    """Push figures to Overleaf, optionally annotating the TeX."""
+    """Push figures to Overleaf, optionally annotating the TeX.
+
+    When ``sMirrorSha`` is provided, the container CLI is invoked with
+    ``--mirror-sha <short>`` so the commit message on Overleaf records
+    which mirror snapshot the push was built on. The command's stdout
+    now contains a ``HEAD_SHA=<40hex>`` line alongside the ``ok``
+    marker; callers that care about the post-push head should consult
+    :func:`fsParseHeadShaFromOutput`.
+    """
     fnValidateOverleafProjectId(sProjectId)
     if dictWorkflow and sGithubBaseUrl:
         return _ftResultAnnotatedPush(
             connectionDocker, sContainerId, listFilePaths,
             sProjectId, sTargetDirectory, dictWorkflow,
-            sGithubBaseUrl, sDoi, sTexFilename,
+            sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
         )
     return _ftResultPlainPush(
         connectionDocker, sContainerId, listFilePaths,
-        sProjectId, sTargetDirectory,
+        sProjectId, sTargetDirectory, sMirrorSha,
     )
+
+
+def fsParseHeadShaFromOutput(sOutput):
+    """Extract a ``HEAD_SHA=<hex>`` line from CLI stdout, or empty."""
+    for sLine in (sOutput or "").splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("HEAD_SHA="):
+            return sStripped.split("=", 1)[1].strip()
+    return ""
+
+
+def fsParsePushStatusFromOutput(sOutput):
+    """Extract a ``PUSH_STATUS=<value>`` line from CLI stdout, or empty."""
+    for sLine in (sOutput or "").splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("PUSH_STATUS="):
+            return sStripped.split("=", 1)[1].strip()
+    return ""
+
+
+_S_OVERLEAF_SCRIPT = "/usr/share/vaibify/overleafSync.py"
+
+
+def _fsOverleafCliBase(
+    sSubcommand, sProjectId, sTargetDirectory=None, sMirrorSha="",
+):
+    """Build the python3 invocation prefix for an overleafSync CLI call."""
+    listParts = [
+        "python3", _S_OVERLEAF_SCRIPT, sSubcommand,
+        "--project", fsShellQuote(sProjectId),
+    ]
+    if sTargetDirectory is not None:
+        listParts += ["--target", fsShellQuote(sTargetDirectory)]
+    if sMirrorSha:
+        listParts += ["--mirror-sha", fsShellQuote(sMirrorSha)]
+    return " ".join(listParts)
+
+
+def _fsPipeStdinCommand(sStdinData, sCommand):
+    """Compose a ``printf ... | command`` string with safe quoting."""
+    return f"printf '%s' {fsShellQuote(sStdinData)} | {sCommand}"
+
+
+def _fsFetchOverleafToken():
+    """Fetch the Overleaf token from the host keyring for per-push use."""
+    from vaibify.config.secretManager import fsRetrieveSecret
+    return fsRetrieveSecret("overleaf_token", "keyring")
+
+
+def _fsPrependToken(sToken, sPayload):
+    """Prepend the token as the first stdin line before a payload."""
+    return sToken + "\n" + sPayload
 
 
 def _ftResultPlainPush(
     connectionDocker, sContainerId,
-    listFilePaths, sProjectId, sTargetDirectory,
+    listFilePaths, sProjectId, sTargetDirectory, sMirrorSha="",
 ):
     """Push figures without TeX annotation."""
-    sImport = (
-        "from vaibify.reproducibility.overleafSync "
-        "import fnPushFiguresToOverleaf"
-    )
-    sCall = (
-        f"fnPushFiguresToOverleaf("
-        f"{repr(listFilePaths)}, "
-        f"{repr(sProjectId)}, "
-        f"{repr(sTargetDirectory)})"
+    sStdin = _fsPrependToken(
+        _fsFetchOverleafToken(), "\n".join(listFilePaths))
+    sCli = _fsOverleafCliBase(
+        "push", sProjectId, sTargetDirectory, sMirrorSha,
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
 
 
 def _ftResultAnnotatedPush(
     connectionDocker, sContainerId, listFilePaths,
     sProjectId, sTargetDirectory, dictWorkflow,
-    sGithubBaseUrl, sDoi, sTexFilename,
+    sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha="",
 ):
     """Push figures and annotate the TeX with source links."""
-    import json
-    sWorkflowJson = json.dumps(dictWorkflow)
-    sImport = (
-        "import json; "
-        "from vaibify.reproducibility.overleafSync "
-        "import fnPushAnnotatedToOverleaf"
-    )
-    sCall = (
-        f"fnPushAnnotatedToOverleaf("
-        f"{repr(listFilePaths)}, "
-        f"{repr(sProjectId)}, "
-        f"{repr(sTargetDirectory)}, "
-        f"json.loads({repr(sWorkflowJson)}), "
-        f"{repr(sGithubBaseUrl)}, "
-        f"{repr(sDoi)}, "
-        f"{repr(sTexFilename)})"
+    sPayload = json.dumps({
+        "listFigurePaths": listFilePaths,
+        "dictWorkflow": dictWorkflow,
+    })
+    sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
+    sCli = (
+        _fsOverleafCliBase(
+            "push-annotated", sProjectId, sTargetDirectory, sMirrorSha)
+        + f" --github-base-url {fsShellQuote(sGithubBaseUrl)}"
+        + f" --doi {fsShellQuote(sDoi)}"
+        + f" --tex-filename {fsShellQuote(sTexFilename)}"
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
 
 
@@ -167,58 +276,322 @@ def ftResultPullFromOverleaf(
 ):
     """Pull TeX files from Overleaf inside the container."""
     fnValidateOverleafProjectId(sProjectId)
-    sImport = (
-        "from vaibify.reproducibility.overleafSync "
-        "import fnPullTexFromOverleaf"
-    )
-    sCall = (
-        f"fnPullTexFromOverleaf("
-        f"{repr(sProjectId)}, "
-        f"{repr(listPullPaths)}, "
-        f"{repr(sTargetDirectory)})"
-    )
+    sStdin = _fsPrependToken(
+        _fsFetchOverleafToken(), "\n".join(listPullPaths))
+    sCli = _fsOverleafCliBase("pull", sProjectId, sTargetDirectory)
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
+
+
+_DICT_ZENODO_API_BASE = {
+    "sandbox": "https://sandbox.zenodo.org/api",
+    "zenodo": "https://zenodo.org/api",
+}
 
 
 def ftResultArchiveToZenodo(
-    connectionDocker, sContainerId, sService, listFilePaths,
+    connectionDocker, sContainerId, sZenodoService, listFilePaths,
+    dictMetadata=None, iParentDepositId=0,
 ):
-    """Upload files to Zenodo inside the container."""
-    fnValidateServiceName(sService)
-    sImport = (
-        "from vaibify.reproducibility.zenodoClient "
-        "import ZenodoClient"
-    )
-    sCall = (
-        f"c=ZenodoClient({repr(sService)}); "
-        f"d=c.fdictCreateDraft(); "
-        f"[c.fnUploadFile(d['id'], f) for f in {repr(listFilePaths)}]; "
-        f"c.fnPublishDraft(d['id']); "
-        f"print('Published deposit:', d['id'])"
+    """Upload files to Zenodo inside the container.
+
+    ``sZenodoService`` is the ZenodoClient service key
+    (``"sandbox"`` or ``"zenodo"``). ``dictMetadata`` is the
+    vaibify-side metadata block; it is translated to Zenodo API
+    shape and embedded (base64) so user-supplied strings cannot
+    break shell or Python quoting. ``iParentDepositId`` drives the
+    versioning flow: when 0 (or absent) the command creates a fresh
+    deposit; when a positive int, it calls the parent's
+    ``actions/newversion``, clears inherited files, updates the
+    metadata, uploads the new files, and publishes. Returns the
+    same ``(iExitCode, sOutput)`` tuple for both paths.
+    """
+    if sZenodoService not in _DICT_ZENODO_API_BASE:
+        raise ValueError(
+            f"Invalid Zenodo service: {sZenodoService}"
+        )
+    _fnValidateArchiveFilePaths(listFilePaths)
+    dictApi = _fdictBuildApiMetadata(dictMetadata or {})
+    _fnValidateApiMetadata(dictApi)
+    sBaseApi = _DICT_ZENODO_API_BASE[sZenodoService]
+    sSlot = (
+        "zenodo_token_sandbox"
+        if sZenodoService == "sandbox"
+        else "zenodo_token_production"
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId,
+        _fsBuildZenodoArchiveCommand(
+            sBaseApi, sSlot, listFilePaths, dictApi,
+            iParentDepositId,
+        ),
     )
+
+
+def _fdictBuildApiMetadata(dictMetadata):
+    """Translate a vaibify metadata dict to the Zenodo API shape."""
+    sTitle = (dictMetadata.get("sTitle") or "").strip() or (
+        "Vaibify archive"
+    )
+    sDescription = (
+        dictMetadata.get("sDescription") or ""
+    ).strip() or f"Archived by Vaibify ({sTitle})"
+    dictApi = {
+        "title": sTitle,
+        "upload_type": "dataset",
+        "description": sDescription,
+        "creators": _flistBuildApiCreators(
+            dictMetadata.get("listCreators") or []
+        ),
+        "license": (
+            dictMetadata.get("sLicense") or "CC-BY-4.0"
+        ).strip(),
+    }
+    listKeywords = [
+        k.strip() for k in (dictMetadata.get("listKeywords") or [])
+        if isinstance(k, str) and k.strip()
+    ]
+    if listKeywords:
+        dictApi["keywords"] = listKeywords
+    sRelatedUrl = (
+        dictMetadata.get("sRelatedGithubUrl") or ""
+    ).strip()
+    if sRelatedUrl:
+        dictApi["related_identifiers"] = [{
+            "identifier": sRelatedUrl,
+            "relation": "isSupplementTo",
+            "resource_type": "software",
+        }]
+    return dictApi
+
+
+def _flistBuildApiCreators(listCreators):
+    """Build the Zenodo creators list; fall back to a placeholder."""
+    listApi = []
+    for dictCreator in listCreators:
+        sName = (dictCreator.get("sName") or "").strip()
+        if not sName:
+            continue
+        listApi.append(
+            _fdictBuildOneApiCreator(dictCreator, sName)
+        )
+    return listApi or [{"name": "Vaibify User"}]
+
+
+def _fdictBuildOneApiCreator(dictCreator, sName):
+    """Build a single Zenodo-shaped creator dict from a vaibify creator."""
+    dictApi = {"name": sName}
+    sAffiliation = (dictCreator.get("sAffiliation") or "").strip()
+    if sAffiliation:
+        dictApi["affiliation"] = sAffiliation
+    sOrcid = (dictCreator.get("sOrcid") or "").strip()
+    if sOrcid:
+        dictApi["orcid"] = sOrcid
+    return dictApi
+
+
+def _fnValidateApiMetadata(dictApi):
+    """Sanity-check the translated API metadata."""
+    if not dictApi.get("title"):
+        raise ValueError("Zenodo metadata title cannot be empty")
+    if not dictApi.get("creators"):
+        raise ValueError(
+            "Zenodo metadata must have at least one creator"
+        )
+
+
+def _fnValidateArchiveFilePaths(listFilePaths):
+    """Reject paths that could cause open() or the shell to misbehave."""
+    for sPath in listFilePaths:
+        if not isinstance(sPath, str) or not sPath:
+            raise ValueError("Archive file path must be non-empty string")
+        if "\x00" in sPath:
+            raise ValueError(
+                f"Null byte in archive path: {sPath!r}"
+            )
+
+
+_S_ARCHIVE_SCRIPT_TEMPLATE = '''import json, sys
+import keyring
+sys.path.insert(0, '/usr/share/vaibify')
+from zenodoClient import ZenodoClient, ZenodoError
+
+_SLOT = %(slot)s
+_BASE = %(base)s
+_META = json.loads(%(meta)s)
+_PARENT = %(parent)s
+_PATHS = %(paths)s
+
+_t = (keyring.get_password('vaibify', _SLOT)
+      or keyring.get_password('vaibify', 'zenodo_token')
+      or sys.exit('no-token'))
+
+client = ZenodoClient(sToken=_t, sBaseUrl=_BASE)
+
+if _PARENT:
+    _draft = client.fdictGetNewVersionDraft(_PARENT)
+    iDid = _draft['id']
+    client.fnClearDraftFiles(iDid)
+    client.fnSetMetadata(iDid, _META)
+    sBucket = _draft['links']['bucket']
+else:
+    _draft = client.fdictCreateDraft(_META)
+    iDid = _draft['id']
+    sBucket = _draft['links']['bucket']
+
+
+def _cleanup_draft():
+    try:
+        client.fnDeleteDraft(iDid)
+        return True
+    except Exception:
+        return False
+
+
+def _abort(sOrig):
+    if _cleanup_draft():
+        sys.exit(str(sOrig) + ' | orphan draft ' + str(iDid)
+                 + ' deleted')
+    sys.exit(str(sOrig) + ' | draft ' + str(iDid)
+             + ' still on Zenodo; discard manually')
+
+
+try:
+    for _p in _PATHS:
+        client.fnUploadToBucket(sBucket, _p)
+    _r = client.fdictPublishDraft(iDid)
+except SystemExit as _se:
+    _abort(_se.code)
+except ZenodoError as _ze:
+    _abort('HTTP ' + str(_ze))
+except Exception as _e:
+    _abort(repr(_e))
+
+print('ZENODO_RESULT=' + json.dumps({
+    'iDepositId': iDid,
+    'sDoi': _r.get('doi', ''),
+    'sConceptDoi': _r.get('conceptdoi', ''),
+    'sHtmlUrl': _r.get('links', {}).get('html', ''),
+}))
+'''
+
+
+def _fsBuildZenodoArchiveCommand(
+    sBaseApi, sSlot, listFilePaths, dictApiMetadata,
+    iParentDepositId=0,
+):
+    """Build a python3 command that runs the base64-encoded archive script.
+
+    The script itself is parameterized via ``%%(name)s`` substitutions
+    filled with ``repr()``-quoted Python literals, then base64-encoded
+    and executed inside the container via ``exec``. Every user-provided
+    value travels as opaque data; no shell or Python quoting depends
+    on the input contents.
+    """
+    import base64
+    iParent = int(iParentDepositId or 0)
+    sScript = _S_ARCHIVE_SCRIPT_TEMPLATE % {
+        "slot": repr(sSlot),
+        "base": repr(sBaseApi),
+        "meta": repr(json.dumps(dictApiMetadata)),
+        "parent": repr(iParent if iParent > 0 else 0),
+        "paths": repr(list(listFilePaths)),
+    }
+    sScriptB64 = base64.b64encode(
+        sScript.encode("utf-8")
+    ).decode("ascii")
+    return (
+        "python3 -c \"import base64; "
+        f"exec(base64.b64decode('{sScriptB64}').decode())\""
+    )
+
+
+def _fsGithubHardeningFlags():
+    """Return the hardening ``-c`` flags joined for shell invocation."""
+    return " ".join(fsShellQuote(s) for s in LIST_GIT_HARDENING_CONFIG)
 
 
 def ftResultPushToGithub(
     connectionDocker, sContainerId,
     listFilePaths, sCommitMessage, sWorkdir,
 ):
-    """Git add, commit, and push files inside the container."""
+    """Git add, commit, and push files inside the container.
+
+    Hardened in Phase 6: every git invocation carries the shared
+    protocol/symlink/submodule guards so a malicious .gitmodules or
+    hostile symlink target cannot hijack the push.
+    """
     sQuotedPaths = " ".join(fsShellQuote(s) for s in listFilePaths)
+    sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git add {sQuotedPaths} && "
-        f"git commit -m {fsShellQuote(sCommitMessage)} && "
-        f"git push && "
-        f"git rev-parse --short HEAD"
+        f"git {sHardening} add {sQuotedPaths} && "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
+
+
+def ftResultPushStagedToGithub(
+    connectionDocker, sContainerId, sCommitMessage, sWorkdir,
+):
+    """Commit whatever is staged in sWorkdir and push to origin.
+
+    Does NOT run ``git add``. Returns (iExitCode, sCombinedOutput).
+    Hardened alongside ``ftResultPushToGithub``.
+    """
+    sHardening = _fsGithubHardeningFlags()
+    sCommand = (
+        f"cd {fsShellQuote(sWorkdir)} && "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+
+
+_DICT_PORCELAIN_STATUS = {
+    "M": "modified", "A": "added", "D": "deleted",
+    "R": "renamed", "C": "copied", "U": "unmerged",
+    "?": "untracked", "!": "ignored", "T": "modified",
+}
+
+
+def _fdictParsePorcelainLine(sLine):
+    """Parse a single `git status --porcelain` line into a dict."""
+    if len(sLine) < 4:
+        return None
+    sCodes = sLine[:2]
+    sPath = sLine[3:].strip()
+    if sCodes == "??":
+        return {"sPath": sPath, "sStatus": "untracked"}
+    sPrimary = sCodes[0] if sCodes[0] != " " else sCodes[1]
+    sStatus = _DICT_PORCELAIN_STATUS.get(sPrimary, "unknown")
+    return {"sPath": sPath, "sStatus": sStatus}
+
+
+def flistGetDirtyFiles(connectionDocker, sContainerId, sWorkdir):
+    """List uncommitted files in sWorkdir as status dicts."""
+    sCommand = f"git -C {fsShellQuote(sWorkdir)} status --porcelain"
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode != 0:
+        return []
+    listResults = []
+    for sLine in (sOutput or "").splitlines():
+        if not sLine.strip():
+            continue
+        dictEntry = _fdictParsePorcelainLine(sLine)
+        if dictEntry is not None:
+            listResults.append(dictEntry)
+    return listResults
 
 
 def _flistBuildStepCopyCommandList(dictWorkflow):
@@ -249,11 +622,17 @@ def ftResultPushScriptsToGithub(
     connectionDocker, sContainerId,
     dictWorkflow, sCommitMessage, sWorkdir,
 ):
-    """Organize scripts + archive PNGs into camelCase dirs and push."""
+    """Organize scripts + archive PNGs into camelCase dirs and push.
+
+    Deprecated: the workspace-as-git-repo model (Phase 1+) treats the
+    workspace itself as the repo. Retained for one release cycle so
+    existing callers keep working; prefer direct ``git push`` plus the
+    dashboard manifest check.
+    """
     listCommands = _flistBuildStepCopyCommandList(dictWorkflow)
     if not listCommands:
         return (1, "No scripts found to push")
-    sGitIgnore = _fsGenerateGitIgnore()
+    sGitIgnore = stateContract.fsGenerateGitignore(dictWorkflow)
     sReadme = _fsGenerateReadme(dictWorkflow)
     sSetup = " && ".join(listCommands)
     sGitCommand = (
@@ -308,18 +687,6 @@ def _fsBuildStepCopyCommands(
     return " && ".join(listCopy)
 
 
-def _fsGenerateGitIgnore():
-    """Return a .gitignore for vaibified repos."""
-    return (
-        "# Generated outputs\n"
-        "Plot/*.pdf\n"
-        "*.npy\n*.npz\n*.h5\n*.hdf5\n*.pkl\n*.pickle\n"
-        "*.bpa\n*.csv\n"
-        "# Logs\n"
-        ".vaibify/logs/\n"
-    )
-
-
 def _fsGenerateReadme(dictWorkflow):
     """Return a README.md summarizing the workflow."""
     sName = dictWorkflow.get("sWorkflowName", "Vaibify Workflow")
@@ -340,12 +707,17 @@ def ftResultAddFileToGithub(
     connectionDocker, sContainerId,
     sFilePath, sCommitMessage, sWorkdir,
 ):
-    """Git add, commit, push a single file inside the container."""
+    """Git add, commit, push a single file inside the container.
+
+    Shares the hardening-flag discipline with ``ftResultPushToGithub``.
+    """
+    sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git add {fsShellQuote(sFilePath)} && "
-        f"git commit -m {fsShellQuote(sCommitMessage)} && "
-        f"git push && git rev-parse --short HEAD"
+        f"git {sHardening} add {fsShellQuote(sFilePath)} && "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -377,14 +749,36 @@ def fdictCheckConnectivity(
     if sService == "github":
         return _fdictCheckGithub(connectionDocker, sContainerId)
     if sService == "overleaf":
-        return _fdictCheckKeyring(
-            connectionDocker, sContainerId, "overleaf_token"
-        )
+        return _fdictCheckHostKeyring("overleaf_token")
     if sService == "zenodo":
-        return _fdictCheckKeyring(
-            connectionDocker, sContainerId, "zenodo_token"
+        return _fdictCheckZenodoKeyring(
+            connectionDocker, sContainerId,
         )
     return {"bConnected": False, "sMessage": "Unknown service"}
+
+
+def _fdictCheckZenodoKeyring(connectionDocker, sContainerId):
+    """Return Connected if any Zenodo token slot is populated."""
+    if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+        return {
+            "bConnected": False,
+            "sMessage": S_KEYRING_BACKEND_FAIL_MESSAGE,
+        }
+    for sName in _LIST_ZENODO_TOKEN_NAMES:
+        dictProbe = _fdictProbeKeyringToken(
+            connectionDocker, sContainerId, sName,
+        )
+        if dictProbe["bConnected"]:
+            return dictProbe
+    return {"bConnected": False, "sMessage": "Token not found"}
+
+
+def _fdictCheckHostKeyring(sTokenName):
+    """Check whether a credential exists in the host OS keyring."""
+    from vaibify.config.secretManager import fbSecretExists
+    if fbSecretExists(sTokenName, "keyring"):
+        return {"bConnected": True, "sMessage": "Connected"}
+    return {"bConnected": False, "sMessage": "Token not found"}
 
 
 def _fdictCheckGithub(connectionDocker, sContainerId):
@@ -409,18 +803,42 @@ def _fdictCheckGithub(connectionDocker, sContainerId):
     }
 
 
-def _fdictCheckKeyring(
+S_KEYRING_BACKEND_FAIL_MESSAGE = (
+    "Container keyring backend is unavailable. Rebuild the container "
+    "image to install keyrings.alt."
+)
+
+
+def _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+    """Return True if the container keyring backend is usable."""
+    sCommand = fsPythonCommand(
+        "import keyring",
+        "print(type(keyring.get_keyring()).__module__, "
+        "type(keyring.get_keyring()).__name__)",
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode != 0:
+        return False
+    sCombined = (sOutput or "").strip().lower()
+    if "keyring.backends.fail" in sCombined:
+        return False
+    if "fail.keyring" in sCombined.replace(" ", "."):
+        return False
+    return True
+
+
+def _fdictProbeKeyringToken(
     connectionDocker, sContainerId, sTokenName,
 ):
-    """Check if a keyring token exists inside the container."""
-    if sTokenName not in SET_VALID_TOKEN_NAMES:
-        raise ValueError(f"Invalid token name: {sTokenName}")
+    """Query the container keyring for a specific token."""
     sCommand = fsPythonCommand(
         "import keyring",
         f"t=keyring.get_password('vaibify',{repr(sTokenName)}); "
         f"print('ok' if t else 'missing')",
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+    _, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
     bConnected = "ok" in sOutput
@@ -428,6 +846,22 @@ def _fdictCheckKeyring(
         "bConnected": bConnected,
         "sMessage": "Connected" if bConnected else "Token not found",
     }
+
+
+def _fdictCheckKeyring(
+    connectionDocker, sContainerId, sTokenName,
+):
+    """Check if a keyring token exists inside the container."""
+    if sTokenName not in SET_VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sTokenName}")
+    if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+        return {
+            "bConnected": False,
+            "sMessage": S_KEYRING_BACKEND_FAIL_MESSAGE,
+        }
+    return _fdictProbeKeyringToken(
+        connectionDocker, sContainerId, sTokenName,
+    )
 
 
 def fnStoreCredentialInContainer(
@@ -446,51 +880,290 @@ def fnStoreCredentialInContainer(
         sContainerId, sTempPath, sValue.encode("utf-8")
     )
     try:
-        connectionDocker.ftResultExecuteCommand(
+        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCommand
         )
+        if iExitCode != 0:
+            raise RuntimeError(
+                f"Keyring storage failed: {(sOutput or '').strip()}"
+            )
     finally:
         connectionDocker.ftResultExecuteCommand(
             sContainerId, f"rm -f {fsShellQuote(sTempPath)}"
         )
 
 
+def fnDeleteCredentialFromContainer(
+    connectionDocker, sContainerId, sName,
+):
+    """Delete a credential from the container's keyring.
+
+    Tolerates the case where the credential does not exist
+    (keyring raises PasswordDeleteError); re-raises any other
+    failure so the caller can surface it.
+    """
+    if sName not in SET_VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sName}")
+    sCommand = fsPythonCommand(
+        "import keyring; "
+        "from keyring.errors import PasswordDeleteError",
+        f"t=keyring.delete_password('vaibify', {repr(sName)})",
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode == 0:
+        return
+    if "PasswordDeleteError" in (sOutput or ""):
+        return
+    raise RuntimeError(
+        f"Keyring deletion failed: {(sOutput or '').strip()}"
+    )
+
+
 def fbValidateOverleafCredentials(
     connectionDocker, sContainerId, sProjectId,
 ):
-    """Test Overleaf credentials with git ls-remote."""
+    """Test Overleaf credentials on the host using the stored token.
+
+    Runs ``git ls-remote`` against the Overleaf project from the host
+    using a transient GIT_ASKPASS helper that reads the token out of
+    the host OS keyring. ``connectionDocker`` and ``sContainerId`` are
+    retained for signature compatibility but are unused: validation is
+    entirely host-side now that tokens are stored on the host.
+
+    Returns ``(bSuccess, sStderr)``.
+    """
     fnValidateOverleafProjectId(sProjectId)
-    sCommand = (
-        f"git ls-remote "
-        f"https://git.overleaf.com/{sProjectId} "
-        f"HEAD >/dev/null 2>&1"
-    )
-    iExit, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return iExit == 0
+    return _fbValidateOverleafOnHost(sProjectId)
 
 
-def fbValidateZenodoToken(connectionDocker, sContainerId):
-    """Test Zenodo token with a lightweight API call."""
-    sCommand = fsPythonCommand(
-        "from vaibify.reproducibility.zenodoClient "
-        "import ZenodoClient",
-        "c=ZenodoClient('sandbox'); "
-        "c.fdictListDepositions(iSize=1); print('ok')",
+_S_OVERLEAF_HOST = "git.overleaf.com"
+
+
+def _fbValidateOverleafOnHost(sProjectId):
+    """Run git ls-remote from the host with a transient askpass helper."""
+    from vaibify.config.secretManager import fbSecretExists
+    if not fbSecretExists("overleaf_token", "keyring"):
+        return (False, "No Overleaf token stored on host")
+    sAskpass = fsWriteAskpassScript()
+    try:
+        return _ftRunHostLsRemote(sProjectId, sAskpass)
+    finally:
+        _fnRemovePath(sAskpass)
+
+
+def _ftRunHostLsRemote(sProjectId, sAskpass):
+    """Execute git ls-remote under the prepared askpass and env."""
+    import os
+    from vaibify.reproducibility.overleafMirror import fsRedactStderr
+    sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
+    dictEnv = os.environ.copy()
+    dictEnv["GIT_ASKPASS"] = sAskpass
+    dictEnv["GIT_TERMINAL_PROMPT"] = "0"
+    resultProcess = subprocess.run(
+        ["git", "ls-remote", sUrl, "HEAD"],
+        capture_output=True, text=True, env=dictEnv,
     )
+    sDetail = fsRedactStderr((resultProcess.stderr or "").strip())
+    return (resultProcess.returncode == 0, sDetail)
+
+
+def _fnRemovePath(sPath):
+    """Remove a file, ignoring absent paths."""
+    import os
+    try:
+        os.remove(sPath)
+    except FileNotFoundError:
+        pass
+
+
+_DICT_ZENODO_VALIDATION_ENDPOINT = {
+    "sandbox": (
+        "https://sandbox.zenodo.org/api/deposit/depositions",
+        "zenodo_token_sandbox",
+    ),
+    "zenodo": (
+        "https://zenodo.org/api/deposit/depositions",
+        "zenodo_token_production",
+    ),
+}
+
+
+def fbValidateZenodoToken(
+    connectionDocker, sContainerId, sService="sandbox",
+):
+    """Test a Zenodo token by listing deposits on the chosen service.
+
+    ``sService`` is the ZenodoClient service key (``"sandbox"`` or
+    ``"zenodo"``). Validation hits the same instance the token was
+    issued for; sandbox tokens are rejected by production and vice
+    versa. The inline command uses only ``keyring`` and ``requests``
+    because the container does not have the vaibify package installed.
+    """
+    if sService not in _DICT_ZENODO_VALIDATION_ENDPOINT:
+        raise ValueError(f"Invalid Zenodo service: {sService}")
+    sUrl, sSlot = _DICT_ZENODO_VALIDATION_ENDPOINT[sService]
     iExit, sOut = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
+        sContainerId, _fsBuildZenodoValidationCommand(sUrl, sSlot),
     )
     return iExit == 0 and "ok" in sOut
 
 
-def fnValidateOverleafProjectId(sProjectId):
-    """Raise ValueError if the Overleaf project ID is malformed."""
-    if not re.match(r"^[a-zA-Z0-9_-]+$", sProjectId):
-        raise ValueError(
-            f"Invalid Overleaf project ID: {sProjectId}"
+def _fsBuildZenodoValidationCommand(sUrl, sSlot):
+    """Build a self-contained python3 command to validate the token."""
+    sCall = (
+        f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
+        "or keyring.get_password('vaibify', 'zenodo_token') "
+        "or sys.exit('no-token'); "
+        f"r=requests.get({repr(sUrl)}, "
+        "headers={'Authorization': 'Bearer '+_t}, "
+        "params={'size': 1}); "
+        "r.raise_for_status(); print('ok')"
+    )
+    return fsPythonCommand("import keyring, requests, sys", sCall)
+
+
+# ---------------------------------------------------------------------------
+# Overleaf mirror dispatch (host-side)
+# ---------------------------------------------------------------------------
+
+
+def ftRefreshOverleafMirror(sProjectId):
+    """Refresh the host-side partial-clone mirror for this project.
+
+    Returns ``(bSuccess, dictOrMessage)``. On success the second item
+    is a dict with ``sHeadSha``, ``iFileCount``, ``sRefreshedAt``. On
+    failure it is a string with a classified error message suitable
+    for surfacing to the UI.
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    sToken = _fsFetchOverleafToken()
+    if not sToken:
+        return (False, "No Overleaf token stored on host")
+    from vaibify.reproducibility import overleafMirror
+    try:
+        dictResult = overleafMirror.fbRefreshMirror(sProjectId, sToken)
+    except RuntimeError as error:
+        return (False, str(error))
+    return (True, dictResult)
+
+
+def flistListOverleafTree(sProjectId):
+    """Return mirror tree entries (no network call)."""
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    return overleafMirror.flistListMirrorTree(sProjectId)
+
+
+def _fdictComputeLocalDigests(listAbsPaths):
+    """Compute git-blob digests for local files on disk (host)."""
+    from vaibify.reproducibility import overleafMirror
+    dictDigests = {}
+    for sPath in listAbsPaths:
+        try:
+            dictDigests[sPath] = overleafMirror.fsComputeBlobSha(sPath)
+        except OSError:
+            continue
+    return dictDigests
+
+
+_S_DIGEST_SCRIPT = (
+    "import hashlib,sys,os\n"
+    "for p in sys.argv[1:]:\n"
+    "    try:\n"
+    "        with open(p,'rb') as f: b=f.read()\n"
+    "        s=hashlib.sha1(b'blob '+str(len(b)).encode()"
+    "+b'\\x00'+b).hexdigest()\n"
+    "        print(s+' '+p)\n"
+    "    except OSError:\n"
+    "        print('- '+p)\n"
+)
+
+
+def fdictComputeContainerDigests(
+    connectionDocker, sContainerId, listAbsPaths,
+):
+    """Compute git-blob digests for files inside the container.
+
+    Runs a single docker exec that iterates the paths and prints one
+    ``<sha> <path>`` line per file (or ``- <path>`` for unreadable ones).
+    Unreadable entries are omitted from the returned dict.
+    """
+    if not listAbsPaths:
+        return {}
+    sScript = _S_DIGEST_SCRIPT
+    listArgs = [fsShellQuote(p) for p in listAbsPaths]
+    sCommand = (
+        "python3 -c " + fsShellQuote(sScript)
+        + " " + " ".join(listArgs)
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    dictDigests = {}
+    if iExit != 0:
+        return dictDigests
+    for sLine in (sOutput or "").splitlines():
+        sStripped = sLine.strip()
+        if not sStripped or sStripped.startswith("- "):
+            continue
+        iSpace = sStripped.find(" ")
+        if iSpace <= 0:
+            continue
+        dictDigests[sStripped[iSpace + 1:]] = sStripped[:iSpace]
+    return dictDigests
+
+
+def fdictDiffOverleafPush(
+    sProjectId, listAbsPaths, sTargetDirectory,
+    connectionDocker=None, sContainerId="",
+):
+    """Classify a proposed push into new/overwrite/unchanged buckets.
+
+    When ``connectionDocker`` + ``sContainerId`` are given, digests are
+    computed inside the container (frontend-sent paths are
+    container-absolute). Falls back to host-side digest computation
+    when no docker context is provided.
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    if connectionDocker is not None and sContainerId:
+        dictDigests = fdictComputeContainerDigests(
+            connectionDocker, sContainerId, listAbsPaths,
         )
+    else:
+        dictDigests = _fdictComputeLocalDigests(listAbsPaths)
+    return overleafMirror.fdictDiffAgainstMirror(
+        sProjectId, dictDigests, sTargetDirectory,
+    )
+
+
+def flistCheckOverleafConflicts(
+    sProjectId, listAbsPaths, sTargetDirectory, dictSyncStatus,
+):
+    """Return remote-versus-baseline conflicts for a proposed push."""
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    return overleafMirror.flistDetectConflicts(
+        sProjectId, listAbsPaths, sTargetDirectory, dictSyncStatus,
+    )
+
+
+def flistDetectOverleafCaseCollisions(
+    sProjectId, listAbsPaths, sTargetDirectory,
+):
+    """Return per-file case-collision records for a proposed push.
+
+    Thin dispatcher wrapper that delegates to the overleafMirror
+    adapter. See ``overleafMirror.flistDetectCaseCollisions`` for
+    the collision rule and record shape.
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    from vaibify.reproducibility import overleafMirror
+    return overleafMirror.flistDetectCaseCollisions(
+        sProjectId, listAbsPaths, sTargetDirectory,
+    )
 
 
 def _fbSafeDirectoryName(sDirectory):
@@ -498,26 +1171,35 @@ def _fbSafeDirectoryName(sDirectory):
     return bool(re.match(r'^[A-Za-z0-9_./ -]+$', sDirectory))
 
 
-def fsBuildTestMarkerCheckCommand(listStepDirectories):
+def fsBuildTestMarkerCheckCommand(
+    listStepDirectories, sProjectRepoPath,
+):
     """Build a docker exec command to read test markers and scan dirs."""
     listSafe = [
         s for s in listStepDirectories if _fbSafeDirectoryName(s)
     ]
     sJsonDirs = json.dumps(listSafe)
-    sScript = _fsBuildTestMarkerScript(sJsonDirs)
+    sScript = _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath)
     return "python3 -c " + fsShellQuote(sScript)
 
 
-def _fsBuildTestMarkerScript(sJsonDirs):
+def _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath):
     """Build the Python script that reads markers and scans dirs.
 
     All string literals use double quotes so the script survives
-    single-quote shell wrapping by fsShellQuote.
+    single-quote shell wrapping by fsShellQuote. ``sProjectRepoPath``
+    is inlined via ``json.dumps`` so it becomes a properly escaped
+    Python string literal inside the generated script.
     """
+    sMarkerDirLiteral = json.dumps(
+        sProjectRepoPath + "/.vaibify/test_markers"
+    )
+    sRepoLiteral = json.dumps(sProjectRepoPath)
     return (
         "import json, os\n"
         'R = {"markers": {}, "testFiles": {}, "missingConftest": []}\n'
-        'mdir = "/workspace/.vaibify/test_markers"\n'
+        "mdir = " + sMarkerDirLiteral + "\n"
+        "repo = " + sRepoLiteral + "\n"
         "if os.path.isdir(mdir):\n"
         "    for f in os.listdir(mdir):\n"
         '        if f.endswith(".json"):\n'
@@ -537,7 +1219,9 @@ def _fsBuildTestMarkerScript(sJsonDirs):
         "    except Exception: pass\n"
         "    return None\n"
         "for d in json.loads(" + json.dumps(sJsonDirs) + "):\n"
-        '    td = os.path.join(d, "tests")\n'
+        '    abs_d = os.path.join(repo, d) if repo and not '
+        "os.path.isabs(d) else d\n"
+        '    td = os.path.join(abs_d, "tests")\n'
         "    if not os.path.isdir(td):\n"
         "        continue\n"
         "    fs = [f for f in os.listdir(td)"
@@ -551,8 +1235,17 @@ def _fsBuildTestMarkerScript(sJsonDirs):
         "        if h: dh[f] = h\n"
         '    R["testFiles"][d] = '
         '{"listFiles": fs, "dictMtimes": mt, "dictHashes": dh}\n'
-        '    if not os.path.isfile(os.path.join(td, "conftest.py")):\n'
+        '    sConftestPath = os.path.join(td, "conftest.py")\n'
+        "    if not os.path.isfile(sConftestPath):\n"
         '        R["missingConftest"].append(d)\n'
+        "    else:\n"
+        "        try:\n"
+        "            with open(sConftestPath) as fh:\n"
+        "                sConftestSource = fh.read()\n"
+        "        except Exception:\n"
+        "            sConftestSource = \"\"\n"
+        '        if "_PROJECT_REPO" not in sConftestSource:\n'
+        '            R["missingConftest"].append(d)\n'
         "print(json.dumps(R))\n"
     )
 
@@ -694,33 +1387,115 @@ def ftResultArchiveProject(
     )
 
 
-def flistCollectOutputFiles(dictWorkflow, dictSyncStatus):
-    """Collect all output files with their sync and category info."""
+_FROZENSET_OVERLEAF_EXTENSIONS = frozenset({
+    ".tex", ".pdf", ".png", ".jpg", ".jpeg",
+    ".eps", ".svg", ".bib",
+})
+
+
+def flistCollectOutputFiles(
+    dictWorkflow, dictSyncStatus, dictVars=None, sService=None,
+    sWorkflowRoot=None,
+):
+    """Collect output files with resolved paths and service filtering.
+
+    When ``sWorkflowRoot`` is provided, each path is made absolute by
+    joining the workflow root with the step directory and the
+    variable-resolved file path. The container CLI expects absolute
+    paths; relative paths resolve against the container's WORKDIR
+    which is rarely the workflow root.
+    """
+    listFiles = _flistCollectRawOutputFiles(
+        dictWorkflow, dictSyncStatus, dictVars or {},
+        sWorkflowRoot or "",
+    )
+    if sService == "overleaf":
+        return _flistFilterByExtension(
+            listFiles, _FROZENSET_OVERLEAF_EXTENSIONS)
+    return listFiles
+
+
+def _flistCollectRawOutputFiles(
+    dictWorkflow, dictSyncStatus, dictVars, sWorkflowRoot,
+):
+    """Collect raw (resolved) output-file entries across every step."""
     listFiles = []
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sKey in ("saDataFiles", "saPlotFiles"):
-            for sFile in dictStep.get(sKey, []):
-                dictSync = dictSyncStatus.get(sFile, {})
-                sCategory = "archive"
-                if sKey == "saPlotFiles":
-                    sCategory = workflowManager.fsGetPlotCategory(
-                        dictStep, sFile)
-                listFiles.append({
-                    "sPath": sFile,
-                    "sCategory": sCategory,
-                    "dictSync": dictSync,
-                })
+        _fnAppendStepOutputFiles(
+            dictStep, dictSyncStatus, dictVars,
+            sWorkflowRoot, listFiles,
+        )
     return listFiles
+
+
+def _fnAppendStepOutputFiles(
+    dictStep, dictSyncStatus, dictVars, sWorkflowRoot, listFiles,
+):
+    """Append one step's data and plot files with resolved paths."""
+    for sKey in ("saDataFiles", "saPlotFiles"):
+        for sFile in dictStep.get(sKey, []):
+            listFiles.append(_fdictBuildOutputEntry(
+                dictStep, sKey, sFile, dictSyncStatus,
+                dictVars, sWorkflowRoot,
+            ))
+
+
+def _fsResolveAbsoluteStepPath(
+    sStepDir, sResolvedFile, sWorkflowRoot,
+):
+    """Join workflow root + step dir + file into an absolute path."""
+    import posixpath
+    if sResolvedFile.startswith("/"):
+        return sResolvedFile
+    if not sStepDir.startswith("/") and sWorkflowRoot:
+        sStepDir = posixpath.join(sWorkflowRoot, sStepDir)
+    if sStepDir:
+        return posixpath.join(sStepDir, sResolvedFile)
+    return sResolvedFile
+
+
+def _fdictBuildOutputEntry(
+    dictStep, sKey, sFile, dictSyncStatus, dictVars, sWorkflowRoot,
+):
+    """Build one resolved output-file entry for the sync modal."""
+    sResolved = workflowManager.fsResolveVariables(sFile, dictVars)
+    sStepDir = dictStep.get("sDirectory", "")
+    sAbsolute = _fsResolveAbsoluteStepPath(
+        sStepDir, sResolved, sWorkflowRoot,
+    )
+    sCategory = "archive"
+    if sKey == "saPlotFiles":
+        sCategory = workflowManager.fsGetPlotCategory(
+            dictStep, sFile)
+    return {
+        "sPath": sAbsolute,
+        "sCategory": sCategory,
+        "dictSync": workflowManager.fdictLookupSyncEntry(
+            dictSyncStatus,
+            workflowManager.fsToSyncStatusKey(
+                sAbsolute, sWorkflowRoot,
+            ),
+            sWorkflowRoot,
+        ),
+    }
+
+
+def _flistFilterByExtension(listFiles, frozensetExtensions):
+    """Return only entries whose resolved path ends with an allowed ext."""
+    listFiltered = []
+    for dictFile in listFiles:
+        sPath = dictFile.get("sPath", "")
+        iDot = sPath.rfind(".")
+        if iDot < 0:
+            continue
+        if sPath[iDot:].lower() in frozensetExtensions:
+            listFiltered.append(dictFile)
+    return listFiltered
 
 
 # Re-export file integrity functions for backward compatibility.
 # Canonical implementations live in fileIntegrity.py.
 from .fileIntegrity import (  # noqa: F401
-    _fdictParseHashOutput,
-    _fsHashFileCommand,
     _fsNormalizePath,
-    fbStepInputsUnchanged,
-    fdictComputeAllScriptHashes,
-    fdictComputeInputHashes,
     flistExtractAllScriptPaths,
 )

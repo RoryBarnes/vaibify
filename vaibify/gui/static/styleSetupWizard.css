@@ -271,6 +271,21 @@ html, body {
     background: rgba(19, 174, 213, 0.1);
 }
 
+.feature-suboption {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 14px;
+    margin-top: -4px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.feature-suboption input[type="checkbox"] {
+    margin-right: 6px;
+}
+
 .feature-name {
     font-weight: 600;
     font-size: 13px;

@@ -12,11 +12,11 @@ from vaibify.config.registryManager import fnAddProject
 
 @click.command("register")
 @click.argument(
-    "sDirectory",
+    "sdirectory",
     default=".",
     type=click.Path(exists=True, file_okay=False),
 )
-def register(sDirectory):
+def register(sdirectory):
     """Register an existing project directory.
 
     Adds the project to the global registry so it can be
@@ -25,7 +25,7 @@ def register(sDirectory):
     ``vaibify init``, this does not create or overwrite any
     configuration files.
     """
-    sAbsDirectory = str(pathlib.Path(sDirectory).resolve())
+    sAbsDirectory = str(pathlib.Path(sdirectory).resolve())
     sConfigPath = str(pathlib.Path(sAbsDirectory) / "vaibify.yml")
     if not pathlib.Path(sConfigPath).is_file():
         click.echo(

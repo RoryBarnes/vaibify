@@ -4,50 +4,31 @@ import json
 
 from vaibify.gui.syncDispatcher import (
     _fbSafeDirectoryName,
-    _fdictParseHashOutput,
+    _fdictParsePorcelainLine,
     _flistArchivePlotPaths,
     _flistBuildDagEdges,
     _fsBuildStepCopyCommands,
-    _fsGenerateGitIgnore,
     _fsGenerateReadme,
-    _fsHashFileCommand,
     _fsNormalizePath,
     fdictParseTestMarkerOutput,
     flistCollectOutputFiles,
     flistExtractAllScriptPaths,
+    flistGetDirtyFiles,
     fsBuildTestMarkerCheckCommand,
+    ftResultPushStagedToGithub,
 )
 
 
-class TestFdictParseHashOutput:
-    def test_valid_output(self):
-        sOutput = "/work/run.py abc123\n/work/plot.py def456\n"
-        dictResult = _fdictParseHashOutput(sOutput)
-        assert dictResult == {
-            "/work/run.py": "abc123",
-            "/work/plot.py": "def456",
-        }
+class _FakeDockerConnection:
+    """Mock connectionDocker capturing commands and returning canned results."""
 
-    def test_missing_file_skipped(self):
-        sOutput = "/work/run.py abc123\n/work/gone.py MISSING\n"
-        dictResult = _fdictParseHashOutput(sOutput)
-        assert "/work/gone.py" not in dictResult
-        assert dictResult["/work/run.py"] == "abc123"
+    def __init__(self, tResult=(0, "")):
+        self._tResult = tResult
+        self.listCommands = []
 
-    def test_empty_output(self):
-        assert _fdictParseHashOutput("") == {}
-
-    def test_none_output(self):
-        assert _fdictParseHashOutput(None) == {}
-
-    def test_blank_lines_ignored(self):
-        sOutput = "\n\n/work/a.py hash1\n\n"
-        assert len(_fdictParseHashOutput(sOutput)) == 1
-
-    def test_path_with_spaces(self):
-        sOutput = "/work/my script.py abc123\n"
-        dictResult = _fdictParseHashOutput(sOutput)
-        assert dictResult["/work/my script.py"] == "abc123"
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        self.listCommands.append((sContainerId, sCommand))
+        return self._tResult
 
 
 class TestFsNormalizePath:
@@ -66,17 +47,6 @@ class TestFsNormalizePath:
     def test_empty_directory(self):
         sResult = _fsNormalizePath("", "run.py")
         assert sResult == "run.py"
-
-
-class TestFsHashFileCommand:
-    def test_contains_hashlib(self):
-        sCmd = _fsHashFileCommand("/work/run.py")
-        assert "hashlib" in sCmd
-        assert "sha256" in sCmd
-
-    def test_contains_file_path(self):
-        sCmd = _fsHashFileCommand("/work/my_script.py")
-        assert "/work/my_script.py" in sCmd
 
 
 class TestFlistBuildDagEdges:
@@ -257,18 +227,6 @@ class TestFsBuildStepCopyCommands:
         assert "mkdir -p" in sResult
 
 
-class TestFsGenerateGitIgnore:
-    def test_contains_common_patterns(self):
-        sResult = _fsGenerateGitIgnore()
-        assert "*.npy" in sResult
-        assert "*.h5" in sResult
-        assert ".vaibify/logs/" in sResult
-
-    def test_contains_plot_pdf(self):
-        sResult = _fsGenerateGitIgnore()
-        assert "Plot/*.pdf" in sResult
-
-
 class TestFsGenerateReadme:
     def test_contains_workflow_name(self):
         dictWorkflow = {
@@ -349,21 +307,239 @@ class TestFbSafeDirectoryName:
 
 class TestFsBuildTestMarkerCheckCommand:
     def test_produces_python_command(self):
-        sCmd = fsBuildTestMarkerCheckCommand(["/workspace/step01"])
+        sCmd = fsBuildTestMarkerCheckCommand(["/workspace/step01"], "/workspace/DemoRepo")
         assert sCmd.startswith("python3 -c ")
 
     def test_unsafe_dirs_filtered(self):
         sCmd = fsBuildTestMarkerCheckCommand(
-            ["/workspace/step01", "/bad;rm -rf /"])
+            ["/workspace/step01", "/bad;rm -rf /"],
+            "/workspace/DemoRepo")
         assert "bad" not in sCmd
         assert "step01" in sCmd
 
     def test_empty_dirs(self):
-        sCmd = fsBuildTestMarkerCheckCommand([])
+        sCmd = fsBuildTestMarkerCheckCommand([], "/workspace/DemoRepo")
         assert "python3 -c" in sCmd
 
     def test_multiple_safe_dirs(self):
         sCmd = fsBuildTestMarkerCheckCommand(
-            ["/workspace/A01", "/workspace/A02"])
+            ["/workspace/A01", "/workspace/A02"],
+            "/workspace/DemoRepo")
         assert "A01" in sCmd
         assert "A02" in sCmd
+
+
+class TestFtResultPushStagedToGithub:
+    def test_success_returns_zero(self):
+        fake = _FakeDockerConnection((0, "abc1234\n"))
+        iExit, sOut = ftResultPushStagedToGithub(
+            fake, "cid", "Fix bug", "/workspace/proj")
+        assert iExit == 0
+        assert "abc1234" in sOut
+
+    def test_does_not_run_git_add(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git add" not in sCommand
+
+    def test_command_contains_commit_push_revparse(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "commit -m 'msg'" in sCommand
+        assert " push " in sCommand
+        assert "rev-parse --short HEAD" in sCommand
+        assert "cd '/workspace/proj'" in sCommand
+
+    def test_chained_with_and_operator(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert " && " in sCommand
+
+    def test_commit_failure_surfaced(self):
+        fake = _FakeDockerConnection(
+            (1, "nothing to commit, working tree clean"))
+        iExit, sOut = ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        assert iExit == 1
+        assert "nothing to commit" in sOut
+
+    def test_push_failure_surfaced(self):
+        fake = _FakeDockerConnection((128, "fatal: unable to access"))
+        iExit, sOut = ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        assert iExit == 128
+        assert "fatal" in sOut
+
+    def test_shell_quotes_single_quote_message(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "it's a fix", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "'it'\\''s a fix'" in sCommand
+
+    def test_shell_quotes_workdir_with_spaces(self):
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/work space/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "'/work space/proj'" in sCommand
+
+
+class TestFdictParsePorcelainLine:
+    def test_modified(self):
+        dictEntry = _fdictParsePorcelainLine(" M path/to/file.py")
+        assert dictEntry == {
+            "sPath": "path/to/file.py", "sStatus": "modified"}
+
+    def test_added(self):
+        dictEntry = _fdictParsePorcelainLine("A  new.py")
+        assert dictEntry["sStatus"] == "added"
+        assert dictEntry["sPath"] == "new.py"
+
+    def test_deleted(self):
+        dictEntry = _fdictParsePorcelainLine(" D gone.py")
+        assert dictEntry["sStatus"] == "deleted"
+
+    def test_untracked(self):
+        dictEntry = _fdictParsePorcelainLine("?? unknown.py")
+        assert dictEntry["sStatus"] == "untracked"
+
+    def test_renamed(self):
+        dictEntry = _fdictParsePorcelainLine("R  old -> new")
+        assert dictEntry["sStatus"] == "renamed"
+
+    def test_unknown_code(self):
+        dictEntry = _fdictParsePorcelainLine("ZZ foo.py")
+        assert dictEntry["sStatus"] == "unknown"
+
+    def test_too_short(self):
+        assert _fdictParsePorcelainLine("M") is None
+
+
+class TestFlistGetDirtyFiles:
+    def test_empty_workdir_returns_empty_list(self):
+        fake = _FakeDockerConnection((0, ""))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert listResult == []
+
+    def test_uses_git_c_workdir(self):
+        fake = _FakeDockerConnection((0, ""))
+        flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git -C '/workspace/proj' status --porcelain" in sCommand
+
+    def test_parses_mixed_statuses(self):
+        sOutput = (
+            " M scripts/foo.py\n"
+            "A  scripts/new.py\n"
+            " D old.py\n"
+            "?? notes.txt\n"
+            "R  a.py -> b.py\n"
+        )
+        fake = _FakeDockerConnection((0, sOutput))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert len(listResult) == 5
+        listStatuses = [d["sStatus"] for d in listResult]
+        assert "modified" in listStatuses
+        assert "added" in listStatuses
+        assert "deleted" in listStatuses
+        assert "untracked" in listStatuses
+        assert "renamed" in listStatuses
+
+    def test_non_zero_exit_returns_empty(self):
+        fake = _FakeDockerConnection((128, "not a git repository"))
+        listResult = flistGetDirtyFiles(fake, "cid", "/tmp/nowhere")
+        assert listResult == []
+
+    def test_path_with_spaces(self):
+        fake = _FakeDockerConnection((0, " M my script.py\n"))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert len(listResult) == 1
+        assert listResult[0]["sPath"] == "my script.py"
+        assert listResult[0]["sStatus"] == "modified"
+
+    def test_blank_lines_skipped(self):
+        fake = _FakeDockerConnection((0, "\n M foo.py\n\n"))
+        listResult = flistGetDirtyFiles(fake, "cid", "/workspace/proj")
+        assert len(listResult) == 1
+
+    def test_shell_quotes_workdir(self):
+        fake = _FakeDockerConnection((0, ""))
+        flistGetDirtyFiles(fake, "cid", "/work space/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "'/work space/proj'" in sCommand
+
+
+class TestSyncDispatcherExports:
+    def test_new_symbols_in_all(self):
+        from vaibify.gui import syncDispatcher
+        assert "ftResultPushStagedToGithub" in syncDispatcher.__all__
+        assert "flistGetDirtyFiles" in syncDispatcher.__all__
+
+
+# ----------------------------------------------------------------------
+# Stale-conftest detection in the test-marker discovery script
+# (regression: a stale conftest writing markers to the legacy path
+# was leaving the dashboard with stale verification state forever
+# because backfill only triggered for a *missing* conftest.)
+# ----------------------------------------------------------------------
+
+
+def test_test_marker_script_flags_stale_conftest_without_project_repo():
+    """Conftest source missing _PROJECT_REPO must be flagged for backfill."""
+    from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
+    sScript = _fsBuildTestMarkerScript(
+        '["BayesianPosteriors"]', "/workspace/proj",
+    )
+    assert "_PROJECT_REPO" in sScript
+    assert "missingConftest" in sScript
+    assert 'sConftestSource' in sScript
+
+
+def test_test_marker_script_treats_modern_conftest_as_present(tmp_path):
+    """End-to-end: modern conftest source contains _PROJECT_REPO so
+    the discovery script must NOT flag it as missing."""
+    import json
+    import subprocess
+    from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
+    sStepDir = tmp_path / "step1"
+    (sStepDir / "tests").mkdir(parents=True)
+    (sStepDir / "tests" / "conftest.py").write_text(
+        "from pathlib import Path\n"
+        "_PROJECT_REPO = Path('/workspace/proj')\n",
+    )
+    sScript = _fsBuildTestMarkerScript(
+        json.dumps(["step1"]), str(tmp_path),
+    )
+    sOutput = subprocess.check_output(
+        ["python3", "-c", sScript], text=True,
+    )
+    dictResult = json.loads(sOutput)
+    assert dictResult["missingConftest"] == []
+
+
+def test_test_marker_script_flags_legacy_conftest_as_missing(tmp_path):
+    """Legacy conftest without _PROJECT_REPO must be flagged for backfill."""
+    import json
+    import subprocess
+    from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
+    sStepDir = tmp_path / "step1"
+    (sStepDir / "tests").mkdir(parents=True)
+    (sStepDir / "tests" / "conftest.py").write_text(
+        "# legacy conftest, writes to /workspace/.vaibify/test_markers\n"
+        "import json\n",
+    )
+    sScript = _fsBuildTestMarkerScript(
+        json.dumps(["step1"]), str(tmp_path),
+    )
+    sOutput = subprocess.check_output(
+        ["python3", "-c", sScript], text=True,
+    )
+    dictResult = json.loads(sOutput)
+    assert dictResult["missingConftest"] == ["step1"]

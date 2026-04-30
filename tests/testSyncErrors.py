@@ -140,3 +140,158 @@ class TestCollectOutputFiles:
         }
         listFiles = flistCollectOutputFiles(dictWorkflow, {})
         assert listFiles[0]["sCategory"] == "archive"
+
+    def test_fbResolvesVariablesInPaths(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": [],
+                    "saPlotFiles": [
+                        "{sPlotDirectory}/fig.{sFigureType}",
+                    ],
+                },
+            ],
+        }
+        dictVars = {
+            "sPlotDirectory": "Plots", "sFigureType": "pdf",
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, dictVars)
+        assert listFiles[0]["sPath"] == "Plots/fig.pdf"
+
+    def test_fbOverleafFilterKeepsLatexExtensions(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": [
+                        "data.json", "samples.npy", "notes.txt",
+                    ],
+                    "saPlotFiles": [
+                        "fig.pdf", "photo.png", "draft.tex",
+                        "refs.bib",
+                    ],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, {}, "overleaf")
+        listPaths = sorted(d["sPath"] for d in listFiles)
+        assert listPaths == [
+            "draft.tex", "fig.pdf", "photo.png", "refs.bib",
+        ]
+
+    def test_fbOverleafFilterDropsUnsupportedExtensions(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": ["out.csv", "arr.npz"],
+                    "saPlotFiles": ["model.pkl"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, {}, "overleaf")
+        assert listFiles == []
+
+    def test_fbOverleafFilterIsExtensionCaseInsensitive(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": [],
+                    "saPlotFiles": ["Figure.PDF", "Photo.JPEG"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, {}, "overleaf")
+        assert len(listFiles) == 2
+
+    def test_fbZenodoServiceReturnsEverything(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": ["data.h5", "log.txt"],
+                    "saPlotFiles": ["fig.pdf"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, {}, "zenodo")
+        assert len(listFiles) == 3
+
+    def test_fbOverleafFilterSkipsExtensionlessPaths(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "saDataFiles": ["Makefile"],
+                    "saPlotFiles": ["fig.pdf"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, {}, "overleaf")
+        assert [d["sPath"] for d in listFiles] == ["fig.pdf"]
+
+    def test_fbWorkflowRootMakesPathsAbsolute(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "sDirectory": "CumulativeXuvAndCosmicShoreline",
+                    "saDataFiles": [],
+                    "saPlotFiles": [
+                        "{sPlotDirectory}/CosmicShoreline."
+                        "{sFigureType}",
+                    ],
+                },
+            ],
+        }
+        dictVars = {
+            "sPlotDirectory": "Plot", "sFigureType": "pdf",
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, dictVars, None,
+            "/workspace/GJ1132_XUV",
+        )
+        assert listFiles[0]["sPath"] == (
+            "/workspace/GJ1132_XUV/CumulativeXuvAndCosmicShoreline/"
+            "Plot/CosmicShoreline.pdf"
+        )
+
+    def test_fbAbsoluteStepDirIsNotDoubleJoined(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "sDirectory": "/workspace/already/absolute",
+                    "saDataFiles": [],
+                    "saPlotFiles": ["fig.pdf"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(
+            dictWorkflow, {}, {}, None, "/workspace/ignored",
+        )
+        assert listFiles[0]["sPath"] == (
+            "/workspace/already/absolute/fig.pdf"
+        )
+
+    def test_fbWorkflowRootOmittedLeavesRelativePaths(self):
+        from vaibify.gui.syncDispatcher import flistCollectOutputFiles
+        dictWorkflow = {
+            "listSteps": [
+                {
+                    "sDirectory": "step1",
+                    "saDataFiles": [],
+                    "saPlotFiles": ["fig.pdf"],
+                },
+            ],
+        }
+        listFiles = flistCollectOutputFiles(dictWorkflow, {})
+        assert listFiles[0]["sPath"] == "step1/fig.pdf"

@@ -68,6 +68,21 @@ var VaibifyUtilities = (function () {
             sPad(d.getUTCSeconds()) + " UTC";
     }
 
+    function fsFormatEpochUtc(iEpochSeconds) {
+        if (iEpochSeconds === undefined || iEpochSeconds === null) {
+            return "";
+        }
+        var iEpoch = parseInt(iEpochSeconds, 10);
+        if (isNaN(iEpoch)) return "";
+        var d = new Date(iEpoch * 1000);
+        var sPad = function (i) { return String(i).padStart(2, "0"); };
+        return d.getUTCFullYear() + "-" +
+            sPad(d.getUTCMonth() + 1) + "-" +
+            sPad(d.getUTCDate()) + " " +
+            sPad(d.getUTCHours()) + ":" +
+            sPad(d.getUTCMinutes()) + " UTC";
+    }
+
     function fsResolveTemplate(sTemplate, dictVariables) {
         return sTemplate.replace(/\{([^}]+)\}/g, function (sMatch, sToken) {
             if (dictVariables.hasOwnProperty(sToken)) {
@@ -86,14 +101,30 @@ var VaibifyUtilities = (function () {
         return dictLabels[sCategory] || sCategory;
     }
 
+    async function fnSpawnNewSession() {
+        try {
+            var dictResponse = await VaibifyApi.fdictPost(
+                "/api/session/spawn", {});
+            var windowChild = window.open(dictResponse.sUrl, "_blank");
+            if (windowChild) windowChild.focus();
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                "Could not open new vaibify window: " +
+                fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
     return {
         fnEscapeHtml: fnEscapeHtml,
         fbIsFigureFile: fbIsFigureFile,
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,
         fsFormatUtcTimestamp: fsFormatUtcTimestamp,
+        fsFormatEpochUtc: fsFormatEpochUtc,
         fsResolveTemplate: fsResolveTemplate,
         fsTestCategoryLabel: fsTestCategoryLabel,
+        fnSpawnNewSession: fnSpawnNewSession,
         SET_FIGURE_EXTENSIONS: SET_FIGURE_EXTENSIONS,
         SET_BINARY_EXTENSIONS: SET_BINARY_EXTENSIONS,
     };

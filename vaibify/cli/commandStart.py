@@ -5,6 +5,7 @@ import sys
 import click
 
 from .configLoader import fconfigResolveProject, fsDockerDir
+from .portAllocator import fiResolvePort
 
 
 def _fnStartContainer(config, sDockerDir, sCommand):
@@ -48,16 +49,60 @@ def _fnHandleDockerRuntimeError(error, sProjectName):
     sys.exit(1)
 
 
-def fnLaunchGui(config):
-    """Launch the workflow viewer GUI."""
+def _fnAcquireProjectLockOrExit(sProjectName, iPort):
+    """Acquire the per-container lock or exit with a clear message."""
+    from vaibify.config.containerLock import (
+        ContainerLockedError, fnAcquireContainerLock,
+    )
+    try:
+        return fnAcquireContainerLock(sProjectName, iPort)
+    except ContainerLockedError as error:
+        click.echo(
+            f"Error: {error}\n"
+            f"Stop the other vaibify session or pass a different "
+            f"--project.",
+            err=True,
+        )
+        sys.exit(1)
+
+
+def _fnAcquireGuiSessionSlotOrExit(iPort):
+    """Acquire a session slot for the workflow viewer or exit nonzero."""
+    from vaibify.config.sessionRegistry import (
+        SessionLimitExceededError, fnAcquireSessionSlot,
+    )
+    try:
+        return fnAcquireSessionSlot("viewer", iPort)
+    except SessionLimitExceededError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+
+
+def fnLaunchGui(config, iExplicitPort):
+    """Launch the workflow viewer GUI bound to the given port."""
     click.echo("Launching workflow viewer ...")
     from vaibify.gui.pipelineServer import (
         fappCreateApplication,
     )
+    from vaibify.config.containerLock import fnReleaseContainerLock
+    from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     import uvicorn
-    sRoot = config.sWorkspaceRoot
-    app = fappCreateApplication(sWorkspaceRoot=sRoot)
-    uvicorn.run(app, host="127.0.0.1", port=8050)
+    iPort = fiResolvePort(iExplicitPort)
+    fileHandleSession = _fnAcquireGuiSessionSlotOrExit(iPort)
+    try:
+        fileHandleLock = _fnAcquireProjectLockOrExit(
+            config.sProjectName, iPort,
+        )
+        try:
+            sRoot = config.sWorkspaceRoot
+            app = fappCreateApplication(
+                sWorkspaceRoot=sRoot, iExpectedPort=iPort,
+            )
+            uvicorn.run(app, host="127.0.0.1", port=iPort)
+        finally:
+            fnReleaseContainerLock(fileHandleLock)
+    finally:
+        fnReleaseSessionSlot(fileHandleSession)
 
 
 @click.command("start")
@@ -76,16 +121,21 @@ def fnLaunchGui(config):
     help="Enable Jupyter overlay with port forwarding.",
 )
 @click.option(
+    "--port", "iPort", default=None, type=int,
+    help="Port for the workflow viewer GUI (default: 8050, "
+    "auto-shifts upward if taken).",
+)
+@click.option(
     "--project", "-p", "sProjectName", default=None,
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
 @click.argument("command", required=False, default=None)
-def start(bGui, bJupyter, sProjectName, command):
+def start(bGui, bJupyter, iPort, sProjectName, command):
     """Start the Vaibify environment."""
     config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()
     click.echo(f"Starting container {config.sProjectName} ...")
     _fnStartContainer(config, sDockerDir, command)
     if bGui:
-        fnLaunchGui(config)
+        fnLaunchGui(config, iPort)

@@ -52,7 +52,9 @@ def _fnRegisterScriptRoutes(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        sDirectory = dictStep.get("sDirectory", "")
+        sDirectory = _fsAbsoluteStepDirectory(
+            dictStep, dictWorkflow,
+        )
         iExit, sOutput = await asyncio.to_thread(
             dictCtx["docker"].ftResultExecuteCommand,
             sContainerId,
@@ -95,7 +97,9 @@ async def _fdictScanDependencies(
     listSteps = dictWorkflow.get("listSteps", [])
     dictStep = listSteps[iStepIndex] \
         if iStepIndex < len(listSteps) else {}
-    sStepDirectory = dictStep.get("sDirectory", "")
+    sStepDirectory = _fsAbsoluteStepDirectory(
+        dictStep, dictWorkflow,
+    )
     listAllDetected = await _flistDetectLoadsInCommands(
         dictCtx, sContainerId, saDataCommands, sStepDirectory,
     )
@@ -241,6 +245,20 @@ def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
                 "sTemplateVariable": sTemplateVariable,
             })
     return listUpstream
+
+
+def _fsAbsoluteStepDirectory(dictStep, dictWorkflow):
+    """Return container-absolute path to the step's directory.
+
+    Step ``sDirectory`` values are repo-relative; Docker exec / fetch
+    APIs need absolute paths, so join with ``sProjectRepoPath`` at
+    this boundary. Idempotent on already-absolute values.
+    """
+    sDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    if not sDirectory or posixpath.isabs(sDirectory) or not sRepoRoot:
+        return sDirectory
+    return posixpath.join(sRepoRoot, sDirectory)
 
 
 def _fsJoinStepPath(sStepDirectory, sScriptPath):

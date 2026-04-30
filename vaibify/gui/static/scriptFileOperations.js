@@ -364,8 +364,15 @@ var PipeleyenFileOps = (function () {
 
     function _fbFileInModifiedList(sResolved, listModified) {
         if (!sResolved || listModified.length === 0) return false;
+        if (listModified.indexOf(sResolved) !== -1) return true;
         for (var i = 0; i < listModified.length; i++) {
-            if (listModified[i] === sResolved) return true;
+            // Legacy fallback: a workflow whose stored
+            // listModifiedFiles still has absolute container paths
+            // (pre-2026-04 wire format) until the loader migration
+            // runs on the next connect.
+            // TODO(2026-07-01): remove — at least one release after
+            // the 2026-04-23 wire-format switchover, by which point
+            // all workflows will have been loaded once and migrated.
             if (listModified[i].endsWith("/" + sResolved)) {
                 return true;
             }
@@ -415,11 +422,22 @@ var PipeleyenFileOps = (function () {
         dictNewScriptStatus, dictState
     ) {
         if (!dictNewScriptStatus) return;
-        var dictPrev = JSON.stringify(
-            dictState.dictScriptModified);
-        dictState.dictScriptModified = dictNewScriptStatus;
-        if (JSON.stringify(
-            dictState.dictScriptModified) !== dictPrev) {
+        var dictModified = {};
+        var dictStaleArtifacts = {};
+        Object.keys(dictNewScriptStatus).forEach(function (sKey) {
+            var dictEntry = dictNewScriptStatus[sKey];
+            dictModified[sKey] = dictEntry.sStatus;
+            dictStaleArtifacts[sKey] =
+                dictEntry.listStaleArtifacts || [];
+        });
+        var sPrev = JSON.stringify(dictState.dictScriptModified);
+        var sPrevStale = JSON.stringify(
+            dictState.dictStaleArtifacts);
+        dictState.dictScriptModified = dictModified;
+        dictState.dictStaleArtifacts = dictStaleArtifacts;
+        if (JSON.stringify(dictState.dictScriptModified) !== sPrev ||
+                JSON.stringify(dictState.dictStaleArtifacts) !==
+                sPrevStale) {
             PipeleyenApp.fnRenderStepList();
         }
     }

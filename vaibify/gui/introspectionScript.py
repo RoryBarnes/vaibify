@@ -26,10 +26,22 @@ def _fsFormatSafeName(sFileName):
     return sSafe
 
 
-def _fsBuildIntrospectionScript(listDataFiles, sDirectory):
-    """Return a self-contained Python script that introspects data files."""
+def _fsBuildIntrospectionScript(
+    listDataFiles, sDirectory, bScriptStochastic=False,
+    iStochasticMinSamples=64,
+):
+    """Return a self-contained Python script that introspects data files.
+
+    ``bScriptStochastic`` and ``iStochasticMinSamples`` configure
+    whether arrays large enough to support distributional metrics
+    receive percentile/std benchmarks alongside the single-sample
+    ones. Both signals must agree before distributional metrics are
+    emitted; the host-side filter chooses which ones survive.
+    """
     sFileListRepr = repr(listDataFiles)
     sDirectoryRepr = repr(sDirectory)
+    sScriptStochasticRepr = repr(bool(bScriptStochastic))
+    sStochasticMinSamplesRepr = repr(int(iStochasticMinSamples))
     return f'''import json
 import os
 import sys
@@ -39,6 +51,8 @@ import numpy as np
 
 _I_MAX_FILE_BYTES = 500_000_000
 _I_MAX_BENCHMARKS_PER_FILE = 250
+_B_SCRIPT_STOCHASTIC = {sScriptStochasticRepr}
+_I_STOCHASTIC_MIN_SAMPLES = {sStochasticMinSamplesRepr}
 
 _DICT_FORMAT_MAP = {{
     ".npy": "npy", ".npz": "npz", ".json": "json", ".csv": "csv",
@@ -233,74 +247,136 @@ def _fnBenchmarkNpz(sFullPath, sFileName, dictReport):
                 sKeyPrefix=f"key:{{sKey}},",
             )
 
+def _fdictBenchMeta(iSampleSize, daValues):
+    if iSampleSize <= 0:
+        return {{"iSampleSize": 0, "fObservedCv": None}}
+    fMean = float(daValues.mean())
+    fStd = float(daValues.std(ddof=1)) if iSampleSize > 1 else 0.0
+    if fMean == 0.0:
+        fObservedCv = None
+    else:
+        fObservedCv = fStd / abs(fMean)
+    return {{"iSampleSize": int(iSampleSize), "fObservedCv": fObservedCv}}
+
+def _fnAttachMeta(dictBench, sMetricKind, dictMeta):
+    dictBench["sMetricKind"] = sMetricKind
+    dictBench["iSampleSize"] = dictMeta["iSampleSize"]
+    dictBench["fObservedCv"] = dictMeta["fObservedCv"]
+
+def _fnAppendSingleBench(
+    listBench, sName, sFileName, sAccessPath, fValue, sMetricKind, dictMeta,
+):
+    dictBench = {{
+        "sName": sName, "sDataFile": sFileName,
+        "sAccessPath": sAccessPath, "fValue": float(fValue),
+    }}
+    _fnAttachMeta(dictBench, sMetricKind, dictMeta)
+    listBench.append(dictBench)
+
+def _fnAddDistributionalBenchmarks(
+    daValues, sLabel, sFileName, sAccessPrefix, dictReport, dictMeta,
+):
+    listBench = dictReport["listBenchmarks"]
+    fStd = float(daValues.std(ddof=1)) if len(daValues) > 1 else 0.0
+    _fnAppendSingleBench(
+        listBench, f"f{{sLabel}}Std", sFileName,
+        f"{{sAccessPrefix}}index:std", fStd, "std", dictMeta,
+    )
+    listPercentiles = (
+        (5, "percentile_5", "p5"), (25, "percentile_25", "p25"),
+        (50, "percentile_50", "p50"), (75, "percentile_75", "p75"),
+        (95, "percentile_95", "p95"),
+    )
+    for iPct, sKind, sToken in listPercentiles:
+        fValue = float(np.percentile(daValues, iPct))
+        _fnAppendSingleBench(
+            listBench, f"f{{sLabel}}P{{iPct}}", sFileName,
+            f"{{sAccessPrefix}}index:{{sToken}}", fValue, sKind, dictMeta,
+        )
+
+def _fbShouldEmitDistributional(daValues):
+    return (
+        _B_SCRIPT_STOCHASTIC
+        and len(daValues) >= _I_STOCHASTIC_MIN_SAMPLES
+        and np.issubdtype(daValues.dtype, np.number)
+    )
+
+def _fdictMetaForArray(daValues):
+    if np.issubdtype(daValues.dtype, np.number):
+        return _fdictBenchMeta(len(daValues), daValues)
+    return {{"iSampleSize": int(len(daValues)), "fObservedCv": None}}
+
+def _fnAppendNumericAggregates(
+    listBench, daValues, sLabel, sFileName, sAccessPrefix, dictMeta,
+):
+    _fnAppendSingleBench(
+        listBench, f"f{{sLabel}}Mean", sFileName,
+        f"{{sAccessPrefix}}index:mean", float(daValues.mean()),
+        "mean", dictMeta,
+    )
+    _fnAppendSingleBench(
+        listBench, f"f{{sLabel}}Min", sFileName,
+        f"{{sAccessPrefix}}index:min", float(daValues.min()),
+        "min", dictMeta,
+    )
+    _fnAppendSingleBench(
+        listBench, f"f{{sLabel}}Max", sFileName,
+        f"{{sAccessPrefix}}index:max", float(daValues.max()),
+        "max", dictMeta,
+    )
+
+def _fnAppendFirstLast(
+    listBench, daValues, sLabel, sFileName, sAccessPrefix, dictMeta,
+):
+    _fnAppendSingleBench(
+        listBench, f"f{{sLabel}}First", sFileName,
+        f"{{sAccessPrefix}}index:0", float(daValues[0]), "first", dictMeta,
+    )
+    _fnAppendSingleBench(
+        listBench, f"f{{sLabel}}Last", sFileName,
+        f"{{sAccessPrefix}}index:-1", float(daValues[-1]), "last", dictMeta,
+    )
+
 def _fnAddArrayBenchmarks(
     daFlat, sFileName, sLabel, dictReport, sKeyPrefix="",
 ):
     sPrefix = sLabel or os.path.splitext(sFileName)[0]
     if len(daFlat) == 0:
         return
+    dictMeta = _fdictMetaForArray(daFlat)
     listBench = dictReport["listBenchmarks"]
-    listBench.append({{
-        "sName": f"f{{sPrefix}}First",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sKeyPrefix}}index:0",
-        "fValue": float(daFlat[0]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sPrefix}}Last",
-        "sDataFile": sFileName,
-        "sAccessPath": f"{{sKeyPrefix}}index:-1",
-        "fValue": float(daFlat[-1]),
-    }})
+    _fnAppendFirstLast(
+        listBench, daFlat, sPrefix, sFileName, sKeyPrefix, dictMeta,
+    )
     if np.issubdtype(daFlat.dtype, np.number):
-        listBench.append({{
-            "sName": f"f{{sPrefix}}Mean",
-            "sDataFile": sFileName,
-            "sAccessPath": f"{{sKeyPrefix}}index:mean",
-            "fValue": float(daFlat.mean()),
-        }})
-        listBench.append({{
-            "sName": f"f{{sPrefix}}Min",
-            "sDataFile": sFileName,
-            "sAccessPath": f"{{sKeyPrefix}}index:min",
-            "fValue": float(daFlat.min()),
-        }})
-        listBench.append({{
-            "sName": f"f{{sPrefix}}Max",
-            "sDataFile": sFileName,
-            "sAccessPath": f"{{sKeyPrefix}}index:max",
-            "fValue": float(daFlat.max()),
-        }})
+        _fnAppendNumericAggregates(
+            listBench, daFlat, sPrefix, sFileName,
+            sKeyPrefix, dictMeta,
+        )
+        if _fbShouldEmitDistributional(daFlat):
+            _fnAddDistributionalBenchmarks(
+                daFlat, sPrefix, sFileName, sKeyPrefix,
+                dictReport, dictMeta,
+            )
 
 def _fnAddStatsBenchmarks(
     daValues, sLabel, sFileName, sAccessPrefix, dictReport,
 ):
+    dictMeta = _fdictMetaForArray(daValues)
     listBench = dictReport["listBenchmarks"]
-    listBench.append({{
-        "sName": f"f{{sLabel}}First", "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:0",
-        "fValue": float(daValues[0]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Last", "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:-1",
-        "fValue": float(daValues[-1]),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Mean", "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:mean",
-        "fValue": float(daValues.mean()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Min", "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:min",
-        "fValue": float(daValues.min()),
-    }})
-    listBench.append({{
-        "sName": f"f{{sLabel}}Max", "sDataFile": sFileName,
-        "sAccessPath": f"{{sAccessPrefix}}index:max",
-        "fValue": float(daValues.max()),
-    }})
+    _fnAppendFirstLast(
+        listBench, daValues, sLabel, sFileName,
+        sAccessPrefix, dictMeta,
+    )
+    _fnAppendNumericAggregates(
+        listBench, daValues, sLabel, sFileName,
+        sAccessPrefix, dictMeta,
+    )
+    if _fbShouldEmitDistributional(daValues):
+        _fnAddDistributionalBenchmarks(
+            daValues, sLabel, sFileName, sAccessPrefix,
+            dictReport, dictMeta,
+        )
 
 def _fnBenchmarkJson(sFullPath, sFileName, dictReport):
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
@@ -1067,10 +1143,14 @@ print(json.dumps(listReports))
 
 def _fsRunIntrospection(
     connectionDocker, sContainerId, sDirectory, listDataFiles,
+    bScriptStochastic=False,
 ):
     """Run introspection script in container, return parsed reports."""
     import secrets
-    sScript = _fsBuildIntrospectionScript(listDataFiles, sDirectory)
+    sScript = _fsBuildIntrospectionScript(
+        listDataFiles, sDirectory,
+        bScriptStochastic=bScriptStochastic,
+    )
     sScriptPath = f"/tmp/_vaibify_introspect_{secrets.token_hex(8)}.py"
     connectionDocker.fnWriteFile(
         sContainerId, sScriptPath, sScript.encode("utf-8"),

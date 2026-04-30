@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from . import workflowManager
 from .pipelineUtils import (
-    fsComputeStepLabel,
+    fsLabelFromStepIndex,
     _fnEmitBanner,
     _fnEmitCompletion,
     _fnEmitStepResult,
@@ -188,6 +188,10 @@ async def fnRunAllTests(
         {"sType": "started", "sCommand": "runAllTests"}
     )
     dictVars = _fdictBuildWorkflowVars(dictWorkflow)
+    from .pipelineRunner import _fnInjectDeterminismEnvPrefix
+    await _fnInjectDeterminismEnvPrefix(
+        connectionDocker, sContainerId, dictWorkflow, dictVars,
+    )
     iFinalExitCode = await _fiRunTestsForAllSteps(
         connectionDocker, sContainerId, dictWorkflow,
         dictVars, fnStatusCallback,
@@ -204,7 +208,7 @@ async def _fiRunTestsForAllSteps(
     iFinalExitCode = 0
     listSteps = dictWorkflow.get("listSteps", [])
     for iIndex, dictStep in enumerate(listSteps):
-        if not dictStep.get("bEnabled", True):
+        if not dictStep.get("bRunEnabled", True):
             continue
         if not _flistResolveTestCommands(dictStep):
             continue
@@ -224,7 +228,7 @@ async def _fnEmitStepBanner(
 ):
     """Emit banner and stepStarted event for a step."""
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
-    sStepLabel = fsComputeStepLabel(dictWorkflow, iStepNumber)
+    sStepLabel = fsLabelFromStepIndex(dictWorkflow, iStepNumber - 1)
     await _fnEmitBanner(
         fnStatusCallback, iStepNumber, sStepName,
         sStepLabel=sStepLabel,
@@ -240,9 +244,9 @@ async def _fiRunStepTests(
     dictWorkflow,
 ):
     """Run tests for a single step and emit results."""
-    from .pipelineRunner import _fnRecordInputHashes
-
-    sStepDirectory = dictStep.get("sDirectory", "")
+    sStepDirectory = workflowManager.fsResolveStepWorkdir(
+        dictStep.get("sDirectory", ""), dictVars,
+    )
     await _fnEmitStepBanner(
         fnStatusCallback, iStepNumber, dictStep, dictWorkflow,
     )
@@ -250,9 +254,6 @@ async def _fiRunStepTests(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVars, fnStatusCallback,
         iStepNumber,
-    )
-    await _fnRecordInputHashes(
-        connectionDocker, sContainerId, dictStep,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode

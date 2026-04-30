@@ -26,6 +26,9 @@
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshContainers"
                         title="Refresh">&#x21bb;</button>
+                <button class="btn-icon"
+                        id="btnNewVaibifyWindow"
+                        title="New vaibify window">&#x29C9;</button>
             </div>
         </div>
         <div id="listContainers">
@@ -46,7 +49,8 @@
 <div class="modal-overlay" id="modalAddContainer" style="display: none;">
     <div class="modal modal-directory-browser">
         <h2 style="color: var(--color-pale-blue);">Select Directory</h2>
-        <p style="font-size: 13px; color: var(--text-secondary);
+        <p id="directoryBrowserSubtitle"
+           style="font-size: 13px; color: var(--text-secondary);
                   margin-bottom: 12px;">
             Navigate to a directory containing
             <code>vaibify.yml</code>.
@@ -56,6 +60,8 @@
                     title="Back" disabled>&#9664;</button>
             <button class="btn-icon browser-nav-button" id="btnBrowserForward"
                     title="Forward" disabled>&#9654;</button>
+            <button class="btn btn-small" id="btnDirectoryNewFolder"
+                    style="display: none; margin-left: auto;">+ New folder</button>
         </div>
         <div class="breadcrumb-bar" id="directoryBreadcrumb"></div>
         <div class="directory-browser" id="directoryEntries">
@@ -78,7 +84,13 @@
 <!-- Add Choice Modal -->
 <div class="modal-overlay" id="modalAddChoice" style="display: none;">
     <div class="modal modal-small">
-        <h2 style="color: var(--color-pale-blue);">Add Container</h2>
+        <div class="wizard-title-row">
+            <h2 style="color: var(--color-pale-blue);">Add Container</h2>
+            <button type="button" id="btnAddChoiceHelp"
+                    class="wizard-help-button"
+                    title="What's the difference?"
+                    aria-label="Show help for add container choice">?</button>
+        </div>
         <div class="add-choice-cards">
             <div class="add-choice-card" id="btnChoiceAddExisting">
                 <div class="add-choice-icon">&#128193;</div>
@@ -104,10 +116,17 @@
 <!-- Creation Wizard Modal -->
 <div class="modal-overlay" id="modalCreateWizard" style="display: none;">
     <div class="modal">
-        <h2 id="wizardStepTitle" style="color: var(--color-pale-blue);">
-            Create Project</h2>
+        <div class="wizard-title-row">
+            <h2 id="wizardStepTitle" style="color: var(--color-pale-blue);">
+                Create Project</h2>
+            <button type="button" id="btnWizardHelp" class="wizard-help-button"
+                    title="What does this step do?"
+                    aria-label="Show help for this step">?</button>
+        </div>
         <div class="wizard-progress">
             <span class="wizard-progress-step active"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
             <span class="wizard-progress-step"></span>
             <span class="wizard-progress-step"></span>
             <span class="wizard-progress-step"></span>
@@ -131,6 +150,11 @@
            color: var(--text-secondary); text-align: center;">
             Building image, please wait...
         </p>
+        <p style="font-size: 12px; color: var(--text-secondary);
+           text-align: center; margin-top: 8px; opacity: 0.8;">
+            This typically takes 5&ndash;15 minutes depending on
+            enabled features and network speed.
+        </p>
         <div class="build-spinner"></div>
     </div>
 </div>
@@ -142,8 +166,14 @@
     <div class="picker-content">
         <div class="picker-section-header">
             <h3 class="picker-section-label">Available Workflows:</h3>
-            <button class="btn-icon picker-refresh" id="btnRefreshWorkflows"
-                    title="Refresh">&#x21bb;</button>
+            <div style="display: flex; gap: 6px;">
+                <button class="btn-icon picker-refresh"
+                        id="btnRefreshWorkflows"
+                        title="Refresh">&#x21bb;</button>
+                <button class="btn-icon"
+                        id="btnNewVaibifyWindowWorkflows"
+                        title="New vaibify window">&#x29C9;</button>
+            </div>
         </div>
         <div style="margin-bottom: 10px;">
             <div class="container-card" id="btnNoWorkflow">
@@ -166,13 +196,18 @@
     <div id="toolbar">
         <img src="/static/vaibify_logo_paleblue.png" alt="Vaibify"
              class="toolbar-logo">
-        <div id="workflowSwitcher" class="workflow-switcher">
-            <span id="activeWorkflowName" class="toolbar-workflow"
-                  title="Click to switch workflow"></span>
-            <span class="vaibify-checkmark" id="vaibifyCheckmark"
-                  title="Workflow fully verified"><img
-                  src="/static/favicon.png" alt="verified"></span>
-            <div id="workflowDropdown" class="workflow-dropdown"></div>
+        <div class="toolbar-title-group">
+            <span class="toolbar-label">Container:</span>
+            <span id="activeContainerName" class="toolbar-value"></span>
+            <span class="toolbar-label">Workflow:</span>
+            <div id="workflowSwitcher" class="workflow-switcher">
+                <span id="activeWorkflowName" class="toolbar-workflow"
+                      title="Click to switch workflow"></span>
+                <span class="vaibify-checkmark" id="vaibifyCheckmark"
+                      title="Workflow fully verified"><img
+                      src="/static/favicon.png" alt="verified"></span>
+                <div id="workflowDropdown" class="workflow-dropdown"></div>
+            </div>
         </div>
         <!-- Run Menu -->
         <div class="toolbar-menu" id="toolbarMenuRun">
@@ -226,6 +261,8 @@
                     Open in VS Code</div>
                 <div class="toolbar-menu-item" id="btnMonitor">
                     Resource Monitor</div>
+                <div class="toolbar-menu-item" id="btnZenodoStatus">
+                    Zenodo Status</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnResetLayout">
                     Default Layout</div>
@@ -240,6 +277,8 @@
                     Containers</div>
                 <div class="toolbar-menu-item" id="btnAdminWorkflows">
                     Workflows</div>
+                <div class="toolbar-menu-item" id="btnAdminNewWindow">
+                    New vaibify window</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnAdminQuit">
                     Quit</div>
@@ -252,6 +291,7 @@
         <div id="leftPanelTabs">
             <div class="left-tab active" data-panel="steps">Steps</div>
             <div class="left-tab" data-panel="files">Files</div>
+            <div class="left-tab" data-panel="repos">Repos</div>
             <div class="left-tab" data-panel="logs">Logs</div>
         </div>
 
@@ -273,6 +313,13 @@
         <div id="panelFiles">
             <div id="fileBreadcrumb"></div>
             <div id="listFiles"></div>
+        </div>
+
+        <!-- Repos sub-panel -->
+        <div id="panelRepos">
+            <div id="tabContentRepos" class="tab-content">
+                <div id="reposPanelContainer"></div>
+            </div>
         </div>
 
         <!-- Logs sub-panel -->
@@ -494,13 +541,19 @@
 
 <!-- Push Modal -->
 <div class="modal-overlay" id="modalPush" style="display: none;">
-    <div class="modal">
+    <div class="modal modal-push">
         <h2 id="modalPushTitle">Push Files</h2>
+        <div id="modalPushTargetRow" class="sync-target-container"
+             style="display: none;"></div>
         <div id="modalPushFileList" class="push-file-list"></div>
         <div class="modal-actions">
             <button class="btn" id="btnPushCancel">Cancel</button>
-            <button class="btn" id="btnPushSelectAll">Select All</button>
-            <button class="btn btn-primary" id="btnPushConfirm">
+            <button class="btn" id="btnPushEditZenodoMetadata"
+                    style="display: none;">
+                Edit Zenodo metadata</button>
+            <button class="btn" id="btnPushAll" style="display: none;">
+                Push All</button>
+            <button class="btn btn-primary" id="btnPushSelected">
                 Push Selected</button>
         </div>
     </div>
@@ -519,6 +572,31 @@
             <input type="text" id="inputSetupProjectId"
                    placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1">
         </div>
+        <div class="form-group" id="groupSetupZenodoInstance"
+             style="display: none;">
+            <label>Zenodo Instance</label>
+            <div class="zenodo-instance-choice">
+                <label class="radio-row">
+                    <input type="radio" name="zenodoInstance"
+                           value="sandbox" checked>
+                    <span>Sandbox (sandbox.zenodo.org) — recommended for first-time setup</span>
+                </label>
+                <label class="radio-row">
+                    <input type="radio" name="zenodoInstance"
+                           value="production">
+                    <span>Production (zenodo.org) — public, assigns a real DOI</span>
+                </label>
+            </div>
+            <p class="setup-instance-help" id="helpZenodoInstance">
+                Generate a token at
+                <a id="linkZenodoTokens"
+                   href="https://sandbox.zenodo.org/account/settings/applications/"
+                   target="_blank" rel="noopener">
+                    sandbox.zenodo.org/account/settings/applications/</a>
+                with <code>deposit:write</code> and
+                <code>deposit:actions</code> scopes.
+            </p>
+        </div>
         <div class="form-group" id="groupSetupToken"
              style="display: none;">
             <label id="labelSetupToken">API Token
@@ -535,6 +613,77 @@
     </div>
 </div>
 
+<!-- Zenodo Metadata Modal -->
+<div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
+    <div class="modal modal-medium">
+        <h2 style="color: var(--color-pale-blue);">
+            Zenodo deposit metadata
+            <span class="help-icon" title="Zenodo requires a title, description, creators, and a license before a deposit can be published. These fields are saved in your workflow.json and reused on every Zenodo push. You can edit them anytime.">?</span>
+        </h2>
+        <div class="form-group">
+            <label for="zmTitle">Title <span class="required">*</span></label>
+            <input type="text" id="zmTitle"
+                   placeholder="e.g. GJ 1132 b XUV evolution (reproducibility archive)">
+        </div>
+        <div class="form-group">
+            <label for="zmDescription">Description</label>
+            <textarea id="zmDescription"
+                      placeholder="A short description of what is being archived..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Creators <span class="required">*</span></label>
+            <div id="zmCreators"></div>
+            <button type="button" class="btn btn-small"
+                    id="btnZmAddCreator">+ Add creator</button>
+        </div>
+        <div class="form-group">
+            <label for="zmLicense">License</label>
+            <select id="zmLicense">
+                <option value="CC-BY-4.0">CC-BY-4.0 (attribution)</option>
+                <option value="CC0-1.0">CC0-1.0 (no rights reserved)</option>
+                <option value="MIT">MIT (software)</option>
+                <option value="Apache-2.0">Apache-2.0 (software)</option>
+                <option value="GPL-3.0-or-later">GPL-3.0-or-later</option>
+                <option value="BSD-3-Clause">BSD-3-Clause</option>
+                <option value="__custom__">Custom (SPDX identifier)</option>
+            </select>
+            <input type="text" id="zmLicenseCustom"
+                   style="display: none; margin-top: 6px;"
+                   placeholder="e.g. LGPL-3.0-or-later">
+        </div>
+        <div class="form-group">
+            <label for="zmKeywords">Keywords (comma-separated)</label>
+            <input type="text" id="zmKeywords"
+                   placeholder="e.g. exoplanet, xuv, astrobiology">
+        </div>
+        <div class="form-group">
+            <label for="zmRelatedUrl">Related GitHub URL</label>
+            <input type="text" id="zmRelatedUrl"
+                   placeholder="https://github.com/you/project">
+        </div>
+        <div id="zmError" class="modal-error" style="display: none;"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnZmCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnZmSave">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Zenodo Status Modal -->
+<div class="modal-overlay" id="modalZenodoStatus" style="display: none;">
+    <div class="modal modal-small">
+        <h2 style="color: var(--color-pale-blue);">
+            Zenodo Status
+            <span class="help-icon" title="Shows the latest Zenodo deposit published from this workflow: its DOI, concept DOI (shared across all versions), and a link to the Zenodo record. Empty until you publish for the first time.">?</span>
+        </h2>
+        <div id="modalZenodoStatusBody"></div>
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="btnZenodoStatusClose">
+                Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div id="toastContainer"></div>
 
@@ -546,11 +695,16 @@
 <script src="/static/scriptWebSocket.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPolling.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptStepRenderer.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptGitBadges.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptManifestCheck.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptOverleafMirror.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFileOperations.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptEventBindings.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptReposPanel.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApplication.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptTestManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPipelineRunner.js?v=__CACHE_VERSION__"></script>

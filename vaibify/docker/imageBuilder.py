@@ -77,7 +77,9 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
     sPreviousTag = "base"
     for sOverlayName in listOverlays:
         sNewTag = sOverlayName
-        fnApplyOverlay(sProjectName, sOverlayName, sDockerDir, sPreviousTag)
+        fnApplyOverlay(
+            sProjectName, sOverlayName, sDockerDir,
+            sPreviousTag, bNoCache)
         sPreviousTag = sNewTag
     _fnTagFinalImage(sProjectName, sPreviousTag)
 
@@ -162,7 +164,10 @@ def _flistBuildArgPairs(config, sBaseImage):
     return saResult
 
 
-def fnApplyOverlay(sProjectName, sOverlayName, sDockerDir, sFromTag):
+def fnApplyOverlay(
+    sProjectName, sOverlayName, sDockerDir, sFromTag,
+    bNoCache=False,
+):
     """Build a single overlay Dockerfile on top of the previous tag.
 
     Parameters
@@ -175,11 +180,16 @@ def fnApplyOverlay(sProjectName, sOverlayName, sDockerDir, sFromTag):
         Path to the directory containing Dockerfiles.
     sFromTag : str
         Tag of the image to build on top of.
+    bNoCache : bool
+        If True, pass --no-cache to docker build.
     """
     sDockerfile = _fsResolveOverlayDockerfile(sOverlayName, sDockerDir)
     sNewTag = f"{sProjectName}:{sOverlayName}"
     sFromImage = f"{sProjectName}:{sFromTag}"
-    saCommand = _flistOverlayCommand(sDockerfile, sNewTag, sFromImage, sDockerDir)
+    saCommand = _flistOverlayCommand(
+        sDockerfile, sNewTag, sFromImage, sDockerDir)
+    if bNoCache:
+        saCommand.append("--no-cache")
     _fnRunDockerBuild(saCommand)
 
 

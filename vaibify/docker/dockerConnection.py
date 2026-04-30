@@ -122,10 +122,19 @@ class DockerConnection:
         self.fnWriteFileViaTar(sContainerId, sFilePath, baContent)
 
     def fnWriteFileViaTar(self, sContainerId, sFilePath, baContent):
-        """Write bytes to a file using put_archive (no exec size limit)."""
+        """Write bytes to a file using put_archive (no exec size limit).
+
+        Sets ``infoTar.mtime`` to the current epoch so the file lands
+        in the container with a real modification time. tarfile's
+        ``TarInfo`` defaults ``mtime`` to ``0``, which downstream
+        lineage checks (test-source contract vs downstream outputs)
+        treat as "ancient" and which surfaces as "1970-01-01" in the
+        UI — neither of which is what callers mean.
+        """
         import io
         import posixpath
         import tarfile
+        import time
 
         sDirectory = posixpath.dirname(sFilePath)
         sFilename = posixpath.basename(sFilePath)
@@ -134,6 +143,7 @@ class DockerConnection:
         with tarfile.open(fileobj=bufferTar, mode="w") as tar:
             infoTar = tarfile.TarInfo(name=sFilename)
             infoTar.size = len(baContent)
+            infoTar.mtime = int(time.time())
             tar.addfile(infoTar, io.BytesIO(baContent))
         bufferTar.seek(0)
         container.put_archive(sDirectory, bufferTar)

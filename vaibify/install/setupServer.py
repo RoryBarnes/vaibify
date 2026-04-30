@@ -44,6 +44,7 @@ class WizardConfigRequest(BaseModel):
     sOverleafProjectId: str = ""
     sZenodoDepositionId: str = ""
     bNeverSleep: bool = False
+    bClaudeAutoUpdate: bool = True
 
 
 class ValidateResponse(BaseModel):
@@ -205,6 +206,7 @@ def _fdictConfigToWizardFormat(config):
             config.reproducibility.overleaf.sProjectId
         ),
         "bNeverSleep": config.bNeverSleep,
+        "bClaudeAutoUpdate": config.features.bClaudeAutoUpdate,
     }
 
 
@@ -226,6 +228,7 @@ def _flistEnabledFeatures(features):
 def _fdictWizardToYaml(request):
     """Convert wizard form data to vaibify.yml-compatible dict."""
     dictFeatures = _fdictFeaturesFromList(request.listFeatures)
+    dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
     listRepos = _flistReposFromUrls(request.listRepositories)
     dictYaml = {
         "projectName": request.sProjectName,

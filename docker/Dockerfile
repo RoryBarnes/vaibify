@@ -19,6 +19,15 @@ ENV PIP_ROOT_USER_ACTION=ignore
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Disable the _apt sandbox user for apt-get. In containerised environments
+# the unprivileged _apt user's home is /nonexistent, which makes gpgv fail
+# signature verification with an empty error summary — apt reports
+# "At least one invalid signature was encountered" even though the signature
+# is valid and gpgv run directly as root succeeds. Running apt as root is
+# already the norm during image build; the sandbox provides no additional
+# isolation here.
+RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
+
 # Generic build tools required by the base image
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -98,6 +107,18 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --upgrade setuptools
 
+# Keyring backend for in-container credential storage.
+# keyrings.alt provides a file-based PlaintextKeyring that works in
+# headless containers where the default SecretService backend is
+# unavailable and where EncryptedKeyring's interactive master-password
+# prompt cannot run. The container is ephemeral and the credential
+# file is chmod 600; nothing leaks to the host. PYTHON_KEYRING_BACKEND
+# pins the backend for every user (including root), which is what
+# vaibify's docker exec defaults to; the keyringrc.cfg written later
+# is a belt-and-suspenders backup for interactive shells that read it.
+RUN pip install --no-cache-dir keyring keyrings.alt
+ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
+
 # Conditional conda/mamba install for non-pip package managers
 RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
         curl -fsSL -o /tmp/miniforge.sh \
@@ -137,7 +158,9 @@ RUN mkdir -p /etc/vaibify
 COPY container.conf /etc/vaibify/container.conf
 COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
-COPY workflows/ /usr/share/vaibify/workflows/
+COPY overleafSync.py /usr/share/vaibify/overleafSync.py
+COPY latexConnector.py /usr/share/vaibify/latexConnector.py
+COPY zenodoClient.py /usr/share/vaibify/zenodoClient.py
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod +x /home/${CONTAINER_USER}/checkIsolation.sh \
@@ -145,7 +168,18 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
     && git config --system advice.detachedHead false \
     && git config --system --add safe.directory '*' \
     && mkdir -p ${WORKSPACE_ROOT} \
-    && chown ${CONTAINER_USER}:${CONTAINER_USER} ${WORKSPACE_ROOT}
+    && chown ${CONTAINER_USER}:${CONTAINER_USER} ${WORKSPACE_ROOT} \
+    && mkdir -p /home/${CONTAINER_USER}/.config/python_keyring \
+    && printf '[backend]\ndefault-keyring=keyrings.alt.file.PlaintextKeyring\n' \
+        > /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg \
+    && chown -R ${CONTAINER_USER}:${CONTAINER_USER} \
+        /home/${CONTAINER_USER}/.config \
+    && chmod 700 /home/${CONTAINER_USER}/.config/python_keyring \
+    && chmod 600 /home/${CONTAINER_USER}/.config/python_keyring/keyringrc.cfg \
+    && mkdir -p /home/${CONTAINER_USER}/.local/share/python_keyring \
+    && chown -R ${CONTAINER_USER}:${CONTAINER_USER} \
+        /home/${CONTAINER_USER}/.local \
+    && chmod 700 /home/${CONTAINER_USER}/.local/share/python_keyring
 
 ENV GIT_EDITOR=nano
 ENV WORKSPACE=${WORKSPACE_ROOT}

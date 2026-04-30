@@ -4,9 +4,7 @@ import pytest
 
 from vaibify.gui.syncDispatcher import (
     fsPythonCommand,
-    _fsHashFileCommand,
     _fsNormalizePath,
-    _fsGenerateGitIgnore,
     _fsGenerateReadme,
     _fsBuildStepCopyCommands,
     _flistArchivePlotPaths,
@@ -35,22 +33,6 @@ def test_fsPythonCommand_semicolon_separation():
 
 
 # -----------------------------------------------------------------------
-# _fsHashFileCommand
-# -----------------------------------------------------------------------
-
-
-def test_fsHashFileCommand_contains_sha256():
-    sResult = _fsHashFileCommand("/workspace/data.npy")
-    assert "sha256" in sResult
-    assert "/workspace/data.npy" in sResult
-
-
-def test_fsHashFileCommand_returns_python_command():
-    sResult = _fsHashFileCommand("/tmp/test.py")
-    assert sResult.startswith("python3 -c")
-
-
-# -----------------------------------------------------------------------
 # _fsNormalizePath
 # -----------------------------------------------------------------------
 
@@ -68,19 +50,6 @@ def test_fsNormalizePath_relative_joined():
 def test_fsNormalizePath_dotdot_normalized():
     sResult = _fsNormalizePath("/workspace/step1", "../lib/util.py")
     assert sResult == "/workspace/lib/util.py"
-
-
-# -----------------------------------------------------------------------
-# _fsGenerateGitIgnore
-# -----------------------------------------------------------------------
-
-
-def test_fsGenerateGitIgnore_contains_patterns():
-    sResult = _fsGenerateGitIgnore()
-    assert "*.npy" in sResult
-    assert "*.h5" in sResult
-    assert "Plot/*.pdf" in sResult
-    assert ".vaibify/logs/" in sResult
 
 
 # -----------------------------------------------------------------------
@@ -152,7 +121,7 @@ def test_fsBuildStepCopyCommands_copies_scripts():
 def test_fsBuildStepCopyCommands_handles_archive_plots():
     sResult = _fsBuildStepCopyCommands(
         "/workspace/step1", "stepOne",
-        [], ["/workspace/step1/fig.pdf"],
+        [], ["step1/fig.pdf"],
     )
     assert "pdftoppm" in sResult
     assert "fig" in sResult

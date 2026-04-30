@@ -133,6 +133,16 @@ def fbValidateWorkflow(dictWorkflow):
             if sField not in dictStep:
                 print(f"{sLabel}: missing required field '{sField}'")
                 return False
+    from .workflowManager import (
+        flistValidateOutputFilePaths,
+        flistValidateStepDirectories,
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    listWarnings.extend(flistValidateStepDirectories(dictWorkflow))
+    if listWarnings:
+        for sWarning in listWarnings:
+            print(sWarning)
+        return False
     return True
 
 
@@ -241,6 +251,21 @@ def fnExecuteCommand(sCommand, sWorkingDirectory, sStepName):
 # ---------------------------------------------------------------------------
 
 
+def _fsJoinStepDirectory(dictVariables, sDirectory):
+    """Return the absolute step directory under the project repo.
+
+    Step directories are repo-relative; join against ``sRepoRoot``
+    (computed once in ``fdictBuildGlobalVariables``) rather than the
+    workflow.json's dirname. ``sWorkflowRoot`` points at
+    ``<repo>/.vaibify/workflows``, so joining against it lands one
+    level too deep once directories are repo-relative.
+    """
+    sRepoRoot = dictVariables.get("sRepoRoot", "")
+    if not sRepoRoot:
+        return sDirectory
+    return os.path.join(sRepoRoot, sDirectory)
+
+
 def _fnRunTestsIfPresent(dictStep, dictVariables, sAbsDirectory):
     """Run test commands, printing results without aborting on failure."""
     for sCommand in dictStep.get("saTestCommands", []):
@@ -261,7 +286,7 @@ def fnExecuteStep(dictStep, dictVariables, sWorkflowRoot):
     """Execute all commands in a step, respecting bPlotOnly."""
     sDirectory = fsResolveVariables(
         dictStep["sDirectory"], dictVariables)
-    sAbsDirectory = os.path.join(sWorkflowRoot, sDirectory)
+    sAbsDirectory = _fsJoinStepDirectory(dictVariables, sDirectory)
     bPlotOnly = dictStep.get("bPlotOnly", True)
 
     if not bPlotOnly:
@@ -305,7 +330,7 @@ def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
     """Verify output files exist and register them as variables."""
     sDirectory = fsResolveVariables(
         dictStep["sDirectory"], dictVariables)
-    sAbsDirectory = os.path.join(sWorkflowRoot, sDirectory)
+    sAbsDirectory = _fsJoinStepDirectory(dictVariables, sDirectory)
 
     _fnRegisterFiles(
         dictStep.get("saDataFiles", []),
@@ -353,7 +378,7 @@ def fnRunVerifyOnly(dictWorkflow, dictVariables, sWorkflowRoot):
     """Check that all expected output files exist without executing."""
     listResults = []
     for iStep, dictStep in enumerate(dictWorkflow["listSteps"]):
-        if not dictStep.get("bEnabled", True):
+        if not dictStep.get("bRunEnabled", True):
             continue
         sLabel = f"Step{iStep + 1:02d}"
         try:
@@ -419,7 +444,7 @@ def fnRunPipeline(dictWorkflow, dictVariables, sWorkflowRoot, iStartStep=1):
     """Execute all enabled steps, halting on first failure."""
     listResults = []
     for iStep, dictStep in enumerate(dictWorkflow["listSteps"]):
-        if not dictStep.get("bEnabled", True):
+        if not dictStep.get("bRunEnabled", True):
             continue
         iStepNumber = iStep + 1
         sLabel = f"Step{iStepNumber:02d}"

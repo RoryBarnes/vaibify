@@ -5,6 +5,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 
 S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
 
@@ -21,7 +22,10 @@ __all__ = [
     "fdictCreateStep",
     "fdictGetStep",
     "fdictGetSyncStatus",
+    "fdictGetZenodoMetadata",
+    "fdictInitializeZenodoMetadata",
     "fdictLoadWorkflowFromContainer",
+    "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
     "fnNormalizeSceneReferences",
     "flistBuildTestCommands",
@@ -38,20 +42,30 @@ __all__ = [
     "flistFindWorkflowsInContainer",
     "flistResolveOutputFiles",
     "flistResolveTestCommands",
+    "flistValidateOutputFilePaths",
     "flistValidateReferences",
+    "flistValidateStepDirectories",
     "fnDeleteStep",
     "fnInsertStep",
+    "fnMigrateArchiveToTracking",
+    "fbMigrateModifiedFilesToRepoRelative",
     "fnRenumberAllReferences",
     "fnReorderStep",
     "fnSaveWorkflowToContainer",
+    "fnSetServiceTracking",
+    "fnSetZenodoMetadata",
+    "fnUpdateOverleafDigests",
     "fnUpdateStep",
     "fnUpdateSyncStatus",
+    "fnUpdateZenodoDigests",
     "fsCamelCaseDirectory",
     "fsGetFileCategory",
     "fsGetPlotCategory",
     "fsResolveCommand",
+    "fsResolveStepWorkdir",
     "fsResolveVariables",
     "fsTestsDirectory",
+    "fsToSyncStatusKey",
 ]
 
 DEFAULT_SEARCH_ROOT = "/workspace"
@@ -67,7 +81,13 @@ T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 def flistFindWorkflowsInContainer(
     connectionDocker, sContainerId, sSearchRoot=None
 ):
-    """Search all repos in workspace for workflow JSON files."""
+    """Search for workflow.json files inside git-tracked project repos.
+
+    Candidates outside a git work tree are dropped — every valid
+    vaibify workflow must live inside the project repo it belongs to.
+    Each returned entry carries the auto-detected
+    ``sProjectRepoPath`` so downstream code never has to re-probe.
+    """
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
     sCommand = (
@@ -78,29 +98,70 @@ def flistFindWorkflowsInContainer(
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
+    listCandidates = [
+        sLine.strip() for sLine in sOutput.splitlines()
+        if sLine.strip().endswith(".json")
+    ]
+    if not listCandidates:
+        return []
+    dictRepoByPath = _fdictDetectReposForCandidates(
+        connectionDocker, sContainerId, listCandidates,
+    )
     listResults = []
-    for sLine in sOutput.splitlines():
-        sPath = sLine.strip()
-        if sPath.endswith(".json"):
-            sRepoName = _fsExtractRepoName(sPath, sSearchRoot)
-            sName = _fsReadWorkflowName(
-                connectionDocker, sContainerId, sPath
-            )
-            listResults.append({
-                "sPath": sPath,
-                "sName": sName,
-                "sRepoName": sRepoName,
-            })
+    for sPath in listCandidates:
+        sRepo = dictRepoByPath.get(sPath, "")
+        if not sRepo:
+            continue
+        sName = _fsReadWorkflowName(
+            connectionDocker, sContainerId, sPath,
+        )
+        listResults.append({
+            "sPath": sPath,
+            "sName": sName,
+            "sRepoName": posixpath.basename(sRepo),
+            "sProjectRepoPath": sRepo,
+        })
     return sorted(listResults, key=lambda d: d["sName"])
 
 
-def _fsExtractRepoName(sWorkflowPath, sSearchRoot):
-    """Extract the repo directory name from a workflow path."""
-    sRelative = sWorkflowPath.replace(sSearchRoot + "/", "", 1)
-    listParts = sRelative.split("/")
-    if listParts[0] == ".vaibify":
-        return "(container root)"
-    return listParts[0]
+def _fdictDetectReposForCandidates(
+    connectionDocker, sContainerId, listCandidatePaths,
+):
+    """Return {workflow-path: project-repo-path} via a single docker exec.
+
+    Paths whose parent directory is not inside a git work tree are
+    omitted from the result, so only workflows under version control
+    survive discovery.
+    """
+    sPathsJson = json.dumps(listCandidatePaths)
+    sScript = (
+        "import json, os, subprocess, sys\n"
+        "paths = json.loads(sys.stdin.read())\n"
+        "out = {}\n"
+        "for p in paths:\n"
+        "    d = os.path.dirname(p)\n"
+        "    if not d: continue\n"
+        "    r = subprocess.run(\n"
+        "        ['git', '-C', d, 'rev-parse', '--show-toplevel'],\n"
+        "        capture_output=True, text=True, timeout=5,\n"
+        "    )\n"
+        "    if r.returncode == 0:\n"
+        "        out[p] = r.stdout.strip()\n"
+        "print(json.dumps(out))\n"
+    )
+    sCommand = (
+        "python3 -c " + shlex.quote(sScript) +
+        " <<< " + shlex.quote(sPathsJson)
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        return {}
+    try:
+        return json.loads((sOutput or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {}
 
 
 def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
@@ -119,6 +180,7 @@ def fdictLoadWorkflowFromContainer(
     connectionDocker, sContainerId, sWorkflowPath=None
 ):
     """Fetch and parse workflow.json from a Docker container."""
+    from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         listWorkflows = flistFindWorkflowsInContainer(
             connectionDocker, sContainerId
@@ -130,12 +192,29 @@ def fdictLoadWorkflowFromContainer(
         sWorkflowPath = listWorkflows[0]["sPath"]
     baContent = connectionDocker.fbaFetchFile(sContainerId, sWorkflowPath)
     dictWorkflow = json.loads(baContent.decode("utf-8"))
+    fnMigrateRunEnabledKey(dictWorkflow)
     if not fbValidateWorkflow(dictWorkflow):
         raise ValueError(f"Invalid workflow.json: {sWorkflowPath}")
     for dictStep in dictWorkflow.get("listSteps", []):
         fdictMigrateTestFormat(dictStep)
         fnNormalizeSceneReferences(dictStep)
+    fnAttachStepLabels(dictWorkflow)
     return dictWorkflow
+
+
+def fnMigrateRunEnabledKey(dictWorkflow):
+    """Rewrite legacy ``bEnabled`` step field to ``bRunEnabled``.
+
+    Older workflow.json files used ``bEnabled`` as the run-scope
+    flag. The field was renamed to keep run scope and verification
+    scope unambiguous. Idempotent on already-migrated steps.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if "bEnabled" not in dictStep:
+            continue
+        if "bRunEnabled" not in dictStep:
+            dictStep["bRunEnabled"] = dictStep["bEnabled"]
+        dictStep.pop("bEnabled", None)
 
 
 def fbValidateWorkflow(dictWorkflow):
@@ -147,7 +226,89 @@ def fbValidateWorkflow(dictWorkflow):
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return False
+    if flistValidateOutputFilePaths(dictWorkflow):
+        return False
+    if flistValidateStepDirectories(dictWorkflow):
+        return False
     return True
+
+
+def flistValidateOutputFilePaths(dictWorkflow):
+    """Return warnings for output paths that leave the project repo.
+
+    Scans ``saOutputFiles``, ``saDataFiles``, and ``saPlotFiles`` on
+    every step. Absolute paths and ``..``-escaping paths are flagged;
+    template-bearing paths (containing ``{``) are skipped because
+    they are resolved against the global variables dict at run time.
+    """
+    listWarnings = []
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        sLabel = f"Step{iIndex + 1:02d}"
+        sDirectory = dictStep.get("sDirectory", "")
+        for sKey in ("saOutputFiles", "saDataFiles", "saPlotFiles"):
+            for sPath in dictStep.get(sKey, []):
+                sWarning = _fsCheckOutputPathBoundary(
+                    sPath, sDirectory, sLabel, sKey,
+                )
+                if sWarning:
+                    listWarnings.append(sWarning)
+    return listWarnings
+
+
+def flistValidateStepDirectories(dictWorkflow):
+    """Return warnings for step sDirectory values that leave the project repo.
+
+    Absolute paths (``/``-prefixed) and ``..``-escaping paths are
+    flagged; template-bearing paths (containing ``{``) are skipped
+    because they are resolved against the global variables dict at
+    run time.
+    """
+    listWarnings = []
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        sLabel = f"Step{iIndex + 1:02d}"
+        sDirectory = dictStep.get("sDirectory", "")
+        sWarning = _fsCheckStepDirectoryBoundary(sDirectory, sLabel)
+        if sWarning:
+            listWarnings.append(sWarning)
+    return listWarnings
+
+
+def _fsCheckStepDirectoryBoundary(sDirectory, sLabel):
+    """Return a warning for one sDirectory leaving the project repo, or ''."""
+    if not isinstance(sDirectory, str) or not sDirectory:
+        return ""
+    if "{" in sDirectory:
+        return ""
+    if posixpath.isabs(sDirectory):
+        return (
+            f"{sLabel}: sDirectory '{sDirectory}' must be repo-relative, "
+            f"not absolute"
+        )
+    sNorm = posixpath.normpath(sDirectory)
+    if sNorm == ".." or sNorm.startswith("../"):
+        return (
+            f"{sLabel}: sDirectory '{sDirectory}' escapes the project "
+            f"repo (resolves to '{sNorm}')"
+        )
+    return ""
+
+
+def _fsCheckOutputPathBoundary(sPath, sDirectory, sLabel, sKey):
+    """Return a warning for one path leaving the project repo, or ''."""
+    if not isinstance(sPath, str) or "{" in sPath:
+        return ""
+    if posixpath.isabs(sPath):
+        return (
+            f"{sLabel}: {sKey} entry '{sPath}' must be repo-relative, "
+            f"not absolute"
+        )
+    sJoined = posixpath.normpath(posixpath.join(sDirectory or "", sPath))
+    if sJoined == ".." or sJoined.startswith("../"):
+        return (
+            f"{sLabel}: {sKey} entry '{sPath}' escapes the project "
+            f"repo (resolves to '{sJoined}')"
+        )
+    return ""
 
 
 def fsResolveVariables(sTemplate, dictVariables):
@@ -198,7 +359,7 @@ def flistExtractStepNames(dictWorkflow):
                 "iIndex": iIndex,
                 "iNumber": iIndex + 1,
                 "sName": dictStep["sName"],
-                "bEnabled": dictStep.get("bEnabled", True),
+                "bRunEnabled": dictStep.get("bRunEnabled", True),
                 "bPlotOnly": dictStep.get("bPlotOnly", True),
                 "sDirectory": dictStep["sDirectory"],
             }
@@ -231,7 +392,7 @@ def fdictCreateStep(
     return {
         "sName": sName,
         "sDirectory": sDirectory,
-        "bEnabled": True,
+        "bRunEnabled": True,
         "bPlotOnly": bPlotOnly,
         "bInteractive": bInteractive,
         "saDataCommands": saDataCommands if saDataCommands else [],
@@ -379,8 +540,10 @@ def fnSaveWorkflowToContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None
 ):
     """Serialize dictWorkflow to JSON and write to container."""
+    from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
+    fnAttachStepLabels(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
     sJson = json.dumps(dictClean, indent=2) + "\n"
     connectionDocker.fnWriteFile(
@@ -500,6 +663,16 @@ def _fsResolveStepOutputPath(sResolvedFile, sStepDirectory, dictGlobalVars):
 def fsResolveCommand(sCommand, dictVariables):
     """Resolve template variables in a command string."""
     return fsResolveVariables(sCommand, dictVariables)
+
+
+def fsResolveStepWorkdir(sStepDirectory, dictVariables):
+    """Return absolute container workdir for a step's sDirectory."""
+    if not sStepDirectory or posixpath.isabs(sStepDirectory):
+        return sStepDirectory
+    sRepoRoot = dictVariables.get("sRepoRoot", "") if dictVariables else ""
+    if not sRepoRoot:
+        return sStepDirectory
+    return posixpath.join(sRepoRoot, sStepDirectory)
 
 
 def flistFilterFigureFiles(listOutputPaths):
@@ -653,12 +826,312 @@ def fdictGetSyncStatus(dictWorkflow):
 
 
 def fdictInitializeSyncEntry():
-    """Return a fresh sync entry with all services unsynced."""
+    """Return a fresh sync entry with all services unsynced.
+
+    GitHub sync state is derived from git itself (commit + push),
+    so no separate ``sGithubLastPushedDigest`` field is stored.
+    Overleaf and Zenodo hold their own last-pushed digests since
+    git is not the transport for those services.
+    """
     return {
         "bOverleaf": False, "sOverleafTimestamp": "",
+        "sOverleafLastPushedDigest": "",
         "bGithub": False, "sGithubTimestamp": "",
         "bZenodo": False, "sZenodoTimestamp": "",
+        "sZenodoLastPushedDigest": "",
     }
+
+
+def fsToSyncStatusKey(sPath, sProjectRepoPath):
+    """Normalize a file path to the repo-relative form used as dictSyncStatus key."""
+    if not sPath:
+        return sPath
+    if not sProjectRepoPath:
+        return sPath
+    sPrefix = sProjectRepoPath.rstrip("/") + "/"
+    if sPath.startswith(sPrefix):
+        return sPath[len(sPrefix):]
+    return sPath
+
+
+def fdictLookupSyncEntry(dictSyncStatus, sPath, sProjectRepoPath=""):
+    """Find a sync entry, tolerating historical path-shape drift.
+
+    ``dictSyncStatus`` keys should be repo-relative going forward, but
+    legacy workflows may hold container-absolute or project-rooted
+    paths. This helper tries each plausible shape before giving up.
+    """
+    dictSync = dictSyncStatus or {}
+    if sPath in dictSync:
+        return dictSync[sPath]
+    sContainerAbs = "/workspace/" + sPath
+    if sContainerAbs in dictSync:
+        return dictSync[sContainerAbs]
+    sLeadingSlash = "/" + sPath
+    if sLeadingSlash in dictSync:
+        return dictSync[sLeadingSlash]
+    if sProjectRepoPath:
+        sProjectAbs = sProjectRepoPath.rstrip("/") + "/" + sPath
+        if sProjectAbs in dictSync:
+            return dictSync[sProjectAbs]
+    return {}
+
+
+def _fnUpdateServiceDigests(
+    dictWorkflow, sService, dictPathToDigest, sProjectRepoPath=None,
+):
+    """Write per-file last-pushed digests for one service."""
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    if sProjectRepoPath is None:
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sDigestKey = f"s{sService}LastPushedDigest"
+    for sPath, sDigest in (dictPathToDigest or {}).items():
+        if not sDigest:
+            continue
+        sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
+        if sKey not in dictWorkflow["dictSyncStatus"]:
+            dictWorkflow["dictSyncStatus"][sKey] = (
+                fdictInitializeSyncEntry()
+            )
+        dictWorkflow["dictSyncStatus"][sKey][sDigestKey] = sDigest
+
+
+def fnSetServiceTracking(
+    dictWorkflow, sPath, sService, bTrack, sProjectRepoPath=None,
+):
+    """Toggle whether a single file is tracked for one remote service.
+
+    ``sService`` is one of ``"Overleaf"`` / ``"Zenodo"`` / ``"Github"``.
+    The flag maps onto ``dictSyncStatus[key]['b{Service}']``. Setting a
+    flag to ``False`` does not clear the digest — a later re-opt-in
+    can still compare against the historical push.
+    """
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    if sProjectRepoPath is None:
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
+    if sKey not in dictWorkflow["dictSyncStatus"]:
+        dictWorkflow["dictSyncStatus"][sKey] = (
+            fdictInitializeSyncEntry()
+        )
+    dictWorkflow["dictSyncStatus"][sKey][f"b{sService}"] = bool(bTrack)
+
+
+def fnMigrateArchiveToTracking(dictWorkflow):
+    """One-shot: promote legacy 'archive' categories to tracking flags.
+
+    Before the badge rework, each output file carried an "archive"
+    vs. "supporting" designation in ``dictPlotFileCategories`` /
+    ``dictDataFileCategories``. Archive files were the ones pushed
+    to Overleaf and Zenodo in batch operations. This function seeds
+    ``dictSyncStatus`` entries with ``bOverleaf=True`` and
+    ``bZenodo=True`` for each previously-archive file so badges
+    render in the expected "tracked" state after the upgrade. Runs
+    at most once per workflow (guarded by ``bArchiveTrackingMigrated``
+    on the top-level dict) to avoid re-tracking files a user has
+    since explicitly un-tracked. Returns True when a migration ran.
+    """
+    if dictWorkflow.get("bArchiveTrackingMigrated"):
+        return False
+    if "dictSyncStatus" not in dictWorkflow:
+        dictWorkflow["dictSyncStatus"] = {}
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sStepDir = dictStep.get("sDirectory", "")
+        for sArrayKey in ("saDataFiles", "saPlotFiles"):
+            for sFile in dictStep.get(sArrayKey, []):
+                if fsGetFileCategory(dictStep, sFile) != "archive":
+                    continue
+                sRepoRel = _fsJoinRepoRelPath(sStepDir, sFile)
+                sKey = fsToSyncStatusKey(sRepoRel, sRepoRoot)
+                if sKey not in dictWorkflow["dictSyncStatus"]:
+                    dictWorkflow["dictSyncStatus"][sKey] = (
+                        fdictInitializeSyncEntry()
+                    )
+                dictWorkflow["dictSyncStatus"][sKey]["bOverleaf"] = True
+                dictWorkflow["dictSyncStatus"][sKey]["bZenodo"] = True
+    dictWorkflow["bArchiveTrackingMigrated"] = True
+    return True
+
+
+def _fsJoinRepoRelPath(sStepDir, sFile):
+    """Join a step dir and a filename into a repo-relative path."""
+    if not sStepDir:
+        return sFile
+    if posixpath.isabs(sFile):
+        return sFile
+    return posixpath.join(sStepDir, sFile)
+
+
+def fbMigrateModifiedFilesToRepoRelative(dictWorkflow):
+    """Normalize legacy abs paths in dictVerification.listModifiedFiles.
+
+    Older workflow.json files stored absolute container paths in
+    ``dictVerification['listModifiedFiles']``. The wire-format contract
+    is now repo-relative (see ``vaibify.gui.pathContract``). This
+    one-shot migration rewrites each step's list in place and returns
+    True if any change was made (so the caller can persist).
+    Idempotent: a workflow already in repo-relative form is unchanged.
+    """
+    from .pathContract import flistNormalizeModifiedFiles
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    bChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictVerify = dictStep.get("dictVerification", {})
+        listExisting = dictVerify.get("listModifiedFiles")
+        if not listExisting:
+            continue
+        listNormalized = flistNormalizeModifiedFiles(
+            listExisting, sRepoRoot,
+        )
+        if listNormalized != listExisting:
+            dictVerify["listModifiedFiles"] = listNormalized
+            dictStep["dictVerification"] = dictVerify
+            bChanged = True
+    return bChanged
+
+
+def fnUpdateOverleafDigests(
+    dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
+):
+    """Persist post-push Overleaf blob digests into ``dictSyncStatus``.
+
+    ``dictPathToDigest`` maps local path to the git blob SHA observed
+    in the Overleaf mirror after the push completed. Files missing
+    from the digest map are left untouched (graceful degradation when
+    the mirror refresh didn't surface the expected path). Keys are
+    normalized to repo-relative form using ``sProjectRepoPath`` (falls
+    back to ``dictWorkflow['sProjectRepoPath']`` when omitted) so
+    badge lookups find the entry regardless of the caller's path
+    shape.
+    """
+    _fnUpdateServiceDigests(
+        dictWorkflow, "Overleaf", dictPathToDigest, sProjectRepoPath,
+    )
+
+
+def fnUpdateZenodoDigests(
+    dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
+):
+    """Persist post-archive Zenodo blob digests into ``dictSyncStatus``.
+
+    The digest is the file's git blob SHA at the moment of the
+    archive; Zenodo deposits are immutable, so this snapshot is the
+    authoritative "what was published" state. Keys are normalized the
+    same way as Overleaf digests.
+    """
+    _fnUpdateServiceDigests(
+        dictWorkflow, "Zenodo", dictPathToDigest, sProjectRepoPath,
+    )
+
+
+_TUPLE_ZENODO_LICENSE_CHOICES = (
+    "CC-BY-4.0", "CC0-1.0", "MIT", "Apache-2.0",
+    "GPL-3.0-or-later", "BSD-3-Clause",
+)
+
+
+def fdictInitializeZenodoMetadata():
+    """Return a fresh dictZenodoMetadata block with sensible defaults."""
+    return {
+        "sTitle": "",
+        "sDescription": "",
+        "listCreators": [
+            {"sName": "", "sAffiliation": "", "sOrcid": ""},
+        ],
+        "sLicense": "CC-BY-4.0",
+        "listKeywords": [],
+        "sRelatedGithubUrl": "",
+    }
+
+
+def fdictGetZenodoMetadata(dictWorkflow):
+    """Return the workflow's Zenodo metadata, initialized if absent."""
+    dictStored = dictWorkflow.get("dictZenodoMetadata")
+    if not dictStored:
+        return fdictInitializeZenodoMetadata()
+    return dictStored
+
+
+def fnSetZenodoMetadata(dictWorkflow, dictMetadata):
+    """Validate a metadata dict and write it to the workflow."""
+    _fnValidateZenodoMetadata(dictMetadata)
+    dictWorkflow["dictZenodoMetadata"] = _fdictNormalizeZenodoMetadata(
+        dictMetadata
+    )
+
+
+def _fnValidateZenodoMetadata(dictMetadata):
+    """Raise ValueError on missing required fields or malformed input."""
+    if not (dictMetadata.get("sTitle") or "").strip():
+        raise ValueError("Title is required")
+    listCreators = dictMetadata.get("listCreators") or []
+    if not any(
+        (c.get("sName") or "").strip() for c in listCreators
+    ):
+        raise ValueError(
+            "At least one creator with a name is required"
+        )
+    if not (dictMetadata.get("sLicense") or "").strip():
+        raise ValueError("License is required")
+    sUrl = (dictMetadata.get("sRelatedGithubUrl") or "").strip()
+    if sUrl and not sUrl.startswith(("http://", "https://")):
+        raise ValueError(
+            "Related URL must start with http:// or https://"
+        )
+
+
+def _fdictNormalizeZenodoMetadata(dictMetadata):
+    """Return a cleaned copy with stripped strings and dropped empties."""
+    return {
+        "sTitle": (dictMetadata.get("sTitle") or "").strip(),
+        "sDescription": (
+            dictMetadata.get("sDescription") or ""
+        ).strip(),
+        "listCreators": _flistNormalizeCreators(
+            dictMetadata.get("listCreators") or []
+        ),
+        "sLicense": (
+            dictMetadata.get("sLicense") or "CC-BY-4.0"
+        ).strip(),
+        "listKeywords": _flistNormalizeKeywords(
+            dictMetadata.get("listKeywords") or []
+        ),
+        "sRelatedGithubUrl": (
+            dictMetadata.get("sRelatedGithubUrl") or ""
+        ).strip(),
+    }
+
+
+def _flistNormalizeCreators(listCreators):
+    """Drop creators with empty names; strip each field."""
+    listOut = []
+    for dictCreator in listCreators:
+        sName = (dictCreator.get("sName") or "").strip()
+        if not sName:
+            continue
+        listOut.append({
+            "sName": sName,
+            "sAffiliation": (
+                dictCreator.get("sAffiliation") or ""
+            ).strip(),
+            "sOrcid": (dictCreator.get("sOrcid") or "").strip(),
+        })
+    return listOut
+
+
+def _flistNormalizeKeywords(listKeywords):
+    """Drop empty keywords; strip each."""
+    listOut = []
+    for sKeyword in listKeywords:
+        if not isinstance(sKeyword, str):
+            continue
+        sClean = sKeyword.strip()
+        if sClean:
+            listOut.append(sClean)
+    return listOut
 
 
 def fsetExtractUpstreamIndices(sText):
@@ -744,24 +1217,33 @@ def fdictBuildDownstreamMap(dictWorkflow):
     return dictDownstream
 
 
-def fnUpdateSyncStatus(dictWorkflow, listFilePaths, sService):
-    """Mark files as synced to sService with current timestamp."""
+def fnUpdateSyncStatus(
+    dictWorkflow, listFilePaths, sService, sProjectRepoPath=None,
+):
+    """Mark files as synced to sService with current timestamp.
+
+    Keys are normalized to repo-relative form so per-file badges can
+    resolve them back from the canonical repo-relative path list.
+    """
     from datetime import datetime, timezone
 
     if "dictSyncStatus" not in dictWorkflow:
         dictWorkflow["dictSyncStatus"] = {}
+    if sProjectRepoPath is None:
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sTimestamp = datetime.now(timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     sBoolKey = f"b{sService}"
     sTimeKey = f"s{sService}Timestamp"
     for sPath in listFilePaths:
-        if sPath not in dictWorkflow["dictSyncStatus"]:
-            dictWorkflow["dictSyncStatus"][sPath] = (
+        sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
+        if sKey not in dictWorkflow["dictSyncStatus"]:
+            dictWorkflow["dictSyncStatus"][sKey] = (
                 fdictInitializeSyncEntry()
             )
-        dictWorkflow["dictSyncStatus"][sPath][sBoolKey] = True
-        dictWorkflow["dictSyncStatus"][sPath][sTimeKey] = sTimestamp
+        dictWorkflow["dictSyncStatus"][sKey][sBoolKey] = True
+        dictWorkflow["dictSyncStatus"][sKey][sTimeKey] = sTimestamp
 
 
 def flistBuildTestCommands(dictStep):

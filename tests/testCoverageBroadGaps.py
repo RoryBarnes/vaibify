@@ -464,7 +464,7 @@ class TestCommandTestHelpers:
     def test_fdictRunStepTests_no_commands(self):
         from vaibify.cli.commandTest import _fdictRunStepTests
         mockDocker = _fMockDocker()
-        dictStep = {"sDirectory": "/workspace", "saTestCommands": []}
+        dictStep = {"sDirectory": ".", "saTestCommands": []}
         dictResult = _fdictRunStepTests(mockDocker, "ctn1", dictStep, 0)
         assert dictResult["sStatus"] == "skipped"
 
@@ -472,7 +472,7 @@ class TestCommandTestHelpers:
         from vaibify.cli.commandTest import _fdictRunStepTests
         mockDocker = _fMockDocker(iExitCode=0, sOutput="ok\n")
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "saTestCommands": ["pytest"],
             "dictTests": {},
         }
@@ -483,7 +483,7 @@ class TestCommandTestHelpers:
         from vaibify.cli.commandTest import _fdictRunStepTests
         mockDocker = _fMockDocker(iExitCode=1, sOutput="FAILED\n")
         dictStep = {
-            "sDirectory": "/workspace",
+            "sDirectory": ".",
             "saTestCommands": ["pytest"],
             "dictTests": {},
         }
@@ -522,9 +522,9 @@ class TestCommandTestHelpers:
         from vaibify.cli.commandTest import _flistRunAllTests
         mockDocker = _fMockDocker(iExitCode=0, sOutput="ok\n")
         listSteps = [
-            {"sName": "Step1", "sDirectory": "/workspace",
+            {"sName": "Step1", "sDirectory": ".",
              "saTestCommands": ["pytest"], "dictTests": {}},
-            {"sName": "Step2", "sDirectory": "/workspace",
+            {"sName": "Step2", "sDirectory": ".",
              "saTestCommands": [], "dictTests": {}},
         ]
         listResults = _flistRunAllTests(mockDocker, "ctn1", listSteps, [0, 1])
@@ -560,7 +560,7 @@ class TestCommandWorkflowCli:
         dictStep = {
             "sName": "Analyze",
             "sDirectory": "/workspace/step",
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bPlotOnly": False,
             "bInteractive": True,
             "dictVerification": {"sUser": "untested"},
@@ -614,8 +614,8 @@ class TestCommandWorkflowCli:
             "dictWorkflow": {
                 "sWorkflowName": "TestFlow",
                 "listSteps": [
-                    {"sName": "Build", "sDirectory": "/workspace",
-                     "bEnabled": True, "bPlotOnly": False,
+                    {"sName": "Build", "sDirectory": ".",
+                     "bRunEnabled": True, "bPlotOnly": False,
                      "bInteractive": False,
                      "dictVerification": {}, "dictRunStats": {},
                      "saDataCommands": [], "saPlotCommands": [],
@@ -645,8 +645,8 @@ class TestCommandWorkflowCli:
             "dictWorkflow": {
                 "sWorkflowName": "TestFlow",
                 "listSteps": [
-                    {"sName": "Build", "sDirectory": "/workspace",
-                     "bEnabled": True, "bPlotOnly": False,
+                    {"sName": "Build", "sDirectory": ".",
+                     "bRunEnabled": True, "bPlotOnly": False,
                      "bInteractive": False,
                      "dictVerification": {"sUser": "passed"},
                      "dictRunStats": {"sLastRun": "2025-01-01"},
@@ -698,8 +698,8 @@ class TestCommandWorkflowCli:
             "dictWorkflow": {
                 "sWorkflowName": "TestFlow",
                 "listSteps": [
-                    {"sName": "Build", "sDirectory": "/workspace",
-                     "bEnabled": True, "bPlotOnly": True,
+                    {"sName": "Build", "sDirectory": ".",
+                     "bRunEnabled": True, "bPlotOnly": True,
                      "bInteractive": False,
                      "dictVerification": {}, "dictRunStats": {},
                      "saDataCommands": [], "saPlotCommands": [],
@@ -991,18 +991,18 @@ class TestPipelineServerHelpers:
     def test_flistBuildFigureCheckPaths_with_workdir(self):
         from vaibify.gui.pipelineServer import _flistBuildFigureCheckPaths
         listPaths = _flistBuildFigureCheckPaths(
-            "/workspace/step01/plot.pdf",
+            "step01/plot.pdf",
             "/workspace/step01",
             "/workspace",
             "plot.pdf",
         )
         assert len(listPaths) == 2
-        assert "/workspace/step01/plot.pdf" in listPaths
+        assert "step01/plot.pdf" in listPaths
 
     def test_flistBuildFigureCheckPaths_relative_workdir(self):
         from vaibify.gui.pipelineServer import _flistBuildFigureCheckPaths
         listPaths = _flistBuildFigureCheckPaths(
-            "/workspace/step01/plot.pdf",
+            "step01/plot.pdf",
             "output",
             "/workspace/step01",
             "plot.pdf",
@@ -1079,13 +1079,13 @@ class TestPipelineServerHelpers:
 
     def test_flistResolvePlotPaths_empty(self):
         from vaibify.gui.pipelineServer import _flistResolvePlotPaths
-        dictStep = {"sDirectory": "/workspace", "saPlotFiles": []}
+        dictStep = {"sDirectory": ".", "saPlotFiles": []}
         assert _flistResolvePlotPaths(dictStep, {}) == []
 
     def test_flistResolvePlotPaths_absolute_file(self):
         from vaibify.gui.pipelineServer import _flistResolvePlotPaths
         dictStep = {
-            "sDirectory": "/workspace/step01",
+            "sDirectory": "step01",
             "saPlotFiles": ["/absolute/plot.pdf"],
         }
         listResult = _flistResolvePlotPaths(dictStep, {})
@@ -1096,12 +1096,12 @@ class TestPipelineServerHelpers:
     def test_flistResolvePlotPaths_relative_file(self):
         from vaibify.gui.pipelineServer import _flistResolvePlotPaths
         dictStep = {
-            "sDirectory": "/workspace/step01",
+            "sDirectory": "step01",
             "saPlotFiles": ["output/plot.pdf"],
         }
         listResult = _flistResolvePlotPaths(dictStep, {})
         assert len(listResult) == 1
-        assert listResult[0][0] == "/workspace/step01/output/plot.pdf"
+        assert listResult[0][0] == "step01/output/plot.pdf"
 
     def test_flistStandardizedBasenames_all(self):
         from vaibify.gui.pipelineServer import _flistStandardizedBasenames
@@ -1342,17 +1342,17 @@ class TestPipelineRunnerHelpers:
 
     def test_fbShouldRunStep_before_start(self):
         from vaibify.gui.pipelineRunner import _fbShouldRunStep
-        dictStep = {"bEnabled": True}
+        dictStep = {"bRunEnabled": True}
         assert _fbShouldRunStep(dictStep, 1, 3) is False
 
     def test_fbShouldRunStep_at_start(self):
         from vaibify.gui.pipelineRunner import _fbShouldRunStep
-        dictStep = {"bEnabled": True}
+        dictStep = {"bRunEnabled": True}
         assert _fbShouldRunStep(dictStep, 3, 3) is True
 
     def test_fbShouldRunStep_disabled(self):
         from vaibify.gui.pipelineRunner import _fbShouldRunStep
-        dictStep = {"bEnabled": False}
+        dictStep = {"bRunEnabled": False}
         assert _fbShouldRunStep(dictStep, 3, 1) is False
 
     def test_fnSetInteractiveResponse_sets_and_triggers(self):

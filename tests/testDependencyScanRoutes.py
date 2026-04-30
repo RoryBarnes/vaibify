@@ -27,9 +27,9 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Generate Orbits",
-            "sDirectory": "/workspace/orbits",
+            "sDirectory": "orbits",
             "bPlotOnly": False,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python generateOrbits.py"],
             "saDataFiles": ["orbit_output.npy"],
@@ -44,9 +44,9 @@ DICT_WORKFLOW = {
         },
         {
             "sName": "Analyze Results",
-            "sDirectory": "/workspace/analysis",
+            "sDirectory": "analysis",
             "bPlotOnly": False,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python analyzeResults.py"],
             "saDataFiles": [],

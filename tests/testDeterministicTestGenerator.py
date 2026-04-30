@@ -636,7 +636,8 @@ def test_json_array_benchmarks_include_min_max():
     sScript = _fsBuildIntrospectionScript(["x.json"], "/tmp")
     assert "_fnAddJsonArrayBenchmarks" in sScript
     assert "_fnAddStatsBenchmarks" in sScript
-    sAfterFunc = sScript.split("def _fnAddStatsBenchmarks")[1]
+    assert "_fnAppendNumericAggregates" in sScript
+    sAfterFunc = sScript.split("def _fnAppendNumericAggregates")[1]
     sBody = sAfterFunc.split("\ndef ")[0]
     assert "Min" in sBody
     assert "Max" in sBody
@@ -2446,3 +2447,509 @@ def test_fsRemoveOldTestSection_with_marker():
     sResult = _fsRemoveOldTestSection(sInput)
     assert "Vaibify Test Generation Instructions" not in sResult
     assert "Existing content" in sResult
+
+
+# -----------------------------------------------------------------------
+# Stochasticity classification, tolerance helpers, distributional metrics
+# -----------------------------------------------------------------------
+
+import math as _math
+
+from vaibify.gui.testGenerator import (
+    _F_FLOOR_RTOL,
+    _F_SIGMA_MULT,
+    _fdictMergePreservingOverrides,
+    _fsClassifyStochasticity,
+    _ftolMeanFromCv,
+    _ftolPercentileFromN,
+    _ftolStdFromN,
+    fbStepProducesStochasticOutputs,
+)
+
+
+def test_fbStepProducesStochasticOutputs_dynesty():
+    sScript = "import dynesty\nsampler = dynesty.NestedSampler(...)"
+    assert fbStepProducesStochasticOutputs({}, sScript) is True
+
+
+def test_fbStepProducesStochasticOutputs_pure_pandas():
+    sScript = "import pandas as pd\ndf = pd.read_csv('input.csv')"
+    assert fbStepProducesStochasticOutputs({}, sScript) is False
+
+
+def test_fbStepProducesStochasticOutputs_random_call_no_framework():
+    sScript = "import numpy as np\narr = np.random.normal(0, 1, 1000)"
+    assert fbStepProducesStochasticOutputs({}, sScript) is True
+
+
+def test_fbStepProducesStochasticOutputs_emcee():
+    assert fbStepProducesStochasticOutputs(
+        {}, "from emcee import EnsembleSampler",
+    ) is True
+
+
+def test_fbStepProducesStochasticOutputs_empty_string():
+    assert fbStepProducesStochasticOutputs({}, "") is False
+
+
+def _flistdictStochasticReports(iSamples=128):
+    listBench = []
+    for sName, sKind in [
+        ("fXFirst", "first"), ("fXLast", "last"),
+        ("fXMin", "min"), ("fXMax", "max"),
+        ("fXMean", "mean"), ("fXStd", "std"),
+        ("fXP5", "percentile_5"), ("fXP25", "percentile_25"),
+        ("fXP50", "percentile_50"), ("fXP75", "percentile_75"),
+        ("fXP95", "percentile_95"),
+    ]:
+        listBench.append({
+            "sName": sName, "sDataFile": "x.npy",
+            "sAccessPath": "index:0", "fValue": 1.5,
+            "sMetricKind": sKind, "iSampleSize": iSamples,
+            "fObservedCv": 0.05,
+        })
+    return [{
+        "sFileName": "x.npy", "listBenchmarks": listBench,
+        "bLoadable": True,
+    }]
+
+
+def test_fdictBuildQuantitativeStandards_stochastic_drops_extremes():
+    listdictReports = _flistdictStochasticReports(iSamples=1000)
+    dictResult = _fdictBuildQuantitativeStandards(
+        listdictReports, 1e-6, "stochastic",
+    )
+    setNames = {s["sName"] for s in dictResult["listStandards"]}
+    assert "fXFirst" not in setNames
+    assert "fXLast" not in setNames
+    assert "fXMin" not in setNames
+    assert "fXMax" not in setNames
+
+
+def test_fdictBuildQuantitativeStandards_stochastic_includes_percentiles():
+    listdictReports = _flistdictStochasticReports(iSamples=1000)
+    dictResult = _fdictBuildQuantitativeStandards(
+        listdictReports, 1e-6, "stochastic",
+    )
+    setNames = {s["sName"] for s in dictResult["listStandards"]}
+    assert setNames == {
+        "fXMean", "fXStd", "fXP5", "fXP25",
+        "fXP50", "fXP75", "fXP95",
+    }
+
+
+def test_ftolMeanFromCv_known_value():
+    fRtol = _ftolMeanFromCv(0.05, 1000)
+    fExpected = max(_F_SIGMA_MULT * 0.05 / _math.sqrt(1000), _F_FLOOR_RTOL)
+    assert abs(fRtol - fExpected) < 1e-12
+
+
+def test_ftolStdFromN_known_value():
+    fRtol = _ftolStdFromN(1000)
+    fExpected = max(
+        _F_SIGMA_MULT * _math.sqrt(2.0 / 999), _F_FLOOR_RTOL,
+    )
+    assert abs(fRtol - fExpected) < 1e-12
+
+
+def test_ftolPercentileFromN_uses_floor_for_zero_value():
+    assert _ftolPercentileFromN(0.5, 1000, 0.05, 0.0) == _F_FLOOR_RTOL
+
+
+def test_fdictMergePreservingOverrides_keeps_user_fRtol():
+    dictNew = {"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 1e-6},
+    ]}
+    dictOld = {"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 0.05, "sNote": "kept"},
+    ]}
+    dictResult = _fdictMergePreservingOverrides(dictNew, dictOld)
+    dictEntry = dictResult["listStandards"][0]
+    assert dictEntry["fRtol"] == 0.05
+    assert dictEntry["sNote"] == "kept"
+
+
+def test_unseeded_classification_caps_metric_set_to_two():
+    listdictReports = _flistdictStochasticReports(iSamples=512)
+    dictResult = _fdictBuildQuantitativeStandards(
+        listdictReports, 1e-6, "stochastic_unseeded",
+    )
+    setNames = {s["sName"] for s in dictResult["listStandards"]}
+    assert setNames == {"fXMean", "fXP50"}
+    for dictStd in dictResult["listStandards"]:
+        assert dictStd["fRtol"] == 0.10
+        assert "Placeholder" in dictStd["sNote"]
+
+
+def test_unintrospectable_classification_emits_no_benchmarks():
+    listdictReports = [{
+        "sFileName": "blob.bin", "sError": "unsupported binary format",
+        "bLoadable": False, "listBenchmarks": [],
+    }]
+    sClass = _fsClassifyStochasticity({}, "import dynesty", listdictReports)
+    assert sClass == "unintrospectable"
+    dictResult = _fdictBuildQuantitativeStandards(
+        listdictReports, 1e-6, sClass,
+    )
+    assert dictResult["listStandards"] == []
+    assert (
+        dictResult["sStochasticityClassification"] == "unintrospectable"
+    )
+    assert "blob.bin" in dictResult["sIntrospectorError"]
+
+
+def test_unintrospectable_prompt_includes_conservative_tolerance():
+    from vaibify.gui.llmInvoker import _CLAUDE_MD_TEST_SECTION
+    assert "Conservative Tolerance Rules" in _CLAUDE_MD_TEST_SECTION
+    assert "rtol < 1e-3" in _CLAUDE_MD_TEST_SECTION
+
+
+def test_classifier_deterministic_when_no_random_pattern():
+    listdictReports = _flistdictStochasticReports(iSamples=256)
+    sClass = _fsClassifyStochasticity(
+        {}, "import pandas\nimport numpy as np", listdictReports,
+    )
+    assert sClass == "deterministic"
+
+
+def test_classifier_stochastic_when_random_and_large_array():
+    listdictReports = _flistdictStochasticReports(iSamples=1024)
+    sClass = _fsClassifyStochasticity(
+        {}, "import dynesty", listdictReports,
+    )
+    assert sClass == "stochastic"
+
+
+def test_classifier_stochastic_unseeded_via_lint_flag():
+    listdictReports = _flistdictStochasticReports(iSamples=1024)
+    dictStep = {"dictVerification": {"bUnseededRandomnessWarning": True}}
+    sClass = _fsClassifyStochasticity(
+        dictStep, "import dynesty", listdictReports,
+    )
+    assert sClass == "stochastic_unseeded"
+
+
+def test_classifier_deterministic_when_array_too_small():
+    listdictReports = _flistdictStochasticReports(iSamples=16)
+    sClass = _fsClassifyStochasticity(
+        {}, "import dynesty", listdictReports,
+    )
+    assert sClass == "deterministic"
+
+
+# -----------------------------------------------------------------------
+# Introspection script: distributional benchmark emission
+# -----------------------------------------------------------------------
+
+
+def test_introspection_emits_distributional_for_stochastic_npy(tmp_path):
+    """Generated script labels and emits distributional metrics."""
+    import numpy as np
+    sPath = str(tmp_path / "samples.npy")
+    np.random.seed(7)
+    daSamples = np.random.normal(loc=2.0, scale=0.5, size=512)
+    np.save(sPath, daSamples)
+    sScript = _fsBuildIntrospectionScript(
+        ["samples.npy"], str(tmp_path), bScriptStochastic=True,
+    )
+    dictNs = {}
+    exec(compile(sScript, "<introspect>", "exec"), dictNs)
+    listReports = dictNs["listReports"]
+    setKinds = {
+        d["sMetricKind"]
+        for d in listReports[0]["listBenchmarks"]
+    }
+    assert "percentile_50" in setKinds
+    assert "std" in setKinds
+    assert "mean" in setKinds
+
+
+def test_introspection_omits_distributional_for_deterministic(tmp_path):
+    """Without script-stochastic flag, no distributional metrics emit."""
+    import numpy as np
+    sPath = str(tmp_path / "deterministic.npy")
+    np.save(sPath, np.arange(512, dtype=float))
+    sScript = _fsBuildIntrospectionScript(
+        ["deterministic.npy"], str(tmp_path), bScriptStochastic=False,
+    )
+    dictNs = {}
+    exec(compile(sScript, "<introspect>", "exec"), dictNs)
+    listReports = dictNs["listReports"]
+    setKinds = {
+        d["sMetricKind"]
+        for d in listReports[0]["listBenchmarks"]
+    }
+    assert "percentile_50" not in setKinds
+    assert "std" not in setKinds
+
+
+def test_introspection_emits_observed_cv(tmp_path):
+    """Each numeric benchmark carries fObservedCv and iSampleSize."""
+    import numpy as np
+    sPath = str(tmp_path / "cv.npy")
+    np.save(sPath, np.array([1.0, 1.1, 0.9, 1.0, 1.05]))
+    sScript = _fsBuildIntrospectionScript(
+        ["cv.npy"], str(tmp_path), bScriptStochastic=False,
+    )
+    dictNs = {}
+    exec(compile(sScript, "<introspect>", "exec"), dictNs)
+    listBench = dictNs["listReports"][0]["listBenchmarks"]
+    assert all("iSampleSize" in d for d in listBench)
+    assert all("fObservedCv" in d for d in listBench)
+
+
+# -----------------------------------------------------------------------
+# Aggregate access path extensions in dataLoaders
+# -----------------------------------------------------------------------
+
+
+def test_loader_npy_percentile_aggregates(tmp_path):
+    import numpy as np
+    sPath = str(tmp_path / "data.npy")
+    np.save(sPath, np.arange(101, dtype=float))
+    dictNs = _fdictExecTemplate()
+    fP50 = dictNs["_fLoadValue"](
+        "data.npy", "index:p50", str(tmp_path),
+    )
+    assert fP50 == 50.0
+    fP5 = dictNs["_fLoadValue"](
+        "data.npy", "index:p5", str(tmp_path),
+    )
+    assert fP5 == 5.0
+    fP95 = dictNs["_fLoadValue"](
+        "data.npy", "index:p95", str(tmp_path),
+    )
+    assert fP95 == 95.0
+
+
+def test_loader_npy_std_aggregate(tmp_path):
+    import numpy as np
+    sPath = str(tmp_path / "data.npy")
+    daValues = np.arange(101, dtype=float)
+    np.save(sPath, daValues)
+    dictNs = _fdictExecTemplate()
+    fStd = dictNs["_fLoadValue"](
+        "data.npy", "index:std", str(tmp_path),
+    )
+    assert abs(fStd - float(daValues.std(ddof=1))) < 1e-9
+
+
+# -----------------------------------------------------------------------
+# Tolerance branches in _ftolMeanFromCv / _ftolStdFromN / etc.
+# -----------------------------------------------------------------------
+
+
+from vaibify.gui.testGenerator import (
+    _F_UNSEEDED_RTOL,
+    _fbBenchmarkPassesFilter,
+    _fdictAssignTolerance,
+    _fdictMergeWithExistingStandards,
+    _fdictGenerateSingleCategory,
+    _fdictGenerateQuantitativeCategory,
+    _fdictErrorResult,
+    _fnAppendErrorLog,
+    _ftolForStochasticKind,
+    _ftExtractStepInfo,
+)
+
+
+def test_ftolMeanFromCv_returns_floor_when_sample_size_zero():
+    """Line 445: iSampleSize <= 0 returns the floor rtol."""
+    assert _ftolMeanFromCv(0.05, 0) == _F_FLOOR_RTOL
+
+
+def test_ftolMeanFromCv_returns_floor_when_sample_size_negative():
+    assert _ftolMeanFromCv(0.05, -3) == _F_FLOOR_RTOL
+
+
+def test_ftolStdFromN_returns_floor_when_sample_size_below_two():
+    """Line 459: N < 2 returns the floor rtol."""
+    assert _ftolStdFromN(1) == _F_FLOOR_RTOL
+    assert _ftolStdFromN(0) == _F_FLOOR_RTOL
+
+
+def test_ftolForStochasticKind_returns_default_for_unknown_kind():
+    """Line 499: an unrecognised sMetricKind falls through to default."""
+    dictStandard = {
+        "sMetricKind": "kurtosis", "iSampleSize": 100,
+        "fObservedCv": 0.05, "fValue": 1.0,
+    }
+    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    assert fRtol == 0.123
+
+
+def test_ftolForStochasticKind_dispatches_to_std_for_std_kind():
+    dictStandard = {
+        "sMetricKind": "std", "iSampleSize": 1000,
+        "fObservedCv": 0.05, "fValue": 1.0,
+    }
+    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    assert fRtol != 0.123
+    assert fRtol > 0
+
+
+def test_fbBenchmarkPassesFilter_unknown_classification_excludes_all():
+    """Line 530: an unknown sClassification rejects every benchmark."""
+    dictBench = {"sMetricKind": "mean"}
+    assert _fbBenchmarkPassesFilter(dictBench, "unintrospectable") is False
+    assert _fbBenchmarkPassesFilter(dictBench, "garbage_label") is False
+
+
+def test_fbBenchmarkPassesFilter_deterministic_admits_single_and_mean():
+    assert _fbBenchmarkPassesFilter(
+        {"sMetricKind": "single"}, "deterministic",
+    ) is True
+    assert _fbBenchmarkPassesFilter(
+        {"sMetricKind": "mean"}, "deterministic",
+    ) is True
+
+
+def test_fdictAssignTolerance_unseeded_tags_placeholder():
+    dictResult = _fdictAssignTolerance(
+        {"sMetricKind": "mean", "iSampleSize": 1000, "fObservedCv": 0.1},
+        "stochastic_unseeded", 1e-6,
+    )
+    assert dictResult["fRtol"] == _F_UNSEEDED_RTOL
+    assert "Placeholder" in dictResult["sNote"]
+
+
+def test_fdictMergePreservingOverrides_continues_when_no_prior_match():
+    """Line 599: a benchmark not present in dictOld is left as-is."""
+    dictNew = {"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 1e-6},
+        {"sName": "fNew", "fValue": 2.0, "fRtol": 1e-6},
+    ]}
+    dictOld = {"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 0.05},
+    ]}
+    dictResult = _fdictMergePreservingOverrides(dictNew, dictOld)
+    dictByName = {s["sName"]: s for s in dictResult["listStandards"]}
+    assert dictByName["fX"]["fRtol"] == 0.05
+    assert dictByName["fNew"]["fRtol"] == 1e-6
+
+
+def test_fdictMergeWithExistingStandards_merges_when_prior_file_exists():
+    """Line 795: existing standards on disk feed into the merge."""
+    sExisting = json.dumps({"listStandards": [
+        {"sName": "fX", "fValue": 1.0, "fRtol": 0.42, "sNote": "kept"},
+    ]})
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator.fsReadFileFromContainer",
+            lambda *args, **kwargs: sExisting,
+        )
+        dictResult = _fdictMergeWithExistingStandards(
+            mockDocker, "cid", "/sweep/tests/quantitative_standards.json",
+            {"listStandards": [
+                {"sName": "fX", "fValue": 1.0, "fRtol": 1e-6},
+            ]},
+        )
+    assert dictResult["listStandards"][0]["fRtol"] == 0.42
+    assert dictResult["listStandards"][0]["sNote"] == "kept"
+
+
+def test_fdictMergeWithExistingStandards_returns_input_when_no_existing():
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator.fsReadFileFromContainer",
+            lambda *args, **kwargs: "",
+        )
+        dictInput = {"listStandards": []}
+        dictResult = _fdictMergeWithExistingStandards(
+            mockDocker, "cid", "/sweep/tests/quantitative_standards.json",
+            dictInput,
+        )
+    assert dictResult is dictInput
+
+
+def test_fdictMergeWithExistingStandards_returns_input_on_invalid_json():
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator.fsReadFileFromContainer",
+            lambda *args, **kwargs: "{ invalid json",
+        )
+        dictInput = {"listStandards": []}
+        dictResult = _fdictMergeWithExistingStandards(
+            mockDocker, "cid", "/sweep/tests/quantitative_standards.json",
+            dictInput,
+        )
+    assert dictResult is dictInput
+
+
+def test_ftExtractStepInfo_joins_repo_root_for_relative_directory():
+    """Line 293: relative sDirectory is joined with sProjectRepoPath."""
+    dictWorkflow = {
+        "sProjectRepoPath": "/repo",
+        "listSteps": [{"sDirectory": "sweep"}],
+    }
+    dictStep, sDir = _ftExtractStepInfo(dictWorkflow, 0)
+    assert sDir == "/repo/sweep"
+    assert dictStep["sDirectory"] == "sweep"
+
+
+def test_ftExtractStepInfo_preserves_absolute_directory():
+    dictWorkflow = {
+        "sProjectRepoPath": "/repo",
+        "listSteps": [{"sDirectory": "/abs/sweep"}],
+    }
+    _, sDir = _ftExtractStepInfo(dictWorkflow, 0)
+    assert sDir == "/abs/sweep"
+
+
+def test_fdictErrorResult_returns_standard_shape():
+    dictResult = _fdictErrorResult("kaboom")
+    assert dictResult["sFilePath"] == ""
+    assert dictResult["sError"] == "kaboom"
+    assert dictResult["saCommands"] == []
+
+
+def test_fnAppendErrorLog_swallows_filesystem_errors(tmp_path):
+    """Lines 1051-1052: the helper must not raise when log write fails."""
+    import tempfile
+    import unittest.mock as _mock
+    with _mock.patch(
+        "tempfile.gettempdir", return_value=str(tmp_path / "missing"),
+    ):
+        # The directory does not exist; open() will raise FileNotFoundError
+        # which the helper swallows.
+        _fnAppendErrorLog("error message")  # must not raise
+
+
+def test_fdictGenerateSingleCategory_returns_error_when_llm_raises():
+    """Lines 993-998: LLM exception inside category generation."""
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator._fsInvokeLlm",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                RuntimeError("llm down"),
+            ),
+        )
+        dictResult = _fdictGenerateSingleCategory(
+            mockDocker, "cid", "/sweep", "integrity",
+            "data files", "scripts", "previews",
+            False, None, None,
+        )
+    assert dictResult["sError"] == "llm down"
+    assert dictResult["sFilePath"] == ""
+
+
+def test_fdictGenerateQuantitativeCategory_returns_error_on_failure():
+    """Lines 1023-1024: quantitative LLM exception falls through."""
+    mockDocker = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "vaibify.gui.testGenerator._fsInvokeLlm",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                ValueError("bad prompt"),
+            ),
+        )
+        dictResult = _fdictGenerateQuantitativeCategory(
+            mockDocker, "cid", "/sweep",
+            "data files", "scripts", "previews",
+            1e-6, False, None, None,
+        )
+    assert dictResult["sError"] == "bad prompt"

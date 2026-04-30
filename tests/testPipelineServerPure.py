@@ -11,10 +11,11 @@ from vaibify.gui.pipelineServer import (
 
 
 class MockWebSocket:
-    """Mock WebSocket with configurable headers."""
+    """Mock WebSocket with configurable headers and query params."""
 
-    def __init__(self, dictHeaders):
+    def __init__(self, dictHeaders, dictQuery=None):
         self.headers = dictHeaders
+        self.query_params = dictQuery or {}
 
 
 def test_fbValidateWebSocketOrigin_localhost():
@@ -40,6 +41,49 @@ def test_fbValidateWebSocketOrigin_remote_rejected():
 def test_fbValidateWebSocketOrigin_missing():
     ws = MockWebSocket({})
     assert fbValidateWebSocketOrigin(ws) is False
+
+
+def test_fbValidateWebSocketOrigin_agent_header_bypass():
+    """Valid X-Vaibify-Session header bypasses loopback origin requirement."""
+    ws = MockWebSocket(
+        {"origin": "http://host.docker.internal:8050",
+         "x-vaibify-session": "tok-123"},
+    )
+    assert fbValidateWebSocketOrigin(ws, "tok-123") is True
+
+
+def test_fbValidateWebSocketOrigin_agent_token_query_bypass():
+    """Valid sToken query param bypasses the loopback origin requirement."""
+    ws = MockWebSocket(
+        {"origin": "http://host.docker.internal:8050"},
+        {"sToken": "tok-123"},
+    )
+    assert fbValidateWebSocketOrigin(ws, "tok-123") is True
+
+
+def test_fbValidateWebSocketOrigin_agent_bad_token_rejected():
+    """Wrong token with non-loopback origin still rejects."""
+    ws = MockWebSocket(
+        {"origin": "http://evil.com",
+         "x-vaibify-session": "wrong-token"},
+        {"sToken": "wrong-token"},
+    )
+    assert fbValidateWebSocketOrigin(ws, "tok-123") is False
+
+
+def test_fbValidateWebSocketOrigin_empty_token_rejected():
+    """Empty agent header must not match empty expected token."""
+    ws = MockWebSocket(
+        {"origin": "http://evil.com",
+         "x-vaibify-session": ""},
+    )
+    assert fbValidateWebSocketOrigin(ws, "") is False
+
+
+def test_fbValidateWebSocketOrigin_loopback_still_works_without_token():
+    """Existing browser flow stays intact when no token arg is supplied."""
+    ws = MockWebSocket({"origin": "http://localhost:8080"})
+    assert fbValidateWebSocketOrigin(ws, "some-other-token") is True
 
 
 def test_fsSanitizeServerError_disk_full():

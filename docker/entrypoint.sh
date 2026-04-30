@@ -45,8 +45,7 @@ fnConfigureGit() {
         echo "${sCredLine}" > "${HOME}/.git-credentials"
         chmod 600 "${HOME}/.git-credentials"
         local sContainerUser
-        sContainerUser=$(grep "^VC_USER=" /etc/environment 2>/dev/null \
-            | cut -d= -f2 || echo "")
+        sContainerUser="${CONTAINER_USER:-}"
         if [ -n "${sContainerUser}" ] && [ "${sContainerUser}" != "root" ]; then
             local sUserHome
             sUserHome=$(eval echo "~${sContainerUser}")
@@ -465,28 +464,21 @@ fnPrintSummary() {
 
 # ---------------------------------------------------------------------------
 # fnCreateVaibifyDirectory: Create .vaibify structure in workspace
+#
+# Workflows live in each project repo at <repo>/.vaibify/workflows/;
+# /workspace/.vaibify/ holds only container-scoped scratch (logs,
+# director.py). Remove any legacy /workspace/.vaibify/workflows/ left
+# over from pre-2026-04-20 containers so dashboard and agent
+# discovery both resolve to the project-repo location.
 # ---------------------------------------------------------------------------
 fnCreateVaibifyDirectory() {
-    mkdir -p "${WORKSPACE}/.vaibify/workflows"
     mkdir -p "${WORKSPACE}/.vaibify/logs"
+    if [ -d "${WORKSPACE}/.vaibify/workflows" ]; then
+        rm -rf "${WORKSPACE}/.vaibify/workflows"
+    fi
     if [ -f /usr/share/vaibify/director.py ]; then
         cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
         chmod +x "${WORKSPACE}/.vaibify/director.py"
-    fi
-    fnCopyHostWorkflows
-}
-
-# ---------------------------------------------------------------------------
-# fnCopyHostWorkflows: Copy workflows baked into the image at build time
-# ---------------------------------------------------------------------------
-fnCopyHostWorkflows() {
-    local sStagedDir="/usr/share/vaibify/workflows"
-    local sTargetDir="${WORKSPACE}/.vaibify/workflows"
-    if [ -d "${sStagedDir}" ]; then
-        for sFile in "${sStagedDir}"/*.json; do
-            [ -f "${sFile}" ] || continue
-            cp -n "${sFile}" "${sTargetDir}/"
-        done
     fi
 }
 
@@ -499,6 +491,44 @@ fnWriteClaudeMd() {
 # Vaibify Container Environment
 
 You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted scientific data analysis.
+
+## How to refer to steps
+
+Every step in a workflow JSON carries an `sLabel` field — `A09` for the 9th *automated* step, `I01` for the 1st *interactive* step. Labels are per-type sequential, so `A09` is **not** `listSteps[9]`; the 0-based index depends on how many interactive steps precede it.
+
+**When you name a step in any output — status reports, tables, summaries, prose, `vaibify-do` arguments — use `sLabel` verbatim.** Never substitute a 0-based or 1-based positional index like `00`, `01`, `Step09`. Read the label straight out of the JSON; do not translate.
+
+The `{StepNN.stem}` tokens you see *inside* command strings (e.g., `python plot.py {Step08.samples}`) are a separate, script-side filename-substitution syntax resolved by the director at run time. They are not how you talk about steps; they are how scripts reference each other's output files. Leave them alone unless you are editing the commands themselves.
+
+## Interacting with the vaibify dashboard
+
+The vaibify dashboard is the researcher's ground truth; any action you would otherwise perform by clicking a UI button MUST go through the `vaibify-do` CLI so the dashboard stays in sync with reality.
+
+**Never hand-edit** `workflow.json`, `/workspace/.vaibify/pipeline_state.json`, or files under `<project-repo>/.vaibify/test_markers/`. Those are outputs of backend actions, not inputs — editing them directly desynchronizes the dashboard from the container state.
+
+Usage:
+
+- Run `vaibify-do --list` at session start to see the full vocabulary of actions.
+- Run `vaibify-do --describe <action>` to see the argument shape for one action.
+- Run `vaibify-do <action> [args...]` to execute.
+
+`vaibify-do` accepts `sLabel` values (`A09`, `I01`) directly in every step argument. Natural-language intent maps to commands:
+
+- "run step A09" → `vaibify-do run-step A09`
+- "run steps A09 through A11" → `vaibify-do run-selected-steps A09 A10 A11`
+- "rerun from step A05" → `vaibify-do run-from-step A05`
+- "run all steps" → `vaibify-do run-all`
+- "verify outputs without rerunning" → `vaibify-do verify-only`
+- "run unit tests on step A09" → `vaibify-do run-unit-tests A09`
+- "run all tests" → `vaibify-do run-all-tests`
+- "commit the current state" → `vaibify-do commit-canonical`
+- "pull a file from the container" → `vaibify-do pull-file <sPath>`
+- "make step A09's figures the standard" → `vaibify-do accept-plots-as-standard A09` (USER-ONLY — surface the request, do not run)
+- "push to GitHub / Overleaf / Zenodo" → USER-ONLY — surface the request, do not run
+
+**User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.
+
+**Failure modes.** If `vaibify-do` reports the host is unreachable or the session token is invalid, tell the researcher to reconnect the container from the dashboard — do not try workarounds.
 
 ## Key Paths
 
@@ -518,7 +548,7 @@ Each vaibified repository has a `.vaibify/workflows/` directory with JSON files 
 - **Test Commands** (`saTestCommands`): Unit tests for data outputs
 - **Interactive** (`bInteractive`): Steps requiring human judgment
 
-Cross-step references use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`).
+Cross-step filename references inside command strings use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`), where `NN` is the 1-based positional index of the step in `listSteps`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
 
 Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>`
 
@@ -635,7 +665,7 @@ Add a new entry to `listSteps`:
 {
     "sName": "Human-Readable Step Name",
     "sDirectory": "stepDirectoryName",
-    "bEnabled": true,
+    "bRunEnabled": true,
     "bPlotOnly": false,
     "bInteractive": false,
     "saDataCommands": [
@@ -729,7 +759,7 @@ fnLinkRepoClaudeMd() {
 # fnConfigureClaudeTheme: Set Claude Code to dark theme for container terminal
 # ---------------------------------------------------------------------------
 fnConfigureClaudeTheme() {
-    local sConfigDir="${HOME}/.claude"
+    local sConfigDir="/home/${CONTAINER_USER}/.claude"
     local sSettingsFile="${sConfigDir}/settings.json"
     if [ -f "${sSettingsFile}" ]; then
         return
@@ -743,6 +773,28 @@ SETTINGS
     echo "[vaib] Set Claude Code theme to dark for container terminal."
 }
 
+# ---------------------------------------------------------------------------
+# fnConfigureClaudeAutoUpdate: Merge autoUpdates key into Claude settings.json
+# ---------------------------------------------------------------------------
+fnConfigureClaudeAutoUpdate() {
+    local sFlag="${VAIBIFY_CLAUDE_AUTO_UPDATE:-true}"
+    local sConfigDir="/home/${CONTAINER_USER}/.claude"
+    local sSettingsFile="${sConfigDir}/settings.json"
+    mkdir -p "${sConfigDir}"
+    [ -f "${sSettingsFile}" ] || echo '{}' > "${sSettingsFile}"
+    VAIB_SETTINGS="${sSettingsFile}" VAIB_FLAG="${sFlag}" python3 - << 'PYEOF'
+import json, os
+sSettings = os.environ["VAIB_SETTINGS"]
+bAutoUpdate = os.environ["VAIB_FLAG"] == "true"
+with open(sSettings) as fileHandle:
+    dictContents = json.load(fileHandle)
+dictContents["autoUpdates"] = bAutoUpdate
+with open(sSettings, "w") as fileHandle:
+    json.dump(dictContents, fileHandle, indent=2)
+PYEOF
+    echo "[vaib] Claude auto-update set to ${sFlag}."
+}
+
 # ===========================================================================
 # Main — only runs when executed directly (not when sourced by tests)
 # ===========================================================================
@@ -751,13 +803,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnPrintBanner
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
-    fnConfigureClaudeTheme
     fnPersistGitConfig
     fnConfigureGit
     fnParseReposConf
     fnSyncAllRepos
     if command -v claude > /dev/null 2>&1; then
         fnPersistClaudeConfig
+        fnConfigureClaudeTheme
+        fnConfigureClaudeAutoUpdate
     fi
     fnBuildBinaries
     fnLoadBinariesEnv

@@ -143,10 +143,22 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
-    function fnDisplayInNextViewer(sPath, sWorkdir) {
-        var dictViewer = sNextViewer === "A" ? dictViewerA : dictViewerB;
-        fnNavigateToPath(dictViewer, sPath, sWorkdir || "");
+    function fsClaimNextViewer() {
+        var sClaimed = sNextViewer;
         sNextViewer = sNextViewer === "A" ? "B" : "A";
+        return sClaimed;
+    }
+
+    function fnDisplayFileInViewer(sViewerLetter, sPath, sWorkdir) {
+        var dictViewer = sViewerLetter === "A" ?
+            dictViewerA : dictViewerB;
+        fnNavigateToPath(dictViewer, sPath, sWorkdir || "");
+    }
+
+    function fnDisplayInNextViewer(sPath, sWorkdir) {
+        fnDisplayFileInViewer(
+            fsClaimNextViewer(), sPath, sWorkdir,
+        );
     }
 
     function fnDisplayFileFromContainer(sPath) {
@@ -994,9 +1006,8 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnDisplayTestOutput(sOutput, bPassed) {
-        var dictViewer = sNextViewer === "A" ?
-            dictViewerA : dictViewerB;
-        sNextViewer = sNextViewer === "A" ? "B" : "A";
+        var sLetter = fsClaimNextViewer();
+        var dictViewer = sLetter === "A" ? dictViewerA : dictViewerB;
         var elViewport = fnGetViewport(dictViewer);
         elViewport.innerHTML = "";
         var elPre = document.createElement("pre");
@@ -1011,6 +1022,8 @@ const PipeleyenFigureViewer = (function () {
         fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
         fnDisplayFileFromContainer: fnDisplayFileFromContainer,
         fnDisplayInNextViewer: fnDisplayInNextViewer,
+        fnDisplayFileInViewer: fnDisplayFileInViewer,
+        fsClaimNextViewer: fsClaimNextViewer,
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,

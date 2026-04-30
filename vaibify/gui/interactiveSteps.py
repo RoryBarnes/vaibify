@@ -6,7 +6,6 @@ __all__ = [
 ]
 
 import asyncio
-from datetime import datetime, timezone
 
 
 def fdictCreateInteractiveContext():
@@ -54,13 +53,9 @@ async def _fiRunInteractiveAndRecord(
 ):
     """Run the interactive terminal session and record results."""
     import time
-    from .pipelineRunner import _fnRecordInputHashes
     from .pipelineUtils import _fnEmitStepResult, _fnRecordRunStats
 
     fStartTime = time.time()
-    sStartTimestamp = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S UTC"
-    )
     await fnStatusCallback({
         "sType": "interactiveTerminalStart",
         "iStepNumber": iStepNumber,
@@ -68,10 +63,7 @@ async def _fiRunInteractiveAndRecord(
         "dictStep": dictStep,
     })
     iExitCode = await _fiAwaitInteractiveComplete(dictInteractive)
-    _fnRecordRunStats(dictStep, sStartTimestamp, fStartTime, 0.0)
-    await _fnRecordInputHashes(
-        connectionDocker, sContainerId, dictStep,
-    )
+    _fnRecordRunStats(dictStep, fStartTime, 0.0)
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep.get("dictRunStats", {}),

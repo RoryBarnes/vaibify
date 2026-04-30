@@ -146,17 +146,27 @@ def flistParseIncludeGraphics(sTexContent):
     return [os.path.basename(s) for s in listMatches]
 
 
+def _fsCamelCaseDirectoryLocal(sStepName):
+    """Convert a step name to a camelCase directory name.
+
+    Duplicated from ``workflowManager.fsCamelCaseDirectory`` so this
+    module runs standalone inside Docker containers where the
+    ``vaibify`` package is not installed.
+    """
+    listWords = sStepName.split()
+    listCapitalized = [sWord.capitalize() for sWord in listWords]
+    sJoined = "".join(listCapitalized)
+    return re.sub(r"[^a-zA-Z0-9]", "", sJoined)
+
+
 def fdictMatchFiguresToSteps(listFigureNames, dictWorkflow):
     """Map figure basenames to step camelCase directory names."""
-    from vaibify.gui.workflowManager import (
-        fsCamelCaseDirectory,
-    )
     dictMatches = {}
     for iStep, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
     ):
         sStepName = dictStep.get("sName", "")
-        sCamelDir = fsCamelCaseDirectory(sStepName)
+        sCamelDir = _fsCamelCaseDirectoryLocal(sStepName)
         for sKey in ("saPlotFiles", "saDataFiles"):
             for sFile in dictStep.get(sKey, []):
                 sBasename = os.path.basename(sFile)

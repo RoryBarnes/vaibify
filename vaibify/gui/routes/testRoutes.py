@@ -6,7 +6,10 @@ import asyncio
 
 from fastapi import HTTPException, Request
 
+from ..actionCatalog import fnAgentAction
+from ..fileStatusManager import fbIsStepFullyVerified, fnMaybeAutoArchive
 from ..pipelineRunner import fsShellQuote
+from ..workflowManager import fsResolveStepWorkdir
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
@@ -89,11 +92,26 @@ def _fdictBuildGenerateResponse(dictResult):
     }
 
 
+def _fsAbsoluteStepWorkdir(dictStep, sRepoRoot):
+    """Return the container-absolute step workdir for a `cd` command.
+
+    Step ``sDirectory`` values are repo-relative; ``cd``-ing into them
+    from docker exec's default WORKDIR (`/workspace`) misses the
+    project repo prefix. Joining with ``sProjectRepoPath`` makes the
+    cd land inside the workflow's repo. Idempotent on already-absolute
+    values; returns ``"/workspace"`` for the legacy empty-dir case.
+    """
+    sDir = dictStep.get("sDirectory", "")
+    if not sDir:
+        return "/workspace"
+    return fsResolveStepWorkdir(sDir, {"sRepoRoot": sRepoRoot})
+
+
 async def _fdictRunAllTestCategories(
-    dictCtx, sContainerId, dictStep,
+    dictCtx, sContainerId, dictStep, sRepoRoot="",
 ):
     """Run each test category and return {category: result}."""
-    sDir = dictStep.get("sDirectory", "/workspace")
+    sDir = _fsAbsoluteStepWorkdir(dictStep, sRepoRoot)
     dictVerification = dictStep.setdefault(
         "dictVerification", {})
     dictTests = dictStep.get("dictTests", {})
@@ -137,6 +155,7 @@ async def _fdictRunOneTestCategory(
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
+    @fnAgentAction("generate-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/generate-test"
     )
@@ -170,6 +189,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         )
         return _fdictBuildGenerateResponse(dictResult)
 
+    @fnAgentAction("delete-generated-tests")
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
     )
@@ -183,6 +203,8 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         _fnRemoveTestDirectory(
             dictCtx["docker"], sContainerId, dictStep,
+            sProjectRepoPath=dictWorkflow.get(
+                "sProjectRepoPath", ""),
         )
         dictStep["dictTests"] = {
             "dictQualitative": {
@@ -212,6 +234,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
+    @fnAgentAction("save-and-run-test")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/save-and-run-test"
@@ -224,12 +247,16 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
+        bWasVerified = fbIsStepFullyVerified(dictStep)
         dictCtx["docker"].fnWriteFile(
             sContainerId, request.sFilePath,
             request.sContent.encode("utf-8"),
         )
         sTestCmd = _fsBuildPytestCommand(
-            dictStep.get("sDirectory", "/workspace"),
+            _fsAbsoluteStepWorkdir(
+                dictStep,
+                dictWorkflow.get("sProjectRepoPath", ""),
+            ),
             request.sFilePath,
         )
         iExitCode, sOutput = await asyncio.to_thread(
@@ -242,6 +269,10 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         _fnRegisterTestCommand(
             dictStep, bPassed, request.sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
+        await fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, bWasVerified,
+        )
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,
@@ -249,21 +280,10 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         }
 
 
-async def _fnUpdateInputHashes(dictCtx, sContainerId, dictStep):
-    """Recompute and store input script hashes after test execution."""
-    from .. import syncDispatcher as _syncDispatcher
-    dictHashes = await asyncio.to_thread(
-        _syncDispatcher.fdictComputeInputHashes,
-        dictCtx["docker"], sContainerId, dictStep,
-    )
-    if "dictRunStats" not in dictStep:
-        dictStep["dictRunStats"] = {}
-    dictStep["dictRunStats"]["dictInputHashes"] = dictHashes
-
-
 def _fnRegisterTestRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-tests."""
 
+    @fnAgentAction("run-unit-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
     )
@@ -278,21 +298,25 @@ def _fnRegisterTestRun(app, dictCtx):
         listCmds = _flistResolveTestCommands(dictStep)
         if not listCmds:
             raise HTTPException(400, "No test commands")
+        bWasVerified = fbIsStepFullyVerified(dictStep)
         dictCategoryResults = await _fdictRunAllTestCategories(
             dictCtx, sContainerId, dictStep,
+            sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
         )
         bAllPassed = all(
             d["bPassed"] for d in dictCategoryResults.values()
         )
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
-        await _fnUpdateInputHashes(
-            dictCtx, sContainerId, dictStep,
-        )
         dictCtx["save"](sContainerId, dictWorkflow)
+        await fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, bWasVerified,
+        )
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
 
+    @fnAgentAction("run-test-category")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/run-test-category"
@@ -326,7 +350,11 @@ def _fnRegisterTestRun(app, dictCtx):
                 400,
                 f"No commands for category: {sCategory}",
             )
-        sDir = dictStep.get("sDirectory", "/workspace")
+        bWasVerified = fbIsStepFullyVerified(dictStep)
+        sDir = _fsAbsoluteStepWorkdir(
+            dictStep,
+            dictWorkflow.get("sProjectRepoPath", ""),
+        )
         sFullCmd = " && ".join(
             [f"cd {fsShellQuote(sDir)}"] + listCmds)
         iExitCode, sOutput = await asyncio.to_thread(
@@ -344,6 +372,10 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCat["sLastOutput"] = sOutput
         _fnUpdateAggregateTestState(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
+        await fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, bWasVerified,
+        )
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,

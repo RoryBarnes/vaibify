@@ -127,7 +127,7 @@ def test_fnRegisterStepOutputs_both_types(tmp_path):
         "saDataFiles": ["data.npy"],
         "saPlotFiles": ["plot.pdf"],
     }
-    dictVars = {}
+    dictVars = {"sRepoRoot": str(tmp_path)}
     fnRegisterStepOutputs(
         dictStep, dictVars, "Step01", str(tmp_path),
     )
@@ -229,7 +229,7 @@ def test_fnRunPipeline_skips_disabled(
             "sDirectory": ".",
             "saPlotCommands": [],
             "saPlotFiles": [],
-            "bEnabled": False,
+            "bRunEnabled": False,
         }],
     }
     dictVars = {"sFigureType": "pdf"}
@@ -318,7 +318,7 @@ def test_fdictLoadWorkflow_valid(tmp_path):
     dictWorkflow = {
         "listSteps": [{
             "sName": "Test",
-            "sDirectory": "/tmp",
+            "sDirectory": "sub",
             "saPlotCommands": ["echo"],
             "saPlotFiles": [],
         }],

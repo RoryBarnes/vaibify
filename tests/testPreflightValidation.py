@@ -44,7 +44,7 @@ def _fdictBuildTestStep(sName, sDirectory, listCommands=None):
     return {
         "sName": sName,
         "sDirectory": sDirectory,
-        "bEnabled": True,
+        "bRunEnabled": True,
         "bPlotOnly": True,
         "saDataCommands": [],
         "saPlotCommands": listCommands or [],
@@ -162,10 +162,40 @@ async def test_preflight_valid_step_passes():
 
 
 @pytest.mark.asyncio
+async def test_preflight_resolves_repo_relative_step_directory():
+    """Repo-relative sDirectory joins sRepoRoot before the container check."""
+    dictWorkflow = _fdictBuildTestWorkflow([
+        _fdictBuildTestStep("Step1", "TessFlareLightcurves",
+                            ["python plot.py"]),
+    ])
+    mockConnection = MockDockerConnection({
+        "test -d": 0,
+        "test -w": 0,
+    })
+    dictVariables = {
+        "sPlotDirectory": "Plot", "sFigureType": "pdf",
+        "sRepoRoot": "/workspace/GJ1132_XUV",
+    }
+
+    listErrors = await _flistPreflightValidate(
+        mockConnection, "container123", dictWorkflow, dictVariables
+    )
+
+    assert len(listErrors) == 0
+    sJoinedPath = "/workspace/GJ1132_XUV/TessFlareLightcurves"
+    assert any(
+        sJoinedPath in sCmd for sCmd in mockConnection.listCommands
+    ), (
+        "Preflight must join sRepoRoot with the repo-relative "
+        f"sDirectory. Commands issued: {mockConnection.listCommands}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_preflight_skips_disabled_steps():
     dictStep = _fdictBuildTestStep("Disabled", "/nonexistent",
                                    ["python nope.py"])
-    dictStep["bEnabled"] = False
+    dictStep["bRunEnabled"] = False
     dictWorkflow = _fdictBuildTestWorkflow([dictStep])
     mockConnection = MockDockerConnection({
         "test -d /nonexistent": 1,

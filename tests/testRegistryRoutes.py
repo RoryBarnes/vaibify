@@ -374,7 +374,7 @@ def testBuildContainerSuccess(fixtureClient, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject: None,
+        lambda dictProject, bNoCache=False: None,
     )
     response = fixtureClient.post(
         "/api/containers/build-proj/build",
@@ -392,7 +392,7 @@ def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject: (_ for _ in ()).throw(
+        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
             RuntimeError("build error")
         ),
     )
@@ -550,3 +550,110 @@ def testHostDirectoriesPermissionError(
         params={"sPath": str(tmp_path)},
     )
     assert response.status_code == 403
+
+
+# -----------------------------------------------------------------------
+# POST /api/host-directories/create
+# -----------------------------------------------------------------------
+
+
+def testCreateHostDirectoryHappyPath(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": "vaibify-vplanet"},
+    )
+    assert response.status_code == 200
+    sNewPath = response.json()["sNewPath"]
+    assert sNewPath == os.path.join(str(tmp_path), "vaibify-vplanet")
+    assert os.path.isdir(sNewPath)
+
+
+def testCreateHostDirectoryRejectsPathTraversal(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": "../escape"},
+    )
+    assert response.status_code == 400
+
+
+def testCreateHostDirectoryRejectsExistingFolder(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    os.makedirs(str(tmp_path / "already-here"))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": "already-here"},
+    )
+    assert response.status_code == 409
+
+
+def testCreateHostDirectoryRejectsOutsideHome(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": "/etc",
+              "sFolderName": "newdir"},
+    )
+    assert response.status_code == 403
+
+
+def testCreateHostDirectoryRejectsShellMetacharacters(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": "foo;rm"},
+    )
+    assert response.status_code == 400
+
+
+def testCreateHostDirectoryRejectsEmptyName(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": "   "},
+    )
+    assert response.status_code == 400
+
+
+def testCreateHostDirectoryRejectsLeadingDot(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": ".hidden"},
+    )
+    assert response.status_code == 400
+
+
+def testCreateHostDirectoryAcceptsSpacesAndDashes(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(os.path, "expanduser", lambda s: str(tmp_path))
+    response = fixtureClient.post(
+        "/api/host-directories/create",
+        json={"sParentPath": str(tmp_path),
+              "sFolderName": "my new-folder"},
+    )
+    assert response.status_code == 200
+    assert os.path.isdir(
+        os.path.join(str(tmp_path), "my new-folder"))

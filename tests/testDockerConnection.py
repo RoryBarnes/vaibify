@@ -172,3 +172,35 @@ def test_fnWriteFile_uses_exec(mockGetDocker):
     mockContainer.put_archive.assert_called_once()
     sDirectory = mockContainer.put_archive.call_args[0][0]
     assert sDirectory == "/tmp"
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
+    """Files written via put_archive must carry a real mtime.
+
+    tarfile.TarInfo defaults mtime to 0; callers of fnWriteFileViaTar
+    do not normally set it. Without an explicit assignment, every
+    file vaibify writes lands in the container with epoch-0 mtime,
+    which corrupts test-source-mtime lineage checks and surfaces as
+    "1970-01-01" in the dashboard.
+    """
+    import io
+    import tarfile
+    import time
+
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockClient.containers.get.return_value = mockContainer
+    mockContainer.put_archive = MagicMock(return_value=True)
+    iBefore = int(time.time())
+    conn = DockerConnection()
+    conn.fnWriteFileViaTar(
+        "abc123", "/tmp/output.txt", b"contents")
+    iAfter = int(time.time())
+    bufferTar = mockContainer.put_archive.call_args[0][1]
+    bufferTar.seek(0)
+    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
+        listMembers = tar.getmembers()
+    assert len(listMembers) == 1
+    assert iBefore <= listMembers[0].mtime <= iAfter

@@ -9,7 +9,12 @@ import time
 
 __all__ = [
     "fsShellQuote",
-    "fsComputeStepLabel",
+    "fsLabelFromStepIndex",
+    "fiStepIndexFromLabel",
+    "flistStepsWithLabels",
+    "fdictWorkflowWithLabels",
+    "fdictStepWithLabel",
+    "fnAttachStepLabels",
     "fnClearOutputModifiedFlags",
 ]
 
@@ -23,16 +28,20 @@ def fsShellQuote(sValue):
     return "'" + sValue.replace("'", "'\\''") + "'"
 
 
-def fsComputeStepLabel(dictWorkflow, iStepNumber):
-    """Return the display label (A01, I01) for a 1-based step number."""
-    iIndex = iStepNumber - 1
+def fsLabelFromStepIndex(dictWorkflow, iStepIndex):
+    """Return the display label (A01, I01) for a 0-based step index.
+
+    Labels are per-type sequential: ``A09`` means the 9th automated
+    step, ``I01`` means the 1st interactive step. See ``CLAUDE.md``
+    Traps for why this differs from ``listSteps[index]``.
+    """
     listSteps = dictWorkflow.get("listSteps", [])
-    if iIndex < 0 or iIndex >= len(listSteps):
-        return f"{iStepNumber:02d}"
-    bInteractive = listSteps[iIndex].get("bInteractive", False)
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return f"{iStepIndex + 1:02d}"
+    bInteractive = listSteps[iStepIndex].get("bInteractive", False)
     sPrefix = "I" if bInteractive else "A"
     iCount = 0
-    for iPos in range(iIndex + 1):
+    for iPos in range(iStepIndex + 1):
         bSameType = listSteps[iPos].get(
             "bInteractive", False) == bInteractive
         if bSameType:
@@ -40,12 +49,96 @@ def fsComputeStepLabel(dictWorkflow, iStepNumber):
     return f"{sPrefix}{iCount:02d}"
 
 
-def _fnRecordRunStats(
-    dictStep, sStartTimestamp, fStartTime, fCpuTime=0.0,
-):
+def fiStepIndexFromLabel(dictWorkflow, sLabel):
+    """Return the 0-based index for a step label like ``A09`` or ``I01``.
+
+    Raises ``ValueError`` with a readable message when ``sLabel`` is
+    not the expected shape or does not resolve to a step in
+    ``dictWorkflow``.
+    """
+    if not isinstance(sLabel, str):
+        raise ValueError(
+            f"step label must be a string, got "
+            f"{type(sLabel).__name__}"
+        )
+    sNormalized = sLabel.strip().upper()
+    if (len(sNormalized) < 2 or sNormalized[0] not in ("A", "I")
+            or not sNormalized[1:].isdigit()):
+        raise ValueError(
+            f"invalid step label {sLabel!r} — expected "
+            f"pattern like 'A09' or 'I01'"
+        )
+    return _fiResolveLabelWithinType(
+        dictWorkflow, sLabel, sNormalized[0], int(sNormalized[1:]),
+    )
+
+
+def _fiResolveLabelWithinType(dictWorkflow, sLabel, sPrefix, iWanted):
+    """Walk listSteps and find the iWanted-th step matching sPrefix."""
+    bWantInteractive = sPrefix == "I"
+    listSteps = dictWorkflow.get("listSteps", [])
+    iCount = 0
+    for iIndex, dictStep in enumerate(listSteps):
+        bInteractive = dictStep.get("bInteractive", False)
+        if bInteractive == bWantInteractive:
+            iCount += 1
+            if iCount == iWanted:
+                return iIndex
+    sKind = "interactive" if bWantInteractive else "automated"
+    raise ValueError(
+        f"no step {sLabel!r} — workflow has {iCount} "
+        f"{sKind} step(s)"
+    )
+
+
+def flistStepsWithLabels(dictWorkflow):
+    """Return listSteps shallow-copied with ``sLabel`` added to each.
+
+    Does not mutate ``dictWorkflow``. The returned list contains
+    fresh step dicts so the caller can hand them to a JSON
+    serializer without risk of persisting ``sLabel`` into
+    ``workflow.json``.
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    listOut = []
+    for iIndex, dictStep in enumerate(listSteps):
+        dictCopy = dict(dictStep)
+        dictCopy["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iIndex)
+        listOut.append(dictCopy)
+    return listOut
+
+
+def fdictWorkflowWithLabels(dictWorkflow):
+    """Return a shallow-copied workflow whose listSteps carry sLabel."""
+    dictCopy = dict(dictWorkflow)
+    dictCopy["listSteps"] = flistStepsWithLabels(dictWorkflow)
+    return dictCopy
+
+
+def fdictStepWithLabel(dictWorkflow, iStepIndex):
+    """Return a shallow copy of the step at iStepIndex with sLabel."""
+    dictStep = dict(dictWorkflow["listSteps"][iStepIndex])
+    dictStep["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iStepIndex)
+    return dictStep
+
+
+def fnAttachStepLabels(dictWorkflow):
+    """Mutate listSteps in place, writing a fresh sLabel on each step.
+
+    Called from the workflow load/save paths so ``sLabel`` persists in
+    ``workflow.json`` and in-memory state stays coherent. Recomputation
+    is always fresh — insertions, deletions, or reorderings produce
+    the correct per-type-sequential label on the next save.
+    """
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []),
+    ):
+        dictStep["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iIndex)
+
+
+def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0):
     """Store timing information in the step's run stats."""
     dictStep["dictRunStats"] = {
-        "sLastRun": sStartTimestamp,
         "fWallClock": round(time.time() - fStartTime, 1),
         "fCpuTime": round(fCpuTime, 1),
     }
@@ -56,6 +149,7 @@ def _fdictBuildWorkflowVars(dictWorkflow):
     return {
         "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
         "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+        "sRepoRoot": dictWorkflow.get("sProjectRepoPath", ""),
     }
 
 

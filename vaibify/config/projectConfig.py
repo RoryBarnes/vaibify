@@ -17,6 +17,7 @@ class FeaturesConfig:
     bDvc: bool = False
     bLatex: bool = True
     bClaude: bool = False
+    bClaudeAutoUpdate: bool = True
     bGpu: bool = False
 
 
@@ -112,6 +113,7 @@ _FEATURES_YAML_TO_HUNGARIAN = {
     "dvc": "bDvc",
     "latex": "bLatex",
     "claude": "bClaude",
+    "claudeAutoUpdate": "bClaudeAutoUpdate",
     "gpu": "bGpu",
 }
 
@@ -177,6 +179,23 @@ def fnSaveToFile(config, sFilePath):
             dictYaml, fileHandle,
             default_flow_style=False, sort_keys=False,
         )
+
+
+def fconfigFromYamlDict(dictRaw):
+    """Merge a camelCase YAML dict with defaults and return ProjectConfig.
+
+    Parameters
+    ----------
+    dictRaw : dict
+        Raw camelCase configuration dictionary (may be partial).
+
+    Returns
+    -------
+    ProjectConfig
+        Fully-populated configuration dataclass instance.
+    """
+    dictMerged = _fdictMergeWithDefaults(dictRaw)
+    return _fconfigFromYamlDict(dictMerged)
 
 
 def fbValidateConfig(dictConfig):
@@ -366,6 +385,7 @@ def _fdictScalarFieldsToYaml(config):
         "bindMounts": config.listBindMounts,
         "secrets": config.listSecrets,
         "networkIsolation": config.bNetworkIsolation,
+        "neverSleep": config.bNeverSleep,
     }
 
 
@@ -379,6 +399,7 @@ def _fdictFeaturesToYaml(features):
         "dvc": features.bDvc,
         "latex": features.bLatex,
         "claude": features.bClaude,
+        "claudeAutoUpdate": features.bClaudeAutoUpdate,
         "gpu": features.bGpu,
     }
 

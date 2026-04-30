@@ -19,9 +19,9 @@ DICT_WORKFLOW = {
     "listSteps": [
         {
             "sName": "Step A",
-            "sDirectory": "/workspace/stepA",
+            "sDirectory": "stepA",
             "bPlotOnly": True,
-            "bEnabled": True,
+            "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
             "saDataFiles": ["output.dat"],
@@ -166,12 +166,56 @@ def test_connect_returns_workflow(clientHttp):
     assert dictResult["sWorkflowPath"] == S_WORKFLOW_PATH
 
 
+def test_connect_steps_carry_slabel(clientHttp):
+    """Every step in the connect response carries sLabel."""
+    dictResult = _fnConnectToContainer(clientHttp)
+    listSteps = dictResult["dictWorkflow"]["listSteps"]
+    assert listSteps, "test fixture should have at least one step"
+    for dictStep in listSteps:
+        assert "sLabel" in dictStep
+        assert dictStep["sLabel"]
+
+
 def test_connect_caches_workflow(clientHttp):
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/steps/{S_CONTAINER_ID}"
     )
     assert responseHttp.status_code == 200
+
+
+def test_connect_includes_file_status(clientHttp):
+    dictResult = _fnConnectToContainer(clientHttp)
+    assert "dictFileStatus" in dictResult
+    dictFileStatus = dictResult["dictFileStatus"]
+    assert dictFileStatus is not None
+    for sKey in (
+        "dictModTimes",
+        "dictMaxMtimeByStep",
+        "dictMaxPlotMtimeByStep",
+        "dictMaxDataMtimeByStep",
+        "dictMarkerMtimeByStep",
+        "dictInvalidatedSteps",
+        "dictScriptStatus",
+        "dictTestMarkers",
+        "dictTestFileChanges",
+    ):
+        assert sKey in dictFileStatus, sKey
+
+
+def test_connect_survives_file_status_failure(clientHttp):
+    with patch(
+        "vaibify.gui.routes.pipelineRoutes.fdictComputeFileStatus",
+        side_effect=RuntimeError("boom"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/connect/{S_CONTAINER_ID}",
+            params={"sWorkflowPath": S_WORKFLOW_PATH},
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["dictWorkflow"] is not None
+    assert dictResult["dictFileStatus"] is None
 
 
 # ── User info ─────────────────────────────────────────────────
@@ -217,6 +261,27 @@ def test_get_step_by_index(clientHttp):
     dictStep = responseHttp.json()
     assert dictStep["sName"] == "Step A"
     assert "saResolvedOutputFiles" in dictStep
+    assert dictStep["sLabel"] == "A01"
+
+
+def test_resolve_step_by_label(clientHttp):
+    """GET /by-label/<sLabel> returns the 0-based index."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/steps/{S_CONTAINER_ID}/by-label/A01"
+    )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult == {"iStepIndex": 0, "sLabel": "A01"}
+
+
+def test_resolve_unknown_step_label(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/steps/{S_CONTAINER_ID}/by-label/A99"
+    )
+    assert responseHttp.status_code == 404
+    assert "A99" in responseHttp.json()["detail"]
 
 
 def test_get_step_invalid_index(clientHttp):
@@ -231,7 +296,7 @@ def test_create_step(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sName": "Step B",
-        "sDirectory": "/workspace/stepB",
+        "sDirectory": "stepB",
         "bPlotOnly": False,
         "saPlotCommands": ["python plotB.py"],
         "saPlotFiles": ["figB.pdf"],
@@ -311,7 +376,7 @@ def test_reorder_steps(clientHttp):
         f"/api/steps/{S_CONTAINER_ID}/create",
         json={
             "sName": "Step B",
-            "sDirectory": "/workspace/stepB",
+            "sDirectory": "stepB",
             "saPlotCommands": [],
             "saPlotFiles": [],
         },
@@ -414,6 +479,97 @@ def test_get_pipeline_state_not_running(clientHttp):
     )
     assert responseHttp.status_code == 200
     assert responseHttp.json()["bRunning"] is False
+
+
+def _fdictBuildRunningState(sLastHeartbeat):
+    """Return a synthetic 'running' state with a custom heartbeat."""
+    return {
+        "bRunning": True,
+        "sAction": "runAll",
+        "sLogPath": "/log",
+        "sStartTime": "2026-04-28T18:50:05+00:00",
+        "sEndTime": "",
+        "iExitCode": -1,
+        "iActiveStep": 9,
+        "iStepCount": 13,
+        "dictStepResults": {},
+        "listRecentOutput": [],
+        "iRunnerPid": 12345,
+        "sLastHeartbeat": sLastHeartbeat,
+        "sFailureReason": "",
+    }
+
+
+def test_get_pipeline_state_fresh_heartbeat_left_alone(clientHttp):
+    """A recent heartbeat means the run is still alive — don't reconcile."""
+    from datetime import datetime, timezone
+    from vaibify.gui import pipelineState
+    _fnConnectToContainer(clientHttp)
+    sFresh = datetime.now(timezone.utc).isoformat()
+    with patch.object(
+        pipelineState, "fdictReadState",
+        return_value=_fdictBuildRunningState(sFresh),
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state"
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bRunning"] is True
+    assert dictBody["sFailureReason"] == ""
+
+
+def test_get_pipeline_state_stale_heartbeat_reconciles(clientHttp):
+    """A stale heartbeat flips bRunning to False and stamps a reason."""
+    from datetime import datetime, timedelta, timezone
+    from vaibify.gui import pipelineState
+    _fnConnectToContainer(clientHttp)
+    sStale = (
+        datetime.now(timezone.utc) - timedelta(seconds=120)
+    ).isoformat()
+    listWriteCalls = []
+
+    def fnSpyWriteState(connectionDocker, sContainerId, dictState):
+        listWriteCalls.append(dict(dictState))
+
+    with patch.object(
+        pipelineState, "fdictReadState",
+        return_value=_fdictBuildRunningState(sStale),
+    ), patch.object(
+        pipelineState, "fnWriteState", side_effect=fnSpyWriteState,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state"
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bRunning"] is False
+    assert dictBody["iExitCode"] == (
+        pipelineState.I_EXIT_CODE_RUNNER_DISAPPEARED
+    )
+    assert "heartbeat_stale" in dictBody["sFailureReason"]
+    assert dictBody["sEndTime"], "sEndTime must be stamped on reconcile"
+    # Reconciled state must be persisted so subsequent polls are stable.
+    assert listWriteCalls, "reconciliation must write back to the state file"
+    assert listWriteCalls[-1]["bRunning"] is False
+
+
+def test_get_pipeline_state_legacy_no_heartbeat_left_alone(clientHttp):
+    """Legacy state files (no sLastHeartbeat field) are not reconciled."""
+    from vaibify.gui import pipelineState
+    _fnConnectToContainer(clientHttp)
+    dictLegacyRunning = _fdictBuildRunningState("")
+    del dictLegacyRunning["sLastHeartbeat"]
+    with patch.object(
+        pipelineState, "fdictReadState",
+        return_value=dictLegacyRunning,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state"
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bRunning"] is True
 
 
 # ── File status ───────────────────────────────────────────────

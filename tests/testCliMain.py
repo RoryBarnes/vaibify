@@ -286,10 +286,10 @@ def test_main_config_option_calls_set_path(mockLaunch, tmp_path):
 
 @patch("vaibify.cli.main.fnLaunchHub")
 def test_main_no_subcommand_calls_launch_hub(mockLaunch):
-    """Line 54: no subcommand invokes fnLaunchHub."""
+    """Line 54: no subcommand invokes fnLaunchHub with no explicit port."""
     runner = CliRunner()
     result = runner.invoke(main, [])
-    mockLaunch.assert_called_once_with(8050)
+    mockLaunch.assert_called_once_with(None)
 
 
 @patch("vaibify.cli.main.fnLaunchHub")
@@ -305,14 +305,31 @@ def test_main_custom_port_passed_to_launch_hub(mockLaunch):
 # -----------------------------------------------------------------------
 
 
+def _fnPatchSessionSlot():
+    """Return (acquirePatch, releasePatch) that no-op the session registry."""
+    return (
+        patch(
+            "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "vaibify.config.sessionRegistry.fnReleaseSessionSlot",
+        ),
+    )
+
+
 def test_fnLaunchHub_starts_server():
     """Lines 59-72: fnLaunchHub creates app and runs uvicorn."""
+    import os
     import sys
     mockUvicorn = MagicMock()
     mockWebbrowser = MagicMock()
+    patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
     with patch.dict(sys.modules, {
         "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }):
+    }), patch.dict(os.environ, {}, clear=False), \
+            patchAcquireSlot, patchReleaseSlot:
+        os.environ.pop("VAIBIFY_SUPPRESS_BROWSER", None)
         with patch(
             "vaibify.gui.pipelineServer.fappCreateHubApplication",
         ) as mockApp:
@@ -323,6 +340,51 @@ def test_fnLaunchHub_starts_server():
             mockUvicorn.run.assert_called_once()
             args = mockUvicorn.run.call_args
             assert args[1]["port"] == 8050
+
+
+def test_fnLaunchHub_suppresses_browser_when_env_set():
+    """VAIBIFY_SUPPRESS_BROWSER=1 means no webbrowser.open thread fires."""
+    import os
+    import sys
+    import time
+    mockUvicorn = MagicMock()
+    mockWebbrowser = MagicMock()
+    patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
+    with patch.dict(sys.modules, {
+        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
+    }), patch.dict(
+        os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+    ), patch(
+        "vaibify.gui.pipelineServer.fappCreateHubApplication",
+        return_value=MagicMock(),
+    ), patchAcquireSlot, patchReleaseSlot:
+        from vaibify.cli.main import fnLaunchHub
+        fnLaunchHub(8050)
+    time.sleep(1.2)
+    mockWebbrowser.open.assert_not_called()
+
+
+def test_fnLaunchHub_exits_when_session_limit_reached():
+    """fnLaunchHub exits nonzero when the 99-session cap is hit."""
+    import os
+    import sys
+    from vaibify.config.sessionRegistry import SessionLimitExceededError
+    mockUvicorn = MagicMock()
+    mockWebbrowser = MagicMock()
+    with patch.dict(sys.modules, {
+        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
+    }), patch.dict(
+        os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+    ), patch(
+        "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+        side_effect=SessionLimitExceededError(99, 99),
+    ):
+        import pytest
+        from vaibify.cli.main import fnLaunchHub
+        with pytest.raises(SystemExit) as exitInfo:
+            fnLaunchHub(8050)
+    assert exitInfo.value.code == 1
+    mockUvicorn.run.assert_not_called()
 
 
 # -----------------------------------------------------------------------

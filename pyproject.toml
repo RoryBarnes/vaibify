@@ -69,7 +69,7 @@ vaib = "vaibify.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/RoryBarnes/Vaibify"
-Documentation = "https://vaibify.readthedocs.io"
+Documentation = "https://RoryBarnes.github.io/vaibify"
 
 [tool.setuptools_scm]
 write_to = "vaibify/_version.py"

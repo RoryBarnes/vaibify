@@ -30,10 +30,18 @@ def test_fiResolveCoreCount_clamps_to_total():
 
 def test_fbValidateWorkflow_valid():
     dictWorkflow = {"listSteps": [{
-        "sName": "Test", "sDirectory": "/tmp",
+        "sName": "Test", "sDirectory": "sub",
         "saPlotCommands": ["echo"], "saPlotFiles": [],
     }]}
     assert fbValidateWorkflow(dictWorkflow) is True
+
+
+def test_fbValidateWorkflow_rejects_absolute_sDirectory():
+    dictWorkflow = {"listSteps": [{
+        "sName": "Test", "sDirectory": "/tmp",
+        "saPlotCommands": ["echo"], "saPlotFiles": [],
+    }]}
+    assert fbValidateWorkflow(dictWorkflow) is False
 
 
 def test_fbValidateWorkflow_missing_listSteps():

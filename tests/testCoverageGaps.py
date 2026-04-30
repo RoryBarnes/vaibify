@@ -54,7 +54,7 @@ def _fConfigFull():
     features = SimpleNamespace(
         bJupyter=False, bRLanguage=False, bJulia=False,
         bDatabase=False, bDvc=False, bLatex=True,
-        bClaude=False, bGpu=False,
+        bClaude=False, bClaudeAutoUpdate=True, bGpu=False,
     )
     reproducibility = SimpleNamespace(
         overleaf=SimpleNamespace(sProjectId="abc123"),
@@ -177,6 +177,7 @@ def test_build_cli_command(mockDir, mockConfig, mockBuild):
     result = runner.invoke(build)
     assert result.exit_code == 0
     assert "Build complete" in result.output
+    assert "vaibify stop && vaibify start" in result.output
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
@@ -474,7 +475,10 @@ def test_fsGetTempDirectory_darwin():
     )
     with patch("platform.system", return_value="Darwin"):
         sResult = _fsGetTempDirectory()
-    assert sResult == "/tmp"
+    assert sResult.endswith(".vaibify/tmp"), (
+        "macOS temp dir should be under ~/.vaibify/tmp, "
+        "got: " + str(sResult)
+    )
 
 
 def test_fsGetTempDirectory_linux():
@@ -881,8 +885,8 @@ def test_flistPreflightValidate_skips_disabled(
     mockDocker = _fMockDocker()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": False},
-            {"sName": "B", "bEnabled": True, "sDirectory": "/w"},
+            {"sName": "A", "bRunEnabled": False},
+            {"sName": "B", "bRunEnabled": True, "sDirectory": "/w"},
         ]
     }
     listErrors = _fnRunAsync(_flistPreflightValidate(
@@ -902,8 +906,8 @@ def test_flistPreflightValidate_skips_before_start(
     mockDocker = _fMockDocker()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": True, "sDirectory": "/a"},
-            {"sName": "B", "bEnabled": True, "sDirectory": "/b"},
+            {"sName": "A", "bRunEnabled": True, "sDirectory": "/a"},
+            {"sName": "B", "bRunEnabled": True, "sDirectory": "/b"},
         ]
     }
     _fnRunAsync(_flistPreflightValidate(
@@ -1002,7 +1006,7 @@ def test_fiRunStepList_runs_steps(mockShould, mockRunOne):
     fnCallback, _ = _fMockCallback()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": True},
+            {"sName": "A", "bRunEnabled": True},
         ]
     }
     iResult = _fnRunAsync(_fiRunStepList(
@@ -1022,7 +1026,7 @@ def test_fiRunStepList_records_failure(mockShould, mockRunOne):
     fnCallback, _ = _fMockCallback()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bEnabled": True},
+            {"sName": "A", "bRunEnabled": True},
         ]
     }
     iResult = _fnRunAsync(_fiRunStepList(
@@ -1034,18 +1038,14 @@ def test_fiRunStepList_records_failure(mockShould, mockRunOne):
 
 @patch("vaibify.gui.pipelineRunner._fiExecuteAndRecord",
        new_callable=AsyncMock, return_value=0)
-@patch("vaibify.gui.pipelineRunner._fbShouldSkipStep",
-       new_callable=AsyncMock, return_value=False)
 @patch("vaibify.gui.pipelineRunner._fiCheckDependencies",
        new_callable=AsyncMock, return_value=0)
-def test_fnRunOneStep_executes(
-    mockDeps, mockSkip, mockExecute,
-):
+def test_fnRunOneStep_executes(mockDeps, mockExecute):
     from vaibify.gui.pipelineRunner import _fnRunOneStep
     mockDocker = _fMockDocker()
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {
-        "sName": "Compute", "bEnabled": True,
+        "sName": "Compute", "bRunEnabled": True,
         "sDirectory": "/w",
     }
     iResult = _fnRunAsync(_fnRunOneStep(
@@ -1055,27 +1055,6 @@ def test_fnRunOneStep_executes(
     assert iResult == 0
     listTypes = [d["sType"] for d in listCaptured]
     assert "stepStarted" in listTypes
-
-
-@patch("vaibify.gui.pipelineRunner._fbShouldSkipStep",
-       new_callable=AsyncMock, return_value=True)
-@patch("vaibify.gui.pipelineRunner._fiCheckDependencies",
-       new_callable=AsyncMock, return_value=0)
-def test_fnRunOneStep_skips_unchanged(mockDeps, mockSkip):
-    from vaibify.gui.pipelineRunner import _fnRunOneStep
-    mockDocker = _fMockDocker()
-    fnCallback, listCaptured = _fMockCallback()
-    dictStep = {
-        "sName": "Cached", "bEnabled": True,
-        "sDirectory": "/w",
-    }
-    iResult = _fnRunAsync(_fnRunOneStep(
-        mockDocker, "cid", dictStep, 1,
-        "/work", {}, fnCallback,
-    ))
-    assert iResult == 0
-    listTypes = [d["sType"] for d in listCaptured]
-    assert "stepSkipped" in listTypes
 
 
 def test_fnRunOneStep_interactive_returns_zero():
@@ -1092,14 +1071,12 @@ def test_fnRunOneStep_interactive_returns_zero():
 
 @patch("vaibify.gui.pipelineRunner._fnEmitDiscoveredOutputs",
        new_callable=AsyncMock)
-@patch("vaibify.gui.pipelineRunner._fnRecordInputHashes",
-       new_callable=AsyncMock)
 @patch("vaibify.gui.pipelineRunner.fiRunStepCommands",
        new_callable=AsyncMock, return_value=(0, 1.5))
 @patch("vaibify.gui.pipelineRunner._fsetSnapshotDirectory",
        new_callable=AsyncMock, return_value=set())
 def test_fiExecuteAndRecord_records_timing(
-    mockSnap, mockRun, mockHash, mockDiscover,
+    mockSnap, mockRun, mockDiscover,
 ):
     from vaibify.gui.pipelineRunner import _fiExecuteAndRecord
     mockDocker = _fMockDocker()
@@ -1565,16 +1542,52 @@ def test_zenodo_download_file_not_in_record():
             client.fnDownloadFile(42, "missing.dat", "/tmp")
 
 
-def test_fsRetrieveToken():
+def test_fsRetrieveToken_falls_back_to_legacy_slot():
     from vaibify.reproducibility.zenodoClient import (
         _fsRetrieveToken,
     )
     with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ), patch(
         "vaibify.config.secretManager.fsRetrieveSecret",
-        return_value="zen_token_123",
-    ):
-        sToken = _fsRetrieveToken()
-    assert sToken == "zen_token_123"
+        return_value="legacy_token",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("sandbox")
+    assert sToken == "legacy_token"
+    assert mockRetrieve.call_args[0][0] == "zenodo_token"
+
+
+def test_fsRetrieveToken_prefers_namespaced_sandbox_slot():
+    from vaibify.reproducibility.zenodoClient import (
+        _fsRetrieveToken,
+    )
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="namespaced_sandbox",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("sandbox")
+    assert sToken == "namespaced_sandbox"
+    assert mockRetrieve.call_args[0][0] == "zenodo_token_sandbox"
+
+
+def test_fsRetrieveToken_prefers_namespaced_production_slot():
+    from vaibify.reproducibility.zenodoClient import (
+        _fsRetrieveToken,
+    )
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=True,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+        return_value="namespaced_prod",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("zenodo")
+    assert sToken == "namespaced_prod"
+    assert mockRetrieve.call_args[0][0] == "zenodo_token_production"
 
 
 def test_zenodo_client_lazy_token():
@@ -1584,10 +1597,22 @@ def test_zenodo_client_lazy_token():
     with patch(
         "vaibify.reproducibility.zenodoClient._fsRetrieveToken",
         return_value="lazy_token",
-    ):
+    ) as mockRetrieve:
         sToken = client._fsGetToken()
     assert sToken == "lazy_token"
     assert client._sToken == "lazy_token"
+    assert mockRetrieve.call_args[0][0] == "sandbox"
+
+
+def test_zenodo_client_passes_production_service_to_retriever():
+    from vaibify.reproducibility.zenodoClient import ZenodoClient
+    client = ZenodoClient(sService="zenodo")
+    with patch(
+        "vaibify.reproducibility.zenodoClient._fsRetrieveToken",
+        return_value="prod_token",
+    ) as mockRetrieve:
+        client._fsGetToken()
+    assert mockRetrieve.call_args[0][0] == "zenodo"
 
 
 def test_zenodo_client_cached_token():

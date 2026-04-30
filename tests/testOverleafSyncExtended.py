@@ -25,7 +25,7 @@ from vaibify.reproducibility.overleafSync import (
     _fnCopyPulledFile,
     _fbHasUncommittedChanges,
     _fnCommitAndPush,
-    fnConfigureGitCredentials,
+    flistBuildCredentialHelperArgs,
     fnPushAnnotatedToOverleaf,
 )
 
@@ -35,14 +35,20 @@ from vaibify.reproducibility.overleafSync import (
 # -----------------------------------------------------------------------
 
 
-def test_fsBuildCredentialHelper_uses_secret_manager():
-    sHelper = _fsBuildCredentialHelper()
-    assert "fsRetrieveSecret" in sHelper
-    assert "overleaf_token" in sHelper
+def test_fsBuildCredentialHelper_embeds_token_path():
+    sHelper = _fsBuildCredentialHelper("/tmp/overleaf-tok.abc")
+    assert "/tmp/overleaf-tok.abc" in sHelper
+    assert "password=" in sHelper
+
+
+def test_fsBuildCredentialHelper_no_vaibify_import():
+    sHelper = _fsBuildCredentialHelper("/tmp/tok")
+    assert "from vaibify" not in sHelper
+    assert "secretManager" not in sHelper
 
 
 def test_fsBuildCredentialHelper_no_hardcoded_token():
-    sHelper = _fsBuildCredentialHelper()
+    sHelper = _fsBuildCredentialHelper("/tmp/tok")
     sLower = sHelper.lower()
     assert "ghp_" not in sLower
     assert "password123" not in sLower
@@ -205,14 +211,24 @@ def test_fnCommitAndPush_skips_when_clean(mockChanges):
 
 
 # -----------------------------------------------------------------------
-# fnConfigureGitCredentials
+# flistBuildCredentialHelperArgs
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.reproducibility.overleafSync._fnRunGitConfig")
-def test_fnConfigureGitCredentials_calls_config(mockConfig):
-    fnConfigureGitCredentials("proj123")
-    mockConfig.assert_called_once()
+def test_flistBuildCredentialHelperArgs_embeds_token_path():
+    listArgs = flistBuildCredentialHelperArgs("/tmp/tok-path")
+    assert listArgs[0] == "-c"
+    assert any("/tmp/tok-path" in sArg for sArg in listArgs)
+    assert any("credential.https://" in sArg for sArg in listArgs)
+
+
+def test_flistBuildCredentialHelperArgs_returns_inline_c_args():
+    """Helper args must be inline ``-c`` flags, not a ``git config`` mutation."""
+    listArgs = flistBuildCredentialHelperArgs("/tmp/tok")
+    assert "config" not in listArgs
+    assert "--global" not in listArgs
+    assert len(listArgs) == 2
+    assert listArgs[0] == "-c"
 
 
 # -----------------------------------------------------------------------
@@ -230,7 +246,8 @@ def test_fnConfigureGitCredentials_calls_config(mockConfig):
     "vaibify.reproducibility.overleafSync._fnCloneOverleafRepo",
 )
 @patch(
-    "vaibify.reproducibility.overleafSync.fnConfigureGitCredentials",
+    "vaibify.reproducibility.overleafSync.flistBuildCredentialHelperArgs",
+    return_value=["-c", "credential.https://git.overleaf.com.helper=!f"],
 )
 @patch(
     "vaibify.reproducibility.overleafSync._fnAnnotateTexInRepo",
@@ -243,6 +260,7 @@ def test_fnPushAnnotatedToOverleaf_calls_annotate(
         {"listSteps": []},
         "https://github.com/user/repo",
         "10.5281/zenodo.123",
+        "test-token-xyz",
     )
     mockAnnotate.assert_called_once()
 
@@ -262,7 +280,7 @@ def test_fnAnnotateTexInRepo_missing_file_raises(tmp_path):
         )
 
 
-@patch("vaibify.reproducibility.latexConnector.fsAnnotateTexFile")
+@patch("vaibify.reproducibility.overleafSync.fsAnnotateTexFile")
 def test_fnAnnotateTexInRepo_writes_when_changed(
     mockAnnotate, tmp_path,
 ):
@@ -277,7 +295,7 @@ def test_fnAnnotateTexInRepo_writes_when_changed(
     assert pathTex.read_text(encoding="utf-8") == "annotated content"
 
 
-@patch("vaibify.reproducibility.latexConnector.fsAnnotateTexFile")
+@patch("vaibify.reproducibility.overleafSync.fsAnnotateTexFile")
 def test_fnAnnotateTexInRepo_skips_write_when_unchanged(
     mockAnnotate, tmp_path,
 ):
@@ -291,3 +309,640 @@ def test_fnAnnotateTexInRepo_skips_write_when_unchanged(
     )
     sMtimeAfter = pathTex.stat().st_mtime
     assert sMtimeBefore == sMtimeAfter
+
+
+# -----------------------------------------------------------------------
+# CLI entry-point tests
+#
+# The overleafSync.py script is invoked as a subprocess with a fake ``git``
+# binary placed earlier on PATH. This lets tests assert on exit codes,
+# stdout, and stderr without touching a real Overleaf repository.
+# -----------------------------------------------------------------------
+
+
+import sys as _sys
+
+_S_OVERLEAF_SCRIPT = str(
+    Path(__file__).resolve().parents[1]
+    / "vaibify" / "reproducibility" / "overleafSync.py"
+)
+
+
+def _fsWriteGitShim(pathTmp, iExitCode, sStdout="", sStderr=""):
+    """Write a fake ``git`` executable that returns a controlled result."""
+    pathShim = pathTmp / "git"
+    sScript = (
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"sys.stdout.write({sStdout!r})\n"
+        f"sys.stderr.write({sStderr!r})\n"
+        f"sys.exit({iExitCode})\n"
+    )
+    pathShim.write_text(sScript)
+    pathShim.chmod(0o755)
+    return str(pathShim)
+
+
+def _fsWriteSubcommandShim(pathTmp, dictSubcommandResults):
+    """Write a git shim that dispatches on the first non-flag argument.
+
+    ``dictSubcommandResults`` maps a git subcommand ("config",
+    "ls-remote", ...) to ``(iExit, sStdout, sStderr)``. The shim
+    skips leading ``-c key=value`` pairs so inline credential and
+    hardening flags do not mask the real subcommand.
+    """
+    pathShim = pathTmp / "git"
+    sMap = repr(dictSubcommandResults)
+    sScript = (
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"dictMap = {sMap}\n"
+        "listArgv = sys.argv[1:]\n"
+        "iIdx = 0\n"
+        "while iIdx < len(listArgv):\n"
+        "    sArg = listArgv[iIdx]\n"
+        "    if sArg == '-c' and iIdx + 1 < len(listArgv):\n"
+        "        iIdx += 2\n"
+        "        continue\n"
+        "    break\n"
+        "sKey = listArgv[iIdx] if iIdx < len(listArgv) else ''\n"
+        "iExit, sOut, sErr = dictMap.get(sKey, (0, '', ''))\n"
+        "sys.stdout.write(sOut)\n"
+        "sys.stderr.write(sErr)\n"
+        "sys.exit(iExit)\n"
+    )
+    pathShim.write_text(sScript)
+    pathShim.chmod(0o755)
+    return str(pathShim)
+
+
+def _ftRunCli(listArgs, pathTmp, sStdin=""):
+    """Run overleafSync.py with PATH prefixed by the shim directory."""
+    import os as _os
+    dictEnv = dict(_os.environ)
+    dictEnv["PATH"] = str(pathTmp) + _os.pathsep + dictEnv.get("PATH", "")
+    resultProcess = subprocess.run(
+        [_sys.executable, _S_OVERLEAF_SCRIPT] + listArgs,
+        input=sStdin, capture_output=True, text=True, env=dictEnv,
+    )
+    return resultProcess
+
+
+def test_cli_help_lists_all_subcommands():
+    resultProcess = subprocess.run(
+        [_sys.executable, _S_OVERLEAF_SCRIPT, "--help"],
+        capture_output=True, text=True,
+    )
+    assert resultProcess.returncode == 0
+    for sSubcommand in ("ls-remote", "push", "push-annotated", "pull"):
+        assert sSubcommand in resultProcess.stdout
+
+
+def test_cli_ls_remote_success(tmp_path):
+    _fsWriteSubcommandShim(tmp_path, {
+        "config": (0, "", ""),
+        "ls-remote": (0, "HEAD\n", ""),
+    })
+    resultProcess = _ftRunCli(
+        ["ls-remote", "--project", "abc123"], tmp_path,
+        sStdin="test-token\n",
+    )
+    assert resultProcess.returncode == 0
+
+
+def test_cli_ls_remote_failure_passes_through_stderr(tmp_path):
+    _fsWriteSubcommandShim(tmp_path, {
+        "config": (0, "", ""),
+        "ls-remote": (128, "", "fatal: repository not found\n"),
+    })
+    resultProcess = _ftRunCli(
+        ["ls-remote", "--project", "abc123"], tmp_path,
+        sStdin="test-token\n",
+    )
+    assert resultProcess.returncode == 128
+    assert "repository not found" in resultProcess.stderr
+
+
+def test_cli_ls_remote_auth_failure_maps_to_auth_exit(tmp_path):
+    _fsWriteSubcommandShim(tmp_path, {
+        "config": (0, "", ""),
+        "ls-remote": (
+            128, "", "fatal: Authentication failed for xyz\n",
+        ),
+    })
+    resultProcess = _ftRunCli(
+        ["ls-remote", "--project", "abc123"], tmp_path,
+        sStdin="test-token\n",
+    )
+    assert resultProcess.returncode == 128
+    assert "Authentication failed" in resultProcess.stderr
+
+
+def test_cli_ls_remote_rejects_missing_token(tmp_path):
+    _fsWriteSubcommandShim(tmp_path, {
+        "config": (0, "", ""),
+        "ls-remote": (0, "HEAD\n", ""),
+    })
+    resultProcess = _ftRunCli(
+        ["ls-remote", "--project", "abc123"], tmp_path,
+        sStdin="",
+    )
+    assert resultProcess.returncode == 3
+    assert "token" in resultProcess.stderr.lower()
+
+
+def test_cli_rejects_malformed_project_id(tmp_path):
+    resultProcess = _ftRunCli(
+        ["ls-remote", "--project", "bad;id"], tmp_path,
+    )
+    assert resultProcess.returncode == 2
+    assert "Invalid" in resultProcess.stderr
+
+
+def test_cli_requires_subcommand():
+    resultProcess = subprocess.run(
+        [_sys.executable, _S_OVERLEAF_SCRIPT],
+        capture_output=True, text=True,
+    )
+    assert resultProcess.returncode != 0
+
+
+@patch(
+    "vaibify.reproducibility.overleafSync.fnPushFiguresToOverleaf",
+)
+def test_cli_push_reads_stdin_paths(mockPush):
+    """The push subcommand forwards token (line 1) + newline paths."""
+    from vaibify.reproducibility.overleafSync import main
+
+    class _FakeStdin:
+        def read(self):
+            return "test-tok\n/a/fig1.pdf\n/a/fig2.png\n\n"
+
+    with patch("vaibify.reproducibility.overleafSync.sys.stdin", _FakeStdin()):
+        with patch(
+            "vaibify.reproducibility.overleafSync.sys.stdout.write"
+        ):
+            main([
+                "push", "--project", "abc123",
+                "--target", "figures",
+            ])
+    mockPush.assert_called_once()
+    tPositional = mockPush.call_args[0]
+    listPaths, sProject, sTarget, sToken = tPositional[:4]
+    assert listPaths == ["/a/fig1.pdf", "/a/fig2.png"]
+    assert sProject == "abc123"
+    assert sTarget == "figures"
+    assert sToken == "test-tok"
+
+
+@patch(
+    "vaibify.reproducibility.overleafSync.fnPullTexFromOverleaf",
+)
+def test_cli_pull_reads_stdin_paths(mockPull):
+    """The pull subcommand forwards token (line 1) + newline paths."""
+    from vaibify.reproducibility.overleafSync import main
+
+    class _FakeStdin:
+        def read(self):
+            return "test-tok\nmain.tex\nrefs.bib\n"
+
+    with patch("vaibify.reproducibility.overleafSync.sys.stdin", _FakeStdin()):
+        with patch(
+            "vaibify.reproducibility.overleafSync.sys.stdout.write"
+        ):
+            main([
+                "pull", "--project", "abc123",
+                "--target", "/work/tex",
+            ])
+    mockPull.assert_called_once()
+    sProject, listPaths, sTarget, sToken = mockPull.call_args[0]
+    assert sProject == "abc123"
+    assert listPaths == ["main.tex", "refs.bib"]
+    assert sTarget == "/work/tex"
+    assert sToken == "test-tok"
+
+
+@patch(
+    "vaibify.reproducibility.overleafSync.fnPushAnnotatedToOverleaf",
+)
+def test_cli_push_annotated_reads_json_payload(mockAnnotated):
+    """The push-annotated subcommand parses token (line 1) + JSON payload."""
+    from vaibify.reproducibility.overleafSync import main
+    import json as _json
+    dictPayload = {
+        "listFigurePaths": ["/a/fig.pdf"],
+        "dictWorkflow": {"listSteps": [{"sName": "First"}]},
+    }
+
+    class _FakeStdin:
+        def read(self):
+            return "test-tok\n" + _json.dumps(dictPayload)
+
+    with patch("vaibify.reproducibility.overleafSync.sys.stdin", _FakeStdin()):
+        with patch(
+            "vaibify.reproducibility.overleafSync.sys.stdout.write"
+        ):
+            main([
+                "push-annotated", "--project", "abc123",
+                "--target", "figures",
+                "--github-base-url", "https://github.com/u/r",
+                "--doi", "10.5281/zenodo.1",
+                "--tex-filename", "main.tex",
+            ])
+    mockAnnotated.assert_called_once()
+    tPositional = mockAnnotated.call_args[0]
+    (
+        listPaths, sProject, sTarget, dictWf,
+        sUrl, sDoi, sToken, sTex,
+    ) = tPositional[:8]
+    assert listPaths == ["/a/fig.pdf"]
+    assert sProject == "abc123"
+    assert dictWf == {"listSteps": [{"sName": "First"}]}
+    assert sUrl == "https://github.com/u/r"
+    assert sDoi == "10.5281/zenodo.1"
+    assert sToken == "test-tok"
+    assert sTex == "main.tex"
+
+
+def test_cli_auth_error_maps_to_specific_exit_code():
+    """OverleafAuthError raised inside a subcommand exits with code 3."""
+    from vaibify.reproducibility.overleafSync import (
+        main, OverleafAuthError,
+    )
+    with patch(
+        "vaibify.reproducibility.overleafSync.fnPushFiguresToOverleaf",
+        side_effect=OverleafAuthError("auth failed xyz"),
+    ):
+        class _FakeStdin:
+            def read(self):
+                return "/a/fig.pdf\n"
+
+        with patch("vaibify.reproducibility.overleafSync.sys.stdin", _FakeStdin()):
+            with pytest.raises(SystemExit) as excInfo:
+                main([
+                    "push", "--project", "abc123",
+                    "--target", "figures",
+                ])
+    assert excInfo.value.code == 3
+
+
+def test_cli_generic_overleaf_error_exits_nonzero():
+    """Plain OverleafError exits non-zero with a readable message."""
+    from vaibify.reproducibility.overleafSync import main, OverleafError
+    with patch(
+        "vaibify.reproducibility.overleafSync.fnPullTexFromOverleaf",
+        side_effect=OverleafError("clone failed"),
+    ):
+        class _FakeStdin:
+            def read(self):
+                return "main.tex\n"
+
+        with patch("vaibify.reproducibility.overleafSync.sys.stdin", _FakeStdin()):
+            with pytest.raises(SystemExit) as excInfo:
+                main([
+                    "pull", "--project", "abc123",
+                    "--target", "/work/tex",
+                ])
+    assert excInfo.value.code == 1
+
+
+# -----------------------------------------------------------------------
+# Security: pull-path validation, symlink rejection, git hardening
+# -----------------------------------------------------------------------
+
+
+def test_fnValidatePullRelativePath_rejects_leading_slash():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="must not start with a slash"):
+        fnValidatePullRelativePath("/etc/passwd")
+
+
+def test_fnValidatePullRelativePath_rejects_parent_segments():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="must not contain '..'"):
+        fnValidatePullRelativePath("figures/../../secret")
+
+
+def test_fnValidatePullRelativePath_rejects_null_bytes():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath, OverleafError,
+    )
+    with pytest.raises(OverleafError, match="null bytes"):
+        fnValidatePullRelativePath("main\x00.tex")
+
+
+def test_fnValidatePullRelativePath_accepts_valid():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath,
+    )
+    fnValidatePullRelativePath("main.tex")
+    fnValidatePullRelativePath("figures/fig1.pdf")
+    fnValidatePullRelativePath("a/b/c/file.tex")
+
+
+def test_fnPullTexFromOverleaf_rejects_traversal_path(tmp_path, monkeypatch):
+    """Pull must refuse ``..`` entries before any git operation."""
+    from vaibify.reproducibility.overleafSync import (
+        fnPullTexFromOverleaf, OverleafError,
+    )
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(OverleafError, match="must not contain '..'"):
+        fnPullTexFromOverleaf(
+            "proj123", ["../../etc/passwd"],
+            "out", "tok",
+        )
+
+
+def test_fnPullTexFromOverleaf_rejects_null_byte_path(tmp_path, monkeypatch):
+    """Pull must refuse NUL bytes in listPullPaths."""
+    from vaibify.reproducibility.overleafSync import (
+        fnPullTexFromOverleaf, OverleafError,
+    )
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(OverleafError, match="null bytes"):
+        fnPullTexFromOverleaf(
+            "proj123", ["main\x00.tex"], "out", "tok",
+        )
+
+
+def test_fnCopySingleFile_rejects_symlink_source(tmp_path):
+    """Push side: refuse to dereference a symlinked figure."""
+    from vaibify.reproducibility.overleafSync import (
+        _fnCopySingleFile, OverleafError,
+    )
+    sReal = tmp_path / "secret.txt"
+    sReal.write_text("sensitive")
+    sSymlink = tmp_path / "fig.pdf"
+    os.symlink(str(sReal), str(sSymlink))
+    pathTarget = tmp_path / "dest"
+    pathTarget.mkdir()
+    with pytest.raises(OverleafError, match="Refusing to push symlink"):
+        _fnCopySingleFile(str(sSymlink), pathTarget)
+
+
+def test_fnCopyPulledFile_rejects_symlink_source(tmp_path):
+    """Pull side: refuse to copy a symlink out of the cloned repo."""
+    from vaibify.reproducibility.overleafSync import (
+        _fnCopyPulledFile, OverleafError,
+    )
+    sRepo = tmp_path / "repo"
+    sRepo.mkdir()
+    sOutside = tmp_path / "outside.txt"
+    sOutside.write_text("outside secret")
+    sSymlinkPath = sRepo / "main.tex"
+    os.symlink(str(sOutside), str(sSymlinkPath))
+    pathTarget = tmp_path / "out"
+    pathTarget.mkdir()
+    with pytest.raises(OverleafError):
+        _fnCopyPulledFile(str(sRepo), "main.tex", pathTarget)
+
+
+def test_fnCopyPulledFile_rejects_realpath_escape(tmp_path):
+    """Pull side: realpath must stay inside the repo even via symlink dir."""
+    from vaibify.reproducibility.overleafSync import (
+        _fnCopyPulledFile, OverleafError,
+    )
+    sRepo = tmp_path / "repo"
+    sRepo.mkdir()
+    sOutsideDir = tmp_path / "outside"
+    sOutsideDir.mkdir()
+    (sOutsideDir / "secret.tex").write_text("leaked")
+    sSymlinkDir = sRepo / "link"
+    os.symlink(str(sOutsideDir), str(sSymlinkDir))
+    pathTarget = tmp_path / "out"
+    pathTarget.mkdir()
+    with pytest.raises(OverleafError):
+        _fnCopyPulledFile(
+            str(sRepo), "link/secret.tex", pathTarget,
+        )
+
+
+def test_clone_command_includes_hardening_flags(tmp_path):
+    """Every clone invocation must include the submodule/symlink hardening."""
+    from vaibify.reproducibility import overleafSync as mod
+    listCaptured = []
+
+    def fnFake(listCommand, **kwargs):
+        listCaptured.append(listCommand)
+        mockR = MagicMock()
+        mockR.returncode = 0
+        mockR.stdout = ""
+        mockR.stderr = ""
+        if "clone" in listCommand:
+            sDest = listCommand[-1]
+            Path(sDest).mkdir(parents=True, exist_ok=True)
+        return mockR
+
+    with patch.object(mod.subprocess, "run", side_effect=fnFake):
+        with patch.object(
+            mod, "_fbHasUncommittedChanges", return_value=False,
+        ):
+            mod.fnPushFiguresToOverleaf(
+                [], "proj123", "figures", "tok",
+            )
+    listCloneCmd = [c for c in listCaptured if "clone" in c]
+    assert listCloneCmd, "clone must have been invoked"
+    sJoined = " ".join(str(s) for s in listCloneCmd[0])
+    assert "protocol.file.allow=never" in sJoined
+    assert "core.symlinks=false" in sJoined
+    assert "submodule.recurse=false" in sJoined
+    assert "--no-recurse-submodules" in sJoined
+
+
+def test_clone_uses_inline_credential_helper_not_global(tmp_path):
+    """Credential helper is passed as ``-c``, not written to global config."""
+    from vaibify.reproducibility import overleafSync as mod
+    listCaptured = []
+
+    def fnFake(listCommand, **kwargs):
+        listCaptured.append(listCommand)
+        mockR = MagicMock()
+        mockR.returncode = 0
+        mockR.stdout = ""
+        mockR.stderr = ""
+        if "clone" in listCommand:
+            sDest = listCommand[-1]
+            Path(sDest).mkdir(parents=True, exist_ok=True)
+        return mockR
+
+    with patch.object(mod.subprocess, "run", side_effect=fnFake):
+        with patch.object(
+            mod, "_fbHasUncommittedChanges", return_value=False,
+        ):
+            mod.fnPushFiguresToOverleaf(
+                [], "proj123", "figures", "tok",
+            )
+    for listCommand in listCaptured:
+        sJoined = " ".join(str(s) for s in listCommand)
+        assert "config --global" not in sJoined, (
+            f"Must not mutate global git config: {sJoined}"
+        )
+    listCloneCmd = [c for c in listCaptured if "clone" in c]
+    sJoined = " ".join(str(s) for s in listCloneCmd[0])
+    assert "credential.https://git.overleaf.com.helper=" in sJoined
+
+
+# -----------------------------------------------------------------------
+# fnValidateTargetDirectory: previously-uncovered exception branches
+# -----------------------------------------------------------------------
+
+
+def test_fnValidateTargetDirectory_rejects_none():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidateTargetDirectory,
+    )
+    with pytest.raises(OverleafError, match="must be provided"):
+        fnValidateTargetDirectory(None)
+
+
+def test_fnValidateTargetDirectory_rejects_null_bytes():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidateTargetDirectory,
+    )
+    with pytest.raises(OverleafError, match="null bytes"):
+        fnValidateTargetDirectory("figures/\x00malicious")
+
+
+def test_fnValidateTargetDirectory_accepts_empty_string():
+    """Empty string is the documented no-op (push to repo root)."""
+    from vaibify.reproducibility.overleafSync import (
+        fnValidateTargetDirectory,
+    )
+    fnValidateTargetDirectory("")
+
+
+# -----------------------------------------------------------------------
+# fnValidatePullRelativePath: previously-uncovered empty-path branch
+# -----------------------------------------------------------------------
+
+
+def test_fnValidatePullRelativePath_rejects_none():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath,
+    )
+    with pytest.raises(OverleafError, match="must not be empty"):
+        fnValidatePullRelativePath(None)
+
+
+def test_fnValidatePullRelativePath_rejects_empty_string():
+    from vaibify.reproducibility.overleafSync import (
+        fnValidatePullRelativePath,
+    )
+    with pytest.raises(OverleafError, match="must not be empty"):
+        fnValidatePullRelativePath("")
+
+
+# -----------------------------------------------------------------------
+# _fnAssertRealPathUnderRoot: symlink-escape detection
+# -----------------------------------------------------------------------
+
+
+def test_fnAssertRealPathUnderRoot_accepts_root_itself(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAssertRealPathUnderRoot,
+    )
+    _fnAssertRealPathUnderRoot(str(tmp_path), str(tmp_path))
+
+
+def test_fnAssertRealPathUnderRoot_accepts_path_inside_root(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAssertRealPathUnderRoot,
+    )
+    pathInside = tmp_path / "figures"
+    pathInside.mkdir()
+    _fnAssertRealPathUnderRoot(str(pathInside), str(tmp_path))
+
+
+def test_fnAssertRealPathUnderRoot_rejects_symlink_escape(tmp_path):
+    from vaibify.reproducibility.overleafSync import (
+        _fnAssertRealPathUnderRoot,
+    )
+    pathRoot = tmp_path / "repo"
+    pathRoot.mkdir()
+    pathOutside = tmp_path / "outside"
+    pathOutside.mkdir()
+    pathTarget = pathRoot / "figures"
+    pathTarget.symlink_to(pathOutside, target_is_directory=True)
+    with pytest.raises(OverleafError, match="symlink"):
+        _fnAssertRealPathUnderRoot(str(pathTarget), str(pathRoot))
+
+
+# -----------------------------------------------------------------------
+# _fnRunSubprocess: error mapping and credential redaction
+# -----------------------------------------------------------------------
+
+
+def test_fnRunSubprocess_raises_overleaf_error_on_missing_binary():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+    with pytest.raises(OverleafError, match="command not found"):
+        _fnRunSubprocess(
+            ["definitely-not-a-real-binary-xyz"], "git add failed",
+        )
+
+
+def test_fnRunSubprocess_raises_overleaf_error_on_called_process_error():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr="fatal: not a git repository",
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        with pytest.raises(OverleafError, match="git add failed"):
+            _fnRunSubprocess(["git", "add", "-A"], "git add failed")
+
+
+def test_fnRunSubprocess_redacts_credentials_in_error_message():
+    """Tokens embedded in git URLs must not surface in OverleafError."""
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    sLeakyStderr = (
+        "fatal: unable to access "
+        "'https://x:supersecrettoken123@git.overleaf.com/proj/.git'"
+    )
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr=sLeakyStderr,
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        try:
+            _fnRunSubprocess(["git", "fetch"], "git fetch failed")
+        except OverleafError as error:
+            sMessage = str(error)
+            assert "supersecrettoken123" not in sMessage
+            assert "<redacted>" in sMessage
+        else:
+            pytest.fail("Expected OverleafError")
+
+
+def test_fnRunSubprocess_maps_auth_failure_to_auth_error():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr="fatal: Authentication failed",
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        with pytest.raises(OverleafAuthError):
+            _fnRunSubprocess(["git", "push"], "git push failed")
+
+
+def test_fnRunSubprocess_maps_rate_limit_to_rate_limit_error():
+    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+
+    def _fnFakeRun(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, args[0], output="", stderr="error: rate limit exceeded",
+        )
+
+    with patch.object(subprocess, "run", side_effect=_fnFakeRun):
+        with pytest.raises(OverleafRateLimitError):
+            _fnRunSubprocess(["git", "push"], "git push failed")
