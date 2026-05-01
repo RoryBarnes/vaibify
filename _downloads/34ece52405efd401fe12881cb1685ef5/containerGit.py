@@ -34,6 +34,8 @@ __all__ = [
     "fsDetectProjectRepoInContainer",
     "ftResultGitAddInContainer",
     "ftResultGitCommitInContainer",
+    "ftResultGitFetchInContainer",
+    "ftResultGitPullFastForwardInContainer",
     "fsGitHeadShaInContainer",
 ]
 
@@ -267,6 +269,48 @@ def ftResultGitCommitInContainer(
         "cd " + shlex.quote(sWorkspace) + " && "
         "git " + sHardening + " commit -m " +
         shlex.quote(sCommitMessage)
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+
+
+def ftResultGitFetchInContainer(
+    connectionDocker, sContainerId,
+    sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """git fetch --no-tags origin in the container; returns (rc, stdout).
+
+    Updates the local-tracking refs so a subsequent
+    ``fdictGitStatusInContainer`` reports an accurate ``iBehind``
+    against ``origin/<branch>``. Does not modify the working tree.
+    """
+    sHardening = _fsHardeningPrefix()
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git " + sHardening + " fetch --no-tags origin 2>&1"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+
+
+def ftResultGitPullFastForwardInContainer(
+    connectionDocker, sContainerId,
+    sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """git pull --ff-only in the container; returns (rc, stdout).
+
+    Refuses to perform a merge or rebase. If the local branch has
+    diverged, git exits non-zero and the working tree is left
+    untouched. Callers should verify the working tree is clean
+    before invoking (see ``dictFileStates`` from
+    ``fdictGitStatusInContainer``).
+    """
+    sHardening = _fsHardeningPrefix()
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git " + sHardening + " pull --ff-only 2>&1"
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,
