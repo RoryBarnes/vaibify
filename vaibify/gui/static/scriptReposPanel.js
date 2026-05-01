@@ -503,7 +503,8 @@ var PipeleyenReposPanel = (function () {
 
     function _fnPromptForUndecided(listUndecided) {
         if (!_setPromptedNames) return;
-        (listUndecided || []).forEach(function (sName) {
+        (listUndecided || []).forEach(function (dictRepo) {
+            var sName = dictRepo.sName;
             if (_setPromptedNames.has(sName)) return;
             _setPromptedNames.add(sName);
             _fnPromptOne(sName);

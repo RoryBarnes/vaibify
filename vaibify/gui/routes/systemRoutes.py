@@ -38,8 +38,34 @@ def _fnRegisterUserInfo(app):
         }
 
 
+def _fbProbeEntrypointReady(connectionDocker, sContainerId):
+    """Return True when the entrypoint ready marker exists."""
+    try:
+        iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+            sContainerId,
+            "test -f /workspace/.vaibify/.entrypoint_ready",
+        )
+        return iExitCode == 0
+    except Exception:
+        return False
+
+
+def _fnRegisterContainerReady(app, dictCtx):
+    """Register GET /api/containers/{id}/ready readiness probe."""
+
+    @app.get("/api/containers/{sContainerId}/ready")
+    async def fnContainerReady(sContainerId: str):
+        dictCtx["require"]()
+        bReady = await asyncio.to_thread(
+            _fbProbeEntrypointReady,
+            dictCtx["docker"], sContainerId,
+        )
+        return {"bReady": bReady}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all system routes."""
     _fnRegisterMonitor(app)
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterUserInfo(app)
+    _fnRegisterContainerReady(app, dictCtx)

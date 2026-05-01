@@ -819,6 +819,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnInstallRepoRequirements
     fnPrintSummary
 
+    touch "${WORKSPACE}/.vaibify/.entrypoint_ready"
     chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
     exec gosu "${CONTAINER_USER}" "$@"
 fi
