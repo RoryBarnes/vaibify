@@ -1,10 +1,12 @@
 """Git-aware dashboard endpoints: status, badges, and manifest check.
 
 Exposes:
-- ``GET /api/git/{id}/status``            repo-level porcelain state
-- ``GET /api/git/{id}/badges``            per-file badge triple
-- ``GET /api/git/{id}/manifest-check``    uncommitted canonical files
-- ``POST /api/git/{id}/commit-canonical`` commit canonical files
+- ``GET /api/git/{id}/status``                repo-level porcelain state
+- ``GET /api/git/{id}/badges``                per-file badge triple
+- ``GET /api/git/{id}/manifest-check``        uncommitted canonical files
+- ``POST /api/git/{id}/commit-canonical``     commit canonical files
+- ``POST /api/git/{id}/fetch-project-repo``   refresh remote-tracking refs
+- ``POST /api/git/{id}/pull-project-repo``    fast-forward to origin
 
 All git execution runs inside the container via ``docker exec`` — the
 default vaibify workspace is a Docker-managed named volume whose
@@ -23,6 +25,7 @@ __all__ = ["fnRegisterAll"]
 
 import asyncio
 import datetime
+import time
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -38,9 +41,26 @@ from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow
 
 
+F_FETCH_CACHE_SECONDS = 30.0
+# Canonical state vocabulary emitted by ``gitStatus._fsStateFromXy`` and
+# the porcelain parser is {"committed", "uncommitted", "dirty",
+# "untracked", "ignored", "conflict"}. ``uncommitted`` covers index-only
+# changes (added/staged/deleted-but-staged); ``dirty`` covers any
+# worktree change (modified/typechange/deleted-from-worktree). Untracked
+# and ignored files do not block ``git pull --ff-only``, matching git's
+# native behavior, so they are intentionally absent here.
+SET_TRACKED_CHANGE_STATES = {"dirty", "uncommitted", "conflict"}
+_DICT_LAST_FETCH = {}
+
+
 class CommitCanonicalRequest(BaseModel):
     """Body for ``POST /api/git/{id}/commit-canonical``."""
     sCommitMessage: str = ""
+
+
+class FetchProjectRepoRequest(BaseModel):
+    """Body for ``POST /api/git/{id}/fetch-project-repo``."""
+    bForce: bool = False
 
 
 def _fsRequireProjectRepo(dictWorkflow):
@@ -281,9 +301,144 @@ def _fsDefaultCommitMessage():
     return "[vaibify] workspace state at " + sNow
 
 
+def _flistTrackedDirtyPaths(dictGit):
+    """Return paths in tracked-change states that block a fast-forward."""
+    dictFileStates = dictGit.get("dictFileStates", {}) or {}
+    return sorted(
+        sPath for sPath, sState in dictFileStates.items()
+        if sState in SET_TRACKED_CHANGE_STATES
+    )
+
+
+def _fbFetchCacheIsFresh(sContainerId, bForce):
+    """Return True when the last fetch for sContainerId is within the TTL."""
+    if bForce:
+        return False
+    fLast = _DICT_LAST_FETCH.get(sContainerId)
+    if fLast is None:
+        return False
+    return (time.time() - fLast) < F_FETCH_CACHE_SECONDS
+
+
+def _fnRecordFetchTime(sContainerId):
+    """Record the wall-clock time of a successful fetch."""
+    _DICT_LAST_FETCH[sContainerId] = time.time()
+
+
+def _fnRegisterFetchProjectRepo(app, dictCtx):
+    """Register POST /api/git/{sContainerId}/fetch-project-repo."""
+
+    @fnAgentAction("fetch-project-repo")
+    @app.post("/api/git/{sContainerId}/fetch-project-repo")
+    async def fnFetchProjectRepo(
+        sContainerId: str,
+        request: FetchProjectRepoRequest = FetchProjectRepoRequest(),
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRepo = _fsRequireProjectRepo(dictWorkflow)
+        if not sRepo:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Project repo not detected for the active "
+                    "workflow."
+                ),
+            )
+        docker = dictCtx["docker"]
+        bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
+        if not bCacheUsed:
+            iExit, sOut = await asyncio.to_thread(
+                containerGit.ftResultGitFetchInContainer,
+                docker, sContainerId, sWorkspace=sRepo,
+            )
+            if iExit != 0:
+                raise HTTPException(
+                    status_code=502,
+                    detail="git fetch failed: " + (sOut or "").strip(),
+                )
+            _fnRecordFetchTime(sContainerId)
+        dictGit = await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        return {
+            "bIsRepo": dictGit.get("bIsRepo", False),
+            "sBranch": dictGit.get("sBranch", ""),
+            "iAhead": dictGit.get("iAhead", 0),
+            "iBehind": dictGit.get("iBehind", 0),
+            "sHeadSha": dictGit.get("sHeadSha", ""),
+            "bCacheUsed": bCacheUsed,
+        }
+
+
+def _fnRegisterPullProjectRepo(app, dictCtx):
+    """Register POST /api/git/{sContainerId}/pull-project-repo."""
+
+    @fnAgentAction("pull-project-repo")
+    @app.post("/api/git/{sContainerId}/pull-project-repo")
+    async def fnPullProjectRepo(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRepo = _fsRequireProjectRepo(dictWorkflow)
+        if not sRepo:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Project repo not detected for the active "
+                    "workflow."
+                ),
+            )
+        docker = dictCtx["docker"]
+        dictGit = await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        listDirty = _flistTrackedDirtyPaths(dictGit)
+        if listDirty:
+            return {
+                "bSuccess": False,
+                "sRefusal": "dirty-working-tree",
+                "listDirtyFiles": listDirty,
+                "sBranch": dictGit.get("sBranch", ""),
+                "iBehind": dictGit.get("iBehind", 0),
+            }
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitPullFastForwardInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        if iExit != 0:
+            raise HTTPException(
+                status_code=502,
+                detail="git pull --ff-only failed: " + (sOut or "").strip(),
+            )
+        _fnRecordFetchTime(sContainerId)
+        sNewHead = await asyncio.to_thread(
+            containerGit.fsGitHeadShaInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        dictGitAfter = await asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        return {
+            "bSuccess": True,
+            "sNewHeadSha": sNewHead,
+            "sBranch": dictGitAfter.get("sBranch", ""),
+            "iBehind": dictGitAfter.get("iBehind", 0),
+            "iAhead": dictGitAfter.get("iAhead", 0),
+        }
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all git-status dashboard routes."""
     _fnRegisterGitStatus(app, dictCtx)
     _fnRegisterGitBadges(app, dictCtx)
     _fnRegisterManifestCheck(app, dictCtx)
     _fnRegisterCommitCanonical(app, dictCtx)
+    _fnRegisterFetchProjectRepo(app, dictCtx)
+    _fnRegisterPullProjectRepo(app, dictCtx)

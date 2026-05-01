@@ -141,6 +141,7 @@ var VaibifyWorkflowManager = (function () {
                 sId, sWorkflowPathArg);
             PipeleyenApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
+            fnCheckOriginDrift(sId, false);
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
@@ -160,6 +161,7 @@ var VaibifyWorkflowManager = (function () {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sPath);
             PipeleyenApp.fnRefreshWorkflowData(dictResult);
+            await fnCheckOriginDrift(sId, false);
             PipeleyenApp.fnShowToast(
                 "Workflow refreshed", "info");
         } catch (error) {
@@ -169,6 +171,114 @@ var VaibifyWorkflowManager = (function () {
         } finally {
             _bRefreshing = false;
         }
+    }
+
+    async function fnCheckOriginDrift(sId, bForce) {
+        if (!sId) return null;
+        try {
+            var dictStatus = await VaibifyApi.fdictPost(
+                "/api/git/" + sId + "/fetch-project-repo",
+                { bForce: !!bForce }
+            );
+            _fnRenderDriftBanner(sId, dictStatus, null);
+            return dictStatus;
+        } catch (error) {
+            _fnHideDriftBanner();
+            return null;
+        }
+    }
+
+    async function fnPullProjectRepo() {
+        var sId = PipeleyenApp.fsGetContainerId();
+        if (!sId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/git/" + sId + "/pull-project-repo", {}
+            );
+            if (dictResult && dictResult.sRefusal) {
+                _fnRenderDriftBanner(sId, null, dictResult);
+                return;
+            }
+            PipeleyenApp.fnShowToast(
+                "Pulled to " + (dictResult.sNewHeadSha || "").slice(0, 7),
+                "success"
+            );
+            _fnHideDriftBanner();
+            await fnRefreshWorkflow();
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+        }
+    }
+
+    function _fnRenderDriftBanner(sId, dictStatus, dictRefusal) {
+        var elBanner = document.getElementById("driftBanner");
+        if (!elBanner) return;
+        if (dictRefusal && dictRefusal.sRefusal === "dirty-working-tree") {
+            elBanner.classList.add("dirty");
+            elBanner.innerHTML = _fsBuildDirtyMarkup(dictRefusal);
+            elBanner.hidden = false;
+            return;
+        }
+        var iBehind = (dictStatus && dictStatus.iBehind) || 0;
+        if (!iBehind) {
+            _fnHideDriftBanner();
+            return;
+        }
+        elBanner.classList.remove("dirty");
+        elBanner.innerHTML = _fsBuildBehindMarkup(dictStatus);
+        elBanner.hidden = false;
+        var elPull = elBanner.querySelector(".drift-banner-pull");
+        if (elPull) {
+            elPull.addEventListener("click", fnPullProjectRepo);
+        }
+        var elDismiss = elBanner.querySelector(".drift-banner-dismiss");
+        if (elDismiss) {
+            elDismiss.addEventListener("click", _fnHideDriftBanner);
+        }
+    }
+
+    function _fsBuildBehindMarkup(dictStatus) {
+        var sBranch = (dictStatus.sBranch || "main");
+        var iBehind = dictStatus.iBehind || 0;
+        var sCommits = iBehind === 1 ? "commit" : "commits";
+        var sMessage = "Container is " + iBehind + " " +
+            sCommits + " behind origin/" +
+            VaibifyUtilities.fnEscapeHtml(sBranch) + ".";
+        return '<div class="drift-banner-message">' + sMessage +
+            '</div><div class="drift-banner-actions">' +
+            '<button type="button" class="drift-banner-pull">Pull</button>' +
+            '<button type="button" class="drift-banner-dismiss">Dismiss</button>' +
+            '</div>';
+    }
+
+    function _fsBuildDirtyMarkup(dictRefusal) {
+        var listFiles = dictRefusal.listDirtyFiles || [];
+        var listItems = listFiles.slice(0, 5).map(function (sPath) {
+            return "<li>" + VaibifyUtilities.fnEscapeHtml(sPath) +
+                "</li>";
+        });
+        if (listFiles.length > 5) {
+            listItems.push("<li>(+" +
+                (listFiles.length - 5) + " more)</li>");
+        }
+        return '<div class="drift-banner-message">' +
+            'Cannot fast-forward: working tree has uncommitted ' +
+            'changes. Commit or revert these files, then click ' +
+            'Pull again.<ul class="drift-banner-dirty-list">' +
+            listItems.join("") + '</ul></div>' +
+            '<div class="drift-banner-actions">' +
+            '<button type="button" class="drift-banner-dismiss">Dismiss</button>' +
+            '</div>';
+    }
+
+    function _fnHideDriftBanner() {
+        var elBanner = document.getElementById("driftBanner");
+        if (!elBanner) return;
+        elBanner.hidden = true;
+        elBanner.innerHTML = "";
+        elBanner.classList.remove("dirty");
     }
 
     /* --- Workflow Dropdown (Switcher) --- */
@@ -1119,6 +1229,8 @@ var VaibifyWorkflowManager = (function () {
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fnSelectWorkflow: fnSelectWorkflow,
         fnRefreshWorkflow: fnRefreshWorkflow,
+        fnCheckOriginDrift: fnCheckOriginDrift,
+        fnPullProjectRepo: fnPullProjectRepo,
         fnToggleWorkflowDropdown: fnToggleWorkflowDropdown,
         fnHideWorkflowDropdown: fnHideWorkflowDropdown,
         fnSaveCurrentWorkflow: fnSaveCurrentWorkflow,

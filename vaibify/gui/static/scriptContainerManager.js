@@ -181,11 +181,19 @@ var PipeleyenContainerManager = (function () {
             return;
         }
         var sStoredId = elTile ? elTile.dataset.containerId : "";
-        if (sStoredId) {
-            fnConnectToContainer(sStoredId);
-        } else {
-            fnConnectToContainerByName(sName);
+        var sTargetId = sStoredId ||
+            await _fsResolveContainerId(sName);
+        if (!sTargetId) return;
+        _fnShowInitializingOverlay();
+        var bReady = await _fbWaitForContainerReady(sTargetId);
+        _fnHideInitializingOverlay();
+        if (!bReady) {
+            PipeleyenApp.fnShowToast(
+                "Container took too long to initialize. "
+                + "Connecting anyway — some data may be "
+                + "incomplete.", "warning");
         }
+        fnConnectToContainer(sTargetId);
     }
 
     async function _fbClaimContainer(sName) {
@@ -479,24 +487,57 @@ var PipeleyenContainerManager = (function () {
         );
     }
 
-    async function fnConnectToContainerByName(sName) {
+    async function _fsResolveContainerId(sName) {
         try {
             var dictResult = await VaibifyApi.fdictGet("/api/registry");
             var listAll = dictResult.listContainers || [];
             var dictMatch = listAll.find(function (c) {
                 return c.sName === sName && c.sContainerId;
             });
-            if (!dictMatch) {
-                PipeleyenApp.fnShowToast(
-                    "Container not found for " + sName, "error");
-                return;
-            }
-            fnConnectToContainer(dictMatch.sContainerId);
+            return dictMatch ? dictMatch.sContainerId : "";
         } catch (error) {
-            PipeleyenApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            return "";
         }
+    }
+
+    async function _fbWaitForContainerReady(sContainerId) {
+        var iMaxAttempts = 60;
+        var iIntervalMs = 2000;
+        for (var iAttempt = 0; iAttempt < iMaxAttempts; iAttempt++) {
+            try {
+                var dictResult = await VaibifyApi.fdictGet(
+                    "/api/containers/"
+                    + encodeURIComponent(sContainerId) + "/ready"
+                );
+                if (dictResult.bReady) return true;
+            } catch (error) {
+                /* container may not be fully started yet */
+            }
+            await new Promise(function (fnResolve) {
+                setTimeout(fnResolve, iIntervalMs);
+            });
+        }
+        return false;
+    }
+
+    function _fnShowInitializingOverlay() {
+        var elOverlay = document.getElementById("modalInitializing");
+        if (elOverlay) elOverlay.style.display = "flex";
+    }
+
+    function _fnHideInitializingOverlay() {
+        var elOverlay = document.getElementById("modalInitializing");
+        if (elOverlay) elOverlay.style.display = "none";
+    }
+
+    async function fnConnectToContainerByName(sName) {
+        var sContainerId = await _fsResolveContainerId(sName);
+        if (!sContainerId) {
+            PipeleyenApp.fnShowToast(
+                "Container not found for " + sName, "error");
+            return;
+        }
+        fnConnectToContainer(sContainerId);
     }
 
     function _fsContainerNameById(sId) {

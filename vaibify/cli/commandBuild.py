@@ -58,7 +58,6 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
     fnCopyContainerScripts(sDockerDir)
-    fnCopyAgentActionScript(sDockerDir)
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -103,18 +102,6 @@ def fnCopyDirectorScript(sDockerDir):
         / "gui" / "director.py"
     )
     sDestPath = os.path.join(sDockerDir, "director.py")
-    shutil.copy2(sSourcePath, sDestPath)
-
-
-def fnCopyAgentActionScript(sDockerDir):
-    """Stage the in-container vaibify-do CLI into the build context."""
-    import shutil
-    import pathlib
-    sSourcePath = str(
-        pathlib.Path(__file__).resolve().parents[2]
-        / "docker" / "vaibifyDo.py"
-    )
-    sDestPath = os.path.join(sDockerDir, "vaibifyDo.py")
     shutil.copy2(sSourcePath, sDestPath)
 
 
@@ -223,6 +210,22 @@ def _fnWriteFile(sPath, sContent):
         fileHandle.write(sContent)
 
 
+def _fnHandleBuildError(error):
+    """Print a clean error message for build failures and exit."""
+    if isinstance(error, RuntimeError):
+        click.echo("Error: Docker build failed.", err=True)
+    elif isinstance(error, (FileNotFoundError, OSError)):
+        click.echo(
+            f"Error: Build context preparation failed: {error}",
+            err=True,
+        )
+    elif isinstance(error, ValueError):
+        click.echo(f"Error: {error}", err=True)
+    else:
+        click.echo(f"Error: Build failed: {error}", err=True)
+    sys.exit(1)
+
+
 @click.command("build")
 @click.option(
     "--no-cache",
@@ -238,12 +241,24 @@ def _fnWriteFile(sPath, sContent):
 )
 def build(bNoCache, sProjectName):
     """Build the Vaibify Docker image from vaibify.yml."""
+    from vaibify.docker import fbDockerDaemonReachable
     config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()
+    if not fbDockerDaemonReachable():
+        click.echo(
+            "Error: Docker daemon is not reachable. "
+            "Is Docker running?",
+            err=True,
+        )
+        sys.exit(1)
     click.echo(
         f"Building image {config.sProjectName}:latest ..."
     )
-    fnBuildFromConfig(config, sDockerDir, bNoCache)
+    try:
+        fnBuildFromConfig(config, sDockerDir, bNoCache)
+    except (RuntimeError, FileNotFoundError, OSError,
+            ValueError) as error:
+        _fnHandleBuildError(error)
     click.echo("Build complete.")
     click.echo(
         "Run `vaibify stop && vaibify start` to pick up the new "

@@ -447,8 +447,14 @@ def test_fdictLoadWorkflowFromContainer_preserves_dictRandomnessLint():
     )
 
 
-def test_fnSaveWorkflowToContainer_persists_slabel():
-    """Save path recomputes and writes sLabel onto every step."""
+def test_fnSaveWorkflowToContainer_attaches_slabel_in_memory():
+    """sLabel is recomputed on the in-memory dict but not persisted.
+
+    The merged in-memory dict carries sLabel for the dashboard's
+    use; the persisted workflow.json does not (post-W3 the field is
+    transient — see workflowMigrations.I_CURRENT_WORKFLOW_VERSION
+    >= 3).
+    """
     import json
     from unittest.mock import MagicMock
     from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
@@ -468,12 +474,12 @@ def test_fnSaveWorkflowToContainer_persists_slabel():
     assert dictWorkflow["listSteps"][1]["sLabel"] == "A01"
     (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
     dictWritten = json.loads(baPayload.decode("utf-8"))
-    assert dictWritten["listSteps"][0]["sLabel"] == "I01"
-    assert dictWritten["listSteps"][1]["sLabel"] == "A01"
+    assert "sLabel" not in dictWritten["listSteps"][0]
+    assert "sLabel" not in dictWritten["listSteps"][1]
 
 
-def test_fnSaveWorkflowToContainer_recomputes_stale_slabel():
-    """Pre-existing sLabel is overwritten on save."""
+def test_fnSaveWorkflowToContainer_clears_stale_slabel_from_disk():
+    """Stale sLabel from a prior write is dropped on next save."""
     import json
     from unittest.mock import MagicMock
     from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
@@ -491,8 +497,8 @@ def test_fnSaveWorkflowToContainer_recomputes_stale_slabel():
     )
     (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
     dictWritten = json.loads(baPayload.decode("utf-8"))
-    assert dictWritten["listSteps"][0]["sLabel"] == "I01"
-    assert dictWritten["listSteps"][1]["sLabel"] == "A01"
+    for dictStep in dictWritten["listSteps"]:
+        assert "sLabel" not in dictStep
 
 
 # -----------------------------------------------------------------------
@@ -880,7 +886,7 @@ def test_fdictBuildDownstreamMap_diamond():
 
 
 def test_fdictLoadWorkflowFromContainer_auto_discover():
-    """Line 82: auto-discovers first workflow when path is None."""
+    """Auto-discovers first workflow when path is None."""
     import json
     from unittest.mock import MagicMock
     from vaibify.gui.workflowManager import (
@@ -907,7 +913,15 @@ def test_fdictLoadWorkflowFromContainer_auto_discover():
     mockDocker.ftResultExecuteCommand.side_effect = _fExecuteCommand
     sJsonContent = json.dumps(dictValid).encode("utf-8")
     sNameJson = json.dumps({"sWorkflowName": "Auto"}).encode("utf-8")
-    mockDocker.fbaFetchFile.side_effect = [sNameJson, sJsonContent]
+
+    def _fFetchFile(sContainerId, sPath):
+        if sPath == sWorkflowPath:
+            return sJsonContent
+        if sPath.endswith(".vaibify/workflows/w.json"):
+            return sNameJson
+        raise FileNotFoundError(sPath)
+
+    mockDocker.fbaFetchFile.side_effect = _fFetchFile
     dictResult = fdictLoadWorkflowFromContainer(mockDocker, "cid")
     assert dictResult["sPlotDirectory"] == "Plot"
 
@@ -1278,20 +1292,20 @@ def test_fdictLookupSyncEntry_miss_returns_empty_dict():
 
 
 def test_fsJoinRepoRelPath_empty_step_dir_returns_file():
-    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    from vaibify.gui.workflowMigrations import _fsJoinRepoRelPath
     assert _fsJoinRepoRelPath("", "out.dat") == "out.dat"
 
 
 def test_fsJoinRepoRelPath_absolute_file_returns_file():
     """Absolute files ignore the step directory."""
-    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    from vaibify.gui.workflowMigrations import _fsJoinRepoRelPath
     assert _fsJoinRepoRelPath(
         "step01", "/absolute/path.dat",
     ) == "/absolute/path.dat"
 
 
 def test_fsJoinRepoRelPath_joins_relative_file_to_step_dir():
-    from vaibify.gui.workflowManager import _fsJoinRepoRelPath
+    from vaibify.gui.workflowMigrations import _fsJoinRepoRelPath
     assert _fsJoinRepoRelPath(
         "step01", "out.dat",
     ) == "step01/out.dat"

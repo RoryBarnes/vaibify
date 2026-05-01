@@ -56,3 +56,43 @@ def test_fbValidateWorkflow_missing_steps():
     """Both validators should reject a workflow without listSteps."""
     assert fbDirectorValidate({}) is False
     assert fbManagerValidate({}) is False
+
+
+def test_director_and_manager_share_the_migration_registry():
+    """Both load paths must apply the same registered migrations.
+
+    director.py runs on the host; workflowManager.py runs on
+    container paths. They diverge on path semantics but share the
+    pure ``workflowMigrations`` registry — a legacy v0 workflow run
+    through the registry must come out at the current schema version
+    with identical post-migration shape regardless of caller.
+    """
+    from vaibify.gui.workflowMigrations import (
+        I_CURRENT_WORKFLOW_VERSION,
+        S_VERSION_KEY,
+        fnApplyMigrations,
+    )
+
+    def _fdictBuildLegacyShape():
+        return {
+            "sPlotDirectory": "Plot",
+            "listSteps": [
+                {
+                    "sName": "S",
+                    "sDirectory": "/workspace/Proj/S",
+                    "saPlotCommands": [],
+                    "saPlotFiles": [],
+                    "bEnabled": True,
+                    "saTestCommands": [],
+                },
+            ],
+        }
+    dictForDirector = _fdictBuildLegacyShape()
+    dictForManager = _fdictBuildLegacyShape()
+    fnApplyMigrations(dictForDirector, sProjectRepoPath="/workspace/Proj")
+    fnApplyMigrations(dictForManager, sProjectRepoPath="/workspace/Proj")
+    assert dictForDirector[S_VERSION_KEY] == I_CURRENT_WORKFLOW_VERSION
+    assert dictForManager[S_VERSION_KEY] == I_CURRENT_WORKFLOW_VERSION
+    assert dictForDirector == dictForManager
+    assert dictForDirector["listSteps"][0]["sDirectory"] == "S"
+    assert dictForDirector["listSteps"][0]["bRunEnabled"] is True

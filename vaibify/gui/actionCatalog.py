@@ -205,6 +205,23 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Stage and commit the vaibify canonical "
                      "state (workflow.json, markers). "
                      "Args: {sCommitMessage} optional."},
+    {"sName": "fetch-project-repo", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/fetch-project-repo",
+     "bAgentSafe": True,
+     "sDescription": "Fetch origin in the project repo and report "
+                     "iBehind/iAhead so the dashboard can show drift "
+                     "against origin/<branch>. Cached for 30s; pass "
+                     "{bForce: true} to bypass. Does not modify the "
+                     "working tree."},
+    {"sName": "pull-project-repo", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/pull-project-repo",
+     "bAgentSafe": True,
+     "sDescription": "Fast-forward the project repo to origin. "
+                     "Refuses on a dirty working tree, returning a "
+                     "structured sRefusal so the dashboard can guide "
+                     "the user. No args."},
     {"sName": "push-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/push",

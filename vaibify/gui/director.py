@@ -113,12 +113,17 @@ def fdictLoadWorkflow(sWorkflowPath):
         sys.exit(1)
     with open(sWorkflowPath, "r") as fileHandle:
         dictWorkflow = json.load(fileHandle)
+    from . import workflowMigrations
+    from .workflowManager import (
+        fsDeriveProjectRepoPathFromWorkflow,
+    )
+    sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
+    workflowMigrations.fnApplyMigrations(
+        dictWorkflow, sProjectRepoPath=sRepoPath,
+    )
     if not fbValidateWorkflow(dictWorkflow):
         print("ERROR: Invalid workflow file.")
         sys.exit(1)
-    from .workflowManager import fnNormalizeSceneReferences
-    for dictStep in dictWorkflow.get("listSteps", []):
-        fnNormalizeSceneReferences(dictStep)
     return dictWorkflow
 
 

@@ -7,11 +7,23 @@ import posixpath
 import re
 import shlex
 
+from . import stateManager, workflowMigrations
+from .workflowMigrations import (
+    fbMigrateModifiedFilesToRepoRelative,
+    fdictMigrateTestFormat,
+    fnMigrateArchiveToTracking,
+    fnMigrateRunEnabledKey,
+    fnNormalizeSceneReferences,
+)
+
 S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
+S_VAIBIFY_WORKFLOWS_SUFFIX = "/.vaibify/workflows/"
 
 __all__ = [
     "fbStepRequiresTests",
     "fbValidateWorkflow",
+    "fsDescribeValidationFailure",
+    "fsDeriveProjectRepoPathFromWorkflow",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
     "fdictBuildImplicitDependencies",
@@ -179,7 +191,13 @@ def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
 def fdictLoadWorkflowFromContainer(
     connectionDocker, sContainerId, sWorkflowPath=None
 ):
-    """Fetch and parse workflow.json from a Docker container."""
+    """Fetch, migrate, validate, and parse workflow.json.
+
+    Also reads the sibling ``state.json`` (or bootstraps from
+    committed test-markers when absent) and merges machine-local
+    runtime state into the returned dict so route handlers and the
+    frontend continue to see one merged shape.
+    """
     from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         listWorkflows = flistFindWorkflowsInContainer(
@@ -192,45 +210,90 @@ def fdictLoadWorkflowFromContainer(
         sWorkflowPath = listWorkflows[0]["sPath"]
     baContent = connectionDocker.fbaFetchFile(sContainerId, sWorkflowPath)
     dictWorkflow = json.loads(baContent.decode("utf-8"))
-    fnMigrateRunEnabledKey(dictWorkflow)
-    if not fbValidateWorkflow(dictWorkflow):
-        raise ValueError(f"Invalid workflow.json: {sWorkflowPath}")
-    for dictStep in dictWorkflow.get("listSteps", []):
-        fdictMigrateTestFormat(dictStep)
-        fnNormalizeSceneReferences(dictStep)
+    sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
+    workflowMigrations.fnApplyMigrations(
+        dictWorkflow, sProjectRepoPath=sRepoPath,
+    )
+    sFailure = fsDescribeValidationFailure(dictWorkflow)
+    if sFailure:
+        raise ValueError(
+            f"Invalid workflow.json at {sWorkflowPath}: {sFailure}"
+        )
+    _fnLoadAndMergeState(
+        connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+    )
     fnAttachStepLabels(dictWorkflow)
     return dictWorkflow
 
 
-def fnMigrateRunEnabledKey(dictWorkflow):
-    """Rewrite legacy ``bEnabled`` step field to ``bRunEnabled``.
+def _fnLoadAndMergeState(
+    connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+):
+    """Load .vaibify/state.json (or bootstrap from markers) and merge in."""
+    if not sRepoPath:
+        return
+    sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
+    dictState = stateManager.fdictLoadStateFromContainer(
+        connectionDocker, sContainerId, sStatePath,
+    )
+    if dictState is None:
+        dictState = stateManager.fdictBootstrapStateFromMarkers(
+            connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+        )
+        stateManager.fnSaveStateToContainer(
+            connectionDocker, sContainerId, sStatePath, dictState,
+        )
+    stateManager.fnMergeStateIntoWorkflow(dictWorkflow, dictState)
+    stateManager.fnEnsureVaibifyGitignore(
+        connectionDocker, sContainerId, sRepoPath,
+    )
 
-    Older workflow.json files used ``bEnabled`` as the run-scope
-    flag. The field was renamed to keep run scope and verification
-    scope unambiguous. Idempotent on already-migrated steps.
+
+def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
+    """Return the project repo root that contains a workflow file.
+
+    By contract every vaibify workflow lives at
+    ``<sProjectRepoPath>/.vaibify/workflows/<name>.json``. Stripping
+    that suffix yields the repo root. Returns ``""`` when the path
+    does not match (callers should treat that as no migration
+    context, not an error).
     """
-    for dictStep in dictWorkflow.get("listSteps", []):
-        if "bEnabled" not in dictStep:
-            continue
-        if "bRunEnabled" not in dictStep:
-            dictStep["bRunEnabled"] = dictStep["bEnabled"]
-        dictStep.pop("bEnabled", None)
+    if not sWorkflowPath:
+        return ""
+    iSplit = sWorkflowPath.find(S_VAIBIFY_WORKFLOWS_SUFFIX)
+    if iSplit <= 0:
+        return ""
+    return sWorkflowPath[:iSplit]
 
 
 def fbValidateWorkflow(dictWorkflow):
     """Return True when all required keys and step structures exist."""
+    return fsDescribeValidationFailure(dictWorkflow) == ""
+
+
+def fsDescribeValidationFailure(dictWorkflow):
+    """Return a human-readable diagnostic, or empty string when valid.
+
+    Names the failing check so toast messages can be specific
+    instead of pointing at a 900-line file.
+    """
     for sKey in T_REQUIRED_WORKFLOW_KEYS:
         if sKey not in dictWorkflow:
-            return False
+            return f"missing required top-level key '{sKey}'"
+    if not isinstance(dictWorkflow.get("listSteps"), list):
+        return "'listSteps' is not a list"
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
+        sLabel = f"Step{iIndex + 1:02d}"
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
-                return False
-    if flistValidateOutputFilePaths(dictWorkflow):
-        return False
-    if flistValidateStepDirectories(dictWorkflow):
-        return False
-    return True
+                return f"{sLabel} is missing required field '{sField}'"
+    listOutWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    if listOutWarnings:
+        return listOutWarnings[0]
+    listDirWarnings = flistValidateStepDirectories(dictWorkflow)
+    if listDirWarnings:
+        return listDirWarnings[0]
+    return ""
 
 
 def flistValidateOutputFilePaths(dictWorkflow):
@@ -539,16 +602,35 @@ def _fdictStripComputedFields(dictWorkflow):
 def fnSaveWorkflowToContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None
 ):
-    """Serialize dictWorkflow to JSON and write to container."""
+    """Serialize the merged workflow dict and persist it.
+
+    Splits the in-memory dict between ``workflow.json`` (declarative
+    fields) and ``.vaibify/state.json`` (per-machine runtime state)
+    before writing. Callers continue to mutate one merged dict; the
+    split is invisible upstream.
+    """
     from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     fnAttachStepLabels(dictWorkflow)
+    workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
-    sJson = json.dumps(dictClean, indent=2) + "\n"
+    dictDeclarative, dictState = stateManager.ftSplitMergedDict(
+        dictClean,
+    )
+    sJson = json.dumps(dictDeclarative, indent=2) + "\n"
     connectionDocker.fnWriteFile(
         sContainerId, sWorkflowPath, sJson.encode("utf-8")
     )
+    sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
+    sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
+    if sStatePath:
+        stateManager.fnSaveStateToContainer(
+            connectionDocker, sContainerId, sStatePath, dictState,
+        )
+        stateManager.fnEnsureVaibifyGitignore(
+            connectionDocker, sContainerId, sRepoPath,
+        )
 
 
 def fsetExtractStepReferences(sText):
@@ -919,80 +1001,6 @@ def fnSetServiceTracking(
     dictWorkflow["dictSyncStatus"][sKey][f"b{sService}"] = bool(bTrack)
 
 
-def fnMigrateArchiveToTracking(dictWorkflow):
-    """One-shot: promote legacy 'archive' categories to tracking flags.
-
-    Before the badge rework, each output file carried an "archive"
-    vs. "supporting" designation in ``dictPlotFileCategories`` /
-    ``dictDataFileCategories``. Archive files were the ones pushed
-    to Overleaf and Zenodo in batch operations. This function seeds
-    ``dictSyncStatus`` entries with ``bOverleaf=True`` and
-    ``bZenodo=True`` for each previously-archive file so badges
-    render in the expected "tracked" state after the upgrade. Runs
-    at most once per workflow (guarded by ``bArchiveTrackingMigrated``
-    on the top-level dict) to avoid re-tracking files a user has
-    since explicitly un-tracked. Returns True when a migration ran.
-    """
-    if dictWorkflow.get("bArchiveTrackingMigrated"):
-        return False
-    if "dictSyncStatus" not in dictWorkflow:
-        dictWorkflow["dictSyncStatus"] = {}
-    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
-    for dictStep in dictWorkflow.get("listSteps", []):
-        sStepDir = dictStep.get("sDirectory", "")
-        for sArrayKey in ("saDataFiles", "saPlotFiles"):
-            for sFile in dictStep.get(sArrayKey, []):
-                if fsGetFileCategory(dictStep, sFile) != "archive":
-                    continue
-                sRepoRel = _fsJoinRepoRelPath(sStepDir, sFile)
-                sKey = fsToSyncStatusKey(sRepoRel, sRepoRoot)
-                if sKey not in dictWorkflow["dictSyncStatus"]:
-                    dictWorkflow["dictSyncStatus"][sKey] = (
-                        fdictInitializeSyncEntry()
-                    )
-                dictWorkflow["dictSyncStatus"][sKey]["bOverleaf"] = True
-                dictWorkflow["dictSyncStatus"][sKey]["bZenodo"] = True
-    dictWorkflow["bArchiveTrackingMigrated"] = True
-    return True
-
-
-def _fsJoinRepoRelPath(sStepDir, sFile):
-    """Join a step dir and a filename into a repo-relative path."""
-    if not sStepDir:
-        return sFile
-    if posixpath.isabs(sFile):
-        return sFile
-    return posixpath.join(sStepDir, sFile)
-
-
-def fbMigrateModifiedFilesToRepoRelative(dictWorkflow):
-    """Normalize legacy abs paths in dictVerification.listModifiedFiles.
-
-    Older workflow.json files stored absolute container paths in
-    ``dictVerification['listModifiedFiles']``. The wire-format contract
-    is now repo-relative (see ``vaibify.gui.pathContract``). This
-    one-shot migration rewrites each step's list in place and returns
-    True if any change was made (so the caller can persist).
-    Idempotent: a workflow already in repo-relative form is unchanged.
-    """
-    from .pathContract import flistNormalizeModifiedFiles
-    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
-    bChanged = False
-    for dictStep in dictWorkflow.get("listSteps", []):
-        dictVerify = dictStep.get("dictVerification", {})
-        listExisting = dictVerify.get("listModifiedFiles")
-        if not listExisting:
-            continue
-        listNormalized = flistNormalizeModifiedFiles(
-            listExisting, sRepoRoot,
-        )
-        if listNormalized != listExisting:
-            dictVerify["listModifiedFiles"] = listNormalized
-            dictStep["dictVerification"] = dictVerify
-            bChanged = True
-    return bChanged
-
-
 def fnUpdateOverleafDigests(
     dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
 ):
@@ -1268,37 +1276,3 @@ def fsTestsDirectory(sStepDirectory):
     return posixpath.join(sStepDirectory, "tests")
 
 
-def fnNormalizeSceneReferences(dictStep):
-    """Replace deprecated {SceneNN.var} tokens with {StepNN.var}."""
-    for sKey in ("saDataCommands", "saPlotCommands", "saTestCommands",
-                 "saSetupCommands", "saCommands", "saDependencies",
-                 "saDataFiles", "saPlotFiles", "saOutputFiles"):
-        listValues = dictStep.get(sKey)
-        if not listValues:
-            continue
-        dictStep[sKey] = [
-            re.sub(r"\{Scene(\d+)\.", r"{Step\1.", s)
-            for s in listValues
-        ]
-
-
-def fdictMigrateTestFormat(dictStep):
-    """Migrate old saTestCommands format to new dictTests structure."""
-    if "dictTests" in dictStep:
-        return dictStep
-    listOldCommands = dictStep.get("saTestCommands", [])
-    dictStep["dictTests"] = {
-        "dictQualitative": {"saCommands": [], "sFilePath": ""},
-        "dictQuantitative": {
-            "saCommands": [], "sFilePath": "", "sStandardsPath": "",
-        },
-        "dictIntegrity": {
-            "saCommands": list(listOldCommands), "sFilePath": "",
-        },
-        "listUserTests": [],
-    }
-    dictVerification = dictStep.setdefault("dictVerification", {})
-    dictVerification.setdefault("sQualitative", "untested")
-    dictVerification.setdefault("sQuantitative", "untested")
-    dictVerification.setdefault("sIntegrity", "untested")
-    return dictStep
