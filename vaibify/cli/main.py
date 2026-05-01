@@ -29,6 +29,7 @@ from .commandBuild import build
 from .commandCat import cat
 from .commandConfig import config
 from .commandDestroy import destroy
+from .commandDoctor import doctor
 from .commandGenerateStandards import generate_standards
 from .commandInit import init
 from .commandLs import ls
@@ -138,6 +139,7 @@ main.add_command(cat)
 main.add_command(register)
 main.add_command(test)
 main.add_command(generate_standards)
+main.add_command(doctor)
 
 
 @main.command("stop")

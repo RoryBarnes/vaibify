@@ -9,15 +9,35 @@ ARG JULIA_VERSION=1.11.3
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install Julia from official tarball
+# Install Julia from official tarball. Download to a file (so we can
+# detect curl failure separately from tar failure) and emit an
+# actionable diagnostic on network failure — same template as the
+# deadsnakes block in docker/Dockerfile.
 RUN ARCH="$(uname -m)" \
     && if [ "${ARCH}" = "x86_64" ]; then JULIA_ARCH="x86_64"; \
        elif [ "${ARCH}" = "aarch64" ]; then JULIA_ARCH="aarch64"; \
        else echo "Unsupported architecture: ${ARCH}" && exit 1; fi \
     && JULIA_MAJOR_MINOR="$(echo ${JULIA_VERSION} | cut -d. -f1-2)" \
-    && curl -fsSL \
-        "https://julialang-s3.julialang.org/bin/linux/${JULIA_ARCH}/${JULIA_MAJOR_MINOR}/julia-${JULIA_VERSION}-linux-${JULIA_ARCH}.tar.gz" \
-        | tar -xz -C /opt \
+    && JULIA_URL="https://julialang-s3.julialang.org/bin/linux/${JULIA_ARCH}/${JULIA_MAJOR_MINOR}/julia-${JULIA_VERSION}-linux-${JULIA_ARCH}.tar.gz" \
+    && if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+            --connect-timeout 30 \
+            "${JULIA_URL}" -o /tmp/julia.tar.gz; then \
+        echo "" >&2; \
+        echo "vaibify build (julia overlay): cannot download Julia ${JULIA_VERSION}." >&2; \
+        echo "  - Tarball lives at ${JULIA_URL}." >&2; \
+        echo "  - Download failed (likely a TLS or network failure between" >&2; \
+        echo "    this build host and julialang-s3.julialang.org)." >&2; \
+        echo "Pick one workaround:" >&2; \
+        echo "  1. Test reachability from your host: curl -fI \"${JULIA_URL}\"" >&2; \
+        echo "  2. Disable the Julia overlay (features: { julia: false })." >&2; \
+        echo "  3. Resolve your build host's network path to" >&2; \
+        echo "     julialang-s3.julialang.org (proxy, IPv6, MTU, TLS" >&2; \
+        echo "     inspection) and rebuild." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
+    && tar -xz -C /opt -f /tmp/julia.tar.gz \
+    && rm -f /tmp/julia.tar.gz \
     && ln -s /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia
 
 # Install IJulia kernel for Jupyter integration

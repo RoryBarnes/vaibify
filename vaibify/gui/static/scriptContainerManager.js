@@ -185,13 +185,17 @@ var PipeleyenContainerManager = (function () {
             await _fsResolveContainerId(sName);
         if (!sTargetId) return;
         _fnShowInitializingOverlay();
-        var bReady = await _fbWaitForContainerReady(sTargetId);
+        var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
         _fnHideInitializingOverlay();
-        if (!bReady) {
-            PipeleyenApp.fnShowToast(
-                "Container took too long to initialize. "
-                + "Connecting anyway — some data may be "
-                + "incomplete.", "warning");
+        _fnSurfaceReadinessOutcome(dictReadiness);
+        if (!dictReadiness || !dictReadiness.bReady) {
+            var sStatus = dictReadiness ? dictReadiness.sStatus : "";
+            if (sStatus !== "failed" && sStatus !== "stalled") {
+                PipeleyenApp.fnShowToast(
+                    "Container took too long to initialize. "
+                    + "Connecting anyway — some data may be "
+                    + "incomplete.", "warning");
+            }
         }
         fnConnectToContainer(sTargetId);
     }
@@ -500,16 +504,21 @@ var PipeleyenContainerManager = (function () {
         }
     }
 
-    async function _fbWaitForContainerReady(sContainerId) {
+    async function _fdictWaitForContainerReady(sContainerId) {
         var iMaxAttempts = 60;
         var iIntervalMs = 2000;
+        var dictLast = null;
         for (var iAttempt = 0; iAttempt < iMaxAttempts; iAttempt++) {
             try {
                 var dictResult = await VaibifyApi.fdictGet(
                     "/api/containers/"
                     + encodeURIComponent(sContainerId) + "/ready"
                 );
-                if (dictResult.bReady) return true;
+                dictLast = dictResult;
+                var sStatus = dictResult.sStatus || "";
+                if (sStatus === "stalled") return dictResult;
+                if (sStatus === "failed") return dictResult;
+                if (dictResult.bReady) return dictResult;
             } catch (error) {
                 /* container may not be fully started yet */
             }
@@ -517,7 +526,56 @@ var PipeleyenContainerManager = (function () {
                 setTimeout(fnResolve, iIntervalMs);
             });
         }
-        return false;
+        return dictLast || {
+            bReady: false, sStatus: "timeout",
+            sReason: "Container did not become ready in time.",
+            saWarnings: [], iWarningCount: 0,
+        };
+    }
+
+    function _fnSurfaceReadinessOutcome(dictReadiness) {
+        if (!dictReadiness) return;
+        var sStatus = dictReadiness.sStatus || "";
+        if (sStatus === "failed") {
+            _fnShowReadinessFailureBanner(dictReadiness);
+            return;
+        }
+        if (sStatus === "stalled") {
+            _fnShowReadinessStalledBanner();
+            return;
+        }
+        var listWarnings = dictReadiness.saWarnings || [];
+        if (listWarnings.length > 0) {
+            _fnShowReadinessWarningBanner(listWarnings);
+        }
+    }
+
+    function _fnShowReadinessFailureBanner(dictReadiness) {
+        var sReason = dictReadiness.sReason || "Unknown failure.";
+        var sMessage =
+            "Container start failed: " + sReason +
+            " Run `vaibify stop && vaibify build && vaibify start`.";
+        PipeleyenApp.fnShowToast(sMessage, "error");
+    }
+
+    function _fnShowReadinessStalledBanner() {
+        PipeleyenApp.fnShowToast(
+            "Container is running but not responding to exec. " +
+            "Try `vaibify stop && vaibify start`.",
+            "error",
+        );
+    }
+
+    function _fnShowReadinessWarningBanner(listWarnings) {
+        var iCount = listWarnings.length;
+        var sLabel = iCount === 1 ? "1 warning" : iCount + " warnings";
+        var sJoined = listWarnings.map(function (sLine) {
+            return "- " + sLine;
+        }).join("\n");
+        PipeleyenApp.fnShowToast(
+            "Container started with " + sLabel + ":\n" + sJoined,
+            "warning",
+        );
     }
 
     function _fnShowInitializingOverlay() {

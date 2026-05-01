@@ -1,19 +1,33 @@
 """CLI subcommand: vaibify build."""
 
+import hashlib
+import json
 import os
+import pathlib
+import platform
+import re
 import subprocess
 import sys
 
 import click
 
 from .configLoader import fconfigResolveProject, fsDockerDir
+from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
+from .preflightResult import PreflightResult, fnPrintPreflightReport
 
 
 def fnBuildFromConfig(config, sDockerDir, bNoCache):
-    """Invoke the Docker image builder with the loaded configuration.
+    """Invoke the Docker image builder with the loaded configuration."""
+    fnBuildImage = _fImportBuildOrExit()
+    fnPrepareBuildContext(config, sDockerDir)
+    bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
+    fnBuildImage(config, sDockerDir, bNoCache=bEffectiveNoCache)
+    fnRecordBuildArgHash(config)
+    fnPruneDanglingImages()
 
-    Uses lazy import so the CLI remains usable without Docker installed.
-    """
+
+def _fImportBuildOrExit():
+    """Lazy-import imageBuilder.fnBuildImage; exit cleanly on missing extra."""
     try:
         from vaibify.docker.imageBuilder import fnBuildImage
     except ImportError:
@@ -22,9 +36,71 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
             "Install with: pip install vaibify[docker]"
         )
         sys.exit(1)
-    fnPrepareBuildContext(config, sDockerDir)
-    fnBuildImage(config, sDockerDir, bNoCache=bNoCache)
-    fnPruneDanglingImages()
+    return fnBuildImage
+
+
+def _fbResolveNoCache(config, bNoCache):
+    """Decide whether to force --no-cache and announce the override."""
+    bForceNoCache = fbBuildArgsChangedSinceLastBuild(config)
+    if bForceNoCache and not bNoCache:
+        click.echo(
+            "[vaib] Build args changed since last build; "
+            "forcing --no-cache."
+        )
+    return bNoCache or bForceNoCache
+
+
+_S_BUILD_HASH_DIRECTORY = os.path.expanduser("~/.vaibify/cache")
+
+
+def _fsBuildArgHashPath(sProjectName):
+    """Return the cached build-arg hash file for sProjectName."""
+    return os.path.join(
+        _S_BUILD_HASH_DIRECTORY, f"{sProjectName}-arg-hash"
+    )
+
+
+def _fdictBuildArgInputs(config):
+    """Collect ARG-affecting config values whose changes invalidate cache."""
+    return {
+        "PYTHON_VERSION": getattr(config, "sPythonVersion", ""),
+        "BASE_IMAGE": getattr(config, "sBaseImage", ""),
+        "PACKAGE_MANAGER": getattr(config, "sPackageManager", ""),
+        "INSTALL_LATEX": str(
+            getattr(getattr(config, "features", None), "bLatex", False)
+        ).lower(),
+        "INSTALL_X11": "true",
+    }
+
+
+def fsBuildArgHash(config):
+    """Return a stable hash of ARG-affecting config values."""
+    dictInputs = _fdictBuildArgInputs(config)
+    sSerialized = json.dumps(dictInputs, sort_keys=True)
+    return hashlib.sha256(sSerialized.encode()).hexdigest()
+
+
+def fbBuildArgsChangedSinceLastBuild(config):
+    """Return True iff the saved hash exists and disagrees with current."""
+    sPath = _fsBuildArgHashPath(config.sProjectName)
+    if not os.path.exists(sPath):
+        return False
+    try:
+        with open(sPath, "r") as fileHandle:
+            sPrevious = fileHandle.read().strip()
+    except OSError:
+        return False
+    return sPrevious != fsBuildArgHash(config)
+
+
+def fnRecordBuildArgHash(config):
+    """Persist the current ARG hash so the next build can detect drift."""
+    pathlib.Path(_S_BUILD_HASH_DIRECTORY).mkdir(
+        parents=True, exist_ok=True,
+    )
+    sPath = _fsBuildArgHashPath(config.sProjectName)
+    with open(sPath, "w") as fileHandle:
+        fileHandle.write(fsBuildArgHash(config) + "\n")
 
 
 def fnPruneDanglingImages():
@@ -60,11 +136,27 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnCopyContainerScripts(sDockerDir)
 
 
+_RE_APT_PACKAGE_NAME = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
+
+
 def fnWriteSystemPackages(config, sDockerDir):
     """Write listSystemPackages to system-packages.txt."""
+    fnValidateSystemPackageNames(config.listSystemPackages)
     sPath = os.path.join(sDockerDir, "system-packages.txt")
     sContent = "\n".join(config.listSystemPackages) + "\n"
     _fnWriteFile(sPath, sContent)
+
+
+def fnValidateSystemPackageNames(listPackages):
+    """Reject any apt-package name that violates the standard schema."""
+    for sName in listPackages or []:
+        if not _RE_APT_PACKAGE_NAME.match(sName or ""):
+            raise ValueError(
+                f"Invalid system package name: '{sName}'. "
+                f"Names must match the apt schema "
+                f"^[a-z0-9][a-z0-9._+-]*$. Edit `systemPackages` "
+                f"in vaibify.yml."
+            )
 
 
 def fnWritePythonPackages(config, sDockerDir):
@@ -75,9 +167,23 @@ def fnWritePythonPackages(config, sDockerDir):
 
 
 def fnWritePipInstallFlags(config, sDockerDir):
-    """Write sPipInstallFlags to pip-flags.txt."""
+    """Write sPipInstallFlags to pip-flags.txt with --prefer-binary."""
     sPath = os.path.join(sDockerDir, "pip-flags.txt")
-    _fnWriteFile(sPath, config.sPipInstallFlags.strip() + "\n")
+    sFlags = _fsEnsurePreferBinary(config.sPipInstallFlags)
+    _fnWriteFile(sPath, sFlags + "\n")
+
+
+_S_PREFER_BINARY_FLAG = "--prefer-binary"
+
+
+def _fsEnsurePreferBinary(sFlags):
+    """Prepend --prefer-binary to flags if not already present."""
+    sStripped = (sFlags or "").strip()
+    if _S_PREFER_BINARY_FLAG in sStripped.split():
+        return sStripped
+    if not sStripped:
+        return _S_PREFER_BINARY_FLAG
+    return f"{_S_PREFER_BINARY_FLAG} {sStripped}"
 
 
 def fnWriteBinariesEnv(config, sDockerDir):
@@ -213,7 +319,7 @@ def _fnWriteFile(sPath, sContent):
 def _fnHandleBuildError(error):
     """Print a clean error message for build failures and exit."""
     if isinstance(error, RuntimeError):
-        click.echo("Error: Docker build failed.", err=True)
+        _fnEmitRuntimeBuildError(error)
     elif isinstance(error, (FileNotFoundError, OSError)):
         click.echo(
             f"Error: Build context preparation failed: {error}",
@@ -224,6 +330,373 @@ def _fnHandleBuildError(error):
     else:
         click.echo(f"Error: Build failed: {error}", err=True)
     sys.exit(1)
+
+
+def _fnEmitRuntimeBuildError(error):
+    """Print the user-facing Docker build error with a classification hint."""
+    sBaseMessage = "Error: Docker build failed."
+    sErrorText = str(error)
+    sStderrTail = getattr(error, "sStderrTail", "")
+    sClassification = _fsClassifyBuildError(
+        sErrorText + "\n" + sStderrTail
+    )
+    sHint = _fsBuildErrorHint(sClassification)
+    if sHint:
+        click.echo(f"{sBaseMessage} {sHint}", err=True)
+    else:
+        click.echo(sBaseMessage, err=True)
+
+
+_LIST_BUILD_ERROR_PATTERNS = [
+    ("docker-hub-rate-limit", ("toomanyrequests", "pull rate limit")),
+    ("manifest-not-found", (
+        "manifest unknown",
+        "not found: manifest",
+        "manifest for ",
+    )),
+    ("network-tls", (
+        "error:0a00010b",
+        "ssleoferror",
+        "ssl: ",
+        "tls handshake",
+        "tls or network failure",
+    )),
+    ("pip-source-build", (
+        "gcc: error:",
+        "error: invalid command 'bdist_wheel'",
+        "failed building wheel for",
+        "error: command '",
+    )),
+    ("oom", ("exit 137", "killed signal 9")),
+]
+
+
+def _fsClassifyBuildError(sErrorText):
+    """Return a classification key for a known build-error pattern."""
+    if not sErrorText:
+        return ""
+    sLower = sErrorText.lower()
+    for sKey, tPatterns in _LIST_BUILD_ERROR_PATTERNS:
+        if any(sPattern in sLower for sPattern in tPatterns):
+            return sKey
+    return ""
+
+
+_DICT_BUILD_ERROR_HINTS = {
+    "docker-hub-rate-limit": (
+        "(Docker Hub rate-limited this IP. Wait 6 hours, run "
+        "`docker login`, or set `baseImage` in vaibify.yml to a mirror.)"
+    ),
+    "manifest-not-found": (
+        "(Base image not found in registry. Check `baseImage` in "
+        "vaibify.yml.)"
+    ),
+    "network-tls": (
+        "(Network or TLS failure during build. See the failing "
+        "component above; retry, or check your proxy/DNS/MTU settings.)"
+    ),
+    "pip-source-build": (
+        "(A pip package failed to build from source. `--prefer-binary` "
+        "is already applied; check requirements.txt for the offending "
+        "package. Workarounds: pin a different version that has a "
+        "prebuilt wheel, or add the missing system dependency to "
+        "systemPackages in vaibify.yml.)"
+    ),
+    "oom": (
+        "(exit 137 -- likely OOM. Increase Docker VM memory, e.g. "
+        "`colima stop && colima start --memory 6`.)"
+    ),
+}
+
+
+def _fsBuildErrorHint(sClassification):
+    """Return a remediation hint string for a classification key."""
+    return _DICT_BUILD_ERROR_HINTS.get(sClassification, "")
+
+
+_DICT_ARCH_NORMALIZATION = {
+    "aarch64": "arm64",
+    "arm64": "arm64",
+    "x86_64": "amd64",
+    "amd64": "amd64",
+}
+
+
+def _fsNormalizeArch(sArch):
+    """Map raw arch labels to a canonical 'arm64'/'amd64' form."""
+    return _DICT_ARCH_NORMALIZATION.get((sArch or "").strip().lower(), "")
+
+
+def fsHostArch():
+    """Return the canonical host architecture, '' if unrecognized."""
+    return _fsNormalizeArch(platform.machine())
+
+
+def fsDockerVmArch():
+    """Return the canonical Docker VM architecture, '' on any error."""
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "info", "--format", "{{.Architecture}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if resultProcess.returncode != 0:
+        return ""
+    return _fsNormalizeArch(resultProcess.stdout)
+
+
+def _fsArchRemediation():
+    """Return remediation text for an arch mismatch (Colima-aware)."""
+    from vaibify.docker.dockerContext import fbColimaActive
+    if fbColimaActive():
+        return "Run `colima delete && colima start --arch aarch64`."
+    return (
+        "Recreate your Docker VM/context with an aarch64 (arm64) "
+        "architecture to avoid QEMU emulation."
+    )
+
+
+def _fpreflightArchGpuFail():
+    """Return a fail-level PreflightResult for arm64 host with GPU feature."""
+    return PreflightResult(
+        sName="arch-gpu",
+        sLevel="fail",
+        sMessage=(
+            "NVIDIA CUDA images are amd64-only; the GPU feature is "
+            "not supported on Apple Silicon."
+        ),
+        sRemediation="Disable in vaibify.yml: `features: { gpu: false }`.",
+    )
+
+
+def _fpreflightArchQemuWarn(sHost, sVm):
+    """Return a warn-level PreflightResult for QEMU-emulated builds."""
+    return PreflightResult(
+        sName="arch-mismatch",
+        sLevel="warn",
+        sMessage=(
+            f"Host arch {sHost} differs from Docker VM arch {sVm}. "
+            "Build will use QEMU emulation (5-10x slower)."
+        ),
+        sRemediation=_fsArchRemediation(),
+    )
+
+
+def _flistArchMismatchResults(config, sHost, sVm):
+    """Build PreflightResult list for an arm64 host paired with amd64 VM."""
+    if getattr(getattr(config, "features", None), "bGpu", False):
+        return [_fpreflightArchGpuFail()]
+    return [_fpreflightArchQemuWarn(sHost, sVm)]
+
+
+def _fpreflightArch(config):
+    """Return list of PreflightResult records for arch checks."""
+    sHost = fsHostArch()
+    sVm = fsDockerVmArch()
+    if not sHost or not sVm:
+        return []
+    if sHost == "arm64" and sVm == "amd64":
+        return _flistArchMismatchResults(config, sHost, sVm)
+    return []
+
+
+_I_DOCKER_DISK_WARN_BYTES = 50 * (2 ** 30)
+
+
+def _fdiDockerDfBytes():
+    """Return total bytes used reported by `docker system df`, or -1."""
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "system", "df", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return -1
+    if resultProcess.returncode != 0:
+        return -1
+    return _fiSumDfSizeBytes(resultProcess.stdout)
+
+
+def _fiParseDfRowBytes(sLine):
+    """Parse one docker-df JSON row to bytes; -1 on any error."""
+    try:
+        dictRow = json.loads(sLine)
+    except (ValueError, TypeError):
+        return -1
+    return _fiParseHumanSize(str(dictRow.get("Size", "")).strip())
+
+
+def _fiSumDfSizeBytes(sJsonLines):
+    """Sum Size across docker-df JSON rows; -1 on parse failure or empty."""
+    iTotalBytes = 0
+    bAnyParsed = False
+    for sLine in (sJsonLines or "").splitlines():
+        sLine = sLine.strip()
+        if not sLine:
+            continue
+        iBytes = _fiParseDfRowBytes(sLine)
+        if iBytes < 0:
+            return -1
+        iTotalBytes += iBytes
+        bAnyParsed = True
+    return iTotalBytes if bAnyParsed else -1
+
+
+_DICT_SIZE_SUFFIX_MULTIPLIER = {
+    "B": 1,
+    "KB": 1000, "K": 1000,
+    "MB": 1000 ** 2, "M": 1000 ** 2,
+    "GB": 1000 ** 3, "G": 1000 ** 3,
+    "TB": 1000 ** 4, "T": 1000 ** 4,
+    "KIB": 1024, "MIB": 1024 ** 2,
+    "GIB": 1024 ** 3, "TIB": 1024 ** 4,
+}
+
+
+def _fiParseHumanSize(sSize):
+    """Parse '1.2GB'-style strings to bytes; -1 on parse failure."""
+    sUpper = (sSize or "").upper().strip()
+    if not sUpper:
+        return 0
+    for sSuffix in sorted(_DICT_SIZE_SUFFIX_MULTIPLIER, key=len, reverse=True):
+        if sUpper.endswith(sSuffix):
+            sNumber = sUpper[:-len(sSuffix)].strip()
+            try:
+                fValue = float(sNumber)
+            except ValueError:
+                return -1
+            return int(fValue * _DICT_SIZE_SUFFIX_MULTIPLIER[sSuffix])
+    try:
+        return int(float(sUpper))
+    except ValueError:
+        return -1
+
+
+def _fsDiskRemediation():
+    """Return remediation text for a near-full Docker VM disk."""
+    from vaibify.docker.dockerContext import fbColimaActive
+    sBase = "Run `docker system prune -af` to reclaim space."
+    if fbColimaActive():
+        return (
+            f"{sBase} If still tight, grow the VM with "
+            "`colima stop && colima start --disk 100`."
+        )
+    return sBase
+
+
+def _fpreflightDiskWarn(iBytes):
+    """Return a warn-level PreflightResult for high Docker disk usage."""
+    fGigabytes = iBytes / (2 ** 30)
+    return PreflightResult(
+        sName="docker-disk",
+        sLevel="warn",
+        sMessage=(
+            f"Docker is using {fGigabytes:.1f} GB of images/volumes; "
+            "the VM may run out of space mid-build."
+        ),
+        sRemediation=_fsDiskRemediation(),
+    )
+
+
+def _fpreflightDisk():
+    """Return list of PreflightResult records for Docker disk usage."""
+    iBytes = _fdiDockerDfBytes()
+    if iBytes < 0:
+        return [PreflightResult(
+            sName="docker-disk",
+            sLevel="info",
+            sMessage="Could not assess Docker disk usage.",
+        )]
+    if iBytes >= _I_DOCKER_DISK_WARN_BYTES:
+        return [_fpreflightDiskWarn(iBytes)]
+    return []
+
+
+_I_DOCKER_MEMORY_MIN_BYTES = 4 * (2 ** 30)
+
+
+def _fiDockerVmMemoryBytes():
+    """Return Docker VM total memory in bytes, or -1 on any error."""
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "info", "--format", "{{.MemTotal}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return -1
+    if resultProcess.returncode != 0:
+        return -1
+    sValue = (resultProcess.stdout or "").strip()
+    try:
+        return int(sValue)
+    except ValueError:
+        return -1
+
+
+def _fsMemoryRemediation():
+    """Return remediation text for low Docker VM memory."""
+    from vaibify.docker.dockerContext import fbColimaActive
+    if fbColimaActive():
+        return "Run `colima stop && colima start --memory 6`."
+    return "Increase the memory allocation of your Docker VM."
+
+
+def _fpreflightMemory():
+    """Return list of PreflightResult records for Docker VM memory."""
+    iBytes = _fiDockerVmMemoryBytes()
+    if iBytes < 0:
+        return []
+    if iBytes < _I_DOCKER_MEMORY_MIN_BYTES:
+        fGigabytes = iBytes / (2 ** 30)
+        return [PreflightResult(
+            sName="docker-memory",
+            sLevel="warn",
+            sMessage=(
+                f"Docker VM has {fGigabytes:.1f} GB RAM. Builds with "
+                "heavy Python packages may OOM (exit 137)."
+            ),
+            sRemediation=_fsMemoryRemediation(),
+        )]
+    return []
+
+
+def flistRunBuildPreflight(config):
+    """Return ordered list of PreflightResult records for `vaibify build`."""
+    listResults = [fpreflightDaemon("build")]
+    if any(r.sLevel == "fail" and r.sName == "docker-daemon"
+           for r in listResults):
+        return listResults
+    listResults.extend(_fpreflightArch(config))
+    listResults.extend(_fpreflightDisk())
+    listResults.extend(_fpreflightMemory())
+    resultColimaVersion = fpreflightColimaVersion()
+    if resultColimaVersion is not None:
+        listResults.append(resultColimaVersion)
+    return listResults
+
+
+def _fnPrintWarningsIfAny(listResults):
+    """Print warn-level results so users see them before the build."""
+    listWarnings = [r for r in listResults if r.sLevel == "warn"]
+    if not listWarnings:
+        return
+    fnPrintPreflightReport(listWarnings)
+
+
+def _fnEnforceBuildPreflight(config):
+    """Run pre-flight checks; exit on fail, print warnings on warn."""
+    listPreflight = flistRunBuildPreflight(config)
+    if any(r.sLevel == "fail" for r in listPreflight):
+        fnPrintPreflightReport(listPreflight)
+        sys.exit(1)
+    _fnPrintWarningsIfAny(listPreflight)
 
 
 @click.command("build")
@@ -241,19 +714,10 @@ def _fnHandleBuildError(error):
 )
 def build(bNoCache, sProjectName):
     """Build the Vaibify Docker image from vaibify.yml."""
-    from vaibify.docker import fbDockerDaemonReachable
     config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()
-    if not fbDockerDaemonReachable():
-        click.echo(
-            "Error: Docker daemon is not reachable. "
-            "Is Docker running?",
-            err=True,
-        )
-        sys.exit(1)
-    click.echo(
-        f"Building image {config.sProjectName}:latest ..."
-    )
+    _fnEnforceBuildPreflight(config)
+    click.echo(f"Building image {config.sProjectName}:latest ...")
     try:
         fnBuildFromConfig(config, sDockerDir, bNoCache)
     except (RuntimeError, FileNotFoundError, OSError,

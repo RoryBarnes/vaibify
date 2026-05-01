@@ -16,6 +16,15 @@ def fnShowDaemonStatus(dockerClient):
         click.echo(f"Docker daemon: unavailable ({error})")
 
 
+def fnShowDockerContext():
+    """Print the active Docker context, omitting the line if unknown."""
+    from vaibify.docker.dockerContext import fsActiveDockerContext
+    sContext = fsActiveDockerContext()
+    if not sContext:
+        return
+    click.echo(f"Docker context: {sContext} (active)")
+
+
 def fnShowImageStatus(dockerClient, config):
     """Print the build status of the configured image."""
     sFullName = f"{config.sProjectName}:latest"
@@ -74,6 +83,7 @@ def status(sProjectName):
     dockerClient = docker.from_env()
     config = fconfigResolveProject(sProjectName)
     fnShowDaemonStatus(dockerClient)
+    fnShowDockerContext()
     fnShowImageStatus(dockerClient, config)
     fnShowVolumeStatus(dockerClient, config)
     fnShowContainerStatus(dockerClient, config)

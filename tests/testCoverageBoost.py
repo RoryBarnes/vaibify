@@ -150,6 +150,18 @@ class MockDockerBoost:
             return (1, "")
         return (0, "")
 
+    def texecRunInContainerStreamed(
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+    ):
+        """Mirror legacy mock through ExecResult for migrated routes."""
+        from vaibify.docker.dockerConnection import ExecResult
+        iExitCode, sOutput = self.ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir=sWorkdir,
+        )
+        return ExecResult(
+            iExitCode=iExitCode, sStdout=sOutput, sStderr="",
+        )
+
     def fbaFetchFile(self, sContainerId, sPath):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]

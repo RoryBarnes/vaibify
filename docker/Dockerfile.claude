@@ -9,14 +9,58 @@ FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Download the NodeSource setup script over HTTPS, then run it.
+# Splitting download from execution lets us emit an actionable
+# diagnostic when the network call fails — same template as the
+# deadsnakes block in docker/Dockerfile.
+RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+            --connect-timeout 30 \
+            https://deb.nodesource.com/setup_20.x \
+            -o /tmp/nodesource_setup.sh; then \
+        echo "" >&2; \
+        echo "vaibify build (claude overlay): cannot download NodeSource setup script." >&2; \
+        echo "  - The script lives at deb.nodesource.com." >&2; \
+        echo "  - Download failed (likely a TLS or network failure between" >&2; \
+        echo "    this build host and deb.nodesource.com)." >&2; \
+        echo "Pick one workaround:" >&2; \
+        echo "  1. Disable the Claude overlay (features: { claude: false })." >&2; \
+        echo "  2. Resolve your build host's network path to" >&2; \
+        echo "     deb.nodesource.com (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        echo "     and rebuild." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
+    && bash /tmp/nodesource_setup.sh \
     && apt-get install -y --no-install-recommends nodejs \
+    && rm -f /tmp/nodesource_setup.sh \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Claude Code CLI from the npm registry. npm's default of two
+# retries is too aggressive for transient TLS failures from Colima VMs;
+# raise the retry budget and emit an actionable diagnostic on failure.
 RUN NPM_PREFIX="/home/${CONTAINER_USER}/.npm-global" \
     && mkdir -p "${NPM_PREFIX}" \
     && npm config set prefix "${NPM_PREFIX}" \
-    && npm install -g @anthropic-ai/claude-code@latest \
+    && if ! npm install -g \
+            --fetch-retries=5 \
+            --fetch-retry-mintimeout=20000 \
+            --fetch-retry-maxtimeout=120000 \
+            @anthropic-ai/claude-code@latest; then \
+        echo "" >&2; \
+        echo "vaibify build (claude overlay): cannot install Claude Code CLI." >&2; \
+        echo "  - The package lives on registry.npmjs.org." >&2; \
+        echo "  - npm install failed (likely a TLS or network failure" >&2; \
+        echo "    between this build host and registry.npmjs.org)." >&2; \
+        echo "Pick one workaround:" >&2; \
+        echo "  1. Pin the canonical registry in case a corp proxy" >&2; \
+        echo "     rewrote it: npm config set registry https://registry.npmjs.org/" >&2; \
+        echo "  2. Disable the Claude overlay (features: { claude: false })." >&2; \
+        echo "  3. Resolve your build host's network path to" >&2; \
+        echo "     registry.npmjs.org (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        echo "     and rebuild." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
     && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${NPM_PREFIX}"
 
 ENV PATH="/home/${CONTAINER_USER}/.npm-global/bin:${PATH}"

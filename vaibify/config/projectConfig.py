@@ -56,7 +56,7 @@ class ProjectConfig:
         ]
     )
     listPythonPackages: List[str] = field(default_factory=list)
-    sPipInstallFlags: str = ""
+    sPipInstallFlags: str = "--prefer-binary"
     listCondaPackages: List[str] = field(default_factory=list)
     features: FeaturesConfig = field(
         default_factory=FeaturesConfig

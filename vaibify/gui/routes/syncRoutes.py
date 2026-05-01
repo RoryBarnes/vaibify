@@ -27,6 +27,39 @@ from ..pipelineServer import (
 from .scriptRoutes import _fnStoreCommitHash
 
 
+_S_ISOLATION_BLOCK_ERROR = "isolation-mode-blocks-network"
+_S_ISOLATION_BLOCK_MESSAGE = (
+    "Container is in isolation mode (no network). "
+    "Disable in vaibify.yml: networkIsolation: false, then rebuild."
+)
+
+
+def _fdictIsolationBlockedResponse():
+    """Return the structured response for an isolation-blocked call."""
+    return {
+        "sError": _S_ISOLATION_BLOCK_ERROR,
+        "sMessage": _S_ISOLATION_BLOCK_MESSAGE,
+    }
+
+
+def _fnRequireNetworkAccess(sContainerId):
+    """Raise HTTP 409 when the container is running with --network none.
+
+    Network-isolated containers cannot reach Overleaf, Zenodo, or any
+    other external API. Without this guard, the user clicks a sync
+    button and waits 30 seconds for a DNS timeout before seeing a
+    generic error. Audit finding F-R-08.
+    """
+    from vaibify.docker.containerManager import (
+        fbContainerIsNetworkIsolated,
+    )
+    if fbContainerIsNetworkIsolated(sContainerId):
+        raise HTTPException(
+            status_code=409,
+            detail=_fdictIsolationBlockedResponse(),
+        )
+
+
 def _fnValidateOverleafFilePaths(listFilePaths):
     """Reject any file path outside WORKSPACE_ROOT or with NUL bytes.
 
@@ -260,6 +293,7 @@ async def _fdictHandleOverleafPushRequest(
 ):
     """End-to-end Overleaf push: flow + post-push bookkeeping."""
     dictCtx["require"]()
+    _fnRequireNetworkAccess(sContainerId)
     _fnValidateOverleafFilePaths(request.listFilePaths)
     _fnValidateOverleafTargetDirectory(
         getattr(request, "sTargetDirectory", None)
@@ -332,6 +366,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         sContainerId: str, request: SyncPushRequest,
     ):
         dictCtx["require"]()
+        _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         sZenodoService = dictWorkflow.get(
@@ -458,6 +493,7 @@ def _fnRegisterGithubPush(app, dictCtx):
         sContainerId: str, request: SyncPushRequest,
     ):
         dictCtx["require"]()
+        _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         sWorkdir = posixpath.dirname(
@@ -1045,6 +1081,7 @@ def _fnRegisterDatasetDownload(app, dictCtx):
         sContainerId: str, request: DatasetDownloadRequest,
     ):
         dictCtx["require"]()
+        _fnRequireNetworkAccess(sContainerId)
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultDownloadDataset,
             dictCtx["docker"], sContainerId,
@@ -1065,6 +1102,7 @@ def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
     @app.post("/api/overleaf/{sContainerId}/mirror/refresh")
     async def fnRefreshMirror(sContainerId: str):
         dictCtx["require"]()
+        _fnRequireNetworkAccess(sContainerId)
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)
         bSuccess, result = await asyncio.to_thread(
@@ -1146,6 +1184,7 @@ def _fnRegisterOverleafDiff(app, dictCtx):
         sContainerId: str, request: OverleafDiffRequest,
     ):
         dictCtx["require"]()
+        _fnRequireNetworkAccess(sContainerId)
         _fnValidateOverleafFilePaths(request.listFilePaths)
         _fnValidateOverleafTargetDirectory(request.sTargetDirectory)
         sProjectId = _fsRequireOverleafProjectId(

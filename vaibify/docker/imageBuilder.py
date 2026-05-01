@@ -1,10 +1,16 @@
 """Build Docker images with deterministic overlay ordering."""
 
+import re
 import subprocess
 import sys
+import time
+from collections import deque
 from pathlib import Path
 
 from . import fnRunDockerCommand
+
+
+_I_BUILD_STDERR_TAIL_LINES = 50
 
 
 def fbBuildxAvailable():
@@ -239,4 +245,85 @@ def fbImageExists(sImageName):
     return resultProcess.returncode == 0
 
 
-_fnRunDockerBuild = fnRunDockerCommand
+def _fnRunDockerBuildCapturing(saCommand):
+    """Run docker build, streaming stderr to the user and capturing the tail.
+
+    On non-zero exit, raises RuntimeError with ``sStderrTail`` set to
+    the last ``_I_BUILD_STDERR_TAIL_LINES`` lines of stderr so callers
+    can classify build failures.
+    """
+    procBuild = subprocess.Popen(
+        saCommand,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    sStderrTail = _fsStreamAndCaptureStderr(procBuild)
+    iReturnCode = procBuild.wait()
+    if iReturnCode != 0:
+        raise _ferrorBuildFailed(saCommand, iReturnCode, sStderrTail)
+
+
+_RE_VIRTIOFS_LAG = re.compile(
+    r"failed to compute cache key.*lstat.*no such file or directory",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _fbStderrLooksLikeVirtiofsLag(sStderrTail):
+    """Return True if the stderr tail matches the virtiofs sync-lag pattern."""
+    return bool(_RE_VIRTIOFS_LAG.search(sStderrTail or ""))
+
+
+def _fnRunDockerBuildWithVirtiofsRetry(saCommand):
+    """Run docker build, retrying once on Colima virtiofs sync-lag errors."""
+    try:
+        _fnRunDockerBuildCapturing(saCommand)
+        return
+    except RuntimeError as errorBuild:
+        if not _fbShouldRetryVirtiofs(errorBuild):
+            raise
+        _fnAnnounceVirtiofsRetry()
+    time.sleep(2)
+    _fnRunDockerBuildCapturing(saCommand)
+
+
+def _fbShouldRetryVirtiofs(errorBuild):
+    """True iff the error is a Colima virtiofs sync-lag failure."""
+    from .dockerContext import fbColimaActive
+    sStderrTail = getattr(errorBuild, "sStderrTail", "")
+    if not _fbStderrLooksLikeVirtiofsLag(sStderrTail):
+        return False
+    return fbColimaActive()
+
+
+def _fnAnnounceVirtiofsRetry():
+    """Print the user-visible notice before retrying."""
+    sys.stderr.write(
+        "[vaib] Detected possible virtiofs sync lag; "
+        "retrying once after 2s...\n"
+    )
+
+
+def _fsStreamAndCaptureStderr(procBuild):
+    """Tee subprocess stderr to sys.stderr; return the captured tail."""
+    dequeTail = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
+    if procBuild.stderr is None:
+        return ""
+    for sLine in procBuild.stderr:
+        sys.stderr.write(sLine)
+        dequeTail.append(sLine)
+    return "".join(dequeTail)
+
+
+def _ferrorBuildFailed(saCommand, iReturnCode, sStderrTail):
+    """Construct a RuntimeError carrying the captured stderr tail."""
+    sCommandStr = " ".join(saCommand)
+    errorBuild = RuntimeError(
+        f"Docker command failed (exit {iReturnCode}): {sCommandStr}"
+    )
+    errorBuild.sStderrTail = sStderrTail
+    return errorBuild
+
+
+_fnRunDockerBuild = _fnRunDockerBuildWithVirtiofsRetry

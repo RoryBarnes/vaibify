@@ -6,6 +6,11 @@ CONTAINER_USER="${CONTAINER_USER:-researcher}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-pip}"
 VC_PROJECT_NAME="${VC_PROJECT_NAME:-Vaibify}"
 
+# saStartupWarnings: each entry is "<name>: <category>: <one-line-reason>".
+# Surfaced by the GUI readiness probe so the user can act on partial-startup
+# failures without scrolling the container log.
+saStartupWarnings=()
+
 # ---------------------------------------------------------------------------
 # fnPrintBanner: Display startup header
 # ---------------------------------------------------------------------------
@@ -14,6 +19,134 @@ fnPrintBanner() {
     echo "  Vaibify - ${VC_PROJECT_NAME}"
     echo "=========================================="
     echo ""
+}
+
+# ---------------------------------------------------------------------------
+# fnAppendStartupWarning: Record a structured warning for the readiness marker
+# Arguments: sName sCategory sReason
+# ---------------------------------------------------------------------------
+fnAppendStartupWarning() {
+    local sName="$1"
+    local sCategory="$2"
+    local sReason="$3"
+    saStartupWarnings+=("${sName}: ${sCategory}: ${sReason}")
+}
+
+# ---------------------------------------------------------------------------
+# fsEscapeJsonString: Escape backslash, quote, and control chars for JSON
+# Arguments: sRaw
+# ---------------------------------------------------------------------------
+fsEscapeJsonString() {
+    local sRaw="$1"
+    sRaw="${sRaw//\\/\\\\}"
+    sRaw="${sRaw//\"/\\\"}"
+    sRaw="${sRaw//$'\n'/ }"
+    sRaw="${sRaw//$'\r'/ }"
+    sRaw="${sRaw//$'\t'/ }"
+    printf '%s' "${sRaw}"
+}
+
+# ---------------------------------------------------------------------------
+# fsBuildWarningsJson: Render saStartupWarnings as a JSON array literal
+# ---------------------------------------------------------------------------
+fsBuildWarningsJson() {
+    local iCount=${#saStartupWarnings[@]}
+    if [ "${iCount}" -eq 0 ]; then
+        printf '[]'
+        return
+    fi
+    local sBuffer="["
+    local i
+    for (( i=0; i<iCount; i++ )); do
+        local sEscaped
+        sEscaped=$(fsEscapeJsonString "${saStartupWarnings[$i]}")
+        if [ "${i}" -gt 0 ]; then
+            sBuffer+=", "
+        fi
+        sBuffer+="\"${sEscaped}\""
+    done
+    sBuffer+="]"
+    printf '%s' "${sBuffer}"
+}
+
+# ---------------------------------------------------------------------------
+# fnWriteReadinessMarker: Write the structured readiness JSON marker
+# Arguments: sStatus sReason
+# ---------------------------------------------------------------------------
+fnWriteReadinessMarker() {
+    local sStatus="$1"
+    local sReason="$2"
+    local sMarker="${WORKSPACE}/.vaibify/.entrypoint_ready"
+    mkdir -p "${WORKSPACE}/.vaibify" 2>/dev/null || true
+    local sStatusEscaped
+    sStatusEscaped=$(fsEscapeJsonString "${sStatus}")
+    local sReasonEscaped
+    sReasonEscaped=$(fsEscapeJsonString "${sReason}")
+    local sWarnings
+    sWarnings=$(fsBuildWarningsJson)
+    printf '{"sStatus": "%s", "sReason": "%s", "saWarnings": %s}\n' \
+        "${sStatusEscaped}" "${sReasonEscaped}" "${sWarnings}" \
+        > "${sMarker}"
+}
+
+# ---------------------------------------------------------------------------
+# fsCategorizeCloneError: Map git-clone stderr to a category keyword
+# Arguments: sStderr
+# Returns (stdout): one of auth | network | branch | unknown
+# ---------------------------------------------------------------------------
+fsCategorizeCloneError() {
+    local sStderr="$1"
+    if echo "${sStderr}" | grep -qiE \
+        "authentication failed|permission denied|403|401|could not read username"; then
+        printf 'auth'
+        return
+    fi
+    if echo "${sStderr}" | grep -qiE \
+        "could not resolve host|connection refused|connection timed out|network is unreachable|operation timed out"; then
+        printf 'network'
+        return
+    fi
+    if echo "${sStderr}" | grep -qiE \
+        "remote branch .* not found|did not match any|reference is not a tree"; then
+        printf 'branch'
+        return
+    fi
+    printf 'unknown'
+}
+
+# ---------------------------------------------------------------------------
+# fnHandleCloneFailure: Print categorized clone error and record warning
+# Arguments: sName sBranch sStderrFile
+# ---------------------------------------------------------------------------
+fnHandleCloneFailure() {
+    local sName="$1"
+    local sBranch="$2"
+    local sStderrFile="$3"
+    local sStderr=""
+    [ -f "${sStderrFile}" ] && sStderr=$(cat "${sStderrFile}")
+    local sCategory
+    sCategory=$(fsCategorizeCloneError "${sStderr}")
+    case "${sCategory}" in
+        auth)
+            echo "[vaib]   Clone failed for ${sName}: authentication required. Run 'gh auth login' on the host and rebuild."
+            fnAppendStartupWarning "${sName}" "clone-auth" \
+                "authentication required" ;;
+        network)
+            echo "[vaib]   Clone failed for ${sName}: network unreachable. Check your connection and rebuild."
+            fnAppendStartupWarning "${sName}" "clone-network" \
+                "network unreachable" ;;
+        branch)
+            echo "[vaib]   Clone failed for ${sName}: branch '${sBranch}' not found in remote."
+            fnAppendStartupWarning "${sName}" "clone-branch" \
+                "branch '${sBranch}' not found" ;;
+        *)
+            echo "[vaib]   Clone failed for ${sName} (may require authentication)."
+            echo "${sStderr}" | head -3 | sed 's/^/[vaib]     /'
+            local sFirstLine
+            sFirstLine=$(echo "${sStderr}" | head -1)
+            fnAppendStartupWarning "${sName}" "clone-unknown" \
+                "${sFirstLine:-unspecified clone failure}" ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
@@ -95,12 +228,17 @@ fnCloneRepo() {
     local sUrl="$2"
     local sBranch="$3"
     local sRepoPath="${WORKSPACE}/${sName}"
+    local sStderrFile
+    sStderrFile=$(mktemp /tmp/vaib_clone_err.XXXXXX)
 
     echo "[vaib] Cloning ${sName} (branch: ${sBranch})..."
-    if ! git clone --branch "${sBranch}" "${sUrl}" "${sRepoPath}" 2>&1; then
-        echo "[vaib]   Clone failed for ${sName} (may require authentication)."
+    if ! git clone --verbose --branch "${sBranch}" "${sUrl}" \
+        "${sRepoPath}" 2> "${sStderrFile}"; then
+        fnHandleCloneFailure "${sName}" "${sBranch}" "${sStderrFile}"
+        rm -f "${sStderrFile}"
         return 0
     fi
+    rm -f "${sStderrFile}"
     cd "${sRepoPath}"
     git fetch --tags origin
     cd "${WORKSPACE}"
@@ -214,6 +352,8 @@ fnBuildSingleBinary() {
 
     if [ ! -d "${sRepoPath}" ]; then
         echo "[vaib]   ${sName} not found. Skipping build."
+        fnAppendStartupWarning "${sName}" "c-build" \
+            "repository directory missing"
         return 1
     fi
     echo "[vaib]   Building ${sName}..."
@@ -227,9 +367,13 @@ fnBuildSingleBinary() {
             return 0
         fi
         echo "[vaib]   WARNING: Expected binary not found at ${sBinaryPath}."
+        fnAppendStartupWarning "${sName}" "c-build" \
+            "expected binary not found at ${sBinaryPath}"
     else
         echo "[vaib]   WARNING: Build failed for ${sName}. You can retry manually:"
         echo "[vaib]     cd ${sRepoPath} && make opt"
+        fnAppendStartupWarning "${sName}" "c-build" \
+            "make opt failed"
     fi
     cd "${WORKSPACE}"
     return 1
@@ -265,6 +409,8 @@ fnPipInstall() {
     echo "[vaib] Installing ${sName}..."
     if ! pip install -e "${sRepoPath}" "$@" -q; then
         echo "[vaib]   WARNING: Failed to install ${sName}. Continuing."
+        fnAppendStartupWarning "${sName}" "pip-install" \
+            "pip install -e failed"
     fi
 }
 
@@ -348,6 +494,8 @@ fnInstallRepoRequirements() {
         echo "[vaib] Installing requirements for ${sRepoName}..."
         if ! pip install -r "${sReqFile}" -q; then
             echo "[vaib]   WARNING: Failed to install requirements for ${sRepoName}. Continuing."
+            fnAppendStartupWarning "${sRepoName}" "pip-requirements" \
+                "pip install -r requirements.txt failed"
         fi
         bFoundAny=true
     done
@@ -795,11 +943,11 @@ PYEOF
     echo "[vaib] Claude auto-update set to ${sFlag}."
 }
 
-# ===========================================================================
-# Main — only runs when executed directly (not when sourced by tests)
-# ===========================================================================
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    set -euo pipefail
+# ---------------------------------------------------------------------------
+# fnRunStartupSequence: Execute the full pre-gosu startup pipeline
+# Centralised so the EXIT trap can decide success vs failure from one $?.
+# ---------------------------------------------------------------------------
+fnRunStartupSequence() {
     fnPrintBanner
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
@@ -818,8 +966,32 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnInstallAllRepos
     fnInstallRepoRequirements
     fnPrintSummary
+}
 
-    touch "${WORKSPACE}/.vaibify/.entrypoint_ready"
+# ---------------------------------------------------------------------------
+# fnHandleStartupExit: EXIT trap — guarantee a readiness marker on failure
+# Arguments: iExitCode
+# ---------------------------------------------------------------------------
+fnHandleStartupExit() {
+    local iExitCode="$1"
+    local sMarker="${WORKSPACE}/.vaibify/.entrypoint_ready"
+    if [ -f "${sMarker}" ]; then
+        return
+    fi
+    local sReason="entrypoint exited ${iExitCode} before completion"
+    fnWriteReadinessMarker "failed" "${sReason}"
+    echo "[vaib] Startup failed (exit ${iExitCode}); readiness marker recorded." >&2
+}
+
+# ===========================================================================
+# Main — only runs when executed directly (not when sourced by tests)
+# ===========================================================================
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    set -euo pipefail
+    trap 'fnHandleStartupExit $?' EXIT
+    fnRunStartupSequence
+    fnWriteReadinessMarker "ok" ""
+    trap - EXIT
     chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
     exec gosu "${CONTAINER_USER}" "$@"
 fi

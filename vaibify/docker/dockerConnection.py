@@ -2,9 +2,44 @@
 
 Wraps the docker-py SDK with lazy import so the module can be loaded
 even when docker-py is not installed.
+
+Stream separation
+-----------------
+
+``texecRunInContainerStreamed`` is the canonical execution entry
+point. It captures stdout and stderr separately and returns an
+``ExecResult`` dataclass so callers can render real container output
+distinctly from container-side error noise. The legacy
+``ftResultExecuteCommand`` is preserved as a thin backward-compat
+wrapper that merges the two streams and emits a ``DeprecationWarning``
+on every call, giving downstream callers an audit trail to migrate
+on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import warnings
+from dataclasses import dataclass
+
+
+@dataclass
+class ExecResult:
+    """Outcome of a single ``docker exec`` call with split streams.
+
+    Attributes
+    ----------
+    iExitCode : int
+        Exit status reported by the container's exec instance.
+    sStdout : str
+        UTF-8-decoded standard output. Empty string if nothing was
+        written to stdout.
+    sStderr : str
+        UTF-8-decoded standard error. Empty string if nothing was
+        written to stderr.
+    """
+
+    iExitCode: int
+    sStdout: str
+    sStderr: str
 
 
 def _fmoduleGetDocker():
@@ -85,19 +120,80 @@ class DockerConnection:
         self._dictContainers[sContainerId] = container
         return container
 
-    def ftResultExecuteCommand(
+    def texecRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None
     ):
-        """Run a command and return (iExitCode, sOutput)."""
+        """Run a command, capturing stdout and stderr separately.
+
+        Returns
+        -------
+        ExecResult
+            Dataclass carrying the exit code, decoded stdout, and
+            decoded stderr. Callers can route each stream to the
+            appropriate UI surface (e.g. show stdout as command
+            output, surface stderr as a distinct error region).
+        """
         container = self.fcontainerGetById(sContainerId)
-        dictKwargs = {"cmd": ["/bin/bash", "-c", sCommand]}
+        dictKwargs = self._fdictBuildExecKwargs(
+            sCommand, sWorkdir, sUser)
+        iExitCode, tOutput = container.exec_run(**dictKwargs)
+        baStdout, baStderr = self._ftSplitDemuxedOutput(tOutput)
+        return ExecResult(
+            iExitCode=iExitCode,
+            sStdout=baStdout.decode("utf-8", errors="replace"),
+            sStderr=baStderr.decode("utf-8", errors="replace"),
+        )
+
+    @staticmethod
+    def _fdictBuildExecKwargs(sCommand, sWorkdir, sUser):
+        """Assemble keyword arguments for docker-py's ``exec_run``."""
+        dictKwargs = {
+            "cmd": ["/bin/bash", "-c", sCommand],
+            "demux": True,
+        }
         if sWorkdir:
             dictKwargs["workdir"] = sWorkdir
         if sUser:
             dictKwargs["user"] = sUser
-        iExitCode, baOutput = container.exec_run(**dictKwargs)
-        sOutput = baOutput.decode("utf-8", errors="replace")
-        return (iExitCode, sOutput)
+        return dictKwargs
+
+    @staticmethod
+    def _ftSplitDemuxedOutput(tOutput):
+        """Normalise docker-py's demuxed output to two byte buffers.
+
+        ``exec_run(demux=True)`` returns either a ``(stdout, stderr)``
+        tuple where each element may be ``None`` or, on the legacy
+        non-demuxed path, a single bytes object. Centralising the
+        normalisation here keeps both the streamed entry point and
+        the backward-compat wrapper symmetrical.
+        """
+        if isinstance(tOutput, tuple):
+            baStdout, baStderr = tOutput
+        else:
+            baStdout, baStderr = tOutput, None
+        return baStdout or b"", baStderr or b""
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None
+    ):
+        """Backward-compat wrapper returning ``(iExitCode, sOutput)``.
+
+        Merges stdout and stderr, matching the historical contract.
+        Emits a ``DeprecationWarning`` so existing call sites surface
+        in audits while migrating to ``texecRunInContainerStreamed``.
+        """
+        warnings.warn(
+            "ftResultExecuteCommand merges stdout and stderr; "
+            "migrate to texecRunInContainerStreamed for split "
+            "streams.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        resultExec = self.texecRunInContainerStreamed(
+            sContainerId, sCommand, sWorkdir=sWorkdir, sUser=sUser,
+        )
+        sOutput = resultExec.sStdout + resultExec.sStderr
+        return (resultExec.iExitCode, sOutput)
 
     def fbaFetchFile(self, sContainerId, sFilePath):
         """Fetch a file from the container and return its bytes."""
@@ -108,14 +204,14 @@ class DockerConnection:
             "base64.b64encode(open("
             + sSafePath + ",'rb').read()))\""
         )
-        iExitCode, sOutput = self.ftResultExecuteCommand(
-            sContainerId, sCommand
+        resultExec = self.texecRunInContainerStreamed(
+            sContainerId, sCommand,
         )
-        if iExitCode != 0:
+        if resultExec.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
             )
-        return base64.b64decode(sOutput.strip())
+        return base64.b64decode(resultExec.sStdout.strip())
 
     def fnWriteFile(self, sContainerId, sFilePath, baContent):
         """Write bytes to a file inside the container via tar archive."""

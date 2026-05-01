@@ -240,6 +240,9 @@ def test_start_command_without_gui_starts_container_only():
     ), patch(
         "vaibify.cli.commandStart.fsDockerDir", return_value="/tmp/docker",
     ), patch(
+        "vaibify.cli.commandStart.flistRunStartPreflight",
+        return_value=[],
+    ), patch(
         "vaibify.cli.commandStart._fnStartContainer", mockStart,
     ), patch(
         "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
@@ -261,6 +264,9 @@ def test_start_command_with_gui_and_port_launches_gui():
         return_value=mockConfig,
     ), patch(
         "vaibify.cli.commandStart.fsDockerDir", return_value="/tmp/docker",
+    ), patch(
+        "vaibify.cli.commandStart.flistRunStartPreflight",
+        return_value=[],
     ), patch(
         "vaibify.cli.commandStart._fnStartContainer",
     ), patch(

@@ -7,6 +7,7 @@ var VaibifyMonitor = (function () {
     var I_POLL_INTERVAL_MS = 5000;
     var I_SPARKLINE_WIDTH = 200;
     var I_SPARKLINE_HEIGHT = 40;
+    var F_DISK_BANNER_FRACTION = 0.05;
 
     var sContainerId = null;
     var iIntervalHandle = null;
@@ -95,16 +96,49 @@ var VaibifyMonitor = (function () {
         );
     }
 
+    function fsMonitorDiskHtml() {
+        return (
+            '<div style="margin-bottom: 10px;">' +
+            '<div style="font-size: 11px; color: #a0a0b8; ' +
+            'text-transform: uppercase; letter-spacing: 0.5px; ' +
+            'margin-bottom: 4px;">DISK</div>' +
+            '<span id="monitorDiskText" style="font-size: 18px; ' +
+            'font-weight: 300; color: #e0e0e8;">--</span></div>'
+        );
+    }
+
+    function fsMonitorBannerHtml() {
+        return (
+            '<div id="monitorBanner" style="display: none; ' +
+            'margin-bottom: 10px; padding: 8px; ' +
+            'background: #4a1f1f; border: 1px solid #c14a4a; ' +
+            'border-radius: 4px; color: #f0c0c0; font-size: 12px; ' +
+            'line-height: 1.4;"></div>'
+        );
+    }
+
+    function fsMonitorUnavailableHtml() {
+        return (
+            '<div id="monitorUnavailable" style="display: none; ' +
+            'margin-top: 6px; padding: 8px; background: #2f2f48; ' +
+            'border: 1px solid #5a5a78; border-radius: 4px; ' +
+            'color: #c0c0d8; font-size: 12px; line-height: 1.4;"></div>'
+        );
+    }
+
     function fnCreatePanel() {
         elMonitorPanel = document.createElement("div");
         elMonitorPanel.id = "monitorPanel";
         elMonitorPanel.style.cssText = fsMonitorPanelStyle();
         elMonitorPanel.innerHTML =
             fsMonitorHeaderHtml() +
+            fsMonitorBannerHtml() +
             fsMonitorMetricHtml(
                 "CPU", "monitorCpuText", "canvasCpuSparkline") +
             fsMonitorMetricHtml(
-                "Memory", "monitorMemoryText", "canvasMemorySparkline");
+                "Memory", "monitorMemoryText", "canvasMemorySparkline") +
+            fsMonitorDiskHtml() +
+            fsMonitorUnavailableHtml();
         document.body.appendChild(elMonitorPanel);
         document.getElementById("btnMonitorClose").addEventListener(
             "click", fnHidePanel
@@ -142,38 +176,114 @@ var VaibifyMonitor = (function () {
         }
     }
 
-    function fnUpdateDisplay(dictData) {
-        var dCpuPercent = dictData.dCpuPercent || 0;
-        var dMemoryPercent = dictData.dMemoryPercent || 0;
+    function fsHumanizeReason(sReason) {
+        if (sReason === "daemon-unreachable") {
+            return "Docker daemon not reachable";
+        }
+        if (sReason === "container-not-running") {
+            return "container is not running";
+        }
+        if (sReason === "timeout") {
+            return "docker stats timed out";
+        }
+        if (sReason === "parse-error") {
+            return "could not parse docker stats output";
+        }
+        return sReason || "unknown";
+    }
+
+    function fnSetUnavailableNotice(sReason) {
+        var elNotice = document.getElementById("monitorUnavailable");
+        if (!elNotice) return;
+        if (sReason) {
+            elNotice.style.display = "block";
+            elNotice.textContent = "Resource monitor unavailable: " +
+                fsHumanizeReason(sReason);
+        } else {
+            elNotice.style.display = "none";
+            elNotice.textContent = "";
+        }
+    }
+
+    function fnAppendHistory(listHistory, dValue) {
+        listHistory.push(dValue);
+        if (listHistory.length > I_MAX_DATA_POINTS) {
+            listHistory.shift();
+        }
+    }
+
+    function fnUpdateCpuMemoryDisplay(dictData) {
+        var fCpuPercent = dictData.fCpuPercent || 0;
+        var fMemoryPercent = dictData.fMemoryPercent || 0;
         var sMemoryUsage = dictData.sMemoryUsage || "";
-
-        listCpuHistory.push(dCpuPercent);
-        listMemoryHistory.push(dMemoryPercent);
-
-        if (listCpuHistory.length > I_MAX_DATA_POINTS) {
-            listCpuHistory.shift();
-        }
-        if (listMemoryHistory.length > I_MAX_DATA_POINTS) {
-            listMemoryHistory.shift();
-        }
-
+        fnAppendHistory(listCpuHistory, fCpuPercent);
+        fnAppendHistory(listMemoryHistory, fMemoryPercent);
         var elCpuText = document.getElementById("monitorCpuText");
         var elMemoryText = document.getElementById("monitorMemoryText");
-
         if (elCpuText) {
-            elCpuText.textContent = dCpuPercent.toFixed(1) + "%";
+            elCpuText.textContent = fCpuPercent.toFixed(1) + "%";
         }
         if (elMemoryText) {
             elMemoryText.textContent = sMemoryUsage ?
-                sMemoryUsage : dMemoryPercent.toFixed(1) + "%";
+                sMemoryUsage : fMemoryPercent.toFixed(1) + "%";
         }
+        fnDrawSparkline(
+            "canvasCpuSparkline", listCpuHistory, "#13aed5", 100);
+        fnDrawSparkline(
+            "canvasMemorySparkline", listMemoryHistory, "#c084fc", 100);
+    }
 
-        fnDrawSparkline(
-            "canvasCpuSparkline", listCpuHistory, "#13aed5", 100
-        );
-        fnDrawSparkline(
-            "canvasMemorySparkline", listMemoryHistory, "#c084fc", 100
-        );
+    function fsFormatDiskText(dictDisk) {
+        if (!dictDisk || !dictDisk.bAvailable) {
+            return "unavailable";
+        }
+        var sUsed = dictDisk.sUsedHuman || "?";
+        var sTotal = dictDisk.sTotalHuman || "?";
+        return sUsed + " / " + sTotal;
+    }
+
+    function fnUpdateDiskDisplay(dictData) {
+        var elDiskText = document.getElementById("monitorDiskText");
+        if (!elDiskText) return;
+        var dictDisk = dictData.dictDisk || {};
+        elDiskText.textContent = fsFormatDiskText(dictDisk);
+        var bDangerouslyLow = !!dictDisk.bAvailable
+            && (dictDisk.fFreeFraction || 0) < F_DISK_BANNER_FRACTION;
+        elDiskText.style.color = bDangerouslyLow ? "#ff6464" : "#e0e0e8";
+    }
+
+    function fsBuildBannerMessage(dictData) {
+        var dictDisk = dictData.dictDisk || {};
+        if (!dictData.bDiskWarning || !dictDisk.bAvailable) {
+            return "";
+        }
+        var fFreePercent = (dictDisk.fFreeFraction || 0) * 100;
+        return "Container disk almost full: " +
+            fFreePercent.toFixed(1) + "% free (" +
+            (dictDisk.sFreeHuman || "?") + " of " +
+            (dictDisk.sTotalHuman || "?") +
+            "). Run `vaibify clean` or grow the Colima VM.";
+    }
+
+    function fnUpdateBanner(dictData) {
+        var elBanner = document.getElementById("monitorBanner");
+        if (!elBanner) return;
+        var sMessage = fsBuildBannerMessage(dictData);
+        if (sMessage) {
+            elBanner.style.display = "block";
+            elBanner.textContent = sMessage;
+        } else {
+            elBanner.style.display = "none";
+            elBanner.textContent = "";
+        }
+    }
+
+    function fnUpdateDisplay(dictData) {
+        var bAvailable = dictData.bAvailable !== false;
+        fnSetUnavailableNotice(bAvailable ? "" : (dictData.sReason || ""));
+        fnUpdateCpuMemoryDisplay(dictData);
+        fnUpdateDiskDisplay(dictData);
+        fnUpdateBanner(dictData);
     }
 
     /* --- Canvas Sparklines --- */

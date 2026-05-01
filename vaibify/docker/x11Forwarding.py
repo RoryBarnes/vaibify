@@ -2,7 +2,17 @@
 
 import os
 import platform
+import socket
 import subprocess
+import sys
+
+
+XQUARTZ_APP_PATH = "/Applications/Utilities/XQuartz.app"
+XQUARTZ_BUNDLE_ID = "org.macosforge.xquartz.X11"
+XQUARTZ_TCP_PORT = 6000
+MAC_CONTAINER_HOST = "host.docker.internal"
+
+_setNoticesShownThisInvocation = set()
 
 
 def flistConfigureX11Args():
@@ -25,19 +35,26 @@ def flistConfigureX11Args():
 
 
 def fnConfigureMacX11(saRunArgs):
-    """Configure X11 forwarding for macOS via XQuartz or Colima.
+    """Configure X11 forwarding for macOS via XQuartz.
 
-    Starts XQuartz if needed, disables X11 auth, and sets DISPLAY
-    to host.docker.internal:0.
+    Detects XQuartz presence first; if missing, prints a notice and
+    leaves DISPLAY unset. Otherwise starts XQuartz, disables auth,
+    probes the TCP listener for the network-clients setting, and sets
+    DISPLAY based on the host's own DISPLAY value.
 
     Parameters
     ----------
     saRunArgs : list of str
         Docker run argument list to extend in place.
     """
+    if not fbXquartzInstalled():
+        _fnPrintXquartzMissingNotice()
+        return
     fnStartXquartz()
     fnDisableX11Auth()
-    saRunArgs.extend(["-e", "DISPLAY=host.docker.internal:0"])
+    if not fbXquartzAcceptingNetworkConnections():
+        _fnPrintXquartzNetworkBlockedNotice()
+    saRunArgs.extend(["-e", f"DISPLAY={fsResolveMacContainerDisplay()}"])
 
 
 def fnConfigureLinuxX11(saRunArgs):
@@ -55,6 +72,106 @@ def fnConfigureLinuxX11(saRunArgs):
     sDisplay = os.environ.get("DISPLAY", ":0")
     saRunArgs.extend(["-e", f"DISPLAY={sDisplay}"])
     saRunArgs.extend(["-v", "/tmp/.X11-unix:/tmp/.X11-unix:ro"])
+
+
+def fbXquartzInstalled():
+    """Return True if XQuartz appears to be installed on this Mac.
+
+    Checks the standard install path first, then falls back to a
+    Spotlight bundle-identifier query for non-default installs.
+    """
+    if os.path.exists(XQUARTZ_APP_PATH):
+        return True
+    return _fbXquartzFoundViaSpotlight()
+
+
+def _fbXquartzFoundViaSpotlight():
+    """Use mdfind to locate XQuartz by CFBundleIdentifier."""
+    sQuery = f"kMDItemCFBundleIdentifier == '{XQUARTZ_BUNDLE_ID}'"
+    try:
+        resultProcess = subprocess.run(
+            ["mdfind", sQuery],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return False
+    return resultProcess.returncode == 0 and bool(resultProcess.stdout.strip())
+
+
+def fbXquartzAcceptingNetworkConnections():
+    """Return True if XQuartz is listening on localhost:6000.
+
+    XQuartz only opens this TCP port when "Allow connections from
+    network clients" is enabled in its security preferences.
+    """
+    try:
+        with socket.create_connection(
+            ("localhost", XQUARTZ_TCP_PORT), timeout=1.0
+        ):
+            return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
+def fsResolveMacContainerDisplay():
+    """Return the DISPLAY value to pass into the macOS container.
+
+    Reads the host's DISPLAY env var, replaces any local-host portion
+    with host.docker.internal, and preserves the display/screen suffix.
+    Falls back to host.docker.internal:0 when DISPLAY is unset.
+    """
+    sHostDisplay = os.environ.get("DISPLAY", "")
+    if not sHostDisplay:
+        return f"{MAC_CONTAINER_HOST}:0"
+    sDisplaySuffix = _fsExtractDisplaySuffix(sHostDisplay)
+    return f"{MAC_CONTAINER_HOST}{sDisplaySuffix}"
+
+
+def _fsExtractDisplaySuffix(sDisplay):
+    """Return the ':N[.M]' portion of a DISPLAY string."""
+    iColonIndex = sDisplay.rfind(":")
+    if iColonIndex < 0:
+        return ":0"
+    return sDisplay[iColonIndex:]
+
+
+def _fnPrintXquartzMissingNotice():
+    """Inform the user that XQuartz is not installed."""
+    sKey = "xquartz-missing"
+    if sKey in _setNoticesShownThisInvocation:
+        return
+    _setNoticesShownThisInvocation.add(sKey)
+    print(
+        "[vaibify] XQuartz not installed; X11 plot forwarding disabled.",
+        file=sys.stderr,
+    )
+    print(
+        "[vaibify]   Install from xquartz.org and restart the container "
+        "to enable.",
+        file=sys.stderr,
+    )
+
+
+def _fnPrintXquartzNetworkBlockedNotice():
+    """Inform the user that XQuartz blocks network clients."""
+    sKey = "xquartz-network-blocked"
+    if sKey in _setNoticesShownThisInvocation:
+        return
+    _setNoticesShownThisInvocation.add(sKey)
+    print(
+        "[vaibify] XQuartz security setting blocks network clients.",
+        file=sys.stderr,
+    )
+    print(
+        "[vaibify]   Enable: XQuartz Preferences -> Security -> 'Allow "
+        "connections",
+        file=sys.stderr,
+    )
+    print(
+        "[vaibify]   from network clients', then restart XQuartz.",
+        file=sys.stderr,
+    )
 
 
 def _fnRunBestEffort(saArgs):

@@ -3,11 +3,17 @@
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import concurrent.futures
+import json
 import os
 
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import fsDetectDockerRuntime
 from ..resourceMonitor import fdictGetContainerStats
+
+
+_S_READY_MARKER_PATH = "/workspace/.vaibify/.entrypoint_ready"
+_F_READY_PROBE_TIMEOUT_SECONDS = 5.0
 
 
 def _fnRegisterMonitor(app):
@@ -38,16 +44,104 @@ def _fnRegisterUserInfo(app):
         }
 
 
-def _fbProbeEntrypointReady(connectionDocker, sContainerId):
-    """Return True when the entrypoint ready marker exists."""
+def _ftReadReadinessMarker(connectionDocker, sContainerId):
+    """Return (sStatus, sRaw) for the readiness marker; sStatus may be 'missing'."""
+    sCommand = (
+        "test -f " + _S_READY_MARKER_PATH
+        + " && cat " + _S_READY_MARKER_PATH
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExitCode != 0:
+        return ("missing", "")
+    return ("present", sOutput)
+
+
+def _fdictParseReadinessMarker(sRaw):
+    """Parse the marker contents into a normalized dict."""
+    sStripped = (sRaw or "").strip()
+    if not sStripped:
+        return {"sStatus": "ok", "sReason": "", "saWarnings": []}
     try:
-        iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-            sContainerId,
-            "test -f /workspace/.vaibify/.entrypoint_ready",
+        dictParsed = json.loads(sStripped)
+    except (ValueError, TypeError):
+        return {"sStatus": "ok", "sReason": "", "saWarnings": []}
+    return {
+        "sStatus": str(dictParsed.get("sStatus") or "ok"),
+        "sReason": str(dictParsed.get("sReason") or ""),
+        "saWarnings": list(dictParsed.get("saWarnings") or []),
+    }
+
+
+def _fdictBuildReadyResponse(dictMarker):
+    """Translate parsed marker into the API response shape."""
+    sStatus = dictMarker.get("sStatus") or "ok"
+    listWarnings = dictMarker.get("saWarnings") or []
+    bReady = sStatus in ("ok", "failed")
+    return {
+        "bReady": bReady,
+        "sStatus": sStatus,
+        "sReason": dictMarker.get("sReason") or "",
+        "saWarnings": listWarnings,
+        "iWarningCount": len(listWarnings),
+    }
+
+
+def _fdictStalledResponse():
+    """Return the response payload for a probe that exceeded its timeout."""
+    return {
+        "bReady": False,
+        "sStatus": "stalled",
+        "sReason": (
+            "container is running but not responding to exec. "
+            "Try `vaibify stop && vaibify start`."
+        ),
+        "saWarnings": [],
+        "iWarningCount": 0,
+    }
+
+
+def _fdictBootingResponse():
+    """Return the response payload for a missing readiness marker."""
+    return {
+        "bReady": False,
+        "sStatus": "booting",
+        "sReason": "",
+        "saWarnings": [],
+        "iWarningCount": 0,
+    }
+
+
+def _fdictProbeWithTimeout(connectionDocker, sContainerId):
+    """Run the readiness probe under a hard timeout."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executorPool:
+        future = executorPool.submit(
+            _ftReadReadinessMarker, connectionDocker, sContainerId,
         )
-        return iExitCode == 0
-    except Exception:
-        return False
+        try:
+            sStatus, sRaw = future.result(
+                timeout=_F_READY_PROBE_TIMEOUT_SECONDS,
+            )
+        except concurrent.futures.TimeoutError:
+            return _fdictStalledResponse()
+    if sStatus == "missing":
+        return _fdictBootingResponse()
+    return _fdictBuildReadyResponse(_fdictParseReadinessMarker(sRaw))
+
+
+def _fdictProbeContainerReadiness(connectionDocker, sContainerId):
+    """Top-level probe wrapper that swallows infrastructure errors."""
+    try:
+        return _fdictProbeWithTimeout(connectionDocker, sContainerId)
+    except Exception as exception:
+        return {
+            "bReady": False,
+            "sStatus": "error",
+            "sReason": f"readiness probe failed: {exception}",
+            "saWarnings": [],
+            "iWarningCount": 0,
+        }
 
 
 def _fnRegisterContainerReady(app, dictCtx):
@@ -56,11 +150,38 @@ def _fnRegisterContainerReady(app, dictCtx):
     @app.get("/api/containers/{sContainerId}/ready")
     async def fnContainerReady(sContainerId: str):
         dictCtx["require"]()
-        bReady = await asyncio.to_thread(
-            _fbProbeEntrypointReady,
+        return await asyncio.to_thread(
+            _fdictProbeContainerReadiness,
             dictCtx["docker"], sContainerId,
         )
-        return {"bReady": bReady}
+
+
+def _fdictReadIsolationFlag(sContainerId):
+    """Return the runtime isolation flag for a container id."""
+    from vaibify.docker.containerManager import (
+        fbContainerIsNetworkIsolated,
+    )
+    return {
+        "bNetworkIsolation":
+            fbContainerIsNetworkIsolated(sContainerId),
+    }
+
+
+def _fnRegisterContainerIsolation(app, dictCtx):
+    """Register GET /api/containers/{id}/isolation endpoint.
+
+    Returns the runtime ``--network none`` setting so the GUI can
+    disable Overleaf, Zenodo, and other network-bound buttons before
+    the user clicks them and waits for a 30-second DNS timeout.
+    Audit finding F-R-08.
+    """
+
+    @app.get("/api/containers/{sContainerId}/isolation")
+    async def fnContainerIsolation(sContainerId: str):
+        dictCtx["require"]()
+        return await asyncio.to_thread(
+            _fdictReadIsolationFlag, sContainerId,
+        )
 
 
 def fnRegisterAll(app, dictCtx):
@@ -69,3 +190,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterContainerReady(app, dictCtx)
+    _fnRegisterContainerIsolation(app, dictCtx)

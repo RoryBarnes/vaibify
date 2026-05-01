@@ -141,14 +141,16 @@ async def _fdictRunOneTestCategory(
         return None
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + listCatCmds)
-    iCatExit, sCatOutput = await asyncio.to_thread(
-        dictCtx["docker"].ftResultExecuteCommand,
+    resultExec = await asyncio.to_thread(
+        dictCtx["docker"].texecRunInContainerStreamed,
         sContainerId, sCatCmd,
     )
     return {
-        "bPassed": iCatExit == 0,
-        "sOutput": sCatOutput,
-        "iExitCode": iCatExit,
+        "bPassed": resultExec.iExitCode == 0,
+        "sOutput": resultExec.sStdout + resultExec.sStderr,
+        "sStdout": resultExec.sStdout,
+        "sStderr": resultExec.sStderr,
+        "iExitCode": resultExec.iExitCode,
     }
 
 
@@ -259,11 +261,11 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             ),
             request.sFilePath,
         )
-        iExitCode, sOutput = await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
+        resultExec = await asyncio.to_thread(
+            dictCtx["docker"].texecRunInContainerStreamed,
             sContainerId, sTestCmd,
         )
-        bPassed = iExitCode == 0
+        bPassed = resultExec.iExitCode == 0
         _fnRecordTestResult(
             dictStep, bPassed, dictWorkflow, iStepIndex)
         _fnRegisterTestCommand(
@@ -275,8 +277,10 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         )
         return {
             "bPassed": bPassed,
-            "sOutput": sOutput,
-            "iExitCode": iExitCode,
+            "sOutput": resultExec.sStdout + resultExec.sStderr,
+            "sStdout": resultExec.sStdout,
+            "sStderr": resultExec.sStderr,
+            "iExitCode": resultExec.iExitCode,
         }
 
 
@@ -357,11 +361,12 @@ def _fnRegisterTestRun(app, dictCtx):
         )
         sFullCmd = " && ".join(
             [f"cd {fsShellQuote(sDir)}"] + listCmds)
-        iExitCode, sOutput = await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
+        resultExec = await asyncio.to_thread(
+            dictCtx["docker"].texecRunInContainerStreamed,
             sContainerId, sFullCmd,
         )
-        bPassed = iExitCode == 0
+        bPassed = resultExec.iExitCode == 0
+        sOutput = resultExec.sStdout + resultExec.sStderr
         dictVerification = dictStep.setdefault(
             "dictVerification", {})
         dictVerification[sVerifKey] = (
@@ -379,7 +384,9 @@ def _fnRegisterTestRun(app, dictCtx):
         return {
             "bPassed": bPassed,
             "sOutput": sOutput,
-            "iExitCode": iExitCode,
+            "sStdout": resultExec.sStdout,
+            "sStderr": resultExec.sStderr,
+            "iExitCode": resultExec.iExitCode,
         }
 
 

@@ -7,9 +7,29 @@ FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install R from CRAN repository
-RUN curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
-        | gpg --dearmor -o /usr/share/keyrings/cran-archive-keyring.gpg \
+# Install R from CRAN repository. Download the keyring over HTTPS,
+# emit an actionable diagnostic on failure — same template as the
+# deadsnakes block in docker/Dockerfile.
+RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+            --connect-timeout 30 \
+            https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+            -o /tmp/marutter_pubkey.asc; then \
+        echo "" >&2; \
+        echo "vaibify build (rlang overlay): cannot download CRAN signing key." >&2; \
+        echo "  - The key lives at cloud.r-project.org." >&2; \
+        echo "  - Download failed (likely a TLS or network failure between" >&2; \
+        echo "    this build host and cloud.r-project.org)." >&2; \
+        echo "Pick one workaround:" >&2; \
+        echo "  1. Disable the R overlay (features: { rlang: false })." >&2; \
+        echo "  2. Resolve your build host's network path to" >&2; \
+        echo "     cloud.r-project.org (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        echo "     and rebuild." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
+    && gpg --dearmor -o /usr/share/keyrings/cran-archive-keyring.gpg \
+        < /tmp/marutter_pubkey.asc \
+    && rm -f /tmp/marutter_pubkey.asc \
     && echo "deb [signed-by=/usr/share/keyrings/cran-archive-keyring.gpg] \
         https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" \
         > /etc/apt/sources.list.d/cran.list \
@@ -19,6 +39,31 @@ RUN curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc 
         r-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install IRkernel for Jupyter integration
-RUN Rscript -e "install.packages('IRkernel', repos='https://cloud.r-project.org')" \
-    && Rscript -e "IRkernel::installspec(user = FALSE)"
+# Install IRkernel for Jupyter integration. Pin a single CRAN mirror
+# so we don't depend on R's mirror-resolution heuristics, and wrap
+# each Rscript step so a network or registration failure produces an
+# actionable diagnostic instead of a generic R error.
+RUN if ! Rscript -e "install.packages('IRkernel', repos='https://cran.rstudio.com')"; then \
+        echo "" >&2; \
+        echo "vaibify build (rlang overlay): cannot install IRkernel package." >&2; \
+        echo "  - Package source lives on cran.rstudio.com." >&2; \
+        echo "  - install.packages failed (likely a TLS or network failure" >&2; \
+        echo "    between this build host and the pinned CRAN mirror)." >&2; \
+        echo "Pick one workaround:" >&2; \
+        echo "  1. Disable the R overlay (features: { rlang: false })." >&2; \
+        echo "  2. Resolve your build host's network path to a CRAN mirror" >&2; \
+        echo "     (proxy, IPv6, MTU, TLS inspection) and rebuild." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
+    && if ! Rscript -e "IRkernel::installspec(user = FALSE)"; then \
+        echo "" >&2; \
+        echo "vaibify build (rlang overlay): cannot register Jupyter kernel." >&2; \
+        echo "  - IRkernel::installspec failed after IRkernel installed." >&2; \
+        echo "  - This usually means jupyter is missing or PATH is wrong." >&2; \
+        echo "Pick one workaround:" >&2; \
+        echo "  1. Add 'jupyter' to pythonPackages in vaibify.yml and rebuild." >&2; \
+        echo "  2. Disable the R overlay (features: { rlang: false })." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi

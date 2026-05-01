@@ -90,10 +90,10 @@ def test_fnWriteBinariesEnv_empty():
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
-@patch("vaibify.docker.fbDockerDaemonReachable",
-       return_value=True)
+@patch("vaibify.cli.commandBuild.flistRunBuildPreflight",
+       return_value=[])
 def test_build_catches_runtime_error(
-    mockDaemon, mockDir, mockConfig, mockBuild,
+    mockPreflight, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigForBuild()
@@ -109,10 +109,10 @@ def test_build_catches_runtime_error(
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
-@patch("vaibify.docker.fbDockerDaemonReachable",
-       return_value=True)
+@patch("vaibify.cli.commandBuild.flistRunBuildPreflight",
+       return_value=[])
 def test_build_catches_file_not_found(
-    mockDaemon, mockDir, mockConfig, mockBuild,
+    mockPreflight, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigForBuild()
@@ -127,10 +127,10 @@ def test_build_catches_file_not_found(
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
-@patch("vaibify.docker.fbDockerDaemonReachable",
-       return_value=True)
+@patch("vaibify.cli.commandBuild.flistRunBuildPreflight",
+       return_value=[])
 def test_build_catches_value_error(
-    mockDaemon, mockDir, mockConfig, mockBuild,
+    mockPreflight, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigForBuild()
@@ -147,15 +147,17 @@ def test_build_catches_value_error(
        return_value="/docker")
 @patch("vaibify.docker.fbDockerDaemonReachable",
        return_value=False)
+@patch("vaibify.docker.dockerContext.fbColimaActive",
+       return_value=False)
 def test_build_exits_when_docker_unreachable(
-    mockDaemon, mockDir, mockConfig, mockBuild,
+    mockColima, mockDaemon, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigForBuild()
     runner = CliRunner()
     result = runner.invoke(build)
     assert result.exit_code != 0
-    assert "Docker daemon is not reachable" in result.output
+    assert "Docker daemon not reachable" in result.output
     mockBuild.assert_not_called()
 
 

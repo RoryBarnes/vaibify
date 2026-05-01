@@ -85,9 +85,43 @@ RUN if [ "${INSTALL_LATEX}" = "true" ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Python from deadsnakes PPA
-RUN add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
+# Note:
+# When adding network-dependent RUN steps to this or overlay
+# Dockerfiles, prefer curl with --retry, --connect-timeout, and
+# --fail; on failure, emit a diagnostic via `echo` to stderr and
+# exit 1 with an actionable message. See the deadsnakes block
+# below for the exact template.
+
+# Python: prefer system repos; fall back to deadsnakes PPA only if
+# the requested version is not in the base image's archive. The
+# default config (ubuntu:24.04 + Python 3.12) has no launchpad.net
+# dependency. When the PPA is needed and unreachable (TLS / proxy /
+# network), exit with an actionable diagnostic instead of an opaque
+# SSLEOFError traceback from add-apt-repository.
+ARG BASE_IMAGE
+RUN apt-get update \
+    && if ! apt-cache show python${PYTHON_VERSION} >/dev/null 2>&1; then \
+           if ! add-apt-repository -y ppa:deadsnakes/ppa; then \
+               echo "" >&2; \
+               echo "vaibify build: cannot install Python ${PYTHON_VERSION}." >&2; \
+               echo "  - It is not in ${BASE_IMAGE}'s default apt archive." >&2; \
+               echo "  - The deadsnakes PPA could not be added (likely a TLS" >&2; \
+               echo "    or network failure between this build host and" >&2; \
+               echo "    launchpad.net)." >&2; \
+               echo "Pick one workaround:" >&2; \
+               echo "  1. Set pythonVersion in vaibify.yml to the base image" >&2; \
+               echo "     default (e.g. 3.12 for ubuntu:24.04, 3.10 for" >&2; \
+               echo "     ubuntu:22.04) so no PPA is needed." >&2; \
+               echo "  2. Switch baseImage to one that ships Python" >&2; \
+               echo "     ${PYTHON_VERSION} natively." >&2; \
+               echo "  3. Resolve your build host's network path to" >&2; \
+               echo "     launchpad.net (proxy, IPv6, MTU, TLS inspection)" >&2; \
+               echo "     and rebuild." >&2; \
+               echo "" >&2; \
+               exit 1; \
+           fi; \
+           apt-get update; \
+       fi \
     && apt-get install -y --no-install-recommends \
         python${PYTHON_VERSION} \
         python${PYTHON_VERSION}-dev \
@@ -119,10 +153,30 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
 RUN pip install --no-cache-dir keyring keyrings.alt
 ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
 
-# Conditional conda/mamba install for non-pip package managers
+# Conditional conda/mamba install for non-pip package managers.
+# Wrap the network call so a TLS or routing failure to GitHub /
+# objects.githubusercontent.com produces an actionable diagnostic —
+# same template as the deadsnakes block above.
 RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
-        curl -fsSL -o /tmp/miniforge.sh \
-            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh" \
+        MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh"; \
+        if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+                --connect-timeout 30 \
+                "${MINIFORGE_URL}" -o /tmp/miniforge.sh; then \
+            echo "" >&2; \
+            echo "vaibify build: cannot download the Miniforge installer." >&2; \
+            echo "  - Installer lives at ${MINIFORGE_URL}." >&2; \
+            echo "  - Download failed (likely a TLS or network failure between" >&2; \
+            echo "    this build host and github.com /" >&2; \
+            echo "    objects.githubusercontent.com)." >&2; \
+            echo "Pick one workaround:" >&2; \
+            echo "  1. Set packageManager to 'pip' in vaibify.yml — the" >&2; \
+            echo "     Miniforge installer is only fetched for non-pip" >&2; \
+            echo "     package managers." >&2; \
+            echo "  2. Resolve your build host's network path to github.com" >&2; \
+            echo "     (proxy, IPv6, MTU, TLS inspection) and rebuild." >&2; \
+            echo "" >&2; \
+            exit 1; \
+        fi \
         && bash /tmp/miniforge.sh -b -p /opt/conda \
         && rm /tmp/miniforge.sh \
         && /opt/conda/bin/conda init bash \

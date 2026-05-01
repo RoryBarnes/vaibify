@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui.routes.testRoutes import (
     _fbNeedsClaudeFallback,
     _fdictBuildGenerateResponse,
@@ -15,11 +16,30 @@ from vaibify.gui.routes.testRoutes import (
 )
 
 
+def _fnSetExecResult(
+    mockDocker, iExitCode=0, sStdout="OK", sStderr="",
+):
+    """Configure mockDocker so both exec entry points return the same data.
+
+    The migrated test routes call ``texecRunInContainerStreamed``;
+    other paths still call ``ftResultExecuteCommand``. Patching both
+    keeps every test deterministic regardless of which one the code
+    under test selects.
+    """
+    mockDocker.texecRunInContainerStreamed = MagicMock(
+        return_value=ExecResult(
+            iExitCode=iExitCode, sStdout=sStdout, sStderr=sStderr,
+        ),
+    )
+    mockDocker.ftResultExecuteCommand = MagicMock(
+        return_value=(iExitCode, sStdout + sStderr),
+    )
+
+
 def _fdictBuildContext():
     """Build a minimal dictCtx for test route tests."""
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand = MagicMock(
-        return_value=(0, "OK"))
+    _fnSetExecResult(mockDocker, 0, "OK", "")
     return {
         "require": MagicMock(),
         "docker": mockDocker,
@@ -399,8 +419,8 @@ class TestRunTestCategoryRoute:
     @pytest.mark.asyncio
     async def test_successful_category_run_passed(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "all passed"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "all passed", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
 
         sPath = (
@@ -448,8 +468,8 @@ class TestRunTestCategoryRoute:
     @pytest.mark.asyncio
     async def test_failed_category_run(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(1, "FAILED"))
+        _fnSetExecResult(
+            dictCtx["docker"], 1, "FAILED", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
 
         sPath = (
@@ -488,8 +508,8 @@ class TestRunTestCategoryRoute:
     async def test_quantitative_category_run(self):
         """Cover the quantitative branch in dictCategoryKeyMap."""
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "ok"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "ok", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
 
         sPath = (
@@ -529,8 +549,8 @@ class TestRunTestCategoryRoute:
     async def test_empty_output_not_stored(self):
         """Line 343: sLastOutput only set when sOutput truthy."""
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, ""))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
 
         sPath = (
@@ -660,8 +680,8 @@ class TestSaveAndRunTestRoute:
     @pytest.mark.asyncio
     async def test_save_and_run_passing(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "1 passed"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "1 passed", "")
 
         listHandlers = self._fnRegisterAndCapture(dictCtx)
         sPath = (
@@ -701,8 +721,8 @@ class TestSaveAndRunTestRoute:
     @pytest.mark.asyncio
     async def test_save_and_run_failing(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(1, "FAILED"))
+        _fnSetExecResult(
+            dictCtx["docker"], 1, "FAILED", "")
 
         listHandlers = self._fnRegisterAndCapture(dictCtx)
         sPath = (
@@ -972,8 +992,8 @@ class TestFdictRunOneTestCategory:
     @pytest.mark.asyncio
     async def test_returns_result_dict(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "ok"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "ok", "")
         dictStep = {
             "dictTests": {
                 "dictIntegrity": {
@@ -990,8 +1010,8 @@ class TestFdictRunOneTestCategory:
     @pytest.mark.asyncio
     async def test_returns_failure(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(2, "error"))
+        _fnSetExecResult(
+            dictCtx["docker"], 2, "error", "")
         dictStep = {
             "dictTests": {
                 "dictIntegrity": {
@@ -1070,8 +1090,8 @@ class TestRunTestsResolvesRepoRoot:
     @pytest.mark.asyncio
     async def test_run_tests_cds_into_absolute_repo_path(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "ok"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "ok", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
         sPath = "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
         fnHandler = listHandlers[sPath]
@@ -1105,7 +1125,10 @@ class TestRunTestsResolvesRepoRoot:
             return_value={"bPassed": True},
         ):
             await fnHandler("cid-1", 0)
-        sCmd = dictCtx["docker"].ftResultExecuteCommand.call_args[0][1]
+        sCmd = (
+            dictCtx["docker"]
+            .texecRunInContainerStreamed.call_args[0][1]
+        )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
 
 
@@ -1131,8 +1154,8 @@ class TestRunTestCategoryResolvesRepoRoot:
     @pytest.mark.asyncio
     async def test_run_category_cds_into_absolute_repo_path(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "ok"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "ok", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
         sPath = (
             "/api/steps/{sContainerId}/{iStepIndex}"
@@ -1161,7 +1184,10 @@ class TestRunTestCategoryResolvesRepoRoot:
             "_fnUpdateAggregateTestState",
         ):
             await fnHandler("cid-1", 0, mockRequest)
-        sCmd = dictCtx["docker"].ftResultExecuteCommand.call_args[0][1]
+        sCmd = (
+            dictCtx["docker"]
+            .texecRunInContainerStreamed.call_args[0][1]
+        )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
 
 
@@ -1187,8 +1213,8 @@ class TestSaveAndRunTestResolvesRepoRoot:
     @pytest.mark.asyncio
     async def test_save_and_run_cds_into_absolute_repo_path(self):
         dictCtx = _fdictBuildContext()
-        dictCtx["docker"].ftResultExecuteCommand = MagicMock(
-            return_value=(0, "ok"))
+        _fnSetExecResult(
+            dictCtx["docker"], 0, "ok", "")
         listHandlers = self._fnRegisterAndCapture(dictCtx)
         sPath = (
             "/api/steps/{sContainerId}/{iStepIndex}"
@@ -1216,5 +1242,8 @@ class TestSaveAndRunTestResolvesRepoRoot:
             "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
         ):
             await fnHandler("cid-1", 0, mockRequest)
-        sCmd = dictCtx["docker"].ftResultExecuteCommand.call_args[0][1]
+        sCmd = (
+            dictCtx["docker"]
+            .texecRunInContainerStreamed.call_args[0][1]
+        )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
