@@ -18,13 +18,19 @@ def test_flistTrackedDirtyPaths_returns_empty_for_clean_tree():
     assert gitRoutes._flistTrackedDirtyPaths(dictGit) == []
 
 
-def test_flistTrackedDirtyPaths_includes_modified_and_staged():
+def test_flistTrackedDirtyPaths_includes_dirty_and_uncommitted():
+    """Worktree-modified ('dirty') and index-only changes ('uncommitted')
+    block a fast-forward; untracked and ignored files do not (matching
+    git's own ``--ff-only`` behavior). The state-name set must agree
+    with ``gitStatus._fsStateFromXy``'s actual outputs.
+    """
     dictGit = {
         "dictFileStates": {
-            "Step01/out.npz": "modified",
-            "Step02/fig.pdf": "staged",
+            "Step01/out.npz": "dirty",
+            "Step02/fig.pdf": "uncommitted",
             "README.md": "untracked",
             ".envrc": "ignored",
+            "src/clean.py": "committed",
         },
     }
     listResult = gitRoutes._flistTrackedDirtyPaths(dictGit)
@@ -56,6 +62,30 @@ def test_flistTrackedDirtyPaths_ignores_untracked_and_ignored():
 def test_flistTrackedDirtyPaths_handles_missing_dict():
     """A status with no dictFileStates field must not crash."""
     assert gitRoutes._flistTrackedDirtyPaths({}) == []
+
+
+def test_pull_refusal_vocabulary_matches_gitStatus_emitted_states():
+    """SET_TRACKED_CHANGE_STATES must be a subset of gitStatus's vocabulary.
+
+    Regression for a bug where the route used hypothetical names
+    ('modified', 'staged') that never appear in gitStatus output, so
+    real dirty trees fell through the refusal branch and surfaced as a
+    raw git failure 502 instead of the structured refusal the plan
+    promised. Every name here must be a value gitStatus could actually
+    emit, otherwise the route silently never fires.
+    """
+    from vaibify.gui import gitStatus
+
+    set_xy_states = {
+        gitStatus._fsStateFromXy(sIndex + sWorktree)
+        for sIndex in (".", " ", "M", "A", "D", "R", "C", "U", "T")
+        for sWorktree in (".", " ", "M", "D", "T")
+    }
+    set_emitted = set_xy_states | {"untracked", "ignored", "conflict"}
+    assert gitRoutes.SET_TRACKED_CHANGE_STATES.issubset(set_emitted), (
+        "Route uses names gitStatus never emits: "
+        f"{gitRoutes.SET_TRACKED_CHANGE_STATES - set_emitted}"
+    )
 
 
 @pytest.fixture(autouse=True)

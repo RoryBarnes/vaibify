@@ -42,10 +42,14 @@ from ..pipelineServer import fdictRequireWorkflow
 
 
 F_FETCH_CACHE_SECONDS = 30.0
-SET_TRACKED_CHANGE_STATES = {
-    "modified", "staged", "added", "deleted",
-    "renamed", "copied", "conflict", "typechange",
-}
+# Canonical state vocabulary emitted by ``gitStatus._fsStateFromXy`` and
+# the porcelain parser is {"committed", "uncommitted", "dirty",
+# "untracked", "ignored", "conflict"}. ``uncommitted`` covers index-only
+# changes (added/staged/deleted-but-staged); ``dirty`` covers any
+# worktree change (modified/typechange/deleted-from-worktree). Untracked
+# and ignored files do not block ``git pull --ff-only``, matching git's
+# native behavior, so they are intentionally absent here.
+SET_TRACKED_CHANGE_STATES = {"dirty", "uncommitted", "conflict"}
 _DICT_LAST_FETCH = {}
 
 
