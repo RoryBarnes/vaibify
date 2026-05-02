@@ -19,11 +19,10 @@ pipeline can benefit from containerized reproducibility.
    philosophy
    install
    quickStart
-   setupWizard
    configuration
    cli
    pipelines
-   gui
+   dashboard
    testFormats
    templates
    security
@@ -32,6 +31,5 @@ pipeline can benefit from containerized reproducibility.
    externalServices
    vibeCoding
    developers
-   migration/2026-workflow-in-repo
    GitHub <https://github.com/RoryBarnes/Vaibify>
    PyPI <https://pypi.org/project/vaibify/>
