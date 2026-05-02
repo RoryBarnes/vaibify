@@ -295,14 +295,30 @@ def fbContainerIsNetworkIsolated(sContainerIdentifier):
     network calls (Overleaf, Zenodo) when the container is sealed,
     so the user sees an actionable error instead of a 30-second DNS
     timeout (audit finding F-R-08).
+
+    Fail-open semantics on inspect failure
+    --------------------------------------
+    Returns ``False`` (i.e., "not isolated") when ``docker inspect``
+    cannot answer — the container was just stopped, removed, or
+    never started; the docker CLI is missing (e.g., on a CI runner
+    that doesn't ship docker); or the call times out. This is
+    intentional: if the container is unreachable, no egress can
+    occur regardless, so the gating routes can return their normal
+    "container not running" error rather than a confusing isolation
+    message. Tightening this to fail-closed would block legitimate
+    calls during transient docker-daemon hiccups; do not change
+    without revisiting the gating routes' caller-facing semantics.
     """
-    resultProcess = subprocess.run(
-        [
-            "docker", "inspect", "-f",
-            "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
-        ],
-        capture_output=True, text=True,
-    )
+    try:
+        resultProcess = subprocess.run(
+            [
+                "docker", "inspect", "-f",
+                "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
+            ],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
     if resultProcess.returncode != 0:
         return False
     return resultProcess.stdout.strip() == "none"
