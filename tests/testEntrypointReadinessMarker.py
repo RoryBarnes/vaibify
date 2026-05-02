@@ -121,6 +121,60 @@ def test_categorize_clone_error(tmp_path, sStderr, sExpectedCategory):
     assert resultProc.stdout.strip() == sExpectedCategory
 
 
+@pytest.mark.parametrize(
+    "sInput, sExpectedFragment, sBannedFragment",
+    [
+        (
+            "remote: https://x-access-token:abc123@github.com/foo.git: not found",
+            "https://REDACTED@github.com/foo.git",
+            "abc123",
+        ),
+        (
+            "fatal: could not access http://user:pw@host/repo",
+            "http://REDACTED@host/repo",
+            "user:pw",
+        ),
+        (
+            "Permission denied (publickey). git@github.com:foo/bar.git",
+            "git@github.com:foo/bar.git",
+            "REDACTED",
+        ),
+        (
+            "fatal: could not resolve host: github.com",
+            "could not resolve host: github.com",
+            "REDACTED",
+        ),
+    ],
+)
+def test_redact_credentials(tmp_path, sInput, sExpectedFragment, sBannedFragment):
+    """fsRedactCredentials strips embedded credentials from HTTPS URLs."""
+    sWorkspace = str(tmp_path)
+    sBody = 'fsRedactCredentials ' + repr(sInput) + '\n'
+    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    assert resultProc.returncode == 0, resultProc.stderr
+    assert sExpectedFragment in resultProc.stdout
+    assert sBannedFragment not in resultProc.stdout
+
+
+def test_handle_clone_failure_redacts_token_in_warning(tmp_path):
+    """A token embedded in a clone-error URL must not leak into the marker."""
+    sWorkspace = str(tmp_path)
+    sStderrFile = tmp_path / "stderr.txt"
+    sStderrFile.write_text(
+        "fatal: unable to access 'https://x-access-token:SECRET123@github.com/foo.git/'\n"
+    )
+    sBody = (
+        'fnHandleCloneFailure "foo" "main" "' + str(sStderrFile) + '"\n'
+        'fnWriteReadinessMarker "ok" ""\n'
+    )
+    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    assert resultProc.returncode == 0, resultProc.stderr
+    dictMarker = _fdictReadMarker(sWorkspace)
+    sJoined = json.dumps(dictMarker)
+    assert "SECRET123" not in sJoined
+    assert "REDACTED" in sJoined
+
+
 def test_handle_clone_failure_records_auth_warning(tmp_path):
     """Auth-class clone failure appends a structured warning entry."""
     sWorkspace = str(tmp_path)

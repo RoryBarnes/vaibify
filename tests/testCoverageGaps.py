@@ -741,10 +741,21 @@ def test_fbImageExists_false(mockRun):
     assert fbImageExists("proj:latest") is False
 
 
-@patch("subprocess.run")
-def test_fnRunDockerBuild_failure(mockRun):
+@patch("vaibify.docker.imageBuilder._fnRunDockerBuildCapturing")
+def test_fnRunDockerBuild_failure(mockCapturing):
+    """The build wrapper surfaces the underlying docker failure as RuntimeError.
+
+    Round 3 replaced the bare ``subprocess.run`` call with a
+    streaming-plus-capturing helper; mock that helper directly so
+    the test does not depend on whether ``docker`` is installed on
+    the runner. A bare ``subprocess.run`` mock no longer intercepts
+    the real call path and would silently invoke docker on Linux
+    runners while raising FileNotFoundError on macOS runners.
+    """
     from vaibify.docker.imageBuilder import _fnRunDockerBuild
-    mockRun.return_value = MagicMock(returncode=1)
+    mockCapturing.side_effect = RuntimeError(
+        "Docker command failed (exit 1): docker build ."
+    )
     with pytest.raises(RuntimeError, match="Docker command"):
         _fnRunDockerBuild(["docker", "build", "."])
 

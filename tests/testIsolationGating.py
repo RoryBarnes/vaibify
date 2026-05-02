@@ -398,3 +398,36 @@ def test_fbContainerIsNetworkIsolated_returns_false_on_inspect_error():
             containerManager.fbContainerIsNetworkIsolated("xyz")
             is False
         )
+
+
+def test_fbContainerIsNetworkIsolated_returns_false_when_docker_missing():
+    """When the docker binary is missing, returns False (fail-open).
+
+    Hits on macOS CI runners that don't ship docker, and on any host
+    where docker was uninstalled. Without this guard the subprocess
+    call raises FileNotFoundError and propagates into HTTP 500s in
+    every sync route.
+    """
+    from vaibify.docker import containerManager
+    with patch(
+        "vaibify.docker.containerManager.subprocess.run",
+        side_effect=FileNotFoundError(2, "No such file or directory", "docker"),
+    ):
+        assert (
+            containerManager.fbContainerIsNetworkIsolated("xyz")
+            is False
+        )
+
+
+def test_fbContainerIsNetworkIsolated_returns_false_on_timeout():
+    """When docker inspect hangs past the timeout, returns False (fail-open)."""
+    from vaibify.docker import containerManager
+    import subprocess as subprocessModule
+    with patch(
+        "vaibify.docker.containerManager.subprocess.run",
+        side_effect=subprocessModule.TimeoutExpired("docker", 5),
+    ):
+        assert (
+            containerManager.fbContainerIsNetworkIsolated("xyz")
+            is False
+        )

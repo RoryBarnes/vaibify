@@ -39,6 +39,38 @@ def test_fbValidateConfig_missing_name():
     assert fbValidateConfig(dictConfig) is False
 
 
+def test_fbValidateConfig_rejects_metacharacter_names():
+    dictConfig = fdictLoadDefaults()
+    for sBadName in [
+        "proj;rm -rf /",
+        "../escape",
+        "name with spaces",
+        "name$(whoami)",
+        "-leadingdash",
+        ".leadingdot",
+        "_leadingunder",
+        "x" * 64,
+    ]:
+        dictConfig["projectName"] = sBadName
+        assert fbValidateConfig(dictConfig) is False, sBadName
+
+
+def test_fbValidateConfig_accepts_well_formed_names():
+    dictConfig = fdictLoadDefaults()
+    for sGoodName in [
+        "myproj",
+        "MyProj",
+        "proj-1",
+        "proj_1",
+        "proj.1",
+        "Project123",
+        "x",
+        "x" * 63,
+    ]:
+        dictConfig["projectName"] = sGoodName
+        assert fbValidateConfig(dictConfig) is True, sGoodName
+
+
 def test_fbValidateConfig_bad_manager():
     dictConfig = fdictLoadDefaults()
     dictConfig["projectName"] = "test"

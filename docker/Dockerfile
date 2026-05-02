@@ -103,20 +103,20 @@ RUN apt-get update \
     && if ! apt-cache show python${PYTHON_VERSION} >/dev/null 2>&1; then \
            if ! add-apt-repository -y ppa:deadsnakes/ppa; then \
                echo "" >&2; \
-               echo "vaibify build: cannot install Python ${PYTHON_VERSION}." >&2; \
-               echo "  - It is not in ${BASE_IMAGE}'s default apt archive." >&2; \
-               echo "  - The deadsnakes PPA could not be added (likely a TLS" >&2; \
-               echo "    or network failure between this build host and" >&2; \
-               echo "    launchpad.net)." >&2; \
-               echo "Pick one workaround:" >&2; \
-               echo "  1. Set pythonVersion in vaibify.yml to the base image" >&2; \
-               echo "     default (e.g. 3.12 for ubuntu:24.04, 3.10 for" >&2; \
-               echo "     ubuntu:22.04) so no PPA is needed." >&2; \
-               echo "  2. Switch baseImage to one that ships Python" >&2; \
-               echo "     ${PYTHON_VERSION} natively." >&2; \
-               echo "  3. Resolve your build host's network path to" >&2; \
-               echo "     launchpad.net (proxy, IPv6, MTU, TLS inspection)" >&2; \
-               echo "     and rebuild." >&2; \
+               printf '%s\n' "vaibify build: cannot install Python ${PYTHON_VERSION}." >&2; \
+               printf '%s\n' "  - It is not in ${BASE_IMAGE}'s default apt archive." >&2; \
+               printf '%s\n' "  - The deadsnakes PPA could not be added (likely a TLS" >&2; \
+               printf '%s\n' "    or network failure between this build host and" >&2; \
+               printf '%s\n' "    launchpad.net)." >&2; \
+               printf '%s\n' "Pick one workaround:" >&2; \
+               printf '%s\n' "  1. Set pythonVersion in vaibify.yml to the base image" >&2; \
+               printf '%s\n' "     default (e.g. 3.12 for ubuntu:24.04, 3.10 for" >&2; \
+               printf '%s\n' "     ubuntu:22.04) so no PPA is needed." >&2; \
+               printf '%s\n' "  2. Switch baseImage to one that ships Python" >&2; \
+               printf '%s\n' "     ${PYTHON_VERSION} natively." >&2; \
+               printf '%s\n' "  3. Resolve your build host's network path to" >&2; \
+               printf '%s\n' "     launchpad.net (proxy, IPv6, MTU, TLS inspection)" >&2; \
+               printf '%s\n' "     and rebuild." >&2; \
                echo "" >&2; \
                exit 1; \
            fi; \
@@ -163,17 +163,17 @@ RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
                 --connect-timeout 30 \
                 "${MINIFORGE_URL}" -o /tmp/miniforge.sh; then \
             echo "" >&2; \
-            echo "vaibify build: cannot download the Miniforge installer." >&2; \
-            echo "  - Installer lives at ${MINIFORGE_URL}." >&2; \
-            echo "  - Download failed (likely a TLS or network failure between" >&2; \
-            echo "    this build host and github.com /" >&2; \
-            echo "    objects.githubusercontent.com)." >&2; \
-            echo "Pick one workaround:" >&2; \
-            echo "  1. Set packageManager to 'pip' in vaibify.yml — the" >&2; \
-            echo "     Miniforge installer is only fetched for non-pip" >&2; \
-            echo "     package managers." >&2; \
-            echo "  2. Resolve your build host's network path to github.com" >&2; \
-            echo "     (proxy, IPv6, MTU, TLS inspection) and rebuild." >&2; \
+            printf '%s\n' "vaibify build: cannot download the Miniforge installer." >&2; \
+            printf '%s\n' "  - Installer lives at ${MINIFORGE_URL}." >&2; \
+            printf '%s\n' "  - Download failed (likely a TLS or network failure between" >&2; \
+            printf '%s\n' "    this build host and github.com /" >&2; \
+            printf '%s\n' "    objects.githubusercontent.com)." >&2; \
+            printf '%s\n' "Pick one workaround:" >&2; \
+            printf '%s\n' "  1. Set packageManager to 'pip' in vaibify.yml — the" >&2; \
+            printf '%s\n' "     Miniforge installer is only fetched for non-pip" >&2; \
+            printf '%s\n' "     package managers." >&2; \
+            printf '%s\n' "  2. Resolve your build host's network path to github.com" >&2; \
+            printf '%s\n' "     (proxy, IPv6, MTU, TLS inspection) and rebuild." >&2; \
             echo "" >&2; \
             exit 1; \
         fi \

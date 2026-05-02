@@ -91,6 +91,19 @@ fnWriteReadinessMarker() {
 }
 
 # ---------------------------------------------------------------------------
+# fsRedactCredentials: Strip credentials embedded in HTTP(S) URLs
+# Arguments: sInput
+# Returns (stdout): sInput with `https://user:token@host` rewritten to
+# `https://REDACTED@host`. Defends git's clone stderr against leaking
+# tokens that may be present in `~/.git-credentials` URLs.
+# ---------------------------------------------------------------------------
+fsRedactCredentials() {
+    local sInput="$1"
+    printf '%s' "${sInput}" | LC_ALL=C sed -E \
+        's|(https?://)[^@[:space:]/]+@|\1REDACTED@|g'
+}
+
+# ---------------------------------------------------------------------------
 # fsCategorizeCloneError: Map git-clone stderr to a category keyword
 # Arguments: sStderr
 # Returns (stdout): one of auth | network | branch | unknown
@@ -125,6 +138,7 @@ fnHandleCloneFailure() {
     local sStderrFile="$3"
     local sStderr=""
     [ -f "${sStderrFile}" ] && sStderr=$(cat "${sStderrFile}")
+    sStderr=$(fsRedactCredentials "${sStderr}")
     local sCategory
     sCategory=$(fsCategorizeCloneError "${sStderr}")
     case "${sCategory}" in

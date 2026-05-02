@@ -13,7 +13,10 @@ from vaibify.cli.commandBuild import (
     _fsBuildErrorHint,
     _fsClassifyBuildError,
 )
-from vaibify.docker.imageBuilder import _fnRunDockerBuildCapturing
+from vaibify.docker.imageBuilder import (
+    _fnRunDockerBuildCapturing,
+    fsRedactBuildOutputCredentials,
+)
 
 
 # -------------------------------------------------------------------
@@ -253,3 +256,48 @@ def test_fnRunDockerBuildCapturing_classifies_rate_limit_via_handler(capsys):
             _fnHandleBuildError(error)
     sCaptured = capsys.readouterr().err
     assert "rate-limited" in sCaptured.lower()
+
+
+# -------------------------------------------------------------------
+# fsRedactBuildOutputCredentials -- credential redaction in stderr tail
+# -------------------------------------------------------------------
+
+def test_fsRedactBuildOutputCredentials_strips_https_userinfo():
+    sInput = "fatal: 'https://x-access-token:abc123@github.com/foo.git/' not found"
+    sRedacted = fsRedactBuildOutputCredentials(sInput)
+    assert "abc123" not in sRedacted
+    assert "https://REDACTED@github.com" in sRedacted
+
+
+def test_fsRedactBuildOutputCredentials_strips_http_userpass():
+    sInput = "tried http://user:pw@registry.example.com/v2/"
+    sRedacted = fsRedactBuildOutputCredentials(sInput)
+    assert "user:pw" not in sRedacted
+    assert "http://REDACTED@registry.example.com" in sRedacted
+
+
+def test_fsRedactBuildOutputCredentials_preserves_clean_urls():
+    sInput = "pulling https://github.com/foo/bar"
+    assert fsRedactBuildOutputCredentials(sInput) == sInput
+
+
+def test_fsRedactBuildOutputCredentials_preserves_ssh_style():
+    # git@host:repo is SSH; no credentials, should not match.
+    sInput = "Permission denied: git@github.com:foo/bar.git"
+    assert fsRedactBuildOutputCredentials(sInput) == sInput
+
+
+def test_ferrorBuildFailed_attaches_redacted_tail():
+    sScript = (
+        "import sys\n"
+        "sys.stderr.write("
+        "'fatal: https://x-access-token:LEAKED@github.com/x.git: not found\\n')\n"
+        "sys.exit(1)\n"
+    )
+    saCommand = [sys.executable, "-c", sScript]
+    with pytest.raises(RuntimeError) as excInfo:
+        _fnRunDockerBuildCapturing(saCommand)
+    sStderrTail = getattr(excInfo.value, "sStderrTail", "")
+    assert "LEAKED" not in sStderrTail
+    assert "REDACTED" in sStderrTail
+

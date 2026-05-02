@@ -18,15 +18,15 @@ RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
             https://deb.nodesource.com/setup_20.x \
             -o /tmp/nodesource_setup.sh; then \
         echo "" >&2; \
-        echo "vaibify build (claude overlay): cannot download NodeSource setup script." >&2; \
-        echo "  - The script lives at deb.nodesource.com." >&2; \
-        echo "  - Download failed (likely a TLS or network failure between" >&2; \
-        echo "    this build host and deb.nodesource.com)." >&2; \
-        echo "Pick one workaround:" >&2; \
-        echo "  1. Disable the Claude overlay (features: { claude: false })." >&2; \
-        echo "  2. Resolve your build host's network path to" >&2; \
-        echo "     deb.nodesource.com (proxy, IPv6, MTU, TLS inspection)" >&2; \
-        echo "     and rebuild." >&2; \
+        printf '%s\n' "vaibify build (claude overlay): cannot download NodeSource setup script." >&2; \
+        printf '%s\n' "  - The script lives at deb.nodesource.com." >&2; \
+        printf '%s\n' "  - Download failed (likely a TLS or network failure between" >&2; \
+        printf '%s\n' "    this build host and deb.nodesource.com)." >&2; \
+        printf '%s\n' "Pick one workaround:" >&2; \
+        printf '%s\n' "  1. Disable the Claude overlay (features: { claude: false })." >&2; \
+        printf '%s\n' "  2. Resolve your build host's network path to" >&2; \
+        printf '%s\n' "     deb.nodesource.com (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        printf '%s\n' "     and rebuild." >&2; \
         echo "" >&2; \
         exit 1; \
     fi \
@@ -47,17 +47,17 @@ RUN NPM_PREFIX="/home/${CONTAINER_USER}/.npm-global" \
             --fetch-retry-maxtimeout=120000 \
             @anthropic-ai/claude-code@latest; then \
         echo "" >&2; \
-        echo "vaibify build (claude overlay): cannot install Claude Code CLI." >&2; \
-        echo "  - The package lives on registry.npmjs.org." >&2; \
-        echo "  - npm install failed (likely a TLS or network failure" >&2; \
-        echo "    between this build host and registry.npmjs.org)." >&2; \
-        echo "Pick one workaround:" >&2; \
-        echo "  1. Pin the canonical registry in case a corp proxy" >&2; \
-        echo "     rewrote it: npm config set registry https://registry.npmjs.org/" >&2; \
-        echo "  2. Disable the Claude overlay (features: { claude: false })." >&2; \
-        echo "  3. Resolve your build host's network path to" >&2; \
-        echo "     registry.npmjs.org (proxy, IPv6, MTU, TLS inspection)" >&2; \
-        echo "     and rebuild." >&2; \
+        printf '%s\n' "vaibify build (claude overlay): cannot install Claude Code CLI." >&2; \
+        printf '%s\n' "  - The package lives on registry.npmjs.org." >&2; \
+        printf '%s\n' "  - npm install failed (likely a TLS or network failure" >&2; \
+        printf '%s\n' "    between this build host and registry.npmjs.org)." >&2; \
+        printf '%s\n' "Pick one workaround:" >&2; \
+        printf '%s\n' "  1. Pin the canonical registry in case a corp proxy" >&2; \
+        printf '%s\n' "     rewrote it: npm config set registry https://registry.npmjs.org/" >&2; \
+        printf '%s\n' "  2. Disable the Claude overlay (features: { claude: false })." >&2; \
+        printf '%s\n' "  3. Resolve your build host's network path to" >&2; \
+        printf '%s\n' "     registry.npmjs.org (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        printf '%s\n' "     and rebuild." >&2; \
         echo "" >&2; \
         exit 1; \
     fi \

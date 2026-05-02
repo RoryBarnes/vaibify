@@ -142,3 +142,42 @@ def testMiniforgeCurlIsHardened():
     sSource = fsReadDockerfile("Dockerfile")
     sBlock = fsFindBlockContaining(sSource, "miniforge")
     fnAssertHardenedBlock(sBlock, "--retry", "Dockerfile Miniforge installer")
+
+
+def testDiagnosticBlocksUsePrintfNotEcho():
+    """Diagnostics use ``printf '%s\\n'`` for content lines, not ``echo``.
+
+    ``echo`` semantics drift across shells (bash treats backslashes
+    literally; dash/busybox interpret some escapes). Substituted values
+    like ``${BASE_IMAGE}`` and ``${PYTHON_VERSION}`` come from user
+    YAML; ``printf '%s\\n'`` is shell-portable and never reinterprets
+    the substituted string. Empty separator lines (``echo ""``) are
+    fine — they have no substituted content.
+    """
+    saTargets = [
+        "Dockerfile",
+        "Dockerfile.claude",
+        "Dockerfile.rlang",
+        "Dockerfile.julia",
+    ]
+    for sName in saTargets:
+        sSource = fsReadDockerfile(sName)
+        for sBlock in flistFindRunBlocks(sSource):
+            if "vaibify build" not in sBlock:
+                continue
+            for sLine in sBlock.splitlines():
+                sStripped = sLine.strip().rstrip("\\").rstrip()
+                if not sStripped.startswith("echo "):
+                    continue
+                # echo "" >&2 (separator) is fine; only flag echo with
+                # non-empty content.
+                bIsBareEmpty = (
+                    sStripped == 'echo "" >&2;'
+                    or sStripped == 'echo "" >&2'
+                )
+                assert bIsBareEmpty, (
+                    f"{sName}: diagnostic block uses 'echo' for a "
+                    f"content line; switch to printf '%s\\n' to harden "
+                    f"against shell-portability and substituted-value "
+                    f"reinterpretation. Offending line:\n  {sLine}"
+                )

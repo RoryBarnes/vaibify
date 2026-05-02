@@ -23,16 +23,16 @@ RUN ARCH="$(uname -m)" \
             --connect-timeout 30 \
             "${JULIA_URL}" -o /tmp/julia.tar.gz; then \
         echo "" >&2; \
-        echo "vaibify build (julia overlay): cannot download Julia ${JULIA_VERSION}." >&2; \
-        echo "  - Tarball lives at ${JULIA_URL}." >&2; \
-        echo "  - Download failed (likely a TLS or network failure between" >&2; \
-        echo "    this build host and julialang-s3.julialang.org)." >&2; \
-        echo "Pick one workaround:" >&2; \
-        echo "  1. Test reachability from your host: curl -fI \"${JULIA_URL}\"" >&2; \
-        echo "  2. Disable the Julia overlay (features: { julia: false })." >&2; \
-        echo "  3. Resolve your build host's network path to" >&2; \
-        echo "     julialang-s3.julialang.org (proxy, IPv6, MTU, TLS" >&2; \
-        echo "     inspection) and rebuild." >&2; \
+        printf '%s\n' "vaibify build (julia overlay): cannot download Julia ${JULIA_VERSION}." >&2; \
+        printf '%s\n' "  - Tarball lives at ${JULIA_URL}." >&2; \
+        printf '%s\n' "  - Download failed (likely a TLS or network failure between" >&2; \
+        printf '%s\n' "    this build host and julialang-s3.julialang.org)." >&2; \
+        printf '%s\n' "Pick one workaround:" >&2; \
+        printf '%s\n' "  1. Test reachability from your host: curl -fI \"${JULIA_URL}\"" >&2; \
+        printf '%s\n' "  2. Disable the Julia overlay (features: { julia: false })." >&2; \
+        printf '%s\n' "  3. Resolve your build host's network path to" >&2; \
+        printf '%s\n' "     julialang-s3.julialang.org (proxy, IPv6, MTU, TLS" >&2; \
+        printf '%s\n' "     inspection) and rebuild." >&2; \
         echo "" >&2; \
         exit 1; \
     fi \

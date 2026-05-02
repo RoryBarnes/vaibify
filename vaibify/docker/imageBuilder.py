@@ -316,13 +316,27 @@ def _fsStreamAndCaptureStderr(procBuild):
     return "".join(dequeTail)
 
 
+_RE_HTTP_CREDENTIALS = re.compile(r"(https?://)[^@/\s]+@")
+
+
+def fsRedactBuildOutputCredentials(sText):
+    """Strip credentials embedded in HTTP(S) URLs from build output.
+
+    Defends the captured stderr tail (and anything later derived
+    from it — error logs, classification hints, GUI surfaces)
+    against echoing tokens that may have been printed by a build
+    step. Pattern: ``https://user:token@host`` -> ``https://REDACTED@host``.
+    """
+    return _RE_HTTP_CREDENTIALS.sub(r"\1REDACTED@", sText)
+
+
 def _ferrorBuildFailed(saCommand, iReturnCode, sStderrTail):
     """Construct a RuntimeError carrying the captured stderr tail."""
     sCommandStr = " ".join(saCommand)
     errorBuild = RuntimeError(
         f"Docker command failed (exit {iReturnCode}): {sCommandStr}"
     )
-    errorBuild.sStderrTail = sStderrTail
+    errorBuild.sStderrTail = fsRedactBuildOutputCredentials(sStderrTail)
     return errorBuild
 
 

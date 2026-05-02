@@ -1,6 +1,7 @@
 """YAML project configuration parser with dataclass validation."""
 
 import copy
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
@@ -260,12 +261,22 @@ def _fnMergeReproducibility(dictMerged, dictReproUser):
             dictMerged["reproducibility"][sKey] = value
 
 
+_RE_PROJECT_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+
+
 def _fbValidateProjectName(dictConfig):
-    """Check that projectName is a non-empty string."""
+    """Check that projectName is a safe identifier.
+
+    The name is interpolated into Docker container names, image
+    tags, volume names, and subprocess argv on the host. Restrict
+    to ``^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`` so a malicious
+    vaibify.yml can't smuggle shell metacharacters or path
+    components into those contexts.
+    """
     sProjectName = dictConfig.get("projectName", "")
     if not isinstance(sProjectName, str) or not sProjectName.strip():
         return False
-    return True
+    return _RE_PROJECT_NAME.match(sProjectName) is not None
 
 
 def _fbValidatePackageManager(dictConfig):
