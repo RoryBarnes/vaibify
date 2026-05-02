@@ -286,4 +286,26 @@ def _fdictParseContainerState(sRawStatus):
     return {"bExists": bExists, "bRunning": bRunning, "sStatus": sStatus}
 
 
+def fbContainerIsNetworkIsolated(sContainerIdentifier):
+    """Return True when the container's NetworkMode is ``none``.
+
+    Reflects the runtime ground truth (the value passed to
+    ``docker run --network``) rather than the saved ``vaibify.yml``.
+    Used by host-side routes that must refuse to dispatch external
+    network calls (Overleaf, Zenodo) when the container is sealed,
+    so the user sees an actionable error instead of a 30-second DNS
+    timeout (audit finding F-R-08).
+    """
+    resultProcess = subprocess.run(
+        [
+            "docker", "inspect", "-f",
+            "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
+        ],
+        capture_output=True, text=True,
+    )
+    if resultProcess.returncode != 0:
+        return False
+    return resultProcess.stdout.strip() == "none"
+
+
 _fnRunDockerCommand = fnRunDockerCommand

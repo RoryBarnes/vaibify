@@ -28,6 +28,7 @@ __all__ = [
     "testStepPayloadsCarrySLabel",
     "testDepsExpandedShowsStepStatusAndTimingAxes",
     "testPipelineStateCarriesLivenessFields",
+    "testContainerUserUidIsOneThousand",
 ]
 
 
@@ -1080,4 +1081,26 @@ def testPipelineStateCarriesLivenessFields():
         "pipelineRoutes.fnGetPipelineState must call "
         "pipelineState.fbHeartbeatIsStale to reconcile a vanished "
         "runner before returning state to the frontend."
+    )
+
+
+def testContainerUserUidIsOneThousand():
+    """Dockerfile must pin the container user to UID 1000.
+
+    The credential keyring volume is owned by UID 1000. If a future
+    Dockerfile edit changed the container user's UID, the volume's
+    keyring files would become unreadable across rebuilds and the
+    user would silently lose stored Overleaf and Zenodo tokens.
+    Defense-in-depth for audit finding F-R-07.
+    """
+    sDockerfile = fsReadSource(REPO_ROOT / "docker" / "Dockerfile")
+    matchUseradd = re.search(
+        r"useradd\s+-m\s+-s\s+/bin/bash\s+-u\s+1000\s+\$\{CONTAINER_USER\}",
+        sDockerfile,
+    )
+    assert matchUseradd, (
+        "Dockerfile must create the container user with "
+        "'useradd -m -s /bin/bash -u 1000 ${CONTAINER_USER}' so "
+        "the credentials volume's UID 1000 ownership stays valid "
+        "across rebuilds (audit finding F-R-07)."
     )

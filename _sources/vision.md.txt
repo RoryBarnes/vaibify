@@ -51,7 +51,7 @@ supply-chain security, evidence-based medicine hierarchies, NIST
 metrological traceability, art-world provenance. At each level we
 state what it proves and, equally important, what it does not.
 
-### L1 — Locally verified
+### L1 — Self-Consistent
 
 All workflow tests pass. Every file declared as canonical matches
 the workspace's last local commit. Test markers reproduce on a

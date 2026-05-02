@@ -30,6 +30,10 @@ var VaibifySyncManager = (function () {
     async function fnOpenPushModal(sService) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId) return;
+        if (await _fbContainerIsIsolated(sContainerId)) {
+            _fnShowIsolationBlockedToast(sService);
+            return;
+        }
         var elToast = _fnShowOpeningToast(sService);
         try {
             var dictResult = await VaibifyApi.fdictGet(
@@ -55,6 +59,32 @@ var VaibifySyncManager = (function () {
         } finally {
             if (elToast && elToast.parentNode) elToast.remove();
         }
+    }
+
+    async function _fbContainerIsIsolated(sContainerId) {
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/containers/"
+                + encodeURIComponent(sContainerId)
+                + "/isolation"
+            );
+            return dictResult && dictResult.bNetworkIsolation === true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function _fnShowIsolationBlockedToast(sService) {
+        var dictLabels = {
+            overleaf: "Overleaf", github: "GitHub", zenodo: "Zenodo",
+        };
+        var sLabel = dictLabels[sService] || sService;
+        PipeleyenApp.fnShowToast(
+            sLabel + " push disabled: container is in isolation "
+            + "mode (no network). Disable in vaibify.yml: "
+            + "networkIsolation: false, then rebuild.",
+            "warning",
+        );
     }
 
     function _fnShowOpeningToast(sService) {
