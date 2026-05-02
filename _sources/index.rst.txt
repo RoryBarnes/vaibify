@@ -17,8 +17,8 @@ pipeline can benefit from containerized reproducibility.
 
    conduct
    philosophy
-   install
    quickStart
+   install
    configuration
    cli
    pipelines

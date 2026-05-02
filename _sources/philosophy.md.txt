@@ -49,6 +49,10 @@ mechanical code-writing to agents frees a researcher to spend more
 time on the parts that actually matter: asking the right questions,
 inspecting the results, and deciding what to do next.
 
+Crucially, however, an experiment that vaibify has deemed "verified"
+is not necessarily accurate. Vaibify can only monitor the contents of
+files; the interpretation of the results is still up to you. All vaibify can do is  that your results are self-consistent locally and in your remote repositories
+
 ## How the results can be trusted
 
 The same way they always have been: through visually inspecting
