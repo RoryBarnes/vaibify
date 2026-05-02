@@ -35,14 +35,15 @@ fnAppendStartupWarning() {
 # ---------------------------------------------------------------------------
 # fsEscapeJsonString: Escape backslash, quote, and control chars for JSON
 # Arguments: sRaw
+# Strips every U+0000..U+001F control character (JSON forbids them
+# unescaped) so a stray ANSI/control byte from git stderr cannot
+# break the readiness-marker JSON the host parses.
 # ---------------------------------------------------------------------------
 fsEscapeJsonString() {
     local sRaw="$1"
     sRaw="${sRaw//\\/\\\\}"
     sRaw="${sRaw//\"/\\\"}"
-    sRaw="${sRaw//$'\n'/ }"
-    sRaw="${sRaw//$'\r'/ }"
-    sRaw="${sRaw//$'\t'/ }"
+    sRaw=$(printf '%s' "${sRaw}" | LC_ALL=C tr -d '\000-\037')
     printf '%s' "${sRaw}"
 }
 
