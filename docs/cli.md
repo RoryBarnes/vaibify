@@ -286,7 +286,7 @@ vaibify verify-step --step N --status STATUS [--project/-p NAME]
 Launch the pipeline viewer in a browser (port 8050 by default). When
 run without a project, the landing page opens and displays all
 registered containers. Use the **+** button to add an existing
-project or create a new one. See [Workflow Viewer](gui.md) for
+project or create a new one. See [The Dashboard](dashboard.md) for
 details.
 
 ```bash
