@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quick Start &mdash; Vaibify 0.0.1.dev129 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.1.dev131 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a7cc51c5"></script>
+      <script src="_static/documentation_options.js?v=e090b28e"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -46,14 +46,10 @@
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#option-a-build-from-an-existing-configuration">Option A: Build from an Existing Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#option-b-initialize-a-new-project">Option B: Initialize a New Project</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#build-the-image">Build the Image</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#start-and-connect">Start and Connect</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#transfer-files">Transfer Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#stop-the-container">Stop the Container</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#check-status">Check Status</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">QuickStart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#install">1. Install</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#create-your-first-container">2. Create your first container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-next">3. Where to next</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
@@ -89,7 +85,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Quick Start</li>
+      <li class="breadcrumb-item active">QuickStart</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/quickStart.md.txt" rel="nofollow"> View page source</a>
       </li>
@@ -99,137 +95,133 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="quick-start">
-<h1>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h1>
-<p>This guide walks through the minimal steps to get a Vaibify project
-running on your machine. See <a class="reference internal" href="install.html"><span class="std std-doc">Installing Vaibify</span></a> for
-detailed installation instructions, or <a class="reference internal" href="setupWizard.html"><span class="std std-doc">Setup Wizard</span></a>
-for the interactive configuration walkthrough.</p>
-<section id="option-a-build-from-an-existing-configuration">
-<h2>Option A: Build from an Existing Configuration<a class="headerlink" href="#option-a-build-from-an-existing-configuration" title="Link to this heading"></a></h2>
-<p>If a repository already contains a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (and optionally a
-<code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>), you can build and run the container directly — no
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> required.</p>
-<p>Clone the repository and navigate into it:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:user/my-project.git
-<span class="nb">cd</span><span class="w"> </span>my-project
+  <section id="quickstart">
+<h1>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
+<p>Welcome to Vaibify. If you already have Docker/Colima installed, then it will only take five minutes to install it, open
+the dashboard, and have a Docker container ready for your first
+analysis.</p>
+<section id="install">
+<h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
+<p>You need Python 3.9 or later and Docker (or Colima on macOS) running on
+your machine. If Docker is not installed, see the <a class="reference internal" href="install.html"><span class="std std-doc">longer install
+guide</span></a> for platform-specific instructions; otherwise:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>vaibify
+vaibify
 </pre></div>
 </div>
-<p>Then build and start:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build
-vaibify<span class="w"> </span>start
-</pre></div>
-</div>
-<p>Any command run from inside a directory that contains a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>
-will use that file automatically. No registration step is needed.</p>
-<p>To target this project from other directories with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>,
-register it:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>register
-</pre></div>
-</div>
-<p>Or register a project in a different directory:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>register<span class="w"> </span>/path/to/my-project
-</pre></div>
-</div>
-<p>If the configuration lists private repositories (URLs starting with
-<code class="docutils literal notranslate"><span class="pre">git&#64;github.com:</span></code>), the build needs SSH key access. Ensure your SSH
-agent is running and the relevant keys are loaded:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ssh-add<span class="w"> </span>-l<span class="w">          </span><span class="c1"># verify keys are loaded</span>
-vaibify<span class="w"> </span>build<span class="w">       </span><span class="c1"># SSH agent is forwarded into the build</span>
-</pre></div>
-</div>
-<p>Skip ahead to <a class="reference internal" href="#start-and-connect"><span class="xref myst">Start and Connect</span></a> once the build
-completes.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no arguments in any directory to start the
+<strong>hub</strong> — a local web server on <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> — in your web browser.</p>
+<p><img alt="Vaibify landing page" src="images/landing.png" /></p>
+<p>You should see the Vaibify logo, the tagline, and an empty
+<strong>Containers</strong> list. No projects yet — let’s create one.</p>
 </section>
-<section id="option-b-initialize-a-new-project">
-<h2>Option B: Initialize a New Project<a class="headerlink" href="#option-b-initialize-a-new-project" title="Link to this heading"></a></h2>
-<p>Navigate to your project directory and run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init
-</pre></div>
-</div>
-<p>This creates a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> configuration file and a <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>
-repository list. Choose a template when prompted:</p>
+<section id="create-your-first-container">
+<h2>2. Create your first container<a class="headerlink" href="#create-your-first-container" title="Link to this heading"></a></h2>
+<p>Click the <strong>+</strong> icon next to <em>Containers</em>. Two choices appear:</p>
+<ul class="simple">
+<li><p><strong>Add Existing</strong> — point at a folder that already has a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>
+(someone else’s project, or one of yours from another machine).</p></li>
+<li><p><strong>Create New</strong> — start a new project from a template.</p></li>
+</ul>
+<p>Click <strong>Create New</strong>. The setup wizard opens.</p>
+<p><img alt="Setup wizard, step 1" src="images/wizard.png" /></p>
+<p>The wizard walks you through eight steps. None of them require anything
+beyond clicks and short text answers; every step has a <code class="docutils literal notranslate"><span class="pre">?</span></code> button that
+explains what the field controls.</p>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Template</p></th>
-<th class="head"><p>Description</p></th>
+<tr class="row-odd"><th class="head"><p>Step</p></th>
+<th class="head"><p>What you do</p></th>
+<th class="head"><p>Default</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sandbox</span></code></p></td>
-<td><p>No workflow. For exploration and interactive use.</p></td>
+<tr class="row-even"><td><p>1. Project Directory</p></td>
+<td><p>Choose a folder on your host (e.g. <code class="docutils literal notranslate"><span class="pre">~/src/my-analysis</span></code>). Vaibify writes <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> here.</p></td>
+<td><p>—</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
-<td><p>Pipeline steps for reproducible data analysis.</p></td>
+<tr class="row-odd"><td><p>2. Template</p></td>
+<td><p>Pick <strong>sandbox</strong> for a clean room, <strong>toolkit</strong> for developing several libraries side-by-side, or <strong>workflow</strong> for a reproducible analysis with predefined steps.</p></td>
+<td><p>sandbox</p></td>
+</tr>
+<tr class="row-even"><td><p>3. Project Name</p></td>
+<td><p>The container name. Lowercase letters, digits, and hyphens.</p></td>
+<td><p>folder name</p></td>
+</tr>
+<tr class="row-odd"><td><p>4. Python Version</p></td>
+<td><p>Vaibify supports 3.9 through 3.14.</p></td>
+<td><p>3.12</p></td>
+</tr>
+<tr class="row-even"><td><p>5. Repositories</p></td>
+<td><p>Git URLs to clone into the container at startup. Skip if you have none yet.</p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-odd"><td><p>6. Features &amp; Authentication</p></td>
+<td><p>Toggle Jupyter, R, Julia, LaTeX, Claude Code, and GitHub authentication.</p></td>
+<td><p>LaTeX on</p></td>
+</tr>
+<tr class="row-even"><td><p>7. Packages</p></td>
+<td><p>Extra apt or pip packages on top of the template.</p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-odd"><td><p>8. Summary</p></td>
+<td><p>Review the choices and create!</p></td>
+<td><p>—</p></td>
 </tr>
 </tbody>
 </table>
-<p>Or specify a template directly:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span>--template<span class="w"> </span>sandbox
-</pre></div>
-</div>
-<p>See <a class="reference internal" href="templates.html"><span class="std std-doc">Templates</span></a> for details on each template and how to
-create your own.</p>
+<p>Click <strong>Create</strong> on the summary step. Vaibify builds the Docker image
+in the background. First builds take five to fifteen minutes depending
+on which features you enabled and your network speed; subsequent
+rebuilds are much faster because Docker caches the layers.</p>
+<p>When the build finishes, the wizard closes and the dashboard opens.</p>
+<p><img alt="Container dashboard" src="images/dashboard.png" /></p>
+<p>You are now inside the container’s dashboard. The toolbar shows the
+container name and (for workflow projects) the active workflow. The
+left panel shows pipeline steps. The right side has tabs for the
+container’s repositories, an embedded terminal, a sync panel for
+GitHub/Overleaf/Zenodo, and a figure viewer.</p>
+<p>Click in the terminal section to activate it and access a shell session inside the container.
+Whatever you do here — installing a package, running a script, launching
+Claude Code with <code class="docutils literal notranslate"><span class="pre">claude</span></code> — is sealed inside the container. Your home
+directory, your SSH keys, and the rest of your filesystem are not
+visible to anything in there.</p>
+<p>You have your first Vaibify container.</p>
 </section>
-<section id="build-the-image">
-<h2>Build the Image<a class="headerlink" href="#build-the-image" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build
-</pre></div>
-</div>
-<p>On first run this installs the base image, system packages, Python
-dependencies, and clones all repositories listed in <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>. A
-rebuild is only required when <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> or <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> change.</p>
-</section>
-<section id="start-and-connect">
-<h2>Start and Connect<a class="headerlink" href="#start-and-connect" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start
-</pre></div>
-</div>
-<p>This launches the container in the background. To open a shell inside it:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect
-</pre></div>
-</div>
-<p>Or use the shell alias (configured automatically on first run):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify_connect
-</pre></div>
-</div>
-</section>
-<section id="transfer-files">
-<h2>Transfer Files<a class="headerlink" href="#transfer-files" title="Link to this heading"></a></h2>
-<p>Copy files into the container:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>push<span class="w"> </span>localfile.txt<span class="w"> </span>/workspace/localfile.txt
-</pre></div>
-</div>
-<p>Copy files out:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>pull<span class="w"> </span>/workspace/output.csv<span class="w"> </span>./output.csv
-</pre></div>
-</div>
-<p>These commands work from any directory. When multiple projects are
-registered, specify the target with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span>-p<span class="w"> </span>my-project
-vaibify<span class="w"> </span>start<span class="w"> </span>-p<span class="w"> </span>my-project
-vaibify<span class="w"> </span>status<span class="w"> </span>-p<span class="w"> </span>my-project
-vaibify<span class="w"> </span>connect<span class="w"> </span>-p<span class="w"> </span>my-project
-vaibify<span class="w"> </span>push<span class="w"> </span>-p<span class="w"> </span>my-project<span class="w"> </span>data.csv<span class="w"> </span>/workspace/data.csv
-vaibify<span class="w"> </span>stop<span class="w"> </span>-p<span class="w"> </span>my-project
-</pre></div>
-</div>
-</section>
-<section id="stop-the-container">
-<h2>Stop the Container<a class="headerlink" href="#stop-the-container" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>stop
-</pre></div>
-</div>
-<p>The workspace volume persists between sessions. Use <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code>
-to remove the container and optionally delete the volume.</p>
-</section>
-<section id="check-status">
-<h2>Check Status<a class="headerlink" href="#check-status" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status
-</pre></div>
-</div>
-<p>This reports whether the container is running, lists installed repositories,
-and shows resource usage.</p>
+<section id="where-to-next">
+<h2>3. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
+<p>The dashboard is the everyday workspace; the rest of the docs go
+deeper.</p>
+<ul class="simple">
+<li><p><strong><a class="reference internal" href="templates.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
+which one to pick and how they differ. <em>Sandbox</em> is a clean room.
+<em>Toolkit</em> is for developing several peer libraries together. <em>Workflow</em>
+is for reproducible multi-step analyses where each step’s output gets
+inspected and signed off.</p></li>
+<li><p><strong><a class="reference internal" href="dashboard.html"><span class="std std-doc">The dashboard tour</span></a></strong> — every panel in the running
+container’s UI: pipeline status dots, the repos panel, the embedded
+terminal, the figure viewer, and the verification state machine that
+records which step outputs you have looked at.</p></li>
+<li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what Vaibify protects against
+(escaped code, leaked credentials, host filesystem access) and what
+it does not. Worth reading before you let any agent write code in
+your container.</p></li>
+<li><p><strong><a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration reference</span></a></strong> — every field in
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. You almost
+never need to hand-edit these; the wizard writes them for you.</p></li>
+<li><p><strong><a class="reference internal" href="#connecting-services.md"><span class="xref myst">Connecting external services</span></a></strong> — how to
+push to GitHub, sync with Overleaf, and archive a result on Zenodo
+from inside a container. Credentials are resolved from your host’s
+keychain at request time and never persisted in the container.</p></li>
+<li><p><strong><a class="reference internal" href="dashboard.html#agent-actions"><span class="std std-ref">Agent action catalog</span></a></strong> — the named
+operations an AI coding agent inside the container can ask the
+dashboard to perform on its behalf, and the verification each one
+triggers.</p></li>
+<li><p><strong><a class="reference internal" href="cli.html"><span class="std std-doc">Command line interface</span></a></strong> - Vaibify comes with an full command line interface to access your container from a shell running on your host. Push and pull files from the container, access the container terminal from a host terminal (i.e., outside of the vaibify web application), and scripting are all available.</p></li>
+</ul>
+<p>If something goes wrong — Docker not running, port collision, a build
+that hangs — the <a class="reference internal" href="install.html"><span class="std std-doc">long-form install guide</span></a> has the
+platform-specific troubleshooting.</p>
 </section>
 </section>
 

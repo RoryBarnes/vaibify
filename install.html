@@ -6,20 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev129 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev131 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a7cc51c5"></script>
+      <script src="_static/documentation_options.js?v=e090b28e"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Quick Start" href="quickStart.html" />
+    <link rel="next" title="QuickStart" href="quickStart.html" />
     <link rel="prev" title="Philosophy" href="philosophy.html" /> 
 </head>
 
@@ -51,10 +51,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#developers">Developers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#data-format-libraries">Data Format Libraries</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#browser-compatibility">Browser Compatibility</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#docker-on-macos">Docker on macOS</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="quickStart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
@@ -219,6 +220,40 @@ vaibify<span class="w"> </span>--version
 </pre></div>
 </div>
 </section>
+<section id="browser-compatibility">
+<h2>Browser Compatibility<a class="headerlink" href="#browser-compatibility" title="Link to this heading"></a></h2>
+<p>The Vaibify dashboard runs locally and renders in your default browser.
+Vaibify targets evergreen desktop browsers; mobile browsers are out of
+scope. Any reasonably current Firefox, Chrome, Edge, or Safari works.
+The minimum versions below are where layout primitives Vaibify relies
+on (<code class="docutils literal notranslate"><span class="pre">gap</span></code> in flexbox, <code class="docutils literal notranslate"><span class="pre">position:</span> <span class="pre">sticky</span></code>, <code class="docutils literal notranslate"><span class="pre">inset</span></code>) all became stable:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Browser</p></th>
+<th class="head"><p>Minimum version</p></th>
+<th class="head"><p>Released</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Firefox</p></td>
+<td><p>66</p></td>
+<td><p>March 2019</p></td>
+</tr>
+<tr class="row-odd"><td><p>Chrome / Edge</p></td>
+<td><p>87</p></td>
+<td><p>November 2020</p></td>
+</tr>
+<tr class="row-even"><td><p>Safari</p></td>
+<td><p>14.1</p></td>
+<td><p>April 2021</p></td>
+</tr>
+</tbody>
+</table>
+<p>Below these versions some panels will render with collapsed spacing or
+misaligned modals, but the underlying functionality still works. The
+dashboard does not use any feature that requires the most recent
+browser releases.</p>
+</section>
 <section id="docker-on-macos">
 <h2>Docker on macOS<a class="headerlink" href="#docker-on-macos" title="Link to this heading"></a></h2>
 <p>On macOS, <a class="reference external" href="https://github.com/abiosoft/colima">Colima</a> is the recommended
@@ -247,7 +282,7 @@ Colima VM and corrupt the build. Prefix any long-running command with
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="philosophy.html" class="btn btn-neutral float-left" title="Philosophy" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="quickStart.html" class="btn btn-neutral float-right" title="Quick Start" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="quickStart.html" class="btn btn-neutral float-right" title="QuickStart" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

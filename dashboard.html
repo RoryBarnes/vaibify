@@ -1,0 +1,412 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev131 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=e090b28e"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="setupWizard.html">Setup Wizard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">Workflow Viewer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="migration/2026-workflow-in-repo.html">Migration — workflow.json must live inside a git repo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="migration/2026-workflow-in-repo.html#migration-step-directories-markers-follow-on-2026-04">Migration — step directories + markers (follow-on, 2026-04)</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">The Dashboard</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/dashboard.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="the-dashboard">
+<h1>The Dashboard<a class="headerlink" href="#the-dashboard" title="Link to this heading"></a></h1>
+<p>The dashboard is what you arrive at after the <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a>:
+the running container’s control surface, in your browser. It is where
+you run pipeline steps, inspect outputs, attest that you have looked at
+them, push results to GitHub or Overleaf, and (optionally) let an AI
+coding agent work alongside you.</p>
+<p>This page is a tour of every panel.</p>
+<p><img alt="Dashboard overview" src="images/dashboard-overview.png" /></p>
+<section id="layout">
+<h2>Layout<a class="headerlink" href="#layout" title="Link to this heading"></a></h2>
+<p>The dashboard has a fixed layout:</p>
+<ul class="simple">
+<li><p><strong>Top toolbar</strong> — container name, active workflow (if any), sync
+buttons, and the Admin menu.</p></li>
+<li><p><strong>Left panel</strong> — the <em>Repos panel</em> for sandbox / toolkit projects, or the   <em>Pipeline panel</em> for workflow projects.</p></li>
+<li><p><strong>Top panels</strong> — Two “Viewing Windows” to display plots and files.</p></li>
+<li><p><strong>Bottom panel(s)</strong> - Terminal window(s)/tab(s) for work inside the container.</p></li>
+</ul>
+</section>
+<section id="terminal">
+<h2>Terminal<a class="headerlink" href="#terminal" title="Link to this heading"></a></h2>
+<p>Click in a terminal section to access a shell session inside the
+container. The terminal runs in your browser over WebSocket and behaves
+like a standard terminal emulator. Multiple sessions can run
+concurrently — open as many as you like.</p>
+<p><img alt="Terminal" src="images/dashboard-terminal.png" /></p>
+<p>If Claude Code is enabled for the project, run <code class="docutils literal notranslate"><span class="pre">claude</span></code> from a
+terminal session to start an in-container coding agent. The agent can
+in turn ask the dashboard to run steps, generate tests, push to
+GitHub, and so on — see <a class="reference internal" href="#agent-actions"><span class="xref myst">Agent actions</span></a> below.</p>
+</section>
+<section id="viewing-window">
+<h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
+<p>The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Workflow mode, the log is displayed in a window.</p>
+<p><img alt="Figure viewer" src="images/dashboard-figures.png" /></p>
+</section>
+<section id="repos-panel">
+<h2>Repos panel<a class="headerlink" href="#repos-panel" title="Link to this heading"></a></h2>
+<p>The Repos panel replaces the Pipeline panel for sandbox and toolkit
+projects (the templates without a <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>). It lists the git
+repositories inside the container with their branch, dirty status, and
+push controls.</p>
+<p><img alt="Repos panel" src="images/dashboard-repos.png" /></p>
+<p>When you first open a container, repositories already present in the
+workspace (cloned by the entrypoint from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>) are tracked
+automatically. If you clone additional repositories from the terminal,
+vaibify detects them within a few seconds and prompts you to <strong>Track</strong>
+or <strong>Ignore</strong> them.</p>
+<p><strong>Dirty detection</strong> reflects whether you have made source-level
+changes. Build artifacts that package managers and compilers leave
+behind (Python <code class="docutils literal notranslate"><span class="pre">__pycache__/</span></code>, C <code class="docutils literal notranslate"><span class="pre">*.o</span></code>, LaTeX <code class="docutils literal notranslate"><span class="pre">*.aux</span></code>,
+<code class="docutils literal notranslate"><span class="pre">*.egg-info/</span></code>, and so on) are filtered out, so a freshly installed
+repository shows as clean unless you have edited its source files.</p>
+<p><strong>Push</strong> commits and pushes whatever you have staged in the terminal —
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">commit</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code> rolled into a single button. A
+secondary <strong>Push files…</strong> option in the gear menu opens a file picker
+for selecting specific files to commit.</p>
+</section>
+<section id="pipeline-panel">
+<h2>Pipeline panel<a class="headerlink" href="#pipeline-panel" title="Link to this heading"></a></h2>
+<p>The pipeline panel lists the steps defined in your workflow. Each step
+shows its name, working directory, and current status.</p>
+<p><img alt="Pipeline panel" src="images/dashboard-pipeline.png" /></p>
+<p>From the top of the panel you can:</p>
+<ul class="simple">
+<li><p><strong>Run All</strong> — execute every enabled step in order.</p></li>
+<li><p><strong>Run Selected</strong> — execute only the checked steps.</p></li>
+<li><p><strong>Run From Step</strong> — execute from a chosen step to the end.</p></li>
+<li><p><strong>Enable / Disable</strong> — toggle individual steps without removing
+them.</p></li>
+<li><p><strong>Reorder</strong> — drag steps to change the execution order.</p></li>
+</ul>
+<section id="adding-a-step">
+<h3>Adding a step<a class="headerlink" href="#adding-a-step" title="Link to this heading"></a></h3>
+<p>Click <strong>Add Step</strong> to open the step editor. Fill in the step name,
+working directory, and the commands to run. The editor separates <em>data
+commands</em> (heavy computation) from <em>plot commands</em> (figure generation),
+so you can re-run just the plotting after tweaking a script without
+re-running the simulation.</p>
+</section>
+<section id="interactive-steps">
+<h3>Interactive steps<a class="headerlink" href="#interactive-steps" title="Link to this heading"></a></h3>
+<p>Mark a step as <em>interactive</em> and the pipeline pauses there, waiting
+for you to confirm before continuing. Useful when you want to eyeball
+an intermediate result, adjust a parameter, or hand control to an
+agent for a specific stage.</p>
+</section>
+</section>
+<section id="step-verification-status">
+<h2>Step verification status<a class="headerlink" href="#step-verification-status" title="Link to this heading"></a></h2>
+<p>Vaibify’s core job is to track <strong>what has happened on disk</strong> and flag
+any drift between a step’s current filesystem state and the last time
+it was validated. Two visual indicators communicate this state: a
+coloured <strong>status dot</strong> on the right of each step row and an optional
+<strong>pencil icon</strong> (✏) next to the step name.</p>
+<section id="status-dot">
+<h3>Status dot<a class="headerlink" href="#status-dot" title="Link to this heading"></a></h3>
+<p>Each step row ends with one of three indicators:</p>
+<ul class="simple">
+<li><p><strong>Nothing</strong> — the step has not yet produced any output, so there
+is nothing to verify.</p></li>
+<li><p><strong>Orange dot</strong> — the step is <em>partially verified</em>. Some of user
+attestation, unit tests, and dependency analysis pass, or one or
+more on-disk changes have been detected since the last full pass.</p></li>
+<li><p><strong>Accent-coloured badge</strong> (the vaibify favicon) — the step is
+<em>fully verified</em>: user attestation, unit tests, and dependencies
+all pass and no on-disk drift has been detected.</p></li>
+</ul>
+<p>When every enabled step is fully verified, the workflow name and the
+“Workflow” label in the top toolbar shift to the accent colour, giving
+an at-a-glance sign that the whole pipeline is in a trusted state.</p>
+</section>
+<section id="pencil-icon">
+<h3>Pencil icon<a class="headerlink" href="#pencil-icon" title="Link to this heading"></a></h3>
+<p>A pencil next to a step’s name means <strong>the step’s on-disk state has
+moved out of sync with its last validation</strong>. The pencil is derived
+entirely from filesystem timestamps, so it catches changes vaibify did
+not directly observe — a <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">pull</span></code>, a manual <code class="docutils literal notranslate"><span class="pre">pytest</span></code> at the
+terminal, an edit from a Claude Code session.</p>
+<p>The pencil lights up when any of the following are true:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Drift</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>A data script is newer than the test marker</p></td>
+<td><p>Tests need to be rerun against the updated script.</p></td>
+</tr>
+<tr class="row-odd"><td><p>A data file is newer than the test marker</p></td>
+<td><p>Tests need to be rerun against the updated output.</p></td>
+</tr>
+<tr class="row-even"><td><p>A data script or data file is newer than the last user attestation</p></td>
+<td><p>Re-inspect the outputs and re-attest.</p></td>
+</tr>
+<tr class="row-odd"><td><p>A plot script or plot file is newer than the last user attestation</p></td>
+<td><p>Re-inspect the figures and re-attest.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Expanding the step shows a human-readable list of the specific files
+causing each condition.</p>
+</section>
+<section id="clearing-a-pencil">
+<h3>Clearing a pencil<a class="headerlink" href="#clearing-a-pencil" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Re-run tests</strong> for the step (from the dashboard or a terminal).
+Successful completion clears any “newer than the test marker” drift.</p></li>
+<li><p><strong>Re-attest</strong> by clicking the verification badge after inspecting
+the outputs. This clears any “newer than your last attestation”
+drift.</p></li>
+</ul>
+</section>
+<section id="expanded-step-timestamps">
+<h3>Expanded-step timestamps<a class="headerlink" href="#expanded-step-timestamps" title="Link to this heading"></a></h3>
+<p>Clicking a step expands its detail view. Four timestamps appear; three
+are read directly from disk and one is your own attestation.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Row</p></th>
+<th class="head"><p>What it records</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Last tests</strong></p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">pytest</span></code> for this step last finished, regardless of who ran it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Data files last modified</strong></p></td>
+<td><p>When any of the step’s data outputs was last written.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Plot files last modified</strong></p></td>
+<td><p>When any of the step’s plot outputs was last written.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Last verified</strong></p></td>
+<td><p>When you last clicked the verification badge to attest the outputs.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="sync-status">
+<h2>Sync status<a class="headerlink" href="#sync-status" title="Link to this heading"></a></h2>
+<p>Symbols before files indicate the current status of a file’s publication on a remote repository.</p>
+<p><img alt="Sync panel" src="images/dashboard-sync.png" /></p>
+<ul class="simple">
+<li><p><strong>Push to GitHub</strong> — commit and push the project repository to its
+configured remote.</p></li>
+<li><p><strong>Push to Overleaf</strong> — sync figures and any selected files to the
+configured Overleaf project.</p></li>
+<li><p><strong>Archive to Zenodo</strong> — upload outputs and receive a DOI.</p></li>
+<li><p><strong>Generate LaTeX</strong> — produce ready-to-paste <code class="docutils literal notranslate"><span class="pre">\includegraphics</span></code>
+commands for the current figures.</p></li>
+</ul>
+<p>Credentials for these services are resolved from your host’s keychain
+at request time. They are never written into the container or into
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. See <a class="reference internal" href="#connecting-services.md"><span class="xref myst">Connecting external services</span></a>
+for the per-service setup.</p>
+</section>
+<section id="verification">
+<h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>
+<p>Steps are verified three ways: 1) unit tests, 2) dependnency checks (if applicable), and 3) user attestation. These three controls are displayed in each Step’s expanded view.</p>
+<p>The <strong>Unit Tests</strong> text is expandable to show detailed information about the step’s unit tests, including generating and running them. Three categories of
+unit tests exist:</p>
+<ol class="arabic simple">
+<li><p><strong>Integrity tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_integrity.py</span></code>) — output files exist, are
+non-empty, load in their expected format, have the correct shape,
+and contain no NaN or infinity values.</p></li>
+<li><p><strong>Qualitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_qualitative.py</span></code>) — column names, JSON
+keys, parameter names, and other categorical content match
+expectations.</p></li>
+<li><p><strong>Quantitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_quantitative.py</span></code> plus
+<code class="docutils literal notranslate"><span class="pre">quantitative_standards.json</span></code>) — numerical output values match
+stored benchmarks at full double precision, with configurable
+relative and absolute tolerances.</p></li>
+</ol>
+<p>Test generation is <strong>deterministic by default</strong>: a Python introspection
+script runs inside the container, reads each data file, and writes the
+tests mechanically. No language model is involved on the default path.
+An LLM-based path is available as a fallback for formats the
+introspection script cannot read.</p>
+<p>See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the full list of file
+types the test generator can read.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span></code> monitors the steps for dependency violations, such as a dependent step
+not being fully verified or a dependent file being created <em>after</em> a subsequent step was marked verified.</p>
+<p>Finally, a button for the (human) records that user’s assessment.</p>
+</section>
+<section id="agent-actions">
+<h2>Agent actions<a class="headerlink" href="#agent-actions" title="Link to this heading"></a></h2>
+<p>When an AI coding agent is running inside the container (typically
+Claude Code, started by typing <code class="docutils literal notranslate"><span class="pre">claude</span></code> in the terminal), it can ask
+the dashboard to perform named operations on the user’s behalf. These
+<em>agent actions</em> are the bridge between the agent’s text-only world and
+the dashboard’s verified state. This scheme enforces deterministic behavior.</p>
+<p>Every state-changing operation in the dashboard — running a step,
+generating tests, pushing to GitHub, archiving to Zenodo — is
+registered in a single catalog. Each action carries a stable name, the
+arguments it accepts, and the verification it triggers when it
+finishes. The agent never invents an action; it picks one from the
+catalog or it falls back to plain shell commands.</p>
+<p>From inside a container terminal, you can list the available actions:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify-do<span class="w"> </span>--list
+</pre></div>
+</div>
+<p>Or describe a single action’s arguments:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify-do<span class="w"> </span>--describe<span class="w"> </span>run-step
+</pre></div>
+</div>
+<p>Or invoke one directly (the agent does this for you):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify-do<span class="w"> </span>run-step<span class="w"> </span>A03
+</pre></div>
+</div>
+<p>Step labels (<code class="docutils literal notranslate"><span class="pre">A03</span></code>, <code class="docutils literal notranslate"><span class="pre">I01</span></code>) come from the pipeline panel — labels are
+<em>per-type sequential</em>, so <code class="docutils literal notranslate"><span class="pre">A03</span></code> is the third <em>automated</em> step and
+<code class="docutils literal notranslate"><span class="pre">I01</span></code> is the first <em>interactive</em> step. The dashboard updates as the
+action runs; if it produces new files, the affected step’s pencil and
+status dot react automatically.</p>
+<section id="why-this-matters">
+<h3>Why this matters<a class="headerlink" href="#why-this-matters" title="Link to this heading"></a></h3>
+<p>Without the catalog, an agent that wants to “run unit tests on step
+A03” would have to guess at HTTP endpoints or shell out blindly, and
+the dashboard would silently drift out of sync with what the agent
+actually did. The catalog makes the agent’s intentions explicit and
+verifiable: every action it takes is one the user could have taken
+through the dashboard, and every action triggers the same verification
+state machine.</p>
+</section>
+</section>
+<section id="hub-mode">
+<h2>Hub mode<a class="headerlink" href="#hub-mode" title="Link to this heading"></a></h2>
+<p>The hub is a separate page from the dashboard, but you visit it every
+time you launch vaibify with no subcommand:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify
+</pre></div>
+</div>
+<p>The hub lists every container vaibify knows about on the host, with
+quick-launch buttons to start, stop, or open the dashboard for any of
+them. From here you can also create a new container (the setup wizard
+from the <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a>) or add an existing project that
+already has a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p>
+<section id="one-session-per-container">
+<h3>One session per container<a class="headerlink" href="#one-session-per-container" title="Link to this heading"></a></h3>
+<p>Each container managed by vaibify can be open in only one dashboard at
+a time. This prevents two browsers from issuing conflicting commands
+to the same container. When a session is already attached, the
+container appears greyed out on other hubs.</p>
+<p>The <strong>New vaibify window</strong> icon (⧉) in the hub, the workflow picker,
+and the dashboard’s Admin menu launches a new vaibify session in a new browser tab — useful for working on two projects side by side.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
