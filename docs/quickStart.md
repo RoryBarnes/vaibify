@@ -1,151 +1,109 @@
-# Quick Start
+# QuickStart
 
-This guide walks through the minimal steps to get a Vaibify project
-running on your machine. See [Installing Vaibify](install.md) for
-detailed installation instructions, or [Setup Wizard](setupWizard.md)
-for the interactive configuration walkthrough.
+Welcome to Vaibify. If you already have Docker/Colima installed, then it will only take five minutes to install it, open
+the dashboard, and have a Docker container ready for your first
+analysis.
 
-## Option A: Build from an Existing Configuration
+## 1. Install
 
-If a repository already contains a `vaibify.yml` (and optionally a
-`workflow.json`), you can build and run the container directly — no
-`vaibify init` required.
-
-Clone the repository and navigate into it:
+You need Python 3.9 or later and Docker (or Colima on macOS) running on
+your machine. If Docker is not installed, see the [longer install
+guide](install.md) for platform-specific instructions; otherwise:
 
 ```bash
-git clone git@github.com:user/my-project.git
-cd my-project
+pip install vaibify
+vaibify
 ```
 
-Then build and start:
+Run `vaibify` with no arguments in any directory to start the
+**hub** — a local web server on `http://127.0.0.1:8050` — in your web browser.
 
-```bash
-vaibify build
-vaibify start
-```
+![Vaibify landing page](./images/landing.png)
 
-Any command run from inside a directory that contains a `vaibify.yml`
-will use that file automatically. No registration step is needed.
+You should see the Vaibify logo, the tagline, and an empty
+**Containers** list. No projects yet — let's create one.
 
-To target this project from other directories with `--project/-p`,
-register it:
+## 2. Create your first container
 
-```bash
-vaibify register
-```
+Click the **+** icon next to *Containers*. Two choices appear:
 
-Or register a project in a different directory:
+- **Add Existing** — point at a folder that already has a `vaibify.yml`
+  (someone else's project, or one of yours from another machine).
+- **Create New** — start a new project from a template.
 
-```bash
-vaibify register /path/to/my-project
-```
+Click **Create New**. The setup wizard opens.
 
-If the configuration lists private repositories (URLs starting with
-`git@github.com:`), the build needs SSH key access. Ensure your SSH
-agent is running and the relevant keys are loaded:
+![Setup wizard, step 1](./images/wizard.png)
 
-```bash
-ssh-add -l          # verify keys are loaded
-vaibify build       # SSH agent is forwarded into the build
-```
+The wizard walks you through eight steps. None of them require anything
+beyond clicks and short text answers; every step has a `?` button that
+explains what the field controls.
 
-Skip ahead to [Start and Connect](#start-and-connect) once the build
-completes.
+| Step | What you do | Default |
+|---|---|---|
+| 1. Project Directory | Choose a folder on your host (e.g. `~/src/my-analysis`). Vaibify writes `vaibify.yml` here. | — |
+| 2. Template | Pick **sandbox** for a clean room, **toolkit** for developing several libraries side-by-side, or **workflow** for a reproducible analysis with predefined steps. | sandbox |
+| 3. Project Name | The container name. Lowercase letters, digits, and hyphens. | folder name |
+| 4. Python Version | Vaibify supports 3.9 through 3.14. | 3.12 |
+| 5. Repositories | Git URLs to clone into the container at startup. Skip if you have none yet. | — |
+| 6. Features & Authentication | Toggle Jupyter, R, Julia, LaTeX, Claude Code, and GitHub authentication. | LaTeX on |
+| 7. Packages | Extra apt or pip packages on top of the template. | — |
+| 8. Summary | Review the choices and create! | — |
 
-## Option B: Initialize a New Project
+Click **Create** on the summary step. Vaibify builds the Docker image
+in the background. First builds take five to fifteen minutes depending
+on which features you enabled and your network speed; subsequent
+rebuilds are much faster because Docker caches the layers.
 
-Navigate to your project directory and run:
+When the build finishes, the wizard closes and the dashboard opens.
 
-```bash
-vaibify init
-```
+![Container dashboard](./images/dashboard.png)
 
-This creates a `vaibify.yml` configuration file and a `container.conf`
-repository list. Choose a template when prompted:
+You are now inside the container's dashboard. The toolbar shows the
+container name and (for workflow projects) the active workflow. The
+left panel shows pipeline steps. The right side has tabs for the
+container's repositories, an embedded terminal, a sync panel for
+GitHub/Overleaf/Zenodo, and a figure viewer.
 
-| Template     | Description                                       |
-|-------------|---------------------------------------------------|
-| `sandbox`   | No workflow. For exploration and interactive use.  |
-| `workflow`  | Pipeline steps for reproducible data analysis.    |
+Click in the terminal section to activate it and access a shell session inside the container.
+Whatever you do here — installing a package, running a script, launching
+Claude Code with `claude` — is sealed inside the container. Your home
+directory, your SSH keys, and the rest of your filesystem are not
+visible to anything in there.
 
-Or specify a template directly:
+You have your first Vaibify container.
 
-```bash
-vaibify init --template sandbox
-```
+## 3. Where to next
 
-See [Templates](templates.md) for details on each template and how to
-create your own.
+The dashboard is the everyday workspace; the rest of the docs go
+deeper.
 
-## Build the Image
+- **[The three templates: sandbox, toolkit, workflow](templates.md)** —
+  which one to pick and how they differ. *Sandbox* is a clean room.
+  *Toolkit* is for developing several peer libraries together. *Workflow*
+  is for reproducible multi-step analyses where each step's output gets
+  inspected and signed off.
+- **[The dashboard tour](dashboard.md)** — every panel in the running
+  container's UI: pipeline status dots, the repos panel, the embedded
+  terminal, the figure viewer, and the verification state machine that
+  records which step outputs you have looked at.
+- **[Security model](security.md)** — what Vaibify protects against
+  (escaped code, leaked credentials, host filesystem access) and what
+  it does not. Worth reading before you let any agent write code in
+  your container.
+- **[Configuration reference](configuration.md)** — every field in
+  `vaibify.yml`, `container.conf`, and `workflow.json`. You almost
+  never need to hand-edit these; the wizard writes them for you. 
+- **[Connecting external services](connecting-services.md)** — how to
+  push to GitHub, sync with Overleaf, and archive a result on Zenodo
+  from inside a container. Credentials are resolved from your host's
+  keychain at request time and never persisted in the container.
+- **[Agent action catalog](dashboard.md#agent-actions)** — the named
+  operations an AI coding agent inside the container can ask the
+  dashboard to perform on its behalf, and the verification each one
+  triggers.
+- **[Command line interface](cli.md)** - Vaibify comes with an full command line interface to access your container from a shell running on your host. Push and pull files from the container, access the container terminal from a host terminal (i.e., outside of the vaibify web application), and scripting are all available.
 
-```bash
-vaibify build
-```
-
-On first run this installs the base image, system packages, Python
-dependencies, and clones all repositories listed in `container.conf`. A
-rebuild is only required when `vaibify.yml` or `container.conf` change.
-
-## Start and Connect
-
-```bash
-vaibify start
-```
-
-This launches the container in the background. To open a shell inside it:
-
-```bash
-vaibify connect
-```
-
-Or use the shell alias (configured automatically on first run):
-
-```bash
-vaibify_connect
-```
-
-## Transfer Files
-
-Copy files into the container:
-
-```bash
-vaibify push localfile.txt /workspace/localfile.txt
-```
-
-Copy files out:
-
-```bash
-vaibify pull /workspace/output.csv ./output.csv
-```
-
-These commands work from any directory. When multiple projects are
-registered, specify the target with `--project/-p`:
-
-```bash
-vaibify build -p my-project
-vaibify start -p my-project
-vaibify status -p my-project
-vaibify connect -p my-project
-vaibify push -p my-project data.csv /workspace/data.csv
-vaibify stop -p my-project
-```
-
-## Stop the Container
-
-```bash
-vaibify stop
-```
-
-The workspace volume persists between sessions. Use `vaibify destroy`
-to remove the container and optionally delete the volume.
-
-## Check Status
-
-```bash
-vaibify status
-```
-
-This reports whether the container is running, lists installed repositories,
-and shows resource usage.
+If something goes wrong — Docker not running, port collision, a build
+that hangs — the [long-form install guide](install.md) has the
+platform-specific troubleshooting.

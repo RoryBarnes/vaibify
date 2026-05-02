@@ -100,6 +100,25 @@ rm ~/.vaibify/.setup_done
 vaibify --version
 ```
 
+## Browser Compatibility
+
+The Vaibify dashboard runs locally and renders in your default browser.
+Vaibify targets evergreen desktop browsers; mobile browsers are out of
+scope. Any reasonably current Firefox, Chrome, Edge, or Safari works.
+The minimum versions below are where layout primitives Vaibify relies
+on (`gap` in flexbox, `position: sticky`, `inset`) all became stable:
+
+| Browser | Minimum version | Released |
+|---|---|---|
+| Firefox | 66 | March 2019 |
+| Chrome / Edge | 87 | November 2020 |
+| Safari | 14.1 | April 2021 |
+
+Below these versions some panels will render with collapsed spacing or
+misaligned modals, but the underlying functionality still works. The
+dashboard does not use any feature that requires the most recent
+browser releases.
+
 ## Docker on macOS
 
 On macOS, [Colima](https://github.com/abiosoft/colima) is the recommended

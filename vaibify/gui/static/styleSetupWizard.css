@@ -261,11 +261,6 @@ html, body {
     color: var(--color-pale-blue);
 }
 
-.feature-card:has(input:checked) {
-    border-color: var(--color-pale-blue);
-    background: rgba(19, 174, 213, 0.1);
-}
-
 .feature-card.checked {
     border-color: var(--color-pale-blue);
     background: rgba(19, 174, 213, 0.1);
