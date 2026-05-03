@@ -16,6 +16,7 @@ pinned dependencies.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -209,21 +210,46 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 
 
 def fbRerunWorkflow(sProjectRepo):
-    """Re-run the workflow end to end.
+    """Re-run the workflow end to end against a running container.
 
-    The CLI entry point for full pipeline execution lives in
-    :mod:`vaibify.cli.commandRun`, but it requires a running
-    container resolved through ``fconfigResolveProject``. Wiring
-    that into the read-only ``reproduce`` command without coupling
-    it to a project name is out of scope for this subcommand;
-    document and skip with a clear message.
+    Resolves the project from sProjectRepo via fconfigResolveProject,
+    requires a running container, and invokes the same pipeline runner
+    that ``vaibify run`` uses. Returns True on success, False on any
+    failure (configuration, missing container, non-zero pipeline exit).
+    Failures print actionable messages but do not raise.
     """
     _fnPrintHeader("4/4", "Re-running workflow")
-    click.echo(
-        "... step 4 not yet wired (use `vaibify run` against a running "
-        "container)"
+    try:
+        return _fbInvokePipelineRunner(sProjectRepo)
+    except Exception as error:
+        click.echo(f"... failed to invoke pipeline runner: {error}")
+        return False
+
+
+def _fbInvokePipelineRunner(sProjectRepo):
+    """Invoke commandRun's pipeline machinery against the resolved project."""
+    from .configLoader import fconfigResolveProject
+    from .commandUtilsDocker import (
+        fconnectionRequireDocker,
+        fsRequireRunningContainer,
     )
+    from .commandRun import _fiRunPipeline
+    configProject = fconfigResolveProject(_fsResolveProjectName(sProjectRepo))
+    connectionDocker = fconnectionRequireDocker()
+    sContainerName = fsRequireRunningContainer(configProject)
+    iExitCode = _fiRunPipeline(
+        connectionDocker, sContainerName, None, None,
+    )
+    if iExitCode != 0:
+        click.echo(f"... pipeline runner exited with code {iExitCode}")
+        return False
+    click.echo("... workflow re-ran successfully ✓")
     return True
+
+
+def _fsResolveProjectName(sProjectRepo):
+    """Return the project directory's basename for fconfigResolveProject."""
+    return os.path.basename(os.path.abspath(sProjectRepo))
 
 
 def _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):
