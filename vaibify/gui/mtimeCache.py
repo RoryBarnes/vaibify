@@ -28,6 +28,7 @@ __all__ = [
     "fnSaveCache",
     "fsBlobShaForFile",
     "fbFileMatchesDigest",
+    "fsSha256ForFile",
 ]
 
 
@@ -101,7 +102,10 @@ def fsBlobShaForFile(sWorkspaceRoot, sRepoRelPath, dictCache):
         sSha = fsComputeBlobSha(sHostPath)
     except OSError:
         return ""
-    dictCache[sRepoRelPath] = {"fMtime": fMtime, "sBlobSha": sSha}
+    if not isinstance(dictEntry, dict) or dictEntry.get("fMtime") != fMtime:
+        dictEntry = {"fMtime": fMtime}
+    dictEntry["sBlobSha"] = sSha
+    dictCache[sRepoRelPath] = dictEntry
     return sSha
 
 
@@ -115,3 +119,35 @@ def fbFileMatchesDigest(
     if not sCurrent:
         return False
     return sCurrent == sBaselineSha
+
+
+def fsSha256ForFile(sWorkspaceRoot, sRepoRelPath, dictCache):
+    """Return current SHA-256 hex digest for a file using the cache.
+
+    Reuses the same per-path entry as ``fsBlobShaForFile`` but stores
+    the SHA-256 result under a separate ``sSha256`` key so the two
+    digest universes (git blob SHA-1, content SHA-256) coexist without
+    collision. Returns the empty string when the file is missing.
+    """
+    from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
+    sHostPath = _fsHostPathFor(sWorkspaceRoot, sRepoRelPath)
+    try:
+        fMtime = os.path.getmtime(sHostPath)
+    except OSError:
+        return ""
+    dictEntry = dictCache.get(sRepoRelPath)
+    if (
+        isinstance(dictEntry, dict)
+        and dictEntry.get("fMtime") == fMtime
+        and dictEntry.get("sSha256")
+    ):
+        return dictEntry["sSha256"]
+    try:
+        sSha = fsComputeFileHash(sHostPath)
+    except (OSError, FileNotFoundError):
+        return ""
+    if not isinstance(dictEntry, dict) or dictEntry.get("fMtime") != fMtime:
+        dictEntry = {"fMtime": fMtime}
+    dictEntry["sSha256"] = sSha
+    dictCache[sRepoRelPath] = dictEntry
+    return sSha

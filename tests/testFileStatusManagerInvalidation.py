@@ -1,5 +1,6 @@
 """Tests for uncovered branches in fileStatusManager."""
 
+import hashlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from vaibify.gui.fileStatusManager import (
     _fbAnyMtimeNewerThan,
     _fbPlotNewerThanUserVerification,
+    _fdictBuildScriptStatus,
     _fdictDetectChangedFiles,
     _fdictStatBatch,
     _fiMarkerMtime,
@@ -634,3 +636,104 @@ def test_fnInvalidateStepFiles_wire_format_has_no_absolute_paths():
         assert not sPath.startswith("/"), (
             f"wire format must be repo-relative, got abs: {sPath}"
         )
+
+
+# ---------------------------------------------------------------
+# Manifest short-circuit: hash-clean steps suppress mtime stale
+# ---------------------------------------------------------------
+
+
+_S_MANIFEST_HEADER = "# SHA-256 manifest of workflow outputs\n"
+_S_MANIFEST_FILENAME = "MANIFEST.sha256"
+
+
+def _fsSha256(sContent):
+    """Return SHA-256 hex digest of ``sContent`` encoded UTF-8."""
+    return hashlib.sha256(sContent.encode("utf-8")).hexdigest()
+
+
+def test_step_status_unchanged_when_mtime_stale_but_hash_clean(tmp_path):
+    """A fresh-clone-like state (new mtimes, matching content) is unchanged."""
+    sContent = "alpha,beta\n1,2\n"
+    sRepoRoot = str(tmp_path)
+    sStepDir = posixJoin(sRepoRoot, "stepOne")
+    pathFile = tmp_path / "stepOne" / "out.csv"
+    pathFile.parent.mkdir(parents=True, exist_ok=True)
+    pathFile.write_text(sContent)
+    pathManifest = tmp_path / _S_MANIFEST_FILENAME
+    pathManifest.write_text(
+        _S_MANIFEST_HEADER + f"{_fsSha256(sContent)}  stepOne/out.csv\n"
+    )
+    sAbsPath = str(pathFile)
+    dictStep = {
+        "sName": "OnlyStep",
+        "sDirectory": sStepDir,
+        "saDataFiles": ["out.csv"],
+        "saPlotFiles": [],
+        "saDataCommands": [],
+        "saPlotCommands": [],
+        "dictVerification": {
+            "sUser": "passed",
+            "sLastUserUpdate": "2020-01-01 00:00:00 UTC",
+        },
+    }
+    dictWorkflow = {
+        "listSteps": [dictStep],
+        "sProjectRepoPath": sRepoRoot,
+    }
+    dictModTimes = {sAbsPath: "1900000000"}
+    dictVars = {
+        "sPlotDirectory": "Plot", "sFigureType": "pdf",
+        "sRepoRoot": sRepoRoot,
+    }
+    dictResult = _fdictBuildScriptStatus(
+        dictWorkflow, dictModTimes, dictVars,
+    )
+    assert dictResult[0]["sStatus"] == "unchanged"
+
+
+def test_step_status_modified_when_mtime_stale_and_hash_drifted(tmp_path):
+    """When current content drifted from the manifest, the step stays stale."""
+    sOriginal = "alpha,beta\n1,2\n"
+    sCurrent = "alpha,beta\n9,9\n"
+    sRepoRoot = str(tmp_path)
+    sStepDir = posixJoin(sRepoRoot, "stepOne")
+    pathFile = tmp_path / "stepOne" / "out.csv"
+    pathFile.parent.mkdir(parents=True, exist_ok=True)
+    pathFile.write_text(sCurrent)
+    # Manifest pins the original content; current content drifted.
+    pathManifest = tmp_path / _S_MANIFEST_FILENAME
+    pathManifest.write_text(
+        _S_MANIFEST_HEADER + f"{_fsSha256(sOriginal)}  stepOne/out.csv\n"
+    )
+    sAbsPath = str(pathFile)
+    dictStep = {
+        "sName": "OnlyStep",
+        "sDirectory": sStepDir,
+        "saDataFiles": ["out.csv"],
+        "saPlotFiles": [],
+        "saDataCommands": [],
+        "saPlotCommands": [],
+        "dictVerification": {
+            "sUser": "passed",
+            "sLastUserUpdate": "2020-01-01 00:00:00 UTC",
+        },
+    }
+    dictWorkflow = {
+        "listSteps": [dictStep],
+        "sProjectRepoPath": sRepoRoot,
+    }
+    dictModTimes = {sAbsPath: "1900000000"}
+    dictVars = {
+        "sPlotDirectory": "Plot", "sFigureType": "pdf",
+        "sRepoRoot": sRepoRoot,
+    }
+    dictResult = _fdictBuildScriptStatus(
+        dictWorkflow, dictModTimes, dictVars,
+    )
+    assert dictResult[0]["sStatus"] == "modified"
+
+
+def posixJoin(*saParts):
+    """Join path parts using forward slashes (manifest paths are POSIX)."""
+    return "/".join(part.rstrip("/") for part in saParts if part)

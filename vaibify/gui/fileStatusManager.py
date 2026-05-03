@@ -836,9 +836,18 @@ def _flistSplitOutputPaths(
 
 def _fdictBuildStepStatusEntry(
     dictStep, dictStepScripts, listOutputs, dictModTimes,
-    dictResolvedVars, iMarkerMtime=None,
+    dictResolvedVars, iMarkerMtime=None, dictManifestCache=None,
 ):
-    """Compute {sStatus, listStaleArtifacts} for a single step."""
+    """Compute {sStatus, listStaleArtifacts} for a single step.
+
+    The mtime-based verdict (``_fbStepIsPencilStale``) is the source
+    of "may be stale". The optional manifest short-circuit refines it
+    to "is/isn't actually drifted": if the project repo carries a
+    ``MANIFEST.sha256`` that matches every output of this step, an
+    mtime-stale verdict is downgraded to ``unchanged``. This prevents
+    a fresh git clone — where every mtime is "now" — from
+    false-positively flagging every step as modified.
+    """
     setPlotPaths = {
         sResolved for sResolved, _sBase
         in _flistResolvePlotPaths(dictStep, dictResolvedVars)
@@ -848,10 +857,81 @@ def _fdictBuildStepStatusEntry(
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
     )
+    if bStale and _fbStepHashesMatchManifest(
+        dictStep, dictResolvedVars, dictManifestCache,
+    ):
+        bStale = False
+        listStale = []
     return {
         "sStatus": "modified" if bStale else "unchanged",
         "listStaleArtifacts": listStale,
     }
+
+
+def _fbStepHashesMatchManifest(
+    dictStep, dictResolvedVars, dictManifestCache,
+):
+    """Return True iff every output's content matches MANIFEST.sha256.
+
+    Conservative: returns False when there is no project repo, no
+    manifest, no declared outputs, any declared output is absent from
+    the manifest (cannot prove freshness without an entry), or any
+    tracked output drifted from its expected hash. Only when every
+    declared output is both manifest-tracked and bit-identical to its
+    expected hash does the short-circuit fire.
+    """
+    if dictManifestCache is None:
+        return False
+    sRepoRoot = (dictResolvedVars or {}).get("sRepoRoot", "")
+    if not sRepoRoot:
+        return False
+    from . import hashStaleness
+    if not hashStaleness.fbManifestExists(sRepoRoot):
+        return False
+    listRelPaths = _flistStepOutputsRepoRelative(dictStep, sRepoRoot)
+    if not listRelPaths:
+        return False
+    if not _fbAllPathsTrackedByManifest(sRepoRoot, listRelPaths):
+        return False
+    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
+        sRepoRoot, listRelPaths, dictManifestCache,
+    )
+    return len(setStale) == 0
+
+
+def _fbAllPathsTrackedByManifest(sRepoRoot, listRelPaths):
+    """Return True iff every path appears as a manifest entry."""
+    from . import hashStaleness
+    dictEntries = hashStaleness._fdictReadManifestEntries(sRepoRoot)
+    if not dictEntries:
+        return False
+    for sRelPath in listRelPaths:
+        if sRelPath not in dictEntries:
+            return False
+    return True
+
+
+def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
+    """Return repo-relative output paths declared on a step.
+
+    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    step directory the same way ``_fsResolveStepFilePath`` does, then
+    strips the repo root so the result lines up with manifest keys
+    (which are repo-relative POSIX strings written by
+    ``manifestWriter``).
+    """
+    from .pathContract import fsAbsToRepoRelative
+    sStepDir = dictStep.get("sDirectory", "")
+    listRelative = []
+    for sFile in (dictStep.get("saDataFiles", [])
+                  + dictStep.get("saPlotFiles", [])):
+        if not sFile:
+            continue
+        sAbs = _fsResolveStepFilePath(
+            sFile, sStepDir, {"sRepoRoot": sRepoRoot},
+        )
+        listRelative.append(fsAbsToRepoRelative(sAbs, sRepoRoot))
+    return listRelative
 
 
 def _fdictBuildScriptStatus(
@@ -865,6 +945,7 @@ def _fdictBuildScriptStatus(
     )
     dictResolvedVars = dictVars or _fdictBuildFileStatusVars(dictWorkflow)
     dictMarkerMtimes = dictMarkerMtimeByStep or {}
+    dictManifestCache = {}
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
@@ -875,6 +956,7 @@ def _fdictBuildScriptStatus(
             dictOutputsByStep.get(iIndex, []),
             dictModTimes, dictResolvedVars,
             iMarkerMtime=_fiMarkerMtime(dictMarkerMtimes, iIndex),
+            dictManifestCache=dictManifestCache,
         )
     return dictResult
 
