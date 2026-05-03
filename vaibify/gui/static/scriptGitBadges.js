@@ -160,10 +160,39 @@ var VaibifyGitBadges = (function () {
         return _dictState.dictRepoSummary;
     }
 
+    function _fbHasBothHashFlags(dictStatus) {
+        if (!dictStatus || typeof dictStatus !== "object") return false;
+        return (
+            Object.prototype.hasOwnProperty.call(dictStatus, "bMtimeStale") &&
+            Object.prototype.hasOwnProperty.call(dictStatus, "bHashStale")
+        );
+    }
+
+    function fsRenderStepStaleBadge(dictStatus) {
+        if (!_fbHasBothHashFlags(dictStatus)) return "";
+        var bMtimeStale = !!dictStatus.bMtimeStale;
+        var bHashStale = !!dictStatus.bHashStale;
+        if (bMtimeStale && !bHashStale) {
+            return (
+                '<span class="step-stale-badge stale-mtime-only" ' +
+                'title="modified time changed but content matches ' +
+                'manifest, no action needed">\u25CC</span>'
+            );
+        }
+        return "";
+    }
+
+    function fbRenderHollowStaleIndicator(dictStatus) {
+        if (!_fbHasBothHashFlags(dictStatus)) return false;
+        return !!dictStatus.bMtimeStale && !dictStatus.bHashStale;
+    }
+
     return {
         fnRefresh: fnRefresh,
         fdictGetBadgesForFile: fdictGetBadgesForFile,
         fsRenderBadgeRow: fsRenderBadgeRow,
         fdictRepoSummary: fdictRepoSummary,
+        fsRenderStepStaleBadge: fsRenderStepStaleBadge,
+        fbRenderHollowStaleIndicator: fbRenderHollowStaleIndicator,
     };
 })();
