@@ -373,17 +373,19 @@ def fnScheduleReverify(app, dictCtx, fHoursCadence=_F_DEFAULT_CADENCE_HOURS):
     ``dictWorkflow.get('fReverifyHoursCadence', fHoursCadence)`` —
     individual workflows can opt into a faster cadence than the global
     default.
+
+    Hooks are appended to the app's lifespan startup/shutdown lists
+    (the modern FastAPI pattern); the deprecated ``@app.on_event``
+    decorator is no longer used.
     """
 
-    @app.on_event("startup")
-    async def fnStartReverifyTask():
+    async def fnStartReverifyTask(app):
         taskReverify = asyncio.create_task(
             _fnReverifyLoop(dictCtx, fHoursCadence)
         )
         app.state.taskScheduledReverify = taskReverify
 
-    @app.on_event("shutdown")
-    async def fnStopReverifyTask():
+    async def fnStopReverifyTask(app):
         taskReverify = getattr(
             app.state, "taskScheduledReverify", None,
         )
@@ -394,3 +396,6 @@ def fnScheduleReverify(app, dictCtx, fHoursCadence=_F_DEFAULT_CADENCE_HOURS):
             await taskReverify
         except (asyncio.CancelledError, Exception):
             pass
+
+    app.state.listLifespanStartup.append(fnStartReverifyTask)
+    app.state.listLifespanShutdown.append(fnStopReverifyTask)

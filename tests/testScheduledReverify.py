@@ -135,17 +135,17 @@ def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
 
 
 def testScheduleReverifyRegistersStartupAndShutdown():
-    """fnScheduleReverify wires startup + shutdown handlers on the app."""
+    """fnScheduleReverify appends startup + shutdown hooks to the app's
+    lifespan lists (the modern FastAPI pattern; @app.on_event is
+    deprecated and unsupported when lifespan= is set)."""
     appMock = MagicMock()
-    appMock.on_event.return_value = lambda fn: fn
+    appMock.state.listLifespanStartup = []
+    appMock.state.listLifespanShutdown = []
     scheduledReverify.fnScheduleReverify(
         appMock, {"workflows": {}}, fHoursCadence=0.1,
     )
-    listEventNames = [
-        callOne.args[0] for callOne in appMock.on_event.call_args_list
-    ]
-    assert "startup" in listEventNames
-    assert "shutdown" in listEventNames
+    assert len(appMock.state.listLifespanStartup) == 1
+    assert len(appMock.state.listLifespanShutdown) == 1
 
 
 # --------- Manifest loading helper ---------
