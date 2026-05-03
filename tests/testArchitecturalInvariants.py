@@ -29,6 +29,7 @@ __all__ = [
     "testDepsExpandedShowsStepStatusAndTimingAxes",
     "testPipelineStateCarriesLivenessFields",
     "testContainerUserUidIsOneThousand",
+    "testManifestWriterCoversEveryDeclaredOutput",
 ]
 
 
@@ -1104,3 +1105,37 @@ def testContainerUserUidIsOneThousand():
         "the credentials volume's UID 1000 ownership stays valid "
         "across rebuilds (audit finding F-R-07)."
     )
+
+
+def testManifestWriterCoversEveryDeclaredOutput(tmp_path):
+    """fnWriteManifest must hash every path in saOutputFiles, saPlotFiles,
+    and saDataFiles for every step.
+
+    A silently incomplete manifest is the worst-of-all-worlds for AICS
+    Level 3: third parties run `sha256sum -c MANIFEST.sha256`, see all
+    listed entries pass, and conclude the reproduction is bit-perfect —
+    even though some artefacts were never tracked. This invariant guards
+    against future schema additions to workflow.json that introduce a
+    new path-list key without teaching the manifest writer about it.
+    """
+    from vaibify.reproducibility.manifestWriter import fnWriteManifest
+    listSamplePaths = [
+        ("scripts/runAnalysis.py", "saOutputFiles", b"output payload"),
+        ("data/results.csv", "saDataFiles", b"col1,col2\n1,2\n"),
+        ("plots/figure1.pdf", "saPlotFiles", b"%PDF-1.4 fake\n"),
+    ]
+    dictWorkflow = {"listSteps": [{"saOutputFiles": [], "saDataFiles": [],
+                                   "saPlotFiles": []}]}
+    for sRel, sKey, baBytes in listSamplePaths:
+        pathFile = tmp_path / sRel
+        pathFile.parent.mkdir(parents=True, exist_ok=True)
+        pathFile.write_bytes(baBytes)
+        dictWorkflow["listSteps"][0][sKey].append(sRel)
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    sManifest = (tmp_path / "MANIFEST.sha256").read_text()
+    for sRel, _sKey, _baBytes in listSamplePaths:
+        assert sRel in sManifest, (
+            f"MANIFEST.sha256 omitted '{sRel}' — fnWriteManifest must "
+            f"cover every path in saOutputFiles + saPlotFiles + "
+            f"saDataFiles."
+        )
