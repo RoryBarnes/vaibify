@@ -7,6 +7,7 @@ import os
 import posixpath
 import re
 import secrets
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger("vaibify")
 
@@ -1060,6 +1061,7 @@ from .fileStatusManager import (  # noqa: F401
     _fnInvalidateDownstreamStep,
     _fnInvalidateStepFiles,
     _fnUpdateModTimeBaseline,
+    fbAllStepsFullyVerified,
     fbIsStepFullyVerified,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
@@ -1409,6 +1411,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # Application factories
 # ---------------------------------------------------------------
 
+@asynccontextmanager
+async def _alifespanShared(app):
+    """Single lifespan that drives every registered startup/shutdown hook.
+
+    Modules append callables to ``app.state.listLifespanStartup`` and
+    ``app.state.listLifespanShutdown`` between app construction and the
+    first ASGI request. This replaces the deprecated
+    ``@app.on_event("startup"/"shutdown")`` decorators (FastAPI emits
+    a DeprecationWarning when those are used; mixing them with
+    ``lifespan=`` is also unsupported).
+    """
+    for fnStartup in list(getattr(app.state, "listLifespanStartup", [])):
+        await _fnInvokeMaybeAsync(fnStartup, app)
+    yield
+    for fnShutdown in list(getattr(app.state, "listLifespanShutdown", [])):
+        try:
+            await _fnInvokeMaybeAsync(fnShutdown, app)
+        except Exception:
+            pass
+
+
+async def _fnInvokeMaybeAsync(fnHook, app):
+    """Invoke a lifespan hook that may be sync or async."""
+    objectResult = fnHook(app)
+    if asyncio.iscoroutine(objectResult):
+        await objectResult
+
+
 def fappCreateApplication(
     sWorkspaceRoot="/workspace", sTerminalUserArg=None,
     iExpectedPort=0,
@@ -1422,7 +1452,11 @@ def fappCreateApplication(
     """
     global sTerminalUser
     sTerminalUser = sTerminalUserArg
-    app = FastAPI(title="Vaibify Workflow Viewer")
+    app = FastAPI(
+        title="Vaibify Workflow Viewer", lifespan=_alifespanShared,
+    )
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
@@ -1445,7 +1479,9 @@ def fappCreateHubApplication(iExpectedPort=0):
     from .registryRoutes import fnRegisterRegistryRoutes
     global sTerminalUser
     sTerminalUser = "researcher"
-    app = FastAPI(title="Vaibify Hub")
+    app = FastAPI(title="Vaibify Hub", lifespan=_alifespanShared)
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
     sSessionToken = secrets.token_urlsafe(32)
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
@@ -1467,8 +1503,7 @@ def fappCreateHubApplication(iExpectedPort=0):
 def _fnRegisterHubShutdownReleaseLocks(app):
     """Release all held container locks when the hub shuts down."""
 
-    @app.on_event("shutdown")
-    async def fnReleaseAllContainerLocks():
+    async def fnReleaseAllContainerLocks(app):
         from vaibify.config.containerLock import fnReleaseContainerLock
         for fileHandle in list(app.state.dictContainerLocks.values()):
             try:
@@ -1476,3 +1511,4 @@ def _fnRegisterHubShutdownReleaseLocks(app):
             except OSError:
                 pass
         app.state.dictContainerLocks.clear()
+    app.state.listLifespanShutdown.append(fnReleaseAllContainerLocks)

@@ -52,6 +52,7 @@ __all__ = [
     "fbReconcileUserVerificationTimestamps",
     "fbIsStepFullyVerified",
     "flistStepRemoteFiles",
+    "fbAllStepsFullyVerified",
     "fnMaybeAutoArchive",
 ]
 
@@ -1176,6 +1177,39 @@ async def _fnArchiveZenodoForAutoArchive(
     return True
 
 
+def fbAllStepsFullyVerified(dictWorkflow):
+    """Return True iff every step in the workflow is fully verified."""
+    listSteps = dictWorkflow.get("listSteps", [])
+    if not listSteps:
+        return False
+    return all(fbIsStepFullyVerified(dictStep) for dictStep in listSteps)
+
+
+def _fnRefreshEnvelopeIfAllGreen(dictWorkflow):
+    """Regenerate the L3 reproducibility envelope on all-green transition.
+
+    Called from the same hook that drives auto-archive. Failures are
+    logged and swallowed — the manifest is best-effort here; the manual
+    Archive button remains the recovery path. The envelope is regenerated
+    regardless of bAutoArchive so the local repo always reflects the
+    latest verified state.
+    """
+    if not fbAllStepsFullyVerified(dictWorkflow):
+        return
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        return
+    try:
+        from vaibify.reproducibility import dataArchiver
+        dataArchiver.fnGenerateReproducibilityEnvelope(
+            sProjectRepoPath, dictWorkflow,
+        )
+    except Exception as error:
+        logger.warning(
+            "All-green envelope refresh failed: %s", error,
+        )
+
+
 async def fnMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     bWasFullyVerifiedBefore,
@@ -1188,12 +1222,22 @@ async def fnMaybeAutoArchive(
     sync UI remains the recovery path. Returns True when at least one
     remote was pushed (callers can use this to know whether to refresh
     badges).
+
+    Also refreshes the L3 reproducibility envelope (MANIFEST.sha256 +
+    requirements.lock + .vaibify/environment.json) when this step's
+    transition leaves the workflow all-green. The refresh runs
+    independently of bAutoArchive so the local repo's manifest always
+    reflects the latest fully-verified state.
     """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if (not bWasFullyVerifiedBefore and
+            0 <= iStepIndex < len(listSteps) and
+            fbIsStepFullyVerified(listSteps[iStepIndex])):
+        _fnRefreshEnvelopeIfAllGreen(dictWorkflow)
     if not dictWorkflow.get("bAutoArchive"):
         return False
     if bWasFullyVerifiedBefore:
         return False
-    listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return False
     if not fbIsStepFullyVerified(listSteps[iStepIndex]):
