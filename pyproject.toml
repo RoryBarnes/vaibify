@@ -44,6 +44,7 @@ dependencies = [
     "scipy>=1.9",
     "docker>=6.0",
     "keyring>=23.0",
+    "uv>=0.5.0",
     "pytest>=7.0",
     "pytest-cov",
 ]
