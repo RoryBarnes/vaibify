@@ -35,6 +35,7 @@ from .commandInit import init
 from .commandLs import ls
 from .commandRegister import register
 from .commandPublish import publish
+from .commandReproduce import reproduce
 from .commandRun import run
 from .commandStart import start
 from .commandStatus import status
@@ -131,6 +132,7 @@ main.add_command(status)
 main.add_command(destroy)
 main.add_command(config)
 main.add_command(publish)
+main.add_command(reproduce)
 main.add_command(run)
 main.add_command(workflow)
 main.add_command(verify_step)
