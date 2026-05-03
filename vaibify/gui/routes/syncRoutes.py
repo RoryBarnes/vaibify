@@ -1281,6 +1281,102 @@ def _fsRequireOverleafProjectId(dictCtx, sContainerId):
     return sProjectId
 
 
+_LIST_VERIFY_REMOTE_SERVICES = ("github", "overleaf", "zenodo")
+
+
+def _fnValidateVerifyService(sService):
+    """Raise HTTP 400 when sService is not a supported verify target."""
+    if sService not in _LIST_VERIFY_REMOTE_SERVICES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "sService must be one of: "
+                + ", ".join(_LIST_VERIFY_REMOTE_SERVICES)
+            ),
+        )
+
+
+def _fdictRunRemoteVerifyBlocking(dictWorkflow, sService):
+    """Run the synchronous verify call against the remote and return status."""
+    from vaibify.reproducibility import scheduledReverify
+    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    dictStatus = scheduledReverify.fdictVerifyRemoteService(
+        sProjectRepo, dictWorkflow, sService,
+    )
+    scheduledReverify.fnWriteSyncStatus(sProjectRepo, dictStatus)
+    return dictStatus
+
+
+def _fnRaiseVerifyError(errorAny, sService):
+    """Translate verify exceptions to HTTPException with redacted detail."""
+    from vaibify.reproducibility import scheduledReverify
+    if isinstance(errorAny, FileNotFoundError):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "MANIFEST.sha256 is missing. Run the workflow to "
+                "regenerate the manifest before verifying."
+            ),
+        ) from errorAny
+    if isinstance(errorAny, scheduledReverify.ReverifyConfigError):
+        raise HTTPException(
+            status_code=409, detail=str(errorAny),
+        ) from errorAny
+    sRedacted = _fsRedactRemoteError(str(errorAny))
+    raise HTTPException(
+        status_code=502,
+        detail=f"Remote verify failed for {sService}: {sRedacted}",
+    ) from errorAny
+
+
+def _fsRedactRemoteError(sMessage):
+    """Apply both mirror modules' redactors to a remote error message."""
+    from vaibify.reproducibility import (
+        githubMirror as ghMirror,
+        overleafMirror as olMirror,
+    )
+    return olMirror.fsRedactStderr(ghMirror.fsRedactStderr(sMessage or ""))
+
+
+def _fnRegisterRemoteVerify(app, dictCtx):
+    """Register POST /api/sync/{id}/{sService}/verify endpoint."""
+
+    @fnAgentAction("verify-remote")
+    @app.post("/api/sync/{sContainerId}/{sService}/verify")
+    async def fnVerifyRemote(sContainerId: str, sService: str):
+        dictCtx["require"]()
+        _fnValidateVerifyService(sService)
+        _fnRequireNetworkAccess(sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        try:
+            return await asyncio.to_thread(
+                _fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
+            )
+        except HTTPException:
+            raise
+        except Exception as errorAny:
+            _fnRaiseVerifyError(errorAny, sService)
+
+
+def _fnRegisterRemoteVerifyStatus(app, dictCtx):
+    """Register GET /api/sync/{id}/{sService}/status endpoint."""
+    from vaibify.reproducibility import scheduledReverify
+
+    @app.get("/api/sync/{sContainerId}/{sService}/status")
+    async def fnGetRemoteVerifyStatus(
+        sContainerId: str, sService: str,
+    ):
+        _fnValidateVerifyService(sService)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+        return await asyncio.to_thread(
+            scheduledReverify.fdictReadCachedSyncStatus,
+            sProjectRepo, sService,
+        )
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all sync and reproducibility routes."""
     _fnRegisterOverleafPush(app, dictCtx)
@@ -1297,3 +1393,12 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterDag(app, dictCtx)
     _fnRegisterDagExport(app, dictCtx)
     _fnRegisterDatasetDownload(app, dictCtx)
+    _fnRegisterRemoteVerify(app, dictCtx)
+    _fnRegisterRemoteVerifyStatus(app, dictCtx)
+    _fnRegisterScheduledReverify(app, dictCtx)
+
+
+def _fnRegisterScheduledReverify(app, dictCtx):
+    """Attach the periodic re-verify task to the FastAPI lifespan."""
+    from vaibify.reproducibility import scheduledReverify
+    scheduledReverify.fnScheduleReverify(app, dictCtx)

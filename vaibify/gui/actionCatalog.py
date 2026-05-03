@@ -270,6 +270,21 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Pull a dataset from a Zenodo record. "
                      "Args: {sRecordId, sFileName, sDestination}."},
+    {"sName": "verify-remote", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/sync/{sContainerId}/{sService}/verify",
+     "bAgentSafe": True,
+     "sDescription": "Verify the workflow manifest against one remote "
+                     "(github, overleaf, or zenodo). Returns iMatching, "
+                     "iTotalFiles, listDiverged. Path: sService is the "
+                     "remote name."},
+    {"sName": "verify-manifest", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/manifest/verify",
+     "bAgentSafe": True,
+     "sDescription": "Recompute SHA-256 hashes for every file in "
+                     "MANIFEST.sha256 and report mismatches. Returns "
+                     "iTotal, iMatching, listMismatches."},
     # ---- Files ----
     {"sName": "pull-file", "sCategory": "files",
      "sMethod": "POST",

@@ -896,6 +896,55 @@ def _flistFindCustomTestFiles(
     return listCustom
 
 
+def _fnRegisterManifestVerify(app, dictCtx):
+    """Register POST /api/workflow/{id}/manifest/verify endpoint."""
+    from vaibify.reproducibility import manifestWriter
+
+    @fnAgentAction("verify-manifest")
+    @app.post("/api/workflow/{sContainerId}/manifest/verify")
+    async def fnVerifyManifest(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+        try:
+            listMismatches = await asyncio.to_thread(
+                manifestWriter.flistVerifyManifest, sProjectRepo,
+            )
+        except FileNotFoundError as errorMissing:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "MANIFEST.sha256 is missing. Run the workflow to "
+                    "regenerate the manifest before verifying."
+                ),
+            ) from errorMissing
+        return _fdictBuildManifestVerifyResult(
+            dictWorkflow, listMismatches,
+        )
+
+
+def _fdictBuildManifestVerifyResult(dictWorkflow, listMismatches):
+    """Compose the manifest-verify response payload."""
+    iTotal = _fiCountManifestEntries(dictWorkflow)
+    iTotal = max(iTotal, len(listMismatches))
+    return {
+        "iTotal": iTotal,
+        "iMatching": iTotal - len(listMismatches),
+        "listMismatches": listMismatches,
+    }
+
+
+def _fiCountManifestEntries(dictWorkflow):
+    """Return the number of distinct outputs declared in the workflow."""
+    setPaths = set()
+    for dictStep in dictWorkflow.get("listSteps", []):
+        for sKey in ("saOutputFiles", "saPlotFiles", "saDataFiles"):
+            for sPath in dictStep.get(sKey, []) or []:
+                setPaths.add(str(sPath).replace("\\", "/"))
+    return len(setPaths)
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all pipeline control routes."""
     _fnRegisterPipelineState(app, dictCtx)
@@ -904,3 +953,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterAcknowledgeStep(app, dictCtx)
     _fnRegisterFileStatus(app, dictCtx)
+    _fnRegisterManifestVerify(app, dictCtx)
