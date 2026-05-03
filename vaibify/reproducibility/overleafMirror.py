@@ -49,6 +49,7 @@ import posixpath
 import re
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
@@ -62,6 +63,7 @@ __all__ = [
     "S_OVERLEAF_WEB_UI_COMMIT_MESSAGE",
     "fbRefreshMirror",
     "fdictDiffAgainstMirror",
+    "fdictFetchRemoteHashes",
     "fdictIndexMirrorBlobs",
     "flistDetectCaseCollisions",
     "flistDetectConflicts",
@@ -564,6 +566,116 @@ def fnDeleteMirror(sProjectId):
     fnValidateOverleafProjectId(sProjectId)
     sMirror = _fsMirrorPath(sProjectId)
     shutil.rmtree(sMirror, ignore_errors=True)
+
+
+# ----------------------------------------------------------------------
+# On-demand SHA-256 hashing of real remote bytes (AICS L3 verification).
+# This path is intentionally separate from the per-poll partial-clone
+# code: it performs a shallow but FULL clone (no ``--filter=blob:none``)
+# into a private tempdir so file bytes are available for hashing, then
+# unconditionally tears that tempdir down. Never called from the
+# polling refresh path.
+# ----------------------------------------------------------------------
+_I_HASH_READ_CHUNK_BYTES = 65536
+
+
+def fdictFetchRemoteHashes(sProjectId, listRelPaths):
+    """Return a dict mapping each repo-relative path to its SHA-256 hex.
+
+    Performs a shallow, full-blob clone of the Overleaf project at
+    ``sProjectId`` into a private mode-0700 tempdir, hashes the bytes
+    of each path in ``listRelPaths``, and removes the tempdir. Paths
+    that are absent from the remote tree are recorded with value
+    ``None``. Returns an empty dict immediately when ``listRelPaths``
+    is empty (no clone is performed).
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    if not listRelPaths:
+        return {}
+    sAskpass = fsWriteAskpassScript()
+    sTempDir = _fsMakeFetchTempDir()
+    try:
+        _fnFullClone(sProjectId, sAskpass, sTempDir)
+        return _fdictHashPathsInClone(sTempDir, listRelPaths)
+    finally:
+        _fnRemovePath(sAskpass)
+        shutil.rmtree(sTempDir, ignore_errors=True)
+
+
+def _fsMakeFetchTempDir():
+    """Create a mode-0700 tempdir used for one fetch-and-hash cycle."""
+    sTempDir = tempfile.mkdtemp(prefix="vc_overleaf_fetch_")
+    try:
+        os.chmod(sTempDir, _I_MIRROR_DIR_MODE)
+    except OSError:
+        pass
+    return sTempDir
+
+
+def _fnFullClone(sProjectId, sAskpassPath, sTempDir):
+    """Shallow full-blob clone of an Overleaf project into sTempDir.
+
+    Unlike :func:`_fnClonePartial`, this path fetches blob bytes so
+    SHA-256 hashes can be computed locally. Used only for on-demand
+    verification, never per-poll.
+    """
+    sCloneTarget = os.path.join(sTempDir, "clone")
+    sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
+    dictEnv = _fdictBuildGitEnv(sAskpassPath)
+    listArgs = list(LIST_GIT_HARDENING_CONFIG) + [
+        "clone", "--depth=1", "--no-recurse-submodules",
+        sUrl, sCloneTarget,
+    ]
+    result = _fnRunGit(listArgs, dictEnv=dictEnv)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Remote hash fetch failed: {_fsStrippedStderr(result)}"
+        )
+
+
+def _fdictHashPathsInClone(sTempDir, listRelPaths):
+    """Hash each requested path inside the tempdir clone."""
+    sCloneRoot = os.path.join(sTempDir, "clone")
+    dictHashes = {}
+    for sRelPath in listRelPaths:
+        dictHashes[sRelPath] = _fsHashOneRelPath(sCloneRoot, sRelPath)
+    return dictHashes
+
+
+def _fsHashOneRelPath(sCloneRoot, sRelPath):
+    """Return the SHA-256 hex of one repo-relative path or None.
+
+    Returns ``None`` when the path does not resolve to a regular file
+    inside the clone — covers both "missing on the remote" and any
+    path-traversal attempt that would escape the clone root.
+    """
+    sCandidate = os.path.normpath(
+        os.path.join(sCloneRoot, sRelPath),
+    )
+    if not _fbPathInsideRoot(sCandidate, sCloneRoot):
+        return None
+    if not os.path.isfile(sCandidate):
+        return None
+    return _fsStreamSha256(sCandidate)
+
+
+def _fbPathInsideRoot(sCandidate, sRoot):
+    """Return True when sCandidate is contained by sRoot."""
+    sNormRoot = os.path.normpath(sRoot)
+    sPrefix = sNormRoot + os.sep
+    return sCandidate == sNormRoot or sCandidate.startswith(sPrefix)
+
+
+def _fsStreamSha256(sPath):
+    """Stream the file at sPath through SHA-256 and return hex digest."""
+    hasher = hashlib.sha256()
+    with open(sPath, "rb") as handleFile:
+        while True:
+            baChunk = handleFile.read(_I_HASH_READ_CHUNK_BYTES)
+            if not baChunk:
+                break
+            hasher.update(baChunk)
+    return hasher.hexdigest()
 
 
 # ----------------------------------------------------------------------
