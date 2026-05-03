@@ -181,6 +181,68 @@ at request time. They are never written into the container or into
 `vaibify.yml`. See [Connecting external services](connecting-services.md)
 for the per-service setup.
 
+### Remote-sync panel
+
+The sync panel surfaces one row per configured remote (GitHub,
+Overleaf, Zenodo). Each row shows the same four pieces of
+information:
+
+| Field | Meaning |
+|---|---|
+| **Status pill** | Green / yellow / red, semantics below. |
+| **Summary** | `<matching>/<total> files match SHA-256`, optionally listing the first diverged path. |
+| **Last verified** | Age of the most recent authoritative SHA-256 verify (e.g. "12m ago"). Empty when the remote has never been authoritatively verified. |
+| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, compares against `MANIFEST.sha256`). |
+
+Pill semantics:
+
+- **Green** — the most recent SHA-256 authoritative verify reported
+  every file matching the manifest.
+- **Yellow** — drift detected since the last authoritative verify
+  (the remote's cheap-poll change-detection layer fired). The remote
+  may or may not actually be out of sync; click **Re-verify** to find
+  out.
+- **Red** — an authoritative SHA-256 verify confirmed at least one
+  file's hash does not match `MANIFEST.sha256`.
+
+A scheduled background loop re-verifies every configured remote on a
+configurable cadence (default 6 hours), so the panel reflects
+recently-validated state even if the user never clicks Re-verify.
+
+### Aggregate consistency banner
+
+Above the per-remote rows, a single line summarises the union of all
+remote states. Examples:
+
+- "Remote consistency: OK — all configured remotes match."
+- "Remote consistency: drift on Overleaf (1 file); GitHub and Zenodo
+  match."
+- "Remote consistency: SHA-256 mismatch on Zenodo (3 files)."
+
+The banner colour follows the worst-case pill across the configured
+remotes, so an at-a-glance look at the toolbar tells the user whether
+any mirror has diverged.
+
+### Hash-aware step badges
+
+Per-step status indicators distinguish *content drift* from *cosmetic
+mtime drift*. After a fresh clone, file mtimes are reset to checkout
+time, which historically caused every step badge to render as
+"stale" even though the bytes had not changed. The dashboard now
+consults the per-file SHA-256 recorded in the test marker before
+declaring a step stale:
+
+| Indicator | Meaning |
+|---|---|
+| **Filled badge** (the favicon glyph) | Fully verified: tests pass, attestation current, content matches. |
+| **Orange dot** | Partially verified — at least one of tests, attestation, or dependency analysis is stale. |
+| **Hollow circle** (◌) | Mtime drifted since the test marker, but the file's SHA-256 still matches the recorded hash. The step is treated as content-clean; the indicator just signals that a tool touched the file without changing its bytes. |
+| **Pencil** (✏) | True content drift — the file's hash differs from the recorded hash. Re-run tests or re-attest. |
+
+The hollow-circle case replaces a noisy false-positive class: a
+post-clone or post-`touch` mtime bump no longer inflates verification
+state, so the badges reflect what is actually on disk.
+
 ## Verification
 
 Steps are verified three ways: 1) unit tests, 2) dependnency checks (if applicable), and 3) user attestation. These three controls are displayed in each Step's expanded view.
