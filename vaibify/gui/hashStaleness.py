@@ -22,6 +22,8 @@ validated independently.
 
 import os
 
+from vaibify.reproducibility import manifestWriter
+
 from . import mtimeCache
 
 __all__ = [
@@ -104,27 +106,17 @@ def fsetStaleOutputsAgainstManifest(
 
 
 def _fdictReadManifestEntries(sProjectRepo):
-    """Parse MANIFEST.sha256 into a ``{sRelPath: sExpectedHash}`` dict."""
-    sPath = os.path.join(sProjectRepo, _MANIFEST_FILENAME)
-    dictEntries = {}
+    """Parse MANIFEST.sha256 into a ``{sRelPath: sExpectedHash}`` dict.
+
+    Delegates to ``manifestWriter.flistParseManifestLines`` so the
+    GNU-escape semantics stay in one place. This is a defensive read
+    path: an absent or corrupt manifest yields an empty dict rather
+    than raising, because hashStaleness is consulted opportunistically
+    by the dashboard.
+    """
     try:
-        with open(sPath, "r", encoding="utf-8") as handle:
-            for sLine in handle:
-                _fnAddManifestLine(sLine, dictEntries)
-    except OSError:
+        listEntries = manifestWriter.flistParseManifestLines(sProjectRepo)
+    except (FileNotFoundError, ValueError, OSError):
         return {}
-    return dictEntries
-
-
-def _fnAddManifestLine(sLine, dictEntries):
-    """Parse one shasum line into the entries dict (skip comments/blanks)."""
-    sStripped = sLine.rstrip("\n")
-    if not sStripped or sStripped.startswith("#"):
-        return
-    iSplit = sStripped.find("  ")
-    if iSplit < 0:
-        return
-    sHash = sStripped[:iSplit]
-    sRelPath = sStripped[iSplit + 2:]
-    if sHash and sRelPath:
-        dictEntries[sRelPath] = sHash
+    return {dictEntry["sPath"]: dictEntry["sExpected"]
+            for dictEntry in listEntries}

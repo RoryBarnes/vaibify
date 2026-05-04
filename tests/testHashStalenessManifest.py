@@ -116,3 +116,39 @@ def test_empty_repo_root_returns_empty_set():
         "", ["step/out.csv"], {},
     )
     assert setStale == set()
+
+
+def test_manifest_with_escaped_path_is_handled(tmp_path):
+    """A GNU-escaped path round-trips through hashStaleness's reader."""
+    from vaibify.reproducibility.manifestWriter import fnWriteManifest
+    sRelativePath = "data/weird\\name.csv"
+    _fnWriteFile(str(tmp_path), sRelativePath, "payload")
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "S1",
+                "saOutputFiles": [],
+                "saPlotFiles": [],
+                "saDataFiles": [sRelativePath],
+            },
+        ],
+    }
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
+        str(tmp_path), [sRelativePath], {},
+    )
+    assert setStale == set()
+
+
+def test_corrupt_manifest_is_treated_as_absent(tmp_path):
+    """A malformed manifest line yields an empty stale set (defensive)."""
+    pathManifest = tmp_path / _MANIFEST_FILENAME
+    pathManifest.write_text(
+        "# header\n"
+        "this line has no two-space separator\n",
+        encoding="utf-8",
+    )
+    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
+        str(tmp_path), ["step/out.csv"], {},
+    )
+    assert setStale == set()

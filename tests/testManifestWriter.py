@@ -467,3 +467,47 @@ def test_fiCountManifestEntries_zero_for_empty_manifest(tmp_path):
         "# only the header\n", encoding="utf-8",
     )
     assert fiCountManifestEntries(str(tmp_path)) == 0
+
+
+# ----------------------------------------------------------------------
+# 14. Path-traversal rejection (../ and absolute paths)
+# ----------------------------------------------------------------------
+
+
+def test_path_escape_via_dotdot_is_rejected(tmp_path):
+    """A manifest containing ``../etc/passwd`` is refused at verify time."""
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    pathManifest = pathRepo / _MANIFEST_FILENAME
+    sFakeHash = hashlib.sha256(b"x").hexdigest()
+    pathManifest.write_text(
+        "# header\n"
+        f"{sFakeHash}  ../etc/passwd\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as excInfo:
+        flistVerifyManifest(str(pathRepo))
+    assert "../etc/passwd" in str(excInfo.value)
+
+
+def test_absolute_path_in_workflow_is_rejected(tmp_path):
+    """An absolute path declared in the workflow is refused at write time."""
+    dictWorkflow = _fdictWorkflowFromPaths(
+        saOutputFiles=["/etc/passwd"],
+    )
+    with pytest.raises(ValueError) as excInfo:
+        fnWriteManifest(str(tmp_path), dictWorkflow)
+    assert "/etc/passwd" in str(excInfo.value)
+
+
+def test_legal_path_inside_repo_still_accepted(tmp_path):
+    """The new escape guard does not false-positive on normal paths."""
+    _fnWriteFile(tmp_path, "out/normal.csv", b"x\n")
+    _fnWriteFile(tmp_path, "deep/nested/dir/file.csv", b"y\n")
+    dictWorkflow = _fdictWorkflowFromPaths(
+        saOutputFiles=["out/normal.csv"],
+        saDataFiles=["deep/nested/dir/file.csv"],
+    )
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listMismatches = flistVerifyManifest(str(tmp_path))
+    assert listMismatches == []

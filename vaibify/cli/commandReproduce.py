@@ -16,6 +16,7 @@ pinned dependencies.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from pathlib import Path
 
 import click
 
+from vaibify.reproducibility import manifestWriter
 from vaibify.reproducibility.manifestWriter import flistVerifyManifest
 
 
@@ -77,24 +79,13 @@ def fbVerifyTier1(sProjectRepo):
         _fnAbortMissingFile(_S_MANIFEST_FILENAME, sProjectRepo)
     _fnPrintHeader("1/4", "Verifying file integrity (MANIFEST.sha256)")
     listMismatches = flistVerifyManifest(sProjectRepo)
-    iEntries = _fiCountManifestEntries(pathManifest)
+    iEntries = manifestWriter.fiCountManifestEntries(sProjectRepo)
     if not listMismatches:
         _fnPrintPass(f"{iEntries}/{iEntries}")
         return True
     _fnPrintFail(f"{len(listMismatches)} mismatch(es)")
     _fnReportMismatches(listMismatches)
     return False
-
-
-def _fiCountManifestEntries(pathManifest):
-    """Return the number of non-comment, non-blank lines in the manifest."""
-    iCount = 0
-    with open(pathManifest, "r", encoding="utf-8") as fileHandle:
-        for sLine in fileHandle:
-            sStripped = sLine.strip()
-            if sStripped and not sStripped.startswith("#"):
-                iCount += 1
-    return iCount
 
 
 def _fnReportMismatches(listMismatches):
@@ -211,14 +202,15 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 def fbRerunWorkflow(sProjectRepo):
     """Re-run the workflow end to end against a running container.
 
-    Defers project resolution to ``fconfigResolveProject`` (None means
-    use cwd-or-registry resolution), requires a running container, and
-    invokes the same pipeline runner that ``vaibify run`` uses. Returns
-    True on success, False on any failure (configuration, missing
-    container, non-zero pipeline exit). Both ``Exception`` and
-    ``SystemExit`` are caught so a registry miss inside
-    ``fconfigResolveProject`` (which calls ``sys.exit(1)``) does not
-    short-circuit the surrounding ``vaibify reproduce`` exit-code logic.
+    The project is resolved from ``sProjectRepo`` (the value of
+    ``--repo`` or the current working directory when the flag is
+    absent), requires a running container, and invokes the same
+    pipeline runner that ``vaibify run`` uses. Returns True on
+    success, False on any failure (configuration, missing container,
+    non-zero pipeline exit). Both ``Exception`` and ``SystemExit``
+    are caught so a registry miss inside ``fconfigResolveProject``
+    (which calls ``sys.exit(1)``) does not short-circuit the
+    surrounding ``vaibify reproduce`` exit-code logic.
     """
     _fnPrintHeader("4/4", "Re-running workflow")
     try:
@@ -236,7 +228,9 @@ def _fbInvokePipelineRunner(sProjectRepo):
         fsRequireRunningContainer,
     )
     from .commandRun import _fiRunPipeline
-    configProject = fconfigResolveProject(None)
+    configProject = _fconfigResolveProjectAtRepo(
+        sProjectRepo, fconfigResolveProject,
+    )
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
     iExitCode = _fiRunPipeline(
@@ -247,6 +241,21 @@ def _fbInvokePipelineRunner(sProjectRepo):
         return False
     click.echo("... workflow re-ran successfully ✓")
     return True
+
+
+def _fconfigResolveProjectAtRepo(sProjectRepo, fconfigResolveProject):
+    """Run ``fconfigResolveProject(None)`` with cwd pinned to ``sProjectRepo``.
+
+    ``fconfigResolveProject`` resolves from ``Path.cwd()`` when no
+    project name is given, so without this guard the runner would
+    silently ignore ``--repo``. The original cwd is always restored.
+    """
+    sOriginalCwd = os.getcwd()
+    try:
+        os.chdir(sProjectRepo)
+        return fconfigResolveProject(None)
+    finally:
+        os.chdir(sOriginalCwd)
 
 
 def _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):

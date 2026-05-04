@@ -351,6 +351,58 @@ def test_reproduce_command_registered_on_main_cli():
 # ----------------------------------------------------------------------
 
 
+def test_rerun_resolves_project_from_repo_not_cwd(fixtureRepo, tmp_path):
+    """``--repo`` must drive project resolution even when cwd differs."""
+    from vaibify.cli import commandReproduce
+
+    pathOtherCwd = tmp_path / "elsewhere"
+    pathOtherCwd.mkdir()
+    sOriginalCwd = os.getcwd()
+    listSeenCwd = []
+
+    def _fnRecordCwd(sProjectName=None):
+        listSeenCwd.append(os.getcwd())
+        raise SystemExit(1)
+
+    try:
+        os.chdir(str(pathOtherCwd))
+        with patch(
+            "vaibify.cli.configLoader.fconfigResolveProject",
+            side_effect=_fnRecordCwd,
+        ):
+            commandReproduce.fbRerunWorkflow(str(fixtureRepo))
+    finally:
+        os.chdir(sOriginalCwd)
+
+    assert len(listSeenCwd) == 1
+    assert os.path.realpath(listSeenCwd[0]) == \
+        os.path.realpath(str(fixtureRepo))
+
+
+def test_rerun_restores_cwd_after_failure(fixtureRepo, tmp_path):
+    """An exception inside resolution must not leak the chdir."""
+    from vaibify.cli import commandReproduce
+
+    pathOtherCwd = tmp_path / "elsewhere"
+    pathOtherCwd.mkdir()
+    sOriginalCwd = os.getcwd()
+
+    def _fnRaise(sProjectName=None):
+        raise RuntimeError("boom")
+
+    try:
+        os.chdir(str(pathOtherCwd))
+        sCwdBeforeCall = os.getcwd()
+        with patch(
+            "vaibify.cli.configLoader.fconfigResolveProject",
+            side_effect=_fnRaise,
+        ):
+            commandReproduce.fbRerunWorkflow(str(fixtureRepo))
+        assert os.getcwd() == sCwdBeforeCall
+    finally:
+        os.chdir(sOriginalCwd)
+
+
 def test_rerun_handles_unregistered_project_gracefully(fixtureRepo):
     """SystemExit from fconfigResolveProject is caught; reproduce exits 1."""
     from vaibify.cli import commandReproduce

@@ -134,9 +134,32 @@ def _flistBuildManifestEntries(pathRepo, listRelativePaths):
     for sRelativePath in listRelativePaths:
         pathFile = pathRepo / sRelativePath
         _fnRejectSymlinkComponent(pathRepo, sRelativePath)
+        _fnRejectPathEscape(pathRepo, sRelativePath)
         sHash = fsComputeFileHash(str(pathFile))
         listEntries.append((sHash, sRelativePath))
     return listEntries
+
+
+def _fnRejectPathEscape(pathRepo, sRelativePath):
+    """Raise ``ValueError`` if the relative path escapes ``pathRepo``.
+
+    Rejects absolute paths and any relative path whose realpath does
+    not stay strictly inside ``pathRepo``. Symlink rejection runs
+    first; this guard catches plain ``..`` traversal that bypasses the
+    symlink check because ``..`` is not itself a link.
+    """
+    if os.path.isabs(sRelativePath):
+        raise ValueError(
+            f"refusing to hash absolute path: '{sRelativePath}'"
+        )
+    sRepoReal = os.path.realpath(str(pathRepo))
+    sCandidateReal = os.path.realpath(os.path.join(sRepoReal, sRelativePath))
+    if sCandidateReal != sRepoReal and not sCandidateReal.startswith(
+        sRepoReal + os.sep,
+    ):
+        raise ValueError(
+            f"refusing to hash path escaping repo root: '{sRelativePath}'"
+        )
 
 
 def _fnRejectSymlinkComponent(pathRepo, sRelativePath):
@@ -244,6 +267,7 @@ def _fdictParseManifestLine(sLine, iLineNumber):
 def _fdictCheckEntry(pathRepo, sExpectedHash, sRelativePath):
     """Return mismatch dict or ``None`` when hashes agree."""
     _fnRejectSymlinkComponent(pathRepo, sRelativePath)
+    _fnRejectPathEscape(pathRepo, sRelativePath)
     pathFile = pathRepo / sRelativePath
     if not pathFile.is_file():
         return {
