@@ -1494,13 +1494,19 @@ var VaibifySyncManager = (function () {
             'title="never verified or stale">\u25D0</span>';
     }
 
+    function _fiCoerceCount(iValue) {
+        var iNumber = parseInt(iValue, 10);
+        return isNaN(iNumber) || iNumber < 0 ? 0 : iNumber;
+    }
+
     function _fsRenderSummaryText(dictStatus) {
         if (!dictStatus || !dictStatus.sLastVerified) {
             return "Never verified \u2014 click Re-verify";
         }
-        var iTotal = dictStatus.iTotalFiles || 0;
-        var iMatching = dictStatus.iMatching || 0;
-        var listDiverged = dictStatus.listDiverged || [];
+        var iTotal = _fiCoerceCount(dictStatus.iTotalFiles);
+        var iMatching = _fiCoerceCount(dictStatus.iMatching);
+        var listDiverged = Array.isArray(dictStatus.listDiverged)
+            ? dictStatus.listDiverged : [];
         if (listDiverged.length === 0 && iTotal > 0 &&
             iMatching === iTotal) {
             return iTotal + "/" + iTotal + " files match SHA-256";
@@ -1718,10 +1724,20 @@ var VaibifySyncManager = (function () {
     function _fnInvalidateCacheIfWorkflowChanged(sContainerId) {
         if (sContainerId === _sCacheWorkflowId) return;
         _sCacheWorkflowId = sContainerId;
+        fnInvalidateVerifyCache();
+    }
+
+    function fnInvalidateVerifyCache() {
         Object.keys(_dictVerifyStatusCache).forEach(function (sKey) {
             delete _dictVerifyStatusCache[sKey];
         });
         _setActiveVerifyServices.clear();
+        Object.keys(_dictTimerByService).forEach(function (sKey) {
+            if (_dictTimerByService[sKey]) {
+                clearTimeout(_dictTimerByService[sKey]);
+            }
+            delete _dictTimerByService[sKey];
+        });
     }
 
     function _fbCacheHasAnyEntry() {
@@ -1797,5 +1813,6 @@ var VaibifySyncManager = (function () {
         fnRenderRemoteSyncPanel: fnRenderRemoteSyncPanel,
         fnRenderRemoteConsistencyBanner: fnRenderRemoteConsistencyBanner,
         fdictVerifyManifest: fdictVerifyManifest,
+        fnInvalidateVerifyCache: fnInvalidateVerifyCache,
     };
 })();

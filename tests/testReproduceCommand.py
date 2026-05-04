@@ -426,3 +426,92 @@ def test_rerun_handles_unregistered_project_gracefully(fixtureRepo):
         )
     assert result.exit_code == 1
     assert "failed to invoke pipeline runner" in result.output
+
+
+# ----------------------------------------------------------------------
+# H4 hardening — image-digest validation (defense in depth)
+# ----------------------------------------------------------------------
+
+
+def test_image_digest_validator_accepts_canonical_references():
+    """Canonical OCI image references must validate true."""
+    from vaibify.cli.commandReproduce import fbIsValidImageDigest
+
+    assert fbIsValidImageDigest(
+        "registry.example.com/foo/bar@sha256:" + "a" * 64
+    )
+    assert fbIsValidImageDigest("ubuntu:24.04")
+    assert fbIsValidImageDigest(
+        "ghcr.io/org/image@sha256:" + "0" * 64
+    )
+
+
+def test_image_digest_validator_rejects_shell_metacharacters():
+    """Whitespace and shell metacharacters must validate false."""
+    from vaibify.cli.commandReproduce import fbIsValidImageDigest
+
+    assert not fbIsValidImageDigest("registry; rm -rf /")
+    assert not fbIsValidImageDigest("registry$(whoami)")
+    assert not fbIsValidImageDigest("registry|cat /etc/passwd")
+    assert not fbIsValidImageDigest("registry`id`")
+    assert not fbIsValidImageDigest("registry image")
+    assert not fbIsValidImageDigest("")
+    assert not fbIsValidImageDigest(None)
+
+
+def test_reproduce_rejects_malformed_image_digest(fixtureRepo):
+    """A malformed sImageDigest in environment.json yields exit 2."""
+    pathEnv = fixtureRepo / ".vaibify" / "environment.json"
+    dictPayload = json.loads(pathEnv.read_text())
+    dictPayload["sImageDigest"] = "registry; rm -rf /"
+    pathEnv.write_text(json.dumps(dictPayload))
+    with _fnPatchAllSubprocessesSucceeding():
+        result = CliRunner().invoke(
+            reproduce, [
+                "--repo", str(fixtureRepo),
+                "--skip-tier", "1", "--skip-tier", "2",
+            ],
+        )
+    assert result.exit_code == 2
+    assert "valid OCI image reference" in result.output
+
+
+def test_rerun_rejects_repo_that_is_not_directory(tmp_path):
+    """A --repo path that is not a directory must raise before chdir."""
+    from vaibify.cli import commandReproduce
+
+    pathRegularFile = tmp_path / "not_a_dir.txt"
+    pathRegularFile.write_text("hello\n")
+    sOriginalCwd = os.getcwd()
+    bResult = commandReproduce.fbRerunWorkflow(str(pathRegularFile))
+    assert bResult is False
+    assert os.getcwd() == sOriginalCwd
+
+
+def test_image_digest_invocation_uses_argv_form(fixtureRepo):
+    """Tier 3 must invoke subprocess.run with argv list (not shell=True)."""
+    listSeenInvocations = []
+
+    def fakeSubprocessRun(saCommand, **kwargs):
+        listSeenInvocations.append((saCommand, kwargs))
+        return _fcompletedProcess(0)
+
+    with patch(
+        "vaibify.cli.commandReproduce.subprocess.run",
+        side_effect=fakeSubprocessRun,
+    ):
+        result = CliRunner().invoke(
+            reproduce, [
+                "--repo", str(fixtureRepo),
+                "--skip-tier", "1", "--skip-tier", "2",
+            ],
+        )
+    assert result.exit_code == 0
+    listDockerCalls = [
+        (saCmd, kwargs) for saCmd, kwargs in listSeenInvocations
+        if isinstance(saCmd, list) and "docker" in saCmd
+    ]
+    assert listDockerCalls, "expected docker pull invocation"
+    for saCommand, kwargs in listDockerCalls:
+        assert isinstance(saCommand, list)
+        assert kwargs.get("shell", False) is False

@@ -577,13 +577,16 @@
 
 <!-- Verify Reproducibility Modal -->
 <div class="modal-overlay" id="modalVerifyReproducibility"
-     style="display: none;">
+     style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="verifyReproducibilityTitle">
     <div class="modal">
-        <h2>Verify Reproducibility</h2>
+        <h2 id="verifyReproducibilityTitle">Verify Reproducibility</h2>
         <div id="verifyReproducibilityBanner"></div>
         <div id="verifyReproducibilityPanel"></div>
         <div class="modal-actions">
-            <button class="btn" id="btnVerifyReproducibilityClose">
+            <button class="btn" id="btnVerifyReproducibilityClose"
+                    aria-label="Close Verify Reproducibility dialog">
                 Close</button>
             <button class="btn btn-primary"
                     id="btnVerifyReproducibilityManifest">

@@ -17,6 +17,7 @@ pinned dependencies.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,7 @@ __all__ = [
     "fbVerifyTier2",
     "fbVerifyTier3",
     "fbRerunWorkflow",
+    "fbIsValidImageDigest",
 ]
 
 
@@ -41,6 +43,24 @@ _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 _S_LOCK_FILENAME = "requirements.lock"
 _S_ENVIRONMENT_RELATIVE = ".vaibify/environment.json"
 _T_TIER_CHOICES = ("1", "2", "3")
+
+# Conservative whitelist for OCI image references that may include a
+# digest (registry/repo@sha256:<hex>) or a tag (registry/repo:tag).
+# Forbids whitespace and shell metacharacters; subprocess uses argv-form
+# already, so this is defense-in-depth for log readability and to catch
+# malformed environment.json payloads early.
+_REGEX_VALID_IMAGE_REFERENCE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._\-/:@]{0,511}$"
+)
+
+
+def fbIsValidImageDigest(sImageDigest):
+    """Return True when ``sImageDigest`` matches the conservative whitelist."""
+    if not isinstance(sImageDigest, str):
+        return False
+    if not sImageDigest:
+        return False
+    return bool(_REGEX_VALID_IMAGE_REFERENCE.match(sImageDigest))
 
 
 def _fnPrintHeader(sLabel, sDescription):
@@ -196,6 +216,13 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
             f"'{_S_ENVIRONMENT_RELATIVE}' in '{sProjectRepo}'."
         )
         sys.exit(2)
+    if not fbIsValidImageDigest(sImageDigest):
+        click.echo(
+            "Error: 'sImageDigest' in "
+            f"'{_S_ENVIRONMENT_RELATIVE}' is not a valid OCI "
+            "image reference."
+        )
+        sys.exit(2)
     return sImageDigest
 
 
@@ -249,10 +276,18 @@ def _fconfigResolveProjectAtRepo(sProjectRepo, fconfigResolveProject):
     ``fconfigResolveProject`` resolves from ``Path.cwd()`` when no
     project name is given, so without this guard the runner would
     silently ignore ``--repo``. The original cwd is always restored.
+    The repo path is resolved and validated as an existing directory
+    before chdir to avoid surprising behavior when ``--repo`` points at
+    a non-directory (e.g., a regular file or a missing path).
     """
+    pathResolved = Path(sProjectRepo).resolve()
+    if not pathResolved.is_dir():
+        raise FileNotFoundError(
+            f"--repo target is not an existing directory: {sProjectRepo}"
+        )
     sOriginalCwd = os.getcwd()
     try:
-        os.chdir(sProjectRepo)
+        os.chdir(str(pathResolved))
         return fconfigResolveProject(None)
     finally:
         os.chdir(sOriginalCwd)

@@ -604,12 +604,16 @@ var PipeleyenEventBindings = (function () {
 
     /* --- Verify Reproducibility Modal --- */
 
+    var _elVerifyModalPriorFocus = null;
+    var _fnVerifyModalKeyHandler = null;
+
     function _fnOpenVerifyReproducibilityModal() {
         var elModal = document.getElementById(
             "modalVerifyReproducibility");
         if (!elModal) return;
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId) return;
+        _elVerifyModalPriorFocus = document.activeElement;
         elModal.style.display = "flex";
         var elBanner = document.getElementById(
             "verifyReproducibilityBanner");
@@ -619,12 +623,73 @@ var PipeleyenEventBindings = (function () {
             sContainerId, elBanner);
         VaibifySyncManager.fnRenderRemoteSyncPanel(
             sContainerId, elPanel);
+        _fnAttachVerifyModalKeyHandler(elModal);
+        _fnFocusFirstInteractive(elModal);
+    }
+
+    function _fnAttachVerifyModalKeyHandler(elModal) {
+        _fnVerifyModalKeyHandler = function (event) {
+            if (event.key === "Escape") {
+                event.stopPropagation();
+                _fnCloseVerifyReproducibilityModal();
+                return;
+            }
+            if (event.key === "Tab") {
+                _fnTrapFocusInsideModal(event, elModal);
+            }
+        };
+        document.addEventListener(
+            "keydown", _fnVerifyModalKeyHandler);
+    }
+
+    function _flistFocusableInside(elModal) {
+        var sSelector =
+            'button:not([disabled]), [href], input:not([disabled]), ' +
+            'select:not([disabled]), textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])';
+        return Array.prototype.slice.call(
+            elModal.querySelectorAll(sSelector));
+    }
+
+    function _fnFocusFirstInteractive(elModal) {
+        var listFocusable = _flistFocusableInside(elModal);
+        if (listFocusable.length > 0) listFocusable[0].focus();
+    }
+
+    function _fnTrapFocusInsideModal(event, elModal) {
+        var listFocusable = _flistFocusableInside(elModal);
+        if (listFocusable.length === 0) return;
+        var elFirst = listFocusable[0];
+        var elLast = listFocusable[listFocusable.length - 1];
+        if (event.shiftKey && document.activeElement === elFirst) {
+            event.preventDefault();
+            elLast.focus();
+        } else if (!event.shiftKey &&
+                   document.activeElement === elLast) {
+            event.preventDefault();
+            elFirst.focus();
+        }
     }
 
     function _fnCloseVerifyReproducibilityModal() {
         var elModal = document.getElementById(
             "modalVerifyReproducibility");
-        if (elModal) elModal.style.display = "none";
+        if (!elModal) return;
+        elModal.style.display = "none";
+        if (_fnVerifyModalKeyHandler) {
+            document.removeEventListener(
+                "keydown", _fnVerifyModalKeyHandler);
+            _fnVerifyModalKeyHandler = null;
+        }
+        if (typeof VaibifySyncManager !== "undefined" &&
+            VaibifySyncManager.fnInvalidateVerifyCache) {
+            VaibifySyncManager.fnInvalidateVerifyCache();
+        }
+        if (_elVerifyModalPriorFocus &&
+            typeof _elVerifyModalPriorFocus.focus === "function") {
+            _elVerifyModalPriorFocus.focus();
+        }
+        _elVerifyModalPriorFocus = null;
     }
 
     /* --- Workflow Picker Events --- */
