@@ -52,6 +52,7 @@ __all__ = [
     "fbReconcileUserVerificationTimestamps",
     "fbIsStepFullyVerified",
     "flistStepRemoteFiles",
+    "fbAllStepsFullyVerified",
     "fnMaybeAutoArchive",
 ]
 
@@ -836,9 +837,18 @@ def _flistSplitOutputPaths(
 
 def _fdictBuildStepStatusEntry(
     dictStep, dictStepScripts, listOutputs, dictModTimes,
-    dictResolvedVars, iMarkerMtime=None,
+    dictResolvedVars, iMarkerMtime=None, dictManifestCache=None,
 ):
-    """Compute {sStatus, listStaleArtifacts} for a single step."""
+    """Compute {sStatus, listStaleArtifacts} for a single step.
+
+    The mtime-based verdict (``_fbStepIsPencilStale``) is the source
+    of "may be stale". The optional manifest short-circuit refines it
+    to "is/isn't actually drifted": if the project repo carries a
+    ``MANIFEST.sha256`` that matches every output of this step, an
+    mtime-stale verdict is downgraded to ``unchanged``. This prevents
+    a fresh git clone — where every mtime is "now" — from
+    false-positively flagging every step as modified.
+    """
     setPlotPaths = {
         sResolved for sResolved, _sBase
         in _flistResolvePlotPaths(dictStep, dictResolvedVars)
@@ -848,10 +858,81 @@ def _fdictBuildStepStatusEntry(
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
     )
+    if bStale and _fbStepHashesMatchManifest(
+        dictStep, dictResolvedVars, dictManifestCache,
+    ):
+        bStale = False
+        listStale = []
     return {
         "sStatus": "modified" if bStale else "unchanged",
         "listStaleArtifacts": listStale,
     }
+
+
+def _fbStepHashesMatchManifest(
+    dictStep, dictResolvedVars, dictManifestCache,
+):
+    """Return True iff every output's content matches MANIFEST.sha256.
+
+    Conservative: returns False when there is no project repo, no
+    manifest, no declared outputs, any declared output is absent from
+    the manifest (cannot prove freshness without an entry), or any
+    tracked output drifted from its expected hash. Only when every
+    declared output is both manifest-tracked and bit-identical to its
+    expected hash does the short-circuit fire.
+    """
+    if dictManifestCache is None:
+        return False
+    sRepoRoot = (dictResolvedVars or {}).get("sRepoRoot", "")
+    if not sRepoRoot:
+        return False
+    from . import hashStaleness
+    if not hashStaleness.fbManifestExists(sRepoRoot):
+        return False
+    listRelPaths = _flistStepOutputsRepoRelative(dictStep, sRepoRoot)
+    if not listRelPaths:
+        return False
+    if not _fbAllPathsTrackedByManifest(sRepoRoot, listRelPaths):
+        return False
+    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
+        sRepoRoot, listRelPaths, dictManifestCache,
+    )
+    return len(setStale) == 0
+
+
+def _fbAllPathsTrackedByManifest(sRepoRoot, listRelPaths):
+    """Return True iff every path appears as a manifest entry."""
+    from . import hashStaleness
+    dictEntries = hashStaleness._fdictReadManifestEntries(sRepoRoot)
+    if not dictEntries:
+        return False
+    for sRelPath in listRelPaths:
+        if sRelPath not in dictEntries:
+            return False
+    return True
+
+
+def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
+    """Return repo-relative output paths declared on a step.
+
+    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    step directory the same way ``_fsResolveStepFilePath`` does, then
+    strips the repo root so the result lines up with manifest keys
+    (which are repo-relative POSIX strings written by
+    ``manifestWriter``).
+    """
+    from .pathContract import fsAbsToRepoRelative
+    sStepDir = dictStep.get("sDirectory", "")
+    listRelative = []
+    for sFile in (dictStep.get("saDataFiles", [])
+                  + dictStep.get("saPlotFiles", [])):
+        if not sFile:
+            continue
+        sAbs = _fsResolveStepFilePath(
+            sFile, sStepDir, {"sRepoRoot": sRepoRoot},
+        )
+        listRelative.append(fsAbsToRepoRelative(sAbs, sRepoRoot))
+    return listRelative
 
 
 def _fdictBuildScriptStatus(
@@ -865,6 +946,7 @@ def _fdictBuildScriptStatus(
     )
     dictResolvedVars = dictVars or _fdictBuildFileStatusVars(dictWorkflow)
     dictMarkerMtimes = dictMarkerMtimeByStep or {}
+    dictManifestCache = {}
     dictResult = {}
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])
@@ -875,6 +957,7 @@ def _fdictBuildScriptStatus(
             dictOutputsByStep.get(iIndex, []),
             dictModTimes, dictResolvedVars,
             iMarkerMtime=_fiMarkerMtime(dictMarkerMtimes, iIndex),
+            dictManifestCache=dictManifestCache,
         )
     return dictResult
 
@@ -1003,9 +1086,14 @@ def fbIsStepFullyVerified(dictStep):
     "Defined" means the verification field is present. An absent field
     means no tests in that category — silent pass for verification
     purposes. Present-but-not-passed (untested, failed, stale) blocks
-    the all-green state.
+    the all-green state. A non-dict step (corrupt workflow) is treated
+    as not-verified so callers do not crash with ``AttributeError``.
     """
+    if not isinstance(dictStep, dict):
+        return False
     dictV = dictStep.get("dictVerification", {})
+    if not isinstance(dictV, dict):
+        return False
     if dictV.get("sUser") != "passed":
         return False
     for sKey in _T_TEST_VERIF_KEYS:
@@ -1094,6 +1182,55 @@ async def _fnArchiveZenodoForAutoArchive(
     return True
 
 
+def fbAllStepsFullyVerified(dictWorkflow):
+    """Return True iff every step in the workflow is fully verified.
+
+    A corrupt workflow.json carrying ``None`` or non-dict step entries
+    is treated as not-fully-verified rather than raising
+    ``AttributeError`` from inside ``fbIsStepFullyVerified``. The
+    invariant the caller depends on — "all green" — is monotonic in
+    the strict sense: any uncertainty must read as not-green.
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if not listSteps:
+        return False
+    for dictStep in listSteps:
+        if not isinstance(dictStep, dict):
+            return False
+        if not fbIsStepFullyVerified(dictStep):
+            return False
+    return True
+
+
+def _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId=None):
+    """Regenerate the L3 reproducibility envelope on all-green transition.
+
+    Called from the same hook that drives auto-archive. Failures are
+    logged and swallowed — the manifest is best-effort here; the manual
+    Archive button remains the recovery path. The envelope is regenerated
+    regardless of bAutoArchive so the local repo always reflects the
+    latest verified state. ``sContainerId`` is threaded through so the
+    Tier 3 environment.json (which requires the running container's
+    image digest) is written, not silently skipped.
+    """
+    if not fbAllStepsFullyVerified(dictWorkflow):
+        return
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        return
+    try:
+        from vaibify.reproducibility import dataArchiver
+        dataArchiver.fnGenerateReproducibilityEnvelope(
+            sProjectRepoPath, dictWorkflow,
+            sContainerName=sContainerId,
+            listHostBinaries=dictWorkflow.get("saHostBinaries"),
+        )
+    except Exception as error:
+        logger.warning(
+            "All-green envelope refresh failed: %s", error,
+        )
+
+
 async def fnMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     bWasFullyVerifiedBefore,
@@ -1106,12 +1243,22 @@ async def fnMaybeAutoArchive(
     sync UI remains the recovery path. Returns True when at least one
     remote was pushed (callers can use this to know whether to refresh
     badges).
+
+    Also refreshes the L3 reproducibility envelope (MANIFEST.sha256 +
+    requirements.lock + .vaibify/environment.json) when this step's
+    transition leaves the workflow all-green. The refresh runs
+    independently of bAutoArchive so the local repo's manifest always
+    reflects the latest fully-verified state.
     """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if (not bWasFullyVerifiedBefore and
+            0 <= iStepIndex < len(listSteps) and
+            fbIsStepFullyVerified(listSteps[iStepIndex])):
+        _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId)
     if not dictWorkflow.get("bAutoArchive"):
         return False
     if bWasFullyVerifiedBefore:
         return False
-    listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return False
     if not fbIsStepFullyVerified(listSteps[iStepIndex]):

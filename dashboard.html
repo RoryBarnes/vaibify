@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev133 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev165 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7310bcfd"></script>
+      <script src="_static/documentation_options.js?v=30603f3c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -67,7 +67,12 @@
 <li class="toctree-l3"><a class="reference internal" href="#expanded-step-timestamps">Expanded-step timestamps</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#sync-status">Sync status</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sync-status">Sync status</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#remote-sync-panel">Remote-sync panel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#aggregate-consistency-banner">Aggregate consistency banner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#hash-aware-step-badges">Hash-aware step badges</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#agent-actions">Agent actions</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#why-this-matters">Why this matters</a></li>
@@ -314,6 +319,100 @@ commands for the current figures.</p></li>
 at request time. They are never written into the container or into
 <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. See <a class="reference internal" href="#connecting-services.md"><span class="xref myst">Connecting external services</span></a>
 for the per-service setup.</p>
+<section id="remote-sync-panel">
+<h3>Remote-sync panel<a class="headerlink" href="#remote-sync-panel" title="Link to this heading"></a></h3>
+<p>The sync panel surfaces one row per configured remote (GitHub,
+Overleaf, Zenodo). Each row shows the same four pieces of
+information:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Status pill</strong></p></td>
+<td><p>Green / yellow / red, semantics below.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Summary</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&lt;matching&gt;/&lt;total&gt;</span> <span class="pre">files</span> <span class="pre">match</span> <span class="pre">SHA-256</span></code>, optionally listing the first diverged path.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Last verified</strong></p></td>
+<td><p>Age of the most recent authoritative SHA-256 verify (e.g. “12m ago”). Empty when the remote has never been authoritatively verified.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Re-verify</strong></p></td>
+<td><p>A button that runs an authoritative SHA-256 verify against the remote’s current bytes (downloads the files, recomputes hashes, compares against <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>).</p></td>
+</tr>
+</tbody>
+</table>
+<p>Pill semantics:</p>
+<ul class="simple">
+<li><p><strong>Green</strong> — the most recent SHA-256 authoritative verify reported
+every file matching the manifest.</p></li>
+<li><p><strong>Yellow</strong> — drift detected since the last authoritative verify
+(the remote’s cheap-poll change-detection layer fired). The remote
+may or may not actually be out of sync; click <strong>Re-verify</strong> to find
+out.</p></li>
+<li><p><strong>Red</strong> — an authoritative SHA-256 verify confirmed at least one
+file’s hash does not match <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>.</p></li>
+</ul>
+<p>A scheduled background loop re-verifies every configured remote on a
+configurable cadence (default 6 hours), so the panel reflects
+recently-validated state even if the user never clicks Re-verify.</p>
+</section>
+<section id="aggregate-consistency-banner">
+<h3>Aggregate consistency banner<a class="headerlink" href="#aggregate-consistency-banner" title="Link to this heading"></a></h3>
+<p>Above the per-remote rows, a single line summarises the union of all
+remote states. The three forms produced by
+<a class="reference download internal" download="" href="_downloads/86246c36cf9ddf57ac89c18c78938978/scriptSyncManager.js"><span class="xref download myst">scriptSyncManager.js</span></a> are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">not</span> <span class="pre">yet</span> <span class="pre">verified</span></code> — no remote has been verified
+yet (e.g. immediately after opening a workflow for the first time).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">✓</span> <span class="pre">all</span> <span class="pre">&lt;K&gt;</span> <span class="pre">configured</span> <span class="pre">remote(s)</span> <span class="pre">in</span> <span class="pre">sync</span></code> — every
+configured remote authoritatively matched on its last verify; <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code>
+is the count of remotes that reported a verified status. The trailing
+noun is singularised to <code class="docutils literal notranslate"><span class="pre">remote</span></code> when <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code> is 1, otherwise
+<code class="docutils literal notranslate"><span class="pre">remotes</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">✓</span> <span class="pre">all</span> <span class="pre">1</span> <span class="pre">configured</span> <span class="pre">remote</span> <span class="pre">in</span> <span class="pre">sync</span></code> vs. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">✓</span> <span class="pre">all</span> <span class="pre">3</span> <span class="pre">configured</span> <span class="pre">remotes</span> <span class="pre">in</span> <span class="pre">sync</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">&lt;N&gt;</span> <span class="pre">file(s)</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">&lt;M&gt;</span> <span class="pre">of</span> <span class="pre">&lt;K&gt;</span> <span class="pre">remote(s)</span></code> — at least one remote reports drift; <code class="docutils literal notranslate"><span class="pre">&lt;N&gt;</span></code> is the total
+diverged-file count across all remotes, <code class="docutils literal notranslate"><span class="pre">&lt;M&gt;</span></code> is the number of
+remotes with at least one diverged file, and <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code> is the count of
+configured-and-verified remotes. Both the file noun and the remote
+noun singularise independently when their count is 1 (e.g. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">1</span> <span class="pre">file</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">1</span> <span class="pre">of</span> <span class="pre">1</span> <span class="pre">remote</span></code> vs. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">5</span> <span class="pre">files</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">2</span> <span class="pre">of</span> <span class="pre">3</span> <span class="pre">remotes</span></code>).</p></li>
+</ul>
+</section>
+<section id="hash-aware-step-badges">
+<h3>Hash-aware step badges<a class="headerlink" href="#hash-aware-step-badges" title="Link to this heading"></a></h3>
+<p>Per-step status indicators distinguish <em>content drift</em> from <em>cosmetic
+mtime drift</em>. After a fresh clone, file mtimes are reset to checkout
+time, which historically caused every step badge to render as
+“stale” even though the bytes had not changed. The dashboard now
+consults the per-file SHA-256 recorded in the test marker before
+declaring a step stale:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Indicator</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Filled badge</strong> (the favicon glyph)</p></td>
+<td><p>Fully verified: tests pass, attestation current, content matches.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Orange dot</strong></p></td>
+<td><p>Partially verified — at least one of tests, attestation, or dependency analysis is stale.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Hollow circle</strong> (◌)</p></td>
+<td><p>Mtime drifted since the test marker, but the file’s SHA-256 still matches the recorded hash. The step is treated as content-clean; the indicator just signals that a tool touched the file without changing its bytes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Pencil</strong> (✏)</p></td>
+<td><p>True content drift — the file’s hash differs from the recorded hash. Re-run tests or re-attest.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The hollow-circle case replaces a noisy false-positive class: a
+post-clone or post-<code class="docutils literal notranslate"><span class="pre">touch</span></code> mtime bump no longer inflates verification
+state, so the badges reflect what is actually on disk.</p>
+</section>
 </section>
 <section id="verification">
 <h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>

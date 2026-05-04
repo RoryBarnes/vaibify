@@ -46,11 +46,14 @@ and this module is the single place that needs editing.
 import hashlib
 import os
 import posixpath
-import re
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 
+from vaibify.reproducibility.credentialRedactor import (
+    fsRedactCredentials,
+)
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.overleafAuth import (
     fnValidateOverleafProjectId,
@@ -62,6 +65,7 @@ __all__ = [
     "S_OVERLEAF_WEB_UI_COMMIT_MESSAGE",
     "fbRefreshMirror",
     "fdictDiffAgainstMirror",
+    "fdictFetchRemoteHashes",
     "fdictIndexMirrorBlobs",
     "flistDetectCaseCollisions",
     "flistDetectConflicts",
@@ -84,13 +88,8 @@ S_OVERLEAF_WEB_UI_COMMIT_MESSAGE = "Update on Overleaf."
 
 _S_OVERLEAF_HOST = "git.overleaf.com"
 _I_MIRROR_DIR_MODE = 0o700
+_F_GIT_TIMEOUT_SECONDS = 300.0
 
-_REGEX_URL_WITH_CREDENTIALS = re.compile(
-    r"https?://[^:@\s]+:[^@\s]+@",
-)
-_LIST_SENSITIVE_KEYWORDS = (
-    "password", "token", "bearer", "authorization",
-)
 
 def fsGetMirrorRoot():
     """Return the root directory that holds every project mirror."""
@@ -99,33 +98,13 @@ def fsGetMirrorRoot():
 
 
 def fsRedactStderr(sStderr):
-    """Return sStderr with URL credentials and secret-bearing lines redacted.
+    """Backward-compatible alias for :func:`fsRedactCredentials`.
 
-    The goal is best-effort leak prevention for error messages that bubble
-    up to the GUI: git can emit the remote URL verbatim (including an
-    embedded ``user:token@`` segment when libcurl echoes the full URL),
-    and some git error paths print credential-helper output. Neither
-    should ever reach a user-visible toast.
+    Existing host callers (``syncRoutes``, ``syncDispatcher``,
+    ``scheduledReverify``) reference this function by name; the
+    canonical implementation now lives in :mod:`credentialRedactor`.
     """
-    if not sStderr:
-        return ""
-    sRedacted = _REGEX_URL_WITH_CREDENTIALS.sub(
-        "https://<redacted>@", sStderr,
-    )
-    listLines = [
-        _fsRedactLineIfSensitive(sLine)
-        for sLine in sRedacted.splitlines()
-    ]
-    return "\n".join(listLines)
-
-
-def _fsRedactLineIfSensitive(sLine):
-    """Return ``<redacted>`` when a line names a credential concept."""
-    sLower = sLine.lower()
-    for sKeyword in _LIST_SENSITIVE_KEYWORDS:
-        if sKeyword in sLower:
-            return "<redacted>"
-    return sLine
+    return fsRedactCredentials(sStderr)
 
 
 def _fsMirrorPath(sProjectId):
@@ -169,10 +148,14 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
 
     Always sets ``GIT_TERMINAL_PROMPT=0`` so a misconfigured git
     credential helper cannot hang the server thread waiting for input.
-    When ``sCwd`` points at a missing directory, subprocess.run would
-    normally raise ``FileNotFoundError`` before even executing git;
-    this helper traps that and returns a synthetic non-zero result so
-    callers can treat it uniformly alongside genuine git failures.
+    A wall-clock ``timeout`` keeps a network-stalled git from hanging
+    the verification worker indefinitely; on timeout we synthesise a
+    non-zero CompletedProcess instead of letting ``TimeoutExpired``
+    propagate — the caller already maps non-zero returncode to a
+    redacted ``RuntimeError``. When ``sCwd`` points at a missing
+    directory, subprocess.run would normally raise
+    ``FileNotFoundError`` before even executing git; this helper
+    traps that the same way.
     """
     if dictEnv is None:
         dictEnv = _fdictBaseGitEnv()
@@ -181,6 +164,7 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
             ["git"] + listArgs,
             cwd=sCwd, env=dictEnv,
             capture_output=True, text=True,
+            timeout=_F_GIT_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as error:
         return subprocess.CompletedProcess(
@@ -188,6 +172,13 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
             returncode=127,
             stdout="",
             stderr=str(error),
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=["git"] + listArgs,
+            returncode=124,
+            stdout="",
+            stderr="git command timed out",
         )
 
 
@@ -308,10 +299,16 @@ def _fsIsoTimestampNow():
 
 
 def _fnRemovePath(sPath):
-    """Delete a file, tolerating missing paths."""
+    """Delete a file, tolerating any OSError.
+
+    Used in cleanup paths (askpass scripts, tempdirs); a stricter
+    contract would risk leaking sibling resources when one cleanup
+    raises. ``OSError`` covers ``FileNotFoundError``, ``PermissionError``,
+    and the rare ``IsADirectoryError``.
+    """
     try:
         os.remove(sPath)
-    except FileNotFoundError:
+    except OSError:
         pass
 
 
@@ -564,6 +561,116 @@ def fnDeleteMirror(sProjectId):
     fnValidateOverleafProjectId(sProjectId)
     sMirror = _fsMirrorPath(sProjectId)
     shutil.rmtree(sMirror, ignore_errors=True)
+
+
+# ----------------------------------------------------------------------
+# On-demand SHA-256 hashing of real remote bytes (AICS L3 verification).
+# This path is intentionally separate from the per-poll partial-clone
+# code: it performs a shallow but FULL clone (no ``--filter=blob:none``)
+# into a private tempdir so file bytes are available for hashing, then
+# unconditionally tears that tempdir down. Never called from the
+# polling refresh path.
+# ----------------------------------------------------------------------
+_I_HASH_READ_CHUNK_BYTES = 65536
+
+
+def fdictFetchRemoteHashes(sProjectId, listRelPaths):
+    """Return a dict mapping each repo-relative path to its SHA-256 hex.
+
+    Performs a shallow, full-blob clone of the Overleaf project at
+    ``sProjectId`` into a private mode-0700 tempdir, hashes the bytes
+    of each path in ``listRelPaths``, and removes the tempdir. Paths
+    that are absent from the remote tree are recorded with value
+    ``None``. Returns an empty dict immediately when ``listRelPaths``
+    is empty (no clone is performed).
+    """
+    fnValidateOverleafProjectId(sProjectId)
+    if not listRelPaths:
+        return {}
+    sAskpass = fsWriteAskpassScript()
+    sTempDir = _fsMakeFetchTempDir()
+    try:
+        _fnFullClone(sProjectId, sAskpass, sTempDir)
+        return _fdictHashPathsInClone(sTempDir, listRelPaths)
+    finally:
+        _fnRemovePath(sAskpass)
+        shutil.rmtree(sTempDir, ignore_errors=True)
+
+
+def _fsMakeFetchTempDir():
+    """Create a mode-0700 tempdir used for one fetch-and-hash cycle."""
+    sTempDir = tempfile.mkdtemp(prefix="vc_overleaf_fetch_")
+    try:
+        os.chmod(sTempDir, _I_MIRROR_DIR_MODE)
+    except OSError:
+        pass
+    return sTempDir
+
+
+def _fnFullClone(sProjectId, sAskpassPath, sTempDir):
+    """Shallow full-blob clone of an Overleaf project into sTempDir.
+
+    Unlike :func:`_fnClonePartial`, this path fetches blob bytes so
+    SHA-256 hashes can be computed locally. Used only for on-demand
+    verification, never per-poll.
+    """
+    sCloneTarget = os.path.join(sTempDir, "clone")
+    sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
+    dictEnv = _fdictBuildGitEnv(sAskpassPath)
+    listArgs = list(LIST_GIT_HARDENING_CONFIG) + [
+        "clone", "--depth=1", "--no-recurse-submodules",
+        sUrl, sCloneTarget,
+    ]
+    result = _fnRunGit(listArgs, dictEnv=dictEnv)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Remote hash fetch failed: {_fsStrippedStderr(result)}"
+        )
+
+
+def _fdictHashPathsInClone(sTempDir, listRelPaths):
+    """Hash each requested path inside the tempdir clone."""
+    sCloneRoot = os.path.join(sTempDir, "clone")
+    dictHashes = {}
+    for sRelPath in listRelPaths:
+        dictHashes[sRelPath] = _fsHashOneRelPath(sCloneRoot, sRelPath)
+    return dictHashes
+
+
+def _fsHashOneRelPath(sCloneRoot, sRelPath):
+    """Return the SHA-256 hex of one repo-relative path or None.
+
+    Returns ``None`` when the path does not resolve to a regular file
+    inside the clone — covers both "missing on the remote" and any
+    path-traversal attempt that would escape the clone root.
+    """
+    sCandidate = os.path.normpath(
+        os.path.join(sCloneRoot, sRelPath),
+    )
+    if not _fbPathInsideRoot(sCandidate, sCloneRoot):
+        return None
+    if not os.path.isfile(sCandidate):
+        return None
+    return _fsStreamSha256(sCandidate)
+
+
+def _fbPathInsideRoot(sCandidate, sRoot):
+    """Return True when sCandidate is contained by sRoot."""
+    sNormRoot = os.path.normpath(sRoot)
+    sPrefix = sNormRoot + os.sep
+    return sCandidate == sNormRoot or sCandidate.startswith(sPrefix)
+
+
+def _fsStreamSha256(sPath):
+    """Stream the file at sPath through SHA-256 and return hex digest."""
+    hasher = hashlib.sha256()
+    with open(sPath, "rb") as handleFile:
+        while True:
+            baChunk = handleFile.read(_I_HASH_READ_CHUNK_BYTES)
+            if not baChunk:
+                break
+            hasher.update(baChunk)
+    return hasher.hexdigest()
 
 
 # ----------------------------------------------------------------------

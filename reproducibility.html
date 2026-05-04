@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev133 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev165 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7310bcfd"></script>
+      <script src="_static/documentation_options.js?v=30603f3c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,17 @@
 <li class="toctree-l3"><a class="reference internal" href="#l1-precondition-workflows-live-inside-a-git-repo">L1 precondition: workflows live inside a git repo</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#aics-level-3-reproducible">AICS Level 3 — Reproducible</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-envelope">The Reproducibility Envelope</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#tier-1-artifacts-manifest-sha256">Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tier-2-python-dependencies-requirements-lock">Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tier-3-container-system-layer-vaibify-environment-json">Tier 3 — Container / system layer (<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-verification-ceremony-vaibify-reproduce">The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#trust-anchor-architecture">Trust-anchor architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#remote-mirror-verification">Remote-mirror verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#known-limitations">Known limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-a-workflow">Publishing a Workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#archiving-to-zenodo">Archiving to Zenodo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-pinning">Version Pinning</a></li>
@@ -145,6 +156,198 @@ This makes a workflow’s verification state — which tests have run,
 what they produced, whether the outputs have drifted — reproducible
 from a fresh clone without rerunning anything.</p>
 </section>
+</section>
+<section id="aics-level-3-reproducible">
+<h2>AICS Level 3 — Reproducible<a class="headerlink" href="#aics-level-3-reproducible" title="Link to this heading"></a></h2>
+<p>Vaibify targets <strong>AICS Level 3 (“Reproducible”)</strong> on the AI
+Containment Scale: third parties can confirm, at the bit level, that
+the artefacts they hold are byte-for-byte identical to the artefacts
+the original workflow produced. Level 3 is a claim about <em>file-byte
+identity</em>, not numerical re-derivation. Re-running the workflow on a
+different machine may produce slightly different bytes for the same
+inputs (CPU/BLAS variance, see <a class="reference internal" href="#known-limitations"><span class="xref myst">Known
+limitations</span></a>); the hashes recorded in
+<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> describe the bytes the original run produced, and
+those bytes can be redistributed and verified anywhere coreutils is
+installed.</p>
+</section>
+<section id="the-reproducibility-envelope">
+<h2>The Reproducibility Envelope<a class="headerlink" href="#the-reproducibility-envelope" title="Link to this heading"></a></h2>
+<p>An honest L3 claim covers three tiers. Vaibify writes one file per
+tier into the project repo, and each tier is independently verifiable
+with standard tools — vaibify is the orchestrator, not a dependency.</p>
+<p>The envelope is regenerated automatically when the workflow
+transitions to all-green (every step fully verified), in addition to
+manual Archive button presses. This keeps the manifest in sync with
+the latest verified state without requiring the user to remember to
+trigger it.</p>
+<section id="tier-1-artifacts-manifest-sha256">
+<h3>Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)<a class="headerlink" href="#tier-1-artifacts-manifest-sha256" title="Link to this heading"></a></h3>
+<p>A GNU-coreutils shasum-format file at the project-repo root listing
+every declared workflow output (everything in each step’s
+<code class="docutils literal notranslate"><span class="pre">saOutputFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, and <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code>) by repo-relative
+POSIX path with its SHA-256 hash:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">1</span><span class="n">a2b3c</span><span class="o">...</span>  <span class="n">scripts</span><span class="o">/</span><span class="n">runAnalysis</span><span class="o">.</span><span class="n">py</span>
+<span class="mi">4</span><span class="n">d5e6f</span><span class="o">...</span>  <span class="n">data</span><span class="o">/</span><span class="n">results</span><span class="o">.</span><span class="n">csv</span>
+<span class="mi">7</span><span class="n">g8h9i</span><span class="o">...</span>  <span class="n">plots</span><span class="o">/</span><span class="n">figure1</span><span class="o">.</span><span class="n">pdf</span>
+</pre></div>
+</div>
+<p>Paths containing newlines or backslashes are encoded with the GNU
+escape convention: the line is prefixed with <code class="docutils literal notranslate"><span class="pre">\</span></code> and the path itself
+has <code class="docutils literal notranslate"><span class="pre">\\</span></code> for backslash and <code class="docutils literal notranslate"><span class="pre">\n</span></code> for newline. This prevents an
+attacker from forging a second manifest line by injecting a newline
+into a filename.</p>
+<p>Written by
+<a class="reference download internal" download="" href="_downloads/e5552a01c127b7920068298e3a663de4/manifestWriter.py"><span class="xref download myst">fnWriteManifest</span></a> and
+verified in-process by <code class="docutils literal notranslate"><span class="pre">flistVerifyManifest</span></code>. The file is also
+verifiable on any system that ships <code class="docutils literal notranslate"><span class="pre">coreutils</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sha256sum</span> <span class="o">-</span><span class="n">c</span> <span class="n">MANIFEST</span><span class="o">.</span><span class="n">sha256</span>
+</pre></div>
+</div>
+<p>An architectural-invariants test enforces that every path-list field
+in <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> (<code class="docutils literal notranslate"><span class="pre">saOutputFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code>,
+and any future addition) is reflected in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> — guarding
+against silent under-tracking when the workflow schema is extended.</p>
+<p>No vaibify install is required.</p>
+</section>
+<section id="tier-2-python-dependencies-requirements-lock">
+<h3>Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)<a class="headerlink" href="#tier-2-python-dependencies-requirements-lock" title="Link to this heading"></a></h3>
+<p>A pinned, hash-augmented Python dependency lockfile at the project-repo
+root. Generated by
+<a class="reference download internal" download="" href="_downloads/888e1fec7153b0865c96042fd2fdd1a0/dependencyPinning.py"><span class="xref download myst">fnGenerateRequirementsLock</span></a>
+which shells out to <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">pip</span> <span class="pre">compile</span> <span class="pre">--generate-hashes</span></code> against
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> (or <code class="docutils literal notranslate"><span class="pre">requirements.in</span></code>). Each entry pins an exact
+version and at least one <code class="docutils literal notranslate"><span class="pre">--hash=sha256:...</span></code> line.</p>
+<p>Verifiers reproduce the environment with stock <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">--</span><span class="n">require</span><span class="o">-</span><span class="n">hashes</span> <span class="o">-</span><span class="n">r</span> <span class="n">requirements</span><span class="o">.</span><span class="n">lock</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">uv</span></code> is needed only to <em>generate</em> the lockfile, never to consume it.
+<code class="docutils literal notranslate"><span class="pre">flistVerifyRequirementsLock</span></code> performs a structural check (file
+exists, parses, every entry carries a sha256 hash) without installing.</p>
+</section>
+<section id="tier-3-container-system-layer-vaibify-environment-json">
+<h3>Tier 3 — Container / system layer (<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>)<a class="headerlink" href="#tier-3-container-system-layer-vaibify-environment-json" title="Link to this heading"></a></h3>
+<p>A JSON document at <code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/environment.json</span></code> capturing
+the layers below the Python interpreter. Written by
+<a class="reference download internal" download="" href="_downloads/0f3b7ad8fbb8d21a0beaf8aded2b3d7a/environmentSnapshot.py"><span class="xref download myst">fnWriteEnvironmentJson</span></a>
+from three orthogonal capture helpers:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureContainerImageDigest(sContainerName)</span></code> — the immutable
+<code class="docutils literal notranslate"><span class="pre">&lt;image&gt;&#64;sha256:...</span></code> digest of the running container image, via
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureHostBinaryHashes(listBinaryPaths)</span></code> — for each binary
+the workflow declares as a host-side dependency (e.g., a compiled
+scientific executable referenced from <code class="docutils literal notranslate"><span class="pre">saHostBinaries</span></code> in
+<code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>), the SHA-256 of the file plus the first line of
+its <code class="docutils literal notranslate"><span class="pre">--version</span></code> output.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureSystemTools()</span></code> — Python interpreter version, <code class="docutils literal notranslate"><span class="pre">gcc</span> <span class="pre">--version</span></code>, <code class="docutils literal notranslate"><span class="pre">platform.libc_ver()</span></code>, and the contents of
+<code class="docutils literal notranslate"><span class="pre">/etc/os-release</span></code> from inside the container.</p></li>
+</ul>
+<p>This tier records what the container layer cannot pin by digest alone,
+without claiming to bit-pin floating-point arithmetic across CPU
+architectures.</p>
+</section>
+</section>
+<section id="the-verification-ceremony-vaibify-reproduce">
+<h2>The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code><a class="headerlink" href="#the-verification-ceremony-vaibify-reproduce" title="Link to this heading"></a></h2>
+<p>For users who want one command instead of three,
+<a class="reference download internal" download="" href="_downloads/4f83724733e5920691f294794a74b101/commandReproduce.py"><span class="xref download myst">vaibify reproduce</span></a> walks the
+three tiers in sequence and (optionally) re-runs the workflow:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ git clone &lt;project-url&gt; &amp;&amp; cd &lt;project&gt;
+$ vaibify reproduce
+[1/4] Verifying file integrity (MANIFEST.sha256) ... 47/47 OK
+[2/4] Reproducing Python env (requirements.lock) ... hashes verified OK
+[3/4] Pulling pinned container image ... python@sha256:1a2b... OK
+[4/4] Re-running workflow ... skipped (use --rerun)
+
+L3 reproduction confirmed.
+</pre></div>
+</div>
+<p>Flags:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">&lt;path&gt;</span></code> — path to the project repo (defaults to the current
+directory).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run step 4, the full workflow
+re-execution. Off by default; opt-in because workflows can be
+expensive and Tier 4 is best-effort (see <a class="reference internal" href="#known-limitations"><span class="xref myst">Known
+limitations</span></a>). When enabled, vaibify dispatches
+to the same pipeline runner that <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code> uses, against a
+running container resolved from the project repo.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">1|2|3</span></code> — skip a tier; may be repeated. Useful when a
+verifier only wants to confirm artefact identity without installing
+Python packages.</p></li>
+</ul>
+<p>Exit codes:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">0</span></code> — every selected tier passed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">1</span></code> — at least one tier failed; per-tier diagnostics are printed
+above the final summary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">2</span></code> — usage error (a required input file is missing, or a malformed
+<code class="docutils literal notranslate"><span class="pre">environment.json</span></code>).</p></li>
+</ul>
+</section>
+<section id="trust-anchor-architecture">
+<h2>Trust-anchor architecture<a class="headerlink" href="#trust-anchor-architecture" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> is a convenience orchestrator, <strong>not</strong> the trust
+anchor. The trust anchor for Tier 1 is <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span> <span class="pre">MANIFEST.sha256</span></code>,
+a <code class="docutils literal notranslate"><span class="pre">coreutils</span></code> binary every verifier already has. If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> is ever wrong, a third party verifying by hand catches the
+discrepancy. This is the load-bearing reason the AICS levels are
+defined independently of vaibify: it makes vaibify <em>auditable</em> rather
+than authoritative. The same independence applies to Tier 2 (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--require-hashes</span></code>) and Tier 3 (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span> <span class="pre">&lt;image&gt;&#64;sha256:...</span></code>); each step can be performed manually by anyone
+who reads the three files.</p>
+</section>
+<section id="remote-mirror-verification">
+<h2>Remote-mirror verification<a class="headerlink" href="#remote-mirror-verification" title="Link to this heading"></a></h2>
+<p>When a workflow is pushed to a public mirror — GitHub, Overleaf, or
+Zenodo — vaibify verifies that the <em>remote</em> copy of every manifested
+file still matches the SHA-256 recorded at archive time. Each remote
+exposes a uniform <code class="docutils literal notranslate"><span class="pre">fdictFetchRemoteHashes(...)</span></code> API
+(<a class="reference download internal" download="" href="_downloads/071a727d86c84f46a49b7d8542c384a1/githubMirror.py"><span class="xref download myst">githubMirror.py</span></a>,
+<a class="reference download internal" download="" href="_downloads/c6860652d411ed1b1cbeed4cab0a0726/overleafMirror.py"><span class="xref download myst">overleafMirror.py</span></a>,
+<a class="reference download internal" download="" href="_downloads/9d075668f16500f787afd9eab6b69054/zenodoClient.py"><span class="xref download myst">zenodoClient.py</span></a>) that
+returns one SHA-256 per declared file. Two layers run on top:</p>
+<ul class="simple">
+<li><p><strong>Cheap poll</strong> — continuous, low-cost change detection (per-file
+blob SHA-1 or modified-time metadata). Flags “something might have
+drifted, re-verify.”</p></li>
+<li><p><strong>Authoritative verify</strong> — downloads bytes, recomputes SHA-256,
+compares against <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>. Triggered by the per-remote
+Re-verify button in the dashboard or by the scheduled background
+loop in
+<a class="reference download internal" download="" href="_downloads/e2066a77e9b4dc87922c6b32d990341a/scheduledReverify.py"><span class="xref download myst">scheduledReverify.py</span></a>.
+The cadence is currently a single global default (6 hours) set when
+the FastAPI app is constructed and applied uniformly to every loaded
+workflow; per-workflow overrides are deferred to a future commit.</p></li>
+</ul>
+<p>Results are cached in <code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/syncStatus.json</span></code> keyed
+by service so the dashboard always shows ground truth without a
+network round trip on every poll. See <a class="reference internal" href="dashboard.html#remote-sync-panel"><span class="std std-ref">the dashboard
+guide</span></a> for the resulting UI.</p>
+</section>
+<section id="known-limitations">
+<h2>Known limitations<a class="headerlink" href="#known-limitations" title="Link to this heading"></a></h2>
+<p><strong>Symbolic links are rejected.</strong>
+<a class="reference download internal" download="" href="_downloads/e5552a01c127b7920068298e3a663de4/manifestWriter.py"><span class="xref download myst">fnWriteManifest</span></a> raises
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if any declared output is a symlink. Following them
+silently would let the manifest hash a target the declared path no
+longer points to; refusing is the only honest behaviour.</p>
+<p><strong>Tier 1 is bit-perfect; re-running the workflow is best-effort.</strong>
+<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> records the exact bytes a particular run produced,
+and <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span></code> confirms those bytes were preserved. Re-executing
+the workflow on a different CPU, BLAS implementation, or compiler
+toolchain may produce numerically near-identical but
+<strong>byte-different</strong> outputs because of floating-point order-of-operation
+variance. This is a science-of-reproducibility limitation, not a
+vaibify defect, and we document it rather than try to engineer around
+it. Tier 4 (workflow re-run via <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>) is
+therefore advisory.</p>
+<p><strong>The unfixable failure mode.</strong> If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> itself is
+replaced by a tampered binary on the verifier’s machine, vaibify
+cannot detect that — the same problem every verification tool has,
+including a tampered <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code>. The mitigation is the architectural
+one above: vaibify’s source is public, builds reproducibly, and any
+verifier can fall back to plain coreutils.</p>
 </section>
 <section id="publishing-a-workflow">
 <h2>Publishing a Workflow<a class="headerlink" href="#publishing-a-workflow" title="Link to this heading"></a></h2>

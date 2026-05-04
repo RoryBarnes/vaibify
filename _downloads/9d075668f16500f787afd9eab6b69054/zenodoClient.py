@@ -20,9 +20,15 @@ implementing every HTTP path. That deployment has two consequences:
    import never fires inside the container.
 """
 
+import hashlib
 from pathlib import Path
 
 import requests
+
+from vaibify.reproducibility.credentialRedactor import (
+    fsRedactCredentials,
+    fsRedactUrlCredentials,
+)
 
 
 class ZenodoError(Exception):
@@ -37,12 +43,30 @@ class ZenodoNotFoundError(ZenodoError):
     """Resource not found (404)."""
 
 
+class ZenodoRateLimitError(ZenodoError):
+    """Rate limit exceeded (429)."""
+
+
 _SERVICES = {
     "zenodo": "https://zenodo.org",
     "sandbox": "https://sandbox.zenodo.org",
 }
 
 _CHUNK_SIZE = 1024 * 1024
+_HASH_CHUNK_SIZE = 64 * 1024
+_TUPLE_REQUEST_TIMEOUT_SECONDS = (10, 60)
+_TUPLE_UPLOAD_TIMEOUT_SECONDS = (10, 600)
+
+
+__all__ = [
+    "ZenodoClient",
+    "ZenodoError",
+    "ZenodoAuthError",
+    "ZenodoNotFoundError",
+    "ZenodoRateLimitError",
+    "fsZenodoTokenName",
+    "fdictFetchRemoteHashes",
+]
 
 
 class ZenodoClient:
@@ -82,6 +106,7 @@ class ZenodoClient:
         with open(pathFile, "rb") as fileHandle:
             responseHttp = requests.put(
                 sUploadUrl, headers=dictHeaders, data=fileHandle,
+                timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
             )
         _fnCheckResponse(responseHttp)
 
@@ -201,6 +226,7 @@ class ZenodoClient:
         """Send an authenticated request and return decoded JSON."""
         dictHeaders = _fdictBuildAuthHeader(self._fsGetToken())
         kwargs.setdefault("headers", {}).update(dictHeaders)
+        kwargs.setdefault("timeout", _TUPLE_REQUEST_TIMEOUT_SECONDS)
         responseHttp = requests.request(sMethod, sUrl, **kwargs)
         _fnCheckResponse(responseHttp)
         if responseHttp.status_code == 204:
@@ -312,6 +338,7 @@ def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
         responseHttp = requests.put(
             sUrl, headers=dictHeaders,
             data=_fiterReadChunks(fileHandle, barProgress),
+            timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
         )
         barProgress.close()
     _fnCheckResponse(responseHttp)
@@ -335,6 +362,7 @@ def _fnStreamDownload(clientZenodo, sFileUrl, sDestination, sFileName):
     dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
     responseHttp = requests.get(
         sFileUrl, headers=dictHeaders, stream=True,
+        timeout=(10, 60),
     )
     _fnCheckResponse(responseHttp)
     iTotal = int(responseHttp.headers.get("content-length", 0))
@@ -356,11 +384,17 @@ def _fnWriteStreamToFile(responseHttp, pathOutput, sFileName, iTotal):
 
 
 def _fnCheckResponse(responseHttp):
-    """Raise a typed exception for HTTP errors."""
+    """Raise a typed exception for HTTP errors.
+
+    The response body is scrubbed of token-bearing URLs before being
+    embedded in any exception message; this prevents tokens echoed in
+    Zenodo error payloads (e.g. on per-file fetches) from leaking
+    into raised exceptions, logs, or user-visible toasts.
+    """
     iStatus = responseHttp.status_code
     if 200 <= iStatus < 300:
         return
-    sBody = responseHttp.text[:500]
+    sBody = _fsRedactToken(responseHttp.text[:500])
     if iStatus in (401, 403):
         raise ZenodoAuthError(
             f"Zenodo authentication failed ({iStatus}): {sBody}"
@@ -369,6 +403,136 @@ def _fnCheckResponse(responseHttp):
         raise ZenodoNotFoundError(
             f"Zenodo resource not found ({iStatus}): {sBody}"
         )
+    if iStatus == 429:
+        raise ZenodoRateLimitError(
+            f"Zenodo rate limit exceeded ({iStatus}): {sBody}"
+        )
     raise ZenodoError(
         f"Zenodo API error ({iStatus}): {sBody}"
     )
+
+
+def fdictFetchRemoteHashes(
+    sRecordId, listRelPaths=None, clientZenodo=None, sService="sandbox",
+):
+    """Fetch each file in a Zenodo deposit and return SHA-256 hex digests.
+
+    Returns a dict mapping each deposit file's ``key`` (its path on
+    Zenodo) to its SHA-256 hex digest. When ``listRelPaths`` is
+    ``None`` every file in the record is hashed. When provided, only
+    files whose key is in ``listRelPaths`` are hashed; requested keys
+    that are absent from the deposit map to ``None``. The result
+    iterates in the deposit's listing order, with any missing
+    ``listRelPaths`` entries appended afterward in the order given.
+
+    Streams each download in 64 KB chunks so multi-gigabyte files do
+    not load into memory. Raises actionable errors for auth (401/403),
+    record-not-found (404), and rate-limit (429) responses; tokens are
+    redacted from any URL that appears in an error message.
+    """
+    clientResolved = clientZenodo or ZenodoClient(sService=sService)
+    dictRecord = _fdictGetRecordSafely(clientResolved, sRecordId)
+    listFiles = list(dictRecord.get("files", []))
+    return _fdictHashSelectedFiles(clientResolved, listFiles, listRelPaths)
+
+
+_RECORD_ERROR_TEMPLATES = (
+    (
+        ZenodoAuthError,
+        "Zenodo authentication failed while fetching record '{id}'. "
+        "Verify the stored Zenodo token. ({detail})",
+    ),
+    (
+        ZenodoNotFoundError,
+        "Zenodo record '{id}' not found. ({detail})",
+    ),
+    (
+        ZenodoRateLimitError,
+        "Zenodo rate limit hit while fetching record '{id}'; "
+        "retry after a backoff. ({detail})",
+    ),
+)
+
+
+def _fdictGetRecordSafely(clientZenodo, sRecordId):
+    """GET a published record, surfacing record-scoped errors clearly."""
+    sUrl = f"{clientZenodo._sBaseUrl}/records/{sRecordId}"
+    try:
+        return clientZenodo._fdictRequest("GET", sUrl)
+    except ZenodoError as exc:
+        _fnReraiseRecordError(exc, sRecordId)
+
+
+def _fnReraiseRecordError(excOriginal, sRecordId):
+    """Re-raise a record-scoped Zenodo error with a friendlier message."""
+    sDetail = _fsRedactToken(str(excOriginal))
+    for clsError, sTemplate in _RECORD_ERROR_TEMPLATES:
+        if isinstance(excOriginal, clsError):
+            raise clsError(
+                sTemplate.format(id=sRecordId, detail=sDetail)
+            ) from None
+    raise excOriginal
+
+
+def _fdictHashSelectedFiles(clientZenodo, listFiles, listRelPaths):
+    """Hash the subset of listFiles selected by listRelPaths."""
+    dictResult = {}
+    setRequested = set(listRelPaths) if listRelPaths is not None else None
+    for dictFile in listFiles:
+        sKey = dictFile.get("key")
+        if setRequested is not None and sKey not in setRequested:
+            continue
+        dictResult[sKey] = _fsHashRemoteFile(clientZenodo, dictFile)
+    if listRelPaths is not None:
+        _fnFillMissingRequestedPaths(dictResult, listRelPaths)
+    return dictResult
+
+
+def _fnFillMissingRequestedPaths(dictResult, listRelPaths):
+    """Add ``None`` entries for requested paths not present in deposit."""
+    for sRelPath in listRelPaths:
+        if sRelPath not in dictResult:
+            dictResult[sRelPath] = None
+
+
+def _fsHashRemoteFile(clientZenodo, dictFile):
+    """Stream-download one deposit file and return its SHA-256 digest."""
+    sFileUrl = dictFile["links"]["self"]
+    dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
+    try:
+        responseHttp = requests.get(
+            sFileUrl, headers=dictHeaders, stream=True,
+            timeout=(10, 60),
+        )
+    except requests.RequestException as exc:
+        raise ZenodoError(
+            f"Network error fetching Zenodo file: "
+            f"{_fsRedactToken(str(exc))}"
+        ) from None
+    _fnCheckResponse(responseHttp)
+    return _fsHashStreamingResponse(responseHttp)
+
+
+def _fsHashStreamingResponse(responseHttp):
+    """Consume an iter_content stream and return its SHA-256 hex digest."""
+    hasherSha256 = hashlib.sha256()
+    for baChunk in responseHttp.iter_content(_HASH_CHUNK_SIZE):
+        if baChunk:
+            hasherSha256.update(baChunk)
+    return hasherSha256.hexdigest()
+
+
+def _fsRedactToken(sMessage):
+    """Strip credential-bearing URLs / tokens from sMessage.
+
+    Preserves Zenodo's behaviour of redacting per-URL query parameters
+    (``access_token=…`` / ``token=…``) so the surrounding error text
+    survives intact, while also scrubbing any other credential shapes
+    via :func:`fsRedactCredentials`.
+    """
+    if not sMessage:
+        return ""
+    listParts = [
+        fsRedactUrlCredentials(sPart) for sPart in sMessage.split()
+    ]
+    return fsRedactCredentials(" ".join(listParts))
