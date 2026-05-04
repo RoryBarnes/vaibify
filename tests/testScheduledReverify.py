@@ -220,14 +220,18 @@ def testVerifyRemoteRaisesConfigErrorOnUnconfiguredService(
 
 
 def test_reverify_loop_uses_to_thread():
-    """The scheduled loop dispatches the synchronous verify pass off-loop."""
+    """The scheduled loop dispatches the synchronous verify pass off-loop.
+
+    Uses fHoursCadence=0.0 so the real asyncio.sleep(0) yields once
+    per iteration — the loop body must yield at least once each round
+    or the test's wait_for never gets scheduled. Patching
+    asyncio.sleep with a no-op coroutine breaks this and causes the
+    test to spin without yielding (Py3.9-observed hang).
+    """
     dictCtx = {"workflows": {"wf01": {"sWorkflowId": "wf01"}}}
 
     mockReverify = MagicMock(return_value={"sNowIso": "x", "listResults": []})
     mockToThread = MagicMock()
-
-    async def _fnFakeSleep(fSeconds):
-        return None
 
     async def _fnDriveOneIteration():
         eventDispatched = asyncio.Event()
@@ -240,9 +244,6 @@ def test_reverify_loop_uses_to_thread():
         with patch(
             "vaibify.reproducibility.scheduledReverify.asyncio.to_thread",
             mockToThread,
-        ), patch(
-            "vaibify.reproducibility.scheduledReverify.asyncio.sleep",
-            _fnFakeSleep,
         ), patch(
             "vaibify.reproducibility.scheduledReverify.fnRunReverifyOnce",
             mockReverify,
