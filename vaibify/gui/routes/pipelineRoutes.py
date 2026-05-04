@@ -925,24 +925,24 @@ def _fnRegisterManifestVerify(app, dictCtx):
 
 
 def _fdictBuildManifestVerifyResult(dictWorkflow, listMismatches):
-    """Compose the manifest-verify response payload."""
-    iTotal = _fiCountManifestEntries(dictWorkflow)
-    iTotal = max(iTotal, len(listMismatches))
+    """Compose the manifest-verify response payload.
+
+    ``iTotal`` reflects the number of entries actually recorded in
+    ``MANIFEST.sha256`` rather than the workflow's declared outputs;
+    the manifest is the authoritative source of truth for the verify
+    operation. When the manifest is absent, ``iTotal`` falls back to 0.
+    """
+    from vaibify.reproducibility import manifestWriter
+    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    try:
+        iTotal = manifestWriter.fiCountManifestEntries(sProjectRepo)
+    except FileNotFoundError:
+        iTotal = 0
     return {
         "iTotal": iTotal,
         "iMatching": iTotal - len(listMismatches),
         "listMismatches": listMismatches,
     }
-
-
-def _fiCountManifestEntries(dictWorkflow):
-    """Return the number of distinct outputs declared in the workflow."""
-    setPaths = set()
-    for dictStep in dictWorkflow.get("listSteps", []):
-        for sKey in ("saOutputFiles", "saPlotFiles", "saDataFiles"):
-            for sPath in dictStep.get(sKey, []) or []:
-                setPaths.add(str(sPath).replace("\\", "/"))
-    return len(setPaths)
 
 
 def fnRegisterAll(app, dictCtx):

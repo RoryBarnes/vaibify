@@ -1185,14 +1185,16 @@ def fbAllStepsFullyVerified(dictWorkflow):
     return all(fbIsStepFullyVerified(dictStep) for dictStep in listSteps)
 
 
-def _fnRefreshEnvelopeIfAllGreen(dictWorkflow):
+def _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId=None):
     """Regenerate the L3 reproducibility envelope on all-green transition.
 
     Called from the same hook that drives auto-archive. Failures are
     logged and swallowed — the manifest is best-effort here; the manual
     Archive button remains the recovery path. The envelope is regenerated
     regardless of bAutoArchive so the local repo always reflects the
-    latest verified state.
+    latest verified state. ``sContainerId`` is threaded through so the
+    Tier 3 environment.json (which requires the running container's
+    image digest) is written, not silently skipped.
     """
     if not fbAllStepsFullyVerified(dictWorkflow):
         return
@@ -1203,6 +1205,8 @@ def _fnRefreshEnvelopeIfAllGreen(dictWorkflow):
         from vaibify.reproducibility import dataArchiver
         dataArchiver.fnGenerateReproducibilityEnvelope(
             sProjectRepoPath, dictWorkflow,
+            sContainerName=sContainerId,
+            listHostBinaries=dictWorkflow.get("saHostBinaries"),
         )
     except Exception as error:
         logger.warning(
@@ -1233,7 +1237,7 @@ async def fnMaybeAutoArchive(
     if (not bWasFullyVerifiedBefore and
             0 <= iStepIndex < len(listSteps) and
             fbIsStepFullyVerified(listSteps[iStepIndex])):
-        _fnRefreshEnvelopeIfAllGreen(dictWorkflow)
+        _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId)
     if not dictWorkflow.get("bAutoArchive"):
         return False
     if bWasFullyVerifiedBefore:

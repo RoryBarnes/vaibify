@@ -23,10 +23,11 @@ event loop.
 """
 
 import asyncio
+import fcntl
 import json
 import os
+import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from vaibify.reproducibility import (
     githubMirror,
@@ -64,34 +65,19 @@ class ReverifyConfigError(ValueError):
 def fdictLoadManifestExpectedHashes(sProjectRepo):
     """Return ``{relpath: sha256_hex}`` parsed from MANIFEST.sha256.
 
-    Raises ``FileNotFoundError`` when the manifest does not exist so
-    callers can map the failure to a 409 response.
+    Delegates to :func:`manifestWriter.flistParseManifestLines` so all
+    callers share one strict parser (including GNU-escape handling for
+    paths with embedded newlines or backslashes). Raises
+    ``FileNotFoundError`` when the manifest does not exist so callers
+    can map the failure to a 409 response. Re-raises ``ValueError``
+    from the parser so corrupt manifests surface as 5xx rather than
+    being silently treated as empty.
     """
-    pathManifest = Path(sProjectRepo) / S_MANIFEST_FILENAME
-    if not pathManifest.is_file():
-        raise FileNotFoundError(
-            f"manifest not found: '{pathManifest}'"
-        )
-    dictExpected = {}
-    with open(pathManifest, "r", encoding="utf-8") as fileHandle:
-        for sLine in fileHandle:
-            tParsed = _tParseManifestLine(sLine)
-            if tParsed is not None:
-                sHash, sRelativePath = tParsed
-                dictExpected[sRelativePath] = sHash
-    return dictExpected
-
-
-def _tParseManifestLine(sLine):
-    """Return ``(hash, relpath)`` or ``None`` for blank/comment lines."""
-    sStripped = sLine.rstrip("\n")
-    if not sStripped or sStripped.startswith("#"):
-        return None
-    sSeparator = "  "
-    iSplit = sStripped.find(sSeparator)
-    if iSplit < 0:
-        return None
-    return (sStripped[:iSplit], sStripped[iSplit + len(sSeparator):])
+    listEntries = manifestWriter.flistParseManifestLines(sProjectRepo)
+    return {
+        dictEntry["sPath"]: dictEntry["sExpected"]
+        for dictEntry in listEntries
+    }
 
 
 def _fdictRequireServiceConfig(dictWorkflow, sService):
@@ -236,16 +222,70 @@ def _fdictEmptyServiceStatus(sService):
 
 
 def fnWriteSyncStatus(sProjectRepo, dictStatus):
-    """Persist a per-service status entry to syncStatus.json atomically."""
+    """Persist a per-service status entry to syncStatus.json atomically.
+
+    Holds an advisory ``fcntl`` lock on a sibling lock file across the
+    full read-modify-write critical section so concurrent writes for
+    different services cannot lose each other's updates. The lock is
+    acquired non-blocking with a short bounded retry loop to avoid
+    deadlocking on a stale lock holder; on retry exhaustion a
+    ``RuntimeError`` is raised so the caller surfaces the problem
+    rather than silently overwriting a peer's entry.
+    """
     sService = dictStatus["sService"]
     sPath = _fsSyncStatusPath(sProjectRepo)
     os.makedirs(os.path.dirname(sPath), exist_ok=True)
+    sLockPath = sPath + ".lock"
+    with _fnAcquireSyncStatusLock(sLockPath):
+        _fnPersistSyncStatusEntry(sPath, sService, dictStatus)
+
+
+def _fnPersistSyncStatusEntry(sPath, sService, dictStatus):
+    """Read, mutate, and atomically rewrite the syncStatus.json file."""
     dictAll = _fdictReadAllStatuses(sPath)
     dictAll[sService] = dictStatus
     sTempPath = sPath + ".tmp"
     with open(sTempPath, "w", encoding="utf-8") as fileHandle:
         json.dump(dictAll, fileHandle, indent=2, sort_keys=True)
     os.replace(sTempPath, sPath)
+
+
+class _SyncStatusLockHolder:
+    """Context manager wrapping the open file descriptor + flock release."""
+
+    def __init__(self, iFileDescriptor):
+        self.iFileDescriptor = iFileDescriptor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, classExc, valueExc, traceback):
+        try:
+            fcntl.flock(self.iFileDescriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(self.iFileDescriptor)
+
+
+def _fnAcquireSyncStatusLock(sLockPath):
+    """Return a context manager holding an exclusive flock on sLockPath."""
+    iRetriesMax = 5
+    fSleepSeconds = 0.05
+    iFileDescriptor = os.open(
+        sLockPath, os.O_WRONLY | os.O_CREAT, 0o600,
+    )
+    for _iAttempt in range(iRetriesMax):
+        try:
+            fcntl.flock(
+                iFileDescriptor, fcntl.LOCK_EX | fcntl.LOCK_NB,
+            )
+            return _SyncStatusLockHolder(iFileDescriptor)
+        except BlockingIOError:
+            time.sleep(fSleepSeconds)
+    os.close(iFileDescriptor)
+    raise RuntimeError(
+        f"could not acquire syncStatus lock at '{sLockPath}' "
+        f"after {iRetriesMax} attempts"
+    )
 
 
 def _fdictReadAllStatuses(sPath):
@@ -334,14 +374,6 @@ def fnRunReverifyOnce(dictCtx, listWorkflows, sNowIso=None):
     return {"sNowIso": sIso, "listResults": listResults}
 
 
-def _ffResolveCadenceHours(dictWorkflow, fHoursDefault):
-    """Return the per-workflow cadence override or the default."""
-    fOverride = dictWorkflow.get("fReverifyHoursCadence")
-    if isinstance(fOverride, (int, float)) and fOverride > 0:
-        return float(fOverride)
-    return float(fHoursDefault)
-
-
 def _flistEnumerateWorkflows(dictCtx):
     """Pull every loaded workflow from the route context."""
     dictWorkflows = dictCtx.get("workflows") or {}
@@ -349,7 +381,13 @@ def _flistEnumerateWorkflows(dictCtx):
 
 
 async def _fnReverifyLoop(dictCtx, fHoursCadence):
-    """Forever loop: sleep first, then run one verify pass."""
+    """Forever loop: sleep first, then run one verify pass.
+
+    The verify pass itself is synchronous and performs blocking network
+    I/O via ``requests``. It is dispatched through ``asyncio.to_thread``
+    so the FastAPI event loop continues serving HTTP requests while the
+    reverify pass runs.
+    """
     fSeconds = max(float(fHoursCadence), 0.0) * 3600.0
     while True:
         try:
@@ -358,7 +396,9 @@ async def _fnReverifyLoop(dictCtx, fHoursCadence):
             return
         listWorkflows = _flistEnumerateWorkflows(dictCtx)
         try:
-            fnRunReverifyOnce(dictCtx, listWorkflows)
+            await asyncio.to_thread(
+                fnRunReverifyOnce, dictCtx, listWorkflows,
+            )
         except Exception:
             continue
 
@@ -368,11 +408,11 @@ def fnScheduleReverify(app, dictCtx, fHoursCadence=_F_DEFAULT_CADENCE_HOURS):
 
     Cadence default is 6 hours. The first iteration runs ``fHoursCadence``
     after startup, never immediately, so a server restart cannot trigger
-    a fresh round of network calls every reload. Per-workflow overrides
-    are read by :func:`fdictRunReverifyForWorkflow` from
-    ``dictWorkflow.get('fReverifyHoursCadence', fHoursCadence)`` —
-    individual workflows can opt into a faster cadence than the global
-    default.
+    a fresh round of network calls every reload.
+
+    Per-workflow cadence override (``fReverifyHoursCadence``) is
+    reserved for a future commit; currently the global cadence applies
+    to every workflow.
 
     Hooks are appended to the app's lifespan startup/shutdown lists
     (the modern FastAPI pattern); the deprecated ``@app.on_event``

@@ -16,7 +16,6 @@ pinned dependencies.
 """
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -212,16 +211,19 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 def fbRerunWorkflow(sProjectRepo):
     """Re-run the workflow end to end against a running container.
 
-    Resolves the project from sProjectRepo via fconfigResolveProject,
-    requires a running container, and invokes the same pipeline runner
-    that ``vaibify run`` uses. Returns True on success, False on any
-    failure (configuration, missing container, non-zero pipeline exit).
-    Failures print actionable messages but do not raise.
+    Defers project resolution to ``fconfigResolveProject`` (None means
+    use cwd-or-registry resolution), requires a running container, and
+    invokes the same pipeline runner that ``vaibify run`` uses. Returns
+    True on success, False on any failure (configuration, missing
+    container, non-zero pipeline exit). Both ``Exception`` and
+    ``SystemExit`` are caught so a registry miss inside
+    ``fconfigResolveProject`` (which calls ``sys.exit(1)``) does not
+    short-circuit the surrounding ``vaibify reproduce`` exit-code logic.
     """
     _fnPrintHeader("4/4", "Re-running workflow")
     try:
         return _fbInvokePipelineRunner(sProjectRepo)
-    except Exception as error:
+    except (Exception, SystemExit) as error:
         click.echo(f"... failed to invoke pipeline runner: {error}")
         return False
 
@@ -234,7 +236,7 @@ def _fbInvokePipelineRunner(sProjectRepo):
         fsRequireRunningContainer,
     )
     from .commandRun import _fiRunPipeline
-    configProject = fconfigResolveProject(_fsResolveProjectName(sProjectRepo))
+    configProject = fconfigResolveProject(None)
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
     iExitCode = _fiRunPipeline(
@@ -245,11 +247,6 @@ def _fbInvokePipelineRunner(sProjectRepo):
         return False
     click.echo("... workflow re-ran successfully ✓")
     return True
-
-
-def _fsResolveProjectName(sProjectRepo):
-    """Return the project directory's basename for fconfigResolveProject."""
-    return os.path.basename(os.path.abspath(sProjectRepo))
 
 
 def _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):
