@@ -46,12 +46,14 @@ and this module is the single place that needs editing.
 import hashlib
 import os
 import posixpath
-import re
 import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
 
+from vaibify.reproducibility.credentialRedactor import (
+    fsRedactCredentials,
+)
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.overleafAuth import (
     fnValidateOverleafProjectId,
@@ -86,13 +88,8 @@ S_OVERLEAF_WEB_UI_COMMIT_MESSAGE = "Update on Overleaf."
 
 _S_OVERLEAF_HOST = "git.overleaf.com"
 _I_MIRROR_DIR_MODE = 0o700
+_F_GIT_TIMEOUT_SECONDS = 300.0
 
-_REGEX_URL_WITH_CREDENTIALS = re.compile(
-    r"https?://[^:@\s]+:[^@\s]+@",
-)
-_LIST_SENSITIVE_KEYWORDS = (
-    "password", "token", "bearer", "authorization",
-)
 
 def fsGetMirrorRoot():
     """Return the root directory that holds every project mirror."""
@@ -101,33 +98,13 @@ def fsGetMirrorRoot():
 
 
 def fsRedactStderr(sStderr):
-    """Return sStderr with URL credentials and secret-bearing lines redacted.
+    """Backward-compatible alias for :func:`fsRedactCredentials`.
 
-    The goal is best-effort leak prevention for error messages that bubble
-    up to the GUI: git can emit the remote URL verbatim (including an
-    embedded ``user:token@`` segment when libcurl echoes the full URL),
-    and some git error paths print credential-helper output. Neither
-    should ever reach a user-visible toast.
+    Existing host callers (``syncRoutes``, ``syncDispatcher``,
+    ``scheduledReverify``) reference this function by name; the
+    canonical implementation now lives in :mod:`credentialRedactor`.
     """
-    if not sStderr:
-        return ""
-    sRedacted = _REGEX_URL_WITH_CREDENTIALS.sub(
-        "https://<redacted>@", sStderr,
-    )
-    listLines = [
-        _fsRedactLineIfSensitive(sLine)
-        for sLine in sRedacted.splitlines()
-    ]
-    return "\n".join(listLines)
-
-
-def _fsRedactLineIfSensitive(sLine):
-    """Return ``<redacted>`` when a line names a credential concept."""
-    sLower = sLine.lower()
-    for sKeyword in _LIST_SENSITIVE_KEYWORDS:
-        if sKeyword in sLower:
-            return "<redacted>"
-    return sLine
+    return fsRedactCredentials(sStderr)
 
 
 def _fsMirrorPath(sProjectId):
@@ -171,10 +148,14 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
 
     Always sets ``GIT_TERMINAL_PROMPT=0`` so a misconfigured git
     credential helper cannot hang the server thread waiting for input.
-    When ``sCwd`` points at a missing directory, subprocess.run would
-    normally raise ``FileNotFoundError`` before even executing git;
-    this helper traps that and returns a synthetic non-zero result so
-    callers can treat it uniformly alongside genuine git failures.
+    A wall-clock ``timeout`` keeps a network-stalled git from hanging
+    the verification worker indefinitely; on timeout we synthesise a
+    non-zero CompletedProcess instead of letting ``TimeoutExpired``
+    propagate — the caller already maps non-zero returncode to a
+    redacted ``RuntimeError``. When ``sCwd`` points at a missing
+    directory, subprocess.run would normally raise
+    ``FileNotFoundError`` before even executing git; this helper
+    traps that the same way.
     """
     if dictEnv is None:
         dictEnv = _fdictBaseGitEnv()
@@ -183,6 +164,7 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
             ["git"] + listArgs,
             cwd=sCwd, env=dictEnv,
             capture_output=True, text=True,
+            timeout=_F_GIT_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as error:
         return subprocess.CompletedProcess(
@@ -190,6 +172,13 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
             returncode=127,
             stdout="",
             stderr=str(error),
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=["git"] + listArgs,
+            returncode=124,
+            stdout="",
+            stderr="git command timed out",
         )
 
 

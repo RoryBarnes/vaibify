@@ -16,6 +16,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from vaibify.reproducibility.credentialRedactor import (
+    fsRedactCredentials,
+)
+
 
 __all__ = [
     "fnGenerateRequirementsLock",
@@ -69,7 +73,14 @@ def _fsResolveLockInput(pathRepo):
 
 
 def _fnRunUvCompile(pathRepo, sInput):
-    """Invoke ``uv pip compile --generate-hashes`` in pathRepo."""
+    """Invoke ``uv pip compile --generate-hashes`` in pathRepo.
+
+    Surfaces uv failures as ``CalledProcessError`` with the captured
+    stderr scrubbed of credentials so an index URL with embedded
+    ``user:token@`` cannot leak. The ``FileNotFoundError`` arm guards
+    against the rare race where ``uv`` disappears between
+    :func:`fbIsUvAvailable` and the subprocess invocation.
+    """
     listCommand = [
         "uv",
         "pip",
@@ -79,20 +90,29 @@ def _fnRunUvCompile(pathRepo, sInput):
         "-o",
         _S_LOCK_FILENAME,
     ]
-    completed = subprocess.run(
-        listCommand,
-        cwd=str(pathRepo),
-        capture_output=True,
-        text=True,
-        timeout=120.0,
-    )
+    try:
+        completed = subprocess.run(
+            listCommand,
+            cwd=str(pathRepo),
+            capture_output=True,
+            text=True,
+            timeout=120.0,
+        )
+    except FileNotFoundError as error:
+        raise FileNotFoundError(_S_UV_MISSING_MESSAGE) from None
+    except subprocess.TimeoutExpired as errorTimeout:
+        raise subprocess.CalledProcessError(
+            124, listCommand,
+            output="",
+            stderr="uv pip compile timed out after "
+            + f"{int(errorTimeout.timeout)}s",
+        ) from None
     if completed.returncode != 0:
-        from vaibify.reproducibility.githubMirror import fsRedactStderr
         raise subprocess.CalledProcessError(
             completed.returncode,
             listCommand,
             output=completed.stdout,
-            stderr=fsRedactStderr(completed.stderr or ""),
+            stderr=fsRedactCredentials(completed.stderr or ""),
         )
 
 

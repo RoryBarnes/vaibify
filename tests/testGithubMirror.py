@@ -12,6 +12,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 import urllib.error
+import urllib.request
 
 from vaibify.reproducibility import githubMirror
 
@@ -348,6 +349,112 @@ def test_fdictFetchRemoteHashes_rejects_invalid_owner():
 # ----------------------------------------------------------------------
 # Keyring failure logging (Wave-1 hardening regression)
 # ----------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------
+# Path traversal in URL builder (Wave-4 hardening regression)
+# ----------------------------------------------------------------------
+
+
+def test_build_raw_url_rejects_traversal_branch():
+    """``..`` in a branch name must raise ValueError before any HTTP call."""
+    with pytest.raises(ValueError, match="path traversal"):
+        githubMirror._fsBuildRawUrl(
+            "owner", "repo", "..", "x.txt",
+        )
+
+
+def test_build_raw_url_rejects_embedded_traversal_branch():
+    """A branch like ``feature/../etc`` must also be rejected."""
+    with pytest.raises(ValueError, match="path traversal"):
+        githubMirror._fsBuildRawUrl(
+            "owner", "repo", "feature/../etc", "x.txt",
+        )
+
+
+def test_build_raw_url_rejects_traversal_relpath():
+    """A relative path containing ``..`` must be rejected at build time."""
+    with pytest.raises(ValueError, match="path traversal"):
+        githubMirror._fsBuildRawUrl(
+            "owner", "repo", "main", "../etc/passwd",
+        )
+
+
+def test_build_raw_url_rejects_percent_encoded_traversal_branch():
+    """``%2e%2e`` in a branch must also be rejected (case-insensitive)."""
+    with pytest.raises(ValueError, match="path traversal"):
+        githubMirror._fsBuildRawUrl(
+            "owner", "repo", "%2E%2E", "x.txt",
+        )
+
+
+# ----------------------------------------------------------------------
+# Authorization header stripping on cross-origin redirects (Wave-4)
+# ----------------------------------------------------------------------
+
+
+def test_redirect_handler_strips_auth_on_off_host_redirect():
+    """A redirect to a non-raw.githubusercontent.com host drops Authorization."""
+    handler = githubMirror._AuthStrippingRedirectHandler()
+    objectRequest = urllib.request.Request(
+        "https://raw.githubusercontent.com/o/r/main/x.txt",
+        headers={"Authorization": "Bearer SECRETLEAKED"},
+    )
+    headers = MagicMock()
+    headers.get_all = lambda *a, **k: []
+    objectNew = handler.redirect_request(
+        objectRequest, fp=None, code=302,
+        msg="Found", headers=headers,
+        newurl="https://attacker.example.com/leak",
+    )
+    listAuthHeaders = [
+        sKey for sKey in objectNew.headers.keys()
+        if sKey.lower() == "authorization"
+    ]
+    assert listAuthHeaders == []
+
+
+def test_redirect_handler_keeps_auth_on_same_host_redirect():
+    """A redirect that stays on raw.githubusercontent.com keeps Authorization."""
+    handler = githubMirror._AuthStrippingRedirectHandler()
+    objectRequest = urllib.request.Request(
+        "https://raw.githubusercontent.com/o/r/main/x.txt",
+        headers={"Authorization": "Bearer SECRETKEPT"},
+    )
+    headers = MagicMock()
+    headers.get_all = lambda *a, **k: []
+    objectNew = handler.redirect_request(
+        objectRequest, fp=None, code=302,
+        msg="Found", headers=headers,
+        newurl="https://raw.githubusercontent.com/o/r/main/y.txt",
+    )
+    sAuth = objectNew.headers.get("Authorization", "")
+    assert sAuth == "Bearer SECRETKEPT"
+
+
+# ----------------------------------------------------------------------
+# Token leak via exception chaining (Wave-4)
+# ----------------------------------------------------------------------
+
+
+def test_classified_http_error_has_no_chained_context():
+    """``raise X from None`` ensures __cause__ / __context__ are clean."""
+    errorHttp = _fobjectMakeHttpError(401)
+    dictUrls = {
+        "https://raw.githubusercontent.com/owner/repo/main/x.txt": errorHttp,
+    }
+    with patch.object(
+        githubMirror.urllib.request, "urlopen",
+        side_effect=_fdispatcherFromMap(dictUrls),
+    ):
+        try:
+            githubMirror.fdictFetchRemoteHashes(
+                "owner", "repo", "main", ["x.txt"],
+            )
+        except githubMirror.GithubMirrorError as exc:
+            assert exc.__cause__ is None
+            # __suppress_context__ is True when ``from None`` is used.
+            assert exc.__suppress_context__ is True
 
 
 def test_keyring_failure_emits_warning_log(caplog):

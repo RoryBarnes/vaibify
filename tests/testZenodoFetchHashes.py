@@ -238,6 +238,23 @@ def test_unknown_error_propagates_as_zenodo_error(clientSandbox):
             fdictFetchRemoteHashes("12345", clientZenodo=clientSandbox)
 
 
+def test_zenodo_request_includes_timeout(clientSandbox):
+    """Every authenticated request must include a ``timeout=`` kwarg.
+
+    Regression test for Wave-4 hardening: a stalled Zenodo endpoint
+    cannot block the backend thread indefinitely. The default
+    ``(10, 60)`` connect/read timeout is plumbed through
+    ``_fdictRequest`` so callers don't have to think about it.
+    """
+    dictRecord = {"id": 1, "files": []}
+    with patch(
+        "requests.request",
+        return_value=_fmockJsonResponse(200, dictRecord),
+    ) as mockReq:
+        fdictFetchRemoteHashes("1", clientZenodo=clientSandbox)
+    assert mockReq.call_args.kwargs.get("timeout") is not None
+
+
 def test_per_file_404_with_token_in_body_is_redacted(clientSandbox):
     """A 404 on a per-file fetch must redact tokens before raising.
 

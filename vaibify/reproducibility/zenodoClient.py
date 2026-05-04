@@ -22,9 +22,13 @@ implementing every HTTP path. That deployment has two consequences:
 
 import hashlib
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
 
 import requests
+
+from vaibify.reproducibility.credentialRedactor import (
+    fsRedactCredentials,
+    fsRedactUrlCredentials,
+)
 
 
 class ZenodoError(Exception):
@@ -50,6 +54,8 @@ _SERVICES = {
 
 _CHUNK_SIZE = 1024 * 1024
 _HASH_CHUNK_SIZE = 64 * 1024
+_TUPLE_REQUEST_TIMEOUT_SECONDS = (10, 60)
+_TUPLE_UPLOAD_TIMEOUT_SECONDS = (10, 600)
 
 
 __all__ = [
@@ -100,6 +106,7 @@ class ZenodoClient:
         with open(pathFile, "rb") as fileHandle:
             responseHttp = requests.put(
                 sUploadUrl, headers=dictHeaders, data=fileHandle,
+                timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
             )
         _fnCheckResponse(responseHttp)
 
@@ -219,6 +226,7 @@ class ZenodoClient:
         """Send an authenticated request and return decoded JSON."""
         dictHeaders = _fdictBuildAuthHeader(self._fsGetToken())
         kwargs.setdefault("headers", {}).update(dictHeaders)
+        kwargs.setdefault("timeout", _TUPLE_REQUEST_TIMEOUT_SECONDS)
         responseHttp = requests.request(sMethod, sUrl, **kwargs)
         _fnCheckResponse(responseHttp)
         if responseHttp.status_code == 204:
@@ -330,6 +338,7 @@ def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
         responseHttp = requests.put(
             sUrl, headers=dictHeaders,
             data=_fiterReadChunks(fileHandle, barProgress),
+            timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
         )
         barProgress.close()
     _fnCheckResponse(responseHttp)
@@ -514,35 +523,16 @@ def _fsHashStreamingResponse(responseHttp):
 
 
 def _fsRedactToken(sMessage):
-    """Strip access_token/token query params from any URL in sMessage."""
-    listParts = []
-    for sPart in sMessage.split():
-        listParts.append(_fsRedactSingleUrl(sPart))
-    return " ".join(listParts)
+    """Strip credential-bearing URLs / tokens from sMessage.
 
-
-def _fsRedactSingleUrl(sCandidate):
-    """If sCandidate looks like a URL, strip credential query params."""
-    if "://" not in sCandidate:
-        return sCandidate
-    try:
-        result = urlparse(sCandidate)
-    except ValueError:
-        return sCandidate
-    if not result.scheme or not result.netloc:
-        return sCandidate
-    sQuery = _fsScrubQuery(result.query)
-    return urlunparse(result._replace(query=sQuery))
-
-
-def _fsScrubQuery(sQuery):
-    """Remove access_token / token parameters from a URL query string."""
-    if not sQuery:
-        return sQuery
-    listKept = []
-    for sPair in sQuery.split("&"):
-        sName = sPair.split("=", 1)[0].lower()
-        if sName in ("access_token", "token"):
-            continue
-        listKept.append(sPair)
-    return "&".join(listKept)
+    Preserves Zenodo's behaviour of redacting per-URL query parameters
+    (``access_token=…`` / ``token=…``) so the surrounding error text
+    survives intact, while also scrubbing any other credential shapes
+    via :func:`fsRedactCredentials`.
+    """
+    if not sMessage:
+        return ""
+    listParts = [
+        fsRedactUrlCredentials(sPart) for sPart in sMessage.split()
+    ]
+    return fsRedactCredentials(" ".join(listParts))

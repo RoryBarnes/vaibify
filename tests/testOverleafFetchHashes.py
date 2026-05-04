@@ -325,6 +325,95 @@ def test_fdictFetchRemoteHashes_in_module_all():
 # ── _fnRemovePath swallows OSError (Wave-1 hardening regression) ─
 
 
+# ── Adversarial: zip-slip-style path-escape in clone tree ───────
+
+
+def test_fdictFetchRemoteHashes_path_traversal_relpath_yields_none(tmp_path):
+    """A ``..``-traversing rel path must not read files outside the clone.
+
+    Defence-in-depth regression test: even if a malicious commit
+    surfaced a tree entry with ``..`` segments and the user requested
+    that path, ``_fbPathInsideRoot`` blocks the read and the entry
+    maps to ``None`` instead of leaking host-side bytes.
+    """
+    # Create a "secret" file outside the clone root that should not
+    # be reachable through path traversal.
+    sSecret = str(tmp_path / "outside_secret.txt")
+    with open(sSecret, "wb") as handleFile:
+        handleFile.write(b"HOST-SIDE-SECRET")
+
+    sAskpass = _fnWriteAskpassFile(tmp_path)
+    fnFakeRun = _fnMakeCloneTreeFactory({"main.tex": b"benign"})
+
+    with patch(
+        "vaibify.reproducibility.overleafMirror.subprocess.run",
+        side_effect=fnFakeRun,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsWriteAskpassScript",
+        return_value=sAskpass,
+    ):
+        dictHashes = fdictFetchRemoteHashes(
+            "advProj",
+            ["main.tex", "../../outside_secret.txt"],
+        )
+    assert dictHashes["main.tex"] is not None
+    # The traversal path must NOT have read the secret file.
+    assert dictHashes["../../outside_secret.txt"] is None
+
+
+# ── Subprocess timeout coverage ─────────────────────────────────
+
+
+def test_fdictFetchRemoteHashes_timeout_raises_runtime(tmp_path):
+    """A git ``TimeoutExpired`` is mapped to a redacted ``RuntimeError``.
+
+    Regression test for the Wave-4 hardening: ``_fnRunGit`` now
+    requests ``timeout=...`` so a network-stalled mirror cannot hang
+    the verification worker.
+    """
+    import subprocess
+
+    sAskpass = _fnWriteAskpassFile(tmp_path)
+
+    def fnFakeRun(listArgv, **kwargs):
+        if "clone" in listArgv:
+            raise subprocess.TimeoutExpired(cmd=listArgv, timeout=300)
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with patch(
+        "vaibify.reproducibility.overleafMirror.subprocess.run",
+        side_effect=fnFakeRun,
+    ), patch(
+        "vaibify.reproducibility.overleafMirror.fsWriteAskpassScript",
+        return_value=sAskpass,
+    ):
+        with pytest.raises(RuntimeError) as excInfo:
+            fdictFetchRemoteHashes("slowProj", ["main.tex"])
+    assert "timed out" in str(excInfo.value).lower()
+
+
+def test_run_git_passes_timeout_kwarg(tmp_path, monkeypatch):
+    """Every ``subprocess.run`` invocation in overleafMirror has ``timeout=``.
+
+    Test confirms the kwarg is plumbed through (the hardening contract).
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    listCalls = []
+
+    def fnFakeRun(*args, **kwargs):
+        listCalls.append(kwargs)
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with patch(
+        "vaibify.reproducibility.overleafMirror.subprocess.run",
+        side_effect=fnFakeRun,
+    ):
+        overleafMirror._fnRunGit(["status"], sCwd=str(tmp_path))
+    assert listCalls, "subprocess.run was not invoked"
+    assert "timeout" in listCalls[0]
+    assert listCalls[0]["timeout"] > 0
+
+
 def test_remove_path_tolerates_permission_error(tmp_path):
     """``_fnRemovePath`` must not propagate ``PermissionError``.
 

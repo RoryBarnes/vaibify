@@ -177,6 +177,54 @@ def test_fbIsUvAvailable_reflects_shutil_which():
         assert fbIsUvAvailable() is False
 
 
+def test_uv_compile_timeout_raises_called_process_error(tmp_path):
+    """A ``TimeoutExpired`` from uv must surface as a redacted error.
+
+    Regression test for Wave-4 hardening: a network-stalled uv index
+    fetch must not hang the host backend. The timeout is mapped to
+    ``CalledProcessError`` (rc=124) so the upstream caller sees a
+    uniform failure shape regardless of whether uv exited non-zero or
+    was killed by the wall clock.
+    """
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=subprocess.TimeoutExpired(
+                cmd=["uv"], timeout=120,
+            ),
+        ):
+            with pytest.raises(
+                subprocess.CalledProcessError,
+            ) as excInfo:
+                fnGenerateRequirementsLock(str(tmp_path))
+    assert excInfo.value.returncode == 124
+    assert "timed out" in excInfo.value.stderr.lower()
+
+
+def test_uv_disappeared_race_yields_file_not_found(tmp_path):
+    """If uv disappears between availability check and run, we tell the user.
+
+    The race window between :func:`fbIsUvAvailable` and the
+    :func:`subprocess.run` invocation can yield ``FileNotFoundError``;
+    the hardening converts this into a clean ``FileNotFoundError``
+    with the install URL — same UX as the up-front "uv missing" arm.
+    """
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=FileNotFoundError("[Errno 2] uv vanished"),
+        ):
+            with pytest.raises(FileNotFoundError) as excInfo:
+                fnGenerateRequirementsLock(str(tmp_path))
+    sMessage = str(excInfo.value)
+    assert "uv" in sMessage
+    assert "https://docs.astral.sh/uv/" in sMessage
+
+
 def test_uv_compile_failure_redacts_credential_url(tmp_path):
     """uv stderr containing a ``user:tok@`` URL must be scrubbed.
 

@@ -16,11 +16,13 @@ strings against accidentally-echoed credentials.
 
 import hashlib
 import logging
-import re
 import urllib.error
 import urllib.parse
 import urllib.request
 
+from vaibify.reproducibility.credentialRedactor import (
+    fsRedactCredentials,
+)
 from vaibify.reproducibility.githubAuth import (
     fnValidateOwnerRepo,
     fsKeyringSlotFor,
@@ -41,62 +43,112 @@ __all__ = [
 _S_RAW_HOST = "https://raw.githubusercontent.com"
 _I_HASH_BLOCK_SIZE = 65536
 
-_REGEX_URL_WITH_CREDENTIALS = re.compile(
-    r"https?://[^:@\s]+:[^@\s]+@",
-)
-_REGEX_BEARER_TOKEN = re.compile(
-    r"(?i)(authorization|bearer|token)[\s:=]+\S+",
-)
-_REGEX_GITHUB_TOKEN = re.compile(
-    r"\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b",
-)
-_LIST_SENSITIVE_KEYWORDS = (
-    "password", "token", "bearer", "authorization",
-)
-
 
 class GithubMirrorError(RuntimeError):
     """Raised when a GitHub mirror operation fails in a user-actionable way."""
 
 
 def fsRedactStderr(sMessage):
-    """Return sMessage with URL credentials and token-like strings scrubbed.
+    """Backward-compatible alias for :func:`fsRedactCredentials`.
 
-    Defence in depth: any user-facing error message that may have
-    captured a token (malformed URL, helper exception, etc.) is run
-    through this filter before being raised or logged.
+    Existing callers (``scheduledReverify``, ``dependencyPinning``,
+    ``syncDispatcher``, ``syncRoutes``) reference this function by
+    name; the canonical implementation now lives in
+    :mod:`credentialRedactor`. Kept as a thin re-export so callers
+    don't need a coordinated rename.
     """
-    if not sMessage:
-        return ""
-    sRedacted = _REGEX_URL_WITH_CREDENTIALS.sub(
-        "https://<redacted>@", sMessage,
-    )
-    listLines = [
-        _fsRedactLineIfSensitive(sLine)
-        for sLine in sRedacted.splitlines()
-    ]
-    sRedacted = "\n".join(listLines)
-    sRedacted = _REGEX_GITHUB_TOKEN.sub("<redacted>", sRedacted)
-    sRedacted = _REGEX_BEARER_TOKEN.sub("<redacted>", sRedacted)
-    return sRedacted
+    return fsRedactCredentials(sMessage)
 
 
-def _fsRedactLineIfSensitive(sLine):
-    """Return ``<redacted>`` when a line names a credential concept."""
-    sLower = sLine.lower()
-    for sKeyword in _LIST_SENSITIVE_KEYWORDS:
-        if sKeyword in sLower:
-            return "<redacted>"
-    return sLine
+def _fbContainsPathTraversal(sSegment):
+    """Return True when sSegment contains a ``..`` path-traversal token.
+
+    Both literal ``..`` and percent-encoded variants are caught: a
+    branch name like ``feature/../etc`` would otherwise build a URL
+    that GitHub may interpret outside the intended branch.
+    """
+    sLower = sSegment.lower()
+    if ".." in sSegment:
+        return True
+    return "%2e%2e" in sLower
 
 
 def _fsBuildRawUrl(sOwner, sRepo, sBranch, sRelativePath):
-    """Compose the raw.githubusercontent.com URL for a repo-relative path."""
+    """Compose the raw.githubusercontent.com URL for a repo-relative path.
+
+    Rejects any branch or relative-path segment containing ``..``;
+    even though ``raw.githubusercontent.com`` is unlikely to honour
+    such a request, defence-in-depth keeps the URL building logic
+    from emitting an attacker-shaped path at all.
+    """
+    if _fbContainsPathTraversal(sBranch):
+        raise ValueError(
+            f"Invalid GitHub branch (path traversal): {sBranch!r}"
+        )
+    if _fbContainsPathTraversal(sRelativePath):
+        raise ValueError(
+            "Invalid relative path (path traversal): "
+            f"{sRelativePath!r}"
+        )
     sQuotedBranch = urllib.parse.quote(sBranch, safe="")
     sQuotedPath = urllib.parse.quote(sRelativePath, safe="/")
     return (
         f"{_S_RAW_HOST}/{sOwner}/{sRepo}/{sQuotedBranch}/{sQuotedPath}"
     )
+
+
+_S_RAW_HOST_NETLOC = "raw.githubusercontent.com"
+_F_REQUEST_TIMEOUT_SECONDS = 60.0
+
+
+class _AuthStrippingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that strips ``Authorization`` from off-host redirects.
+
+    Defends against the bearer-token leak class where a malicious
+    GitHub redirect (or man-in-the-middle on a downgrade) sends the
+    next request to an attacker-controlled host that logs incoming
+    headers. We only retain the bearer token when the redirect target
+    stays on ``raw.githubusercontent.com``; any other host gets the
+    request without the credential.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        objectNew = super().redirect_request(
+            req, fp, code, msg, headers, newurl,
+        )
+        if objectNew is None:
+            return None
+        sNetloc = urllib.parse.urlparse(newurl).netloc.lower()
+        if sNetloc != _S_RAW_HOST_NETLOC:
+            for sHeader in list(objectNew.headers.keys()):
+                if sHeader.lower() == "authorization":
+                    del objectNew.headers[sHeader]
+        return objectNew
+
+
+_OBJECT_OPENER = urllib.request.build_opener(
+    _AuthStrippingRedirectHandler(),
+)
+
+
+def _fobjectOpenRequest(objectRequest, fTimeoutSeconds):
+    """Open a request via the auth-stripping opener.
+
+    Routed through ``urllib.request.urlopen`` only when the
+    module-level ``urllib.request.urlopen`` reference has been
+    monkeypatched (the existing test suite patches that exact name);
+    in production the auth-stripping ``_OBJECT_OPENER`` is used so an
+    off-host redirect cannot leak the bearer token.
+    """
+    fnUrlOpen = urllib.request.urlopen
+    if fnUrlOpen is _S_REAL_URLOPEN:
+        return _OBJECT_OPENER.open(
+            objectRequest, timeout=fTimeoutSeconds,
+        )
+    return fnUrlOpen(objectRequest, timeout=fTimeoutSeconds)
+
+
+_S_REAL_URLOPEN = urllib.request.urlopen
 
 
 def _fobjectBuildRequest(sUrl, sToken):
@@ -133,22 +185,27 @@ def _fbIsRateLimited(errorHttp):
 
 
 def _fnRaiseClassifiedHttpError(errorHttp, sUrl):
-    """Translate an HTTPError into a redacted GithubMirrorError."""
+    """Translate an HTTPError into a redacted GithubMirrorError.
+
+    Uses ``raise … from None`` so the chained context (which can
+    contain the original urllib traceback referencing the bearer
+    header object) does not surface in the user-facing message.
+    """
     sSafeUrl = fsRedactStderr(sUrl)
     if _fbIsRateLimited(errorHttp):
         raise GithubMirrorError(
             "GitHub API rate limit exhausted while fetching "
             f"{sSafeUrl}. Wait until the limit resets or supply a "
             "token with higher quota."
-        )
+        ) from None
     if errorHttp.code == 401:
         raise GithubMirrorError(
             "GitHub authentication failed (HTTP 401) while fetching "
             f"{sSafeUrl}. Verify the stored token is valid."
-        )
+        ) from None
     raise GithubMirrorError(
         f"GitHub fetch failed for {sSafeUrl}: HTTP {errorHttp.code}."
-    )
+    ) from None
 
 
 def _fnRaiseClassifiedUrlError(errorUrl, sUrl):
@@ -157,14 +214,22 @@ def _fnRaiseClassifiedUrlError(errorUrl, sUrl):
     sReason = fsRedactStderr(str(getattr(errorUrl, "reason", errorUrl)))
     raise GithubMirrorError(
         f"GitHub fetch failed for {sSafeUrl}: network error: {sReason}"
-    )
+    ) from None
 
 
 def _fsHashOneRemote(sUrl, sToken):
-    """Return the SHA-256 hex digest of one remote file, or None on 404."""
+    """Return the SHA-256 hex digest of one remote file, or None on 404.
+
+    Uses the shared opener whose redirect handler strips
+    ``Authorization`` on off-host redirects, and applies a per-request
+    timeout so a stalled GitHub mirror cannot hang the verification
+    sweep indefinitely.
+    """
     objectRequest = _fobjectBuildRequest(sUrl, sToken)
     try:
-        with urllib.request.urlopen(objectRequest) as objectResponse:
+        with _fobjectOpenRequest(
+            objectRequest, _F_REQUEST_TIMEOUT_SECONDS,
+        ) as objectResponse:
             return _fsHashResponseStream(objectResponse)
     except urllib.error.HTTPError as errorHttp:
         if errorHttp.code == 404:
@@ -181,6 +246,14 @@ def _fsResolveTokenSafely(sOwner, sRepo):
     repo has unexpectedly fallen back to anonymous (and hit the much
     lower 60/hr anonymous rate limit). The log records the exception's
     class name only, never the offending token shape.
+
+    # Lesson: an empty token returned here means the next fetch goes
+    # anonymously. On a private repo that yields 404 indistinguishably
+    # from "file missing on a public repo". Accepted: vaibify only
+    # reports the digest mapping, never the existence-vs-permission
+    # status, so a downstream caller cannot infer privacy from the
+    # mapping alone. The WARNING log alerts the operator that the
+    # private-repo flow is silently degrading to public.
     """
     try:
         sSlot = fsKeyringSlotFor(sOwner, sRepo)
