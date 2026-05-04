@@ -8,6 +8,8 @@ from unittest.mock import patch
 import pytest
 
 from vaibify.reproducibility.environmentSnapshot import (
+    _fsCaptureBinaryVersion,
+    _fsCaptureGccVersion,
     fdictCaptureContainerImageDigest,
     fdictCaptureHostBinaryHashes,
     fdictCaptureSystemTools,
@@ -85,6 +87,32 @@ def test_fdictCaptureContainerImageDigest_docker_fails_raises():
             fdictCaptureContainerImageDigest("missing-container")
 
     assert excInfo.value.stderr == "No such container"
+
+
+def test_run_checked_command_uses_thirty_second_timeout():
+    """``docker inspect`` and friends must allow 30s for cold-start runtimes.
+
+    Colima and Docker Desktop can take 3-8s to respond on a cold VM;
+    the prior 5s ceiling produced false-positive Tier-3 capture
+    failures during otherwise-clean reproducibility runs.
+    """
+    listCallKwargs = []
+
+    def fnCaptureKwargs(*saArgs, **dictKwargs):
+        listCallKwargs.append(dictKwargs)
+        return _fnMakeCompletedProcess(0, sStdout="[]\n")
+
+    with patch(
+        "vaibify.reproducibility.environmentSnapshot.shutil.which",
+        return_value="/usr/local/bin/docker",
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot.subprocess.run",
+        side_effect=fnCaptureKwargs,
+    ):
+        fdictCaptureContainerImageDigest("vaibify-test")
+
+    assert listCallKwargs, "subprocess.run was not invoked"
+    assert listCallKwargs[0]["timeout"] == 30.0
 
 
 # ------------------------------------------------------------------
@@ -240,6 +268,41 @@ def test_fnWriteEnvironmentJson_creates_vaibify_directory(tmp_path):
 
     assert pathVaibify.is_dir()
     assert (pathVaibify / "environment.json").is_file()
+
+
+def test_capture_binary_version_returns_none_on_timeout():
+    """A hung ``--version`` invocation must surface as ``None``.
+
+    Regression test for the Wave-1 hardening: the 5s timeout in
+    ``_fsCaptureBinaryVersion`` raises ``TimeoutExpired`` which the
+    function swallows so the snapshot still captures the binary's
+    SHA-256 instead of hanging forever on a TTY-prompting binary.
+    """
+    excTimeout = subprocess.TimeoutExpired(
+        cmd=["/bin/whatever", "--version"], timeout=5.0,
+    )
+    with patch(
+        "vaibify.reproducibility.environmentSnapshot.subprocess.run",
+        side_effect=excTimeout,
+    ):
+        sVersion = _fsCaptureBinaryVersion("/bin/whatever")
+    assert sVersion is None
+
+
+def test_capture_gcc_version_returns_none_on_timeout():
+    """A hung ``gcc --version`` must yield ``None`` instead of hanging."""
+    excTimeout = subprocess.TimeoutExpired(
+        cmd=["gcc", "--version"], timeout=5.0,
+    )
+    with patch(
+        "vaibify.reproducibility.environmentSnapshot.shutil.which",
+        return_value="/usr/bin/gcc",
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot.subprocess.run",
+        side_effect=excTimeout,
+    ):
+        sVersion = _fsCaptureGccVersion()
+    assert sVersion is None
 
 
 def test_fnWriteEnvironmentJson_is_deterministic(tmp_path):

@@ -343,3 +343,36 @@ def test_fdictFetchRemoteHashes_rejects_invalid_owner():
         githubMirror.fdictFetchRemoteHashes(
             "owner/with/slash", "repo", "main", ["x.txt"],
         )
+
+
+# ----------------------------------------------------------------------
+# Keyring failure logging (Wave-1 hardening regression)
+# ----------------------------------------------------------------------
+
+
+def test_keyring_failure_emits_warning_log(caplog):
+    """Keyring lookup failure must log WARNING with class name only.
+
+    Regression test for the Wave-1 hardening: ``_fsResolveTokenSafely``
+    falls back to anonymous fetch when keyring is broken and emits a
+    single WARNING that names the exception class but never includes
+    the exception message text (which could itself leak credentials).
+    """
+    sExceptionText = "keyring corrupt"
+    with patch.object(
+        githubMirror, "fsResolveToken",
+        side_effect=RuntimeError(sExceptionText),
+    ):
+        with caplog.at_level(
+            "WARNING", logger=githubMirror._LOGGER.name,
+        ):
+            sToken = githubMirror._fsResolveTokenSafely("owner", "repo")
+    assert sToken == ""
+    listWarnings = [
+        recordLog for recordLog in caplog.records
+        if recordLog.levelname == "WARNING"
+    ]
+    assert len(listWarnings) == 1
+    sMessage = listWarnings[0].getMessage()
+    assert "RuntimeError" in sMessage
+    assert sExceptionText not in sMessage

@@ -175,3 +175,33 @@ def test_fbIsUvAvailable_reflects_shutil_which():
         assert fbIsUvAvailable() is True
     with mock.patch(sModule + ".shutil.which", return_value=None):
         assert fbIsUvAvailable() is False
+
+
+def test_uv_compile_failure_redacts_credential_url(tmp_path):
+    """uv stderr containing a ``user:tok@`` URL must be scrubbed.
+
+    Regression test for the Wave-1 hardening: ``_fnRunUvCompile``
+    pipes uv's stderr through ``fsRedactStderr`` before embedding it
+    in ``CalledProcessError`` so a misconfigured index URL with
+    embedded credentials cannot leak to logs or user-facing toasts.
+    """
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    sLeakyStderr = (
+        "could not connect to https://user:tok123@example.com/index/"
+    )
+    resultFail = mock.Mock()
+    resultFail.returncode = 1
+    resultFail.stdout = ""
+    resultFail.stderr = sLeakyStderr
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run", return_value=resultFail,
+        ):
+            with pytest.raises(
+                subprocess.CalledProcessError,
+            ) as excInfo:
+                fnGenerateRequirementsLock(str(tmp_path))
+    assert "tok123" not in excInfo.value.stderr
+    assert "user:tok123" not in excInfo.value.stderr
+    assert "<redacted>" in excInfo.value.stderr

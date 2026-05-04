@@ -320,3 +320,23 @@ def test_fbRefreshMirror_still_uses_blob_filter(tmp_path, monkeypatch):
 def test_fdictFetchRemoteHashes_in_module_all():
     """The new public function is part of ``__all__``."""
     assert "fdictFetchRemoteHashes" in overleafMirror.__all__
+
+
+# ── _fnRemovePath swallows OSError (Wave-1 hardening regression) ─
+
+
+def test_remove_path_tolerates_permission_error(tmp_path):
+    """``_fnRemovePath`` must not propagate ``PermissionError``.
+
+    Regression test for the Wave-1 hardening: cleanup helpers (askpass
+    files, tempdir entries) call ``_fnRemovePath`` from ``finally``
+    blocks. A leaked exception there would mask the original error
+    and leak sibling resources.
+    """
+    pathTarget = tmp_path / "askpass.py"
+    pathTarget.write_text("#!/usr/bin/env python3\n")
+    with patch(
+        "vaibify.reproducibility.overleafMirror.os.remove",
+        side_effect=PermissionError("simulated EACCES"),
+    ):
+        overleafMirror._fnRemovePath(str(pathTarget))

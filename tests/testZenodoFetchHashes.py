@@ -236,3 +236,37 @@ def test_unknown_error_propagates_as_zenodo_error(clientSandbox):
                    iStatusCode=500, sText="Internal Server Error")):
         with pytest.raises(ZenodoError):
             fdictFetchRemoteHashes("12345", clientZenodo=clientSandbox)
+
+
+def test_per_file_404_with_token_in_body_is_redacted(clientSandbox):
+    """A 404 on a per-file fetch must redact tokens before raising.
+
+    Regression test for the Wave-1 hardening: ``_fnCheckResponse``
+    pipes the response body through ``_fsRedactToken`` so leaky
+    Zenodo error payloads cannot surface in user-facing exceptions.
+    """
+    listSpecs = [(
+        "data/leak.csv",
+        "https://sandbox.zenodo.org/api/files/leak"
+        "?access_token=SECRETLEAKED",
+    )]
+    dictRecord = _fdictRecordWithFiles(listSpecs)
+    sLeakyBody = (
+        "error: invalid "
+        "https://sandbox.zenodo.org/api/files/leak"
+        "?access_token=SECRETLEAKED"
+    )
+    mockFileFetch = _fmockJsonResponse(
+        iStatusCode=404, sText=sLeakyBody,
+    )
+    with patch(
+        "requests.request",
+        return_value=_fmockJsonResponse(200, dictRecord),
+    ), patch("requests.get", return_value=mockFileFetch):
+        with pytest.raises(ZenodoNotFoundError) as excInfo:
+            fdictFetchRemoteHashes(
+                "12345", clientZenodo=clientSandbox,
+            )
+    sMessage = str(excInfo.value)
+    assert "SECRETLEAKED" not in sMessage
+    assert "access_token=" not in sMessage
