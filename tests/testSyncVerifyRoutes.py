@@ -245,3 +245,24 @@ def testGetStatusReturnsEmptyDefaultWhenNeverVerified(
     assert dictBody["sLastVerified"] is None
     assert dictBody["iTotalFiles"] == 0
     assert dictBody["listDiverged"] == []
+
+
+# --------- Fix M5: network-isolation guard returns 409 ---------
+
+
+def test_sync_verify_returns_409_when_network_isolated(
+    fixtureCtxAndApp,
+):
+    """When the container is network-isolated, verify returns 409."""
+    _, app, _ = fixtureCtxAndApp
+    with patch(
+        "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
+        return_value=True,
+    ):
+        client = TestClient(app)
+        response = client.post(
+            f"/api/sync/{S_CONTAINER_ID}/github/verify",
+        )
+    assert response.status_code == 409
+    sBody = response.text
+    assert "network" in sBody.lower() or "isolat" in sBody.lower()

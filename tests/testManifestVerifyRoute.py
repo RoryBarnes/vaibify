@@ -127,3 +127,22 @@ def testVerifyManifestReturns409WhenManifestMissing(fixtureClient):
     )
     assert response.status_code == 409
     assert "MANIFEST" in response.json()["detail"]
+
+
+def testVerifyManifestITotalMatchesManifestCountNotWorkflowOutputs(
+    fixtureProjectRepo, fixtureClient,
+):
+    """iTotal reflects manifest entry count, not workflow output count."""
+    sManifest = os.path.join(fixtureProjectRepo, "MANIFEST.sha256")
+    with open(sManifest, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write("# extra entries beyond workflow outputs\n")
+        for iIndex in range(5):
+            sHash = chr(ord("a") + iIndex) * 64
+            fileHandle.write(f"{sHash}  step01/extra_{iIndex}.dat\n")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/manifest/verify",
+    )
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["iTotal"] == 5
+    assert dictBody["iMatching"] == 5 - len(dictBody["listMismatches"])
