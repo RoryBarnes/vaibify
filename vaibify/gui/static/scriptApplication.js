@@ -1434,7 +1434,9 @@ const PipeleyenApp = (function () {
         var listStates = [
             "untested", "passed", "failed", "error"
         ];
-        var iCurrent = listStates.indexOf(dictVerify.sUser);
+        var iCurrent = listStates.indexOf(
+            dictVerify.sUser || "untested"
+        );
         var iNext = (iCurrent + 1) % listStates.length;
         dictVerify.sUser = listStates[iNext];
         dictVerify.sLastUserUpdate = fsFormatUtcTimestamp();

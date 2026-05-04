@@ -507,12 +507,13 @@ var VaibifyStepRenderer = (function () {
             sTriangle = '<span class="expand-triangle">' +
                 (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
         }
+        var sStateClass = sState || "untested";
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
             '" data-approver="' + sApprover + '">' +
             '<span class="verification-label">' +
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
-            '<span class="verification-badge state-' + sState + '">' +
+            '<span class="verification-badge state-' + sStateClass + '">' +
             dictContext.fsVerificationStateIcon(sState) + ' ' +
             dictContext.fsVerificationStateLabel(sState) +
             '</span></div>';
