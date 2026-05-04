@@ -8,7 +8,11 @@ import json
 import os
 
 from .. import pipelineServer as _pipelineServer
-from ..pipelineServer import fsDetectDockerRuntime
+from ..pipelineServer import (
+    fdictGetDockerStatus,
+    fdictRetryDockerConnection,
+    fsDetectDockerRuntime,
+)
 from ..resourceMonitor import fdictGetContainerStats
 
 
@@ -184,6 +188,26 @@ def _fnRegisterContainerIsolation(app, dictCtx):
         )
 
 
+def _fnRegisterDockerStatus(app, dictCtx):
+    """Register the Docker availability probe + retry endpoints.
+
+    GET returns the cached diagnosis so the container hub can render
+    a banner immediately on page load. POST forces a fresh probe and
+    swaps ``dictCtx['docker']`` on success, letting the user recover
+    without restarting vaibify after the runtime comes back up.
+    """
+
+    @app.get("/api/system/docker-status")
+    async def fnGetDockerStatus():
+        return await asyncio.to_thread(fdictGetDockerStatus)
+
+    @app.post("/api/system/docker-status/retry")
+    async def fnPostDockerStatusRetry():
+        return await asyncio.to_thread(
+            fdictRetryDockerConnection, dictCtx,
+        )
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all system routes."""
     _fnRegisterMonitor(app)
@@ -191,3 +215,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterUserInfo(app)
     _fnRegisterContainerReady(app, dictCtx)
     _fnRegisterContainerIsolation(app, dictCtx)
+    _fnRegisterDockerStatus(app, dictCtx)

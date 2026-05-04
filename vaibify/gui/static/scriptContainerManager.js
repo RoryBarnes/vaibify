@@ -8,6 +8,7 @@ var PipeleyenContainerManager = (function () {
 
     async function fnLoadContainers() {
         var elList = document.getElementById("listContainers");
+        await _fnRefreshDockerStatusBanner();
         try {
             var dictResult = await VaibifyApi.fdictGet("/api/registry");
             fnRenderContainerList(dictResult.listContainers || []);
@@ -16,6 +17,83 @@ var PipeleyenContainerManager = (function () {
             elList.innerHTML =
                 '<p style="color: var(--color-red);">' +
                 "Cannot load containers</p>";
+        }
+    }
+
+    async function _fnRefreshDockerStatusBanner() {
+        var elBanner = document.getElementById("dockerStatusBanner");
+        if (!elBanner) return;
+        try {
+            var dictStatus = await VaibifyApi.fdictGet(
+                "/api/system/docker-status"
+            );
+            if (dictStatus.bAvailable) {
+                elBanner.style.display = "none";
+                elBanner.innerHTML = "";
+                return;
+            }
+            _fnRenderDockerStatusBanner(elBanner, dictStatus);
+        } catch (error) {
+            elBanner.style.display = "none";
+        }
+    }
+
+    function _fnRenderDockerStatusBanner(elBanner, dictStatus) {
+        var sHint = VaibifyUtilities.fnEscapeHtml(dictStatus.sHint || "");
+        var sCommand = VaibifyUtilities.fnEscapeHtml(
+            dictStatus.sCommand || ""
+        );
+        var sError = VaibifyUtilities.fnEscapeHtml(dictStatus.sError || "");
+        elBanner.innerHTML =
+            '<div class="docker-status-banner-message">' +
+            '<strong>Docker is unavailable.</strong> ' + sHint +
+            (sCommand
+                ? ' <code>' + sCommand + '</code>'
+                : '') +
+            (sError
+                ? '<div class="docker-status-banner-detail">'
+                  + sError + '</div>'
+                : '') +
+            '</div>' +
+            '<div class="docker-status-banner-actions">' +
+            '<button id="btnRetryDockerStatus" type="button">'
+            + 'Retry</button></div>';
+        elBanner.style.display = "flex";
+        var elRetry = document.getElementById("btnRetryDockerStatus");
+        if (elRetry) {
+            elRetry.addEventListener("click", _fnRetryDockerStatus);
+        }
+    }
+
+    async function _fnRetryDockerStatus() {
+        var elRetry = document.getElementById("btnRetryDockerStatus");
+        if (elRetry) elRetry.disabled = true;
+        try {
+            var dictStatus = await VaibifyApi.fdictPostRaw(
+                "/api/system/docker-status/retry"
+            );
+            if (dictStatus.bAvailable) {
+                PipeleyenApp.fnShowToast(
+                    "Docker is available", "success"
+                );
+                await fnLoadContainers();
+                return;
+            }
+            PipeleyenApp.fnShowToast(
+                "Docker still unavailable. " + (dictStatus.sHint || ""),
+                "error"
+            );
+            await _fnRefreshDockerStatusBanner();
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error"
+            );
+        } finally {
+            var elRetryAfter = document.getElementById(
+                "btnRetryDockerStatus"
+            );
+            if (elRetryAfter) elRetryAfter.disabled = false;
         }
     }
 

@@ -316,6 +316,9 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST", "/api/connect/{sContainerId}"),
     ("POST", "/api/session/spawn"),
     ("POST", "/api/workflows/{sContainerId}/create"),
+    # Docker-runtime retry — agents run inside the container that
+    # needs Docker, so the UI is the only sensible caller.
+    ("POST", "/api/system/docker-status/retry"),
     # Configuration surface owned by the researcher.
     ("PUT", "/api/settings/{sContainerId}"),
     # Repos-panel operations — user-only repo management.

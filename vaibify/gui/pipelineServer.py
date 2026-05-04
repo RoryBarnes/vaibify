@@ -44,6 +44,9 @@ __all__ = [
     "fdictStepFromRequest",
     "fsSanitizeExceptionForClient",
     "fsComputeStaticCacheVersion",
+    "fdictDiagnoseDockerError",
+    "fdictGetDockerStatus",
+    "fdictRetryDockerConnection",
     "fsDetectDockerRuntime",
     "fsRequireWorkflowPath",
     "fsResolveFigurePath",
@@ -1163,9 +1166,26 @@ def __getattr__(sName):
 # ---------------------------------------------------------------
 
 def _fnRequireDocker(connectionDocker):
-    """Raise 503 if Docker is unavailable."""
-    if connectionDocker is None:
-        raise HTTPException(503, "Docker support is not available")
+    """Raise 503 if Docker is unavailable, with a specific diagnosis."""
+    if connectionDocker is not None:
+        return
+    sDetail = _fsBuildDockerUnavailableDetail()
+    raise HTTPException(503, sDetail)
+
+
+def _fsBuildDockerUnavailableDetail():
+    """Compose the 503 detail string from the cached diagnosis."""
+    sError = _dictDockerStatus.get("sError", "")
+    sHint = _dictDockerStatus.get("sHint", "")
+    sCommand = _dictDockerStatus.get("sCommand", "")
+    sDetail = "Docker support is not available."
+    if sHint:
+        sDetail += " " + sHint
+    if sCommand:
+        sDetail += " Try: " + sCommand
+    if sError:
+        sDetail += " (cause: " + sError + ")"
+    return sDetail
 
 
 def fsRequireWorkflowPath(dictPaths, sContainerId):
@@ -1185,16 +1205,22 @@ def fdictResolveVariables(dictWorkflows, dictPaths, sContainerId):
     return workflowManager.fdictBuildGlobalVariables(dictWorkflow, sPath)
 
 
-def _ftupleBuildHelpers(connectionDocker, dictWorkflows, dictPaths):
-    """Build closure-based helper functions for the context."""
+def _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths):
+    """Build closure-based helper functions for the context.
+
+    Closures look up ``dictRaw["docker"]`` dynamically rather than
+    capturing the connection at build time, so a runtime swap (after a
+    successful ``/api/system/docker-status/retry``) is visible to all
+    routes without restarting vaibify.
+    """
 
     def fnRequire():
-        _fnRequireDocker(connectionDocker)
+        _fnRequireDocker(dictRaw["docker"])
 
     def fnSave(sContainerId, dictWorkflow):
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
         workflowManager.fnSaveWorkflowToContainer(
-            connectionDocker, sContainerId, dictWorkflow, sPath)
+            dictRaw["docker"], sContainerId, dictWorkflow, sPath)
 
     def fnVariables(sContainerId):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
@@ -1224,10 +1250,7 @@ def fdictBuildContext(connectionDocker):
     dictWorkflows = {}
     dictPaths = {}
     dictTerminals = {}
-    fnRequire, fnSave, fnVariables, fnWorkflowDir = _ftupleBuildHelpers(
-        connectionDocker, dictWorkflows, dictPaths
-    )
-    return RouteContext({
+    dictRaw = {
         "docker": connectionDocker,
         "workflows": dictWorkflows,
         "paths": dictPaths,
@@ -1235,20 +1258,140 @@ def fdictBuildContext(connectionDocker):
         "containerUsers": {},
         "pipelineTasks": {},
         "sourceCodeDeps": {},
-        "require": fnRequire,
-        "save": fnSave,
-        "variables": fnVariables,
-        "workflowDir": fnWorkflowDir,
-    })
+    }
+    fnRequire, fnSave, fnVariables, fnWorkflowDir = _ftupleBuildHelpers(
+        dictRaw, dictWorkflows, dictPaths
+    )
+    dictRaw["require"] = fnRequire
+    dictRaw["save"] = fnSave
+    dictRaw["variables"] = fnVariables
+    dictRaw["workflowDir"] = fnWorkflowDir
+    return RouteContext(dictRaw)
+
+
+_dictDockerStatus = {"sError": "", "sHint": "", "sCommand": ""}
 
 
 def _fconnectionCreateDocker():
-    """Lazily create a DockerConnection or return None."""
+    """Lazily create a DockerConnection or return None.
+
+    Failures are captured into ``_dictDockerStatus`` so the 503 path
+    and the ``/api/system/docker-status`` probe can surface a specific
+    diagnosis instead of a generic 'Docker support is not available'
+    toast that leaves the user guessing whether the daemon, the
+    runtime, or the binary is at fault.
+    """
     try:
         from ..docker.dockerConnection import DockerConnection
-        return DockerConnection()
-    except Exception:
+        connection = DockerConnection()
+    except Exception as error:
+        _fnRecordDockerError(str(error) or repr(error))
         return None
+    _fnClearDockerError()
+    return connection
+
+
+def _fnRecordDockerError(sError):
+    """Store the most recent Docker init failure for surfacing in UI."""
+    dictDiagnosis = fdictDiagnoseDockerError(sError)
+    _dictDockerStatus["sError"] = sError
+    _dictDockerStatus["sHint"] = dictDiagnosis["sHint"]
+    _dictDockerStatus["sCommand"] = dictDiagnosis["sCommand"]
+
+
+def _fnClearDockerError():
+    """Reset the diagnosis holder when Docker is reachable."""
+    _dictDockerStatus["sError"] = ""
+    _dictDockerStatus["sHint"] = ""
+    _dictDockerStatus["sCommand"] = ""
+
+
+def fdictDiagnoseDockerError(sError):
+    """Return ``{sHint, sCommand}`` for a Docker init error string.
+
+    Pattern-matches common runtime failures (Colima stale disk lock,
+    daemon not running, docker binary missing, socket permission
+    denied) and emits an actionable hint plus a copy-pasteable shell
+    command. The verbatim error is always carried alongside in
+    ``_dictDockerStatus`` so an unrecognized failure mode still
+    reaches the user instead of being hidden behind a generic hint.
+    """
+    sLower = (sError or "").lower()
+    if "in use by instance" in sLower:
+        return {
+            "sHint": "Colima's VM lock is stale, likely from an "
+                     "unclean shutdown. Force-stop and restart Colima.",
+            "sCommand": "colima stop --force && colima start",
+        }
+    if _fbErrorIsDaemonUnreachable(sLower):
+        return {
+            "sHint": "The Docker daemon is not reachable. Start your "
+                     "Docker runtime (Colima or Docker Desktop).",
+            "sCommand": "colima start",
+        }
+    if _fbErrorIsBinaryMissing(sLower):
+        return {
+            "sHint": "The 'docker' command was not found on PATH. "
+                     "Install Docker Desktop or Colima.",
+            "sCommand": "brew install colima docker",
+        }
+    if "permission denied" in sLower:
+        return {
+            "sHint": "Docker socket permission was denied. Restart "
+                     "your runtime so the socket is recreated with "
+                     "the expected ownership.",
+            "sCommand": "colima restart",
+        }
+    return {
+        "sHint": "Docker is not reachable. Verify that your Docker "
+                 "runtime is running and that 'docker info' succeeds.",
+        "sCommand": "docker info",
+    }
+
+
+def _fbErrorIsDaemonUnreachable(sLower):
+    """True if the error text suggests the daemon socket is down."""
+    if "cannot connect" in sLower and (
+        "daemon" in sLower or "docker.sock" in sLower
+    ):
+        return True
+    if "connection refused" in sLower and "docker" in sLower:
+        return True
+    return False
+
+
+def _fbErrorIsBinaryMissing(sLower):
+    """True if the error text suggests the 'docker' binary is absent."""
+    if "filenotfounderror" in sLower:
+        return True
+    if "no such file or directory" in sLower and "docker" in sLower:
+        return True
+    if "[errno 2]" in sLower and "docker" in sLower:
+        return True
+    return False
+
+
+def fdictGetDockerStatus():
+    """Return a snapshot of the current Docker availability state."""
+    return {
+        "bAvailable": not _dictDockerStatus["sError"],
+        "sError": _dictDockerStatus["sError"],
+        "sHint": _dictDockerStatus["sHint"],
+        "sCommand": _dictDockerStatus["sCommand"],
+    }
+
+
+def fdictRetryDockerConnection(dictCtx):
+    """Re-attempt the Docker connection and swap dictCtx on success.
+
+    Mutating ``dictCtx['docker']`` lets every route closure pick up
+    the new connection without a vaibify restart, because
+    ``_ftupleBuildHelpers`` reads the connection from the shared
+    raw-dict at call time rather than capturing it at build time.
+    """
+    connectionNew = _fconnectionCreateDocker()
+    dictCtx["docker"] = connectionNew
+    return fdictGetDockerStatus()
 
 
 # ---------------------------------------------------------------

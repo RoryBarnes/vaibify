@@ -712,6 +712,72 @@ body.all-verified .toolbar-label {
     color: var(--text-secondary);
 }
 
+/* Docker availability banner — shown on the container hub when
+   the backend cannot reach the Docker daemon. */
+.docker-status-banner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0 14px;
+    padding: 12px 14px;
+    background: rgba(231, 76, 60, 0.12);
+    border-left: 3px solid var(--color-red, #e74c3c);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.docker-status-banner-message {
+    flex: 1;
+}
+
+.docker-status-banner-message code {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 3px;
+    color: var(--text-primary);
+    user-select: all;
+}
+
+.docker-status-banner-detail {
+    margin-top: 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: var(--text-secondary);
+    word-break: break-word;
+}
+
+.docker-status-banner-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.docker-status-banner-actions button {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.docker-status-banner-actions button:hover:not(:disabled) {
+    background: var(--border-color);
+}
+
+.docker-status-banner-actions button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* Global settings panel */
 .global-settings {
     display: none;
