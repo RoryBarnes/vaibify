@@ -64,13 +64,16 @@ def _fnEnsureDockerAvailable():
 def _fsRunCheckedCommand(saCommand):
     """Run a subprocess command and return stripped stdout or raise.
 
-    A 5-second timeout prevents a hung docker daemon from blocking
-    the snapshot indefinitely; ``subprocess.TimeoutExpired`` is
-    propagated so the caller (and ultimately the user) sees a clear
-    actionable error rather than a silent hang.
+    A 30-second timeout prevents a hung docker daemon from blocking
+    the snapshot indefinitely while still tolerating cold starts of
+    Colima or Docker Desktop where ``docker inspect`` can take 3-8
+    seconds before the VM is fully responsive;
+    ``subprocess.TimeoutExpired`` is propagated so the caller (and
+    ultimately the user) sees a clear actionable error rather than a
+    silent hang.
     """
     resultProcess = subprocess.run(
-        saCommand, capture_output=True, text=True, timeout=5.0,
+        saCommand, capture_output=True, text=True, timeout=30.0,
     )
     if resultProcess.returncode != 0:
         raise subprocess.CalledProcessError(

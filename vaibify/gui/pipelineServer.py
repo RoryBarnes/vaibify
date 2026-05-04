@@ -1421,15 +1421,43 @@ async def _alifespanShared(app):
     ``@app.on_event("startup"/"shutdown")`` decorators (FastAPI emits
     a DeprecationWarning when those are used; mixing them with
     ``lifespan=`` is also unsupported).
+
+    Each startup hook runs in its own ``try/except`` so a single
+    failing hook cannot abort the lifespan before ``yield``; if it
+    did, the shutdown loop would be skipped and resources already
+    acquired by earlier hooks (e.g. background tasks, container
+    locks) would leak. Shutdown hooks likewise run independently so
+    one failure does not silence subsequent cleanup.
     """
     for fnStartup in list(getattr(app.state, "listLifespanStartup", [])):
-        await _fnInvokeMaybeAsync(fnStartup, app)
+        await _fnRunStartupHookSafely(fnStartup, app)
     yield
     for fnShutdown in list(getattr(app.state, "listLifespanShutdown", [])):
-        try:
-            await _fnInvokeMaybeAsync(fnShutdown, app)
-        except Exception:
-            pass
+        await _fnRunShutdownHookSafely(fnShutdown, app)
+
+
+async def _fnRunStartupHookSafely(fnHook, app):
+    """Invoke a startup hook, logging any exception without re-raising."""
+    try:
+        await _fnInvokeMaybeAsync(fnHook, app)
+    except Exception as errorAny:
+        logger.warning(
+            "Lifespan startup hook %s failed: %s",
+            getattr(fnHook, "__name__", repr(fnHook)),
+            type(errorAny).__name__,
+        )
+
+
+async def _fnRunShutdownHookSafely(fnHook, app):
+    """Invoke a shutdown hook, logging any exception without re-raising."""
+    try:
+        await _fnInvokeMaybeAsync(fnHook, app)
+    except Exception as errorAny:
+        logger.warning(
+            "Lifespan shutdown hook %s failed: %s",
+            getattr(fnHook, "__name__", repr(fnHook)),
+            type(errorAny).__name__,
+        )
 
 
 async def _fnInvokeMaybeAsync(fnHook, app):

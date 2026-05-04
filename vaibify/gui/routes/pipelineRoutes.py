@@ -902,7 +902,7 @@ def _fnRegisterManifestVerify(app, dictCtx):
 
     @fnAgentAction("verify-manifest")
     @app.post("/api/workflow/{sContainerId}/manifest/verify")
-    async def fnVerifyManifest(sContainerId: str):
+    async def fdictVerifyManifest(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
