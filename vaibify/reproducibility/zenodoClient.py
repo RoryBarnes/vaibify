@@ -353,6 +353,7 @@ def _fnStreamDownload(clientZenodo, sFileUrl, sDestination, sFileName):
     dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
     responseHttp = requests.get(
         sFileUrl, headers=dictHeaders, stream=True,
+        timeout=(10, 60),
     )
     _fnCheckResponse(responseHttp)
     iTotal = int(responseHttp.headers.get("content-length", 0))
@@ -374,11 +375,17 @@ def _fnWriteStreamToFile(responseHttp, pathOutput, sFileName, iTotal):
 
 
 def _fnCheckResponse(responseHttp):
-    """Raise a typed exception for HTTP errors."""
+    """Raise a typed exception for HTTP errors.
+
+    The response body is scrubbed of token-bearing URLs before being
+    embedded in any exception message; this prevents tokens echoed in
+    Zenodo error payloads (e.g. on per-file fetches) from leaking
+    into raised exceptions, logs, or user-visible toasts.
+    """
     iStatus = responseHttp.status_code
     if 200 <= iStatus < 300:
         return
-    sBody = responseHttp.text[:500]
+    sBody = _fsRedactToken(responseHttp.text[:500])
     if iStatus in (401, 403):
         raise ZenodoAuthError(
             f"Zenodo authentication failed ({iStatus}): {sBody}"
@@ -486,6 +493,7 @@ def _fsHashRemoteFile(clientZenodo, dictFile):
     try:
         responseHttp = requests.get(
             sFileUrl, headers=dictHeaders, stream=True,
+            timeout=(10, 60),
         )
     except requests.RequestException as exc:
         raise ZenodoError(

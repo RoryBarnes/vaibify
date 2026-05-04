@@ -62,9 +62,15 @@ def _fnEnsureDockerAvailable():
 
 
 def _fsRunCheckedCommand(saCommand):
-    """Run a subprocess command and return stripped stdout or raise."""
+    """Run a subprocess command and return stripped stdout or raise.
+
+    A 5-second timeout prevents a hung docker daemon from blocking
+    the snapshot indefinitely; ``subprocess.TimeoutExpired`` is
+    propagated so the caller (and ultimately the user) sees a clear
+    actionable error rather than a silent hang.
+    """
     resultProcess = subprocess.run(
-        saCommand, capture_output=True, text=True,
+        saCommand, capture_output=True, text=True, timeout=5.0,
     )
     if resultProcess.returncode != 0:
         raise subprocess.CalledProcessError(
@@ -112,10 +118,18 @@ def _fdictCaptureSingleBinary(sPath):
 
 
 def _fsCaptureBinaryVersion(sPath):
-    """Return the first line of ``<sPath> --version`` or None on failure."""
+    """Return the first line of ``<sPath> --version`` or None on failure.
+
+    A 5-second timeout protects against user-supplied binaries that
+    open a TTY-prompt or wait on stdin — without it, the snapshot
+    capture would hang forever on a misbehaving binary. Timeout is
+    treated as a soft failure (returns None) so the SHA-256 is still
+    captured by the caller.
+    """
     try:
         resultProcess = subprocess.run(
             [sPath, "--version"], capture_output=True, text=True,
+            timeout=5.0,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -164,6 +178,7 @@ def _fsCaptureGccVersion():
     try:
         resultProcess = subprocess.run(
             ["gcc", "--version"], capture_output=True, text=True,
+            timeout=5.0,
         )
     except (OSError, subprocess.SubprocessError):
         return None

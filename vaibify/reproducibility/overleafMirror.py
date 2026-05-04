@@ -310,10 +310,16 @@ def _fsIsoTimestampNow():
 
 
 def _fnRemovePath(sPath):
-    """Delete a file, tolerating missing paths."""
+    """Delete a file, tolerating any OSError.
+
+    Used in cleanup paths (askpass scripts, tempdirs); a stricter
+    contract would risk leaking sibling resources when one cleanup
+    raises. ``OSError`` covers ``FileNotFoundError``, ``PermissionError``,
+    and the rare ``IsADirectoryError``.
+    """
     try:
         os.remove(sPath)
-    except FileNotFoundError:
+    except OSError:
         pass
 
 

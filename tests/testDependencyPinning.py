@@ -30,7 +30,7 @@ _S_UNHASHED_LOCK = (
 def _fnFakeRunWriteLock(sLockBody):
     """Build a subprocess.run replacement that writes a lockfile."""
 
-    def fnFake(listCommand, cwd, capture_output, text):
+    def fnFake(listCommand, cwd, capture_output, text, timeout=None):
         from pathlib import Path
 
         pathOut = Path(cwd) / "requirements.lock"

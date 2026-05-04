@@ -84,13 +84,15 @@ def _fnRunUvCompile(pathRepo, sInput):
         cwd=str(pathRepo),
         capture_output=True,
         text=True,
+        timeout=120.0,
     )
     if completed.returncode != 0:
+        from vaibify.reproducibility.githubMirror import fsRedactStderr
         raise subprocess.CalledProcessError(
             completed.returncode,
             listCommand,
             output=completed.stdout,
-            stderr=completed.stderr,
+            stderr=fsRedactStderr(completed.stderr or ""),
         )
 
 

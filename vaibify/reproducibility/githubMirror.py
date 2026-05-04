@@ -15,6 +15,7 @@ strings against accidentally-echoed credentials.
 """
 
 import hashlib
+import logging
 import re
 import urllib.error
 import urllib.parse
@@ -25,6 +26,9 @@ from vaibify.reproducibility.githubAuth import (
     fsKeyringSlotFor,
     fsResolveToken,
 )
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 __all__ = [
@@ -171,14 +175,30 @@ def _fsHashOneRemote(sUrl, sToken):
 
 
 def _fsResolveTokenSafely(sOwner, sRepo):
-    """Return a token for the owner/repo pair, empty string on failure."""
+    """Return a token for the owner/repo pair, empty string on failure.
+
+    Failures are logged at WARNING so an operator can see why a private
+    repo has unexpectedly fallen back to anonymous (and hit the much
+    lower 60/hr anonymous rate limit). The log records the exception's
+    class name only, never the offending token shape.
+    """
     try:
         sSlot = fsKeyringSlotFor(sOwner, sRepo)
-    except ValueError:
+    except ValueError as errorSlot:
+        _LOGGER.warning(
+            "github token slot resolution failed (%s); "
+            "falling back to anonymous fetch",
+            type(errorSlot).__name__,
+        )
         return ""
     try:
         return fsResolveToken(sSlot) or ""
-    except Exception:
+    except Exception as errorToken:
+        _LOGGER.warning(
+            "github keyring lookup failed (%s); falling back to "
+            "anonymous fetch — rate limits will be tighter",
+            type(errorToken).__name__,
+        )
         return ""
 
 
