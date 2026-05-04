@@ -30,6 +30,7 @@ __all__ = [
     "testPipelineStateCarriesLivenessFields",
     "testContainerUserUidIsOneThousand",
     "testManifestWriterCoversEveryDeclaredOutput",
+    "testManifestWriterKnowsEverySaPathListInGuiSource",
 ]
 
 
@@ -1139,3 +1140,67 @@ def testManifestWriterCoversEveryDeclaredOutput(tmp_path):
             f"cover every path in saOutputFiles + saPlotFiles + "
             f"saDataFiles."
         )
+
+
+def testManifestWriterKnowsEverySaPathListInGuiSource():
+    """Every ``sa<Word>Files`` literal referenced by gui/repro source code
+    must appear in ``manifestWriter._OUTPUT_KEYS``.
+
+    Catches the failure mode the hard-coded sibling test cannot: a
+    future contributor extends ``workflow.json`` with a new path-list
+    key (e.g. ``saArchiveFiles``), wires it into the workflow loader,
+    but forgets to teach the manifest writer about it. Without this
+    invariant, third parties run ``sha256sum -c MANIFEST.sha256``,
+    every listed entry passes, and they conclude the reproduction is
+    bit-perfect — even though the new artefacts were never tracked.
+    """
+    from vaibify.reproducibility import manifestWriter
+    setKnownKeys = set(manifestWriter._OUTPUT_KEYS)
+    setReferencedKeys = _fsetCollectSaFilesLiterals()
+    setOutputKeys = setReferencedKeys - SET_NON_OUTPUT_SA_FILES_KEYS
+    listMissing = sorted(setOutputKeys - setKnownKeys)
+    assert listMissing == [], (
+        f"manifestWriter._OUTPUT_KEYS is missing path-list keys "
+        f"referenced elsewhere in source: {listMissing}. Either add "
+        f"them to _OUTPUT_KEYS in vaibify/reproducibility/"
+        f"manifestWriter.py, or add them to "
+        f"SET_NON_OUTPUT_SA_FILES_KEYS in this test if they are "
+        f"inputs / runtime-derived fields."
+    )
+
+
+_REGEX_SA_FILES_LITERAL = re.compile(r'["\'](sa[A-Z][A-Za-z]*Files)["\']')
+
+
+# sa*Files keys that are NOT workflow-declared outputs and therefore must
+# not appear in MANIFEST.sha256. Inputs are consumed not produced; resolved
+# fields are runtime-decorated views, not declarations. Each entry is
+# annotated with where it lives so a future contributor can audit quickly.
+SET_NON_OUTPUT_SA_FILES_KEYS = {
+    # Step-level input list; provenanceTracker uses it to draw DAG edges
+    # from inputs to the step. Inputs are produced upstream, not by this
+    # step, so they belong to the upstream step's outputs.
+    "saInputFiles",
+    # stepRoutes decorates the response with a resolved view of the
+    # step's outputs; this is a runtime projection, not a declaration.
+    "saResolvedOutputFiles",
+}
+
+
+def _fsetCollectSaFilesLiterals():
+    """Scan vaibify/gui/ and vaibify/reproducibility/ for sa*Files literals."""
+    setLiterals = set()
+    listScanRoots = [
+        REPO_ROOT / "vaibify" / "gui",
+        REPO_ROOT / "vaibify" / "reproducibility",
+    ]
+    for pathRoot in listScanRoots:
+        for pathPy in pathRoot.rglob("*.py"):
+            sPosix = pathPy.as_posix()
+            if any(s in sPosix for s in
+                   SET_EXCLUDED_SCAN_DIRECTORY_FRAGMENTS):
+                continue
+            sSource = fsReadSource(pathPy)
+            for matchOne in _REGEX_SA_FILES_LITERAL.finditer(sSource):
+                setLiterals.add(matchOne.group(1))
+    return setLiterals

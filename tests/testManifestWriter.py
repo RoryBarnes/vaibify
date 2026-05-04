@@ -2,12 +2,16 @@
 
 import hashlib
 import os
+import shutil
+import subprocess
 
 import pytest
 
 from vaibify.reproducibility.manifestWriter import (
     fnWriteManifest,
     flistVerifyManifest,
+    flistParseManifestLines,
+    fiCountManifestEntries,
 )
 
 
@@ -291,3 +295,175 @@ def test_stable_ordering_byte_identical_writes(tmp_path):
     assert listPaths == sorted(listPaths)
     # Duplicate (a/first.csv across two steps) should appear once.
     assert len(listPaths) == len(set(listPaths))
+
+
+# ----------------------------------------------------------------------
+# 11. Symlinked parent / intermediate directory rejection
+# ----------------------------------------------------------------------
+
+
+def test_symlinked_parent_directory_raises_value_error(tmp_path):
+    pathTargetDir = tmp_path / "real_dir"
+    pathTargetDir.mkdir()
+    (pathTargetDir / "a.csv").write_bytes(b"hello\n")
+    pathParent = tmp_path / "out"
+    pathParent.symlink_to(pathTargetDir, target_is_directory=True)
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    with pytest.raises(ValueError) as excInfo:
+        fnWriteManifest(str(tmp_path), dictWorkflow)
+    assert "out" in str(excInfo.value)
+
+
+def test_symlinked_intermediate_directory_raises_value_error(tmp_path):
+    pathRealDeep = tmp_path / "real_a" / "real_b"
+    pathRealDeep.mkdir(parents=True)
+    (pathRealDeep / "deep.csv").write_bytes(b"deep\n")
+    pathTopLevel = tmp_path / "a"
+    pathTopLevel.mkdir()
+    pathIntermediate = pathTopLevel / "b"
+    pathIntermediate.symlink_to(
+        pathRealDeep, target_is_directory=True,
+    )
+    dictWorkflow = _fdictWorkflowFromPaths(
+        saOutputFiles=["a/b/deep.csv"],
+    )
+    with pytest.raises(ValueError) as excInfo:
+        fnWriteManifest(str(tmp_path), dictWorkflow)
+    assert "b" in str(excInfo.value)
+
+
+# ----------------------------------------------------------------------
+# 12. GNU-escape round-trip for paths with backslash and newline
+# ----------------------------------------------------------------------
+
+
+def test_path_containing_backslash_round_trips(tmp_path):
+    sRelativePath = "data/weird\\name.csv"
+    _fnWriteFile(tmp_path, sRelativePath, b"col\n1\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listMismatches = flistVerifyManifest(str(tmp_path))
+    assert listMismatches == []
+    sManifest = (tmp_path / _MANIFEST_FILENAME).read_text(encoding="utf-8")
+    assert "\\\\name" in sManifest, (
+        "backslash in path must be encoded as \\\\ per GNU spec"
+    )
+
+
+def test_path_containing_newline_round_trips(tmp_path):
+    sRelativePath = "data/weird\nname.csv"
+    try:
+        _fnWriteFile(tmp_path, sRelativePath, b"col\n1\n")
+    except (OSError, ValueError):
+        pytest.skip("filesystem rejects newline in filename")
+    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listMismatches = flistVerifyManifest(str(tmp_path))
+    assert listMismatches == []
+    sManifest = (tmp_path / _MANIFEST_FILENAME).read_text(encoding="utf-8")
+    iLineCount = len([s for s in sManifest.splitlines() if s.strip()])
+    assert iLineCount == 2, (
+        "header + one entry; the newline must not split the entry"
+    )
+
+
+def test_escaped_manifest_format_matches_gnu_sha256sum(tmp_path):
+    sShasumExe = shutil.which("sha256sum") or shutil.which("shasum")
+    if sShasumExe is None:
+        pytest.skip("no sha256sum or shasum available")
+    sRelativePath = "data/weird\\name.csv"
+    _fnWriteFile(tmp_path, sRelativePath, b"data\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listArgs = [sShasumExe]
+    if sShasumExe.endswith("shasum"):
+        listArgs += ["-a", "256"]
+    listArgs += ["-c", _MANIFEST_FILENAME]
+    completed = subprocess.run(
+        listArgs, cwd=str(tmp_path),
+        capture_output=True, timeout=10,
+    )
+    assert completed.returncode == 0, (
+        f"external shasum -c rejected the manifest: "
+        f"{completed.stdout!r} {completed.stderr!r}"
+    )
+
+
+# ----------------------------------------------------------------------
+# 13. flistParseManifestLines + fiCountManifestEntries
+# ----------------------------------------------------------------------
+
+
+def test_flistParseManifestLines_happy_path(tmp_path):
+    _fnWriteFile(tmp_path, "a.csv", b"x\n")
+    _fnWriteFile(tmp_path, "b.csv", b"y\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=["a.csv", "b.csv"])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    assert len(listEntries) == 2
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {"a.csv", "b.csv"}
+    for dictEntry in listEntries:
+        assert len(dictEntry["sExpected"]) == 64
+
+
+def test_flistParseManifestLines_skips_comments_and_blanks(tmp_path):
+    pathManifest = tmp_path / _MANIFEST_FILENAME
+    pathManifest.write_text(
+        "# a comment\n"
+        "\n"
+        f"{hashlib.sha256(b'x').hexdigest()}  a.csv\n"
+        "# another comment\n",
+        encoding="utf-8",
+    )
+    listEntries = flistParseManifestLines(str(tmp_path))
+    assert len(listEntries) == 1
+    assert listEntries[0]["sPath"] == "a.csv"
+
+
+def test_flistParseManifestLines_handles_escaped_paths(tmp_path):
+    sRelativePath = "data/weird\\name.csv"
+    _fnWriteFile(tmp_path, sRelativePath, b"d\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    assert len(listEntries) == 1
+    assert listEntries[0]["sPath"] == sRelativePath
+
+
+def test_flistParseManifestLines_raises_on_malformed_line(tmp_path):
+    pathManifest = tmp_path / _MANIFEST_FILENAME
+    pathManifest.write_text(
+        "# header\n"
+        "this line is malformed and has no two-space separator\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as excInfo:
+        flistParseManifestLines(str(tmp_path))
+    sMessage = str(excInfo.value)
+    assert "2" in sMessage, "error must name the offending line number"
+
+
+def test_flistParseManifestLines_raises_FileNotFoundError(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        flistParseManifestLines(str(tmp_path))
+
+
+def test_fiCountManifestEntries_counts_only_real_entries(tmp_path):
+    pathManifest = tmp_path / _MANIFEST_FILENAME
+    pathManifest.write_text(
+        "# header\n"
+        "\n"
+        f"{hashlib.sha256(b'x').hexdigest()}  a.csv\n"
+        f"{hashlib.sha256(b'y').hexdigest()}  b.csv\n",
+        encoding="utf-8",
+    )
+    assert fiCountManifestEntries(str(tmp_path)) == 2
+
+
+def test_fiCountManifestEntries_zero_for_empty_manifest(tmp_path):
+    pathManifest = tmp_path / _MANIFEST_FILENAME
+    pathManifest.write_text(
+        "# only the header\n", encoding="utf-8",
+    )
+    assert fiCountManifestEntries(str(tmp_path)) == 0
