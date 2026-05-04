@@ -321,3 +321,68 @@ def test_concurrent_sync_status_writes_do_not_lose_updates(tmp_path):
     dictB = scheduledReverify.fdictReadCachedSyncStatus(sRepo, "zenodo")
     assert dictA["iMatching"] == 7
     assert dictB["iMatching"] == 11
+
+
+# --------- Hardening: lock retry budget + missing-manifest redaction ---------
+
+
+def test_acquire_sync_status_lock_retry_budget_is_at_least_one_second():
+    """Three concurrent writers must not blow the retry budget.
+
+    Regression for the original 5×50ms = 250ms ceiling: under
+    contention the JSON read-modify-write critical section can
+    credibly take longer than 250ms on a busy host, raising spurious
+    RuntimeError from the second writer. The configured
+    ``_I_LOCK_RETRY_MAX`` and ``_F_LOCK_RETRY_SLEEP`` constants must
+    product to at least 1 second of patience before declaring failure.
+    """
+    fBudget = (
+        scheduledReverify._I_LOCK_RETRY_MAX
+        * scheduledReverify._F_LOCK_RETRY_SLEEP
+    )
+    assert fBudget >= 1.0, (
+        f"lock retry budget {fBudget:.2f}s is too short for "
+        "three concurrent writers under realistic disk pressure"
+    )
+
+
+def test_missing_manifest_error_is_captured_and_redacted(tmp_path):
+    """A missing-manifest error must surface as sStatus=error, redacted."""
+    sRepo = str(tmp_path / "no-manifest")
+    os.makedirs(sRepo, exist_ok=True)
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictResult = scheduledReverify._fdictAttemptOneVerify(
+        sRepo, dictWorkflow, "github", "2026-05-03T00:00:00Z",
+    )
+    assert dictResult["sStatus"] == "error"
+    assert "sError" in dictResult
+    assert isinstance(dictResult["sError"], str)
+    assert dictResult["sError"]
+
+
+def test_sync_status_lock_releases_on_persist_exception(tmp_path):
+    """An exception inside the critical section must release the flock.
+
+    Otherwise a transient write failure permanently wedges every
+    subsequent verify call until the host process exits.
+    """
+    sRepo = str(tmp_path)
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+    dictStatus = {
+        "sService": "github",
+        "sLastVerified": "2026-05-03T00:00:00Z",
+        "iTotalFiles": 0,
+        "iMatching": 0,
+        "listDiverged": [],
+    }
+    with patch(
+        "vaibify.reproducibility.scheduledReverify._fnPersistSyncStatusEntry",
+        side_effect=OSError("disk full"),
+    ):
+        with pytest.raises(OSError):
+            scheduledReverify.fnWriteSyncStatus(sRepo, dictStatus)
+    # Second call should succeed: lock was released despite first
+    # failure.
+    scheduledReverify.fnWriteSyncStatus(sRepo, dictStatus)
+    dictRead = scheduledReverify.fdictReadCachedSyncStatus(sRepo, "github")
+    assert dictRead["sService"] == "github"

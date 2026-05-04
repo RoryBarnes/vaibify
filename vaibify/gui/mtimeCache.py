@@ -127,13 +127,18 @@ def fsSha256ForFile(sWorkspaceRoot, sRepoRelPath, dictCache):
     Reuses the same per-path entry as ``fsBlobShaForFile`` but stores
     the SHA-256 result under a separate ``sSha256`` key so the two
     digest universes (git blob SHA-1, content SHA-256) coexist without
-    collision. Returns the empty string when the file is missing.
+    collision. Returns the empty string when the file is missing — and
+    purges any stale cache entry for that path so a subsequent call
+    cannot resurface a digest for a file that no longer exists. The
+    purge mirrors :func:`fsBlobShaForFile`'s missing-file handling so
+    both digest paths give the same answer for a deleted file.
     """
     from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
     sHostPath = _fsHostPathFor(sWorkspaceRoot, sRepoRelPath)
     try:
         fMtime = os.path.getmtime(sHostPath)
     except OSError:
+        dictCache.pop(sRepoRelPath, None)
         return ""
     dictEntry = dictCache.get(sRepoRelPath)
     if (

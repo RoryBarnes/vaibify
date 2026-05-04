@@ -511,3 +511,48 @@ def test_legal_path_inside_repo_still_accepted(tmp_path):
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listMismatches = flistVerifyManifest(str(tmp_path))
     assert listMismatches == []
+
+
+# ----------------------------------------------------------------------
+# 15. Adversarial: deep-component symlink to outside the repo
+# ----------------------------------------------------------------------
+
+
+def test_deep_component_symlink_outside_repo_is_rejected(tmp_path):
+    """Symlink discovered late in the path-walk must abort the manifest.
+
+    Threat model: workflow declares ``a/b/c.csv`` where ``a`` is a real
+    directory and ``a/b`` is a symlink to ``/tmp/attacker``. The
+    symlink check must catch this before the realpath escape check
+    (which would only flag plain ``..`` traversal). Without
+    component-by-component link inspection, an attacker could substitute
+    a symlink for an intermediate directory and have manifest hashing
+    follow it transparently.
+    """
+    pathOutside = tmp_path / "outside"
+    pathOutside.mkdir()
+    (pathOutside / "c.csv").write_bytes(b"loot\n")
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    (pathRepo / "a").mkdir()
+    pathLink = pathRepo / "a" / "b"
+    pathLink.symlink_to(pathOutside, target_is_directory=True)
+
+    dictWorkflow = _fdictWorkflowFromPaths(
+        saOutputFiles=["a/b/c.csv"],
+    )
+    with pytest.raises(ValueError) as excInfo:
+        fnWriteManifest(str(pathRepo), dictWorkflow)
+    assert "b" in str(excInfo.value)
+
+
+def test_symlinked_leaf_pointing_inside_repo_still_rejected(tmp_path):
+    """Even an in-repo symlink leaf is rejected — the rule is not "outside"."""
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    (pathRepo / "real.csv").write_bytes(b"data\n")
+    pathLink = pathRepo / "alias.csv"
+    pathLink.symlink_to(pathRepo / "real.csv")
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["alias.csv"])
+    with pytest.raises(ValueError):
+        fnWriteManifest(str(pathRepo), dictWorkflow)

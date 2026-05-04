@@ -1086,9 +1086,14 @@ def fbIsStepFullyVerified(dictStep):
     "Defined" means the verification field is present. An absent field
     means no tests in that category — silent pass for verification
     purposes. Present-but-not-passed (untested, failed, stale) blocks
-    the all-green state.
+    the all-green state. A non-dict step (corrupt workflow) is treated
+    as not-verified so callers do not crash with ``AttributeError``.
     """
+    if not isinstance(dictStep, dict):
+        return False
     dictV = dictStep.get("dictVerification", {})
+    if not isinstance(dictV, dict):
+        return False
     if dictV.get("sUser") != "passed":
         return False
     for sKey in _T_TEST_VERIF_KEYS:
@@ -1178,11 +1183,23 @@ async def _fnArchiveZenodoForAutoArchive(
 
 
 def fbAllStepsFullyVerified(dictWorkflow):
-    """Return True iff every step in the workflow is fully verified."""
+    """Return True iff every step in the workflow is fully verified.
+
+    A corrupt workflow.json carrying ``None`` or non-dict step entries
+    is treated as not-fully-verified rather than raising
+    ``AttributeError`` from inside ``fbIsStepFullyVerified``. The
+    invariant the caller depends on — "all green" — is monotonic in
+    the strict sense: any uncertainty must read as not-green.
+    """
     listSteps = dictWorkflow.get("listSteps", [])
     if not listSteps:
         return False
-    return all(fbIsStepFullyVerified(dictStep) for dictStep in listSteps)
+    for dictStep in listSteps:
+        if not isinstance(dictStep, dict):
+            return False
+        if not fbIsStepFullyVerified(dictStep):
+            return False
+    return True
 
 
 def _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId=None):

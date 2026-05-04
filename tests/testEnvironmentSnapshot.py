@@ -323,3 +323,51 @@ def test_fnWriteEnvironmentJson_is_deterministic(tmp_path):
     baFirst = (pathRepoOne / ".vaibify" / "environment.json").read_bytes()
     baSecond = (pathRepoTwo / ".vaibify" / "environment.json").read_bytes()
     assert baFirst == baSecond
+
+
+def test_fnWriteEnvironmentJson_atomic_replace_preserves_old(tmp_path):
+    """A failed mid-write must not leave a half-written environment.json.
+
+    Forces ``os.replace`` to fail after the temp file is written; the
+    pre-existing ``environment.json`` must remain intact (containing
+    the previous payload), and the temp file must be cleaned up rather
+    than left to confuse the next reader.
+    """
+    import os
+    pathDir = tmp_path / ".vaibify"
+    pathDir.mkdir()
+    pathOutput = pathDir / "environment.json"
+    pathOutput.write_text('{"sExisting": "preserved"}')
+    sFakeStamp = "2026-05-03T12:00:00+00:00"
+
+    def fnFailingReplace(*saArgs, **dictKwargs):
+        raise OSError("disk full")
+
+    with patch(
+        "vaibify.reproducibility.environmentSnapshot._fsCurrentTimestamp",
+        return_value=sFakeStamp,
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot.os.replace",
+        side_effect=fnFailingReplace,
+    ):
+        with pytest.raises(OSError):
+            fnWriteEnvironmentJson(str(tmp_path), {"sNew": "payload"})
+
+    # Old file untouched; no leftover .tmp.
+    assert json.loads(pathOutput.read_text()) == {"sExisting": "preserved"}
+    listLeftovers = [
+        sName for sName in os.listdir(str(pathDir)) if sName.endswith(".tmp")
+    ]
+    assert listLeftovers == []
+
+
+def test_capture_binary_version_returns_none_for_empty_path():
+    """An empty ``sPath`` must short-circuit instead of invoking subprocess."""
+    sVersion = _fsCaptureBinaryVersion("")
+    assert sVersion is None
+
+
+def test_capture_binary_version_returns_none_for_none_path():
+    """A ``None`` ``sPath`` must short-circuit instead of crashing."""
+    sVersion = _fsCaptureBinaryVersion(None)
+    assert sVersion is None

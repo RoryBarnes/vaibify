@@ -9,6 +9,7 @@ form the AICS L3 verification envelope.
 """
 
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -127,8 +128,13 @@ def _fsCaptureBinaryVersion(sPath):
     open a TTY-prompt or wait on stdin — without it, the snapshot
     capture would hang forever on a misbehaving binary. Timeout is
     treated as a soft failure (returns None) so the SHA-256 is still
-    captured by the caller.
+    captured by the caller. ``sPath`` that is empty or ``None`` is
+    rejected up-front so a corrupt config never invokes ``subprocess``
+    with a missing first argument (which surfaces as ``IndexError``
+    on some CPython builds rather than the OSError the caller expects).
     """
+    if not sPath:
+        return None
     try:
         resultProcess = subprocess.run(
             [sPath, "--version"], capture_output=True, text=True,
@@ -219,12 +225,28 @@ def _fsReadOsRelease():
 
 
 def fnWriteEnvironmentJson(sProjectRepo, dictEnvironment):
-    """Persist the environment manifest under ``<repo>/.vaibify/``."""
+    """Persist the environment manifest under ``<repo>/.vaibify/``.
+
+    Writes via a sibling ``.tmp`` file followed by ``os.replace`` so a
+    crash mid-write cannot leave a half-written ``environment.json``
+    that downstream parsers would reject. The temp file is removed on
+    write failure so a transient I/O error does not litter the
+    ``.vaibify`` directory.
+    """
     pathOutput = Path(sProjectRepo) / ".vaibify" / "environment.json"
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
     dictPayload = _fdictAnnotateEnvironment(dictEnvironment)
-    with open(pathOutput, "w") as fileHandle:
-        json.dump(dictPayload, fileHandle, indent=2, sort_keys=True)
+    pathTemp = pathOutput.with_suffix(pathOutput.suffix + ".tmp")
+    try:
+        with open(pathTemp, "w", encoding="utf-8") as fileHandle:
+            json.dump(dictPayload, fileHandle, indent=2, sort_keys=True)
+        os.replace(str(pathTemp), str(pathOutput))
+    except OSError:
+        try:
+            os.remove(str(pathTemp))
+        except OSError:
+            pass
+        raise
 
 
 def _fdictAnnotateEnvironment(dictEnvironment):

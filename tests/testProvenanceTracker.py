@@ -188,3 +188,26 @@ def test_roundtrip_save_load(tmp_path):
 def test_fdictLoadProvenance_raises_on_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError):
         fdictLoadProvenance(str(tmp_path / "missing.json"))
+
+
+def test_fsComputeFileHash_refuses_to_follow_symlink(tmp_path):
+    """A symlinked leaf must be rejected by ``O_NOFOLLOW``.
+
+    Threat model: an attacker who can swap a tracked file for a
+    symlink to ``/etc/passwd`` between the manifest's existence check
+    and the open should not be able to redirect the recorded hash.
+    The ``is_file()`` check follows the link (returning True for a
+    symlink to a regular file), so the underlying open is the only
+    line of defence on POSIX.
+    """
+    import os
+    pathReal = tmp_path / "real.csv"
+    pathReal.write_bytes(b"sensitive\n")
+    pathLink = tmp_path / "link.csv"
+    os.symlink(str(pathReal), str(pathLink))
+    # ``Path.is_file()`` follows the link → True for the link.
+    # ``fsComputeFileHash`` must still refuse via ``O_NOFOLLOW``.
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("platform without O_NOFOLLOW")
+    with pytest.raises(FileNotFoundError):
+        fsComputeFileHash(str(pathLink))

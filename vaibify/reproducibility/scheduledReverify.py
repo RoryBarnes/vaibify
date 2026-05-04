@@ -56,6 +56,8 @@ S_SYNC_STATUS_FILENAME = "syncStatus.json"
 S_VAIBIFY_DIRECTORY = ".vaibify"
 LIST_SUPPORTED_SERVICES = ("github", "overleaf", "zenodo")
 _F_DEFAULT_CADENCE_HOURS = 6.0
+_I_LOCK_RETRY_MAX = 30
+_F_LOCK_RETRY_SLEEP = 0.05
 
 
 class ReverifyConfigError(ValueError):
@@ -267,24 +269,33 @@ class _SyncStatusLockHolder:
 
 
 def _fnAcquireSyncStatusLock(sLockPath):
-    """Return a context manager holding an exclusive flock on sLockPath."""
-    iRetriesMax = 5
-    fSleepSeconds = 0.05
+    """Return a context manager holding an exclusive flock on sLockPath.
+
+    Retries up to ``_I_LOCK_RETRY_MAX`` times with ``_F_LOCK_RETRY_SLEEP``
+    second sleeps in between (≈ 1.5 s budget). The previous 250 ms
+    budget was insufficient when three legitimate writers contend for
+    the lock simultaneously: the verify route, the scheduled loop, and
+    a manual UI button can all fire within a single user interaction
+    and a JSON read-modify-write of a many-service status file can
+    plausibly take 100 ms each on a busy host. Closes the file
+    descriptor in every exit path so a stale ``open`` does not leak
+    when retries are exhausted.
+    """
     iFileDescriptor = os.open(
         sLockPath, os.O_WRONLY | os.O_CREAT, 0o600,
     )
-    for _iAttempt in range(iRetriesMax):
+    for _iAttempt in range(_I_LOCK_RETRY_MAX):
         try:
             fcntl.flock(
                 iFileDescriptor, fcntl.LOCK_EX | fcntl.LOCK_NB,
             )
             return _SyncStatusLockHolder(iFileDescriptor)
         except BlockingIOError:
-            time.sleep(fSleepSeconds)
+            time.sleep(_F_LOCK_RETRY_SLEEP)
     os.close(iFileDescriptor)
     raise RuntimeError(
         f"could not acquire syncStatus lock at '{sLockPath}' "
-        f"after {iRetriesMax} attempts"
+        f"after {_I_LOCK_RETRY_MAX} attempts"
     )
 
 

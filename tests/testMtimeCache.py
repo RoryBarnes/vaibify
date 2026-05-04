@@ -173,3 +173,63 @@ def test_fbFileMatchesDigest_returns_false_for_empty_baseline(tmp_path):
     assert not mtimeCache.fbFileMatchesDigest(
         str(tmp_path), "data.csv", "", dictCache,
     )
+
+
+# ----------------------------------------------------------------------
+# fsSha256ForFile
+# ----------------------------------------------------------------------
+
+
+def test_fsSha256ForFile_returns_empty_for_missing(tmp_path):
+    dictCache = {}
+    sSha = mtimeCache.fsSha256ForFile(
+        str(tmp_path), "ghost.csv", dictCache,
+    )
+    assert sSha == ""
+
+
+def test_fsSha256ForFile_purges_stale_entry_for_deleted_file(tmp_path):
+    """A previously cached SHA-256 must not survive deletion of its file.
+
+    Otherwise a deleted output could appear hash-clean against a
+    manifest entry, masking a regression in the dashboard's drift
+    badge. The cache entry must vanish so the next read returns ``""``
+    — the contract every caller depends on.
+    """
+    dictCache = {
+        "ghost.csv": {"fMtime": 1.0, "sSha256": "a" * 64},
+    }
+    sSha = mtimeCache.fsSha256ForFile(
+        str(tmp_path), "ghost.csv", dictCache,
+    )
+    assert sSha == ""
+    assert "ghost.csv" not in dictCache
+
+
+def test_fsSha256ForFile_caches_and_reuses_when_unchanged(tmp_path):
+    sHostPath = _fsWrite(str(tmp_path), "data.csv", "alpha")
+    dictCache = {}
+    sFirst = mtimeCache.fsSha256ForFile(
+        str(tmp_path), "data.csv", dictCache,
+    )
+    assert len(sFirst) == 64
+    dictCache["data.csv"]["sSha256"] = "FAKE-CACHED-SHA256"
+    sSecond = mtimeCache.fsSha256ForFile(
+        str(tmp_path), "data.csv", dictCache,
+    )
+    assert sSecond == "FAKE-CACHED-SHA256"
+
+
+def test_fsSha256ForFile_sha1_and_sha256_coexist(tmp_path):
+    """Storing the SHA-256 must not destroy the SHA-1 entry, and vice versa."""
+    _fsWrite(str(tmp_path), "data.csv", "payload")
+    dictCache = {}
+    sSha1 = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "data.csv", dictCache,
+    )
+    sSha256 = mtimeCache.fsSha256ForFile(
+        str(tmp_path), "data.csv", dictCache,
+    )
+    dictEntry = dictCache["data.csv"]
+    assert dictEntry.get("sBlobSha") == sSha1
+    assert dictEntry.get("sSha256") == sSha256

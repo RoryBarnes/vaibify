@@ -8,6 +8,7 @@ graph.
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,13 @@ def fnSaveProvenance(dictProvenance, sFilePath):
 def fsComputeFileHash(sFilePath):
     """Compute the SHA-256 hex digest of a file.
 
+    Opens the file with ``O_NOFOLLOW`` so a symlink swapped in between
+    the existence check and the open cannot redirect the hash to an
+    attacker-controlled target (e.g. ``/etc/passwd``). On platforms
+    that lack ``O_NOFOLLOW`` (Windows), falls back to a normal open
+    after rejecting links explicitly. Raises ``FileNotFoundError`` when
+    the path does not point to a regular file at hash time.
+
     Parameters
     ----------
     sFilePath : str
@@ -85,9 +93,24 @@ def fsComputeFileHash(sFilePath):
 
 
 def _fsHashFileContents(pathFile):
-    """Read a file in chunks and return its SHA-256 hex digest."""
+    """Read a file in chunks and return its SHA-256 hex digest.
+
+    Opens via ``os.open(..., O_NOFOLLOW)`` so a symlink swapped in
+    between the caller's existence check and the open cannot redirect
+    the hash to an attacker-controlled target. ``O_NOFOLLOW`` is a
+    POSIX feature; on platforms that omit it (Windows) the flag
+    contributes ``0`` and the open falls through to default semantics.
+    """
+    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        iFileDescriptor = os.open(str(pathFile), iFlags)
+    except OSError as errorOs:
+        raise FileNotFoundError(
+            f"Cannot hash file (refusing to follow symlink or open): "
+            f"'{pathFile}': {errorOs}"
+        ) from errorOs
     hasher = hashlib.sha256()
-    with open(pathFile, "rb") as fileHandle:
+    with os.fdopen(iFileDescriptor, "rb", closefd=True) as fileHandle:
         while True:
             baBlock = fileHandle.read(_HASH_BLOCK_SIZE)
             if not baBlock:

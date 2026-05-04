@@ -737,3 +737,47 @@ def test_step_status_modified_when_mtime_stale_and_hash_drifted(tmp_path):
 def posixJoin(*saParts):
     """Join path parts using forward slashes (manifest paths are POSIX)."""
     return "/".join(part.rstrip("/") for part in saParts if part)
+
+
+# ---------------------------------------------------------------
+# Corrupt workflow.json: defensive handling of None / non-dict steps
+# ---------------------------------------------------------------
+
+
+def test_fbAllStepsFullyVerified_returns_false_on_none_step():
+    """A workflow with a None step must not crash with AttributeError."""
+    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+    dictWorkflow = {"listSteps": [None]}
+    assert fbAllStepsFullyVerified(dictWorkflow) is False
+
+
+def test_fbAllStepsFullyVerified_returns_false_on_string_step():
+    """A workflow with a non-dict step must not crash."""
+    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+    dictWorkflow = {"listSteps": ["corrupt"]}
+    assert fbAllStepsFullyVerified(dictWorkflow) is False
+
+
+def test_fbAllStepsFullyVerified_mixed_none_and_valid_returns_false():
+    """Even one corrupt entry blocks the all-green claim."""
+    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+    dictGoodStep = {
+        "dictVerification": {"sUser": "passed"},
+    }
+    dictWorkflow = {"listSteps": [dictGoodStep, None]}
+    assert fbAllStepsFullyVerified(dictWorkflow) is False
+
+
+def test_fbIsStepFullyVerified_returns_false_on_none_dict_verification():
+    """A non-dict dictVerification on a step must not crash."""
+    from vaibify.gui.fileStatusManager import fbIsStepFullyVerified
+    dictStep = {"dictVerification": None}
+    assert fbIsStepFullyVerified(dictStep) is False
+
+
+def test_fbIsStepFullyVerified_returns_false_on_non_dict_step():
+    """A non-dict step must not crash with AttributeError."""
+    from vaibify.gui.fileStatusManager import fbIsStepFullyVerified
+    assert fbIsStepFullyVerified(None) is False
+    assert fbIsStepFullyVerified("oops") is False
+    assert fbIsStepFullyVerified(42) is False
