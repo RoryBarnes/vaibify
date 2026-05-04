@@ -229,11 +229,18 @@ def fdictLoadWorkflowFromContainer(
 def _fnLoadAndMergeState(
     connectionDocker, sContainerId, dictWorkflow, sRepoPath,
 ):
-    """Load .vaibify/state.json (or bootstrap from markers) and merge in."""
+    """Load .vaibify/state.json (or bootstrap from markers) and merge in.
+
+    Attaches ``dictStateLoadNotice`` to ``dictWorkflow`` when the load
+    took the recovery path (``.bak`` fallback or marker-bootstrap
+    after corruption) so the connect response can surface a toast to
+    the user. The notice is a transient, non-persisted field; see
+    ``_fdictStripComputedFields``.
+    """
     if not sRepoPath:
         return
     sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
-    dictState = stateManager.fdictLoadStateFromContainer(
+    dictState, sStatus = stateManager.ftLoadStateWithStatus(
         connectionDocker, sContainerId, sStatePath,
     )
     if dictState is None:
@@ -243,10 +250,47 @@ def _fnLoadAndMergeState(
         stateManager.fnSaveStateToContainer(
             connectionDocker, sContainerId, sStatePath, dictState,
         )
+    dictNotice = _fdictBuildStateLoadNotice(sStatus)
+    if dictNotice:
+        dictWorkflow["dictStateLoadNotice"] = dictNotice
     stateManager.fnMergeStateIntoWorkflow(dictWorkflow, dictState)
     stateManager.fnEnsureVaibifyGitignore(
         connectionDocker, sContainerId, sRepoPath,
     )
+
+
+def _fdictBuildStateLoadNotice(sStatus):
+    """Return a transient toast payload for non-clean state loads.
+
+    Returns ``None`` for the silent paths (clean load, fresh checkout
+    bootstrap) so the frontend only shows the toast when something
+    actually deserves the user's attention — namely, that their last
+    save did not land cleanly and was recovered from a checkpoint or
+    rebuilt entirely.
+    """
+    if sStatus == "loaded-from-bak":
+        return {
+            "sLevel": "warning",
+            "sMessage": (
+                "state.json was missing or unreadable; "
+                "vaibify recovered the previous good state from "
+                ".vaibify/state.json.bak. Verify your test and "
+                "user-acknowledgement statuses before continuing."
+            ),
+        }
+    if sStatus == "corrupted":
+        return {
+            "sLevel": "warning",
+            "sMessage": (
+                "state.json and its .bak checkpoint both failed to "
+                "parse; verifications were rebuilt from test "
+                "markers and by-eye 'researcher passed' statuses "
+                "were lost. The corrupt files are quarantined at "
+                ".vaibify/state.json.corrupted-<timestamp> for "
+                "hand-recovery."
+            ),
+        }
+    return None
 
 
 def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
@@ -592,8 +636,14 @@ def fnReorderStep(dictWorkflow, iFromIndex, iToIndex):
 
 
 def _fdictStripComputedFields(dictWorkflow):
-    """Return a deep copy with transient fields removed from steps."""
+    """Return a deep copy with transient fields removed from steps.
+
+    ``dictStateLoadNotice`` is a one-shot toast payload attached
+    during the connect-time recovery path; it must not leak into
+    the persisted workflow.json or state.json.
+    """
     dictClean = copy.deepcopy(dictWorkflow)
+    dictClean.pop("dictStateLoadNotice", None)
     for dictStep in dictClean.get("listSteps", []):
         dictStep.pop("saSourceCodeDeps", None)
     return dictClean

@@ -216,6 +216,7 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
+        _fnSurfaceStateLoadNotice(data.dictWorkflow);
         if (data.dictFileStatus) {
             fnProcessFileStatusResponse(data.dictFileStatus);
         }
@@ -242,6 +243,15 @@ const PipeleyenApp = (function () {
         PipeleyenTerminal.fnEnsureTab();
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
+    }
+
+    function _fnSurfaceStateLoadNotice(dictWorkflow) {
+        if (!dictWorkflow) return;
+        var dictNotice = dictWorkflow.dictStateLoadNotice;
+        if (!dictNotice || !dictNotice.sMessage) return;
+        var sLevel = dictNotice.sLevel || "warning";
+        fnShowToast(dictNotice.sMessage, sLevel);
+        delete dictWorkflow.dictStateLoadNotice;
     }
 
     function fnRefreshWorkflowData(dictData) {

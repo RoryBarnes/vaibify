@@ -26,7 +26,11 @@ is explicitly per-machine.
 import copy
 import datetime
 import json
+import logging
 import posixpath
+
+
+logger = logging.getLogger(__name__)
 
 
 __all__ = [
@@ -45,6 +49,7 @@ __all__ = [
     "fsGitignorePathFromRepo",
     "fsStatePathFromRepo",
     "ftSplitMergedDict",
+    "ftLoadStateWithStatus",
 ]
 
 
@@ -89,37 +94,230 @@ def fdictBuildEmptyState():
 def fdictLoadStateFromContainer(
     connectionDocker, sContainerId, sStatePath,
 ):
-    """Read state.json from the container; return None when absent.
+    """Read state.json with .bak fallback and corrupt-file quarantine.
 
-    Returning ``None`` (rather than an empty dict) is the signal that
-    the caller should bootstrap from markers before merging.
+    Returns the parsed state dict, or ``None`` when both the primary
+    file and its sibling ``.bak`` checkpoint are missing or
+    unparseable. A primary file that fails to parse is renamed to
+    ``state.json.corrupted-<timestamp>`` before falling back so a
+    human can hand-recover its contents — silently overwriting via
+    bootstrap would be unrecoverable data loss.
+
+    See :func:`ftLoadStateWithStatus` for callers that need to
+    distinguish the recovery path from a clean load.
+    """
+    dictState, _sStatus = ftLoadStateWithStatus(
+        connectionDocker, sContainerId, sStatePath,
+    )
+    return dictState
+
+
+def ftLoadStateWithStatus(
+    connectionDocker, sContainerId, sStatePath,
+):
+    """Return ``(dictState_or_None, sStatus)``.
+
+    ``sStatus`` is one of:
+    - ``"loaded"``: the primary state.json parsed cleanly.
+    - ``"loaded-from-bak"``: primary missing or corrupt; ``.bak``
+      was used. Caller should warn the user that their last save
+      did not land cleanly.
+    - ``"missing"``: neither file present; caller should bootstrap
+      and save (this is the fresh-checkout case).
+    - ``"corrupted"``: at least one file failed to parse and was
+      quarantined; if ``dictState`` is None the caller is forced to
+      bootstrap, but the user has already been warned and the
+      corrupted bytes are still on disk for recovery.
     """
     if not sStatePath:
-        return fdictBuildEmptyState()
-    try:
-        baContent = connectionDocker.fbaFetchFile(
-            sContainerId, sStatePath,
+        return fdictBuildEmptyState(), "loaded"
+    sPrimaryStatus, dictPrimary = _ftupleTryLoadStateFile(
+        connectionDocker, sContainerId, sStatePath,
+    )
+    if sPrimaryStatus == "parsed":
+        return dictPrimary, "loaded"
+    bPrimaryQuarantined = False
+    if sPrimaryStatus == "corrupt":
+        _fnQuarantineCorruptStateFile(
+            connectionDocker, sContainerId, sStatePath,
         )
-    except FileNotFoundError:
-        return None
+        bPrimaryQuarantined = True
+    sBakPath = _fsBakPathFor(sStatePath)
+    sBakStatus, dictBak = _ftupleTryLoadStateFile(
+        connectionDocker, sContainerId, sBakPath,
+    )
+    if sBakStatus == "parsed":
+        if bPrimaryQuarantined:
+            logger.warning(
+                "state.json was corrupt; recovered from %s", sBakPath,
+            )
+        return dictBak, "loaded-from-bak"
+    if sBakStatus == "corrupt":
+        _fnQuarantineCorruptStateFile(
+            connectionDocker, sContainerId, sBakPath,
+        )
+        bPrimaryQuarantined = True
+    if bPrimaryQuarantined:
+        return None, "corrupted"
+    return None, "missing"
+
+
+def _ftupleTryLoadStateFile(connectionDocker, sContainerId, sPath):
+    """Return ``(sStatus, dictParsedOrNone)`` for a single file.
+
+    ``sStatus`` is ``"missing"``, ``"corrupt"``, or ``"parsed"``.
+    The corrupt branch separates a present-but-broken file (which
+    needs quarantine) from a simply absent one (which does not).
+    """
     try:
-        return json.loads(baContent.decode("utf-8"))
+        baContent = connectionDocker.fbaFetchFile(sContainerId, sPath)
+    except FileNotFoundError:
+        return ("missing", None)
+    try:
+        return ("parsed", json.loads(baContent.decode("utf-8")))
     except (ValueError, UnicodeDecodeError):
-        return None
+        return ("corrupt", None)
+
+
+def _fsBakPathFor(sStatePath):
+    """Return the sibling ``.bak`` checkpoint path for state.json."""
+    return sStatePath + ".bak"
+
+
+def _fsTmpPathFor(sStatePath):
+    """Return the sibling ``.tmp`` path used during atomic write."""
+    return sStatePath + ".tmp"
+
+
+def _fnQuarantineCorruptStateFile(
+    connectionDocker, sContainerId, sPath,
+):
+    """Rename a corrupt state file out of the way for human recovery.
+
+    The destination is ``<sPath>.corrupted-<UTC ISO timestamp>`` so
+    repeated quarantines never collide. Failure is logged and
+    swallowed — the bootstrap path must still proceed even when the
+    container shell rejects the rename.
+    """
+    from .pipelineUtils import fsShellQuote
+    sStamp = datetime.datetime.now(
+        datetime.timezone.utc,
+    ).strftime("%Y%m%dT%H%M%SZ")
+    sQuarantine = f"{sPath}.corrupted-{sStamp}"
+    sCommand = (
+        f"mv {fsShellQuote(sPath)} {fsShellQuote(sQuarantine)}"
+    )
+    try:
+        iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+    except Exception as error:
+        logger.warning(
+            "Quarantine of %s failed (%s); bootstrap will proceed.",
+            sPath, error,
+        )
+        return
+    if iExit != 0:
+        logger.warning(
+            "Quarantine of %s exited %d: %s",
+            sPath, iExit, sOutput,
+        )
+        return
+    logger.warning(
+        "Corrupt state file %s quarantined to %s; "
+        "by-eye verifications and other state were rebuilt.",
+        sPath, sQuarantine,
+    )
 
 
 def fnSaveStateToContainer(
     connectionDocker, sContainerId, sStatePath, dictState,
 ):
-    """Serialize the state dict and write it to the container."""
+    """Serialize and persist the state dict atomically with a checkpoint.
+
+    A naive overwrite leaves a torn file on the disk if the host
+    crashes mid-write — exactly the failure mode that wiped sUser
+    values for marker-tested steps when a system crash truncated
+    state.json. This routine:
+
+    1. Writes the serialized state to a sibling ``.tmp`` file.
+    2. Best-effort copies the prior ``state.json`` to ``state.json.bak``
+       so a checkpoint is preserved.
+    3. Atomically renames the ``.tmp`` over ``state.json``.
+
+    The order matters: copy must precede the rename, otherwise
+    ``state.json.bak`` would only ever reflect the just-written state
+    and provide no fallback. If step 3 fails, the prior ``state.json``
+    is intact and the next save retries cleanly.
+    """
     if not sStatePath:
         return
     dictPersisted = dict(dictState)
     dictPersisted["sLastUpdated"] = _fsCurrentUtcIso()
     sJson = json.dumps(dictPersisted, indent=2) + "\n"
+    sTempPath = _fsTmpPathFor(sStatePath)
+    sBakPath = _fsBakPathFor(sStatePath)
     connectionDocker.fnWriteFile(
-        sContainerId, sStatePath, sJson.encode("utf-8"),
+        sContainerId, sTempPath, sJson.encode("utf-8"),
     )
+    _fnCheckpointPriorState(
+        connectionDocker, sContainerId, sStatePath, sBakPath,
+    )
+    _fnAtomicInstallTempFile(
+        connectionDocker, sContainerId, sTempPath, sStatePath,
+    )
+
+
+def _fnCheckpointPriorState(
+    connectionDocker, sContainerId, sStatePath, sBakPath,
+):
+    """Copy the current state.json to state.json.bak if it exists.
+
+    Best-effort: a missing primary (first save on a fresh checkout)
+    is silently skipped. A failed copy is logged but does not abort
+    the save — the primary write still proceeds, the next save will
+    refresh the checkpoint.
+    """
+    from .pipelineUtils import fsShellQuote
+    sCommand = (
+        f"if [ -f {fsShellQuote(sStatePath)} ]; "
+        f"then cp -f {fsShellQuote(sStatePath)} "
+        f"{fsShellQuote(sBakPath)}; fi"
+    )
+    try:
+        iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+    except Exception as error:
+        logger.warning(
+            "state.json checkpoint copy failed (%s); "
+            "next save will retry.", error,
+        )
+        return
+    if iExit != 0:
+        logger.warning(
+            "state.json checkpoint copy exited %d: %s",
+            iExit, sOutput,
+        )
+
+
+def _fnAtomicInstallTempFile(
+    connectionDocker, sContainerId, sTempPath, sStatePath,
+):
+    """POSIX-atomic rename of state.json.tmp over state.json."""
+    from .pipelineUtils import fsShellQuote
+    sCommand = (
+        f"mv -f {fsShellQuote(sTempPath)} "
+        f"{fsShellQuote(sStatePath)}"
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        raise OSError(
+            f"Atomic rename of {sTempPath} to {sStatePath} "
+            f"failed (exit {iExit}): {sOutput}"
+        )
 
 
 def fnMergeStateIntoWorkflow(dictWorkflow, dictState):

@@ -169,17 +169,68 @@ def test_fdictLoadStateFromContainer_parses_valid_state():
 
 
 def test_fnSaveStateToContainer_stamps_sLastUpdated_and_writes():
+    """Save writes content to .tmp and atomically renames it into place."""
     mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.return_value = (0, "")
     dictState = stateManager.fdictBuildEmptyState()
     stateManager.fnSaveStateToContainer(
         mockDocker, "cid", "/state.json", dictState,
     )
     sContainerId, sPath, baPayload = mockDocker.fnWriteFile.call_args[0]
     assert sContainerId == "cid"
-    assert sPath == "/state.json"
+    assert sPath == "/state.json.tmp"
     dictPersisted = json.loads(baPayload.decode("utf-8"))
     assert dictPersisted["iStateSchemaVersion"] == 1
     assert dictPersisted["sLastUpdated"]
+    listCommands = [
+        call.args[1]
+        for call in mockDocker.ftResultExecuteCommand.call_args_list
+    ]
+    assert any(
+        "mv -f" in sCmd and "/state.json.tmp" in sCmd
+        and "/state.json'" in sCmd
+        for sCmd in listCommands
+    ), f"Expected atomic rename in {listCommands}"
+
+
+def test_fnSaveStateToContainer_creates_bak_checkpoint():
+    """A successful save copies the prior state.json to .bak first."""
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    dictState = stateManager.fdictBuildEmptyState()
+    stateManager.fnSaveStateToContainer(
+        mockDocker, "cid", "/state.json", dictState,
+    )
+    listCommands = [
+        call.args[1]
+        for call in mockDocker.ftResultExecuteCommand.call_args_list
+    ]
+    assert any(
+        "cp -f" in sCmd and "/state.json'" in sCmd
+        and "/state.json.bak" in sCmd
+        for sCmd in listCommands
+    ), f"Expected checkpoint copy in {listCommands}"
+
+
+def test_fnSaveStateToContainer_raises_when_atomic_rename_fails():
+    """A failing rename surfaces as OSError so the caller can retry."""
+    mockDocker = MagicMock()
+
+    def _ftupleExec(_sContainerId, sCommand):
+        if sCommand.startswith("mv -f"):
+            return (1, "mv: cannot rename")
+        return (0, "")
+
+    mockDocker.ftResultExecuteCommand.side_effect = _ftupleExec
+    dictState = stateManager.fdictBuildEmptyState()
+    try:
+        stateManager.fnSaveStateToContainer(
+            mockDocker, "cid", "/state.json", dictState,
+        )
+    except OSError as error:
+        assert "Atomic rename" in str(error)
+        return
+    raise AssertionError("Expected OSError on rename failure")
 
 
 def test_fnEnsureVaibifyGitignore_writes_when_missing():
@@ -488,10 +539,11 @@ def test_load_persists_bootstrap_when_state_file_absent():
     )
     listStateWrites = [
         (sPath, baPayload) for sPath, baPayload in listWrites
-        if sPath.endswith(".vaibify/state.json")
+        if sPath.endswith(".vaibify/state.json.tmp")
     ]
     assert listStateWrites, (
-        "Bootstrap must persist state.json so the next load is cheap"
+        "Bootstrap must persist state.json (via atomic .tmp+rename) "
+        "so the next load is cheap"
     )
 
 
@@ -522,7 +574,7 @@ def test_save_split_workflow_json_carries_no_stateful_fields():
     for sPath, baPayload in listWrites:
         if sPath.endswith("/workflows/w.json"):
             dictWorkflowWritten = json.loads(baPayload.decode("utf-8"))
-        elif sPath.endswith(".vaibify/state.json"):
+        elif sPath.endswith(".vaibify/state.json.tmp"):
             dictStateWritten = json.loads(baPayload.decode("utf-8"))
     assert dictWorkflowWritten is not None
     assert dictStateWritten is not None
