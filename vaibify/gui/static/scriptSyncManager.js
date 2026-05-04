@@ -40,6 +40,8 @@ var VaibifySyncManager = (function () {
     var _I_VERIFY_STALE_AGE_MS = 24 * 60 * 60 * 1000;
     var _dictVerifyStatusCache = {};
     var _setActiveVerifyServices = new Set();
+    var _dictTimerByService = {};
+    var _sCacheWorkflowId = "";
 
     async function fnOpenPushModal(sService) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
@@ -1522,29 +1524,38 @@ var VaibifySyncManager = (function () {
         return sEscaped + " +" + (listDiverged.length - 1) + " more";
     }
 
+    function _fsRenderRemoteBusyMarkup(sService) {
+        if (!_setActiveVerifyServices.has(sService)) return "";
+        return '<span class="spinner sync-verify-spinner"></span>';
+    }
+
+    function _fsRenderRemoteAgeMarkup(dictStatus) {
+        var sAge = _fsHumanizeAge(dictStatus && dictStatus.sLastVerified);
+        return '<span class="sync-remote-age">' +
+            VaibifyUtilities.fnEscapeHtml(sAge) + '</span>';
+    }
+
+    function _fsRenderRemoteReverifyButton(sService) {
+        var bDisabled = _setActiveVerifyServices.has(sService);
+        return '<button type="button" class="btn btn-small ' +
+            'sync-reverify-btn" data-service="' + sService + '"' +
+            (bDisabled ? " disabled" : "") +
+            '>Re-verify</button>';
+    }
+
     function _fsRenderRemoteRowHtml(sService, dictStatus) {
         var sState = _fsClassifyVerifyState(dictStatus);
         var sLabel = _DICT_VERIFY_SERVICE_LABELS[sService] || sService;
-        var sBusy = _setActiveVerifyServices.has(sService)
-            ? '<span class="spinner sync-verify-spinner"></span>' : "";
-        return (
-            '<div class="sync-remote-row" data-service="' +
+        return '<div class="sync-remote-row" data-service="' +
             sService + '">' +
             '<span class="sync-remote-label">' + sLabel + '</span>' +
             _fsRenderStatusPill(sState) +
             '<span class="sync-remote-summary">' +
             _fsRenderSummaryText(dictStatus) + '</span>' +
-            '<span class="sync-remote-age">' +
-            VaibifyUtilities.fnEscapeHtml(
-                _fsHumanizeAge(dictStatus && dictStatus.sLastVerified)
-            ) + '</span>' +
-            sBusy +
-            '<button type="button" class="btn btn-small ' +
-            'sync-reverify-btn" data-service="' + sService + '"' +
-            (_setActiveVerifyServices.has(sService) ? " disabled" : "") +
-            '>Re-verify</button>' +
-            '</div>'
-        );
+            _fsRenderRemoteAgeMarkup(dictStatus) +
+            _fsRenderRemoteBusyMarkup(sService) +
+            _fsRenderRemoteReverifyButton(sService) +
+            '</div>';
     }
 
     async function _fdictFetchVerifyStatus(sContainerId, sService) {
@@ -1584,8 +1595,6 @@ var VaibifySyncManager = (function () {
         _fnBindReverifyButtons(sContainerId, elContainer);
     }
 
-    var _timerReverifyDebounce = null;
-
     function _fnBindReverifyButtons(sContainerId, elContainer) {
         var listButtons = elContainer.querySelectorAll(
             ".sync-reverify-btn");
@@ -1593,16 +1602,33 @@ var VaibifySyncManager = (function () {
             elBtn.addEventListener("click", function () {
                 var sService = elBtn.dataset.service;
                 if (!sService) return;
-                if (_timerReverifyDebounce) {
-                    clearTimeout(_timerReverifyDebounce);
-                }
-                _timerReverifyDebounce = setTimeout(function () {
-                    _timerReverifyDebounce = null;
-                    _fnTriggerReverify(
-                        sContainerId, sService, elContainer);
-                }, _I_DIFF_DEBOUNCE_MS);
+                _fnScheduleReverify(sContainerId, sService, elContainer);
             });
         });
+    }
+
+    function _fnScheduleReverify(sContainerId, sService, elContainer) {
+        if (_dictTimerByService[sService]) {
+            clearTimeout(_dictTimerByService[sService]);
+        }
+        _dictTimerByService[sService] = setTimeout(function () {
+            _dictTimerByService[sService] = null;
+            _fnTriggerReverify(sContainerId, sService, elContainer);
+        }, _I_DIFF_DEBOUNCE_MS);
+    }
+
+    async function _fdictPostVerify(sContainerId, sService) {
+        return await VaibifyApi.fdictPost(
+            "/api/sync/" + encodeURIComponent(sContainerId) + "/" +
+            encodeURIComponent(sService) + "/verify", {}
+        );
+    }
+
+    function _fnReportVerifyError(error) {
+        PipeleyenApp.fnShowToast(
+            _DICT_SYNC_ERROR_MESSAGES.verifyFailed + " (" +
+            _fsSanitizeError(error.message) + ")",
+            "error");
     }
 
     async function _fnTriggerReverify(
@@ -1612,16 +1638,10 @@ var VaibifySyncManager = (function () {
         _setActiveVerifyServices.add(sService);
         _fnRedrawRemoteSyncPanel(sContainerId, elContainer);
         try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/sync/" + encodeURIComponent(sContainerId) + "/" +
-                encodeURIComponent(sService) + "/verify", {}
-            );
+            var dictResult = await _fdictPostVerify(sContainerId, sService);
             _dictVerifyStatusCache[sService] = dictResult || {};
         } catch (error) {
-            PipeleyenApp.fnShowToast(
-                _DICT_SYNC_ERROR_MESSAGES.verifyFailed + " (" +
-                _fsSanitizeError(error.message) + ")",
-                "error");
+            _fnReportVerifyError(error);
         } finally {
             _setActiveVerifyServices.delete(sService);
             _fnRedrawRemoteSyncPanel(sContainerId, elContainer);
@@ -1630,45 +1650,61 @@ var VaibifySyncManager = (function () {
 
     async function fnRenderRemoteSyncPanel(sContainerId, elContainer) {
         if (!sContainerId || !elContainer) return;
-        elContainer.innerHTML =
-            '<div class="sync-remote-panel-loading">' +
-            'Loading sync status\u2026</div>';
+        _fnInvalidateCacheIfWorkflowChanged(sContainerId);
+        if (!_fbCacheHasAnyEntry()) {
+            elContainer.innerHTML =
+                '<div class="sync-remote-panel-loading">' +
+                'Loading sync status\u2026</div>';
+        }
         await _fnLoadAllVerifyStatus(sContainerId);
         _fnRedrawRemoteSyncPanel(sContainerId, elContainer);
     }
 
-    function _fsAggregateBannerText() {
-        var iConfigured = 0;
-        var iDrifted = 0;
-        var iDivergedRemotes = 0;
-        var bAnyVerified = false;
+    function _fdictTallyDriftedRemotes() {
+        var dictTally = { iDrifted: 0, iDivergedRemotes: 0,
+            iConfigured: 0, bAnyVerified: false };
         _LIST_VERIFY_SERVICES.forEach(function (sService) {
             var dictStatus = _dictVerifyStatusCache[sService];
             if (!dictStatus || !dictStatus.sLastVerified) return;
-            iConfigured += 1;
-            bAnyVerified = true;
+            dictTally.iConfigured += 1;
+            dictTally.bAnyVerified = true;
             var listDiverged = dictStatus.listDiverged || [];
             if (listDiverged.length > 0) {
-                iDivergedRemotes += 1;
-                iDrifted += listDiverged.length;
+                dictTally.iDivergedRemotes += 1;
+                dictTally.iDrifted += listDiverged.length;
             }
         });
-        if (!bAnyVerified) {
+        return dictTally;
+    }
+
+    function _fsFormatDriftedBanner(dictTally) {
+        return "Remote consistency: \u26A0 " + dictTally.iDrifted +
+            " " + (dictTally.iDrifted === 1 ? "file" : "files") +
+            " drifted across " + dictTally.iDivergedRemotes +
+            " of " + dictTally.iConfigured +
+            " " + (dictTally.iConfigured === 1 ? "remote" : "remotes");
+    }
+
+    function _fsAggregateBannerText() {
+        var dictTally = _fdictTallyDriftedRemotes();
+        if (!dictTally.bAnyVerified) {
             return "Remote consistency: not yet verified";
         }
-        if (iDrifted === 0) {
-            return "Remote consistency: \u2713 all in sync";
+        if (dictTally.iDrifted === 0) {
+            return "Remote consistency: \u2713 all " +
+                dictTally.iConfigured +
+                " configured " +
+                (dictTally.iConfigured === 1 ? "remote" : "remotes") +
+                " in sync";
         }
-        return "Remote consistency: \u26A0 " + iDrifted +
-            " " + (iDrifted === 1 ? "file" : "files") +
-            " drifted across " + iDivergedRemotes +
-            " " + (iDivergedRemotes === 1 ? "remote" : "remotes");
+        return _fsFormatDriftedBanner(dictTally);
     }
 
     async function fnRenderRemoteConsistencyBanner(
         sContainerId, elContainer,
     ) {
         if (!sContainerId || !elContainer) return;
+        _fnInvalidateCacheIfWorkflowChanged(sContainerId);
         if (!_fbCacheHasAnyEntry()) {
             await _fnLoadAllVerifyStatus(sContainerId);
         }
@@ -1677,6 +1713,15 @@ var VaibifySyncManager = (function () {
             '<div class="sync-consistency-banner">' +
             VaibifyUtilities.fnEscapeHtml(sText) +
             '</div>';
+    }
+
+    function _fnInvalidateCacheIfWorkflowChanged(sContainerId) {
+        if (sContainerId === _sCacheWorkflowId) return;
+        _sCacheWorkflowId = sContainerId;
+        Object.keys(_dictVerifyStatusCache).forEach(function (sKey) {
+            delete _dictVerifyStatusCache[sKey];
+        });
+        _setActiveVerifyServices.clear();
     }
 
     function _fbCacheHasAnyEntry() {
@@ -1689,7 +1734,7 @@ var VaibifySyncManager = (function () {
         return false;
     }
 
-    async function fnVerifyManifest(sContainerId) {
+    async function fdictVerifyManifest(sContainerId) {
         if (!sContainerId) return null;
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -1751,6 +1796,6 @@ var VaibifySyncManager = (function () {
         fsFormatFileCount: fsFormatFileCount,
         fnRenderRemoteSyncPanel: fnRenderRemoteSyncPanel,
         fnRenderRemoteConsistencyBanner: fnRenderRemoteConsistencyBanner,
-        fnVerifyManifest: fnVerifyManifest,
+        fdictVerifyManifest: fdictVerifyManifest,
     };
 })();

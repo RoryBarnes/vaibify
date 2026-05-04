@@ -260,6 +260,9 @@
                     Push to GitHub</div>
                 <div class="toolbar-menu-item" id="btnZenodoArchive">
                     Archive to Zenodo</div>
+                <div class="toolbar-menu-separator"></div>
+                <div class="toolbar-menu-item" id="btnVerifyReproducibility">
+                    Verify Reproducibility</div>
             </div>
         </div>
 
@@ -568,6 +571,23 @@
                 Push All</button>
             <button class="btn btn-primary" id="btnPushSelected">
                 Push Selected</button>
+        </div>
+    </div>
+</div>
+
+<!-- Verify Reproducibility Modal -->
+<div class="modal-overlay" id="modalVerifyReproducibility"
+     style="display: none;">
+    <div class="modal">
+        <h2>Verify Reproducibility</h2>
+        <div id="verifyReproducibilityBanner"></div>
+        <div id="verifyReproducibilityPanel"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnVerifyReproducibilityClose">
+                Close</button>
+            <button class="btn btn-primary"
+                    id="btnVerifyReproducibilityManifest">
+                Verify Manifest</button>
         </div>
     </div>
 </div>

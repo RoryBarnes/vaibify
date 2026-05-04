@@ -544,6 +544,16 @@ var PipeleyenEventBindings = (function () {
             btnZenodoArchive: function () {
                 VaibifySyncManager.fnOpenPushModal("zenodo");
             },
+            btnVerifyReproducibility: function () {
+                _fnOpenVerifyReproducibilityModal();
+            },
+            btnVerifyReproducibilityClose: function () {
+                _fnCloseVerifyReproducibilityModal();
+            },
+            btnVerifyReproducibilityManifest: function () {
+                VaibifySyncManager.fdictVerifyManifest(
+                    PipeleyenApp.fsGetContainerId());
+            },
             btnShowDag: function () {
                 PipeleyenApp.fnShowDag();
             },
@@ -590,6 +600,31 @@ var PipeleyenEventBindings = (function () {
                 el.addEventListener("click", dictActions[sId]);
             }
         }
+    }
+
+    /* --- Verify Reproducibility Modal --- */
+
+    function _fnOpenVerifyReproducibilityModal() {
+        var elModal = document.getElementById(
+            "modalVerifyReproducibility");
+        if (!elModal) return;
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        elModal.style.display = "flex";
+        var elBanner = document.getElementById(
+            "verifyReproducibilityBanner");
+        var elPanel = document.getElementById(
+            "verifyReproducibilityPanel");
+        VaibifySyncManager.fnRenderRemoteConsistencyBanner(
+            sContainerId, elBanner);
+        VaibifySyncManager.fnRenderRemoteSyncPanel(
+            sContainerId, elPanel);
+    }
+
+    function _fnCloseVerifyReproducibilityModal() {
+        var elModal = document.getElementById(
+            "modalVerifyReproducibility");
+        if (elModal) elModal.style.display = "none";
     }
 
     /* --- Workflow Picker Events --- */

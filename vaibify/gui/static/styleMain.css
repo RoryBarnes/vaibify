@@ -4357,3 +4357,110 @@ body.all-verified .vaibify-checkmark {
     margin-bottom: 8px;
     line-height: 1.4;
 }
+
+/* Verify Reproducibility — banner, per-remote panel, status pills */
+.sync-consistency-banner {
+    margin: 8px 0 12px 0;
+    padding: 10px 14px;
+    border: 1px solid var(--color-pale-blue);
+    border-radius: 6px;
+    background: rgba(19, 174, 213, 0.08);
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.sync-remote-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.sync-remote-panel-loading {
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.sync-remote-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-subtle, #2a2a2a);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.02);
+    font-size: 13px;
+}
+
+.sync-remote-label {
+    flex: 0 0 80px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.sync-remote-summary {
+    flex: 1 1 auto;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sync-remote-age {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.sync-status-pill {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: 12px;
+    line-height: 1;
+    border-radius: 9px;
+}
+
+.sync-status-green {
+    color: #2ea043;
+}
+
+.sync-status-yellow {
+    color: #d4a017;
+}
+
+.sync-status-red {
+    color: #cb2431;
+}
+
+.sync-reverify-btn {
+    flex: 0 0 auto;
+}
+
+.sync-verify-spinner {
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+}
+
+/* Step-level stale indicator (mtime changed but content matches) */
+.step-stale-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 4px;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.step-stale-badge.stale-mtime-only {
+    color: var(--text-muted);
+}
