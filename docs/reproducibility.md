@@ -69,18 +69,30 @@ An honest L3 claim covers three tiers. Vaibify writes one file per
 tier into the project repo, and each tier is independently verifiable
 with standard tools — vaibify is the orchestrator, not a dependency.
 
+The envelope is regenerated automatically when the workflow
+transitions to all-green (every step fully verified), in addition to
+manual Archive button presses. This keeps the manifest in sync with
+the latest verified state without requiring the user to remember to
+trigger it.
+
 ### Tier 1 — Artifacts (`MANIFEST.sha256`)
 
-A BSD-shasum-format file at the project-repo root listing every
-declared workflow output (everything in each step's `saOutputFiles`,
-`saPlotFiles`, and `saDataFiles`) by repo-relative POSIX path with
-its SHA-256 hash:
+A GNU-coreutils shasum-format file at the project-repo root listing
+every declared workflow output (everything in each step's
+`saOutputFiles`, `saPlotFiles`, and `saDataFiles`) by repo-relative
+POSIX path with its SHA-256 hash:
 
 ```
 1a2b3c...  scripts/runAnalysis.py
 4d5e6f...  data/results.csv
 7g8h9i...  plots/figure1.pdf
 ```
+
+Paths containing newlines or backslashes are encoded with the GNU
+escape convention: the line is prefixed with `\` and the path itself
+has `\\` for backslash and `\n` for newline. This prevents an
+attacker from forging a second manifest line by injecting a newline
+into a filename.
 
 Written by
 [fnWriteManifest](../vaibify/reproducibility/manifestWriter.py) and
@@ -90,6 +102,11 @@ verifiable on any system that ships `coreutils`:
 ```
 sha256sum -c MANIFEST.sha256
 ```
+
+An architectural-invariants test enforces that every path-list field
+in `workflow.json` (`saOutputFiles`, `saPlotFiles`, `saDataFiles`,
+and any future addition) is reflected in `MANIFEST.sha256` — guarding
+against silent under-tracking when the workflow schema is extended.
 
 No vaibify install is required.
 
@@ -159,7 +176,9 @@ Flags:
 - `--rerun` / `--no-rerun` — also run step 4, the full workflow
   re-execution. Off by default; opt-in because workflows can be
   expensive and Tier 4 is best-effort (see [Known
-  limitations](#known-limitations)).
+  limitations](#known-limitations)). When enabled, vaibify dispatches
+  to the same pipeline runner that `vaibify run` uses, against a
+  running container resolved from the project repo.
 - `--skip-tier 1|2|3` — skip a tier; may be repeated. Useful when a
   verifier only wants to confirm artefact identity without installing
   Python packages.

@@ -212,16 +212,15 @@ recently-validated state even if the user never clicks Re-verify.
 ### Aggregate consistency banner
 
 Above the per-remote rows, a single line summarises the union of all
-remote states. Examples:
+remote states. The three forms produced by
+[scriptSyncManager.js](../vaibify/gui/static/scriptSyncManager.js) are:
 
-- "Remote consistency: OK — all configured remotes match."
-- "Remote consistency: drift on Overleaf (1 file); GitHub and Zenodo
-  match."
-- "Remote consistency: SHA-256 mismatch on Zenodo (3 files)."
-
-The banner colour follows the worst-case pill across the configured
-remotes, so an at-a-glance look at the toolbar tells the user whether
-any mirror has diverged.
+- `Remote consistency: not yet verified` — no remote has been verified
+  yet (e.g. immediately after opening a workflow for the first time).
+- `Remote consistency: ✓ all in sync` — every configured remote
+  authoritatively matched on its last verify.
+- `Remote consistency: ⚠ N files drifted across M remotes` — at least
+  one remote reports drift; the count aggregates across remotes.
 
 ### Hash-aware step badges
 
