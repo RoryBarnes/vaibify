@@ -222,9 +222,10 @@ returns one SHA-256 per declared file. Two layers run on top:
   compares against `MANIFEST.sha256`. Triggered by the per-remote
   Re-verify button in the dashboard or by the scheduled background
   loop in
-  [scheduledReverify.py](../vaibify/reproducibility/scheduledReverify.py)
-  (default cadence 6 hours, configurable per workflow via
-  `fReverifyHoursCadence`).
+  [scheduledReverify.py](../vaibify/reproducibility/scheduledReverify.py).
+  The cadence is currently a single global default (6 hours) set when
+  the FastAPI app is constructed and applied uniformly to every loaded
+  workflow; per-workflow overrides are deferred to a future commit.
 
 Results are cached in `<projectRepo>/.vaibify/syncStatus.json` keyed
 by service so the dashboard always shows ground truth without a

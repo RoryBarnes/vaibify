@@ -217,10 +217,20 @@ remote states. The three forms produced by
 
 - `Remote consistency: not yet verified` — no remote has been verified
   yet (e.g. immediately after opening a workflow for the first time).
-- `Remote consistency: ✓ all in sync` — every configured remote
-  authoritatively matched on its last verify.
-- `Remote consistency: ⚠ N files drifted across M remotes` — at least
-  one remote reports drift; the count aggregates across remotes.
+- `Remote consistency: ✓ all <K> configured remote(s) in sync` — every
+  configured remote authoritatively matched on its last verify; `<K>`
+  is the count of remotes that reported a verified status. The trailing
+  noun is singularised to `remote` when `<K>` is 1, otherwise
+  `remotes` (e.g. `Remote consistency: ✓ all 1 configured remote in
+  sync` vs. `Remote consistency: ✓ all 3 configured remotes in sync`).
+- `Remote consistency: ⚠ <N> file(s) drifted across <M> of <K>
+  remote(s)` — at least one remote reports drift; `<N>` is the total
+  diverged-file count across all remotes, `<M>` is the number of
+  remotes with at least one diverged file, and `<K>` is the count of
+  configured-and-verified remotes. Both the file noun and the remote
+  noun singularise independently when their count is 1 (e.g. `Remote
+  consistency: ⚠ 1 file drifted across 1 of 1 remote` vs. `Remote
+  consistency: ⚠ 5 files drifted across 2 of 3 remotes`).
 
 ### Hash-aware step badges
 
