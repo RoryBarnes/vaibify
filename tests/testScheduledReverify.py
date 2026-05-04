@@ -1,6 +1,8 @@
 """Tests for vaibify.reproducibility.scheduledReverify."""
 
+import asyncio
 import os
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -212,3 +214,107 @@ def testVerifyRemoteRaisesConfigErrorOnUnconfiguredService(
         scheduledReverify.fdictVerifyRemoteService(
             fixtureProjectRepo, dictWorkflow, "github",
         )
+
+
+# --------- Fix C3: scheduled loop dispatches via to_thread ---------
+
+
+def test_reverify_loop_uses_to_thread():
+    """The scheduled loop dispatches the synchronous verify pass off-loop."""
+    dictCtx = {"workflows": {"wf01": {"sWorkflowId": "wf01"}}}
+    eventDispatched = asyncio.Event()
+
+    async def _fnFakeToThread(fnCallback, *args, **kwargs):
+        eventDispatched.set()
+        return fnCallback(*args, **kwargs)
+
+    mockReverify = MagicMock(return_value={"sNowIso": "x", "listResults": []})
+    mockToThread = MagicMock(side_effect=_fnFakeToThread)
+
+    async def _fnFakeSleep(fSeconds):
+        return None
+
+    async def _fnDriveOneIteration():
+        with patch(
+            "vaibify.reproducibility.scheduledReverify.asyncio.to_thread",
+            mockToThread,
+        ), patch(
+            "vaibify.reproducibility.scheduledReverify.asyncio.sleep",
+            _fnFakeSleep,
+        ), patch(
+            "vaibify.reproducibility.scheduledReverify.fnRunReverifyOnce",
+            mockReverify,
+        ):
+            taskLoop = asyncio.create_task(
+                scheduledReverify._fnReverifyLoop(dictCtx, 0.0),
+            )
+            await asyncio.wait_for(eventDispatched.wait(), timeout=1.0)
+            taskLoop.cancel()
+            try:
+                await taskLoop
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_fnDriveOneIteration())
+    assert mockToThread.called
+    args, _kwargs = mockToThread.call_args
+    assert args[0] is mockReverify
+    assert args[1] is dictCtx
+    listWorkflows = args[2]
+    assert isinstance(listWorkflows, list)
+
+
+# --------- Fix M2: parser unification with manifestWriter helpers ---------
+
+
+def testLoadManifestExpectedHashesReturnsConsistentWithParser(tmp_path):
+    """Loaded mapping must include escaped-path entries."""
+    sRepo = str(tmp_path)
+    sEscapedHash = "b" * 64
+    sNormalHash = "a" * 64
+    sManifest = os.path.join(sRepo, "MANIFEST.sha256")
+    with open(sManifest, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write("# header\n")
+        fileHandle.write(f"{sNormalHash}  step01/data.csv\n")
+        fileHandle.write(f"\\{sEscapedHash}  step01/has\\\\back.csv\n")
+    dictExpected = scheduledReverify.fdictLoadManifestExpectedHashes(sRepo)
+    assert dictExpected["step01/data.csv"] == sNormalHash
+    assert dictExpected["step01/has\\back.csv"] == sEscapedHash
+
+
+# --------- Fix M4: lost-update protection across threads ---------
+
+
+def test_concurrent_sync_status_writes_do_not_lose_updates(tmp_path):
+    """Two threads writing different services keep both entries."""
+    sRepo = str(tmp_path)
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+
+    def _fnBuildStatus(sService, iMatching):
+        return {
+            "sService": sService,
+            "sLastVerified": "2026-05-03T00:00:00Z",
+            "iTotalFiles": iMatching,
+            "iMatching": iMatching,
+            "listDiverged": [],
+        }
+
+    def _fnWorkerWrite(sService, iMatching):
+        scheduledReverify.fnWriteSyncStatus(
+            sRepo, _fnBuildStatus(sService, iMatching),
+        )
+
+    threadA = threading.Thread(
+        target=_fnWorkerWrite, args=("github", 7),
+    )
+    threadB = threading.Thread(
+        target=_fnWorkerWrite, args=("zenodo", 11),
+    )
+    threadA.start()
+    threadB.start()
+    threadA.join()
+    threadB.join()
+    dictA = scheduledReverify.fdictReadCachedSyncStatus(sRepo, "github")
+    dictB = scheduledReverify.fdictReadCachedSyncStatus(sRepo, "zenodo")
+    assert dictA["iMatching"] == 7
+    assert dictB["iMatching"] == 11

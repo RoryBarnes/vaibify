@@ -344,3 +344,33 @@ def test_reproduce_command_registered_on_main_cli():
     result = CliRunner().invoke(main, ["reproduce", "--help"])
     assert result.exit_code == 0
     assert "Verify" in result.output
+
+
+# ----------------------------------------------------------------------
+# Rerun handles SystemExit from registry resolution gracefully (Fix C2)
+# ----------------------------------------------------------------------
+
+
+def test_rerun_handles_unregistered_project_gracefully(fixtureRepo):
+    """SystemExit from fconfigResolveProject is caught; reproduce exits 1."""
+    from vaibify.cli import commandReproduce
+
+    def _fnRaiseSystemExit(*args, **kwargs):
+        raise SystemExit(1)
+
+    with patch(
+        "vaibify.cli.configLoader.fconfigResolveProject",
+        side_effect=_fnRaiseSystemExit,
+    ), _fnPatchAllSubprocessesSucceeding():
+        bResult = commandReproduce.fbRerunWorkflow(str(fixtureRepo))
+    assert bResult is False
+
+    with patch(
+        "vaibify.cli.configLoader.fconfigResolveProject",
+        side_effect=_fnRaiseSystemExit,
+    ), _fnPatchAllSubprocessesSucceeding():
+        result = CliRunner().invoke(
+            reproduce, ["--repo", str(fixtureRepo), "--rerun"],
+        )
+    assert result.exit_code == 1
+    assert "failed to invoke pipeline runner" in result.output

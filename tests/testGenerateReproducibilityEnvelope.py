@@ -1,8 +1,10 @@
 """Tests for the AICS L3 reproducibility envelope generator."""
 
+import asyncio
 import subprocess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from vaibify.gui import fileStatusManager
 from vaibify.reproducibility import dataArchiver
 
 
@@ -250,3 +252,56 @@ def test_fnArchiveOutputs_invokes_envelope_generator(
     assert args[0] == "/work"
     assert args[1] is dictWorkflow
     assert kwargs.get("sContainerName") == "vaibify-test"
+
+
+# ----------------------------------------------------------------------
+# 7. All-green refresh (Fix C1) threads sContainerId through to Tier 3
+# ----------------------------------------------------------------------
+
+
+def _fdictAllGreenStep(saDataFiles):
+    """Build a single fully-verified step declaring the given outputs."""
+    return {
+        "sName": "OnlyStep",
+        "saOutputFiles": [],
+        "saPlotFiles": [],
+        "saDataFiles": list(saDataFiles or []),
+        "dictVerification": {
+            "sUser": "passed",
+            "sUnitTest": "passed",
+            "sIntegrity": "passed",
+            "sQualitative": "passed",
+            "sQuantitative": "passed",
+        },
+    }
+
+
+def test_all_green_refresh_writes_environment_json(tmp_path):
+    """Hook threads sContainerId + saHostBinaries → Tier 3 env JSON exists."""
+    _fnWriteFile(tmp_path, "out.csv", "alpha,beta\n")
+    dictWorkflow = {
+        "sProjectRepoPath": str(tmp_path),
+        "saHostBinaries": ["/usr/bin/git"],
+        "listSteps": [_fdictAllGreenStep(["out.csv"])],
+    }
+    with patch(
+        "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
+        return_value=False,
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot."
+        "fdictCaptureContainerImageDigest",
+        return_value=_fdictFakeImageDigest("vaibify-test"),
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot."
+        "fdictCaptureSystemTools",
+        return_value=_fdictFakeSystemTools(),
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot."
+        "fdictCaptureHostBinaryHashes",
+        return_value={"/usr/bin/git": "abc"},
+    ):
+        asyncio.run(fileStatusManager.fnMaybeAutoArchive(
+            MagicMock(), "container-id-123",
+            dictWorkflow, 0, bWasFullyVerifiedBefore=False,
+        ))
+    assert (tmp_path / _ENVIRONMENT_RELPATH).is_file()
