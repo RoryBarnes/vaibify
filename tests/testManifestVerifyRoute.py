@@ -146,3 +146,27 @@ def testVerifyManifestITotalMatchesManifestCountNotWorkflowOutputs(
     dictBody = response.json()
     assert dictBody["iTotal"] == 5
     assert dictBody["iMatching"] == 5 - len(dictBody["listMismatches"])
+
+
+def testVerifyManifestReturns422WhenManifestIsMalformed(
+    fixtureProjectRepo, fixtureClient,
+):
+    """A malformed manifest line yields 422, not 500.
+
+    The parser raises ``ValueError`` on lines missing the two-space
+    separator. The route must translate that to an unprocessable-entity
+    response with an actionable message and no stack-trace leak.
+    """
+    sManifest = os.path.join(fixtureProjectRepo, "MANIFEST.sha256")
+    with open(sManifest, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write("# malformed: no two-space separator below\n")
+        fileHandle.write("garbage_line_with_no_separator\n")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/manifest/verify",
+    )
+    assert response.status_code == 422
+    sDetail = response.json()["detail"]
+    assert "MANIFEST" in sDetail
+    assert "malformed" in sDetail.lower()
+    # The detail must not leak the absolute project repo path.
+    assert fixtureProjectRepo not in sDetail

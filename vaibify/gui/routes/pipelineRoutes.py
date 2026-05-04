@@ -919,6 +919,14 @@ def _fnRegisterManifestVerify(app, dictCtx):
                     "regenerate the manifest before verifying."
                 ),
             ) from errorMissing
+        except ValueError as errorMalformed:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "MANIFEST.sha256 is malformed and cannot be parsed. "
+                    "Regenerate the manifest before verifying."
+                ),
+            ) from errorMalformed
         return _fdictBuildManifestVerifyResult(
             dictWorkflow, listMismatches,
         )

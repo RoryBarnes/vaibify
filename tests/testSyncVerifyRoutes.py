@@ -209,6 +209,126 @@ def testVerifyReturns400OnBadService(
     assert response.status_code == 400
 
 
+def testVerifyReturns400OnPathTraversalServiceName(
+    fixtureClientNoNetworkBlock, fixtureProjectRepo,
+):
+    """A traversal-shaped sService is rejected at the route layer.
+
+    Even though sService is only used as a dict key inside the verify
+    plumbing, defense-in-depth requires rejecting any value outside the
+    canonical service-name whitelist before any subsequent work.
+    """
+    response = fixtureClientNoNetworkBlock.post(
+        "/api/sync/" + S_CONTAINER_ID + "/..%2Fetc%2Fpasswd/verify",
+    )
+    assert response.status_code in (400, 404)
+
+
+def testVerifyReturns422OnMalformedManifest(
+    fixtureClientNoNetworkBlock, fixtureProjectRepo,
+):
+    """A corrupt MANIFEST.sha256 yields 422 (unprocessable), not 500."""
+    sManifest = os.path.join(fixtureProjectRepo, "MANIFEST.sha256")
+    with open(sManifest, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write("# malformed: no two-space separator below\n")
+        fileHandle.write("garbage_line_no_separator\n")
+    response = fixtureClientNoNetworkBlock.post(
+        f"/api/sync/{S_CONTAINER_ID}/github/verify",
+    )
+    assert response.status_code == 422
+    sDetail = response.json()["detail"]
+    # No absolute path leak from the parser's f-string.
+    assert fixtureProjectRepo not in sDetail
+
+
+def testVerifyReturns422OnInvalidGithubOwnerInWorkflow(
+    fixtureClientNoNetworkBlock, fixtureProjectRepo, fixtureCtxAndApp,
+):
+    """A workflow with a malformed GitHub owner triggers 422, not 502.
+
+    The owner ``../../etc`` is shape-invalid by GitHub's own naming
+    rules; the mirror module raises ``ValueError`` from
+    ``fnValidateOwnerRepo``. The verify route must surface that as a
+    422 (input invalid) so the user knows to fix workflow.json, not as
+    a 502 implying the remote is down.
+    """
+    dictCtx, _, _ = fixtureCtxAndApp
+    dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]
+    dictWorkflow["dictRemotes"]["github"]["sOwner"] = "../../etc"
+    response = fixtureClientNoNetworkBlock.post(
+        f"/api/sync/{S_CONTAINER_ID}/github/verify",
+    )
+    assert response.status_code == 422
+    sDetail = response.json()["detail"]
+    assert "github" in sDetail
+
+
+def testVerifyDoesNotLeakProjectRepoPathOnRemoteError(
+    fixtureClientNoNetworkBlock, fixtureProjectRepo,
+):
+    """A remote-side exception's redacted detail must not leak host paths."""
+    from vaibify.reproducibility.githubMirror import GithubMirrorError
+    with patch(
+        "vaibify.reproducibility.githubMirror.fdictFetchRemoteHashes",
+        side_effect=GithubMirrorError("fetch failed for /tmp/internal"),
+    ):
+        response = fixtureClientNoNetworkBlock.post(
+            f"/api/sync/{S_CONTAINER_ID}/github/verify",
+        )
+    assert response.status_code == 502
+    sDetail = response.json()["detail"]
+    assert fixtureProjectRepo not in sDetail
+
+
+def testVerifyReturns404ForUnknownContainer(
+    fixtureClientNoNetworkBlock,
+):
+    """An unknown sContainerId triggers 404 from fdictRequireWorkflow."""
+    response = fixtureClientNoNetworkBlock.post(
+        "/api/sync/no_such_cid/github/verify",
+    )
+    assert response.status_code == 404
+
+
+# --------- GET status endpoint is read-only and validates inputs ---------
+
+
+def testStatusReturns400OnBadService(fixtureClient):
+    """GET status validates sService against the supported whitelist."""
+    response = fixtureClient.get(
+        f"/api/sync/{S_CONTAINER_ID}/dropbox/status",
+    )
+    assert response.status_code == 400
+
+
+def testStatusReturns404ForUnknownContainer(fixtureClient):
+    """GET status returns 404 for an unknown sContainerId."""
+    response = fixtureClient.get(
+        "/api/sync/no_such_cid/github/status",
+    )
+    assert response.status_code == 404
+
+
+def testStatusGetDoesNotMutateSyncStatusFile(
+    fixtureClient, fixtureProjectRepo,
+):
+    """Calling GET status must not create or modify syncStatus.json.
+
+    The status read path is documented as read-only; this guards
+    against a future change accidentally introducing a write side
+    effect that would race with the scheduled re-verify writer's lock.
+    """
+    sStatusPath = os.path.join(
+        fixtureProjectRepo, ".vaibify", "syncStatus.json",
+    )
+    assert not os.path.exists(sStatusPath)
+    response = fixtureClient.get(
+        f"/api/sync/{S_CONTAINER_ID}/github/status",
+    )
+    assert response.status_code == 200
+    assert not os.path.exists(sStatusPath)
+
+
 # --------- GET status ---------
 
 

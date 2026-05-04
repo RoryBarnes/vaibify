@@ -1308,7 +1308,21 @@ def _fdictRunRemoteVerifyBlocking(dictWorkflow, sService):
 
 
 def _fnRaiseVerifyError(errorAny, sService):
-    """Translate verify exceptions to HTTPException with redacted detail."""
+    """Translate verify exceptions to HTTPException with redacted detail.
+
+    Status mapping:
+
+    * 409 — preconditions not met (manifest absent, workflow config
+      missing for the service).
+    * 422 — manifest is corrupt or remote config in workflow.json is
+      shape-invalid (e.g. a non-conforming GitHub owner string).
+    * 502 — remote service failure (network, auth, rate limit, etc.).
+
+    ``ValueError`` is treated as 422 because every ``ValueError`` raised
+    by the verify path comes from input-shape validation (the manifest
+    parser, GitHub owner/repo regex, Overleaf project-id regex). The
+    detail string is redacted before being returned.
+    """
     from vaibify.reproducibility import scheduledReverify
     if isinstance(errorAny, FileNotFoundError):
         raise HTTPException(
@@ -1321,6 +1335,14 @@ def _fnRaiseVerifyError(errorAny, sService):
     if isinstance(errorAny, scheduledReverify.ReverifyConfigError):
         raise HTTPException(
             status_code=409, detail=str(errorAny),
+        ) from errorAny
+    if isinstance(errorAny, ValueError):
+        sRedacted = _fsRedactRemoteError(str(errorAny))
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Verify input invalid for {sService}: {sRedacted}"
+            ),
         ) from errorAny
     sRedacted = _fsRedactRemoteError(str(errorAny))
     raise HTTPException(
