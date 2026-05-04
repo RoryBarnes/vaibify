@@ -222,19 +222,21 @@ def testVerifyRemoteRaisesConfigErrorOnUnconfiguredService(
 def test_reverify_loop_uses_to_thread():
     """The scheduled loop dispatches the synchronous verify pass off-loop."""
     dictCtx = {"workflows": {"wf01": {"sWorkflowId": "wf01"}}}
-    eventDispatched = asyncio.Event()
-
-    async def _fnFakeToThread(fnCallback, *args, **kwargs):
-        eventDispatched.set()
-        return fnCallback(*args, **kwargs)
 
     mockReverify = MagicMock(return_value={"sNowIso": "x", "listResults": []})
-    mockToThread = MagicMock(side_effect=_fnFakeToThread)
+    mockToThread = MagicMock()
 
     async def _fnFakeSleep(fSeconds):
         return None
 
     async def _fnDriveOneIteration():
+        eventDispatched = asyncio.Event()
+
+        async def _fnFakeToThread(fnCallback, *args, **kwargs):
+            eventDispatched.set()
+            return fnCallback(*args, **kwargs)
+
+        mockToThread.side_effect = _fnFakeToThread
         with patch(
             "vaibify.reproducibility.scheduledReverify.asyncio.to_thread",
             mockToThread,
