@@ -2218,9 +2218,8 @@ const PipeleyenApp = (function () {
         el.querySelector(".toast-close").addEventListener(
             "click", function () { el.remove(); }
         );
-        if (sType !== "error") {
-            var iTimeout = sType === "warning" ? 8000 : 4000;
-            setTimeout(function () { el.remove(); }, iTimeout);
+        if (sType !== "error" && sType !== "warning") {
+            setTimeout(function () { el.remove(); }, 4000);
         }
         document.getElementById("toastContainer").appendChild(el);
     }

@@ -161,7 +161,38 @@ def test_startXquartz_tolerates_missing_binaries(mockRun):
 def test_fbXquartzInstalled_true_when_app_path_exists(mockExists):
     mockExists.return_value = True
     assert fbXquartzInstalled() is True
-    mockExists.assert_called_with(x11Forwarding.XQUARTZ_APP_PATH)
+    listChecked = [call.args[0] for call in mockExists.call_args_list]
+    assert "/Applications/XQuartz.app" in listChecked
+
+
+@patch("vaibify.docker.x11Forwarding.os.path.exists")
+def test_fbXquartzInstalled_checks_modern_path_first(mockExists):
+    """The current Apple convention (`/Applications/XQuartz.app`) is
+    probed before the legacy `/Applications/Utilities/` location."""
+    mockExists.side_effect = lambda sPath: (
+        sPath == "/Applications/XQuartz.app"
+    )
+    assert fbXquartzInstalled() is True
+
+
+@patch("vaibify.docker.x11Forwarding.subprocess.run")
+@patch("vaibify.docker.x11Forwarding.os.path.exists")
+def test_fbXquartzInstalled_via_modern_bundle_id(mockExists, mockRun):
+    """A non-default install located via the modern ``org.xquartz.X11``
+    bundle identifier is recognized."""
+    mockExists.return_value = False
+
+    def _ftRun(saArgs, **_kw):
+        sQuery = saArgs[1] if len(saArgs) > 1 else ""
+        if "org.xquartz.X11" in sQuery:
+            return MagicMock(
+                returncode=0,
+                stdout="/opt/homebrew/Caskroom/xquartz/XQuartz.app\n",
+            )
+        return MagicMock(returncode=0, stdout="")
+
+    mockRun.side_effect = _ftRun
+    assert fbXquartzInstalled() is True
 
 
 @patch("vaibify.docker.x11Forwarding.subprocess.run")

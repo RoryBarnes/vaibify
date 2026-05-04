@@ -8,7 +8,15 @@ import sys
 
 
 XQUARTZ_APP_PATH = "/Applications/Utilities/XQuartz.app"
+SA_XQUARTZ_APP_PATHS = (
+    "/Applications/XQuartz.app",
+    "/Applications/Utilities/XQuartz.app",
+)
 XQUARTZ_BUNDLE_ID = "org.macosforge.xquartz.X11"
+SA_XQUARTZ_BUNDLE_IDS = (
+    "org.xquartz.X11",
+    "org.macosforge.xquartz.X11",
+)
 XQUARTZ_TCP_PORT = 6000
 MAC_CONTAINER_HOST = "host.docker.internal"
 
@@ -77,17 +85,30 @@ def fnConfigureLinuxX11(saRunArgs):
 def fbXquartzInstalled():
     """Return True if XQuartz appears to be installed on this Mac.
 
-    Checks the standard install path first, then falls back to a
-    Spotlight bundle-identifier query for non-default installs.
+    Checks both common install paths first, then falls back to a
+    Spotlight bundle-identifier query against the modern and legacy
+    bundle IDs. The modern bundle is ``org.xquartz.X11`` (the
+    project moved off macosforge years ago); the legacy
+    ``org.macosforge.xquartz.X11`` is kept for very old installs
+    that still carry the original ID.
     """
-    if os.path.exists(XQUARTZ_APP_PATH):
-        return True
+    for sAppPath in SA_XQUARTZ_APP_PATHS:
+        if os.path.exists(sAppPath):
+            return True
     return _fbXquartzFoundViaSpotlight()
 
 
 def _fbXquartzFoundViaSpotlight():
-    """Use mdfind to locate XQuartz by CFBundleIdentifier."""
-    sQuery = f"kMDItemCFBundleIdentifier == '{XQUARTZ_BUNDLE_ID}'"
+    """Use mdfind to locate XQuartz by any known CFBundleIdentifier."""
+    for sBundleId in SA_XQUARTZ_BUNDLE_IDS:
+        if _fbBundleFoundByMdfind(sBundleId):
+            return True
+    return False
+
+
+def _fbBundleFoundByMdfind(sBundleId):
+    """Return True if mdfind locates a bundle with the given identifier."""
+    sQuery = f"kMDItemCFBundleIdentifier == '{sBundleId}'"
     try:
         resultProcess = subprocess.run(
             ["mdfind", sQuery],
@@ -96,7 +117,10 @@ def _fbXquartzFoundViaSpotlight():
         )
     except FileNotFoundError:
         return False
-    return resultProcess.returncode == 0 and bool(resultProcess.stdout.strip())
+    return (
+        resultProcess.returncode == 0
+        and bool(resultProcess.stdout.strip())
+    )
 
 
 def fbXquartzAcceptingNetworkConnections():

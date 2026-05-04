@@ -712,6 +712,53 @@ body.all-verified .toolbar-label {
     color: var(--text-secondary);
 }
 
+/* Build-warnings banner — sticky list of warnings emitted by the
+   container's entrypoint on its most recent start. Rendered above
+   the step list in the workflow view; persists until dismissed
+   so the user has time to read and act on multi-line warnings
+   instead of chasing a transient toast. */
+.build-warnings-banner {
+    margin: 8px 0 12px;
+    padding: 10px 14px;
+    background: rgba(241, 196, 15, 0.10);
+    border-left: 3px solid #f1c40f;
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.build-warnings-banner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.build-warnings-banner-list {
+    margin: 0;
+    padding-left: 18px;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.build-warnings-banner-dismiss {
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.build-warnings-banner-dismiss:hover {
+    background: var(--border-color);
+}
+
 /* Docker availability banner — shown on the container hub when
    the backend cannot reach the Docker daemon. */
 .docker-status-banner {

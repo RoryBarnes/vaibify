@@ -612,6 +612,9 @@ var PipeleyenContainerManager = (function () {
     }
 
     function _fnSurfaceReadinessOutcome(dictReadiness) {
+        _fnRenderBuildWarningsBanner(
+            (dictReadiness && dictReadiness.saWarnings) || []
+        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -630,6 +633,44 @@ var PipeleyenContainerManager = (function () {
         var listWarnings = dictReadiness.saWarnings || [];
         if (listWarnings.length > 0) {
             _fnShowReadinessWarningBanner(listWarnings);
+        }
+    }
+
+    function _fnRenderBuildWarningsBanner(listWarnings) {
+        var elBanner = document.getElementById("buildWarningsBanner");
+        if (!elBanner) return;
+        if (!listWarnings || listWarnings.length === 0) {
+            elBanner.style.display = "none";
+            elBanner.innerHTML = "";
+            return;
+        }
+        var sLabel = listWarnings.length === 1
+            ? "1 build warning"
+            : listWarnings.length + " build warnings";
+        var sItems = listWarnings.map(function (sLine) {
+            return "<li>"
+                + VaibifyUtilities.fnEscapeHtml(sLine)
+                + "</li>";
+        }).join("");
+        elBanner.innerHTML =
+            '<div class="build-warnings-banner-header">' +
+            '<span>' + VaibifyUtilities.fnEscapeHtml(sLabel)
+            + ' from the most recent container start</span>' +
+            '<button type="button" '
+            + 'class="build-warnings-banner-dismiss" '
+            + 'id="btnDismissBuildWarnings">Dismiss</button>' +
+            '</div>' +
+            '<ul class="build-warnings-banner-list">'
+            + sItems + '</ul>';
+        elBanner.style.display = "block";
+        var elDismiss = document.getElementById(
+            "btnDismissBuildWarnings"
+        );
+        if (elDismiss) {
+            elDismiss.addEventListener("click", function () {
+                elBanner.style.display = "none";
+                elBanner.innerHTML = "";
+            });
         }
     }
 
