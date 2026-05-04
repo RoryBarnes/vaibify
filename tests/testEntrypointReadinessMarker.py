@@ -54,6 +54,19 @@ def test_write_readiness_marker_ok(tmp_path):
     assert dictMarker["sStatus"] == "ok"
     assert dictMarker["sReason"] == ""
     assert dictMarker["saWarnings"] == []
+    assert dictMarker["sEntrypointVersion"]
+
+
+def test_write_readiness_marker_includes_version(tmp_path):
+    """The marker must carry sEntrypointVersion so the host can detect drift."""
+    sWorkspace = str(tmp_path)
+    os.makedirs(os.path.join(sWorkspace, ".vaibify"), exist_ok=True)
+    sBody = 'fnWriteReadinessMarker "ok" ""\n'
+    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    assert resultProc.returncode == 0, resultProc.stderr
+    dictMarker = _fdictReadMarker(sWorkspace)
+    assert "sEntrypointVersion" in dictMarker
+    assert dictMarker["sEntrypointVersion"]
 
 
 def test_write_readiness_marker_failed_with_reason(tmp_path):

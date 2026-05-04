@@ -622,10 +622,21 @@ var PipeleyenContainerManager = (function () {
             _fnShowReadinessStalledBanner();
             return;
         }
+        if (sStatus === "stale-image"
+                || sStatus === "stale-version") {
+            _fnShowStaleImageBanner(dictReadiness);
+            return;
+        }
         var listWarnings = dictReadiness.saWarnings || [];
         if (listWarnings.length > 0) {
             _fnShowReadinessWarningBanner(listWarnings);
         }
+    }
+
+    function _fnShowStaleImageBanner(dictReadiness) {
+        var sReason = dictReadiness.sReason
+            || "Container image is out of date. Rebuild via kebab menu.";
+        PipeleyenApp.fnShowToast(sReason, "warning");
     }
 
     function _fnShowReadinessFailureBanner(dictReadiness) {

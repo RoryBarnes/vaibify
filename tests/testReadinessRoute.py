@@ -32,8 +32,28 @@ class _MockDockerConnection:
         return self._tResult
 
 
+def _fsMarkerPayload(sJsonBody):
+    """Wrap a marker JSON body in the new MARKER_PRESENT wire format."""
+    return "MARKER_PRESENT\n" + sJsonBody
+
+
+def _fsDirOnlyPayload(iAgeSeconds):
+    """Wrap a stale-image probe response in the new DIR_ONLY format."""
+    return f"DIR_ONLY {iAgeSeconds}\n"
+
+
 def test_probe_missing_marker_reports_booting():
-    """A missing marker is reported as booting, not ready."""
+    """A NOTHING probe response (no marker, no .vaibify dir) is booting."""
+    connectionDocker = _MockDockerConnection((0, "NOTHING\n"))
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
+    assert dictResult["bReady"] is False
+    assert dictResult["sStatus"] == "booting"
+
+
+def test_probe_exec_failure_reports_booting():
+    """An exec failure (exit non-zero) is treated as still booting."""
     connectionDocker = _MockDockerConnection((1, ""))
     dictResult = systemRoutes._fdictProbeContainerReadiness(
         connectionDocker, "abc",
@@ -56,9 +76,14 @@ def test_probe_empty_marker_treated_as_ok():
 def test_probe_ok_marker_with_no_warnings():
     """A structured ok marker yields ready=True and no warnings."""
     sJson = json.dumps(
-        {"sStatus": "ok", "sReason": "", "saWarnings": []}
+        {
+            "sStatus": "ok", "sReason": "",
+            "saWarnings": [], "sEntrypointVersion": "1",
+        }
     )
-    connectionDocker = _MockDockerConnection((0, sJson))
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
     dictResult = systemRoutes._fdictProbeContainerReadiness(
         connectionDocker, "abc",
     )
@@ -74,9 +99,12 @@ def test_probe_failed_marker_surfaces_reason():
             "sStatus": "failed",
             "sReason": "binary build crashed",
             "saWarnings": [],
+            "sEntrypointVersion": "1",
         }
     )
-    connectionDocker = _MockDockerConnection((0, sJson))
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
     dictResult = systemRoutes._fdictProbeContainerReadiness(
         connectionDocker, "abc",
     )
@@ -96,9 +124,12 @@ def test_probe_warnings_count_and_payload():
                 "vplanet: pip-install: wheel missing",
                 "vplot: c-build: make opt failed",
             ],
+            "sEntrypointVersion": "1",
         }
     )
-    connectionDocker = _MockDockerConnection((0, sJson))
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
     dictResult = systemRoutes._fdictProbeContainerReadiness(
         connectionDocker, "abc",
     )
@@ -114,6 +145,85 @@ def test_probe_garbage_marker_falls_back_to_ok():
         connectionDocker, "abc",
     )
     assert dictResult["bReady"] is True
+    assert dictResult["sStatus"] == "ok"
+
+
+def test_probe_stale_image_when_dir_old_and_no_marker():
+    """The .vaibify dir aging past the threshold flags a stale image."""
+    iAge = systemRoutes._I_STALE_IMAGE_THRESHOLD_SECONDS + 5
+    connectionDocker = _MockDockerConnection(
+        (0, _fsDirOnlyPayload(iAge)),
+    )
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
+    assert dictResult["bReady"] is True
+    assert dictResult["sStatus"] == "stale-image"
+    assert "Rebuild" in dictResult["sReason"]
+
+
+def test_probe_dir_only_below_threshold_reports_booting():
+    """A young .vaibify dir (entrypoint mid-flight) stays in booting."""
+    connectionDocker = _MockDockerConnection(
+        (0, _fsDirOnlyPayload(2)),
+    )
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
+    assert dictResult["sStatus"] == "booting"
+
+
+def test_probe_stale_version_when_marker_version_differs():
+    """A marker whose sEntrypointVersion differs flags stale-version."""
+    sJson = json.dumps(
+        {
+            "sStatus": "ok",
+            "sReason": "",
+            "saWarnings": [],
+            "sEntrypointVersion": "0",
+        }
+    )
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
+    assert dictResult["bReady"] is True
+    assert dictResult["sStatus"] == "stale-version"
+    assert "Rebuild" in dictResult["sReason"]
+
+
+def test_probe_legacy_marker_without_version_is_not_flagged():
+    """A marker missing sEntrypointVersion stays at the marker's sStatus."""
+    sJson = json.dumps(
+        {"sStatus": "ok", "sReason": "", "saWarnings": []}
+    )
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
+    assert dictResult["sStatus"] == "ok"
+
+
+def test_probe_matching_version_passes_through():
+    """A marker version equal to the host's expected version is silent."""
+    sJson = json.dumps(
+        {
+            "sStatus": "ok", "sReason": "",
+            "saWarnings": [],
+            "sEntrypointVersion":
+                systemRoutes._S_EXPECTED_ENTRYPOINT_VERSION,
+        }
+    )
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
     assert dictResult["sStatus"] == "ok"
 
 

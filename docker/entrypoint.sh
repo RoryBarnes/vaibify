@@ -74,6 +74,8 @@ fsBuildWarningsJson() {
 # fnWriteReadinessMarker: Write the structured readiness JSON marker
 # Arguments: sStatus sReason
 # ---------------------------------------------------------------------------
+S_ENTRYPOINT_VERSION="1"
+
 fnWriteReadinessMarker() {
     local sStatus="$1"
     local sReason="$2"
@@ -85,8 +87,9 @@ fnWriteReadinessMarker() {
     sReasonEscaped=$(fsEscapeJsonString "${sReason}")
     local sWarnings
     sWarnings=$(fsBuildWarningsJson)
-    printf '{"sStatus": "%s", "sReason": "%s", "saWarnings": %s}\n' \
+    printf '{"sStatus": "%s", "sReason": "%s", "saWarnings": %s, "sEntrypointVersion": "%s"}\n' \
         "${sStatusEscaped}" "${sReasonEscaped}" "${sWarnings}" \
+        "${S_ENTRYPOINT_VERSION}" \
         > "${sMarker}"
 }
 
