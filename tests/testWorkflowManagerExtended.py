@@ -692,6 +692,73 @@ def test_fnSaveWorkflowToContainer_strips_computed_tracked_paths():
     assert "saTestStandards" not in dictStepOut
 
 
+def test_load_save_reload_save_round_trip_is_idempotent():
+    """Two full load-save cycles produce byte-identical workflow.json.
+
+    Pins the contract that computed badge caches (saStepScripts,
+    saTestStandards) attach on load and strip on save without
+    accumulating, duplicating, or drifting across cycles. Also
+    re-attaches after a between-cycle command edit and confirms the
+    derived list tracks the edit.
+    """
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import (
+        fdictLoadWorkflowFromContainer, fnSaveWorkflowToContainer,
+    )
+    dictPersisted = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "S1", "sDirectory": "d",
+            "saDataCommands": ["python compute.py"],
+            "saPlotCommands": ["python plot.py"],
+            "saPlotFiles": ["f.pdf"],
+            "dictTests": {
+                "dictQuantitative": {
+                    "sStandardsPath": "d/tests/quant.json",
+                },
+            },
+        }],
+    }
+    mockDocker = MagicMock()
+    mockDocker.fbaFetchFile.return_value = (
+        json.dumps(dictPersisted).encode("utf-8")
+    )
+    dictLoaded = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid", sWorkflowPath="/w.json",
+    )
+    assert dictLoaded["listSteps"][0]["saStepScripts"] == [
+        "d/compute.py", "d/plot.py",
+    ]
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictLoaded, sWorkflowPath="/w.json",
+    )
+    (_, _, baFirst), _ = mockDocker.fnWriteFile.call_args
+    mockDocker.fbaFetchFile.return_value = baFirst
+    dictReloaded = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid", sWorkflowPath="/w.json",
+    )
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictReloaded, sWorkflowPath="/w.json",
+    )
+    (_, _, baSecond), _ = mockDocker.fnWriteFile.call_args
+    assert baFirst == baSecond
+    dictReloaded["listSteps"][0]["saDataCommands"] = [
+        "python newCompute.py",
+    ]
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictReloaded, sWorkflowPath="/w.json",
+    )
+    (_, _, baThird), _ = mockDocker.fnWriteFile.call_args
+    mockDocker.fbaFetchFile.return_value = baThird
+    dictAfterEdit = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid", sWorkflowPath="/w.json",
+    )
+    assert dictAfterEdit["listSteps"][0]["saStepScripts"] == [
+        "d/newCompute.py", "d/plot.py",
+    ]
+
+
 # -----------------------------------------------------------------------
 # fnSaveWorkflowToContainer null path (line 323)
 # -----------------------------------------------------------------------
