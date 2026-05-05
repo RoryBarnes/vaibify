@@ -40,6 +40,7 @@ the manifest by injecting a newline into a filename.
 
 import os
 import posixpath
+import warnings
 from pathlib import Path
 
 from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
@@ -49,6 +50,7 @@ __all__ = [
     "fnWriteManifest",
     "flistVerifyManifest",
     "flistParseManifestLines",
+    "flistDeclaredButMissingFromManifest",
     "fiCountManifestEntries",
 ]
 
@@ -84,7 +86,7 @@ def fnWriteManifest(sProjectRepo, dictWorkflow):
     _fnWriteManifestFile(pathRepo, listEntries)
 
 
-def flistVerifyManifest(sProjectRepo):
+def flistVerifyManifest(sProjectRepo, dictWorkflow=None):
     """Recompute hashes for every manifest entry and report mismatches.
 
     Returns a list of dicts of the form
@@ -92,6 +94,13 @@ def flistVerifyManifest(sProjectRepo):
     ``sActual`` is ``None`` when the file is missing on disk. An empty
     list means every recorded file matches its stored hash. Raises
     ``ValueError`` if any component on a verified path is a symlink.
+
+    When ``dictWorkflow`` is supplied, also emits a ``UserWarning`` if
+    the workflow currently declares paths absent from the manifest
+    (e.g. a manifest written before the script + standards rows were
+    added to the envelope). The warning is advisory: legacy manifests
+    still verify clean for what they cover, but the user is told the
+    coverage is partial so they can re-run to refresh.
     """
     pathRepo = Path(sProjectRepo)
     listEntries = flistParseManifestLines(sProjectRepo)
@@ -102,7 +111,39 @@ def flistVerifyManifest(sProjectRepo):
         )
         if dictMismatch is not None:
             listMismatches.append(dictMismatch)
+    if dictWorkflow is not None:
+        _fnWarnIfManifestIncomplete(listEntries, dictWorkflow)
     return listMismatches
+
+
+def flistDeclaredButMissingFromManifest(sProjectRepo, dictWorkflow):
+    """Return repo-relative paths the workflow declares but the manifest omits.
+
+    Pure helper that surfaces the manifest-completeness gap honestly.
+    A user upgrading vaibify keeps a legacy manifest that pins outputs
+    only; without this query the GUI cannot tell them their manifest
+    is silently weaker than the new envelope guarantees. Raises
+    ``FileNotFoundError`` when the manifest is absent.
+    """
+    listEntries = flistParseManifestLines(sProjectRepo)
+    setManifestPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    listDeclared = _flistCollectManifestPaths(dictWorkflow)
+    return [sPath for sPath in listDeclared if sPath not in setManifestPaths]
+
+
+def _fnWarnIfManifestIncomplete(listEntries, dictWorkflow):
+    """Emit ``UserWarning`` when declared paths are absent from the manifest."""
+    setManifestPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    listDeclared = _flistCollectManifestPaths(dictWorkflow)
+    listMissing = [s for s in listDeclared if s not in setManifestPaths]
+    if listMissing:
+        warnings.warn(
+            f"manifest is missing entries for {len(listMissing)} "
+            f"path(s) the workflow currently declares "
+            f"(first: '{listMissing[0]}'); re-run to refresh coverage.",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def flistParseManifestLines(sProjectRepo):

@@ -4,6 +4,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import warnings
 
 import pytest
 
@@ -11,6 +12,7 @@ from vaibify.reproducibility.manifestWriter import (
     fnWriteManifest,
     flistVerifyManifest,
     flistParseManifestLines,
+    flistDeclaredButMissingFromManifest,
     fiCountManifestEntries,
 )
 
@@ -754,3 +756,111 @@ def test_missing_script_file_raises_at_write_time(tmp_path):
     }]}
     with pytest.raises(FileNotFoundError):
         fnWriteManifest(str(tmp_path), dictWorkflow)
+
+
+# ----------------------------------------------------------------------
+# 20. Manifest-completeness warning (legacy manifest gap)
+# ----------------------------------------------------------------------
+
+
+def test_legacy_manifest_emits_warning_when_workflow_declares_more(tmp_path):
+    """A pre-script manifest is detected as incomplete and warns honestly.
+
+    Threat model: a user upgrades vaibify to a version whose envelope
+    covers scripts and standards. Their old MANIFEST.sha256 still pins
+    outputs, so verify returns no mismatches and the dashboard reads
+    "clean". The verifier must surface that the coverage is now
+    partial relative to the workflow.
+    """
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    _fnWriteFile(tmp_path, "src/run.py", b"pass\n")
+
+    dictWorkflowOutputsOnly = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    fnWriteManifest(str(tmp_path), dictWorkflowOutputsOnly)
+
+    dictWorkflowExpanded = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "src",
+        "saDataCommands": ["python run.py"],
+        "saOutputFiles": ["out/a.csv"],
+    }]}
+    with warnings.catch_warnings(record=True) as listWarnings:
+        warnings.simplefilter("always")
+        listMismatches = flistVerifyManifest(
+            str(tmp_path), dictWorkflowExpanded,
+        )
+    assert listMismatches == []
+    assert any(
+        issubclass(w.category, UserWarning)
+        and "src/run.py" in str(w.message)
+        for w in listWarnings
+    ), "legacy manifest must warn that script row is missing"
+
+
+def test_complete_manifest_emits_no_warning(tmp_path):
+    """When the manifest covers every declared path, verify is silent."""
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    _fnWriteFile(tmp_path, "src/run.py", b"pass\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "src",
+        "saDataCommands": ["python run.py"],
+        "saOutputFiles": ["out/a.csv"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    with warnings.catch_warnings(record=True) as listWarnings:
+        warnings.simplefilter("always")
+        flistVerifyManifest(str(tmp_path), dictWorkflow)
+    listUserWarnings = [
+        w for w in listWarnings if issubclass(w.category, UserWarning)
+    ]
+    assert listUserWarnings == []
+
+
+def test_verify_without_workflow_does_not_warn(tmp_path):
+    """Backwards-compat: ``flistVerifyManifest(repo)`` is silent as before."""
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    fnWriteManifest(
+        str(tmp_path), _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"]),
+    )
+    with warnings.catch_warnings(record=True) as listWarnings:
+        warnings.simplefilter("always")
+        flistVerifyManifest(str(tmp_path))
+    listUserWarnings = [
+        w for w in listWarnings if issubclass(w.category, UserWarning)
+    ]
+    assert listUserWarnings == []
+
+
+def test_flistDeclaredButMissingFromManifest_returns_gap(tmp_path):
+    """The pure helper enumerates the paths absent from the manifest."""
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    _fnWriteFile(tmp_path, "src/run.py", b"pass\n")
+    _fnWriteFile(tmp_path, "ref/quant.json", b"{}\n")
+    fnWriteManifest(
+        str(tmp_path), _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"]),
+    )
+    dictWorkflowExpanded = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "src",
+        "saDataCommands": ["python run.py"],
+        "saOutputFiles": ["out/a.csv"],
+        "dictTests": {
+            "dictQuantitative": {"sStandardsPath": "ref/quant.json"},
+        },
+    }]}
+    listMissing = flistDeclaredButMissingFromManifest(
+        str(tmp_path), dictWorkflowExpanded,
+    )
+    assert set(listMissing) == {"src/run.py", "ref/quant.json"}
+
+
+def test_flistDeclaredButMissingFromManifest_empty_when_complete(tmp_path):
+    """When the manifest is complete, no paths are reported missing."""
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listMissing = flistDeclaredButMissingFromManifest(
+        str(tmp_path), dictWorkflow,
+    )
+    assert listMissing == []
