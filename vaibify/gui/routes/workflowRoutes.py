@@ -4,6 +4,7 @@ __all__ = ["fnRegisterAll"]
 
 import json
 import posixpath
+import re
 
 from fastapi import HTTPException
 from typing import Optional
@@ -15,6 +16,37 @@ from ..pipelineServer import (
     fdictHandleConnect,
     _fsSanitizeServerError,
 )
+
+
+_PATTERN_WORKFLOW_FILENAME = re.compile(
+    r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
+)
+
+
+def _fsValidateAndNormalizeFileName(sFileName):
+    """Validate sFileName and return its normalized .json basename.
+
+    Strips whitespace and a trailing ``.json`` so callers may pre-append
+    it. Rejects empty, leading dot, slashes, ``..``, and anything
+    outside ``[A-Za-z0-9_.-]``. Length-capped at 200 pre-suffix.
+    """
+    sClean = sFileName.strip()
+    if sClean.endswith(".json"):
+        sClean = sClean[:-5]
+    if not sClean or len(sClean) > 200:
+        raise HTTPException(
+            400, "sFileName must be 1-200 characters",
+        )
+    if "/" in sClean or ".." in sClean:
+        raise HTTPException(
+            400, "sFileName may not contain '/' or '..'",
+        )
+    if not _PATTERN_WORKFLOW_FILENAME.match(sClean):
+        raise HTTPException(
+            400,
+            "sFileName must match [A-Za-z0-9_][A-Za-z0-9_.-]*",
+        )
+    return sClean + ".json"
 
 
 def _fbIsContainerStopped(error):
@@ -113,9 +145,7 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
             dictCtx["docker"], sContainerId,
             request.sRepoDirectory,
         )
-        sFileName = request.sFileName.strip()
-        if not sFileName.endswith(".json"):
-            sFileName += ".json"
+        sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
         dictBlank = {
             "sWorkflowName": request.sWorkflowName,
             "sPlotDirectory": "Plot",

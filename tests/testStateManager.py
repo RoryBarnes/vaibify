@@ -397,6 +397,29 @@ def test_bootstrap_returns_empty_state_for_empty_repo_path():
     mockDocker.fbaFetchFile.assert_not_called()
 
 
+def test_fetch_markers_encodes_nested_step_directory():
+    """Nested ``Step01/sub`` reads ``Step01_sub.json``, matching the
+    conftest's writer-side encoding instead of a literal ``Step01/sub.json``.
+    """
+    mockDocker = MagicMock()
+    listProbed = []
+
+    def _fFetch(_sContainerId, sPath):
+        listProbed.append(sPath)
+        raise FileNotFoundError(sPath)
+
+    mockDocker.fbaFetchFile.side_effect = _fFetch
+    listSteps = [{"sDirectory": "Step01/sub"}]
+    stateManager._flistFetchMarkers(
+        mockDocker, "cid", "/workspace/Project",
+        "demo", listSteps,
+    )
+    assert listProbed == [
+        "/workspace/Project/.vaibify/test_markers/"
+        "demo/Step01_sub.json",
+    ]
+
+
 def test_bootstrap_records_marker_run_timestamp():
     dictHashes = {"A/out.npz": "a" * 40}
     mockDocker = _fnBuildBootstrapMock(

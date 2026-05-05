@@ -672,6 +672,58 @@ def test_create_workflow_409_on_filename_collision(clientHttp):
     assert "already exists" in responseCollide.json()["detail"]
 
 
+def test_create_workflow_rejects_path_traversal(clientHttp):
+    dictPayload = {
+        "sWorkflowName": "Sneaky",
+        "sFileName": "../escape",
+        "sRepoDirectory": "MyRepo",
+    }
+    responseHttp = clientHttp.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_create_workflow_rejects_filename_with_slash(clientHttp):
+    dictPayload = {
+        "sWorkflowName": "Slashed",
+        "sFileName": "sub/dir/file",
+        "sRepoDirectory": "MyRepo",
+    }
+    responseHttp = clientHttp.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_create_workflow_rejects_leading_dot_filename(clientHttp):
+    dictPayload = {
+        "sWorkflowName": "DotFile",
+        "sFileName": ".hidden",
+        "sRepoDirectory": "MyRepo",
+    }
+    responseHttp = clientHttp.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_create_workflow_rejects_empty_filename(clientHttp):
+    dictPayload = {
+        "sWorkflowName": "Empty",
+        "sFileName": "   ",
+        "sRepoDirectory": "MyRepo",
+    }
+    responseHttp = clientHttp.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 400
+
+
 # ── File write ────────────────────────────────────────────────
 
 

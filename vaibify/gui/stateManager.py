@@ -437,7 +437,14 @@ def _flistFetchMarkers(
     connectionDocker, sContainerId, sProjectRepoPath,
     sWorkflowSlug, listSteps,
 ):
-    """Return ``[(sDirectory, dictMarker_or_None), ...]`` for every step."""
+    """Return ``[(sDirectory, dictMarker_or_None), ...]`` for every step.
+
+    Marker filenames use the canonical ``fsMarkerNameFromStepDirectory``
+    encoding (slashes → underscores) so a nested step directory like
+    ``Step01/sub`` resolves to the same ``Step01_sub.json`` the conftest
+    writes — never a literal ``Step01/sub.json``.
+    """
+    from .fileStatusManager import fsMarkerNameFromStepDirectory
     listResult = []
     for dictStep in listSteps:
         sDirectory = dictStep.get("sDirectory", "")
@@ -445,7 +452,8 @@ def _flistFetchMarkers(
             continue
         sMarkerPath = posixpath.join(
             sProjectRepoPath, S_TEST_MARKERS_RELATIVE,
-            sWorkflowSlug, sDirectory + ".json",
+            sWorkflowSlug,
+            fsMarkerNameFromStepDirectory(sDirectory),
         )
         dictMarker = _fdictReadMarker(
             connectionDocker, sContainerId, sMarkerPath,
