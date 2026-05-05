@@ -688,12 +688,7 @@ var VaibifyStepRenderer = (function () {
             '" data-raw="' + fnEscapeHtml(sRaw) +
             '" data-resolved="' + fnEscapeHtml(sResolved) +
             '" data-workdir="' + fnEscapeHtml(sWorkdir || "") + '">';
-        if (typeof VaibifyGitBadges !== "undefined") {
-            var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
-                sResolved, ""
-            );
-            sHtml += VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
-        }
+        sHtml += _fsBuildTrackedFileBadgeRow(sResolved);
         var sDisplayPath = dictContext.fsShortenPath(
             sResolved, sWorkdir);
         sHtml += '<div class="detail-text" title="' +
@@ -701,6 +696,14 @@ var VaibifyStepRenderer = (function () {
             fnEscapeHtml(sDisplayPath) + '</div>';
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function _fsBuildTrackedFileBadgeRow(sResolved) {
+        if (typeof VaibifyGitBadges === "undefined") return "";
+        var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
+            sResolved, ""
+        );
+        return VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
     }
 
     function fsRenderTrackedFileSection(
