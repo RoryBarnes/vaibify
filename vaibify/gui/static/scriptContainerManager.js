@@ -814,6 +814,7 @@ var PipeleyenContainerManager = (function () {
         }
         fnBindAddChoiceModal();
         VaibifyWorkflowManager.fnBindCreateWizardModal();
+        VaibifyNewWorkflowWizard.fnBindEventHandlers();
     }
 
     function fnOpenAddChoice() {

@@ -15,6 +15,8 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from .. import syncDispatcher, trackedReposManager
+from ..actionCatalog import fnAgentAction
+from ..pipelineRunner import fsShellQuote
 
 
 _PATTERN_REPO_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
@@ -27,6 +29,11 @@ class PushStagedRequest(BaseModel):
 class PushFilesRequest(BaseModel):
     sCommitMessage: str = "[vaibify] Update repository"
     listFilePaths: List[str]
+
+
+class InitRepoRequest(BaseModel):
+    sDirectory: str
+    bCreateIfMissing: bool = False
 
 
 def _fbValidateRepoName(sRepoName):
@@ -140,10 +147,31 @@ def _flistBuildUndecided(
     return listResult
 
 
+def _flistBuildNonRepoDirs(
+    connectionDocker, sContainerId, dictSidecar, setDiscovered
+):
+    """Return non-git /workspace dirs not already in tracked or ignored."""
+    listAll = trackedReposManager.flistDiscoverNonGitDirs(
+        connectionDocker, sContainerId,
+    )
+    setTracked = set(
+        trackedReposManager.flistGetTrackedNames(dictSidecar)
+    )
+    setIgnored = set(_flistBuildIgnoredNames(dictSidecar))
+    listResult = []
+    for sName in listAll:
+        if sName in setDiscovered or sName in setTracked:
+            continue
+        if sName in setIgnored:
+            continue
+        listResult.append({"sName": sName})
+    return listResult
+
+
 def _fdictAssembleStatusPayload(
     connectionDocker, sContainerId, dictSidecar, setDiscovered
 ):
-    """Build the {listTracked, listIgnored, listUndecided} payload dict."""
+    """Build the status payload with tracked/ignored/undecided/non-repo lists."""
     listTracked = _flistBuildTrackedEntries(
         connectionDocker, sContainerId, dictSidecar, setDiscovered
     )
@@ -151,10 +179,14 @@ def _fdictAssembleStatusPayload(
     listUndecided = _flistBuildUndecided(
         setDiscovered, dictSidecar, listIgnored
     )
+    listNonRepoDirs = _flistBuildNonRepoDirs(
+        connectionDocker, sContainerId, dictSidecar, setDiscovered
+    )
     return {
         "listTracked": listTracked,
         "listIgnored": listIgnored,
         "listUndecided": listUndecided,
+        "listNonRepoDirs": listNonRepoDirs,
     }
 
 
@@ -199,6 +231,108 @@ def _fnDoTrackRepo(dictCtx, sContainerId, sRepoName):
         dictStatus.get("sUrl"),
     )
     return {"bSuccess": True}
+
+
+def _fbDirectoryExists(connectionDocker, sContainerId, sFullPath):
+    """Return True if sFullPath is an existing directory in the container."""
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"test -d {fsShellQuote(sFullPath)}",
+    )
+    return iExitCode == 0
+
+
+def _fbDirectoryIsGitRepo(connectionDocker, sContainerId, sFullPath):
+    """Return True if sFullPath contains a .git/ subdirectory."""
+    sGitPath = sFullPath.rstrip("/") + "/.git"
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"test -e {fsShellQuote(sGitPath)}",
+    )
+    return iExitCode == 0
+
+
+def _fnEnsureInitTargetDirectory(
+    connectionDocker, sContainerId, sFullPath, bCreateIfMissing,
+):
+    """Ensure target directory exists, creating it when permitted."""
+    bExists = _fbDirectoryExists(
+        connectionDocker, sContainerId, sFullPath
+    )
+    if bExists and bCreateIfMissing:
+        raise HTTPException(
+            409,
+            f"Directory '{sFullPath}' already exists. "
+            f"Pick it from the list instead of creating a new one.",
+        )
+    if bExists:
+        return
+    if not bCreateIfMissing:
+        raise HTTPException(
+            404, f"Directory not found: {sFullPath}"
+        )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"mkdir -p {fsShellQuote(sFullPath)}",
+    )
+    if iExitCode != 0:
+        raise HTTPException(
+            500, f"Failed to create directory: {sOutput.strip()}"
+        )
+
+
+def _fnRunGitInitWithEmptyCommit(
+    connectionDocker, sContainerId, sFullPath,
+):
+    """Run git init + an empty initial commit at sFullPath."""
+    sQuotedPath = fsShellQuote(sFullPath)
+    sCommand = (
+        f"git -C {sQuotedPath} -c init.defaultBranch=main init && "
+        f"git -C {sQuotedPath} "
+        f"-c user.email=vaibify@local -c user.name=vaibify "
+        f"commit --allow-empty -m 'Initialize vaibify project repo'"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExitCode != 0:
+        raise HTTPException(
+            500, f"git init failed: {sOutput.strip()}"
+        )
+
+
+def _fnDoInitProjectRepo(
+    connectionDocker, sContainerId, sDirectory, bCreateIfMissing,
+):
+    """Validate and initialize /workspace/<sDirectory> as a git repo."""
+    _fnRequireValidRepoName(sDirectory)
+    sFullPath = "/workspace/" + sDirectory
+    _fnEnsureInitTargetDirectory(
+        connectionDocker, sContainerId, sFullPath, bCreateIfMissing,
+    )
+    if _fbDirectoryIsGitRepo(
+        connectionDocker, sContainerId, sFullPath
+    ):
+        raise HTTPException(
+            409, f"Directory '{sFullPath}' is already a git repository"
+        )
+    _fnRunGitInitWithEmptyCommit(
+        connectionDocker, sContainerId, sFullPath,
+    )
+    return {"sDirectory": sDirectory, "sFullPath": sFullPath}
+
+
+def _fnRegisterInit(app, dictCtx):
+    """Register POST /api/repos/{id}/init route."""
+
+    @fnAgentAction("init-project-repo")
+    @app.post("/api/repos/{sContainerId}/init")
+    async def fnInitProjectRepo(
+        sContainerId: str, request: InitRepoRequest,
+    ):
+        dictCtx["require"]()
+        return await asyncio.to_thread(
+            _fnDoInitProjectRepo,
+            dictCtx["docker"], sContainerId,
+            request.sDirectory, request.bCreateIfMissing,
+        )
 
 
 def _fnRegisterTrack(app, dictCtx):
@@ -309,6 +443,7 @@ def _fnRegisterDirtyFiles(app, dictCtx):
 def fnRegisterAll(app, dictCtx):
     """Register every route exposed by the Repos panel."""
     _fnRegisterStatus(app, dictCtx)
+    _fnRegisterInit(app, dictCtx)
     _fnRegisterTrack(app, dictCtx)
     _fnRegisterIgnore(app, dictCtx)
     _fnRegisterUntrack(app, dictCtx)

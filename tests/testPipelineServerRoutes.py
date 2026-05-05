@@ -62,6 +62,8 @@ class MockDockerConnection:
             return (0, S_WORKFLOW_PATH + "\n")
         if "find" in sCommand:
             return (0, "")
+        if "test -e" in sCommand:
+            return self._ftFileExists(sCommand)
         if "test -d" in sCommand:
             return (0, "f")
         if "cat" in sCommand and "pipeline_state" in sCommand:
@@ -71,6 +73,12 @@ class MockDockerConnection:
         if "ps aux" in sCommand:
             return (0, "0\n")
         return (0, "")
+
+    def _ftFileExists(self, sCommand):
+        sPath = sCommand.split("test -e ", 1)[1].strip().strip("'")
+        if sPath in self._dictFiles:
+            return (0, "")
+        return (1, "")
 
     def fbaFetchFile(self, sContainerId, sPath):
         if sPath in self._dictFiles:
@@ -638,6 +646,30 @@ def test_create_workflow(clientHttp):
     dictResult = responseHttp.json()
     assert dictResult["sName"] == "New Pipeline"
     assert dictResult["sPath"].endswith(".json")
+
+
+def test_create_workflow_409_on_filename_collision(clientHttp):
+    dictPayload = {
+        "sWorkflowName": "First",
+        "sFileName": "shared",
+        "sRepoDirectory": "MyRepo",
+    }
+    responseFirst = clientHttp.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json=dictPayload,
+    )
+    assert responseFirst.status_code == 200
+    dictPayloadCollide = {
+        "sWorkflowName": "Second",
+        "sFileName": "shared",
+        "sRepoDirectory": "MyRepo",
+    }
+    responseCollide = clientHttp.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json=dictPayloadCollide,
+    )
+    assert responseCollide.status_code == 409
+    assert "already exists" in responseCollide.json()["detail"]
 
 
 # ── File write ────────────────────────────────────────────────

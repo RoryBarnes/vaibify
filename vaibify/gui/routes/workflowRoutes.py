@@ -133,6 +133,15 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
             f"mkdir -p {fsShellQuote(sWorkflowDir)}",
         )
         sFullPath = posixpath.join(sWorkflowDir, sFileName)
+        iExitCode, _ = dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId,
+            f"test -e {fsShellQuote(sFullPath)}",
+        )
+        if iExitCode == 0:
+            raise HTTPException(
+                409,
+                f"A workflow file already exists at {sFullPath}",
+            )
         dictCtx["docker"].fnWriteFile(
             sContainerId, sFullPath,
             sContent.encode("utf-8"),

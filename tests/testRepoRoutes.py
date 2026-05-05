@@ -22,15 +22,21 @@ class FakeDocker:
     def __init__(self):
         self.dictRepos = {}
         self.dictFiles = {}
+        self.setNonGitDirs = set()
         self.listDirtyLines = []
         self.dictPushStaged = {"exit": 0, "out": "abc1234"}
         self.dictPushFiles = {"exit": 0, "out": "def5678"}
+        self.listGitInitCalls = []
 
     def fnAddRepo(self, sName, sUrl="https://x/y.git",
                   sBranch="main", bDirty=False):
         self.dictRepos[sName] = {
             "sUrl": sUrl, "sBranch": sBranch, "bDirty": bDirty,
         }
+
+    def fnAddNonGitDir(self, sName):
+        """Register a /workspace/ subdirectory that lacks a .git/."""
+        self.setNonGitDirs.add(sName)
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if sCommand.startswith("cat /workspace/.vaibify/"):
@@ -40,22 +46,67 @@ class FakeDocker:
                 return (0, sContent)
             return (1, "")
         if sCommand.startswith("mkdir -p"):
-            return (0, "")
+            return self._ftMkdirCommand(sCommand)
         if "find /workspace -mindepth 2" in sCommand:
             listOut = [
                 f"/workspace/{s}" for s in self.dictRepos
             ]
             return (0, "\n".join(listOut) + "\n")
-        if sCommand.startswith("test -d /workspace/"):
-            sName = sCommand.split("/workspace/")[1].split("/")[0]
-            if sName in self.dictRepos:
-                return (0, "yes\n")
-            return (0, "no\n")
+        if "find /workspace -mindepth 1 -maxdepth 1" in sCommand:
+            listAll = list(self.dictRepos) + list(self.setNonGitDirs)
+            return (0, "\n".join(sorted(listAll)) + "\n")
+        if (sCommand.startswith("test -e")
+                and "/workspace/" in sCommand
+                and "/.git" in sCommand):
+            return self._ftDotGitExistsCommand(sCommand)
+        if (sCommand.startswith("test -d")
+                and "/workspace/" in sCommand):
+            return self._ftDirExistsCommand(sCommand)
+        if sCommand.startswith("git -C") and "init " in sCommand:
+            return self._ftGitInitCommand(sCommand)
         if sCommand.startswith("git -C"):
             return self._ftGitCommand(sCommand)
         if sCommand.startswith("cd '/workspace/"):
             return self._ftPushCommand(sCommand)
         return (0, "")
+
+    def _ftDirExistsCommand(self, sCommand):
+        sName = sCommand.split("/workspace/")[1].split("/")[0]
+        sName = sName.rstrip("'").rstrip()
+        bIsGitProbe = "/.git" in sCommand
+        bExists = (
+            sName in self.dictRepos
+            if bIsGitProbe
+            else (sName in self.dictRepos or sName in self.setNonGitDirs)
+        )
+        if "&& echo yes" in sCommand:
+            return (0, "yes\n" if bExists else "no\n")
+        return (0, "") if bExists else (1, "")
+
+    def _ftDotGitExistsCommand(self, sCommand):
+        sName = sCommand.split("/workspace/")[1].split("/")[0]
+        sName = sName.rstrip("'").rstrip()
+        if sName in self.dictRepos:
+            return (0, "")
+        return (1, "")
+
+    def _ftMkdirCommand(self, sCommand):
+        sPath = sCommand.split("mkdir -p ", 1)[1].strip()
+        sPath = sPath.strip("'")
+        if sPath.startswith("/workspace/"):
+            sName = sPath[len("/workspace/"):].split("/")[0]
+            if sName and not sName.startswith("."):
+                self.setNonGitDirs.add(sName)
+        return (0, "")
+
+    def _ftGitInitCommand(self, sCommand):
+        sName = sCommand.split("/workspace/")[1].split(" ")[0]
+        sName = sName.rstrip("'").rstrip()
+        self.listGitInitCalls.append(sName)
+        self.setNonGitDirs.discard(sName)
+        if sName not in self.dictRepos:
+            self.fnAddRepo(sName)
+        return (0, "Initialized empty Git repository\n")
 
     def _ftGitCommand(self, sCommand):
         sTail = sCommand.split("/workspace/")[1]
@@ -196,6 +247,122 @@ def testStatusIgnoredAppearsInList(
     dictBody = response.json()
     assert dictBody["listIgnored"] == ["alpha"]
     assert dictBody["listUndecided"] == []
+
+
+# ------- listNonRepoDirs in /status -------
+
+def testStatusListNonRepoDirsEmptyByDefault(
+    fixtureDocker, fixtureClient
+):
+    fixtureDocker.fnAddRepo("alpha")
+    response = fixtureClient.get("/api/repos/cid1/status")
+    assert response.status_code == 200
+    assert response.json()["listNonRepoDirs"] == []
+
+
+def testStatusListNonRepoDirsIncludesPlainDirs(
+    fixtureDocker, fixtureClient
+):
+    fixtureDocker.fnAddRepo("alpha")
+    fixtureDocker.fnAddNonGitDir("scratch")
+    fixtureDocker.fnAddNonGitDir("data_only")
+    response = fixtureClient.get("/api/repos/cid1/status")
+    listNames = sorted(
+        d["sName"] for d in response.json()["listNonRepoDirs"]
+    )
+    assert listNames == ["data_only", "scratch"]
+
+
+def testStatusListNonRepoDirsExcludesIgnored(
+    fixtureDocker, fixtureClient
+):
+    fixtureDocker.fnAddRepo("alpha")
+    fixtureDocker.fnAddNonGitDir("scratch")
+    fixtureClient.post("/api/repos/cid1/scratch/ignore")
+    response = fixtureClient.get("/api/repos/cid1/status")
+    assert response.json()["listNonRepoDirs"] == []
+
+
+# ------- POST /init -------
+
+def testInitProjectRepoConvertsExistingDir(
+    fixtureDocker, fixtureClient
+):
+    fixtureDocker.fnAddNonGitDir("scratch")
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "scratch", "bCreateIfMissing": False},
+    )
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["sDirectory"] == "scratch"
+    assert dictBody["sFullPath"] == "/workspace/scratch"
+    assert "scratch" in fixtureDocker.listGitInitCalls
+
+
+def testInitProjectRepoCreatesMissingDir(
+    fixtureDocker, fixtureClient
+):
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "fresh", "bCreateIfMissing": True},
+    )
+    assert response.status_code == 200
+    assert "fresh" in fixtureDocker.listGitInitCalls
+
+
+def testInitProjectRepoRejectsAlreadyGitRepo(
+    fixtureDocker, fixtureClient
+):
+    fixtureDocker.fnAddRepo("alpha")
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "alpha", "bCreateIfMissing": False},
+    )
+    assert response.status_code == 409
+
+
+def testInitProjectRepoMissingDirReturns404(
+    fixtureDocker, fixtureClient
+):
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "ghost", "bCreateIfMissing": False},
+    )
+    assert response.status_code == 404
+
+
+def testInitProjectRepoRejectsPathTraversal(fixtureClient):
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "../etc", "bCreateIfMissing": False},
+    )
+    assert response.status_code == 400
+
+
+def testInitProjectRepoRejectsLeadingDot(fixtureClient):
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": ".hidden", "bCreateIfMissing": True},
+    )
+    assert response.status_code == 400
+
+
+def testInitProjectRepoRejectsCreateOnExistingDir(
+    fixtureDocker, fixtureClient
+):
+    """bCreateIfMissing=True must 409 if the dir already exists.
+
+    Prevents silently absorbing a pre-existing /workspace/<name>
+    directory into a brand-new git repo (failure mode #10).
+    """
+    fixtureDocker.fnAddNonGitDir("scratch")
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "scratch", "bCreateIfMissing": True},
+    )
+    assert response.status_code == 409
+    assert "scratch" not in fixtureDocker.listGitInitCalls
 
 
 # ------- POST /track -------

@@ -205,6 +205,16 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Stage and commit the vaibify canonical "
                      "state (workflow.json, markers). "
                      "Args: {sCommitMessage} optional."},
+    {"sName": "init-project-repo", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/repos/{sContainerId}/init",
+     "bAgentSafe": True,
+     "sDescription": "Initialize a /workspace/<sDirectory> as a git "
+                     "repository so it can host vaibify workflows. "
+                     "Args: {sDirectory: str, bCreateIfMissing: bool}. "
+                     "Creates an empty initial commit so downstream "
+                     "diff/marker logic has a parent. 409 if the "
+                     "target is already a git repo."},
     {"sName": "fetch-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/git/{sContainerId}/fetch-project-repo",

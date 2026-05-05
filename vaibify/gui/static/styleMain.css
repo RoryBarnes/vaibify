@@ -3867,6 +3867,50 @@ body.all-verified .vaibify-checkmark {
     flex-shrink: 0;
     accent-color: var(--color-pale-blue);
 }
+.wizard-location-group {
+    margin-bottom: 14px;
+}
+.wizard-location-group h4 {
+    margin: 0 0 6px 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+.wizard-location-card {
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+}
+.wizard-location-card-selected {
+    border-color: var(--color-pale-blue);
+    background: var(--bg-input);
+}
+.wizard-location-card-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.wizard-summary {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border-radius: var(--border-radius);
+}
+.wizard-summary-row {
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+.wizard-summary-label {
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 6px;
+}
+.wizard-summary-value {
+    color: var(--text-primary);
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+}
 .wizard-helper-text {
     margin-top: 4px;
     font-size: 11px;

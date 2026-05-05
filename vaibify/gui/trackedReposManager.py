@@ -45,6 +45,7 @@ __all__ = [
     "fdictBuildInitialState",
     "fdictReadOrSeedSidecar",
     "flistDiscoverGitDirs",
+    "flistDiscoverNonGitDirs",
     "fdictComputeRepoStatus",
     "fnAddTracked",
     "fnAddIgnored",
@@ -220,6 +221,33 @@ def flistDiscoverGitDirs(connectionDocker, sContainerId):
         return []
     listNames = _flistParseFindOutput(sOutput)
     return sorted(listNames)
+
+
+def flistDiscoverNonGitDirs(connectionDocker, sContainerId):
+    """Return sorted basenames of /workspace/<name> dirs lacking .git/."""
+    sCommand = (
+        "find /workspace -mindepth 1 -maxdepth 1 -type d "
+        "-printf '%f\\n' 2>/dev/null"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    if iExitCode != 0 or not sOutput:
+        return []
+    listAll = _flistFilterDirNames(sOutput)
+    setGit = set(flistDiscoverGitDirs(connectionDocker, sContainerId))
+    return sorted([s for s in listAll if s not in setGit])
+
+
+def _flistFilterDirNames(sOutput):
+    """Filter raw basenames, dropping vaibify system dirs."""
+    listNames = []
+    for sLine in sOutput.splitlines():
+        sName = sLine.strip()
+        if not sName or sName.startswith(".vaibify"):
+            continue
+        listNames.append(sName)
+    return listNames
 
 
 def _flistParseFindOutput(sOutput):

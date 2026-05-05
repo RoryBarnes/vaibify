@@ -719,6 +719,32 @@
     </div>
 </div>
 
+<!-- New Workflow Wizard Modal -->
+<div class="modal-overlay" id="modalNewWorkflowWizard"
+     style="display: none;">
+    <div class="modal">
+        <div class="wizard-title-row">
+            <h2 id="newWorkflowWizardTitle"
+                style="color: var(--color-pale-blue);">
+                Create Workflow</h2>
+        </div>
+        <div class="wizard-progress" id="newWorkflowWizardProgress">
+            <span class="wizard-progress-step active"></span>
+            <span class="wizard-progress-step"></span>
+            <span class="wizard-progress-step"></span>
+        </div>
+        <div id="newWorkflowWizardContent"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnNewWorkflowWizardCancel">
+                Cancel</button>
+            <button class="btn" id="btnNewWorkflowWizardBack" disabled>
+                Back</button>
+            <button class="btn btn-primary"
+                    id="btnNewWorkflowWizardNext">Next</button>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div id="toastContainer"></div>
 
@@ -735,6 +761,7 @@
 <script src="/static/scriptOverleafMirror.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptNewWorkflowWizard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFileOperations.js?v=__CACHE_VERSION__"></script>

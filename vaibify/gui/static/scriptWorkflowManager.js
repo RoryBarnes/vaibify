@@ -53,75 +53,7 @@ var VaibifyWorkflowManager = (function () {
 
     function fnCreateNewWorkflow(sContainerId) {
         if (!sContainerId) return;
-        PipeleyenApp.fnShowInputModal(
-            "Workflow display name",
-            "My Workflow",
-            function (sName) {
-                var sDefault = sName.toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "-");
-                PipeleyenApp.fnShowInputModal(
-                    "Filename (no spaces, .json added " +
-                    "automatically)",
-                    sDefault,
-                    function (sFileName) {
-                        _fnPromptForRepoDirectory(
-                            sContainerId, sName, sFileName);
-                    }
-                );
-            }
-        );
-    }
-
-    async function _fnPromptForRepoDirectory(
-        sContainerId, sName, sFileName
-    ) {
-        var sSuggestion = "";
-        try {
-            var dictStatus = await VaibifyApi.fdictGet(
-                "/api/repos/" + sContainerId + "/status"
-            );
-            if (dictStatus.listTracked
-                    && dictStatus.listTracked.length) {
-                sSuggestion = dictStatus.listTracked[0].sName;
-            } else if (dictStatus.listUndecided
-                    && dictStatus.listUndecided.length) {
-                sSuggestion = dictStatus.listUndecided[0].sName;
-            }
-        } catch (error) { /* fall through */ }
-        PipeleyenApp.fnShowInputModal(
-            "Repository directory name under /workspace/ " +
-            "(where the workflow and its Plot/ folder " +
-            "will live)",
-            sSuggestion,
-            function (sRepo) {
-                _fnSubmitNewWorkflow(
-                    sContainerId, sName, sFileName, sRepo);
-            }
-        );
-    }
-
-    async function _fnSubmitNewWorkflow(
-        sContainerId, sName, sFileName, sRepo
-    ) {
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/workflows/" + sContainerId + "/create",
-                {
-                    sWorkflowName: sName,
-                    sFileName: sFileName,
-                    sRepoDirectory: sRepo,
-                }
-            );
-            PipeleyenApp.fnShowToast(
-                "Workflow created", "success");
-            fnSelectWorkflow(
-                sContainerId, dictResult.sPath,
-                dictResult.sName);
-        } catch (error) {
-            PipeleyenApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
-        }
+        VaibifyNewWorkflowWizard.fnLaunch(sContainerId);
     }
 
     /* --- Workflow Selection --- */
