@@ -39,11 +39,15 @@ the manifest by injecting a newline into a filename.
 """
 
 import os
-import posixpath
 import warnings
 from pathlib import Path
 
 from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
+from vaibify.reproducibility.manifestPaths import (
+    TUPLE_OUTPUT_KEYS,
+    flistStepScriptRepoPaths,
+    flistStepStandardsRepoPaths,
+)
 
 
 __all__ = [
@@ -57,14 +61,10 @@ __all__ = [
 
 _MANIFEST_FILENAME = "MANIFEST.sha256"
 _MANIFEST_HEADER = "# SHA-256 manifest of workflow artefacts\n"
-_OUTPUT_KEYS = ("saOutputFiles", "saPlotFiles", "saDataFiles")
-_COMMAND_KEYS = ("saDataCommands", "saPlotCommands")
-_TEST_CATEGORY_KEYS = (
-    "dictQualitative",
-    "dictQuantitative",
-    "dictIntegrity",
-)
-_S_CONTAINER_WORKSPACE_PREFIX = "/workspace/"
+# Re-exported as a module attribute so the architectural-invariant test
+# can introspect the canonical output-key set without importing
+# ``manifestPaths`` directly.
+_OUTPUT_KEYS = TUPLE_OUTPUT_KEYS
 
 
 def fnWriteManifest(sProjectRepo, dictWorkflow):
@@ -183,99 +183,18 @@ def _flistCollectManifestPaths(dictWorkflow):
     setPaths = set()
     for dictStep in dictWorkflow.get("listSteps", []):
         setPaths.update(_flistStepOutputPaths(dictStep))
-        setPaths.update(_flistStepScriptPaths(dictStep))
-        setPaths.update(_flistStepStandardsPaths(dictStep))
+        setPaths.update(flistStepScriptRepoPaths(dictStep))
+        setPaths.update(flistStepStandardsRepoPaths(dictStep))
     return sorted(sPath for sPath in setPaths if sPath)
 
 
 def _flistStepOutputPaths(dictStep):
     """Return repo-relative output paths declared by one step."""
     listPaths = []
-    for sKey in _OUTPUT_KEYS:
+    for sKey in TUPLE_OUTPUT_KEYS:
         for sPath in dictStep.get(sKey, []) or []:
             listPaths.append(_fsNormalizeRelativePath(sPath))
     return listPaths
-
-
-def _flistStepScriptPaths(dictStep):
-    """Return repo-relative script paths referenced by one step's commands.
-
-    Mirrors the extraction logic used by ``vaibify.gui.workflowManager``
-    and ``vaibify.gui.stateContract`` so that the manifest envelope
-    matches the canonical git-tracked set. The duplication is
-    deliberate: ``vaibify.reproducibility`` sits below
-    ``vaibify.gui`` in the dependency graph and must not import
-    upward.
-    """
-    sDirectory = dictStep.get("sDirectory", "") or ""
-    listPaths = []
-    for sScript in _flistExtractScriptsFromCommands(dictStep):
-        listPaths.append(_fsResolveScriptToRepoPath(sScript, sDirectory))
-    return listPaths
-
-
-def _flistExtractScriptsFromCommands(dictStep):
-    """Return ``.py`` script tokens extracted from a step's commands."""
-    listScripts = []
-    for sKey in _COMMAND_KEYS:
-        for sCommand in dictStep.get(sKey, []) or []:
-            sScript = _fsExtractScriptFromCommand(sCommand)
-            if sScript:
-                listScripts.append(sScript)
-    return listScripts
-
-
-def _fsExtractScriptFromCommand(sCommand):
-    """Return the script token in a command, or empty if absent."""
-    listTokens = sCommand.split()
-    if not listTokens:
-        return ""
-    if listTokens[0] in ("python", "python3"):
-        return listTokens[1] if len(listTokens) > 1 else ""
-    if listTokens[0].endswith(".py"):
-        return listTokens[0]
-    return ""
-
-
-def _fsResolveScriptToRepoPath(sScript, sDirectory):
-    """Return ``sScript`` resolved against ``sDirectory`` as a repo path."""
-    if sScript.startswith("/") or sScript.startswith(
-        _S_CONTAINER_WORKSPACE_PREFIX,
-    ):
-        return _fsToRepoRelative(sScript)
-    if sDirectory:
-        sJoined = posixpath.normpath(posixpath.join(sDirectory, sScript))
-        return _fsToRepoRelative(sJoined)
-    return _fsToRepoRelative(sScript)
-
-
-def _flistStepStandardsPaths(dictStep):
-    """Return repo-relative standards paths from one step's tests."""
-    dictTests = dictStep.get("dictTests", {}) or {}
-    listPaths = []
-    for sCategory in _TEST_CATEGORY_KEYS:
-        dictCategory = dictTests.get(sCategory, {}) or {}
-        sStandardsPath = dictCategory.get("sStandardsPath", "")
-        if sStandardsPath:
-            listPaths.append(_fsToRepoRelative(sStandardsPath))
-    return listPaths
-
-
-def _fsToRepoRelative(sPath):
-    """Return a repo-root-relative POSIX path.
-
-    Mirrors ``vaibify.gui.stateContract.fsToRepoRelative`` so the
-    reproducibility layer can map container-absolute and workspace
-    paths to repo-relative form without importing upward.
-    """
-    if not sPath:
-        return ""
-    sNormal = posixpath.normpath(sPath)
-    if sNormal.startswith(_S_CONTAINER_WORKSPACE_PREFIX):
-        return sNormal[len(_S_CONTAINER_WORKSPACE_PREFIX):]
-    if sNormal == "/workspace":
-        return ""
-    return sNormal.lstrip("/")
 
 
 def _fsNormalizeRelativePath(sPath):

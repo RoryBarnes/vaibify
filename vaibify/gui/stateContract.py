@@ -33,6 +33,7 @@ import os
 import posixpath
 
 from . import workflowManager
+from vaibify.reproducibility import manifestPaths
 
 __all__ = [
     "I_LARGE_FILE_THRESHOLD_BYTES",
@@ -120,32 +121,23 @@ def _flistStepOutputRepoPaths(dictStep, dictVars=None):
 
 
 def _flistStepScriptRepoPaths(dictStep):
-    """Return repo-relative paths of scripts referenced by a step."""
-    sDirectory = dictStep.get("sDirectory", "")
-    listPaths = []
-    for sScript in workflowManager.flistExtractStepScripts(dictStep):
-        if sScript.startswith("/") or sScript.startswith("/workspace/"):
-            listPaths.append(fsToRepoRelative(sScript))
-        elif sDirectory:
-            sJoined = posixpath.normpath(
-                posixpath.join(sDirectory, sScript)
-            )
-            listPaths.append(fsToRepoRelative(sJoined))
-        else:
-            listPaths.append(fsToRepoRelative(sScript))
-    return listPaths
+    """Return repo-relative paths of scripts referenced by a step.
+
+    Delegates to ``manifestPaths.flistStepScriptRepoPaths`` so the
+    canonical-tracked-files set and the manifest envelope share a
+    single extraction path; lockstep is enforced rather than
+    convention.
+    """
+    return manifestPaths.flistStepScriptRepoPaths(dictStep)
 
 
 def _flistStepStandardsRepoPaths(dictStep):
-    """Return repo-relative paths of test standards for one step."""
-    listPaths = []
-    dictTests = dictStep.get("dictTests", {}) or {}
-    for sCategory in ("dictQualitative", "dictQuantitative", "dictIntegrity"):
-        dictCategory = dictTests.get(sCategory, {}) or {}
-        sStandardsPath = dictCategory.get("sStandardsPath", "")
-        if sStandardsPath:
-            listPaths.append(fsToRepoRelative(sStandardsPath))
-    return listPaths
+    """Return repo-relative paths of test standards for one step.
+
+    Delegates to ``manifestPaths.flistStepStandardsRepoPaths`` for the
+    same lockstep reason as the script-path helper above.
+    """
+    return manifestPaths.flistStepStandardsRepoPaths(dictStep)
 
 
 def _flistVaibifyTrackedFiles(sWorkspaceRoot):
