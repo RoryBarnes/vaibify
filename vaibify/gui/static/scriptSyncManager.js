@@ -1282,12 +1282,12 @@ var VaibifySyncManager = (function () {
             }
             await _fnPushFileToRemote(
                 sContainerId, sRemoteKey, sResolved);
-            await VaibifyGitBadges.fnRefresh(sContainerId);
-            PipeleyenApp.fnRenderStepList();
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
+        await VaibifyGitBadges.fnRefresh(sContainerId);
+        PipeleyenApp.fnRenderStepList();
     }
 
     function _fnPostTrack(
