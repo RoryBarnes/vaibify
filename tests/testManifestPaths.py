@@ -35,6 +35,38 @@ def test_fsExtractScriptFromCommand_direct_py_executable():
     assert fsExtractScriptFromCommand("./foo.py --flag") == "./foo.py"
 
 
+def test_fsExtractScriptFromCommand_python_dash_u_flag_skips_to_script():
+    """``python -u foo.py`` does NOT return ``-u`` as a script.
+
+    Regression: ``-u`` (unbuffered) is a flag, not a script. Earlier
+    behaviour returned the second token unconditionally, so the
+    manifest writer tried to hash a file literally called ``-u`` and
+    crashed with FileNotFoundError, blocking the verify pipeline for
+    every workflow that ran ``python -u``.
+    """
+    assert fsExtractScriptFromCommand("python -u foo.py") == "foo.py"
+
+
+def test_fsExtractScriptFromCommand_python_dash_m_module_returns_empty():
+    """``python -m mymod`` returns empty (modules are not file paths).
+
+    ``-m`` runs an importable module, not a script file path; the
+    manifest cannot hash a module name. Same fix scope as the ``-u``
+    regression above.
+    """
+    assert fsExtractScriptFromCommand("python -m mymod") == ""
+
+
+def test_fsExtractScriptFromCommand_python_multiple_flags_then_script():
+    """``python -u -O foo.py`` skips both flags and returns ``foo.py``."""
+    assert fsExtractScriptFromCommand("python -u -O foo.py") == "foo.py"
+
+
+def test_fsExtractScriptFromCommand_heredoc_returns_empty():
+    """``python <<EOF`` does not designate a script file."""
+    assert fsExtractScriptFromCommand("python <<EOF") == ""
+
+
 def test_fsExtractScriptFromCommand_envvar_prefix_returns_empty():
     """``OMP_NUM_THREADS=4 python foo.py`` is not parsed as a script.
 
@@ -117,6 +149,30 @@ def test_flistStepScriptRepoPaths_absolute_script_uses_workspace_strip():
     }
     listResult = flistStepScriptRepoPaths(dictStep)
     assert listResult == ["scripts/compute.py"]
+
+
+def test_flistStepScriptRepoPaths_dash_u_is_skipped():
+    """``python -u compute.py`` resolves to ``<dir>/compute.py``, not ``-u``.
+
+    End-to-end regression for the manifest write path: a workflow that
+    runs scripts unbuffered must not crash the manifest writer.
+    """
+    dictStep = {
+        "sDirectory": "stepOne",
+        "saDataCommands": ["python -u compute.py"],
+    }
+    listResult = flistStepScriptRepoPaths(dictStep)
+    assert listResult == ["stepOne/compute.py"]
+
+
+def test_flistStepScriptRepoPaths_dash_m_yields_no_path():
+    """``python -m mymod`` yields an empty list (no file path to hash)."""
+    dictStep = {
+        "sDirectory": "stepOne",
+        "saDataCommands": ["python -m mymod"],
+    }
+    listResult = flistStepScriptRepoPaths(dictStep)
+    assert listResult == []
 
 
 def test_flistStepScriptRepoPaths_no_directory_keeps_relative():

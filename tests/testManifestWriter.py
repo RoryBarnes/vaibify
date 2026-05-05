@@ -864,3 +864,43 @@ def test_flistDeclaredButMissingFromManifest_empty_when_complete(tmp_path):
         str(tmp_path), dictWorkflow,
     )
     assert listMissing == []
+
+
+# ----------------------------------------------------------------------
+# 21. Python flag tokens (-u, -m) must not be treated as script paths
+# ----------------------------------------------------------------------
+
+
+def test_python_dash_u_flag_does_not_hash_a_dash_u_file(tmp_path):
+    """``python -u script.py`` hashes ``script.py`` and does not crash.
+
+    Regression: an earlier extractor returned the second token of any
+    ``python ...`` command, so a step whose data command was
+    ``python -u foo.py`` made the writer try to hash ``<step>/-u``
+    and abort with FileNotFoundError.
+    """
+    _fnWriteFile(tmp_path, "src/script.py", b"pass\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S",
+        "sDirectory": "src",
+        "saDataCommands": ["python -u script.py"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    listPaths = [d["sPath"] for d in listEntries]
+    assert "src/script.py" in listPaths
+    assert not any("-u" in s for s in listPaths)
+
+
+def test_python_dash_m_module_does_not_appear_in_manifest(tmp_path):
+    """``python -m mymod`` produces no manifest entry for the module token."""
+    dictWorkflow = {"listSteps": [{
+        "sName": "S",
+        "sDirectory": "src",
+        "saDataCommands": ["python -m mymod"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    listPaths = [d["sPath"] for d in listEntries]
+    assert all("mymod" not in s for s in listPaths)
+    assert all("-m" not in s for s in listPaths)

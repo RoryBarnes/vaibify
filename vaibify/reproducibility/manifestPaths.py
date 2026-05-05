@@ -71,24 +71,39 @@ def fsToRepoRelative(sPath):
 
 
 def fsExtractScriptFromCommand(sCommand):
-    """Return the script token in a command, or empty if absent.
+    """Return the ``.py`` script token in a command, or empty if absent.
 
     Recognises the two canonical forms used by vaibify steps:
 
-    * ``python <script> [args...]`` and the ``python3`` variant
+    * ``python <script.py> [args...]`` and the ``python3`` variant
     * ``<script.py> [args...]`` (a directly-executable script)
 
-    Mirrors the behaviour of ``vaibify.gui.workflowManager``'s
-    extractor; both paths must agree on what counts as a script so
-    the manifest envelope and the GUI's script listing stay in sync.
+    Tokens that do not end in ``.py`` are treated as flags or
+    non-script invocations (e.g. ``python -u foo.py``, ``python -m
+    mymod``, ``python <<EOF``) and yield an empty string. Earlier
+    behaviour returned ``listTokens[1]`` unconditionally, which made
+    the manifest writer try to hash a literal file called ``-u`` when
+    a step ran ``python -u foo.py`` and crashed with FileNotFoundError.
     """
     listTokens = sCommand.split()
     if not listTokens:
         return ""
-    if listTokens[0] in ("python", "python3"):
-        return listTokens[1] if len(listTokens) > 1 else ""
-    if listTokens[0].endswith(".py"):
-        return listTokens[0]
+    sFirst = listTokens[0]
+    if sFirst in ("python", "python3"):
+        return _fsFirstPyToken(listTokens[1:])
+    if sFirst.endswith(".py"):
+        return sFirst
+    return ""
+
+
+def _fsFirstPyToken(listTokens):
+    """Return the first ``.py`` token after skipping leading ``-`` flags."""
+    for sToken in listTokens:
+        if sToken.endswith(".py"):
+            return sToken
+        if sToken.startswith("-"):
+            continue
+        return ""
     return ""
 
 
