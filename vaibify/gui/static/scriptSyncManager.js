@@ -46,9 +46,22 @@ var VaibifySyncManager = (function () {
         },
     };
 
+    var _DICT_SERVICE_LABEL_BY_LOWERCASE = {
+        github: "GitHub",
+        zenodo: "Zenodo",
+        overleaf: "Overleaf",
+    };
+
+    function _fsCanonicalServiceLabel(sService) {
+        if (!sService) return "";
+        var sLower = String(sService).toLowerCase();
+        return _DICT_SERVICE_LABEL_BY_LOWERCASE[sLower] || sService;
+    }
+
     function _fsLookupSyncErrorMessage(sService, sErrorType) {
+        var sCanonical = _fsCanonicalServiceLabel(sService);
         var dictForService =
-            _DICT_SERVICE_ERROR_MESSAGES[sService] || {};
+            _DICT_SERVICE_ERROR_MESSAGES[sCanonical] || {};
         if (dictForService[sErrorType]) {
             return dictForService[sErrorType];
         }
