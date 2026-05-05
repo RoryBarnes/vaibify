@@ -377,16 +377,18 @@ fnBuildSingleBinary() {
     echo "[vaib]   Building ${sName}..."
     cd "${sRepoPath}"
     if make opt; then
-        local sBinaryPath="${sRepoPath}/bin/${sName}"
-        if [ -x "${sBinaryPath}" ]; then
-            export PATH="${sRepoPath}/bin:${PATH}"
-            echo "[vaib]   ${sName} binary ready: ${sBinaryPath}"
+        local sBinDir="${sRepoPath}/bin"
+        if [ -d "${sBinDir}" ] && [ -n "$(find "${sBinDir}" \
+                -maxdepth 1 -type f -perm -u+x -print -quit \
+                2>/dev/null)" ]; then
+            export PATH="${sBinDir}:${PATH}"
+            echo "[vaib]   ${sName} build ready (PATH: ${sBinDir})"
             cd "${WORKSPACE}"
             return 0
         fi
-        echo "[vaib]   WARNING: Expected binary not found at ${sBinaryPath}."
+        echo "[vaib]   WARNING: ${sName} build succeeded but ${sBinDir}/ has no executable artifacts."
         fnAppendStartupWarning "${sName}" "c-build" \
-            "expected binary not found at ${sBinaryPath}"
+            "make opt succeeded but bin/ has no executables"
     else
         echo "[vaib]   WARNING: Build failed for ${sName}. You can retry manually:"
         echo "[vaib]     cd ${sRepoPath} && make opt"
