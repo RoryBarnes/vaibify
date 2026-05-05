@@ -143,6 +143,12 @@ var VaibifyStepRenderer = (function () {
                 'with X11 display forwarding.</div></div>';
         }
 
+        sHtml += fsRenderTrackedFileSection(
+            "Scripts", "saStepScripts",
+            step.saStepScripts || [], iIndex, dictVars,
+            sResolvedDir, dictContext
+        );
+
         sHtml += fsRenderSectionLabel(
             "Data Analysis Commands", iIndex, "saDataCommands"
         );
@@ -216,11 +222,6 @@ var VaibifyStepRenderer = (function () {
                 fsRenderPlotMtime(iIndex, dictContext) + '</div>';
         }
 
-        sHtml += fsRenderTrackedFileSection(
-            "Scripts", "saStepScripts",
-            step.saStepScripts || [], iIndex, dictVars,
-            sResolvedDir, dictContext
-        );
         sHtml += fsRenderTrackedFileSection(
             "Test Standards", "saTestStandards",
             step.saTestStandards || [], iIndex, dictVars,
