@@ -1335,12 +1335,6 @@ var VaibifySyncManager = (function () {
         fnShowSyncError(dictResult || {}, sServiceLabel);
     }
 
-    async function fnToggleRemoteTracking(
-        sRemoteKey, sResolved, sWorkdir, bShiftClick,
-    ) {
-        await fnSyncFileToRemote(sRemoteKey, sResolved, sWorkdir);
-    }
-
     function _fnToggleEditZenodoMetadataButton(sService) {
         var elButton = document.getElementById(
             "btnPushEditZenodoMetadata");
@@ -1930,7 +1924,6 @@ var VaibifySyncManager = (function () {
         fnShowSyncError: fnShowSyncError,
         fnShowHelpPopup: fnShowHelpPopup,
         fnSyncFileToRemote: fnSyncFileToRemote,
-        fnToggleRemoteTracking: fnToggleRemoteTracking,
         fsFormatFileCount: fsFormatFileCount,
         fnRenderRemoteSyncPanel: fnRenderRemoteSyncPanel,
         fnRenderRemoteConsistencyBanner: fnRenderRemoteConsistencyBanner,
