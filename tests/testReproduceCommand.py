@@ -488,6 +488,58 @@ def test_rerun_rejects_repo_that_is_not_directory(tmp_path):
     assert os.getcwd() == sOriginalCwd
 
 
+# ----------------------------------------------------------------------
+# Tier 1 incomplete-manifest advisory (legacy manifest gap)
+# ----------------------------------------------------------------------
+
+
+def _fnSeedWorkflowJson(pathRepo, dictWorkflow):
+    """Drop a workflow.json under .vaibify/workflows/ for the test fixture."""
+    pathDir = pathRepo / ".vaibify" / "workflows"
+    pathDir.mkdir(parents=True, exist_ok=True)
+    (pathDir / "wf.json").write_text(json.dumps(dictWorkflow))
+
+
+def test_reproduce_tier1_warns_when_workflow_declares_more(fixtureRepo):
+    """A workflow declaring paths not in the manifest prints an advisory.
+
+    Tier 1 still passes (the entries that ARE pinned still match), but
+    the user is told their coverage is partial so they can re-run to
+    refresh. Without the surfaced advisory the dashboard reads
+    "all clean" and the legacy gap stays invisible.
+    """
+    # The fixture manifest only pins result.txt; declare an extra script.
+    _fnSeedWorkflowJson(fixtureRepo, {"listSteps": [{
+        "sName": "S",
+        "sDirectory": "src",
+        "saDataCommands": ["python compute.py"],
+        "saOutputFiles": [_S_FIXTURE_FILE_NAME],
+    }]})
+    with _fnPatchAllSubprocessesSucceeding():
+        result = CliRunner().invoke(
+            reproduce, [
+                "--repo", str(fixtureRepo),
+                "--skip-tier", "2", "--skip-tier", "3",
+            ],
+        )
+    assert result.exit_code == 0
+    assert "warning" in result.output.lower()
+    assert "src/compute.py" in result.output
+
+
+def test_reproduce_tier1_silent_when_no_workflow_present(fixtureRepo):
+    """Without .vaibify/workflows/, Tier 1 skips the advisory and passes."""
+    with _fnPatchAllSubprocessesSucceeding():
+        result = CliRunner().invoke(
+            reproduce, [
+                "--repo", str(fixtureRepo),
+                "--skip-tier", "2", "--skip-tier", "3",
+            ],
+        )
+    assert result.exit_code == 0
+    assert "warning" not in result.output.lower()
+
+
 def test_image_digest_invocation_uses_argv_form(fixtureRepo):
     """Tier 3 must invoke subprocess.run with argv list (not shell=True)."""
     listSeenInvocations = []

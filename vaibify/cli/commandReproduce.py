@@ -92,7 +92,10 @@ def fbVerifyTier1(sProjectRepo):
     Calls :func:`flistVerifyManifest` and reports the count of clean
     entries vs. mismatches. Returns ``True`` when the manifest is
     fully consistent. Exits with code 2 when the manifest file does
-    not exist.
+    not exist. When the workflow declares paths the manifest does not
+    pin (a legacy manifest written before scripts and standards joined
+    the envelope), the count is reported but the tier still passes —
+    the user is told their coverage is partial so they can re-run.
     """
     pathManifest = Path(sProjectRepo) / _S_MANIFEST_FILENAME
     if not pathManifest.is_file():
@@ -102,10 +105,57 @@ def fbVerifyTier1(sProjectRepo):
     iEntries = manifestWriter.fiCountManifestEntries(sProjectRepo)
     if not listMismatches:
         _fnPrintPass(f"{iEntries}/{iEntries}")
+        _fnReportIncompleteCoverage(sProjectRepo)
         return True
     _fnPrintFail(f"{len(listMismatches)} mismatch(es)")
     _fnReportMismatches(listMismatches)
     return False
+
+
+def _fnReportIncompleteCoverage(sProjectRepo):
+    """Print an advisory line when the workflow declares paths the manifest omits.
+
+    Surfacing this in CLI output (rather than relying on the
+    UserWarning emitted by ``flistVerifyManifest``) ensures the user
+    sees the gap even when stderr is captured or filtered. The
+    workflow.json under ``.vaibify/workflows/`` is the canonical
+    declaration; if it cannot be read, we silently skip the check
+    rather than failing the tier.
+    """
+    dictWorkflow = _fdictLoadFirstWorkflow(sProjectRepo)
+    if dictWorkflow is None:
+        return
+    listIncomplete = manifestWriter.flistDeclaredButMissingFromManifest(
+        sProjectRepo, dictWorkflow,
+    )
+    if listIncomplete:
+        click.echo(
+            f"  warning: {len(listIncomplete)} workflow path(s) not "
+            f"in manifest (first: {listIncomplete[0]}); re-run to "
+            "refresh coverage."
+        )
+
+
+def _fdictLoadFirstWorkflow(sProjectRepo):
+    """Return the parsed workflow.json under .vaibify/workflows/, or None.
+
+    The reproducibility CLI does not currently take a workflow name;
+    it discovers the single workflow living under the project repo's
+    ``.vaibify/workflows/`` directory. When zero or multiple workflows
+    are present we return None and skip the completeness check rather
+    than guess.
+    """
+    pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
+    if not pathWorkflows.is_dir():
+        return None
+    listFiles = sorted(pathWorkflows.glob("*.json"))
+    if len(listFiles) != 1:
+        return None
+    try:
+        with open(listFiles[0], "r", encoding="utf-8") as fileHandle:
+            return json.load(fileHandle)
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def _fnReportMismatches(listMismatches):

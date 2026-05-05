@@ -911,6 +911,10 @@ def _fnRegisterManifestVerify(app, dictCtx):
             listMismatches = await asyncio.to_thread(
                 manifestWriter.flistVerifyManifest, sProjectRepo,
             )
+            listIncomplete = await asyncio.to_thread(
+                manifestWriter.flistDeclaredButMissingFromManifest,
+                sProjectRepo, dictWorkflow,
+            )
         except FileNotFoundError as errorMissing:
             raise HTTPException(
                 status_code=409,
@@ -928,17 +932,26 @@ def _fnRegisterManifestVerify(app, dictCtx):
                 ),
             ) from errorMalformed
         return _fdictBuildManifestVerifyResult(
-            dictWorkflow, listMismatches,
+            dictWorkflow, listMismatches, listIncomplete,
         )
 
 
-def _fdictBuildManifestVerifyResult(dictWorkflow, listMismatches):
+def _fdictBuildManifestVerifyResult(
+    dictWorkflow, listMismatches, listIncomplete,
+):
     """Compose the manifest-verify response payload.
 
     ``iTotal`` reflects the number of entries actually recorded in
     ``MANIFEST.sha256`` rather than the workflow's declared outputs;
     the manifest is the authoritative source of truth for the verify
     operation. When the manifest is absent, ``iTotal`` falls back to 0.
+
+    ``saIncomplete`` lists repo-relative paths the workflow currently
+    declares but the manifest does not pin. The dashboard surfaces this
+    so the user is not lulled by an "all clean" status when their
+    legacy manifest was written before scripts and standards joined the
+    envelope. An empty list means full coverage; a non-empty list is
+    advisory, not a failure.
     """
     from vaibify.reproducibility import manifestWriter
     sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
@@ -950,6 +963,7 @@ def _fdictBuildManifestVerifyResult(dictWorkflow, listMismatches):
         "iTotal": iTotal,
         "iMatching": iTotal - len(listMismatches),
         "listMismatches": listMismatches,
+        "saIncomplete": list(listIncomplete),
     }
 
 

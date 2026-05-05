@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from vaibify.gui.routes.pipelineRoutes import fnRegisterAll
 from vaibify.reproducibility import manifestWriter
+from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
 
 
 S_CONTAINER_ID = "verify_cid"
@@ -170,3 +171,46 @@ def testVerifyManifestReturns422WhenManifestIsMalformed(
     assert "malformed" in sDetail.lower()
     # The detail must not leak the absolute project repo path.
     assert fixtureProjectRepo not in sDetail
+
+
+def testVerifyManifestSurfacesIncompletePathsInPayload(
+    fixtureProjectRepo, fixtureClient,
+):
+    """A legacy manifest pinning only a subset is reported via saIncomplete.
+
+    The dashboard cannot rely on stderr UserWarnings to surface the
+    completeness gap; the response must carry a structured field so
+    the GUI can render an honest banner instead of a misleading
+    "all clean" badge.
+    """
+    sManifest = os.path.join(fixtureProjectRepo, "MANIFEST.sha256")
+    with open(sManifest, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write("# legacy: only one of two declared outputs\n")
+        sHash = fsComputeFileHash(
+            os.path.join(fixtureProjectRepo, "step01", "data.csv")
+        )
+        fileHandle.write(f"{sHash}  step01/data.csv\n")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/manifest/verify",
+    )
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["listMismatches"] == []
+    assert "saIncomplete" in dictBody
+    assert "step01/results.json" in dictBody["saIncomplete"]
+
+
+def testVerifyManifestSaIncompleteEmptyOnFullCoverage(
+    fixtureProjectRepo, fixtureClient,
+):
+    """A current manifest reports an empty saIncomplete list."""
+    manifestWriter.fnWriteManifest(
+        fixtureProjectRepo,
+        _fdictBuildWorkflow(fixtureProjectRepo),
+    )
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/manifest/verify",
+    )
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["saIncomplete"] == []
