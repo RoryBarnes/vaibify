@@ -281,3 +281,32 @@ def test_flistExtractStepScripts_skips_templated_alongside_resolved():
     }
     listResult = flistExtractStepScripts(dictStep)
     assert listResult == ["compute.py", "plot.py"]
+
+
+def test_flistStepStandardsRepoPaths_tolerates_non_dict_dictTests():
+    """A list-shaped ``dictTests`` is skipped, not crashed.
+
+    Malformed workflow.json should not raise from a pure helper; the
+    schema check upstream is the place to surface the error.
+    """
+    assert flistStepStandardsRepoPaths(
+        {"dictTests": ["bad", "value"]}
+    ) == []
+    assert flistStepStandardsRepoPaths(
+        {"dictTests": "string-instead-of-dict"}
+    ) == []
+    assert flistStepStandardsRepoPaths(
+        {"dictTests": None}
+    ) == []
+
+
+def test_flistStepStandardsRepoPaths_tolerates_non_dict_category():
+    """A category whose value isn't a dict is skipped, others still found."""
+    dictStep = {
+        "dictTests": {
+            "dictQualitative": "broken",
+            "dictQuantitative": {"sStandardsPath": "tests/quant.json"},
+            "dictIntegrity": None,
+        },
+    }
+    assert flistStepStandardsRepoPaths(dictStep) == ["tests/quant.json"]

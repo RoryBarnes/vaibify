@@ -150,11 +150,21 @@ def _fsResolveScriptToRepoPath(sScript, sDirectory):
 
 
 def flistStepStandardsRepoPaths(dictStep):
-    """Return repo-relative paths of test standards for one step."""
-    dictTests = dictStep.get("dictTests", {}) or {}
+    """Return repo-relative paths of test standards for one step.
+
+    Defensively tolerates malformed ``dictTests`` shapes — a list, a
+    string, or any non-dict — by skipping the step. A workflow.json
+    that fails the schema check upstream should not crash the
+    canonical-tracked-files computation here.
+    """
+    dictTests = dictStep.get("dictTests", {})
+    if not isinstance(dictTests, dict):
+        return []
     listPaths = []
     for sCategory in TUPLE_TEST_CATEGORY_KEYS:
-        dictCategory = dictTests.get(sCategory, {}) or {}
+        dictCategory = dictTests.get(sCategory, {})
+        if not isinstance(dictCategory, dict):
+            continue
         sStandardsPath = dictCategory.get("sStandardsPath", "")
         if sStandardsPath:
             listPaths.append(fsToRepoRelative(sStandardsPath))
