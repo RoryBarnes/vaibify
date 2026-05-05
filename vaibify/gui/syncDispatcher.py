@@ -1172,28 +1172,41 @@ def _fbSafeDirectoryName(sDirectory):
 
 
 def fsBuildTestMarkerCheckCommand(
-    listStepDirectories, sProjectRepoPath,
+    listStepDirectories, sProjectRepoPath, sWorkflowSlug,
 ):
-    """Build a docker exec command to read test markers and scan dirs."""
+    """Build a docker exec command to read test markers and scan dirs.
+
+    ``sWorkflowSlug`` scopes the marker scan to one workflow's subdir
+    so two workflows in the same project repo don't surface each
+    other's markers. An empty slug yields an empty marker map.
+    """
     listSafe = [
         s for s in listStepDirectories if _fbSafeDirectoryName(s)
     ]
     sJsonDirs = json.dumps(listSafe)
-    sScript = _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath)
+    sScript = _fsBuildTestMarkerScript(
+        sJsonDirs, sProjectRepoPath, sWorkflowSlug,
+    )
     return "python3 -c " + fsShellQuote(sScript)
 
 
-def _fsBuildTestMarkerScript(sJsonDirs, sProjectRepoPath):
+def _fsBuildTestMarkerScript(
+    sJsonDirs, sProjectRepoPath, sWorkflowSlug,
+):
     """Build the Python script that reads markers and scans dirs.
 
     All string literals use double quotes so the script survives
     single-quote shell wrapping by fsShellQuote. ``sProjectRepoPath``
-    is inlined via ``json.dumps`` so it becomes a properly escaped
-    Python string literal inside the generated script.
+    and ``sWorkflowSlug`` are inlined via ``json.dumps`` so they
+    become properly escaped Python string literals.
     """
-    sMarkerDirLiteral = json.dumps(
-        sProjectRepoPath + "/.vaibify/test_markers"
-    )
+    if sWorkflowSlug:
+        sMarkerPath = (
+            sProjectRepoPath + "/.vaibify/test_markers/" + sWorkflowSlug
+        )
+    else:
+        sMarkerPath = ""
+    sMarkerDirLiteral = json.dumps(sMarkerPath)
     sRepoLiteral = json.dumps(sProjectRepoPath)
     return (
         "import json, os\n"

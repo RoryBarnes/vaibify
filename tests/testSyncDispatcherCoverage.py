@@ -307,26 +307,33 @@ class TestFbSafeDirectoryName:
 
 class TestFsBuildTestMarkerCheckCommand:
     def test_produces_python_command(self):
-        sCmd = fsBuildTestMarkerCheckCommand(["/workspace/step01"], "/workspace/DemoRepo")
+        sCmd = fsBuildTestMarkerCheckCommand(
+            ["/workspace/step01"], "/workspace/DemoRepo", "demo")
         assert sCmd.startswith("python3 -c ")
 
     def test_unsafe_dirs_filtered(self):
         sCmd = fsBuildTestMarkerCheckCommand(
             ["/workspace/step01", "/bad;rm -rf /"],
-            "/workspace/DemoRepo")
+            "/workspace/DemoRepo", "demo")
         assert "bad" not in sCmd
         assert "step01" in sCmd
 
     def test_empty_dirs(self):
-        sCmd = fsBuildTestMarkerCheckCommand([], "/workspace/DemoRepo")
+        sCmd = fsBuildTestMarkerCheckCommand(
+            [], "/workspace/DemoRepo", "demo")
         assert "python3 -c" in sCmd
 
     def test_multiple_safe_dirs(self):
         sCmd = fsBuildTestMarkerCheckCommand(
             ["/workspace/A01", "/workspace/A02"],
-            "/workspace/DemoRepo")
+            "/workspace/DemoRepo", "demo")
         assert "A01" in sCmd
         assert "A02" in sCmd
+
+    def test_marker_dir_includes_workflow_slug(self):
+        sCmd = fsBuildTestMarkerCheckCommand(
+            ["/workspace/step01"], "/workspace/DemoRepo", "wfa")
+        assert "/.vaibify/test_markers/wfa" in sCmd
 
 
 class TestFtResultPushStagedToGithub:
@@ -495,7 +502,7 @@ def test_test_marker_script_flags_stale_conftest_without_project_repo():
     """Conftest source missing _PROJECT_REPO must be flagged for backfill."""
     from vaibify.gui.syncDispatcher import _fsBuildTestMarkerScript
     sScript = _fsBuildTestMarkerScript(
-        '["BayesianPosteriors"]', "/workspace/proj",
+        '["BayesianPosteriors"]', "/workspace/proj", "demo",
     )
     assert "_PROJECT_REPO" in sScript
     assert "missingConftest" in sScript
@@ -515,7 +522,7 @@ def test_test_marker_script_treats_modern_conftest_as_present(tmp_path):
         "_PROJECT_REPO = Path('/workspace/proj')\n",
     )
     sScript = _fsBuildTestMarkerScript(
-        json.dumps(["step1"]), str(tmp_path),
+        json.dumps(["step1"]), str(tmp_path), "demo",
     )
     sOutput = subprocess.check_output(
         ["python3", "-c", sScript], text=True,
@@ -536,7 +543,7 @@ def test_test_marker_script_flags_legacy_conftest_as_missing(tmp_path):
         "import json\n",
     )
     sScript = _fsBuildTestMarkerScript(
-        json.dumps(["step1"]), str(tmp_path),
+        json.dumps(["step1"]), str(tmp_path), "demo",
     )
     sOutput = subprocess.check_output(
         ["python3", "-c", sScript], text=True,

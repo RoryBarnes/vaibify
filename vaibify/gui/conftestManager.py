@@ -34,10 +34,11 @@ def fsBuildConftestSource(sProjectRepoPath):
     """Return conftest.py source with a project-repo-aware prologue.
 
     Substitutes ``sProjectRepoPath`` into a small header that defines
-    ``_PROJECT_REPO``, ``_MARKER_DIR``, and ``_WORKFLOWS_DIR``. The
-    template body references those names without redefining them, so
-    marker writes land at ``<sProjectRepoPath>/.vaibify/test_markers/``
-    instead of the legacy workspace-rooted path. The ``!r``
+    ``_PROJECT_REPO``, ``_MARKER_BASE``, and ``_WORKFLOWS_DIR``. The
+    template body computes the active workflow's slug at run time and
+    writes markers to
+    ``<sProjectRepoPath>/.vaibify/test_markers/<slug>/`` so workflows
+    sharing a step directory don't clobber each other. The ``!r``
     substitution produces a quoted Python literal and sidesteps the
     f-string/format-escape trap that affects the template body.
     """
@@ -84,7 +85,7 @@ def fnEnsureTestsDirectory(
 _S_CONFTEST_PROLOGUE_FORMAT = (
     "from pathlib import Path\n"
     "_PROJECT_REPO = Path({sProjectRepoPath!r})\n"
-    "_MARKER_DIR = _PROJECT_REPO / '.vaibify' / 'test_markers'\n"
+    "_MARKER_BASE = _PROJECT_REPO / '.vaibify' / 'test_markers'\n"
     "_WORKFLOWS_DIR = _PROJECT_REPO / '.vaibify' / 'workflows'\n"
 )
 
@@ -272,6 +273,24 @@ def _fsLabelWithinWorkflow(dictWorkflow, sStepDirRel):
     return ""
 
 
+def _fsActiveWorkflowSlug():
+    """Return the slug subdir markers go into for this pytest run.
+
+    Reads VAIBIFY_ACTIVE_WORKFLOW_SLUG (set by the pipeline runner).
+    Falls back to the first workflow JSON in _WORKFLOWS_DIR for manual
+    pytest invocations in single-workflow repos. Returns "default"
+    only when both inputs are absent — the conftest must always pick
+    some non-empty slug so writes don't escape the namespace.
+    """
+    sSlug = os.environ.get("VAIBIFY_ACTIVE_WORKFLOW_SLUG", "").strip()
+    if sSlug:
+        return sSlug
+    if _WORKFLOWS_DIR.is_dir():
+        for pathJson in sorted(_WORKFLOWS_DIR.glob("*.json")):
+            return pathJson.stem
+    return "default"
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Write a JSON marker after every pytest run."""
     sStepDir = str(Path(__file__).resolve().parent.parent)
@@ -289,9 +308,10 @@ def pytest_sessionfinish(session, exitstatus):
         "dictCategories": _fdictBuildCategoryResults(session),
         "dictOutputHashes": _fdictComputeOutputHashes(sStepDir),
     }
-    _MARKER_DIR.mkdir(parents=True, exist_ok=True)
+    sMarkerDir = _MARKER_BASE / _fsActiveWorkflowSlug()
+    sMarkerDir.mkdir(parents=True, exist_ok=True)
     sFilename = sStepDirRel.replace("/", "_") + ".json"
-    (_MARKER_DIR / sFilename).write_text(
+    (sMarkerDir / sFilename).write_text(
         json.dumps(dictMarker, indent=2)
     )
 

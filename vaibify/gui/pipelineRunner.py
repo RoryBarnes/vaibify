@@ -187,11 +187,26 @@ async def _fsBuildDeterminismEnvPrefix(
 async def _fnInjectDeterminismEnvPrefix(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
 ):
-    """Compute the env prefix once and stash it in dictVariables."""
+    """Compute the env prefix once and stash it in dictVariables.
+
+    Bundles the determinism prefix with a
+    ``VAIBIFY_ACTIVE_WORKFLOW_SLUG`` export so the marker conftest
+    namespaces writes under the active workflow when commands flow
+    through ``_ftRunCommandList`` (e.g. the runAllTests path).
+    """
+    from .fileStatusManager import fsWorkflowSlugFromPath
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sEnvPrefix = await _fsBuildDeterminismEnvPrefix(
         connectionDocker, sContainerId, sProjectRepoPath,
     )
+    sWorkflowSlug = fsWorkflowSlugFromPath(
+        dictWorkflow.get("sPath", ""),
+    )
+    if sWorkflowSlug:
+        sEnvPrefix += (
+            "export VAIBIFY_ACTIVE_WORKFLOW_SLUG="
+            + fsShellQuote(sWorkflowSlug) + " && "
+        )
     dictVariables[S_ENV_PREFIX_KEY] = sEnvPrefix
 
 

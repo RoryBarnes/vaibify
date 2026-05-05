@@ -48,6 +48,7 @@ __all__ = [
     "fnCollectScriptPathsByStep",
     "fnCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
+    "fsWorkflowSlugFromPath",
     "fbReconcileUpstreamFlags",
     "fbReconcileUserVerificationTimestamps",
     "fbIsStepFullyVerified",
@@ -61,23 +62,42 @@ def fsMarkerNameFromStepDirectory(sStepDirectory):
     return sStepDirectory.strip("/").replace("/", "_") + ".json"
 
 
-def fnCollectMarkerPathsByStep(dictWorkflow, sProjectRepoPath):
+def fsWorkflowSlugFromPath(sWorkflowPath):
+    """Return the marker-namespace slug for a workflow JSON path.
+
+    Two workflows in the same project repo namespace their markers by
+    workflow JSON basename so they don't clobber each other when steps
+    share an ``sDirectory``. Returns an empty string when the path is
+    missing — callers treat that as a no-marker state.
+    """
+    if not sWorkflowPath:
+        return ""
+    sBase = posixpath.basename(sWorkflowPath)
+    if sBase.endswith(".json"):
+        sBase = sBase[:-5]
+    return sBase
+
+
+def fnCollectMarkerPathsByStep(
+    dictWorkflow, sProjectRepoPath, sWorkflowPath,
+):
     """Return {iStepIndex: sMarkerPath} for each step with a directory.
 
-    ``sProjectRepoPath`` is the container-absolute path of the active
-    workflow's project repo (auto-detected at connect time and stored
-    on ``dictWorkflow['sProjectRepoPath']``). Marker files live under
-    ``<sProjectRepoPath>/.vaibify/test_markers/`` so that they are
-    committed alongside the rest of the project and survive clone.
-    An empty ``sProjectRepoPath`` yields an empty map — the caller is
-    expected to surface the no-repo state explicitly rather than
-    silently falling back to a workspace-rooted default.
+    Markers live under
+    ``<sProjectRepoPath>/.vaibify/test_markers/<workflowSlug>/`` so
+    workflows in the same project repo never clobber each other.
+    ``sWorkflowPath`` is the workflow JSON's container path (e.g.
+    ``dictWorkflow['sPath']``) — its basename minus ``.json`` is the
+    namespace slug. An empty ``sProjectRepoPath`` or empty
+    ``sWorkflowPath`` yields an empty map; the caller surfaces the
+    no-workflow state explicitly rather than falling back silently.
     """
     dictResult = {}
-    if not sProjectRepoPath:
+    sSlug = fsWorkflowSlugFromPath(sWorkflowPath)
+    if not sProjectRepoPath or not sSlug:
         return dictResult
     sMarkerDir = posixpath.join(
-        sProjectRepoPath, ".vaibify", "test_markers",
+        sProjectRepoPath, ".vaibify", "test_markers", sSlug,
     )
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", [])

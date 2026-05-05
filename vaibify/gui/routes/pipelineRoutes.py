@@ -40,6 +40,7 @@ from ..fileStatusManager import (
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
+    fsWorkflowSlugFromPath,
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
 from ..pathContract import fdictAbsKeysToRepoRelative
@@ -402,6 +403,7 @@ async def _fdictFetchOutputStatus(
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
     dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
         dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        dictWorkflow.get("sPath", ""),
     )
     listMarkerPaths = list(dictMarkerPathsByStep.values())
     listTestSourcePaths = []
@@ -491,10 +493,13 @@ async def _fdictFetchTestStatus(
     """Fetch test markers, backfill conftest, and build test status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sWorkflowSlug = fsWorkflowSlugFromPath(
+        dictWorkflow.get("sPath", ""),
+    )
     dictTestInfo = await asyncio.to_thread(
         _fdictFetchTestMarkers,
         dictCtx["docker"], sContainerId, listStepDirs,
-        sProjectRepoPath,
+        sProjectRepoPath, sWorkflowSlug,
     )
     await _fnBackfillMissingConftest(
         dictCtx["docker"], sContainerId,
@@ -529,12 +534,13 @@ def _flistExtractStepDirectories(dictWorkflow):
 
 
 def _fdictFetchTestMarkers(
-    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
+    connectionDocker, sContainerId, listStepDirs,
+    sProjectRepoPath, sWorkflowSlug,
 ):
     """Run the batched test-marker check command."""
     from .. import syncDispatcher as _syncDispatcher
     sCommand = _syncDispatcher.fsBuildTestMarkerCheckCommand(
-        listStepDirs, sProjectRepoPath,
+        listStepDirs, sProjectRepoPath, sWorkflowSlug,
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand

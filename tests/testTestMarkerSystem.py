@@ -69,31 +69,47 @@ def test_conftestTemplate_contains_pytest_hook():
     assert "pytest_sessionfinish" in _CONFTEST_MARKER_TEMPLATE
 
 
-def test_conftestTemplate_references_marker_dir():
-    # Marker dir is now defined in the parameterized prologue that
-    # fsBuildConftestSource prepends; the template body references
-    # _MARKER_DIR as a bare name.
-    assert "_MARKER_DIR" in _CONFTEST_MARKER_TEMPLATE
+def test_conftestTemplate_references_marker_base():
+    # Marker base dir is defined in the parameterized prologue that
+    # fsBuildConftestSource prepends; the template body resolves the
+    # active workflow's slug at run time and joins it onto _MARKER_BASE.
+    assert "_MARKER_BASE" in _CONFTEST_MARKER_TEMPLATE
+
+
+def test_conftestTemplate_reads_active_workflow_slug_env():
+    # The pipeline runner sets VAIBIFY_ACTIVE_WORKFLOW_SLUG when
+    # invoking pytest; the conftest reads it to namespace markers per
+    # workflow.
+    assert "VAIBIFY_ACTIVE_WORKFLOW_SLUG" in _CONFTEST_MARKER_TEMPLATE
 
 
 # ---- syncDispatcher: fsBuildTestMarkerCheckCommand ----
 
 def test_fsBuildTestMarkerCheckCommand_non_empty():
-    sCommand = fsBuildTestMarkerCheckCommand(["/workspace/step1"], "/workspace/DemoRepo")
+    sCommand = fsBuildTestMarkerCheckCommand(
+        ["/workspace/step1"], "/workspace/DemoRepo", "demo")
     assert len(sCommand) > 0
     assert "python3" in sCommand
 
 
 def test_fsBuildTestMarkerCheckCommand_includes_directories():
     listDirs = ["/workspace/step1", "/workspace/step2"]
-    sCommand = fsBuildTestMarkerCheckCommand(listDirs, "/workspace/DemoRepo")
+    sCommand = fsBuildTestMarkerCheckCommand(
+        listDirs, "/workspace/DemoRepo", "demo")
     assert "/workspace/step1" in sCommand
     assert "/workspace/step2" in sCommand
 
 
 def test_fsBuildTestMarkerCheckCommand_empty_list():
-    sCommand = fsBuildTestMarkerCheckCommand([], "/workspace/DemoRepo")
+    sCommand = fsBuildTestMarkerCheckCommand(
+        [], "/workspace/DemoRepo", "demo")
     assert len(sCommand) > 0
+
+
+def test_fsBuildTestMarkerCheckCommand_scopes_to_workflow_slug():
+    sCommand = fsBuildTestMarkerCheckCommand(
+        ["/workspace/step1"], "/workspace/DemoRepo", "wfa")
+    assert "/workspace/DemoRepo/.vaibify/test_markers/wfa" in sCommand
 
 
 # ---- syncDispatcher: fdictParseTestMarkerOutput ----

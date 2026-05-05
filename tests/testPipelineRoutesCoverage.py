@@ -552,7 +552,7 @@ class TestFdictFetchTestMarkers:
         ):
             dictResult = _fdictFetchTestMarkers(
                 mockDocker, "cid1", ["/workspace/step1"],
-                "/workspace/DemoRepo",
+                "/workspace/DemoRepo", "demo",
             )
             assert dictResult == {
                 "markers": {},

@@ -472,33 +472,33 @@ class TestFlistBuildStepCopyCommandList:
 class TestFsBuildTestMarkerScript:
     def test_returns_valid_python(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps(["step01"]), "/workspace/DemoRepo")
+            json.dumps(["step01"]), "/workspace/DemoRepo", "demo")
         assert "import json" in sScript
         assert "print(json.dumps(R))" in sScript
 
     def test_contains_marker_directory(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps([]), "/workspace/DemoRepo")
+            json.dumps([]), "/workspace/DemoRepo", "demo")
         assert "test_markers" in sScript
 
     def test_no_single_quotes(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps(["step"]), "/workspace/DemoRepo")
+            json.dumps(["step"]), "/workspace/DemoRepo", "demo")
         assert "'" not in sScript
 
     def test_includes_hash_extraction(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps([]), "/workspace/DemoRepo")
+            json.dumps([]), "/workspace/DemoRepo", "demo")
         assert "vaibify-template-hash" in sScript
 
     def test_checks_conftest(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps([]), "/workspace/DemoRepo")
+            json.dumps([]), "/workspace/DemoRepo", "demo")
         assert "conftest.py" in sScript
 
     def test_embeds_project_repo_path(self):
         sScript = _fsBuildTestMarkerScript(
-            json.dumps([]), "/workspace/DemoRepo")
+            json.dumps([]), "/workspace/DemoRepo", "demo")
         assert "/workspace/DemoRepo" in sScript
 
 

@@ -7,7 +7,7 @@ what round-trips and what stays local.
 
 Tracked:
 - ``.vaibify/workflows/*.json``  workflow definitions
-- ``.vaibify/test_markers/*.json``  verification + hashes (survives clone)
+- ``.vaibify/test_markers/*/*.json``  verification + hashes (survives clone)
 - ``.vaibify/zenodo-refs.json``  pointers to externalized large data
 - Step scripts referenced by saDataCommands / saPlotCommands
 - Step outputs (plot + data files, archive and supporting) under the
@@ -56,7 +56,7 @@ I_LARGE_FILE_THRESHOLD_BYTES = 50 * 1024 * 1024
 S_CONTAINER_WORKSPACE_PREFIX = "/workspace/"
 
 S_VAIBIFY_WORKFLOWS_GLOB = ".vaibify/workflows/*.json"
-S_VAIBIFY_MARKERS_GLOB = ".vaibify/test_markers/*.json"
+S_VAIBIFY_MARKERS_GLOB = ".vaibify/test_markers/*/*.json"
 S_VAIBIFY_ZENODO_REFS = ".vaibify/zenodo-refs.json"
 
 TUPLE_ROOT_CONFIG_FILES = (
@@ -144,24 +144,51 @@ def _flistVaibifyTrackedFiles(sWorkspaceRoot):
     """Return repo-relative paths under .vaibify/ that round-trip through git.
 
     Scans the host filesystem for concrete workflow JSON and test
-    marker files, plus zenodo-refs.json if present.
+    marker files, plus zenodo-refs.json if present. Workflow JSONs
+    live flat under ``workflows/``; markers live one level deeper
+    under ``test_markers/<workflowSlug>/`` so workflows in the same
+    project repo don't share marker filenames.
     """
     listPaths = []
     sVaibifyDir = os.path.join(sWorkspaceRoot, ".vaibify")
-    for sSubdir, sExt in (
-        ("workflows", ".json"),
-        ("test_markers", ".json"),
-    ):
-        sFullDir = os.path.join(sVaibifyDir, sSubdir)
-        if not os.path.isdir(sFullDir):
-            continue
-        for sEntry in sorted(os.listdir(sFullDir)):
-            if sEntry.endswith(sExt):
-                listPaths.append(
-                    posixpath.join(".vaibify", sSubdir, sEntry)
-                )
+    listPaths.extend(_flistFlatVaibifyJsons(sVaibifyDir, "workflows"))
+    listPaths.extend(_flistMarkerJsonsByWorkflow(sVaibifyDir))
     if os.path.isfile(os.path.join(sVaibifyDir, "zenodo-refs.json")):
         listPaths.append(S_VAIBIFY_ZENODO_REFS)
+    return listPaths
+
+
+def _flistFlatVaibifyJsons(sVaibifyDir, sSubdir):
+    """Return repo-relative paths to ``.vaibify/<sSubdir>/*.json`` files."""
+    listPaths = []
+    sFullDir = os.path.join(sVaibifyDir, sSubdir)
+    if not os.path.isdir(sFullDir):
+        return listPaths
+    for sEntry in sorted(os.listdir(sFullDir)):
+        if sEntry.endswith(".json"):
+            listPaths.append(
+                posixpath.join(".vaibify", sSubdir, sEntry)
+            )
+    return listPaths
+
+
+def _flistMarkerJsonsByWorkflow(sVaibifyDir):
+    """Return repo-relative paths to ``.vaibify/test_markers/<slug>/*.json``."""
+    listPaths = []
+    sMarkerRoot = os.path.join(sVaibifyDir, "test_markers")
+    if not os.path.isdir(sMarkerRoot):
+        return listPaths
+    for sSlug in sorted(os.listdir(sMarkerRoot)):
+        sSlugDir = os.path.join(sMarkerRoot, sSlug)
+        if not os.path.isdir(sSlugDir):
+            continue
+        for sEntry in sorted(os.listdir(sSlugDir)):
+            if sEntry.endswith(".json"):
+                listPaths.append(
+                    posixpath.join(
+                        ".vaibify", "test_markers", sSlug, sEntry,
+                    )
+                )
     return listPaths
 
 

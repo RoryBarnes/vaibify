@@ -188,11 +188,27 @@ def test_flistCanonicalTrackedFiles_includes_workflow_jsons(tmp_path):
 
 
 def test_flistCanonicalTrackedFiles_includes_test_markers(tmp_path):
-    _fnWriteFile(str(tmp_path), ".vaibify/test_markers/step1.json", "{}")
+    _fnWriteFile(
+        str(tmp_path), ".vaibify/test_markers/demo/step1.json", "{}")
     dictWorkflow = {"listSteps": []}
     listResult = stateContract.flistCanonicalTrackedFiles(
         dictWorkflow, str(tmp_path))
-    assert ".vaibify/test_markers/step1.json" in listResult
+    assert ".vaibify/test_markers/demo/step1.json" in listResult
+
+
+def test_flistCanonicalTrackedFiles_separates_per_workflow_markers(
+    tmp_path,
+):
+    """Two workflows in the same project repo each contribute markers."""
+    _fnWriteFile(
+        str(tmp_path), ".vaibify/test_markers/wfa/shared.json", "{}")
+    _fnWriteFile(
+        str(tmp_path), ".vaibify/test_markers/wfb/shared.json", "{}")
+    dictWorkflow = {"listSteps": []}
+    listResult = stateContract.flistCanonicalTrackedFiles(
+        dictWorkflow, str(tmp_path))
+    assert ".vaibify/test_markers/wfa/shared.json" in listResult
+    assert ".vaibify/test_markers/wfb/shared.json" in listResult
 
 
 def test_flistCanonicalTrackedFiles_includes_zenodo_refs(tmp_path):

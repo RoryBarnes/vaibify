@@ -399,11 +399,18 @@ def fdictBootstrapStateFromMarkers(
     ``outputs-missing`` when expected outputs aren't on disk. ``sUser``
     is always empty — verification by-eye is per-machine.
     """
+    from .fileStatusManager import fsWorkflowSlugFromPath
     if not sProjectRepoPath:
+        return fdictBuildEmptyState()
+    sWorkflowSlug = fsWorkflowSlugFromPath(
+        dictWorkflow.get("sPath", ""),
+    )
+    if not sWorkflowSlug:
         return fdictBuildEmptyState()
     listSteps = dictWorkflow.get("listSteps", []) or []
     listMarkers = _flistFetchMarkers(
-        connectionDocker, sContainerId, sProjectRepoPath, listSteps,
+        connectionDocker, sContainerId, sProjectRepoPath,
+        sWorkflowSlug, listSteps,
     )
     listAllOutputs = _flistAllMarkerOutputs(listMarkers)
     dictOnDiskHashes = _fdictHashOnDiskOutputs(
@@ -427,7 +434,8 @@ def fdictBootstrapStateFromMarkers(
 
 
 def _flistFetchMarkers(
-    connectionDocker, sContainerId, sProjectRepoPath, listSteps,
+    connectionDocker, sContainerId, sProjectRepoPath,
+    sWorkflowSlug, listSteps,
 ):
     """Return ``[(sDirectory, dictMarker_or_None), ...]`` for every step."""
     listResult = []
@@ -437,7 +445,7 @@ def _flistFetchMarkers(
             continue
         sMarkerPath = posixpath.join(
             sProjectRepoPath, S_TEST_MARKERS_RELATIVE,
-            sDirectory + ".json",
+            sWorkflowSlug, sDirectory + ".json",
         )
         dictMarker = _fdictReadMarker(
             connectionDocker, sContainerId, sMarkerPath,

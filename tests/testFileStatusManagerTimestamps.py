@@ -405,19 +405,49 @@ def test_collect_marker_paths_uses_helper():
     }
     dictResult = fnCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/DemoRepo",
+        "/workspace/DemoRepo/.vaibify/workflows/demo.json",
     )
     assert dictResult[0] == (
-        "/workspace/DemoRepo/.vaibify/test_markers/stepA.json"
+        "/workspace/DemoRepo/.vaibify/test_markers/demo/stepA.json"
     )
     assert 1 not in dictResult
     assert dictResult[2] == (
-        "/workspace/DemoRepo/.vaibify/test_markers/stepB.json"
+        "/workspace/DemoRepo/.vaibify/test_markers/demo/stepB.json"
     )
 
 
 def test_collect_marker_paths_empty_repo_returns_empty():
     dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
-    assert fnCollectMarkerPathsByStep(dictWorkflow, "") == {}
+    assert fnCollectMarkerPathsByStep(
+        dictWorkflow, "",
+        "/workspace/Repo/.vaibify/workflows/demo.json",
+    ) == {}
+
+
+def test_collect_marker_paths_empty_workflow_path_returns_empty():
+    dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
+    assert fnCollectMarkerPathsByStep(
+        dictWorkflow, "/workspace/Repo", "",
+    ) == {}
+
+
+def test_collect_marker_paths_namespace_separates_workflows():
+    dictWorkflow = {"listSteps": [{"sDirectory": "shared"}]}
+    dictResultA = fnCollectMarkerPathsByStep(
+        dictWorkflow, "/workspace/Repo",
+        "/workspace/Repo/.vaibify/workflows/wfa.json",
+    )
+    dictResultB = fnCollectMarkerPathsByStep(
+        dictWorkflow, "/workspace/Repo",
+        "/workspace/Repo/.vaibify/workflows/wfb.json",
+    )
+    assert dictResultA[0] == (
+        "/workspace/Repo/.vaibify/test_markers/wfa/shared.json"
+    )
+    assert dictResultB[0] == (
+        "/workspace/Repo/.vaibify/test_markers/wfb/shared.json"
+    )
+    assert dictResultA[0] != dictResultB[0]
 
 
 def test_marker_name_sanitizes_paths():

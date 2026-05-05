@@ -858,6 +858,37 @@ def test_fnInjectDeterminismEnvPrefix_empty_when_no_repo_path():
     assert dictVariables[S_ENV_PREFIX_KEY] == ""
 
 
+def test_fnInjectDeterminismEnvPrefix_includes_workflow_slug():
+    """The runAllTests path threads the slug through dictVariables."""
+    mockDocker = _fMockDocker(0, "1745798400\n")
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/repo",
+        "sPath": "/workspace/repo/.vaibify/workflows/wfa.json",
+    }
+    dictVariables = {}
+    _fnRunAsync(_fnInjectDeterminismEnvPrefix(
+        mockDocker, "cid", dictWorkflow, dictVariables,
+    ))
+    assert (
+        "VAIBIFY_ACTIVE_WORKFLOW_SLUG='wfa'"
+        in dictVariables[S_ENV_PREFIX_KEY]
+    )
+
+
+def test_fnInjectDeterminismEnvPrefix_no_slug_when_path_missing():
+    """Empty sPath leaves the slug export off the prefix."""
+    mockDocker = _fMockDocker(0, "1745798400\n")
+    dictWorkflow = {"sProjectRepoPath": "/workspace/repo"}
+    dictVariables = {}
+    _fnRunAsync(_fnInjectDeterminismEnvPrefix(
+        mockDocker, "cid", dictWorkflow, dictVariables,
+    ))
+    assert (
+        "VAIBIFY_ACTIVE_WORKFLOW_SLUG"
+        not in dictVariables[S_ENV_PREFIX_KEY]
+    )
+
+
 def test_ftRunCommandList_threads_env_prefix_to_executed_command():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()

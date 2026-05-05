@@ -274,7 +274,7 @@ def _fnBuildBootstrapMock(
         for sName, dictMarker in dictMarkers.items():
             sExpected = (
                 "/workspace/Project/.vaibify/test_markers/"
-                + sName + ".json"
+                "demo/" + sName + ".json"
             )
             if sPath == sExpected:
                 if dictMarker is None:
@@ -296,6 +296,9 @@ def _fnBuildBootstrapMock(
 def _fdictBuildWorkflowWith(listSteps):
     return {
         "sPlotDirectory": "Plot",
+        "sPath": (
+            "/workspace/Project/.vaibify/workflows/demo.json"
+        ),
         "listSteps": [
             {
                 "sName": s, "sDirectory": s,

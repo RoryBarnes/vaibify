@@ -7,7 +7,11 @@ import asyncio
 from fastapi import HTTPException, Request
 
 from ..actionCatalog import fnAgentAction
-from ..fileStatusManager import fbIsStepFullyVerified, fnMaybeAutoArchive
+from ..fileStatusManager import (
+    fbIsStepFullyVerified,
+    fnMaybeAutoArchive,
+    fsWorkflowSlugFromPath,
+)
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import fsResolveStepWorkdir
 from .. import pipelineServer as _pipelineServer
@@ -107,8 +111,23 @@ def _fsAbsoluteStepWorkdir(dictStep, sRepoRoot):
     return fsResolveStepWorkdir(sDir, {"sRepoRoot": sRepoRoot})
 
 
+def _fsPrefixWithWorkflowEnv(sCommand, sWorkflowSlug):
+    """Prepend ``VAIBIFY_ACTIVE_WORKFLOW_SLUG=<slug>`` to a shell command.
+
+    The marker conftest reads this env var to namespace its writes
+    under the right workflow's subdirectory. Returns the command
+    unchanged when the slug is empty (no active workflow context).
+    """
+    if not sWorkflowSlug:
+        return sCommand
+    return (
+        "export VAIBIFY_ACTIVE_WORKFLOW_SLUG="
+        + fsShellQuote(sWorkflowSlug) + " && " + sCommand
+    )
+
+
 async def _fdictRunAllTestCategories(
-    dictCtx, sContainerId, dictStep, sRepoRoot="",
+    dictCtx, sContainerId, dictStep, sRepoRoot="", sWorkflowSlug="",
 ):
     """Run each test category and return {category: result}."""
     sDir = _fsAbsoluteStepWorkdir(dictStep, sRepoRoot)
@@ -119,6 +138,7 @@ async def _fdictRunAllTestCategories(
     for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
         dictResult = await _fdictRunOneTestCategory(
             dictCtx, sContainerId, dictStep, sDir, sCategory,
+            sWorkflowSlug,
         )
         if dictResult is None:
             continue
@@ -133,6 +153,7 @@ async def _fdictRunAllTestCategories(
 
 async def _fdictRunOneTestCategory(
     dictCtx, sContainerId, dictStep, sDirectory, sCategory,
+    sWorkflowSlug="",
 ):
     """Execute one test category and return result dict, or None."""
     dictCat = dictStep.get("dictTests", {}).get(sCategory, {})
@@ -141,6 +162,7 @@ async def _fdictRunOneTestCategory(
         return None
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + listCatCmds)
+    sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
     resultExec = await asyncio.to_thread(
         dictCtx["docker"].texecRunInContainerStreamed,
         sContainerId, sCatCmd,
@@ -261,6 +283,10 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             ),
             request.sFilePath,
         )
+        sTestCmd = _fsPrefixWithWorkflowEnv(
+            sTestCmd,
+            fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+        )
         resultExec = await asyncio.to_thread(
             dictCtx["docker"].texecRunInContainerStreamed,
             sContainerId, sTestCmd,
@@ -306,6 +332,8 @@ def _fnRegisterTestRun(app, dictCtx):
         dictCategoryResults = await _fdictRunAllTestCategories(
             dictCtx, sContainerId, dictStep,
             sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
+            sWorkflowSlug=fsWorkflowSlugFromPath(
+                dictWorkflow.get("sPath", "")),
         )
         bAllPassed = all(
             d["bPassed"] for d in dictCategoryResults.values()
@@ -361,6 +389,10 @@ def _fnRegisterTestRun(app, dictCtx):
         )
         sFullCmd = " && ".join(
             [f"cd {fsShellQuote(sDir)}"] + listCmds)
+        sFullCmd = _fsPrefixWithWorkflowEnv(
+            sFullCmd,
+            fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+        )
         resultExec = await asyncio.to_thread(
             dictCtx["docker"].texecRunInContainerStreamed,
             sContainerId, sFullCmd,

@@ -1074,6 +1074,7 @@ from .fileStatusManager import (  # noqa: F401
     fnCollectScriptPathsByStep,
     fnMaybeAutoArchive,
     fsMarkerNameFromStepDirectory,
+    fsWorkflowSlugFromPath,
 )
 
 from .testStatusManager import (  # noqa: F401
