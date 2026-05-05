@@ -1903,16 +1903,31 @@ var VaibifySyncManager = (function () {
         var iTotal = dict.iTotal || 0;
         var iMatching = dict.iMatching || 0;
         var listMismatches = dict.listMismatches || [];
-        if (listMismatches.length === 0) {
+        var saIncomplete = dict.saIncomplete || [];
+        var iIncomplete = saIncomplete.length;
+        if (listMismatches.length === 0 && iIncomplete === 0) {
             PipeleyenApp.fnShowToast(
                 "Manifest verified: " + iMatching + "/" + iTotal +
                 " files match.", "success");
             return;
         }
+        if (listMismatches.length === 0) {
+            PipeleyenApp.fnShowToast(
+                "Manifest verified " + iMatching + "/" + iTotal +
+                ", but " + iIncomplete +
+                " declared path(s) not pinned: " +
+                _fsBuildMismatchSummary(saIncomplete) +
+                " Re-run to refresh coverage.",
+                "warning");
+            return;
+        }
         var sList = _fsBuildMismatchSummary(listMismatches);
+        var sExtra = iIncomplete > 0
+            ? " Plus " + iIncomplete + " not pinned."
+            : "";
         PipeleyenApp.fnShowToast(
             "Manifest mismatch: " + iMatching + "/" + iTotal +
-            " match. " + sList, "error");
+            " match. " + sList + sExtra, "error");
     }
 
     function _fsBuildMismatchSummary(listMismatches) {
