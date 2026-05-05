@@ -540,6 +540,41 @@ def test_reproduce_tier1_silent_when_no_workflow_present(fixtureRepo):
     assert "warning" not in result.output.lower()
 
 
+def test_reproduce_tier1_aggregates_multiple_workflows(fixtureRepo):
+    """Multi-workflow projects union their declared paths for the check.
+
+    Earlier behaviour skipped the completeness check when more than
+    one workflow.json lived under ``.vaibify/workflows/``; that
+    silently weakened the L3 envelope check for projects that hosted
+    several pipelines side-by-side.
+    """
+    pathDir = fixtureRepo / ".vaibify" / "workflows"
+    pathDir.mkdir(parents=True, exist_ok=True)
+    (pathDir / "wfA.json").write_text(json.dumps({"listSteps": [{
+        "sName": "A",
+        "sDirectory": "src",
+        "saDataCommands": ["python compute.py"],
+        "saOutputFiles": [_S_FIXTURE_FILE_NAME],
+    }]}))
+    (pathDir / "wfB.json").write_text(json.dumps({"listSteps": [{
+        "sName": "B",
+        "sDirectory": "analysis",
+        "saPlotCommands": ["python plot.py"],
+        "saOutputFiles": [_S_FIXTURE_FILE_NAME],
+    }]}))
+    with _fnPatchAllSubprocessesSucceeding():
+        result = CliRunner().invoke(
+            reproduce, [
+                "--repo", str(fixtureRepo),
+                "--skip-tier", "2", "--skip-tier", "3",
+            ],
+        )
+    assert result.exit_code == 0
+    assert "warning" in result.output.lower()
+    sCombined = result.output
+    assert "src/compute.py" in sCombined or "analysis/plot.py" in sCombined
+
+
 def test_image_digest_invocation_uses_argv_form(fixtureRepo):
     """Tier 3 must invoke subprocess.run with argv list (not shell=True)."""
     listSeenInvocations = []

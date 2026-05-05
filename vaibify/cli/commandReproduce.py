@@ -113,20 +113,18 @@ def fbVerifyTier1(sProjectRepo):
 
 
 def _fnReportIncompleteCoverage(sProjectRepo):
-    """Print an advisory line when the workflow declares paths the manifest omits.
+    """Print an advisory line when any workflow declares paths the manifest omits.
 
-    Surfacing this in CLI output (rather than relying on the
-    UserWarning emitted by ``flistVerifyManifest``) ensures the user
-    sees the gap even when stderr is captured or filtered. The
-    workflow.json under ``.vaibify/workflows/`` is the canonical
-    declaration; if it cannot be read, we silently skip the check
-    rather than failing the tier.
+    Aggregates across every workflow.json under ``.vaibify/workflows/``
+    so multi-workflow projects are not silently skipped. The manifest
+    is one file pinning artefacts across the whole project repo, so
+    the completeness check is project-wide.
     """
-    dictWorkflow = _fdictLoadFirstWorkflow(sProjectRepo)
-    if dictWorkflow is None:
+    dictAggregate = _fdictAggregateAllWorkflows(sProjectRepo)
+    if dictAggregate is None:
         return
     listIncomplete = manifestWriter.flistDeclaredButMissingFromManifest(
-        sProjectRepo, dictWorkflow,
+        sProjectRepo, dictAggregate,
     )
     if listIncomplete:
         click.echo(
@@ -136,23 +134,30 @@ def _fnReportIncompleteCoverage(sProjectRepo):
         )
 
 
-def _fdictLoadFirstWorkflow(sProjectRepo):
-    """Return the parsed workflow.json under .vaibify/workflows/, or None.
+def _fdictAggregateAllWorkflows(sProjectRepo):
+    """Return a synthetic workflow whose listSteps unions every workflow's steps.
 
-    The reproducibility CLI does not currently take a workflow name;
-    it discovers the single workflow living under the project repo's
-    ``.vaibify/workflows/`` directory. When zero or multiple workflows
-    are present we return None and skip the completeness check rather
-    than guess.
+    Returns ``None`` when no readable workflow.json files exist so the
+    coverage check is skipped rather than reported as empty.
     """
     pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
     if not pathWorkflows.is_dir():
         return None
-    listFiles = sorted(pathWorkflows.glob("*.json"))
-    if len(listFiles) != 1:
+    listAllSteps = []
+    for pathFile in sorted(pathWorkflows.glob("*.json")):
+        dictWorkflow = _fdictLoadWorkflowFile(pathFile)
+        if dictWorkflow is None:
+            continue
+        listAllSteps.extend(dictWorkflow.get("listSteps", []) or [])
+    if not listAllSteps:
         return None
+    return {"listSteps": listAllSteps}
+
+
+def _fdictLoadWorkflowFile(pathFile):
+    """Parse one workflow.json or return None on read/parse failure."""
     try:
-        with open(listFiles[0], "r", encoding="utf-8") as fileHandle:
+        with open(pathFile, "r", encoding="utf-8") as fileHandle:
             return json.load(fileHandle)
     except (OSError, json.JSONDecodeError):
         return None
