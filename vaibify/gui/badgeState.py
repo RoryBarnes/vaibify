@@ -87,15 +87,12 @@ def _fsZenodoBadge(
 ):
     """Three-state Zenodo icon that also checks the endpoint.
 
-    Zenodo has two distinct services (production ``zenodo.org`` and
-    ``sandbox.zenodo.org``). A digest captured against one endpoint
-    must not be reported as ``synced`` once the workflow flips to the
-    other. When ``sCurrentEndpoint`` is empty (legacy callers that
-    have not threaded the workflow service) the endpoint check is
-    skipped so existing behaviour is preserved. When supplied, a
-    missing or mismatched stored endpoint forces ``drifted``, even if
-    the SHAs happen to match — the user must re-push to populate the
-    field honestly.
+    A digest captured against ``zenodo.org`` must not paint synced
+    once the workflow flips to ``sandbox.zenodo.org`` (or vice
+    versa). When ``sCurrentEndpoint`` is non-empty, a missing or
+    mismatched stored endpoint forces ``drifted`` regardless of SHA;
+    the user must re-push to repopulate the field honestly. When
+    empty, the endpoint check is skipped (legacy SHA-only behaviour).
     """
     if not bTracked:
         return S_BADGE_NONE

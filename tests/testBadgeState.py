@@ -339,6 +339,60 @@ def test_zenodo_badge_from_hashes_synced_on_matching_endpoint():
     )
 
 
+def test_zenodo_badge_round_trip_persists_endpoint_synced():
+    """Push, serialize workflow.json, reload, re-render: still synced.
+
+    Guards against silently dropping ``sZenodoLastPushedEndpoint``
+    in workflow save/load, which would re-introduce the endpoint
+    blindness the original commit fixed.
+    """
+    import json
+    from vaibify.gui import workflowManager
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    workflowManager.fnSetServiceTracking(
+        dictWorkflow, "Plot/fig.pdf", "Zenodo", True,
+    )
+    workflowManager.fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "abc123"},
+        sZenodoService="sandbox",
+    )
+    dictReloaded = json.loads(json.dumps(dictWorkflow))
+    dictResult = badgeState.fdictBadgeStateFromHashes(
+        ["Plot/fig.pdf"], _fdictGit(),
+        dictReloaded["dictSyncStatus"],
+        {"Plot/fig.pdf": "abc123"}, sZenodoService="sandbox",
+    )
+    assert dictResult["Plot/fig.pdf"]["sZenodo"] == (
+        badgeState.S_BADGE_SYNCED
+    )
+
+
+def test_zenodo_badge_round_trip_drifts_when_service_flips():
+    """Push to sandbox, serialize/reload, then read with workflow
+    flipped to production: badge must drift even though SHA matches."""
+    import json
+    from vaibify.gui import workflowManager
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    workflowManager.fnSetServiceTracking(
+        dictWorkflow, "Plot/fig.pdf", "Zenodo", True,
+    )
+    workflowManager.fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "abc123"},
+        sZenodoService="sandbox",
+    )
+    dictReloaded = json.loads(json.dumps(dictWorkflow))
+    dictResult = badgeState.fdictBadgeStateFromHashes(
+        ["Plot/fig.pdf"], _fdictGit(),
+        dictReloaded["dictSyncStatus"],
+        {"Plot/fig.pdf": "abc123"}, sZenodoService="zenodo",
+    )
+    assert dictResult["Plot/fig.pdf"]["sZenodo"] == (
+        badgeState.S_BADGE_DRIFTED
+    )
+
+
 # ----------------------------------------------------------------------
 # fdictBadgeStateForWorkspace
 # ----------------------------------------------------------------------
