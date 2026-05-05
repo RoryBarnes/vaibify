@@ -931,19 +931,20 @@ def fsCamelCaseDirectory(sStepName):
 
 
 def flistExtractStepScripts(dictStep):
-    """Extract .py script paths from data and plot commands."""
-    listScripts = []
-    for sKey in ("saDataCommands", "saPlotCommands"):
-        for sCommand in dictStep.get(sKey, []):
-            listTokens = sCommand.split()
-            if not listTokens:
-                continue
-            if listTokens[0] in ("python", "python3"):
-                if len(listTokens) > 1:
-                    listScripts.append(listTokens[1])
-            elif listTokens[0].endswith(".py"):
-                listScripts.append(listTokens[0])
-    return listScripts
+    """Extract .py script tokens from data and plot commands.
+
+    Delegates to ``manifestPaths.flistExtractStepScripts`` so the
+    extractor is shared across the manifest writer, the canonical
+    tracked-files set, the Zenodo scripts archive flow, and the
+    scripts-route response. Previously this returned ``listTokens[1]``
+    unconditionally, so ``python -u foo.py`` would surface ``-u`` as a
+    "script" — breaking syncDispatcher's per-file copy commands and
+    leaking ``-u`` into scriptRoutes' GUI list.
+    """
+    from vaibify.reproducibility.manifestPaths import (
+        flistExtractStepScripts as _flist,
+    )
+    return _flist(dictStep)
 
 
 def fdictAutoDetectScripts(listFileNames):
