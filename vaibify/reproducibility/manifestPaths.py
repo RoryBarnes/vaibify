@@ -84,16 +84,28 @@ def fsExtractScriptFromCommand(sCommand):
     behaviour returned ``listTokens[1]`` unconditionally, which made
     the manifest writer try to hash a literal file called ``-u`` when
     a step ran ``python -u foo.py`` and crashed with FileNotFoundError.
+
+    Tokens containing ``{`` are templated references to workflow
+    globals (e.g. ``python {scriptDir}/foo.py``). The reproducibility
+    layer does not know how to resolve globals (that lives in
+    ``vaibify.gui``) so templated tokens are skipped entirely; they
+    must not enter the manifest envelope or the canonical-tracked
+    set, since hashing the literal placeholder would produce a phantom
+    missing-file entry.
     """
     listTokens = sCommand.split()
     if not listTokens:
         return ""
     sFirst = listTokens[0]
     if sFirst in ("python", "python3"):
-        return _fsFirstPyToken(listTokens[1:])
-    if sFirst.endswith(".py"):
-        return sFirst
-    return ""
+        sScript = _fsFirstPyToken(listTokens[1:])
+    elif sFirst.endswith(".py"):
+        sScript = sFirst
+    else:
+        return ""
+    if "{" in sScript:
+        return ""
+    return sScript
 
 
 def _fsFirstPyToken(listTokens):

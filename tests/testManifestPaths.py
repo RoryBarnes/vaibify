@@ -247,3 +247,37 @@ def test_flistExtractStepScripts_drops_non_python_commands():
     }
     listResult = flistExtractStepScripts(dictStep)
     assert listResult == ["compute.py"]
+
+
+def test_fsExtractScriptFromCommand_skips_templated_token():
+    """Tokens with ``{`` are skipped: globals live in vaibify.gui.
+
+    A command like ``python {scriptDir}/foo.py`` references a workflow
+    global that the reproducibility layer cannot resolve. Returning
+    the literal placeholder would produce a phantom missing-file entry
+    in the manifest envelope and a permanently grey script-row badge.
+    """
+    assert fsExtractScriptFromCommand(
+        "python {scriptDir}/foo.py"
+    ) == ""
+    assert fsExtractScriptFromCommand(
+        "python3 {VAR}/run.py --flag"
+    ) == ""
+    assert fsExtractScriptFromCommand(
+        "{scriptDir}/foo.py --flag"
+    ) == ""
+
+
+def test_flistExtractStepScripts_skips_templated_alongside_resolved():
+    """Templated tokens are skipped while concrete scripts pass through."""
+    dictStep = {
+        "saDataCommands": [
+            "python compute.py",
+            "python {scriptDir}/sweep.py",
+        ],
+        "saPlotCommands": [
+            "python plot.py",
+        ],
+    }
+    listResult = flistExtractStepScripts(dictStep)
+    assert listResult == ["compute.py", "plot.py"]
