@@ -123,7 +123,7 @@ var VaibifyGitBadges = (function () {
 
     function fsRenderBadgeRow(dictTriple) {
         var dictUse = dictTriple || _fdictPlaceholderTriple();
-        var sHtml = '<span class="remote-badges">';
+        var sHtml = '<span class="remote-badges" draggable="false">';
         ["sGithub", "sOverleaf", "sZenodo"].forEach(function (sKey) {
             var sState = dictUse[sKey] || "none";
             var sLabel = _DICT_REMOTE_LABELS[sKey];
@@ -131,7 +131,7 @@ var VaibifyGitBadges = (function () {
                 (_DICT_BADGE_TITLES[sState] || sState);
             sHtml += '<span class="remote-badge badge-' + sState +
                 '" title="' + sTitle + '" data-remote="' +
-                sKey + '">' +
+                sKey + '" draggable="false">' +
                 _fsRenderRemoteIcon(sKey) +
                 '</span>';
         });

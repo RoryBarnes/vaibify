@@ -66,9 +66,8 @@ var PipeleyenEventBindings = (function () {
         var sResolved = elItem.dataset.resolved || "";
         var sWorkdir = elItem.dataset.workdir || "";
         if (!sResolved || !sRemoteKey) return;
-        VaibifySyncManager.fnToggleRemoteTracking(
+        VaibifySyncManager.fnSyncFileToRemote(
             sRemoteKey, sResolved, sWorkdir,
-            Boolean(event.shiftKey),
         );
     }
 
@@ -359,6 +358,11 @@ var PipeleyenEventBindings = (function () {
     }
 
     function fnHandleDelegatedDragStart(event) {
+        if (event.target.closest(".remote-badge")) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
         var elDetail = event.target.closest(".detail-item");
         if (elDetail) {
             event.stopPropagation();

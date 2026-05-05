@@ -2097,7 +2097,7 @@ const PipeleyenApp = (function () {
             .classList.remove("active");
     }
 
-    async function fnHandleFileContextAction(sAction) {
+    function fnHandleFileContextAction(sAction) {
         if (sAction === "pullToHost") {
             PipeleyenFilePull.fnPromptPullToHost(
                 _dictUiState.sContextFilePath);
@@ -2106,52 +2106,6 @@ const PipeleyenApp = (function () {
         if (sAction === "copyPath") {
             PipeleyenFileOps.fnCopyToClipboard(
                 _dictUiState.sContextFilePath);
-            return;
-        }
-        if (sAction === "addToGit") {
-            fnShowToast("Adding to Git...", "success");
-            try {
-                var dictResult = await VaibifyApi.fdictPost(
-                    "/api/github/" +
-                    _dictSessionState.sContainerId + "/add-file",
-                    {sFilePath: _dictUiState.sContextFilePath}
-                );
-                if (dictResult.bSuccess) {
-                    fnShowToast("Added to Git", "success");
-                    fnRenderStepList();
-                } else {
-                    VaibifySyncManager.fnShowSyncError(
-                        dictResult, "GitHub");
-                }
-            } catch (error) {
-                fnShowToast(
-                    fsSanitizeErrorForUser(error.message),
-                    "error");
-            }
-            return;
-        }
-        if (sAction === "archiveToZenodo") {
-            fnShowToast("Archiving to Zenodo...", "success");
-            try {
-                var dictZenodoResult = await VaibifyApi.fdictPost(
-                    "/api/zenodo/" +
-                    _dictSessionState.sContainerId + "/archive",
-                    {listFilePaths: [
-                        _dictUiState.sContextFilePath]}
-                );
-                if (dictZenodoResult.bSuccess) {
-                    fnShowToast(
-                        "Archived to Zenodo", "success");
-                    fnRenderStepList();
-                } else {
-                    VaibifySyncManager.fnShowSyncError(
-                        dictZenodoResult, "Zenodo");
-                }
-            } catch (error) {
-                fnShowToast(
-                    fsSanitizeErrorForUser(error.message),
-                    "error");
-            }
         }
     }
 

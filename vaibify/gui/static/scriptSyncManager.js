@@ -21,8 +21,8 @@ var VaibifySyncManager = (function () {
         auth: "Authentication failed. Check your credentials " +
             "in Sync > Setup.",
         rateLimit: "Rate limited. Try again in a few minutes.",
-        notFound: "Resource not found. Check your project ID " +
-            "or DOI.",
+        notFound: "Resource not found. Check the remote " +
+            "configuration.",
         network: "Network error. Check your container's " +
             "internet connection.",
         verifyFailed: "Verification failed. The remote could not " +
@@ -30,6 +30,30 @@ var VaibifySyncManager = (function () {
         manifestMissing: "No manifest found. Generate one before " +
             "verifying.",
     };
+
+    var _DICT_SERVICE_ERROR_MESSAGES = {
+        GitHub: {
+            notFound: "Repository or branch not found. Check the " +
+                "GitHub remote configuration in workflow.yml.",
+        },
+        Zenodo: {
+            notFound: "Resource not found. Check your project ID " +
+                "or DOI.",
+        },
+        Overleaf: {
+            notFound: "Overleaf project not found. Check the " +
+                "workflow's Overleaf URL.",
+        },
+    };
+
+    function _fsLookupSyncErrorMessage(sService, sErrorType) {
+        var dictForService =
+            _DICT_SERVICE_ERROR_MESSAGES[sService] || {};
+        if (dictForService[sErrorType]) {
+            return dictForService[sErrorType];
+        }
+        return _DICT_SYNC_ERROR_MESSAGES[sErrorType] || "";
+    }
 
     var _LIST_VERIFY_SERVICES = ["github", "overleaf", "zenodo"];
     var _DICT_VERIFY_SERVICE_LABELS = {
@@ -883,7 +907,8 @@ var VaibifySyncManager = (function () {
 
     function fnShowSyncError(dictResult, sService) {
         var sErrorType = dictResult.sErrorType || "unknown";
-        var sMessage = _DICT_SYNC_ERROR_MESSAGES[sErrorType] ||
+        var sMessage = _fsLookupSyncErrorMessage(
+            sService, sErrorType) ||
             dictResult.sMessage || "Unknown error";
         var sTitle = (sService || "Sync") + " failed: " +
             sErrorType;
@@ -1187,37 +1212,120 @@ var VaibifySyncManager = (function () {
         sZenodo: "Zenodo",
     };
 
-    async function fnToggleRemoteTracking(
-        sRemoteKey, sResolved, sWorkdir, bShiftClick,
+    var _DICT_REMOTE_KEY_TO_LABEL = {
+        sGithub: "GitHub",
+        sOverleaf: "Overleaf",
+        sZenodo: "Zenodo",
+    };
+
+    async function fnSyncFileToRemote(
+        sRemoteKey, sResolved, sWorkdir,
     ) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId) return;
+        if (!sContainerId || !sResolved) return;
+        if (sRemoteKey === "sOverleaf") {
+            _fnShowOverleafPerFileNotice();
+            return;
+        }
+        var sCurrentState = _fsCurrentBadgeState(
+            sRemoteKey, sResolved, sWorkdir);
+        if (sCurrentState === "synced") {
+            _fnShowAlreadySyncedToast(sRemoteKey);
+            return;
+        }
+        await _fnEnsureTrackedThenPush(
+            sContainerId, sRemoteKey, sResolved, sCurrentState);
+    }
+
+    function _fsCurrentBadgeState(sRemoteKey, sResolved, sWorkdir) {
         var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
             sResolved, sWorkdir);
-        var sCurrentState = dictTriple[sRemoteKey] || "none";
-        var bCurrentlyTracked = sCurrentState !== "none";
-        var listToFlip = [sRemoteKey];
-        if (bShiftClick && !bCurrentlyTracked) {
-            listToFlip = ["sGithub", "sOverleaf", "sZenodo"];
-        }
+        return dictTriple[sRemoteKey] || "none";
+    }
+
+    function _fnShowOverleafPerFileNotice() {
+        PipeleyenApp.fnShowToast(
+            "Overleaf sync is workflow-level. " +
+            "Use Sync › Push to Overleaf.",
+            "info",
+        );
+    }
+
+    function _fnShowAlreadySyncedToast(sRemoteKey) {
+        PipeleyenApp.fnShowToast(
+            "Already synced with " +
+            _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey] + ".",
+            "info",
+        );
+    }
+
+    async function _fnEnsureTrackedThenPush(
+        sContainerId, sRemoteKey, sResolved, sCurrentState,
+    ) {
         try {
-            for (var i = 0; i < listToFlip.length; i++) {
-                await VaibifyApi.fdictPost(
-                    "/api/sync/" + sContainerId + "/track",
-                    {
-                        sPath: sResolved,
-                        sService:
-                            _DICT_REMOTE_KEY_TO_SERVICE[listToFlip[i]],
-                        bTrack: !bCurrentlyTracked,
-                    }
-                );
+            if (sCurrentState === "none") {
+                await _fnPostTrack(
+                    sContainerId, sResolved, sRemoteKey, true);
             }
+            await _fnPushFileToRemote(
+                sContainerId, sRemoteKey, sResolved);
             await VaibifyGitBadges.fnRefresh(sContainerId);
             PipeleyenApp.fnRenderStepList();
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
+    }
+
+    function _fnPostTrack(
+        sContainerId, sResolved, sRemoteKey, bTrack,
+    ) {
+        return VaibifyApi.fdictPost(
+            "/api/sync/" + sContainerId + "/track",
+            {
+                sPath: sResolved,
+                sService: _DICT_REMOTE_KEY_TO_SERVICE[sRemoteKey],
+                bTrack: bTrack,
+            }
+        );
+    }
+
+    async function _fnPushFileToRemote(
+        sContainerId, sRemoteKey, sResolved,
+    ) {
+        var sLabel = _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey];
+        PipeleyenApp.fnShowToast(
+            "Syncing to " + sLabel + "…", "info");
+        if (sRemoteKey === "sGithub") {
+            var dictGh = await VaibifyApi.fdictPost(
+                "/api/github/" + sContainerId + "/add-file",
+                {sFilePath: sResolved}
+            );
+            _fnHandlePushResult(dictGh, "GitHub");
+            return;
+        }
+        if (sRemoteKey === "sZenodo") {
+            var dictZen = await VaibifyApi.fdictPost(
+                "/api/zenodo/" + sContainerId + "/archive",
+                {listFilePaths: [sResolved]}
+            );
+            _fnHandlePushResult(dictZen, "Zenodo");
+        }
+    }
+
+    function _fnHandlePushResult(dictResult, sServiceLabel) {
+        if (dictResult && dictResult.bSuccess) {
+            PipeleyenApp.fnShowToast(
+                "Synced to " + sServiceLabel + ".", "success");
+            return;
+        }
+        fnShowSyncError(dictResult || {}, sServiceLabel);
+    }
+
+    async function fnToggleRemoteTracking(
+        sRemoteKey, sResolved, sWorkdir, bShiftClick,
+    ) {
+        await fnSyncFileToRemote(sRemoteKey, sResolved, sWorkdir);
     }
 
     function _fnToggleEditZenodoMetadataButton(sService) {
@@ -1808,6 +1916,7 @@ var VaibifySyncManager = (function () {
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,
         fnShowHelpPopup: fnShowHelpPopup,
+        fnSyncFileToRemote: fnSyncFileToRemote,
         fnToggleRemoteTracking: fnToggleRemoteTracking,
         fsFormatFileCount: fsFormatFileCount,
         fnRenderRemoteSyncPanel: fnRenderRemoteSyncPanel,
