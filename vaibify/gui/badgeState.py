@@ -81,16 +81,42 @@ def _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked):
     return S_BADGE_DRIFTED
 
 
+def _fsZenodoBadge(
+    sCurrentSha, sLastPushedDigest, bTracked,
+    sLastPushedEndpoint, sCurrentEndpoint,
+):
+    """Three-state Zenodo icon that also checks the endpoint.
+
+    Zenodo has two distinct services (production ``zenodo.org`` and
+    ``sandbox.zenodo.org``). A digest captured against one endpoint
+    must not be reported as ``synced`` once the workflow flips to the
+    other. When ``sCurrentEndpoint`` is empty (legacy callers that
+    have not threaded the workflow service) the endpoint check is
+    skipped so existing behaviour is preserved. When supplied, a
+    missing or mismatched stored endpoint forces ``drifted``, even if
+    the SHAs happen to match — the user must re-push to populate the
+    field honestly.
+    """
+    if not bTracked:
+        return S_BADGE_NONE
+    if sCurrentEndpoint and sLastPushedEndpoint != sCurrentEndpoint:
+        return S_BADGE_DRIFTED
+    return _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked)
+
+
 def fdictBadgesForFile(
     sRepoRelPath, dictGitStatus, dictSyncEntry,
-    sWorkspaceRoot, dictMtimeCache,
+    sWorkspaceRoot, dictMtimeCache, sZenodoService="",
 ):
     """Return the three-badge triple for one file.
 
     Git is both the transport and the source of truth for the GitHub
     column: whatever ``git status`` says about this file is what we
     show. Overleaf and Zenodo use their own last-pushed digests to
-    compare against the file's current blob SHA.
+    compare against the file's current blob SHA. ``sZenodoService``
+    (the workflow's currently selected Zenodo endpoint) is compared
+    against the stored ``sZenodoLastPushedEndpoint`` so a sandbox
+    push is not reported as in-sync against production (or vice versa).
     """
     sCurrentSha = mtimeCache.fsBlobShaForFile(
         sWorkspaceRoot, sRepoRelPath, dictMtimeCache,
@@ -103,10 +129,12 @@ def fdictBadgesForFile(
             dictEntry.get("sOverleafLastPushedDigest", ""),
             dictEntry.get("bOverleaf", False),
         ),
-        "sZenodo": _fsRemoteBadge(
+        "sZenodo": _fsZenodoBadge(
             sCurrentSha,
             dictEntry.get("sZenodoLastPushedDigest", ""),
             dictEntry.get("bZenodo", False),
+            dictEntry.get("sZenodoLastPushedEndpoint", ""),
+            sZenodoService,
         ),
     }
 
@@ -114,11 +142,14 @@ def fdictBadgesForFile(
 def fdictBadgeStateForWorkspace(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
     sWorkspaceRoot, dictMtimeCache, sProjectRepoPath="",
+    sZenodoService="",
 ):
     """Return {repo-rel-path: badge-triple} for each file in the list.
 
     Mutates ``dictMtimeCache`` in place as a side effect of hashing;
     the caller is responsible for persisting the cache when done.
+    ``sZenodoService`` is the workflow's currently selected Zenodo
+    endpoint; see :func:`fdictBadgesForFile`.
     """
     dictResult = {}
     dictSync = dictSyncStatus or {}
@@ -128,14 +159,14 @@ def fdictBadgeStateForWorkspace(
         )
         dictResult[sRelPath] = fdictBadgesForFile(
             sRelPath, dictGitStatus, dictEntry,
-            sWorkspaceRoot, dictMtimeCache,
+            sWorkspaceRoot, dictMtimeCache, sZenodoService,
         )
     return dictResult
 
 
 def fdictBadgeStateFromHashes(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
-    dictCurrentHashes, sProjectRepoPath="",
+    dictCurrentHashes, sProjectRepoPath="", sZenodoService="",
 ):
     """Compute badges when current hashes were obtained by some other means.
 
@@ -144,6 +175,8 @@ def fdictBadgeStateFromHashes(
     ``dictCurrentHashes`` — a ``{repo-rel-path: blob-sha}`` map
     produced by ``containerGit.fdictComputeBlobShasInContainer`` or an
     equivalent — instead of asking the filesystem directly.
+    ``sZenodoService`` is the workflow's currently selected Zenodo
+    endpoint; see :func:`fdictBadgesForFile`.
     """
     dictResult = {}
     dictSync = dictSyncStatus or {}
@@ -152,18 +185,30 @@ def fdictBadgeStateFromHashes(
         dictEntry = workflowManager.fdictLookupSyncEntry(
             dictSync, sRelPath, sProjectRepoPath,
         )
-        sCurrentSha = dictHashes.get(sRelPath, "")
-        dictResult[sRelPath] = {
-            "sGithub": _fsGitBadge(sRelPath, dictGitStatus),
-            "sOverleaf": _fsRemoteBadge(
-                sCurrentSha,
-                dictEntry.get("sOverleafLastPushedDigest", ""),
-                dictEntry.get("bOverleaf", False),
-            ),
-            "sZenodo": _fsRemoteBadge(
-                sCurrentSha,
-                dictEntry.get("sZenodoLastPushedDigest", ""),
-                dictEntry.get("bZenodo", False),
-            ),
-        }
+        dictResult[sRelPath] = _fdictBadgesForHashedFile(
+            sRelPath, dictGitStatus, dictEntry,
+            dictHashes.get(sRelPath, ""), sZenodoService,
+        )
     return dictResult
+
+
+def _fdictBadgesForHashedFile(
+    sRepoRelPath, dictGitStatus, dictEntry,
+    sCurrentSha, sZenodoService,
+):
+    """Compose the three-badge triple from a precomputed hash."""
+    return {
+        "sGithub": _fsGitBadge(sRepoRelPath, dictGitStatus),
+        "sOverleaf": _fsRemoteBadge(
+            sCurrentSha,
+            dictEntry.get("sOverleafLastPushedDigest", ""),
+            dictEntry.get("bOverleaf", False),
+        ),
+        "sZenodo": _fsZenodoBadge(
+            sCurrentSha,
+            dictEntry.get("sZenodoLastPushedDigest", ""),
+            dictEntry.get("bZenodo", False),
+            dictEntry.get("sZenodoLastPushedEndpoint", ""),
+            sZenodoService,
+        ),
+    }

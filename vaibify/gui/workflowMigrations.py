@@ -321,6 +321,7 @@ def _fdictInitializeSyncEntry():
         "bGithub": False, "sGithubTimestamp": "",
         "bZenodo": False, "sZenodoTimestamp": "",
         "sZenodoLastPushedDigest": "",
+        "sZenodoLastPushedEndpoint": "",
     }
 
 

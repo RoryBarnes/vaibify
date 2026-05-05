@@ -198,6 +198,148 @@ def test_zenodo_badge_none_when_only_overleaf_configured(tmp_path):
 
 
 # ----------------------------------------------------------------------
+# Zenodo endpoint awareness (sandbox vs. production)
+# ----------------------------------------------------------------------
+
+
+def _fdictZenodoEntryFor(sSha, sEndpoint):
+    """Return a sync entry recording a Zenodo push at ``sEndpoint``."""
+    return {
+        "bZenodo": True,
+        "sZenodoLastPushedDigest": sSha,
+        "sZenodoLastPushedEndpoint": sEndpoint,
+    }
+
+
+def test_zenodo_badge_synced_when_endpoint_matches_sandbox(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictCache = {}
+    sSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "fig.pdf", dictCache,
+    )
+    dictEntry = _fdictZenodoEntryFor(sSha, "sandbox")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), dictCache, sZenodoService="sandbox",
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_SYNCED
+
+
+def test_zenodo_badge_synced_when_endpoint_matches_production(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictCache = {}
+    sSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "fig.pdf", dictCache,
+    )
+    dictEntry = _fdictZenodoEntryFor(sSha, "zenodo")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), dictCache, sZenodoService="zenodo",
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_SYNCED
+
+
+def test_zenodo_badge_drifted_when_endpoint_mismatched(tmp_path):
+    """Sandbox push must not be reported as in-sync once workflow flips
+    to production, even if the local SHA still matches."""
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictCache = {}
+    sSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "fig.pdf", dictCache,
+    )
+    dictEntry = _fdictZenodoEntryFor(sSha, "sandbox")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), dictCache, sZenodoService="zenodo",
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_DRIFTED
+
+
+def test_zenodo_badge_drifted_when_legacy_entry_missing_endpoint(tmp_path):
+    """Legacy entries without sZenodoLastPushedEndpoint must paint
+    drifted under the active workflow service so a re-push populates
+    the field honestly."""
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictCache = {}
+    sSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "fig.pdf", dictCache,
+    )
+    dictEntry = {
+        "bZenodo": True,
+        "sZenodoLastPushedDigest": sSha,
+    }
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), dictCache, sZenodoService="sandbox",
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_DRIFTED
+
+
+def test_zenodo_badge_drifted_when_sha_changed_despite_endpoint_match(
+    tmp_path,
+):
+    """A SHA change still drifts the badge regardless of endpoint
+    match."""
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictEntry = _fdictZenodoEntryFor("0" * 40, "sandbox")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), {}, sZenodoService="sandbox",
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_DRIFTED
+
+
+def test_zenodo_badge_legacy_caller_without_service_keeps_old_behaviour(
+    tmp_path,
+):
+    """Callers that never threaded sZenodoService still see the prior
+    SHA-only behaviour (endpoint check is a no-op when current
+    endpoint is empty)."""
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictCache = {}
+    sSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "fig.pdf", dictCache,
+    )
+    dictEntry = {
+        "bZenodo": True,
+        "sZenodoLastPushedDigest": sSha,
+    }
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), dictEntry,
+        str(tmp_path), dictCache,
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_SYNCED
+
+
+def test_zenodo_badge_from_hashes_respects_endpoint(tmp_path):
+    """fdictBadgeStateFromHashes also threads sZenodoService through."""
+    dictSync = {
+        "fig.pdf": _fdictZenodoEntryFor("abc123", "sandbox"),
+    }
+    dictResult = badgeState.fdictBadgeStateFromHashes(
+        ["fig.pdf"], _fdictGit(), dictSync,
+        {"fig.pdf": "abc123"}, sZenodoService="zenodo",
+    )
+    assert dictResult["fig.pdf"]["sZenodo"] == (
+        badgeState.S_BADGE_DRIFTED
+    )
+
+
+def test_zenodo_badge_from_hashes_synced_on_matching_endpoint():
+    """fdictBadgeStateFromHashes paints synced when endpoint matches."""
+    dictSync = {
+        "fig.pdf": _fdictZenodoEntryFor("abc123", "sandbox"),
+    }
+    dictResult = badgeState.fdictBadgeStateFromHashes(
+        ["fig.pdf"], _fdictGit(), dictSync,
+        {"fig.pdf": "abc123"}, sZenodoService="sandbox",
+    )
+    assert dictResult["fig.pdf"]["sZenodo"] == (
+        badgeState.S_BADGE_SYNCED
+    )
+
+
+# ----------------------------------------------------------------------
 # fdictBadgeStateForWorkspace
 # ----------------------------------------------------------------------
 

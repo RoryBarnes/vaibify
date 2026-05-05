@@ -160,6 +160,7 @@ def _fnRegisterGitBadges(app, dictCtx):
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit, dictSync, dictHashes,
             sProjectRepoPath=sRepo,
+            sZenodoService=dictWorkflow.get("sZenodoService", ""),
         )
         return {
             "dictGit": {

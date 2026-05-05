@@ -238,6 +238,65 @@ def test_fnUpdateZenodoDigests_skips_empty_digests():
     assert dictWorkflow.get("dictSyncStatus", {}) == {}
 
 
+def test_fnUpdateZenodoDigests_records_explicit_endpoint():
+    """An explicit sZenodoService stamps sZenodoLastPushedEndpoint."""
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "def456"},
+        sZenodoService="sandbox",
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sZenodoLastPushedEndpoint"] == "sandbox"
+
+
+def test_fnUpdateZenodoDigests_falls_back_to_workflow_service():
+    """When sZenodoService is omitted, fall back to dictWorkflow value."""
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/Proj",
+        "sZenodoService": "zenodo",
+    }
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "def456"},
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sZenodoLastPushedEndpoint"] == "zenodo"
+
+
+def test_fnUpdateZenodoDigests_overwrites_endpoint_on_resync():
+    """A subsequent push to a different endpoint updates the field."""
+    from vaibify.gui.workflowManager import fnUpdateZenodoDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "abc123"},
+        sZenodoService="sandbox",
+    )
+    fnUpdateZenodoDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "def456"},
+        sZenodoService="zenodo",
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert dictEntry["sZenodoLastPushedDigest"] == "def456"
+    assert dictEntry["sZenodoLastPushedEndpoint"] == "zenodo"
+
+
+def test_fnUpdateOverleafDigests_does_not_write_endpoint_field():
+    """Overleaf has no endpoint split, so the field must not appear."""
+    from vaibify.gui.workflowManager import fnUpdateOverleafDigests
+    dictWorkflow = {"sProjectRepoPath": "/workspace/Proj"}
+    fnUpdateOverleafDigests(
+        dictWorkflow,
+        {"/workspace/Proj/Plot/fig.pdf": "abc123"},
+    )
+    dictEntry = dictWorkflow["dictSyncStatus"]["Plot/fig.pdf"]
+    assert "sOverleafLastPushedEndpoint" not in dictEntry
+
+
 def test_fdictLookupSyncEntry_matches_repo_rel_first():
     from vaibify.gui.workflowManager import fdictLookupSyncEntry
     dictSync = {"Plot/fig.pdf": {"bGithub": True}}

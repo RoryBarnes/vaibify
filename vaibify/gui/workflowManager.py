@@ -971,6 +971,7 @@ def fdictInitializeSyncEntry():
         "bGithub": False, "sGithubTimestamp": "",
         "bZenodo": False, "sZenodoTimestamp": "",
         "sZenodoLastPushedDigest": "",
+        "sZenodoLastPushedEndpoint": "",
     }
 
 
@@ -1010,23 +1011,39 @@ def fdictLookupSyncEntry(dictSyncStatus, sPath, sProjectRepoPath=""):
 
 
 def _fnUpdateServiceDigests(
-    dictWorkflow, sService, dictPathToDigest, sProjectRepoPath=None,
+    dictWorkflow, sService, dictPathToDigest,
+    sProjectRepoPath=None, sEndpoint=None,
 ):
-    """Write per-file last-pushed digests for one service."""
+    """Write per-file last-pushed digests for one service.
+
+    When ``sEndpoint`` is supplied, also stamp
+    ``s{Service}LastPushedEndpoint`` so the badge layer can detect
+    pushes that originated from a different remote (today only the
+    Zenodo production / sandbox split needs this).
+    """
     if "dictSyncStatus" not in dictWorkflow:
         dictWorkflow["dictSyncStatus"] = {}
     if sProjectRepoPath is None:
         sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    sDigestKey = f"s{sService}LastPushedDigest"
     for sPath, sDigest in (dictPathToDigest or {}).items():
         if not sDigest:
             continue
         sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
-        if sKey not in dictWorkflow["dictSyncStatus"]:
-            dictWorkflow["dictSyncStatus"][sKey] = (
-                fdictInitializeSyncEntry()
-            )
-        dictWorkflow["dictSyncStatus"][sKey][sDigestKey] = sDigest
+        _fnWriteServiceDigestEntry(
+            dictWorkflow["dictSyncStatus"], sKey, sService,
+            sDigest, sEndpoint,
+        )
+
+
+def _fnWriteServiceDigestEntry(
+    dictSyncStatus, sKey, sService, sDigest, sEndpoint,
+):
+    """Stamp one sync entry with a digest and optional endpoint."""
+    if sKey not in dictSyncStatus:
+        dictSyncStatus[sKey] = fdictInitializeSyncEntry()
+    dictSyncStatus[sKey][f"s{sService}LastPushedDigest"] = sDigest
+    if sEndpoint is not None:
+        dictSyncStatus[sKey][f"s{sService}LastPushedEndpoint"] = sEndpoint
 
 
 def fnSetServiceTracking(
@@ -1071,7 +1088,8 @@ def fnUpdateOverleafDigests(
 
 
 def fnUpdateZenodoDigests(
-    dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
+    dictWorkflow, dictPathToDigest,
+    sProjectRepoPath=None, sZenodoService=None,
 ):
     """Persist post-archive Zenodo blob digests into ``dictSyncStatus``.
 
@@ -1079,9 +1097,19 @@ def fnUpdateZenodoDigests(
     archive; Zenodo deposits are immutable, so this snapshot is the
     authoritative "what was published" state. Keys are normalized the
     same way as Overleaf digests.
+
+    ``sZenodoService`` records which Zenodo endpoint the push targeted
+    (``"zenodo"`` or ``"sandbox"``). When supplied, it is written to
+    ``sZenodoLastPushedEndpoint`` so the badge layer can flag a file
+    as drifted after the workflow flips between production and sandbox.
+    The argument defaults to ``dictWorkflow['sZenodoService']`` so
+    legacy callers that omit it still record the right endpoint.
     """
+    if sZenodoService is None:
+        sZenodoService = dictWorkflow.get("sZenodoService", "") or None
     _fnUpdateServiceDigests(
         dictWorkflow, "Zenodo", dictPathToDigest, sProjectRepoPath,
+        sEndpoint=sZenodoService,
     )
 
 
