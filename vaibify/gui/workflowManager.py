@@ -1121,19 +1121,11 @@ def fnUpdateZenodoDigests(
     dictWorkflow, dictPathToDigest,
     sProjectRepoPath=None, sZenodoService=None,
 ):
-    """Persist post-archive Zenodo blob digests into ``dictSyncStatus``.
+    """Persist post-archive Zenodo blob digests + endpoint into dictSyncStatus.
 
-    The digest is the file's git blob SHA at the moment of the
-    archive; Zenodo deposits are immutable, so this snapshot is the
-    authoritative "what was published" state. Keys are normalized the
-    same way as Overleaf digests.
-
-    ``sZenodoService`` records which Zenodo endpoint the push targeted
-    (``"zenodo"`` or ``"sandbox"``). When supplied, it is written to
-    ``sZenodoLastPushedEndpoint`` so the badge layer can flag a file
-    as drifted after the workflow flips between production and sandbox.
-    The argument defaults to ``dictWorkflow['sZenodoService']`` so
-    legacy callers that omit it still record the right endpoint.
+    ``sZenodoService`` defaults to ``dictWorkflow['sZenodoService']``
+    so the badge layer can flag a file as drifted when the workflow
+    flips between production and sandbox.
     """
     if sZenodoService is None:
         sZenodoService = dictWorkflow.get("sZenodoService", "") or None
