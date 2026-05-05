@@ -30,16 +30,26 @@ var VaibifySyncManager = (function () {
             "be reached or returned an unexpected response.",
         manifestMissing: "No manifest found. Generate one before " +
             "verifying.",
+        conflict: "Remote has changes you don't have locally. " +
+            "Pull or fetch first, then retry.",
+        noChanges: "Nothing to push — files match what is already " +
+            "on the remote.",
+        unknown: "Sync failed for an unrecognized reason. Check " +
+            "the toast detail or container logs.",
     };
 
     var _DICT_SERVICE_ERROR_MESSAGES = {
         GitHub: {
             notFound: "Repository or branch not found. Check the " +
                 "GitHub remote configuration in workflow.yml.",
+            conflict: "Push rejected: GitHub has commits you " +
+                "don't have. Run 'git pull --rebase' first.",
         },
         Zenodo: {
             notFound: "Resource not found. Check your project ID " +
                 "or DOI.",
+            conflict: "Deposit is already published or in an " +
+                "unexpected state. Check the Zenodo deposit page.",
         },
         Overleaf: {
             notFound: "Overleaf project not found. Check the " +
