@@ -10,6 +10,7 @@ __all__ = [
     "fbDirectoryHasConfig",
 ]
 
+import asyncio
 import logging
 import os
 import re
@@ -228,7 +229,9 @@ def _fnRegisterBuildContainer(app, dictCtx):
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         try:
-            _fnExecuteBuild(dictProject, bNoCache)
+            await asyncio.to_thread(
+                _fnExecuteBuild, dictProject, bNoCache,
+            )
         except Exception as error:
             logger.error("Build failed for %s: %s", sName, error)
             raise HTTPException(500, "Build failed")
@@ -256,7 +259,9 @@ def _fnRegisterStartContainer(app, dictCtx):
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         try:
-            sContainerId = _fsExecuteStart(dictProject)
+            sContainerId = await asyncio.to_thread(
+                _fsExecuteStart, dictProject,
+            )
         except Exception as error:
             logger.error("Start failed for %s: %s", sName, error)
             raise HTTPException(500, f"Start failed: {error}")
@@ -323,7 +328,9 @@ def _fnRegisterStopContainer(app, dictCtx):
         dictProject = _fdictRequireProject(sName)
         sContainerName = dictProject["sContainerName"]
         try:
-            _fnExecuteStop(sContainerName)
+            await asyncio.to_thread(
+                _fnExecuteStop, sContainerName,
+            )
         except Exception as error:
             logger.error("Stop failed for %s: %s", sName, error)
             raise HTTPException(500, f"Stop failed: {error}")

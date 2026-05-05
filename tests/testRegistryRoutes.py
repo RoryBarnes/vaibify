@@ -402,6 +402,94 @@ def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
     assert response.status_code == 500
 
 
+def testBuildRunsOffEventLoopThread(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """The build executor must run on a worker thread so the event
+    loop stays responsive. Without ``asyncio.to_thread`` the entire
+    backend hangs for the duration of a real ``docker build``,
+    leading to ``Network error`` toasts in the GUI.
+    """
+    import threading
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "thread-build")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    listExecutorThreads = []
+
+    def _fnRecordThread(dictProject, bNoCache=False):
+        listExecutorThreads.append(threading.get_ident())
+
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        _fnRecordThread,
+    )
+    response = fixtureClient.post(
+        "/api/containers/thread-build/build",
+    )
+    assert response.status_code == 200
+    assert listExecutorThreads, "executor was not invoked"
+    assert listExecutorThreads[0] != threading.get_ident(), (
+        "build executor ran on the test thread, meaning the route "
+        "is not using asyncio.to_thread; the backend will hang for "
+        "the duration of a real docker build"
+    )
+
+
+def testStartRunsOffEventLoopThread(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Same async-safety guarantee for the start endpoint."""
+    import threading
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "thread-start")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    listExecutorThreads = []
+
+    def _fnRecordThread(dictProject):
+        listExecutorThreads.append(threading.get_ident())
+        return "abc123"
+
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fsExecuteStart",
+        _fnRecordThread,
+    )
+    response = fixtureClient.post(
+        "/api/containers/thread-start/start",
+    )
+    assert response.status_code == 200
+    assert listExecutorThreads[0] != threading.get_ident()
+
+
+def testStopRunsOffEventLoopThread(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Same async-safety guarantee for the stop endpoint."""
+    import threading
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "thread-stop")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    listExecutorThreads = []
+
+    def _fnRecordThread(sContainerName):
+        listExecutorThreads.append(threading.get_ident())
+
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteStop",
+        _fnRecordThread,
+    )
+    response = fixtureClient.post(
+        "/api/containers/thread-stop/stop",
+    )
+    assert response.status_code == 200
+    assert listExecutorThreads[0] != threading.get_ident()
+
+
 def testStartContainerSuccess(fixtureClient, tmp_path, monkeypatch):
     """Lines 135-143: successful start returns container ID."""
     sProjectDir = _fnWriteMinimalConfig(tmp_path, "start-proj")
