@@ -1265,7 +1265,13 @@ var VaibifySyncManager = (function () {
         sContainerId, sRemoteKey, sResolved, sCurrentState,
     ) {
         var sKey = sRemoteKey + "|" + sResolved;
-        if (_setActiveFileSyncs.has(sKey)) return;
+        if (_setActiveFileSyncs.has(sKey)) {
+            PipeleyenApp.fnShowToast(
+                "Sync already in progress for " +
+                _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey] + ".",
+                "info");
+            return;
+        }
         _setActiveFileSyncs.add(sKey);
         try {
             await _fnEnsureTrackedThenPush(
