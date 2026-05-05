@@ -556,3 +556,201 @@ def test_symlinked_leaf_pointing_inside_repo_still_rejected(tmp_path):
     dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["alias.csv"])
     with pytest.raises(ValueError):
         fnWriteManifest(str(pathRepo), dictWorkflow)
+
+
+# ----------------------------------------------------------------------
+# 16. Step scripts are hashed into the manifest
+# ----------------------------------------------------------------------
+
+
+def test_step_scripts_are_hashed_into_manifest(tmp_path):
+    """Scripts referenced by saDataCommands / saPlotCommands appear in manifest."""
+    _fnWriteFile(tmp_path, "scripts/dataMakeFoo.py", "print('hi')\n")
+    _fnWriteFile(tmp_path, "scripts/plotFoo.py", "import sys\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "scripts",
+        "saDataCommands": ["python dataMakeFoo.py"],
+        "saPlotCommands": ["python3 plotFoo.py --opt 1"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert "scripts/dataMakeFoo.py" in setPaths
+    assert "scripts/plotFoo.py" in setPaths
+    listMismatches = flistVerifyManifest(str(tmp_path))
+    assert listMismatches == []
+
+
+def test_step_scripts_with_workspace_prefix_resolve_to_repo_relative(tmp_path):
+    """A ``/workspace/`` script path is rewritten to repo-relative."""
+    _fnWriteFile(tmp_path, "src/runner.py", "x = 1\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "irrelevant",
+        "saDataCommands": ["python /workspace/src/runner.py"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert "src/runner.py" in setPaths
+
+
+def test_step_with_bare_py_command_is_hashed(tmp_path):
+    """A bare ``foo.py`` token (no python prefix) is still extracted."""
+    _fnWriteFile(tmp_path, "scripts/exec.py", "z = 0\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "scripts",
+        "saPlotCommands": ["exec.py --flag"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert "scripts/exec.py" in setPaths
+
+
+# ----------------------------------------------------------------------
+# 17. Test standards are hashed into the manifest
+# ----------------------------------------------------------------------
+
+
+def test_test_standards_are_hashed_into_manifest(tmp_path):
+    """Every dictTests[*].sStandardsPath appears in the manifest."""
+    _fnWriteFile(tmp_path, "tests/standards/qual.json", "{}\n")
+    _fnWriteFile(tmp_path, "tests/standards/quant.json", '{"a": 1}\n')
+    _fnWriteFile(tmp_path, "tests/standards/integ.json", '{"b": 2}\n')
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "dictTests": {
+            "dictQualitative": {
+                "sStandardsPath": "tests/standards/qual.json"},
+            "dictQuantitative": {
+                "sStandardsPath": "tests/standards/quant.json"},
+            "dictIntegrity": {
+                "sStandardsPath": "tests/standards/integ.json"},
+        },
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert "tests/standards/qual.json" in setPaths
+    assert "tests/standards/quant.json" in setPaths
+    assert "tests/standards/integ.json" in setPaths
+    listMismatches = flistVerifyManifest(str(tmp_path))
+    assert listMismatches == []
+
+
+def test_standards_path_with_workspace_prefix_is_repo_relative(tmp_path):
+    """A ``/workspace/...`` standards path is rewritten correctly."""
+    _fnWriteFile(tmp_path, "ref/golden.json", "{}\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "dictTests": {
+            "dictQuantitative": {
+                "sStandardsPath": "/workspace/ref/golden.json"},
+        },
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert "ref/golden.json" in setPaths
+
+
+# ----------------------------------------------------------------------
+# 18. Regression guard: outputs-only workflow unchanged from before
+# ----------------------------------------------------------------------
+
+
+def test_outputs_only_workflow_manifest_size_unchanged(tmp_path):
+    """A workflow with no scripts or tests still produces the prior manifest.
+
+    Adding scripts and standards to the envelope must not silently
+    pull extra rows into a workflow that declares neither. Three
+    declared outputs must still produce exactly three entries.
+    """
+    _fnWriteFile(tmp_path, "out/a.csv", b"a\n")
+    _fnWriteFile(tmp_path, "plots/b.pdf", b"b\n")
+    _fnWriteFile(tmp_path, "data/c.dat", b"c\n")
+    dictWorkflow = _fdictWorkflowFromPaths(
+        saOutputFiles=["out/a.csv"],
+        saPlotFiles=["plots/b.pdf"],
+        saDataFiles=["data/c.dat"],
+    )
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    assert fiCountManifestEntries(str(tmp_path)) == 3
+
+
+# ----------------------------------------------------------------------
+# 19. Mixed workflow: outputs + scripts + standards together
+# ----------------------------------------------------------------------
+
+
+def test_mixed_workflow_hashes_all_categories(tmp_path):
+    """Outputs, scripts, and standards co-exist in the manifest correctly."""
+    _fnWriteFile(tmp_path, "src/dataBuild.py", "pass\n")
+    _fnWriteFile(tmp_path, "src/plotShow.py", "pass\n")
+    _fnWriteFile(tmp_path, "out/result.csv", "x\n")
+    _fnWriteFile(tmp_path, "out/figure.pdf", b"%PDF\n")
+    _fnWriteFile(tmp_path, "ref/quant.json", '{"k": 1}\n')
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "src",
+        "saDataCommands": ["python dataBuild.py"],
+        "saPlotCommands": ["python plotShow.py"],
+        "saDataFiles": ["out/result.csv"],
+        "saPlotFiles": ["out/figure.pdf"],
+        "dictTests": {
+            "dictQuantitative": {"sStandardsPath": "ref/quant.json"},
+        },
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {
+        "src/dataBuild.py",
+        "src/plotShow.py",
+        "out/result.csv",
+        "out/figure.pdf",
+        "ref/quant.json",
+    }
+    listMismatches = flistVerifyManifest(str(tmp_path))
+    assert listMismatches == []
+
+
+def test_duplicate_script_across_two_steps_appears_once(tmp_path):
+    """The same script path declared by two steps is hashed once."""
+    _fnWriteFile(tmp_path, "src/shared.py", "shared = True\n")
+    dictWorkflow = {"listSteps": [
+        {
+            "sName": "S1",
+            "sDirectory": "src",
+            "saDataCommands": ["python shared.py"],
+        },
+        {
+            "sName": "S2",
+            "sDirectory": "src",
+            "saPlotCommands": ["python shared.py"],
+        },
+    ]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    listPaths = [dictEntry["sPath"] for dictEntry in listEntries]
+    assert listPaths.count("src/shared.py") == 1
+
+
+def test_missing_script_file_raises_at_write_time(tmp_path):
+    """A script declared by a command but absent from disk is an error.
+
+    The manifest must not silently skip an artefact it was supposed to
+    pin. ``fsComputeFileHash`` raises ``FileNotFoundError`` so the
+    write fails loudly — better than producing a manifest that omits
+    the script row.
+    """
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "src",
+        "saDataCommands": ["python missingScript.py"],
+    }]}
+    with pytest.raises(FileNotFoundError):
+        fnWriteManifest(str(tmp_path), dictWorkflow)
