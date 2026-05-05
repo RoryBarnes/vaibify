@@ -1957,6 +1957,11 @@ var VaibifySyncManager = (function () {
         return sJoined;
     }
 
+    function fnResetState() {
+        _setActiveFileSyncs.clear();
+        fnInvalidateVerifyCache();
+    }
+
     return {
         fnOpenPushModal: fnOpenPushModal,
         fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
@@ -1969,5 +1974,6 @@ var VaibifySyncManager = (function () {
         fnRenderRemoteConsistencyBanner: fnRenderRemoteConsistencyBanner,
         fdictVerifyManifest: fdictVerifyManifest,
         fnInvalidateVerifyCache: fnInvalidateVerifyCache,
+        fnResetState: fnResetState,
     };
 })();

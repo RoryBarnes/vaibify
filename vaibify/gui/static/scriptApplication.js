@@ -196,6 +196,7 @@ const PipeleyenApp = (function () {
         PipeleyenTestManager.fnResetState();
         PipeleyenPipelineRunner.fnResetState();
         VaibifyOverleafMirror.fnResetState();
+        VaibifySyncManager.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         PipeleyenReposPanel.fnTeardown();
