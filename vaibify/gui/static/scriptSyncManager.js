@@ -16,6 +16,7 @@ var VaibifySyncManager = (function () {
     var _listConflicts = [];
     var _iDiffRequestToken = 0;
     var _timerDiffDebounce = null;
+    var _setActiveFileSyncs = new Set();
 
     var _DICT_SYNC_ERROR_MESSAGES = {
         auth: "Authentication failed. Check your credentials " +
@@ -1246,8 +1247,22 @@ var VaibifySyncManager = (function () {
             _fnShowAlreadySyncedToast(sRemoteKey);
             return;
         }
-        await _fnEnsureTrackedThenPush(
+        await _fnRunSyncOnce(
             sContainerId, sRemoteKey, sResolved, sCurrentState);
+    }
+
+    async function _fnRunSyncOnce(
+        sContainerId, sRemoteKey, sResolved, sCurrentState,
+    ) {
+        var sKey = sRemoteKey + "|" + sResolved;
+        if (_setActiveFileSyncs.has(sKey)) return;
+        _setActiveFileSyncs.add(sKey);
+        try {
+            await _fnEnsureTrackedThenPush(
+                sContainerId, sRemoteKey, sResolved, sCurrentState);
+        } finally {
+            _setActiveFileSyncs.delete(sKey);
+        }
     }
 
     function _fsCurrentBadgeState(sRemoteKey, sResolved, sWorkdir) {
