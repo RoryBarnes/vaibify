@@ -566,7 +566,7 @@ def test_fnSaveWorkflowToContainer_clears_stale_slabel_from_disk():
 
 
 def test_fnAttachComputedTrackedPaths_extracts_scripts_and_standards():
-    """saStepScripts and saTestStandards are derived from authoritative fields."""
+    """saStepScripts and saTestStandards carry canonical repo-relative paths."""
     from vaibify.gui.workflowManager import fnAttachComputedTrackedPaths
     dictWorkflow = {
         "listSteps": [
@@ -577,10 +577,10 @@ def test_fnAttachComputedTrackedPaths_extracts_scripts_and_standards():
                 "saPlotFiles": ["f.pdf"],
                 "dictTests": {
                     "dictQualitative": {
-                        "sStandardsPath": "tests/qual.json",
+                        "sStandardsPath": "d/tests/qual.json",
                     },
                     "dictQuantitative": {
-                        "sStandardsPath": "tests/quant.json",
+                        "sStandardsPath": "d/tests/quant.json",
                     },
                 },
             },
@@ -588,10 +588,36 @@ def test_fnAttachComputedTrackedPaths_extracts_scripts_and_standards():
     }
     fnAttachComputedTrackedPaths(dictWorkflow)
     dictStep = dictWorkflow["listSteps"][0]
-    assert dictStep["saStepScripts"] == ["data.py", "plot.py"]
+    assert dictStep["saStepScripts"] == ["d/data.py", "d/plot.py"]
     assert dictStep["saTestStandards"] == [
-        "tests/qual.json", "tests/quant.json",
+        "d/tests/qual.json", "d/tests/quant.json",
     ]
+
+
+def test_fnAttachComputedTrackedPaths_matches_state_contract_canonical():
+    """Computed paths match stateContract — single source of truth."""
+    from vaibify.gui.workflowManager import fnAttachComputedTrackedPaths
+    from vaibify.gui import stateContract
+    dictStep = {
+        "sName": "S1", "sDirectory": "analysis",
+        "saDataCommands": ["python compute.py"],
+        "saPlotCommands": ["python3 plot.py --opt"],
+        "saPlotFiles": ["f.pdf"],
+        "dictTests": {
+            "dictQuantitative": {
+                "sStandardsPath": "analysis/tests/quant.json",
+            },
+        },
+    }
+    dictWorkflow = {"listSteps": [dictStep]}
+    fnAttachComputedTrackedPaths(dictWorkflow)
+    dictAttached = dictWorkflow["listSteps"][0]
+    assert dictAttached["saStepScripts"] == (
+        stateContract._flistStepScriptRepoPaths(dictStep)
+    )
+    assert dictAttached["saTestStandards"] == (
+        stateContract._flistStepStandardsRepoPaths(dictStep)
+    )
 
 
 def test_fnAttachComputedTrackedPaths_handles_empty_step():
@@ -623,7 +649,7 @@ def test_fdictLoadWorkflowFromContainer_attaches_computed_tracked_paths():
             "saPlotFiles": ["f.pdf"],
             "dictTests": {
                 "dictQuantitative": {
-                    "sStandardsPath": "tests/quant.json",
+                    "sStandardsPath": "d/tests/quant.json",
                 },
             },
         }],
@@ -635,8 +661,8 @@ def test_fdictLoadWorkflowFromContainer_attaches_computed_tracked_paths():
         mockDocker, "cid", sWorkflowPath="/w.json",
     )
     dictStep = dictResult["listSteps"][0]
-    assert dictStep["saStepScripts"] == ["compute.py", "plot.py"]
-    assert dictStep["saTestStandards"] == ["tests/quant.json"]
+    assert dictStep["saStepScripts"] == ["d/compute.py", "d/plot.py"]
+    assert dictStep["saTestStandards"] == ["d/tests/quant.json"]
 
 
 def test_fnSaveWorkflowToContainer_strips_computed_tracked_paths():

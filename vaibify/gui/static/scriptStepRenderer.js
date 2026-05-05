@@ -680,9 +680,6 @@ var VaibifyStepRenderer = (function () {
         sWorkdir, dictContext
     ) {
         var sResolved = dictContext.fsResolveTemplate(sRaw, dictVars);
-        if (sWorkdir && !sResolved.startsWith("/")) {
-            sResolved = dictContext.fsJoinPath(sWorkdir, sResolved);
-        }
         var sHtml = '<div class="detail-item tracked-file" ' +
             'data-step="' + iStepIdx +
             '" data-array="' + sArrayKey +
@@ -692,7 +689,7 @@ var VaibifyStepRenderer = (function () {
             '" data-workdir="' + fnEscapeHtml(sWorkdir || "") + '">';
         if (typeof VaibifyGitBadges !== "undefined") {
             var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
-                sResolved, sWorkdir
+                sResolved, ""
             );
             sHtml += VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
         }

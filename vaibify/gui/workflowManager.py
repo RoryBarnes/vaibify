@@ -637,30 +637,27 @@ def fnReorderStep(dictWorkflow, iFromIndex, iToIndex):
     fnRenumberAllReferences(dictWorkflow, fnRemap)
 
 
-def _flistTestStandardsForStep(dictStep):
-    """Return non-empty sStandardsPath values across all test categories."""
-    listPaths = []
-    dictTests = dictStep.get("dictTests", {}) or {}
-    for sCategory in ("dictQualitative", "dictQuantitative", "dictIntegrity"):
-        dictCategory = dictTests.get(sCategory, {}) or {}
-        sStandardsPath = dictCategory.get("sStandardsPath", "")
-        if sStandardsPath:
-            listPaths.append(sStandardsPath)
-    return listPaths
-
-
 def fnAttachComputedTrackedPaths(dictWorkflow):
     """Attach derived saStepScripts and saTestStandards to each step.
 
-    These arrays are computed from authoritative fields (commands and
-    dictTests) so the frontend can render per-file remote-sync badges
-    for tracked artifacts that have no UI rows of their own. The
-    fields are transient and are stripped on save by
-    ``_fdictStripComputedFields``.
+    Both arrays carry repo-relative paths produced by the canonical
+    ``stateContract`` helpers, the same lists that drive
+    ``flistCanonicalTrackedFiles`` and the badge dictionary keys. The
+    frontend can then render per-file remote-sync badges whose lookup
+    keys match the backend's. The fields are transient and are
+    stripped on save by ``_fdictStripComputedFields``.
+
+    ``stateContract`` imports ``workflowManager`` at module level, so
+    the import must be deferred to break the cycle.
     """
+    from . import stateContract
     for dictStep in dictWorkflow.get("listSteps", []):
-        dictStep["saStepScripts"] = list(flistExtractStepScripts(dictStep))
-        dictStep["saTestStandards"] = _flistTestStandardsForStep(dictStep)
+        dictStep["saStepScripts"] = list(
+            stateContract._flistStepScriptRepoPaths(dictStep)
+        )
+        dictStep["saTestStandards"] = list(
+            stateContract._flistStepStandardsRepoPaths(dictStep)
+        )
 
 
 def _fdictStripComputedFields(dictWorkflow):
