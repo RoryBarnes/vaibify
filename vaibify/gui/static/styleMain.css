@@ -1510,6 +1510,21 @@ body.all-verified .toolbar-label {
     color: var(--color-orange);
 }
 
+.verification-badge.state-passed-from-marker {
+    background: rgba(46, 204, 113, 0.2);
+    color: var(--highlight-color);
+}
+
+.verification-badge.state-outputs-changed {
+    background: rgba(230, 180, 40, 0.2);
+    color: var(--color-orange);
+}
+
+.verification-badge.state-outputs-missing {
+    background: rgba(230, 60, 60, 0.2);
+    color: #e84040;
+}
+
 .plot-standard-button-row {
     display: flex;
     gap: 8px;

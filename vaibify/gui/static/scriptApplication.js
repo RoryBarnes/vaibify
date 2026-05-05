@@ -1050,6 +1050,9 @@ const PipeleyenApp = (function () {
             passed: "Passed", failed: "Failed",
             untested: "Untested", error: "Error",
             stale: "Stale",
+            "passed-from-marker": "Passed",
+            "outputs-changed": "Stale",
+            "outputs-missing": "Missing",
         };
         return dictLabels[sState] || "Untested";
     }
@@ -1059,6 +1062,9 @@ const PipeleyenApp = (function () {
             passed: "\u2713", failed: "\u2717",
             untested: "\u2014", error: "\u2717",
             stale: "\u26A0",
+            "passed-from-marker": "\u2713",
+            "outputs-changed": "\u26A0",
+            "outputs-missing": "\u2717",
         };
         return dictIcons[sState] || "\u2014";
     }

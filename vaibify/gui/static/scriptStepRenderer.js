@@ -355,12 +355,13 @@ var VaibifyStepRenderer = (function () {
         var bExpanded = setExp.has(iIndex);
         var sTriangle = '<span class="expand-triangle">' +
             (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
+        var sStateClass = sState || "untested";
         return '<div class="sub-test-row expandable" data-step="' +
             iIndex + '" data-approver="' + sCategory + '">' +
             '<span class="verification-label">' +
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
             '<span class="verification-badge state-' +
-            sState + '">' +
+            sStateClass + '">' +
             dictContext.fsVerificationStateIcon(sState) + ' ' +
             dictContext.fsVerificationStateLabel(sState) +
             '</span></div>';
@@ -456,7 +457,8 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderDepAxisRow(sLabel, sState, sDetail, dictContext) {
-        var sBadgeState = sState === "unknown" ? "untested" : sState;
+        var sBadgeState = (sState === "unknown" || !sState)
+            ? "untested" : sState;
         var sStateLabel = sState === "unknown" ? "—" :
             dictContext.fsVerificationStateLabel(sState);
         var sIcon = sState === "unknown" ? "" :
