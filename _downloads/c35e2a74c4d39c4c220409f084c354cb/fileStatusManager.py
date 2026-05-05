@@ -1179,7 +1179,65 @@ async def _fnArchiveZenodoForAutoArchive(
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, listFiles, "Zenodo",
     )
+    await _fnPersistAutoArchiveZenodoDigests(
+        connectionDocker, sContainerId, dictWorkflow,
+        listFiles, sZenodoService,
+    )
     return True
+
+
+async def _fnPersistAutoArchiveZenodoDigests(
+    connectionDocker, sContainerId, dictWorkflow,
+    listFiles, sZenodoService,
+):
+    """Best-effort post-archive digest stamping for the auto-archive flow.
+
+    Failures are logged and swallowed: the archive itself already
+    succeeded, so the auto-archive return value should reflect that
+    rather than the digest snapshot. A missing digest stamp leaves the
+    badge as drifted, which is the honest state.
+    """
+    import asyncio
+    try:
+        dictDigests = await asyncio.to_thread(
+            _fdictAutoArchiveZenodoDigests,
+            connectionDocker, sContainerId, dictWorkflow, listFiles,
+        )
+        workflowManager.fnUpdateZenodoDigests(
+            dictWorkflow, dictDigests, sZenodoService=sZenodoService,
+        )
+    except Exception as exc:
+        logging.getLogger("vaibify").warning(
+            "Auto Archive: Zenodo digest stamp failed: %s", exc,
+        )
+
+
+def _fdictAutoArchiveZenodoDigests(
+    connectionDocker, sContainerId, dictWorkflow, listFiles,
+):
+    """Compute post-archive blob SHAs scoped to the workflow's repo.
+
+    Mirrors ``syncRoutes._fdictComputePostArchiveZenodoDigests``;
+    duplicated here so the auto-archive path does not import a
+    route-private helper.
+    """
+    from . import containerGit
+    sRepo = dictWorkflow.get("sProjectRepoPath", "")
+    if not sRepo:
+        return {}
+    listRepoRel = [
+        workflowManager.fsToSyncStatusKey(sPath, sRepo)
+        for sPath in listFiles
+    ]
+    dictShas = containerGit.fdictComputeBlobShasInContainer(
+        connectionDocker, sContainerId, listRepoRel, sWorkspace=sRepo,
+    )
+    return {
+        sPath: dictShas.get(
+            workflowManager.fsToSyncStatusKey(sPath, sRepo), "",
+        )
+        for sPath in listFiles
+    }
 
 
 def fbAllStepsFullyVerified(dictWorkflow):

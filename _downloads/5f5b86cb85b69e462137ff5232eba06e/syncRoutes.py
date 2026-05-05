@@ -395,7 +395,9 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             request.listFilePaths,
         )
         workflowManager.fnUpdateZenodoDigests(
-            dictWorkflow, dictDigests)
+            dictWorkflow, dictDigests,
+            sZenodoService=sZenodoService,
+        )
         dictCtx["save"](sContainerId, dictWorkflow)
         return dictResult
 

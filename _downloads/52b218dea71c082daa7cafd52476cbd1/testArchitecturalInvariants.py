@@ -234,12 +234,16 @@ def testWorkflowJsonHasNoStatefulFieldsAfterSave():
     Asserts the contract by exercising ftSplitMergedDict on a
     representative merged dict and inspecting the declarative half.
     Catches regressions where a future change writes runtime state
-    back into the persisted declarative file.
+    back into the persisted declarative file. Also exercises
+    ``_fdictStripComputedFields`` so derived per-step caches
+    (``saSourceCodeDeps``, ``saStepScripts``, ``saTestStandards``)
+    cannot leak into ``workflow.json`` either.
     """
-    from vaibify.gui import stateManager
+    from vaibify.gui import stateManager, workflowManager
     dictMerged = {
         "sPlotDirectory": "Plot",
         "bArchiveTrackingMigrated": True,
+        "dictStateLoadNotice": {"sLevel": "warning", "sMessage": "x"},
         "listSteps": [
             {
                 "sName": "A", "sDirectory": "A",
@@ -247,10 +251,23 @@ def testWorkflowJsonHasNoStatefulFieldsAfterSave():
                 "saPlotCommands": [], "saPlotFiles": [],
                 "dictVerification": {"sUser": "passed"},
                 "dictRunStats": {"fLastRunSeconds": 1.0},
+                "saSourceCodeDeps": ["util.py"],
+                "saStepScripts": ["A/data.py"],
+                "saTestStandards": ["A/tests/quant.json"],
             },
         ],
     }
-    dictDeclarative, _ = stateManager.ftSplitMergedDict(dictMerged)
+    dictStripped = workflowManager._fdictStripComputedFields(dictMerged)
+    assert "dictStateLoadNotice" not in dictStripped
+    for dictStep in dictStripped["listSteps"]:
+        for sField in (
+            "saSourceCodeDeps", "saStepScripts", "saTestStandards",
+        ):
+            assert sField not in dictStep, (
+                f"step {dictStep['sName']} retained computed "
+                f"field {sField!r} after strip"
+            )
+    dictDeclarative, _ = stateManager.ftSplitMergedDict(dictStripped)
     assert "bArchiveTrackingMigrated" not in dictDeclarative
     for dictStep in dictDeclarative["listSteps"]:
         for sField in (

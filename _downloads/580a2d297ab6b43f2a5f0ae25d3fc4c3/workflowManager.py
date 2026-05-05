@@ -24,6 +24,7 @@ __all__ = [
     "fbValidateWorkflow",
     "fsDescribeValidationFailure",
     "fsDeriveProjectRepoPathFromWorkflow",
+    "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
     "fdictBuildImplicitDependencies",
@@ -223,6 +224,7 @@ def fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
     )
     fnAttachStepLabels(dictWorkflow)
+    fnAttachComputedTrackedPaths(dictWorkflow)
     return dictWorkflow
 
 
@@ -635,17 +637,44 @@ def fnReorderStep(dictWorkflow, iFromIndex, iToIndex):
     fnRenumberAllReferences(dictWorkflow, fnRemap)
 
 
+def fnAttachComputedTrackedPaths(dictWorkflow):
+    """Attach derived saStepScripts and saTestStandards to each step.
+
+    Both arrays carry repo-relative paths produced by the canonical
+    ``stateContract`` helpers, the same lists that drive
+    ``flistCanonicalTrackedFiles`` and the badge dictionary keys. The
+    frontend can then render per-file remote-sync badges whose lookup
+    keys match the backend's. The fields are transient and are
+    stripped on save by ``_fdictStripComputedFields``.
+
+    ``stateContract`` imports ``workflowManager`` at module level, so
+    the import must be deferred to break the cycle.
+    """
+    from . import stateContract
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictStep["saStepScripts"] = list(
+            stateContract._flistStepScriptRepoPaths(dictStep)
+        )
+        dictStep["saTestStandards"] = list(
+            stateContract._flistStepStandardsRepoPaths(dictStep)
+        )
+
+
 def _fdictStripComputedFields(dictWorkflow):
     """Return a deep copy with transient fields removed from steps.
 
     ``dictStateLoadNotice`` is a one-shot toast payload attached
     during the connect-time recovery path; it must not leak into
-    the persisted workflow.json or state.json.
+    the persisted workflow.json or state.json. ``saStepScripts`` and
+    ``saTestStandards`` are derived per-step badge-rendering caches
+    and are also non-persistent.
     """
     dictClean = copy.deepcopy(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
     for dictStep in dictClean.get("listSteps", []):
         dictStep.pop("saSourceCodeDeps", None)
+        dictStep.pop("saStepScripts", None)
+        dictStep.pop("saTestStandards", None)
     return dictClean
 
 
@@ -902,19 +931,20 @@ def fsCamelCaseDirectory(sStepName):
 
 
 def flistExtractStepScripts(dictStep):
-    """Extract .py script paths from data and plot commands."""
-    listScripts = []
-    for sKey in ("saDataCommands", "saPlotCommands"):
-        for sCommand in dictStep.get(sKey, []):
-            listTokens = sCommand.split()
-            if not listTokens:
-                continue
-            if listTokens[0] in ("python", "python3"):
-                if len(listTokens) > 1:
-                    listScripts.append(listTokens[1])
-            elif listTokens[0].endswith(".py"):
-                listScripts.append(listTokens[0])
-    return listScripts
+    """Extract .py script tokens from data and plot commands.
+
+    Delegates to ``manifestPaths.flistExtractStepScripts`` so the
+    extractor is shared across the manifest writer, the canonical
+    tracked-files set, the Zenodo scripts archive flow, and the
+    scripts-route response. Previously this returned ``listTokens[1]``
+    unconditionally, so ``python -u foo.py`` would surface ``-u`` as a
+    "script" — breaking syncDispatcher's per-file copy commands and
+    leaking ``-u`` into scriptRoutes' GUI list.
+    """
+    from vaibify.reproducibility.manifestPaths import (
+        flistExtractStepScripts as _flist,
+    )
+    return _flist(dictStep)
 
 
 def fdictAutoDetectScripts(listFileNames):
@@ -971,6 +1001,7 @@ def fdictInitializeSyncEntry():
         "bGithub": False, "sGithubTimestamp": "",
         "bZenodo": False, "sZenodoTimestamp": "",
         "sZenodoLastPushedDigest": "",
+        "sZenodoLastPushedEndpoint": "",
     }
 
 
@@ -1010,23 +1041,39 @@ def fdictLookupSyncEntry(dictSyncStatus, sPath, sProjectRepoPath=""):
 
 
 def _fnUpdateServiceDigests(
-    dictWorkflow, sService, dictPathToDigest, sProjectRepoPath=None,
+    dictWorkflow, sService, dictPathToDigest,
+    sProjectRepoPath=None, sEndpoint=None,
 ):
-    """Write per-file last-pushed digests for one service."""
+    """Write per-file last-pushed digests for one service.
+
+    When ``sEndpoint`` is supplied, also stamp
+    ``s{Service}LastPushedEndpoint`` so the badge layer can detect
+    pushes that originated from a different remote (today only the
+    Zenodo production / sandbox split needs this).
+    """
     if "dictSyncStatus" not in dictWorkflow:
         dictWorkflow["dictSyncStatus"] = {}
     if sProjectRepoPath is None:
         sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    sDigestKey = f"s{sService}LastPushedDigest"
     for sPath, sDigest in (dictPathToDigest or {}).items():
         if not sDigest:
             continue
         sKey = fsToSyncStatusKey(sPath, sProjectRepoPath)
-        if sKey not in dictWorkflow["dictSyncStatus"]:
-            dictWorkflow["dictSyncStatus"][sKey] = (
-                fdictInitializeSyncEntry()
-            )
-        dictWorkflow["dictSyncStatus"][sKey][sDigestKey] = sDigest
+        _fnWriteServiceDigestEntry(
+            dictWorkflow["dictSyncStatus"], sKey, sService,
+            sDigest, sEndpoint,
+        )
+
+
+def _fnWriteServiceDigestEntry(
+    dictSyncStatus, sKey, sService, sDigest, sEndpoint,
+):
+    """Stamp one sync entry with a digest and optional endpoint."""
+    if sKey not in dictSyncStatus:
+        dictSyncStatus[sKey] = fdictInitializeSyncEntry()
+    dictSyncStatus[sKey][f"s{sService}LastPushedDigest"] = sDigest
+    if sEndpoint is not None:
+        dictSyncStatus[sKey][f"s{sService}LastPushedEndpoint"] = sEndpoint
 
 
 def fnSetServiceTracking(
@@ -1071,17 +1118,20 @@ def fnUpdateOverleafDigests(
 
 
 def fnUpdateZenodoDigests(
-    dictWorkflow, dictPathToDigest, sProjectRepoPath=None,
+    dictWorkflow, dictPathToDigest,
+    sProjectRepoPath=None, sZenodoService=None,
 ):
-    """Persist post-archive Zenodo blob digests into ``dictSyncStatus``.
+    """Persist post-archive Zenodo blob digests + endpoint into dictSyncStatus.
 
-    The digest is the file's git blob SHA at the moment of the
-    archive; Zenodo deposits are immutable, so this snapshot is the
-    authoritative "what was published" state. Keys are normalized the
-    same way as Overleaf digests.
+    ``sZenodoService`` defaults to ``dictWorkflow['sZenodoService']``
+    so the badge layer can flag a file as drifted when the workflow
+    flips between production and sandbox.
     """
+    if sZenodoService is None:
+        sZenodoService = dictWorkflow.get("sZenodoService", "") or None
     _fnUpdateServiceDigests(
         dictWorkflow, "Zenodo", dictPathToDigest, sProjectRepoPath,
+        sEndpoint=sZenodoService,
     )
 
 

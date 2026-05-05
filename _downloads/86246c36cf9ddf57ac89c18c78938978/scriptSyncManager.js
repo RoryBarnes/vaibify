@@ -16,20 +16,68 @@ var VaibifySyncManager = (function () {
     var _listConflicts = [];
     var _iDiffRequestToken = 0;
     var _timerDiffDebounce = null;
+    var _setActiveFileSyncs = new Set();
 
     var _DICT_SYNC_ERROR_MESSAGES = {
         auth: "Authentication failed. Check your credentials " +
             "in Sync > Setup.",
         rateLimit: "Rate limited. Try again in a few minutes.",
-        notFound: "Resource not found. Check your project ID " +
-            "or DOI.",
+        notFound: "Resource not found. Check the remote " +
+            "configuration.",
         network: "Network error. Check your container's " +
             "internet connection.",
         verifyFailed: "Verification failed. The remote could not " +
             "be reached or returned an unexpected response.",
         manifestMissing: "No manifest found. Generate one before " +
             "verifying.",
+        conflict: "Remote has changes you don't have locally. " +
+            "Pull or fetch first, then retry.",
+        noChanges: "Nothing to push — files match what is already " +
+            "on the remote.",
+        unknown: "Sync failed for an unrecognized reason. Check " +
+            "the toast detail or container logs.",
     };
+
+    var _DICT_SERVICE_ERROR_MESSAGES = {
+        GitHub: {
+            notFound: "Repository or branch not found. Check the " +
+                "GitHub remote configuration in workflow.yml.",
+            conflict: "Push rejected: GitHub has commits you " +
+                "don't have. Run 'git pull --rebase' first.",
+        },
+        Zenodo: {
+            notFound: "Resource not found. Check your project ID " +
+                "or DOI.",
+            conflict: "Deposit is already published or in an " +
+                "unexpected state. Check the Zenodo deposit page.",
+        },
+        Overleaf: {
+            notFound: "Overleaf project not found. Check the " +
+                "workflow's Overleaf URL.",
+        },
+    };
+
+    var _DICT_SERVICE_LABEL_BY_LOWERCASE = {
+        github: "GitHub",
+        zenodo: "Zenodo",
+        overleaf: "Overleaf",
+    };
+
+    function _fsCanonicalServiceLabel(sService) {
+        if (!sService) return "";
+        var sLower = String(sService).toLowerCase();
+        return _DICT_SERVICE_LABEL_BY_LOWERCASE[sLower] || sService;
+    }
+
+    function _fsLookupSyncErrorMessage(sService, sErrorType) {
+        var sCanonical = _fsCanonicalServiceLabel(sService);
+        var dictForService =
+            _DICT_SERVICE_ERROR_MESSAGES[sCanonical] || {};
+        if (dictForService[sErrorType]) {
+            return dictForService[sErrorType];
+        }
+        return _DICT_SYNC_ERROR_MESSAGES[sErrorType] || "";
+    }
 
     var _LIST_VERIFY_SERVICES = ["github", "overleaf", "zenodo"];
     var _DICT_VERIFY_SERVICE_LABELS = {
@@ -883,7 +931,8 @@ var VaibifySyncManager = (function () {
 
     function fnShowSyncError(dictResult, sService) {
         var sErrorType = dictResult.sErrorType || "unknown";
-        var sMessage = _DICT_SYNC_ERROR_MESSAGES[sErrorType] ||
+        var sMessage = _fsLookupSyncErrorMessage(
+            sService, sErrorType) ||
             dictResult.sMessage || "Unknown error";
         var sTitle = (sService || "Sync") + " failed: " +
             sErrorType;
@@ -1187,37 +1236,134 @@ var VaibifySyncManager = (function () {
         sZenodo: "Zenodo",
     };
 
-    async function fnToggleRemoteTracking(
-        sRemoteKey, sResolved, sWorkdir, bShiftClick,
+    var _DICT_REMOTE_KEY_TO_LABEL = {
+        sGithub: "GitHub",
+        sOverleaf: "Overleaf",
+        sZenodo: "Zenodo",
+    };
+
+    async function fnSyncFileToRemote(
+        sRemoteKey, sResolved, sWorkdir,
     ) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId) return;
+        if (!sContainerId || !sResolved) return;
+        if (sRemoteKey === "sOverleaf") {
+            _fnShowOverleafPerFileNotice();
+            return;
+        }
+        var sCurrentState = _fsCurrentBadgeState(
+            sRemoteKey, sResolved, sWorkdir);
+        if (sCurrentState === "synced") {
+            _fnShowAlreadySyncedToast(sRemoteKey);
+            return;
+        }
+        await _fnRunSyncOnce(
+            sContainerId, sRemoteKey, sResolved, sCurrentState);
+    }
+
+    async function _fnRunSyncOnce(
+        sContainerId, sRemoteKey, sResolved, sCurrentState,
+    ) {
+        var sKey = sRemoteKey + "|" + sResolved;
+        if (_setActiveFileSyncs.has(sKey)) {
+            PipeleyenApp.fnShowToast(
+                "Sync already in progress for " +
+                _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey] + ".",
+                "info");
+            return;
+        }
+        _setActiveFileSyncs.add(sKey);
+        try {
+            await _fnEnsureTrackedThenPush(
+                sContainerId, sRemoteKey, sResolved, sCurrentState);
+        } finally {
+            _setActiveFileSyncs.delete(sKey);
+        }
+    }
+
+    function _fsCurrentBadgeState(sRemoteKey, sResolved, sWorkdir) {
         var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
             sResolved, sWorkdir);
-        var sCurrentState = dictTriple[sRemoteKey] || "none";
-        var bCurrentlyTracked = sCurrentState !== "none";
-        var listToFlip = [sRemoteKey];
-        if (bShiftClick && !bCurrentlyTracked) {
-            listToFlip = ["sGithub", "sOverleaf", "sZenodo"];
-        }
+        return dictTriple[sRemoteKey] || "none";
+    }
+
+    function _fnShowOverleafPerFileNotice() {
+        PipeleyenApp.fnShowToast(
+            "Overleaf sync is workflow-level. " +
+            "Use Sync › Push to Overleaf.",
+            "info",
+        );
+    }
+
+    function _fnShowAlreadySyncedToast(sRemoteKey) {
+        PipeleyenApp.fnShowToast(
+            "Already synced with " +
+            _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey] + ".",
+            "info",
+        );
+    }
+
+    async function _fnEnsureTrackedThenPush(
+        sContainerId, sRemoteKey, sResolved, sCurrentState,
+    ) {
         try {
-            for (var i = 0; i < listToFlip.length; i++) {
-                await VaibifyApi.fdictPost(
-                    "/api/sync/" + sContainerId + "/track",
-                    {
-                        sPath: sResolved,
-                        sService:
-                            _DICT_REMOTE_KEY_TO_SERVICE[listToFlip[i]],
-                        bTrack: !bCurrentlyTracked,
-                    }
-                );
+            if (sCurrentState === "none") {
+                await _fnPostTrack(
+                    sContainerId, sResolved, sRemoteKey, true);
             }
-            await VaibifyGitBadges.fnRefresh(sContainerId);
-            PipeleyenApp.fnRenderStepList();
+            await _fnPushFileToRemote(
+                sContainerId, sRemoteKey, sResolved);
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
+        await VaibifyGitBadges.fnRefresh(sContainerId);
+        PipeleyenApp.fnRenderStepList();
+    }
+
+    function _fnPostTrack(
+        sContainerId, sResolved, sRemoteKey, bTrack,
+    ) {
+        return VaibifyApi.fdictPost(
+            "/api/sync/" + sContainerId + "/track",
+            {
+                sPath: sResolved,
+                sService: _DICT_REMOTE_KEY_TO_SERVICE[sRemoteKey],
+                bTrack: bTrack,
+            }
+        );
+    }
+
+    async function _fnPushFileToRemote(
+        sContainerId, sRemoteKey, sResolved,
+    ) {
+        var sLabel = _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey];
+        PipeleyenApp.fnShowToast(
+            "Syncing to " + sLabel + "…", "info");
+        if (sRemoteKey === "sGithub") {
+            var dictGh = await VaibifyApi.fdictPost(
+                "/api/github/" + sContainerId + "/add-file",
+                {sFilePath: sResolved}
+            );
+            _fnHandlePushResult(dictGh, "GitHub");
+            return;
+        }
+        if (sRemoteKey === "sZenodo") {
+            var dictZen = await VaibifyApi.fdictPost(
+                "/api/zenodo/" + sContainerId + "/archive",
+                {listFilePaths: [sResolved]}
+            );
+            _fnHandlePushResult(dictZen, "Zenodo");
+        }
+    }
+
+    function _fnHandlePushResult(dictResult, sServiceLabel) {
+        if (dictResult && dictResult.bSuccess) {
+            PipeleyenApp.fnShowToast(
+                "Synced to " + sServiceLabel + ".", "success");
+            return;
+        }
+        fnShowSyncError(dictResult || {}, sServiceLabel);
     }
 
     function _fnToggleEditZenodoMetadataButton(sService) {
@@ -1773,16 +1919,31 @@ var VaibifySyncManager = (function () {
         var iTotal = dict.iTotal || 0;
         var iMatching = dict.iMatching || 0;
         var listMismatches = dict.listMismatches || [];
-        if (listMismatches.length === 0) {
+        var saIncomplete = dict.saIncomplete || [];
+        var iIncomplete = saIncomplete.length;
+        if (listMismatches.length === 0 && iIncomplete === 0) {
             PipeleyenApp.fnShowToast(
                 "Manifest verified: " + iMatching + "/" + iTotal +
                 " files match.", "success");
             return;
         }
+        if (listMismatches.length === 0) {
+            PipeleyenApp.fnShowToast(
+                "Manifest verified " + iMatching + "/" + iTotal +
+                ", but " + iIncomplete +
+                " declared path(s) not pinned: " +
+                _fsBuildMismatchSummary(saIncomplete) +
+                " Re-run to refresh coverage.",
+                "warning");
+            return;
+        }
         var sList = _fsBuildMismatchSummary(listMismatches);
+        var sExtra = iIncomplete > 0
+            ? " Plus " + iIncomplete + " not pinned."
+            : "";
         PipeleyenApp.fnShowToast(
             "Manifest mismatch: " + iMatching + "/" + iTotal +
-            " match. " + sList, "error");
+            " match. " + sList + sExtra, "error");
     }
 
     function _fsBuildMismatchSummary(listMismatches) {
@@ -1802,17 +1963,23 @@ var VaibifySyncManager = (function () {
         return sJoined;
     }
 
+    function fnResetState() {
+        _setActiveFileSyncs.clear();
+        fnInvalidateVerifyCache();
+    }
+
     return {
         fnOpenPushModal: fnOpenPushModal,
         fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,
         fnShowHelpPopup: fnShowHelpPopup,
-        fnToggleRemoteTracking: fnToggleRemoteTracking,
+        fnSyncFileToRemote: fnSyncFileToRemote,
         fsFormatFileCount: fsFormatFileCount,
         fnRenderRemoteSyncPanel: fnRenderRemoteSyncPanel,
         fnRenderRemoteConsistencyBanner: fnRenderRemoteConsistencyBanner,
         fdictVerifyManifest: fdictVerifyManifest,
         fnInvalidateVerifyCache: fnInvalidateVerifyCache,
+        fnResetState: fnResetState,
     };
 })();

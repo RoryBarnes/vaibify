@@ -1,11 +1,27 @@
-"""Write and verify a GNU-style SHA-256 manifest of workflow outputs.
+"""Write and verify a GNU-style SHA-256 manifest of workflow artefacts.
 
 The manifest is a single text file at ``<projectRepo>/MANIFEST.sha256``
-containing one ``<hash>  <relpath>`` line per declared output. It is
+containing one ``<hash>  <relpath>`` line per declared artefact. It is
 the byte-exact, human-inspectable record of every artefact a workflow
-produces, used by the AICS Level 3 reproducibility envelope to prove
-that the artefacts a downstream consumer holds are bit-identical to
-the ones the workflow generated.
+involves, used by the AICS Level 3 reproducibility envelope to prove
+that the inputs and outputs a downstream consumer holds are
+bit-identical to the ones the workflow used.
+
+The manifest envelope covers the full input-to-output chain so that a
+third party can verify the *code* that produced the outputs as well as
+the outputs themselves:
+
+* Output artefacts: every path in ``saOutputFiles``, ``saPlotFiles``,
+  and ``saDataFiles`` for every step.
+* Step scripts: every ``.py`` file referenced by ``saDataCommands``
+  and ``saPlotCommands``. Without these in the manifest, a downstream
+  consumer could verify the outputs match but could not detect that
+  the producing script was tampered with after the run.
+* Test standards: every ``sStandardsPath`` declared in
+  ``dictTests.dictQualitative``, ``dictQuantitative``, and
+  ``dictIntegrity``. Standards are golden references; without them
+  hash-pinned, a consumer can't tell if a "passing" test row was
+  passing against the original reference or a substituted one.
 
 Symbolic links anywhere on a declared path — leaf or intermediate
 directory — are rejected at write and verify time. Following them
@@ -26,34 +42,45 @@ import os
 from pathlib import Path
 
 from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
+from vaibify.reproducibility.manifestPaths import (
+    TUPLE_OUTPUT_KEYS,
+    flistStepScriptRepoPaths,
+    flistStepStandardsRepoPaths,
+)
 
 
 __all__ = [
     "fnWriteManifest",
     "flistVerifyManifest",
     "flistParseManifestLines",
+    "flistDeclaredButMissingFromManifest",
     "fiCountManifestEntries",
 ]
 
 
 _MANIFEST_FILENAME = "MANIFEST.sha256"
-_MANIFEST_HEADER = "# SHA-256 manifest of workflow outputs\n"
-_OUTPUT_KEYS = ("saOutputFiles", "saPlotFiles", "saDataFiles")
+_MANIFEST_HEADER = "# SHA-256 manifest of workflow artefacts\n"
+# Re-exported as a module attribute so the architectural-invariant test
+# can introspect the canonical output-key set without importing
+# ``manifestPaths`` directly.
+_OUTPUT_KEYS = TUPLE_OUTPUT_KEYS
 
 
 def fnWriteManifest(sProjectRepo, dictWorkflow):
-    """Write a sorted SHA-256 manifest of every declared workflow output.
+    """Write a sorted SHA-256 manifest of every declared workflow artefact.
 
-    Walks ``dictWorkflow['listSteps']`` and collects every path in
-    ``saOutputFiles``, ``saPlotFiles``, and ``saDataFiles``. Hashes
-    each file with ``fsComputeFileHash`` and writes GNU shasum format
+    Walks ``dictWorkflow['listSteps']`` and collects every output path
+    (``saOutputFiles``, ``saPlotFiles``, ``saDataFiles``), every step
+    script referenced by ``saDataCommands`` / ``saPlotCommands``, and
+    every test ``sStandardsPath`` under ``dictTests``. Hashes each
+    file with ``fsComputeFileHash`` and writes GNU shasum format
     (``<hash>  <relpath>\\n``, escaped when needed) to
     ``<sProjectRepo>/MANIFEST.sha256``. Paths are repo-relative
     POSIX, sorted lexicographically. Raises ``ValueError`` if any
-    component on a declared output path is a symbolic link.
+    component on a declared path is a symbolic link.
     """
     pathRepo = Path(sProjectRepo)
-    listRelativePaths = _flistCollectOutputPaths(dictWorkflow)
+    listRelativePaths = _flistCollectManifestPaths(dictWorkflow)
     listEntries = _flistBuildManifestEntries(pathRepo, listRelativePaths)
     _fnWriteManifestFile(pathRepo, listEntries)
 
@@ -66,6 +93,11 @@ def flistVerifyManifest(sProjectRepo):
     ``sActual`` is ``None`` when the file is missing on disk. An empty
     list means every recorded file matches its stored hash. Raises
     ``ValueError`` if any component on a verified path is a symlink.
+
+    Manifest-completeness (workflow declares paths the manifest does
+    not cover) is surfaced via the explicit
+    ``flistDeclaredButMissingFromManifest`` query, which both the
+    dashboard route and the reproduce CLI consume.
     """
     pathRepo = Path(sProjectRepo)
     listEntries = flistParseManifestLines(sProjectRepo)
@@ -77,6 +109,21 @@ def flistVerifyManifest(sProjectRepo):
         if dictMismatch is not None:
             listMismatches.append(dictMismatch)
     return listMismatches
+
+
+def flistDeclaredButMissingFromManifest(sProjectRepo, dictWorkflow):
+    """Return repo-relative paths the workflow declares but the manifest omits.
+
+    Pure helper that surfaces the manifest-completeness gap honestly.
+    A user upgrading vaibify keeps a legacy manifest that pins outputs
+    only; without this query the GUI cannot tell them their manifest
+    is silently weaker than the new envelope guarantees. Raises
+    ``FileNotFoundError`` when the manifest is absent.
+    """
+    listEntries = flistParseManifestLines(sProjectRepo)
+    setManifestPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    listDeclared = _flistCollectManifestPaths(dictWorkflow)
+    return [sPath for sPath in listDeclared if sPath not in setManifestPaths]
 
 
 def flistParseManifestLines(sProjectRepo):
@@ -105,14 +152,29 @@ def fiCountManifestEntries(sProjectRepo):
     return len(flistParseManifestLines(sProjectRepo))
 
 
-def _flistCollectOutputPaths(dictWorkflow):
-    """Return a sorted, deduplicated list of repo-relative output paths."""
+def _flistCollectManifestPaths(dictWorkflow):
+    """Return a sorted, deduplicated list of repo-relative artefact paths.
+
+    The set spans declared outputs, step scripts, and test standards
+    so that the manifest pins the entire input-to-output chain. Each
+    path-extraction sub-helper is single-purposed and orthogonal so
+    the union never silently drops a category.
+    """
     setPaths = set()
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sKey in _OUTPUT_KEYS:
-            for sPath in dictStep.get(sKey, []) or []:
-                setPaths.add(_fsNormalizeRelativePath(sPath))
-    return sorted(setPaths)
+        setPaths.update(_flistStepOutputPaths(dictStep))
+        setPaths.update(flistStepScriptRepoPaths(dictStep))
+        setPaths.update(flistStepStandardsRepoPaths(dictStep))
+    return sorted(sPath for sPath in setPaths if sPath)
+
+
+def _flistStepOutputPaths(dictStep):
+    """Return repo-relative output paths declared by one step."""
+    listPaths = []
+    for sKey in TUPLE_OUTPUT_KEYS:
+        for sPath in dictStep.get(sKey, []) or []:
+            listPaths.append(_fsNormalizeRelativePath(sPath))
+    return listPaths
 
 
 def _fsNormalizeRelativePath(sPath):
