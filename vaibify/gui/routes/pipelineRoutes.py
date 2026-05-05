@@ -906,34 +906,47 @@ def _fnRegisterManifestVerify(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
-        try:
-            listMismatches = await asyncio.to_thread(
-                manifestWriter.flistVerifyManifest, sProjectRepo,
-            )
-            listIncomplete = await asyncio.to_thread(
-                manifestWriter.flistDeclaredButMissingFromManifest,
-                sProjectRepo, dictWorkflow,
-            )
-        except FileNotFoundError as errorMissing:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "MANIFEST.sha256 is missing. Run the workflow to "
-                    "regenerate the manifest before verifying."
-                ),
-            ) from errorMissing
-        except ValueError as errorMalformed:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "MANIFEST.sha256 is malformed and cannot be parsed. "
-                    "Regenerate the manifest before verifying."
-                ),
-            ) from errorMalformed
+        listMismatches, listIncomplete = await _ftRunManifestVerify(
+            manifestWriter, dictWorkflow,
+        )
         return _fdictBuildManifestVerifyResult(
             dictWorkflow, listMismatches, listIncomplete,
         )
+
+
+async def _ftRunManifestVerify(manifestWriter, dictWorkflow):
+    """Run the verify+gap queries off the loop and translate failures.
+
+    Raises ``HTTPException`` 409 on missing manifest, 422 on a
+    malformed manifest. Returns ``(listMismatches, listIncomplete)``
+    on success.
+    """
+    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    try:
+        listMismatches = await asyncio.to_thread(
+            manifestWriter.flistVerifyManifest, sProjectRepo,
+        )
+        listIncomplete = await asyncio.to_thread(
+            manifestWriter.flistDeclaredButMissingFromManifest,
+            sProjectRepo, dictWorkflow,
+        )
+    except FileNotFoundError as errorMissing:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "MANIFEST.sha256 is missing. Run the workflow to "
+                "regenerate the manifest before verifying."
+            ),
+        ) from errorMissing
+    except ValueError as errorMalformed:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "MANIFEST.sha256 is malformed and cannot be parsed. "
+                "Regenerate the manifest before verifying."
+            ),
+        ) from errorMalformed
+    return listMismatches, listIncomplete
 
 
 def _fdictBuildManifestVerifyResult(
