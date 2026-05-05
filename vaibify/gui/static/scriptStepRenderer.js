@@ -216,6 +216,17 @@ var VaibifyStepRenderer = (function () {
                 fsRenderPlotMtime(iIndex, dictContext) + '</div>';
         }
 
+        sHtml += fsRenderTrackedFileSection(
+            "Scripts", "saStepScripts",
+            step.saStepScripts || [], iIndex, dictVars,
+            sResolvedDir, dictContext
+        );
+        sHtml += fsRenderTrackedFileSection(
+            "Test Standards", "saTestStandards",
+            step.saTestStandards || [], iIndex, dictVars,
+            sResolvedDir, dictContext
+        );
+
         sHtml += fsRenderVerificationBlock(step, iIndex, dictContext);
         sHtml += fsRenderDiscoveredOutputs(iIndex, dictContext);
         sHtml += fsRenderRunStepButton(step, iIndex);
@@ -657,6 +668,56 @@ var VaibifyStepRenderer = (function () {
             '" data-array="' + sArrayKey +
             '" title="Add item">+</button>' +
             '</div>';
+    }
+
+    function fsRenderReadOnlySectionLabel(sLabel) {
+        return '<div class="detail-label"><span>' +
+            fnEscapeHtml(sLabel) + '</span></div>';
+    }
+
+    function fsRenderTrackedFileItem(
+        sRaw, dictVars, sArrayKey, iStepIdx, iItemIdx,
+        sWorkdir, dictContext
+    ) {
+        var sResolved = dictContext.fsResolveTemplate(sRaw, dictVars);
+        if (sWorkdir && !sResolved.startsWith("/")) {
+            sResolved = dictContext.fsJoinPath(sWorkdir, sResolved);
+        }
+        var sHtml = '<div class="detail-item tracked-file" ' +
+            'data-step="' + iStepIdx +
+            '" data-array="' + sArrayKey +
+            '" data-idx="' + iItemIdx +
+            '" data-raw="' + fnEscapeHtml(sRaw) +
+            '" data-resolved="' + fnEscapeHtml(sResolved) +
+            '" data-workdir="' + fnEscapeHtml(sWorkdir || "") + '">';
+        if (typeof VaibifyGitBadges !== "undefined") {
+            var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
+                sResolved, sWorkdir
+            );
+            sHtml += VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
+        }
+        var sDisplayPath = dictContext.fsShortenPath(
+            sResolved, sWorkdir);
+        sHtml += '<div class="detail-text" title="' +
+            fnEscapeHtml(sResolved) + '">' +
+            fnEscapeHtml(sDisplayPath) + '</div>';
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderTrackedFileSection(
+        sLabel, sArrayKey, listFiles, iStepIdx, dictVars,
+        sWorkdir, dictContext
+    ) {
+        if (!listFiles || listFiles.length === 0) return "";
+        var sHtml = fsRenderReadOnlySectionLabel(sLabel);
+        listFiles.forEach(function (sFile, iFileIdx) {
+            sHtml += fsRenderTrackedFileItem(
+                sFile, dictVars, sArrayKey, iStepIdx, iFileIdx,
+                sWorkdir, dictContext
+            );
+        });
+        return sHtml;
     }
 
     function fbIsInvalidOutputPath(sRaw, sResolved, sWorkdir) {

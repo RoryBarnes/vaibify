@@ -24,6 +24,7 @@ __all__ = [
     "fbValidateWorkflow",
     "fsDescribeValidationFailure",
     "fsDeriveProjectRepoPathFromWorkflow",
+    "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
     "fdictBuildImplicitDependencies",
@@ -223,6 +224,7 @@ def fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
     )
     fnAttachStepLabels(dictWorkflow)
+    fnAttachComputedTrackedPaths(dictWorkflow)
     return dictWorkflow
 
 
@@ -635,17 +637,47 @@ def fnReorderStep(dictWorkflow, iFromIndex, iToIndex):
     fnRenumberAllReferences(dictWorkflow, fnRemap)
 
 
+def _flistTestStandardsForStep(dictStep):
+    """Return non-empty sStandardsPath values across all test categories."""
+    listPaths = []
+    dictTests = dictStep.get("dictTests", {}) or {}
+    for sCategory in ("dictQualitative", "dictQuantitative", "dictIntegrity"):
+        dictCategory = dictTests.get(sCategory, {}) or {}
+        sStandardsPath = dictCategory.get("sStandardsPath", "")
+        if sStandardsPath:
+            listPaths.append(sStandardsPath)
+    return listPaths
+
+
+def fnAttachComputedTrackedPaths(dictWorkflow):
+    """Attach derived saStepScripts and saTestStandards to each step.
+
+    These arrays are computed from authoritative fields (commands and
+    dictTests) so the frontend can render per-file remote-sync badges
+    for tracked artifacts that have no UI rows of their own. The
+    fields are transient and are stripped on save by
+    ``_fdictStripComputedFields``.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        dictStep["saStepScripts"] = list(flistExtractStepScripts(dictStep))
+        dictStep["saTestStandards"] = _flistTestStandardsForStep(dictStep)
+
+
 def _fdictStripComputedFields(dictWorkflow):
     """Return a deep copy with transient fields removed from steps.
 
     ``dictStateLoadNotice`` is a one-shot toast payload attached
     during the connect-time recovery path; it must not leak into
-    the persisted workflow.json or state.json.
+    the persisted workflow.json or state.json. ``saStepScripts`` and
+    ``saTestStandards`` are derived per-step badge-rendering caches
+    and are also non-persistent.
     """
     dictClean = copy.deepcopy(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
     for dictStep in dictClean.get("listSteps", []):
         dictStep.pop("saSourceCodeDeps", None)
+        dictStep.pop("saStepScripts", None)
+        dictStep.pop("saTestStandards", None)
     return dictClean
 
 

@@ -561,6 +561,112 @@ def test_fnSaveWorkflowToContainer_clears_stale_slabel_from_disk():
 
 
 # -----------------------------------------------------------------------
+# fnAttachComputedTrackedPaths — script + standards arrays for badges
+# -----------------------------------------------------------------------
+
+
+def test_fnAttachComputedTrackedPaths_extracts_scripts_and_standards():
+    """saStepScripts and saTestStandards are derived from authoritative fields."""
+    from vaibify.gui.workflowManager import fnAttachComputedTrackedPaths
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sName": "S1", "sDirectory": "d",
+                "saDataCommands": ["python data.py --flag"],
+                "saPlotCommands": ["python3 plot.py"],
+                "saPlotFiles": ["f.pdf"],
+                "dictTests": {
+                    "dictQualitative": {
+                        "sStandardsPath": "tests/qual.json",
+                    },
+                    "dictQuantitative": {
+                        "sStandardsPath": "tests/quant.json",
+                    },
+                },
+            },
+        ],
+    }
+    fnAttachComputedTrackedPaths(dictWorkflow)
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["saStepScripts"] == ["data.py", "plot.py"]
+    assert dictStep["saTestStandards"] == [
+        "tests/qual.json", "tests/quant.json",
+    ]
+
+
+def test_fnAttachComputedTrackedPaths_handles_empty_step():
+    """Steps with no commands or tests still get empty arrays attached."""
+    from vaibify.gui.workflowManager import fnAttachComputedTrackedPaths
+    dictWorkflow = {
+        "listSteps": [
+            {"sName": "Empty", "sDirectory": "d"},
+        ],
+    }
+    fnAttachComputedTrackedPaths(dictWorkflow)
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["saStepScripts"] == []
+    assert dictStep["saTestStandards"] == []
+
+
+def test_fdictLoadWorkflowFromContainer_attaches_computed_tracked_paths():
+    """Workflow load attaches saStepScripts and saTestStandards to each step."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fdictLoadWorkflowFromContainer
+    mockDocker = MagicMock()
+    dictValid = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "S1", "sDirectory": "d",
+            "saDataCommands": ["python compute.py"],
+            "saPlotCommands": ["python plot.py"],
+            "saPlotFiles": ["f.pdf"],
+            "dictTests": {
+                "dictQuantitative": {
+                    "sStandardsPath": "tests/quant.json",
+                },
+            },
+        }],
+    }
+    mockDocker.fbaFetchFile.return_value = (
+        json.dumps(dictValid).encode("utf-8")
+    )
+    dictResult = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid", sWorkflowPath="/w.json",
+    )
+    dictStep = dictResult["listSteps"][0]
+    assert dictStep["saStepScripts"] == ["compute.py", "plot.py"]
+    assert dictStep["saTestStandards"] == ["tests/quant.json"]
+
+
+def test_fnSaveWorkflowToContainer_strips_computed_tracked_paths():
+    """saStepScripts and saTestStandards never persist to workflow.json."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnSaveWorkflowToContainer
+    mockDocker = MagicMock()
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "S1", "sDirectory": "d",
+            "saPlotCommands": ["python plot.py"],
+            "saPlotFiles": ["f.pdf"],
+            "saStepScripts": ["plot.py"],
+            "saTestStandards": ["tests/quant.json"],
+        }],
+    }
+    fnSaveWorkflowToContainer(
+        mockDocker, "cid", dictWorkflow,
+        sWorkflowPath="/w.json",
+    )
+    (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
+    dictWritten = json.loads(baPayload.decode("utf-8"))
+    dictStepOut = dictWritten["listSteps"][0]
+    assert "saStepScripts" not in dictStepOut
+    assert "saTestStandards" not in dictStepOut
+
+
+# -----------------------------------------------------------------------
 # fnSaveWorkflowToContainer null path (line 323)
 # -----------------------------------------------------------------------
 
