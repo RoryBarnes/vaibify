@@ -859,6 +859,11 @@ const PipeleyenApp = (function () {
     }
 
     function _fnRenderStepListImmediate() {
+        if (typeof VaibifySyncManager !== "undefined"
+            && typeof VaibifySyncManager.fnDismissAllPicklists
+                === "function") {
+            VaibifySyncManager.fnDismissAllPicklists();
+        }
         var elList = document.getElementById("listSteps");
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) {
             elList.innerHTML = "";

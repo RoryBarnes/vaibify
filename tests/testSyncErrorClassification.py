@@ -89,11 +89,19 @@ class TestConflictPatterns:
         )
         assert dictResult["sErrorType"] == "conflict"
 
-    def test_fbRejectedIsConflict(self):
+    def test_fbBareRejectedIsNotConflict(self):
+        """Hook rejections are auth/policy issues, not push conflicts.
+
+        Git only emits the bracketed ``[rejected]`` form for non-fast-
+        forward conflicts; bare ``rejected`` in stderr usually means
+        a server-side hook denied the push for permission/policy
+        reasons. Treating those as ``conflict`` would mislead the user
+        into running ``git pull`` instead of fixing access controls.
+        """
         dictResult = fdictClassifyError(
             1, "remote: error: rejected by repository hook",
         )
-        assert dictResult["sErrorType"] == "conflict"
+        assert dictResult["sErrorType"] != "conflict"
 
 
 class TestUnknownFallback:

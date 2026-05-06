@@ -736,7 +736,8 @@ var VaibifyStepRenderer = (function () {
         var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
             sResolved, sWorkdir || ""
         );
-        var aRemoteKeys = _DICT_CATEGORY_TO_REMOTE_KEYS[sArrayKey];
+        var aRemoteKeys = _DICT_CATEGORY_TO_REMOTE_KEYS[sArrayKey]
+            || ["sGithub", "sZenodo"];
         return VaibifyGitBadges.fsRenderBadgeRow(
             dictTriple, aRemoteKeys);
     }

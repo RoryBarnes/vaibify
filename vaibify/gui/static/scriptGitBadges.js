@@ -104,6 +104,9 @@ var VaibifyGitBadges = (function () {
                 return s.substring(sPrefix.length);
             }
         }
+        if (s.indexOf("/workspace/") === 0) {
+            return s.substring("/workspace/".length);
+        }
         if (sWorkdir && s.indexOf(sWorkdir + "/") === 0) {
             return s.substring(sWorkdir.length + 1);
         }
