@@ -3618,6 +3618,13 @@ body.all-verified .vaibify-checkmark {
     gap: 4px;
 }
 
+.sub-test-badges {
+    display: inline-flex;
+    gap: 4px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+
 /* --- Test log link --- */
 
 .test-log-link {

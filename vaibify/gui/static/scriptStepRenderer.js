@@ -396,6 +396,7 @@ var VaibifyStepRenderer = (function () {
         var dictCat = dictTests[sCatKey] || {};
         var sStandardsPath = dictCat.sStandardsPath || "";
         var sHtml = '<div class="sub-test-expanded sub-test-column">';
+        sHtml += fsRenderTestStandardsBadges(sStandardsPath);
         if (sStandardsPath) {
             sHtml += '<div><span class="test-standards-link" ' +
                 'data-step="' + iIndex +
@@ -423,6 +424,14 @@ var VaibifyStepRenderer = (function () {
             iIndex, sCategory, dictContext);
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function fsRenderTestStandardsBadges(sStandardsPath) {
+        if (!sStandardsPath) return "";
+        var sBadgeRow = _fsBuildTrackedFileBadgeRow(
+            sStandardsPath, "saTestStandards", "");
+        if (!sBadgeRow) return "";
+        return '<div class="sub-test-badges">' + sBadgeRow + '</div>';
     }
 
     function fsRenderTestSourceMtimeLine(
