@@ -105,8 +105,8 @@ _LIST_NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
 _LIST_NETWORK_PATTERNS = [
     "timeout", "connection refused", "network",
     "could not resolve", "no route",
-    "name resolution", "dns", "unreachable",
-    "could not resolve host",
+    "name resolution", "dns failure", "dns lookup",
+    "unreachable",
 ]
 _LIST_CONFLICT_PATTERNS = [
     "non-fast-forward", "fetch first",
@@ -114,7 +114,7 @@ _LIST_CONFLICT_PATTERNS = [
     "merge conflict",
     "this action is not allowed",
     "published deposition",
-    "rejected",
+    "[rejected]",
 ]
 
 

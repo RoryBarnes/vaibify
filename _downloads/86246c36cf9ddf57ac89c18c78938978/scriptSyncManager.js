@@ -1235,17 +1235,22 @@ var VaibifySyncManager = (function () {
         elModal.style.display = "flex";
     }
 
-    var _RE_GH_TOKEN = /gh[oprsu]_[A-Za-z0-9]{20,}/g;
+    var _RE_GH_CLASSIC_TOKEN = /gh[oprsu]_[A-Za-z0-9]{20,}/g;
+    var _RE_GH_FINEGRAINED_TOKEN = /github_pat_[A-Za-z0-9_]{20,}/g;
     var _RE_GLPAT_TOKEN = /glpat-[A-Za-z0-9_-]{20,}/g;
-    var _RE_BEARER_TOKEN = /[A-Za-z0-9+/=_-]{40,}/g;
+    var _RE_URL_USERINFO = /(https?:\/\/)[^\/\s@]+@/gi;
+    var _RE_BEARER_TOKEN =
+        /(^|[^A-Za-z0-9+\/=_-])([A-Za-z0-9+\/=_-]{40,})(?=[^A-Za-z0-9+\/=_-]|$)/g;
     var _I_RAW_ERROR_MAX_LENGTH = 1000;
 
     function _fsSanitizeRawError(sRaw) {
         if (!sRaw) return "";
         var sCleaned = String(sRaw)
-            .replace(_RE_GH_TOKEN, "[redacted-token]")
+            .replace(_RE_GH_CLASSIC_TOKEN, "[redacted-token]")
+            .replace(_RE_GH_FINEGRAINED_TOKEN, "[redacted-token]")
             .replace(_RE_GLPAT_TOKEN, "[redacted-token]")
-            .replace(_RE_BEARER_TOKEN, "[redacted-token]");
+            .replace(_RE_URL_USERINFO, "$1[redacted-userinfo]@")
+            .replace(_RE_BEARER_TOKEN, "$1[redacted-token]");
         if (sCleaned.length > _I_RAW_ERROR_MAX_LENGTH) {
             sCleaned = sCleaned.substring(
                 0, _I_RAW_ERROR_MAX_LENGTH) + "…";
@@ -1308,6 +1313,7 @@ var VaibifySyncManager = (function () {
                 url.protocol !== "http:") {
                 return "";
             }
+            if (!url.host) return "";
             return url.toString();
         } catch (error) {
             return "";
@@ -1315,7 +1321,7 @@ var VaibifySyncManager = (function () {
     }
 
     var _RE_DIGITS = /^\d+$/;
-    var _RE_ALNUM = /^[A-Za-z0-9]+$/;
+    var _RE_ALNUM = /^[A-Za-z0-9-]+$/;
 
     function _fsBuildZenodoDepositUrl(dictWorkflow) {
         var sExisting = _fsValidateLinkUrl(
@@ -1458,6 +1464,25 @@ var VaibifySyncManager = (function () {
             document.getElementById("remotePicklistMenu"));
         _fnDismissPicklist(
             document.getElementById("rowOverflowMenu"));
+        _fnDetachAutoDismissListeners();
+    }
+
+    var _fnAutoDismissHandler = null;
+
+    function _fnAttachAutoDismissListeners() {
+        if (_fnAutoDismissHandler) return;
+        _fnAutoDismissHandler = function () { fnDismissAllPicklists(); };
+        window.addEventListener(
+            "scroll", _fnAutoDismissHandler, true);
+        window.addEventListener("resize", _fnAutoDismissHandler);
+    }
+
+    function _fnDetachAutoDismissListeners() {
+        if (!_fnAutoDismissHandler) return;
+        window.removeEventListener(
+            "scroll", _fnAutoDismissHandler, true);
+        window.removeEventListener("resize", _fnAutoDismissHandler);
+        _fnAutoDismissHandler = null;
     }
 
     function _fnBuildPicklistAnchor(dictItem) {
@@ -1511,6 +1536,7 @@ var VaibifySyncManager = (function () {
             ));
         });
         _fnPositionPicklist(elMenu, elBadge);
+        _fnAttachAutoDismissListeners();
     }
 
     function _fnHandleRemotePicklistSelect(
@@ -1555,6 +1581,7 @@ var VaibifySyncManager = (function () {
             ));
         });
         _fnPositionPicklist(elMenu, elAnchor);
+        _fnAttachAutoDismissListeners();
     }
 
     function _fnHandleRowOverflowSelect(dictItem, sResolved) {

@@ -22,6 +22,7 @@ workflow to key off.
 
 import json
 import posixpath
+import re
 import shlex
 
 from . import gitStatus
@@ -306,6 +307,10 @@ def fsRemoteUrlInContainer(
     configured, the path is not a git work tree, or the command
     fails for any reason. Callers must validate the returned URL
     before rendering it (e.g. with a JavaScript URL whitelist).
+
+    Strips any embedded userinfo (``https://user:token@host/...``) so
+    a misconfigured remote can never leak credentials to the frontend,
+    browser history, or the Referer header on a "View on GitHub" click.
     """
     if not sProjectRepoPath:
         return ""
@@ -318,7 +323,14 @@ def fsRemoteUrlInContainer(
     )
     if iExit != 0:
         return ""
-    return (sOutput or "").strip()
+    return _fsStripUrlUserinfo((sOutput or "").strip())
+
+
+def _fsStripUrlUserinfo(sUrl):
+    """Remove ``user:password@`` from an http(s) URL, if present."""
+    if not sUrl:
+        return ""
+    return re.sub(r"(https?://)[^/\s@]+@", r"\1", sUrl, flags=re.I)
 
 
 def ftResultGitPullFastForwardInContainer(
