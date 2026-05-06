@@ -12,9 +12,13 @@
        a resolved output-path. Returns null when the file hasn't been
        seen (caller renders nothing).
 
-   - VaibifyGitBadges.fsRenderBadgeRow(dictTriple)
-       Builds a fragment of three mini-badge spans for one file row.
-       Pure; safe to call on every re-render.
+   - VaibifyGitBadges.fsRenderBadgeRow(dictTriple, aRemoteKeys)
+       Builds a fragment of mini-badge spans for one file row. The
+       optional aRemoteKeys array restricts which remotes render
+       (default: ["sGithub", "sOverleaf", "sZenodo"]). Callers pass
+       a category-specific subset to hide remotes that don't apply
+       (e.g., Overleaf for non-LaTeX files). Pure; safe to call on
+       every re-render.
 */
 
 var VaibifyGitBadges = (function () {
@@ -121,10 +125,13 @@ var VaibifyGitBadges = (function () {
             _fdictPlaceholderTriple();
     }
 
-    function fsRenderBadgeRow(dictTriple) {
+    var _A_DEFAULT_REMOTE_KEYS = ["sGithub", "sOverleaf", "sZenodo"];
+
+    function fsRenderBadgeRow(dictTriple, aRemoteKeys) {
         var dictUse = dictTriple || _fdictPlaceholderTriple();
+        var aKeys = aRemoteKeys || _A_DEFAULT_REMOTE_KEYS;
         var sHtml = '<span class="remote-badges" draggable="false">';
-        ["sGithub", "sOverleaf", "sZenodo"].forEach(function (sKey) {
+        aKeys.forEach(function (sKey) {
             var sState = dictUse[sKey] || "none";
             var sLabel = _DICT_REMOTE_LABELS[sKey];
             var sTitle = sLabel + ": " +

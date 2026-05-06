@@ -5,6 +5,13 @@ var VaibifyStepRenderer = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
+    var _DICT_CATEGORY_TO_REMOTE_KEYS = {
+        saPlotFiles: ["sGithub", "sOverleaf", "sZenodo"],
+        saDataFiles: ["sGithub", "sZenodo"],
+        saStepScripts: ["sGithub", "sZenodo"],
+        saTestStandards: ["sGithub", "sZenodo"],
+    };
+
     var _DICT_STALE_ROW_LABELS = {
         "test|dataScript": "Tests older than data scripts",
         "test|dataFile": "Tests older than data files",
@@ -688,7 +695,8 @@ var VaibifyStepRenderer = (function () {
             '" data-raw="' + fnEscapeHtml(sRaw) +
             '" data-resolved="' + fnEscapeHtml(sResolved) +
             '" data-workdir="' + fnEscapeHtml(sWorkdir || "") + '">';
-        sHtml += _fsBuildTrackedFileBadgeRow(sResolved);
+        sHtml += _fsBuildTrackedFileBadgeRow(
+            sResolved, sArrayKey, "");
         var sDisplayPath = dictContext.fsShortenPath(
             sResolved, sWorkdir);
         sHtml += '<div class="detail-text" title="' +
@@ -698,12 +706,16 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
-    function _fsBuildTrackedFileBadgeRow(sResolved) {
+    function _fsBuildTrackedFileBadgeRow(
+        sResolved, sArrayKey, sWorkdir
+    ) {
         if (typeof VaibifyGitBadges === "undefined") return "";
         var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
-            sResolved, ""
+            sResolved, sWorkdir || ""
         );
-        return VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
+        var aRemoteKeys = _DICT_CATEGORY_TO_REMOTE_KEYS[sArrayKey];
+        return VaibifyGitBadges.fsRenderBadgeRow(
+            dictTriple, aRemoteKeys);
     }
 
     function fsRenderTrackedFileSection(
@@ -763,12 +775,8 @@ var VaibifyStepRenderer = (function () {
         }
         if ((sArrayKey === "saPlotFiles" ||
             sArrayKey === "saDataFiles") && !bInvalid) {
-            if (typeof VaibifyGitBadges !== "undefined") {
-                var dictTriple = VaibifyGitBadges.fdictGetBadgesForFile(
-                    sResolved, sWorkdir
-                );
-                sHtml += VaibifyGitBadges.fsRenderBadgeRow(dictTriple);
-            }
+            sHtml += _fsBuildTrackedFileBadgeRow(
+                sResolved, sArrayKey, sWorkdir);
         }
         var sDisplayPath = dictContext.fsShortenPath(
             sResolved, sWorkdir);
