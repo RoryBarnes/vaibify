@@ -2747,6 +2747,76 @@ body.all-verified .toolbar-label {
     margin: 4px 0;
 }
 
+/* --- Picklist menu (remote actions and row overflow) --- */
+
+.picklist-menu {
+    position: fixed;
+    background: var(--bg-modal);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 6px 0;
+    z-index: 1600;
+    min-width: 200px;
+    max-width: 320px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.picklist-menu[hidden] {
+    display: none;
+}
+
+.picklist-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.picklist-item {
+    display: block;
+    width: 100%;
+    padding: 6px 14px;
+    min-height: 26px;
+    line-height: 1.4;
+    font-size: 13px;
+    color: var(--text-primary, inherit);
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition-speed);
+    box-sizing: border-box;
+}
+
+.picklist-item:hover,
+.picklist-item:focus {
+    background: var(--bg-hover);
+    outline: none;
+}
+
+.picklist-item.primary {
+    font-weight: 600;
+}
+
+.picklist-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.row-overflow-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary, inherit);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 6px;
+    line-height: 1;
+}
+
+.row-overflow-btn:hover {
+    color: var(--text-primary, inherit);
+}
+
 /* --- Text Editor --- */
 
 .editor-toolbar {

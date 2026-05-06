@@ -57,7 +57,6 @@ const PipeleyenApp = (function () {
         setExpandedIntegrity: new Set(),
         bShowTimestamps: false,
         iContextStepIndex: -1,
-        sContextFilePath: "",
     };
 
     var I_MAX_UNDO = 50;
@@ -2080,34 +2079,9 @@ const PipeleyenApp = (function () {
         el.classList.add("active");
     }
 
-    function fnShowFileContextMenu(
-        iX, iY, sFilePath, sWorkdir, iStepIndex
-    ) {
-        fnHideContextMenu();
-        _dictUiState.sContextFilePath = sFilePath;
-        var el = document.getElementById("fileContextMenu");
-        el.style.left = iX + "px";
-        el.style.top = iY + "px";
-        el.classList.add("active");
-    }
-
     function fnHideContextMenu() {
         document.getElementById("contextMenu")
             .classList.remove("active");
-        document.getElementById("fileContextMenu")
-            .classList.remove("active");
-    }
-
-    function fnHandleFileContextAction(sAction) {
-        if (sAction === "pullToHost") {
-            PipeleyenFilePull.fnPromptPullToHost(
-                _dictUiState.sContextFilePath);
-            return;
-        }
-        if (sAction === "copyPath") {
-            PipeleyenFileOps.fnCopyToClipboard(
-                _dictUiState.sContextFilePath);
-        }
     }
 
     function fnHandleContextAction(sAction, iIndex) {
@@ -2256,12 +2230,10 @@ const PipeleyenApp = (function () {
         fnToggleStepExpand: fnToggleStepExpand,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
-        fnShowFileContextMenu: fnShowFileContextMenu,
         fnHideContextMenu: fnHideContextMenu,
         fnHandleDetailDrop: fnHandleDetailDrop,
         fnReorderStep: fnReorderStep,
         fnHandleContextAction: fnHandleContextAction,
-        fnHandleFileContextAction: fnHandleFileContextAction,
         fiGetContextStepIndex: function () {
             return _dictUiState.iContextStepIndex;
         },

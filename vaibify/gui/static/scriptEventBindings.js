@@ -66,9 +66,18 @@ var PipeleyenEventBindings = (function () {
         var sResolved = elItem.dataset.resolved || "";
         var sWorkdir = elItem.dataset.workdir || "";
         if (!sResolved || !sRemoteKey) return;
-        VaibifySyncManager.fnSyncFileToRemote(
-            sRemoteKey, sResolved, sWorkdir,
+        VaibifySyncManager.fnOpenRemotePicklistForBadge(
+            elMatch, sRemoteKey, sResolved, sWorkdir,
         );
+    }
+
+    function _fnHandleRowOverflow(event, elMatch) {
+        event.stopPropagation();
+        var elItem = elMatch.closest(".detail-item");
+        if (!elItem) return;
+        var sResolved = elItem.dataset.resolved || "";
+        if (!sResolved) return;
+        VaibifySyncManager.fnOpenRowOverflowMenu(elMatch, sResolved);
     }
 
     function _fnHandleTestAdd(event, elMatch) {
@@ -249,6 +258,7 @@ var PipeleyenEventBindings = (function () {
         ".action-delete": _fnHandleActionDelete,
         ".btn-discovered": _fnHandleDiscoveredButton,
         ".remote-badge": _fnHandleRemoteBadge,
+        ".row-overflow-btn": _fnHandleRowOverflow,
         ".test-add": _fnHandleTestAdd,
         ".section-add": _fnHandleSectionAdd,
         ".verification-row.clickable":
@@ -335,18 +345,6 @@ var PipeleyenEventBindings = (function () {
     }
 
     function fnHandleDelegatedContextMenu(event) {
-        var elFile = event.target.closest(".detail-item.output");
-        if (elFile) {
-            event.preventDefault();
-            event.stopPropagation();
-            PipeleyenApp.fnShowFileContextMenu(
-                event.pageX, event.pageY,
-                elFile.dataset.resolved,
-                elFile.dataset.workdir || "",
-                parseInt(elFile.dataset.step)
-            );
-            return;
-        }
         var elStep = event.target.closest(".step-item");
         if (elStep) {
             event.preventDefault();
@@ -758,16 +756,9 @@ var PipeleyenEventBindings = (function () {
                     PipeleyenApp.fnHideContextMenu();
                 });
             });
-        document.getElementById("fileContextMenu")
-            .querySelectorAll(".context-menu-item")
-            .forEach(function (el) {
-                el.addEventListener("click", function (event) {
-                    event.stopPropagation();
-                    PipeleyenApp.fnHandleFileContextAction(
-                        el.dataset.action);
-                    PipeleyenApp.fnHideContextMenu();
-                });
-            });
+        document.addEventListener("click", function () {
+            VaibifySyncManager.fnDismissAllPicklists();
+        });
     }
 
     /* --- Left Panel Tabs --- */

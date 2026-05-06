@@ -711,8 +711,22 @@ var VaibifyStepRenderer = (function () {
         sHtml += '<div class="detail-text" title="' +
             fnEscapeHtml(sResolved) + '">' +
             fnEscapeHtml(sDisplayPath) + '</div>';
+        sHtml += _fsBuildRowOverflowButton(
+            iStepIdx, sArrayKey, iItemIdx, sResolved);
         sHtml += '</div>';
         return sHtml;
+    }
+
+    function _fsBuildRowOverflowButton(
+        iStepIdx, sArrayKey, iItemIdx, sResolved
+    ) {
+        return '<button type="button" class="row-overflow-btn" ' +
+            'aria-label="More actions" title="More actions" ' +
+            'data-resolved="' + fnEscapeHtml(sResolved) +
+            '" data-step="' + iStepIdx +
+            '" data-array="' + fnEscapeHtml(sArrayKey) +
+            '" data-idx="' + iItemIdx +
+            '">⋯</button>';
     }
 
     function _fsBuildTrackedFileBadgeRow(
@@ -809,6 +823,12 @@ var VaibifyStepRenderer = (function () {
             '<button class="action-copy" title="Copy">&#9112;</button>' +
             '<button class="action-delete" title="Delete">&#10005;</button>' +
             '</div>';
+        if (sType === "output" && !bInvalid &&
+            (sArrayKey === "saPlotFiles" ||
+                sArrayKey === "saDataFiles")) {
+            sHtml += _fsBuildRowOverflowButton(
+                iStepIdx, sArrayKey, iItemIdx, sResolved);
+        }
 
         sHtml += '</div>';
         return sHtml;

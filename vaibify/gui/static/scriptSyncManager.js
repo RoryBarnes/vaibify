@@ -936,6 +936,11 @@ var VaibifySyncManager = (function () {
             dictResult.sMessage || "Unknown error";
         var sTitle = (sService || "Sync") + " failed: " +
             sErrorType;
+        if (sErrorType === "unknown") {
+            _fnShowErrorModalWithRaw(
+                sTitle, sMessage, dictResult.sMessage || "");
+            return;
+        }
         _fnShowErrorModal(sTitle + "\n\n" + sMessage);
     }
 
@@ -1230,6 +1235,40 @@ var VaibifySyncManager = (function () {
         elModal.style.display = "flex";
     }
 
+    var _RE_GH_TOKEN = /gh[oprsu]_[A-Za-z0-9]{20,}/g;
+    var _RE_GLPAT_TOKEN = /glpat-[A-Za-z0-9_-]{20,}/g;
+    var _RE_BEARER_TOKEN = /[A-Za-z0-9+/=_-]{40,}/g;
+    var _I_RAW_ERROR_MAX_LENGTH = 1000;
+
+    function _fsSanitizeRawError(sRaw) {
+        if (!sRaw) return "";
+        var sCleaned = String(sRaw)
+            .replace(_RE_GH_TOKEN, "[redacted-token]")
+            .replace(_RE_GLPAT_TOKEN, "[redacted-token]")
+            .replace(_RE_BEARER_TOKEN, "[redacted-token]");
+        if (sCleaned.length > _I_RAW_ERROR_MAX_LENGTH) {
+            sCleaned = sCleaned.substring(
+                0, _I_RAW_ERROR_MAX_LENGTH) + "…";
+        }
+        return sCleaned;
+    }
+
+    function _fnShowErrorModalWithRaw(sTitle, sMessage, sRaw) {
+        var elModal = document.getElementById("modalError");
+        var elContent = document.getElementById("modalErrorContent");
+        var sBody = _fsSanitizeError(sTitle + "\n\n" + sMessage);
+        var sHtml = VaibifyUtilities.fnEscapeHtml(sBody);
+        var sRawClean = _fsSanitizeRawError(sRaw);
+        if (sRawClean) {
+            sHtml += "\n\n<details><summary>" +
+                "Show raw error details</summary>" +
+                VaibifyUtilities.fnEscapeHtml(sRawClean) +
+                "</details>";
+        }
+        elContent.innerHTML = sHtml;
+        elModal.style.display = "flex";
+    }
+
     var _DICT_REMOTE_KEY_TO_SERVICE = {
         sGithub: "Github",
         sOverleaf: "Overleaf",
@@ -1248,7 +1287,7 @@ var VaibifySyncManager = (function () {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId || !sResolved) return;
         if (sRemoteKey === "sOverleaf") {
-            _fnShowOverleafPerFileNotice();
+            fnOpenPushModal("overleaf");
             return;
         }
         var sCurrentState = _fsCurrentBadgeState(
@@ -1259,6 +1298,274 @@ var VaibifySyncManager = (function () {
         }
         await _fnRunSyncOnce(
             sContainerId, sRemoteKey, sResolved, sCurrentState);
+    }
+
+    function _fsValidateLinkUrl(sUrl) {
+        if (!sUrl) return "";
+        try {
+            var url = new URL(sUrl);
+            if (url.protocol !== "https:" &&
+                url.protocol !== "http:") {
+                return "";
+            }
+            return url.toString();
+        } catch (error) {
+            return "";
+        }
+    }
+
+    var _RE_DIGITS = /^\d+$/;
+    var _RE_ALNUM = /^[A-Za-z0-9]+$/;
+
+    function _fsBuildZenodoDepositUrl(dictWorkflow) {
+        var sExisting = _fsValidateLinkUrl(
+            dictWorkflow.sZenodoLatestUrl || "");
+        if (sExisting) return sExisting;
+        var sId = dictWorkflow.sZenodoDepositionId || "";
+        if (!_RE_DIGITS.test(String(sId))) return "";
+        var sService = dictWorkflow.sZenodoService === "production"
+            ? "zenodo.org"
+            : "sandbox.zenodo.org";
+        return _fsValidateLinkUrl(
+            "https://" + sService + "/deposit/" + sId);
+    }
+
+    function _fsBuildOverleafProjectUrl(dictWorkflow) {
+        var sId = dictWorkflow.sOverleafProjectId || "";
+        if (!_RE_ALNUM.test(String(sId))) return "";
+        return _fsValidateLinkUrl(
+            "https://www.overleaf.com/project/" + sId);
+    }
+
+    function _fsBuildGithubRepoUrl() {
+        if (typeof VaibifyGitBadges === "undefined") return "";
+        var dictSummary = VaibifyGitBadges.fdictRepoSummary();
+        if (!dictSummary) return "";
+        return _fsValidateLinkUrl(dictSummary.sRemoteUrl || "");
+    }
+
+    var _DICT_REMOTE_KEY_TO_PUSH_SERVICE = {
+        sGithub: "github",
+        sZenodo: "zenodo",
+        sOverleaf: "overleaf",
+    };
+
+    function _flistBuildPicklistItems(
+        sRemoteKey, sResolved, sWorkdir, dictWorkflow,
+    ) {
+        if (sRemoteKey === "sGithub") {
+            return _flistGithubPicklistItems();
+        }
+        if (sRemoteKey === "sZenodo") {
+            return _flistZenodoPicklistItems(dictWorkflow);
+        }
+        if (sRemoteKey === "sOverleaf") {
+            return _flistOverleafPicklistItems(dictWorkflow);
+        }
+        return [];
+    }
+
+    function _flistGithubPicklistItems() {
+        var listItems = [{
+            sLabel: "Sync now",
+            sAction: "primary",
+            bPrimary: true,
+        }];
+        var sUrl = _fsBuildGithubRepoUrl();
+        if (sUrl) {
+            listItems.push({
+                sLabel: "View on GitHub",
+                sAction: "openLink",
+                sUrl: sUrl,
+            });
+        }
+        listItems.push({
+            sLabel: "Edit GitHub remote settings…",
+            sAction: "editSettings",
+        });
+        return listItems;
+    }
+
+    function _flistZenodoPicklistItems(dictWorkflow) {
+        var listItems = [{
+            sLabel: "Archive now",
+            sAction: "primary",
+            bPrimary: true,
+        }];
+        var sUrl = _fsBuildZenodoDepositUrl(dictWorkflow || {});
+        if (sUrl) {
+            listItems.push({
+                sLabel: "View deposit on Zenodo",
+                sAction: "openLink",
+                sUrl: sUrl,
+            });
+        }
+        listItems.push({
+            sLabel: "Edit Zenodo settings…",
+            sAction: "editSettings",
+        });
+        return listItems;
+    }
+
+    function _flistOverleafPicklistItems(dictWorkflow) {
+        var listItems = [{
+            sLabel: "Push to Overleaf",
+            sAction: "primary",
+            bPrimary: true,
+        }];
+        var sUrl = _fsBuildOverleafProjectUrl(dictWorkflow || {});
+        if (sUrl) {
+            listItems.push({
+                sLabel: "View Overleaf project",
+                sAction: "openLink",
+                sUrl: sUrl,
+            });
+        }
+        listItems.push({
+            sLabel: "Edit Overleaf settings…",
+            sAction: "editSettings",
+        });
+        return listItems;
+    }
+
+    function _fnPositionPicklist(elMenu, elAnchor) {
+        var rect = elAnchor.getBoundingClientRect();
+        elMenu.style.left = Math.round(rect.left) + "px";
+        elMenu.style.top = Math.round(rect.bottom + 4) + "px";
+        elMenu.hidden = false;
+        var menuRect = elMenu.getBoundingClientRect();
+        var iWinHeight = window.innerHeight || 800;
+        var iWinWidth = window.innerWidth || 1200;
+        if (menuRect.bottom > iWinHeight) {
+            elMenu.style.top = Math.round(
+                rect.top - menuRect.height - 4) + "px";
+        }
+        if (menuRect.right > iWinWidth) {
+            elMenu.style.left = Math.round(
+                iWinWidth - menuRect.width - 8) + "px";
+        }
+    }
+
+    function _fnDismissPicklist(elMenu) {
+        if (!elMenu) return;
+        elMenu.hidden = true;
+        var elList = elMenu.querySelector(".picklist-items");
+        if (elList) elList.innerHTML = "";
+    }
+
+    function fnDismissAllPicklists() {
+        _fnDismissPicklist(
+            document.getElementById("remotePicklistMenu"));
+        _fnDismissPicklist(
+            document.getElementById("rowOverflowMenu"));
+    }
+
+    function _fnBuildPicklistAnchor(dictItem) {
+        var elBtn;
+        if (dictItem.sAction === "openLink" && dictItem.sUrl) {
+            elBtn = document.createElement("a");
+            elBtn.href = dictItem.sUrl;
+            elBtn.target = "_blank";
+            elBtn.rel = "noopener noreferrer";
+        } else {
+            elBtn = document.createElement("button");
+            elBtn.type = "button";
+        }
+        return elBtn;
+    }
+
+    function _fnRenderPicklistItem(dictItem, fnOnSelect) {
+        var elLi = document.createElement("li");
+        var elBtn = _fnBuildPicklistAnchor(dictItem);
+        elBtn.className = "picklist-item" +
+            (dictItem.bPrimary ? " primary" : "");
+        elBtn.setAttribute("role", "menuitem");
+        elBtn.textContent = dictItem.sLabel;
+        elBtn.addEventListener("click", function (event) {
+            event.stopPropagation();
+            fnOnSelect(dictItem);
+        });
+        elLi.appendChild(elBtn);
+        return elLi;
+    }
+
+    function _fnOpenRemotePicklist(
+        elBadge, sRemoteKey, sResolved, sWorkdir,
+    ) {
+        var elMenu = document.getElementById("remotePicklistMenu");
+        if (!elMenu) return;
+        fnDismissAllPicklists();
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var listItems = _flistBuildPicklistItems(
+            sRemoteKey, sResolved, sWorkdir, dictWorkflow);
+        var elList = elMenu.querySelector(".picklist-items");
+        elList.innerHTML = "";
+        listItems.forEach(function (dictItem) {
+            elList.appendChild(_fnRenderPicklistItem(
+                dictItem,
+                function (dictSelected) {
+                    _fnHandleRemotePicklistSelect(
+                        dictSelected, sRemoteKey,
+                        sResolved, sWorkdir);
+                },
+            ));
+        });
+        _fnPositionPicklist(elMenu, elBadge);
+    }
+
+    function _fnHandleRemotePicklistSelect(
+        dictItem, sRemoteKey, sResolved, sWorkdir,
+    ) {
+        fnDismissAllPicklists();
+        if (dictItem.sAction === "primary") {
+            fnSyncFileToRemote(sRemoteKey, sResolved, sWorkdir);
+            return;
+        }
+        if (dictItem.sAction === "editSettings") {
+            fnShowConnectionSetup(
+                _DICT_REMOTE_KEY_TO_PUSH_SERVICE[sRemoteKey]);
+        }
+    }
+
+    function fnOpenRemotePicklistForBadge(
+        elBadge, sRemoteKey, sResolved, sWorkdir,
+    ) {
+        _fnOpenRemotePicklist(
+            elBadge, sRemoteKey, sResolved, sWorkdir);
+    }
+
+    var _LIST_ROW_OVERFLOW_ITEMS = [
+        {sLabel: "Pull to host", sAction: "pullToHost"},
+        {sLabel: "Copy path", sAction: "copyPath"},
+    ];
+
+    function fnOpenRowOverflowMenu(elAnchor, sResolved) {
+        var elMenu = document.getElementById("rowOverflowMenu");
+        if (!elMenu) return;
+        fnDismissAllPicklists();
+        var elList = elMenu.querySelector(".picklist-items");
+        elList.innerHTML = "";
+        _LIST_ROW_OVERFLOW_ITEMS.forEach(function (dictItem) {
+            elList.appendChild(_fnRenderPicklistItem(
+                dictItem,
+                function (dictSelected) {
+                    _fnHandleRowOverflowSelect(
+                        dictSelected, sResolved);
+                },
+            ));
+        });
+        _fnPositionPicklist(elMenu, elAnchor);
+    }
+
+    function _fnHandleRowOverflowSelect(dictItem, sResolved) {
+        fnDismissAllPicklists();
+        if (dictItem.sAction === "pullToHost") {
+            PipeleyenFilePull.fnPromptPullToHost(sResolved);
+            return;
+        }
+        if (dictItem.sAction === "copyPath") {
+            PipeleyenFileOps.fnCopyToClipboard(sResolved);
+        }
     }
 
     async function _fnRunSyncOnce(
@@ -1273,11 +1580,26 @@ var VaibifySyncManager = (function () {
             return;
         }
         _setActiveFileSyncs.add(sKey);
-        try {
-            await _fnEnsureTrackedThenPush(
-                sContainerId, sRemoteKey, sResolved, sCurrentState);
-        } finally {
-            _setActiveFileSyncs.delete(sKey);
+        var dictOutcome = await _fnEnsureTrackedThenPush(
+            sContainerId, sRemoteKey, sResolved, sCurrentState);
+        _setActiveFileSyncs.delete(sKey);
+        _fnSurfaceSyncOutcome(dictOutcome);
+        await VaibifyGitBadges.fnRefresh(sContainerId);
+        PipeleyenApp.fnRenderStepList();
+    }
+
+    function _fnSurfaceSyncOutcome(dictOutcome) {
+        if (!dictOutcome) return;
+        if (dictOutcome.sError) {
+            PipeleyenApp.fnShowToast(
+                _fsSanitizeError(dictOutcome.sError), "error");
+            return;
+        }
+        if (dictOutcome.dictFailureResult) {
+            fnShowSyncError(
+                dictOutcome.dictFailureResult,
+                dictOutcome.sServiceLabel,
+            );
         }
     }
 
@@ -1311,14 +1633,11 @@ var VaibifySyncManager = (function () {
                 await _fnPostTrack(
                     sContainerId, sResolved, sRemoteKey, true);
             }
-            await _fnPushFileToRemote(
+            return await _fnPushFileToRemote(
                 sContainerId, sRemoteKey, sResolved);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
-                _fsSanitizeError(error.message), "error");
+            return {sError: error.message || String(error)};
         }
-        await VaibifyGitBadges.fnRefresh(sContainerId);
-        PipeleyenApp.fnRenderStepList();
     }
 
     function _fnPostTrack(
@@ -1345,25 +1664,28 @@ var VaibifySyncManager = (function () {
                 "/api/github/" + sContainerId + "/add-file",
                 {sFilePath: sResolved}
             );
-            _fnHandlePushResult(dictGh, "GitHub");
-            return;
+            return _fdictBuildPushOutcome(dictGh, "GitHub");
         }
         if (sRemoteKey === "sZenodo") {
             var dictZen = await VaibifyApi.fdictPost(
                 "/api/zenodo/" + sContainerId + "/archive",
                 {listFilePaths: [sResolved]}
             );
-            _fnHandlePushResult(dictZen, "Zenodo");
+            return _fdictBuildPushOutcome(dictZen, "Zenodo");
         }
+        return {};
     }
 
-    function _fnHandlePushResult(dictResult, sServiceLabel) {
+    function _fdictBuildPushOutcome(dictResult, sServiceLabel) {
         if (dictResult && dictResult.bSuccess) {
             PipeleyenApp.fnShowToast(
                 "Synced to " + sServiceLabel + ".", "success");
-            return;
+            return {};
         }
-        fnShowSyncError(dictResult || {}, sServiceLabel);
+        return {
+            dictFailureResult: dictResult || {},
+            sServiceLabel: sServiceLabel,
+        };
     }
 
     function _fnToggleEditZenodoMetadataButton(sService) {
@@ -1981,5 +2303,8 @@ var VaibifySyncManager = (function () {
         fdictVerifyManifest: fdictVerifyManifest,
         fnInvalidateVerifyCache: fnInvalidateVerifyCache,
         fnResetState: fnResetState,
+        fnOpenRemotePicklistForBadge: fnOpenRemotePicklistForBadge,
+        fnOpenRowOverflowMenu: fnOpenRowOverflowMenu,
+        fnDismissAllPicklists: fnDismissAllPicklists,
     };
 })();
