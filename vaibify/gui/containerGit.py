@@ -32,6 +32,7 @@ __all__ = [
     "fdictComputeBlobShasInContainer",
     "flistListContainerFiles",
     "fsDetectProjectRepoInContainer",
+    "fsRemoteUrlInContainer",
     "ftResultGitAddInContainer",
     "ftResultGitCommitInContainer",
     "ftResultGitFetchInContainer",
@@ -293,6 +294,31 @@ def ftResultGitFetchInContainer(
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,
     )
+
+
+def fsRemoteUrlInContainer(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Return the origin remote URL for the project repo or "".
+
+    Runs ``git remote get-url origin`` inside the container. Returns
+    the URL string on success; returns ``""`` when no remote is
+    configured, the path is not a git work tree, or the command
+    fails for any reason. Callers must validate the returned URL
+    before rendering it (e.g. with a JavaScript URL whitelist).
+    """
+    if not sProjectRepoPath:
+        return ""
+    sCommand = (
+        "cd " + shlex.quote(sProjectRepoPath) + " && "
+        "git remote get-url origin 2>/dev/null"
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        return ""
+    return (sOutput or "").strip()
 
 
 def ftResultGitPullFastForwardInContainer(

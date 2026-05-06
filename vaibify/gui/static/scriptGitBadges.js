@@ -34,6 +34,7 @@ var VaibifyGitBadges = (function () {
             iAhead: 0,
             iBehind: 0,
             sRefreshedAt: "",
+            sRemoteUrl: "",
         },
     };
 
