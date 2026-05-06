@@ -658,7 +658,8 @@ var PipeleyenContainerManager = (function () {
             + ' from the most recent container start</span>' +
             '<button type="button" '
             + 'class="build-warnings-banner-dismiss" '
-            + 'id="btnDismissBuildWarnings">Dismiss</button>' +
+            + 'id="btnDismissBuildWarnings" '
+            + 'aria-label="Dismiss build warnings">×</button>' +
             '</div>' +
             '<ul class="build-warnings-banner-list">'
             + sItems + '</ul>';

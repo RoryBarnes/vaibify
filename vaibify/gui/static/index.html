@@ -312,6 +312,12 @@
             <div class="left-tab" data-panel="logs">Logs</div>
         </div>
 
+        <!-- Banners visible above all sub-panels.
+             Drift banner first so it stacks above build-warnings. -->
+        <div id="driftBanner" class="drift-banner" hidden></div>
+        <div id="buildWarningsBanner" class="build-warnings-banner"
+             style="display: none;"></div>
+
         <!-- Steps sub-panel -->
         <div id="panelSteps" class="active">
             <div class="panel-header">
@@ -322,9 +328,6 @@
                 <button class="btn-icon" id="btnNewStep"
                         title="Create new step">+</button>
             </div>
-            <div id="driftBanner" class="drift-banner" hidden></div>
-            <div id="buildWarningsBanner" class="build-warnings-banner"
-                 style="display: none;"></div>
             <div id="globalSettingsPanel" class="global-settings"></div>
             <div id="listSteps"></div>
         </div>

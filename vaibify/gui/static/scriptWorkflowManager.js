@@ -151,6 +151,7 @@ var VaibifyWorkflowManager = (function () {
             elBanner.classList.add("dirty");
             elBanner.innerHTML = _fsBuildDirtyMarkup(dictRefusal);
             elBanner.hidden = false;
+            _fnAttachDriftBannerDismiss(elBanner);
             return;
         }
         var iBehind = (dictStatus && dictStatus.iBehind) || 0;
@@ -165,6 +166,10 @@ var VaibifyWorkflowManager = (function () {
         if (elPull) {
             elPull.addEventListener("click", fnPullProjectRepo);
         }
+        _fnAttachDriftBannerDismiss(elBanner);
+    }
+
+    function _fnAttachDriftBannerDismiss(elBanner) {
         var elDismiss = elBanner.querySelector(".drift-banner-dismiss");
         if (elDismiss) {
             elDismiss.addEventListener("click", _fnHideDriftBanner);
@@ -181,7 +186,8 @@ var VaibifyWorkflowManager = (function () {
         return '<div class="drift-banner-message">' + sMessage +
             '</div><div class="drift-banner-actions">' +
             '<button type="button" class="drift-banner-pull">Pull</button>' +
-            '<button type="button" class="drift-banner-dismiss">Dismiss</button>' +
+            '<button type="button" class="drift-banner-dismiss" ' +
+            'aria-label="Dismiss drift banner">×</button>' +
             '</div>';
     }
 
@@ -201,7 +207,8 @@ var VaibifyWorkflowManager = (function () {
             'Pull again.<ul class="drift-banner-dirty-list">' +
             listItems.join("") + '</ul></div>' +
             '<div class="drift-banner-actions">' +
-            '<button type="button" class="drift-banner-dismiss">Dismiss</button>' +
+            '<button type="button" class="drift-banner-dismiss" ' +
+            'aria-label="Dismiss drift banner">×</button>' +
             '</div>';
     }
 
