@@ -97,17 +97,24 @@ def fsZenodoTokenNameForInstance(sZenodoInstance):
 _LIST_AUTH_PATTERNS = [
     "authentication", "401", "403", "forbidden",
     "invalid credentials", "bad credentials",
+    "keyring", "no token", "missing credentials",
+    "nokeyringerror",
 ]
 _LIST_RATE_LIMIT_PATTERNS = ["rate limit", "429", "too many requests"]
 _LIST_NOT_FOUND_PATTERNS = ["not found", "404", "no such"]
 _LIST_NETWORK_PATTERNS = [
     "timeout", "connection refused", "network",
     "could not resolve", "no route",
+    "name resolution", "dns", "unreachable",
+    "could not resolve host",
 ]
 _LIST_CONFLICT_PATTERNS = [
     "non-fast-forward", "fetch first",
     "updates were rejected",
     "merge conflict",
+    "this action is not allowed",
+    "published deposition",
+    "rejected",
 ]
 
 

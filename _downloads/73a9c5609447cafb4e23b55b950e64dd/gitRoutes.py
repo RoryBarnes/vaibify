@@ -156,6 +156,10 @@ def _fnRegisterGitBadges(app, dictCtx):
             containerGit.fdictComputeBlobShasInContainer,
             docker, sContainerId, listTracked, sWorkspace=sRepo,
         )
+        sRemoteUrl = await asyncio.to_thread(
+            containerGit.fsRemoteUrlInContainer,
+            docker, sContainerId, sRepo,
+        )
         dictSync = dictWorkflow.get("dictSyncStatus", {}) or {}
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit, dictSync, dictHashes,
@@ -173,6 +177,7 @@ def _fnRegisterGitBadges(app, dictCtx):
                 "iBehind": dictGit.get("iBehind", 0),
                 "sRefreshedAt": dictGit.get("sRefreshedAt", ""),
                 "sReason": dictGit.get("sReason", ""),
+                "sRemoteUrl": sRemoteUrl,
             },
             "dictBadges": dictBadges,
             "listTracked": listTracked,
