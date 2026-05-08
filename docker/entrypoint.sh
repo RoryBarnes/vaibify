@@ -676,6 +676,8 @@ The vaibify dashboard is the researcher's ground truth; any action you would oth
 
 **Prefer `vaibify-do`** for editing `workflow.json` (it goes through schema validation and atomic save). Direct edits are now detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<project-repo>/.vaibify/test_markers/` and `/workspace/.vaibify/pipeline_state.json` are still outputs of backend actions; do not hand-edit them.
 
+**Creating a new workflow from inside the container.** `vaibify-do` does not currently expose a `create-workflow` action. When the researcher is in toolkit mode (no workflow loaded — banner shows "Workflow: None") and asks for a workflow built around their existing toolkit work, write a fresh `workflow.json` directly at `<project-repo>/.vaibify/workflows/<slug>.json`. The dashboard polls for new workflows and surfaces yours within one tick: the toolkit banner gains a "N available" indicator and a toast offers to switch into it. Use `vaibify-do --describe create-step` (or any of the existing step actions) to learn the canonical step schema before writing the file by hand.
+
 Usage:
 
 - Run `vaibify-do --list` at session start to see the full vocabulary of actions.

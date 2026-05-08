@@ -47,6 +47,7 @@ from ..pathContract import fdictAbsKeysToRepoRelative
 from ..randomnessLint import fnApplyRandomnessLintToWorkflow
 from ..llmInvoker import fsReadFileFromContainer
 from ..workflowReloadDetector import (
+    fdictDetectNewlyAvailableWorkflows,
     fdictMaybeReloadWorkflow as _fdictMaybeReloadWorkflow,
 )
 
@@ -397,6 +398,29 @@ def _fnRegisterFileStatus(app, dictCtx):
         return await fdictComputeFileStatus(
             dictCtx, sContainerId, dictWorkflow, dictVars,
         )
+
+
+def _fnRegisterWorkflowDiscovery(app, dictCtx):
+    """Register GET /api/pipeline/{id}/workflow-discovery endpoint.
+
+    Discovery is mode-agnostic — toolkit (no workflow loaded) and
+    workflow modes both poll it so a workflow.json appearing inside
+    the container surfaces in the dashboard within one tick. The
+    endpoint deliberately does not call ``fdictRequireWorkflow``.
+    """
+
+    @app.get("/api/pipeline/{sContainerId}/workflow-discovery")
+    async def fnGetWorkflowDiscovery(sContainerId: str):
+        dictCtx["require"]()
+        dictResult = await asyncio.to_thread(
+            fdictDetectNewlyAvailableWorkflows,
+            dictCtx, sContainerId,
+        )
+        return {
+            "listAvailableWorkflows": dictResult["listWorkflows"],
+            "bWorkflowsChanged": dictResult["bChangedSinceLastPoll"],
+            "listNewWorkflowPaths": dictResult["listNewWorkflowPaths"],
+        }
 
 
 async def _fdictFetchOutputStatus(
@@ -1018,4 +1042,5 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterAcknowledgeStep(app, dictCtx)
     _fnRegisterFileStatus(app, dictCtx)
+    _fnRegisterWorkflowDiscovery(app, dictCtx)
     _fnRegisterManifestVerify(app, dictCtx)

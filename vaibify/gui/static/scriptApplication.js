@@ -137,6 +137,8 @@ const PipeleyenApp = (function () {
             PipeleyenPipelineRunner.fnHandlePipelinePollResult);
         VaibifyPolling.fnSetFileStatusHandler(
             fnProcessFileStatusResponse);
+        VaibifyPolling.fnSetWorkflowDiscoveryHandler(
+            fnProcessWorkflowDiscovery);
     }
 
     /* --- Initialization --- */
@@ -198,6 +200,7 @@ const PipeleyenApp = (function () {
         VaibifySyncManager.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        VaibifyPolling.fnStopDiscoveryPolling();
         PipeleyenReposPanel.fnTeardown();
     }
 
@@ -212,6 +215,7 @@ const PipeleyenApp = (function () {
 
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
         _fnResetWorkflowState();
+        VaibifyPolling.fnStopDiscoveryPolling();
         _dictSessionState.sContainerId = sId;
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
@@ -334,24 +338,79 @@ const PipeleyenApp = (function () {
     async function fnEnterNoWorkflow(sId) {
         try {
             await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
+            _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
-            _dictWorkflowState.dictWorkflow = null;
-            _dictWorkflowState.sWorkflowPath = null;
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
-            _dictWorkflowState.dictStepStatus = {};
             document.getElementById("activeContainerName").textContent =
                 PipeleyenContainerManager.fsGetSelectedContainerName() || "";
-            document.getElementById("activeWorkflowName").textContent =
-                "None";
+            _fnRenderToolkitBanner(0);
             document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
             PipeleyenTerminal.fnEnsureTab();
             await PipeleyenReposPanel.fnInit(sId);
+            VaibifyPolling.fnStartDiscoveryPolling(sId);
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
             );
         }
+    }
+
+    function _fnRenderToolkitBanner(iAvailable) {
+        var elName = document.getElementById("activeWorkflowName");
+        if (!elName) return;
+        if (iAvailable > 0) {
+            elName.innerHTML =
+                '<a href="#" id="toolkitBannerSwitch" '
+                + 'class="toolkit-banner-switch">'
+                + 'None &mdash; ' + iAvailable
+                + ' available <span aria-hidden="true">&#9662;</span>'
+                + '</a>';
+            var elLink = document.getElementById(
+                "toolkitBannerSwitch");
+            if (elLink) {
+                elLink.addEventListener("click", function (event) {
+                    event.preventDefault();
+                    VaibifyWorkflowManager
+                        .fnToggleWorkflowDropdown();
+                });
+            }
+        } else {
+            elName.textContent = "None";
+        }
+    }
+
+    function fnProcessWorkflowDiscovery(dictResponse) {
+        if (!dictResponse) return;
+        var listAvailable = dictResponse.listAvailableWorkflows || [];
+        if (_dictSessionState.dictDashboardMode === DICT_MODE_NO_WORKFLOW) {
+            _fnRenderToolkitBanner(listAvailable.length);
+        }
+        if (!dictResponse.bWorkflowsChanged) return;
+        var listNew = dictResponse.listNewWorkflowPaths || [];
+        if (listNew.length === 0) return;
+        _fnToastNewWorkflowsAppeared(listNew, listAvailable);
+    }
+
+    function _fnToastNewWorkflowsAppeared(listNewPaths, listAvailable) {
+        var dictByPath = {};
+        listAvailable.forEach(function (dictWf) {
+            dictByPath[dictWf.sPath] = dictWf;
+        });
+        listNewPaths.forEach(function (sPath) {
+            var dictWf = dictByPath[sPath];
+            if (!dictWf) return;
+            fnShowToast(
+                "New workflow available: " + dictWf.sName
+                + ". Click to load.",
+                "info",
+                function () {
+                    VaibifyWorkflowManager.fnSelectWorkflow(
+                        _dictSessionState.sContainerId,
+                        dictWf.sPath, dictWf.sName);
+                }
+            );
+        });
     }
 
     function fnReorderLeftTabs(listVisibleTabs) {
@@ -529,6 +588,7 @@ const PipeleyenApp = (function () {
         VaibifyWebSocket.fnDisconnect();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        VaibifyPolling.fnStopDiscoveryPolling();
         PipeleyenReposPanel.fnTeardown();
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
@@ -2217,14 +2277,24 @@ const PipeleyenApp = (function () {
 
     var fsSanitizeErrorForUser = VaibifyUtilities.fsSanitizeErrorForUser;
 
-    function fnShowToast(sMessage, sType) {
+    function fnShowToast(sMessage, sType, fnOnClick) {
         var el = document.createElement("div");
         el.className = "toast " + (sType || "");
+        if (fnOnClick) el.classList.add("toast-clickable");
         el.innerHTML = fnEscapeHtml(sMessage) +
             '<button class="toast-close">&times;</button>';
         el.querySelector(".toast-close").addEventListener(
-            "click", function () { el.remove(); }
+            "click", function (event) {
+                event.stopPropagation();
+                el.remove();
+            }
         );
+        if (fnOnClick) {
+            el.addEventListener("click", function () {
+                fnOnClick();
+                el.remove();
+            });
+        }
         if (sType !== "error" && sType !== "warning") {
             setTimeout(function () { el.remove(); }, 4000);
         }

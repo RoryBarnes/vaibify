@@ -250,3 +250,136 @@ def test_reload_does_not_re_trigger_on_next_poll():
         )
     assert dictFirst["bReplaced"] is True
     assert dictSecond["bReplaced"] is False
+
+
+# ---------- fdictDetectNewlyAvailableWorkflows ----------
+
+
+_S_DEMO_PATH = "/workspace/proj/.vaibify/workflows/demo.json"
+_S_OTHER_PATH = "/workspace/proj/.vaibify/workflows/other.json"
+
+
+def _fdictMakeListing(sPath, sName):
+    return {
+        "sPath": sPath,
+        "sName": sName,
+        "sRepoName": "proj",
+        "sProjectRepoPath": _S_REPO_PATH,
+    }
+
+
+def test_detect_seeds_cache_silently_on_first_poll():
+    """First poll seeds the cache and reports no change."""
+    fakeDocker = _FakeDocker()
+    dictCtx = _fdictMakeContext(fakeDocker)
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        return_value=[_fdictMakeListing(_S_DEMO_PATH, "demo")],
+    ):
+        dictResult = (
+            workflowReloadDetector
+            .fdictDetectNewlyAvailableWorkflows(
+                dictCtx, _S_CONTAINER_ID,
+            )
+        )
+    assert dictResult["bChangedSinceLastPoll"] is False
+    assert dictResult["listNewWorkflowPaths"] == []
+    assert len(dictResult["listWorkflows"]) == 1
+    assert (
+        dictCtx["lastDiscoveredWorkflows"][_S_CONTAINER_ID]
+        == {_S_DEMO_PATH}
+    )
+
+
+def test_detect_no_change_when_list_unchanged():
+    """Subsequent identical poll surfaces no change."""
+    fakeDocker = _FakeDocker()
+    dictCtx = _fdictMakeContext(fakeDocker)
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        return_value=[_fdictMakeListing(_S_DEMO_PATH, "demo")],
+    ):
+        workflowReloadDetector.fdictDetectNewlyAvailableWorkflows(
+            dictCtx, _S_CONTAINER_ID,
+        )
+        dictResult = (
+            workflowReloadDetector
+            .fdictDetectNewlyAvailableWorkflows(
+                dictCtx, _S_CONTAINER_ID,
+            )
+        )
+    assert dictResult["bChangedSinceLastPoll"] is False
+    assert dictResult["listNewWorkflowPaths"] == []
+
+
+def test_detect_flags_new_workflow_appearance():
+    """An added workflow is reported in listNewWorkflowPaths."""
+    fakeDocker = _FakeDocker()
+    dictCtx = _fdictMakeContext(fakeDocker)
+    listFirst = [_fdictMakeListing(_S_DEMO_PATH, "demo")]
+    listSecond = [
+        _fdictMakeListing(_S_DEMO_PATH, "demo"),
+        _fdictMakeListing(_S_OTHER_PATH, "other"),
+    ]
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        side_effect=[listFirst, listSecond],
+    ):
+        workflowReloadDetector.fdictDetectNewlyAvailableWorkflows(
+            dictCtx, _S_CONTAINER_ID,
+        )
+        dictResult = (
+            workflowReloadDetector
+            .fdictDetectNewlyAvailableWorkflows(
+                dictCtx, _S_CONTAINER_ID,
+            )
+        )
+    assert dictResult["bChangedSinceLastPoll"] is True
+    assert dictResult["listNewWorkflowPaths"] == [_S_OTHER_PATH]
+
+
+def test_detect_flags_workflow_disappearance():
+    """A removed workflow flips bChanged but does not list newcomers."""
+    fakeDocker = _FakeDocker()
+    dictCtx = _fdictMakeContext(fakeDocker)
+    listFirst = [_fdictMakeListing(_S_DEMO_PATH, "demo")]
+    listSecond = []
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        side_effect=[listFirst, listSecond],
+    ):
+        workflowReloadDetector.fdictDetectNewlyAvailableWorkflows(
+            dictCtx, _S_CONTAINER_ID,
+        )
+        dictResult = (
+            workflowReloadDetector
+            .fdictDetectNewlyAvailableWorkflows(
+                dictCtx, _S_CONTAINER_ID,
+            )
+        )
+    assert dictResult["bChangedSinceLastPoll"] is True
+    assert dictResult["listNewWorkflowPaths"] == []
+    assert dictResult["listWorkflows"] == []
+
+
+def test_detect_initializes_map_when_missing():
+    """Helper creates lastDiscoveredWorkflows when absent on dictCtx."""
+    fakeDocker = _FakeDocker()
+    dictCtx = {"docker": fakeDocker, "workflows": {}}
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        return_value=[],
+    ):
+        workflowReloadDetector.fdictDetectNewlyAvailableWorkflows(
+            dictCtx, _S_CONTAINER_ID,
+        )
+    assert "lastDiscoveredWorkflows" in dictCtx
+    assert (
+        dictCtx["lastDiscoveredWorkflows"][_S_CONTAINER_ID]
+        == set()
+    )

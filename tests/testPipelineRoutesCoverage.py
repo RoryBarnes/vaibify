@@ -1189,3 +1189,111 @@ class TestFfParseMtime:
 
     def test_parses_valid_string(self):
         assert _ffParseMtime("123.5") == 123.5
+
+
+class TestWorkflowDiscoveryRoute:
+    """GET /api/pipeline/{cid}/workflow-discovery — works in both modes
+    and surfaces newly-appeared workflows for the toolkit-mode banner.
+    """
+
+    def _fdictBuildCtx(self):
+        return {
+            "docker": MagicMock(),
+            "require": MagicMock(),
+            "lastDiscoveredWorkflows": {},
+        }
+
+    def _fnRegister(self, app, dictCtx):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fnRegisterWorkflowDiscovery,
+        )
+        _fnRegisterWorkflowDiscovery(app, dictCtx)
+
+    def test_first_poll_seeds_cache_silently(self):
+        """First poll for a container: list returned, no change flag."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        dictCtx = self._fdictBuildCtx()
+        listFound = [{
+            "sPath": "/workspace/proj/.vaibify/workflows/demo.json",
+            "sName": "demo",
+            "sRepoName": "proj",
+            "sProjectRepoPath": "/workspace/proj",
+        }]
+        with patch(
+            "vaibify.gui.workflowReloadDetector.workflowManager"
+            ".flistFindWorkflowsInContainer",
+            return_value=listFound,
+        ):
+            self._fnRegister(app, dictCtx)
+            client = TestClient(app)
+            response = client.get(
+                "/api/pipeline/cid1/workflow-discovery")
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert len(dictBody["listAvailableWorkflows"]) == 1
+        assert dictBody["bWorkflowsChanged"] is False
+        assert dictBody["listNewWorkflowPaths"] == []
+
+    def test_second_poll_flags_newly_appeared_workflow(self):
+        """A workflow that appears between polls is reported."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        dictCtx = self._fdictBuildCtx()
+        sDemo = "/workspace/proj/.vaibify/workflows/demo.json"
+        sOther = "/workspace/proj/.vaibify/workflows/other.json"
+        listFirst = [{
+            "sPath": sDemo, "sName": "demo",
+            "sRepoName": "proj",
+            "sProjectRepoPath": "/workspace/proj",
+        }]
+        listSecond = listFirst + [{
+            "sPath": sOther, "sName": "other",
+            "sRepoName": "proj",
+            "sProjectRepoPath": "/workspace/proj",
+        }]
+        with patch(
+            "vaibify.gui.workflowReloadDetector.workflowManager"
+            ".flistFindWorkflowsInContainer",
+            side_effect=[listFirst, listSecond],
+        ):
+            self._fnRegister(app, dictCtx)
+            client = TestClient(app)
+            client.get("/api/pipeline/cid1/workflow-discovery")
+            response = client.get(
+                "/api/pipeline/cid1/workflow-discovery")
+        dictBody = response.json()
+        assert dictBody["bWorkflowsChanged"] is True
+        assert dictBody["listNewWorkflowPaths"] == [sOther]
+        assert len(dictBody["listAvailableWorkflows"]) == 2
+
+    def test_quiet_after_workflow_already_seen(self):
+        """Two identical polls in succession: second is quiet."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        dictCtx = self._fdictBuildCtx()
+        listFound = [{
+            "sPath": "/workspace/proj/.vaibify/workflows/demo.json",
+            "sName": "demo",
+            "sRepoName": "proj",
+            "sProjectRepoPath": "/workspace/proj",
+        }]
+        with patch(
+            "vaibify.gui.workflowReloadDetector.workflowManager"
+            ".flistFindWorkflowsInContainer",
+            return_value=listFound,
+        ):
+            self._fnRegister(app, dictCtx)
+            client = TestClient(app)
+            client.get("/api/pipeline/cid1/workflow-discovery")
+            response = client.get(
+                "/api/pipeline/cid1/workflow-discovery")
+        dictBody = response.json()
+        assert dictBody["bWorkflowsChanged"] is False
+        assert dictBody["listNewWorkflowPaths"] == []

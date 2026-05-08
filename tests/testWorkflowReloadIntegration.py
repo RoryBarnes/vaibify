@@ -235,3 +235,80 @@ def test_deleted_file_surfaces_warning(clientHttp, fixtureMock):
     dictBody = _fdictPollFileStatus(clientHttp)
     assert dictBody["bWorkflowReloaded"] is False
     assert dictBody["sWorkflowReloadError"] is not None
+
+
+# ---------- toolkit-mode workflow discovery ----------
+
+
+def _fnConnectNoWorkflow(clientHttp):
+    response = clientHttp.post(f"/api/connect/{_S_CONTAINER_ID}")
+    assert response.status_code == 200
+    return response.json()
+
+
+def _fdictPollDiscovery(clientHttp):
+    response = clientHttp.get(
+        f"/api/pipeline/{_S_CONTAINER_ID}/workflow-discovery"
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def _fdictMakeListing(sPath, sName):
+    return {
+        "sPath": sPath,
+        "sName": sName,
+        "sRepoName": "proj",
+        "sProjectRepoPath": _S_REPO_PATH,
+    }
+
+
+def test_toolkit_first_discovery_seeds_cache_silently(clientHttp):
+    """Toolkit-mode connect → first /workflow-discovery is silent."""
+    _fnConnectNoWorkflow(clientHttp)
+    listFound = [_fdictMakeListing(_S_WORKFLOW_PATH, "demo")]
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        return_value=listFound,
+    ):
+        dictBody = _fdictPollDiscovery(clientHttp)
+    assert dictBody["bWorkflowsChanged"] is False
+    assert dictBody["listNewWorkflowPaths"] == []
+    assert len(dictBody["listAvailableWorkflows"]) == 1
+
+
+def test_toolkit_new_workflow_appears_after_seeding(clientHttp):
+    """A workflow that appears between polls is reported."""
+    _fnConnectNoWorkflow(clientHttp)
+    sNewPath = "/workspace/proj/.vaibify/workflows/agent.json"
+    listFirst = []
+    listSecond = [_fdictMakeListing(sNewPath, "agent")]
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        side_effect=[listFirst, listSecond],
+    ):
+        _fdictPollDiscovery(clientHttp)
+        dictBody = _fdictPollDiscovery(clientHttp)
+    assert dictBody["bWorkflowsChanged"] is True
+    assert dictBody["listNewWorkflowPaths"] == [sNewPath]
+    assert len(dictBody["listAvailableWorkflows"]) == 1
+    assert (
+        dictBody["listAvailableWorkflows"][0]["sName"] == "agent"
+    )
+
+
+def test_toolkit_steady_state_quiet_after_seen(clientHttp):
+    """Two identical polls in a row: the second is quiet."""
+    _fnConnectNoWorkflow(clientHttp)
+    listFound = [_fdictMakeListing(_S_WORKFLOW_PATH, "demo")]
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".flistFindWorkflowsInContainer",
+        return_value=listFound,
+    ):
+        _fdictPollDiscovery(clientHttp)
+        dictBody = _fdictPollDiscovery(clientHttp)
+    assert dictBody["bWorkflowsChanged"] is False
+    assert dictBody["listNewWorkflowPaths"] == []

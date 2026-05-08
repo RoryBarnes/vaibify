@@ -253,7 +253,11 @@ var VaibifyWorkflowManager = (function () {
         var sWorkflowPath = PipeleyenApp.fsGetWorkflowPath();
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var bInNoWorkflow = !sWorkflowPath && !dictWorkflow;
-        var sHtml = '<div class="workflow-dropdown-item' +
+        var sHtml = '<div class="workflow-dropdown-item new-workflow"'
+            + ' data-action="newWorkflow">'
+            + '<span class="wf-name">+ New Workflow&hellip;</span>'
+            + '</div>';
+        sHtml += '<div class="workflow-dropdown-item' +
             (bInNoWorkflow ? " current" : "") +
             '" data-action="noWorkflow">' +
             '<span class="wf-name">No Workflow</span></div>';
@@ -287,6 +291,11 @@ var VaibifyWorkflowManager = (function () {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
                     fnHideWorkflowDropdown();
+                    if (el.dataset.action === "newWorkflow") {
+                        VaibifyNewWorkflowWizard.fnLaunch(
+                            PipeleyenApp.fsGetContainerId());
+                        return;
+                    }
                     if (el.dataset.action === "noWorkflow") {
                         if (!dictWorkflow && !sWorkflowPath) return;
                         PipeleyenApp.fnEnterNoWorkflow(

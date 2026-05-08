@@ -15,6 +15,7 @@ mtime, while suppressing spurious reloads triggered by UI saves.
 __all__ = [
     "fnRecordSelfWriteMtime",
     "fdictMaybeReloadWorkflow",
+    "fdictDetectNewlyAvailableWorkflows",
 ]
 
 import logging
@@ -112,6 +113,43 @@ def _fnApplyProjectRepoPath(
             dictCtx["docker"], sContainerId, sWorkflowPath,
         )
     )
+
+
+def fdictDetectNewlyAvailableWorkflows(dictCtx, sContainerId):
+    """Discover workflow.json files in the container, flag changes since last poll.
+
+    Returns ``{"listWorkflows": [...], "bChangedSinceLastPoll": bool,
+    "listNewWorkflowPaths": [str, ...]}``. The first poll seeds the
+    cache and reports ``bChangedSinceLastPoll=False`` so initial
+    connect doesn't trip a false positive. Subsequent polls compare
+    the current path-set against the previous one to surface
+    additions and disappearances; only additions populate
+    ``listNewWorkflowPaths`` so the caller can toast the newcomers.
+    """
+    listWorkflows = workflowManager.flistFindWorkflowsInContainer(
+        dictCtx["docker"], sContainerId,
+    )
+    setCurrent = {dictWf["sPath"] for dictWf in listWorkflows}
+    dictPrevious = _fdictGetDiscoveredMap(dictCtx)
+    bSeeded = sContainerId in dictPrevious
+    setPrevious = dictPrevious.get(sContainerId, set())
+    listNew = sorted(setCurrent - setPrevious) if bSeeded else []
+    bChanged = bSeeded and setCurrent != setPrevious
+    dictPrevious[sContainerId] = setCurrent
+    return {
+        "listWorkflows": listWorkflows,
+        "bChangedSinceLastPoll": bChanged,
+        "listNewWorkflowPaths": listNew,
+    }
+
+
+def _fdictGetDiscoveredMap(dictCtx):
+    """Return the per-container last-discovery set map, creating if absent."""
+    dictMap = dictCtx.get("lastDiscoveredWorkflows")
+    if dictMap is None:
+        dictMap = {}
+        dictCtx["lastDiscoveredWorkflows"] = dictMap
+    return dictMap
 
 
 def _fdictGetSelfWriteMap(dictCtx):

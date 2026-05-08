@@ -6,10 +6,12 @@ var VaibifyPolling = (function () {
     var _iPipelinePollTimer = null;
     var _iFileChangePollTimer = null;
     var _iReposPollTimer = null;
+    var _iDiscoveryPollTimer = null;
     var _iPollIntervalMs = 5000;
     var _fnOnPipelineState = null;
     var _fnOnFileStatus = null;
     var _fnOnReposStatus = null;
+    var _fnOnWorkflowDiscovery = null;
 
     function fnSetPipelineStateHandler(fnHandler) {
         _fnOnPipelineState = fnHandler;
@@ -110,6 +112,38 @@ var VaibifyPolling = (function () {
         }
     }
 
+    function fnSetWorkflowDiscoveryHandler(fnHandler) {
+        _fnOnWorkflowDiscovery = fnHandler;
+    }
+
+    function fnStartDiscoveryPolling(sContainerId) {
+        fnStopDiscoveryPolling();
+        _fnPollWorkflowDiscovery(sContainerId);
+        _iDiscoveryPollTimer = setInterval(function () {
+            _fnPollWorkflowDiscovery(sContainerId);
+        }, _iPollIntervalMs);
+    }
+
+    function fnStopDiscoveryPolling() {
+        if (_iDiscoveryPollTimer) {
+            clearInterval(_iDiscoveryPollTimer);
+            _iDiscoveryPollTimer = null;
+        }
+    }
+
+    async function _fnPollWorkflowDiscovery(sContainerId) {
+        try {
+            var dictResponse = await VaibifyApi.fdictGet(
+                "/api/pipeline/" + sContainerId + "/workflow-discovery"
+            );
+            if (_fnOnWorkflowDiscovery) {
+                _fnOnWorkflowDiscovery(dictResponse);
+            }
+        } catch (error) {
+            /* poll failed, try again next interval */
+        }
+    }
+
     function fnSetPollInterval(iSeconds) {
         _iPollIntervalMs = iSeconds * 1000;
     }
@@ -128,6 +162,9 @@ var VaibifyPolling = (function () {
         fnSetReposHandler: fnSetReposHandler,
         fnStartReposPolling: fnStartReposPolling,
         fnStopReposPolling: fnStopReposPolling,
+        fnSetWorkflowDiscoveryHandler: fnSetWorkflowDiscoveryHandler,
+        fnStartDiscoveryPolling: fnStartDiscoveryPolling,
+        fnStopDiscoveryPolling: fnStopDiscoveryPolling,
         fnSetPollInterval: fnSetPollInterval,
         fiGetPollIntervalMs: fiGetPollIntervalMs,
     };
