@@ -46,6 +46,9 @@ from ..fileIntegrity import flistExtractAllScriptPaths
 from ..pathContract import fdictAbsKeysToRepoRelative
 from ..randomnessLint import fnApplyRandomnessLintToWorkflow
 from ..llmInvoker import fsReadFileFromContainer
+from ..workflowReloadDetector import (
+    fdictMaybeReloadWorkflow as _fdictMaybeReloadWorkflow,
+)
 
 logger = logging.getLogger("vaibify")
 
@@ -339,6 +342,8 @@ async def fdictComputeFileStatus(
     dictOutputStatus = await _fdictFetchOutputStatus(
         dictCtx, sContainerId, dictWorkflow, dictVars,
     )
+    if dictOutputStatus.get("bWorkflowReloaded"):
+        dictWorkflow = dictCtx["workflows"][sContainerId]
     dictTestStatus = await _fdictFetchTestStatus(
         dictCtx, sContainerId, dictWorkflow,
         dictMaxOutputMtimeByStep=dictOutputStatus.get(
@@ -398,12 +403,13 @@ async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
     """Fetch output + script mtimes, invalidations, and staleness."""
+    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
     listOutputPaths = _flistCollectOutputPaths(
         dictWorkflow, dictVars)
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
     dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
         dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
-        dictWorkflow.get("sPath", ""),
+        sWorkflowPath,
     )
     listMarkerPaths = list(dictMarkerPathsByStep.values())
     listTestSourcePaths = []
@@ -411,14 +417,21 @@ async def _fdictFetchOutputStatus(
         listTestSourcePaths.extend(
             _flistResolveTestSourcePaths(dictStep, dictVars),
         )
+    listWorkflowPaths = [sWorkflowPath] if sWorkflowPath else []
     listUnionPaths = list(set(
         listOutputPaths + listScriptPaths + listMarkerPaths
-        + listTestSourcePaths,
+        + listTestSourcePaths + listWorkflowPaths,
     ))
     dictModTimes = await asyncio.to_thread(
         _fdictGetModTimes,
         dictCtx["docker"], sContainerId, listUnionPaths,
     )
+    dictReload = await asyncio.to_thread(
+        _fdictMaybeReloadWorkflow,
+        dictCtx, sContainerId, sWorkflowPath, dictModTimes,
+    )
+    if dictReload["bReplaced"]:
+        dictWorkflow = dictReload["dictWorkflow"]
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
@@ -459,6 +472,7 @@ async def _fdictFetchOutputStatus(
     )
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)
+    dictReloadedShape = _fdictBuildReloadedWorkflowShape(dictReload)
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
@@ -483,7 +497,18 @@ async def _fdictFetchOutputStatus(
             dictWorkflow, dictModTimes, dictVars,
             dictMarkerMtimeByStep=dictMarkerMtimeByStep,
         ),
+        "bWorkflowReloaded": dictReload["bReplaced"],
+        "sWorkflowReloadError": dictReload["sError"],
+        "dictWorkflow": dictReloadedShape,
     }
+
+
+def _fdictBuildReloadedWorkflowShape(dictReload):
+    """Return the wire-shaped workflow dict to send back on reload, or None."""
+    if not dictReload["bReplaced"]:
+        return None
+    from ..pipelineUtils import fdictWorkflowWithLabels
+    return fdictWorkflowWithLabels(dictReload["dictWorkflow"])
 
 
 async def _fdictFetchTestStatus(
@@ -493,9 +518,8 @@ async def _fdictFetchTestStatus(
     """Fetch test markers, backfill conftest, and build test status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    sWorkflowSlug = fsWorkflowSlugFromPath(
-        dictWorkflow.get("sPath", ""),
-    )
+    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sWorkflowSlug = fsWorkflowSlugFromPath(sWorkflowPath)
     dictTestInfo = await asyncio.to_thread(
         _fdictFetchTestMarkers,
         dictCtx["docker"], sContainerId, listStepDirs,

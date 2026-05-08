@@ -349,6 +349,7 @@ class TestFdictFetchOutputStatus:
             "docker": MagicMock(),
             "save": MagicMock(),
             "variables": MagicMock(return_value={}),
+            "paths": {},
         }
         with patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -407,6 +408,7 @@ class TestFdictFetchOutputStatus:
         dictCtx = {
             "docker": MagicMock(),
             "save": MagicMock(),
+            "paths": {},
         }
         dictInvalidated = {
             "0": {
@@ -470,12 +472,244 @@ class TestFdictFetchOutputStatus:
             assert "dictTestCategoryMtimes" in dictResult
 
     @pytest.mark.asyncio
+    async def test_workflow_path_included_in_stat_batch(self):
+        """workflow.json's path travels through _fdictGetModTimes."""
+        dictWorkflow = {"listSteps": []}
+        dictCtx = {
+            "docker": MagicMock(),
+            "save": MagicMock(),
+            "paths": {
+                "cid1":
+                    "/workspace/proj/.vaibify/workflows/demo.json",
+            },
+        }
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistCollectOutputPaths",
+            return_value=[],
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
+            return_value={},
+        ) as mockModTimes, patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fdictCollectOutputPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fnCollectMarkerPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fbCheckStaleUserVerification",
+            return_value=False,
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistDetectAndInvalidate",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictMaybeReloadWorkflow",
+            return_value={
+                "bReplaced": False,
+                "dictWorkflow": None,
+                "sError": None,
+            },
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxPlotMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxDataMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMarkerMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictBuildScriptStatus",
+            return_value={},
+        ):
+            await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {}
+            )
+            listBatchedPaths = mockModTimes.call_args[0][2]
+            assert (
+                "/workspace/proj/.vaibify/workflows/demo.json"
+                in listBatchedPaths
+            )
+
+    @pytest.mark.asyncio
+    async def test_response_carries_reload_flag_and_dict(self):
+        """When the helper reports bReplaced, response includes the
+        new workflow dict and the bWorkflowReloaded flag."""
+        dictWorkflow = {
+            "listSteps": [],
+            "sPath":
+                "/workspace/proj/.vaibify/workflows/demo.json",
+        }
+        dictNewWorkflow = {
+            "listSteps": [{"sDirectory": "stepA", "sName": "A"}],
+            "sPath":
+                "/workspace/proj/.vaibify/workflows/demo.json",
+        }
+        dictCtx = {
+            "docker": MagicMock(),
+            "save": MagicMock(),
+            "paths": {},
+        }
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistCollectOutputPaths",
+            return_value=[],
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fdictCollectOutputPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fnCollectMarkerPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fbCheckStaleUserVerification",
+            return_value=False,
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistDetectAndInvalidate",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictMaybeReloadWorkflow",
+            return_value={
+                "bReplaced": True,
+                "dictWorkflow": dictNewWorkflow,
+                "sError": None,
+            },
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxPlotMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxDataMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMarkerMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictBuildScriptStatus",
+            return_value={},
+        ):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {}
+            )
+            assert dictResult["bWorkflowReloaded"] is True
+            assert dictResult["dictWorkflow"] is not None
+            assert (
+                dictResult["dictWorkflow"]["listSteps"][0]
+                ["sName"] == "A"
+            )
+            assert dictResult["sWorkflowReloadError"] is None
+
+    @pytest.mark.asyncio
+    async def test_response_carries_reload_error(self):
+        """A reload failure surfaces sWorkflowReloadError without
+        replacing the workflow."""
+        dictWorkflow = {
+            "listSteps": [],
+            "sPath":
+                "/workspace/proj/.vaibify/workflows/demo.json",
+        }
+        dictCtx = {
+            "docker": MagicMock(),
+            "save": MagicMock(),
+            "paths": {},
+        }
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistCollectOutputPaths",
+            return_value=[],
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fdictCollectOutputPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            ".fnCollectMarkerPathsByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fbCheckStaleUserVerification",
+            return_value=False,
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._flistDetectAndInvalidate",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictMaybeReloadWorkflow",
+            return_value={
+                "bReplaced": False,
+                "dictWorkflow": None,
+                "sError": "workflow.json missing from container",
+            },
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxPlotMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMaxDataMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictComputeMarkerMtimeByStep",
+            return_value={},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictBuildScriptStatus",
+            return_value={},
+        ):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {}
+            )
+            assert dictResult["bWorkflowReloaded"] is False
+            assert dictResult["dictWorkflow"] is None
+            assert (
+                dictResult["sWorkflowReloadError"]
+                == "workflow.json missing from container"
+            )
+
+    @pytest.mark.asyncio
     async def test_marker_paths_batched_into_mod_times_call(self):
         """Marker file paths are included in the batched stat call."""
         dictWorkflow = {"listSteps": []}
         dictCtx = {
             "docker": MagicMock(),
             "save": MagicMock(),
+            "paths": {},
         }
         sMarkerPath = (
             "/workspace/.vaibify/test_markers/"

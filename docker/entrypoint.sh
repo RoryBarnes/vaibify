@@ -670,9 +670,11 @@ The `{StepNN.stem}` tokens you see *inside* command strings (e.g., `python plot.
 
 ## Interacting with the vaibify dashboard
 
-The vaibify dashboard is the researcher's ground truth; any action you would otherwise perform by clicking a UI button MUST go through the `vaibify-do` CLI so the dashboard stays in sync with reality.
+The vaibify dashboard is the researcher's ground truth; any action you would otherwise perform by clicking a UI button SHOULD go through the `vaibify-do` CLI so the dashboard stays in sync with reality.
 
-**Never hand-edit** `workflow.json`, `/workspace/.vaibify/pipeline_state.json`, or files under `<project-repo>/.vaibify/test_markers/`. Those are outputs of backend actions, not inputs — editing them directly desynchronizes the dashboard from the container state.
+`vaibify-do` is the **in-container CLI** for that purpose — it runs inside this container, reads its session config from `/tmp/vaibify-session.env` and the action catalog from `/tmp/vaibify-action-catalog.json`, and dispatches HTTP/WebSocket calls to the host vaibify backend. It is not host-only.
+
+**Prefer `vaibify-do`** for editing `workflow.json` (it goes through schema validation and atomic save). Direct edits are now detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<project-repo>/.vaibify/test_markers/` and `/workspace/.vaibify/pipeline_state.json` are still outputs of backend actions; do not hand-edit them.
 
 Usage:
 
@@ -696,7 +698,7 @@ Usage:
 
 **User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.
 
-**Failure modes.** If `vaibify-do` reports the host is unreachable or the session token is invalid, tell the researcher to reconnect the container from the dashboard — do not try workarounds.
+**Failure modes.** If `vaibify-do` reports `vaibify session not initialized` or `/tmp/vaibify-session.env` is missing, vaibify is not currently connected to this container — tell the researcher to open the dashboard and click the container so it reconnects. This is a "not connected yet" condition, not a "vaibify-do is host-only" condition. If it reports the host is unreachable or the session token is invalid, same fix: reconnect from the dashboard. Do not try workarounds.
 
 ## Key Paths
 

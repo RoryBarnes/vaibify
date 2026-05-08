@@ -821,6 +821,8 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
                 dictCtx["docker"], sContainerId, sResolved,
             )
         )
+        from .workflowReloadDetector import fnRecordSelfWriteMtime
+        fnRecordSelfWriteMtime(dictCtx, sContainerId, sResolved)
         if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
             dictCtx["save"](sContainerId, dictWorkflow)
         if workflowManager.fbMigrateModifiedFilesToRepoRelative(
@@ -1222,6 +1224,8 @@ def _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
         workflowManager.fnSaveWorkflowToContainer(
             dictRaw["docker"], sContainerId, dictWorkflow, sPath)
+        from .workflowReloadDetector import fnRecordSelfWriteMtime
+        fnRecordSelfWriteMtime(dictRaw, sContainerId, sPath)
 
     def fnVariables(sContainerId):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
@@ -1259,6 +1263,7 @@ def fdictBuildContext(connectionDocker):
         "containerUsers": {},
         "pipelineTasks": {},
         "sourceCodeDeps": {},
+        "lastSelfWriteMtimes": {},
     }
     fnRequire, fnSave, fnVariables, fnWorkflowDir = _ftupleBuildHelpers(
         dictRaw, dictWorkflows, dictPaths

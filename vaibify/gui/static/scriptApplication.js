@@ -262,6 +262,63 @@ const PipeleyenApp = (function () {
         fnPollAllStepFiles();
     }
 
+    function _fnApplyOutOfBandWorkflowReload(dictWorkflowNew) {
+        var iPriorSelected = _dictUiState.iSelectedStepIndex;
+        var dictPriorExpanded = _fdictSnapshotExpansionSets();
+        _dictWorkflowState.dictWorkflow = dictWorkflowNew;
+        _fnClearFileCaches();
+        fnRenderStepList();
+        var iStepCount = (dictWorkflowNew.listSteps || []).length;
+        _fnRestoreUiSelection(iPriorSelected, iStepCount);
+        _fnRestoreExpansionSets(dictPriorExpanded, iStepCount);
+        fnRenderStepList();
+        fnShowToast(
+            "Workflow definition reloaded from disk", "info");
+    }
+
+    function _fdictSnapshotExpansionSets() {
+        return {
+            setSteps: new Set(_dictUiState.setExpandedSteps),
+            setDeps: new Set(_dictUiState.setExpandedDeps),
+            setQualitative: new Set(
+                _dictUiState.setExpandedQualitative),
+            setQuantitative: new Set(
+                _dictUiState.setExpandedQuantitative),
+            setIntegrity: new Set(_dictUiState.setExpandedIntegrity),
+        };
+    }
+
+    function _fnRestoreUiSelection(iPriorSelected, iStepCount) {
+        if (iPriorSelected >= 0 && iPriorSelected < iStepCount) {
+            _dictUiState.iSelectedStepIndex = iPriorSelected;
+        } else {
+            _dictUiState.iSelectedStepIndex = -1;
+        }
+    }
+
+    function _fnRestoreExpansionSets(dictPrior, iStepCount) {
+        var listPairs = [
+            [_dictUiState.setExpandedSteps, dictPrior.setSteps],
+            [_dictUiState.setExpandedDeps, dictPrior.setDeps],
+            [_dictUiState.setExpandedQualitative,
+             dictPrior.setQualitative],
+            [_dictUiState.setExpandedQuantitative,
+             dictPrior.setQuantitative],
+            [_dictUiState.setExpandedIntegrity,
+             dictPrior.setIntegrity],
+        ];
+        for (var iPair = 0; iPair < listPairs.length; iPair++) {
+            var setLive = listPairs[iPair][0];
+            var setPrior = listPairs[iPair][1];
+            setLive.clear();
+            setPrior.forEach(function (iIndex) {
+                if (iIndex >= 0 && iIndex < iStepCount) {
+                    setLive.add(iIndex);
+                }
+            });
+        }
+    }
+
     function _fnClearFileCaches() {
         _dictWorkflowState.dictFileExistenceCache = {};
         _dictWorkflowState.dictFileModTimes = {};
@@ -1930,6 +1987,16 @@ const PipeleyenApp = (function () {
     }
 
     function fnProcessFileStatusResponse(dictStatus) {
+        if (dictStatus.sWorkflowReloadError) {
+            fnShowToast(
+                "workflow.json error: " +
+                dictStatus.sWorkflowReloadError +
+                ". Showing last good state.",
+                "warning");
+        }
+        if (dictStatus.bWorkflowReloaded && dictStatus.dictWorkflow) {
+            _fnApplyOutOfBandWorkflowReload(dictStatus.dictWorkflow);
+        }
         PipeleyenFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
         if (dictStatus.dictMaxMtimeByStep) {
