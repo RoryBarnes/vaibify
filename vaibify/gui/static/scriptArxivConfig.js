@@ -103,16 +103,37 @@ var VaibifyArxivConfig = (function () {
         _felGet("btnArxivConfigRemove").hidden = !dictConfig.sArxivId;
     }
 
+    var _fnEscapeKeyHandler = null;
+
+    function _fnAttachEscapeHandler() {
+        _fnEscapeKeyHandler = function (event) {
+            if (event.key === "Escape") {
+                event.stopPropagation();
+                fnClose();
+            }
+        };
+        document.addEventListener("keydown", _fnEscapeKeyHandler);
+    }
+
+    function _fnDetachEscapeHandler() {
+        if (!_fnEscapeKeyHandler) return;
+        document.removeEventListener("keydown", _fnEscapeKeyHandler);
+        _fnEscapeKeyHandler = null;
+    }
+
     function fnOpen() {
         var dictConfig = _fdictCurrentArxivConfig();
         _fnPopulateForm(dictConfig);
         _fnUpdateRemoveButtonVisibility(dictConfig);
         _fnClearError();
         _felGet("modalArxivConfig").style.display = "flex";
+        _fnAttachEscapeHandler();
+        _felGet("inputArxivId").focus();
     }
 
     function fnClose() {
         _felGet("modalArxivConfig").style.display = "none";
+        _fnDetachEscapeHandler();
     }
 
     function _fbValidateBeforeSubmit(sArxivId) {

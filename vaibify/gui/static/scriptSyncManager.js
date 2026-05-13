@@ -84,6 +84,7 @@ var VaibifySyncManager = (function () {
         github: "GitHub",
         overleaf: "Overleaf",
         zenodo: "Zenodo",
+        arxiv: "arXiv",
     };
     var _I_VERIFY_STALE_AGE_MS = 24 * 60 * 60 * 1000;
     var _dictVerifyStatusCache = {};
