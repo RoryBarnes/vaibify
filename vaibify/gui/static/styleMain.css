@@ -1856,7 +1856,7 @@ body.all-verified .toolbar-label {
     display: flex;
     flex: 1;
     overflow: hidden;
-    min-height: 100px;
+    min-height: 0;
 }
 
 .viewer-panel {
@@ -1987,6 +1987,7 @@ body.all-verified .toolbar-label {
     flex: 1;
     overflow: hidden;
     min-height: 100px;
+    flex-shrink: 0;
 }
 
 #terminalStripToolbar {

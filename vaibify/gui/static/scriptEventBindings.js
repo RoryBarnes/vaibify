@@ -834,6 +834,8 @@ var PipeleyenEventBindings = (function () {
         if (elHandleV) {
             var elViewerDual = document.getElementById(
                 "panelViewerDual");
+            var elTerminalStrip = document.getElementById(
+                "terminalStrip");
             var elRight = document.getElementById("panelRight");
             _fnMakeDraggableVertical(
                 elHandleV, function (iDeltaY) {
@@ -842,8 +844,10 @@ var PipeleyenEventBindings = (function () {
                     var iMaxHeight = elRight.offsetHeight - 120;
                     iHeight = Math.max(80,
                         Math.min(iHeight, iMaxHeight));
-                    elViewerDual.style.flex =
-                        "0 0 " + iHeight + "px";
+                    var iAvailable = elViewerDual.offsetHeight +
+                        elTerminalStrip.offsetHeight;
+                    var fGrow = iHeight / (iAvailable - iHeight);
+                    elViewerDual.style.flex = fGrow + " 1 0";
                 });
         }
 
@@ -851,6 +855,7 @@ var PipeleyenEventBindings = (function () {
             "resizeHandleViewer");
         if (elHandleViewer) {
             var elViewerA = document.getElementById("viewerA");
+            var elViewerB = document.getElementById("viewerB");
             var elDual = document.getElementById(
                 "panelViewerDual");
             _fnMakeDraggable(
@@ -859,7 +864,10 @@ var PipeleyenEventBindings = (function () {
                     var iMaxWidth = elDual.offsetWidth - 120;
                     iWidth = Math.max(100,
                         Math.min(iWidth, iMaxWidth));
-                    elViewerA.style.flex = "0 0 " + iWidth + "px";
+                    var iAvailable = elViewerA.offsetWidth +
+                        elViewerB.offsetWidth;
+                    var fGrow = iWidth / (iAvailable - iWidth);
+                    elViewerA.style.flex = fGrow + " 1 0";
                 });
         }
     }
