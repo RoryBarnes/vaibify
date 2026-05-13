@@ -1294,6 +1294,27 @@ body.all-verified .toolbar-label {
     opacity: 0.45;
 }
 
+/* arXiv configure modal — path-map editor rows */
+.arxiv-pathmap-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.arxiv-pathmap-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.arxiv-pathmap-arrow {
+    color: var(--text-muted);
+}
+
+.arxiv-pathmap-remove {
+    padding: 2px 8px;
+}
+
 /* Pre-push manifest check dialog — Phase 5 */
 .manifest-check-backdrop {
     position: fixed;

@@ -79,7 +79,7 @@ var VaibifySyncManager = (function () {
         return _DICT_SYNC_ERROR_MESSAGES[sErrorType] || "";
     }
 
-    var _LIST_VERIFY_SERVICES = ["github", "overleaf", "zenodo"];
+    var _LIST_VERIFY_SERVICES = ["github", "overleaf", "zenodo", "arxiv"];
     var _DICT_VERIFY_SERVICE_LABELS = {
         github: "GitHub",
         overleaf: "Overleaf",
@@ -1278,12 +1278,14 @@ var VaibifySyncManager = (function () {
         sGithub: "Github",
         sOverleaf: "Overleaf",
         sZenodo: "Zenodo",
+        sArxiv: "Arxiv",
     };
 
     var _DICT_REMOTE_KEY_TO_LABEL = {
         sGithub: "GitHub",
         sOverleaf: "Overleaf",
         sZenodo: "Zenodo",
+        sArxiv: "arXiv",
     };
 
     async function fnSyncFileToRemote(
@@ -1354,6 +1356,7 @@ var VaibifySyncManager = (function () {
         sGithub: "github",
         sZenodo: "zenodo",
         sOverleaf: "overleaf",
+        sArxiv: "arxiv",
     };
 
     function _flistBuildPicklistItems(
@@ -1368,7 +1371,54 @@ var VaibifySyncManager = (function () {
         if (sRemoteKey === "sOverleaf") {
             return _flistOverleafPicklistItems(dictWorkflow);
         }
+        if (sRemoteKey === "sArxiv") {
+            return _flistArxivPicklistItems(dictWorkflow);
+        }
         return [];
+    }
+
+
+    function _fsBuildArxivAbsUrl(dictWorkflow) {
+        var dictRemotes = (dictWorkflow || {}).dictRemotes || {};
+        var sArxivId = (dictRemotes.arxiv || {}).sArxivId || "";
+        if (!sArxivId) return "";
+        return _fsValidateLinkUrl(
+            "https://arxiv.org/abs/" + sArxivId);
+    }
+
+
+    function _flistArxivPicklistItems(dictWorkflow) {
+        var dictRemotes = (dictWorkflow || {}).dictRemotes || {};
+        var sArxivId = (dictRemotes.arxiv || {}).sArxivId || "";
+        if (!sArxivId) {
+            return [{
+                sLabel: "Configure arXiv…",
+                sAction: "editSettings",
+                bPrimary: true,
+            }];
+        }
+        var listItems = [{
+            sLabel: "Verify now",
+            sAction: "primary",
+            bPrimary: true,
+        }];
+        var sUrl = _fsBuildArxivAbsUrl(dictWorkflow);
+        if (sUrl) {
+            listItems.push({
+                sLabel: "View on arXiv",
+                sAction: "openLink",
+                sUrl: sUrl,
+            });
+        }
+        listItems.push({
+            sLabel: "Edit arXiv ID…",
+            sAction: "editSettings",
+        });
+        listItems.push({
+            sLabel: "Stop tracking arXiv",
+            sAction: "removeArxiv",
+        });
+        return listItems;
     }
 
     function _flistGithubPicklistItems() {
@@ -1543,6 +1593,10 @@ var VaibifySyncManager = (function () {
         dictItem, sRemoteKey, sResolved, sWorkdir,
     ) {
         fnDismissAllPicklists();
+        if (sRemoteKey === "sArxiv") {
+            _fnHandleArxivPicklistSelect(dictItem);
+            return;
+        }
         if (dictItem.sAction === "primary") {
             fnSyncFileToRemote(sRemoteKey, sResolved, sWorkdir);
             return;
@@ -1550,6 +1604,35 @@ var VaibifySyncManager = (function () {
         if (dictItem.sAction === "editSettings") {
             fnShowConnectionSetup(
                 _DICT_REMOTE_KEY_TO_PUSH_SERVICE[sRemoteKey]);
+        }
+    }
+
+
+    function _fnHandleArxivPicklistSelect(dictItem) {
+        if (dictItem.sAction === "primary") {
+            _fnTriggerArxivVerifyFromPicklist();
+            return;
+        }
+        if (dictItem.sAction === "editSettings") {
+            VaibifyArxivConfig.fnOpen();
+            return;
+        }
+        if (dictItem.sAction === "removeArxiv") {
+            VaibifyArxivConfig.fnRemove();
+        }
+    }
+
+
+    async function _fnTriggerArxivVerifyFromPicklist() {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        try {
+            await _fdictPostVerify(sContainerId, "arxiv");
+            await VaibifyGitBadges.fnRefresh(sContainerId);
+            PipeleyenApp.fnShowToast(
+                "arXiv verify complete", "success");
+        } catch (error) {
+            _fnReportVerifyError(error);
         }
     }
 

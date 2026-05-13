@@ -5,6 +5,7 @@ __all__ = ["fnRegisterAll"]
 import asyncio
 import os
 import posixpath
+import re
 
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -13,6 +14,7 @@ from .. import workflowManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
+    ArxivConfigureRequest,
     DatasetDownloadRequest,
     GitAddFileRequest,
     OverleafDiffRequest,
@@ -1411,6 +1413,122 @@ def _fnRegisterRemoteVerifyStatus(app, dictCtx):
         )
 
 
+_RE_ARXIV_ID = re.compile(
+    r"^(?:\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+\/\d{7}(?:v\d+)?)$"
+)
+
+
+def _fnValidateArxivId(sArxivId):
+    """Reject arXiv IDs that do not match the modern or legacy format."""
+    if not isinstance(sArxivId, str) or sArxivId == "":
+        raise HTTPException(
+            status_code=400,
+            detail="sArxivId must be a non-empty string.",
+        )
+    if not _RE_ARXIV_ID.match(sArxivId):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "sArxivId must look like '2401.12345' (with optional "
+                "'v2' suffix) or 'astro-ph/0601001'."
+            ),
+        )
+
+
+def _fnValidateArxivPathMap(dictPathMap):
+    """Reject path-map keys/values that are empty, null-byte, or escape ``..``."""
+    if not isinstance(dictPathMap, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="dictPathMap must be a JSON object of string keys to string values.",
+        )
+    for sLocal, sTarball in dictPathMap.items():
+        _fnValidateArxivPathSegment(sLocal, "dictPathMap key")
+        _fnValidateArxivPathSegment(sTarball, "dictPathMap value")
+
+
+def _fnValidateArxivPathSegment(sSegment, sFieldLabel):
+    """Reject one path-map string for empty/null-byte/parent-escape problems."""
+    if not isinstance(sSegment, str) or sSegment == "":
+        raise HTTPException(
+            status_code=400,
+            detail=f"{sFieldLabel} must be a non-empty string.",
+        )
+    if "\x00" in sSegment:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{sFieldLabel} must not contain null bytes.",
+        )
+    for sPart in sSegment.split("/"):
+        if sPart == "..":
+            raise HTTPException(
+                status_code=400,
+                detail=f"{sFieldLabel} must not contain '..' segments.",
+            )
+
+
+def _fdictBuildArxivConfig(request):
+    """Translate a configure-request body into the dictRemotes.arxiv entry."""
+    dictConfig = {"sArxivId": request.sArxivId}
+    if request.dictPathMap:
+        dictConfig["dictPathMap"] = dict(request.dictPathMap)
+    return dictConfig
+
+
+def _fnPersistArxivConfig(dictCtx, sContainerId, dictWorkflow, dictConfig):
+    """Write the new arxiv config into dictWorkflow and save."""
+    dictRemotes = dictWorkflow.setdefault("dictRemotes", {})
+    if dictConfig is None:
+        dictRemotes.pop("arxiv", None)
+    else:
+        dictRemotes["arxiv"] = dictConfig
+    dictCtx["save"](sContainerId, dictWorkflow)
+
+
+def _fdictRunArxivVerifyAfterConfig(dictWorkflow):
+    """Run a best-effort verify after a save; capture errors on the response."""
+    from vaibify.reproducibility import scheduledReverify
+    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    try:
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            sProjectRepo, dictWorkflow, "arxiv",
+        )
+        scheduledReverify.fnWriteSyncStatus(sProjectRepo, dictStatus)
+        return {"dictArxivStatus": dictStatus, "sVerifyError": ""}
+    except Exception as errorAny:
+        return {"dictArxivStatus": None, "sVerifyError": str(errorAny)}
+
+
+def _fnRegisterArxivConfigure(app, dictCtx):
+    """Register POST /api/sync/{id}/arxiv/configure endpoint."""
+
+    @fnAgentAction("configure-arxiv")
+    @app.post("/api/sync/{sContainerId}/arxiv/configure")
+    async def fnConfigureArxiv(
+        sContainerId: str, request: ArxivConfigureRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        if request.bRemove:
+            _fnPersistArxivConfig(
+                dictCtx, sContainerId, dictWorkflow, None)
+            return {"dictArxivConfig": {}, "sVerifyError": ""}
+        _fnValidateArxivId(request.sArxivId)
+        _fnValidateArxivPathMap(request.dictPathMap)
+        dictConfig = _fdictBuildArxivConfig(request)
+        _fnPersistArxivConfig(
+            dictCtx, sContainerId, dictWorkflow, dictConfig)
+        dictVerify = await asyncio.to_thread(
+            _fdictRunArxivVerifyAfterConfig, dictWorkflow,
+        )
+        return {
+            "dictArxivConfig": dictConfig,
+            "dictArxivStatus": dictVerify["dictArxivStatus"],
+            "sVerifyError": dictVerify["sVerifyError"],
+        }
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all sync and reproducibility routes."""
     _fnRegisterOverleafPush(app, dictCtx)
@@ -1429,6 +1547,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterDatasetDownload(app, dictCtx)
     _fnRegisterRemoteVerify(app, dictCtx)
     _fnRegisterRemoteVerifyStatus(app, dictCtx)
+    _fnRegisterArxivConfigure(app, dictCtx)
     _fnRegisterScheduledReverify(app, dictCtx)
 
 

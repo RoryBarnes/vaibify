@@ -546,6 +546,21 @@ var PipeleyenEventBindings = (function () {
             btnZenodoArchive: function () {
                 VaibifySyncManager.fnOpenPushModal("zenodo");
             },
+            btnConfigureArxiv: function () {
+                VaibifyArxivConfig.fnOpen();
+            },
+            btnArxivConfigCancel: function () {
+                VaibifyArxivConfig.fnClose();
+            },
+            btnArxivConfigSave: function () {
+                VaibifyArxivConfig.fnSave();
+            },
+            btnArxivConfigRemove: function () {
+                VaibifyArxivConfig.fnRemove();
+            },
+            btnArxivPathMapAdd: function () {
+                VaibifyArxivConfig.fnAddPathMapRow();
+            },
             btnVerifyReproducibility: function () {
                 _fnOpenVerifyReproducibilityModal();
             },

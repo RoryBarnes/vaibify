@@ -262,6 +262,8 @@
                     Push to GitHub</div>
                 <div class="toolbar-menu-item" id="btnZenodoArchive">
                     Archive to Zenodo</div>
+                <div class="toolbar-menu-item" id="btnConfigureArxiv">
+                    Configure arXiv…</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnVerifyReproducibility">
                     Verify Reproducibility</div>
@@ -651,6 +653,50 @@
     </div>
 </div>
 
+<!-- Configure arXiv Modal -->
+<div class="modal-overlay" id="modalArxivConfig" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalArxivConfigTitle">
+    <div class="modal modal-small">
+        <h2 id="modalArxivConfigTitle"
+            style="color: var(--color-pale-blue);">
+            Configure arXiv</h2>
+        <p class="muted-text">
+            Vaibify will download the paper's e-print source tarball
+            and verify your local figures byte-for-byte against the
+            published files.
+        </p>
+        <div class="form-group">
+            <label>arXiv ID
+                <span class="help-icon"
+                      title="Modern: 2401.12345 (optional v2 suffix). Legacy: astro-ph/0601001.">?</span>
+            </label>
+            <input type="text" id="inputArxivId"
+                   placeholder="2401.12345 or astro-ph/0601001">
+        </div>
+        <details class="form-group">
+            <summary>Advanced: path map</summary>
+            <p class="muted-text">
+                Use when your local figure filenames differ from the
+                tarball's internal paths. By default, figures are
+                matched by basename.
+            </p>
+            <div id="arxivPathMapEditor"></div>
+            <button class="btn btn-small" id="btnArxivPathMapAdd"
+                    type="button">+ Add mapping</button>
+        </details>
+        <p id="arxivConfigError" class="form-error" hidden></p>
+        <div class="modal-actions">
+            <button class="btn" id="btnArxivConfigCancel">Cancel</button>
+            <button class="btn" id="btnArxivConfigRemove" hidden
+                    style="color: #cb2431;">
+                Stop tracking arXiv</button>
+            <button class="btn btn-primary" id="btnArxivConfigSave">
+                Save and verify</button>
+        </div>
+    </div>
+</div>
+
 <!-- Zenodo Metadata Modal -->
 <div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
     <div class="modal modal-medium">
@@ -764,6 +810,7 @@
 <script src="/static/scriptOverleafMirror.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptArxivConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptNewWorkflowWizard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>

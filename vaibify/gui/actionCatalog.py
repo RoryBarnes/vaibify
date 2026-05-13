@@ -288,6 +288,16 @@ LIST_AGENT_ACTIONS = [
                      "(github, overleaf, zenodo, or arxiv). Returns "
                      "iMatching, iTotalFiles, listDiverged. Path: "
                      "sService is the remote name."},
+    {"sName": "configure-arxiv", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/sync/{sContainerId}/arxiv/configure",
+     "bAgentSafe": True,
+     "sDescription": "Set or clear the arXiv ID used to verify figures "
+                     "against the published e-print tarball. Args: "
+                     "{sArxivId: '2401.12345'} to set, "
+                     "{bRemove: true} to stop tracking. Optional: "
+                     "{dictPathMap: {sLocalRelPath: sTarballPath}} for "
+                     "renames. Auto-runs verify on success."},
     {"sName": "verify-manifest", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/manifest/verify",

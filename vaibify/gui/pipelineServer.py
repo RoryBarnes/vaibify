@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 WORKSPACE_ROOT = "/workspace"
 
@@ -199,6 +199,12 @@ class SyncTrackingRequest(BaseModel):
     sPath: str
     sService: str
     bTrack: bool
+
+
+class ArxivConfigureRequest(BaseModel):
+    sArxivId: str = ""
+    dictPathMap: Dict[str, str] = {}
+    bRemove: bool = False
 
 
 class ZenodoCreatorRequest(BaseModel):
