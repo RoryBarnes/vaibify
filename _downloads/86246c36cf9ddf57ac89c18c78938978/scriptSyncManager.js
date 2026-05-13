@@ -1004,6 +1004,51 @@ var VaibifySyncManager = (function () {
             return;
         }
         elModal.style.display = "flex";
+        _fnAttachConnectionSetupEscape();
+        _fnFocusFirstConnectionSetupInput(elModal);
+    }
+
+
+    var _fnConnectionSetupEscapeHandler = null;
+
+
+    function _fnAttachConnectionSetupEscape() {
+        _fnConnectionSetupEscapeHandler = function (event) {
+            if (event.key === "Escape") {
+                event.stopPropagation();
+                _fnHideConnectionSetup();
+            }
+        };
+        document.addEventListener(
+            "keydown", _fnConnectionSetupEscapeHandler);
+    }
+
+
+    function _fnDetachConnectionSetupEscape() {
+        if (!_fnConnectionSetupEscapeHandler) return;
+        document.removeEventListener(
+            "keydown", _fnConnectionSetupEscapeHandler);
+        _fnConnectionSetupEscapeHandler = null;
+    }
+
+
+    function _fnHideConnectionSetup() {
+        document.getElementById("modalConnectionSetup")
+            .style.display = "none";
+        _fnDetachConnectionSetupEscape();
+    }
+
+
+    function _fnFocusFirstConnectionSetupInput(elModal) {
+        var listInputs = elModal.querySelectorAll(
+            "input[type='text'], input[type='password'], " +
+            "input[type='radio']:checked");
+        for (var i = 0; i < listInputs.length; i++) {
+            if (listInputs[i].offsetParent !== null) {
+                listInputs[i].focus();
+                return;
+            }
+        }
     }
 
     async function _fnSetupOverleafFields(elProjectId, elToken, elModal) {
@@ -1155,10 +1200,7 @@ var VaibifySyncManager = (function () {
 
     function fnBindConnectionSetupEvents() {
         document.getElementById("btnSetupCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalConnectionSetup")
-                    .style.display = "none";
-            }
+            "click", _fnHideConnectionSetup
         );
         document.getElementById("btnSetupSave").addEventListener(
             "click", _fnHandleSetupSave
@@ -1209,7 +1251,7 @@ var VaibifySyncManager = (function () {
                 "/api/sync/" + sContainerId + "/setup",
                 dictBody
             );
-            elModal.style.display = "none";
+            _fnHideConnectionSetup();
             if (dictResult.bConnected) {
                 PipeleyenApp.fnShowToast("Connected!", "success");
                 fnOpenPushModal(sService);
