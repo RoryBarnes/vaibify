@@ -285,9 +285,9 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/sync/{sContainerId}/{sService}/verify",
      "bAgentSafe": True,
      "sDescription": "Verify the workflow manifest against one remote "
-                     "(github, overleaf, or zenodo). Returns iMatching, "
-                     "iTotalFiles, listDiverged. Path: sService is the "
-                     "remote name."},
+                     "(github, overleaf, zenodo, or arxiv). Returns "
+                     "iMatching, iTotalFiles, listDiverged. Path: "
+                     "sService is the remote name."},
     {"sName": "verify-manifest", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/manifest/verify",

@@ -453,3 +453,71 @@ def test_workspace_badges_populates_mtime_cache(tmp_path):
         str(tmp_path), dictCache,
     )
     assert "fig.pdf" in dictCache
+
+
+# ----------------------------------------------------------------------
+# arXiv column (pull-side, sourced from syncStatus.json)
+# ----------------------------------------------------------------------
+
+
+def _fdictArxivStatusFor(listDivergedPaths):
+    """Return a syncStatus.json-shaped dict for arxiv with listDiverged."""
+    return {
+        "sService": "arxiv",
+        "sLastVerified": "2026-05-13T12:00:00Z",
+        "iTotalFiles": 3,
+        "iMatching": 3 - len(listDivergedPaths),
+        "listDiverged": [
+            {"sPath": sPath, "sExpected": "expected", "sActual": "actual"}
+            for sPath in listDivergedPaths
+        ],
+    }
+
+
+def test_arxiv_badge_none_when_not_configured(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
+        dictArxivStatus=None, bArxivConfigured=False,
+    )
+    assert dictResult["sArxiv"] == badgeState.S_BADGE_NONE
+
+
+def test_arxiv_badge_drifted_when_configured_but_never_verified(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
+        dictArxivStatus=None, bArxivConfigured=True,
+    )
+    assert dictResult["sArxiv"] == badgeState.S_BADGE_DRIFTED
+
+
+def test_arxiv_badge_synced_when_file_absent_from_diverged(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
+        dictArxivStatus=_fdictArxivStatusFor([]),
+        bArxivConfigured=True,
+    )
+    assert dictResult["sArxiv"] == badgeState.S_BADGE_SYNCED
+
+
+def test_arxiv_badge_drifted_when_file_in_diverged(tmp_path):
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
+        dictArxivStatus=_fdictArxivStatusFor(["fig.pdf"]),
+        bArxivConfigured=True,
+    )
+    assert dictResult["sArxiv"] == badgeState.S_BADGE_DRIFTED
+
+
+def test_arxiv_badge_from_hashes_threads_status_through():
+    """fdictBadgeStateFromHashes also paints the arxiv column."""
+    dictResult = badgeState.fdictBadgeStateFromHashes(
+        ["a.pdf", "b.pdf"], _fdictGit(), {}, {"a.pdf": "x", "b.pdf": "y"},
+        dictArxivStatus=_fdictArxivStatusFor(["b.pdf"]),
+        bArxivConfigured=True,
+    )
+    assert dictResult["a.pdf"]["sArxiv"] == badgeState.S_BADGE_SYNCED
+    assert dictResult["b.pdf"]["sArxiv"] == badgeState.S_BADGE_DRIFTED

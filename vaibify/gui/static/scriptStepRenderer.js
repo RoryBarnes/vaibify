@@ -6,7 +6,7 @@ var VaibifyStepRenderer = (function () {
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
     var _DICT_CATEGORY_TO_REMOTE_KEYS = {
-        saPlotFiles: ["sGithub", "sOverleaf", "sZenodo"],
+        saPlotFiles: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"],
         saDataFiles: ["sGithub", "sZenodo"],
         saStepScripts: ["sGithub", "sZenodo"],
         saTestStandards: ["sGithub", "sZenodo"],

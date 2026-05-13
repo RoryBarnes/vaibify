@@ -1,6 +1,6 @@
 /* Vaibify — per-file per-remote badge state for the Step Viewer.
 
-   Fetches the G/O/Z badge triple for every tracked file from
+   Fetches the G/O/Z/A badge row for every tracked file from
    /api/git/{id}/badges and exposes:
 
    - VaibifyGitBadges.fnRefresh(sContainerId)
@@ -8,17 +8,17 @@
        promise that resolves once the in-memory state is updated.
 
    - VaibifyGitBadges.fdictGetBadgesForFile(sResolvedPath, sWorkdir)
-       Returns the per-file triple {sGithub, sOverleaf, sZenodo} for
-       a resolved output-path. Returns null when the file hasn't been
-       seen (caller renders nothing).
+       Returns the per-file dict {sGithub, sOverleaf, sZenodo, sArxiv}
+       for a resolved output-path. Returns null when the file hasn't
+       been seen (caller renders nothing).
 
-   - VaibifyGitBadges.fsRenderBadgeRow(dictTriple, aRemoteKeys)
+   - VaibifyGitBadges.fsRenderBadgeRow(dictBadges, aRemoteKeys)
        Builds a fragment of mini-badge spans for one file row. The
        optional aRemoteKeys array restricts which remotes render
-       (default: ["sGithub", "sOverleaf", "sZenodo"]). Callers pass
-       a category-specific subset to hide remotes that don't apply
-       (e.g., Overleaf for non-LaTeX files). Pure; safe to call on
-       every re-render.
+       (default: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"]).
+       Callers pass a category-specific subset to hide remotes that
+       don't apply (e.g., Overleaf for non-LaTeX files). Pure; safe
+       to call on every re-render.
 */
 
 var VaibifyGitBadges = (function () {
@@ -51,6 +51,7 @@ var VaibifyGitBadges = (function () {
         sGithub: "GitHub",
         sOverleaf: "Overleaf",
         sZenodo: "Zenodo",
+        sArxiv: "arXiv",
     };
 
     var _S_SVG_COMMON =
@@ -79,6 +80,8 @@ var VaibifyGitBadges = (function () {
             ' 5.2-4.9.4-1.6.4-3.3.3-5.1z',
         sZenodo:
             'M3 2.5h10v2.5L6 13h7v2.5H3V13l7-8H3z',
+        sArxiv:
+            'M2 2h12v2H10l3 10h-2L8 5.5 5 14H3L6 4H2V2z',
     };
 
     function _fsRenderRemoteIcon(sRemoteKey) {
@@ -114,25 +117,28 @@ var VaibifyGitBadges = (function () {
         return s;
     }
 
-    function _fdictPlaceholderTriple() {
+    function _fdictPlaceholderBadges() {
         return {
             sGithub: "none",
             sOverleaf: "none",
             sZenodo: "none",
+            sArxiv: "none",
         };
     }
 
     function fdictGetBadgesForFile(sResolvedPath, sWorkdir) {
         var sKey = _fsStripWorkspacePrefix(sResolvedPath, sWorkdir);
-        if (!sKey) return _fdictPlaceholderTriple();
+        if (!sKey) return _fdictPlaceholderBadges();
         return _dictState.dictBadges[sKey] ||
-            _fdictPlaceholderTriple();
+            _fdictPlaceholderBadges();
     }
 
-    var _A_DEFAULT_REMOTE_KEYS = ["sGithub", "sOverleaf", "sZenodo"];
+    var _A_DEFAULT_REMOTE_KEYS = [
+        "sGithub", "sOverleaf", "sZenodo", "sArxiv",
+    ];
 
     function fsRenderBadgeRow(dictTriple, aRemoteKeys) {
-        var dictUse = dictTriple || _fdictPlaceholderTriple();
+        var dictUse = dictTriple || _fdictPlaceholderBadges();
         var aKeys = aRemoteKeys || _A_DEFAULT_REMOTE_KEYS;
         var sHtml = '<span class="remote-badges" draggable="false">';
         aKeys.forEach(function (sKey) {

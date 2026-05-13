@@ -30,6 +30,7 @@ import time
 from datetime import datetime, timezone
 
 from vaibify.reproducibility import (
+    arxivClient,
     githubMirror,
     manifestWriter,
     overleafMirror,
@@ -54,7 +55,8 @@ __all__ = [
 S_MANIFEST_FILENAME = "MANIFEST.sha256"
 S_SYNC_STATUS_FILENAME = "syncStatus.json"
 S_VAIBIFY_DIRECTORY = ".vaibify"
-LIST_SUPPORTED_SERVICES = ("github", "overleaf", "zenodo")
+LIST_SUPPORTED_SERVICES = ("github", "overleaf", "zenodo", "arxiv")
+S_ARXIV_CACHE_DIRECTORY = "arxivCache"
 _F_DEFAULT_CADENCE_HOURS = 6.0
 _I_LOCK_RETRY_MAX = 30
 _F_LOCK_RETRY_SLEEP = 0.05
@@ -97,13 +99,36 @@ def _fdictRequireServiceConfig(dictWorkflow, sService):
     return dictConfig
 
 
-def _fdictFetchHashesForService(sService, dictConfig, listRelPaths):
+def _fdictFetchHashesForService(
+    sService, dictConfig, listRelPaths, sProjectRepo,
+):
     """Dispatch to the right mirror module for one service."""
     if sService == "github":
         return _fdictFetchGithubHashes(dictConfig, listRelPaths)
     if sService == "overleaf":
         return _fdictFetchOverleafHashes(dictConfig, listRelPaths)
+    if sService == "arxiv":
+        return _fdictFetchArxivHashes(
+            dictConfig, listRelPaths, sProjectRepo,
+        )
     return _fdictFetchZenodoHashes(dictConfig, listRelPaths)
+
+
+def _fdictFetchArxivHashes(dictConfig, listRelPaths, sProjectRepo):
+    """Fetch arXiv hashes; require sArxivId."""
+    sArxivId = dictConfig.get("sArxivId") or ""
+    if not sArxivId:
+        raise ReverifyConfigError(
+            "Remote not configured: configure arxiv in vaibify.yml"
+        )
+    dictPathMap = dictConfig.get("dictPathMap") or None
+    sCacheDir = os.path.join(
+        sProjectRepo, S_VAIBIFY_DIRECTORY, S_ARXIV_CACHE_DIRECTORY,
+    )
+    return arxivClient.fdictFetchRemoteHashes(
+        sArxivId, listRelPaths,
+        dictPathMap=dictPathMap, sCacheDir=sCacheDir,
+    )
 
 
 def _fdictFetchGithubHashes(dictConfig, listRelPaths):
@@ -176,7 +201,7 @@ def fdictVerifyRemoteService(
     dictConfig = _fdictRequireServiceConfig(dictWorkflow, sService)
     listRelPaths = sorted(dictExpected.keys())
     dictActual = _fdictFetchHashesForService(
-        sService, dictConfig, listRelPaths,
+        sService, dictConfig, listRelPaths, sProjectRepo,
     )
     listDiverged = _flistBuildDivergenceList(dictExpected, dictActual)
     iTotal = len(dictExpected)

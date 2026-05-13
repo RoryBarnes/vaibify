@@ -1283,7 +1283,7 @@ def _fsRequireOverleafProjectId(dictCtx, sContainerId):
     return sProjectId
 
 
-_LIST_VERIFY_REMOTE_SERVICES = ("github", "overleaf", "zenodo")
+_LIST_VERIFY_REMOTE_SERVICES = ("github", "overleaf", "zenodo", "arxiv")
 
 
 def _fnValidateVerifyService(sService):
@@ -1315,7 +1315,9 @@ def _fnRaiseVerifyError(errorAny, sService):
     Status mapping:
 
     * 409 — preconditions not met (manifest absent, workflow config
-      missing for the service).
+      missing for the service, dictPathMap references a path absent
+      from the e-print, or a basename match is ambiguous and no
+      dictPathMap entry disambiguates it).
     * 422 — manifest is corrupt or remote config in workflow.json is
       shape-invalid (e.g. a non-conforming GitHub owner string).
     * 502 — remote service failure (network, auth, rate limit, etc.).
@@ -1325,7 +1327,7 @@ def _fnRaiseVerifyError(errorAny, sService):
     parser, GitHub owner/repo regex, Overleaf project-id regex). The
     detail string is redacted before being returned.
     """
-    from vaibify.reproducibility import scheduledReverify
+    from vaibify.reproducibility import arxivClient, scheduledReverify
     if isinstance(errorAny, FileNotFoundError):
         raise HTTPException(
             status_code=409,
@@ -1335,6 +1337,14 @@ def _fnRaiseVerifyError(errorAny, sService):
             ),
         ) from errorAny
     if isinstance(errorAny, scheduledReverify.ReverifyConfigError):
+        raise HTTPException(
+            status_code=409, detail=str(errorAny),
+        ) from errorAny
+    if isinstance(
+        errorAny,
+        (arxivClient.ArxivPathMapError,
+         arxivClient.ArxivAmbiguousMatchError),
+    ):
         raise HTTPException(
             status_code=409, detail=str(errorAny),
         ) from errorAny

@@ -1,11 +1,14 @@
 """Per-file per-remote badge state for the Step Viewer.
 
-Each file row in the dashboard carries a trio of mini-badges (G / O /
-Z) that tell the user at a glance whether the file is in sync with
-GitHub, Overleaf, and Zenodo respectively. This module is the single
-source of truth for how those badges are computed: it combines
-``gitStatus`` (repo state), ``mtimeCache`` (current content hash), and
-the workflow's ``dictSyncStatus`` (last-pushed digest per service).
+Each file row in the dashboard carries a row of mini-badges (G / O /
+Z / A) that tell the user at a glance whether the file is in sync
+with GitHub, Overleaf, Zenodo, and arXiv respectively. This module
+is the single source of truth for how those badges are computed: it
+combines ``gitStatus`` (repo state), ``mtimeCache`` (current content
+hash), the workflow's ``dictSyncStatus`` (last-pushed digest per
+push-side service), and the cached pull-side ``syncStatus.json``
+entry per service (currently only consulted for arXiv, which has no
+push-side counterpart).
 
 Badge values:
 - ``synced``     local content matches the remote's last-known digest
@@ -81,6 +84,39 @@ def _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked):
     return S_BADGE_DRIFTED
 
 
+def _fsArxivBadge(sRepoRelPath, dictArxivStatus, bConfigured):
+    """Three-state arXiv icon driven by the cached verify result.
+
+    arXiv is pull-only — there is no last-pushed digest because
+    submissions happen outside vaibify. The badge therefore consults
+    the workflow's cached ``syncStatus.json`` arxiv entry: a file is
+    ``synced`` when the latest verify saw it match the e-print
+    tarball, ``drifted`` when it appeared in ``listDiverged`` or was
+    not yet verified, and ``none`` when the workflow has no arxiv
+    remote configured.
+    """
+    if not bConfigured:
+        return S_BADGE_NONE
+    if not dictArxivStatus:
+        return S_BADGE_DRIFTED
+    if not dictArxivStatus.get("sLastVerified"):
+        return S_BADGE_DRIFTED
+    setDiverged = _fsetDivergedPaths(dictArxivStatus)
+    if sRepoRelPath in setDiverged:
+        return S_BADGE_DRIFTED
+    return S_BADGE_SYNCED
+
+
+def _fsetDivergedPaths(dictArxivStatus):
+    """Return the set of repo-relative paths in ``listDiverged``."""
+    listDiverged = dictArxivStatus.get("listDiverged") or []
+    return {
+        dictEntry.get("sPath", "")
+        for dictEntry in listDiverged
+        if isinstance(dictEntry, dict)
+    }
+
+
 def _fsZenodoBadge(
     sCurrentSha, sLastPushedDigest, bTracked,
     sLastPushedEndpoint, sCurrentEndpoint,
@@ -104,8 +140,9 @@ def _fsZenodoBadge(
 def fdictBadgesForFile(
     sRepoRelPath, dictGitStatus, dictSyncEntry,
     sWorkspaceRoot, dictMtimeCache, sZenodoService="",
+    dictArxivStatus=None, bArxivConfigured=False,
 ):
-    """Return the three-badge triple for one file.
+    """Return the per-file badge dict for one file.
 
     Git is both the transport and the source of truth for the GitHub
     column: whatever ``git status`` says about this file is what we
@@ -114,11 +151,25 @@ def fdictBadgesForFile(
     (the workflow's currently selected Zenodo endpoint) is compared
     against the stored ``sZenodoLastPushedEndpoint`` so a sandbox
     push is not reported as in-sync against production (or vice versa).
+    The arXiv column is pull-side: ``dictArxivStatus`` is the cached
+    verify report from ``syncStatus.json``; ``bArxivConfigured`` is
+    True when the workflow has an arxiv remote in ``dictRemotes``.
     """
     sCurrentSha = mtimeCache.fsBlobShaForFile(
         sWorkspaceRoot, sRepoRelPath, dictMtimeCache,
     )
     dictEntry = dictSyncEntry or {}
+    return _fdictAssembleBadges(
+        sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
+        sZenodoService, dictArxivStatus, bArxivConfigured,
+    )
+
+
+def _fdictAssembleBadges(
+    sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
+    sZenodoService, dictArxivStatus, bArxivConfigured,
+):
+    """Combine the four per-remote badge functions into the per-file dict."""
     return {
         "sGithub": _fsGitBadge(sRepoRelPath, dictGitStatus),
         "sOverleaf": _fsRemoteBadge(
@@ -133,15 +184,19 @@ def fdictBadgesForFile(
             dictEntry.get("sZenodoLastPushedEndpoint", ""),
             sZenodoService,
         ),
+        "sArxiv": _fsArxivBadge(
+            sRepoRelPath, dictArxivStatus, bArxivConfigured,
+        ),
     }
 
 
 def fdictBadgeStateForWorkspace(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
     sWorkspaceRoot, dictMtimeCache, sProjectRepoPath="",
-    sZenodoService="",
+    sZenodoService="", dictArxivStatus=None,
+    bArxivConfigured=False,
 ):
-    """Return {repo-rel-path: badge-triple} for each file in the list.
+    """Return {repo-rel-path: badge-dict} for each file in the list.
 
     Mutates ``dictMtimeCache`` in place as a side effect of hashing;
     the caller is responsible for persisting the cache when done.
@@ -157,6 +212,8 @@ def fdictBadgeStateForWorkspace(
         dictResult[sRelPath] = fdictBadgesForFile(
             sRelPath, dictGitStatus, dictEntry,
             sWorkspaceRoot, dictMtimeCache, sZenodoService,
+            dictArxivStatus=dictArxivStatus,
+            bArxivConfigured=bArxivConfigured,
         )
     return dictResult
 
@@ -164,6 +221,7 @@ def fdictBadgeStateForWorkspace(
 def fdictBadgeStateFromHashes(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
     dictCurrentHashes, sProjectRepoPath="", sZenodoService="",
+    dictArxivStatus=None, bArxivConfigured=False,
 ):
     """Compute badges when current hashes were obtained by some other means.
 
@@ -173,7 +231,8 @@ def fdictBadgeStateFromHashes(
     produced by ``containerGit.fdictComputeBlobShasInContainer`` or an
     equivalent — instead of asking the filesystem directly.
     ``sZenodoService`` is the workflow's currently selected Zenodo
-    endpoint; see :func:`fdictBadgesForFile`.
+    endpoint; ``dictArxivStatus`` is the cached arXiv verify report
+    from ``syncStatus.json``; see :func:`fdictBadgesForFile`.
     """
     dictResult = {}
     dictSync = dictSyncStatus or {}
@@ -185,6 +244,7 @@ def fdictBadgeStateFromHashes(
         dictResult[sRelPath] = _fdictBadgesForHashedFile(
             sRelPath, dictGitStatus, dictEntry,
             dictHashes.get(sRelPath, ""), sZenodoService,
+            dictArxivStatus, bArxivConfigured,
         )
     return dictResult
 
@@ -192,20 +252,10 @@ def fdictBadgeStateFromHashes(
 def _fdictBadgesForHashedFile(
     sRepoRelPath, dictGitStatus, dictEntry,
     sCurrentSha, sZenodoService,
+    dictArxivStatus, bArxivConfigured,
 ):
-    """Compose the three-badge triple from a precomputed hash."""
-    return {
-        "sGithub": _fsGitBadge(sRepoRelPath, dictGitStatus),
-        "sOverleaf": _fsRemoteBadge(
-            sCurrentSha,
-            dictEntry.get("sOverleafLastPushedDigest", ""),
-            dictEntry.get("bOverleaf", False),
-        ),
-        "sZenodo": _fsZenodoBadge(
-            sCurrentSha,
-            dictEntry.get("sZenodoLastPushedDigest", ""),
-            dictEntry.get("bZenodo", False),
-            dictEntry.get("sZenodoLastPushedEndpoint", ""),
-            sZenodoService,
-        ),
-    }
+    """Compose the per-file badge dict from a precomputed hash."""
+    return _fdictAssembleBadges(
+        sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
+        sZenodoService, dictArxivStatus, bArxivConfigured,
+    )

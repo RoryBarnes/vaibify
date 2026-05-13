@@ -1239,7 +1239,7 @@ body.all-verified .toolbar-label {
     color: var(--text-secondary);
 }
 
-/* Per-remote sync badges (G/O/Z) — Phase 4 workspace-as-git-repo */
+/* Per-remote sync badges (G/O/Z/A) — Phase 4 workspace-as-git-repo */
 .remote-badges {
     position: absolute;
     left: 0;

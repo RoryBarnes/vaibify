@@ -11,7 +11,7 @@ from vaibify.reproducibility import scheduledReverify
 
 
 def _fdictBuildWorkflow(sProjectRepo, sId="wf01"):
-    """Return a minimal workflow dict with three remotes configured."""
+    """Return a minimal workflow dict with four remotes configured."""
     return {
         "sWorkflowId": sId,
         "sProjectRepoPath": sProjectRepo,
@@ -23,6 +23,7 @@ def _fdictBuildWorkflow(sProjectRepo, sId="wf01"):
             },
             "overleaf": {"sProjectId": "project1234"},
             "zenodo": {"sRecordId": "98765", "sService": "sandbox"},
+            "arxiv": {"sArxivId": "2401.12345"},
         },
         "listSteps": [
             {
@@ -58,7 +59,7 @@ def fixtureProjectRepo(tmp_path):
 
 
 def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
-    """Two workflows × three remotes → six results, all sStatus=ok."""
+    """Two workflows × four remotes → eight results, all sStatus=ok."""
     sRepoOne = str(tmp_path / "one")
     sRepoTwo = str(tmp_path / "two")
     for sRepo in (sRepoOne, sRepoTwo):
@@ -78,13 +79,16 @@ def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
     ), patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
         return_value=dictMatch,
+    ), patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        return_value=dictMatch,
     ):
         dictReport = scheduledReverify.fnRunReverifyOnce(
             {"workflows": {}}, listWorkflows,
         )
-    assert len(dictReport["listResults"]) == 6
+    assert len(dictReport["listResults"]) == 8
     listStatuses = [d["sStatus"] for d in dictReport["listResults"]]
-    assert listStatuses == ["ok"] * 6
+    assert listStatuses == ["ok"] * 8
     assert dictReport["sNowIso"]
 
 
@@ -115,12 +119,15 @@ def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
     ), patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
         return_value=dictMatch,
+    ), patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        return_value=dictMatch,
     ):
         dictReport = scheduledReverify.fnRunReverifyOnce(
             {"workflows": {}}, listWorkflows,
         )
     listResults = dictReport["listResults"]
-    assert len(listResults) == 6
+    assert len(listResults) == 8
     listGithubResults = [
         d for d in listResults if d["sService"] == "github"
     ]
@@ -213,6 +220,44 @@ def testVerifyRemoteRaisesConfigErrorOnUnconfiguredService(
     with pytest.raises(scheduledReverify.ReverifyConfigError):
         scheduledReverify.fdictVerifyRemoteService(
             fixtureProjectRepo, dictWorkflow, "github",
+        )
+
+
+# --------- arxiv-specific dispatcher wiring ---------
+
+
+def testVerifyArxivPassesCacheDirToClient(fixtureProjectRepo):
+    """The arxiv branch points the client at <repo>/.vaibify/arxivCache/."""
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    dictWorkflow["dictRemotes"]["arxiv"] = {
+        "sArxivId": "2401.12345",
+        "dictPathMap": {"step01/data.csv": "paper/data.csv"},
+    }
+    mockFetch = MagicMock(return_value={"step01/data.csv": "a" * 64})
+    with patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        mockFetch,
+    ):
+        scheduledReverify.fdictVerifyRemoteService(
+            fixtureProjectRepo, dictWorkflow, "arxiv",
+        )
+    _argsCall, dictKwargs = mockFetch.call_args
+    sExpectedCache = os.path.join(
+        fixtureProjectRepo, ".vaibify", "arxivCache",
+    )
+    assert dictKwargs["sCacheDir"] == sExpectedCache
+    assert dictKwargs["dictPathMap"] == {
+        "step01/data.csv": "paper/data.csv",
+    }
+
+
+def testVerifyArxivRaisesConfigErrorWhenIdMissing(fixtureProjectRepo):
+    """Empty/missing sArxivId surfaces as a config error."""
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    dictWorkflow["dictRemotes"]["arxiv"] = {"sArxivId": ""}
+    with pytest.raises(scheduledReverify.ReverifyConfigError):
+        scheduledReverify.fdictVerifyRemoteService(
+            fixtureProjectRepo, dictWorkflow, "arxiv",
         )
 
 

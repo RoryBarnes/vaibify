@@ -89,6 +89,21 @@ def _fdictNoProjectRepoResponse():
     }
 
 
+def _fbArxivConfiguredFor(dictWorkflow):
+    """Return True when the workflow has an arxiv remote configured."""
+    dictRemotes = dictWorkflow.get("dictRemotes") or {}
+    dictArxiv = dictRemotes.get("arxiv") or {}
+    return bool(dictArxiv.get("sArxivId"))
+
+
+def _fdictLoadCachedArxivStatus(sProjectRepoPath):
+    """Return the cached arxiv verify report from ``syncStatus.json``."""
+    from vaibify.reproducibility import scheduledReverify
+    return scheduledReverify.fdictReadCachedSyncStatus(
+        sProjectRepoPath, "arxiv",
+    )
+
+
 def _flistCanonicalFromContainer(
     docker, sContainerId, dictWorkflow, sProjectRepoPath,
 ):
@@ -161,12 +176,18 @@ def _fnRegisterGitBadges(app, dictCtx):
             docker, sContainerId, sRepo,
         )
         dictSync = dictWorkflow.get("dictSyncStatus", {}) or {}
+        bArxivConfigured = _fbArxivConfiguredFor(dictWorkflow)
+        dictArxivStatus = await asyncio.to_thread(
+            _fdictLoadCachedArxivStatus, sRepo,
+        )
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit, dictSync, dictHashes,
             sProjectRepoPath=sRepo,
             sZenodoService=dictWorkflow.get(
                 "sZenodoService", "sandbox",
             ),
+            dictArxivStatus=dictArxivStatus,
+            bArxivConfigured=bArxivConfigured,
         )
         return {
             "dictGit": {
