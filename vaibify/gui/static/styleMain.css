@@ -674,6 +674,10 @@ body.all-verified .toolbar-label {
     font-size: 13px;
 }
 
+.drift-banner[hidden] {
+    display: none;
+}
+
 .drift-banner.dirty {
     background: rgba(231, 76, 60, 0.12);
     border-left-color: #e74c3c;
@@ -1186,7 +1190,7 @@ body.all-verified .toolbar-label {
     align-items: center;
     gap: 4px;
     margin: 2px 0;
-    padding-left: 52px;
+    padding-left: 76px;
     position: relative;
     border-radius: 3px;
     transition: background var(--transition-speed);
@@ -1258,11 +1262,12 @@ body.all-verified .toolbar-label {
     width: 16px;
     height: 16px;
     cursor: pointer;
-    transition: opacity 0.08s ease;
+    transition: opacity 0.08s ease, transform 0.08s ease;
 }
 
 .remote-badge:hover {
-    opacity: 0.7;
+    opacity: 1;
+    transform: scale(1.15);
 }
 
 .remote-badge-icon {
@@ -1290,8 +1295,8 @@ body.all-verified .toolbar-label {
 }
 
 .remote-badge.badge-none {
-    color: var(--text-muted);
-    opacity: 0.45;
+    color: var(--text-secondary);
+    opacity: 0.75;
 }
 
 /* arXiv configure modal — path-map editor rows */

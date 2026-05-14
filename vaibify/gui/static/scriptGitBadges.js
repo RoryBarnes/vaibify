@@ -165,12 +165,48 @@ var VaibifyGitBadges = (function () {
             "/api/git/" + encodeURIComponent(sContainerId) + "/badges"
         ).then(function (dictResult) {
             if (!dictResult || typeof dictResult !== "object") return;
+            var bChanged = _fbBadgeMapChanged(
+                _dictState.dictBadges, dictResult.dictBadges || {});
             _dictState.dictBadges = dictResult.dictBadges || {};
             _dictState.dictRepoSummary = dictResult.dictGit ||
                 _dictState.dictRepoSummary;
+            if (bChanged) _fnRequestStepListRerender();
         }).catch(function () {
             _dictState.dictBadges = {};
         });
+    }
+
+
+    function _fbBadgeMapChanged(dictOld, dictNew) {
+        var aOldKeys = Object.keys(dictOld || {});
+        var aNewKeys = Object.keys(dictNew || {});
+        if (aOldKeys.length !== aNewKeys.length) return true;
+        for (var i = 0; i < aNewKeys.length; i++) {
+            var sKey = aNewKeys[i];
+            var dictOldEntry = dictOld[sKey];
+            var dictNewEntry = dictNew[sKey];
+            if (!dictOldEntry) return true;
+            if (_fbBadgeEntryChanged(dictOldEntry, dictNewEntry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    function _fbBadgeEntryChanged(dictOld, dictNew) {
+        var aKeys = ["sGithub", "sOverleaf", "sZenodo", "sArxiv"];
+        for (var i = 0; i < aKeys.length; i++) {
+            if (dictOld[aKeys[i]] !== dictNew[aKeys[i]]) return true;
+        }
+        return false;
+    }
+
+
+    function _fnRequestStepListRerender() {
+        if (typeof PipeleyenApp === "undefined") return;
+        if (typeof PipeleyenApp.fnRenderStepList !== "function") return;
+        PipeleyenApp.fnRenderStepList();
     }
 
     function fdictRepoSummary() {
