@@ -81,7 +81,7 @@ var VaibifyGitBadges = (function () {
         sZenodo:
             'M3 2.5h10v2.5L6 13h7v2.5H3V13l7-8H3z',
         sArxiv:
-            'M2 2h12v2H10l3 10h-2L8 5.5 5 14H3L6 4H2V2z',
+            'M8 1.5L14 14.5L11.5 14.5L10 11L6 11L4.5 14.5L2 14.5z',
     };
 
     function _fsRenderRemoteIcon(sRemoteKey) {
