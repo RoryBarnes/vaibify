@@ -19,6 +19,7 @@ __all__ = [
 ]
 
 import logging
+import shlex
 
 from . import workflowManager
 
@@ -51,11 +52,29 @@ def fdictMaybeReloadWorkflow(
     re-render. On replace, ``dictCtx["workflows"][sContainerId]`` is
     updated to the freshly-loaded dict and the stored last-write
     mtime is bumped to silence the next poll.
+
+    An empty ``dictModTimes`` is ambiguous: the host shell wraps
+    ``stat ... 2>/dev/null || true``, so a docker-exec timeout or
+    flaky stream can produce an empty batch even when every file is
+    fine. When the batch returns other paths but not the workflow,
+    that disambiguates a real missing-file event from a hiccup.
+    When the batch is empty entirely, we issue one direct existence
+    probe to break the tie — minimal-workflow deletions are caught
+    without the false-alarm tax on hiccupping polls.
     """
     if not sWorkflowPath:
         return _fdictNoChange()
-    sPolledMtime = (dictModTimes or {}).get(sWorkflowPath, "")
+    dictPolled = dictModTimes or {}
+    sPolledMtime = dictPolled.get(sWorkflowPath, "")
     if not sPolledMtime:
+        if dictPolled:
+            return _fdictReloadFailure(
+                "workflow.json missing from container"
+            )
+        if _fbWorkflowExistsInContainer(
+            dictCtx["docker"], sContainerId, sWorkflowPath,
+        ):
+            return _fdictNoChange()
         return _fdictReloadFailure(
             "workflow.json missing from container"
         )
@@ -168,6 +187,24 @@ def _fsStatMtime(connectionDocker, sContainerId, sPath):
         connectionDocker, sContainerId, [sPath],
     )
     return dictResult.get(sPath, "")
+
+
+def _fbWorkflowExistsInContainer(connectionDocker, sContainerId, sPath):
+    """Return True when ``sPath`` exists in the container.
+
+    Used to disambiguate "the stat batch hiccupped" from "the file
+    was genuinely deleted" when the polled-mtimes dict came back
+    empty. Wraps ``test -e`` with an explicit ``exists:N`` marker so
+    the answer is robust against stray stderr noise and the
+    catch-all empty-output fallthrough in flaky docker-exec streams.
+    """
+    sCmd = (
+        f"test -e {shlex.quote(sPath)} && echo exists:1 || echo exists:0"
+    )
+    _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCmd,
+    )
+    return "exists:1" in (sOutput or "")
 
 
 def _fdictNoChange():

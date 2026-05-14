@@ -40,6 +40,11 @@ class _FakeDocker:
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listStatCommands.append(sCommand)
+        if sCommand.startswith("test -e ") and "exists:" in sCommand:
+            for sPath in self.dictMtimes:
+                if "'" + sPath + "'" in sCommand or sPath in sCommand:
+                    return (0, "exists:1")
+            return (0, "exists:0")
         if not sCommand.startswith("stat -c '%n %Y' "):
             return (0, "")
         listLines = []
@@ -178,7 +183,34 @@ def test_reload_handles_malformed_json():
     )
 
 
-def test_reload_handles_missing_file_in_modtimes():
+def test_reload_silent_when_polled_batch_empty_but_file_exists():
+    """Empty dictModTimes + existence probe confirms file → hiccup, no toast."""
+    fakeDocker = _FakeDocker()
+    fakeDocker.fnSetMtime(_S_WORKFLOW_PATH, "1700000000")
+    dictCtx = _fdictMakeContext(fakeDocker)
+    dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
+        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+        {},
+    )
+    assert dictReload == {
+        "bReplaced": False, "dictWorkflow": None, "sError": None,
+    }
+
+
+def test_reload_reports_missing_when_other_paths_returned():
+    """Other paths in dictModTimes but workflow absent → genuine missing event."""
+    fakeDocker = _FakeDocker()
+    dictCtx = _fdictMakeContext(fakeDocker)
+    dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
+        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+        {"/workspace/other/file.txt": "1700000000"},
+    )
+    assert dictReload["bReplaced"] is False
+    assert "missing" in dictReload["sError"].lower()
+
+
+def test_reload_reports_missing_when_empty_batch_and_probe_confirms_gone():
+    """Empty dictModTimes + probe says file gone → real deletion, do toast."""
     fakeDocker = _FakeDocker()
     dictCtx = _fdictMakeContext(fakeDocker)
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(

@@ -84,6 +84,8 @@ class _MockDocker:
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if sCommand.startswith("stat -c '%n %Y' "):
             return (0, self._fsBuildStatLines(sCommand))
+        if sCommand.startswith("test -e ") and "exists:" in sCommand:
+            return (0, self._fsBuildExistsLine(sCommand))
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
             return (0, _S_WORKFLOW_PATH + "\n")
         if sCommand.startswith("test -d"):
@@ -104,6 +106,13 @@ class _MockDocker:
             if "'" + sPath + "'" in sCommand:
                 listLines.append(f"{sPath} {sMtime}")
         return "\n".join(listLines)
+
+    def _fsBuildExistsLine(self, sCommand):
+        """Resolve the ``test -e ... && echo exists:1 || echo exists:0`` probe."""
+        for sPath in self.dictFiles:
+            if "'" + sPath + "'" in sCommand or sPath in sCommand:
+                return "exists:1"
+        return "exists:0"
 
     def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
         return "exec-id-mock"
