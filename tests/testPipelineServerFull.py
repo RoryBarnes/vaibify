@@ -64,6 +64,8 @@ class MockDockerFull:
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None,
     ):
+        if "git rev-parse --show-toplevel" in sCommand:
+            return (0, "/workspace\n")
         if "test -d" in sCommand and ".vaibify" in sCommand:
             return (0, "")
         if "find" in sCommand and "workflows" in sCommand:
