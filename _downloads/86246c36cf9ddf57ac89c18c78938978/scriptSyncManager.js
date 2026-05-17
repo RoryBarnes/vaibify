@@ -40,8 +40,10 @@ var VaibifySyncManager = (function () {
 
     var _DICT_SERVICE_ERROR_MESSAGES = {
         GitHub: {
-            notFound: "Repository or branch not found. Check the " +
-                "GitHub remote configuration in workflow.yml.",
+            notFound: "GitHub push failed. The file path may be " +
+                "outside the project repo, or the remote branch is " +
+                "unreachable. Check the toast detail for the exact " +
+                "git error.",
             conflict: "Push rejected: GitHub has commits you " +
                 "don't have. Run 'git pull --rebase' first.",
         },

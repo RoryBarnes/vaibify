@@ -487,6 +487,29 @@ def _fdictMetadataRequestToDict(request):
     }
 
 
+def _fsRequireProjectRepoForGit(dictWorkflow):
+    """Return the workflow's project repo path or raise HTTP 409.
+
+    The GitHub push and add-file routes need to ``cd`` into the project
+    repo before running ``git add``. The old workspace-as-repo model
+    used the workflow.json's parent directory, which now lands inside
+    ``.vaibify/workflows/`` rather than at the repo root — every git
+    add then fails with "no such directory" because step paths are
+    repo-relative, not workflow-relative.
+    """
+    sPath = dictWorkflow.get("sProjectRepoPath") or ""
+    if not sPath:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Workflow is not inside a git repository. "
+                "GitHub sync requires the workflow's parent directory "
+                "to be a git work tree."
+            ),
+        )
+    return sPath
+
+
 def _fnRegisterGithubPush(app, dictCtx):
     """Register POST /api/github/{id}/push endpoint."""
     from .. import syncDispatcher
@@ -500,8 +523,7 @@ def _fnRegisterGithubPush(app, dictCtx):
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        sWorkdir = posixpath.dirname(
-            dictCtx["paths"].get(sContainerId, ""))
+        sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultPushToGithub,
@@ -535,8 +557,7 @@ def _fnRegisterGithubAddFile(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        sWorkdir = posixpath.dirname(
-            dictCtx["paths"].get(sContainerId, ""))
+        sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         fnValidatePathWithinRoot(
             posixpath.normpath(
                 posixpath.join(sWorkdir, request.sFilePath)
