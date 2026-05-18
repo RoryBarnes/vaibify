@@ -534,23 +534,37 @@ def _fbIsExcludedScanPath(pathFile):
     )
 
 
+_TUPLE_SCIENCE_SCAN_GLOBS = ("*.py", "*.html", "*.js", "*.css")
+
+
 def _flistScanForTerm(pathRoot, sTerm):
-    """Return (pathFile, iLineNo, sLine, sMatchedToken) matches for sTerm."""
+    """Return (pathFile, iLineNo, sLine, sMatchedToken) matches for sTerm.
+
+    Scans user-facing source files (Python, HTML, JS, CSS) for the
+    given identifier. HTML and JS coverage closes the gap left by the
+    original Python-only sweep — placeholder strings, comments, and
+    inline labels are the most likely vehicle for a project-specific
+    name to leak into a release build.
+    """
     regexTerm = re.compile(r"\b" + re.escape(sTerm) + r"\b", re.IGNORECASE)
     listHits = []
-    for pathFile in pathRoot.rglob("*.py"):
-        if _fbIsExcludedScanPath(pathFile):
-            continue
-        try:
-            sSource = fsReadSource(pathFile)
-        except (OSError, UnicodeDecodeError):
-            continue
-        for iLineNo, sLine in enumerate(sSource.splitlines(), start=1):
-            matchTerm = regexTerm.search(sLine)
-            if matchTerm:
-                listHits.append(
-                    (pathFile, iLineNo, sLine.strip(), matchTerm.group(0))
-                )
+    for sGlob in _TUPLE_SCIENCE_SCAN_GLOBS:
+        for pathFile in pathRoot.rglob(sGlob):
+            if _fbIsExcludedScanPath(pathFile):
+                continue
+            try:
+                sSource = fsReadSource(pathFile)
+            except (OSError, UnicodeDecodeError):
+                continue
+            for iLineNo, sLine in enumerate(
+                sSource.splitlines(), start=1,
+            ):
+                matchTerm = regexTerm.search(sLine)
+                if matchTerm:
+                    listHits.append(
+                        (pathFile, iLineNo, sLine.strip(),
+                         matchTerm.group(0)),
+                    )
     return listHits
 
 
