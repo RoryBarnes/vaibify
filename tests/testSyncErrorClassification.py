@@ -137,6 +137,21 @@ class TestAuthorIdentityPatterns:
         )
         assert dictResult["sErrorType"] == "authorIdentity"
 
+    def test_fbAuthorIdentityWinsWhenAuthPatternAlsoPresent(self):
+        """Identity bucket must run before the auth bucket.
+
+        If git's output happens to mention both "Authentication" and
+        "Author identity unknown" (e.g. a verbose remote helper),
+        classifying as ``auth`` would hide the actionable remediation
+        (set name + email) behind the wrong modal. Pin the precedence.
+        """
+        dictResult = fdictClassifyError(
+            128,
+            "Authentication succeeded\nfatal: Author identity "
+            "unknown\nPlease tell me who you are.",
+        )
+        assert dictResult["sErrorType"] == "authorIdentity"
+
 
 class TestUnknownFallback:
     """Synthetic random errors must still fall through to unknown."""

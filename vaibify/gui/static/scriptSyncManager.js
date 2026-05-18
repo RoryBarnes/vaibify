@@ -2477,6 +2477,28 @@ var VaibifySyncManager = (function () {
     var _RE_GIT_EMAIL_CLIENT =
         /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
+    var _fnGitIdentityEscapeHandler = null;
+
+
+    function _fnAttachGitIdentityEscapeHandler() {
+        _fnGitIdentityEscapeHandler = function (event) {
+            if (event.key === "Escape") {
+                event.stopPropagation();
+                fnCloseGitIdentityModal();
+            }
+        };
+        document.addEventListener(
+            "keydown", _fnGitIdentityEscapeHandler);
+    }
+
+
+    function _fnDetachGitIdentityEscapeHandler() {
+        if (!_fnGitIdentityEscapeHandler) return;
+        document.removeEventListener(
+            "keydown", _fnGitIdentityEscapeHandler);
+        _fnGitIdentityEscapeHandler = null;
+    }
+
 
     function fnOpenGitIdentityModal() {
         var elModal = document.getElementById("modalGitIdentity");
@@ -2485,6 +2507,7 @@ var VaibifySyncManager = (function () {
         document.getElementById("inputGitIdentityEmail").value = "";
         _fnClearGitIdentityError();
         elModal.style.display = "flex";
+        _fnAttachGitIdentityEscapeHandler();
         document.getElementById("inputGitIdentityName").focus();
     }
 
@@ -2492,6 +2515,7 @@ var VaibifySyncManager = (function () {
     function fnCloseGitIdentityModal() {
         var elModal = document.getElementById("modalGitIdentity");
         if (elModal) elModal.style.display = "none";
+        _fnDetachGitIdentityEscapeHandler();
     }
 
 

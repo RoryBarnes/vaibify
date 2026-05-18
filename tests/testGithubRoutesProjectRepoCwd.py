@@ -239,6 +239,155 @@ def test_identity_returns_409_when_no_project_repo(
     assert responseHttp.status_code == 409
 
 
+def test_identity_shell_metacharacters_stay_inside_single_quotes(
+    fixtureCapturedIdentityCommand,
+):
+    """Shell metacharacters in sName survive only as literal payload.
+
+    The validator only rejects null bytes, newlines, and carriage
+    returns. Every other shell metacharacter (``'``, ``"``, ``$``,
+    backticks, ``;``, ``&``, ``|``) reaches ``fsShellQuote`` and must
+    be wrapped in single quotes so the shell cannot interpret it.
+    """
+    sInjection = "'; rm -rf /; #"
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": sInjection, "sEmail": "ok@ok.org"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 200
+    sCommand = fixtureCapturedIdentityCommand["sCommand"]
+    sExpectedQuoted = "'" + sInjection.replace("'", "'\\''") + "'"
+    assert "git config user.name " + sExpectedQuoted in sCommand
+    assert "rm -rf /" not in sCommand.replace(sExpectedQuoted, "")
+
+
+def test_identity_shell_dollar_and_backtick_stay_inside_quotes(
+    fixtureCapturedIdentityCommand,
+):
+    """``$(...)`` and backticks in sEmail must not be evaluated."""
+    sName = "Name $USER `whoami` $(id)"
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": sName, "sEmail": "ok@ok.org"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 200
+    sCommand = fixtureCapturedIdentityCommand["sCommand"]
+    sExpectedQuoted = "'" + sName.replace("'", "'\\''") + "'"
+    assert sExpectedQuoted in sCommand
+
+
+@pytest.mark.parametrize("sEmail", [
+    "rkb9@uw.edu",
+    "name+filter@gmail.com",
+    "first.last@subdomain.example.co.uk",
+    "user_name@school.ac.uk",
+    "x@y.z",
+])
+def test_identity_accepts_realistic_emails(
+    fixtureCapturedIdentityCommand, sEmail,
+):
+    """Validator must not reject ordinary researcher email shapes."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Researcher", "sEmail": sEmail},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 200, (
+        f"Expected {sEmail} to be accepted, got "
+        f"{responseHttp.status_code}: {responseHttp.text}"
+    )
+
+
+@pytest.mark.parametrize("sEmail", [
+    "@x.y",
+    "x@",
+    "x@y",
+    "x@.com",
+    "a b@c.d",
+    "x.y",
+    "x@y.",
+])
+def test_identity_rejects_obvious_malformed_emails(
+    fixtureCapturedIdentityCommand, sEmail,
+):
+    """Validator must catch shapes that are clearly not emails."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Researcher", "sEmail": sEmail},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 400, (
+        f"Expected {sEmail!r} to be rejected, got "
+        f"{responseHttp.status_code}"
+    )
+
+
+def test_identity_command_omits_global_flag(
+    fixtureCapturedIdentityCommand,
+):
+    """``--global`` must never appear; outside a repo git itself errors."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Researcher", "sEmail": "ok@ok.org"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 200
+    sCommand = fixtureCapturedIdentityCommand["sCommand"]
+    assert "--global" not in sCommand
+    assert "--system" not in sCommand
+
+
+def test_identity_surfaces_git_failure_as_502(
+    fixtureCapturedIdentityCommand,
+):
+    """Non-zero git config exit (e.g. cwd not a repo) returns 502."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class _FakeDockerFailing:
+        def ftResultExecuteCommand(self, sContainerId, sCommand):
+            fixtureCapturedIdentityCommand["sCommand"] = sCommand
+            return (128, "fatal: not in a git directory")
+
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/notARepo",
+        "/workspace/notARepo/.vaibify/workflows/demo.json",
+    )
+    dictCtx["docker"] = _FakeDockerFailing()
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
+    syncRoutes.fnRegisterAll(app, dictCtx)
+    responseHttp = TestClient(app).post(
+        "/api/github/cid/identity",
+        json={"sName": "Researcher", "sEmail": "ok@ok.org"},
+    )
+    assert responseHttp.status_code == 502
+    assert "not in a git directory" in responseHttp.text
+
+
 def test_push_uses_project_repo_path_not_workflow_dirname(
     fixtureCapturedPushArgs,
 ):
