@@ -30,6 +30,8 @@ __all__ = [
     "testPipelineStateCarriesLivenessFields",
     "testContainerUserUidIsOneThousand",
     "testManifestWriterKnowsEverySaPathListInGuiSource",
+    "testConftestTemplateHasVersionStamp",
+    "testNoFlatTestMarkerWritesInSource",
 ]
 
 
@@ -1205,3 +1207,81 @@ def _fsetCollectSaFilesLiterals():
         for matchOne in _REGEX_SA_FILES_LITERAL.finditer(sSource):
             setLiterals.add(matchOne.group(1))
     return setLiterals
+
+
+def testConftestTemplateHasVersionStamp():
+    """Every generated conftest source carries a version sentinel.
+
+    The dashboard's connect-time refresh helper compares the embedded
+    ``# vaibify-conftest-version:`` line against
+    ``S_CONFTEST_VERSION`` to decide whether to rewrite stale copies
+    on a researcher's host. Bumping the constant without updating the
+    template builder (or vice versa) silently breaks the refresh
+    path; this invariant catches that drift.
+    """
+    from vaibify.gui import conftestManager
+    sExpectedStamp = (
+        "# vaibify-conftest-version: "
+        + conftestManager.S_CONFTEST_VERSION
+    )
+    sBuilt = conftestManager.fsBuildConftestSource("/x")
+    assert sExpectedStamp in sBuilt, (
+        "fsBuildConftestSource('/x') must embed "
+        f"{sExpectedStamp!r}; otherwise the refresh helper cannot "
+        "detect that an installed copy is current."
+    )
+    sBareTemplate = conftestManager.fsConftestContent()
+    assert sExpectedStamp in sBareTemplate, (
+        "fsConftestContent() must embed the version stamp too so "
+        "the template shipped to /usr/share/vaibify/ stays in sync."
+    )
+
+
+# The conftest template body lives as a string literal inside
+# ``conftestManager.py`` and is exec'd inside containers; treat it as
+# exempt by file name. Documentation references that use angle-bracket
+# placeholders (e.g. ``<step>.json``) are not matched by the regex
+# below, so no other docstring exemption is needed.
+SET_FLAT_MARKER_LITERAL_EXEMPT_FILES = {
+    "conftestManager.py",
+}
+
+_REGEX_FLAT_MARKER_LITERAL = re.compile(
+    r"\.vaibify/test_markers/[A-Za-z0-9_.\-]+\.json"
+)
+
+
+def testNoFlatTestMarkerWritesInSource():
+    """No module hardcodes the flat ``.vaibify/test_markers/<step>.json`` layout.
+
+    Markers live under ``.vaibify/test_markers/<workflowSlug>/`` so
+    two workflows in the same project repo don't clobber each other.
+    A literal like ``.vaibify/test_markers/step1.json`` in module
+    source reintroduces the flat layout and strands markers when a
+    workflow is renamed or split. ``fnMigrateFlatMarkers`` is the
+    one place that intentionally walks the flat layout (to move
+    legacy files into a slug subdir); it constructs paths
+    dynamically, never as a string literal, so it is not caught.
+    """
+    pathGui = GUI_DIR
+    listViolations = []
+    for pathFile in pathGui.rglob("*.py"):
+        if pathFile.name in SET_FLAT_MARKER_LITERAL_EXEMPT_FILES:
+            continue
+        sSource = fsReadSource(pathFile)
+        for iLineNo, sLine in enumerate(
+            sSource.splitlines(), start=1,
+        ):
+            if _REGEX_FLAT_MARKER_LITERAL.search(sLine):
+                listViolations.append(
+                    (pathFile.name, iLineNo, sLine.strip())
+                )
+    assert listViolations == [], (
+        "Modules must not write to the flat "
+        "`.vaibify/test_markers/<file>.json` layout — use the "
+        "per-slug subdir instead:\n"
+        + "\n".join(
+            f"  {sFile}:{iLine}: {sText}"
+            for sFile, iLine, sText in listViolations
+        )
+    )
