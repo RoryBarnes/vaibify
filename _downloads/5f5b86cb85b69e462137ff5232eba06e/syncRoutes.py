@@ -17,6 +17,7 @@ from ..pipelineServer import (
     ArxivConfigureRequest,
     DatasetDownloadRequest,
     GitAddFileRequest,
+    GitIdentityRequest,
     OverleafDiffRequest,
     SyncPushRequest,
     SyncSetupRequest,
@@ -543,6 +544,71 @@ def _fnRegisterGithubPush(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         dictResult["sCommitHash"] = sCommitHash
         return dictResult
+
+
+_RE_GIT_EMAIL = re.compile(r"^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$")
+
+
+def _fnValidateGitIdentity(sName, sEmail):
+    """Reject obviously malformed git identity strings before shelling out."""
+    if not isinstance(sName, str) or sName.strip() == "":
+        raise HTTPException(
+            status_code=400, detail="sName must be a non-empty string.",
+        )
+    if not isinstance(sEmail, str) or sEmail.strip() == "":
+        raise HTTPException(
+            status_code=400, detail="sEmail must be a non-empty string.",
+        )
+    for sField, sValue in (("sName", sName), ("sEmail", sEmail)):
+        if "\x00" in sValue or "\n" in sValue or "\r" in sValue:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{sField} must not contain control characters.",
+            )
+    if not _RE_GIT_EMAIL.match(sEmail.strip()):
+        raise HTTPException(
+            status_code=400, detail="sEmail is not a valid email address.",
+        )
+
+
+def _fnRegisterGithubIdentity(app, dictCtx):
+    """Register POST /api/github/{id}/identity endpoint."""
+
+    @fnAgentAction("set-git-identity")
+    @app.post("/api/github/{sContainerId}/identity")
+    async def fnGithubIdentity(
+        sContainerId: str, request: GitIdentityRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
+        _fnValidateGitIdentity(request.sName, request.sEmail)
+        iExit, sOut = await asyncio.to_thread(
+            _ftWriteGitIdentity,
+            dictCtx["docker"], sContainerId, sWorkdir,
+            request.sName.strip(), request.sEmail.strip(),
+        )
+        if iExit != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"git config failed: {sOut[:400]}",
+            )
+        return {"bSuccess": True}
+
+
+def _ftWriteGitIdentity(
+    connectionDocker, sContainerId, sWorkdir, sName, sEmail,
+):
+    """Run git config user.name and user.email inside the project repo."""
+    sCommand = (
+        f"cd {fsShellQuote(sWorkdir)} && "
+        f"git config user.name {fsShellQuote(sName)} && "
+        f"git config user.email {fsShellQuote(sEmail)}"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
 
 
 def _fnRegisterGithubAddFile(app, dictCtx):
@@ -1562,6 +1628,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterZenodoDeposit(app, dictCtx)
     _fnRegisterGithubPush(app, dictCtx)
     _fnRegisterGithubAddFile(app, dictCtx)
+    _fnRegisterGithubIdentity(app, dictCtx)
     _fnRegisterSyncRoutes(app, dictCtx)
     _fnRegisterDag(app, dictCtx)
     _fnRegisterDagExport(app, dictCtx)

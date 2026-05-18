@@ -58,6 +58,7 @@ __all__ = [
 
 from . import actionCatalog
 from . import agentSessionBridge
+from . import conftestManager
 from . import workflowManager
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
@@ -205,6 +206,11 @@ class ArxivConfigureRequest(BaseModel):
     sArxivId: str = ""
     dictPathMap: Dict[str, str] = {}
     bRemove: bool = False
+
+
+class GitIdentityRequest(BaseModel):
+    sName: str
+    sEmail: str
 
 
 class ZenodoCreatorRequest(BaseModel):
@@ -827,6 +833,9 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
                 dictCtx["docker"], sContainerId, sResolved,
             )
         )
+        await _fnRefreshConftestsAndMigrateMarkers(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         from .workflowReloadDetector import fnRecordSelfWriteMtime
         fnRecordSelfWriteMtime(dictCtx, sContainerId, sResolved)
         if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
@@ -852,6 +861,40 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         logger.error("Workflow load failed: %s", error)
         sUserMessage = _fsSanitizeServerError(str(error))
         raise HTTPException(400, sUserMessage)
+
+
+async def _fnRefreshConftestsAndMigrateMarkers(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Refresh stale conftests and migrate flat markers at connect time.
+
+    Both operations are process-cached inside ``conftestManager`` so
+    poll-time calls in ``_fdictAttachTestStatus`` become no-ops after
+    the first sweep here. Failures log and swallow so a connect
+    handshake never fails on a migration issue.
+    """
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        return
+    listStepDirs = [
+        dictStep.get("sDirectory", "")
+        for dictStep in dictWorkflow.get("listSteps", [])
+        if dictStep.get("sDirectory", "")
+    ]
+    try:
+        await asyncio.to_thread(
+            conftestManager.fnEnsureConftestsCurrent,
+            dictCtx["docker"], sContainerId, listStepDirs,
+            sProjectRepoPath,
+        )
+        await asyncio.to_thread(
+            conftestManager.fnMigrateFlatMarkers,
+            dictCtx["docker"], sContainerId, sProjectRepoPath,
+        )
+    except Exception as error:
+        logger.warning(
+            "Conftest refresh / marker migration failed: %s", error,
+        )
 
 
 async def _fdictComputeConnectFileStatus(

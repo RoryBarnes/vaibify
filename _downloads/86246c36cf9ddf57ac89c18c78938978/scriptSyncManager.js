@@ -934,17 +934,45 @@ var VaibifySyncManager = (function () {
 
     function fnShowSyncError(dictResult, sService) {
         var sErrorType = dictResult.sErrorType || "unknown";
+        if (sErrorType === "authorIdentity") {
+            fnOpenGitIdentityModal();
+            return;
+        }
         var sMessage = _fsLookupSyncErrorMessage(
             sService, sErrorType) ||
             dictResult.sMessage || "Unknown error";
-        var sTitle = (sService || "Sync") + " failed: " +
-            sErrorType;
+        var sTitle = _fsBuildErrorTitle(
+            sService, sErrorType, dictResult.sMessage || "");
         if (sErrorType === "unknown") {
             _fnShowErrorModalWithRaw(
                 sTitle, sMessage, dictResult.sMessage || "");
             return;
         }
         _fnShowErrorModal(sTitle + "\n\n" + sMessage);
+    }
+
+
+    function _fsBuildErrorTitle(sService, sErrorType, sRawMessage) {
+        if (sErrorType !== "unknown") {
+            return (sService || "Sync") + " failed: " + sErrorType;
+        }
+        var sHeadline = _fsFirstNonEmptyLine(sRawMessage);
+        if (!sHeadline) {
+            return (sService || "Sync") + " failed: unknown";
+        }
+        return (sService || "Sync") + " failed: " +
+            sHeadline.substring(0, 120);
+    }
+
+
+    function _fsFirstNonEmptyLine(sText) {
+        if (!sText) return "";
+        var aLines = String(sText).split("\n");
+        for (var i = 0; i < aLines.length; i++) {
+            var sLine = aLines[i].trim();
+            if (sLine) return sLine;
+        }
+        return "";
     }
 
     function _fsServiceEndpoint(sService) {
@@ -2445,6 +2473,88 @@ var VaibifySyncManager = (function () {
         fnInvalidateVerifyCache();
     }
 
+
+    var _RE_GIT_EMAIL_CLIENT =
+        /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+
+    function fnOpenGitIdentityModal() {
+        var elModal = document.getElementById("modalGitIdentity");
+        if (!elModal) return;
+        document.getElementById("inputGitIdentityName").value = "";
+        document.getElementById("inputGitIdentityEmail").value = "";
+        _fnClearGitIdentityError();
+        elModal.style.display = "flex";
+        document.getElementById("inputGitIdentityName").focus();
+    }
+
+
+    function fnCloseGitIdentityModal() {
+        var elModal = document.getElementById("modalGitIdentity");
+        if (elModal) elModal.style.display = "none";
+    }
+
+
+    function _fnClearGitIdentityError() {
+        var elError = document.getElementById("gitIdentityError");
+        if (!elError) return;
+        elError.textContent = "";
+        elError.hidden = true;
+    }
+
+
+    function _fnShowGitIdentityError(sMessage) {
+        var elError = document.getElementById("gitIdentityError");
+        if (!elError) return;
+        elError.textContent = sMessage;
+        elError.hidden = false;
+    }
+
+
+    function _fbValidateGitIdentityClient(sName, sEmail) {
+        if (!sName) {
+            _fnShowGitIdentityError("Enter your name.");
+            return false;
+        }
+        if (!sEmail) {
+            _fnShowGitIdentityError("Enter your email.");
+            return false;
+        }
+        if (!_RE_GIT_EMAIL_CLIENT.test(sEmail)) {
+            _fnShowGitIdentityError(
+                "Email does not look right (e.g. you@example.com).");
+            return false;
+        }
+        return true;
+    }
+
+
+    async function fnSaveGitIdentity() {
+        _fnClearGitIdentityError();
+        var sName = document.getElementById(
+            "inputGitIdentityName").value.trim();
+        var sEmail = document.getElementById(
+            "inputGitIdentityEmail").value.trim();
+        if (!_fbValidateGitIdentityClient(sName, sEmail)) return;
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/github/" + encodeURIComponent(sContainerId) +
+                    "/identity",
+                {sName: sName, sEmail: sEmail},
+            );
+            PipeleyenApp.fnShowToast(
+                "Git identity saved. Try the sync again.",
+                "success");
+            fnCloseGitIdentityModal();
+        } catch (error) {
+            _fnShowGitIdentityError(
+                error.message || "Failed to save identity.");
+        }
+    }
+
+
     return {
         fnOpenPushModal: fnOpenPushModal,
         fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
@@ -2461,5 +2571,8 @@ var VaibifySyncManager = (function () {
         fnOpenRemotePicklistForBadge: fnOpenRemotePicklistForBadge,
         fnOpenRowOverflowMenu: fnOpenRowOverflowMenu,
         fnDismissAllPicklists: fnDismissAllPicklists,
+        fnOpenGitIdentityModal: fnOpenGitIdentityModal,
+        fnCloseGitIdentityModal: fnCloseGitIdentityModal,
+        fnSaveGitIdentity: fnSaveGitIdentity,
     };
 })();

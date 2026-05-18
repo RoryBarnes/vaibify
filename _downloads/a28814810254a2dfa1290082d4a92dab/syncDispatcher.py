@@ -116,11 +116,22 @@ _LIST_CONFLICT_PATTERNS = [
     "published deposition",
     "[rejected]",
 ]
+_LIST_AUTHOR_IDENTITY_PATTERNS = [
+    "author identity unknown",
+    "please tell me who you are",
+    "unable to auto-detect email",
+    "empty ident name",
+]
 
 
 def fdictClassifyError(iExitCode, sOutput):
     """Classify a sync command failure by scanning output text."""
     sLower = sOutput.lower()
+    for sPattern in _LIST_AUTHOR_IDENTITY_PATTERNS:
+        if sPattern in sLower:
+            return {
+                "sErrorType": "authorIdentity", "sMessage": sOutput,
+            }
     for sPattern in _LIST_AUTH_PATTERNS:
         if sPattern in sLower:
             return {"sErrorType": "auth", "sMessage": sOutput}
