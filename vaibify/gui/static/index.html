@@ -655,6 +655,42 @@
     </div>
 </div>
 
+<!-- Set Git Identity Modal -->
+<div class="modal-overlay" id="modalGitIdentity" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalGitIdentityTitle">
+    <div class="modal modal-small">
+        <h2 id="modalGitIdentityTitle"
+            style="color: var(--color-pale-blue);">
+            Set Git Identity</h2>
+        <p class="muted-text">
+            This container has no git author configured, so commits
+            cannot attribute. Vaibify will run
+            <code>git config user.name</code> and
+            <code>git config user.email</code> inside this project's
+            repo — it does not touch your global git settings.
+        </p>
+        <div class="form-group">
+            <label>Name
+                <input type="text" id="inputGitIdentityName"
+                       placeholder="e.g. Rory Barnes">
+            </label>
+        </div>
+        <div class="form-group">
+            <label>Email
+                <input type="text" id="inputGitIdentityEmail"
+                       placeholder="e.g. rkb9@uw.edu">
+            </label>
+        </div>
+        <p id="gitIdentityError" class="form-error" hidden></p>
+        <div class="modal-actions">
+            <button class="btn" id="btnGitIdentityCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnGitIdentitySave">
+                Save</button>
+        </div>
+    </div>
+</div>
+
 <!-- Configure arXiv Modal -->
 <div class="modal-overlay" id="modalArxivConfig" style="display: none;"
      role="dialog" aria-modal="true"

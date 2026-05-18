@@ -561,6 +561,12 @@ var PipeleyenEventBindings = (function () {
             btnArxivPathMapAdd: function () {
                 VaibifyArxivConfig.fnAddPathMapRow();
             },
+            btnGitIdentityCancel: function () {
+                VaibifySyncManager.fnCloseGitIdentityModal();
+            },
+            btnGitIdentitySave: function () {
+                VaibifySyncManager.fnSaveGitIdentity();
+            },
             btnVerifyReproducibility: function () {
                 _fnOpenVerifyReproducibilityModal();
             },

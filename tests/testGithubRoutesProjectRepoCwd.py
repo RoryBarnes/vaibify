@@ -145,6 +145,100 @@ def _fnPatchPushToGithub(fixtureCapturedPushArgs):
     )
 
 
+@pytest.fixture
+def fixtureCapturedIdentityCommand():
+    return {}
+
+
+def _fnPatchExecuteCommand(fixtureCapturedIdentityCommand):
+    """Capture the git config command issued by the identity route."""
+    class _FakeDocker:
+        def ftResultExecuteCommand(self, sContainerId, sCommand):
+            fixtureCapturedIdentityCommand["sCommand"] = sCommand
+            return (0, "")
+    return _FakeDocker()
+
+
+def _fnRunIdentityRoute(
+    dictCtx, dictBody, fixtureCapturedIdentityCommand,
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    dictCtx["docker"] = _fnPatchExecuteCommand(
+        fixtureCapturedIdentityCommand)
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
+    syncRoutes.fnRegisterAll(app, dictCtx)
+    return TestClient(app).post(
+        "/api/github/cid/identity", json=dictBody,
+    )
+
+
+def test_identity_writes_git_config_in_project_repo(
+    fixtureCapturedIdentityCommand,
+):
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Rory Barnes", "sEmail": "rkb9@uw.edu"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 200
+    sCommand = fixtureCapturedIdentityCommand["sCommand"]
+    assert "cd '/workspace/myrepo'" in sCommand
+    assert "git config user.name 'Rory Barnes'" in sCommand
+    assert "git config user.email 'rkb9@uw.edu'" in sCommand
+
+
+def test_identity_rejects_malformed_email(
+    fixtureCapturedIdentityCommand,
+):
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Rory", "sEmail": "not-an-email"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 400
+    assert "sCommand" not in fixtureCapturedIdentityCommand
+
+
+def test_identity_rejects_newline_in_name(
+    fixtureCapturedIdentityCommand,
+):
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Rory\nBarnes", "sEmail": "rkb9@uw.edu"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_identity_returns_409_when_no_project_repo(
+    fixtureCapturedIdentityCommand,
+):
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "", "/workspace/.vaibify/workflows/demo.json",
+    )
+    responseHttp = _fnRunIdentityRoute(
+        dictCtx,
+        {"sName": "Rory", "sEmail": "rkb9@uw.edu"},
+        fixtureCapturedIdentityCommand,
+    )
+    assert responseHttp.status_code == 409
+
+
 def test_push_uses_project_repo_path_not_workflow_dirname(
     fixtureCapturedPushArgs,
 ):

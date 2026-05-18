@@ -104,6 +104,40 @@ class TestConflictPatterns:
         assert dictResult["sErrorType"] != "conflict"
 
 
+class TestAuthorIdentityPatterns:
+    """git commit with no user.name / user.email surfaces a typed error."""
+
+    def test_fbAuthorIdentityUnknownIsAuthorIdentity(self):
+        dictResult = fdictClassifyError(
+            128,
+            "Author identity unknown\n*** Please tell me who you "
+            "are.\nRun\n  git config --global user.email "
+            "you@example.com\n",
+        )
+        assert dictResult["sErrorType"] == "authorIdentity"
+
+    def test_fbAutoDetectEmailIsAuthorIdentity(self):
+        dictResult = fdictClassifyError(
+            128,
+            "fatal: unable to auto-detect email address "
+            "(got 'root@gj1132.(none)')",
+        )
+        assert dictResult["sErrorType"] == "authorIdentity"
+
+    def test_fbEmptyIdentNameIsAuthorIdentity(self):
+        dictResult = fdictClassifyError(
+            128, "fatal: empty ident name (for <root@host>) not allowed",
+        )
+        assert dictResult["sErrorType"] == "authorIdentity"
+
+    def test_fbAuthorIdentityWinsOverAuthFallback(self):
+        """'Author identity' contains 'auth' but must not classify as auth."""
+        dictResult = fdictClassifyError(
+            128, "Author identity unknown",
+        )
+        assert dictResult["sErrorType"] == "authorIdentity"
+
+
 class TestUnknownFallback:
     """Synthetic random errors must still fall through to unknown."""
 

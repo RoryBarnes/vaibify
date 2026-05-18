@@ -244,6 +244,14 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": False,
      "sDescription": "Commit a single data file to GitHub. "
                      "User-only: same reasoning as push-to-github."},
+    {"sName": "set-git-identity", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/github/{sContainerId}/identity",
+     "bAgentSafe": True,
+     "sDescription": "Set git user.name and user.email inside the "
+                     "project repo so commits can attribute. Args: "
+                     "{sName, sEmail}. Local to the project repo "
+                     "only; does not touch global git config."},
     {"sName": "push-to-overleaf", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/overleaf/{sContainerId}/push",
