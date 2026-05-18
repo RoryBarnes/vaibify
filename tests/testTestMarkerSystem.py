@@ -56,7 +56,23 @@ def test_fsConftestContent_returns_string():
 
 
 def test_fsConftestContent_matches_template():
-    assert fsConftestContent() == _CONFTEST_MARKER_TEMPLATE
+    """Bare-template output is the version stamp followed by the body.
+
+    fsConftestContent() prepends the # vaibify-conftest-version line
+    so installed copies can be detected as stale on the next connect.
+    The body after that prefix must match the underlying template
+    verbatim — otherwise the refresh helper would rewrite every file
+    on every poll.
+    """
+    from vaibify.gui.conftestManager import (
+        S_CONFTEST_VERSION,
+        S_CONFTEST_VERSION_PREFIX,
+    )
+    sExpected = (
+        S_CONFTEST_VERSION_PREFIX + S_CONFTEST_VERSION + "\n"
+        + _CONFTEST_MARKER_TEMPLATE
+    )
+    assert fsConftestContent() == sExpected
 
 
 # ---- testGenerator: _CONFTEST_MARKER_TEMPLATE ----

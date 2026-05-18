@@ -539,20 +539,19 @@ async def _fdictFetchTestStatus(
     dictCtx, sContainerId, dictWorkflow,
     dictMaxOutputMtimeByStep=None,
 ):
-    """Fetch test markers, backfill conftest, and build test status."""
+    """Fetch test markers, refresh conftest, migrate flat markers, build status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
     sWorkflowSlug = fsWorkflowSlugFromPath(sWorkflowPath)
+    await _fnRefreshConftestsAndMigrateMarkers(
+        dictCtx["docker"], sContainerId, listStepDirs,
+        sProjectRepoPath, sWorkflowSlug,
+    )
     dictTestInfo = await asyncio.to_thread(
         _fdictFetchTestMarkers,
         dictCtx["docker"], sContainerId, listStepDirs,
         sProjectRepoPath, sWorkflowSlug,
-    )
-    await _fnBackfillMissingConftest(
-        dictCtx["docker"], sContainerId,
-        dictTestInfo.get("missingConftest", []),
-        dictWorkflow.get("sProjectRepoPath", ""),
     )
     dictTestMarkers = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
@@ -602,40 +601,35 @@ def _fdictFetchTestMarkers(
     return _syncDispatcher.fdictParseTestMarkerOutput(sOutput)
 
 
-async def _fnBackfillMissingConftest(
-    connectionDocker, sContainerId, listMissingDirs, sProjectRepoPath,
+async def _fnRefreshConftestsAndMigrateMarkers(
+    connectionDocker, sContainerId, listStepDirs,
+    sProjectRepoPath, sWorkflowSlug,
 ):
-    """Write conftest.py into step dirs that have tests/ but no conftest."""
-    from ..testGenerator import (
-        fnWriteConftestMarker, fsConftestContent,
-    )
-    if not listMissingDirs:
+    """Refresh outdated conftest.py copies and migrate flat-layout markers.
+
+    Replaces the older missing-only backfill: when the template's
+    version stamp bumps, every previously-written conftest gets
+    rewritten on the next connect tick so test-framework behaviour
+    can't drift between fresh and old workspaces. The flat-marker
+    migration moves markers from the legacy
+    ``.vaibify/test_markers/<step>.json`` layout into the per-slug
+    subdir so older workspaces don't strand results. Both run off the
+    event loop and short-circuit when there is nothing to do.
+    """
+    if not listStepDirs:
         return
-    logger.info(
-        "Backfilling conftest.py into %d dirs: %s",
-        len(listMissingDirs), listMissingDirs,
-    )
-    for sDir in listMissingDirs:
-        try:
-            await asyncio.to_thread(
-                fnWriteConftestMarker,
-                connectionDocker, sContainerId, sDir, sProjectRepoPath,
-            )
-            logger.info("Wrote conftest.py to %s", sDir)
-        except Exception as exc:
-            logger.error(
-                "Failed to write conftest.py to %s: %s",
-                sDir, exc,
-            )
-    await asyncio.to_thread(
-        _fnDeleteLegacyMarkers,
-        connectionDocker, sContainerId,
-        listMissingDirs, sProjectRepoPath,
+    from ..conftestManager import (
+        fnEnsureConftestsCurrent, fnMigrateFlatMarkers,
     )
     await asyncio.to_thread(
-        _fnEnsureConftestTemplate,
+        fnEnsureConftestsCurrent,
         connectionDocker, sContainerId,
-        fsConftestContent(sProjectRepoPath),
+        listStepDirs, sProjectRepoPath,
+    )
+    await asyncio.to_thread(
+        fnMigrateFlatMarkers,
+        connectionDocker, sContainerId,
+        sProjectRepoPath, sWorkflowSlug,
     )
 
 

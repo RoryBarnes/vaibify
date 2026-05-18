@@ -1,14 +1,35 @@
 """Manage conftest.py marker plugin and tests directory in containers."""
 
 __all__ = [
+    "S_CONFTEST_VERSION",
     "fsConftestPath",
     "fsConftestContent",
     "fsBuildConftestSource",
+    "fsReadInstalledConftestVersion",
     "fnWriteConftestMarker",
     "fnEnsureTestsDirectory",
+    "fnEnsureConftestsCurrent",
+    "fnMigrateFlatMarkers",
 ]
 
+import logging
 import posixpath
+import re
+
+
+logger = logging.getLogger("vaibify")
+
+
+# Bump this when the generated conftest source changes shape so installed
+# copies on a researcher's host get refreshed on the next connect tick.
+# The constant is embedded in every generated file as a comment line
+# beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
+# stale copies without parsing the source.
+S_CONFTEST_VERSION = "2"
+S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
+_REGEX_CONFTEST_VERSION = re.compile(
+    r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
+)
 
 
 def fsConftestPath(sStepDirectory):
@@ -23,10 +44,11 @@ def fsConftestContent(sProjectRepoPath=""):
     without its prologue — useful only for tests that inspect the
     template structure. Runtime callers (``fnWriteConftestMarker``)
     always pass a project-repo path so the generated file is
-    self-contained.
+    self-contained. The version sentinel is always present so any
+    installed copy can be inspected by the refresh helper.
     """
     if not sProjectRepoPath:
-        return _CONFTEST_MARKER_TEMPLATE
+        return _fsVersionStampLine() + _CONFTEST_MARKER_TEMPLATE
     return fsBuildConftestSource(sProjectRepoPath)
 
 
@@ -40,12 +62,46 @@ def fsBuildConftestSource(sProjectRepoPath):
     ``<sProjectRepoPath>/.vaibify/test_markers/<slug>/`` so workflows
     sharing a step directory don't clobber each other. The ``!r``
     substitution produces a quoted Python literal and sidesteps the
-    f-string/format-escape trap that affects the template body.
+    f-string/format-escape trap that affects the template body. A
+    ``# vaibify-conftest-version:`` comment is prepended so
+    ``fsReadInstalledConftestVersion`` can detect stale copies on a
+    researcher's host without parsing the source.
     """
     sPrologue = _S_CONFTEST_PROLOGUE_FORMAT.format(
         sProjectRepoPath=sProjectRepoPath,
     )
-    return sPrologue + _CONFTEST_MARKER_TEMPLATE
+    return (
+        _fsVersionStampLine() + sPrologue + _CONFTEST_MARKER_TEMPLATE
+    )
+
+
+def _fsVersionStampLine():
+    """Return the single-line version stamp comment with trailing newline."""
+    return S_CONFTEST_VERSION_PREFIX + S_CONFTEST_VERSION + "\n"
+
+
+def fsReadInstalledConftestVersion(
+    connectionDocker, sContainerId, sConftestPath,
+):
+    """Return the ``S_CONFTEST_VERSION`` value embedded in an installed file.
+
+    Reads ``sConftestPath`` from the container and parses the
+    ``# vaibify-conftest-version:`` sentinel via a compiled regex.
+    Returns the empty string when the file is missing, unreadable, or
+    carries no sentinel — the refresh helper treats any of those
+    outcomes as "needs rewriting".
+    """
+    try:
+        baContent = connectionDocker.fbaFetchFile(
+            sContainerId, sConftestPath,
+        )
+    except Exception:
+        return ""
+    sSource = baContent.decode("utf-8", errors="replace")
+    matchVersion = _REGEX_CONFTEST_VERSION.search(sSource)
+    if matchVersion is None:
+        return ""
+    return matchVersion.group(1)
 
 
 def _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath):
@@ -80,6 +136,140 @@ def fnEnsureTestsDirectory(
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"mkdir -p {fsShellQuote(sTestsDir)}"
     )
+
+
+def fnEnsureConftestsCurrent(
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
+):
+    """Refresh stale or missing conftest.py copies in each step's tests/.
+
+    For every step directory in ``listStepDirs``, compares the
+    installed conftest's embedded version stamp against
+    ``S_CONFTEST_VERSION``. When the stamp is absent (legacy conftest
+    or no file at all) or mismatched (template bumped since the file
+    was written), rewrites the file with the current
+    ``fsBuildConftestSource`` output. Idempotent: a current file is
+    left untouched. Short-circuits when ``listStepDirs`` is empty so
+    the connect path pays no per-step cost on a brand-new workflow.
+    """
+    if not listStepDirs:
+        return
+    for sStepDir in listStepDirs:
+        sAbsStepDir = _fsAbsoluteStepDir(sStepDir, sProjectRepoPath)
+        sConftestPath = fsConftestPath(sAbsStepDir)
+        sInstalled = fsReadInstalledConftestVersion(
+            connectionDocker, sContainerId, sConftestPath,
+        )
+        if sInstalled == S_CONFTEST_VERSION:
+            continue
+        _fnRewriteConftest(
+            connectionDocker, sContainerId, sStepDir,
+            sProjectRepoPath, sInstalled,
+        )
+
+
+def _fnRewriteConftest(
+    connectionDocker, sContainerId, sStepDirectory,
+    sProjectRepoPath, sInstalledVersion,
+):
+    """Write a fresh conftest.py and log the version transition."""
+    try:
+        fnWriteConftestMarker(
+            connectionDocker, sContainerId,
+            sStepDirectory, sProjectRepoPath,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to refresh conftest.py for %s: %s",
+            sStepDirectory, exc,
+        )
+        return
+    logger.info(
+        "Refreshed conftest.py for %s (installed=%r -> %r)",
+        sStepDirectory, sInstalledVersion or "absent",
+        S_CONFTEST_VERSION,
+    )
+
+
+def fnMigrateFlatMarkers(
+    connectionDocker, sContainerId, sProjectRepoPath, sWorkflowSlug,
+):
+    """Move flat-layout test markers under the per-slug subdirectory.
+
+    Older workspaces wrote markers to
+    ``<repo>/.vaibify/test_markers/<step>.json``; current workflows
+    expect ``<repo>/.vaibify/test_markers/<slug>/<step>.json``. This
+    helper moves any flat ``*.json`` siblings of the slug subdir into
+    that subdir so stranded results re-appear in the dashboard. Safe
+    to call repeatedly: when no flat markers exist it logs nothing and
+    exits. Files in the slug subdir are never touched.
+    """
+    if not sProjectRepoPath or not sWorkflowSlug:
+        return
+    from .pipelineRunner import fsShellQuote
+    sCommand = _fsBuildFlatMarkerMigrationCommand(
+        sProjectRepoPath, sWorkflowSlug,
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    _fnLogMigrationOutcome(iExit, sOutput, sWorkflowSlug)
+
+
+def _fsBuildFlatMarkerMigrationCommand(sProjectRepoPath, sWorkflowSlug):
+    """Build a shell-quoted python3 command that performs the migration."""
+    from .pipelineRunner import fsShellQuote
+    sScript = (
+        "import json, os, shutil, sys\n"
+        "sRepo, sSlug = sys.argv[1], sys.argv[2]\n"
+        "sBase = os.path.join(sRepo, '.vaibify', 'test_markers')\n"
+        "if not os.path.isdir(sBase):\n"
+        "    print(json.dumps({'iMoved': 0, 'listMoved': []}))\n"
+        "    sys.exit(0)\n"
+        "sDest = os.path.join(sBase, sSlug)\n"
+        "listMoved = []\n"
+        "for sEntry in os.listdir(sBase):\n"
+        "    sFlatPath = os.path.join(sBase, sEntry)\n"
+        "    if not os.path.isfile(sFlatPath):\n"
+        "        continue\n"
+        "    if not sEntry.endswith('.json'):\n"
+        "        continue\n"
+        "    os.makedirs(sDest, exist_ok=True)\n"
+        "    sTarget = os.path.join(sDest, sEntry)\n"
+        "    if os.path.exists(sTarget):\n"
+        "        os.remove(sFlatPath)\n"
+        "    else:\n"
+        "        shutil.move(sFlatPath, sTarget)\n"
+        "    listMoved.append(sEntry)\n"
+        "print(json.dumps({"
+        "'iMoved': len(listMoved), 'listMoved': listMoved}))\n"
+    )
+    return (
+        "python3 -c " + fsShellQuote(sScript) + " "
+        + fsShellQuote(sProjectRepoPath) + " "
+        + fsShellQuote(sWorkflowSlug)
+    )
+
+
+def _fnLogMigrationOutcome(iExit, sOutput, sWorkflowSlug):
+    """Log INFO when files migrated, DEBUG-quiet otherwise."""
+    import json as _json
+    if iExit != 0:
+        logger.warning(
+            "Flat marker migration exited %d (slug=%r): %s",
+            iExit, sWorkflowSlug, (sOutput or "").strip(),
+        )
+        return
+    try:
+        dictResult = _json.loads((sOutput or "").strip() or "{}")
+    except (ValueError, _json.JSONDecodeError):
+        return
+    if dictResult.get("iMoved", 0) > 0:
+        logger.info(
+            "Migrated %d flat test markers into slug=%r: %s",
+            dictResult["iMoved"], sWorkflowSlug,
+            dictResult.get("listMoved", []),
+        )
 
 
 _S_CONFTEST_PROLOGUE_FORMAT = (

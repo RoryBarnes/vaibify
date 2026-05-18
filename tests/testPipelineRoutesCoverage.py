@@ -21,7 +21,7 @@ from vaibify.gui.routes.pipelineRoutes import (
     _fsetExtractRegisteredTestFiles,
     _fiCountMatchingProcesses,
     _fnKillMatchingProcesses,
-    _fnBackfillMissingConftest,
+    _fnRefreshConftestsAndMigrateMarkers,
     _fnDeleteLegacyMarkers,
     _fdictFetchOutputStatus,
     fdictComputeFileStatus,
@@ -795,62 +795,47 @@ class TestFdictFetchTestMarkers:
             }
 
 
-# ── Lines 417-433: _fnBackfillMissingConftest ────────────────────
+# ── _fnRefreshConftestsAndMigrateMarkers wiring ──────────────────
 
-class TestFnBackfillMissingConftest:
+class TestFnRefreshConftestsAndMigrateMarkers:
     @pytest.mark.asyncio
-    async def test_backfill_writes_conftest(self):
-        """Cover lines 417-427."""
+    async def test_calls_both_helpers_with_correct_args(self):
+        """Refresh + migration both fire with the expected arguments."""
         mockDocker = MagicMock()
         with patch(
-            "vaibify.gui.testGenerator.fnWriteConftestMarker",
-        ), patch(
-            "vaibify.gui.testGenerator.fsConftestContent",
-            return_value="# conftest",
-        ), patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            "._fnDeleteLegacyMarkers",
-        ), patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            "._fnEnsureConftestTemplate",
-        ) as mockEnsure:
-            await _fnBackfillMissingConftest(
+            "vaibify.gui.conftestManager.fnEnsureConftestsCurrent",
+        ) as mockRefresh, patch(
+            "vaibify.gui.conftestManager.fnMigrateFlatMarkers",
+        ) as mockMigrate:
+            await _fnRefreshConftestsAndMigrateMarkers(
                 mockDocker, "cid1",
-                ["/workspace/step1", "/workspace/step2"],
-                "/workspace/DemoRepo",
+                ["step1", "step2"],
+                "/workspace/DemoRepo", "demo",
             )
-            mockEnsure.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_backfill_handles_exception(self):
-        """Cover lines 428-432: exception during write."""
-        mockDocker = MagicMock()
-        with patch(
-            "vaibify.gui.testGenerator.fnWriteConftestMarker",
-            side_effect=RuntimeError("write failed"),
-        ), patch(
-            "vaibify.gui.testGenerator.fsConftestContent",
-            return_value="# conftest",
-        ), patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            "._fnDeleteLegacyMarkers",
-        ), patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            "._fnEnsureConftestTemplate",
-        ):
-            await _fnBackfillMissingConftest(
+            mockRefresh.assert_called_once_with(
                 mockDocker, "cid1",
-                ["/workspace/step1"],
-                "/workspace/DemoRepo",
+                ["step1", "step2"], "/workspace/DemoRepo",
+            )
+            mockMigrate.assert_called_once_with(
+                mockDocker, "cid1",
+                "/workspace/DemoRepo", "demo",
             )
 
     @pytest.mark.asyncio
-    async def test_backfill_empty_list_returns_early(self):
-        """Cover lines 415-416: empty list."""
+    async def test_empty_step_list_short_circuits(self):
+        """No step dirs → neither helper runs (connect stays cheap)."""
         mockDocker = MagicMock()
-        await _fnBackfillMissingConftest(
-            mockDocker, "cid1", [], "/workspace/DemoRepo",
-        )
+        with patch(
+            "vaibify.gui.conftestManager.fnEnsureConftestsCurrent",
+        ) as mockRefresh, patch(
+            "vaibify.gui.conftestManager.fnMigrateFlatMarkers",
+        ) as mockMigrate:
+            await _fnRefreshConftestsAndMigrateMarkers(
+                mockDocker, "cid1", [],
+                "/workspace/DemoRepo", "demo",
+            )
+            mockRefresh.assert_not_called()
+            mockMigrate.assert_not_called()
 
 
 # ── _fnDeleteLegacyMarkers: stale-marker cleanup after backfill ──

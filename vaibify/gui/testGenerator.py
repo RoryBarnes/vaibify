@@ -1,6 +1,7 @@
 """Generate pytest unit tests for workflow steps via LLM."""
 
 __all__ = [
+    "S_CONFTEST_VERSION",
     "fbContainerHasClaude",
     "fbValidatePythonSyntax",
     "fdictGenerateAllTests",
@@ -9,7 +10,9 @@ __all__ = [
     "fdictParseCombinedOutput",
     "fdictParseQuantitativeJson",
     "fnEnsureClaudeMdInstructions",
+    "fnEnsureConftestsCurrent",
     "fnEnsureTestsDirectory",
+    "fnMigrateFlatMarkers",
     "fnWriteConftestMarker",
     "fsBuildIntegrityTestCode",
     "fsBuildPrompt",
@@ -32,6 +35,7 @@ __all__ = [
     "fsQuantitativeTemplateHash",
     "fsQuantitativeTestPath",
     "fsReadFileFromContainer",
+    "fsReadInstalledConftestVersion",
     "fsRepairMissingImports",
     "fsTestFilePath",
     "ftResultGenerateViaClaude",
@@ -91,12 +95,16 @@ from .dataPreview import (  # noqa: F401
 )
 
 from .conftestManager import (  # noqa: F401
+    S_CONFTEST_VERSION,
     fsConftestPath,
     fsConftestContent,
     fsBuildConftestSource,
+    fsReadInstalledConftestVersion,
     fnWriteConftestMarker,
     _CONFTEST_MARKER_TEMPLATE,
     fnEnsureTestsDirectory,
+    fnEnsureConftestsCurrent,
+    fnMigrateFlatMarkers,
 )
 
 from .llmInvoker import (  # noqa: F401
