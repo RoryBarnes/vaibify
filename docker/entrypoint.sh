@@ -740,6 +740,145 @@ Each step has a verification status with three components:
 - **User Approval**: Manual verification by the scientist
 - **Dependencies**: All upstream steps must also pass
 
+## AI Containment Scale (AICS)
+
+When a researcher asks you to "make this workflow reach AICS Level N" or
+"raise this to Level N", the AICS is a five-rung reproducibility ladder
+defined in the project's vision document. Each rung is strictly stronger
+than the last. Vaibify implements L1-L3; L4 and L5 are deliberate
+non-goals at present.
+
+Full definitions and what each rung proves vs. does not prove live in
+`docs/vision.md` and `docs/reproducibility.md` in the host repo. The
+summaries below are operational: what you need to do to get there.
+
+### L1 — Self-Consistent
+
+All workflow tests pass; every declared output file's content hash
+matches what was recorded at verification time. The workflow must live
+inside a git repository (vaibify enforces this at connect time; if a
+researcher hits a "no git repo" error, the fix is `git init` in the
+project directory).
+
+Agent actions to reach L1:
+
+1. `vaibify-do run-all` — execute the pipeline end to end.
+2. `vaibify-do run-all-tests` — run every step's unit, integrity,
+   qualitative, and quantitative tests.
+3. `vaibify-do verify-only` — confirm declared outputs exist and their
+   hashes match the recorded baseline.
+4. `vaibify-do verify-manifest` — confirm `MANIFEST.sha256` at the
+   project-repo root matches the current declared-output set.
+5. `vaibify-do commit-canonical` — commit the verified state to the
+   project repo.
+6. Confirm `dictWorkflow["bVaibified"]` is `True`. If `False` after the
+   prior steps succeeded, surface the discrepancy to the researcher —
+   the flag is the ground truth.
+
+`MANIFEST.sha256`, `requirements.lock`, and `.vaibify/environment.json`
+are regenerated automatically when every step goes green; you do not
+write them by hand.
+
+### L2 — Published
+
+Every canonical file's hash matches what is published at an immutable
+remote authority (GitHub commit SHA, Overleaf revision, Zenodo DOI).
+
+Agent actions to reach L2:
+
+1. Confirm L1 first.
+2. Confirm the reproducibility envelope exists at the project-repo
+   root: `MANIFEST.sha256`, `requirements.lock`, and
+   `.vaibify/environment.json`. If any is missing, the workflow is not
+   all-green yet — return to L1.
+3. **Surface to the user, do not invoke:**
+   - "Push the current commit and manifest to GitHub" → researcher
+     clicks Push to GitHub.
+   - "Sync the manuscript files to Overleaf" → researcher clicks Push
+     to Overleaf.
+   - "Publish this to Zenodo for a permanent DOI" → researcher clicks
+     Publish to Zenodo.
+
+   These are the trust-boundary actions: by AICS's own definition, L2
+   means a human attested to publication. The researcher clicks the
+   button, not you. The catalog exposes `push-to-github`,
+   `push-to-overleaf`, and `publish-to-zenodo`; treat them as user-only
+   regardless. Same for `accept-plots-as-standard`.
+
+4. After the researcher pushes, `vaibify-do verify-remote` confirms the
+   remote hashes still match the local manifest.
+
+### L3 — Reproducible
+
+A third party can re-fetch the published artefacts, get byte-identical
+files, and (with the recorded Docker image + pinned dependencies)
+re-execute the workflow from source.
+
+Agent actions to reach L3:
+
+1. Confirm L2 first.
+2. Confirm `.vaibify/environment.json` captures the running container's
+   `<image>@sha256:...` digest.
+3. Confirm `requirements.lock` pins every Python dependency with at
+   least one `--hash=sha256:...` entry.
+4. Flag any unseeded random-number generation. A yellow ⚠ badge on a
+   step in the dashboard means the step's referenced `*.in` (or other
+   configured) files lack a seed declaration; without seeds, stochastic
+   outputs cannot be bit-reproducible. Surface the affected step labels
+   and ask the researcher to add seeds.
+5. Recommend the researcher run `vaibify reproduce` from a fresh clone
+   to confirm bit-identical regeneration. This is a host-side
+   verification ceremony, not an in-container action; surface it as a
+   researcher task.
+
+### L4 — Archived, L5 — Attested
+
+Out of vaibify's current scope. If a researcher asks for L4 or L5, tell
+them honestly that vaibify targets L3 as its ceiling and point them at
+`docs/vision.md` for the full ladder. L4 requires a manifest of every
+external input with hashes plus archival snapshots; L5 requires
+independent third parties to sign attestations in a transparency log.
+
+### How vaibify tracks ladder state
+
+Each rung the researcher reaches is observable from the workflow's
+backend state, not just from the agent's reasoning. When you report
+"L1 reached", correlate with the state the researcher can see:
+
+- **L1** is signalled by `dictWorkflow["bVaibified"] = True`, set when
+  every step's verification (unit tests, integrity, qualitative,
+  quantitative, dependencies, user attestation) is green. The dashboard
+  surfaces this with a theme change and a checkmark next to the
+  workflow name. If you claim L1 but `bVaibified` is still `False`,
+  something is missing — re-check the per-step verification status
+  before reporting.
+- **L2 and L3** do not yet have analogous backend flags or dashboard
+  signals; that work is on the roadmap. For now, report L2/L3 status by
+  enumerating what you confirmed (envelope files present, remote hashes
+  match, container digest captured, no unseeded randomness) rather than
+  by inspecting a single flag.
+
+When the L2/L3 signals land, the convention will follow L1: a boolean
+on the workflow dict, surfaced visually in the dashboard. Update this
+section then.
+
+### Quick reference
+
+When asked to reach Level N, walk these gates in order, stopping at N:
+
+- **L1**: `run-all` → `run-all-tests` → `verify-only` →
+  `verify-manifest` → `commit-canonical` → confirm `bVaibified=True`.
+- **L2**: L1 + envelope present + **surface** push requests.
+- **L3**: L2 + container digest in `environment.json` + hash-pinned
+  `requirements.lock` + no unseeded-randomness badges + recommend
+  `vaibify reproduce`.
+- **L4, L5**: not supported; explain and stop.
+
+Never silently invoke `push-to-github`, `push-to-overleaf`,
+`publish-to-zenodo`, or `accept-plots-as-standard` — those are
+user-only by design even though the catalog exposes them. Surface the
+request; let the researcher click.
+
 ## Conventions
 
 - Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)
