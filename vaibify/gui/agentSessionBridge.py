@@ -4,10 +4,14 @@ When the UI connects to a container, the backend calls
 :func:`fnPushAgentSessionToContainer` to materialize two files that
 the in-container ``vaibify-do`` CLI reads:
 
-- ``/tmp/vaibify-session.env`` (mode 600) — host URL, session token,
-  container id. Shell ``VAR=value`` format.
+- ``/tmp/vaibify-session.env`` (mode 600, owned by ``$CONTAINER_USER``)
+  — host URL, session token, container id. Shell ``VAR=value`` format.
+  Default ``docker exec`` runs as root, but the in-container agent
+  runs as the unprivileged container user via ``gosu``; without the
+  chown the agent gets ``Permission denied`` on the session file.
 - ``/tmp/vaibify-action-catalog.json`` — the
-  :data:`actionCatalog.LIST_AGENT_ACTIONS` catalog serialized.
+  :data:`actionCatalog.LIST_AGENT_ACTIONS` catalog serialized. Stays
+  world-readable; it carries no credentials.
 
 Both paths come from :mod:`actionCatalog`'s shared constants.
 """
@@ -41,7 +45,12 @@ def fsBuildHostUrl(iPort):
 def fnWriteSessionEnv(
     connectionDocker, sContainerId, sSessionToken, iPort,
 ):
-    """Write /tmp/vaibify-session.env inside the container (mode 600)."""
+    """Write /tmp/vaibify-session.env inside the container.
+
+    Chown to the container user before chmod so the unprivileged
+    agent (running via ``gosu``) can read the session token. Mode 600
+    keeps the token out of reach of any other in-container user.
+    """
     sBody = fsBuildSessionEnvBody(
         fsBuildHostUrl(iPort), sSessionToken, sContainerId,
     )
@@ -50,9 +59,11 @@ def fnWriteSessionEnv(
         actionCatalog.S_SESSION_ENV_PATH,
         sBody.encode("utf-8"),
     )
+    sPath = actionCatalog.S_SESSION_ENV_PATH
+    sOwner = '"${CONTAINER_USER:-researcher}"'
     connectionDocker.ftResultExecuteCommand(
         sContainerId,
-        f"chmod 600 {actionCatalog.S_SESSION_ENV_PATH}",
+        f"chown {sOwner}:{sOwner} {sPath} && chmod 600 {sPath}",
     )
 
 

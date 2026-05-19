@@ -81,10 +81,16 @@ def test_fnWriteSessionEnv_writes_body_and_chmods():
     assert "VAIBIFY_SESSION_TOKEN=tok-xyz" in sBody
     assert "VAIBIFY_CONTAINER_ID=c-1" in sBody
 
-    # Followed by chmod 600.
-    mockDocker.ftResultExecuteCommand.assert_called_once_with(
-        "c-1", f"chmod 600 {actionCatalog.S_SESSION_ENV_PATH}",
-    )
+    # Followed by chown + chmod 600 so the unprivileged agent can
+    # read the file written by root-owned put_archive.
+    mockDocker.ftResultExecuteCommand.assert_called_once()
+    tExecArgs = mockDocker.ftResultExecuteCommand.call_args[0]
+    assert tExecArgs[0] == "c-1"
+    sCommand = tExecArgs[1]
+    assert "CONTAINER_USER" in sCommand
+    assert sCommand.startswith("chown ")
+    assert f"chmod 600 {actionCatalog.S_SESSION_ENV_PATH}" in sCommand
+    assert sCommand.index("chown") < sCommand.index("chmod")
 
 
 def test_fnWriteSessionEnv_write_precedes_chmod():
