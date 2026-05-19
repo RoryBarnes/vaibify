@@ -97,7 +97,18 @@ def _fnAcquireHubSessionSlotOrExit(sRole, iPort):
 
 
 def fnLaunchHub(iExplicitPort):
-    """Start the hub-mode server and open the browser."""
+    """Start the hub-mode server and open the browser.
+
+    The hub is project-agnostic — it shows every registered container
+    and the user picks one from the dashboard — so the per-project
+    stable-port machinery used by ``vaibify start --gui`` does not
+    apply directly. ``fiResolveHubPort`` provides an analogous
+    survival contract via ``~/.vaibify/hub-port.json``: the hub binds
+    the same port across Ctrl-C/restart cycles whenever possible, so
+    any dashboard tab opened from the prior run keeps working without
+    a reload. Falls back to a free-port scan (and warns on stderr)
+    when the persisted port is held by another process.
+    """
     import os
     import threading
     import time
@@ -106,8 +117,8 @@ def fnLaunchHub(iExplicitPort):
     from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     from vaibify.gui.pipelineServer import fappCreateHubApplication
     from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
-    from .portAllocator import fiResolvePort
-    iPort = fiResolvePort(iExplicitPort)
+    from .portAllocator import fiResolveHubPort
+    iPort = fiResolveHubPort(iExplicitPort)
     fileHandleSession = _fnAcquireHubSessionSlotOrExit("hub", iPort)
     try:
         sUrl = f"http://127.0.0.1:{iPort}"
@@ -119,7 +130,8 @@ def fnLaunchHub(iExplicitPort):
                 daemon=True,
             ).start()
         uvicorn.run(
-            app, host="127.0.0.1", port=iPort, log_level="warning",
+            app, host="127.0.0.1", port=iPort,
+            log_level="warning", timeout_graceful_shutdown=3,
         )
     finally:
         fnReleaseSessionSlot(fileHandleSession)
@@ -210,7 +222,10 @@ def setup():
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
         daemon=True,
     ).start()
-    uvicorn.run(app, host="127.0.0.1", port=8051, log_level="warning")
+    uvicorn.run(
+        app, host="127.0.0.1", port=8051,
+        log_level="warning", timeout_graceful_shutdown=3,
+    )
 
 
 @main.command("gui")
@@ -237,7 +252,10 @@ def gui(sProjectName):
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
         daemon=True,
     ).start()
-    uvicorn.run(app, host="127.0.0.1", port=8050, log_level="warning")
+    uvicorn.run(
+        app, host="127.0.0.1", port=8050,
+        log_level="warning", timeout_graceful_shutdown=3,
+    )
 
 
 def _ftResolveGuiConfig(sProjectName):

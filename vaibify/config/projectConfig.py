@@ -79,6 +79,7 @@ class ProjectConfig:
     )
     bNetworkIsolation: bool = False
     bNeverSleep: bool = False
+    iDashboardPort: int = 0
 
 
 # Mapping from camelCase YAML keys to Hungarian dataclass fields
@@ -102,6 +103,7 @@ _YAML_TO_HUNGARIAN = {
     "reproducibility": "reproducibility",
     "networkIsolation": "bNetworkIsolation",
     "neverSleep": "bNeverSleep",
+    "dashboardPort": "iDashboardPort",
 }
 
 _HUNGARIAN_TO_YAML = {v: k for k, v in _YAML_TO_HUNGARIAN.items()}
@@ -208,6 +210,7 @@ def fbValidateConfig(dictConfig):
         _fbValidatePackageManager,
         _fbValidateListFields,
         _fbValidateFeatures,
+        _fbValidateDashboardPort,
     ]
     return all(fnCheck(dictConfig) for fnCheck in listChecks)
 
@@ -299,6 +302,21 @@ def _fbValidateListFields(dictConfig):
         if value is not None and not isinstance(value, list):
             return False
     return True
+
+
+def _fbValidateDashboardPort(dictConfig):
+    """Check that dashboardPort, if present, is a valid TCP port number.
+
+    Zero means "not yet assigned" and is the default. A non-zero value
+    must be a usable user-space port so a typo in vaibify.yml cannot
+    point the dashboard at a privileged or out-of-range port.
+    """
+    iPort = dictConfig.get("dashboardPort", 0)
+    if not isinstance(iPort, int) or isinstance(iPort, bool):
+        return False
+    if iPort == 0:
+        return True
+    return 1024 <= iPort <= 65535
 
 
 def _fbValidateFeatures(dictConfig):
@@ -397,6 +415,7 @@ def _fdictScalarFieldsToYaml(config):
         "secrets": config.listSecrets,
         "networkIsolation": config.bNetworkIsolation,
         "neverSleep": config.bNeverSleep,
+        "dashboardPort": config.iDashboardPort,
     }
 
 

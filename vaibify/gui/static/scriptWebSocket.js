@@ -111,7 +111,17 @@ var VaibifyWebSocket = (function () {
 
     function fnDisconnect() {
         if (_wsPipeline) {
-            _wsPipeline.close();
+            /*
+             * Close with code 1000 (Normal Closure) so the onclose
+             * handler reports an intentional teardown. Without an
+             * explicit code, browsers fire close with code 1005
+             * ("No Status Received"), which the connection monitor
+             * would (correctly) treat as an abnormal disconnect and
+             * surface the "server unreachable" toast on every
+             * user-initiated workflow switch.
+             */
+            try { _wsPipeline.close(1000, "client disconnect"); }
+            catch (e) { /* ignore */ }
             _wsPipeline = null;
         }
         _listPendingActions.length = 0;

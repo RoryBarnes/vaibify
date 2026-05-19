@@ -152,3 +152,61 @@ def test_stale_slot_from_dead_process_is_not_counted(tmp_session_dir):
     eventReady.set()
     processChild.join(timeout=5)
     assert fiCountActiveSessions() == 0
+
+
+# ---------------------------------------------------------------------------
+# fdictReadHubSlotByPort
+# ---------------------------------------------------------------------------
+
+
+def test_fdictReadHubSlotByPort_returns_empty_when_directory_missing(
+    tmp_path, monkeypatch,
+):
+    import vaibify.config.sessionRegistry as sessionRegistryModule
+    monkeypatch.setattr(
+        sessionRegistryModule, "_S_SESSION_DIRECTORY",
+        str(tmp_path / "does-not-exist"),
+    )
+    from vaibify.config.sessionRegistry import fdictReadHubSlotByPort
+    assert fdictReadHubSlotByPort(8050) == {}
+
+
+def test_fdictReadHubSlotByPort_finds_live_hub_on_matching_port(
+    tmp_session_dir,
+):
+    from vaibify.config.sessionRegistry import (
+        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        fdictReadHubSlotByPort,
+    )
+    fileHandleSlot = fnAcquireSessionSlot("hub", 8077)
+    try:
+        dictHolder = fdictReadHubSlotByPort(8077)
+        assert dictHolder.get("sRole") == "hub"
+        assert dictHolder.get("iPort") == 8077
+        assert dictHolder.get("iPid") == os.getpid()
+    finally:
+        fnReleaseSessionSlot(fileHandleSlot)
+
+
+def test_fdictReadHubSlotByPort_ignores_other_port(tmp_session_dir):
+    from vaibify.config.sessionRegistry import (
+        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        fdictReadHubSlotByPort,
+    )
+    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    try:
+        assert fdictReadHubSlotByPort(9999) == {}
+    finally:
+        fnReleaseSessionSlot(fileHandleSlot)
+
+
+def test_fdictReadHubSlotByPort_ignores_non_hub_roles(tmp_session_dir):
+    from vaibify.config.sessionRegistry import (
+        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        fdictReadHubSlotByPort,
+    )
+    fileHandleSlot = fnAcquireSessionSlot("viewer", 8050)
+    try:
+        assert fdictReadHubSlotByPort(8050) == {}
+    finally:
+        fnReleaseSessionSlot(fileHandleSlot)

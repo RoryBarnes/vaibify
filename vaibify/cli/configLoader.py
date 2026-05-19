@@ -41,6 +41,49 @@ def fconfigResolveProject(sProjectName=None):
     return _fconfigResolveFromRegistry()
 
 
+def fsResolveProjectConfigPath(sProjectName=None):
+    """Return the YAML path that ``fconfigResolveProject`` would load.
+
+    Mirrors the resolution order of ``fconfigResolveProject`` so a
+    caller that needs to persist back to the same file (e.g. after
+    auto-assigning a port) does not have to duplicate the lookup.
+    Exits via the same error paths so behavior stays in lockstep.
+    """
+    if sProjectName:
+        return _fsLookupRegistryConfigPath(sProjectName)
+    sLocalPath = str(pathlib.Path.cwd() / _sConfigFileName)
+    if pathlib.Path(sLocalPath).is_file():
+        return sLocalPath
+    return _fsResolveRegistryConfigPath()
+
+
+def _fsLookupRegistryConfigPath(sProjectName):
+    """Return the registry's stored path for sProjectName, or exit."""
+    from vaibify.config.registryManager import fdictLoadRegistry
+    dictRegistry = fdictLoadRegistry()
+    listProjects = dictRegistry["listProjects"]
+    for dictProject in listProjects:
+        if dictProject["sName"] == sProjectName:
+            return dictProject["sConfigPath"]
+    _fnPrintAvailableAndExit(listProjects, sProjectName)
+
+
+def _fsResolveRegistryConfigPath():
+    """Return the single-project config path, or exit when ambiguous."""
+    from vaibify.config.registryManager import fdictLoadRegistry
+    dictRegistry = fdictLoadRegistry()
+    listProjects = dictRegistry["listProjects"]
+    if len(listProjects) == 1:
+        return listProjects[0]["sConfigPath"]
+    if len(listProjects) == 0:
+        click.echo(
+            "No vaibify projects found. "
+            "Run 'vaibify init' in a project directory."
+        )
+        sys.exit(1)
+    _fnPrintMultipleAndExit(listProjects)
+
+
 def _fconfigLoadFromRegistry(sProjectName):
     """Load a project config by name from the global registry."""
     from vaibify.config.registryManager import fdictLoadRegistry

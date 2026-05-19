@@ -116,20 +116,16 @@ const PipeleyenApp = (function () {
         VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
             fnClearRunningStatuses();
             fnRenderStepList();
-            if (dictEvent.bActionsDropped) {
-                fnShowToast(
-                    "Pipeline connection closed (code "
-                    + dictEvent.iCode +
-                    "). Reselect the workflow.", "error");
-            }
+            _fnReportConnectionLossToMonitor(dictEvent);
         });
         VaibifyWebSocket.fnOnEvent("_wsError", function (dictEvent) {
-            if (dictEvent.bActionsDropped) {
-                fnShowToast(
-                    "Pipeline connection error. "
-                    + "Reselect the workflow.", "error");
-            }
+            _fnReportConnectionLossToMonitor(dictEvent);
         });
+    }
+
+    function _fnReportConnectionLossToMonitor(dictEvent) {
+        if (typeof VaibifyConnectionMonitor === "undefined") return;
+        VaibifyConnectionMonitor.fnReportWsLoss(dictEvent);
     }
 
     function fnRegisterPollingHandlers() {

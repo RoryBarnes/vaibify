@@ -37,7 +37,7 @@ def _fnPatchLockAndPort(iResolvedPort=8050):
         "vaibify.config.containerLock.fnReleaseContainerLock",
     )
     patchResolvePort = patch(
-        "vaibify.cli.commandStart.fiResolvePort",
+        "vaibify.cli.commandStart.fiResolveProjectPort",
         return_value=iResolvedPort,
     )
     patchAcquireSession = patch(
@@ -151,7 +151,8 @@ def test_fnLaunchGui_exits_when_container_locked():
         side_effect=ContainerLockedError("demo", 4242, 8050),
     )
     patchResolvePort = patch(
-        "vaibify.cli.commandStart.fiResolvePort", return_value=8050,
+        "vaibify.cli.commandStart.fiResolveProjectPort",
+        return_value=8050,
     )
     patchAcquireSlot = patch(
         "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
@@ -187,7 +188,8 @@ def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
         mockRelease,
     )
     patchResolvePort = patch(
-        "vaibify.cli.commandStart.fiResolvePort", return_value=8050,
+        "vaibify.cli.commandStart.fiResolveProjectPort",
+        return_value=8050,
     )
     patchAcquireSlot = patch(
         "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
@@ -204,6 +206,45 @@ def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
     mockRelease.assert_called_once_with(mockLockHandle)
 
 
+def test_fnLaunchGui_exits_when_port_held_by_foreign_process():
+    """A PortInUseError from the allocator must exit before uvicorn runs."""
+    from vaibify.cli.commandStart import fnLaunchGui
+    from vaibify.cli.portAllocator import PortInUseError
+    config = _fConfigStub()
+    mockCreate = MagicMock(return_value=MagicMock())
+    mockUvicorn = MagicMock()
+    patchResolve = patch(
+        "vaibify.cli.commandStart.fiResolveProjectPort",
+        side_effect=PortInUseError(
+            8050, "demo", {"iPid": 9999, "sProjectName": "other"},
+        ),
+    )
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchResolve:
+        with pytest.raises(SystemExit) as exitInfo:
+            fnLaunchGui(config, None, "/tmp/vaibify.yml")
+    assert exitInfo.value.code == 1
+    mockUvicorn.run.assert_not_called()
+
+
+def test_fnLaunchGui_sets_graceful_shutdown_timeout():
+    """uvicorn must run with timeout_graceful_shutdown so Ctrl-C is fast."""
+    from vaibify.cli.commandStart import fnLaunchGui
+    config = _fConfigStub()
+    mockCreate = MagicMock(return_value=MagicMock())
+    mockUvicorn = MagicMock()
+    (patchAcquire, patchRelease, patchResolvePort,
+     patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patchAcquire, patchRelease, patchResolvePort, \
+            patchAcquireSlot, patchReleaseSlot:
+        fnLaunchGui(config, None, "/tmp/vaibify.yml")
+    _, dictKwargs = mockUvicorn.run.call_args
+    assert dictKwargs["timeout_graceful_shutdown"] == 3
+
+
 def test_fnLaunchGui_exits_when_session_limit_reached():
     """fnLaunchGui exits nonzero when the 99-session cap is hit."""
     from vaibify.cli.commandStart import fnLaunchGui
@@ -212,7 +253,8 @@ def test_fnLaunchGui_exits_when_session_limit_reached():
     mockCreate = MagicMock(return_value=MagicMock())
     mockUvicorn = MagicMock()
     patchResolvePort = patch(
-        "vaibify.cli.commandStart.fiResolvePort", return_value=8050,
+        "vaibify.cli.commandStart.fiResolveProjectPort",
+        return_value=8050,
     )
     patchAcquireSlot = patch(
         "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
@@ -238,6 +280,9 @@ def test_start_command_without_gui_starts_container_only():
         "vaibify.cli.commandStart.fconfigResolveProject",
         return_value=mockConfig,
     ), patch(
+        "vaibify.cli.commandStart.fsResolveProjectConfigPath",
+        return_value="/tmp/vaibify.yml",
+    ), patch(
         "vaibify.cli.commandStart.fsDockerDir", return_value="/tmp/docker",
     ), patch(
         "vaibify.cli.commandStart.flistRunStartPreflight",
@@ -254,7 +299,7 @@ def test_start_command_without_gui_starts_container_only():
 
 
 def test_start_command_with_gui_and_port_launches_gui():
-    """`vaibify start --gui --port 8062` forwards the explicit port."""
+    """`vaibify start --gui --port 8062` forwards the explicit port + config path."""
     from click.testing import CliRunner
     from vaibify.cli.commandStart import start
     mockConfig = _fConfigStub()
@@ -262,6 +307,9 @@ def test_start_command_with_gui_and_port_launches_gui():
     with patch(
         "vaibify.cli.commandStart.fconfigResolveProject",
         return_value=mockConfig,
+    ), patch(
+        "vaibify.cli.commandStart.fsResolveProjectConfigPath",
+        return_value="/tmp/vaibify.yml",
     ), patch(
         "vaibify.cli.commandStart.fsDockerDir", return_value="/tmp/docker",
     ), patch(
@@ -274,4 +322,6 @@ def test_start_command_with_gui_and_port_launches_gui():
     ):
         result = CliRunner().invoke(start, ["--gui", "--port", "8062"])
     assert result.exit_code == 0
-    mockLaunch.assert_called_once_with(mockConfig, 8062)
+    mockLaunch.assert_called_once_with(
+        mockConfig, 8062, "/tmp/vaibify.yml",
+    )

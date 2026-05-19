@@ -138,3 +138,46 @@ def fnReleaseSessionSlot(fileHandle):
         os.unlink(sPath)
     except OSError:
         pass
+
+
+def fdictReadHubSlotByPort(iPort):
+    """Return the slot payload of a live hub holding iPort, or {}.
+
+    Used by the port allocator to distinguish "the port I want is held
+    by my own dying hub" (worth a brief wait) from "it's held by an
+    unrelated process" (must scan or fail). Scans every slot file,
+    skips those whose flock has been released (dead process), and
+    returns the first match where ``sRole == "hub"`` and
+    ``iPort == iPort``. Returns ``{}`` on any error so the allocator
+    never blocks the launch on a registry mishap.
+    """
+    if not os.path.isdir(_S_SESSION_DIRECTORY):
+        return {}
+    try:
+        listEntries = os.listdir(_S_SESSION_DIRECTORY)
+    except OSError:
+        return {}
+    for sEntry in listEntries:
+        if not sEntry.endswith(".slot"):
+            continue
+        sPath = os.path.join(_S_SESSION_DIRECTORY, sEntry)
+        dictMatch = _fdictMatchingHubSlot(sPath, iPort)
+        if dictMatch:
+            return dictMatch
+    return {}
+
+
+def _fdictMatchingHubSlot(sPath, iPort):
+    """Return the slot payload if alive, hub-role, and on iPort; else {}."""
+    if not _fbSlotIsHeldByLiveProcess(sPath):
+        return {}
+    try:
+        with open(sPath, "r") as fileHandle:
+            dictPayload = json.load(fileHandle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if dictPayload.get("sRole") != "hub":
+        return {}
+    if dictPayload.get("iPort") != iPort:
+        return {}
+    return dictPayload

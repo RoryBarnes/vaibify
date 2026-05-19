@@ -190,3 +190,59 @@ def test_claude_auto_update_missing_key_defaults_true():
             yaml.safe_dump(dictConfig, fileHandle)
         configLoaded = fconfigLoadFromFile(sPath)
     assert configLoaded.features.bClaudeAutoUpdate is True
+
+
+# ---------------------------------------------------------------------------
+# iDashboardPort — stable per-project port persistence
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_port_defaults_to_zero():
+    config = ProjectConfig(sProjectName="demo")
+    assert config.iDashboardPort == 0
+
+
+def test_dashboard_port_roundtrips_through_yaml():
+    config = ProjectConfig(
+        sProjectName="demo", iDashboardPort=8077,
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.iDashboardPort == 8077
+
+
+def test_dashboard_port_missing_key_defaults_to_zero():
+    import yaml
+    dictConfig = {"projectName": "legacy"}
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        with open(sPath, "w") as fileHandle:
+            yaml.safe_dump(dictConfig, fileHandle)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.iDashboardPort == 0
+
+
+def test_dashboard_port_invalid_value_rejected_by_validator():
+    dictConfig = {
+        "projectName": "demo",
+        "dashboardPort": 22,
+    }
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_dashboard_port_zero_is_valid_sentinel():
+    dictConfig = {
+        "projectName": "demo",
+        "dashboardPort": 0,
+    }
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_dashboard_port_in_range_is_valid():
+    dictConfig = {
+        "projectName": "demo",
+        "dashboardPort": 8050,
+    }
+    assert fbValidateConfig(dictConfig) is True

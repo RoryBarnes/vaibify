@@ -8,8 +8,12 @@ import sys
 
 import click
 
-from .configLoader import fconfigResolveProject, fsDockerDir
-from .portAllocator import fiResolvePort
+from .configLoader import (
+    fconfigResolveProject, fsDockerDir, fsResolveProjectConfigPath,
+)
+from .portAllocator import (
+    PortInUseError, fiResolveProjectPort,
+)
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .preflightResult import PreflightResult, fnPrintPreflightReport
 
@@ -84,16 +88,24 @@ def _fnAcquireGuiSessionSlotOrExit(iPort):
         sys.exit(1)
 
 
-def fnLaunchGui(config, iExplicitPort):
+def fnLaunchGui(config, iExplicitPort, sConfigPath=None):
     """Launch the workflow viewer GUI bound to the given port."""
     click.echo("Launching workflow viewer ...")
     from vaibify.gui.pipelineServer import (
         fappCreateApplication,
     )
     from vaibify.config.containerLock import fnReleaseContainerLock
+    from vaibify.config.projectConfig import fnSaveToFile
     from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     import uvicorn
-    iPort = fiResolvePort(iExplicitPort)
+    try:
+        iPort = fiResolveProjectPort(
+            config, iExplicitPort, sConfigPath,
+            fnSaveConfig=fnSaveToFile,
+        )
+    except PortInUseError as errorPort:
+        click.echo(f"Error: {errorPort}", err=True)
+        sys.exit(1)
     fileHandleSession = _fnAcquireGuiSessionSlotOrExit(iPort)
     try:
         fileHandleLock = _fnAcquireProjectLockOrExit(
@@ -104,7 +116,10 @@ def fnLaunchGui(config, iExplicitPort):
             app = fappCreateApplication(
                 sWorkspaceRoot=sRoot, iExpectedPort=iPort,
             )
-            uvicorn.run(app, host="127.0.0.1", port=iPort)
+            uvicorn.run(
+                app, host="127.0.0.1", port=iPort,
+                timeout_graceful_shutdown=3,
+            )
         finally:
             fnReleaseContainerLock(fileHandleLock)
     finally:
@@ -436,6 +451,7 @@ def _fnEnforcePreflightOrExit(listResults):
 def start(bGui, bJupyter, iPort, sProjectName, command):
     """Start the Vaibify environment."""
     config = fconfigResolveProject(sProjectName)
+    sConfigPath = fsResolveProjectConfigPath(sProjectName)
     listPreflight = flistRunStartPreflight(config)
     _fnEnforcePreflightOrExit(listPreflight)
     _fnPrintWarningsIfAny(listPreflight)
@@ -443,4 +459,4 @@ def start(bGui, bJupyter, iPort, sProjectName, command):
     click.echo(f"Starting container {config.sProjectName} ...")
     _fnStartContainer(config, sDockerDir, command)
     if bGui:
-        fnLaunchGui(config, iPort)
+        fnLaunchGui(config, iPort, sConfigPath)

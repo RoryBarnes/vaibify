@@ -7,6 +7,22 @@ from unittest.mock import patch, MagicMock
 
 from vaibify.cli.main import main
 
+# The fnLaunchHub / setup / gui tests below patch ``uvicorn.run`` and
+# ``webbrowser.open`` directly rather than swapping the modules out of
+# ``sys.modules``. Earlier revisions of this file used
+# ``patch.dict(sys.modules, {"uvicorn": mock, "webbrowser": mock})``,
+# but that snapshots and restores ``sys.modules`` on context exit —
+# evicting every module imported transitively *during* the context,
+# including ``starlette.requests``. The next test that builds a
+# FastAPI app then sees a re-imported ``Request`` class identity that
+# no longer matches the one cached inside
+# ``fastapi.dependencies.utils``, triggering a spurious
+# ``FastAPIError`` on ``lenient_issubclass(annotation, Request)`` —
+# the symptom was ``test_gui_launches_pipeline_viewer`` passing in
+# isolation but failing after ``test_fnLaunchHub_starts_server``.
+# Patching ``uvicorn.run`` and ``webbrowser.open`` at attribute level
+# leaves ``sys.modules`` undisturbed and avoids the cascade.
+
 
 # -----------------------------------------------------------------------
 # main group
@@ -321,13 +337,10 @@ def _fnPatchSessionSlot():
 def test_fnLaunchHub_starts_server():
     """Lines 59-72: fnLaunchHub creates app and runs uvicorn."""
     import os
-    import sys
-    mockUvicorn = MagicMock()
-    mockWebbrowser = MagicMock()
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
-    with patch.dict(sys.modules, {
-        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }), patch.dict(os.environ, {}, clear=False), \
+    with patch("uvicorn.run") as mockRun, \
+            patch("webbrowser.open"), \
+            patch.dict(os.environ, {}, clear=False), \
             patchAcquireSlot, patchReleaseSlot:
         os.environ.pop("VAIBIFY_SUPPRESS_BROWSER", None)
         with patch(
@@ -337,54 +350,48 @@ def test_fnLaunchHub_starts_server():
             from vaibify.cli.main import fnLaunchHub
             fnLaunchHub(8050)
             mockApp.assert_called_once()
-            mockUvicorn.run.assert_called_once()
-            args = mockUvicorn.run.call_args
+            mockRun.assert_called_once()
+            args = mockRun.call_args
             assert args[1]["port"] == 8050
 
 
 def test_fnLaunchHub_suppresses_browser_when_env_set():
     """VAIBIFY_SUPPRESS_BROWSER=1 means no webbrowser.open thread fires."""
     import os
-    import sys
     import time
-    mockUvicorn = MagicMock()
-    mockWebbrowser = MagicMock()
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
-    with patch.dict(sys.modules, {
-        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }), patch.dict(
-        os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
-    ), patch(
-        "vaibify.gui.pipelineServer.fappCreateHubApplication",
-        return_value=MagicMock(),
-    ), patchAcquireSlot, patchReleaseSlot:
+    with patch("uvicorn.run"), \
+            patch("webbrowser.open") as mockOpen, \
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ), patch(
+                "vaibify.gui.pipelineServer.fappCreateHubApplication",
+                return_value=MagicMock(),
+            ), patchAcquireSlot, patchReleaseSlot:
         from vaibify.cli.main import fnLaunchHub
         fnLaunchHub(8050)
     time.sleep(1.2)
-    mockWebbrowser.open.assert_not_called()
+    mockOpen.assert_not_called()
 
 
 def test_fnLaunchHub_exits_when_session_limit_reached():
     """fnLaunchHub exits nonzero when the 99-session cap is hit."""
     import os
-    import sys
     from vaibify.config.sessionRegistry import SessionLimitExceededError
-    mockUvicorn = MagicMock()
-    mockWebbrowser = MagicMock()
-    with patch.dict(sys.modules, {
-        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }), patch.dict(
-        os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
-    ), patch(
-        "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
-        side_effect=SessionLimitExceededError(99, 99),
-    ):
+    with patch("uvicorn.run") as mockRun, \
+            patch("webbrowser.open"), \
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ), patch(
+                "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+                side_effect=SessionLimitExceededError(99, 99),
+            ):
         import pytest
         from vaibify.cli.main import fnLaunchHub
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchHub(8050)
     assert exitInfo.value.code == 1
-    mockUvicorn.run.assert_not_called()
+    mockRun.assert_not_called()
 
 
 # -----------------------------------------------------------------------
@@ -394,12 +401,8 @@ def test_fnLaunchHub_exits_when_session_limit_reached():
 
 def test_setup_launches_wizard():
     """Lines 126-138: setup command starts wizard server."""
-    import sys
-    mockUvicorn = MagicMock()
-    mockWebbrowser = MagicMock()
-    with patch.dict(sys.modules, {
-        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }):
+    with patch("uvicorn.run") as mockRun, \
+            patch("webbrowser.open"):
         with patch(
             "vaibify.install.setupServer.fappCreateSetupWizard",
         ) as mockWizard:
@@ -407,7 +410,7 @@ def test_setup_launches_wizard():
             runner = CliRunner()
             result = runner.invoke(main, ["setup"])
             assert "setup wizard" in result.output.lower()
-            mockUvicorn.run.assert_called_once()
+            mockRun.assert_called_once()
 
 
 # -----------------------------------------------------------------------
@@ -418,22 +421,19 @@ def test_setup_launches_wizard():
 @patch("vaibify.cli.main.fconfigResolveProject")
 def test_gui_launches_pipeline_viewer(mockConfig):
     """Lines 144-163: gui command starts pipeline viewer."""
-    import sys
     mockConfig.return_value = SimpleNamespace(
         sWorkspaceRoot="/workspace",
         sContainerUser="researcher",
     )
-    mockUvicorn = MagicMock()
-    mockWebbrowser = MagicMock()
     mockCreateApp = MagicMock(return_value=MagicMock())
-    with patch.dict(sys.modules, {
-        "uvicorn": mockUvicorn, "webbrowser": mockWebbrowser,
-    }):
+    with patch("uvicorn.run") as mockRun, \
+            patch("webbrowser.open"):
         with patch(
             "vaibify.gui.pipelineServer.fappCreateApplication",
             mockCreateApp,
         ):
             runner = CliRunner()
             result = runner.invoke(main, ["gui"])
+            assert result.exit_code == 0, result.output
             assert "pipeline viewer" in result.output.lower()
-            mockUvicorn.run.assert_called_once()
+            mockRun.assert_called_once()

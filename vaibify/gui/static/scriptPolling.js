@@ -13,6 +13,36 @@ var VaibifyPolling = (function () {
     var _fnOnReposStatus = null;
     var _fnOnWorkflowDiscovery = null;
 
+    /*
+     * Failures are routed through VaibifyConnectionMonitor so a poll
+     * that can't reach the server (e.g. port shift on restart, dropped
+     * daemon, rotated session token) becomes a loud, user-visible
+     * banner instead of silently freezing the dashboard. The monitor
+     * may not have loaded yet (legacy embeds, test stubs); fall back
+     * to console so we never lose the signal entirely.
+     */
+
+    function _fnReportPollFailure(sPoller, error) {
+        if (typeof VaibifyConnectionMonitor !== "undefined" &&
+            typeof VaibifyConnectionMonitor.fnReportPollFailure
+                === "function") {
+            VaibifyConnectionMonitor.fnReportPollFailure(sPoller, error);
+            return;
+        }
+        console.warn(
+            "[poll] " + sPoller + " failed:",
+            error && error.message
+        );
+    }
+
+    function _fnReportPollSuccess(sPoller) {
+        if (typeof VaibifyConnectionMonitor !== "undefined" &&
+            typeof VaibifyConnectionMonitor.fnReportPollSuccess
+                === "function") {
+            VaibifyConnectionMonitor.fnReportPollSuccess(sPoller);
+        }
+    }
+
     function fnSetPipelineStateHandler(fnHandler) {
         _fnOnPipelineState = fnHandler;
     }
@@ -40,11 +70,12 @@ var VaibifyPolling = (function () {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/state"
             );
+            _fnReportPollSuccess("pipeline-state");
             if (_fnOnPipelineState) {
                 _fnOnPipelineState(dictState);
             }
         } catch (error) {
-            /* poll failed, try again next interval */
+            _fnReportPollFailure("pipeline-state", error);
         }
     }
 
@@ -71,12 +102,13 @@ var VaibifyPolling = (function () {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/file-status"
             );
+            _fnReportPollSuccess("file-status");
             try { await pBadges; } catch (e) { /* badges optional */ }
             if (_fnOnFileStatus) {
                 _fnOnFileStatus(dictStatus);
             }
         } catch (error) {
-            /* poll failed, try again next interval */
+            _fnReportPollFailure("file-status", error);
         }
     }
 
@@ -104,11 +136,12 @@ var VaibifyPolling = (function () {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/repos/" + sContainerId + "/status"
             );
+            _fnReportPollSuccess("repos-status");
             if (_fnOnReposStatus) {
                 _fnOnReposStatus(dictStatus);
             }
         } catch (error) {
-            /* poll failed, try again next interval */
+            _fnReportPollFailure("repos-status", error);
         }
     }
 
@@ -136,11 +169,12 @@ var VaibifyPolling = (function () {
             var dictResponse = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/workflow-discovery"
             );
+            _fnReportPollSuccess("workflow-discovery");
             if (_fnOnWorkflowDiscovery) {
                 _fnOnWorkflowDiscovery(dictResponse);
             }
         } catch (error) {
-            /* poll failed, try again next interval */
+            _fnReportPollFailure("workflow-discovery", error);
         }
     }
 
