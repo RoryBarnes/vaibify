@@ -5,10 +5,15 @@ Verification State Machine
 Each step carries a ``dictVerification`` with orthogonal state fields:
 
 **Execution verification** (set by test runner / pipeline):
-- ``sUnitTest``:      untested | passed | failed
-- ``sIntegrity``:     untested | passed | failed
-- ``sQualitative``:   untested | passed | failed
-- ``sQuantitative``:  untested | passed | failed
+- ``sUnitTest``:      untested | passed | failed | unnecessary
+- ``sIntegrity``:     untested | passed | failed | unnecessary
+- ``sQualitative``:   untested | passed | failed | unnecessary
+- ``sQuantitative``:  untested | passed | failed | unnecessary
+
+``unnecessary`` is the derivation-hook value for a category whose
+``saCommands`` list is empty — no tests are defined, so there is
+nothing to run. ``fbIsStepFullyVerified`` treats it as green;
+invalidation skips it; marker-application leaves it sticky.
 
 **User verification** (set by researcher clicking UI badge):
 - ``sUser``:          untested | passed | failed
@@ -600,6 +605,8 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
         if _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
             dictVerification["sUnitTest"] = "untested"
             for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
+                if dictVerification.get(sVerifKey) == "unnecessary":
+                    continue
                 if sVerifKey in dictVerification:
                     dictVerification[sVerifKey] = "untested"
     if dictVerification.get("sUser") == "passed":
@@ -638,6 +645,8 @@ def _fnInvalidateDownstreamStep(dictStep):
     if dictVerification.get("sUnitTest") == "passed":
         dictVerification["sUnitTest"] = "untested"
         for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
+            if dictVerification.get(sVerifKey) == "unnecessary":
+                continue
             if sVerifKey in dictVerification:
                 dictVerification[sVerifKey] = "untested"
     dictVerification["bUpstreamModified"] = True
@@ -1100,14 +1109,22 @@ _T_TEST_VERIF_KEYS = (
 )
 
 
-def fbIsStepFullyVerified(dictStep):
-    """Return True iff user has attested AND every defined test passed.
+_T_GREEN_VERIF_VALUES = ("passed", "passed-from-marker", "unnecessary")
 
-    "Defined" means the verification field is present. An absent field
-    means no tests in that category — silent pass for verification
-    purposes. Present-but-not-passed (untested, failed, stale) blocks
-    the all-green state. A non-dict step (corrupt workflow) is treated
-    as not-verified so callers do not crash with ``AttributeError``.
+
+def fbIsStepFullyVerified(dictStep):
+    """Return True iff user has attested AND every defined test is green.
+
+    "Defined" means the verification field is present. Three values
+    count as green: ``passed`` (tests ran cleanly through the
+    dashboard), ``passed-from-marker`` (sUnitTest aggregate value
+    bootstrapped from a marker file on disk, indicating a prior
+    successful run), and ``unnecessary`` (derivation-hook value for
+    categories whose ``saCommands`` list is empty). Any other present
+    value — ``untested``, ``failed``, ``error``, ``stale``,
+    ``outputs-missing``, ``outputs-changed`` — blocks the all-green
+    state. A non-dict step (corrupt workflow) is treated as
+    not-verified so callers do not crash with ``AttributeError``.
     """
     if not isinstance(dictStep, dict):
         return False
@@ -1117,7 +1134,7 @@ def fbIsStepFullyVerified(dictStep):
     if dictV.get("sUser") != "passed":
         return False
     for sKey in _T_TEST_VERIF_KEYS:
-        if sKey in dictV and dictV[sKey] != "passed":
+        if sKey in dictV and dictV[sKey] not in _T_GREEN_VERIF_VALUES:
             return False
     return True
 
