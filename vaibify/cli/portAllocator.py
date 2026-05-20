@@ -63,8 +63,17 @@ class PortInUseError(RuntimeError):
 
 
 def fbIsPortFree(iPort):
-    """Return True if a TCP bind on 127.0.0.1:iPort would succeed."""
+    """Return True if a TCP bind on 127.0.0.1:iPort would succeed.
+
+    Sets ``SO_REUSEADDR`` before binding so a socket lingering in
+    ``TIME_WAIT`` (which can hold a recently-closed listener for tens
+    of seconds on macOS) is reported as free. Uvicorn also binds with
+    ``SO_REUSEADDR`` on POSIX, so this preflight matches its actual
+    bind behaviour — without it we lose the per-project-stable-port
+    guarantee for the whole TIME_WAIT window after every restart.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock.bind(("127.0.0.1", iPort))
     except OSError:

@@ -335,14 +335,21 @@ def _fnPatchSessionSlot():
 
 
 def test_fnLaunchHub_starts_server():
-    """Lines 59-72: fnLaunchHub creates app and runs uvicorn."""
+    """Lines 59-72: fnLaunchHub creates app and runs uvicorn.
+
+    Sets ``VAIBIFY_SUPPRESS_BROWSER=1`` to prevent the daemon thread
+    that schedules ``webbrowser.open`` from firing a *real* browser
+    tab after the patch context exits — ``patch("webbrowser.open")``
+    only holds for the synchronous test body, not the 1-second
+    sleeper inside the thread.
+    """
     import os
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
     with patch("uvicorn.run") as mockRun, \
             patch("webbrowser.open"), \
-            patch.dict(os.environ, {}, clear=False), \
-            patchAcquireSlot, patchReleaseSlot:
-        os.environ.pop("VAIBIFY_SUPPRESS_BROWSER", None)
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ), patchAcquireSlot, patchReleaseSlot:
         with patch(
             "vaibify.gui.pipelineServer.fappCreateHubApplication",
         ) as mockApp:
@@ -374,6 +381,58 @@ def test_fnLaunchHub_suppresses_browser_when_env_set():
     mockOpen.assert_not_called()
 
 
+def test_setup_suppresses_browser_when_env_set():
+    """The setup command must honour VAIBIFY_SUPPRESS_BROWSER too.
+
+    Without this gate the daemon thread fires after every test that
+    invokes the setup command, popping a real browser tab at
+    http://127.0.0.1:8051 long after the test's webbrowser.open patch
+    has been restored.
+    """
+    import os
+    import time
+    with patch("uvicorn.run"), \
+            patch("webbrowser.open") as mockOpen, \
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ), patch(
+                "vaibify.install.setupServer.fappCreateSetupWizard",
+                return_value=MagicMock(),
+            ):
+        runner = CliRunner()
+        runner.invoke(main, ["setup"])
+    time.sleep(1.2)
+    mockOpen.assert_not_called()
+
+
+@patch("vaibify.cli.main.fconfigResolveProject")
+def test_gui_suppresses_browser_when_env_set(mockConfig):
+    """The gui command must honour VAIBIFY_SUPPRESS_BROWSER too.
+
+    Same hazard as ``test_setup_suppresses_browser_when_env_set``;
+    the gui command's daemon thread otherwise pops a real tab at
+    http://127.0.0.1:8050.
+    """
+    import os
+    import time
+    mockConfig.return_value = SimpleNamespace(
+        sWorkspaceRoot="/workspace",
+        sContainerUser="researcher",
+    )
+    with patch("uvicorn.run"), \
+            patch("webbrowser.open") as mockOpen, \
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ), patch(
+                "vaibify.gui.pipelineServer.fappCreateApplication",
+                return_value=MagicMock(),
+            ):
+        runner = CliRunner()
+        runner.invoke(main, ["gui"])
+    time.sleep(1.2)
+    mockOpen.assert_not_called()
+
+
 def test_fnLaunchHub_exits_when_session_limit_reached():
     """fnLaunchHub exits nonzero when the 99-session cap is hit."""
     import os
@@ -400,9 +459,18 @@ def test_fnLaunchHub_exits_when_session_limit_reached():
 
 
 def test_setup_launches_wizard():
-    """Lines 126-138: setup command starts wizard server."""
+    """Lines 126-138: setup command starts wizard server.
+
+    See note in ``test_fnLaunchHub_starts_server`` — env-var
+    suppression is the only reliable way to keep the daemon thread
+    from firing a real browser tab after the patch context exits.
+    """
+    import os
     with patch("uvicorn.run") as mockRun, \
-            patch("webbrowser.open"):
+            patch("webbrowser.open"), \
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ):
         with patch(
             "vaibify.install.setupServer.fappCreateSetupWizard",
         ) as mockWizard:
@@ -420,14 +488,23 @@ def test_setup_launches_wizard():
 
 @patch("vaibify.cli.main.fconfigResolveProject")
 def test_gui_launches_pipeline_viewer(mockConfig):
-    """Lines 144-163: gui command starts pipeline viewer."""
+    """Lines 144-163: gui command starts pipeline viewer.
+
+    See note in ``test_fnLaunchHub_starts_server`` — env-var
+    suppression is the only reliable way to keep the daemon thread
+    from firing a real browser tab after the patch context exits.
+    """
+    import os
     mockConfig.return_value = SimpleNamespace(
         sWorkspaceRoot="/workspace",
         sContainerUser="researcher",
     )
     mockCreateApp = MagicMock(return_value=MagicMock())
     with patch("uvicorn.run") as mockRun, \
-            patch("webbrowser.open"):
+            patch("webbrowser.open"), \
+            patch.dict(
+                os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
+            ):
         with patch(
             "vaibify.gui.pipelineServer.fappCreateApplication",
             mockCreateApp,

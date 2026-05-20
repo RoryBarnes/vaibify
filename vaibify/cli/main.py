@@ -210,6 +210,7 @@ def verify(sProjectName):
 @main.command("setup")
 def setup():
     """Launch the setup wizard to create or edit configuration."""
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
     from vaibify.install.setupServer import fappCreateSetupWizard
     import threading
     import time
@@ -218,10 +219,11 @@ def setup():
     sUrl = "http://127.0.0.1:8051"
     click.echo(f"Starting setup wizard at {sUrl}")
     app = fappCreateSetupWizard()
-    threading.Thread(
-        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
-        daemon=True,
-    ).start()
+    if not os.environ.get(S_SUPPRESS_BROWSER_ENV):
+        threading.Thread(
+            target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+            daemon=True,
+        ).start()
     uvicorn.run(
         app, host="127.0.0.1", port=8051,
         log_level="warning", timeout_graceful_shutdown=3,
@@ -236,6 +238,7 @@ def setup():
 def gui(sProjectName):
     """Launch the Vaibify pipeline viewer GUI."""
     from vaibify.gui.pipelineServer import fappCreateApplication
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
     import threading
     import time
     import uvicorn
@@ -248,10 +251,11 @@ def gui(sProjectName):
         sWorkspaceRoot=sRoot, sTerminalUserArg=sTerminalUser,
         iExpectedPort=8050,
     )
-    threading.Thread(
-        target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
-        daemon=True,
-    ).start()
+    if not os.environ.get(S_SUPPRESS_BROWSER_ENV):
+        threading.Thread(
+            target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
+            daemon=True,
+        ).start()
     uvicorn.run(
         app, host="127.0.0.1", port=8050,
         log_level="warning", timeout_graceful_shutdown=3,

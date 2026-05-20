@@ -49,6 +49,27 @@ def test_fbIsPortFree_false_when_bound():
         sock.close()
 
 
+def test_fbIsPortFree_sets_reuseaddr_so_time_wait_looks_free():
+    """A TIME_WAIT socket on macOS would block a bind without SO_REUSEADDR.
+
+    We can't easily synthesise TIME_WAIT in a unit test, but we can
+    assert the helper sets SO_REUSEADDR on the probe socket — without
+    that flag the per-project-stable-port survival contract collapses
+    every time a server is restarted within the TIME_WAIT window.
+    """
+    from unittest.mock import MagicMock, patch
+    import socket as socketModule
+    from vaibify.cli.portAllocator import fbIsPortFree
+    mockSocket = MagicMock()
+    with patch.object(
+        socketModule, "socket", return_value=mockSocket,
+    ):
+        fbIsPortFree(54321)
+    mockSocket.setsockopt.assert_any_call(
+        socket.SOL_SOCKET, socket.SO_REUSEADDR, 1,
+    )
+
+
 def test_fiPickFreePort_returns_preferred_when_free():
     from vaibify.cli.portAllocator import fiPickFreePort
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
