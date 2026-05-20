@@ -122,17 +122,27 @@ def _fnRemoveTestDirectory(
 
 
 def _fnUpdateAggregateTestState(dictStep):
-    """Compute aggregate sUnitTest from per-category states."""
+    """Compute aggregate sUnitTest from per-category states.
+
+    Categories with no ``saCommands`` are reported as "unnecessary"
+    by the workflow-load derivation hook; both empty-command and
+    already-unnecessary per-category states are excluded from the
+    aggregate. When every category is empty the aggregate itself
+    becomes "unnecessary".
+    """
     dictVerification = dictStep.get("dictVerification", {})
     dictTests = dictStep.get("dictTests", {})
     listStates = []
     for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
         dictCat = dictTests.get(sCategory, {})
-        if dictCat.get("saCommands", []):
-            listStates.append(
-                dictVerification.get(sVerifKey, "untested"))
+        if not dictCat.get("saCommands", []):
+            continue
+        sState = dictVerification.get(sVerifKey, "untested")
+        if sState == "unnecessary":
+            continue
+        listStates.append(sState)
     if not listStates:
-        dictVerification["sUnitTest"] = "untested"
+        dictVerification["sUnitTest"] = "unnecessary"
     elif "failed" in listStates:
         dictVerification["sUnitTest"] = "failed"
     elif all(s == "passed" for s in listStates):

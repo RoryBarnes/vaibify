@@ -158,6 +158,55 @@ def test_fnInvalidateStepFiles_user_passed_plot_older_preserved():
     assert dictStep["dictVerification"]["sUser"] == "passed"
 
 
+def test_fnInvalidateStepFiles_preserves_unnecessary_categories():
+    """An upstream data-file change must not downgrade unnecessary categories.
+
+    Without this guard the first invalidating change after a workflow
+    load flips plot-only steps' "unnecessary" categories to "untested"
+    and re-locks the all-green gate. The fix is to skip "unnecessary"
+    keys in the reset loop, since they were never tests-against-data
+    in the first place.
+    """
+    dictStep = {
+        "saDataFiles": ["data.out"],
+        "saPlotFiles": [],
+        "dictVerification": {
+            "sUnitTest": "passed",
+            "sIntegrity": "unnecessary",
+            "sQualitative": "unnecessary",
+            "sQuantitative": "passed",
+        },
+    }
+    _fnInvalidateStepFiles(
+        dictStep, ["/ws/data.out"],
+        dictModTimes={"/ws/data.out": "1900000000"},
+    )
+    dictV = dictStep["dictVerification"]
+    assert dictV["sUnitTest"] == "untested"
+    assert dictV["sIntegrity"] == "unnecessary"
+    assert dictV["sQualitative"] == "unnecessary"
+    assert dictV["sQuantitative"] == "untested"
+
+
+def test_fnInvalidateDownstreamStep_preserves_unnecessary_categories():
+    from vaibify.gui.fileStatusManager import _fnInvalidateDownstreamStep
+    dictStep = {
+        "dictVerification": {
+            "sUnitTest": "passed",
+            "sIntegrity": "unnecessary",
+            "sQualitative": "passed",
+            "sQuantitative": "unnecessary",
+        },
+    }
+    _fnInvalidateDownstreamStep(dictStep)
+    dictV = dictStep["dictVerification"]
+    assert dictV["sUnitTest"] == "untested"
+    assert dictV["sIntegrity"] == "unnecessary"
+    assert dictV["sQualitative"] == "untested"
+    assert dictV["sQuantitative"] == "unnecessary"
+    assert dictV["bUpstreamModified"] is True
+
+
 def test_fnInvalidateStepFiles_user_passed_no_plot_changed_preserved():
     dictStep = {
         "saDataFiles": ["data.out"],

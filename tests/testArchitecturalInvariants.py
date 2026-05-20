@@ -32,6 +32,7 @@ __all__ = [
     "testManifestWriterKnowsEverySaPathListInGuiSource",
     "testConftestTemplateHasVersionStamp",
     "testNoFlatTestMarkerWritesInSource",
+    "testEmptyCommandCategoryIsUnnecessaryAfterLoad",
 ]
 
 
@@ -1285,3 +1286,87 @@ def testNoFlatTestMarkerWritesInSource():
             for sFile, iLine, sText in listViolations
         )
     )
+
+
+def testEmptyCommandCategoryIsUnnecessaryAfterLoad():
+    """A category with no saCommands is "unnecessary" after the full load.
+
+    Durable regression guard for the schema bug where plot-only steps
+    (or any step whose ``saCommands`` list is empty for a given test
+    category) had their verification field initialized to ``untested``
+    and stayed there forever, wrongly blocking the all-green gate.
+
+    Drives the *full* load pipeline through
+    ``fdictLoadWorkflowFromContainer`` — including
+    ``_fnLoadAndMergeState``, the derivation hook, and the
+    ``fnAttachStepLabels`` step — to prove the hook is wired into the
+    load path, not just callable in isolation. A separate unit test of
+    ``fbDeriveUnnecessaryVerification`` lives in ``testWorkflowManager``.
+    """
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import (
+        fdictLoadWorkflowFromContainer,
+    )
+    dictWorkflowOnDisk = {
+        "iWorkflowSchemaVersion": 3,
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "Plot Only",
+            "sDirectory": "plotOnly",
+            "saPlotCommands": ["python plot.py"],
+            "saPlotFiles": ["fig.pdf"],
+            "dictTests": {
+                "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+                "dictQualitative": {
+                    "saCommands": [], "sFilePath": "",
+                },
+                "dictQuantitative": {
+                    "saCommands": [], "sFilePath": "",
+                    "sStandardsPath": "",
+                },
+            },
+        }],
+    }
+    dictPersistedState = {
+        "iStateSchemaVersion": 1,
+        "bArchiveTrackingMigrated": True,
+        "dictStepState": {
+            "plotOnly": {
+                "dictVerification": {
+                    "sUnitTest": "untested",
+                    "sIntegrity": "untested",
+                    "sQualitative": "untested",
+                    "sQuantitative": "untested",
+                },
+            },
+        },
+    }
+    mockDocker = MagicMock()
+
+    def _fFetch(sContainerId, sPath):
+        if sPath.endswith(".vaibify/workflows/w.json"):
+            return json.dumps(dictWorkflowOnDisk).encode("utf-8")
+        if sPath.endswith(".vaibify/state.json"):
+            return json.dumps(dictPersistedState).encode("utf-8")
+        if sPath.endswith(".vaibify/.gitignore"):
+            return b"state.json\n"
+        raise FileNotFoundError(sPath)
+
+    mockDocker.fbaFetchFile.side_effect = _fFetch
+    mockDocker.fnWriteFile.side_effect = lambda *a, **k: None
+    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    dictLoaded = fdictLoadWorkflowFromContainer(
+        mockDocker, "cid",
+        sWorkflowPath="/workspace/Project/.vaibify/workflows/w.json",
+    )
+    dictVerify = dictLoaded["listSteps"][0]["dictVerification"]
+    for sKey in (
+        "sUnitTest", "sIntegrity", "sQualitative", "sQuantitative",
+    ):
+        assert dictVerify[sKey] == "unnecessary", (
+            f"{sKey} stayed {dictVerify[sKey]} — the load pipeline "
+            "must wire fbDeriveUnnecessaryVerification so empty-commands "
+            "categories surface as 'unnecessary' (green) instead of "
+            "'untested' (blocking)."
+        )

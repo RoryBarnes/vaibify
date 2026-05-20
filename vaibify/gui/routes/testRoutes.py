@@ -13,7 +13,10 @@ from ..fileStatusManager import (
     fsWorkflowSlugFromPath,
 )
 from ..pipelineRunner import fsShellQuote
-from ..workflowManager import fsResolveStepWorkdir
+from ..workflowManager import (
+    fbDeriveUnnecessaryVerification,
+    fsResolveStepWorkdir,
+)
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
@@ -251,6 +254,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictVerification["sQualitative"] = "untested"
         dictVerification["sQuantitative"] = "untested"
         dictVerification["sIntegrity"] = "untested"
+        fbDeriveUnnecessaryVerification(dictWorkflow)
         dictCtx["save"](sContainerId, dictWorkflow)
         return {"bSuccess": True}
 

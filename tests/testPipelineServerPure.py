@@ -206,7 +206,9 @@ def test_fnUpdateAggregateTestState_no_commands():
         "dictVerification": {},
     }
     _fnUpdateAggregateTestState(dictStep)
-    assert dictStep["dictVerification"]["sUnitTest"] == "untested"
+    # No category defines commands → aggregate is "unnecessary"
+    # (not "untested"), so the all-green gate treats it as green.
+    assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"
 
 
 def test_fnUpdateAggregateTestState_mixed_untested():
@@ -246,4 +248,6 @@ def test_fnUpdateAggregateTestState_empty_step():
     from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState
     dictStep = {"dictVerification": {}}
     _fnUpdateAggregateTestState(dictStep)
-    assert dictStep["dictVerification"]["sUnitTest"] == "untested"
+    # Missing dictTests → no categories carry commands, so the
+    # aggregate is "unnecessary" (treated as green by the gate).
+    assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"

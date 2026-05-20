@@ -68,6 +68,71 @@ def test_fbIsStepFullyVerified_no_dictVerification_returns_false():
     assert fbIsStepFullyVerified(dictStep) is False
 
 
+def test_fbIsStepFullyVerified_unnecessary_counts_as_green():
+    dictStep = {"dictVerification": {
+        "sUser": "passed",
+        "sUnitTest": "unnecessary",
+        "sIntegrity": "unnecessary",
+        "sQualitative": "unnecessary",
+        "sQuantitative": "unnecessary",
+    }}
+    assert fbIsStepFullyVerified(dictStep) is True
+
+
+def test_fbIsStepFullyVerified_mixed_passed_and_unnecessary_is_green():
+    dictStep = {"dictVerification": {
+        "sUser": "passed",
+        "sUnitTest": "passed",
+        "sIntegrity": "passed",
+        "sQualitative": "unnecessary",
+        "sQuantitative": "passed",
+    }}
+    assert fbIsStepFullyVerified(dictStep) is True
+
+
+def test_fbIsStepFullyVerified_untested_still_blocks_with_unnecessary():
+    dictStep = {"dictVerification": {
+        "sUser": "passed",
+        "sUnitTest": "untested",
+        "sIntegrity": "unnecessary",
+        "sQualitative": "untested",
+        "sQuantitative": "unnecessary",
+    }}
+    assert fbIsStepFullyVerified(dictStep) is False
+
+
+def test_fbAllStepsFullyVerified_all_unnecessary_steps_are_green():
+    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+    dictV = {
+        "sUser": "passed",
+        "sUnitTest": "unnecessary",
+        "sIntegrity": "unnecessary",
+        "sQualitative": "unnecessary",
+        "sQuantitative": "unnecessary",
+    }
+    dictWorkflow = {"listSteps": [
+        {"dictVerification": dict(dictV)},
+        {"dictVerification": dict(dictV)},
+    ]}
+    assert fbAllStepsFullyVerified(dictWorkflow) is True
+
+
+def test_fbIsStepFullyVerified_passed_from_marker_counts_as_green():
+    """``sUnitTest=passed-from-marker`` is the bootstrap-from-disk
+    equivalent of ``passed`` (see stateManager._fdictVerificationFromMarker).
+    The gate must treat both equivalently or workflows whose state was
+    rebuilt from markers on a fresh checkout never reach all-green.
+    """
+    dictStep = {"dictVerification": {
+        "sUser": "passed",
+        "sUnitTest": "passed-from-marker",
+        "sIntegrity": "passed",
+        "sQualitative": "passed",
+        "sQuantitative": "passed",
+    }}
+    assert fbIsStepFullyVerified(dictStep) is True
+
+
 # ---------------------------------------------------------------------------
 # flistStepRemoteFiles
 # ---------------------------------------------------------------------------

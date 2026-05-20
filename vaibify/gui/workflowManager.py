@@ -20,6 +20,7 @@ S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
 S_VAIBIFY_WORKFLOWS_SUFFIX = "/.vaibify/workflows/"
 
 __all__ = [
+    "fbDeriveUnnecessaryVerification",
     "fbStepRequiresTests",
     "fbValidateWorkflow",
     "fsDescribeValidationFailure",
@@ -223,6 +224,7 @@ def fdictLoadWorkflowFromContainer(
     _fnLoadAndMergeState(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
     )
+    fbDeriveUnnecessaryVerification(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
     return dictWorkflow
@@ -476,7 +478,16 @@ def flistExtractStepNames(dictWorkflow):
     return listSteps
 
 
-T_VERIFICATION_STATES = ("untested", "passed", "failed", "error")
+T_VERIFICATION_STATES = (
+    "untested", "passed", "failed", "error", "unnecessary",
+)
+
+
+_T_VERIFICATION_CATEGORY_KEYS = (
+    ("dictIntegrity", "sIntegrity"),
+    ("dictQualitative", "sQualitative"),
+    ("dictQuantitative", "sQuantitative"),
+)
 
 
 def fbStepRequiresTests(dictStep):
@@ -484,6 +495,63 @@ def fbStepRequiresTests(dictStep):
     bHasData = len(dictStep.get("saDataCommands", [])) > 0
     bHasTests = len(dictStep.get("saTestCommands", [])) > 0
     return bHasData and not bHasTests
+
+
+def _fbApplyUnnecessaryUnitTest(dictVerify, dictTests):
+    """Mark sUnitTest unnecessary when no category defines commands.
+
+    Aggregate stays "unnecessary" only when every per-category command
+    list is empty. Idempotent. Returns True when the field changed.
+    """
+    bAnyCommands = False
+    for sCategory, _sVerifyKey in _T_VERIFICATION_CATEGORY_KEYS:
+        if dictTests.get(sCategory, {}).get("saCommands"):
+            bAnyCommands = True
+            break
+    if bAnyCommands:
+        return False
+    if dictVerify.get("sUnitTest") != "untested":
+        return False
+    dictVerify["sUnitTest"] = "unnecessary"
+    return True
+
+
+def _fbApplyUnnecessaryToStep(dictStep):
+    """Rewrite empty-command verification fields to "unnecessary".
+
+    Only flips a field that is currently "untested" — preserves any
+    pass/fail/error result already recorded. Returns True when any
+    field changed.
+    """
+    dictVerify = dictStep.setdefault("dictVerification", {})
+    dictTests = dictStep.get("dictTests", {}) or {}
+    bChanged = False
+    for sCategory, sVerifyKey in _T_VERIFICATION_CATEGORY_KEYS:
+        if dictTests.get(sCategory, {}).get("saCommands"):
+            continue
+        if dictVerify.get(sVerifyKey) != "untested":
+            continue
+        dictVerify[sVerifyKey] = "unnecessary"
+        bChanged = True
+    if _fbApplyUnnecessaryUnitTest(dictVerify, dictTests):
+        bChanged = True
+    return bChanged
+
+
+def fbDeriveUnnecessaryVerification(dictWorkflow):
+    """Rewrite "untested" → "unnecessary" for every command-free category.
+
+    The single source of truth for the "no tests defined here" state.
+    Idempotent — safe to call on load and on save. Returns True when
+    any step changed so callers can persist.
+    """
+    bAnyChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            continue
+        if _fbApplyUnnecessaryToStep(dictStep):
+            bAnyChanged = True
+    return bAnyChanged
 
 
 def fdictCreateStep(
@@ -692,6 +760,7 @@ def fnSaveWorkflowToContainer(
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     fnAttachStepLabels(dictWorkflow)
+    fbDeriveUnnecessaryVerification(dictWorkflow)
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
     dictDeclarative, dictState = stateManager.ftSplitMergedDict(

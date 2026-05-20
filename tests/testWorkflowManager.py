@@ -327,6 +327,134 @@ def test_fbStepRequiresTests_false_when_no_data():
 
 
 # ---------------------------------------------------------------------------
+# fbDeriveUnnecessaryVerification
+# ---------------------------------------------------------------------------
+
+
+def _fdictBuildStepWithCategories(dictCommandsByCategory):
+    """Return a step whose dictTests categories carry given commands."""
+    dictTests = {
+        "dictIntegrity": {
+            "saCommands": list(
+                dictCommandsByCategory.get("integrity", []),
+            ),
+            "sFilePath": "",
+        },
+        "dictQualitative": {
+            "saCommands": list(
+                dictCommandsByCategory.get("qualitative", []),
+            ),
+            "sFilePath": "",
+        },
+        "dictQuantitative": {
+            "saCommands": list(
+                dictCommandsByCategory.get("quantitative", []),
+            ),
+            "sFilePath": "",
+            "sStandardsPath": "",
+        },
+    }
+    return {
+        "sName": "Step", "sDirectory": "step1",
+        "saPlotCommands": [], "saPlotFiles": [],
+        "dictTests": dictTests,
+        "dictVerification": {
+            "sUnitTest": "untested",
+            "sIntegrity": "untested",
+            "sQualitative": "untested",
+            "sQuantitative": "untested",
+        },
+    }
+
+
+def test_fbDeriveUnnecessaryVerification_flips_empty_categories():
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [_fdictBuildStepWithCategories({})],
+    }
+    bChanged = fbDeriveUnnecessaryVerification(dictWorkflow)
+    assert bChanged is True
+    dictV = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictV["sIntegrity"] == "unnecessary"
+    assert dictV["sQualitative"] == "unnecessary"
+    assert dictV["sQuantitative"] == "unnecessary"
+    assert dictV["sUnitTest"] == "unnecessary"
+
+
+def test_fbDeriveUnnecessaryVerification_leaves_with_commands_alone():
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [_fdictBuildStepWithCategories({
+            "integrity": ["pytest test_integrity.py"],
+        })],
+    }
+    fbDeriveUnnecessaryVerification(dictWorkflow)
+    dictV = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictV["sIntegrity"] == "untested"
+    assert dictV["sQualitative"] == "unnecessary"
+    assert dictV["sQuantitative"] == "unnecessary"
+    assert dictV["sUnitTest"] == "untested"
+
+
+def test_fbDeriveUnnecessaryVerification_idempotent():
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [_fdictBuildStepWithCategories({})],
+    }
+    fbDeriveUnnecessaryVerification(dictWorkflow)
+    bSecond = fbDeriveUnnecessaryVerification(dictWorkflow)
+    assert bSecond is False
+
+
+def test_fbDeriveUnnecessaryVerification_preserves_passed():
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictStep = _fdictBuildStepWithCategories({})
+    dictStep["dictVerification"]["sIntegrity"] = "passed"
+    dictWorkflow = {
+        "sPlotDirectory": "Plot", "listSteps": [dictStep],
+    }
+    fbDeriveUnnecessaryVerification(dictWorkflow)
+    dictV = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictV["sIntegrity"] == "passed"
+    assert dictV["sQualitative"] == "unnecessary"
+
+
+def test_fbDeriveUnnecessaryVerification_missing_dictTests():
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictStep = {
+        "sName": "Step", "sDirectory": "step1",
+        "saPlotCommands": [], "saPlotFiles": [],
+        "dictVerification": {
+            "sUnitTest": "untested",
+            "sIntegrity": "untested",
+            "sQualitative": "untested",
+            "sQuantitative": "untested",
+        },
+    }
+    dictWorkflow = {
+        "sPlotDirectory": "Plot", "listSteps": [dictStep],
+    }
+    bChanged = fbDeriveUnnecessaryVerification(dictWorkflow)
+    assert bChanged is True
+    dictV = dictStep["dictVerification"]
+    assert dictV["sIntegrity"] == "unnecessary"
+    assert dictV["sUnitTest"] == "unnecessary"
+
+
+# ---------------------------------------------------------------------------
 # CamelCase directory mapping
 # ---------------------------------------------------------------------------
 

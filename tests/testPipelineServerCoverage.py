@@ -99,7 +99,9 @@ class TestFnUpdateAggregateTestState:
             "dictTests": {},
         }
         _fnUpdateAggregateTestState(dictStep)
-        assert dictStep["dictVerification"]["sUnitTest"] == "untested"
+        # No categories carry commands → aggregate is "unnecessary",
+        # treated as green by fbIsStepFullyVerified.
+        assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"
 
     def test_partial_untested(self):
         dictStep = {

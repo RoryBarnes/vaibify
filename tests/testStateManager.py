@@ -645,3 +645,49 @@ def test_save_is_idempotent_for_workflow_json_payload():
     ]
     assert len(listWorkflowWrites) == 2
     assert listWorkflowWrites[0] == listWorkflowWrites[1]
+
+
+def test_bootstrap_then_derive_marks_no_test_steps_unnecessary():
+    """Bootstrap-from-markers + derivation flips no-test steps to unnecessary.
+
+    Simulates the fresh-checkout path: state.json is absent, so
+    fdictBootstrapStateFromMarkers builds an empty per-step state.
+    After merge, the verification dict for a plot-only step is
+    effectively empty/untested. fbDeriveUnnecessaryVerification must
+    then turn its empty-commands categories into "unnecessary".
+    """
+    from vaibify.gui import stateManager
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "PlotOnly",
+            "sDirectory": "plotOnly",
+            "saPlotCommands": ["python plot.py"],
+            "saPlotFiles": ["fig.pdf"],
+            "dictTests": {
+                "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+                "dictQualitative": {
+                    "saCommands": [], "sFilePath": "",
+                },
+                "dictQuantitative": {
+                    "saCommands": [], "sFilePath": "",
+                    "sStandardsPath": "",
+                },
+            },
+            "dictVerification": {
+                "sUnitTest": "untested",
+                "sIntegrity": "untested",
+                "sQualitative": "untested",
+                "sQuantitative": "untested",
+            },
+        }],
+    }
+    dictState = stateManager.fdictBuildEmptyState()
+    stateManager.fnMergeStateIntoWorkflow(dictWorkflow, dictState)
+    fbDeriveUnnecessaryVerification(dictWorkflow)
+    dictV = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictV["sIntegrity"] == "unnecessary"
+    assert dictV["sUnitTest"] == "unnecessary"

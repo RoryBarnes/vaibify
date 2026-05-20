@@ -740,6 +740,11 @@ Each step has a verification status with three components:
 - **User Approval**: Manual verification by the scientist
 - **Dependencies**: All upstream steps must also pass
 
+A test category whose `saCommands` list is empty is reported as
+"N/A / unnecessary" — it has nothing to run, so it counts as green
+when computing the L1 all-green gate. Use this rather than fabricating
+trivial tests just to satisfy the dashboard.
+
 ## AI Containment Scale (AICS)
 
 When a researcher asks you to "make this workflow reach AICS Level N" or

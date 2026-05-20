@@ -804,13 +804,16 @@ def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
     us *which* categories used to have a result. Resetting those to
     "untested" makes the badge accurately reflect "no fresh result for
     the current state" instead of preserving a prior pass/fail value
-    that's now meaningless.
+    that's now meaningless. "unnecessary" categories are skipped — a
+    stale marker targeting an empty-commands category is anomalous and
+    must not downgrade the derived state.
     """
     bChanged = False
     for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
         if sCategory not in dictCategories:
             continue
-        if dictVerify.get(sVerifyKey) == "untested":
+        sCurrent = dictVerify.get(sVerifyKey)
+        if sCurrent in ("untested", "unnecessary"):
             continue
         dictVerify[sVerifyKey] = "untested"
         bChanged = True
@@ -851,7 +854,14 @@ def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
 def _fnApplyMarkerCategory(
     dictVerify, dictCategories, sCategory, sVerifyKey,
 ):
-    """Apply a single category result from a marker; return True if changed."""
+    """Apply a single category result from a marker; return True if changed.
+
+    "unnecessary" is sticky — a marker arriving for a category that
+    the workflow declares as empty-commands is anomalous (commands
+    were removed but the test runner still produced a result). We log
+    a warning so the discrepancy is observable and leave the verified
+    state intact rather than silently re-locking the all-green gate.
+    """
     if sCategory not in dictCategories:
         return False
     dictCat = dictCategories[sCategory]
@@ -861,6 +871,14 @@ def _fnApplyMarkerCategory(
     elif dictCat.get("iPassed", 0) > 0:
         sNewValue = "passed"
     if sNewValue is None or dictVerify.get(sVerifyKey) == sNewValue:
+        return False
+    if dictVerify.get(sVerifyKey) == "unnecessary":
+        logger.warning(
+            "Marker reports %s for %s but the workflow declares this "
+            "category as empty (\"unnecessary\"); ignoring marker so "
+            "the derived state stays observable.",
+            sNewValue, sVerifyKey,
+        )
         return False
     dictVerify[sVerifyKey] = sNewValue
     return True

@@ -1048,7 +1048,8 @@ class TestPipelineServerHelpers:
             "dictVerification": {},
         }
         _fnUpdateAggregateTestState(dictStep)
-        assert dictStep["dictVerification"]["sUnitTest"] == "untested"
+        # No category carries commands → aggregate is "unnecessary".
+        assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"
 
     def test_fnUpdateAggregateTestState_mixed_untested(self):
         from vaibify.gui.pipelineServer import _fnUpdateAggregateTestState

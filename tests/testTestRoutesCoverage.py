@@ -651,8 +651,12 @@ class TestDeleteGeneratedTestRoute:
 
         assert dictResult["bSuccess"] is True
         assert dictStep["saTestCommands"] == []
-        assert dictStep["dictVerification"]["sUnitTest"] == "untested"
-        assert dictStep["dictVerification"]["sIntegrity"] == "untested"
+        # Delete-tests wipes per-category commands; the derivation
+        # hook then rewrites the now-empty categories from "untested"
+        # to "unnecessary" so the all-green gate sees them as green
+        # rather than the step staying perpetually blocked.
+        assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"
+        assert dictStep["dictVerification"]["sIntegrity"] == "unnecessary"
         dictCtx["save"].assert_called_once()
 
 

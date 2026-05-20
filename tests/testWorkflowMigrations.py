@@ -252,3 +252,52 @@ def test_fsDeriveProjectRepoPathFromWorkflow_returns_empty_for_non_matching():
     )
     assert fsDeriveProjectRepoPathFromWorkflow("") == ""
     assert fsDeriveProjectRepoPathFromWorkflow("/some/random/path.json") == ""
+
+
+def test_load_derives_unnecessary_for_empty_command_categories():
+    """Loading a workflow rewrites stale "untested" to "unnecessary".
+
+    Simulates a state.json saved by an older vaibify (or freshly
+    initialized step) where every category default is "untested".
+    After the load-time derivation hook fires, categories whose
+    ``saCommands`` list is empty must read "unnecessary" so the
+    all-green gate accepts them.
+    """
+    from vaibify.gui.workflowManager import (
+        fbDeriveUnnecessaryVerification,
+    )
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "PlotOnly",
+                "sDirectory": "plotOnly",
+                "saPlotCommands": ["python plot.py"],
+                "saPlotFiles": ["fig.pdf"],
+                "dictTests": {
+                    "dictIntegrity": {
+                        "saCommands": [], "sFilePath": "",
+                    },
+                    "dictQualitative": {
+                        "saCommands": [], "sFilePath": "",
+                    },
+                    "dictQuantitative": {
+                        "saCommands": [], "sFilePath": "",
+                        "sStandardsPath": "",
+                    },
+                },
+                "dictVerification": {
+                    "sUnitTest": "untested",
+                    "sIntegrity": "untested",
+                    "sQualitative": "untested",
+                    "sQuantitative": "untested",
+                },
+            },
+        ],
+    }
+    fbDeriveUnnecessaryVerification(dictWorkflow)
+    dictV = dictWorkflow["listSteps"][0]["dictVerification"]
+    assert dictV["sIntegrity"] == "unnecessary"
+    assert dictV["sQualitative"] == "unnecessary"
+    assert dictV["sQuantitative"] == "unnecessary"
+    assert dictV["sUnitTest"] == "unnecessary"
