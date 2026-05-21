@@ -68,8 +68,14 @@ def _fsResolveSymlinks(sPath):
 
 
 def _fnRejectDeniedPrefix(sResolved):
-    """Reject paths matching the absolute or home-relative denylist."""
-    sHome = os.path.expanduser("~")
+    """Reject paths matching the absolute or home-relative denylist.
+
+    Compares against the symlink-resolved $HOME so a system whose home
+    directory is itself a symlink (macOS often resolves ``/Users/foo``
+    through ``/private/...``) cannot bypass the home-relative
+    denylist by submitting the un-resolved form.
+    """
+    sHome = os.path.realpath(os.path.expanduser("~"))
     for sDenied in _LIST_DENY_PREFIXES:
         if sResolved == sDenied or sResolved.startswith(sDenied + os.sep):
             raise BindMountValidationError(

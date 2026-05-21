@@ -132,3 +132,22 @@ def test_project_repo_root_is_accepted(monkeypatch, tmp_path):
         {"host": str(sChild), "container": "/data"},
         sProjectRepoPath=str(sRepoPath),
     )
+
+
+def test_ssh_directory_via_symlinked_home_is_rejected(
+    monkeypatch, tmp_path,
+):
+    """Audit H2: a system whose $HOME resolves through a symlink must
+    still trip the home-relative denylist (e.g. macOS ``/Users/foo``
+    backed by ``/private/...``)."""
+    sRealHome = tmp_path / "real_home"
+    sRealHome.mkdir()
+    sSymHome = tmp_path / "sym_home"
+    os.symlink(str(sRealHome), str(sSymHome))
+    sSshDir = sRealHome / ".ssh"
+    sSshDir.mkdir()
+    monkeypatch.setenv("HOME", str(sSymHome))
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount(
+            {"host": str(sSshDir), "container": "/sshconfig"},
+        )
