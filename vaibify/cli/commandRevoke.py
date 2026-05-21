@@ -22,7 +22,7 @@ _LIST_VALID_ZENODO_INSTANCES = ["sandbox", "production"]
 
 @click.command("revoke")
 @click.argument(
-    "sService",
+    "sservice",
     type=click.Choice(_LIST_VALID_SERVICES, case_sensitive=False),
 )
 @click.option(
@@ -40,29 +40,29 @@ _LIST_VALID_ZENODO_INSTANCES = ["sandbox", "production"]
         "Zenodo only: target the sandbox or production keyring slot."
     ),
 )
-def revoke(sService, sKeyringSlot, sZenodoInstance):
+def revoke(sservice, sKeyringSlot, sZenodoInstance):
     """Revoke a stored credential and clear the local keyring slot."""
     dictResult = _fdictRevokeForService(
-        sService.lower(), sKeyringSlot, sZenodoInstance.lower(),
+        sservice.lower(), sKeyringSlot, sZenodoInstance.lower(),
     )
-    fnPrintRevocationReport(sService, dictResult)
+    fnPrintRevocationReport(sservice, dictResult)
     if not dictResult["bLocalCleared"]:
         sys.exit(1)
 
 
-def _fdictRevokeForService(sService, sKeyringSlot, sZenodoInstance):
+def _fdictRevokeForService(sservice, sKeyringSlot, sZenodoInstance):
     """Dispatch to the per-provider revoker and return its status dict."""
-    if sService == "github":
+    if sservice == "github":
         from vaibify.reproducibility.githubAuth import (
             fdictRevokeGitHubToken,
         )
         return fdictRevokeGitHubToken(sKeyringSlot)
-    if sService == "overleaf":
+    if sservice == "overleaf":
         from vaibify.reproducibility.overleafAuth import (
             fdictRevokeOverleafToken,
         )
         return fdictRevokeOverleafToken()
-    if sService == "zenodo":
+    if sservice == "zenodo":
         from vaibify.reproducibility.zenodoClient import (
             fdictRevokeZenodoToken,
         )
@@ -70,15 +70,15 @@ def _fdictRevokeForService(sService, sKeyringSlot, sZenodoInstance):
             "zenodo" if sZenodoInstance == "production" else "sandbox"
         )
         return fdictRevokeZenodoToken(sZenodoService)
-    raise click.UsageError(f"Unknown service '{sService}'.")
+    raise click.UsageError(f"Unknown service '{sservice}'.")
 
 
-def fnPrintRevocationReport(sService, dictResult):
+def fnPrintRevocationReport(sservice, dictResult):
     """Render the revocation status in a uniform, scannable form."""
     sUpstreamFlag = (
         "yes" if dictResult["bUpstreamRevoked"] else "no"
     )
     sLocalFlag = "yes" if dictResult["bLocalCleared"] else "no"
-    click.echo(f"[vaib] {sService}: upstream revoked={sUpstreamFlag}, "
+    click.echo(f"[vaib] {sservice}: upstream revoked={sUpstreamFlag}, "
                f"local cleared={sLocalFlag}")
     click.echo(f"[vaib] {dictResult['sMessage']}")

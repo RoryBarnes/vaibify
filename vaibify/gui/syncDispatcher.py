@@ -172,11 +172,15 @@ def fsPythonCommand(sImportLine, sFunctionCall):
     other shell metacharacters in ``sFunctionCall`` cannot break out
     of the argument and be interpreted by the shell. Mirrors the
     pattern in ``containerGit.fdictComputeBlobShasInContainer`` and
-    ``conftestManager._fsBuildFlatMarkerMigrationCommand``.
+    ``conftestManager._fsBuildFlatMarkerMigrationCommand``. When
+    ``sImportLine`` is empty the leading ``; `` separator is omitted
+    so the resulting Python source is syntactically valid.
     """
-    return "python3 -c " + fsShellQuote(
-        sImportLine + "; " + sFunctionCall
-    )
+    if sImportLine:
+        sScript = sImportLine + "; " + sFunctionCall
+    else:
+        sScript = sFunctionCall
+    return "python3 -c " + fsShellQuote(sScript)
 
 
 def ftResultPushToOverleaf(
