@@ -15,6 +15,7 @@ credentials.
 
 import json
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -32,6 +33,7 @@ __all__ = [
     "fsResolveTokenLoginOrEmpty",
     "fnAssertTokenOwnerBinding",
     "fnClearTokenLoginCache",
+    "fdictRevokeGitHubToken",
 ]
 
 
@@ -231,3 +233,60 @@ def fnAssertTokenOwnerBinding(sToken, sExpectedOwner):
     sReason = _fsBindingFailureReason(sToken, sExpectedOwner)
     if sReason:
         raise ValueError(sReason)
+
+
+def fdictRevokeGitHubToken(sKeyringSlot=""):
+    """Revoke a GitHub credential locally and announce upstream status.
+
+    Returns a dict describing what happened so the CLI can surface a
+    precise status to the user:
+      ``bUpstreamRevoked``  — True iff an upstream revocation call
+                              succeeded (or ``gh auth logout`` returned 0).
+      ``bLocalCleared``     — True iff the keyring slot was cleared.
+      ``sMessage``          — Human-readable summary.
+
+    Upstream PAT revocation requires a separate OAuth-app client id,
+    which vaibify doesn't have. We therefore shell out to
+    ``gh auth logout --hostname github.com`` for the gh-managed
+    credential and log a no-op message for direct PATs.
+    """
+    bUpstream, sUpstreamMessage = _ftRevokeGitHubUpstream()
+    bLocal, sLocalMessage = _ftClearLocalGithubCredential(sKeyringSlot)
+    return {
+        "bUpstreamRevoked": bUpstream,
+        "bLocalCleared": bLocal,
+        "sMessage": sUpstreamMessage + " " + sLocalMessage,
+    }
+
+
+def _ftRevokeGitHubUpstream():
+    """Best-effort ``gh auth logout`` for the github.com host."""
+    try:
+        resultProcess = subprocess.run(
+            ["gh", "auth", "logout", "--hostname", "github.com"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return (False, "gh CLI unavailable; upstream not revoked.")
+    if resultProcess.returncode == 0:
+        return (True, "gh logout for github.com succeeded.")
+    return (
+        False,
+        "Direct PATs cannot be revoked from this CLI; "
+        "revoke at github.com/settings/tokens.",
+    )
+
+
+def _ftClearLocalGithubCredential(sKeyringSlot):
+    """Delete the keyring slot for sKeyringSlot if any."""
+    if not sKeyringSlot:
+        return (False, "No keyring slot specified; nothing to clear.")
+    from vaibify.config.secretManager import fnDeleteSecret
+    try:
+        fnDeleteSecret(sKeyringSlot, "keyring")
+    except Exception as errorDelete:
+        return (
+            False,
+            f"Local clear failed: {type(errorDelete).__name__}.",
+        )
+    return (True, f"Local keyring slot '{sKeyringSlot}' cleared.")

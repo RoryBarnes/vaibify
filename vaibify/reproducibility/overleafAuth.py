@@ -21,7 +21,11 @@ from vaibify.reproducibility.askpassHelper import fsWriteExecutableScript
 __all__ = [
     "fnValidateOverleafProjectId",
     "fsWriteAskpassScript",
+    "fdictRevokeOverleafToken",
 ]
+
+
+_S_OVERLEAF_KEYRING_SLOT = "overleaf_token"
 
 
 _PROJECT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -58,3 +62,36 @@ def _fsBuildAskpassSource():
         "else:\n"
         "    print(fsRetrieveSecret('overleaf_token', 'keyring'))\n"
     )
+
+
+def fdictRevokeOverleafToken():
+    """Clear the Overleaf token from the local keyring.
+
+    Overleaf personal access tokens currently have no machine-callable
+    revocation endpoint, so the upstream side records a no-op message
+    pointing the user at the web UI. Returns a dict shaped the same
+    way as the GitHub and Zenodo revokers so the CLI can render a
+    consistent status.
+    """
+    bLocal, sLocalMessage = _ftClearLocalOverleafCredential()
+    return {
+        "bUpstreamRevoked": False,
+        "bLocalCleared": bLocal,
+        "sMessage": (
+            "Overleaf does not expose a revocation API; "
+            "revoke at overleaf.com/user/account, then "
+        ) + sLocalMessage,
+    }
+
+
+def _ftClearLocalOverleafCredential():
+    """Delete the Overleaf keyring slot if it exists."""
+    from vaibify.config.secretManager import fnDeleteSecret
+    try:
+        fnDeleteSecret(_S_OVERLEAF_KEYRING_SLOT, "keyring")
+    except Exception as errorDelete:
+        return (
+            False,
+            f"local clear failed ({type(errorDelete).__name__}).",
+        )
+    return (True, f"local slot '{_S_OVERLEAF_KEYRING_SLOT}' cleared.")

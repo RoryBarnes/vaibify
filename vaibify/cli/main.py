@@ -36,6 +36,7 @@ from .commandLs import ls
 from .commandRegister import register
 from .commandPublish import publish
 from .commandReproduce import reproduce
+from .commandRevoke import revoke
 from .commandRun import run
 from .commandStart import start
 from .commandStatus import status
@@ -157,6 +158,7 @@ main.add_command(verify_step)
 main.add_command(ls)
 main.add_command(cat)
 main.add_command(register)
+main.add_command(revoke)
 main.add_command(test)
 main.add_command(generate_standards)
 main.add_command(doctor)
