@@ -1615,34 +1615,30 @@ def _fnValidateArxivPathMap(dictPathMap):
         _fnValidateArxivPathSegment(sTarball, "dictPathMap value")
 
 
+def _fnRaiseArxivSegment(sFieldLabel, sReason):
+    """Raise HTTP 400 with the standard arxiv path-segment error shape."""
+    raise HTTPException(
+        status_code=400,
+        detail=f"{sFieldLabel} must {sReason}.",
+    )
+
+
 def _fnValidateArxivPathSegment(sSegment, sFieldLabel):
     """Reject one path-map string for empty/null-byte/parent-escape problems."""
     if not isinstance(sSegment, str) or sSegment == "":
-        raise HTTPException(
-            status_code=400,
-            detail=f"{sFieldLabel} must be a non-empty string.",
-        )
+        _fnRaiseArxivSegment(sFieldLabel, "be a non-empty string")
     if "\x00" in sSegment:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{sFieldLabel} must not contain null bytes.",
-        )
+        _fnRaiseArxivSegment(sFieldLabel, "not contain null bytes")
     if sSegment.startswith("/"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"{sFieldLabel} must not be absolute (leading '/').",
-        )
+        _fnRaiseArxivSegment(
+            sFieldLabel, "not be absolute (leading '/')")
     for sPart in sSegment.split("/"):
         if sPart == "..":
-            raise HTTPException(
-                status_code=400,
-                detail=f"{sFieldLabel} must not contain '..' segments.",
-            )
+            _fnRaiseArxivSegment(
+                sFieldLabel, "not contain '..' segments")
         if sPart.startswith("~"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{sFieldLabel} must not contain '~' segments.",
-            )
+            _fnRaiseArxivSegment(
+                sFieldLabel, "not contain '~' segments")
 
 
 def _fdictBuildArxivConfig(request):
