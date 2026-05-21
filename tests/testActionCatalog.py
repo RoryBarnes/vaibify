@@ -62,6 +62,13 @@ def test_fdictLookupAction_empty_string_returns_none():
     assert actionCatalog.fdictLookupAction("") is None
 
 
+def test_init_project_repo_is_not_agent_safe():
+    """init-project-repo is a structural decision; agent must not invoke."""
+    dictEntry = actionCatalog.fdictLookupAction("init-project-repo")
+    assert dictEntry is not None
+    assert dictEntry["bAgentSafe"] is False
+
+
 # -----------------------------------------------------------------------
 # fdictBuildCatalogJson
 # -----------------------------------------------------------------------

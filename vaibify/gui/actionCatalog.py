@@ -208,13 +208,17 @@ LIST_AGENT_ACTIONS = [
     {"sName": "init-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/repos/{sContainerId}/init",
-     "bAgentSafe": True,
+     "bAgentSafe": False,
      "sDescription": "Initialize a /workspace/<sDirectory> as a git "
                      "repository so it can host vaibify workflows. "
                      "Args: {sDirectory: str, bCreateIfMissing: bool}. "
                      "Creates an empty initial commit so downstream "
                      "diff/marker logic has a parent. 409 if the "
-                     "target is already a git repo."},
+                     "target is already a git repo. Demoted to "
+                     "bAgentSafe=False: creating a project repo is a "
+                     "structural decision the researcher should make "
+                     "explicitly, not one the agent should improvise "
+                     "in response to ambiguous instructions."},
     {"sName": "fetch-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/git/{sContainerId}/fetch-project-repo",
