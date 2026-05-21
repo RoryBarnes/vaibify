@@ -1,6 +1,12 @@
 # Vaibify — Jupyter overlay
 #
-# Adds JupyterLab on top of the base image.
+# Adds JupyterLab on top of the base image. JupyterLab is bound to the
+# container's loopback only; the host reaches it via the docker port
+# forward, which itself binds 127.0.0.1 (see containerManager). A
+# per-session token is generated and written to an ephemeral mode-600
+# file inside the container at start time — the file is read by the
+# vaibify GUI when the user clicks "Open Jupyter" and is overwritten
+# each time the container starts.
 
 ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
@@ -11,4 +17,12 @@ RUN pip install --no-cache-dir jupyterlab
 
 EXPOSE 8888
 
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
+CMD ["/bin/bash", "-c", "\
+    install -m 0700 -d /run/vaibify && \
+    install -m 0600 /dev/null /run/vaibify/jupyter-token && \
+    python3 -c 'import secrets,sys; sys.stdout.write(secrets.token_urlsafe(32))' \
+        > /run/vaibify/jupyter-token && \
+    JUPYTER_TOKEN=$(cat /run/vaibify/jupyter-token) && \
+    exec jupyter lab \
+        --ip=127.0.0.1 --port=8888 --no-browser \
+        --ServerApp.token=\"$JUPYTER_TOKEN\""]
