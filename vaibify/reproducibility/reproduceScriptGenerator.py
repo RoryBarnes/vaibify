@@ -11,11 +11,18 @@ the repo (and therefore pinned in ``MANIFEST.sha256``). The
 ``manifestWriter`` envelope already covers files at the repo root, so
 no additional wiring is needed beyond regenerating the manifest after
 ``fnGenerateReproduceScript`` writes a new script body.
+
+Note on host-vs-container paths: ``sProjectRepo`` here is the
+container-side path (e.g. ``/workspace/foo``). The FastAPI process
+runs on the host, so a naive ``Path.write_text`` would write to a
+host file that happens to share the container's absolute path —
+which silently leaks artefacts onto the host and never reaches the
+repo inside the container. The writer therefore takes a docker
+connection and routes the bytes through ``fnWriteFile`` /
+``ftResultExecuteCommand``.
 """
 
-import os
-import stat
-from pathlib import Path
+import posixpath
 
 
 __all__ = [
@@ -53,24 +60,49 @@ _S_SCRIPT_EPILOGUE = """\
 """
 
 
-def fnGenerateReproduceScript(sProjectRepo, dictWorkflow):
-    """Write ``reproduce.sh`` to the project repo root, chmod +x.
+def fnGenerateReproduceScript(
+    sProjectRepo, dictWorkflow,
+    connectionDocker=None, sContainerId="",
+):
+    """Write ``reproduce.sh`` inside the container at the project repo root.
 
     Idempotent: writing the same workflow twice produces the same
-    bytes. Returns the absolute path written so callers can update
-    the manifest or surface the path to the user.
+    bytes. Returns the container-absolute path written so callers can
+    update the manifest or surface the path to the user.
+
+    Routes the write through ``connectionDocker.fnWriteFile`` because
+    ``sProjectRepo`` is a container path (e.g. ``/workspace/foo``);
+    a host-side ``Path.write_text`` would land in a host file at the
+    same absolute path rather than inside the container. Both
+    ``connectionDocker`` and ``sContainerId`` are required; passing
+    either as falsy raises ``ValueError`` so callers can never silently
+    fall back to the host path.
     """
+    if connectionDocker is None or not sContainerId:
+        raise ValueError(
+            "fnGenerateReproduceScript requires a docker connection "
+            "and container id; reproduce.sh must be written inside "
+            "the container because sProjectRepo is a container path."
+        )
     sScript = fsRenderReproduceScript(dictWorkflow)
-    pathOutput = Path(sProjectRepo) / S_REPRODUCE_SCRIPT_FILENAME
-    pathOutput.write_text(sScript, encoding="utf-8")
-    _fnMarkExecutable(pathOutput)
-    return str(pathOutput)
+    sContainerPath = posixpath.join(
+        sProjectRepo, S_REPRODUCE_SCRIPT_FILENAME,
+    )
+    connectionDocker.fnWriteFile(
+        sContainerId, sContainerPath, sScript.encode("utf-8"),
+    )
+    _fnMarkExecutableInContainer(
+        connectionDocker, sContainerId, sContainerPath,
+    )
+    return sContainerPath
 
 
-def _fnMarkExecutable(pathOutput):
-    """Add owner+group+other execute bits to the script file."""
-    iMode = pathOutput.stat().st_mode
-    pathOutput.chmod(iMode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+def _fnMarkExecutableInContainer(
+    connectionDocker, sContainerId, sContainerPath,
+):
+    """Add owner+group+other execute bits to a container-side file."""
+    sCommand = "chmod a+x " + _fsShellQuote(sContainerPath)
+    connectionDocker.ftResultExecuteCommand(sContainerId, sCommand)
 
 
 def fsRenderReproduceScript(dictWorkflow):

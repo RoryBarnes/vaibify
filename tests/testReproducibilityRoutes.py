@@ -544,18 +544,56 @@ def test_persist_attestation_logs_on_oserror(fixtureProjectRepo, caplog):
 # ============================================================================
 
 
-def test_generate_reproduce_script_writes_to_repo(
-    fixtureClient, fixtureWorkflow,
+class _FakeDockerForScript:
+    """Capture writes + commands so we can assert nothing reaches the host."""
+
+    def __init__(self):
+        self.dictWritten = {}
+        self.listCommands = []
+
+    def fnWriteFile(self, sContainerId, sFilePath, baContent):
+        self.dictWritten[(sContainerId, sFilePath)] = baContent
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        self.listCommands.append((sContainerId, sCommand))
+        return (0, "")
+
+
+def test_generate_reproduce_script_writes_to_container_not_host(
+    fixtureWorkflow, tmp_path,
 ):
-    """The generate-script endpoint writes reproduce.sh and returns its path."""
-    response = fixtureClient.post(
+    """The endpoint must write inside the container, never to the host."""
+    fakeDocker = _FakeDockerForScript()
+    fixtureWorkflow["sProjectRepoPath"] = "/workspace/foo"
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
+    dictCtx = {
+        "docker": fakeDocker,
+        "workflows": {S_CONTAINER_ID: fixtureWorkflow},
+        "paths": {}, "pipelineTasks": {}, "sourceCodeDeps": {},
+        "setAllowedContainers": {S_CONTAINER_ID},
+        "sSessionToken": "tok",
+        "require": lambda: None,
+        "save": lambda sId, dictWf: None,
+        "variables": lambda sId: {},
+        "workflowDir": lambda sId: "/workspace/foo",
+    }
+    fnRegisterAll(app, dictCtx)
+    clientTest = TestClient(app)
+    response = clientTest.post(
         f"/api/workflow/{S_CONTAINER_ID}/level3/reproduce-script",
     )
     assert response.status_code == 200
     dictBody = response.json()
     assert dictBody["bWritten"] is True
     assert dictBody["sScriptFilename"] == "reproduce.sh"
-    assert os.path.isfile(dictBody["sScriptPath"])
+    assert dictBody["sScriptPath"] == "/workspace/foo/reproduce.sh"
+    sHostShadow = "/workspace/foo/reproduce.sh"
+    assert not os.path.exists(sHostShadow)
+    assert (S_CONTAINER_ID, "/workspace/foo/reproduce.sh") in (
+        fakeDocker.dictWritten
+    )
 
 
 def test_generate_reproduce_script_requires_project_repo(

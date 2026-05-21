@@ -345,6 +345,8 @@ def _fnRegisterGenerateScript(app, dictCtx):
         try:
             sPathWritten = fnGenerateReproduceScript(
                 sProjectRepo, dictWorkflow,
+                connectionDocker=dictCtx["docker"],
+                sContainerId=sContainerId,
             )
         except OSError as exc:
             raise HTTPException(
