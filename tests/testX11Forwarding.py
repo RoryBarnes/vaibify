@@ -141,10 +141,30 @@ def test_grantLocalUserXhostAccess_tolerates_missing_xhost(mockRun):
     mockRun.assert_called_once()
 
 
+@patch.dict("os.environ", {"USER": "alice"}, clear=False)
 @patch("vaibify.docker.x11Forwarding.subprocess.run", side_effect=FileNotFoundError)
 def test_disableX11Auth_tolerates_missing_xhost(mockRun):
     fnDisableX11Auth()
     mockRun.assert_called_once()
+
+
+@patch.dict("os.environ", {"USER": "alice"}, clear=False)
+@patch("vaibify.docker.x11Forwarding.subprocess.run")
+def test_disableX11Auth_uses_SI_localuser(mockRun):
+    """Audit H4: macOS xhost must scope grant to the current local user."""
+    fnDisableX11Auth()
+    saCallArgs = mockRun.call_args[0][0]
+    assert saCallArgs[0] == "xhost"
+    assert saCallArgs[1] == "+SI:localuser:alice"
+    assert "+localhost" not in saCallArgs
+
+
+@patch.dict("os.environ", {"USER": ""}, clear=False)
+@patch("vaibify.docker.x11Forwarding.subprocess.run")
+def test_disableX11Auth_no_op_when_user_unset(mockRun):
+    """Audit H4: no grant at all when USER is unknown."""
+    fnDisableX11Auth()
+    mockRun.assert_not_called()
 
 
 @patch("vaibify.docker.x11Forwarding.subprocess.run", side_effect=FileNotFoundError)

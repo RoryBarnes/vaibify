@@ -241,5 +241,16 @@ def _fbProcessIsRunning(sProcessName):
 
 
 def fnDisableX11Auth():
-    """Allow Docker X11 connections on macOS by running xhost +localhost."""
-    _fnRunBestEffort(["xhost", "+localhost"])
+    """Allow Docker X11 connections on macOS via ``xhost +SI:localuser:$USER``.
+
+    The previous ``xhost +localhost`` form opens the display server to
+    every loopback client on the host, including processes owned by
+    other local users on a multi-user Mac. XQuartz supports the
+    server-interpreted ``SI:localuser:$USER`` form (the same form the
+    Linux path already uses), which scopes the grant to the current
+    macOS user.
+    """
+    sUser = os.environ.get("USER", "")
+    if not sUser:
+        return
+    _fnRunBestEffort(["xhost", "+SI:localuser:" + sUser])
