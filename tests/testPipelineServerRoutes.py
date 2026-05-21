@@ -254,6 +254,15 @@ def test_connect_rejects_workflow_outside_vaibify_workflows(clientHttp):
     assert responseHttp.status_code == 400
 
 
+def test_connect_rejects_json_outside_workspace_root(clientHttp):
+    """Right .json extension but workspace-escape root must still fail."""
+    responseHttp = clientHttp.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": "/etc/shadow.json"},
+    )
+    assert responseHttp.status_code in (400, 403)
+
+
 # ── User info ─────────────────────────────────────────────────
 
 
