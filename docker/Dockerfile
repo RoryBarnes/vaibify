@@ -40,7 +40,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     software-properties-common \
     gosu \
-    sudo \
     nano \
     vim \
     pkg-config \
