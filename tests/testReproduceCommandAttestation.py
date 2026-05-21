@@ -118,14 +118,15 @@ def test_recorded_image_digest_prefers_nested_field(tmp_path):
     )
 
 
-def test_recorded_image_digest_returns_empty_when_nested_present_but_empty(tmp_path):
-    """Line 507: a dict-typed dictContainer takes precedence; empty nested wins.
+def test_recorded_image_digest_falls_back_to_flat_when_nested_empty(tmp_path):
+    """Lines 506-510: an empty nested digest must fall back to the flat key.
 
-    Note: this differs from environmentSnapshot._fsExtractImageDigest,
-    which explicitly falls back to the flat key when the nested value
-    is empty. ``commandReproduce._fsRecordedImageDigest`` does NOT
-    fall back — it returns the (empty) nested digest. This divergence
-    is a bug surfaced by the audit, not a deliberate design choice.
+    Mirrors environmentSnapshot._fsExtractImageDigest. Earlier audit
+    pinned the previous (buggy) behaviour where an empty nested digest
+    short-circuited without trying the flat key; that behaviour was a
+    bug and has been corrected. This test now asserts the fixed
+    semantics so the divergence with environmentSnapshot cannot
+    silently return.
     """
     pathDir = tmp_path / ".vaibify"
     pathDir.mkdir(parents=True, exist_ok=True)
@@ -133,8 +134,43 @@ def test_recorded_image_digest_returns_empty_when_nested_present_but_empty(tmp_p
         "dictContainer": {"sImageDigest": ""},
         "sImageDigest": "flat@sha256:def",
     }))
-    # Behavior pinned: nested-empty short-circuits without flat fallback.
-    assert commandReproduce._fsRecordedImageDigest(str(tmp_path)) == ""
+    assert (
+        commandReproduce._fsRecordedImageDigest(str(tmp_path))
+        == "flat@sha256:def"
+    )
+
+
+def test_recorded_image_digest_agrees_with_environmentSnapshot_extractor(tmp_path):
+    """Regression guard: the two helpers must agree on every layout.
+
+    ``commandReproduce._fsRecordedImageDigest`` and
+    ``environmentSnapshot._fsExtractImageDigest`` both read the same
+    environment.json layouts; they previously diverged on the
+    empty-nested case (see the test above). Lock them in lockstep
+    here so any future drift fails this test loudly.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        _fsExtractImageDigest,
+    )
+    listLayouts = [
+        {"dictContainer": {"sImageDigest": "nested@sha256:abc"}},
+        {"dictContainer": {"sImageDigest": ""},
+         "sImageDigest": "flat@sha256:def"},
+        {"sImageDigest": "flat@sha256:def"},
+        {"dictContainer": "not-a-dict",
+         "sImageDigest": "flat@sha256:def"},
+        {},
+    ]
+    for dictLayout in listLayouts:
+        pathDir = tmp_path / ".vaibify"
+        pathDir.mkdir(parents=True, exist_ok=True)
+        (pathDir / "environment.json").write_text(json.dumps(dictLayout))
+        sFromCli = commandReproduce._fsRecordedImageDigest(str(tmp_path))
+        sFromSnapshot = _fsExtractImageDigest(dictLayout)
+        assert sFromCli == sFromSnapshot, (
+            f"divergence on layout {dictLayout!r}: "
+            f"cli={sFromCli!r} snapshot={sFromSnapshot!r}"
+        )
 
 
 def test_recorded_image_digest_uses_flat_when_no_nested_field(tmp_path):
