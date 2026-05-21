@@ -1205,6 +1205,11 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     fnRunStartupSequence
     fnWriteReadinessMarker "ok" ""
     trap - EXIT
-    chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
+    # --no-dereference: do not follow symlinks that point outside the
+    # workspace. A malicious or careless symlink in the workspace tree
+    # would otherwise let this recursive chown rewrite ownership of
+    # arbitrary host-mounted paths reachable through the link.
+    chown -R --no-dereference \
+        "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
     exec gosu "${CONTAINER_USER}" "$@"
 fi

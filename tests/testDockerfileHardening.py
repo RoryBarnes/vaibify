@@ -79,3 +79,17 @@ def test_jupyter_overlay_generates_per_session_token():
     assert "secrets.token_urlsafe" in sContent
     assert "0600" in sContent
     assert "ServerApp.token" in sContent
+
+
+# -----------------------------------------------------------------------
+# Entrypoint chown safety (M5)
+# -----------------------------------------------------------------------
+
+
+def test_entrypoint_chown_does_not_follow_symlinks():
+    """Audit M5: recursive chown must not dereference symlinks."""
+    sContent = _fsReadEntrypoint()
+    iIdx = sContent.find("chown -R")
+    assert iIdx >= 0, "expected recursive chown in entrypoint"
+    sChownLine = sContent[iIdx:iIdx + 200]
+    assert "--no-dereference" in sChownLine
