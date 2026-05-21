@@ -127,6 +127,7 @@ class StepUpdateRequest(BaseModel):
     dictRunStats: Optional[dict] = None
     dictPlotFileCategories: Optional[dict] = None
     dictDataFileCategories: Optional[dict] = None
+    bConfirmDestructive: bool = False
 
 
 class ReorderRequest(BaseModel):

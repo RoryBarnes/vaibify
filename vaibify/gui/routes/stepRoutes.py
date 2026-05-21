@@ -135,13 +135,17 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        dictUpdates = _fdictExtractStepUpdates(request)
+        _fnRequireDestructiveConfirm(
+            dictWorkflow, iStepIndex, dictUpdates,
+            request.bConfirmDestructive,
+        )
         iLevelBefore = fiAICSLevel(
             dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
         )
         try:
             workflowManager.fnUpdateStep(
-                dictWorkflow, iStepIndex,
-                fdictFilterNonNone(request.model_dump()),
+                dictWorkflow, iStepIndex, dictUpdates,
             )
         except IndexError as error:
             raise HTTPException(404, str(error))
@@ -151,6 +155,35 @@ def _fnRegisterStepUpdate(app, dictCtx):
             iStepIndex, iLevelBefore,
         )
         return fdictStepWithLabel(dictWorkflow, iStepIndex)
+
+
+def _fdictExtractStepUpdates(request):
+    """Return the non-None update dict with the confirm flag stripped."""
+    dictRaw = request.model_dump()
+    dictRaw.pop("bConfirmDestructive", None)
+    return fdictFilterNonNone(dictRaw)
+
+
+def _fnRequireDestructiveConfirm(
+    dictWorkflow, iStepIndex, dictUpdates, bConfirm,
+):
+    """Refuse edits that empty saTestCommands/saDataFiles unless confirmed."""
+    if bConfirm:
+        return
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        return
+    dictStep = listSteps[iStepIndex]
+    for sKey in ("saTestCommands", "saDataFiles"):
+        listNew = dictUpdates.get(sKey)
+        if listNew is None or listNew:
+            continue
+        if dictStep.get(sKey):
+            raise HTTPException(
+                400,
+                f"Refusing to empty {sKey} without "
+                f"bConfirmDestructive=true",
+            )
 
 
 def _fnRegisterStepDelete(app, dictCtx):
