@@ -21,9 +21,54 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
     fnBuildImage = _fImportBuildOrExit()
     fnPrepareBuildContext(config, sDockerDir)
     bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
+    fnWarnIfBaseImageFloating(config)
     fnBuildImage(config, sDockerDir, bNoCache=bEffectiveNoCache)
+    fnRecordBaseImageDigestIfFloating(config)
     fnRecordBuildArgHash(config)
     fnPruneDanglingImages()
+
+
+def fbBaseImageIsFloating(config):
+    """Return True iff the configured base image lacks an @sha256: pin."""
+    sBaseImage = getattr(config, "sBaseImage", "") or ""
+    return "@sha256:" not in sBaseImage
+
+
+def fnWarnIfBaseImageFloating(config):
+    """Print a clear stdout warning when sBaseImage is a floating tag.
+
+    L3 attestation requires a digest pin so a reproducer can pull the
+    exact bytes that produced the figures. A floating ``ubuntu:24.04``
+    tag silently drifts as upstream republishes the image; we warn now
+    and capture the resolved digest after the build so attestation has
+    a record even when the user config is loose.
+    """
+    if not fbBaseImageIsFloating(config):
+        return
+    sBaseImage = getattr(config, "sBaseImage", "") or ""
+    click.echo(
+        f"[vaib] Warning: baseImage '{sBaseImage}' has no @sha256: "
+        "digest pin. The resolved digest will be captured into "
+        ".vaibify/environment.json so L3 attestation can record the "
+        "exact bytes; for a stronger guarantee, pin the digest in "
+        "vaibify.yml."
+    )
+
+
+def fnRecordBaseImageDigestIfFloating(config):
+    """Capture the resolved base-image digest into environment.json.
+
+    Runs after the build so ``docker pull`` (implicit during build)
+    has populated the local image cache with ``RepoDigests``. Silently
+    skips when the image was already pinned or when the digest cannot
+    be resolved — the warning printed earlier already told the user.
+    """
+    if not fbBaseImageIsFloating(config):
+        return
+    sDigest = _fsResolveBaseImageDigest(config)
+    if not sDigest:
+        return
+    _fnPersistBaseImageDigest(config, sDigest)
 
 
 def _fImportBuildOrExit():
@@ -101,6 +146,69 @@ def fnRecordBuildArgHash(config):
     sPath = _fsBuildArgHashPath(config.sProjectName)
     with open(sPath, "w") as fileHandle:
         fileHandle.write(fsBuildArgHash(config) + "\n")
+
+
+def _fsResolveBaseImageDigest(config):
+    """Return ``<image>@sha256:...`` for config.sBaseImage, or empty.
+
+    Inspects the locally cached base image (``docker build`` will have
+    pulled it as part of the base-layer build) and returns the first
+    ``RepoDigests`` entry. An empty return value means the image was
+    built locally and has no pinned upstream digest, or docker is not
+    reachable on this host.
+    """
+    sBaseImage = getattr(config, "sBaseImage", "") or ""
+    if not sBaseImage:
+        return ""
+    try:
+        resultProcess = subprocess.run(
+            ["docker", "image", "inspect",
+             "--format", "{{.RepoDigests}}", sBaseImage],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if resultProcess.returncode != 0:
+        return ""
+    return _fsFirstRepoDigest(resultProcess.stdout)
+
+
+def _fsFirstRepoDigest(sRawOutput):
+    """Extract the first ``image@sha256:...`` token from docker output."""
+    sStripped = (sRawOutput or "").strip().strip("[]").strip()
+    if not sStripped:
+        return ""
+    sFirst = sStripped.split()[0]
+    if "@sha256:" not in sFirst:
+        return ""
+    return sFirst
+
+
+def _fnPersistBaseImageDigest(config, sDigest):
+    """Update ``.vaibify/environment.json`` with the resolved digest.
+
+    Reads the existing payload if any, merges the new pin under
+    ``sBaseImageDigest`` (distinct from ``sImageDigest`` which is the
+    final container's digest), and writes it back atomically. Silent
+    on disk-write failure; this is best-effort capture.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictReadEnvironmentJson, fnWriteEnvironmentJson,
+    )
+    try:
+        sProjectRepo = _fsProjectDirectory()
+    except Exception:
+        return
+    if not sProjectRepo:
+        return
+    dictExisting = fdictReadEnvironmentJson(sProjectRepo) or {}
+    dictExisting["sBaseImageDigest"] = sDigest
+    dictExisting["sConfiguredBaseImage"] = getattr(
+        config, "sBaseImage", "") or ""
+    try:
+        fnWriteEnvironmentJson(sProjectRepo, dictExisting)
+    except OSError:
+        return
 
 
 def fnPruneDanglingImages():
