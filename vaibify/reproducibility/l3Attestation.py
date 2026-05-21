@@ -10,6 +10,30 @@ researcher can audit history without losing the most-recent record.
 The attestation is keyed against the live MANIFEST digest: if
 ``MANIFEST.sha256`` changes after attestation, the gate falls back
 to L2 and the stale-attestation banner surfaces in the dashboard.
+
+Schema versioning
+-----------------
+``I_SCHEMA_VERSION`` is the version every fresh attestation carries;
+``fdictReadAttestation`` migrates older records forward through the
+``_LIST_ATTESTATION_MIGRATORS`` chain before returning, so callers
+always see the current shape. The list is empty at v1 because no
+migration is needed yet. Two extension points are anticipated:
+
+* **L4 ("Archived")** will add input-provenance keys
+  (e.g. ``listInputDigests``, ``sCommitSha``) that pin not just
+  outputs but also the inputs that produced them. An L4 record bumps
+  ``iSchemaVersion`` to 2; the migrator at index 0 fills the new
+  keys with safe defaults so L1-L3 readers can still parse a v2
+  record without crashing.
+* **L5 ("Attested")** will generalize the single-attestor block
+  (``sStatus``, ``sAttestedAtUtc``) to ``listAttestations: [
+  {sAttestor, sAttestedAtUtc, sStatus}, ...]`` so external auditors
+  can co-sign. An L5 record bumps ``iSchemaVersion`` to 3; the
+  migrator at index 1 wraps the legacy single-attestor fields into
+  the new list shape.
+
+Adding a future migrator is one tuple append: see
+``_fdictMigrateAttestation`` for the contract.
 """
 
 import json
@@ -41,6 +65,12 @@ S_STATUS_PASSED = "passed"
 S_STATUS_FAILED = "failed"
 _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 
+# Forward-migration chain for older attestation records. Each entry is
+# (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
+# v=iFromVersion record into v=iFromVersion+1 form. Empty at v1; future
+# L4 / L5 work appends one tuple each. See module docstring.
+_LIST_ATTESTATION_MIGRATORS = []
+
 
 def fsCurrentManifestDigest(sProjectRepo):
     """Return the SHA-256 of ``MANIFEST.sha256`` or the empty string.
@@ -62,8 +92,18 @@ def fdictReadAttestation(sProjectRepo):
 
     Missing file, malformed JSON, and non-dict payload all map to
     ``None`` so the L3 gate (and the dashboard banner) treat them
-    uniformly as "no attestation on file".
+    uniformly as "no attestation on file". A successfully-parsed
+    record is walked through ``_LIST_ATTESTATION_MIGRATORS`` so
+    callers always see the current schema shape.
     """
+    dictRaw = _fdictReadRaw(sProjectRepo)
+    if dictRaw is None:
+        return None
+    return _fdictMigrateAttestation(dictRaw)
+
+
+def _fdictReadRaw(sProjectRepo):
+    """Return the parsed attestation file as-written, or ``None``."""
     pathFile = _fpathAttestationFile(sProjectRepo)
     if not pathFile.is_file():
         return None
@@ -74,6 +114,24 @@ def fdictReadAttestation(sProjectRepo):
         return None
     if not isinstance(dictPayload, dict):
         return None
+    return dictPayload
+
+
+def _fdictMigrateAttestation(dictPayload):
+    """Walk ``_LIST_ATTESTATION_MIGRATORS`` to bring a record current.
+
+    Each migrator transforms a v=iFromVersion record into v=iFromVersion+1
+    form. Records already at the head version pass through untouched
+    (no migrator matches). An unknown future version (e.g. v=99 from a
+    newer client) is returned as-is rather than dropped, so the gate
+    falls back to "unknown shape" handling instead of silently losing
+    the attestation.
+    """
+    iCurrent = dictPayload.get("iSchemaVersion", 1)
+    for iFrom, fnMigrate in _LIST_ATTESTATION_MIGRATORS:
+        if iCurrent == iFrom:
+            dictPayload = fnMigrate(dictPayload)
+            iCurrent = dictPayload.get("iSchemaVersion", iFrom + 1)
     return dictPayload
 
 
