@@ -199,3 +199,65 @@ def test_commit_canonical_409_when_project_repo_missing():
 
     assert response.status_code == 409
     assert "Project repo not detected" in response.json()["detail"]
+
+
+def test_commit_canonical_restricts_commit_to_curated_pathspec():
+    """Pre-staged user file (data/evil.py) does NOT end up in the commit."""
+    sRepo = "/workspace/DemoRepo"
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [],
+        "sProjectRepoPath": sRepo,
+        "dictSyncStatus": {},
+    }
+    # Porcelain v2 reports two index-only entries: the canonical
+    # workflow file (uncommitted, will be included) and an attacker-
+    # staged user file (must NOT be included in the curated commit).
+    sH = "a" * 40
+    sI = "b" * 40
+    sPorcelain = (
+        "# branch.head main\n"
+        f"1 A. N... 000000 100644 100644 {sH} {sI} "
+        f".vaibify/workflows/demo.json\n"
+        f"1 A. N... 000000 100644 100644 {sH} {sI} "
+        f"data/evil.py\n"
+    )
+    sTrackedJson = json.dumps([
+        ".vaibify/workflows/demo.json",
+    ]) + "\n"
+    listIssued = []
+
+    def _fExec(sContainerId, sCommand, **_kw):
+        listIssued.append(sCommand)
+        if "rev-parse --is-inside-work-tree" in sCommand:
+            return (0, "true\n")
+        if "status --porcelain=v2" in sCommand:
+            return (0, sPorcelain)
+        if "rev-parse HEAD" in sCommand:
+            return (0, "b" * 40 + "\n")
+        if "python3 -c" in sCommand and "glob" in sCommand:
+            return (0, sTrackedJson)
+        return (0, "")
+
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.side_effect = _fExec
+    app = _fdictBuildRoutesApp(mockDocker, dictWorkflow)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/git/cid-demo/commit-canonical",
+        json={"sCommitMessage": "canonical"},
+    )
+
+    assert response.status_code == 200
+    listCommitCmds = [
+        s for s in listIssued
+        if "commit -m" in s
+    ]
+    assert listCommitCmds, "commit command should have been issued"
+    for sCmd in listCommitCmds:
+        assert "data/evil.py" not in sCmd, (
+            "User-staged file must not appear in canonical commit "
+            "pathspec"
+        )
+        assert " -- " in sCmd

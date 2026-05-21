@@ -263,17 +263,26 @@ def ftResultGitAddInContainer(
 
 def ftResultGitCommitInContainer(
     connectionDocker, sContainerId, sCommitMessage,
-    sWorkspace=S_CONTAINER_WORKSPACE,
+    sWorkspace=S_CONTAINER_WORKSPACE, listFilePaths=None,
 ):
-    """git commit -m in the container; returns (rc, stdout)."""
+    """git commit -m in the container; returns (rc, stdout).
+
+    When listFilePaths is provided, only those explicit pathspecs are
+    committed via ``git commit -m ... -- <paths>``; anything else
+    already staged is left alone.
+    """
     sHardening = _fsHardeningPrefix()
-    sCommand = (
+    sBase = (
         "cd " + shlex.quote(sWorkspace) + " && "
         "git " + sHardening + " commit -m " +
         shlex.quote(sCommitMessage)
     )
+    if listFilePaths:
+        sBase += " -- " + " ".join(
+            shlex.quote(s) for s in listFilePaths
+        )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
+        sContainerId, sBase,
     )
 
 

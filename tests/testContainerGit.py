@@ -272,6 +272,29 @@ def test_ftResultGitAddInContainer_quotes_paths_with_spaces():
     assert "'my file.py'" in sCmd
 
 
+def test_ftResultGitCommitInContainer_restricts_to_pathspec():
+    """When listFilePaths is provided, commit -- restricts the index."""
+    docker = _FakeDocker([("git", 0, "")])
+    containerGit.ftResultGitCommitInContainer(
+        docker, "cid", "my message",
+        listFilePaths=["workflow.json", ".vaibify/test_markers/m.json"],
+    )
+    sCmd = docker.listCommands[0]
+    assert "commit -m 'my message'" in sCmd
+    assert " -- workflow.json" in sCmd
+    assert ".vaibify/test_markers/m.json" in sCmd
+
+
+def test_ftResultGitCommitInContainer_no_pathspec_when_none():
+    """When listFilePaths is None, no -- pathspec is appended."""
+    docker = _FakeDocker([("git", 0, "")])
+    containerGit.ftResultGitCommitInContainer(
+        docker, "cid", "my message",
+    )
+    sCmd = docker.listCommands[0]
+    assert " -- " not in sCmd
+
+
 # ----------------------------------------------------------------------
 # fsDetectProjectRepoInContainer
 # ----------------------------------------------------------------------
