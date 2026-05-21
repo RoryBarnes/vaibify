@@ -456,7 +456,13 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST", "/api/repos/{sContainerId}/{sRepoName}/push-staged"),
     ("POST", "/api/repos/{sContainerId}/{sRepoName}/push-files"),
     # Dependency / script scans — triggered by the UI's poll loop,
-    # not by a researcher clicking a button.
+    # not by a researcher clicking a button. These handlers are
+    # read-only: they walk the step's saScripts and saDataCommands to
+    # report what the source code touches, never mutate workflow.json,
+    # never write to the container filesystem, never reach the network.
+    # Invariant: a scan must produce the same dictWorkflow on disk
+    # before and after the call. Exclusion is safe so long as that
+    # invariant holds.
     ("POST",
      "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"),
     ("POST",
