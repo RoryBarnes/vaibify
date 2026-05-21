@@ -1231,6 +1231,12 @@ def _fnRegisterDatasetDownload(app, dictCtx):
     ):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fnValidateZenodoDestination(
+            request.sDestination, dictWorkflow,
+        )
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultDownloadDataset,
             dictCtx["docker"], sContainerId,
@@ -1241,6 +1247,23 @@ def _fnRegisterDatasetDownload(app, dictCtx):
             raise HTTPException(
                 500, f"Download failed: {sOut}")
         return {"bSuccess": True}
+
+
+def _fnValidateZenodoDestination(sDestination, dictWorkflow):
+    """Refuse absolute or ..-escaping destinations; scope to project repo."""
+    if "\x00" in (sDestination or ""):
+        raise HTTPException(400, "sDestination contains null byte")
+    if posixpath.isabs(sDestination):
+        raise HTTPException(
+            400, "sDestination must be repo-relative, not absolute")
+    sNorm = posixpath.normpath(sDestination)
+    if sNorm == ".." or sNorm.startswith("../"):
+        raise HTTPException(
+            400, "sDestination must not escape the project repo")
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if sProjectRepoPath:
+        sCandidate = posixpath.join(sProjectRepoPath, sNorm)
+        fnValidatePathWithinRoot(sCandidate, sProjectRepoPath)
 
 
 def _fnRegisterOverleafMirrorRefresh(app, dictCtx):

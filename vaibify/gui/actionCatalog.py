@@ -291,7 +291,9 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/zenodo/{sContainerId}/download",
      "bAgentSafe": True,
      "sDescription": "Pull a dataset from a Zenodo record. "
-                     "Args: {sRecordId, sFileName, sDestination}."},
+                     "Args: {sRecordId, sFileName, sDestination}. "
+                     "sDestination must be repo-relative; "
+                     "absolute or ..-escaping values are rejected."},
     {"sName": "verify-remote", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/sync/{sContainerId}/{sService}/verify",
