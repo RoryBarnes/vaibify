@@ -298,6 +298,106 @@ def _fdictBuildSaveRunResponse(bPassed, resultExec):
     }
 
 
+# Category name (request body) -> (dictTests key, dictVerification key).
+_DICT_TEST_CATEGORY_KEYS = {
+    "integrity": ("dictIntegrity", "sIntegrity"),
+    "qualitative": ("dictQualitative", "sQualitative"),
+    "quantitative": ("dictQuantitative", "sQuantitative"),
+}
+
+
+def _ftResolveCategoryKeys(sCategory):
+    """Return ``(sDictKey, sVerifKey)`` or raise HTTP 400 for an unknown name."""
+    if sCategory not in _DICT_TEST_CATEGORY_KEYS:
+        raise HTTPException(400, f"Unknown category: {sCategory}")
+    return _DICT_TEST_CATEGORY_KEYS[sCategory]
+
+
+def _ftRequireCategoryCommands(dictStep, sDictKey, sCategory):
+    """Return ``(listCmds, dictCat)`` or raise HTTP 400 when no commands exist."""
+    dictCat = dictStep.get("dictTests", {}).get(sDictKey, {})
+    listCmds = dictCat.get("saCommands", [])
+    if not listCmds:
+        raise HTTPException(
+            400, f"No commands for category: {sCategory}",
+        )
+    return listCmds, dictCat
+
+
+def _fdictResolveCategoryContext(
+    dictCtx, sContainerId, iStepIndex, sCategory,
+):
+    """Resolve workflow, step, category and pre-run AICS level for a request.
+
+    Returns a tuple of (dictWorkflow, dictStep, dictCat, listCmds,
+    sVerifKey, iLevelBefore). All HTTP errors raise here so the handler
+    body stays linear.
+    """
+    sDictKey, sVerifKey = _ftResolveCategoryKeys(sCategory)
+    dictWorkflow = fdictRequireWorkflow(
+        dictCtx["workflows"], sContainerId,
+    )
+    dictStep = dictWorkflow["listSteps"][iStepIndex]
+    listCmds, dictCat = _ftRequireCategoryCommands(
+        dictStep, sDictKey, sCategory,
+    )
+    iLevelBefore = fiAICSLevel(
+        dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+    )
+    return (
+        dictWorkflow, dictStep, dictCat, listCmds, sVerifKey, iLevelBefore,
+    )
+
+
+def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
+    """Build the cd + && joined category command with the workflow env prefix."""
+    sDir = _fsAbsoluteStepWorkdir(
+        dictStep, dictWorkflow.get("sProjectRepoPath", ""),
+    )
+    sFullCmd = " && ".join([f"cd {fsShellQuote(sDir)}"] + listCmds)
+    return _fsPrefixWithWorkflowEnv(
+        sFullCmd, fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+    )
+
+
+async def _ftRunCategoryCommands(
+    connectionDocker, sContainerId, dictStep, dictWorkflow, listCmds,
+):
+    """Run the category commands; return (resultExec, bPassed, sOutput)."""
+    sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds)
+    resultExec = await asyncio.to_thread(
+        connectionDocker.texecRunInContainerStreamed,
+        sContainerId, sFullCmd,
+    )
+    bPassed = resultExec.iExitCode == 0
+    sOutput = resultExec.sStdout + resultExec.sStderr
+    return resultExec, bPassed, sOutput
+
+
+def _fnRecordCategoryOutcome(
+    dictStep, dictCat, sVerifKey, bPassed, sOutput,
+):
+    """Update dictVerification + aggregate state after a category run."""
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    dictVerification[sVerifKey] = "passed" if bPassed else "failed"
+    dictVerification.pop("listModifiedFiles", None)
+    dictVerification.pop("bUpstreamModified", None)
+    if sOutput:
+        dictCat["sLastOutput"] = sOutput
+    _fnUpdateAggregateTestState(dictStep)
+
+
+def _fdictBuildRunCategoryResponse(bPassed, resultExec):
+    """Return the JSON response body for run-test-category."""
+    return {
+        "bPassed": bPassed,
+        "sOutput": resultExec.sStdout + resultExec.sStderr,
+        "sStdout": resultExec.sStdout,
+        "sStderr": resultExec.sStderr,
+        "iExitCode": resultExec.iExitCode,
+    }
+
+
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
@@ -383,70 +483,24 @@ def _fnRegisterTestRun(app, dictCtx):
         request: Request,
     ):
         dictCtx["require"]()
-        dictBody = await request.json()
-        sCategory = dictBody.get("sCategory", "")
-        dictCategoryKeyMap = {
-            "integrity": ("dictIntegrity", "sIntegrity"),
-            "qualitative": (
-                "dictQualitative", "sQualitative"),
-            "quantitative": (
-                "dictQuantitative", "sQuantitative"),
-        }
-        if sCategory not in dictCategoryKeyMap:
-            raise HTTPException(
-                400, f"Unknown category: {sCategory}")
-        sDictKey, sVerifKey = dictCategoryKeyMap[sCategory]
-        dictWorkflow = fdictRequireWorkflow(
-            dictCtx["workflows"], sContainerId)
-        dictStep = dictWorkflow["listSteps"][iStepIndex]
-        dictTests = dictStep.get("dictTests", {})
-        dictCat = dictTests.get(sDictKey, {})
-        listCmds = dictCat.get("saCommands", [])
-        if not listCmds:
-            raise HTTPException(
-                400,
-                f"No commands for category: {sCategory}",
-            )
-        iLevelBefore = fiAICSLevel(
-            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        sCategory = (await request.json()).get("sCategory", "")
+        (dictWorkflow, dictStep, dictCat, listCmds, sVerifKey,
+         iLevelBefore) = _fdictResolveCategoryContext(
+            dictCtx, sContainerId, iStepIndex, sCategory,
         )
-        sDir = _fsAbsoluteStepWorkdir(
-            dictStep,
-            dictWorkflow.get("sProjectRepoPath", ""),
+        resultExec, bPassed, sOutput = await _ftRunCategoryCommands(
+            dictCtx["docker"], sContainerId, dictStep,
+            dictWorkflow, listCmds,
         )
-        sFullCmd = " && ".join(
-            [f"cd {fsShellQuote(sDir)}"] + listCmds)
-        sFullCmd = _fsPrefixWithWorkflowEnv(
-            sFullCmd,
-            fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+        _fnRecordCategoryOutcome(
+            dictStep, dictCat, sVerifKey, bPassed, sOutput,
         )
-        resultExec = await asyncio.to_thread(
-            dictCtx["docker"].texecRunInContainerStreamed,
-            sContainerId, sFullCmd,
-        )
-        bPassed = resultExec.iExitCode == 0
-        sOutput = resultExec.sStdout + resultExec.sStderr
-        dictVerification = dictStep.setdefault(
-            "dictVerification", {})
-        dictVerification[sVerifKey] = (
-            "passed" if bPassed else "failed")
-        dictVerification.pop("listModifiedFiles", None)
-        dictVerification.pop("bUpstreamModified", None)
-        if sOutput:
-            dictCat["sLastOutput"] = sOutput
-        _fnUpdateAggregateTestState(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        return {
-            "bPassed": bPassed,
-            "sOutput": sOutput,
-            "sStdout": resultExec.sStdout,
-            "sStderr": resultExec.sStderr,
-            "iExitCode": resultExec.iExitCode,
-        }
+        return _fdictBuildRunCategoryResponse(bPassed, resultExec)
 
 
 def fnRegisterAll(app, dictCtx):

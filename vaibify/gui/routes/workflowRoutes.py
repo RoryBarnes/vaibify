@@ -129,6 +129,48 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
                 f"{_fsSanitizeServerError(str(error))}")
 
 
+def _fdictBlankWorkflowContent(request):
+    """Return the minimum-viable workflow.json dict for a fresh create."""
+    return {
+        "sWorkflowName": request.sWorkflowName,
+        "sPlotDirectory": "Plot",
+        "sFigureType": "pdf",
+        "iNumberOfCores": -1,
+        "listSteps": [],
+    }
+
+
+def _fsEnsureWorkflowDir(connectionDocker, sContainerId, sRepoDirectory):
+    """``mkdir -p`` the workflows directory inside the repo and return its path."""
+    sWorkflowDir = posixpath.join(
+        sRepoDirectory, workflowManager.VAIBIFY_WORKFLOWS_DIR,
+    )
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"mkdir -p {fsShellQuote(sWorkflowDir)}",
+    )
+    return sWorkflowDir
+
+
+def _fnAssertWorkflowAbsent(connectionDocker, sContainerId, sFullPath):
+    """Raise HTTP 409 when ``sFullPath`` already exists inside the container."""
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"test -e {fsShellQuote(sFullPath)}",
+    )
+    if iExitCode == 0:
+        raise HTTPException(
+            409, f"A workflow file already exists at {sFullPath}",
+        )
+
+
+def _fdictCreateWorkflowResponse(sFullPath, sWorkflowName):
+    """Return the JSON body for a successful workflow create."""
+    return {
+        "sPath": sFullPath,
+        "sName": sWorkflowName,
+        "sSource": "vaibify",
+    }
+
+
 def _fnRegisterWorkflowCreate(app, dictCtx):
     """Register POST /api/workflows/{id}/create route."""
 
@@ -138,49 +180,26 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
     ):
         dictCtx["require"]()
         _fnRejectDuplicateWorkflowName(
-            dictCtx["docker"], sContainerId,
-            request.sWorkflowName,
+            dictCtx["docker"], sContainerId, request.sWorkflowName,
         )
         sRepoDirectory = _fsValidateRepoDirectory(
-            dictCtx["docker"], sContainerId,
-            request.sRepoDirectory,
+            dictCtx["docker"], sContainerId, request.sRepoDirectory,
         )
         sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
-        dictBlank = {
-            "sWorkflowName": request.sWorkflowName,
-            "sPlotDirectory": "Plot",
-            "sFigureType": "pdf",
-            "iNumberOfCores": -1,
-            "listSteps": [],
-        }
-        sContent = json.dumps(dictBlank, indent=2) + "\n"
-        sWorkflowDir = posixpath.join(
-            sRepoDirectory,
-            workflowManager.VAIBIFY_WORKFLOWS_DIR,
-        )
-        dictCtx["docker"].ftResultExecuteCommand(
-            sContainerId,
-            f"mkdir -p {fsShellQuote(sWorkflowDir)}",
+        sWorkflowDir = _fsEnsureWorkflowDir(
+            dictCtx["docker"], sContainerId, sRepoDirectory,
         )
         sFullPath = posixpath.join(sWorkflowDir, sFileName)
-        iExitCode, _ = dictCtx["docker"].ftResultExecuteCommand(
-            sContainerId,
-            f"test -e {fsShellQuote(sFullPath)}",
-        )
-        if iExitCode == 0:
-            raise HTTPException(
-                409,
-                f"A workflow file already exists at {sFullPath}",
-            )
+        _fnAssertWorkflowAbsent(dictCtx["docker"], sContainerId, sFullPath)
+        sContent = json.dumps(
+            _fdictBlankWorkflowContent(request), indent=2,
+        ) + "\n"
         dictCtx["docker"].fnWriteFile(
-            sContainerId, sFullPath,
-            sContent.encode("utf-8"),
+            sContainerId, sFullPath, sContent.encode("utf-8"),
         )
-        return {
-            "sPath": sFullPath,
-            "sName": request.sWorkflowName,
-            "sSource": "vaibify",
-        }
+        return _fdictCreateWorkflowResponse(
+            sFullPath, request.sWorkflowName,
+        )
 
 
 def _fnRegisterConnect(app, dictCtx):

@@ -426,66 +426,105 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
 async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
-    """Fetch output + script mtimes, invalidations, and staleness."""
-    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
-    listOutputPaths = _flistCollectOutputPaths(
-        dictWorkflow, dictVars)
-    listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
-    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
-        dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
-        sWorkflowPath,
+    """Fetch output + script mtimes, invalidations, and staleness.
+
+    ``dictModTimes`` is collected and threaded through every helper in
+    absolute-key form; the ``fdictAbsKeysToRepoRelative`` call below is
+    the last transformation before the wire — enforced by
+    ``testWireFormatPathsAreRepoRelative``.
+    """
+    dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
+        dictCtx, sContainerId, dictWorkflow, dictVars,
     )
-    listMarkerPaths = list(dictMarkerPathsByStep.values())
+    if dictReload["bReplaced"]:
+        dictWorkflow = dictReload["dictWorkflow"]
+    listInvalidated = _flistRunPollSideEffects(
+        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+    )
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictRest = _fdictBuildPollResponseRest(
+        dictWorkflow, dictModTimes, dictVars, dictReload,
+        sWorkflowPath, listInvalidated, sRepoRoot,
+    )
+    return {
+        "dictModTimes": fdictAbsKeysToRepoRelative(
+            dictModTimes, sRepoRoot,
+        ),
+        **dictRest,
+    }
+
+
+def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
+    """Return the deduplicated union of paths the poller needs mtimes for."""
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    listOutputPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
+    listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
+    listMarkerPaths = list(fnCollectMarkerPathsByStep(
+        dictWorkflow, sRepoRoot, sWorkflowPath,
+    ).values())
     listTestSourcePaths = []
     for dictStep in dictWorkflow.get("listSteps", []):
         listTestSourcePaths.extend(
             _flistResolveTestSourcePaths(dictStep, dictVars),
         )
     listWorkflowPaths = [sWorkflowPath] if sWorkflowPath else []
-    listUnionPaths = list(set(
+    return list(set(
         listOutputPaths + listScriptPaths + listMarkerPaths
         + listTestSourcePaths + listWorkflowPaths,
     ))
+
+
+async def _ftFetchAndReload(dictCtx, sContainerId, dictWorkflow, dictVars):
+    """Fetch the union of poll mtimes and the maybe-reloaded workflow.
+
+    Returns ``(dictModTimes, dictReload, sWorkflowPath)``. The mtime dict
+    is absolute-keyed; the response builder is the boundary at which the
+    keys are converted to repo-relative for the wire.
+    """
+    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    listUnionPaths = _flistCollectPollPaths(
+        dictWorkflow, dictVars, sWorkflowPath,
+    )
     dictModTimes = await asyncio.to_thread(
-        _fdictGetModTimes,
-        dictCtx["docker"], sContainerId, listUnionPaths,
+        _fdictGetModTimes, dictCtx["docker"], sContainerId, listUnionPaths,
     )
     dictReload = await asyncio.to_thread(
-        _fdictMaybeReloadWorkflow,
-        dictCtx, sContainerId, sWorkflowPath, dictModTimes,
+        _fdictMaybeReloadWorkflow, dictCtx, sContainerId,
+        sWorkflowPath, dictModTimes,
     )
-    if dictReload["bReplaced"]:
-        dictWorkflow = dictReload["dictWorkflow"]
-    dictPathsByStep = fdictCollectOutputPathsByStep(
-        dictWorkflow, dictVars,
+    return dictModTimes, dictReload, sWorkflowPath
+
+
+def _fnLogInvalidations(sContainerId, listInvalidated):
+    """Emit per-step invalidation log lines for the polling cycle."""
+    if not listInvalidated:
+        return
+    logger.info(
+        "POLL invalidated steps=%s container=%s",
+        list(listInvalidated.keys()), sContainerId,
     )
-    dictMarkerMtimeByStep = _fdictComputeMarkerMtimeByStep(
-        dictMarkerPathsByStep, dictModTimes,
-    )
-    bStaleReset = _fbCheckStaleUserVerification(
-        dictWorkflow, dictModTimes, dictVars)
-    if bStaleReset:
+    for sIdx, dictV in listInvalidated.items():
         logger.info(
-            "POLL stale-check reset sUser for container=%s",
-            sContainerId,
+            "  step %s sUser=%s listModifiedFiles=%s",
+            sIdx, dictV.get("sUser"),
+            dictV.get("listModifiedFiles", []),
+        )
+
+
+def _flistRunPollSideEffects(
+    dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+):
+    """Apply stale-check, invalidate, reconcile; return invalidated steps."""
+    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, dictVars):
+        logger.info(
+            "POLL stale-check reset sUser for container=%s", sContainerId,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
     listInvalidated = _flistDetectAndInvalidate(
-        dictCtx, sContainerId, dictWorkflow,
-        dictModTimes, dictVars,
+        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
     )
-    if listInvalidated:
-        logger.info(
-            "POLL invalidated steps=%s container=%s",
-            list(listInvalidated.keys()), sContainerId,
-        )
-        for sIdx, dictV in listInvalidated.items():
-            logger.info(
-                "  step %s sUser=%s listModifiedFiles=%s",
-                sIdx, dictV.get("sUser"),
-                dictV.get("listModifiedFiles", []),
-            )
-    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    _fnLogInvalidations(sContainerId, listInvalidated)
+    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
     dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(
         dictPathsByStep, dictModTimes,
     )
@@ -496,23 +535,27 @@ async def _fdictFetchOutputStatus(
     )
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)
-    dictReloadedShape = _fdictBuildReloadedWorkflowShape(dictReload)
-    from vaibify.reproducibility.levelGates import fiAICSLevel
-    iAICSLevel = fiAICSLevel(dictWorkflow, sRepoRoot)
-    dictWorkflow["iAICSLevel"] = iAICSLevel
+    return listInvalidated
+
+
+def _fdictComputeAllPerStepMtimes(
+    dictWorkflow, dictModTimes, dictVars, dictMarkerPathsByStep,
+):
+    """Compute every per-step mtime grouping consumed by the wire response."""
+    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
     return {
-        "iAICSLevel": iAICSLevel,
-        "dictModTimes": fdictAbsKeysToRepoRelative(
-            dictModTimes, sRepoRoot,
+        "dictMaxMtimeByStep": _fdictComputeMaxMtimeByStep(
+            dictPathsByStep, dictModTimes,
         ),
-        "dictMaxMtimeByStep": dictMaxMtimeByStep,
         "dictMaxPlotMtimeByStep": _fdictComputeMaxPlotMtimeByStep(
             dictWorkflow, dictModTimes, dictVars,
         ),
         "dictMaxDataMtimeByStep": _fdictComputeMaxDataMtimeByStep(
             dictWorkflow, dictModTimes, dictVars,
         ),
-        "dictMarkerMtimeByStep": dictMarkerMtimeByStep,
+        "dictMarkerMtimeByStep": _fdictComputeMarkerMtimeByStep(
+            dictMarkerPathsByStep, dictModTimes,
+        ),
         "dictTestSourceMtimeByStep":
             _fdictComputeMaxTestSourceMtimeByStep(
                 dictWorkflow, dictModTimes, dictVars,
@@ -520,14 +563,39 @@ async def _fdictFetchOutputStatus(
         "dictTestCategoryMtimes": _fdictComputeTestCategoryMtimes(
             dictWorkflow, dictModTimes, dictVars,
         ),
+    }
+
+
+def _fdictBuildPollResponseRest(
+    dictWorkflow, dictModTimes, dictVars, dictReload,
+    sWorkflowPath, listInvalidated, sRepoRoot,
+):
+    """Return every poll-response key except ``dictModTimes``.
+
+    The outer ``_fdictFetchOutputStatus`` owns the ``dictModTimes``
+    normalization so the wire-format invariant has a single
+    inspect-this-function home. Helpers here operate on the
+    absolute-keyed mtimes dict.
+    """
+    from vaibify.reproducibility.levelGates import fiAICSLevel
+    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
+        dictWorkflow, sRepoRoot, sWorkflowPath,
+    )
+    dictMtimes = _fdictComputeAllPerStepMtimes(
+        dictWorkflow, dictModTimes, dictVars, dictMarkerPathsByStep,
+    )
+    dictWorkflow["iAICSLevel"] = fiAICSLevel(dictWorkflow, sRepoRoot)
+    return {
+        "iAICSLevel": dictWorkflow["iAICSLevel"],
+        **dictMtimes,
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
             dictWorkflow, dictModTimes, dictVars,
-            dictMarkerMtimeByStep=dictMarkerMtimeByStep,
+            dictMarkerMtimeByStep=dictMtimes["dictMarkerMtimeByStep"],
         ),
         "bWorkflowReloaded": dictReload["bReplaced"],
         "sWorkflowReloadError": dictReload["sError"],
-        "dictWorkflow": dictReloadedShape,
+        "dictWorkflow": _fdictBuildReloadedWorkflowShape(dictReload),
     }
 
 
