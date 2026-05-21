@@ -533,6 +533,38 @@ def _fsRequireProjectRepoForGit(dictWorkflow):
     return sPath
 
 
+def _fnAssertGithubTokenBoundToRemote(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Confirm the resolved GitHub token's login owns the configured remote.
+
+    Reads the project repo's origin URL inside the container, parses
+    owner/repo, resolves the host-side token, and asks GitHub's
+    ``/user`` endpoint who that token belongs to. Raises HTTP 409 on
+    any mismatch so the push never reaches ``git push`` with the wrong
+    credential.
+    """
+    from .. import containerGit
+    from vaibify.reproducibility.githubAuth import (
+        ftParseOwnerRepoFromRemoteUrl,
+        fsKeyringSlotFor,
+        fsResolveToken,
+        fnAssertTokenOwnerBinding,
+    )
+    sRemoteUrl = containerGit.fsRemoteUrlInContainer(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)
+    if not sOwner or not sRepo:
+        return
+    sSlot = fsKeyringSlotFor(sOwner, sRepo)
+    sToken = fsResolveToken(sSlot)
+    try:
+        fnAssertTokenOwnerBinding(sToken, sOwner)
+    except ValueError as errorBinding:
+        raise HTTPException(status_code=409, detail=str(errorBinding))
+
+
 def _fnRegisterGithubPush(app, dictCtx):
     """Register POST /api/github/{id}/push endpoint."""
     from .. import syncDispatcher
@@ -548,6 +580,10 @@ def _fnRegisterGithubPush(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
+        await asyncio.to_thread(
+            _fnAssertGithubTokenBoundToRemote,
+            dictCtx["docker"], sContainerId, sWorkdir,
+        )
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultPushToGithub,
             dictCtx["docker"], sContainerId,
@@ -1195,6 +1231,12 @@ def _fnRegisterDatasetDownload(app, dictCtx):
     ):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fnValidateZenodoDestination(
+            request.sDestination, dictWorkflow,
+        )
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultDownloadDataset,
             dictCtx["docker"], sContainerId,
@@ -1205,6 +1247,23 @@ def _fnRegisterDatasetDownload(app, dictCtx):
             raise HTTPException(
                 500, f"Download failed: {sOut}")
         return {"bSuccess": True}
+
+
+def _fnValidateZenodoDestination(sDestination, dictWorkflow):
+    """Refuse absolute or ..-escaping destinations; scope to project repo."""
+    if "\x00" in (sDestination or ""):
+        raise HTTPException(400, "sDestination contains null byte")
+    if posixpath.isabs(sDestination):
+        raise HTTPException(
+            400, "sDestination must be repo-relative, not absolute")
+    sNorm = posixpath.normpath(sDestination)
+    if sNorm == ".." or sNorm.startswith("../"):
+        raise HTTPException(
+            400, "sDestination must not escape the project repo")
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if sProjectRepoPath:
+        sCandidate = posixpath.join(sProjectRepoPath, sNorm)
+        fnValidatePathWithinRoot(sCandidate, sProjectRepoPath)
 
 
 def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
@@ -1568,11 +1627,21 @@ def _fnValidateArxivPathSegment(sSegment, sFieldLabel):
             status_code=400,
             detail=f"{sFieldLabel} must not contain null bytes.",
         )
+    if sSegment.startswith("/"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{sFieldLabel} must not be absolute (leading '/').",
+        )
     for sPart in sSegment.split("/"):
         if sPart == "..":
             raise HTTPException(
                 status_code=400,
                 detail=f"{sFieldLabel} must not contain '..' segments.",
+            )
+        if sPart.startswith("~"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{sFieldLabel} must not contain '~' segments.",
             )
 
 

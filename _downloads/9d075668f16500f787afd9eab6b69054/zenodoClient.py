@@ -66,6 +66,7 @@ __all__ = [
     "ZenodoRateLimitError",
     "fsZenodoTokenName",
     "fdictFetchRemoteHashes",
+    "fdictRevokeZenodoToken",
 ]
 
 
@@ -541,3 +542,42 @@ def _fsRedactToken(sMessage):
         fsRedactUrlCredentials(sPart) for sPart in sMessage.split()
     ]
     return fsRedactCredentials(" ".join(listParts))
+
+
+def fdictRevokeZenodoToken(sService="sandbox"):
+    """Clear a Zenodo PAT from the local keyring.
+
+    Zenodo does not expose a token-revocation endpoint, so the
+    upstream side is logged as a no-op pointing to the web UI. The
+    local keyring slot for the requested service is cleared via
+    ``fnDeleteSecret``. Returns the same dict shape as the GitHub
+    and Overleaf revokers so the CLI can render a uniform status.
+    """
+    sSlot = fsZenodoTokenName(sService)
+    bLocal, sLocalMessage = _ftClearLocalZenodoCredential(sSlot)
+    sWebPath = (
+        "zenodo.org/account/settings/applications"
+        if sService == "zenodo"
+        else "sandbox.zenodo.org/account/settings/applications"
+    )
+    return {
+        "bUpstreamRevoked": False,
+        "bLocalCleared": bLocal,
+        "sMessage": (
+            f"Zenodo does not expose a revocation API; revoke at "
+            f"{sWebPath}, then "
+        ) + sLocalMessage,
+    }
+
+
+def _ftClearLocalZenodoCredential(sSlot):
+    """Delete a single Zenodo keyring slot if it exists."""
+    from vaibify.config.secretManager import fnDeleteSecret
+    try:
+        fnDeleteSecret(sSlot, "keyring")
+    except Exception as errorDelete:
+        return (
+            False,
+            f"local clear failed ({type(errorDelete).__name__}).",
+        )
+    return (True, f"local slot '{sSlot}' cleared.")

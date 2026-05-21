@@ -27,10 +27,13 @@ def fsWriteExecutableScript(sSource, sPrefix):
 
     ``sPrefix`` is the ``tempfile.mkstemp`` prefix — choose a
     service-specific value (``vc_askpass_``, ``vc_gh_askpass_``) so
-    any leftover file on crash is easy to attribute.
+    any leftover file on crash is easy to attribute. Files land in
+    ``~/.vaibify/tmp/`` (mode 0700) rather than the world-traversable
+    ``/tmp`` so other local users cannot enumerate them.
     """
+    from vaibify.config.ephemeralStore import fsGetEphemeralRoot
     iFileDescriptor, sPath = tempfile.mkstemp(
-        prefix=sPrefix, suffix=".py",
+        prefix=sPrefix, suffix=".py", dir=fsGetEphemeralRoot(),
     )
     try:
         os.write(iFileDescriptor, sSource.encode("utf-8"))

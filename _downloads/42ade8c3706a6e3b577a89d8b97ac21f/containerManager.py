@@ -83,6 +83,8 @@ def flistBuildRunArgs(config, bDetached=False):
     saRunArgs = ["-d", "-t"] if bDetached else ["--rm", "-it"]
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
+    _fnAddEntrypointUser(saRunArgs)
+    _fnAddCapabilityDrops(saRunArgs)
     _fnAddCpuAllocation(saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
     _fnAddCredentialsVolume(config, saRunArgs)
@@ -90,10 +92,35 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
     _fnAddClaudeEnv(config, saRunArgs)
-    _fnAddAgentHostBridge(saRunArgs)
+    _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
+
+
+def _fnAddCapabilityDrops(saRunArgs):
+    """Drop all Linux capabilities and forbid privilege escalation.
+
+    Combined with the unprivileged container user, this closes off
+    standard local-privilege-escalation paths (setuid binaries inside
+    the image, ptrace, raw sockets, kernel capability abuse). Feature
+    flags that legitimately require a capability must re-add it under
+    that feature's own ``--cap-add`` argument — the default workflow's
+    allowlist is empty.
+    """
+    saRunArgs.extend(["--cap-drop", "ALL"])
+    saRunArgs.extend(["--security-opt", "no-new-privileges"])
+
+
+def _fnAddEntrypointUser(saRunArgs):
+    """Force the entrypoint to run as root so it can chown and drop via gosu.
+
+    The Dockerfile pins ``USER ${CONTAINER_USER}`` so every ``docker exec``
+    issued by the GUI/CLI lands unprivileged. The entrypoint legitimately
+    needs root for its setup phase; ``--user 0`` restores that for the
+    initial ``docker run`` only.
+    """
+    saRunArgs.extend(["--user", "0"])
 
 
 def _fnAddCpuAllocation(saRunArgs):
@@ -127,15 +154,41 @@ def _fnAddCredentialsVolume(config, saRunArgs):
 
 
 def _fnAddPortForwarding(config, saRunArgs):
-    """Add port forwarding flags from config.listPorts."""
+    """Add port forwarding flags from ``config.listPorts``.
+
+    Binds every forwarded host port to ``127.0.0.1`` so the service
+    inside the container is only reachable from the host itself, not
+    from the LAN. A user who knowingly wants LAN exposure (e.g. to
+    pair-program against the container's web UI from another laptop)
+    can set ``lanExpose: true`` on the per-port entry to opt out of
+    the loopback binding.
+    """
     for dictPort in config.listPorts:
         sHost = str(dictPort.get("host", dictPort.get("container")))
         sContainer = str(dictPort.get("container"))
-        saRunArgs.extend(["-p", f"{sHost}:{sContainer}"])
+        sSpec = _fsBuildPortSpec(sHost, sContainer, dictPort)
+        saRunArgs.extend(["-p", sSpec])
+
+
+def _fsBuildPortSpec(sHost, sContainer, dictPort):
+    """Return the ``-p`` value with the right loopback/LAN binding."""
+    if bool(dictPort.get("lanExpose", False)):
+        return f"{sHost}:{sContainer}"
+    return f"127.0.0.1:{sHost}:{sContainer}"
 
 
 def _fnAddBindMounts(config, saRunArgs):
-    """Add bind mount flags from config.listBindMounts."""
+    """Add bind mount flags from config.listBindMounts.
+
+    Re-validates each entry against the allowlist so any
+    ``vaibify.yml`` that bypassed the config loader (hand-crafted dict,
+    in-memory mutation, future config sources) still cannot smuggle in
+    a Docker-socket or ``/etc`` bind mount.
+    """
+    from vaibify.config.bindMountValidator import (
+        fnValidateBindMountList,
+    )
+    fnValidateBindMountList(config.listBindMounts)
     for dictMount in config.listBindMounts:
         sMountSpec = f"{dictMount['host']}:{dictMount['container']}"
         if dictMount.get("readOnly", False):
@@ -163,19 +216,31 @@ def _fnAddNetworkIsolation(config, saRunArgs):
         saRunArgs.extend(["--network", "none"])
 
 
-def _fnAddAgentHostBridge(saRunArgs):
-    """Resolve ``host.docker.internal`` to the host gateway.
+def _fnAddAgentHostBridge(config, saRunArgs):
+    """Resolve ``host.docker.internal`` only when the agent needs it.
 
-    The in-container ``vaibify-do`` agent dials back to the host
-    backend through this hostname. Docker Desktop resolves it
-    automatically; explicit ``--add-host`` makes it work on Linux and
-    is harmless elsewhere. When ``--network none`` is also set the
-    hosts-file entry remains but is unreachable by design, which is
-    the correct behavior for a sealed container.
+    The hosts-file entry is only useful for the in-container
+    ``vaibify-do`` agent calling back to the host backend. Adding it
+    unconditionally widens the container's egress surface for projects
+    that never run an agent. Emit ``--add-host`` only when Claude is
+    enabled (so the agent bridge is actually used) and network
+    isolation is off (no point poking a hole in a sealed container).
     """
+    if not _fbAgentBridgeRequired(config):
+        return
     saRunArgs.extend([
         "--add-host", "host.docker.internal:host-gateway",
     ])
+
+
+def _fbAgentBridgeRequired(config):
+    """Return True when the agent host bridge should be wired up."""
+    if getattr(config, "bNetworkIsolation", False):
+        return False
+    features = getattr(config, "features", None)
+    if features is None:
+        return False
+    return bool(getattr(features, "bClaude", False))
 
 
 def fnMountSecrets(config, saRunArgs, listCleanupFiles):

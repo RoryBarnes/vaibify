@@ -50,6 +50,22 @@ F_FETCH_CACHE_SECONDS = 30.0
 # and ignored files do not block ``git pull --ff-only``, matching git's
 # native behavior, so they are intentionally absent here.
 SET_TRACKED_CHANGE_STATES = {"dirty", "uncommitted", "conflict"}
+# Curated path-kind contract for ``commit-canonical``: only these
+# vaibify-managed artifacts may flow through the agent-invokable
+# commit endpoint. ``flistCanonicalTrackedFilesFromScans`` builds the
+# concrete path list from these globs and the active workflow's
+# manifest entries; the commit step then passes that explicit list
+# into ``git commit -- <paths>`` so any pre-staged user files in the
+# index are left untouched. Never replace this with ``git add -A``.
+TUPLE_CURATED_COMMIT_KINDS = (
+    "workflow.json (per workflow, repo-relative)",
+    ".vaibify/test_markers/*/*.json",
+    ".vaibify/zenodo-refs.json",
+    "MANIFEST.sha256 (when present at repo root)",
+    "requirements.lock (when present at repo root)",
+    "requirements.txt / environment.yml / Dockerfile / pyproject.toml",
+    "explicit canonical entries enumerated by stateContract",
+)
 _DICT_LAST_FETCH = {}
 
 
@@ -331,7 +347,14 @@ def _fnRegisterCommitCanonical(app, dictCtx):
 async def _fnApplyCanonicalGitAddCommit(
     docker, sContainerId, sRepo, listNeedsCommit, sMessage,
 ):
-    """Run git add + commit, raising HTTPException on either failure."""
+    """Run git add + commit, raising HTTPException on either failure.
+
+    The commit is restricted to the curated path list (workflow.json,
+    .vaibify/test_markers/*, MANIFEST.sha256, requirements.lock, and
+    other explicit canonical entries) so any pre-staged user files are
+    not swept into the canonical commit. See TUPLE_CURATED_COMMIT_KINDS
+    for the contract.
+    """
     iExit, sOut = await asyncio.to_thread(
         containerGit.ftResultGitAddInContainer,
         docker, sContainerId, listNeedsCommit, sWorkspace=sRepo,
@@ -344,6 +367,7 @@ async def _fnApplyCanonicalGitAddCommit(
     iExit, sOut = await asyncio.to_thread(
         containerGit.ftResultGitCommitInContainer,
         docker, sContainerId, sMessage, sWorkspace=sRepo,
+        listFilePaths=listNeedsCommit,
     )
     if iExit != 0:
         raise HTTPException(

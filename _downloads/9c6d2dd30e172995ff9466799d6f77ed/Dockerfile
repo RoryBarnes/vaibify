@@ -40,7 +40,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     software-properties-common \
     gosu \
-    sudo \
     nano \
     vim \
     pkg-config \
@@ -194,14 +193,17 @@ RUN if [ -s /tmp/requirements.txt ]; then \
     fi \
     && rm -f /tmp/requirements.txt /tmp/pip-flags.txt
 
-# Create non-root user with UID 1000 (remove default ubuntu user if needed)
+# Create non-root user with UID 1000 (remove default ubuntu user if needed).
+# No sudoers drop-in: the entrypoint runs as root to do the setup that
+# legitimately needs root, then drops to ${CONTAINER_USER} via gosu before
+# exec'ing the user command. Application code, ``docker exec`` sessions,
+# and the in-container agent never need passwordless sudo.
 RUN if id -u ${CONTAINER_USER} >/dev/null 2>&1; then \
         true; \
     else \
         userdel -r ubuntu 2>/dev/null || true; \
         useradd -m -s /bin/bash -u 1000 ${CONTAINER_USER}; \
-    fi \
-    && echo "${CONTAINER_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${CONTAINER_USER}
+    fi
 
 # Copy entrypoint and configuration files
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
@@ -244,6 +246,11 @@ ENV PACKAGE_MANAGER=${PACKAGE_MANAGER}
 WORKDIR ${WORKSPACE_ROOT}
 
 LABEL devcontainer.metadata="[{\"workspaceFolder\": \"${WORKSPACE_ROOT}\", \"remoteUser\": \"${CONTAINER_USER}\", \"extensions\": [\"ms-python.python\", \"ms-vscode.cpptools\"]}]"
+
+# Default identity for ``docker exec`` is the unprivileged container user.
+# ``docker run`` invocations that need to execute the entrypoint as root
+# (to chown the workspace and drop via gosu) pass ``--user 0`` explicitly.
+USER ${CONTAINER_USER}
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]

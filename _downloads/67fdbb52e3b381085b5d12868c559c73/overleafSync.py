@@ -490,9 +490,16 @@ def _fsBuildCredentialHelper(sTokenFilePath):
 
 
 def _fsWriteTokenFile(sToken):
-    """Write the token to a mode-600 temp file and return its path."""
+    """Write the token to a mode-600 temp file under ~/.vaibify/tmp.
+
+    Resolves the ephemeral root locally when imported as a script
+    (the vaibify package is not on sys.path in container deployments).
+    """
     import stat as statModule
-    iFd, sPath = tempfile.mkstemp(prefix="_vc_overleaf_", suffix=".tok")
+    iFd, sPath = tempfile.mkstemp(
+        prefix="_vc_overleaf_", suffix=".tok",
+        dir=_fsEphemeralRoot(),
+    )
     try:
         os.fchmod(
             iFd, statModule.S_IRUSR | statModule.S_IWUSR)
@@ -500,6 +507,17 @@ def _fsWriteTokenFile(sToken):
     finally:
         os.close(iFd)
     return sPath
+
+
+def _fsEphemeralRoot():
+    """Return ~/.vaibify/tmp (mode 0700), tolerant of script-mode imports."""
+    try:
+        from vaibify.config.ephemeralStore import fsGetEphemeralRoot
+        return fsGetEphemeralRoot()
+    except ImportError:
+        sRoot = os.path.join(os.path.expanduser("~"), ".vaibify", "tmp")
+        os.makedirs(sRoot, mode=0o700, exist_ok=True)
+        return sRoot
 
 
 def _fnRemoveTokenFile(sPath):

@@ -405,7 +405,7 @@ def test_dataset_download_success(clientHttp):
             json={
                 "iRecordId": 12345,
                 "sFileName": "data.h5",
-                "sDestination": "/workspace/data",
+                "sDestination": "data",
             },
         )
     assert responseHttp.status_code == 200
@@ -426,10 +426,38 @@ def test_dataset_download_failure_returns_500(clientHttp):
             json={
                 "iRecordId": 12345,
                 "sFileName": "data.h5",
-                "sDestination": "/workspace/data",
+                "sDestination": "data",
             },
         )
     assert responseHttp.status_code == 500
+
+
+def test_dataset_download_rejects_absolute_destination(clientHttp):
+    """Absolute sDestination returns 400 before reaching the dispatcher."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/download",
+        json={
+            "iRecordId": 12345,
+            "sFileName": "data.h5",
+            "sDestination": "/etc/secret",
+        },
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_dataset_download_rejects_dotdot_destination(clientHttp):
+    """..-escaping sDestination returns 400."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/download",
+        json={
+            "iRecordId": 12345,
+            "sFileName": "data.h5",
+            "sDestination": "../../etc",
+        },
+    )
+    assert responseHttp.status_code == 400
 
 
 # ── Overleaf setup: store + validate + cleanup on failure ───────
