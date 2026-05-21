@@ -5,12 +5,11 @@ dashboard theme. ``fiAICSLevel`` short-circuits up the ladder. Phase 1
 shipped L1; Phase 2 fills in L2 (Publication) here. L3 remains stubbed
 ``return False`` until Phase 3 (Reproducibility) lands.
 
-Per-step L1 predicates live in ``vaibify.gui.fileStatusManager`` since
-they read step verification state; L2 predicates are split across this
-module and ``scheduledReverify`` (sync status cache) /
-``aiDeclarationStep`` (step-kind predicate) so each concern has one
-owner. The composition lives here so the level decision lives in one
-module.
+Per-step L1 predicates live in ``stepPredicates`` (pure leaf module);
+L2 predicates are split across this module and ``scheduledReverify``
+(sync status cache) / ``aiDeclarationStep`` (step-kind predicate) so
+each concern has one owner. The composition lives here so the level
+decision lives in one module.
 """
 
 from datetime import datetime, timezone
@@ -34,7 +33,7 @@ from .manifestWriter import (
     flistParseManifestLines,
 )
 from .reproduceScriptGenerator import S_REPRODUCE_SCRIPT_FILENAME
-from ..gui.fileStatusManager import (
+from .stepPredicates import (
     fbStepTestsPassing,
     fbStepTimingClean,
     fbStepUserApproved,
