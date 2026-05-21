@@ -166,8 +166,17 @@ def fnValidateServiceName(sService):
 
 
 def fsPythonCommand(sImportLine, sFunctionCall):
-    """Build a python3 -c command string from import and call."""
-    return f'python3 -c "{sImportLine}; {sFunctionCall}"'
+    """Build a python3 -c command string from import and call.
+
+    Uses ``fsShellQuote`` so embedded double quotes, semicolons, or
+    other shell metacharacters in ``sFunctionCall`` cannot break out
+    of the argument and be interpreted by the shell. Mirrors the
+    pattern in ``containerGit.fdictComputeBlobShasInContainer`` and
+    ``conftestManager._fsBuildFlatMarkerMigrationCommand``.
+    """
+    return "python3 -c " + fsShellQuote(
+        sImportLine + "; " + sFunctionCall
+    )
 
 
 def ftResultPushToOverleaf(

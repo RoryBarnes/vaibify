@@ -1,5 +1,8 @@
 """Extended tests for vaibify.gui.syncDispatcher pure functions."""
 
+import os
+import subprocess
+
 import pytest
 
 from vaibify.gui.syncDispatcher import (
@@ -22,7 +25,7 @@ from vaibify.gui.syncDispatcher import (
 
 def test_fsPythonCommand_basic():
     sResult = fsPythonCommand("import os", "print(os.getcwd())")
-    assert sResult.startswith('python3 -c "')
+    assert sResult.startswith("python3 -c ")
     assert "import os" in sResult
     assert "print(os.getcwd())" in sResult
 
@@ -30,6 +33,47 @@ def test_fsPythonCommand_basic():
 def test_fsPythonCommand_semicolon_separation():
     sResult = fsPythonCommand("import sys", "sys.exit(0)")
     assert "; " in sResult
+
+
+def test_fsPythonCommand_uses_single_quote_wrapping():
+    """Single-quote wrapping (not double) means $ and ` stay literal."""
+    sResult = fsPythonCommand("import os", "print(os.getcwd())")
+    sArgument = sResult[len("python3 -c "):]
+    assert sArgument.startswith("'")
+    assert sArgument.endswith("'")
+
+
+def test_fsPythonCommand_resists_double_quote_injection(tmp_path):
+    """A double quote in the call must NOT escape the argument.
+
+    Prior to the fix, ``f'python3 -c "{sCall}"'`` allowed an attacker
+    who controlled ``sFunctionCall`` to embed ``"; malicious_cmd #``
+    and have the shell interpret it. The new implementation uses
+    ``fsShellQuote`` (single-quote wrap), so even raw quotes are
+    inert literals to the shell.
+    """
+    sCanary = str(tmp_path / "injection_proof")
+    sMalicious = f'print(1)"; touch {sCanary} #'
+    sResult = fsPythonCommand("import os", sMalicious)
+    subprocess.run(
+        ["bash", "-c", sResult],
+        capture_output=True,
+    )
+    assert not os.path.exists(sCanary)
+
+
+def test_fsPythonCommand_passes_dangerous_chars_as_literals():
+    """Round-trip a dict literal containing dangerous shell chars."""
+    sPayload = repr({"sName": 'x"; rm -rf / #', "sValue": "$(id)"})
+    sCall = f"print({sPayload})"
+    sResult = fsPythonCommand("", sCall)
+    resultProcess = subprocess.run(
+        ["bash", "-c", sResult],
+        capture_output=True, text=True,
+    )
+    assert resultProcess.returncode == 0
+    assert 'rm -rf' in resultProcess.stdout
+    assert '$(id)' in resultProcess.stdout
 
 
 # -----------------------------------------------------------------------
