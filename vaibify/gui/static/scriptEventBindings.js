@@ -798,7 +798,8 @@ var PipeleyenEventBindings = (function () {
                         .fbIsWorkflowMode();
                     if (bWorkflowMode) {
                         document.getElementById("panelSteps")
-                            .classList.add("active");
+                            .classList.toggle("active",
+                                sPanel !== "aics");
                         document.getElementById("panelFiles")
                             .classList.toggle("active",
                                 sPanel === "files");
@@ -822,6 +823,12 @@ var PipeleyenEventBindings = (function () {
                         elPanelRepos.classList.toggle(
                             "active", sPanel === "repos");
                     }
+                    var elPanelAics = document.getElementById(
+                        "panelAics");
+                    if (elPanelAics) {
+                        elPanelAics.classList.toggle(
+                            "active", sPanel === "aics");
+                    }
                     if (sPanel === "files") {
                         PipeleyenFiles.fnLoadDirectory(
                             "/workspace");
@@ -829,6 +836,8 @@ var PipeleyenEventBindings = (function () {
                         PipeleyenApp.fnLoadLogs();
                     } else if (sPanel === "repos") {
                         PipeleyenReposPanel.fnRender();
+                    } else if (sPanel === "aics") {
+                        VaibifyAicsTab.fnRender();
                     }
                 });
             });

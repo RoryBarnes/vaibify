@@ -313,6 +313,34 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Recompute SHA-256 hashes for every file in "
                      "MANIFEST.sha256 and report mismatches. Returns "
                      "iTotal, iMatching, listMismatches."},
+    # ---- AICS ladder readiness ----
+    {"sName": "check-l2-readiness", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level2/readiness",
+     "bAgentSafe": True,
+     "sDescription": "Return per-criterion pass/fail for the L2 "
+                     "Publication gate (GitHub fully synced, Zenodo "
+                     "fully synced, AI Declaration step present) so "
+                     "the dashboard can render the readiness card."},
+    {"sName": "report-l2-gaps", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level2/readiness",
+     "bAgentSafe": True,
+     "sDescription": "Prose-formatted alias of check-l2-readiness for "
+                     "agent consumption: same endpoint, the CLI "
+                     "translates the booleans into human-readable "
+                     "remediation hints."},
+    {"sName": "generate-ai-declaration-template",
+     "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}"
+              "/ai-declaration/generate-template",
+     "bAgentSafe": True,
+     "sDescription": "Write a starter AI_USAGE.md template to the "
+                     "project repo root for the AI Declaration step "
+                     "to point at. Refuses to overwrite an existing "
+                     "file. Args: {sRelativePath?: str} (default "
+                     "AI_USAGE.md)."},
     # ---- Files ----
     {"sName": "pull-file", "sCategory": "files",
      "sMethod": "POST",

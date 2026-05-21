@@ -39,7 +39,7 @@ const PipeleyenApp = (function () {
             iInflightRequests: 0,
             abortControllerFileCheck: null,
             bDelegatedEventsInitialized: false,
-            bWasVaibified: false,
+            iLastRenderedAICSLevel: 0,
             listUndoStack: [],
             dictContainerSettings: null,
             bClaudeRestartNeeded: false,
@@ -70,7 +70,7 @@ const PipeleyenApp = (function () {
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
-        listLeftTabs: ["steps", "files", "logs"],
+        listLeftTabs: ["steps", "aics", "files", "logs"],
         sDefaultLeftTab: "steps",
         bShowRunMenu: true,
         bShowDagButton: true,
@@ -198,6 +198,7 @@ const PipeleyenApp = (function () {
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         PipeleyenReposPanel.fnTeardown();
+        VaibifyAicsTab.fnSetContainerId(null);
     }
 
     function _fnResetUiState() {
@@ -344,6 +345,7 @@ const PipeleyenApp = (function () {
             fnShowMainLayout();
             PipeleyenTerminal.fnEnsureTab();
             await PipeleyenReposPanel.fnInit(sId);
+            VaibifyAicsTab.fnSetContainerId(sId);
             VaibifyPolling.fnStartDiscoveryPolling(sId);
         } catch (error) {
             fnShowToast(
@@ -607,7 +609,9 @@ const PipeleyenApp = (function () {
         PipeleyenTestManager.fnResetState();
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
-        document.body.classList.remove("all-verified");
+        document.body.classList.remove(
+            "aics-level-1", "aics-level-2", "aics-level-3",
+        );
         _fnCancelAllTimers();
         PipeleyenFigureViewer.fnReleaseResources();
         PipeleyenTerminal.fnCloseAll();
@@ -1054,7 +1058,7 @@ const PipeleyenApp = (function () {
         return true;
     }
 
-    function fbAllVerificationComplete(dictStep, iStep) {
+    function fbStepIsAtLeastLevel1(dictStep, iStep) {
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
@@ -1582,34 +1586,111 @@ const PipeleyenApp = (function () {
         fnUpdateHighlightState();
     }
 
-    function fbIsWorkflowFullyVerified() {
-        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return false;
-        var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
-        if (listSteps.length === 0) return false;
-        /* Every step counts toward verification — bRunEnabled is run
-           scope (whether to include in the next run), not verification
-           scope. Disabling a step from the run list does not promote
-           the workflow toward Vaibified. */
+    function fiClientAICSLevel() {
+        /* Authoritative source is the server-derived ``iAICSLevel`` on
+           the workflow dict, refreshed on every file-status poll. The
+           per-step client gate (``fbStepIsAtLeastLevel1``) reads
+           live render state (modified-files, deps badges, in-flight
+           script changes) that the backend cannot see between polls,
+           so we conjoin it with the server's level: any client-visible
+           regression demotes the displayed level immediately, but the
+           client never invents a level above what the server granted. */
+        var dictWorkflow = _dictWorkflowState.dictWorkflow;
+        if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
+        var iServerLevel = dictWorkflow.iAICSLevel || 0;
+        if (iServerLevel === 0) return 0;
+        var listSteps = dictWorkflow.listSteps;
+        if (listSteps.length === 0) return 0;
         for (var i = 0; i < listSteps.length; i++) {
-            if (!fbAllVerificationComplete(listSteps[i], i)) return false;
+            if (!fbStepIsAtLeastLevel1(listSteps[i], i)) return 0;
         }
-        return true;
+        return iServerLevel;
     }
 
-    /* fnCheckVaibified inlined to fnUpdateHighlightState */
-
     function fnUpdateHighlightState() {
-        var bVerified = fbIsWorkflowFullyVerified();
-        if (bVerified) {
-            document.body.classList.add("all-verified");
+        var iLevel = fiClientAICSLevel();
+        var listLevelClasses = [
+            "aics-level-1", "aics-level-2", "aics-level-3",
+        ];
+        document.body.classList.remove.apply(
+            document.body.classList, listLevelClasses,
+        );
+        if (iLevel >= 1) {
+            document.body.classList.add("aics-level-" + iLevel);
             PipeleyenTerminal.fnUpdateCursorColor("#b39ddb");
-            fnTriggerBloomIfNeeded(bVerified);
         } else {
-            document.body.classList.remove("all-verified");
             PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
         }
+        fnTriggerLevelTransitionAnimation(
+            iLevel, _dictWorkflowState.iLastRenderedAICSLevel,
+        );
         fnRecolorVisibleDagEdges();
-        _dictWorkflowState.bWasVaibified = bVerified;
+        _dictWorkflowState.iLastRenderedAICSLevel = iLevel;
+        _fnRefreshAttestationBanner(iLevel);
+    }
+
+    function _fnRefreshAttestationBanner(iLevel) {
+        /* Show #aicsAttestationBanner when an L3 attestation exists
+           but its recorded manifest digest no longer matches the live
+           manifest. Loud failure: clicking opens the AICS tab so the
+           researcher can re-verify. The poll is light (single GET)
+           and only fires when the workflow is at least L2 so we never
+           query an envelope-free repo. */
+        if (iLevel < 2) {
+            _fnHideAttestationBanner();
+            return;
+        }
+        var sId = PipeleyenContainerManager.fsGetSelectedContainerId();
+        if (!sId) {
+            _fnHideAttestationBanner();
+            return;
+        }
+        VaibifyApi.fdictGet(
+            "/api/workflow/" + sId + "/level3/attestation"
+        ).then(function (dictResp) {
+            _fnRenderAttestationBannerFromResponse(dictResp);
+        }).catch(function () {
+            _fnHideAttestationBanner();
+        });
+    }
+
+    function _fnRenderAttestationBannerFromResponse(dictResp) {
+        var elBanner = document.getElementById(
+            "aicsAttestationBanner"
+        );
+        if (!elBanner) return;
+        var dictCurrent = dictResp && dictResp.dictCurrentAttestation;
+        var sLive = (dictResp && dictResp.sLiveManifestDigest) || "";
+        if (!dictCurrent) {
+            _fnHideAttestationBanner();
+            return;
+        }
+        var sRecorded = dictCurrent.sManifestDigestAtAttestation ||
+            "";
+        if (!sRecorded || !sLive || sRecorded === sLive) {
+            _fnHideAttestationBanner();
+            return;
+        }
+        elBanner.innerHTML = 'L3 attestation expired because the ' +
+            'manifest changed. Click to open the AICS tab and ' +
+            're-run reproduction verification.';
+        elBanner.hidden = false;
+        elBanner.onclick = function () {
+            var elTab = document.querySelector(
+                '.left-tab[data-panel="aics"]'
+            );
+            if (elTab) elTab.click();
+        };
+    }
+
+    function _fnHideAttestationBanner() {
+        var elBanner = document.getElementById(
+            "aicsAttestationBanner"
+        );
+        if (!elBanner) return;
+        elBanner.hidden = true;
+        elBanner.innerHTML = "";
+        elBanner.onclick = null;
     }
 
     function fnRecolorVisibleDagEdges() {
@@ -1618,8 +1699,14 @@ const PipeleyenApp = (function () {
         );
     }
 
-    function fnTriggerBloomIfNeeded(bVerified) {
-        if (bVerified && !_dictWorkflowState.bWasVaibified) {
+    function fnTriggerLevelTransitionAnimation(iNewLevel, iOldLevel) {
+        /* Fires on any upward promotion across the ladder. The same
+           DOM overlay is reused for every rung; the body's
+           `--aics-bloom-color` CSS variable swaps the gradient color
+           between purple (L1), green (L2), and pink (L3) without
+           forking the element. */
+        if (iNewLevel <= iOldLevel) return;
+        if (iNewLevel === 1 || iNewLevel === 2 || iNewLevel === 3) {
             fnAnimateBloomOverlay();
             fnAnimatePanelBorderCascade();
         }
@@ -2401,7 +2488,7 @@ const PipeleyenApp = (function () {
         fnShowBinaryNotViewable: fnShowBinaryNotViewable,
         fbIsFileMissing: fbIsFileMissing,
         fsGetFileCategory: fsGetFileCategory,
-        fbAllVerificationComplete: fbAllVerificationComplete,
+        fbStepIsAtLeastLevel1: fbStepIsAtLeastLevel1,
         fsetGetExpandedSteps: function () {
             return _dictUiState.setExpandedSteps;
         },

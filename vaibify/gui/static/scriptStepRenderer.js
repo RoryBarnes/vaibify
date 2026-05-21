@@ -120,6 +120,13 @@ var VaibifyStepRenderer = (function () {
         sHtml += '<div class="step-detail expanded' +
             '" data-index="' + iIndex + '">';
 
+        if (step.sStepKind === "ai-declaration") {
+            sHtml += fsRenderAiDeclarationBody(
+                step, iIndex, dictContext);
+            sHtml += '</div></div>';
+            return sHtml;
+        }
+
         var sResolvedDir = dictContext.fsResolveTemplate(
             step.sDirectory, dictVars);
         sHtml += '<div class="detail-label">Directory</div>';
@@ -877,6 +884,87 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
+    /* --- AI Declaration step kind ---
+       A step with sStepKind === "ai-declaration" holds a markdown
+       file path under sDeclarationFile and only an sUser attestation
+       badge — no data/test/plot commands. The renderer below is the
+       complete body for the expanded step detail; the standard step
+       header (number, name, status dot) is unchanged. */
+
+    function fsRenderAiDeclarationBody(step, iIndex, dictContext) {
+        var sFilePath = (step.sDeclarationFile || "").trim();
+        var sHtml = '<div class="ai-declaration-block" ' +
+            'data-step="' + iIndex + '">';
+        sHtml += '<div class="detail-label">' +
+            'AI Usage Declaration</div>';
+        sHtml += fsRenderAiDeclarationFileRow(sFilePath, iIndex);
+        sHtml += fsRenderAiDeclarationViewer(sFilePath, iIndex);
+        sHtml += fsRenderAiDeclarationAttestation(
+            step, iIndex, dictContext);
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function fsRenderAiDeclarationFileRow(sFilePath, iIndex) {
+        if (sFilePath) {
+            return '<div class="ai-declaration-file" ' +
+                'data-step="' + iIndex + '">' +
+                '<span class="ai-declaration-label">File:</span> ' +
+                '<code>' + fnEscapeHtml(sFilePath) + '</code>' +
+                ' <button class="btn btn-ai-declaration-choose" ' +
+                'data-step="' + iIndex + '" type="button">' +
+                'Choose different file</button>' +
+                '</div>';
+        }
+        return '<div class="ai-declaration-empty" ' +
+            'data-step="' + iIndex + '">' +
+            '<div class="ai-declaration-empty-message">' +
+            'No declaration file is set for this step.</div>' +
+            '<button class="btn btn-primary ' +
+            'btn-ai-declaration-generate" ' +
+            'data-step="' + iIndex + '" type="button">' +
+            'Generate template (AI_USAGE.md)</button>' +
+            ' <button class="btn btn-ai-declaration-choose" ' +
+            'data-step="' + iIndex + '" type="button">' +
+            'Choose existing file</button>' +
+            '</div>';
+    }
+
+    function fsRenderAiDeclarationViewer(sFilePath, iIndex) {
+        if (!sFilePath) return "";
+        return '<div class="ai-declaration-viewer" ' +
+            'data-step="' + iIndex + '" ' +
+            'data-file="' + fnEscapeHtml(sFilePath) + '">' +
+            '<div class="ai-declaration-viewer-placeholder">' +
+            'Open the file in viewer A to review it before ' +
+            'attesting.</div>' +
+            ' <button class="btn btn-ai-declaration-open" ' +
+            'data-step="' + iIndex + '" ' +
+            'data-file="' + fnEscapeHtml(sFilePath) + '" ' +
+            'type="button">Open in viewer</button>' +
+            '</div>';
+    }
+
+    function fsRenderAiDeclarationAttestation(
+        step, iIndex, dictContext
+    ) {
+        var dictVerify = dictContext.fdictGetVerification(step);
+        var sUserState = dictVerify.sUser || "untested";
+        var sHtml = '<div class="verification-block ' +
+            'ai-declaration-attestation" data-step="' +
+            iIndex + '">';
+        sHtml += fsRenderVerificationRow(
+            dictContext.sUserName, sUserState, "user", iIndex,
+            dictContext
+        );
+        sHtml += '<div class="timestamp-field">' +
+            fsRenderVerificationTimestamp(
+                "Last updated", dictVerify.sLastUserUpdate) +
+            '</div>';
+        sHtml += '</div>';
+        return sHtml;
+    }
+
     return {
         fsRenderStepItem: fsRenderStepItem,
         fsRenderDetailItem: fsRenderDetailItem,
@@ -893,5 +981,6 @@ var VaibifyStepRenderer = (function () {
         fsRenderGenerateButton: fsRenderGenerateButton,
         fsFormatDuration: fsFormatDuration,
         fsFormatUnixTimestamp: fsFormatUnixTimestamp,
+        fsRenderAiDeclarationBody: fsRenderAiDeclarationBody,
     };
 })();

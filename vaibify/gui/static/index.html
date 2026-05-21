@@ -217,9 +217,15 @@
             <div id="workflowSwitcher" class="workflow-switcher">
                 <span id="activeWorkflowName" class="toolbar-workflow"
                       title="Click to switch workflow"></span>
-                <span class="vaibify-checkmark" id="vaibifyCheckmark"
-                      title="Workflow fully verified"><img
-                      src="/static/favicon.png" alt="verified"></span>
+                <span class="vaibify-checkmark" data-aics-level="1"
+                      title="AICS L1: Self-Consistent"><img
+                      src="/static/favicon.png" alt="L1"></span>
+                <span class="vaibify-checkmark" data-aics-level="2"
+                      title="AICS L2: Published"><img
+                      src="/static/favicon.png" alt="L2"></span>
+                <span class="vaibify-checkmark" data-aics-level="3"
+                      title="AICS L3: Reproducible"><img
+                      src="/static/favicon.png" alt="L3"></span>
                 <div id="workflowDropdown" class="workflow-dropdown"></div>
             </div>
         </div>
@@ -309,6 +315,7 @@
     <div id="panelLeft">
         <div id="leftPanelTabs">
             <div class="left-tab active" data-panel="steps">Steps</div>
+            <div class="left-tab" data-panel="aics">AICS</div>
             <div class="left-tab" data-panel="files">Files</div>
             <div class="left-tab" data-panel="repos">Repos</div>
             <div class="left-tab" data-panel="logs">Logs</div>
@@ -319,6 +326,8 @@
         <div id="driftBanner" class="drift-banner" hidden></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
+        <div id="aicsAttestationBanner" class="aics-attestation-banner"
+             hidden></div>
 
         <!-- Steps sub-panel -->
         <div id="panelSteps" class="active">
@@ -332,6 +341,11 @@
             </div>
             <div id="globalSettingsPanel" class="global-settings"></div>
             <div id="listSteps"></div>
+        </div>
+
+        <!-- AICS sub-panel (level rollup + L2 readiness card) -->
+        <div id="panelAics">
+            <div id="aicsTabContent" class="tab-content"></div>
         </div>
 
         <!-- Files sub-panel -->
@@ -856,6 +870,7 @@
 <script src="/static/scriptFileOperations.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptEventBindings.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptReposPanel.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptAicsTab.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApplication.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptTestManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPipelineRunner.js?v=__CACHE_VERSION__"></script>

@@ -388,7 +388,9 @@ html, body {
     color: var(--text-primary);
     font-weight: 500;
 }
-body.all-verified .toolbar-label {
+body.aics-level-1 .toolbar-label,
+body.aics-level-2 .toolbar-label,
+body.aics-level-3 .toolbar-label {
     color: #b39ddb;
 }
 .toolbar-workflow {
@@ -3420,10 +3422,42 @@ body.all-verified .toolbar-label {
     background: #2a3548;
 }
 
-/* --- Workflow completion highlight --- */
+/* --- AICS ladder themes ---
+   L1 Self-Consistent (purple) ships in Phase 1.
+   L2 Published (green) and L3 Reproducible (pink) reserve their
+   class hooks here so future phases can extend without re-renaming. */
 
-body.all-verified {
+body.aics-level-1 {
     --highlight-color: #b39ddb;
+    --aics-bloom-color: rgba(179, 157, 219, 0.35);
+}
+
+body.aics-level-2 {
+    /* L2 Published: green. Mirrors L1's stub-recipe pattern so
+       Phase 3 can add an L3 pink palette next to these without
+       re-shaping the cascade. */
+    --highlight-color: #8bc8a3;
+    --aics-bloom-color: rgba(139, 200, 163, 0.35);
+}
+
+body.aics-level-3 {
+    /* L3 Reproducible: pink. Same pattern as the L1 purple / L2 green
+       palettes so the cascade order stays uniform across the ladder. */
+    --highlight-color: #f48fb1;
+    --aics-bloom-color: rgba(244, 143, 177, 0.35);
+}
+
+body.aics-level-3 .toolbar-logo,
+body.aics-level-3 .vaib-verified-badge {
+    /* Pink tint via the same sepia recipe so the cluster shifts hue
+       smoothly across promotions without a per-level icon swap. */
+    filter: sepia(1) hue-rotate(295deg) saturate(2.4) brightness(0.95);
+}
+
+body.aics-level-2 .toolbar-logo,
+body.aics-level-2 .vaib-verified-badge {
+    /* Green tint mirrors the purple sepia recipe used for L1. */
+    filter: sepia(1) hue-rotate(80deg) saturate(2) brightness(0.85);
 }
 
 /* --- Radial bloom animation (real DOM overlay) --- */
@@ -3440,8 +3474,8 @@ body.all-verified {
         circle at 30px 28px,
         transparent 0%,
         transparent 45%,
-        rgba(179, 157, 219, 0.35) 50%,
-        rgba(179, 157, 219, 0.20) 55%,
+        var(--aics-bloom-color, rgba(179, 157, 219, 0.35)) 50%,
+        var(--aics-bloom-color, rgba(179, 157, 219, 0.20)) 55%,
         transparent 60%
     );
     transform: scale(0);
@@ -3470,15 +3504,17 @@ body.all-verified {
     animation: panelBorderGlow 0.6s ease-out;
 }
 
-body.all-verified .toolbar-logo {
+body.aics-level-1 .toolbar-logo {
     filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }
 
-body.all-verified .vaib-verified-badge {
+body.aics-level-1 .vaib-verified-badge {
     filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }
 
-/* --- Vaibify checkmark next to workflow name --- */
+/* --- AICS checkmark cluster next to workflow name ---
+   Three independent spans, one per ladder rung. Visibility is
+   additive: ``body.aics-level-N`` lights checkmarks 1..N. */
 
 .vaibify-checkmark {
     display: none;
@@ -3493,7 +3529,12 @@ body.all-verified .vaib-verified-badge {
     vertical-align: middle;
 }
 
-body.all-verified .vaibify-checkmark {
+body.aics-level-1 .vaibify-checkmark[data-aics-level="1"],
+body.aics-level-2 .vaibify-checkmark[data-aics-level="1"],
+body.aics-level-2 .vaibify-checkmark[data-aics-level="2"],
+body.aics-level-3 .vaibify-checkmark[data-aics-level="1"],
+body.aics-level-3 .vaibify-checkmark[data-aics-level="2"],
+body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     display: inline;
 }
 
@@ -4757,4 +4798,271 @@ body.all-verified .vaibify-checkmark {
 
 .step-stale-badge.stale-mtime-only {
     color: var(--text-muted);
+}
+
+/* --- AICS tab content ---
+   The new "AICS" tab between Steps and Files shows the current level
+   header card and the L2 Readiness rollup. All-grey rows mean the
+   workflow is missing data for that criterion. */
+
+#panelAics {
+    display: none;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 12px 12px 24px 12px;
+}
+
+#panelAics.active {
+    display: flex;
+}
+
+.aics-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 16px 0;
+}
+
+.aics-header-card {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.aics-header-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.aics-header-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.aics-card {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.aics-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.aics-card.collapsed .aics-card-body {
+    display: none;
+}
+
+.aics-card.collapsed .aics-card-header {
+    border-bottom: none;
+}
+
+.aics-card-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aics-card-summary {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.aics-card-body {
+    padding: 8px 14px 12px 14px;
+}
+
+.aics-gap-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    gap: 8px;
+}
+
+.aics-gap-row.state-satisfied .aics-gap-icon {
+    color: var(--highlight-color);
+}
+
+.aics-gap-row.state-unsatisfied .aics-gap-icon {
+    color: #f0a050;
+}
+
+.aics-gap-icon {
+    font-weight: 700;
+    width: 14px;
+    text-align: center;
+}
+
+.aics-gap-label {
+    flex: 0 0 auto;
+}
+
+.aics-gap-fix {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--highlight-color);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* --- AI Declaration step body --- */
+
+.ai-declaration-block {
+    padding: 8px 0;
+}
+
+.ai-declaration-file {
+    font-size: 13px;
+    padding: 6px 0;
+}
+
+.ai-declaration-file code {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.ai-declaration-empty {
+    padding: 8px;
+    border: 1px dashed var(--border-color);
+    border-radius: 4px;
+    margin: 6px 0;
+}
+
+.ai-declaration-empty-message {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.ai-declaration-viewer {
+    padding: 6px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.ai-declaration-attestation {
+    margin-top: 10px;
+}
+
+/* --- AICS attestation banner (Phase 2 stub for Phase 3 staleness) --- */
+
+.aics-attestation-banner {
+    background: rgba(240, 160, 80, 0.15);
+    border-bottom: 1px solid #f0a050;
+    color: #f0a050;
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.aics-attestation-banner[hidden] {
+    display: none;
+}
+
+/* --- Phase 3: AICS L3 readiness, attestation card, history table --- */
+
+.aics-card.aics-level3-card.disabled {
+    opacity: 0.6;
+}
+
+.aics-card.aics-level3-card .aics-card-title {
+    color: #f48fb1;
+}
+
+.aics-verify-row {
+    margin-top: 10px;
+    text-align: right;
+}
+
+.btn-aics-verify-l3 {
+    background: #f48fb1;
+    border: 1px solid #f48fb1;
+    color: #111;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.btn-aics-verify-l3:disabled {
+    cursor: not-allowed;
+    background: rgba(244, 143, 177, 0.25);
+    color: var(--text-muted);
+    border-color: rgba(244, 143, 177, 0.4);
+}
+
+.btn-aics-verify-l3.in-flight {
+    background: rgba(244, 143, 177, 0.5);
+    cursor: progress;
+}
+
+.aics-attestation-card.status-passed .aics-card-title {
+    color: var(--highlight-color);
+}
+
+.aics-attestation-card.status-failed .aics-card-title {
+    color: #ff7070;
+}
+
+.aics-attestation-card.empty {
+    opacity: 0.65;
+}
+
+.aics-attestation-details {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.aics-attestation-details code {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.aics-attestation-stale {
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(240, 160, 80, 0.15);
+    border-left: 3px solid #f0a050;
+    color: #f0a050;
+    font-size: 12px;
+}
+
+.aics-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.aics-history-table th,
+.aics-history-table td {
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.aics-history-table tr.state-passed td {
+    color: var(--highlight-color);
+}
+
+.aics-history-table tr.state-failed td {
+    color: #ff7070;
+}
+
+.aics-history-table code {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 3px;
+    border-radius: 3px;
+    font-size: 11px;
 }
