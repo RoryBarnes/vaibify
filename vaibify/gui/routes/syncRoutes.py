@@ -1627,11 +1627,21 @@ def _fnValidateArxivPathSegment(sSegment, sFieldLabel):
             status_code=400,
             detail=f"{sFieldLabel} must not contain null bytes.",
         )
+    if sSegment.startswith("/"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{sFieldLabel} must not be absolute (leading '/').",
+        )
     for sPart in sSegment.split("/"):
         if sPart == "..":
             raise HTTPException(
                 status_code=400,
                 detail=f"{sFieldLabel} must not contain '..' segments.",
+            )
+        if sPart.startswith("~"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{sFieldLabel} must not contain '~' segments.",
             )
 
 

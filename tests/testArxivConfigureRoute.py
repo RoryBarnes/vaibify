@@ -221,6 +221,42 @@ def test_configure_rejects_path_map_null_byte(fixtureClient):
     assert response.status_code == 400
 
 
+def test_configure_rejects_path_map_absolute_value(fixtureClient):
+    """Absolute dictPathMap values are rejected with 400."""
+    response = fixtureClient.post(
+        f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
+        json={
+            "sArxivId": "2401.12345",
+            "dictPathMap": {"fig.pdf": "/etc/passwd"},
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_configure_rejects_path_map_absolute_key(fixtureClient):
+    """Absolute dictPathMap keys are rejected with 400."""
+    response = fixtureClient.post(
+        f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
+        json={
+            "sArxivId": "2401.12345",
+            "dictPathMap": {"/etc/passwd": "fig.pdf"},
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_configure_rejects_path_map_tilde_segment(fixtureClient):
+    """dictPathMap entries containing a ~ segment are rejected with 400."""
+    response = fixtureClient.post(
+        f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
+        json={
+            "sArxivId": "2401.12345",
+            "dictPathMap": {"fig.pdf": "~root/secret"},
+        },
+    )
+    assert response.status_code == 400
+
+
 def test_configure_surfaces_verify_error_on_response(
     fixtureClient, fixtureWorkflow,
 ):
