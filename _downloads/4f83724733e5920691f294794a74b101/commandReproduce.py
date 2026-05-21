@@ -62,7 +62,6 @@ __all__ = [
 _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 _S_LOCK_FILENAME = "requirements.lock"
 _S_ENVIRONMENT_RELATIVE = ".vaibify/environment.json"
-_T_TIER_CHOICES = ("1", "2", "3", "4")
 
 # Conservative whitelist for OCI image references that may include a
 # digest (registry/repo@sha256:<hex>) or a tag (registry/repo:tag).
@@ -120,7 +119,10 @@ def fbVerifyTier1(sProjectRepo):
     pathManifest = Path(sProjectRepo) / _S_MANIFEST_FILENAME
     if not pathManifest.is_file():
         _fnAbortMissingFile(_S_MANIFEST_FILENAME, sProjectRepo)
-    _fnPrintHeader("1/5", "Verifying file integrity (MANIFEST.sha256)")
+    _fnPrintHeader(
+        f"1/{_S_TIER_DENOMINATOR}",
+        "Verifying file integrity (MANIFEST.sha256)",
+    )
     listMismatches = flistVerifyManifest(sProjectRepo)
     iEntries = manifestWriter.fiCountManifestEntries(sProjectRepo)
     if not listMismatches:
@@ -217,7 +219,10 @@ def fbVerifyTier2(sProjectRepo):
     pathLock = Path(sProjectRepo) / _S_LOCK_FILENAME
     if not pathLock.is_file():
         _fnAbortMissingFile(_S_LOCK_FILENAME, sProjectRepo)
-    _fnPrintHeader("2/5", "Reproducing Python env (requirements.lock)")
+    _fnPrintHeader(
+        f"2/{_S_TIER_DENOMINATOR}",
+        "Reproducing Python env (requirements.lock)",
+    )
     iReturnCode, sStderr = _fiRunPipInstall(pathLock)
     if iReturnCode == 0:
         _fnPrintPass("hashes verified")
@@ -275,7 +280,10 @@ def fbVerifyTier3(sProjectRepo):
     pathEnvironment = Path(sProjectRepo) / _S_ENVIRONMENT_RELATIVE
     if not pathEnvironment.is_file():
         _fnAbortMissingFile(_S_ENVIRONMENT_RELATIVE, sProjectRepo)
-    _fnPrintHeader("3/5", "Pulling pinned container image")
+    _fnPrintHeader(
+        f"3/{_S_TIER_DENOMINATOR}",
+        "Pulling pinned container image",
+    )
     sImageDigest = _fsLoadImageDigest(pathEnvironment, sProjectRepo)
     completed = subprocess.run(
         ["docker", "pull", sImageDigest],
@@ -322,7 +330,10 @@ def fbVerifyTier4(sProjectRepo):
     dictWorkflow = _fdictAggregateAllWorkflows(sProjectRepo) or {
         "listSteps": [],
     }
-    _fnPrintHeader("4/5", "Verifying L3 artifact coherence")
+    _fnPrintHeader(
+        f"4/{_S_TIER_DENOMINATOR}",
+        "Verifying L3 artifact coherence",
+    )
     listResults = _flistRunReadinessVerifiers(
         sProjectRepo, dictWorkflow,
     )
@@ -371,7 +382,10 @@ def fbRerunWorkflow(sProjectRepo):
     (which calls ``sys.exit(1)``) does not short-circuit the
     surrounding ``vaibify reproduce`` exit-code logic.
     """
-    _fnPrintHeader("5/5", "Re-running workflow")
+    _fnPrintHeader(
+        f"5/{_S_TIER_DENOMINATOR}",
+        "Re-running workflow",
+    )
     try:
         return _fbInvokePipelineRunner(sProjectRepo)
     except (Exception, SystemExit) as error:
@@ -425,18 +439,34 @@ def _fconfigResolveProjectAtRepo(sProjectRepo, fconfigResolveProject):
         os.chdir(sOriginalCwd)
 
 
+# Tier registry: single source of truth for the 5-tier reproduce ladder.
+# Each entry is (sLabel, sDescription, fnVerify, bRequiresRerun). A future
+# Tier 6 (e.g. external attestor co-sign) is added by appending one tuple;
+# every label and print site is derived from this list so the denominator
+# stays in sync.
+_LIST_TIERS = (
+    ("1", "manifest present + clean", fbVerifyTier1, False),
+    ("2", "lockfile parity",          fbVerifyTier2, False),
+    ("3", "image digest pinned",      fbVerifyTier3, False),
+    ("4", "L3 artifact coherence",    fbVerifyTier4, False),
+    ("5", "byte-identical rerun",     fbRerunWorkflow, True),
+)
+_T_TIER_CHOICES = tuple(
+    sLabel for sLabel, _sDescription, _fnVerify, bRequiresRerun in _LIST_TIERS
+    if not bRequiresRerun
+)
+_S_TIER_DENOMINATOR = str(len(_LIST_TIERS))
+
+
 def _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):
     """Run a single tier and return its True/False outcome (or True if skipped)."""
     if sTier in setSkipTiers:
-        click.echo(f"[{sTier}/5] skipped")
+        click.echo(f"[{sTier}/{_S_TIER_DENOMINATOR}] skipped")
         return True
-    if sTier == "1":
-        return fbVerifyTier1(sProjectRepo)
-    if sTier == "2":
-        return fbVerifyTier2(sProjectRepo)
-    if sTier == "3":
-        return fbVerifyTier3(sProjectRepo)
-    return fbVerifyTier4(sProjectRepo)
+    for sLabel, _sDescription, fnVerify, bRequiresRerun in _LIST_TIERS:
+        if sLabel == sTier and not bRequiresRerun:
+            return fnVerify(sProjectRepo)
+    return True
 
 
 def _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten):
@@ -562,7 +592,10 @@ def reproduce(sRepo, bRerun, saSkipTier):
         if not bRerunPassed:
             bAllPassed = False
     else:
-        click.echo("[5/5] Re-running workflow ... skipped (use --rerun)")
+        click.echo(
+            f"[5/{_S_TIER_DENOMINATOR}] "
+            "Re-running workflow ... skipped (use --rerun)"
+        )
     _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten)
     if not bAllPassed:
         sys.exit(1)

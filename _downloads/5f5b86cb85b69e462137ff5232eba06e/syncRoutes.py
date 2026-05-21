@@ -371,38 +371,60 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
-            dictCtx["workflows"], sContainerId)
-        sZenodoService = dictWorkflow.get(
-            "sZenodoService", "sandbox",
+            dictCtx["workflows"], sContainerId,
         )
-        dictMetadata = _fdictResolveZenodoMetadataForArchive(
-            dictWorkflow,
+        dictResult, sZenodoService = await _ftPerformZenodoArchive(
+            syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
         )
-        iParentDepositId = _fiReadParentDepositId(dictWorkflow)
-        iExit, sOut = await asyncio.to_thread(
-            syncDispatcher.ftResultArchiveToZenodo,
-            dictCtx["docker"], sContainerId,
-            sZenodoService, request.listFilePaths, dictMetadata,
-            iParentDepositId,
-        )
-        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
         if not dictResult["bSuccess"]:
             return dictResult
-        dictResult.update(_fdictParseZenodoResult(sOut))
-        _fnPersistZenodoPublishRecord(dictWorkflow, dictResult)
-        workflowManager.fnUpdateSyncStatus(
-            dictWorkflow, request.listFilePaths, "Zenodo")
-        dictDigests = await asyncio.to_thread(
-            _fdictComputePostArchiveZenodoDigests,
-            dictCtx, sContainerId, dictWorkflow,
-            request.listFilePaths,
+        await _fnPersistZenodoArchiveSuccess(
+            dictCtx, sContainerId, dictWorkflow, request,
+            dictResult, sZenodoService,
         )
-        workflowManager.fnUpdateZenodoDigests(
-            dictWorkflow, dictDigests,
-            sZenodoService=sZenodoService,
-        )
-        dictCtx["save"](sContainerId, dictWorkflow)
         return dictResult
+
+
+async def _ftPerformZenodoArchive(
+    syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
+):
+    """Upload to Zenodo and parse the per-deposit response.
+
+    Returns ``(dictResult, sZenodoService)``. On failure the parsed
+    Zenodo metadata is not merged into ``dictResult`` so callers can
+    short-circuit before persisting.
+    """
+    sZenodoService = dictWorkflow.get("sZenodoService", "sandbox")
+    dictMetadata = _fdictResolveZenodoMetadataForArchive(dictWorkflow)
+    iParentDepositId = _fiReadParentDepositId(dictWorkflow)
+    iExit, sOut = await asyncio.to_thread(
+        syncDispatcher.ftResultArchiveToZenodo,
+        dictCtx["docker"], sContainerId, sZenodoService,
+        request.listFilePaths, dictMetadata, iParentDepositId,
+    )
+    dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+    if dictResult["bSuccess"]:
+        dictResult.update(_fdictParseZenodoResult(sOut))
+    return dictResult, sZenodoService
+
+
+async def _fnPersistZenodoArchiveSuccess(
+    dictCtx, sContainerId, dictWorkflow, request,
+    dictResult, sZenodoService,
+):
+    """Persist the publish record, refresh digests, save the workflow."""
+    _fnPersistZenodoPublishRecord(dictWorkflow, dictResult)
+    workflowManager.fnUpdateSyncStatus(
+        dictWorkflow, request.listFilePaths, "Zenodo",
+    )
+    dictDigests = await asyncio.to_thread(
+        _fdictComputePostArchiveZenodoDigests,
+        dictCtx, sContainerId, dictWorkflow, request.listFilePaths,
+    )
+    workflowManager.fnUpdateZenodoDigests(
+        dictWorkflow, dictDigests, sZenodoService=sZenodoService,
+    )
+    dictCtx["save"](sContainerId, dictWorkflow)
 
 
 def _fnRegisterZenodoDeposit(app, dictCtx):
