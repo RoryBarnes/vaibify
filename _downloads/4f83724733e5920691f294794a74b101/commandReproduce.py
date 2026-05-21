@@ -504,7 +504,9 @@ def _fsRecordedImageDigest(sProjectRepo):
         return ""
     dictContainer = dictPayload.get("dictContainer")
     if isinstance(dictContainer, dict):
-        return dictContainer.get("sImageDigest") or ""
+        sNested = dictContainer.get("sImageDigest") or ""
+        if sNested:
+            return sNested
     return dictPayload.get("sImageDigest") or ""
 
 
