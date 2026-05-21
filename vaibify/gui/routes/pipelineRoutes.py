@@ -497,7 +497,11 @@ async def _fdictFetchOutputStatus(
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)
     dictReloadedShape = _fdictBuildReloadedWorkflowShape(dictReload)
+    from vaibify.reproducibility.levelGates import fiAICSLevel
+    iAICSLevel = fiAICSLevel(dictWorkflow, sRepoRoot)
+    dictWorkflow["iAICSLevel"] = iAICSLevel
     return {
+        "iAICSLevel": iAICSLevel,
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),

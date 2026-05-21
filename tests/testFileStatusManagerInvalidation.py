@@ -793,40 +793,46 @@ def posixJoin(*saParts):
 # ---------------------------------------------------------------
 
 
-def test_fbAllStepsFullyVerified_returns_false_on_none_step():
-    """A workflow with a None step must not crash with AttributeError."""
-    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+def test_fbAtLeastLevel1_returns_false_on_none_step():
+    """A workflow with a None step must not crash with AttributeError.
+
+    Renamed from fbAllStepsFullyVerified — the L1 gate replaces the old
+    aggregate predicate but enforces the same defensive contract: any
+    uncertainty (non-dict step entry, missing verification) reads as
+    not-L1 rather than raising.
+    """
+    from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     dictWorkflow = {"listSteps": [None]}
-    assert fbAllStepsFullyVerified(dictWorkflow) is False
+    assert fbAtLeastLevel1(dictWorkflow, "/repo") is False
 
 
-def test_fbAllStepsFullyVerified_returns_false_on_string_step():
+def test_fbAtLeastLevel1_returns_false_on_string_step():
     """A workflow with a non-dict step must not crash."""
-    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+    from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     dictWorkflow = {"listSteps": ["corrupt"]}
-    assert fbAllStepsFullyVerified(dictWorkflow) is False
+    assert fbAtLeastLevel1(dictWorkflow, "/repo") is False
 
 
-def test_fbAllStepsFullyVerified_mixed_none_and_valid_returns_false():
-    """Even one corrupt entry blocks the all-green claim."""
-    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+def test_fbAtLeastLevel1_mixed_none_and_valid_returns_false():
+    """Even one corrupt entry blocks the L1 claim."""
+    from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     dictGoodStep = {
         "dictVerification": {"sUser": "passed"},
     }
     dictWorkflow = {"listSteps": [dictGoodStep, None]}
-    assert fbAllStepsFullyVerified(dictWorkflow) is False
+    assert fbAtLeastLevel1(dictWorkflow, "/repo") is False
 
 
-def test_fbIsStepFullyVerified_returns_false_on_none_dict_verification():
+def test_fbStepIsAtLeastLevel1_returns_false_on_none_dict_verification():
     """A non-dict dictVerification on a step must not crash."""
-    from vaibify.gui.fileStatusManager import fbIsStepFullyVerified
+    from vaibify.reproducibility.levelGates import fbStepIsAtLeastLevel1
     dictStep = {"dictVerification": None}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbIsStepFullyVerified_returns_false_on_non_dict_step():
+def test_fbStepIsAtLeastLevel1_returns_false_on_non_dict_step():
     """A non-dict step must not crash with AttributeError."""
-    from vaibify.gui.fileStatusManager import fbIsStepFullyVerified
-    assert fbIsStepFullyVerified(None) is False
-    assert fbIsStepFullyVerified("oops") is False
-    assert fbIsStepFullyVerified(42) is False
+    from vaibify.reproducibility.levelGates import fbStepIsAtLeastLevel1
+    assert fbStepIsAtLeastLevel1(None) is False
+    assert fbStepIsAtLeastLevel1("oops") is False
+    assert fbStepIsAtLeastLevel1(42) is False

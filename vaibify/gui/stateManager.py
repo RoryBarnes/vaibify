@@ -63,7 +63,7 @@ S_VAIBIFY_GITIGNORE_BODY = (
 )
 
 T_STATEFUL_STEP_FIELDS = ("dictVerification", "dictRunStats")
-T_STATEFUL_TOP_FIELDS = ("bArchiveTrackingMigrated",)
+T_STATEFUL_TOP_FIELDS = ("bArchiveTrackingMigrated", "iAICSLevel")
 
 
 def fsStatePathFromRepo(sProjectRepoPath):

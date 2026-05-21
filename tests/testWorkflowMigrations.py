@@ -254,6 +254,53 @@ def test_fsDeriveProjectRepoPathFromWorkflow_returns_empty_for_non_matching():
     assert fsDeriveProjectRepoPathFromWorkflow("/some/random/path.json") == ""
 
 
+def test_step_without_sStepKind_defaults_to_data_kind():
+    """Phase 2 backward-compat: legacy steps lack ``sStepKind``.
+
+    The ai-declaration predicate must treat a missing kind as ``data``,
+    so legacy workflows do not accidentally satisfy the "has AI
+    Declaration step" L2 criterion just because their schema predates
+    the field.
+    """
+    from vaibify.reproducibility.aiDeclarationStep import (
+        fbStepIsAiDeclaration,
+    )
+    dictLegacyStep = {
+        "sName": "Flares",
+        "sDirectory": "Flares",
+        "saPlotCommands": ["python plot.py"],
+    }
+    assert "sStepKind" not in dictLegacyStep
+    assert fbStepIsAiDeclaration(dictLegacyStep) is False
+
+
+def test_ai_declaration_step_kind_survives_migration_run():
+    """Migrators don't touch ``sStepKind`` or ``sDeclarationFile``.
+
+    A user-added ai-declaration step must round-trip through
+    ``fnApplyMigrations`` unchanged; otherwise the L2 gate would drop
+    every time the schema version bumps.
+    """
+    dictWorkflow = {
+        S_VERSION_KEY: I_CURRENT_WORKFLOW_VERSION,
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "AI Declaration",
+                "sDirectory": "",
+                "sStepKind": "ai-declaration",
+                "sDeclarationFile": "AI_USAGE.md",
+                "saPlotCommands": [],
+                "saPlotFiles": [],
+            },
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["sStepKind"] == "ai-declaration"
+    assert dictStep["sDeclarationFile"] == "AI_USAGE.md"
+
+
 def test_load_derives_unnecessary_for_empty_command_categories():
     """Loading a workflow rewrites stale "untested" to "unnecessary".
 

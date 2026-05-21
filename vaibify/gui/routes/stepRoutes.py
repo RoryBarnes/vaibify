@@ -6,7 +6,8 @@ from fastapi import HTTPException
 
 from .. import workflowManager
 from ..actionCatalog import fnAgentAction
-from ..fileStatusManager import fbIsStepFullyVerified, fnMaybeAutoArchive
+from ..fileStatusManager import fnMaybeAutoArchive
+from vaibify.reproducibility.levelGates import fiAICSLevel
 from ..pipelineServer import (
     ReorderRequest,
     StepCreateRequest,
@@ -134,12 +135,9 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        bWasVerified = False
-        listSteps = dictWorkflow.get("listSteps", [])
-        if 0 <= iStepIndex < len(listSteps):
-            bWasVerified = fbIsStepFullyVerified(
-                listSteps[iStepIndex],
-            )
+        iLevelBefore = fiAICSLevel(
+            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        )
         try:
             workflowManager.fnUpdateStep(
                 dictWorkflow, iStepIndex,
@@ -150,7 +148,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, bWasVerified,
+            iStepIndex, iLevelBefore,
         )
         return fdictStepWithLabel(dictWorkflow, iStepIndex)
 

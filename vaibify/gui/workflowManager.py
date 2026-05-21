@@ -227,6 +227,7 @@ def fdictLoadWorkflowFromContainer(
     fbDeriveUnnecessaryVerification(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
+    _fnDeriveAICSLevel(dictWorkflow, sRepoPath)
     return dictWorkflow
 
 
@@ -554,6 +555,21 @@ def fbDeriveUnnecessaryVerification(dictWorkflow):
     return bAnyChanged
 
 
+def _fnDeriveAICSLevel(dictWorkflow, sProjectRepoPath):
+    """Compute and persist the workflow's current AICS level.
+
+    Writes ``iAICSLevel`` on the dict. Called from the load-after-merge
+    path and from ``fnSaveWorkflowToContainer`` so the integer is
+    always current with the per-step verification state. The level
+    is not authoritative — the derivation is; treat the persisted
+    value as a cache invalidated on every load and save.
+    """
+    from vaibify.reproducibility.levelGates import fiAICSLevel
+    dictWorkflow["iAICSLevel"] = fiAICSLevel(
+        dictWorkflow, sProjectRepoPath,
+    )
+
+
 def fdictCreateStep(
     sName,
     sDirectory,
@@ -761,6 +777,8 @@ def fnSaveWorkflowToContainer(
         raise ValueError("sWorkflowPath is required for saving")
     fnAttachStepLabels(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
+    sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
+    _fnDeriveAICSLevel(dictWorkflow, sRepoPath)
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
     dictDeclarative, dictState = stateManager.ftSplitMergedDict(
@@ -770,7 +788,6 @@ def fnSaveWorkflowToContainer(
     connectionDocker.fnWriteFile(
         sContainerId, sWorkflowPath, sJson.encode("utf-8")
     )
-    sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
     sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
     if sStatePath:
         stateManager.fnSaveStateToContainer(

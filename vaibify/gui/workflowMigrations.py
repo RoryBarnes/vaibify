@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 3
+I_CURRENT_WORKFLOW_VERSION = 4
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -396,8 +396,26 @@ def _fnMigrateV2ToV3(dictWorkflow, sProjectRepoPath):
     dictWorkflow.pop("sProjectRepoPath", None)
 
 
+def _fnMigrateV3ToV4(dictWorkflow, sProjectRepoPath):
+    """Replace the legacy ``bVaibified`` flag with the AICS ladder.
+
+    Drops any persisted ``bVaibified`` key (it was historically derived
+    on the frontend and never authoritative; forked or hand-edited
+    workflows occasionally carry the field anyway). Drops any
+    pre-existing ``iAICSLevel`` so the post-load derivation hook in
+    ``workflowManager.fdictLoadWorkflowFromContainer`` recomputes the
+    integer against the current per-step verification state rather
+    than trusting a stale value. The derivation itself runs after
+    state.json is merged in, so this migrator must not try to compute
+    the level here.
+    """
+    dictWorkflow.pop("bVaibified", None)
+    dictWorkflow.pop("iAICSLevel", None)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
     (2, _fnMigrateV2ToV3),
+    (3, _fnMigrateV3ToV4),
 )

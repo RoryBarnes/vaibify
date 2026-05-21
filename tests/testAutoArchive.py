@@ -4,10 +4,10 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 from vaibify.gui.fileStatusManager import (
-    fbIsStepFullyVerified,
     flistStepRemoteFiles,
     fnMaybeAutoArchive,
 )
+from vaibify.reproducibility.levelGates import fbStepIsAtLeastLevel1
 
 
 def _fnRunAsync(coroutine):
@@ -16,26 +16,29 @@ def _fnRunAsync(coroutine):
 
 
 # ---------------------------------------------------------------------------
-# fbIsStepFullyVerified
+# fbStepIsAtLeastLevel1 (was fbIsStepFullyVerified; the predicate is now
+# composed in vaibify.reproducibility.levelGates from three orthogonal
+# per-step predicates in fileStatusManager). Names changed; semantics
+# unchanged: user attested + every defined test green + timing clean.
 # ---------------------------------------------------------------------------
 
 
-def test_fbIsStepFullyVerified_user_not_passed_returns_false():
+def test_fbStepIsAtLeastLevel1_user_not_passed_returns_false():
     dictStep = {"dictVerification": {"sUser": "untested"}}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbIsStepFullyVerified_user_failed_returns_false():
+def test_fbStepIsAtLeastLevel1_user_failed_returns_false():
     dictStep = {"dictVerification": {"sUser": "failed"}}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbIsStepFullyVerified_user_passed_no_tests_returns_true():
+def test_fbStepIsAtLeastLevel1_user_passed_no_tests_returns_true():
     dictStep = {"dictVerification": {"sUser": "passed"}}
-    assert fbIsStepFullyVerified(dictStep) is True
+    assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
-def test_fbIsStepFullyVerified_all_tests_passed_returns_true():
+def test_fbStepIsAtLeastLevel1_all_tests_passed_returns_true():
     dictStep = {"dictVerification": {
         "sUser": "passed",
         "sUnitTest": "passed",
@@ -43,32 +46,32 @@ def test_fbIsStepFullyVerified_all_tests_passed_returns_true():
         "sQualitative": "passed",
         "sQuantitative": "passed",
     }}
-    assert fbIsStepFullyVerified(dictStep) is True
+    assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
-def test_fbIsStepFullyVerified_one_test_untested_returns_false():
+def test_fbStepIsAtLeastLevel1_one_test_untested_returns_false():
     dictStep = {"dictVerification": {
         "sUser": "passed",
         "sUnitTest": "passed",
         "sIntegrity": "untested",
     }}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbIsStepFullyVerified_one_test_failed_returns_false():
+def test_fbStepIsAtLeastLevel1_one_test_failed_returns_false():
     dictStep = {"dictVerification": {
         "sUser": "passed",
         "sUnitTest": "failed",
     }}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbIsStepFullyVerified_no_dictVerification_returns_false():
+def test_fbStepIsAtLeastLevel1_no_dictVerification_returns_false():
     dictStep = {}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbIsStepFullyVerified_unnecessary_counts_as_green():
+def test_fbStepIsAtLeastLevel1_unnecessary_counts_as_green():
     dictStep = {"dictVerification": {
         "sUser": "passed",
         "sUnitTest": "unnecessary",
@@ -76,10 +79,10 @@ def test_fbIsStepFullyVerified_unnecessary_counts_as_green():
         "sQualitative": "unnecessary",
         "sQuantitative": "unnecessary",
     }}
-    assert fbIsStepFullyVerified(dictStep) is True
+    assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
-def test_fbIsStepFullyVerified_mixed_passed_and_unnecessary_is_green():
+def test_fbStepIsAtLeastLevel1_mixed_passed_and_unnecessary_is_green():
     dictStep = {"dictVerification": {
         "sUser": "passed",
         "sUnitTest": "passed",
@@ -87,10 +90,10 @@ def test_fbIsStepFullyVerified_mixed_passed_and_unnecessary_is_green():
         "sQualitative": "unnecessary",
         "sQuantitative": "passed",
     }}
-    assert fbIsStepFullyVerified(dictStep) is True
+    assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
-def test_fbIsStepFullyVerified_untested_still_blocks_with_unnecessary():
+def test_fbStepIsAtLeastLevel1_untested_still_blocks_with_unnecessary():
     dictStep = {"dictVerification": {
         "sUser": "passed",
         "sUnitTest": "untested",
@@ -98,11 +101,12 @@ def test_fbIsStepFullyVerified_untested_still_blocks_with_unnecessary():
         "sQualitative": "untested",
         "sQuantitative": "unnecessary",
     }}
-    assert fbIsStepFullyVerified(dictStep) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is False
 
 
-def test_fbAllStepsFullyVerified_all_unnecessary_steps_are_green():
-    from vaibify.gui.fileStatusManager import fbAllStepsFullyVerified
+def test_fbAtLeastLevel1_all_unnecessary_steps_are_green():
+    """L1 gate composes per-step predicates across the whole workflow."""
+    from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     dictV = {
         "sUser": "passed",
         "sUnitTest": "unnecessary",
@@ -114,14 +118,14 @@ def test_fbAllStepsFullyVerified_all_unnecessary_steps_are_green():
         {"dictVerification": dict(dictV)},
         {"dictVerification": dict(dictV)},
     ]}
-    assert fbAllStepsFullyVerified(dictWorkflow) is True
+    assert fbAtLeastLevel1(dictWorkflow, "/repo") is True
 
 
-def test_fbIsStepFullyVerified_passed_from_marker_counts_as_green():
+def test_fbStepIsAtLeastLevel1_passed_from_marker_counts_as_green():
     """``sUnitTest=passed-from-marker`` is the bootstrap-from-disk
     equivalent of ``passed`` (see stateManager._fdictVerificationFromMarker).
     The gate must treat both equivalently or workflows whose state was
-    rebuilt from markers on a fresh checkout never reach all-green.
+    rebuilt from markers on a fresh checkout never reach L1.
     """
     dictStep = {"dictVerification": {
         "sUser": "passed",
@@ -130,7 +134,7 @@ def test_fbIsStepFullyVerified_passed_from_marker_counts_as_green():
         "sQualitative": "passed",
         "sQuantitative": "passed",
     }}
-    assert fbIsStepFullyVerified(dictStep) is True
+    assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +190,10 @@ def test_flistStepRemoteFiles_no_sync_status_returns_empty():
 
 
 # ---------------------------------------------------------------------------
-# fnMaybeAutoArchive
+# fnMaybeAutoArchive — final positional arg renamed from
+# ``bWasFullyVerifiedBefore`` (boolean) to ``iAICSLevelBefore``
+# (integer 0..3). Promotion is now defined as
+# ``iAICSLevelBefore < 1 <= fiAICSLevel(...)``.
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +203,7 @@ def test_fnMaybeAutoArchive_noop_when_setting_off():
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0, False,
+        MagicMock(), "cid", dictWorkflow, 0, 0,
     ))
     assert bResult is False
 
@@ -208,7 +215,7 @@ def test_fnMaybeAutoArchive_noop_when_already_verified():
         "sUser": "passed"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
         MagicMock(), "cid", dictWorkflow, 0,
-        bWasFullyVerifiedBefore=True,
+        iAICSLevelBefore=1,
     ))
     assert bResult is False
 
@@ -219,7 +226,7 @@ def test_fnMaybeAutoArchive_noop_when_step_not_now_verified():
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "untested"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0, False,
+        MagicMock(), "cid", dictWorkflow, 0, 0,
     ))
     assert bResult is False
 
@@ -235,7 +242,7 @@ def test_fnMaybeAutoArchive_pushes_overleaf_on_transition():
         return_value=(0, "ok"),
     ) as mockPush:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, False,
+            MagicMock(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is True
     assert mockPush.called
@@ -253,7 +260,7 @@ def test_fnMaybeAutoArchive_pushes_zenodo_on_transition():
         return_value=(0, "ok"),
     ) as mockArchive:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, False,
+            MagicMock(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is True
     assert mockArchive.called
@@ -277,7 +284,7 @@ def test_fnMaybeAutoArchive_pushes_both_remotes():
         return_value=(0, "ok"),
     ) as mockZenodo:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, False,
+            MagicMock(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is True
     assert mockOverleaf.called
@@ -295,7 +302,7 @@ def test_fnMaybeAutoArchive_swallows_overleaf_failure():
         side_effect=RuntimeError("network down"),
     ):
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, False,
+            MagicMock(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is False
 
@@ -310,7 +317,7 @@ def test_fnMaybeAutoArchive_no_remotes_configured_returns_false():
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
     ) as mockPush:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, False,
+            MagicMock(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is False
     assert not mockPush.called

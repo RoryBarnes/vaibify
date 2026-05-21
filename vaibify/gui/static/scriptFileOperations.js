@@ -355,7 +355,7 @@ var PipeleyenFileOps = (function () {
         if (_fbFileInModifiedList(sResolved, listModified)) {
             return "file-necessary-red";
         }
-        if (PipeleyenApp.fbAllVerificationComplete(
+        if (PipeleyenApp.fbStepIsAtLeastLevel1(
             dictStep, iStep)) {
             return "file-necessary-valid";
         }

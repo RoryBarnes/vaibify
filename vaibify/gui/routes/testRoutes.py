@@ -8,10 +8,10 @@ from fastapi import HTTPException, Request
 
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import (
-    fbIsStepFullyVerified,
     fnMaybeAutoArchive,
     fsWorkflowSlugFromPath,
 )
+from vaibify.reproducibility.levelGates import fiAICSLevel
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
     fbDeriveUnnecessaryVerification,
@@ -275,7 +275,9 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        bWasVerified = fbIsStepFullyVerified(dictStep)
+        iLevelBefore = fiAICSLevel(
+            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        )
         dictCtx["docker"].fnWriteFile(
             sContainerId, request.sFilePath,
             request.sContent.encode("utf-8"),
@@ -303,7 +305,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, bWasVerified,
+            iStepIndex, iLevelBefore,
         )
         return {
             "bPassed": bPassed,
@@ -332,7 +334,9 @@ def _fnRegisterTestRun(app, dictCtx):
         listCmds = _flistResolveTestCommands(dictStep)
         if not listCmds:
             raise HTTPException(400, "No test commands")
-        bWasVerified = fbIsStepFullyVerified(dictStep)
+        iLevelBefore = fiAICSLevel(
+            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        )
         dictCategoryResults = await _fdictRunAllTestCategories(
             dictCtx, sContainerId, dictStep,
             sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
@@ -347,7 +351,7 @@ def _fnRegisterTestRun(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, bWasVerified,
+            iStepIndex, iLevelBefore,
         )
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
@@ -386,7 +390,9 @@ def _fnRegisterTestRun(app, dictCtx):
                 400,
                 f"No commands for category: {sCategory}",
             )
-        bWasVerified = fbIsStepFullyVerified(dictStep)
+        iLevelBefore = fiAICSLevel(
+            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        )
         sDir = _fsAbsoluteStepWorkdir(
             dictStep,
             dictWorkflow.get("sProjectRepoPath", ""),
@@ -415,7 +421,7 @@ def _fnRegisterTestRun(app, dictCtx):
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, bWasVerified,
+            iStepIndex, iLevelBefore,
         )
         return {
             "bPassed": bPassed,

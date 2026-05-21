@@ -12,7 +12,7 @@ Each step carries a ``dictVerification`` with orthogonal state fields:
 
 ``unnecessary`` is the derivation-hook value for a category whose
 ``saCommands`` list is empty — no tests are defined, so there is
-nothing to run. ``fbIsStepFullyVerified`` treats it as green;
+nothing to run. ``fbStepTestsPassing`` treats it as green;
 invalidation skips it; marker-application leaves it sticky.
 
 **User verification** (set by researcher clicking UI badge):
@@ -56,9 +56,10 @@ __all__ = [
     "fsWorkflowSlugFromPath",
     "fbReconcileUpstreamFlags",
     "fbReconcileUserVerificationTimestamps",
-    "fbIsStepFullyVerified",
+    "fbStepTestsPassing",
+    "fbStepTimingClean",
+    "fbStepUserApproved",
     "flistStepRemoteFiles",
-    "fbAllStepsFullyVerified",
     "fnMaybeAutoArchive",
 ]
 
@@ -1112,26 +1113,56 @@ _T_TEST_VERIF_KEYS = (
 _T_GREEN_VERIF_VALUES = ("passed", "passed-from-marker", "unnecessary")
 
 
-def fbIsStepFullyVerified(dictStep):
-    """Return True iff user has attested AND every defined test is green.
+def fbStepUserApproved(dictStep):
+    """Return True iff the step's ``sUser`` verification is ``passed``.
 
-    "Defined" means the verification field is present. Three values
-    count as green: ``passed`` (tests ran cleanly through the
-    dashboard), ``passed-from-marker`` (sUnitTest aggregate value
-    bootstrapped from a marker file on disk, indicating a prior
-    successful run), and ``unnecessary`` (derivation-hook value for
-    categories whose ``saCommands`` list is empty). Any other present
-    value — ``untested``, ``failed``, ``error``, ``stale``,
-    ``outputs-missing``, ``outputs-changed`` — blocks the all-green
-    state. A non-dict step (corrupt workflow) is treated as
-    not-verified so callers do not crash with ``AttributeError``.
+    The researcher attestation is the only field that requires a
+    human click; every other gate field is derived. A corrupt step
+    (non-dict, missing ``dictVerification``) reads as not-approved
+    so callers do not crash with ``AttributeError``.
     """
     if not isinstance(dictStep, dict):
         return False
     dictV = dictStep.get("dictVerification", {})
     if not isinstance(dictV, dict):
         return False
-    if dictV.get("sUser") != "passed":
+    return dictV.get("sUser") == "passed"
+
+
+def fbStepTimingClean(dictStep):
+    """Return True iff the step has no upstream-modified flag or stale outputs.
+
+    ``bUpstreamModified`` and a non-empty ``listModifiedFiles`` both
+    signal that something changed since the step was last attested.
+    Either one disqualifies the step from contributing to L1.
+    """
+    if not isinstance(dictStep, dict):
+        return False
+    dictV = dictStep.get("dictVerification", {})
+    if not isinstance(dictV, dict):
+        return False
+    if dictV.get("bUpstreamModified") is True:
+        return False
+    if dictV.get("listModifiedFiles"):
+        return False
+    return True
+
+
+def fbStepTestsPassing(dictStep):
+    """Return True iff every defined test category on a step is green.
+
+    "Defined" means the verification field is present. Three values
+    count as green: ``passed`` (tests ran cleanly through the
+    dashboard), ``passed-from-marker`` (sUnitTest aggregate value
+    bootstrapped from a marker file on disk, indicating a prior
+    successful run), and ``unnecessary`` (derivation-hook value for
+    categories whose ``saCommands`` list is empty). Any other
+    present value blocks the gate.
+    """
+    if not isinstance(dictStep, dict):
+        return False
+    dictV = dictStep.get("dictVerification", {})
+    if not isinstance(dictV, dict):
         return False
     for sKey in _T_TEST_VERIF_KEYS:
         if sKey in dictV and dictV[sKey] not in _T_GREEN_VERIF_VALUES:
@@ -1277,41 +1308,21 @@ def _fdictAutoArchiveZenodoDigests(
     }
 
 
-def fbAllStepsFullyVerified(dictWorkflow):
-    """Return True iff every step in the workflow is fully verified.
-
-    A corrupt workflow.json carrying ``None`` or non-dict step entries
-    is treated as not-fully-verified rather than raising
-    ``AttributeError`` from inside ``fbIsStepFullyVerified``. The
-    invariant the caller depends on — "all green" — is monotonic in
-    the strict sense: any uncertainty must read as not-green.
-    """
-    listSteps = dictWorkflow.get("listSteps", [])
-    if not listSteps:
-        return False
-    for dictStep in listSteps:
-        if not isinstance(dictStep, dict):
-            return False
-        if not fbIsStepFullyVerified(dictStep):
-            return False
-    return True
-
-
-def _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId=None):
-    """Regenerate the L3 reproducibility envelope on all-green transition.
+def _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId=None):
+    """Regenerate the L3 reproducibility envelope on L1 transition.
 
     Called from the same hook that drives auto-archive. Failures are
-    logged and swallowed — the manifest is best-effort here; the manual
-    Archive button remains the recovery path. The envelope is regenerated
-    regardless of bAutoArchive so the local repo always reflects the
-    latest verified state. ``sContainerId`` is threaded through so the
-    Tier 3 environment.json (which requires the running container's
-    image digest) is written, not silently skipped.
+    logged and swallowed — the manifest is best-effort here; the
+    manual Archive button remains the recovery path. The envelope is
+    regenerated regardless of bAutoArchive so the local repo always
+    reflects the latest verified state. ``sContainerId`` is threaded
+    through so the Tier 3 environment.json (which requires the
+    running container's image digest) is written, not silently
+    skipped.
     """
-    if not fbAllStepsFullyVerified(dictWorkflow):
-        return
+    from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if not sProjectRepoPath:
+    if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
         return
     try:
         from vaibify.reproducibility import dataArchiver
@@ -1322,41 +1333,41 @@ def _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId=None):
         )
     except Exception as error:
         logger.warning(
-            "All-green envelope refresh failed: %s", error,
+            "L1-transition envelope refresh failed: %s", error,
         )
 
 
 async def fnMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
-    bWasFullyVerifiedBefore,
+    iAICSLevelBefore,
 ):
-    """Push step's tracked files to Overleaf/Zenodo on verify transition.
+    """Push step's tracked files to Overleaf/Zenodo on L1 transition.
 
-    Fires only when the step transitions from not-fully-verified to
-    fully-verified AND the workflow's bAutoArchive setting is True.
-    Pushes never block the caller: failures are logged and the manual
-    sync UI remains the recovery path. Returns True when at least one
-    remote was pushed (callers can use this to know whether to refresh
-    badges).
+    Fires only when this step's transition promoted the workflow to
+    ``iAICSLevel >= 1`` (was below 1, is now at or above) AND the
+    workflow's bAutoArchive setting is True. Pushes never block the
+    caller: failures are logged and the manual sync UI remains the
+    recovery path. Returns True when at least one remote was pushed
+    (callers use this to know whether to refresh badges).
 
     Also refreshes the L3 reproducibility envelope (MANIFEST.sha256 +
     requirements.lock + .vaibify/environment.json) when this step's
-    transition leaves the workflow all-green. The refresh runs
+    transition leaves the workflow at L1 or higher. The refresh runs
     independently of bAutoArchive so the local repo's manifest always
     reflects the latest fully-verified state.
     """
+    from vaibify.reproducibility.levelGates import fiAICSLevel
     listSteps = dictWorkflow.get("listSteps", [])
-    if (not bWasFullyVerifiedBefore and
-            0 <= iStepIndex < len(listSteps) and
-            fbIsStepFullyVerified(listSteps[iStepIndex])):
-        _fnRefreshEnvelopeIfAllGreen(dictWorkflow, sContainerId)
+    sRepo = dictWorkflow.get("sProjectRepoPath", "")
+    iLevelNow = fiAICSLevel(dictWorkflow, sRepo)
+    bPromoted = iAICSLevelBefore < 1 <= iLevelNow
+    if bPromoted:
+        _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId)
     if not dictWorkflow.get("bAutoArchive"):
         return False
-    if bWasFullyVerifiedBefore:
+    if not bPromoted:
         return False
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
-        return False
-    if not fbIsStepFullyVerified(listSteps[iStepIndex]):
         return False
     bAnyPushed = False
     listOverleaf = flistStepRemoteFiles(
