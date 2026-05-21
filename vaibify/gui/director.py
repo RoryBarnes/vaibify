@@ -514,6 +514,7 @@ def fnDownloadDatasets(dictWorkflow, sWorkflowRoot):
     listDatasets = dictWorkflow.get("listDatasets", [])
     if not listDatasets:
         return
+    sRootReal = os.path.realpath(sWorkflowRoot)
     for dictDataset in listDatasets:
         sDoi = dictDataset.get("sDoi", "")
         sFileName = dictDataset.get("sFileName", "")
@@ -521,11 +522,25 @@ def fnDownloadDatasets(dictWorkflow, sWorkflowRoot):
         if not sDoi or not sFileName:
             continue
         sDestPath = os.path.join(sWorkflowRoot, sDestination, sFileName)
+        if not _fbDatasetPathInsideRoot(sDestPath, sRootReal):
+            print(f"  WARNING: refusing dataset write outside repo: "
+                  f"{sDestPath}")
+            continue
         if os.path.isfile(sDestPath):
             print(f"  Dataset exists: {sDestPath}")
             continue
         print(f"  Downloading: {sFileName} from {sDoi}")
         _fnDownloadFromZenodo(sDoi, sFileName, sDestPath)
+
+
+def _fbDatasetPathInsideRoot(sDestPath, sRootReal):
+    """Return True when sDestPath stays inside sRootReal after symlink resolution."""
+    sParent = os.path.dirname(sDestPath) or "."
+    sParentReal = os.path.realpath(sParent)
+    return (
+        sParentReal == sRootReal
+        or sParentReal.startswith(sRootReal + os.sep)
+    )
 
 
 def _fnDownloadFromZenodo(sDoi, sFileName, sDestPath):

@@ -1413,6 +1413,42 @@ def test_fbValidateWorkflow_rejects_traversal_step_directories():
     assert fbValidateWorkflow(dictWorkflow) is False
 
 
+def test_fbValidateWorkflow_rejects_absolute_dataset_destination():
+    """Absolute listDatasets[].sDestination is rejected."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+        "listDatasets": [{
+            "sDoi": "10.5281/zenodo.000",
+            "sFileName": "data.csv",
+            "sDestination": "/etc/foo",
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fbValidateWorkflow_rejects_dotdot_dataset_destination():
+    """..-escaping listDatasets[].sDestination is rejected."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+        "listDatasets": [{
+            "sDoi": "10.5281/zenodo.000",
+            "sFileName": "data.csv",
+            "sDestination": "../../etc",
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
 def test_fnInsertStep_renumbers_downstream_references():
     """References to Step02 become Step03 when inserting at position 1."""
     from vaibify.gui.workflowManager import fnInsertStep

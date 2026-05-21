@@ -368,9 +368,10 @@ def flistValidateOutputFilePaths(dictWorkflow):
     """Return warnings for output paths that leave the project repo.
 
     Scans ``saOutputFiles``, ``saDataFiles``, and ``saPlotFiles`` on
-    every step. Absolute paths and ``..``-escaping paths are flagged;
-    template-bearing paths (containing ``{``) are skipped because
-    they are resolved against the global variables dict at run time.
+    every step plus ``listDatasets[].sDestination``. Absolute paths
+    and ``..``-escaping paths are flagged; template-bearing paths
+    (containing ``{``) are skipped because they are resolved against
+    the global variables dict at run time.
     """
     listWarnings = []
     for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
@@ -383,7 +384,44 @@ def flistValidateOutputFilePaths(dictWorkflow):
                 )
                 if sWarning:
                     listWarnings.append(sWarning)
+    listWarnings.extend(_flistValidateDatasetDestinations(dictWorkflow))
     return listWarnings
+
+
+def _flistValidateDatasetDestinations(dictWorkflow):
+    """Return warnings for listDatasets[].sDestination boundary violations."""
+    listWarnings = []
+    for iIndex, dictDataset in enumerate(
+        dictWorkflow.get("listDatasets", []),
+    ):
+        sLabel = f"Dataset{iIndex + 1:02d}"
+        sDestination = dictDataset.get("sDestination", "")
+        sWarning = _fsCheckDatasetDestinationBoundary(
+            sDestination, sLabel,
+        )
+        if sWarning:
+            listWarnings.append(sWarning)
+    return listWarnings
+
+
+def _fsCheckDatasetDestinationBoundary(sDestination, sLabel):
+    """Return a warning for one sDestination leaving the project repo, or ''."""
+    if not isinstance(sDestination, str) or not sDestination:
+        return ""
+    if "{" in sDestination:
+        return ""
+    if posixpath.isabs(sDestination):
+        return (
+            f"{sLabel}: sDestination '{sDestination}' must be "
+            f"repo-relative, not absolute"
+        )
+    sNorm = posixpath.normpath(sDestination)
+    if sNorm == ".." or sNorm.startswith("../"):
+        return (
+            f"{sLabel}: sDestination '{sDestination}' escapes the "
+            f"project repo (resolves to '{sNorm}')"
+        )
+    return ""
 
 
 def flistValidateStepDirectories(dictWorkflow):

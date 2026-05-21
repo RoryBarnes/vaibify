@@ -307,6 +307,38 @@ def test_fnDownloadDatasets_skips_incomplete_entries(tmp_path):
     fnDownloadDatasets(dictWorkflow, str(tmp_path))
 
 
+def test_fnDownloadDatasets_refuses_absolute_destination(
+    tmp_path, capsys,
+):
+    """Absolute sDestination is refused at runtime without downloading."""
+    dictWorkflow = {
+        "listDatasets": [{
+            "sDoi": "10.5281/zenodo.123",
+            "sFileName": "data.hdf5",
+            "sDestination": "/etc",
+        }],
+    }
+    fnDownloadDatasets(dictWorkflow, str(tmp_path))
+    sOutput = capsys.readouterr().out
+    assert "refusing dataset write outside repo" in sOutput
+
+
+def test_fnDownloadDatasets_refuses_dotdot_destination(
+    tmp_path, capsys,
+):
+    """..-escaping sDestination is refused at runtime."""
+    dictWorkflow = {
+        "listDatasets": [{
+            "sDoi": "10.5281/zenodo.123",
+            "sFileName": "data.hdf5",
+            "sDestination": "../../etc",
+        }],
+    }
+    fnDownloadDatasets(dictWorkflow, str(tmp_path))
+    sOutput = capsys.readouterr().out
+    assert "refusing dataset write outside repo" in sOutput
+
+
 # -----------------------------------------------------------------------
 # fdictLoadWorkflow
 # -----------------------------------------------------------------------
