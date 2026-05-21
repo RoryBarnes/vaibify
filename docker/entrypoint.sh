@@ -182,28 +182,60 @@ fsReadGitHubToken() {
 }
 
 # ---------------------------------------------------------------------------
-# fnConfigureGit: Configure GitHub authentication via token
+# fnInstallCredentialHelper: Write a callback helper that resolves on demand
+#
+# Git invokes the helper once per HTTPS operation with ``get`` on stdin
+# and expects ``username=...\npassword=...\n`` on stdout. The helper
+# reads the token from the read-only Docker secret mount at request
+# time; it never writes the raw token to the container filesystem, so
+# no ``.git-credentials`` file exists for an attacker (or a stale
+# image) to harvest. ``store`` and ``erase`` are no-ops because the
+# token has no persistent representation inside the container.
+# ---------------------------------------------------------------------------
+fnInstallCredentialHelper() {
+    local sHelperPath="/usr/local/bin/vaibify-git-credential-helper"
+    cat > "${sHelperPath}" << 'HELPER'
+#!/bin/bash
+# vaibify-git-credential-helper: stdout the GitHub token on demand.
+# Reads the token from /run/secrets/gh_token (mounted read-only by the
+# host as a mode-600 ephemeral file). Falls back to ``gh auth token``
+# if present. Never writes the token to disk.
+case "${1:-}" in
+    get)
+        sToken=""
+        if [ -f /run/secrets/gh_token ]; then
+            sToken=$(cat /run/secrets/gh_token)
+        elif command -v gh > /dev/null 2>&1; then
+            sToken=$(gh auth token 2>/dev/null || true)
+        fi
+        if [ -n "${sToken}" ]; then
+            printf 'username=x-access-token\n'
+            printf 'password=%s\n' "${sToken}"
+        fi
+        ;;
+    store|erase)
+        # No-op: token lifetime is the container's lifetime; there is
+        # nothing to persist or wipe.
+        cat > /dev/null
+        ;;
+esac
+HELPER
+    chmod 0755 "${sHelperPath}"
+}
+
+# ---------------------------------------------------------------------------
+# fnConfigureGit: Wire git's credential lookup to the callback helper
 # ---------------------------------------------------------------------------
 fnConfigureGit() {
     local sToken
     sToken=$(fsReadGitHubToken)
     git config --system url."https://github.com/".insteadOf \
         "git@github.com:"
+    fnInstallCredentialHelper
     if [ -n "${sToken}" ]; then
-        echo "[vaib] GitHub credentials detected."
-        git config --system credential.helper store
-        local sCredLine="https://x-access-token:${sToken}@github.com"
-        echo "${sCredLine}" > "${HOME}/.git-credentials"
-        chmod 600 "${HOME}/.git-credentials"
-        local sContainerUser
-        sContainerUser="${CONTAINER_USER:-}"
-        if [ -n "${sContainerUser}" ] && [ "${sContainerUser}" != "root" ]; then
-            local sUserHome
-            sUserHome=$(eval echo "~${sContainerUser}")
-            echo "${sCredLine}" > "${sUserHome}/.git-credentials"
-            chown "${sContainerUser}" "${sUserHome}/.git-credentials"
-            chmod 600 "${sUserHome}/.git-credentials"
-        fi
+        echo "[vaib] GitHub credentials detected (resolved on demand)."
+        git config --system credential.helper \
+            "/usr/local/bin/vaibify-git-credential-helper"
     else
         echo "[vaib] No GitHub credentials found. Public repos only."
         echo "[vaib]   To access private repos, run on host: gh auth login"
