@@ -143,6 +143,16 @@ def _fdictBuildGitEnv(sAskpassPath):
     return dictEnv
 
 
+def _fresultSyntheticGitFailure(listArgs, iReturncode, sStderr):
+    """Return a CompletedProcess representing a failed git invocation."""
+    return subprocess.CompletedProcess(
+        args=["git"] + listArgs,
+        returncode=iReturncode,
+        stdout="",
+        stderr=sStderr,
+    )
+
+
 def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
     """Run a git command and return a CompletedProcess; never raises.
 
@@ -167,18 +177,10 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
             timeout=_F_GIT_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as error:
-        return subprocess.CompletedProcess(
-            args=["git"] + listArgs,
-            returncode=127,
-            stdout="",
-            stderr=str(error),
-        )
+        return _fresultSyntheticGitFailure(listArgs, 127, str(error))
     except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(
-            args=["git"] + listArgs,
-            returncode=124,
-            stdout="",
-            stderr="git command timed out",
+        return _fresultSyntheticGitFailure(
+            listArgs, 124, "git command timed out",
         )
 
 
@@ -663,14 +665,8 @@ def _fbPathInsideRoot(sCandidate, sRoot):
 
 def _fsStreamSha256(sPath):
     """Stream the file at sPath through SHA-256 and return hex digest."""
-    hasher = hashlib.sha256()
-    with open(sPath, "rb") as handleFile:
-        while True:
-            baChunk = handleFile.read(_I_HASH_READ_CHUNK_BYTES)
-            if not baChunk:
-                break
-            hasher.update(baChunk)
-    return hasher.hexdigest()
+    from vaibify.reproducibility._hashing import fsHashFileSha256
+    return fsHashFileSha256(sPath, _I_HASH_READ_CHUNK_BYTES)
 
 
 # ----------------------------------------------------------------------
