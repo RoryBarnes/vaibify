@@ -833,6 +833,16 @@ def test_figure_not_found(clientHttp):
     assert responseHttp.status_code == 404
 
 
+def test_figure_fallback_rejects_escape_workdir(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/figure/{S_CONTAINER_ID}/something.png",
+        params={"sWorkdir": "/etc"},
+    )
+    assert responseHttp.status_code in (400, 403)
+    assert b"PNG" not in responseHttp.content
+
+
 # ── Sync status ───────────────────────────────────────────────
 
 

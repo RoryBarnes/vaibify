@@ -345,6 +345,7 @@ def _fbaFetchFallback(
     else:
         sFallback = posixpath.join(
             sWorkflowDirectory, sWorkdir, sFilePath)
+    fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT)
     try:
         return connectionDocker.fbaFetchFile(sContainerId, sFallback)
     except Exception as error:
