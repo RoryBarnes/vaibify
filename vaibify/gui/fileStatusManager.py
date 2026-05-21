@@ -540,6 +540,72 @@ def _fbAnyMtimeNewerThan(listPaths, dictModTimes, iThreshold):
     return False
 
 
+def _fnResetUserAttestationIfStale(dictVerification):
+    """Reset ``sUser`` to ``untested`` and clear ``sLastUserUpdate``.
+
+    Mutations-only. Caller owns the
+    ``dictStep["dictVerification"] = dictVerification`` write-back per
+    the dashboard-ground-truth contract — this helper never persists.
+    """
+    dictVerification["sUser"] = "untested"
+    dictVerification.pop("sLastUserUpdate", None)
+
+
+def _fnClearPlotInvalidationFlags(dictVerification):
+    """Clear ``listModifiedFiles`` + ``bOutputModified``. Mutations-only."""
+    dictVerification.pop("listModifiedFiles", None)
+    dictVerification.pop("bOutputModified", None)
+
+
+def _fdictDefaultPlotVars(dictWorkflow):
+    """Return the {plot-dir, figure-type} block when caller passed no dictVars."""
+    return {
+        "sPlotDirectory": dictWorkflow.get("sPlotDirectory", "Plot"),
+        "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
+    }
+
+
+def _fnLogFreshnessCheck(
+    iIndex, sLastUserUpdate, iUserEpoch, listPlotPaths, bStale,
+):
+    """Emit the per-step freshness-check log line."""
+    logger.info(
+        "Freshness check step %d: sLastUserUpdate=%s "
+        "iUserEpoch=%s paths=%s bStale=%s",
+        iIndex, sLastUserUpdate, iUserEpoch, listPlotPaths, bStale,
+    )
+
+
+def _ftEvaluateFreshness(iIndex, dictStep, dictModTimes, dictVars):
+    """Return ``(bChecked, bStale)`` for the stale-attestation check.
+
+    ``bChecked`` is False when the step is not user-attested, has no
+    ``sLastUserUpdate`` field, or carries an unparseable timestamp —
+    in any of those cases the caller skips the step. When
+    ``bChecked`` is True the freshness-check log line has been
+    emitted as a side effect.
+    """
+    dictVerification = dictStep.get("dictVerification", {})
+    if dictVerification.get("sUser") != "passed":
+        return False, False
+    sLastUserUpdate = dictVerification.get("sLastUserUpdate", "")
+    if not sLastUserUpdate:
+        return False, False
+    iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
+    if iUserEpoch is None:
+        return False, False
+    listPlotPaths = [
+        tEntry[0] for tEntry in _flistResolvePlotPaths(dictStep, dictVars)
+    ]
+    bStale = _fbAnyMtimeNewerThan(
+        listPlotPaths, dictModTimes, iUserEpoch,
+    )
+    _fnLogFreshnessCheck(
+        iIndex, sLastUserUpdate, iUserEpoch, listPlotPaths, bStale,
+    )
+    return True, bStale
+
+
 def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
                                    dictVars=None):
     """Reset sUser if plot files are newer than sLastUserUpdate.
@@ -548,50 +614,71 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
     This handles the case where outputs changed before the server
     started, so poll-based delta detection never fires.
     """
-    import logging
-    logger = logging.getLogger("vaibify")
     bChanged = False
     if dictVars is None:
-        dictVars = {
-            "sPlotDirectory": dictWorkflow.get(
-                "sPlotDirectory", "Plot"),
-            "sFigureType": dictWorkflow.get("sFigureType", "pdf"),
-        }
+        dictVars = _fdictDefaultPlotVars(dictWorkflow)
     for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
+        dictWorkflow.get("listSteps", []),
     ):
-        dictVerification = dictStep.get("dictVerification", {})
-        if dictVerification.get("sUser") != "passed":
-            continue
-        sLastUserUpdate = dictVerification.get(
-            "sLastUserUpdate", "")
-        if not sLastUserUpdate:
-            continue
-        iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
-        if iUserEpoch is None:
-            continue
-        listPlotTuples = _flistResolvePlotPaths(dictStep, dictVars)
-        listPlotPaths = [tEntry[0] for tEntry in listPlotTuples]
-        bStale = _fbAnyMtimeNewerThan(
-            listPlotPaths, dictModTimes, iUserEpoch)
-        logger.info(
-            "Freshness check step %d: sLastUserUpdate=%s "
-            "iUserEpoch=%s paths=%s bStale=%s",
-            iIndex, sLastUserUpdate, iUserEpoch,
-            listPlotPaths, bStale,
+        bChecked, bStale = _ftEvaluateFreshness(
+            iIndex, dictStep, dictModTimes, dictVars,
         )
+        if not bChecked:
+            continue
+        dictVerification = dictStep["dictVerification"]
         if bStale:
-            dictVerification["sUser"] = "untested"
-            dictVerification.pop("sLastUserUpdate", None)
+            _fnResetUserAttestationIfStale(dictVerification)
             dictStep["dictVerification"] = dictVerification
             bChanged = True
-        else:
-            if dictVerification.get("listModifiedFiles"):
-                dictVerification.pop("listModifiedFiles", None)
-                dictVerification.pop("bOutputModified", None)
-                dictStep["dictVerification"] = dictVerification
-                bChanged = True
+        elif dictVerification.get("listModifiedFiles"):
+            _fnClearPlotInvalidationFlags(dictVerification)
+            dictStep["dictVerification"] = dictVerification
+            bChanged = True
     return bChanged
+
+
+def _fnApplyDataInvalidation(
+    dictVerification, listChangedPaths, listDataFiles,
+):
+    """Reset ``sUnitTest`` + per-category verifications on a data-file change.
+
+    Mutations-only on ``dictVerification``; outer caller persists.
+    Steps whose category is ``unnecessary`` (no commands) stay sticky
+    so the dashboard does not show false invalidation.
+    """
+    if dictVerification.get("sUnitTest") != "passed":
+        return
+    if not _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
+        return
+    dictVerification["sUnitTest"] = "untested"
+    for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
+        if dictVerification.get(sVerifKey) == "unnecessary":
+            continue
+        if sVerifKey in dictVerification:
+            dictVerification[sVerifKey] = "untested"
+
+
+def _fnApplyPlotInvalidation(
+    dictStep, dictVerification, listChangedPaths, dictModTimes,
+):
+    """Reset sUser via _fnResetUserAttestationIfStale on a plot change.
+
+    Mutations-only. The invariant-preserving log line stays here so a
+    "why did sUser get reset?" answer is one grep away.
+    """
+    if dictVerification.get("sUser") != "passed":
+        return
+    bPlotNewer = _fbPlotNewerThanUserVerification(
+        dictStep, listChangedPaths, dictModTimes,
+    )
+    logger.info(
+        "_fnInvalidateStepFiles sUser=%s changed=%s "
+        "bPlotNewer=%s sLastUserUpdate=%s",
+        dictVerification.get("sUser"), listChangedPaths,
+        bPlotNewer, dictVerification.get("sLastUserUpdate"),
+    )
+    if bPlotNewer:
+        _fnResetUserAttestationIfStale(dictVerification)
 
 
 def _fnInvalidateStepFiles(dictStep, listChangedPaths,
@@ -607,42 +694,27 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
     if dictModTimes is None:
         dictModTimes = {}
     dictVerification = dictStep.get("dictVerification", {})
-    listDataFiles = dictStep.get("saDataFiles", [])
-    if dictVerification.get("sUnitTest") == "passed":
-        if _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
-            dictVerification["sUnitTest"] = "untested"
-            for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
-                if dictVerification.get(sVerifKey) == "unnecessary":
-                    continue
-                if sVerifKey in dictVerification:
-                    dictVerification[sVerifKey] = "untested"
-    if dictVerification.get("sUser") == "passed":
-        bPlotNewer = _fbPlotNewerThanUserVerification(
-            dictStep, listChangedPaths, dictModTimes
-        )
-        logger.info(
-            "_fnInvalidateStepFiles sUser=%s changed=%s "
-            "bPlotNewer=%s sLastUserUpdate=%s",
-            dictVerification.get("sUser"), listChangedPaths,
-            bPlotNewer,
-            dictVerification.get("sLastUserUpdate"),
-        )
-        if bPlotNewer:
-            dictVerification["sUser"] = "untested"
-            dictVerification.pop("sLastUserUpdate", None)
+    _fnApplyDataInvalidation(
+        dictVerification, listChangedPaths,
+        dictStep.get("saDataFiles", []),
+    )
+    _fnApplyPlotInvalidation(
+        dictStep, dictVerification, listChangedPaths, dictModTimes,
+    )
     if dictVerification.get("sPlotStandards") == "passed":
-        listPlotFiles = dictStep.get("saPlotFiles", [])
-        if _fbAnyPlotFileChanged(listChangedPaths, listPlotFiles):
+        if _fbAnyPlotFileChanged(
+            listChangedPaths, dictStep.get("saPlotFiles", []),
+        ):
             dictVerification["sPlotStandards"] = "stale"
-    listExisting = dictVerification.get("listModifiedFiles", [])
     listExistingRel = flistNormalizeModifiedFiles(
-        listExisting, sRepoRoot,
+        dictVerification.get("listModifiedFiles", []), sRepoRoot,
     )
     listChangedRel = flistNormalizeModifiedFiles(
         listChangedPaths, sRepoRoot,
     )
-    setModified = set(listExistingRel) | set(listChangedRel)
-    dictVerification["listModifiedFiles"] = sorted(setModified)
+    dictVerification["listModifiedFiles"] = sorted(
+        set(listExistingRel) | set(listChangedRel),
+    )
     dictStep["dictVerification"] = dictVerification
 
 
@@ -1283,6 +1355,71 @@ def _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId=None):
         )
 
 
+def _fnDispatchEnvelopeRefreshIfPromoted(
+    dictWorkflow, sContainerId, bPromoted,
+):
+    """Refresh L3 envelope on the L0->L1 transition.
+
+    Runs BEFORE the ``bAutoArchive`` gate in the caller — the local
+    repo's manifest must reflect the latest verified state regardless
+    of whether the researcher opted into automatic remote pushes.
+    Auto-archive trap: do not collapse this into the bAutoArchive
+    branch.
+    """
+    if bPromoted:
+        _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId)
+
+
+async def _fbDispatchOverleafAutoPush(
+    connectionDocker, sContainerId, dictWorkflow, iStepIndex,
+):
+    """Push the step's Overleaf-tracked files; True iff anything was pushed.
+
+    The exception handler stays in this dispatcher: a failure must
+    surface in logs but never block the auto-archive caller, so the
+    manual sync UI remains the recovery path.
+    """
+    listOverleaf = flistStepRemoteFiles(
+        dictWorkflow, iStepIndex, "Overleaf",
+    )
+    if not listOverleaf:
+        return False
+    try:
+        return await _fnPushOverleafForAutoArchive(
+            connectionDocker, sContainerId, dictWorkflow, listOverleaf,
+        )
+    except Exception as error:
+        logger.warning(
+            "Auto Archive: Overleaf push failed for step %d: %s",
+            iStepIndex, error,
+        )
+        return False
+
+
+async def _fbDispatchZenodoAutoArchive(
+    connectionDocker, sContainerId, dictWorkflow, iStepIndex,
+):
+    """Archive the step's Zenodo-tracked files; True iff anything was archived.
+
+    Same swallow-and-log policy as the Overleaf dispatcher.
+    """
+    listZenodo = flistStepRemoteFiles(
+        dictWorkflow, iStepIndex, "Zenodo",
+    )
+    if not listZenodo:
+        return False
+    try:
+        return await _fnArchiveZenodoForAutoArchive(
+            connectionDocker, sContainerId, dictWorkflow, listZenodo,
+        )
+    except Exception as error:
+        logger.warning(
+            "Auto Archive: Zenodo push failed for step %d: %s",
+            iStepIndex, error,
+        )
+        return False
+
+
 async def fnMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     iAICSLevelBefore,
@@ -1303,45 +1440,21 @@ async def fnMaybeAutoArchive(
     reflects the latest fully-verified state.
     """
     from vaibify.reproducibility.levelGates import fiAICSLevel
-    listSteps = dictWorkflow.get("listSteps", [])
     sRepo = dictWorkflow.get("sProjectRepoPath", "")
     iLevelNow = fiAICSLevel(dictWorkflow, sRepo)
     bPromoted = iAICSLevelBefore < 1 <= iLevelNow
-    if bPromoted:
-        _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId)
-    if not dictWorkflow.get("bAutoArchive"):
+    _fnDispatchEnvelopeRefreshIfPromoted(
+        dictWorkflow, sContainerId, bPromoted,
+    )
+    if not dictWorkflow.get("bAutoArchive") or not bPromoted:
         return False
-    if not bPromoted:
-        return False
+    listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return False
-    bAnyPushed = False
-    listOverleaf = flistStepRemoteFiles(
-        dictWorkflow, iStepIndex, "Overleaf",
+    bAnyPushed = await _fbDispatchOverleafAutoPush(
+        connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     )
-    if listOverleaf:
-        try:
-            bAnyPushed |= await _fnPushOverleafForAutoArchive(
-                connectionDocker, sContainerId,
-                dictWorkflow, listOverleaf,
-            )
-        except Exception as error:
-            logger.warning(
-                "Auto Archive: Overleaf push failed for step %d: %s",
-                iStepIndex, error,
-            )
-    listZenodo = flistStepRemoteFiles(
-        dictWorkflow, iStepIndex, "Zenodo",
+    bAnyPushed |= await _fbDispatchZenodoAutoArchive(
+        connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     )
-    if listZenodo:
-        try:
-            bAnyPushed |= await _fnArchiveZenodoForAutoArchive(
-                connectionDocker, sContainerId,
-                dictWorkflow, listZenodo,
-            )
-        except Exception as error:
-            logger.warning(
-                "Auto Archive: Zenodo push failed for step %d: %s",
-                iStepIndex, error,
-            )
     return bAnyPushed
