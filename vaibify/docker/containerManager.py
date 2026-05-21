@@ -83,6 +83,7 @@ def flistBuildRunArgs(config, bDetached=False):
     saRunArgs = ["-d", "-t"] if bDetached else ["--rm", "-it"]
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
+    _fnAddEntrypointUser(saRunArgs)
     _fnAddCpuAllocation(saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
     _fnAddCredentialsVolume(config, saRunArgs)
@@ -94,6 +95,17 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
+
+
+def _fnAddEntrypointUser(saRunArgs):
+    """Force the entrypoint to run as root so it can chown and drop via gosu.
+
+    The Dockerfile pins ``USER ${CONTAINER_USER}`` so every ``docker exec``
+    issued by the GUI/CLI lands unprivileged. The entrypoint legitimately
+    needs root for its setup phase; ``--user 0`` restores that for the
+    initial ``docker run`` only.
+    """
+    saRunArgs.extend(["--user", "0"])
 
 
 def _fnAddCpuAllocation(saRunArgs):

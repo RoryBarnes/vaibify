@@ -174,6 +174,84 @@ def test_fnWriteFile_uses_exec(mockGetDocker):
     assert sDirectory == "/tmp"
 
 
+# -----------------------------------------------------------------------
+# Default unprivileged user (security: docker exec must not default to root)
+# -----------------------------------------------------------------------
+
+
+def _fMockContainerWithUser(sUser):
+    """Mock container whose image-Config.User field is ``sUser``."""
+    mockContainer = _fMockContainer()
+    mockContainer.attrs = {"Config": {"User": sUser}}
+    return mockContainer
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_texecRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
+    """``docker exec`` defaults to the image's unprivileged user."""
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    _CACHED_CONTAINER_USER.clear()
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockContainer.exec_run.return_value = (0, (b"ok", b""))
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamed("abc123", "id")
+    dictKwargs = mockContainer.exec_run.call_args[1]
+    assert dictKwargs["user"] == "researcher"
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_texecRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
+    """Callers that genuinely need root can opt in via ``sUser="root"``."""
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    _CACHED_CONTAINER_USER.clear()
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockContainer.exec_run.return_value = (0, (b"ok", b""))
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamed("abc123", "id", sUser="root")
+    dictKwargs = mockContainer.exec_run.call_args[1]
+    assert dictKwargs["user"] == "root"
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fsExecCreate_defaults_to_image_user(mockGetDocker):
+    """Interactive terminals open as the unprivileged image user."""
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    _CACHED_CONTAINER_USER.clear()
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("scientist")
+    mockClient.containers.get.return_value = mockContainer
+    mockClient.api.exec_create.return_value = {"Id": "exec_id"}
+    conn = DockerConnection()
+    conn.fsExecCreate("abc123")
+    dictKwargs = mockClient.api.exec_create.call_args[1]
+    assert dictKwargs["user"] == "scientist"
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_resolve_user_falls_back_to_researcher_when_attrs_missing(
+    mockGetDocker,
+):
+    """Older images without USER pinned still get an unprivileged default."""
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    _CACHED_CONTAINER_USER.clear()
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("")
+    mockContainer.exec_run.return_value = (0, (b"ok", b""))
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamed("abc123", "id")
+    dictKwargs = mockContainer.exec_run.call_args[1]
+    assert dictKwargs["user"] == "researcher"
+
+
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
 def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
     """Files written via put_archive must carry a real mtime.

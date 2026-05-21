@@ -21,6 +21,32 @@ import warnings
 from dataclasses import dataclass
 
 
+_CACHED_CONTAINER_USER = {}
+
+
+def _fsResolveContainerUser(container):
+    """Return the unprivileged user baked into the image, cached per id.
+
+    Defaults to ``researcher`` when the image has no ``User`` field
+    (older images built before USER was pinned). Docker SDK exposes
+    the value via ``container.attrs["Config"]["User"]``; we cache by
+    container id so we only inspect once per session.
+    """
+    sContainerId = getattr(container, "id", None) or ""
+    if isinstance(sContainerId, str) and sContainerId in _CACHED_CONTAINER_USER:
+        return _CACHED_CONTAINER_USER[sContainerId]
+    sUser = "researcher"
+    try:
+        sValue = container.attrs["Config"]["User"]
+        if isinstance(sValue, str) and sValue:
+            sUser = sValue
+    except (AttributeError, KeyError, TypeError):
+        pass
+    if isinstance(sContainerId, str):
+        _CACHED_CONTAINER_USER[sContainerId] = sUser
+    return sUser
+
+
 @dataclass
 class ExecResult:
     """Outcome of a single ``docker exec`` call with split streams.
@@ -125,6 +151,11 @@ class DockerConnection:
     ):
         """Run a command, capturing stdout and stderr separately.
 
+        When ``sUser`` is ``None``, the call defaults to the
+        unprivileged container user resolved from the image's
+        ``Config.User`` field. Callers that genuinely need root must
+        opt in explicitly with ``sUser="root"`` (or ``"0"``).
+
         Returns
         -------
         ExecResult
@@ -134,6 +165,8 @@ class DockerConnection:
             output, surface stderr as a distinct error region).
         """
         container = self.fcontainerGetById(sContainerId)
+        if sUser is None:
+            sUser = _fsResolveContainerUser(container)
         dictKwargs = self._fdictBuildExecKwargs(
             sCommand, sWorkdir, sUser)
         iExitCode, tOutput = container.exec_run(**dictKwargs)
@@ -247,17 +280,23 @@ class DockerConnection:
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None
     ):
-        """Create an interactive exec instance, return exec id."""
+        """Create an interactive exec instance, return exec id.
+
+        Defaults to the unprivileged container user when ``sUser`` is
+        omitted so terminal sessions opened from the dashboard do not
+        land as root.
+        """
         container = self.fcontainerGetById(sContainerId)
+        if sUser is None:
+            sUser = _fsResolveContainerUser(container)
         dictKwargs = {
             "cmd": sCommand,
             "tty": True,
             "stdin": True,
             "stdout": True,
             "stderr": True,
+            "user": sUser,
         }
-        if sUser:
-            dictKwargs["user"] = sUser
         sExecId = self._clientDocker.api.exec_create(
             container.id, **dictKwargs
         )["Id"]

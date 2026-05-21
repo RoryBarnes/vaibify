@@ -50,6 +50,9 @@ def fnWriteSessionEnv(
     Chown to the container user before chmod so the unprivileged
     agent (running via ``gosu``) can read the session token. Mode 600
     keeps the token out of reach of any other in-container user.
+    The chown/chmod step runs explicitly as root because the default
+    ``docker exec`` user is now unprivileged and cannot rewrite
+    ownership of a put_archive-landed file.
     """
     sBody = fsBuildSessionEnvBody(
         fsBuildHostUrl(iPort), sSessionToken, sContainerId,
@@ -64,6 +67,7 @@ def fnWriteSessionEnv(
     connectionDocker.ftResultExecuteCommand(
         sContainerId,
         f"chown {sOwner}:{sOwner} {sPath} && chmod 600 {sPath}",
+        sUser="root",
     )
 
 

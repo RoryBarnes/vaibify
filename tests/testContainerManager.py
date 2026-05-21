@@ -215,3 +215,22 @@ def test_fnAddAgentHostBridge_appends_exactly_two_tokens():
     assert saArgs == [
         "--rm", "--add-host", "host.docker.internal:host-gateway",
     ]
+
+
+# -----------------------------------------------------------------------
+# Entrypoint user override (security: container default identity is unpriv)
+# -----------------------------------------------------------------------
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_runs_entrypoint_as_root(mockX11):
+    """``docker run`` must override the image USER so the entrypoint
+    can chown the workspace and then drop privileges via gosu."""
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    assert "--user" in saArgs
+    iFlag = saArgs.index("--user")
+    assert saArgs[iFlag + 1] == "0"
