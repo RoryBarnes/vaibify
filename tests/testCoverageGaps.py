@@ -258,9 +258,13 @@ def test_init_with_template_no_config(
        return_value=[])
 @patch("vaibify.cli.commandStart._fnStartContainer")
 @patch("vaibify.cli.commandStart.fconfigResolveProject")
+@patch("vaibify.cli.commandStart.fsResolveProjectConfigPath",
+       return_value="/fake/vaibify.yml")
 @patch("vaibify.cli.commandStart.fsDockerDir",
        return_value="/docker")
-def test_start_cli_command(mockDir, mockConfig, mockStart, mockPreflight):
+def test_start_cli_command(
+    mockDir, mockResolvePath, mockConfig, mockStart, mockPreflight,
+):
     from vaibify.cli.commandStart import start
     mockConfig.return_value = _fConfigFull()
     runner = CliRunner()
@@ -306,10 +310,12 @@ def test_fnStartContainer_no_command(mockStart):
 @patch("vaibify.cli.commandStart.fnLaunchGui")
 @patch("vaibify.cli.commandStart._fnStartContainer")
 @patch("vaibify.cli.commandStart.fconfigResolveProject")
+@patch("vaibify.cli.commandStart.fsResolveProjectConfigPath",
+       return_value="/fake/vaibify.yml")
 @patch("vaibify.cli.commandStart.fsDockerDir",
        return_value="/docker")
 def test_start_with_gui(
-    mockDir, mockConfig, mockStart, mockGui, mockPreflight,
+    mockDir, mockResolvePath, mockConfig, mockStart, mockGui, mockPreflight,
 ):
     from vaibify.cli.commandStart import start
     mockConfig.return_value = _fConfigFull()

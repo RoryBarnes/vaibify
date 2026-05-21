@@ -71,6 +71,9 @@ def test_start_command_exits_one_when_daemon_unreachable():
         "vaibify.cli.commandStart.fconfigResolveProject",
         return_value=_fConfigForPreflight(),
     ), patch(
+        "vaibify.cli.commandStart.fsResolveProjectConfigPath",
+        return_value="/fake/vaibify.yml",
+    ), patch(
         "vaibify.cli.commandStart.flistRunStartPreflight",
         return_value=listFail,
     ), patch(
@@ -284,6 +287,9 @@ def test_start_command_proceeds_when_all_preflight_passes():
         "vaibify.cli.commandStart.fconfigResolveProject",
         return_value=_fConfigForPreflight(),
     ), patch(
+        "vaibify.cli.commandStart.fsResolveProjectConfigPath",
+        return_value="/fake/vaibify.yml",
+    ), patch(
         "vaibify.cli.commandStart.fsDockerDir",
         return_value="/dk",
     ), patch(
@@ -311,6 +317,9 @@ def test_start_command_prints_warn_results_then_proceeds():
     with patch(
         "vaibify.cli.commandStart.fconfigResolveProject",
         return_value=_fConfigForPreflight(sProjectName="foo"),
+    ), patch(
+        "vaibify.cli.commandStart.fsResolveProjectConfigPath",
+        return_value="/fake/vaibify.yml",
     ), patch(
         "vaibify.cli.commandStart.fsDockerDir",
         return_value="/dk",
@@ -345,6 +354,9 @@ def test_start_command_combined_fail_image_and_port():
     with patch(
         "vaibify.cli.commandStart.fconfigResolveProject",
         return_value=_fConfigForPreflight(),
+    ), patch(
+        "vaibify.cli.commandStart.fsResolveProjectConfigPath",
+        return_value="/fake/vaibify.yml",
     ), patch(
         "vaibify.cli.commandStart.flistRunStartPreflight",
         return_value=listFails,
