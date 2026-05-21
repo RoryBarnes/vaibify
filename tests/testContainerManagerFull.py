@@ -183,6 +183,7 @@ def test_fnCleanupTempFiles_ignores_missing():
 
 
 def test_fnAddPortForwarding_adds_ports():
+    """Audit M4: forwarded ports bind 127.0.0.1 by default."""
     saRunArgs = []
     config = _fConfigMinimal()
     config.listPorts = [
@@ -191,8 +192,20 @@ def test_fnAddPortForwarding_adds_ports():
     ]
     _fnAddPortForwarding(config, saRunArgs)
     assert "-p" in saRunArgs
+    assert "127.0.0.1:8080:80" in saRunArgs
+    assert "127.0.0.1:443:443" in saRunArgs
+
+
+def test_fnAddPortForwarding_lan_expose_opts_out_of_loopback():
+    """Audit M4: ``lanExpose: true`` keeps the bare host:container form."""
+    saRunArgs = []
+    config = _fConfigMinimal()
+    config.listPorts = [
+        {"host": 8080, "container": 80, "lanExpose": True},
+    ]
+    _fnAddPortForwarding(config, saRunArgs)
     assert "8080:80" in saRunArgs
-    assert "443:443" in saRunArgs
+    assert "127.0.0.1:8080:80" not in saRunArgs
 
 
 # -----------------------------------------------------------------------

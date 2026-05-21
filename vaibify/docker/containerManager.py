@@ -154,11 +154,27 @@ def _fnAddCredentialsVolume(config, saRunArgs):
 
 
 def _fnAddPortForwarding(config, saRunArgs):
-    """Add port forwarding flags from config.listPorts."""
+    """Add port forwarding flags from ``config.listPorts``.
+
+    Binds every forwarded host port to ``127.0.0.1`` so the service
+    inside the container is only reachable from the host itself, not
+    from the LAN. A user who knowingly wants LAN exposure (e.g. to
+    pair-program against the container's web UI from another laptop)
+    can set ``lanExpose: true`` on the per-port entry to opt out of
+    the loopback binding.
+    """
     for dictPort in config.listPorts:
         sHost = str(dictPort.get("host", dictPort.get("container")))
         sContainer = str(dictPort.get("container"))
-        saRunArgs.extend(["-p", f"{sHost}:{sContainer}"])
+        sSpec = _fsBuildPortSpec(sHost, sContainer, dictPort)
+        saRunArgs.extend(["-p", sSpec])
+
+
+def _fsBuildPortSpec(sHost, sContainer, dictPort):
+    """Return the ``-p`` value with the right loopback/LAN binding."""
+    if bool(dictPort.get("lanExpose", False)):
+        return f"{sHost}:{sContainer}"
+    return f"127.0.0.1:{sHost}:{sContainer}"
 
 
 def _fnAddBindMounts(config, saRunArgs):
