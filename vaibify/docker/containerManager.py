@@ -84,6 +84,7 @@ def flistBuildRunArgs(config, bDetached=False):
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddEntrypointUser(saRunArgs)
+    _fnAddCapabilityDrops(saRunArgs)
     _fnAddCpuAllocation(saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
     _fnAddCredentialsVolume(config, saRunArgs)
@@ -95,6 +96,20 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
+
+
+def _fnAddCapabilityDrops(saRunArgs):
+    """Drop all Linux capabilities and forbid privilege escalation.
+
+    Combined with the unprivileged container user, this closes off
+    standard local-privilege-escalation paths (setuid binaries inside
+    the image, ptrace, raw sockets, kernel capability abuse). Feature
+    flags that legitimately require a capability must re-add it under
+    that feature's own ``--cap-add`` argument — the default workflow's
+    allowlist is empty.
+    """
+    saRunArgs.extend(["--cap-drop", "ALL"])
+    saRunArgs.extend(["--security-opt", "no-new-privileges"])
 
 
 def _fnAddEntrypointUser(saRunArgs):

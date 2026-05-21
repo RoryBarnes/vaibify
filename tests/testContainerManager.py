@@ -250,6 +250,32 @@ def test_fnAddAgentHostBridge_no_op_when_agent_disabled():
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
+def test_flistBuildRunArgs_drops_all_capabilities(mockX11):
+    """Audit M3: --cap-drop=ALL is the default for every workflow."""
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    assert "--cap-drop" in saArgs
+    iFlag = saArgs.index("--cap-drop")
+    assert saArgs[iFlag + 1] == "ALL"
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_disables_privilege_escalation(mockX11):
+    """Audit M3: --security-opt=no-new-privileges is the default."""
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    assert "--security-opt" in saArgs
+    iFlag = saArgs.index("--security-opt")
+    assert saArgs[iFlag + 1] == "no-new-privileges"
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
 def test_flistBuildRunArgs_runs_entrypoint_as_root(mockX11):
     """``docker run`` must override the image USER so the entrypoint
     can chown the workspace and then drop privileges via gosu."""
