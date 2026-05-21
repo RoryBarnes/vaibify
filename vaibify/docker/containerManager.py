@@ -147,7 +147,17 @@ def _fnAddPortForwarding(config, saRunArgs):
 
 
 def _fnAddBindMounts(config, saRunArgs):
-    """Add bind mount flags from config.listBindMounts."""
+    """Add bind mount flags from config.listBindMounts.
+
+    Re-validates each entry against the allowlist so any
+    ``vaibify.yml`` that bypassed the config loader (hand-crafted dict,
+    in-memory mutation, future config sources) still cannot smuggle in
+    a Docker-socket or ``/etc`` bind mount.
+    """
+    from vaibify.config.bindMountValidator import (
+        fnValidateBindMountList,
+    )
+    fnValidateBindMountList(config.listBindMounts)
     for dictMount in config.listBindMounts:
         sMountSpec = f"{dictMount['host']}:{dictMount['container']}"
         if dictMount.get("readOnly", False):

@@ -8,6 +8,11 @@ from typing import Any, Dict, List
 
 import yaml
 
+from .bindMountValidator import (
+    BindMountValidationError,
+    fnValidateBindMountList,
+)
+
 
 @dataclass
 class FeaturesConfig:
@@ -291,7 +296,13 @@ def _fbValidatePackageManager(dictConfig):
 
 
 def _fbValidateListFields(dictConfig):
-    """Check that list-typed fields are actually lists."""
+    """Check that list-typed fields are actually lists.
+
+    ``bindMounts`` gets extra inspection via
+    :func:`bindMountValidator.fnValidateBindMountList`: any host
+    path that escapes $HOME or hits a known sensitive prefix
+    surfaces as a clear ``vaibify.yml`` validation error.
+    """
     listKeys = [
         "repositories", "systemPackages", "pythonPackages",
         "condaPackages", "binaries", "ports",
@@ -301,6 +312,16 @@ def _fbValidateListFields(dictConfig):
         value = dictConfig.get(sKey)
         if value is not None and not isinstance(value, list):
             return False
+    return _fbValidateBindMountSafety(dictConfig)
+
+
+def _fbValidateBindMountSafety(dictConfig):
+    """Apply the bind-mount allowlist check; return False on violation."""
+    listMounts = dictConfig.get("bindMounts") or []
+    try:
+        fnValidateBindMountList(listMounts)
+    except BindMountValidationError:
+        return False
     return True
 
 

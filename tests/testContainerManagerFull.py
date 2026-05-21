@@ -1,5 +1,6 @@
 """Tests for remaining functions in containerManager."""
 
+import os
 import subprocess
 
 import pytest
@@ -199,29 +200,37 @@ def test_fnAddPortForwarding_adds_ports():
 # -----------------------------------------------------------------------
 
 
-def test_fnAddBindMounts_regular():
+def test_fnAddBindMounts_regular(tmp_path, monkeypatch):
+    """Bind mount under the user's home directory is permitted."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sHostPath = str(tmp_path / "data")
+    os.makedirs(sHostPath)
     saRunArgs = []
     config = _fConfigMinimal()
     config.listBindMounts = [
-        {"host": "/data", "container": "/mnt/data"},
+        {"host": sHostPath, "container": "/mnt/data"},
     ]
     _fnAddBindMounts(config, saRunArgs)
     assert "-v" in saRunArgs
-    assert "/data:/mnt/data" in saRunArgs
+    assert f"{sHostPath}:/mnt/data" in saRunArgs
 
 
-def test_fnAddBindMounts_readonly():
+def test_fnAddBindMounts_readonly(tmp_path, monkeypatch):
+    """Read-only bind mount under home is permitted and tagged ``:ro``."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sHostPath = str(tmp_path / "data")
+    os.makedirs(sHostPath)
     saRunArgs = []
     config = _fConfigMinimal()
     config.listBindMounts = [
         {
-            "host": "/data",
+            "host": sHostPath,
             "container": "/mnt/data",
             "readOnly": True,
         },
     ]
     _fnAddBindMounts(config, saRunArgs)
-    assert "/data:/mnt/data:ro" in saRunArgs
+    assert f"{sHostPath}:/mnt/data:ro" in saRunArgs
 
 
 # -----------------------------------------------------------------------
