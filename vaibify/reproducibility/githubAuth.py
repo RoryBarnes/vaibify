@@ -13,8 +13,12 @@ mode-700 file that git consults synchronously when it needs
 credentials.
 """
 
+import json
 import re
 import sys
+import time
+import urllib.error
+import urllib.request
 
 from vaibify.reproducibility.askpassHelper import fsWriteExecutableScript
 
@@ -22,8 +26,12 @@ __all__ = [
     "fnValidateOwnerRepo",
     "fsKeyringSlotFor",
     "fsKeyringSlotFromRemoteUrl",
+    "ftParseOwnerRepoFromRemoteUrl",
     "fsWriteAskpassScript",
     "fsResolveToken",
+    "fsResolveTokenLoginOrEmpty",
+    "fnAssertTokenOwnerBinding",
+    "fnClearTokenLoginCache",
 ]
 
 
@@ -51,23 +59,30 @@ def fsKeyringSlotFor(sOwner, sRepo):
     return "github_token:" + sOwner + "/" + sRepo
 
 
+def ftParseOwnerRepoFromRemoteUrl(sRemoteUrl):
+    """Return (sOwner, sRepo) parsed from an HTTPS or SSH git URL, or ("","")."""
+    if not sRemoteUrl:
+        return ("", "")
+    for pattern in (_PATTERN_HTTPS_REMOTE, _PATTERN_SSH_REMOTE):
+        match = pattern.match(sRemoteUrl.strip())
+        if match:
+            return (match.group(1), match.group(2))
+    return ("", "")
+
+
 def fsKeyringSlotFromRemoteUrl(sRemoteUrl):
     """Derive a per-repo keyring key from an HTTPS or SSH git URL.
 
     Returns an empty string when the URL doesn't match either pattern;
     the caller can fall back to a catch-all slot or prompt the user.
     """
-    if not sRemoteUrl:
+    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)
+    if not sOwner or not sRepo:
         return ""
-    for pattern in (_PATTERN_HTTPS_REMOTE, _PATTERN_SSH_REMOTE):
-        match = pattern.match(sRemoteUrl.strip())
-        if match:
-            sOwner, sRepo = match.group(1), match.group(2)
-            try:
-                return fsKeyringSlotFor(sOwner, sRepo)
-            except ValueError:
-                return ""
-    return ""
+    try:
+        return fsKeyringSlotFor(sOwner, sRepo)
+    except ValueError:
+        return ""
 
 
 _S_ASKPASS_BODY_TEMPLATE = (
@@ -135,3 +150,84 @@ def fsResolveToken(sKeyringSlot):
         return fsRetrieveSecret("", "gh_auth") or ""
     except Exception:
         return ""
+
+
+_S_GITHUB_USER_URL = "https://api.github.com/user"
+_F_TOKEN_LOGIN_TTL_SECONDS = 300.0
+_dictTokenLoginCache = {}
+
+
+def fnClearTokenLoginCache():
+    """Clear the cached GitHub /user lookups (test hook)."""
+    _dictTokenLoginCache.clear()
+
+
+def _ftFetchLoginFresh(sToken):
+    """Call GitHub /user with sToken and return (sLogin, sError)."""
+    requestUser = urllib.request.Request(
+        _S_GITHUB_USER_URL,
+        headers={
+            "Authorization": "Bearer " + sToken,
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "vaibify-token-binding-check",
+        },
+    )
+    try:
+        with urllib.request.urlopen(requestUser, timeout=10) as resp:
+            dictBody = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as errorHttp:
+        return ("", f"GitHub /user returned HTTP {errorHttp.code}")
+    except urllib.error.URLError as errorUrl:
+        return ("", f"GitHub /user unreachable: {errorUrl.reason}")
+    except (ValueError, json.JSONDecodeError):
+        return ("", "GitHub /user returned malformed JSON")
+    return (str(dictBody.get("login") or ""), "")
+
+
+def fsResolveTokenLoginOrEmpty(sToken):
+    """Return the login for sToken via the /user endpoint, cached.
+
+    Cache TTL is ~5 minutes so repeated pushes don't hammer the API.
+    Returns empty string on any failure; callers must treat empty as
+    "unable to verify" and fail closed.
+    """
+    if not sToken:
+        return ""
+    fNow = time.time()
+    tCached = _dictTokenLoginCache.get(sToken)
+    if tCached is not None and fNow - tCached[1] < _F_TOKEN_LOGIN_TTL_SECONDS:
+        return tCached[0]
+    sLogin, _sError = _ftFetchLoginFresh(sToken)
+    if sLogin:
+        _dictTokenLoginCache[sToken] = (sLogin, fNow)
+    return sLogin
+
+
+def _fsBindingFailureReason(sToken, sExpectedOwner):
+    """Return the binding-failure reason string, or empty when OK."""
+    if not sToken:
+        return "No GitHub token available; configure one in Settings."
+    if not sExpectedOwner:
+        return "Cannot bind token: remote owner is empty."
+    sLogin = fsResolveTokenLoginOrEmpty(sToken)
+    if not sLogin:
+        return "Could not verify token owner against GitHub /user."
+    if sLogin.lower() != sExpectedOwner.lower():
+        return (
+            f"Token belongs to user {sLogin} but the remote is owned "
+            f"by user {sExpectedOwner}. Configure a per-repo token "
+            f"in Settings."
+        )
+    return ""
+
+
+def fnAssertTokenOwnerBinding(sToken, sExpectedOwner):
+    """Raise ValueError if sToken's GitHub login != sExpectedOwner.
+
+    Empty token or unreachable /user endpoint also raises so the caller
+    fails closed. Owner comparison is case-insensitive because GitHub
+    treats logins that way in URL routing.
+    """
+    sReason = _fsBindingFailureReason(sToken, sExpectedOwner)
+    if sReason:
+        raise ValueError(sReason)

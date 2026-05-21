@@ -533,6 +533,38 @@ def _fsRequireProjectRepoForGit(dictWorkflow):
     return sPath
 
 
+def _fnAssertGithubTokenBoundToRemote(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Confirm the resolved GitHub token's login owns the configured remote.
+
+    Reads the project repo's origin URL inside the container, parses
+    owner/repo, resolves the host-side token, and asks GitHub's
+    ``/user`` endpoint who that token belongs to. Raises HTTP 409 on
+    any mismatch so the push never reaches ``git push`` with the wrong
+    credential.
+    """
+    from .. import containerGit
+    from vaibify.reproducibility.githubAuth import (
+        ftParseOwnerRepoFromRemoteUrl,
+        fsKeyringSlotFor,
+        fsResolveToken,
+        fnAssertTokenOwnerBinding,
+    )
+    sRemoteUrl = containerGit.fsRemoteUrlInContainer(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)
+    if not sOwner or not sRepo:
+        return
+    sSlot = fsKeyringSlotFor(sOwner, sRepo)
+    sToken = fsResolveToken(sSlot)
+    try:
+        fnAssertTokenOwnerBinding(sToken, sOwner)
+    except ValueError as errorBinding:
+        raise HTTPException(status_code=409, detail=str(errorBinding))
+
+
 def _fnRegisterGithubPush(app, dictCtx):
     """Register POST /api/github/{id}/push endpoint."""
     from .. import syncDispatcher
@@ -548,6 +580,10 @@ def _fnRegisterGithubPush(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
+        await asyncio.to_thread(
+            _fnAssertGithubTokenBoundToRemote,
+            dictCtx["docker"], sContainerId, sWorkdir,
+        )
         iExit, sOut = await asyncio.to_thread(
             syncDispatcher.ftResultPushToGithub,
             dictCtx["docker"], sContainerId,

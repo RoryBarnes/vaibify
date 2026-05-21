@@ -407,6 +407,8 @@ def test_push_uses_project_repo_path_not_workflow_dirname(
     ), patch(
         "vaibify.gui.routes.syncRoutes._fnValidateGithubPushPaths",
     ), patch(
+        "vaibify.gui.routes.syncRoutes._fnAssertGithubTokenBoundToRemote",
+    ), patch(
         "vaibify.gui.routes.scriptRoutes._fnStoreCommitHash",
     ):
         responseHttp = TestClient(app).post(
