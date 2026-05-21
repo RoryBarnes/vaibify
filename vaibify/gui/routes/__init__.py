@@ -17,6 +17,7 @@ __all__ = [
     "gitRoutes",
     "sessionRoutes",
     "levelRoutes",
+    "reproducibilityRoutes",
 ]
 
 from . import (
@@ -36,4 +37,5 @@ from . import (
     gitRoutes,
     sessionRoutes,
     levelRoutes,
+    reproducibilityRoutes,
 )

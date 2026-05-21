@@ -1475,6 +1475,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.gitRoutes.fnRegisterAll(app, dictCtx)
     routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
+    routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

@@ -822,19 +822,32 @@ re-execute the workflow from source.
 Agent actions to reach L3:
 
 1. Confirm L2 first.
-2. Confirm `.vaibify/environment.json` captures the running container's
-   `<image>@sha256:...` digest.
-3. Confirm `requirements.lock` pins every Python dependency with at
-   least one `--hash=sha256:...` entry.
-4. Flag any unseeded random-number generation. A yellow ⚠ badge on a
-   step in the dashboard means the step's referenced `*.in` (or other
-   configured) files lack a seed declaration; without seeds, stochastic
-   outputs cannot be bit-reproducible. Surface the affected step labels
-   and ask the researcher to add seeds.
-5. Recommend the researcher run `vaibify reproduce` from a fresh clone
-   to confirm bit-identical regeneration. This is a host-side
-   verification ceremony, not an in-container action; surface it as a
-   researcher task.
+2. `vaibify-do check-l3-readiness` — returns per-criterion pass/fail
+   for the six L3 readiness verifiers: manifest complete, dependency
+   lock hash-pinned, environment digest-pinned, Dockerfile pinned,
+   reproduce.sh present + in manifest, determinism declared. Use the
+   gap dict to drive the rest of the L3 ladder.
+3. `vaibify-do audit-determinism` — alias of check-l3-readiness for
+   determinism-focused queries (RNG seeds, BLAS pinning,
+   CUBLAS_WORKSPACE_CONFIG, /dev/urandom reads). Translate the
+   determinism row into a per-step fix list for the researcher.
+4. `vaibify-do generate-l3-envelope` — read the readiness card's
+   missing-envelope rows and regenerate the manifest, requirements
+   lock, and environment.json so the L3 verifiers go green.
+5. `vaibify-do generate-reproduce-script` — render `reproduce.sh`
+   from the active workflow when the readiness card flags it as
+   absent or out of date.
+6. `vaibify-do view-l3-attestation` — return the current
+   `.vaibify/l3_attestation.json` plus the archived history of
+   attempts. Useful to confirm whether a rebuild has been done or
+   to explain why the L3 badge has not lit up.
+7. `vaibify-do pin-base-image-digest` (user-only) — surface the
+   Dockerfile rewrite suggestion. The actual Dockerfile edit is a
+   researcher decision; never invoke silently.
+8. `vaibify-do verify-l3-reproducibility` (user-only) — kicks off
+   the expensive rebuild + hash compare that writes the L3
+   attestation. Surface as a researcher request, never as an
+   autonomous action; the rebuild can take hours.
 
 ### L4 — Archived, L5 — Attested
 

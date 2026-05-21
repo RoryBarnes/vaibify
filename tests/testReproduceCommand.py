@@ -68,6 +68,42 @@ def _fnWriteEnvironment(pathRepo, sImageDigest):
     )
 
 
+def _fnWriteL3EnvelopeExtras(pathRepo):
+    """Add the Tier 4 envelope artefacts (Dockerfile, reproduce.sh).
+
+    Tier 4 (added 2026-05 with the AICS L3 readiness gate) requires
+    the Dockerfile to be digest-pinned, ``reproduce.sh`` to exist and
+    appear in the manifest, and a workflow.json to declare
+    ``dictDeterminism``. The fixture seeds these so the happy-path
+    test still exercises tiers 1-3 plus tier 4 end-to-end.
+    """
+    (pathRepo / "Dockerfile").write_text(
+        "FROM python@sha256:" + "b" * 64 + "\n"
+        "ENV SOURCE_DATE_EPOCH=1700000000\n"
+    )
+    sReproduceBody = "#!/usr/bin/env bash\nset -e\n"
+    pathReproduce = pathRepo / "reproduce.sh"
+    pathReproduce.write_text(sReproduceBody)
+    pathReproduce.chmod(0o755)
+    sReproduceHash = _fsHashFile(pathReproduce)
+    sFixtureHash = _fsHashFile(pathRepo / _S_FIXTURE_FILE_NAME)
+    sDockerfileHash = _fsHashFile(pathRepo / "Dockerfile")
+    _fnWriteManifest(pathRepo, {
+        _S_FIXTURE_FILE_NAME: sFixtureHash,
+        "reproduce.sh": sReproduceHash,
+        "Dockerfile": sDockerfileHash,
+    })
+    pathWorkflows = pathRepo / ".vaibify" / "workflows"
+    pathWorkflows.mkdir(parents=True, exist_ok=True)
+    dictWorkflow = {
+        "listSteps": [],
+        "dictDeterminism": {"bAcceptBlasVariance": True},
+    }
+    (pathWorkflows / "workflow.json").write_text(
+        json.dumps(dictWorkflow)
+    )
+
+
 @pytest.fixture
 def fixtureRepo(tmp_path):
     """Build a fixture project repo with a manifest, lockfile, and env JSON."""
@@ -75,6 +111,7 @@ def fixtureRepo(tmp_path):
     _fnWriteManifest(tmp_path, {_S_FIXTURE_FILE_NAME: _fsHashFile(pathFile)})
     _fnWriteLockfile(tmp_path)
     _fnWriteEnvironment(tmp_path, "registry/example@sha256:" + "a" * 64)
+    _fnWriteL3EnvelopeExtras(tmp_path)
     return tmp_path
 
 
@@ -93,16 +130,24 @@ def _fnPatchAllSubprocessesSucceeding():
 
 
 def test_reproduce_happy_path_exit_zero(fixtureRepo):
-    """All three tiers pass with mocks; exit 0 and success line printed."""
+    """All four cheap tiers pass with mocks; exit 0.
+
+    Contract change 2026-05 (AICS L3 readiness gate landing):
+    ``vaibify reproduce`` without ``--rerun`` now reports the
+    envelope as "ready" rather than "confirmed" since the rebuild
+    has not been attested. The success line text changed accordingly;
+    no behaviour change to the per-tier checks themselves.
+    """
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
             reproduce, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 0, result.output
-    assert "L3 reproduction confirmed." in result.output
-    assert "[1/4]" in result.output and "OK" in result.output
-    assert "[2/4]" in result.output
-    assert "[3/4]" in result.output
+    assert "L3 reproduction ready" in result.output
+    assert "[1/5]" in result.output and "OK" in result.output
+    assert "[2/5]" in result.output
+    assert "[3/5]" in result.output
+    assert "[4/5]" in result.output
 
 
 # ----------------------------------------------------------------------
@@ -230,20 +275,27 @@ def test_reproduce_docker_pull_failure_exit_one(fixtureRepo):
 
 
 def test_reproduce_all_tiers_skipped_exit_zero(fixtureRepo):
-    """Skipping all three tiers exits 0 and prints the step-4 placeholder."""
+    """Skipping all four cheap tiers exits 0 and prints the rerun placeholder.
+
+    Contract change 2026-05: the ladder is 5 tiers (added Tier 4
+    artifact coherence). Skipping every cheap tier still falls
+    through to the Tier 5 placeholder.
+    """
     result = CliRunner().invoke(
         reproduce, [
             "--repo", str(fixtureRepo),
             "--skip-tier", "1",
             "--skip-tier", "2",
             "--skip-tier", "3",
+            "--skip-tier", "4",
         ],
     )
     assert result.exit_code == 0
-    assert "[1/4] skipped" in result.output
-    assert "[2/4] skipped" in result.output
-    assert "[3/4] skipped" in result.output
-    assert "[4/4]" in result.output
+    assert "[1/5] skipped" in result.output
+    assert "[2/5] skipped" in result.output
+    assert "[3/5] skipped" in result.output
+    assert "[4/5] skipped" in result.output
+    assert "[5/5]" in result.output
 
 
 # ----------------------------------------------------------------------
@@ -313,7 +365,7 @@ def _fsScrubVariableLines(sOutput):
     listScrubbed = []
     for sLine in sOutput.splitlines():
         if "OK" in sLine and "Pulling" in sLine:
-            listScrubbed.append("[3/4] image-line")
+            listScrubbed.append("[3/5] image-line")
             continue
         listScrubbed.append(sLine)
     return "\n".join(listScrubbed)
@@ -507,6 +559,10 @@ def test_reproduce_tier1_warns_when_workflow_declares_more(fixtureRepo):
     the user is told their coverage is partial so they can re-run to
     refresh. Without the surfaced advisory the dashboard reads
     "all clean" and the legacy gap stays invisible.
+
+    Contract change 2026-05: Tier 4 (artifact coherence) also runs by
+    default; this test deliberately scopes itself to Tier 1 so the
+    manifest-coverage advisory is the only assertion in play.
     """
     # The fixture manifest only pins result.txt; declare an extra script.
     _fnSeedWorkflowJson(fixtureRepo, {"listSteps": [{
@@ -520,6 +576,7 @@ def test_reproduce_tier1_warns_when_workflow_declares_more(fixtureRepo):
             reproduce, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
+                "--skip-tier", "4",
             ],
         )
     assert result.exit_code == 0
@@ -528,12 +585,19 @@ def test_reproduce_tier1_warns_when_workflow_declares_more(fixtureRepo):
 
 
 def test_reproduce_tier1_silent_when_no_workflow_present(fixtureRepo):
-    """Without .vaibify/workflows/, Tier 1 skips the advisory and passes."""
+    """Without .vaibify/workflows/, Tier 1 skips the advisory and passes.
+
+    Contract change 2026-05: Tier 4 also skipped here because it
+    reads the same per-workflow JSON and would fire on the absent
+    determinism declaration; the assertion focus is the Tier 1
+    advisory's silence.
+    """
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
             reproduce, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
+                "--skip-tier", "4",
             ],
         )
     assert result.exit_code == 0
@@ -547,6 +611,9 @@ def test_reproduce_tier1_aggregates_multiple_workflows(fixtureRepo):
     one workflow.json lived under ``.vaibify/workflows/``; that
     silently weakened the L3 envelope check for projects that hosted
     several pipelines side-by-side.
+
+    Contract change 2026-05: Tier 4 skipped explicitly so the assertion
+    target is only the Tier 1 coverage-advisory text.
     """
     pathDir = fixtureRepo / ".vaibify" / "workflows"
     pathDir.mkdir(parents=True, exist_ok=True)
@@ -567,6 +634,7 @@ def test_reproduce_tier1_aggregates_multiple_workflows(fixtureRepo):
             reproduce, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
+                "--skip-tier", "4",
             ],
         )
     assert result.exit_code == 0

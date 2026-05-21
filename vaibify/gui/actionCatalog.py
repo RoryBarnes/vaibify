@@ -341,6 +341,72 @@ LIST_AGENT_ACTIONS = [
                      "to point at. Refuses to overwrite an existing "
                      "file. Args: {sRelativePath?: str} (default "
                      "AI_USAGE.md)."},
+    {"sName": "check-l3-readiness", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level3/readiness",
+     "bAgentSafe": True,
+     "sDescription": "Return per-criterion pass/fail for the L3 "
+                     "Reproducibility readiness check (manifest, "
+                     "lockfile, environment digest, Dockerfile pin, "
+                     "reproduce.sh, determinism declaration) so the "
+                     "dashboard can render the L3 readiness card."},
+    {"sName": "audit-determinism", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level3/readiness",
+     "bAgentSafe": True,
+     "sDescription": "Read-only diagnostic view of the determinism row "
+                     "of the L3 readiness card (RNG seeds, BLAS "
+                     "pinning, non-deterministic kernels). Returns the "
+                     "same JSON as check-l3-readiness; the CLI extracts "
+                     "the determinism row and renders it as prose. "
+                     "Does not modify the workflow or the project repo."},
+    {"sName": "generate-l3-envelope", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level3/readiness",
+     "bAgentSafe": True,
+     "sDescription": "Read-only diagnostic view that surfaces which "
+                     "envelope artifacts (MANIFEST.sha256, "
+                     "requirements.lock, .vaibify/environment.json) are "
+                     "missing or stale. Returns the same JSON as "
+                     "check-l3-readiness. The actual regeneration is "
+                     "done from the agent's container shell by invoking "
+                     "the manifest / lockfile / snapshot CLI helpers; "
+                     "this entry does not itself write any files."},
+    {"sName": "generate-reproduce-script", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/level3/reproduce-script",
+     "bAgentSafe": True,
+     "sDescription": "Render reproduce.sh from the active workflow + "
+                     "environment.json and write it to the project repo "
+                     "root. Idempotent; safe to invoke whenever the "
+                     "readiness card flags the script as absent or "
+                     "out of date."},
+    {"sName": "view-l3-attestation", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level3/attestation",
+     "bAgentSafe": True,
+     "sDescription": "Return the current L3 attestation file plus "
+                     "the full history of attempts so the agent can "
+                     "report pass/fail status and timing without "
+                     "triggering a new rebuild."},
+    {"sName": "pin-base-image-digest", "sCategory": "workflow",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level3/readiness",
+     "bAgentSafe": False,
+     "sDescription": "Read-only diagnostic view that exposes the "
+                     "Dockerfile pinning gap (which FROM line lacks an "
+                     "@sha256: digest). User-only because the actual "
+                     "Dockerfile rewrite is a researcher decision and "
+                     "must not be done autonomously. The agent reports "
+                     "the gap; the human edits the file."},
+    {"sName": "verify-l3-reproducibility", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/level3/verify",
+     "bAgentSafe": False,
+     "sDescription": "Kick off the expensive rebuild + hash compare "
+                     "and write .vaibify/l3_attestation.json. "
+                     "User-only because the rebuild can take hours "
+                     "and is the only L3 promotion path."},
     # ---- Files ----
     {"sName": "pull-file", "sCategory": "files",
      "sMethod": "POST",
