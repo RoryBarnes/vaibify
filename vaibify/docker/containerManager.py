@@ -98,17 +98,36 @@ def flistBuildRunArgs(config, bDetached=False):
     return saRunArgs
 
 
-def _fnAddCapabilityDrops(saRunArgs):
-    """Drop all Linux capabilities and forbid privilege escalation.
+_T_ENTRYPOINT_CAPABILITIES = (
+    "CHOWN",        # entrypoint chown -R /workspace to container user
+    "FOWNER",       # chown across existing ownerships under /workspace
+    "DAC_OVERRIDE", # gosu reads /etc/passwd + the user's shell init files
+    "SETUID",       # gosu setuid to the container user
+    "SETGID",       # gosu setgid to the container user's group
+)
 
-    Combined with the unprivileged container user, this closes off
-    standard local-privilege-escalation paths (setuid binaries inside
-    the image, ptrace, raw sockets, kernel capability abuse). Feature
-    flags that legitimately require a capability must re-add it under
-    that feature's own ``--cap-add`` argument — the default workflow's
-    allowlist is empty.
+
+def _fnAddCapabilityDrops(saRunArgs):
+    """Drop Linux capabilities to the minimum the entrypoint requires.
+
+    The entrypoint runs as root to (a) ``chown -R`` the workspace volume
+    to the container user and (b) ``exec gosu`` into that user. Each of
+    those steps needs specific capabilities that ``--cap-drop=ALL``
+    alone would also strip, breaking startup before any agent code runs.
+    The five capabilities in ``_T_ENTRYPOINT_CAPABILITIES`` are the
+    minimum set that satisfies the entrypoint and no more — everything
+    else (CAP_NET_RAW, CAP_NET_ADMIN, CAP_SYS_ADMIN, ptrace, raw
+    sockets, kernel capability abuse) is gone.
+
+    ``--security-opt=no-new-privileges`` still prevents any setuid
+    binary inside the image from picking up additional capabilities
+    after the gosu drop completes. Feature flags that legitimately
+    require additional capabilities must re-add them under that
+    feature's own ``--cap-add`` argument.
     """
     saRunArgs.extend(["--cap-drop", "ALL"])
+    for sCapability in _T_ENTRYPOINT_CAPABILITIES:
+        saRunArgs.extend(["--cap-add", sCapability])
     saRunArgs.extend(["--security-opt", "no-new-privileges"])
 
 

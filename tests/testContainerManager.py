@@ -276,6 +276,23 @@ def test_flistBuildRunArgs_disables_privilege_escalation(mockX11):
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
+def test_flistBuildRunArgs_readds_minimum_entrypoint_capabilities(mockX11):
+    """Audit M3 follow-up: --cap-drop=ALL must be paired with the five
+    capabilities the entrypoint needs to chown + gosu, otherwise the
+    container fails to start before any agent code runs."""
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    setReAdded = set()
+    for iIndex, sArg in enumerate(saArgs):
+        if sArg == "--cap-add" and iIndex + 1 < len(saArgs):
+            setReAdded.add(saArgs[iIndex + 1])
+    assert {"CHOWN", "FOWNER", "DAC_OVERRIDE", "SETUID", "SETGID"} <= setReAdded
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
 def test_flistBuildRunArgs_runs_entrypoint_as_root(mockX11):
     """``docker run`` must override the image USER so the entrypoint
     can chown the workspace and then drop privileges via gosu."""
