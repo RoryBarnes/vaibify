@@ -33,6 +33,7 @@ __all__ = [
     "testConftestTemplateHasVersionStamp",
     "testNoFlatTestMarkerWritesInSource",
     "testEmptyCommandCategoryIsUnnecessaryAfterLoad",
+    "testAtLeastLevel1IffAllFourCriteria",
 ]
 
 
@@ -1370,3 +1371,41 @@ def testEmptyCommandCategoryIsUnnecessaryAfterLoad():
             "categories surface as 'unnecessary' (green) instead of "
             "'untested' (blocking)."
         )
+
+
+def testAtLeastLevel1IffAllFourCriteria():
+    """``fbAtLeastLevel1`` is True iff every L1 criterion holds.
+
+    Enumerates the 2^4 truth table over the four orthogonal
+    criteria (repo present, user approved, timing clean, tests
+    passing) and asserts the gate fires exactly when all four are
+    True. Catches future regressions where someone weakens one
+    predicate or adds a fifth without updating the composition.
+    """
+    from vaibify.reproducibility.levelGates import fbAtLeastLevel1
+    listCriteria = (
+        "bRepo", "bUser", "bTiming", "bTests",
+    )
+    for iMask in range(1 << len(listCriteria)):
+        dictFlags = {
+            sName: bool(iMask & (1 << iBit))
+            for iBit, sName in enumerate(listCriteria)
+        }
+        dictVerification = {
+            "sUser": "passed" if dictFlags["bUser"] else "untested",
+        }
+        if not dictFlags["bTiming"]:
+            dictVerification["bUpstreamModified"] = True
+        if not dictFlags["bTests"]:
+            dictVerification["sUnitTest"] = "failed"
+        dictWorkflow = {"listSteps": [{
+            "sName": "A", "sDirectory": "A",
+            "dictVerification": dictVerification,
+        }]}
+        sRepo = "/workspace/repo" if dictFlags["bRepo"] else ""
+        bExpected = all(dictFlags.values())
+        bActual = fbAtLeastLevel1(dictWorkflow, sRepo)
+        assert bActual is bExpected, (
+            f"flags={dictFlags} expected={bExpected} actual={bActual}"
+        )
+

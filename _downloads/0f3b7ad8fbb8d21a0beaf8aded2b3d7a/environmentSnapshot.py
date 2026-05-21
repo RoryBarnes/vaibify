@@ -25,6 +25,8 @@ __all__ = [
     "fdictCaptureHostBinaryHashes",
     "fdictCaptureSystemTools",
     "fnWriteEnvironmentJson",
+    "fbEnvironmentDigestPinned",
+    "fdictReadEnvironmentJson",
 ]
 
 
@@ -260,3 +262,60 @@ def _fdictAnnotateEnvironment(dictEnvironment):
 def _fsCurrentTimestamp():
     """Return the current UTC time as an ISO 8601 string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+# ------------------------------------------------------------------
+# Digest-form validation (consumed by AICS L3 readiness gate)
+# ------------------------------------------------------------------
+
+
+def fdictReadEnvironmentJson(sProjectRepo):
+    """Return the parsed ``.vaibify/environment.json`` or ``None``.
+
+    A missing file, malformed JSON, or non-dict top-level all return
+    ``None`` so the L3 readiness gate can treat all three as
+    "envelope not coherent yet". Callers that need to distinguish
+    causes should call this and then re-read the file themselves.
+    """
+    pathEnvironment = (
+        Path(sProjectRepo) / ".vaibify" / "environment.json"
+    )
+    if not pathEnvironment.is_file():
+        return None
+    try:
+        with open(pathEnvironment, "r", encoding="utf-8") as fileHandle:
+            dictPayload = json.load(fileHandle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(dictPayload, dict):
+        return None
+    return dictPayload
+
+
+def fbEnvironmentDigestPinned(sProjectRepo):
+    """Return True iff environment.json records an ``@sha256:`` digest.
+
+    The schema places the digest at either the top-level
+    ``sImageDigest`` (legacy layout) or at
+    ``dictContainer.sImageDigest`` (the layout the AICS L3 envelope
+    writes). Both must be a ``image@sha256:<hex>`` string — a
+    floating tag (``image:latest``) fails the check honestly even
+    though docker would accept it.
+    """
+    dictPayload = fdictReadEnvironmentJson(sProjectRepo)
+    if dictPayload is None:
+        return False
+    sDigest = _fsExtractImageDigest(dictPayload)
+    if not sDigest:
+        return False
+    return "@sha256:" in sDigest
+
+
+def _fsExtractImageDigest(dictPayload):
+    """Return the image-digest string from either supported layout."""
+    dictContainer = dictPayload.get("dictContainer")
+    if isinstance(dictContainer, dict):
+        sNested = dictContainer.get("sImageDigest") or ""
+        if sNested:
+            return sNested
+    return dictPayload.get("sImageDigest") or ""

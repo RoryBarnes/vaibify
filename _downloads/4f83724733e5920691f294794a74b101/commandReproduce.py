@@ -1,18 +1,21 @@
 """CLI subcommand: vaibify reproduce.
 
 Read-only verification of the AICS Level 3 reproducibility envelope
-inside a project repository. Walks the three tiers in sequence:
+inside a project repository. Walks five tiers in sequence:
 
-* Tier 1 - byte-exact artefact integrity via ``MANIFEST.sha256``.
-* Tier 2 - hash-pinned Python dependency install via
+* Tier 1 — byte-exact artefact integrity via ``MANIFEST.sha256``.
+* Tier 2 — hash-pinned Python dependency install via
   ``requirements.lock``.
-* Tier 3 - container image digest pull via
+* Tier 3 — container image digest pull via
   ``.vaibify/environment.json``.
+* Tier 4 — L3 artifact coherence (six readiness verifiers).
+* Tier 5 — opt-in rebuild and hash compare via ``--rerun``. Writes
+  ``.vaibify/l3_attestation.json`` on completion (pass or fail) and
+  archives a copy to ``.vaibify/l3_attestations/``.
 
-Step 4 (re-running the workflow) is opt-in via ``--rerun``. The
-command never modifies files inside the project repo; the only
-write is to the user's Python environment when Tier 2 installs
-pinned dependencies.
+The command never modifies files inside the project repo except for
+the attestation files (Tier 5) and ``pip install`` updating the
+user's Python environment (Tier 2).
 """
 
 import json
@@ -21,11 +24,27 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import click
 
 from vaibify.reproducibility import manifestWriter
+from vaibify.reproducibility.l3Attestation import (
+    S_STATUS_FAILED,
+    S_STATUS_PASSED,
+    fdictBuildAttestation,
+    fnWriteAttestation,
+    fsCurrentManifestDigest,
+)
+from vaibify.reproducibility.levelGates import (
+    fbVerifyDependencyLock,
+    fbVerifyDeterminismDeclared,
+    fbVerifyDockerfilePinned,
+    fbVerifyEnvironmentSnapshot,
+    fbVerifyManifestComplete,
+    fbVerifyReproduceScript,
+)
 from vaibify.reproducibility.manifestWriter import flistVerifyManifest
 
 
@@ -34,6 +53,7 @@ __all__ = [
     "fbVerifyTier1",
     "fbVerifyTier2",
     "fbVerifyTier3",
+    "fbVerifyTier4",
     "fbRerunWorkflow",
     "fbIsValidImageDigest",
 ]
@@ -42,7 +62,7 @@ __all__ = [
 _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 _S_LOCK_FILENAME = "requirements.lock"
 _S_ENVIRONMENT_RELATIVE = ".vaibify/environment.json"
-_T_TIER_CHOICES = ("1", "2", "3")
+_T_TIER_CHOICES = ("1", "2", "3", "4")
 
 # Conservative whitelist for OCI image references that may include a
 # digest (registry/repo@sha256:<hex>) or a tag (registry/repo:tag).
@@ -64,7 +84,7 @@ def fbIsValidImageDigest(sImageDigest):
 
 
 def _fnPrintHeader(sLabel, sDescription):
-    """Print a leading ``[N/4] description`` banner without a newline."""
+    """Print a leading ``[N/5] description`` banner without a newline."""
     click.echo(f"[{sLabel}] {sDescription} ", nl=False)
 
 
@@ -100,7 +120,7 @@ def fbVerifyTier1(sProjectRepo):
     pathManifest = Path(sProjectRepo) / _S_MANIFEST_FILENAME
     if not pathManifest.is_file():
         _fnAbortMissingFile(_S_MANIFEST_FILENAME, sProjectRepo)
-    _fnPrintHeader("1/4", "Verifying file integrity (MANIFEST.sha256)")
+    _fnPrintHeader("1/5", "Verifying file integrity (MANIFEST.sha256)")
     listMismatches = flistVerifyManifest(sProjectRepo)
     iEntries = manifestWriter.fiCountManifestEntries(sProjectRepo)
     if not listMismatches:
@@ -137,21 +157,31 @@ def _fnReportIncompleteCoverage(sProjectRepo):
 def _fdictAggregateAllWorkflows(sProjectRepo):
     """Return a synthetic workflow whose listSteps unions every workflow's steps.
 
-    Returns ``None`` when no readable workflow.json files exist so the
-    coverage check is skipped rather than reported as empty.
+    Carries forward the first non-empty ``dictDeterminism`` block so
+    Tier 4's determinism check can read it; the project ladders L3 as
+    a whole, not per-workflow. Returns ``None`` when no readable
+    workflow.json files exist so the coverage check is skipped rather
+    than reported as empty.
     """
     pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
     if not pathWorkflows.is_dir():
         return None
     listAllSteps = []
+    dictDeterminismMerged = {}
     for pathFile in sorted(pathWorkflows.glob("*.json")):
         dictWorkflow = _fdictLoadWorkflowFile(pathFile)
         if dictWorkflow is None:
             continue
         listAllSteps.extend(dictWorkflow.get("listSteps", []) or [])
-    if not listAllSteps:
+        dictExtra = dictWorkflow.get("dictDeterminism") or {}
+        if dictExtra and not dictDeterminismMerged:
+            dictDeterminismMerged = dict(dictExtra)
+    if not listAllSteps and not dictDeterminismMerged:
         return None
-    return {"listSteps": listAllSteps}
+    dictResult = {"listSteps": listAllSteps}
+    if dictDeterminismMerged:
+        dictResult["dictDeterminism"] = dictDeterminismMerged
+    return dictResult
 
 
 def _fdictLoadWorkflowFile(pathFile):
@@ -187,7 +217,7 @@ def fbVerifyTier2(sProjectRepo):
     pathLock = Path(sProjectRepo) / _S_LOCK_FILENAME
     if not pathLock.is_file():
         _fnAbortMissingFile(_S_LOCK_FILENAME, sProjectRepo)
-    _fnPrintHeader("2/4", "Reproducing Python env (requirements.lock)")
+    _fnPrintHeader("2/5", "Reproducing Python env (requirements.lock)")
     iReturnCode, sStderr = _fiRunPipInstall(pathLock)
     if iReturnCode == 0:
         _fnPrintPass("hashes verified")
@@ -245,7 +275,7 @@ def fbVerifyTier3(sProjectRepo):
     pathEnvironment = Path(sProjectRepo) / _S_ENVIRONMENT_RELATIVE
     if not pathEnvironment.is_file():
         _fnAbortMissingFile(_S_ENVIRONMENT_RELATIVE, sProjectRepo)
-    _fnPrintHeader("3/4", "Pulling pinned container image")
+    _fnPrintHeader("3/5", "Pulling pinned container image")
     sImageDigest = _fsLoadImageDigest(pathEnvironment, sProjectRepo)
     completed = subprocess.run(
         ["docker", "pull", sImageDigest],
@@ -281,6 +311,53 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
     return sImageDigest
 
 
+def fbVerifyTier4(sProjectRepo):
+    """Verify the six AICS L3 readiness checks against the envelope.
+
+    Reuses the host-side ``levelGates`` verifiers so the dashboard
+    and the CLI agree on what "L3-ready" means. Returns True iff every
+    verifier passes; on failure prints a per-verifier checklist so
+    the user sees which artefacts need regenerating.
+    """
+    dictWorkflow = _fdictAggregateAllWorkflows(sProjectRepo) or {
+        "listSteps": [],
+    }
+    _fnPrintHeader("4/5", "Verifying L3 artifact coherence")
+    listResults = _flistRunReadinessVerifiers(
+        sProjectRepo, dictWorkflow,
+    )
+    iPassed = sum(1 for tEntry in listResults if tEntry[1])
+    iTotal = len(listResults)
+    if iPassed == iTotal:
+        _fnPrintPass(f"{iPassed}/{iTotal}")
+        for sLabel, _bPassed in listResults:
+            click.echo(f"       - {sLabel}: OK")
+        return True
+    _fnPrintFail(f"{iPassed}/{iTotal}")
+    for sLabel, bPassed in listResults:
+        sStatus = "OK" if bPassed else "FAIL"
+        click.echo(f"       - {sLabel}: {sStatus}")
+    return False
+
+
+def _flistRunReadinessVerifiers(sProjectRepo, dictWorkflow):
+    """Return ``[(label, bool)]`` for each L3 readiness verifier in order."""
+    return [
+        ("Manifest complete",
+         fbVerifyManifestComplete(sProjectRepo, dictWorkflow)),
+        ("Dependency lock",
+         fbVerifyDependencyLock(sProjectRepo)),
+        ("Environment snapshot digest-form",
+         fbVerifyEnvironmentSnapshot(sProjectRepo)),
+        ("Dockerfile pinned",
+         fbVerifyDockerfilePinned(sProjectRepo)),
+        ("reproduce.sh present + in manifest",
+         fbVerifyReproduceScript(sProjectRepo, dictWorkflow)),
+        ("Determinism declared",
+         fbVerifyDeterminismDeclared(sProjectRepo, dictWorkflow)),
+    ]
+
+
 def fbRerunWorkflow(sProjectRepo):
     """Re-run the workflow end to end against a running container.
 
@@ -294,7 +371,7 @@ def fbRerunWorkflow(sProjectRepo):
     (which calls ``sys.exit(1)``) does not short-circuit the
     surrounding ``vaibify reproduce`` exit-code logic.
     """
-    _fnPrintHeader("4/4", "Re-running workflow")
+    _fnPrintHeader("5/5", "Re-running workflow")
     try:
         return _fbInvokePipelineRunner(sProjectRepo)
     except (Exception, SystemExit) as error:
@@ -351,22 +428,92 @@ def _fconfigResolveProjectAtRepo(sProjectRepo, fconfigResolveProject):
 def _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):
     """Run a single tier and return its True/False outcome (or True if skipped)."""
     if sTier in setSkipTiers:
-        click.echo(f"[{sTier}/4] skipped")
+        click.echo(f"[{sTier}/5] skipped")
         return True
     if sTier == "1":
         return fbVerifyTier1(sProjectRepo)
     if sTier == "2":
         return fbVerifyTier2(sProjectRepo)
-    return fbVerifyTier3(sProjectRepo)
+    if sTier == "3":
+        return fbVerifyTier3(sProjectRepo)
+    return fbVerifyTier4(sProjectRepo)
 
 
-def _fnEmitFinalSummary(bAllPassed):
-    """Print the trailing success or failure line."""
+def _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten):
+    """Print the trailing success or advisory line.
+
+    The four-state matrix is: rerun=yes/no × all-passed=yes/no.
+    Without ``--rerun`` we never write attestation, so the "ready"
+    success line tells the user what to do next.
+    """
     click.echo("")
-    if bAllPassed:
-        click.echo("L3 reproduction confirmed.")
-    else:
-        click.echo("L3 reproduction failed; see tier output above.")
+    if bAllPassed and bRerun and bAttestationWritten:
+        click.echo("L3 reproduction confirmed and attested.")
+        return
+    if bAllPassed and not bRerun:
+        click.echo(
+            "L3 reproduction ready "
+            "(no attestation on file — run --rerun to attest)."
+        )
+        return
+    click.echo("L3 reproduction failed; see tier output above.")
+
+
+def _fbWriteAttestationFromRun(sProjectRepo, bRerunPassed, fDuration):
+    """Persist an L3 attestation reflecting the rerun outcome.
+
+    Called only when ``--rerun`` ran end-to-end so the attestation
+    records an actual rebuild attempt (not just envelope coherence).
+    Failures are recorded with the same schema as passes so the
+    history table can show "last rebuild failed".
+    """
+    sManifestDigest = fsCurrentManifestDigest(sProjectRepo)
+    sImageDigest = _fsRecordedImageDigest(sProjectRepo)
+    iTotalEntries = _fiManifestEntryCount(sProjectRepo)
+    iMatched = iTotalEntries if bRerunPassed else 0
+    sStatus = S_STATUS_PASSED if bRerunPassed else S_STATUS_FAILED
+    dictAttestation = fdictBuildAttestation(
+        sStatus=sStatus,
+        sManifestDigest=sManifestDigest,
+        sImageDigest=sImageDigest,
+        fDurationSeconds=fDuration,
+        iOutputHashesMatched=iMatched,
+        iOutputHashesTotal=iTotalEntries,
+        listDivergedHashes=[] if bRerunPassed else [
+            "rerun pipeline exited non-zero"
+        ],
+        sRunLogPath="",
+    )
+    try:
+        fnWriteAttestation(sProjectRepo, dictAttestation)
+    except OSError as error:
+        click.echo(f"  warning: could not persist attestation: {error}")
+        return False
+    return True
+
+
+def _fsRecordedImageDigest(sProjectRepo):
+    """Return the image digest recorded in environment.json, or empty."""
+    pathEnvironment = Path(sProjectRepo) / _S_ENVIRONMENT_RELATIVE
+    if not pathEnvironment.is_file():
+        return ""
+    try:
+        with open(pathEnvironment, "r", encoding="utf-8") as fileHandle:
+            dictPayload = json.load(fileHandle)
+    except (OSError, json.JSONDecodeError):
+        return ""
+    dictContainer = dictPayload.get("dictContainer")
+    if isinstance(dictContainer, dict):
+        return dictContainer.get("sImageDigest") or ""
+    return dictPayload.get("sImageDigest") or ""
+
+
+def _fiManifestEntryCount(sProjectRepo):
+    """Return the manifest entry count, treating absence as zero."""
+    try:
+        return manifestWriter.fiCountManifestEntries(sProjectRepo)
+    except (FileNotFoundError, OSError, ValueError):
+        return 0
 
 
 @click.command("reproduce")
@@ -377,12 +524,13 @@ def _fnEmitFinalSummary(bAllPassed):
 )
 @click.option(
     "--rerun/--no-rerun", "bRerun", default=False,
-    help="Also re-run the workflow (step 4). Off by default.",
+    help="Also re-run the workflow (step 5) and write an L3 "
+         "attestation. Off by default.",
 )
 @click.option(
     "--skip-tier", "saSkipTier", multiple=True,
     type=click.Choice(_T_TIER_CHOICES),
-    help="Skip the given tier (1, 2, or 3). May be repeated.",
+    help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
 def reproduce(sRepo, bRerun, saSkipTier):
     """Verify a project's AICS L3 reproducibility envelope."""
@@ -392,11 +540,18 @@ def reproduce(sRepo, bRerun, saSkipTier):
     for sTier in _T_TIER_CHOICES:
         if not _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):
             bAllPassed = False
+    bAttestationWritten = False
     if bRerun:
-        if not fbRerunWorkflow(sProjectRepo):
+        fStarted = time.monotonic()
+        bRerunPassed = fbRerunWorkflow(sProjectRepo)
+        if not bRerunPassed:
             bAllPassed = False
+        bAttestationWritten = _fbWriteAttestationFromRun(
+            sProjectRepo, bRerunPassed,
+            time.monotonic() - fStarted,
+        )
     else:
-        click.echo("[4/4] Re-running workflow ... skipped (use --rerun)")
-    _fnEmitFinalSummary(bAllPassed)
+        click.echo("[5/5] Re-running workflow ... skipped (use --rerun)")
+    _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten)
     if not bAllPassed:
         sys.exit(1)

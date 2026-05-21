@@ -1115,8 +1115,9 @@ from .fileStatusManager import (  # noqa: F401
     _fnInvalidateDownstreamStep,
     _fnInvalidateStepFiles,
     _fnUpdateModTimeBaseline,
-    fbAllStepsFullyVerified,
-    fbIsStepFullyVerified,
+    fbStepTestsPassing,
+    fbStepTimingClean,
+    fbStepUserApproved,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
@@ -1473,6 +1474,8 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.repoRoutes.fnRegisterAll(app, dictCtx)
     routes.gitRoutes.fnRegisterAll(app, dictCtx)
     routes.sessionRoutes.fnRegisterAll(app, dictCtx)
+    routes.levelRoutes.fnRegisterAll(app, dictCtx)
+    routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

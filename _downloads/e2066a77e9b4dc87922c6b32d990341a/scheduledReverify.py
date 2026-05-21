@@ -196,6 +196,12 @@ def fdictVerifyRemoteService(
     and returned by the verify route. Raises ``FileNotFoundError`` if
     the manifest is missing and :class:`ReverifyConfigError` if the
     workflow lacks remote configuration for ``sService``.
+
+    Phase 2 extension: captures the per-service identifier the
+    verification actually ran against (``sCommittedShaVerified`` for
+    GitHub, ``sZenodoDoi`` + ``sEndpointVerified`` for Zenodo) so the
+    L2 readiness check can detect when the live workflow state has
+    drifted away from the last successful verification.
     """
     dictExpected = fdictLoadManifestExpectedHashes(sProjectRepo)
     dictConfig = _fdictRequireServiceConfig(dictWorkflow, sService)
@@ -205,13 +211,34 @@ def fdictVerifyRemoteService(
     )
     listDiverged = _flistBuildDivergenceList(dictExpected, dictActual)
     iTotal = len(dictExpected)
-    return {
+    dictStatus = {
         "sService": sService,
         "sLastVerified": sNowIso or _fsBuildIsoTimestamp(),
         "iTotalFiles": iTotal,
         "iMatching": iTotal - len(listDiverged),
         "listDiverged": listDiverged,
     }
+    _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
+    return dictStatus
+
+
+def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
+    """Stamp service-identity fields onto the status dict.
+
+    Splits per-service identifier capture out of
+    :func:`fdictVerifyRemoteService` so the 20-line cap holds and the
+    per-service branches can grow independently if more identity
+    fields are needed later.
+    """
+    if sService == "github":
+        dictStatus["sCommittedShaVerified"] = (
+            dictConfig.get("sCommittedSha") or None
+        )
+    elif sService == "zenodo":
+        dictStatus["sZenodoDoi"] = dictConfig.get("sDoi") or None
+        dictStatus["sEndpointVerified"] = (
+            dictConfig.get("sService") or "sandbox"
+        )
 
 
 def _fsSyncStatusPath(sProjectRepo):
@@ -222,7 +249,12 @@ def _fsSyncStatusPath(sProjectRepo):
 
 
 def fdictReadCachedSyncStatus(sProjectRepo, sService):
-    """Return the cached status for sService or an empty default."""
+    """Return the cached status for sService or an empty default.
+
+    Backfills the Phase-2 service-identity fields with ``None`` when a
+    pre-Phase-2 file omits them, so callers can ``.get(...)`` against
+    a stable shape without separately probing for the upgrade marker.
+    """
     sPath = _fsSyncStatusPath(sProjectRepo)
     if not os.path.isfile(sPath):
         return _fdictEmptyServiceStatus(sService)
@@ -234,18 +266,40 @@ def fdictReadCachedSyncStatus(sProjectRepo, sService):
     dictEntry = dictAll.get(sService)
     if not isinstance(dictEntry, dict):
         return _fdictEmptyServiceStatus(sService)
+    _fnBackfillServiceIdentityFields(dictEntry, sService)
     return dictEntry
 
 
+def _fnBackfillServiceIdentityFields(dictEntry, sService):
+    """Ensure the Phase-2 identity fields exist on a cached entry."""
+    if sService == "github":
+        dictEntry.setdefault("sCommittedShaVerified", None)
+    elif sService == "zenodo":
+        dictEntry.setdefault("sZenodoDoi", None)
+        dictEntry.setdefault("sEndpointVerified", None)
+
+
 def _fdictEmptyServiceStatus(sService):
-    """Return the default status for a service that has never verified."""
-    return {
+    """Return the default status for a service that has never verified.
+
+    Service-identity fields (``sCommittedShaVerified``, ``sZenodoDoi``,
+    ``sEndpointVerified``) default to ``None`` so callers reading a
+    pre-Phase-2 cache file or a never-verified service see the same
+    shape they would after a real verify ran without identity capture.
+    """
+    dictEmpty = {
         "sService": sService,
         "sLastVerified": None,
         "iTotalFiles": 0,
         "iMatching": 0,
         "listDiverged": [],
     }
+    if sService == "github":
+        dictEmpty["sCommittedShaVerified"] = None
+    elif sService == "zenodo":
+        dictEmpty["sZenodoDoi"] = None
+        dictEmpty["sEndpointVerified"] = None
+    return dictEmpty
 
 
 def fnWriteSyncStatus(sProjectRepo, dictStatus):
