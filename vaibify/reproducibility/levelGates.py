@@ -263,6 +263,30 @@ def fbVerifyDeterminismDeclared(sProjectRepoPath, dictWorkflow):
     return not listIssues
 
 
+def _fdictCollectL3ReadinessFlags(dictWorkflow, sProjectRepoPath, bRepo):
+    """Return the six per-verifier booleans that gate L3 readiness."""
+    return {
+        "bManifestComplete": bRepo and fbVerifyManifestComplete(
+            sProjectRepoPath, dictWorkflow,
+        ),
+        "bDependencyLockHashed": bRepo and fbVerifyDependencyLock(
+            sProjectRepoPath,
+        ),
+        "bEnvironmentDigestPinned": bRepo and fbVerifyEnvironmentSnapshot(
+            sProjectRepoPath,
+        ),
+        "bDockerfilePinned": bRepo and fbVerifyDockerfilePinned(
+            sProjectRepoPath,
+        ),
+        "bReproduceScriptPinned": bRepo and fbVerifyReproduceScript(
+            sProjectRepoPath, dictWorkflow,
+        ),
+        "bDeterminismDeclared": bRepo and fbVerifyDeterminismDeclared(
+            sProjectRepoPath, dictWorkflow,
+        ),
+    }
+
+
 def fdictL3ReadinessGaps(dictWorkflow, sProjectRepoPath):
     """Return per-verifier pass/fail for the L3 readiness card.
 
@@ -273,36 +297,19 @@ def fdictL3ReadinessGaps(dictWorkflow, sProjectRepoPath):
     button state independently of the readiness verifiers.
     """
     bRepo = fbWorkflowHasProjectRepo(sProjectRepoPath)
-    bManifest = bRepo and fbVerifyManifestComplete(
-        sProjectRepoPath, dictWorkflow,
+    dictFlags = _fdictCollectL3ReadinessFlags(
+        dictWorkflow, sProjectRepoPath, bRepo,
     )
-    bLock = bRepo and fbVerifyDependencyLock(sProjectRepoPath)
-    bEnv = bRepo and fbVerifyEnvironmentSnapshot(sProjectRepoPath)
-    bDockerfile = bRepo and fbVerifyDockerfilePinned(sProjectRepoPath)
-    bScript = bRepo and fbVerifyReproduceScript(
-        sProjectRepoPath, dictWorkflow,
+    bAllReadiness = all(dictFlags.values())
+    dictResult = {sKey: bool(bValue) for sKey, bValue in dictFlags.items()}
+    dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
+    dictResult["bL3AttestationCurrent"] = (
+        fbL3AttestationCurrent(sProjectRepoPath) if bRepo else False
     )
-    bDeterminism = bRepo and fbVerifyDeterminismDeclared(
-        sProjectRepoPath, dictWorkflow,
+    dictResult["sManifestDigest"] = (
+        fsCurrentManifestDigest(sProjectRepoPath) if bRepo else ""
     )
-    bAllReadiness = bool(
-        bManifest and bLock and bEnv
-        and bDockerfile and bScript and bDeterminism
-    )
-    return {
-        "bManifestComplete": bool(bManifest),
-        "bDependencyLockHashed": bool(bLock),
-        "bEnvironmentDigestPinned": bool(bEnv),
-        "bDockerfilePinned": bool(bDockerfile),
-        "bReproduceScriptPinned": bool(bScript),
-        "bDeterminismDeclared": bool(bDeterminism),
-        "bL3ReadinessOK": bAllReadiness,
-        "bL3AttestationCurrent": fbL3AttestationCurrent(
-            sProjectRepoPath,
-        ) if bRepo else False,
-        "sManifestDigest": fsCurrentManifestDigest(sProjectRepoPath)
-        if bRepo else "",
-    }
+    return dictResult
 
 
 def fbWorkflowHasAiDeclarationStep(dictWorkflow):

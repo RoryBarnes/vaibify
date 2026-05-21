@@ -459,6 +459,23 @@ def _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten):
     click.echo("L3 reproduction failed; see tier output above.")
 
 
+def _fdictBuildRerunAttestation(sProjectRepo, bRerunPassed, fDuration):
+    """Return the attestation dict describing a rerun outcome."""
+    iTotalEntries = _fiManifestEntryCount(sProjectRepo)
+    return fdictBuildAttestation(
+        sStatus=S_STATUS_PASSED if bRerunPassed else S_STATUS_FAILED,
+        sManifestDigest=fsCurrentManifestDigest(sProjectRepo),
+        sImageDigest=_fsRecordedImageDigest(sProjectRepo),
+        fDurationSeconds=fDuration,
+        iOutputHashesMatched=iTotalEntries if bRerunPassed else 0,
+        iOutputHashesTotal=iTotalEntries,
+        listDivergedHashes=[] if bRerunPassed else [
+            "rerun pipeline exited non-zero"
+        ],
+        sRunLogPath="",
+    )
+
+
 def _fbWriteAttestationFromRun(sProjectRepo, bRerunPassed, fDuration):
     """Persist an L3 attestation reflecting the rerun outcome.
 
@@ -467,22 +484,8 @@ def _fbWriteAttestationFromRun(sProjectRepo, bRerunPassed, fDuration):
     Failures are recorded with the same schema as passes so the
     history table can show "last rebuild failed".
     """
-    sManifestDigest = fsCurrentManifestDigest(sProjectRepo)
-    sImageDigest = _fsRecordedImageDigest(sProjectRepo)
-    iTotalEntries = _fiManifestEntryCount(sProjectRepo)
-    iMatched = iTotalEntries if bRerunPassed else 0
-    sStatus = S_STATUS_PASSED if bRerunPassed else S_STATUS_FAILED
-    dictAttestation = fdictBuildAttestation(
-        sStatus=sStatus,
-        sManifestDigest=sManifestDigest,
-        sImageDigest=sImageDigest,
-        fDurationSeconds=fDuration,
-        iOutputHashesMatched=iMatched,
-        iOutputHashesTotal=iTotalEntries,
-        listDivergedHashes=[] if bRerunPassed else [
-            "rerun pipeline exited non-zero"
-        ],
-        sRunLogPath="",
+    dictAttestation = _fdictBuildRerunAttestation(
+        sProjectRepo, bRerunPassed, fDuration,
     )
     try:
         fnWriteAttestation(sProjectRepo, dictAttestation)
@@ -518,6 +521,17 @@ def _fiManifestEntryCount(sProjectRepo):
         return 0
 
 
+def _ftRunRerunTier(sProjectRepo):
+    """Execute tier 5 (rerun) and return ``(bPassed, bAttestationWritten)``."""
+    fStarted = time.monotonic()
+    bRerunPassed = fbRerunWorkflow(sProjectRepo)
+    bAttestationWritten = _fbWriteAttestationFromRun(
+        sProjectRepo, bRerunPassed,
+        time.monotonic() - fStarted,
+    )
+    return bRerunPassed, bAttestationWritten
+
+
 @click.command("reproduce")
 @click.option(
     "--repo", "sRepo", default=None,
@@ -544,14 +558,9 @@ def reproduce(sRepo, bRerun, saSkipTier):
             bAllPassed = False
     bAttestationWritten = False
     if bRerun:
-        fStarted = time.monotonic()
-        bRerunPassed = fbRerunWorkflow(sProjectRepo)
+        bRerunPassed, bAttestationWritten = _ftRunRerunTier(sProjectRepo)
         if not bRerunPassed:
             bAllPassed = False
-        bAttestationWritten = _fbWriteAttestationFromRun(
-            sProjectRepo, bRerunPassed,
-            time.monotonic() - fStarted,
-        )
     else:
         click.echo("[5/5] Re-running workflow ... skipped (use --rerun)")
     _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten)

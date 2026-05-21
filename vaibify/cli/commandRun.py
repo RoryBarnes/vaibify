@@ -12,23 +12,27 @@ from .commandUtilsDocker import (
 )
 
 
+_DICT_STEP_EVENT_LABELS = {
+    "stepStarted": "started",
+    "stepPass": "passed",
+    "stepFail": "FAILED",
+    "stepSkipped": "skipped",
+}
+
+
+def _fnPrintStepEvent(sType, dictEvent):
+    """Print one of the [step NN] progress lines."""
+    iStep = dictEvent.get("iStepNumber", 0)
+    click.echo(f"[step {iStep:02d}] {_DICT_STEP_EVENT_LABELS[sType]}")
+
+
 def fnCliStatusCallback(dictEvent):
     """Print step progress events to stdout."""
     sType = dictEvent.get("sType", "")
     if sType == "output":
         click.echo(dictEvent.get("sLine", ""))
-    elif sType == "stepStarted":
-        iStep = dictEvent.get("iStepNumber", 0)
-        click.echo(f"[step {iStep:02d}] started")
-    elif sType == "stepPass":
-        iStep = dictEvent.get("iStepNumber", 0)
-        click.echo(f"[step {iStep:02d}] passed")
-    elif sType == "stepFail":
-        iStep = dictEvent.get("iStepNumber", 0)
-        click.echo(f"[step {iStep:02d}] FAILED")
-    elif sType == "stepSkipped":
-        iStep = dictEvent.get("iStepNumber", 0)
-        click.echo(f"[step {iStep:02d}] skipped")
+    elif sType in _DICT_STEP_EVENT_LABELS:
+        _fnPrintStepEvent(sType, dictEvent)
     elif sType == "completed":
         click.echo("Pipeline completed successfully.")
     elif sType == "failed":
@@ -74,9 +78,8 @@ def _fiRunPipeline(connectionDocker, sContainerName, iStep, iFrom):
     ))
 
 
-def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
-    """Run a single step by index (1-based)."""
-    from vaibify.gui.pipelineRunner import fnRunSelectedSteps
+def _ftLoadFirstContainerWorkflow(connectionDocker, sContainerName):
+    """Return ``(sWorkflowPath, dictWorkflow)`` or ``("", {})`` on miss."""
     from vaibify.gui.workflowManager import (
         fdictLoadWorkflowFromContainer, flistFindWorkflowsInContainer,
     )
@@ -84,12 +87,23 @@ def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
         connectionDocker, sContainerName
     )
     if not listWorkflows:
-        click.echo("Error: No workflow found in container.")
-        return 2
+        return "", {}
     sWorkflowPath = listWorkflows[0]["sPath"]
     dictWorkflow = fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerName, sWorkflowPath
     )
+    return sWorkflowPath, dictWorkflow
+
+
+def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
+    """Run a single step by index (1-based)."""
+    from vaibify.gui.pipelineRunner import fnRunSelectedSteps
+    sWorkflowPath, dictWorkflow = _ftLoadFirstContainerWorkflow(
+        connectionDocker, sContainerName,
+    )
+    if not sWorkflowPath:
+        click.echo("Error: No workflow found in container.")
+        return 2
     iStepIndex = iStep - 1
     iStepCount = len(dictWorkflow.get("listSteps", []))
     if iStepIndex < 0 or iStepIndex >= iStepCount:

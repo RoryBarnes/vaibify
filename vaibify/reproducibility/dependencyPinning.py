@@ -72,6 +72,29 @@ def _fsResolveLockInput(pathRepo):
     )
 
 
+def _flistBuildUvCompileCommand(sInput):
+    """Return the ``uv pip compile`` argv for sInput."""
+    return [
+        "uv",
+        "pip",
+        "compile",
+        "--generate-hashes",
+        sInput,
+        "-o",
+        _S_LOCK_FILENAME,
+    ]
+
+
+def _fnRaiseUvTimeout(listCommand, errorTimeout):
+    """Re-raise an uv timeout as a CalledProcessError with redacted stderr."""
+    raise subprocess.CalledProcessError(
+        124, listCommand,
+        output="",
+        stderr="uv pip compile timed out after "
+        + f"{int(errorTimeout.timeout)}s",
+    ) from None
+
+
 def _fnRunUvCompile(pathRepo, sInput):
     """Invoke ``uv pip compile --generate-hashes`` in pathRepo.
 
@@ -81,15 +104,7 @@ def _fnRunUvCompile(pathRepo, sInput):
     against the rare race where ``uv`` disappears between
     :func:`fbIsUvAvailable` and the subprocess invocation.
     """
-    listCommand = [
-        "uv",
-        "pip",
-        "compile",
-        "--generate-hashes",
-        sInput,
-        "-o",
-        _S_LOCK_FILENAME,
-    ]
+    listCommand = _flistBuildUvCompileCommand(sInput)
     try:
         completed = subprocess.run(
             listCommand,
@@ -98,15 +113,10 @@ def _fnRunUvCompile(pathRepo, sInput):
             text=True,
             timeout=120.0,
         )
-    except FileNotFoundError as error:
+    except FileNotFoundError:
         raise FileNotFoundError(_S_UV_MISSING_MESSAGE) from None
     except subprocess.TimeoutExpired as errorTimeout:
-        raise subprocess.CalledProcessError(
-            124, listCommand,
-            output="",
-            stderr="uv pip compile timed out after "
-            + f"{int(errorTimeout.timeout)}s",
-        ) from None
+        _fnRaiseUvTimeout(listCommand, errorTimeout)
     if completed.returncode != 0:
         raise subprocess.CalledProcessError(
             completed.returncode,

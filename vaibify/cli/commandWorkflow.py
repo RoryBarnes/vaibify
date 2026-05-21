@@ -82,6 +82,21 @@ def _fdictWorkflowSummary(dictWorkflow):
     }
 
 
+def _fnEmitStepDetail(iStep, listSteps, bJson):
+    """Print detail for one step, exiting on out-of-range index."""
+    iStepIndex = iStep - 1
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        click.echo(
+            f"Error: Step {iStep} out of range "
+            f"(1-{len(listSteps)})."
+        )
+        sys.exit(2)
+    if fbShouldOutputJson(bJson):
+        fnPrintJson(_fdictStepDetail(iStepIndex, listSteps[iStepIndex]))
+    else:
+        _fnPrintStepDetail(iStepIndex, listSteps[iStepIndex])
+
+
 @click.command("workflow")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
@@ -104,17 +119,7 @@ def workflow(sProjectName, iStep, bJson):
     dictWorkflow = dictResult["dictWorkflow"]
     listSteps = dictWorkflow.get("listSteps", [])
     if iStep is not None:
-        iStepIndex = iStep - 1
-        if iStepIndex < 0 or iStepIndex >= len(listSteps):
-            click.echo(
-                f"Error: Step {iStep} out of range "
-                f"(1-{len(listSteps)})."
-            )
-            sys.exit(2)
-        if fbShouldOutputJson(bJson):
-            fnPrintJson(_fdictStepDetail(iStepIndex, listSteps[iStepIndex]))
-        else:
-            _fnPrintStepDetail(iStepIndex, listSteps[iStepIndex])
+        _fnEmitStepDetail(iStep, listSteps, bJson)
         return
     if fbShouldOutputJson(bJson):
         fnPrintJson(_fdictWorkflowSummary(dictWorkflow))

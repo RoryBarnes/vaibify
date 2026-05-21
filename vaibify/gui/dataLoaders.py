@@ -101,15 +101,8 @@ def _fsInferFormat(sFullPath):
     return _DICT_FORMAT_MAP.get(sExtension, None)
 
 
-def _fdictParseAccessPath(sAccessPath):
-    """Parse an access path string into a dict of components.
-
-    The ``key:`` capture is greedy until a recognised ``,index:``,
-    ``,column:``, ``,dataset:``, ``,section:``, or ``,hdu:`` boundary
-    so JSON keys may themselves contain commas (e.g. vconverge's
-    ``"compound,key,name"`` payload format).
-    """
-    dictResult = {}
+def _fnParseAccessSimpleFields(sAccessPath, dictResult):
+    """Populate key/column/dataset/section/hdu fields from sAccessPath."""
     matchKey = re.match(
         r"key:(.+?)(?:,(?:index|column|dataset|section|hdu):|$)",
         sAccessPath,
@@ -128,19 +121,36 @@ def _fdictParseAccessPath(sAccessPath):
     matchHdu = re.search(r"hdu:(\d+)", sAccessPath)
     if matchHdu:
         dictResult["iHdu"] = int(matchHdu.group(1))
+
+
+def _fnParseAccessIndexField(sAccessPath, dictResult):
+    """Populate sAggregate or listIndices from the index: token."""
     matchAggregate = re.search(
         r"index:(mean|min|max|std|p25|p50|p75|p95|p5)\b",
         sAccessPath,
     )
     if matchAggregate:
         dictResult["sAggregate"] = matchAggregate.group(1)
-    else:
-        matchIndex = re.search(r"index:([-\d,]+)", sAccessPath)
-        if matchIndex:
-            dictResult["listIndices"] = [
-                int(x) for x in matchIndex.group(1).split(",")
-                if x.strip()
-            ]
+        return
+    matchIndex = re.search(r"index:([-\d,]+)", sAccessPath)
+    if matchIndex:
+        dictResult["listIndices"] = [
+            int(x) for x in matchIndex.group(1).split(",")
+            if x.strip()
+        ]
+
+
+def _fdictParseAccessPath(sAccessPath):
+    """Parse an access path string into a dict of components.
+
+    The ``key:`` capture is greedy until a recognised ``,index:``,
+    ``,column:``, ``,dataset:``, ``,section:``, or ``,hdu:`` boundary
+    so JSON keys may themselves contain commas (e.g. vconverge's
+    ``"compound,key,name"`` payload format).
+    """
+    dictResult = {}
+    _fnParseAccessSimpleFields(sAccessPath, dictResult)
+    _fnParseAccessIndexField(sAccessPath, dictResult)
     return dictResult
 
 

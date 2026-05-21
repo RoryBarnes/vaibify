@@ -88,40 +88,47 @@ def _fnAcquireGuiSessionSlotOrExit(iPort):
         sys.exit(1)
 
 
-def fnLaunchGui(config, iExplicitPort, sConfigPath=None):
-    """Launch the workflow viewer GUI bound to the given port."""
-    click.echo("Launching workflow viewer ...")
-    from vaibify.gui.pipelineServer import (
-        fappCreateApplication,
-    )
-    from vaibify.config.containerLock import fnReleaseContainerLock
+def _fiResolveLaunchPortOrExit(config, iExplicitPort, sConfigPath):
+    """Resolve the launch port, exiting with a redacted error on conflict."""
     from vaibify.config.projectConfig import fnSaveToFile
-    from vaibify.config.sessionRegistry import fnReleaseSessionSlot
-    import uvicorn
     try:
-        iPort = fiResolveProjectPort(
+        return fiResolveProjectPort(
             config, iExplicitPort, sConfigPath,
             fnSaveConfig=fnSaveToFile,
         )
     except PortInUseError as errorPort:
         click.echo(f"Error: {errorPort}", err=True)
         sys.exit(1)
+
+
+def _fnServeGuiUnderLock(config, iPort):
+    """Bind the GUI app to iPort while holding the container lock."""
+    from vaibify.gui.pipelineServer import fappCreateApplication
+    from vaibify.config.containerLock import fnReleaseContainerLock
+    import uvicorn
+    fileHandleLock = _fnAcquireProjectLockOrExit(
+        config.sProjectName, iPort,
+    )
+    try:
+        app = fappCreateApplication(
+            sWorkspaceRoot=config.sWorkspaceRoot, iExpectedPort=iPort,
+        )
+        uvicorn.run(
+            app, host="127.0.0.1", port=iPort,
+            timeout_graceful_shutdown=3,
+        )
+    finally:
+        fnReleaseContainerLock(fileHandleLock)
+
+
+def fnLaunchGui(config, iExplicitPort, sConfigPath=None):
+    """Launch the workflow viewer GUI bound to the given port."""
+    from vaibify.config.sessionRegistry import fnReleaseSessionSlot
+    click.echo("Launching workflow viewer ...")
+    iPort = _fiResolveLaunchPortOrExit(config, iExplicitPort, sConfigPath)
     fileHandleSession = _fnAcquireGuiSessionSlotOrExit(iPort)
     try:
-        fileHandleLock = _fnAcquireProjectLockOrExit(
-            config.sProjectName, iPort,
-        )
-        try:
-            sRoot = config.sWorkspaceRoot
-            app = fappCreateApplication(
-                sWorkspaceRoot=sRoot, iExpectedPort=iPort,
-            )
-            uvicorn.run(
-                app, host="127.0.0.1", port=iPort,
-                timeout_graceful_shutdown=3,
-            )
-        finally:
-            fnReleaseContainerLock(fileHandleLock)
+        _fnServeGuiUnderLock(config, iPort)
     finally:
         fnReleaseSessionSlot(fileHandleSession)
 

@@ -70,6 +70,28 @@ def fsKeyringSlotFromRemoteUrl(sRemoteUrl):
     return ""
 
 
+_S_ASKPASS_BODY_TEMPLATE = (
+    "import subprocess\n"
+    "import sys\n"
+    "from vaibify.config.secretManager import (\n"
+    "    fsRetrieveSecret, fbSecretExists,\n"
+    ")\n"
+    "sSlot = {sSlotRepr}\n"
+    "sToken = ''\n"
+    "if sSlot and fbSecretExists(sSlot, 'keyring'):\n"
+    "    try:\n"
+    "        sToken = fsRetrieveSecret(sSlot, 'keyring') or ''\n"
+    "    except Exception:\n"
+    "        sToken = ''\n"
+    "if not sToken:\n"
+    "    try:\n"
+    "        sToken = fsRetrieveSecret('', 'gh_auth') or ''\n"
+    "    except Exception:\n"
+    "        sToken = ''\n"
+    "print(sToken)\n"
+)
+
+
 def _fsBuildAskpassSource(sKeyringSlot):
     """Return python source for an askpass helper bound to one keyring slot.
 
@@ -77,27 +99,9 @@ def _fsBuildAskpassSource(sKeyringSlot):
     token`` as a fallback, then fails. GitHub accepts the token as
     both the username and the password, so a single lookup suffices.
     """
-    return (
-        "#!" + sys.executable + "\n"
-        "import subprocess\n"
-        "import sys\n"
-        "from vaibify.config.secretManager import (\n"
-        "    fsRetrieveSecret, fbSecretExists,\n"
-        ")\n"
-        "sSlot = " + repr(sKeyringSlot) + "\n"
-        "sToken = ''\n"
-        "if sSlot and fbSecretExists(sSlot, 'keyring'):\n"
-        "    try:\n"
-        "        sToken = fsRetrieveSecret(sSlot, 'keyring') or ''\n"
-        "    except Exception:\n"
-        "        sToken = ''\n"
-        "if not sToken:\n"
-        "    try:\n"
-        "        sToken = fsRetrieveSecret('', 'gh_auth') or ''\n"
-        "    except Exception:\n"
-        "        sToken = ''\n"
-        "print(sToken)\n"
-    )
+    sShebang = "#!" + sys.executable + "\n"
+    sBody = _S_ASKPASS_BODY_TEMPLATE.format(sSlotRepr=repr(sKeyringSlot))
+    return sShebang + sBody
 
 
 def fsWriteAskpassScript(sKeyringSlot):

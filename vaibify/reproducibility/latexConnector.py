@@ -191,19 +191,28 @@ def fsInsertGithubLinks(sTexContent, dictMatches, sGithubBaseUrl):
     return sTexContent
 
 
+def _fsReplaceExistingFigureLink(sTexContent, sCamelDir, sLink):
+    """Return sTexContent with an existing Source Code href replaced, or ''."""
+    sOldMarker = sCamelDir + "}" + "{" + _SOURCE_CODE_MARKER + "}"
+    if sOldMarker not in sTexContent:
+        return ""
+    iStart = sTexContent.index(sOldMarker)
+    iHrefStart = sTexContent.rfind("\\href{", 0, iStart)
+    if iHrefStart < 0:
+        return ""
+    iEnd = iStart + len(sOldMarker)
+    return sTexContent[:iHrefStart] + sLink + sTexContent[iEnd:]
+
+
 def _fsInsertLinkForFigure(
     sTexContent, sBasename, sCamelDir, sGithubBaseUrl,
 ):
     """Insert or replace a Source Code link near a figure."""
     sUrl = f"{sGithubBaseUrl}/{sCamelDir}"
     sLink = f"\\href{{{sUrl}}}{{{_SOURCE_CODE_MARKER}}}"
-    sOldMarker = sCamelDir + "}" + "{" + _SOURCE_CODE_MARKER + "}"
-    if sOldMarker in sTexContent:
-        iStart = sTexContent.index(sOldMarker)
-        iHrefStart = sTexContent.rfind("\\href{", 0, iStart)
-        if iHrefStart >= 0:
-            iEnd = iStart + len(sOldMarker)
-            return sTexContent[:iHrefStart] + sLink + sTexContent[iEnd:]
+    sReplaced = _fsReplaceExistingFigureLink(sTexContent, sCamelDir, sLink)
+    if sReplaced:
+        return sReplaced
     sEscaped = re.escape(sBasename)
     sFigurePattern = (
         r"(\\includegraphics(?:\[[^\]]*\])?\{[^}]*"
@@ -219,6 +228,34 @@ def _fsInsertLinkForFigure(
     return sTexContent.replace(sOrigCaption, sNewCaption, 1)
 
 
+def _fsInsertDoiAtAcknowledgments(sTexContent, sDoiSentence):
+    """Return sTexContent with sDoiSentence inserted after acknowledgments, or ''."""
+    sAckPattern = (
+        r"(\\begin\{acknowledgments\}|"
+        r"\\section\*?\{[Aa]cknowledg[e]?ments?\})"
+    )
+    match = re.search(sAckPattern, sTexContent)
+    if not match:
+        return ""
+    iInsertPos = match.end()
+    return (
+        sTexContent[:iInsertPos] + "\n" + sDoiSentence
+        + "\n" + sTexContent[iInsertPos:]
+    )
+
+
+def _fsInsertDoiBeforeEndDocument(sTexContent, sDoiSentence):
+    """Return sTexContent with sDoiSentence inserted before \\end{document}, or ''."""
+    match = re.search(r"\\end\{document\}", sTexContent)
+    if not match:
+        return ""
+    return (
+        sTexContent[:match.start()]
+        + "% Zenodo archive\n" + sDoiSentence + "\n\n"
+        + sTexContent[match.start():]
+    )
+
+
 def fsInsertZenodoDoi(sTexContent, sDoi):
     """Insert a Zenodo DOI link in the acknowledgments section."""
     if not sDoi:
@@ -228,28 +265,14 @@ def fsInsertZenodoDoi(sTexContent, sDoi):
         "The data products associated with this work are "
         f"archived at {sDoiLink}."
     )
-    sExistingDoi = re.escape(sDoi)
-    if re.search(sExistingDoi, sTexContent):
+    if re.search(re.escape(sDoi), sTexContent):
         return sTexContent
-    sAckPattern = (
-        r"(\\begin\{acknowledgments\}|"
-        r"\\section\*?\{[Aa]cknowledg[e]?ments?\})"
-    )
-    match = re.search(sAckPattern, sTexContent)
-    if match:
-        iInsertPos = match.end()
-        return (
-            sTexContent[:iInsertPos] + "\n" + sDoiSentence
-            + "\n" + sTexContent[iInsertPos:]
-        )
-    sEndDoc = r"\\end\{document\}"
-    match = re.search(sEndDoc, sTexContent)
-    if match:
-        return (
-            sTexContent[:match.start()]
-            + "% Zenodo archive\n" + sDoiSentence + "\n\n"
-            + sTexContent[match.start():]
-        )
+    sAtAck = _fsInsertDoiAtAcknowledgments(sTexContent, sDoiSentence)
+    if sAtAck:
+        return sAtAck
+    sAtEnd = _fsInsertDoiBeforeEndDocument(sTexContent, sDoiSentence)
+    if sAtEnd:
+        return sAtEnd
     return sTexContent
 
 

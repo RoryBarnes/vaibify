@@ -12,7 +12,6 @@ The attestation is keyed against the live MANIFEST digest: if
 to L2 and the stale-attestation banner surfaces in the dashboard.
 """
 
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -54,11 +53,8 @@ def fsCurrentManifestDigest(sProjectRepo):
     pathManifest = Path(sProjectRepo) / _S_MANIFEST_FILENAME
     if not pathManifest.is_file():
         return ""
-    digest = hashlib.sha256()
-    with open(pathManifest, "rb") as fileHandle:
-        for chunkBytes in iter(lambda: fileHandle.read(65536), b""):
-            digest.update(chunkBytes)
-    return "sha256:" + digest.hexdigest()
+    from vaibify.reproducibility._hashing import fsHashFileSha256
+    return "sha256:" + fsHashFileSha256(str(pathManifest))
 
 
 def fdictReadAttestation(sProjectRepo):

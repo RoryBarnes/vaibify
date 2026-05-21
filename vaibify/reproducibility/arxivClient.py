@@ -36,7 +36,6 @@ Security notes:
   arXiv so caching is semantic, not a stale-state hack.
 """
 
-import hashlib
 import os
 import tarfile
 import threading
@@ -45,6 +44,8 @@ import urllib.parse
 import xml.etree.ElementTree as etree
 
 import requests
+
+from vaibify.reproducibility._hashing import fsHashFileSha256
 
 
 __all__ = [
@@ -313,8 +314,8 @@ def _fnExtractTarballSafely(sTarballPath, sExtractDir):
             tarballHandle.extract(memberTar, path=sExtractDir)
 
 
-def _fnValidateTarMember(memberTar, sRealRoot):
-    """Reject any tar member that would escape ``sRealRoot`` or is unsafe."""
+def _fnRejectUnsafeTarMemberKinds(memberTar):
+    """Reject symlink, hardlink, device, and fifo tar members."""
     if memberTar.issym() or memberTar.islnk():
         raise ArxivExtractionError(
             f"arXiv tarball contains a symlink or hardlink: "
@@ -324,6 +325,11 @@ def _fnValidateTarMember(memberTar, sRealRoot):
         raise ArxivExtractionError(
             f"arXiv tarball contains a special file: {memberTar.name!r}."
         )
+
+
+def _fnValidateTarMember(memberTar, sRealRoot):
+    """Reject any tar member that would escape ``sRealRoot`` or is unsafe."""
+    _fnRejectUnsafeTarMemberKinds(memberTar)
     if os.path.isabs(memberTar.name):
         raise ArxivExtractionError(
             f"arXiv tarball entry is absolute: {memberTar.name!r}."
@@ -349,14 +355,7 @@ def _fbPathInsideRoot(sCandidate, sRealRoot):
 
 def _fsHashFileSha256(sAbsolutePath):
     """Return the SHA-256 hex digest of one file, streaming in chunks."""
-    objHasher = hashlib.sha256()
-    with open(sAbsolutePath, "rb") as fileHandle:
-        while True:
-            baChunk = fileHandle.read(_I_HASH_CHUNK_SIZE)
-            if not baChunk:
-                break
-            objHasher.update(baChunk)
-    return objHasher.hexdigest()
+    return fsHashFileSha256(sAbsolutePath, _I_HASH_CHUNK_SIZE)
 
 
 def _fdictHashTreeByRelPath(sExtractDir):
@@ -375,6 +374,19 @@ def _fdictHashTreeByRelPath(sExtractDir):
                 continue
             dictResult[sRelative] = _fsHashFileSha256(sAbsolute)
     return dictResult
+
+
+def _fsValidateExplicitOverride(
+    sLocalRelPath, sOverride, dictTarballHashes,
+):
+    """Return sOverride after confirming it exists in the tarball."""
+    if sOverride not in dictTarballHashes:
+        raise ArxivPathMapError(
+            f"dictPathMap entry for '{sLocalRelPath}' points to "
+            f"'{sOverride}', which does not exist in the arXiv "
+            "tarball. Update or remove the mapping in vaibify.yml."
+        )
+    return sOverride
 
 
 def _fsLocateTarballPath(
@@ -396,13 +408,9 @@ def _fsLocateTarballPath(
     dictMap = dictPathMap or {}
     sOverride = dictMap.get(sLocalRelPath)
     if sOverride is not None:
-        if sOverride not in dictTarballHashes:
-            raise ArxivPathMapError(
-                f"dictPathMap entry for '{sLocalRelPath}' points to "
-                f"'{sOverride}', which does not exist in the arXiv "
-                "tarball. Update or remove the mapping in vaibify.yml."
-            )
-        return sOverride
+        return _fsValidateExplicitOverride(
+            sLocalRelPath, sOverride, dictTarballHashes,
+        )
     sBasename = os.path.basename(sLocalRelPath)
     listMatches = [
         sTarballPath for sTarballPath in dictTarballHashes

@@ -105,6 +105,31 @@ def fnWriteDeclarationTemplate(sProjectRepoPath, sRelativePath):
     return sAbsolutePath
 
 
+def _fdictEmptyTestsBlock():
+    """Return the empty dictTests skeleton shared by all step kinds."""
+    return {
+        "dictQualitative": {"saCommands": [], "sFilePath": ""},
+        "dictQuantitative": {
+            "saCommands": [], "sFilePath": "", "sStandardsPath": "",
+        },
+        "dictIntegrity": {"saCommands": [], "sFilePath": ""},
+        "listUserTests": [],
+    }
+
+
+def _fdictEmptyVerificationBlock():
+    """Return the default dictVerification skeleton for a new step."""
+    return {
+        "sUser": "untested",
+        "sUnitTest": "unnecessary",
+        "sIntegrity": "unnecessary",
+        "sQualitative": "unnecessary",
+        "sQuantitative": "unnecessary",
+        "listModifiedFiles": [],
+        "bUpstreamModified": False,
+    }
+
+
 def fdictBuildAiDeclarationStep(sName, sDeclarationFile):
     """Return a fresh ai-declaration step dict with empty command lists.
 
@@ -127,21 +152,6 @@ def fdictBuildAiDeclarationStep(sName, sDeclarationFile):
         "saPlotCommands": [],
         "saPlotFiles": [],
         "saStepScripts": [],
-        "dictTests": {
-            "dictQualitative": {"saCommands": [], "sFilePath": ""},
-            "dictQuantitative": {
-                "saCommands": [], "sFilePath": "", "sStandardsPath": "",
-            },
-            "dictIntegrity": {"saCommands": [], "sFilePath": ""},
-            "listUserTests": [],
-        },
-        "dictVerification": {
-            "sUser": "untested",
-            "sUnitTest": "unnecessary",
-            "sIntegrity": "unnecessary",
-            "sQualitative": "unnecessary",
-            "sQuantitative": "unnecessary",
-            "listModifiedFiles": [],
-            "bUpstreamModified": False,
-        },
+        "dictTests": _fdictEmptyTestsBlock(),
+        "dictVerification": _fdictEmptyVerificationBlock(),
     }

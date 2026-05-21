@@ -92,6 +92,24 @@ T_REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
 T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 
 
+def _flistDiscoverCandidatePaths(
+    connectionDocker, sContainerId, sSearchRoot,
+):
+    """Run find inside the container, return candidate workflow.json paths."""
+    sCommand = (
+        f"find {sSearchRoot} -maxdepth 4"
+        f" -path '*/.vaibify/workflows/*.json'"
+        f" -type f 2>/dev/null"
+    )
+    _iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    return [
+        sLine.strip() for sLine in sOutput.splitlines()
+        if sLine.strip().endswith(".json")
+    ]
+
+
 def flistFindWorkflowsInContainer(
     connectionDocker, sContainerId, sSearchRoot=None
 ):
@@ -104,18 +122,9 @@ def flistFindWorkflowsInContainer(
     """
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
-    sCommand = (
-        f"find {sSearchRoot} -maxdepth 4"
-        f" -path '*/.vaibify/workflows/*.json'"
-        f" -type f 2>/dev/null"
+    listCandidates = _flistDiscoverCandidatePaths(
+        connectionDocker, sContainerId, sSearchRoot,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    listCandidates = [
-        sLine.strip() for sLine in sOutput.splitlines()
-        if sLine.strip().endswith(".json")
-    ]
     if not listCandidates:
         return []
     dictRepoByPath = _fdictDetectReposForCandidates(
@@ -190,6 +199,22 @@ def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
         return posixpath.basename(sPath)
 
 
+def _fsResolveWorkflowPathOrDefault(
+    connectionDocker, sContainerId, sWorkflowPath,
+):
+    """Return sWorkflowPath as-is, or the first discovered workflow path."""
+    if sWorkflowPath is not None:
+        return sWorkflowPath
+    listWorkflows = flistFindWorkflowsInContainer(
+        connectionDocker, sContainerId
+    )
+    if not listWorkflows:
+        raise FileNotFoundError(
+            "No workflow.json found under search root"
+        )
+    return listWorkflows[0]["sPath"]
+
+
 def fdictLoadWorkflowFromContainer(
     connectionDocker, sContainerId, sWorkflowPath=None
 ):
@@ -201,15 +226,9 @@ def fdictLoadWorkflowFromContainer(
     frontend continue to see one merged shape.
     """
     from .pipelineUtils import fnAttachStepLabels
-    if sWorkflowPath is None:
-        listWorkflows = flistFindWorkflowsInContainer(
-            connectionDocker, sContainerId
-        )
-        if not listWorkflows:
-            raise FileNotFoundError(
-                "No workflow.json found under search root"
-            )
-        sWorkflowPath = listWorkflows[0]["sPath"]
+    sWorkflowPath = _fsResolveWorkflowPathOrDefault(
+        connectionDocker, sContainerId, sWorkflowPath,
+    )
     baContent = connectionDocker.fbaFetchFile(sContainerId, sWorkflowPath)
     dictWorkflow = json.loads(baContent.decode("utf-8"))
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)

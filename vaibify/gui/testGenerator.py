@@ -710,6 +710,12 @@ def fdictGenerateAllTestsDeterministic(
     )
 
 
+def _fnRecordIfNeedsOverwrite(dictCategoryResult, listModified):
+    """Append the category's sFilePath to listModified if overwrite is pending."""
+    if dictCategoryResult.get("bNeedsOverwriteConfirm"):
+        listModified.append(dictCategoryResult["sFilePath"])
+
+
 def _fdictWriteAllDeterministicTests(
     connectionDocker, sContainerId, sDirectory,
     listdictReports, fTolerance, bForceOverwrite, sProjectRepoPath,
@@ -725,25 +731,18 @@ def _fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, bForceOverwrite,
     )
-    if dictResult["dictIntegrity"].get("bNeedsOverwriteConfirm"):
-        listModified.append(dictResult["dictIntegrity"]["sFilePath"])
+    _fnRecordIfNeedsOverwrite(dictResult["dictIntegrity"], listModified)
     dictResult["dictQualitative"] = _fdictWriteQualitativeTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, bForceOverwrite,
     )
-    if dictResult["dictQualitative"].get("bNeedsOverwriteConfirm"):
-        listModified.append(
-            dictResult["dictQualitative"]["sFilePath"]
-        )
+    _fnRecordIfNeedsOverwrite(dictResult["dictQualitative"], listModified)
     dictResult["dictQuantitative"] = _fdictWriteQuantitativeTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance, bForceOverwrite,
         sClassification,
     )
-    if dictResult["dictQuantitative"].get("bNeedsOverwriteConfirm"):
-        listModified.append(
-            dictResult["dictQuantitative"]["sFilePath"]
-        )
+    _fnRecordIfNeedsOverwrite(dictResult["dictQuantitative"], listModified)
     if listModified:
         dictResult["bNeedsOverwriteConfirm"] = True
         dictResult["listModifiedFiles"] = listModified

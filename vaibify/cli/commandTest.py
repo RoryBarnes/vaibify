@@ -88,6 +88,20 @@ def _fnPrintTestRow(dictResult):
     click.echo(f"{iNumber:>3}  {sName:<30}  {sStatus:<10}  {iExitCode}")
 
 
+def _flistResolveStepIndices(iStep, listSteps):
+    """Return the step-index list (single or all), exiting on out-of-range."""
+    if iStep is None:
+        return list(range(len(listSteps)))
+    iStepIndex = iStep - 1
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        click.echo(
+            f"Error: Step {iStep} out of range "
+            f"(1-{len(listSteps)})."
+        )
+        sys.exit(2)
+    return [iStepIndex]
+
+
 @click.command("test")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
@@ -109,17 +123,7 @@ def test(sProjectName, iStep, bJson):
     dictResult = fdictRequireWorkflow(connectionDocker, sContainerName)
     dictWorkflow = dictResult["dictWorkflow"]
     listSteps = dictWorkflow.get("listSteps", [])
-    if iStep is not None:
-        iStepIndex = iStep - 1
-        if iStepIndex < 0 or iStepIndex >= len(listSteps):
-            click.echo(
-                f"Error: Step {iStep} out of range "
-                f"(1-{len(listSteps)})."
-            )
-            sys.exit(2)
-        listStepIndices = [iStepIndex]
-    else:
-        listStepIndices = list(range(len(listSteps)))
+    listStepIndices = _flistResolveStepIndices(iStep, listSteps)
     listResults = _flistRunAllTests(
         connectionDocker, sContainerName, listSteps, listStepIndices
     )

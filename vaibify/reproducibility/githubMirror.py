@@ -163,13 +163,8 @@ def _fobjectBuildRequest(sUrl, sToken):
 
 def _fsHashResponseStream(objectResponse):
     """Stream the response body through SHA-256 and return the hex digest."""
-    hasher = hashlib.sha256()
-    while True:
-        baBlock = objectResponse.read(_I_HASH_BLOCK_SIZE)
-        if not baBlock:
-            break
-        hasher.update(baBlock)
-    return hasher.hexdigest()
+    from vaibify.reproducibility._hashing import fsHashFileObjectSha256
+    return fsHashFileObjectSha256(objectResponse, _I_HASH_BLOCK_SIZE)
 
 
 def _fbIsRateLimited(errorHttp):

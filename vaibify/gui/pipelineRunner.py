@@ -150,13 +150,13 @@ async def _fiQueryHeadCommitEpoch(
     """Return HEAD commit epoch as int, or 0 if unavailable."""
     if not sProjectRepoPath:
         return 0
-    sCmd = (
+    sCommand = (
         f"git -C {fsShellQuote(sProjectRepoPath)} "
         f"log -1 --format=%ct HEAD 2>/dev/null"
     )
     iExitCode, sOutput = await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,
-        sContainerId, sCmd,
+        sContainerId, sCommand,
     )
     if iExitCode != 0:
         return 0
@@ -535,8 +535,8 @@ async def _fsMissingDependencyFile(
         + dictStep.get("saCommands", [])
     )
     setChecked = set()
-    for sCmd in listAllCommands:
-        for sMatch in re.findall(r"\{(Step\d+\.\w+)\}", sCmd):
+    for sCommand in listAllCommands:
+        for sMatch in re.findall(r"\{(Step\d+\.\w+)\}", sCommand):
             if sMatch in setChecked:
                 continue
             setChecked.add(sMatch)
@@ -686,6 +686,23 @@ async def _fiRunStepList(
     return iFinalExitCode
 
 
+def _ftInitializeRunState(
+    connectionDocker, sContainerId, dictWorkflow,
+    sAction, sLogPath,
+):
+    """Build initial run state, persist it, and return (dictState, lockState)."""
+    iStepCount = len(dictWorkflow.get("listSteps", []))
+    dictState = pipelineState.fdictBuildInitialState(
+        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid()
+    )
+    lockState = threading.Lock()
+    with lockState:
+        pipelineState.fnWriteState(
+            connectionDocker, sContainerId, dictState
+        )
+    return dictState, lockState
+
+
 async def _fiRunStepsAndLog(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
     dictVariables, fnLogging, fnStatusCallback,
@@ -694,16 +711,11 @@ async def _fiRunStepsAndLog(
     setRunStepIndices=None,
 ):
     """Execute steps, write log, and emit final status."""
-    iStepCount = len(dictWorkflow.get("listSteps", []))
-    dictState = pipelineState.fdictBuildInitialState(
-        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid()
+    dictState, lockState = _ftInitializeRunState(
+        connectionDocker, sContainerId, dictWorkflow,
+        sAction, sLogPath,
     )
-    lockState = threading.Lock()
     eventStopHeartbeat = threading.Event()
-    with lockState:
-        pipelineState.fnWriteState(
-            connectionDocker, sContainerId, dictState
-        )
     threadHeartbeat = _fnStartHeartbeatThread(
         connectionDocker, sContainerId, dictState,
         lockState, eventStopHeartbeat,
@@ -763,13 +775,11 @@ def _fnRunHeartbeatLoop(
                 "pipeline heartbeat write failed: %s", error)
 
 
-async def _fiRunWithLogging(
-    connectionDocker, sContainerId, dictWorkflow,
-    sWorkdir, fnStatusCallback, sAction, iStartStep=1,
-    sWorkflowPath="", dictInteractive=None, sRunMode="full",
-    setRunStepIndices=None,
+async def _ftPrepareLogAndVariables(
+    connectionDocker, sContainerId, dictWorkflow, sWorkdir,
+    fnStatusCallback,
 ):
-    """Run steps with logging wrapper, writing log file on completion."""
+    """Set up log path, logging callback, variables, and clear output flags."""
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
     sLogsDir = await _fnEnsureLogsDirectory(
         connectionDocker, sContainerId
@@ -783,7 +793,22 @@ async def _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow, dictVariables,
     )
     fnClearOutputModifiedFlags(dictWorkflow)
+    return sLogPath, listLogLines, fnLogging, dictVariables
 
+
+async def _fiRunWithLogging(
+    connectionDocker, sContainerId, dictWorkflow,
+    sWorkdir, fnStatusCallback, sAction, iStartStep=1,
+    sWorkflowPath="", dictInteractive=None, sRunMode="full",
+    setRunStepIndices=None,
+):
+    """Run steps with logging wrapper, writing log file on completion."""
+    sLogPath, listLogLines, fnLogging, dictVariables = (
+        await _ftPrepareLogAndVariables(
+            connectionDocker, sContainerId, dictWorkflow,
+            sWorkdir, fnStatusCallback,
+        )
+    )
     listPreflightErrors = await _flistPreflightValidate(
         connectionDocker, sContainerId, dictWorkflow,
         dictVariables, iStartStep,

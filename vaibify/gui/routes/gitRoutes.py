@@ -89,6 +89,24 @@ def _fdictNoProjectRepoResponse():
     }
 
 
+def _fsRequireProjectRepoOrFail(dictWorkflow):
+    """Return the project repo path or raise HTTP 409 when none is configured.
+
+    Centralizes the duplicated "Project repo not detected" guard that
+    state-mutating git routes share so the error message stays in lockstep.
+    """
+    sRepo = _fsRequireProjectRepo(dictWorkflow)
+    if not sRepo:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Project repo not detected for the active "
+                "workflow."
+            ),
+        )
+    return sRepo
+
+
 def _fbArxivConfiguredFor(dictWorkflow):
     """Return True when the workflow has an arxiv remote configured."""
     dictRemotes = dictWorkflow.get("dictRemotes") or {}
@@ -146,6 +164,41 @@ def _fnRegisterGitStatus(app, dictCtx):
         )
 
 
+def _fdictProjectGitView(dictGit, sRemoteUrl):
+    """Pack the slim dictGit subset returned to the badge dashboard."""
+    return {
+        "bIsRepo": dictGit.get("bIsRepo", False),
+        "sBranch": dictGit.get("sBranch", ""),
+        "sHeadSha": dictGit.get("sHeadSha", ""),
+        "iAhead": dictGit.get("iAhead", 0),
+        "iBehind": dictGit.get("iBehind", 0),
+        "sRefreshedAt": dictGit.get("sRefreshedAt", ""),
+        "sReason": dictGit.get("sReason", ""),
+        "sRemoteUrl": sRemoteUrl,
+    }
+
+
+async def _tCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
+    """Gather git status, tracked blobs, hashes, and remote URL sequentially."""
+    dictGit = await asyncio.to_thread(
+        containerGit.fdictGitStatusInContainer,
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    listTracked = await asyncio.to_thread(
+        _flistCanonicalFromContainer,
+        docker, sContainerId, dictWorkflow, sRepo,
+    )
+    dictHashes = await asyncio.to_thread(
+        containerGit.fdictComputeBlobShasInContainer,
+        docker, sContainerId, listTracked, sWorkspace=sRepo,
+    )
+    sRemoteUrl = await asyncio.to_thread(
+        containerGit.fsRemoteUrlInContainer,
+        docker, sContainerId, sRepo,
+    )
+    return dictGit, listTracked, dictHashes, sRemoteUrl
+
+
 def _fnRegisterGitBadges(app, dictCtx):
     """Register GET /api/git/{sContainerId}/badges."""
 
@@ -159,47 +212,27 @@ def _fnRegisterGitBadges(app, dictCtx):
         if not sRepo:
             return _fdictNoProjectRepoResponse()
         docker = dictCtx["docker"]
-        dictGit = await asyncio.to_thread(
-            containerGit.fdictGitStatusInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
+        dictGit, listTracked, dictHashes, sRemoteUrl = (
+            await _tCollectGitBadgeInputs(
+                docker, sContainerId, dictWorkflow, sRepo,
+            )
         )
-        listTracked = await asyncio.to_thread(
-            _flistCanonicalFromContainer,
-            docker, sContainerId, dictWorkflow, sRepo,
-        )
-        dictHashes = await asyncio.to_thread(
-            containerGit.fdictComputeBlobShasInContainer,
-            docker, sContainerId, listTracked, sWorkspace=sRepo,
-        )
-        sRemoteUrl = await asyncio.to_thread(
-            containerGit.fsRemoteUrlInContainer,
-            docker, sContainerId, sRepo,
-        )
-        dictSync = dictWorkflow.get("dictSyncStatus", {}) or {}
-        bArxivConfigured = _fbArxivConfiguredFor(dictWorkflow)
         dictArxivStatus = await asyncio.to_thread(
             _fdictLoadCachedArxivStatus, sRepo,
         )
         dictBadges = badgeState.fdictBadgeStateFromHashes(
-            listTracked, dictGit, dictSync, dictHashes,
+            listTracked, dictGit,
+            dictWorkflow.get("dictSyncStatus", {}) or {},
+            dictHashes,
             sProjectRepoPath=sRepo,
             sZenodoService=dictWorkflow.get(
                 "sZenodoService", "sandbox",
             ),
             dictArxivStatus=dictArxivStatus,
-            bArxivConfigured=bArxivConfigured,
+            bArxivConfigured=_fbArxivConfiguredFor(dictWorkflow),
         )
         return {
-            "dictGit": {
-                "bIsRepo": dictGit.get("bIsRepo", False),
-                "sBranch": dictGit.get("sBranch", ""),
-                "sHeadSha": dictGit.get("sHeadSha", ""),
-                "iAhead": dictGit.get("iAhead", 0),
-                "iBehind": dictGit.get("iBehind", 0),
-                "sRefreshedAt": dictGit.get("sRefreshedAt", ""),
-                "sReason": dictGit.get("sReason", ""),
-                "sRemoteUrl": sRemoteUrl,
-            },
+            "dictGit": _fdictProjectGitView(dictGit, sRemoteUrl),
             "dictBadges": dictBadges,
             "listTracked": listTracked,
         }
@@ -256,15 +289,7 @@ def _fnRegisterCommitCanonical(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sRepo = _fsRequireProjectRepo(dictWorkflow)
-        if not sRepo:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Project repo not detected for the active "
-                    "workflow."
-                ),
-            )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         docker = dictCtx["docker"]
         dictGit = await asyncio.to_thread(
             containerGit.fdictGitStatusInContainer,
@@ -287,39 +312,53 @@ def _fnRegisterCommitCanonical(app, dictCtx):
             for dictEntry in dictReport["listNeedsCommit"]
         ]
         if not listNeedsCommit:
-            return {
-                "bSuccess": True,
-                "sCommitHash": dictReport["sHeadSha"],
-                "iFilesCommitted": 0,
-            }
+            return _fdictCommitCanonicalSuccess(
+                dictReport["sHeadSha"], 0,
+            )
         sMessage = request.sCommitMessage or _fsDefaultCommitMessage()
-        iExit, sOut = await asyncio.to_thread(
-            containerGit.ftResultGitAddInContainer,
-            docker, sContainerId, listNeedsCommit, sWorkspace=sRepo,
+        await _fnApplyCanonicalGitAddCommit(
+            docker, sContainerId, sRepo, listNeedsCommit, sMessage,
         )
-        if iExit != 0:
-            raise HTTPException(
-                status_code=500,
-                detail="git add failed: " + (sOut or "").strip(),
-            )
-        iExit, sOut = await asyncio.to_thread(
-            containerGit.ftResultGitCommitInContainer,
-            docker, sContainerId, sMessage, sWorkspace=sRepo,
-        )
-        if iExit != 0:
-            raise HTTPException(
-                status_code=500,
-                detail="git commit failed: " + (sOut or "").strip(),
-            )
         sCommitHash = await asyncio.to_thread(
             containerGit.fsGitHeadShaInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
-        return {
-            "bSuccess": True,
-            "sCommitHash": sCommitHash,
-            "iFilesCommitted": len(listNeedsCommit),
-        }
+        return _fdictCommitCanonicalSuccess(
+            sCommitHash, len(listNeedsCommit),
+        )
+
+
+async def _fnApplyCanonicalGitAddCommit(
+    docker, sContainerId, sRepo, listNeedsCommit, sMessage,
+):
+    """Run git add + commit, raising HTTPException on either failure."""
+    iExit, sOut = await asyncio.to_thread(
+        containerGit.ftResultGitAddInContainer,
+        docker, sContainerId, listNeedsCommit, sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=500,
+            detail="git add failed: " + (sOut or "").strip(),
+        )
+    iExit, sOut = await asyncio.to_thread(
+        containerGit.ftResultGitCommitInContainer,
+        docker, sContainerId, sMessage, sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=500,
+            detail="git commit failed: " + (sOut or "").strip(),
+        )
+
+
+def _fdictCommitCanonicalSuccess(sCommitHash, iFilesCommitted):
+    """Build the success response for the commit-canonical endpoint."""
+    return {
+        "bSuccess": True,
+        "sCommitHash": sCommitHash,
+        "iFilesCommitted": iFilesCommitted,
+    }
 
 
 def _fsDefaultCommitMessage():
@@ -354,6 +393,31 @@ def _fnRecordFetchTime(sContainerId):
     _DICT_LAST_FETCH[sContainerId] = time.time()
 
 
+async def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
+    """Run ``git fetch`` in the container, raising HTTP 502 on failure."""
+    iExit, sOut = await asyncio.to_thread(
+        containerGit.ftResultGitFetchInContainer,
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=502,
+            detail="git fetch failed: " + (sOut or "").strip(),
+        )
+
+
+def _fdictFetchStatusView(dictGit, bCacheUsed):
+    """Pack the fetch-project-repo response body."""
+    return {
+        "bIsRepo": dictGit.get("bIsRepo", False),
+        "sBranch": dictGit.get("sBranch", ""),
+        "iAhead": dictGit.get("iAhead", 0),
+        "iBehind": dictGit.get("iBehind", 0),
+        "sHeadSha": dictGit.get("sHeadSha", ""),
+        "bCacheUsed": bCacheUsed,
+    }
+
+
 def _fnRegisterFetchProjectRepo(app, dictCtx):
     """Register POST /api/git/{sContainerId}/fetch-project-repo."""
 
@@ -367,40 +431,43 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sRepo = _fsRequireProjectRepo(dictWorkflow)
-        if not sRepo:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Project repo not detected for the active "
-                    "workflow."
-                ),
-            )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         docker = dictCtx["docker"]
         bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
         if not bCacheUsed:
-            iExit, sOut = await asyncio.to_thread(
-                containerGit.ftResultGitFetchInContainer,
-                docker, sContainerId, sWorkspace=sRepo,
+            await _fnRunGitFetchOrFail(
+                docker, sContainerId, sRepo,
             )
-            if iExit != 0:
-                raise HTTPException(
-                    status_code=502,
-                    detail="git fetch failed: " + (sOut or "").strip(),
-                )
             _fnRecordFetchTime(sContainerId)
         dictGit = await asyncio.to_thread(
             containerGit.fdictGitStatusInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
-        return {
-            "bIsRepo": dictGit.get("bIsRepo", False),
-            "sBranch": dictGit.get("sBranch", ""),
-            "iAhead": dictGit.get("iAhead", 0),
-            "iBehind": dictGit.get("iBehind", 0),
-            "sHeadSha": dictGit.get("sHeadSha", ""),
-            "bCacheUsed": bCacheUsed,
-        }
+        return _fdictFetchStatusView(dictGit, bCacheUsed)
+
+
+def _fdictDirtyRefusalResponse(dictGit, listDirty):
+    """Build the pull refusal payload sent when the working tree is dirty."""
+    return {
+        "bSuccess": False,
+        "sRefusal": "dirty-working-tree",
+        "listDirtyFiles": listDirty,
+        "sBranch": dictGit.get("sBranch", ""),
+        "iBehind": dictGit.get("iBehind", 0),
+    }
+
+
+async def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
+    """Run ``git pull --ff-only`` in the container, raising HTTP 502 on failure."""
+    iExit, sOut = await asyncio.to_thread(
+        containerGit.ftResultGitPullFastForwardInContainer,
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=502,
+            detail="git pull --ff-only failed: " + (sOut or "").strip(),
+        )
 
 
 def _fnRegisterPullProjectRepo(app, dictCtx):
@@ -413,15 +480,7 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sRepo = _fsRequireProjectRepo(dictWorkflow)
-        if not sRepo:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Project repo not detected for the active "
-                    "workflow."
-                ),
-            )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         docker = dictCtx["docker"]
         dictGit = await asyncio.to_thread(
             containerGit.fdictGitStatusInContainer,
@@ -429,22 +488,10 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
         )
         listDirty = _flistTrackedDirtyPaths(dictGit)
         if listDirty:
-            return {
-                "bSuccess": False,
-                "sRefusal": "dirty-working-tree",
-                "listDirtyFiles": listDirty,
-                "sBranch": dictGit.get("sBranch", ""),
-                "iBehind": dictGit.get("iBehind", 0),
-            }
-        iExit, sOut = await asyncio.to_thread(
-            containerGit.ftResultGitPullFastForwardInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
+            return _fdictDirtyRefusalResponse(dictGit, listDirty)
+        await _fnRunGitPullFastForwardOrFail(
+            docker, sContainerId, sRepo,
         )
-        if iExit != 0:
-            raise HTTPException(
-                status_code=502,
-                detail="git pull --ff-only failed: " + (sOut or "").strip(),
-            )
         _fnRecordFetchTime(sContainerId)
         sNewHead = await asyncio.to_thread(
             containerGit.fsGitHeadShaInContainer,

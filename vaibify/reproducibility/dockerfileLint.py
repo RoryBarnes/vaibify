@@ -108,6 +108,16 @@ def flistCheckAptVersionPins(listLines):
     return listIssues
 
 
+def _fbLineContinues(sLine):
+    """Return True iff sLine ends with a backslash continuation."""
+    return sLine.rstrip().endswith("\\")
+
+
+def _fnFinalizeAptBlock(listLogical, iStart, listParts):
+    """Append the joined apt-install block (iStart, joined text) to listLogical."""
+    listLogical.append((iStart, " ".join(listParts)))
+
+
 def _flistLogicalAptInstallLines(listLines):
     """Return ``(start_line_number, joined_text)`` per apt-install block."""
     listLogical = []
@@ -115,25 +125,18 @@ def _flistLogicalAptInstallLines(listLines):
     listCurrentParts = []
     for iIndex, sLine in enumerate(listLines, start=1):
         if iCurrentStart is None:
-            if _REGEX_APT_INSTALL.search(sLine):
-                iCurrentStart = iIndex
-                listCurrentParts = [sLine]
-                if not sLine.rstrip().endswith("\\"):
-                    listLogical.append(
-                        (iCurrentStart, " ".join(listCurrentParts))
-                    )
-                    iCurrentStart = None
-                    listCurrentParts = []
-            continue
-        listCurrentParts.append(sLine)
-        if not sLine.rstrip().endswith("\\"):
-            listLogical.append(
-                (iCurrentStart, " ".join(listCurrentParts))
-            )
+            if not _REGEX_APT_INSTALL.search(sLine):
+                continue
+            iCurrentStart = iIndex
+            listCurrentParts = [sLine]
+        else:
+            listCurrentParts.append(sLine)
+        if not _fbLineContinues(sLine):
+            _fnFinalizeAptBlock(listLogical, iCurrentStart, listCurrentParts)
             iCurrentStart = None
             listCurrentParts = []
     if iCurrentStart is not None:
-        listLogical.append((iCurrentStart, " ".join(listCurrentParts)))
+        _fnFinalizeAptBlock(listLogical, iCurrentStart, listCurrentParts)
     return listLogical
 
 

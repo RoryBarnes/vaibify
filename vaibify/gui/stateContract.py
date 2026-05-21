@@ -211,6 +211,16 @@ def _fsetExcludedRepoPaths(dictStep):
     }
 
 
+def _fnAppendUniqueAllowed(
+    listPaths, setSeen, setExcluded, listIncoming,
+):
+    """Append paths not already seen or excluded; mutate listPaths/setSeen."""
+    for sPath in listIncoming or []:
+        if sPath and sPath not in setSeen and sPath not in setExcluded:
+            listPaths.append(sPath)
+            setSeen.add(sPath)
+
+
 def flistCanonicalTrackedFilesFromScans(
     dictWorkflow, listVaibifyTracked, listRootConfigs,
 ):
@@ -233,27 +243,25 @@ def flistCanonicalTrackedFilesFromScans(
     setExcluded = set()
     for dictStep in dictWorkflow.get("listSteps", []):
         setExcluded.update(_fsetExcludedRepoPaths(dictStep))
-    for sPath in listVaibifyTracked or []:
-        if sPath not in setSeen and sPath not in setExcluded:
-            listPaths.append(sPath)
-            setSeen.add(sPath)
-    for sPath in listRootConfigs or []:
-        if sPath not in setSeen and sPath not in setExcluded:
-            listPaths.append(sPath)
-            setSeen.add(sPath)
+    _fnAppendUniqueAllowed(
+        listPaths, setSeen, setExcluded, listVaibifyTracked,
+    )
+    _fnAppendUniqueAllowed(
+        listPaths, setSeen, setExcluded, listRootConfigs,
+    )
     for dictStep in dictWorkflow.get("listSteps", []):
-        for sPath in _flistStepScriptRepoPaths(dictStep):
-            if sPath and sPath not in setSeen and sPath not in setExcluded:
-                listPaths.append(sPath)
-                setSeen.add(sPath)
-        for sPath in _flistStepOutputRepoPaths(dictStep, dictVars):
-            if sPath and sPath not in setSeen and sPath not in setExcluded:
-                listPaths.append(sPath)
-                setSeen.add(sPath)
-        for sPath in _flistStepStandardsRepoPaths(dictStep):
-            if sPath and sPath not in setSeen and sPath not in setExcluded:
-                listPaths.append(sPath)
-                setSeen.add(sPath)
+        _fnAppendUniqueAllowed(
+            listPaths, setSeen, setExcluded,
+            _flistStepScriptRepoPaths(dictStep),
+        )
+        _fnAppendUniqueAllowed(
+            listPaths, setSeen, setExcluded,
+            _flistStepOutputRepoPaths(dictStep, dictVars),
+        )
+        _fnAppendUniqueAllowed(
+            listPaths, setSeen, setExcluded,
+            _flistStepStandardsRepoPaths(dictStep),
+        )
     return listPaths
 
 

@@ -319,6 +319,13 @@ def _fsFindFileUrl(dictRecord, sFileName):
     )
 
 
+def _fdictBuildUploadHeaders(clientZenodo):
+    """Return auth + content-type headers for a Zenodo bucket PUT."""
+    dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
+    dictHeaders["Content-Type"] = "application/octet-stream"
+    return dictHeaders
+
+
 def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
     """Stream-upload a file to a Zenodo bucket with progress bar."""
     from tqdm import tqdm
@@ -328,8 +335,7 @@ def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
     iFileSize = pathFile.stat().st_size
     sFileName = pathFile.name
     sUrl = f"{sBucketUrl}/{sFileName}"
-    dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
-    dictHeaders["Content-Type"] = "application/octet-stream"
+    dictHeaders = _fdictBuildUploadHeaders(clientZenodo)
     with open(pathFile, "rb") as fileHandle:
         barProgress = tqdm(
             total=iFileSize, unit="B",
@@ -515,11 +521,10 @@ def _fsHashRemoteFile(clientZenodo, dictFile):
 
 def _fsHashStreamingResponse(responseHttp):
     """Consume an iter_content stream and return its SHA-256 hex digest."""
-    hasherSha256 = hashlib.sha256()
-    for baChunk in responseHttp.iter_content(_HASH_CHUNK_SIZE):
-        if baChunk:
-            hasherSha256.update(baChunk)
-    return hasherSha256.hexdigest()
+    from vaibify.reproducibility._hashing import fsHashChunkIteratorSha256
+    return fsHashChunkIteratorSha256(
+        responseHttp.iter_content(_HASH_CHUNK_SIZE),
+    )
 
 
 def _fsRedactToken(sMessage):

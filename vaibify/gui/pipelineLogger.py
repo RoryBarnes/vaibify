@@ -103,6 +103,27 @@ def _ffBuildFlushingCallback(
     return fnLoggingWithFlush
 
 
+_DICT_STEP_RESULT_STATUS = {
+    "stepPass": "passed",
+    "stepFail": "failed",
+    "stepSkipped": "skipped",
+}
+
+
+def _fnApplyStepResultEvent(
+    connectionDocker, sContainerId, dictState, dictEvent, lockState,
+):
+    """Persist a stepPass/stepFail/stepSkipped event under the state lock."""
+    sEventType = dictEvent.get("sType", "")
+    with lockState:
+        pipelineState.fnRecordStepResult(
+            connectionDocker, sContainerId, dictState,
+            pipelineState.fdictBuildStepResult(
+                dictEvent["iStepNumber"],
+                _DICT_STEP_RESULT_STATUS[sEventType],
+                dictEvent.get("iExitCode", 0)))
+
+
 def _fnUpdatePipelineState(
     connectionDocker, sContainerId, dictState, dictEvent, lockState=None,
 ):
@@ -126,18 +147,11 @@ def _fnUpdatePipelineState(
                 connectionDocker, sContainerId, dictState,
                 pipelineState.fdictBuildStepStarted(
                     dictEvent["iStepNumber"]))
-    elif sEventType in ("stepPass", "stepFail", "stepSkipped"):
-        dictStepStatusMap = {
-            "stepPass": "passed", "stepFail": "failed",
-            "stepSkipped": "skipped",
-        }
-        with lockState:
-            pipelineState.fnRecordStepResult(
-                connectionDocker, sContainerId, dictState,
-                pipelineState.fdictBuildStepResult(
-                    dictEvent["iStepNumber"],
-                    dictStepStatusMap[sEventType],
-                    dictEvent.get("iExitCode", 0)))
+    elif sEventType in _DICT_STEP_RESULT_STATUS:
+        _fnApplyStepResultEvent(
+            connectionDocker, sContainerId, dictState, dictEvent,
+            lockState,
+        )
 
 
 def _fnSaveWorkflowStats(

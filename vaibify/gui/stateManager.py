@@ -112,6 +112,18 @@ def fdictLoadStateFromContainer(
     return dictState
 
 
+def _fbQuarantineIfCorrupt(
+    sStatus, connectionDocker, sContainerId, sPath,
+):
+    """Quarantine a corrupt state file; return True if a quarantine occurred."""
+    if sStatus != "corrupt":
+        return False
+    _fnQuarantineCorruptStateFile(
+        connectionDocker, sContainerId, sPath,
+    )
+    return True
+
+
 def ftLoadStateWithStatus(
     connectionDocker, sContainerId, sStatePath,
 ):
@@ -136,28 +148,24 @@ def ftLoadStateWithStatus(
     )
     if sPrimaryStatus == "parsed":
         return dictPrimary, "loaded"
-    bPrimaryQuarantined = False
-    if sPrimaryStatus == "corrupt":
-        _fnQuarantineCorruptStateFile(
-            connectionDocker, sContainerId, sStatePath,
-        )
-        bPrimaryQuarantined = True
+    bQuarantined = _fbQuarantineIfCorrupt(
+        sPrimaryStatus, connectionDocker, sContainerId, sStatePath,
+    )
     sBakPath = _fsBakPathFor(sStatePath)
     sBakStatus, dictBak = _ftupleTryLoadStateFile(
         connectionDocker, sContainerId, sBakPath,
     )
     if sBakStatus == "parsed":
-        if bPrimaryQuarantined:
+        if bQuarantined:
             logger.warning(
                 "state.json was corrupt; recovered from %s", sBakPath,
             )
         return dictBak, "loaded-from-bak"
-    if sBakStatus == "corrupt":
-        _fnQuarantineCorruptStateFile(
-            connectionDocker, sContainerId, sBakPath,
-        )
-        bPrimaryQuarantined = True
-    if bPrimaryQuarantined:
+    bBakQuarantined = _fbQuarantineIfCorrupt(
+        sBakStatus, connectionDocker, sContainerId, sBakPath,
+    )
+    bQuarantined = bQuarantined or bBakQuarantined
+    if bQuarantined:
         return None, "corrupted"
     return None, "missing"
 
