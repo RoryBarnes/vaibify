@@ -279,13 +279,12 @@ class DockerConnection:
         post-write ``chmod`` window during which a secret-bearing
         file is world-readable (audit finding M1).
         """
-        import io
+        import posixpath
         import time
 
         bufferTar = self._fbufferBuildTar(
             sFilePath, baContent, iMode, iUid, iGid, int(time.time()),
         )
-        import posixpath
         sDirectory = posixpath.dirname(sFilePath)
         container = self.fcontainerGetById(sContainerId)
         container.put_archive(sDirectory, bufferTar)
