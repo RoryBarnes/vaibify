@@ -95,20 +95,24 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
     ):
         import asyncio
         dictCtx["require"]()
+        sProjectRepoPath = _fsRequireProjectRepoForWrite(
+            dictCtx, sContainerId)
         sSafeFilename = posixpath.basename(request.sFilename)
         sDestPath = posixpath.join(
             request.sDestination, sSafeFilename)
-        fnValidatePathWithinRoot(sDestPath, sWorkspaceRoot)
+        sNormalized = fnValidatePathWithinRoot(
+            sDestPath, sProjectRepoPath)
+        _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         try:
             baContent = base64.b64decode(request.sContentBase64)
             await asyncio.to_thread(
                 dictCtx["docker"].fnWriteFile,
-                sContainerId, sDestPath, baContent,
+                sContainerId, sNormalized, baContent,
             )
         except Exception as error:
             raise HTTPException(
                 status_code=500, detail=str(error))
-        return {"bSuccess": True, "sPath": sDestPath}
+        return {"bSuccess": True, "sPath": sNormalized}
 
 
 async def _fbaFetchOrRaiseHttp(connectionDocker, sContainerId, sAbsPath):

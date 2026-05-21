@@ -73,6 +73,8 @@ class MockDockerTransfer:
             return (0, "0\n")
         if "printenv CONTAINER_USER" in sCommand:
             return (0, "researcher\n")
+        if "git rev-parse --show-toplevel" in sCommand:
+            return (0, "/workspace\n")
         return (0, "")
 
     def fbaFetchFile(self, sContainerId, sPath):
@@ -82,7 +84,8 @@ class MockDockerTransfer:
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
 
-    def fnWriteFile(self, sContainerId, sPath, baContent):
+    def fnWriteFile(self, sContainerId, sPath, baContent,
+                    iMode=None, iUid=None, iGid=None):
         self._dictFiles[sPath] = baContent
 
     def fsExecCreate(self, sContainerId, sCommand=None,
@@ -170,6 +173,54 @@ def test_file_upload_outside_workspace_rejected(clientHttp):
     dictPayload = {
         "sFilename": "secret.txt",
         "sDestination": "/etc",
+        "sContentBase64": sContent,
+    }
+    responseHttp = clientHttp.post(
+        f"/api/files/{S_CONTAINER_ID}/upload",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 403
+
+
+def test_file_upload_rejects_dotgit_destination(clientHttp):
+    """Audit C4 follow-up: upload must refuse writes under .git/."""
+    _fnConnectToContainer(clientHttp)
+    sContent = base64.b64encode(b"payload").decode("ascii")
+    dictPayload = {
+        "sFilename": "pre-commit",
+        "sDestination": "/workspace/.git/hooks",
+        "sContentBase64": sContent,
+    }
+    responseHttp = clientHttp.post(
+        f"/api/files/{S_CONTAINER_ID}/upload",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 403
+
+
+def test_file_upload_rejects_dotvaibify_destination(clientHttp):
+    """Audit C4 follow-up: upload must refuse writes under .vaibify/."""
+    _fnConnectToContainer(clientHttp)
+    sContent = base64.b64encode(b"payload").decode("ascii")
+    dictPayload = {
+        "sFilename": "step.json",
+        "sDestination": "/workspace/.vaibify/test_markers",
+        "sContentBase64": sContent,
+    }
+    responseHttp = clientHttp.post(
+        f"/api/files/{S_CONTAINER_ID}/upload",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 403
+
+
+def test_file_upload_rejects_workflow_json_basename(clientHttp):
+    """Audit C4 follow-up: upload must refuse a workflow.json overwrite."""
+    _fnConnectToContainer(clientHttp)
+    sContent = base64.b64encode(b"payload").decode("ascii")
+    dictPayload = {
+        "sFilename": "workflow.json",
+        "sDestination": "/workspace",
         "sContentBase64": sContent,
     }
     responseHttp = clientHttp.post(
