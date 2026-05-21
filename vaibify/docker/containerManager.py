@@ -91,7 +91,7 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
     _fnAddClaudeEnv(config, saRunArgs)
-    _fnAddAgentHostBridge(saRunArgs)
+    _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
@@ -185,19 +185,31 @@ def _fnAddNetworkIsolation(config, saRunArgs):
         saRunArgs.extend(["--network", "none"])
 
 
-def _fnAddAgentHostBridge(saRunArgs):
-    """Resolve ``host.docker.internal`` to the host gateway.
+def _fnAddAgentHostBridge(config, saRunArgs):
+    """Resolve ``host.docker.internal`` only when the agent needs it.
 
-    The in-container ``vaibify-do`` agent dials back to the host
-    backend through this hostname. Docker Desktop resolves it
-    automatically; explicit ``--add-host`` makes it work on Linux and
-    is harmless elsewhere. When ``--network none`` is also set the
-    hosts-file entry remains but is unreachable by design, which is
-    the correct behavior for a sealed container.
+    The hosts-file entry is only useful for the in-container
+    ``vaibify-do`` agent calling back to the host backend. Adding it
+    unconditionally widens the container's egress surface for projects
+    that never run an agent. Emit ``--add-host`` only when Claude is
+    enabled (so the agent bridge is actually used) and network
+    isolation is off (no point poking a hole in a sealed container).
     """
+    if not _fbAgentBridgeRequired(config):
+        return
     saRunArgs.extend([
         "--add-host", "host.docker.internal:host-gateway",
     ])
+
+
+def _fbAgentBridgeRequired(config):
+    """Return True when the agent host bridge should be wired up."""
+    if getattr(config, "bNetworkIsolation", False):
+        return False
+    features = getattr(config, "features", None)
+    if features is None:
+        return False
+    return bool(getattr(features, "bClaude", False))
 
 
 def fnMountSecrets(config, saRunArgs, listCleanupFiles):

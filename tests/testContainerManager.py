@@ -181,11 +181,13 @@ def test_flistBuildRunArgs_credentials_volume_honours_container_user(mockX11):
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
-def test_flistBuildRunArgs_adds_host_gateway_for_agent_bridge(mockX11):
-    """``--add-host host.docker.internal:host-gateway`` must appear so the
-    in-container ``vaibify-do`` agent can dial the host backend on Linux.
+def test_flistBuildRunArgs_adds_host_gateway_when_agent_enabled(mockX11):
+    """``--add-host host.docker.internal:host-gateway`` appears only when
+    the in-container ``vaibify-do`` agent is actually wired up
+    (``features.bClaude`` true and network isolation off).
     """
     config = _fConfigMinimal()
+    config.features.bClaude = True
     saArgs = flistBuildRunArgs(config)
     assert "--add-host" in saArgs
     iFlag = saArgs.index("--add-host")
@@ -196,25 +198,47 @@ def test_flistBuildRunArgs_adds_host_gateway_for_agent_bridge(mockX11):
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
-def test_flistBuildRunArgs_adds_host_gateway_even_with_network_isolation(
+def test_flistBuildRunArgs_omits_host_gateway_by_default(mockX11):
+    """Projects without the agent feature get no host-gateway entry."""
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    assert "--add-host" not in saArgs
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_omits_host_gateway_under_network_isolation(
     mockX11,
 ):
-    """The hosts-file entry is harmless under ``--network none``."""
+    """A sealed container does not need the host-gateway entry."""
     config = _fConfigMinimal()
+    config.features.bClaude = True
     config.bNetworkIsolation = True
     saArgs = flistBuildRunArgs(config)
-    assert "--add-host" in saArgs
-    assert "host.docker.internal:host-gateway" in saArgs
+    assert "--add-host" not in saArgs
 
 
-def test_fnAddAgentHostBridge_appends_exactly_two_tokens():
-    """The helper appends the flag + value pair, nothing more."""
+def test_fnAddAgentHostBridge_appends_when_agent_enabled():
+    """The helper appends the flag + value pair when bClaude is on."""
     from vaibify.docker.containerManager import _fnAddAgentHostBridge
+    config = _fConfigMinimal()
+    config.features.bClaude = True
     saArgs = ["--rm"]
-    _fnAddAgentHostBridge(saArgs)
+    _fnAddAgentHostBridge(config, saArgs)
     assert saArgs == [
         "--rm", "--add-host", "host.docker.internal:host-gateway",
     ]
+
+
+def test_fnAddAgentHostBridge_no_op_when_agent_disabled():
+    """The helper is a no-op when the agent feature is off."""
+    from vaibify.docker.containerManager import _fnAddAgentHostBridge
+    config = _fConfigMinimal()
+    saArgs = ["--rm"]
+    _fnAddAgentHostBridge(config, saArgs)
+    assert saArgs == ["--rm"]
 
 
 # -----------------------------------------------------------------------
