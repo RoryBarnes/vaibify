@@ -814,10 +814,27 @@ def _fdictInvertDeps(dictUpToDown, iStepCount):
     return dictResult
 
 
+def _fsValidateConnectWorkflowPath(sWorkflowPath):
+    """Normalize and validate a connect-supplied workflow path."""
+    sNormalized = posixpath.normpath(sWorkflowPath)
+    fnValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)
+    if not sNormalized.endswith(".json"):
+        raise HTTPException(
+            400, "sWorkflowPath must point at a .json file")
+    if workflowManager.S_VAIBIFY_WORKFLOWS_SUFFIX not in sNormalized:
+        raise HTTPException(
+            400,
+            "sWorkflowPath must be under .vaibify/workflows/ "
+            "inside a project repo",
+        )
+    return sNormalized
+
+
 async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
         return _fdictConnectNoWorkflow(dictCtx, sContainerId)
+    sWorkflowPath = _fsValidateConnectWorkflowPath(sWorkflowPath)
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
@@ -858,10 +875,11 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             "dictWorkflow": fdictWorkflowWithLabels(dictWorkflow),
             "dictFileStatus": dictFileStatus,
         }
+    except HTTPException:
+        raise
     except Exception as error:
         logger.error("Workflow load failed: %s", error)
-        sUserMessage = _fsSanitizeServerError(str(error))
-        raise HTTPException(400, sUserMessage)
+        raise HTTPException(400, "Workflow load failed")
 
 
 async def _fnRefreshConftestsAndMigrateMarkers(

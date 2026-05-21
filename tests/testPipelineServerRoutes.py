@@ -228,6 +228,32 @@ def test_connect_survives_file_status_failure(clientHttp):
     assert dictResult["dictFileStatus"] is None
 
 
+def test_connect_rejects_escape_workflow_path(clientHttp):
+    responseHttp = clientHttp.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": "/etc/shadow"},
+    )
+    assert responseHttp.status_code in (400, 403)
+    assert b"shadow" not in responseHttp.content[:200] or (
+        responseHttp.status_code != 200)
+
+
+def test_connect_rejects_non_json_workflow_path(clientHttp):
+    responseHttp = clientHttp.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": "/workspace/random/file.txt"},
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_connect_rejects_workflow_outside_vaibify_workflows(clientHttp):
+    responseHttp = clientHttp.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": "/workspace/random.json"},
+    )
+    assert responseHttp.status_code == 400
+
+
 # ── User info ─────────────────────────────────────────────────
 
 
