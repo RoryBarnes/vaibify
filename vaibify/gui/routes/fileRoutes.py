@@ -90,6 +90,29 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         return {"bSuccess": True, "sPath": sDestPath}
 
 
+async def _fbaFetchOrRaiseHttp(connectionDocker, sContainerId, sAbsPath):
+    """Fetch file bytes via a worker thread; map errors to HTTP 500."""
+    import asyncio
+    try:
+        return await asyncio.to_thread(
+            connectionDocker.fbaFetchFile, sContainerId, sAbsPath,
+        )
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+def _fresponseFileDownload(baContent, sAbsPath):
+    """Wrap fetched bytes as an attachment Response with the right mime type."""
+    sFilename = posixpath.basename(sAbsPath)
+    return Response(
+        content=baContent,
+        media_type=fsMimeTypeForFile(sAbsPath),
+        headers={
+            "Content-Disposition": f'attachment; filename="{sFilename}"',
+        },
+    )
+
+
 def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
     """Register GET /api/files/{id}/download."""
 
@@ -99,30 +122,15 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
     async def fnDownloadFile(
         sContainerId: str, sFilePath: str
     ):
-        import asyncio
         dictCtx["require"]()
         sAbsPath = fsResolveFigurePath(
-            dictCtx["workflowDir"](sContainerId), sFilePath
+            dictCtx["workflowDir"](sContainerId), sFilePath,
         )
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
-        try:
-            baContent = await asyncio.to_thread(
-                dictCtx["docker"].fbaFetchFile,
-                sContainerId, sAbsPath,
-            )
-        except Exception as error:
-            raise HTTPException(
-                status_code=500, detail=str(error))
-        sFilename = posixpath.basename(sAbsPath)
-        sMimeType = fsMimeTypeForFile(sAbsPath)
-        return Response(
-            content=baContent,
-            media_type=sMimeType,
-            headers={
-                "Content-Disposition":
-                    f'attachment; filename="{sFilename}"',
-            },
+        baContent = await _fbaFetchOrRaiseHttp(
+            dictCtx["docker"], sContainerId, sAbsPath,
         )
+        return _fresponseFileDownload(baContent, sAbsPath)
 
 
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):

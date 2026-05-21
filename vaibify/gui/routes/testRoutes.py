@@ -259,6 +259,45 @@ def _fnRegisterTestGenerate(app, dictCtx):
         return {"bSuccess": True}
 
 
+def _fnPersistTestEdit(connectionDocker, sContainerId, request):
+    """Write the edited test file back to the container filesystem."""
+    connectionDocker.fnWriteFile(
+        sContainerId, request.sFilePath,
+        request.sContent.encode("utf-8"),
+    )
+
+
+async def _fresultRunSaveAndRunTest(
+    connectionDocker, sContainerId, dictStep, dictWorkflow, sFilePath,
+):
+    """Build the pytest command and run it; return the streamed result."""
+    sTestCmd = _fsBuildPytestCommand(
+        _fsAbsoluteStepWorkdir(
+            dictStep, dictWorkflow.get("sProjectRepoPath", ""),
+        ),
+        sFilePath,
+    )
+    sTestCmd = _fsPrefixWithWorkflowEnv(
+        sTestCmd,
+        fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+    )
+    return await asyncio.to_thread(
+        connectionDocker.texecRunInContainerStreamed,
+        sContainerId, sTestCmd,
+    )
+
+
+def _fdictBuildSaveRunResponse(bPassed, resultExec):
+    """Return the JSON response body for save-and-run-test."""
+    return {
+        "bPassed": bPassed,
+        "sOutput": resultExec.sStdout + resultExec.sStderr,
+        "sStdout": resultExec.sStdout,
+        "sStderr": resultExec.sStderr,
+        "iExitCode": resultExec.iExitCode,
+    }
+
+
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
@@ -278,42 +317,20 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         iLevelBefore = fiAICSLevel(
             dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
         )
-        dictCtx["docker"].fnWriteFile(
-            sContainerId, request.sFilePath,
-            request.sContent.encode("utf-8"),
-        )
-        sTestCmd = _fsBuildPytestCommand(
-            _fsAbsoluteStepWorkdir(
-                dictStep,
-                dictWorkflow.get("sProjectRepoPath", ""),
-            ),
-            request.sFilePath,
-        )
-        sTestCmd = _fsPrefixWithWorkflowEnv(
-            sTestCmd,
-            fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
-        )
-        resultExec = await asyncio.to_thread(
-            dictCtx["docker"].texecRunInContainerStreamed,
-            sContainerId, sTestCmd,
+        _fnPersistTestEdit(dictCtx["docker"], sContainerId, request)
+        resultExec = await _fresultRunSaveAndRunTest(
+            dictCtx["docker"], sContainerId, dictStep,
+            dictWorkflow, request.sFilePath,
         )
         bPassed = resultExec.iExitCode == 0
-        _fnRecordTestResult(
-            dictStep, bPassed, dictWorkflow, iStepIndex)
-        _fnRegisterTestCommand(
-            dictStep, bPassed, request.sFilePath)
+        _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
+        _fnRegisterTestCommand(dictStep, bPassed, request.sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        return {
-            "bPassed": bPassed,
-            "sOutput": resultExec.sStdout + resultExec.sStderr,
-            "sStdout": resultExec.sStdout,
-            "sStderr": resultExec.sStderr,
-            "iExitCode": resultExec.iExitCode,
-        }
+        return _fdictBuildSaveRunResponse(bPassed, resultExec)
 
 
 def _fnRegisterTestRun(app, dictCtx):

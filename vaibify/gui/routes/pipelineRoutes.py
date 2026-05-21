@@ -637,6 +637,39 @@ async def _fnRefreshConftestsAndMigrateMarkers(
     )
 
 
+# In-container script that scrubs legacy markers (missing sRunAtUtc).
+# Receives a JSON list of marker paths on stdin; prints one line per
+# removal so the host can log what was scrubbed.
+_S_LEGACY_MARKER_DELETE_SCRIPT = (
+    "import json, os, sys\n"
+    "for sPath in json.loads(sys.stdin.read()):\n"
+    "    if not os.path.isfile(sPath):\n"
+    "        continue\n"
+    "    try:\n"
+    "        dictMarker = json.load(open(sPath))\n"
+    "    except Exception:\n"
+    "        continue\n"
+    "    if 'sRunAtUtc' in dictMarker:\n"
+    "        continue\n"
+    "    try:\n"
+    "        os.remove(sPath)\n"
+    "        print(sPath)\n"
+    "    except OSError:\n"
+    "        pass\n"
+)
+
+
+def _flistMarkerPathsForSteps(listStepDirs, sProjectRepoPath):
+    """Return the absolute marker file path for each step directory."""
+    return [
+        posixpath.join(
+            sProjectRepoPath, ".vaibify", "test_markers",
+            fsMarkerNameFromStepDirectory(sDir),
+        )
+        for sDir in listStepDirs
+    ]
+
+
 def _fnDeleteLegacyMarkers(
     connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
 ):
@@ -653,32 +686,11 @@ def _fnDeleteLegacyMarkers(
     """
     if not sProjectRepoPath or not listStepDirs:
         return
-    listMarkerPaths = [
-        posixpath.join(
-            sProjectRepoPath, ".vaibify", "test_markers",
-            fsMarkerNameFromStepDirectory(sDir),
-        )
-        for sDir in listStepDirs
-    ]
-    sScript = (
-        "import json, os, sys\n"
-        "for sPath in json.loads(sys.stdin.read()):\n"
-        "    if not os.path.isfile(sPath):\n"
-        "        continue\n"
-        "    try:\n"
-        "        dictMarker = json.load(open(sPath))\n"
-        "    except Exception:\n"
-        "        continue\n"
-        "    if 'sRunAtUtc' in dictMarker:\n"
-        "        continue\n"
-        "    try:\n"
-        "        os.remove(sPath)\n"
-        "        print(sPath)\n"
-        "    except OSError:\n"
-        "        pass\n"
+    listMarkerPaths = _flistMarkerPathsForSteps(
+        listStepDirs, sProjectRepoPath,
     )
     sCmd = (
-        "python3 -c " + fsShellQuote(sScript)
+        "python3 -c " + fsShellQuote(_S_LEGACY_MARKER_DELETE_SCRIPT)
         + " <<< " + fsShellQuote(json.dumps(listMarkerPaths))
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -907,18 +919,43 @@ def _fsetExtractRegisteredTestFiles(dictStep):
     return setRegistered
 
 
-def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
-    """Compare discovered test files against registered commands."""
+def _fdictExpectedTemplateHashes():
+    """Return the per-category template hash baseline used to detect edits."""
     from ..testGenerator import (
         fsQuantitativeTemplateHash,
         fsIntegrityTemplateHash,
         fsQualitativeTemplateHash,
     )
-    dictExpectedHashes = {
+    return {
         "test_quantitative.py": fsQuantitativeTemplateHash(),
         "test_integrity.py": fsIntegrityTemplateHash(),
         "test_qualitative.py": fsQualitativeTemplateHash(),
     }
+
+
+def _fdictBuildStepTestChangeEntry(
+    dictStep, dictDirInfo, dictExpectedHashes,
+):
+    """Return the per-step change entry, or ``{}`` if nothing differs."""
+    listDiscovered = dictDirInfo.get("listFiles", [])
+    setRegistered = _fsetExtractRegisteredTestFiles(dictStep)
+    listNew = [f for f in listDiscovered if f not in setRegistered]
+    listMissing = [f for f in setRegistered if f not in listDiscovered]
+    listCustom = _flistFindCustomTestFiles(
+        dictDirInfo.get("dictHashes", {}), dictExpectedHashes,
+    )
+    dictEntry = {}
+    if listNew or listMissing:
+        dictEntry["listNew"] = listNew
+        dictEntry["listMissing"] = listMissing
+    if listCustom:
+        dictEntry["listCustom"] = listCustom
+    return dictEntry
+
+
+def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
+    """Compare discovered test files against registered commands."""
+    dictExpectedHashes = _fdictExpectedTemplateHashes()
     dictTestFiles = dictTestInfo.get("testFiles", {})
     dictResult = {}
     for iIndex, dictStep in enumerate(
@@ -927,28 +964,9 @@ def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
         sDir = dictStep.get("sDirectory", "")
         if sDir not in dictTestFiles:
             continue
-        dictDirInfo = dictTestFiles[sDir]
-        listDiscovered = dictDirInfo.get("listFiles", [])
-        setRegistered = _fsetExtractRegisteredTestFiles(
-            dictStep)
-        listNew = [
-            f for f in listDiscovered
-            if f not in setRegistered
-        ]
-        listMissing = [
-            f for f in setRegistered
-            if f not in listDiscovered
-        ]
-        listCustom = _flistFindCustomTestFiles(
-            dictDirInfo.get("dictHashes", {}),
-            dictExpectedHashes,
+        dictEntry = _fdictBuildStepTestChangeEntry(
+            dictStep, dictTestFiles[sDir], dictExpectedHashes,
         )
-        dictEntry = {}
-        if listNew or listMissing:
-            dictEntry["listNew"] = listNew
-            dictEntry["listMissing"] = listMissing
-        if listCustom:
-            dictEntry["listCustom"] = listCustom
         if dictEntry:
             dictResult[str(iIndex)] = dictEntry
     return dictResult
