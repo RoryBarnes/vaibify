@@ -502,12 +502,16 @@ def test_fsGetTempDirectory_darwin():
 
 
 def test_fsGetTempDirectory_linux():
+    """Audit M2: Linux now also lands ephemeral files under ~/.vaibify/tmp
+    so other local users cannot enumerate them in the world-traversable
+    /tmp directory."""
     from vaibify.config.secretManager import (
         _fsGetTempDirectory,
     )
     with patch("platform.system", return_value="Linux"):
         sResult = _fsGetTempDirectory()
-    assert sResult is None
+    assert sResult is not None
+    assert sResult.endswith(".vaibify/tmp")
 
 
 # =======================================================================

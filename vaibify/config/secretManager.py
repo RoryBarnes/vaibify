@@ -179,19 +179,15 @@ def fsMountSecret(sName, sMethod):
 
 
 def _fsGetTempDirectory():
-    """Return a temp directory that Docker can reliably bind-mount.
+    """Return the per-user ephemeral root for secret-bearing temp files.
 
-    On macOS with Colima, only $HOME is shared into the VM by
-    default.  /tmp -> /private/tmp is outside this share, so
-    bind mounts from /tmp silently produce empty directories
-    inside the container.  Use a directory under $HOME instead.
+    Routed through ``ephemeralStore.fsGetEphemeralRoot`` so macOS and
+    Linux both land at ``~/.vaibify/tmp/`` (mode 0700). That keeps
+    secret filenames out of the world-traversable ``/tmp`` and
+    matches Colima's default $HOME-only file-sharing on macOS.
     """
-    import platform
-    if platform.system() == "Darwin":
-        sDir = os.path.join(os.path.expanduser("~"), ".vaibify", "tmp")
-        os.makedirs(sDir, mode=0o700, exist_ok=True)
-        return sDir
-    return None
+    from .ephemeralStore import fsGetEphemeralRoot
+    return fsGetEphemeralRoot()
 
 
 def _fsWriteEphemeralFile(sName, sValue):
