@@ -271,3 +271,61 @@ def test_fbSecretExists_docker_secret_true_when_file_present(tmp_path):
 
 def test_fbSecretExists_docker_secret_false_when_missing():
     assert fbSecretExists("does_not_exist_xyz", "docker_secret") is False
+
+
+# -----------------------------------------------------------------------
+# Secret name format validation (audit M6)
+# -----------------------------------------------------------------------
+
+
+def test_fsRetrieveSecret_rejects_path_traversal():
+    """``..`` segments in the secret name must be rejected."""
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fsRetrieveSecret("../etc/passwd", "docker_secret")
+
+
+def test_fsRetrieveSecret_rejects_slash():
+    """Slashes in the secret name must be rejected."""
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fsRetrieveSecret("foo/bar", "docker_secret")
+
+
+def test_fsRetrieveSecret_rejects_shell_metacharacters():
+    """Shell metacharacters in the secret name must be rejected."""
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fsRetrieveSecret("foo;rm -rf", "docker_secret")
+
+
+def test_fsRetrieveSecret_rejects_empty_name():
+    """Empty secret names must be rejected."""
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fsRetrieveSecret("", "docker_secret")
+
+
+def test_fsRetrieveSecret_rejects_too_long_name():
+    """Names longer than 64 characters must be rejected."""
+    sLong = "a" * 65
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fsRetrieveSecret(sLong, "docker_secret")
+
+
+def test_fbSecretExists_rejects_bad_name():
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fbSecretExists("foo/bar", "docker_secret")
+
+
+def test_fnStoreSecret_rejects_bad_name():
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fnStoreSecret("foo/bar", "value", "keyring")
+
+
+def test_fnDeleteSecret_rejects_bad_name():
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fnDeleteSecret("foo/bar", "keyring")
+
+
+def test_secret_name_alphanumeric_underscore_hyphen_accepted():
+    """Names matching ^[a-zA-Z0-9_-]{1,64}$ pass validation."""
+    from vaibify.config.secretManager import _fnValidateSecretName
+    for sName in ("github_token", "Zenodo-PAT", "abc123", "a", "A_B-9"):
+        _fnValidateSecretName(sName)

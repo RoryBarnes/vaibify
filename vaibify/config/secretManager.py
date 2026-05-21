@@ -6,6 +6,7 @@ credential managers (gh auth, OS keyring, Docker secrets).
 """
 
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -13,11 +14,13 @@ from pathlib import Path
 
 
 _VALID_METHODS = {"gh_auth", "keyring", "docker_secret"}
+_RE_SECRET_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 def fsRetrieveSecret(sName, sMethod):
     """Retrieve a secret via the named method (gh_auth|keyring|docker_secret)."""
     _fnValidateMethod(sMethod)
+    _fnValidateSecretName(sName)
     dictDispatch = {
         "gh_auth": lambda sN: _fsRetrieveViaGhAuth(),
         "keyring": _fsRetrieveViaKeyring,
@@ -32,6 +35,21 @@ def _fnValidateMethod(sMethod):
         raise ValueError(
             f"Unknown secret method '{sMethod}'. "
             f"Valid methods: {sorted(_VALID_METHODS)}"
+        )
+
+
+def _fnValidateSecretName(sName):
+    """Raise ValueError if ``sName`` would interpolate unsafely into paths.
+
+    Audit M6: ``sName`` flows into ``/run/secrets/{sName}`` and into
+    keyring service names. Restrict to a safe alphanumeric/underscore
+    /hyphen alphabet of length 1-64 so a malicious vaibify.yml can't
+    smuggle path-traversal segments, slashes, or shell metacharacters.
+    """
+    if not isinstance(sName, str) or not _RE_SECRET_NAME.match(sName):
+        raise ValueError(
+            f"Invalid secret name '{sName}'. "
+            "Must match ^[a-zA-Z0-9_-]{1,64}$."
         )
 
 
@@ -80,6 +98,7 @@ def _fsRetrieveViaDockerSecret(sName):
 def fnStoreSecret(sName, sValue, sMethod):
     """Persist a secret via the named method."""
     _fnValidateMethod(sMethod)
+    _fnValidateSecretName(sName)
     if sMethod != "keyring":
         raise NotImplementedError(
             f"Storing secrets via '{sMethod}' is not supported. "
@@ -97,6 +116,7 @@ def _fnStoreViaKeyring(sName, sValue):
 def fnDeleteSecret(sName, sMethod):
     """Remove a secret via the named method; idempotent for keyring."""
     _fnValidateMethod(sMethod)
+    _fnValidateSecretName(sName)
     if sMethod != "keyring":
         raise NotImplementedError(
             f"Deleting secrets via '{sMethod}' is not supported."
@@ -117,6 +137,7 @@ def _fnDeleteViaKeyring(sName):
 def fbSecretExists(sName, sMethod):
     """Return True if a secret is available via the named method."""
     _fnValidateMethod(sMethod)
+    _fnValidateSecretName(sName)
     dictProbe = {
         "keyring": _fbKeyringHasSecret,
         "gh_auth": lambda sN: _fbGhAuthAvailable(),
