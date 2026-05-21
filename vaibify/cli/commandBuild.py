@@ -191,6 +191,10 @@ def _fnPersistBaseImageDigest(config, sDigest):
     ``sBaseImageDigest`` (distinct from ``sImageDigest`` which is the
     final container's digest), and writes it back atomically. Silent
     on disk-write failure; this is best-effort capture.
+
+    Only writes when the resolved project directory contains a
+    ``vaibify.yml`` so accidental invocations from a stray cwd cannot
+    litter unrelated trees with ``.vaibify/environment.json``.
     """
     from vaibify.reproducibility.environmentSnapshot import (
         fdictReadEnvironmentJson, fnWriteEnvironmentJson,
@@ -199,7 +203,7 @@ def _fnPersistBaseImageDigest(config, sDigest):
         sProjectRepo = _fsProjectDirectory()
     except Exception:
         return
-    if not sProjectRepo:
+    if not sProjectRepo or not _fbHasVaibifyConfig(sProjectRepo):
         return
     dictExisting = fdictReadEnvironmentJson(sProjectRepo) or {}
     dictExisting["sBaseImageDigest"] = sDigest
@@ -209,6 +213,11 @@ def _fnPersistBaseImageDigest(config, sDigest):
         fnWriteEnvironmentJson(sProjectRepo, dictExisting)
     except OSError:
         return
+
+
+def _fbHasVaibifyConfig(sProjectRepo):
+    """Return True iff the resolved project dir actually owns a vaibify.yml."""
+    return os.path.isfile(os.path.join(sProjectRepo, "vaibify.yml"))
 
 
 def fnPruneDanglingImages():

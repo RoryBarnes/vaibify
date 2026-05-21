@@ -63,6 +63,7 @@ def test_fnWarnIfBaseImageFloating_silent_on_pinned():
 
 def test_fnRecordBaseImageDigestIfFloating_writes_env_json(tmp_path):
     """End-to-end: floating tag + successful inspect -> env.json updated."""
+    (tmp_path / "vaibify.yml").write_text("name: test\n")
     sDigestOutput = "[ubuntu@sha256:" + ("b" * 64) + "]"
     resultMock = subprocess.CompletedProcess(
         args=[], returncode=0, stdout=sDigestOutput, stderr="",
@@ -81,6 +82,26 @@ def test_fnRecordBaseImageDigestIfFloating_writes_env_json(tmp_path):
         dictPayload = json.load(fileHandle)
     assert dictPayload["sBaseImageDigest"].startswith("ubuntu@sha256:")
     assert dictPayload["sConfiguredBaseImage"] == "ubuntu:24.04"
+
+
+def test_fnRecordBaseImageDigestIfFloating_skips_without_vaibify_yml(
+    tmp_path,
+):
+    """No vaibify.yml in project dir → no env.json write (safety guard)."""
+    sDigestOutput = "[ubuntu@sha256:" + ("c" * 64) + "]"
+    resultMock = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=sDigestOutput, stderr="",
+    )
+    with patch(
+        "vaibify.cli.commandBuild._fsProjectDirectory",
+        return_value=str(tmp_path),
+    ), patch(
+        "vaibify.cli.commandBuild.subprocess.run",
+        return_value=resultMock,
+    ):
+        commandBuild.fnRecordBaseImageDigestIfFloating(_fConfigFloating())
+    sPathEnv = os.path.join(str(tmp_path), ".vaibify", "environment.json")
+    assert not os.path.exists(sPathEnv)
 
 
 def test_fnRecordBaseImageDigestIfFloating_skips_when_pinned(tmp_path):
