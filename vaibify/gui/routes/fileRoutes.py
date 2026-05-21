@@ -23,6 +23,27 @@ from ..pipelineServer import (
 )
 
 
+def _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
+    """Refuse writes to vaibify-managed metadata or other workflow.json files.
+
+    Writes that target paths under ``.git/`` (git internals at any depth),
+    under ``.vaibify/`` (vaibify-managed metadata), or that match the
+    basename ``workflow.json`` (which must only be edited via the dedicated
+    workflow routes) are rejected with HTTP 403.
+    """
+    sRepo = posixpath.normpath(sProjectRepoPath)
+    sRelative = posixpath.relpath(sNormalized, sRepo)
+    listSegments = sRelative.split("/")
+    if ".git" in listSegments:
+        raise HTTPException(403, "Writes under .git/ are not permitted")
+    if ".vaibify" in listSegments:
+        raise HTTPException(
+            403, "Writes under .vaibify/ are not permitted")
+    if posixpath.basename(sNormalized) == "workflow.json":
+        raise HTTPException(
+            403, "Direct writes to workflow.json are not permitted")
+
+
 def _fnValidateHostDestination(sResolvedPath):
     """Raise 403 if the destination escapes the user's home directory."""
     sHome = os.path.expanduser("~")
@@ -160,6 +181,18 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         return {"bSuccess": True, "sHostPath": sHostDest}
 
 
+def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
+    """Return the active workflow's project-repo path or raise HTTP 400."""
+    dictWorkflow = dictCtx["workflows"].get(sContainerId)
+    if not dictWorkflow:
+        raise HTTPException(400, "Not connected to container")
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        raise HTTPException(
+            400, "Active workflow has no project repo path")
+    return sProjectRepoPath
+
+
 def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
     """Register PUT /api/file route for saving edited text files."""
 
@@ -170,14 +203,18 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         request: FileWriteRequest, sWorkdir: str = "",
     ):
         dictCtx["require"]()
+        sProjectRepoPath = _fsRequireProjectRepoForWrite(
+            dictCtx, sContainerId)
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath
         )
-        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        sNormalized = fnValidatePathWithinRoot(
+            sAbsPath, sProjectRepoPath)
+        _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         baContent = request.sContent.encode("utf-8")
         try:
             dictCtx["docker"].fnWriteFile(
-                sContainerId, sAbsPath, baContent
+                sContainerId, sNormalized, baContent
             )
         except Exception as error:
             raise HTTPException(
@@ -185,7 +222,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
                 f"Write failed: "
                 f"{_fsSanitizeServerError(str(error))}",
             )
-        return {"bSuccess": True, "sPath": sAbsPath}
+        return {"bSuccess": True, "sPath": sNormalized}
 
 
 def fnRegisterAll(app, dictCtx, sWorkspaceRoot):

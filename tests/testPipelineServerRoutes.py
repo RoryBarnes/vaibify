@@ -72,6 +72,8 @@ class MockDockerConnection:
             return (0, "")
         if "ps aux" in sCommand:
             return (0, "0\n")
+        if "git rev-parse --show-toplevel" in sCommand:
+            return (0, "/workspace\n")
         return (0, "")
 
     def _ftFileExists(self, sCommand):
@@ -746,6 +748,38 @@ def test_write_file_path_traversal_blocked(clientHttp):
         json=dictPayload,
     )
     assert responseHttp.status_code in (403, 404)
+
+
+def test_write_file_rejects_git_hooks(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    dictPayload = {"sContent": "#!/bin/sh\necho pwned"}
+    responseHttp = clientHttp.put(
+        f"/api/file/{S_CONTAINER_ID}/workspace/.git/hooks/pre-commit",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 403
+
+
+def test_write_file_rejects_vaibify_metadata(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    dictPayload = {"sContent": "{}"}
+    responseHttp = clientHttp.put(
+        f"/api/file/{S_CONTAINER_ID}"
+        f"/workspace/.vaibify/test_markers/anything.json",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 403
+
+
+def test_write_file_rejects_other_workflow_json(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    dictPayload = {"sContent": "{}"}
+    responseHttp = clientHttp.put(
+        f"/api/file/{S_CONTAINER_ID}"
+        f"/workspace/other-workflow/workflow.json",
+        json=dictPayload,
+    )
+    assert responseHttp.status_code == 403
 
 
 # ── Files listing ─────────────────────────────────────────────
