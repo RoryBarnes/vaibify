@@ -1449,6 +1449,45 @@ def test_fbValidateWorkflow_rejects_dotdot_dataset_destination():
     assert fbValidateWorkflow(dictWorkflow) is False
 
 
+def test_fbValidateWorkflow_rejects_absolute_plot_directory():
+    """Absolute sPlotDirectory is rejected at load."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "/tmp/escape",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fbValidateWorkflow_rejects_dotdot_plot_directory():
+    """..-escaping sPlotDirectory is rejected at load."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "../escape",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is False
+
+
+def test_fbValidateWorkflow_accepts_repo_relative_plot_directory():
+    """Repo-relative sPlotDirectory remains valid."""
+    from vaibify.gui.workflowManager import fbValidateWorkflow
+    dictWorkflow = {
+        "sPlotDirectory": "Plot/subdir",
+        "listSteps": [{
+            "sName": "A", "sDirectory": "step01",
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    assert fbValidateWorkflow(dictWorkflow) is True
+
+
 def test_fnInsertStep_renumbers_downstream_references():
     """References to Step02 become Step03 when inserting at position 1."""
     from vaibify.gui.workflowManager import fnInsertStep

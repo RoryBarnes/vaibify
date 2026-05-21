@@ -368,8 +368,9 @@ def flistValidateOutputFilePaths(dictWorkflow):
     """Return warnings for output paths that leave the project repo.
 
     Scans ``saOutputFiles``, ``saDataFiles``, and ``saPlotFiles`` on
-    every step plus ``listDatasets[].sDestination``. Absolute paths
-    and ``..``-escaping paths are flagged; template-bearing paths
+    every step plus ``listDatasets[].sDestination`` and the
+    workflow-level ``sPlotDirectory``. Absolute paths and
+    ``..``-escaping paths are flagged; template-bearing paths
     (containing ``{``) are skipped because they are resolved against
     the global variables dict at run time.
     """
@@ -385,7 +386,32 @@ def flistValidateOutputFilePaths(dictWorkflow):
                 if sWarning:
                     listWarnings.append(sWarning)
     listWarnings.extend(_flistValidateDatasetDestinations(dictWorkflow))
+    sPlotWarning = _fsCheckPlotDirectoryBoundary(
+        dictWorkflow.get("sPlotDirectory", ""),
+    )
+    if sPlotWarning:
+        listWarnings.append(sPlotWarning)
     return listWarnings
+
+
+def _fsCheckPlotDirectoryBoundary(sPlotDirectory):
+    """Return a warning for sPlotDirectory leaving the project repo, or ''."""
+    if not isinstance(sPlotDirectory, str) or not sPlotDirectory:
+        return ""
+    if "{" in sPlotDirectory:
+        return ""
+    if posixpath.isabs(sPlotDirectory):
+        return (
+            f"sPlotDirectory '{sPlotDirectory}' must be repo-relative, "
+            f"not absolute"
+        )
+    sNorm = posixpath.normpath(sPlotDirectory)
+    if sNorm == ".." or sNorm.startswith("../"):
+        return (
+            f"sPlotDirectory '{sPlotDirectory}' escapes the project "
+            f"repo (resolves to '{sNorm}')"
+        )
+    return ""
 
 
 def _flistValidateDatasetDestinations(dictWorkflow):
