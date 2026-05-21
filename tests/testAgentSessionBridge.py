@@ -63,52 +63,33 @@ def test_fsBuildHostUrl_defaults_when_none():
 # -----------------------------------------------------------------------
 
 
-def test_fnWriteSessionEnv_writes_body_and_chmods():
+def test_fnWriteSessionEnv_writes_body_with_secret_mode_and_owner():
+    """Audit M1: session-env write lands mode-0600 owned by uid/gid 1000."""
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (0, "")
 
     agentSessionBridge.fnWriteSessionEnv(
         mockDocker, "c-1", "tok-xyz", 8050,
     )
 
-    # Exactly one write with the expected path + body.
     mockDocker.fnWriteFile.assert_called_once()
     tArgs = mockDocker.fnWriteFile.call_args[0]
+    dictKwargs = mockDocker.fnWriteFile.call_args[1]
     assert tArgs[0] == "c-1"
     assert tArgs[1] == actionCatalog.S_SESSION_ENV_PATH
     sBody = tArgs[2].decode("utf-8")
     assert "VAIBIFY_HOST_URL=http://host.docker.internal:8050" in sBody
     assert "VAIBIFY_SESSION_TOKEN=tok-xyz" in sBody
     assert "VAIBIFY_CONTAINER_ID=c-1" in sBody
-
-    # Followed by chown + chmod 600 so the unprivileged agent can
-    # read the file written by root-owned put_archive.
-    mockDocker.ftResultExecuteCommand.assert_called_once()
-    tExecArgs = mockDocker.ftResultExecuteCommand.call_args[0]
-    assert tExecArgs[0] == "c-1"
-    sCommand = tExecArgs[1]
-    assert "CONTAINER_USER" in sCommand
-    assert sCommand.startswith("chown ")
-    assert f"chmod 600 {actionCatalog.S_SESSION_ENV_PATH}" in sCommand
-    assert sCommand.index("chown") < sCommand.index("chmod")
+    assert dictKwargs["iMode"] == 0o600
+    assert dictKwargs["iUid"] == 1000
+    assert dictKwargs["iGid"] == 1000
 
 
-def test_fnWriteSessionEnv_write_precedes_chmod():
+def test_fnWriteSessionEnv_does_not_chmod_after_the_fact():
+    """Audit M1: no post-write chmod is required; tarball stamps suffice."""
     mockDocker = MagicMock()
-    listCallOrder = []
-
-    def fnRecordWrite(*args, **kwargs):
-        listCallOrder.append("write")
-
-    def fnRecordExec(*args, **kwargs):
-        listCallOrder.append("chmod")
-        return (0, "")
-
-    mockDocker.fnWriteFile.side_effect = fnRecordWrite
-    mockDocker.ftResultExecuteCommand.side_effect = fnRecordExec
-
     agentSessionBridge.fnWriteSessionEnv(mockDocker, "c", "t", 8050)
-    assert listCallOrder == ["write", "chmod"]
+    mockDocker.ftResultExecuteCommand.assert_not_called()
 
 
 # -----------------------------------------------------------------------

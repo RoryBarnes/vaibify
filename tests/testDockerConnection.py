@@ -252,6 +252,55 @@ def test_resolve_user_falls_back_to_researcher_when_attrs_missing(
     assert dictKwargs["user"] == "researcher"
 
 
+# -----------------------------------------------------------------------
+# Secret-bearing writes (audit M1: TOCTOU window between put_archive and chmod)
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnWriteFileViaTar_stamps_mode_uid_gid(mockGetDocker):
+    """Secret-bearing writes can stamp mode/uid/gid into the tarball entry."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockClient.containers.get.return_value = mockContainer
+    mockContainer.put_archive = MagicMock(return_value=True)
+    conn = DockerConnection()
+    conn.fnWriteFileViaTar(
+        "abc123", "/tmp/secret.env", b"token=abc",
+        iMode=0o600, iUid=1000, iGid=1000,
+    )
+    bufferTar = mockContainer.put_archive.call_args[0][1]
+    bufferTar.seek(0)
+    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
+        listMembers = tar.getmembers()
+    assert len(listMembers) == 1
+    assert listMembers[0].mode == 0o600
+    assert listMembers[0].uid == 1000
+    assert listMembers[0].gid == 1000
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnWriteFile_forwards_mode_uid_gid(mockGetDocker):
+    """``fnWriteFile`` forwards mode/uid/gid to the underlying tar write."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockClient.containers.get.return_value = mockContainer
+    mockContainer.put_archive = MagicMock(return_value=True)
+    conn = DockerConnection()
+    conn.fnWriteFile(
+        "abc123", "/tmp/x", b"data",
+        iMode=0o600, iUid=1000, iGid=1000,
+    )
+    bufferTar = mockContainer.put_archive.call_args[0][1]
+    bufferTar.seek(0)
+    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
+        listMembers = tar.getmembers()
+    assert listMembers[0].mode == 0o600
+    assert listMembers[0].uid == 1000
+
+
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
 def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
     """Files written via put_archive must carry a real mtime.

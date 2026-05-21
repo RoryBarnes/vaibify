@@ -246,36 +246,82 @@ class DockerConnection:
             )
         return base64.b64decode(resultExec.sStdout.strip())
 
-    def fnWriteFile(self, sContainerId, sFilePath, baContent):
-        """Write bytes to a file inside the container via tar archive."""
-        self.fnWriteFileViaTar(sContainerId, sFilePath, baContent)
+    def fnWriteFile(
+        self, sContainerId, sFilePath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        """Write bytes to a file inside the container via tar archive.
 
-    def fnWriteFileViaTar(self, sContainerId, sFilePath, baContent):
+        ``iMode``/``iUid``/``iGid`` are forwarded so callers writing
+        secret-bearing files can bake mode 0600 and the target uid/gid
+        into the tarball entry itself, closing the readable window
+        between landing and a subsequent ``chmod``.
+        """
+        self.fnWriteFileViaTar(
+            sContainerId, sFilePath, baContent,
+            iMode=iMode, iUid=iUid, iGid=iGid,
+        )
+
+    def fnWriteFileViaTar(
+        self, sContainerId, sFilePath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
         """Write bytes to a file using put_archive (no exec size limit).
 
         Sets ``infoTar.mtime`` to the current epoch so the file lands
         in the container with a real modification time. tarfile's
         ``TarInfo`` defaults ``mtime`` to ``0``, which downstream
-        lineage checks (test-source contract vs downstream outputs)
-        treat as "ancient" and which surfaces as "1970-01-01" in the
-        UI — neither of which is what callers mean.
+        lineage checks treat as "ancient" and surface as "1970-01-01".
+
+        Optional ``iMode``/``iUid``/``iGid`` are stamped onto the
+        TarInfo so the file appears in the container with the
+        requested permissions and ownership atomically — there is no
+        post-write ``chmod`` window during which a secret-bearing
+        file is world-readable (audit finding M1).
         """
+        import io
+        import time
+
+        bufferTar = self._fbufferBuildTar(
+            sFilePath, baContent, iMode, iUid, iGid, int(time.time()),
+        )
+        import posixpath
+        sDirectory = posixpath.dirname(sFilePath)
+        container = self.fcontainerGetById(sContainerId)
+        container.put_archive(sDirectory, bufferTar)
+
+    @staticmethod
+    def _fbufferBuildTar(
+        sFilePath, baContent, iMode, iUid, iGid, iMtime,
+    ):
+        """Return a BytesIO holding the tarball for put_archive."""
         import io
         import posixpath
         import tarfile
-        import time
-
-        sDirectory = posixpath.dirname(sFilePath)
         sFilename = posixpath.basename(sFilePath)
-        container = self.fcontainerGetById(sContainerId)
         bufferTar = io.BytesIO()
         with tarfile.open(fileobj=bufferTar, mode="w") as tar:
-            infoTar = tarfile.TarInfo(name=sFilename)
-            infoTar.size = len(baContent)
-            infoTar.mtime = int(time.time())
+            infoTar = DockerConnection._finfoBuildTarEntry(
+                sFilename, len(baContent), iMode, iUid, iGid,
+            )
+            infoTar.mtime = iMtime
             tar.addfile(infoTar, io.BytesIO(baContent))
         bufferTar.seek(0)
-        container.put_archive(sDirectory, bufferTar)
+        return bufferTar
+
+    @staticmethod
+    def _finfoBuildTarEntry(sFilename, iSize, iMode, iUid, iGid):
+        """Return a TarInfo with the requested mode/owner stamps."""
+        import tarfile
+        infoTar = tarfile.TarInfo(name=sFilename)
+        infoTar.size = iSize
+        if iMode is not None:
+            infoTar.mode = iMode
+        if iUid is not None:
+            infoTar.uid = iUid
+        if iGid is not None:
+            infoTar.gid = iGid
+        return infoTar
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None

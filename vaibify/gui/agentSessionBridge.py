@@ -42,17 +42,21 @@ def fsBuildHostUrl(iPort):
     return f"http://host.docker.internal:{iPort}"
 
 
+_I_CONTAINER_USER_UID = 1000
+_I_CONTAINER_USER_GID = 1000
+_I_SECRET_FILE_MODE = 0o600
+
+
 def fnWriteSessionEnv(
     connectionDocker, sContainerId, sSessionToken, iPort,
 ):
     """Write /tmp/vaibify-session.env inside the container.
 
-    Chown to the container user before chmod so the unprivileged
-    agent (running via ``gosu``) can read the session token. Mode 600
-    keeps the token out of reach of any other in-container user.
-    The chown/chmod step runs explicitly as root because the default
-    ``docker exec`` user is now unprivileged and cannot rewrite
-    ownership of a put_archive-landed file.
+    The tarball entry is stamped with mode 0600 and the container
+    user's uid/gid so the file lands already-private — there is no
+    readable window between put_archive and a follow-up chmod (audit
+    finding M1). The container user is created with UID 1000 by the
+    Dockerfile; that constant is mirrored here.
     """
     sBody = fsBuildSessionEnvBody(
         fsBuildHostUrl(iPort), sSessionToken, sContainerId,
@@ -61,13 +65,9 @@ def fnWriteSessionEnv(
         sContainerId,
         actionCatalog.S_SESSION_ENV_PATH,
         sBody.encode("utf-8"),
-    )
-    sPath = actionCatalog.S_SESSION_ENV_PATH
-    sOwner = '"${CONTAINER_USER:-researcher}"'
-    connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        f"chown {sOwner}:{sOwner} {sPath} && chmod 600 {sPath}",
-        sUser="root",
+        iMode=_I_SECRET_FILE_MODE,
+        iUid=_I_CONTAINER_USER_UID,
+        iGid=_I_CONTAINER_USER_GID,
     )
 
 
