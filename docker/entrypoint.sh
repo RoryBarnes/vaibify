@@ -728,7 +728,8 @@ Usage:
 - "commit the current state" → `vaibify-do commit-canonical`
 - "pull a file from the container" → `vaibify-do pull-file <sPath>`
 - "make step A09's figures the standard" → `vaibify-do accept-plots-as-standard A09` (USER-ONLY — surface the request, do not run)
-- "push to GitHub / Overleaf / Zenodo" → USER-ONLY — surface the request, do not run
+- "push to GitHub" → `vaibify-do push-to-github`
+- "push to Overleaf / Zenodo" → USER-ONLY — surface the request, do not run
 
 **User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.
 
@@ -836,11 +837,11 @@ Agent actions to reach L2:
    - "Publish this to Zenodo for a permanent DOI" → researcher clicks
      Publish to Zenodo.
 
-   These are the trust-boundary actions: by AICS's own definition, L2
-   means a human attested to publication. The researcher clicks the
-   button, not you. The catalog exposes `push-to-github`,
-   `push-to-overleaf`, and `publish-to-zenodo`; treat them as user-only
-   regardless. Same for `accept-plots-as-standard`.
+   These are trust-boundary actions. `push-to-github` is agent-safe
+   (the route verifies the token owner matches the remote before
+   pushing). `push-to-overleaf`, `publish-to-zenodo`, and
+   `accept-plots-as-standard` remain user-only — publication to
+   archival services requires human attestation.
 
 4. After the researcher pushes, `vaibify-do verify-remote` confirms the
    remote hashes still match the local manifest.
@@ -924,10 +925,10 @@ When asked to reach Level N, walk these gates in order, stopping at N:
   `vaibify reproduce`.
 - **L4, L5**: not supported; explain and stop.
 
-Never silently invoke `push-to-github`, `push-to-overleaf`,
-`publish-to-zenodo`, or `accept-plots-as-standard` — those are
-user-only by design even though the catalog exposes them. Surface the
-request; let the researcher click.
+Never silently invoke `push-to-overleaf`, `publish-to-zenodo`, or
+`accept-plots-as-standard` — those are user-only by design. Surface
+the request; let the researcher click. `push-to-github` is
+agent-callable when the researcher requests it.
 
 ## Conventions
 

@@ -242,15 +242,15 @@ LIST_AGENT_ACTIONS = [
     {"sName": "push-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/push",
-     "bAgentSafe": False,
-     "sDescription": "Push staged changes to GitHub. User-only: "
-                     "publishing to a remote is the researcher's call."},
+     "bAgentSafe": True,
+     "sDescription": "Push committed changes to GitHub. The route "
+                     "verifies the token owner matches the remote "
+                     "before pushing."},
     {"sName": "add-file-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/add-file",
-     "bAgentSafe": False,
-     "sDescription": "Commit a single data file to GitHub. "
-                     "User-only: same reasoning as push-to-github."},
+     "bAgentSafe": True,
+     "sDescription": "Commit a single data file to GitHub and push."},
     {"sName": "set-git-identity", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/identity",
