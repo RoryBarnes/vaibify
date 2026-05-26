@@ -34,27 +34,27 @@ def _fsMainBlock(sContent):
     return sContent[iMainStart:]
 
 
-def _fsStartupSequenceBody(sContent):
-    """Return the body of the fnRunStartupSequence function."""
-    iFuncStart = sContent.find("fnRunStartupSequence()")
+def _fsWorkspacePhaseBody(sContent):
+    """Return the body of the fnRunWorkspacePhase function."""
+    iFuncStart = sContent.find("fnRunWorkspacePhase()")
     assert iFuncStart != -1
     return sContent[iFuncStart:iFuncStart + 1200]
 
 
-def test_startup_sequence_invokes_auto_update_inside_claude_guard():
+def test_workspace_phase_invokes_auto_update_inside_claude_guard():
     """fnConfigureClaudeAutoUpdate must be guarded by command -v claude."""
     sContent = _fsReadEntrypoint()
-    sBody = _fsStartupSequenceBody(sContent)
+    sBody = _fsWorkspacePhaseBody(sContent)
     iGuardStart = sBody.find("command -v claude")
     assert iGuardStart != -1
     sAfterGuard = sBody[iGuardStart:iGuardStart + 400]
     assert "fnConfigureClaudeAutoUpdate" in sAfterGuard
 
 
-def test_persist_runs_before_theme_in_startup_sequence():
+def test_persist_runs_before_theme_in_workspace_phase():
     """Symlink must be established before theme writes settings.json."""
     sContent = _fsReadEntrypoint()
-    sBody = _fsStartupSequenceBody(sContent)
+    sBody = _fsWorkspacePhaseBody(sContent)
     iGuardStart = sBody.find("command -v claude")
     sAfterGuard = sBody[iGuardStart:iGuardStart + 400]
     iPersist = sAfterGuard.find("fnPersistClaudeConfig")
@@ -63,11 +63,12 @@ def test_persist_runs_before_theme_in_startup_sequence():
     assert 0 <= iPersist < iTheme < iAutoUpdate
 
 
-def test_main_block_invokes_startup_sequence():
-    """The BASH_SOURCE guard must call fnRunStartupSequence."""
+def test_main_block_invokes_both_phases():
+    """The BASH_SOURCE guard must call fnRunRootPhase and fnRunWorkspacePhase."""
     sContent = _fsReadEntrypoint()
     sMain = _fsMainBlock(sContent)
-    assert "fnRunStartupSequence" in sMain
+    assert "fnRunRootPhase" in sMain
+    assert "fnRunWorkspacePhase" in sMain
 
 
 def test_theme_function_uses_container_user_home():

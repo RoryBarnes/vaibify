@@ -78,7 +78,7 @@ def test_probe_ok_marker_with_no_warnings():
     sJson = json.dumps(
         {
             "sStatus": "ok", "sReason": "",
-            "saWarnings": [], "sEntrypointVersion": "1",
+            "saWarnings": [], "sEntrypointVersion": "2",
         }
     )
     connectionDocker = _MockDockerConnection(
@@ -99,7 +99,7 @@ def test_probe_failed_marker_surfaces_reason():
             "sStatus": "failed",
             "sReason": "binary build crashed",
             "saWarnings": [],
-            "sEntrypointVersion": "1",
+            "sEntrypointVersion": "2",
         }
     )
     connectionDocker = _MockDockerConnection(
@@ -124,7 +124,7 @@ def test_probe_warnings_count_and_payload():
                 "vplanet: pip-install: wheel missing",
                 "vplot: c-build: make opt failed",
             ],
-            "sEntrypointVersion": "1",
+            "sEntrypointVersion": "2",
         }
     )
     connectionDocker = _MockDockerConnection(

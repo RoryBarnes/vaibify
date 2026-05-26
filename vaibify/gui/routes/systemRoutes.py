@@ -20,7 +20,7 @@ _S_READY_MARKER_PATH = "/workspace/.vaibify/.entrypoint_ready"
 _S_VAIBIFY_DIR_PATH = "/workspace/.vaibify"
 _F_READY_PROBE_TIMEOUT_SECONDS = 5.0
 _I_STALE_IMAGE_THRESHOLD_SECONDS = 30
-_S_EXPECTED_ENTRYPOINT_VERSION = "1"
+_S_EXPECTED_ENTRYPOINT_VERSION = "2"
 
 
 def _fnRegisterMonitor(app):

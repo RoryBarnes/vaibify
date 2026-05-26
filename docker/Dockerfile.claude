@@ -9,6 +9,10 @@ FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# The base image ends with USER ${CONTAINER_USER}; switch back to root
+# for system-level package installation (apt, npm global).
+USER root
+
 # Download the NodeSource setup script over HTTPS, then run it.
 # Splitting download from execution lets us emit an actionable
 # diagnostic when the network call fails — same template as the
@@ -67,3 +71,6 @@ ENV PATH="/home/${CONTAINER_USER}/.npm-global/bin:${PATH}"
 
 COPY vaibifyDo.py /usr/local/bin/vaibify-do
 RUN chmod 0755 /usr/local/bin/vaibify-do
+
+# Restore the unprivileged user from the base image.
+USER ${CONTAINER_USER}

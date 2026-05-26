@@ -74,7 +74,7 @@ fsBuildWarningsJson() {
 # fnWriteReadinessMarker: Write the structured readiness JSON marker
 # Arguments: sStatus sReason
 # ---------------------------------------------------------------------------
-S_ENTRYPOINT_VERSION="1"
+S_ENTRYPOINT_VERSION="2"
 
 fnWriteReadinessMarker() {
     local sStatus="$1"
@@ -1157,15 +1157,57 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
-# fnRunStartupSequence: Execute the full pre-gosu startup pipeline
-# Centralised so the EXIT trap can decide success vs failure from one $?.
+# fnSourceBinariesInEnv: Re-establish binary PATH from root-phase profile.d
 # ---------------------------------------------------------------------------
-fnRunStartupSequence() {
+fnSourceBinariesInEnv() {
+    local sProfilePath="/etc/profile.d/vaibify-binaries.sh"
+    if [ -f "${sProfilePath}" ]; then
+        # shellcheck source=/dev/null
+        source "${sProfilePath}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# fnMigrateWorkspaceOwnership: One-time chown for pre-split-entrypoint volumes
+# Scans only top-level entries (fast) and runs the full recursive chown only
+# when root-owned items are found.
+# ---------------------------------------------------------------------------
+fnMigrateWorkspaceOwnership() {
+    if [ ! -d "${WORKSPACE}" ]; then
+        return
+    fi
+    local sEntry
+    for sEntry in "${WORKSPACE}"/* "${WORKSPACE}"/.[!.]* "${WORKSPACE}"/..?*; do
+        [ -e "${sEntry}" ] || continue
+        if [ "$(stat -c '%u' "${sEntry}" 2>/dev/null)" = "0" ]; then
+            echo "[vaib] One-time migration: adjusting workspace ownership..."
+            chown -R --no-dereference \
+                "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
+            echo "[vaib] Migration complete."
+            return
+        fi
+    done
+}
+
+# ---------------------------------------------------------------------------
+# fnRunRootPhase: System-path operations that require root privileges
+# ---------------------------------------------------------------------------
+fnRunRootPhase() {
+    fnConfigureGit
+    fnLoadBinariesEnv
+    fnMigrateWorkspaceOwnership
+}
+
+# ---------------------------------------------------------------------------
+# fnRunWorkspacePhase: Workspace and home-directory setup as container user
+# ---------------------------------------------------------------------------
+fnRunWorkspacePhase() {
     fnPrintBanner
+    export PIP_USER=1
+    fnSourceBinariesInEnv
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
     fnPersistGitConfig
-    fnConfigureGit
     fnParseReposConf
     fnSyncAllRepos
     if command -v claude > /dev/null 2>&1; then
@@ -1174,7 +1216,6 @@ fnRunStartupSequence() {
         fnConfigureClaudeAutoUpdate
     fi
     fnBuildBinaries
-    fnLoadBinariesEnv
     fnSourceBinariesInBashrc
     fnInstallAllRepos
     fnInstallRepoRequirements
@@ -1198,18 +1239,30 @@ fnHandleStartupExit() {
 
 # ===========================================================================
 # Main — only runs when executed directly (not when sourced by tests)
+#
+# Two-phase design: the entrypoint re-invokes itself via gosu so that
+# workspace files are created with correct ownership, eliminating the
+# need for a blanket chown -R of the entire workspace volume.
+#
+#   Phase 1 (root):  system-path config → exec gosu … --workspace-phase
+#   Phase 2 (user):  workspace setup    → exec $CMD
 # ===========================================================================
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     set -euo pipefail
+
+    if [ "${1:-}" = "--workspace-phase" ]; then
+        shift
+        trap 'fnHandleStartupExit $?' EXIT
+        fnRunWorkspacePhase
+        fnWriteReadinessMarker "ok" ""
+        trap - EXIT
+        exec "$@"
+    fi
+
+    # Root phase — system-path writes only
     trap 'fnHandleStartupExit $?' EXIT
-    fnRunStartupSequence
-    fnWriteReadinessMarker "ok" ""
-    trap - EXIT
-    # --no-dereference: do not follow symlinks that point outside the
-    # workspace. A malicious or careless symlink in the workspace tree
-    # would otherwise let this recursive chown rewrite ownership of
-    # arbitrary host-mounted paths reachable through the link.
-    chown -R --no-dereference \
-        "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
-    exec gosu "${CONTAINER_USER}" "$@"
+    fnRunRootPhase
+    # exec replaces this process; the EXIT trap fires only on failure
+    exec gosu "${CONTAINER_USER}" \
+        /usr/local/bin/entrypoint.sh --workspace-phase "$@"
 fi
