@@ -135,12 +135,13 @@ def flistFindWorkflowsInContainer(
         sRepo = dictRepoByPath.get(sPath, "")
         if not sRepo:
             continue
-        sName = _fsReadWorkflowName(
+        dictMeta = _fdictReadWorkflowMeta(
             connectionDocker, sContainerId, sPath,
         )
         listResults.append({
             "sPath": sPath,
-            "sName": sName,
+            "sName": dictMeta["sName"],
+            "iSizeBytes": dictMeta["iSizeBytes"],
             "sRepoName": posixpath.basename(sRepo),
             "sProjectRepoPath": sRepo,
         })
@@ -187,16 +188,27 @@ def _fdictDetectReposForCandidates(
         return {}
 
 
-def _fsReadWorkflowName(connectionDocker, sContainerId, sPath):
-    """Read sWorkflowName from a workflow JSON file in the container."""
+def _fdictReadWorkflowMeta(connectionDocker, sContainerId, sPath):
+    """Return ``{"sName", "iSizeBytes"}`` for a workflow JSON in the container.
+
+    Size is the raw byte count of the JSON file; the frontend uses it
+    to decide whether to surface a "loading large workflow" banner
+    when the researcher selects the workflow.
+    """
     try:
         baContent = connectionDocker.fbaFetchFile(sContainerId, sPath)
         dictWorkflow = json.loads(baContent.decode("utf-8"))
-        return dictWorkflow.get(
-            "sWorkflowName", posixpath.basename(sPath)
-        )
+        return {
+            "sName": dictWorkflow.get(
+                "sWorkflowName", posixpath.basename(sPath),
+            ),
+            "iSizeBytes": len(baContent),
+        }
     except Exception:
-        return posixpath.basename(sPath)
+        return {
+            "sName": posixpath.basename(sPath),
+            "iSizeBytes": 0,
+        }
 
 
 def _fsResolveWorkflowPathOrDefault(
