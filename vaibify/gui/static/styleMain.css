@@ -304,6 +304,35 @@ html, body {
     to { transform: rotate(360deg); }
 }
 
+/* --- Workflow Loading Banner --- */
+
+.workflow-loading-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.workflow-loading-banner[hidden] {
+    display: none;
+}
+
+.workflow-loading-spinner {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--highlight-color);
+    border-radius: 50%;
+    animation: spinBuild 0.8s linear infinite;
+}
+
 /* --- Container Cards (workflow picker) --- */
 
 .container-card {

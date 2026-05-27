@@ -196,6 +196,12 @@
             </div>
         </div>
         <div id="listWorkflows"></div>
+        <div id="workflowLoadingBanner" class="workflow-loading-banner"
+             hidden role="status" aria-live="polite">
+            <span class="workflow-loading-spinner" aria-hidden="true"></span>
+            <span class="workflow-loading-text"
+                  id="workflowLoadingText">Loading workflow...</span>
+        </div>
         <div style="margin-top: 16px; display: flex; gap: 8px;">
             <button class="btn" id="btnWorkflowBack">Back</button>
             <button class="btn btn-primary" id="btnNewWorkflow">

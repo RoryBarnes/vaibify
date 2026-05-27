@@ -383,30 +383,64 @@ def test_flistResolveOutputFiles_empty():
 
 
 # -----------------------------------------------------------------------
-# _fsReadWorkflowName — exception fallback (lines 66-67)
+# _fdictReadWorkflowMeta — exception fallback + name + size
 # -----------------------------------------------------------------------
 
 
-def test_fsReadWorkflowName_exception_returns_basename():
+def test_fdictReadWorkflowMeta_exception_returns_basename_zero_size():
     from unittest.mock import MagicMock
-    from vaibify.gui.workflowManager import _fsReadWorkflowName
+    from vaibify.gui.workflowManager import _fdictReadWorkflowMeta
     mockDocker = MagicMock()
     mockDocker.fbaFetchFile.side_effect = RuntimeError("fail")
-    sResult = _fsReadWorkflowName(mockDocker, "cid", "/w/test.json")
-    assert sResult == "test.json"
+    dictResult = _fdictReadWorkflowMeta(
+        mockDocker, "cid", "/w/test.json",
+    )
+    assert dictResult["sName"] == "test.json"
+    assert dictResult["iSizeBytes"] == 0
 
 
-def test_fsReadWorkflowName_returns_workflow_name():
+def test_fdictReadWorkflowMeta_returns_name_and_byte_count():
     import json
     from unittest.mock import MagicMock
-    from vaibify.gui.workflowManager import _fsReadWorkflowName
+    from vaibify.gui.workflowManager import _fdictReadWorkflowMeta
     dictWorkflow = {"sWorkflowName": "My Pipeline"}
+    baContent = json.dumps(dictWorkflow).encode("utf-8")
     mockDocker = MagicMock()
-    mockDocker.fbaFetchFile.return_value = (
-        json.dumps(dictWorkflow).encode("utf-8")
+    mockDocker.fbaFetchFile.return_value = baContent
+    dictResult = _fdictReadWorkflowMeta(
+        mockDocker, "cid", "/w/test.json",
     )
-    sResult = _fsReadWorkflowName(mockDocker, "cid", "/w/test.json")
-    assert sResult == "My Pipeline"
+    assert dictResult["sName"] == "My Pipeline"
+    assert dictResult["iSizeBytes"] == len(baContent)
+
+
+def test_flistFindWorkflowsInContainer_emits_size_bytes_per_entry():
+    """The workflow listing must expose iSizeBytes so the picker can
+    surface a loading banner for slow workflows."""
+    import json
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import flistFindWorkflowsInContainer
+    baContent = json.dumps(
+        {"sWorkflowName": "Big Pipeline"}
+    ).encode("utf-8")
+    mockDocker = MagicMock()
+
+    def fnExec(sContainerId, sCommand, sWorkdir=None):
+        if "find " in sCommand and ".vaibify/workflows" in sCommand:
+            return (0, "/workspace/repo/.vaibify/workflows/wf.json\n")
+        if "import json, os" in sCommand:
+            return (0, json.dumps({
+                "/workspace/repo/.vaibify/workflows/wf.json":
+                "/workspace/repo",
+            }))
+        return (0, "")
+
+    mockDocker.ftResultExecuteCommand.side_effect = fnExec
+    mockDocker.fbaFetchFile.return_value = baContent
+    listResult = flistFindWorkflowsInContainer(mockDocker, "cid")
+    assert len(listResult) == 1
+    assert listResult[0]["iSizeBytes"] == len(baContent)
+    assert listResult[0]["sName"] == "Big Pipeline"
 
 
 # -----------------------------------------------------------------------

@@ -405,7 +405,8 @@ const PipeleyenApp = (function () {
                 function () {
                     VaibifyWorkflowManager.fnSelectWorkflow(
                         _dictSessionState.sContainerId,
-                        dictWf.sPath, dictWf.sName);
+                        dictWf.sPath, dictWf.sName,
+                        dictWf.iSizeBytes || 0);
                 }
             );
         });

@@ -25,9 +25,11 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsRenderWorkflowCard(dictWf) {
         var sRepo = dictWf.sRepoName || "";
+        var iSize = dictWf.iSizeBytes || 0;
         return (
             '<div class="container-card" data-path="' +
-            VaibifyUtilities.fnEscapeHtml(dictWf.sPath) + '">' +
+            VaibifyUtilities.fnEscapeHtml(dictWf.sPath) +
+            '" data-size-bytes="' + iSize + '">' +
             '<span class="name">' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
             '</span>' +
@@ -43,7 +45,9 @@ var VaibifyWorkflowManager = (function () {
                     var sPath = el.dataset.path;
                     var sName = el.querySelector(
                         ".name").textContent;
-                    fnSelectWorkflow(sId, sPath, sName);
+                    var iSize = parseInt(
+                        el.dataset.sizeBytes || "0", 10);
+                    fnSelectWorkflow(sId, sPath, sName, iSize);
                 });
             }
         );
@@ -65,9 +69,38 @@ var VaibifyWorkflowManager = (function () {
         );
     }
 
+    /* Workflows over this byte threshold get a loading banner on
+     * selection so the researcher knows the silence is real work,
+     * not a frozen UI. Empirically a 1 MB workflow.json takes tens of
+     * seconds to round-trip + render, while sub-100 KB workflows
+     * arrive fast enough that a banner would just flash distractingly. */
+    var _I_LARGE_WORKFLOW_BYTES = 100 * 1024;
+
+    function _fnShowLargeWorkflowLoadingBanner(sWorkflowName, iSizeBytes) {
+        var elBanner = document.getElementById("workflowLoadingBanner");
+        if (!elBanner) return;
+        var elText = document.getElementById("workflowLoadingText");
+        if (elText) {
+            var sSize = (iSizeBytes / 1024).toFixed(0) + " KB";
+            elText.textContent = "Loading " + sWorkflowName +
+                " (" + sSize + ") — this can take a moment...";
+        }
+        elBanner.hidden = false;
+    }
+
+    function _fnHideLargeWorkflowLoadingBanner() {
+        var elBanner = document.getElementById("workflowLoadingBanner");
+        if (elBanner) elBanner.hidden = true;
+    }
+
     async function fnSelectWorkflow(
-        sId, sWorkflowPathArg, sWorkflowName
+        sId, sWorkflowPathArg, sWorkflowName, iSizeBytes
     ) {
+        var iSize = iSizeBytes || 0;
+        var bShowBanner = iSize >= _I_LARGE_WORKFLOW_BYTES;
+        if (bShowBanner) {
+            _fnShowLargeWorkflowLoadingBanner(sWorkflowName, iSize);
+        }
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sWorkflowPathArg);
@@ -78,6 +111,8 @@ var VaibifyWorkflowManager = (function () {
             PipeleyenApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
+        } finally {
+            _fnHideLargeWorkflowLoadingBanner();
         }
     }
 
