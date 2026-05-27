@@ -131,7 +131,7 @@ def test_fdictGitStatusForWorkspace_clean_repo(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (
             0, "abcdef0123456789abcdef0123456789abcdef01\n", "",
@@ -159,7 +159,7 @@ def test_fdictGitStatusForWorkspace_ahead_count_parsed(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "deadbeef" * 5 + "\n", ""),
     }
@@ -182,7 +182,7 @@ def test_fdictGitStatusForWorkspace_behind_count_parsed(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
@@ -204,7 +204,7 @@ def test_fdictGitStatusForWorkspace_untracked_file(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
@@ -228,7 +228,7 @@ def test_fdictGitStatusForWorkspace_modified_file(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
@@ -250,7 +250,7 @@ def test_fdictGitStatusForWorkspace_staged_file(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
@@ -275,7 +275,7 @@ def test_fdictGitStatusForWorkspace_mixed_states(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
@@ -301,7 +301,7 @@ def test_fdictGitStatusForWorkspace_detached_head_has_empty_branch(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
@@ -319,7 +319,7 @@ def test_fdictGitStatusForWorkspace_status_failure_surfaces_reason(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (128, "", "fatal: bad object HEAD"),
     }
     with patch(
@@ -342,7 +342,7 @@ def test_fdictGitStatusForWorkspace_renamed_entry(tmp_path):
         ("rev-parse", "--is-inside-work-tree"): (0, "true\n", ""),
         (
             "status", "--porcelain=v2", "--branch",
-            "--untracked-files=all",
+            "--untracked-files=normal",
         ): (0, sPorcelain, ""),
         ("rev-parse", "HEAD"): (0, "0" * 40 + "\n", ""),
     }
