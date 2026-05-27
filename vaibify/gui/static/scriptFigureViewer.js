@@ -275,7 +275,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRenderImage(sUrl, elViewport) {
-        fnDestroyActivePdf();
+        fnDestroyActivePdf(elViewport);
         fnCancelPendingImage(elViewport);
         elViewport.innerHTML = "";
         fetch(sUrl).then(function (response) {
@@ -417,26 +417,34 @@ const PipeleyenFigureViewer = (function () {
         return elToolbar;
     }
 
-    var _activePdfDocument = null;
-    var _activePdfRenderTask = null;
+    /* PDF state is per-viewport. A module-level singleton would let
+     * a render in one viewer destroy the other viewer's PDF document
+     * out from under its zoom-toolbar callbacks, leaving the first
+     * viewer's "+", "-", and fit buttons holding a dead page handle
+     * (the regression this layout prevents). Callers pass the
+     * viewport in so each viewer gets independent lifecycle. */
 
-    function fnCancelActivePdfRender() {
-        if (_activePdfRenderTask) {
-            _activePdfRenderTask.cancel();
-            _activePdfRenderTask = null;
+    function fnCancelActivePdfRender(elViewport) {
+        if (elViewport && elViewport._activePdfRenderTask) {
+            elViewport._activePdfRenderTask.cancel();
+            elViewport._activePdfRenderTask = null;
         }
     }
 
-    function fnDestroyActivePdf() {
-        fnCancelActivePdfRender();
-        if (_activePdfDocument) {
-            _activePdfDocument.destroy();
-            _activePdfDocument = null;
+    function fnDestroyActivePdf(elViewport) {
+        if (!elViewport) return;
+        fnCancelActivePdfRender(elViewport);
+        if (elViewport._activePdfDocument) {
+            elViewport._activePdfDocument.destroy();
+            elViewport._activePdfDocument = null;
         }
     }
 
     function fnReleaseAllResources() {
-        fnDestroyActivePdf();
+        ["viewportA", "viewportB"].forEach(function (sId) {
+            var elViewport = document.getElementById(sId);
+            if (elViewport) fnDestroyActivePdf(elViewport);
+        });
         listHistory = [];
         iHistoryCounter = 0;
         dictViewerA.listNavHistory = [];
@@ -446,7 +454,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRenderPdfDocument(sUrl, elViewport) {
-        fnDestroyActivePdf();
+        fnDestroyActivePdf(elViewport);
         if (typeof pdfjsLib === "undefined") {
             elViewport.innerHTML =
                 '<span class="placeholder">PDF.js not loaded</span>';
@@ -457,7 +465,7 @@ const PipeleyenFigureViewer = (function () {
         pdfjsLib.getDocument({
             url: sUrl, isEvalSupported: false,
         }).promise.then(function (pdfDoc) {
-            _activePdfDocument = pdfDoc;
+            elViewport._activePdfDocument = pdfDoc;
             pdfDoc.getPage(1).then(function (page) {
                 fnRenderPdfPage(page, elViewport, 1.0);
             });
@@ -495,20 +503,20 @@ const PipeleyenFigureViewer = (function () {
                 dNativeViewport.width;
         }
         dDisplayScale = Math.max(dDisplayScale, 0.10);
-        fnCancelActivePdfRender();
+        fnCancelActivePdfRender(elViewport);
         var viewport = page.getViewport({ scale: dDisplayScale * 2 });
         var elCanvas = felCreatePdfCanvas(viewport);
         var renderTask = page.render({
             canvasContext: elCanvas.getContext("2d"),
             viewport: viewport,
         });
-        _activePdfRenderTask = renderTask;
+        elViewport._activePdfRenderTask = renderTask;
         renderTask.promise.then(function () {
-            _activePdfRenderTask = null;
+            elViewport._activePdfRenderTask = null;
             fnSwapPdfContent(page, elViewport, elCanvas, dDisplayScale);
         }).catch(function (reason) {
             if (reason && reason.name === "RenderCancelled") return;
-            _activePdfRenderTask = null;
+            elViewport._activePdfRenderTask = null;
         });
     }
 
@@ -528,7 +536,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRenderText(sUrl, elViewport) {
-        fnDestroyActivePdf();
+        fnDestroyActivePdf(elViewport);
         fnCancelPendingImage(elViewport);
         elViewport.innerHTML =
             '<span class="placeholder">Loading...</span>';
