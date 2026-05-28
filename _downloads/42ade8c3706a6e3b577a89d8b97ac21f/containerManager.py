@@ -99,8 +99,8 @@ def flistBuildRunArgs(config, bDetached=False):
 
 
 _T_ENTRYPOINT_CAPABILITIES = (
-    "CHOWN",        # entrypoint chown -R /workspace to container user
-    "FOWNER",       # chown across existing ownerships under /workspace
+    "CHOWN",        # one-time migration chown of pre-existing workspaces
+    "FOWNER",       # chown across existing ownerships during migration
     "DAC_OVERRIDE", # gosu reads /etc/passwd + the user's shell init files
     "SETUID",       # gosu setuid to the container user
     "SETGID",       # gosu setgid to the container user's group
@@ -110,14 +110,13 @@ _T_ENTRYPOINT_CAPABILITIES = (
 def _fnAddCapabilityDrops(saRunArgs):
     """Drop Linux capabilities to the minimum the entrypoint requires.
 
-    The entrypoint runs as root to (a) ``chown -R`` the workspace volume
-    to the container user and (b) ``exec gosu`` into that user. Each of
-    those steps needs specific capabilities that ``--cap-drop=ALL``
-    alone would also strip, breaking startup before any agent code runs.
-    The five capabilities in ``_T_ENTRYPOINT_CAPABILITIES`` are the
-    minimum set that satisfies the entrypoint and no more — everything
-    else (CAP_NET_RAW, CAP_NET_ADMIN, CAP_SYS_ADMIN, ptrace, raw
-    sockets, kernel capability abuse) is gone.
+    The entrypoint's root phase writes to system paths (``/etc/gitconfig``,
+    ``/usr/local/bin/``, ``/etc/profile.d/``) and performs a one-time
+    migration ``chown`` for pre-existing workspace volumes, then drops to
+    the container user via ``exec gosu``. The five capabilities in
+    ``_T_ENTRYPOINT_CAPABILITIES`` are the minimum set that satisfies
+    these operations — everything else (CAP_NET_RAW, CAP_NET_ADMIN,
+    CAP_SYS_ADMIN, ptrace, raw sockets, kernel capability abuse) is gone.
 
     ``--security-opt=no-new-privileges`` still prevents any setuid
     binary inside the image from picking up additional capabilities
@@ -132,12 +131,12 @@ def _fnAddCapabilityDrops(saRunArgs):
 
 
 def _fnAddEntrypointUser(saRunArgs):
-    """Force the entrypoint to run as root so it can chown and drop via gosu.
+    """Force the entrypoint root phase to run as root.
 
     The Dockerfile pins ``USER ${CONTAINER_USER}`` so every ``docker exec``
-    issued by the GUI/CLI lands unprivileged. The entrypoint legitimately
-    needs root for its setup phase; ``--user 0`` restores that for the
-    initial ``docker run`` only.
+    issued by the GUI/CLI lands unprivileged. The entrypoint's root phase
+    writes to system paths and then re-invokes itself as the container user
+    via ``exec gosu``; ``--user 0`` restores root for that initial phase.
     """
     saRunArgs.extend(["--user", "0"])
 

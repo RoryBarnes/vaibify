@@ -123,7 +123,7 @@ def fdictGitStatusInContainer(
     sCommand = (
         "cd " + shlex.quote(sWorkspace) + " && "
         "git " + sHardening + " "
-        "status --porcelain=v2 --branch --untracked-files=all"
+        "status --porcelain=v2 --branch --untracked-files=normal"
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,

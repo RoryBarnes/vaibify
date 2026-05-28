@@ -221,7 +221,7 @@ def fdictGitStatusForWorkspace(sWorkspaceRoot):
     if not _fbIsGitRepo(sWorkspaceRoot):
         return fdictEmptyStatus("Not a git repository")
     result = fsRunGit(
-        ["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+        ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"],
         sCwd=sWorkspaceRoot,
     )
     if result.returncode != 0:
