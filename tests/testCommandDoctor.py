@@ -79,6 +79,7 @@ def test_fpreflightDaemon_colima_remediation(mockProbe, mockContext):
     assert "vaibify build" in resultPreflight.sRemediation
 
 
+@patch("vaibify.cli.preflightChecks.sys.platform", "darwin")
 @patch(
     "vaibify.docker.dockerContext.fsActiveDockerContext",
     return_value="desktop-linux",
@@ -88,10 +89,27 @@ def test_fpreflightDaemon_colima_remediation(mockProbe, mockContext):
     return_value=(1, _S_COLIMA_DAEMON_STDERR),
 )
 def test_fpreflightDaemon_no_colima_remediation(mockProbe, mockContext):
-    """Non-Colima failure points the user at Docker Desktop."""
+    """Non-Colima failure on macOS points the user at Docker Desktop."""
     resultPreflight = fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "Docker Desktop" in resultPreflight.sRemediation
+
+
+@patch("vaibify.cli.preflightChecks.sys.platform", "linux")
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="default",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_COLIMA_DAEMON_STDERR),
+)
+def test_fpreflightDaemon_linux_remediation(mockProbe, mockContext):
+    """Non-Colima failure on Linux points the user at systemctl."""
+    resultPreflight = fpreflightDaemon()
+    assert resultPreflight.sLevel == "fail"
+    assert resultPreflight.sCommand == "sudo systemctl start docker"
+    assert "docker.service" in resultPreflight.sRemediation
 
 
 @patch(

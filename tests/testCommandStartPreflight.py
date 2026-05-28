@@ -53,7 +53,7 @@ def test_preflight_fails_when_daemon_unreachable_colima():
 
 
 def test_preflight_fails_when_daemon_unreachable_no_colima():
-    """Daemon-down without colima suggests Docker Desktop."""
+    """Daemon-down without colima on macOS suggests Docker Desktop."""
     from vaibify.cli.commandStart import flistRunStartPreflight
     config = _fConfigForPreflight()
     with patch(
@@ -62,10 +62,30 @@ def test_preflight_fails_when_daemon_unreachable_no_colima():
     ), patch(
         "vaibify.docker.dockerContext.fsActiveDockerContext",
         return_value="desktop-linux",
+    ), patch(
+        "vaibify.cli.preflightChecks.sys.platform", "darwin",
     ):
         listResults = flistRunStartPreflight(config)
     assert listResults[0].sLevel == "fail"
     assert "Docker Desktop" in listResults[0].sRemediation
+
+
+def test_preflight_fails_when_daemon_unreachable_linux_systemd():
+    """Daemon-down without colima on Linux suggests systemctl."""
+    from vaibify.cli.commandStart import flistRunStartPreflight
+    config = _fConfigForPreflight()
+    with patch(
+        "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+        return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
+    ), patch(
+        "vaibify.docker.dockerContext.fsActiveDockerContext",
+        return_value="default",
+    ), patch(
+        "vaibify.cli.preflightChecks.sys.platform", "linux",
+    ):
+        listResults = flistRunStartPreflight(config)
+    assert listResults[0].sLevel == "fail"
+    assert listResults[0].sCommand == "sudo systemctl start docker"
 
 
 def test_start_command_exits_one_when_daemon_unreachable():

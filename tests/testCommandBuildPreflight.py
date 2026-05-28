@@ -70,6 +70,7 @@ def test_fpreflightDaemon_unreachable_colima_says_colima_start(
     assert "colima start" in resultPreflight.sRemediation.lower()
 
 
+@patch("vaibify.cli.preflightChecks.sys.platform", "darwin")
 @patch(
     "vaibify.docker.dockerContext.fsActiveDockerContext",
     return_value="desktop-linux",
@@ -81,9 +82,28 @@ def test_fpreflightDaemon_unreachable_colima_says_colima_start(
 def test_fpreflightDaemon_unreachable_no_colima_says_docker_desktop(
     mockProbe, mockContext,
 ):
+    """Non-Colima failure on macOS points the user at Docker Desktop."""
     resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "Docker Desktop" in resultPreflight.sRemediation
+
+
+@patch("vaibify.cli.preflightChecks.sys.platform", "linux")
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="default",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
+)
+def test_fpreflightDaemon_unreachable_linux_says_systemctl(
+    mockProbe, mockContext,
+):
+    """Non-Colima failure on Linux points the user at systemctl."""
+    resultPreflight = _fpreflightDaemon()
+    assert resultPreflight.sLevel == "fail"
+    assert resultPreflight.sCommand == "sudo systemctl start docker"
 
 
 @patch(
