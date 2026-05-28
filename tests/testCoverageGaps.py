@@ -170,10 +170,10 @@ def test_fnCopyDirectorScript_copies(tmp_path):
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
-@patch("vaibify.docker.fbDockerDaemonReachable",
-       return_value=True)
+@patch("vaibify.cli.preflightChecks._ftDockerInfoProbe",
+       return_value=(0, ""))
 def test_build_cli_command(
-    mockDaemon, mockDir, mockConfig, mockBuild,
+    mockProbe, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigFull()
@@ -188,10 +188,10 @@ def test_build_cli_command(
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
-@patch("vaibify.docker.fbDockerDaemonReachable",
-       return_value=True)
+@patch("vaibify.cli.preflightChecks._ftDockerInfoProbe",
+       return_value=(0, ""))
 def test_build_cli_no_cache(
-    mockDaemon, mockDir, mockConfig, mockBuild,
+    mockProbe, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigFull()

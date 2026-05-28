@@ -49,28 +49,48 @@ def _resultProcess(iReturnCode=0, sStdout="", sStderr=""):
 # F-E-01 — Colima-aware daemon error message
 # -------------------------------------------------------------------
 
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
+_S_DAEMON_UNREACHABLE_STDERR = (
+    "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"
+)
+
+
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="colima",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
+)
 def test_fpreflightDaemon_unreachable_colima_says_colima_start(
-    mockColima, mockDaemon,
+    mockProbe, mockContext,
 ):
     resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "colima start" in resultPreflight.sRemediation.lower()
 
 
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="desktop-linux",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
+)
 def test_fpreflightDaemon_unreachable_no_colima_says_docker_desktop(
-    mockColima, mockDaemon,
+    mockProbe, mockContext,
 ):
     resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "Docker Desktop" in resultPreflight.sRemediation
 
 
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=True)
-def test_fpreflightDaemon_reachable_returns_ok(mockDaemon):
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
+def test_fpreflightDaemon_reachable_returns_ok(mockProbe):
     resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "ok"
 
@@ -79,17 +99,16 @@ def test_fpreflightDaemon_reachable_returns_ok(mockDaemon):
 # F-E-03 — Colima socket permission denied
 # -------------------------------------------------------------------
 
-@patch("subprocess.run")
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
-def test_fpreflightDaemon_socket_permission_denied(mockDaemon, mockRun):
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(
+        1,
+        "Got permission denied while trying to connect to the "
+        "Docker daemon socket at unix:///var/run/docker.sock",
+    ),
+)
+def test_fpreflightDaemon_socket_permission_denied(mockProbe):
     """A permission-denied stderr maps to a socket-permission message."""
-    mockRun.return_value = _resultProcess(
-        iReturnCode=1,
-        sStderr=(
-            "Got permission denied while trying to connect to the "
-            "Docker daemon socket at unix:///var/run/docker.sock"
-        ),
-    )
     resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "permission denied" in resultPreflight.sMessage.lower()
@@ -97,16 +116,18 @@ def test_fpreflightDaemon_socket_permission_denied(mockDaemon, mockRun):
     assert "usermod" in resultPreflight.sRemediation
 
 
-@patch("subprocess.run")
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="colima",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, "Cannot connect to the Docker daemon"),
+)
 def test_fpreflightDaemon_unreachable_falls_through_when_no_perm(
-    mockDaemon, mockColima, mockRun,
+    mockProbe, mockContext,
 ):
     """Without a permission stderr, the colima-start branch wins."""
-    mockRun.return_value = _resultProcess(
-        iReturnCode=1, sStderr="Cannot connect to the Docker daemon",
-    )
     resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "colima start" in resultPreflight.sRemediation.lower()
@@ -379,10 +400,16 @@ def test_fnHandleBuildError_appends_oom_hint(capsys):
 @patch("vaibify.cli.commandBuild._fpreflightMemory", return_value=[])
 @patch("vaibify.cli.commandBuild._fpreflightDisk", return_value=[])
 @patch("vaibify.cli.commandBuild._fpreflightArch", return_value=[])
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
+)
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="desktop-linux",
+)
 def test_flistRunBuildPreflight_short_circuits_on_daemon_fail(
-    mockColima, mockDaemon, mockArch, mockDisk, mockMem,
+    mockContext, mockProbe, mockArch, mockDisk, mockMem,
 ):
     listResults = flistRunBuildPreflight(_configWithGpu(False))
     assert len(listResults) == 1
@@ -395,9 +422,12 @@ def test_flistRunBuildPreflight_short_circuits_on_daemon_fail(
 @patch("vaibify.cli.commandBuild._fpreflightMemory", return_value=[])
 @patch("vaibify.cli.commandBuild._fpreflightDisk", return_value=[])
 @patch("vaibify.cli.commandBuild._fpreflightArch", return_value=[])
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=True)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
 def test_flistRunBuildPreflight_runs_all_when_daemon_ok(
-    mockDaemon, mockArch, mockDisk, mockMem,
+    mockProbe, mockArch, mockDisk, mockMem,
 ):
     listResults = flistRunBuildPreflight(_configWithGpu(False))
     assert listResults[0].sLevel == "ok"
@@ -414,9 +444,12 @@ def test_flistRunBuildPreflight_runs_all_when_daemon_ok(
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=True)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
 def test_build_warns_but_proceeds_on_arch_mismatch(
-    mockDaemon, mockColima, mockHost, mockVm, mockDisk,
+    mockProbe, mockColima, mockHost, mockVm, mockDisk,
     mockMem, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
@@ -439,9 +472,12 @@ def test_build_warns_but_proceeds_on_arch_mismatch(
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=True)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
 def test_build_aborts_on_arm_host_with_gpu(
-    mockDaemon, mockColima, mockHost, mockVm, mockDisk,
+    mockProbe, mockColima, mockHost, mockVm, mockDisk,
     mockMem, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build

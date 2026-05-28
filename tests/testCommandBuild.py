@@ -145,12 +145,12 @@ def test_build_catches_value_error(
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
-@patch("vaibify.docker.fbDockerDaemonReachable",
-       return_value=False)
-@patch("vaibify.docker.dockerContext.fbColimaActive",
-       return_value=False)
+@patch("vaibify.cli.preflightChecks._ftDockerInfoProbe",
+       return_value=(1, "Cannot connect to the Docker daemon"))
+@patch("vaibify.docker.dockerContext.fsActiveDockerContext",
+       return_value="desktop-linux")
 def test_build_exits_when_docker_unreachable(
-    mockColima, mockDaemon, mockDir, mockConfig, mockBuild,
+    mockContext, mockProbe, mockDir, mockConfig, mockBuild,
 ):
     from vaibify.cli.commandBuild import build
     mockConfig.return_value = _fConfigForBuild()

@@ -22,6 +22,7 @@ class PreflightResult:
     sLevel: str
     sMessage: str
     sRemediation: str = ""
+    sCommand: str = ""
 
 
 _DICT_LEVEL_PREFIX = {
@@ -30,6 +31,8 @@ _DICT_LEVEL_PREFIX = {
     "fail": "[fail]",
     "info": "[info]",
 }
+
+_SET_LEVELS_WITH_DETAIL = {"fail", "warn"}
 
 
 def _fsLevelPrefix(sLevel):
@@ -43,10 +46,23 @@ def _fnPrintRemediationBlock(sRemediation):
         print(f"    {sLine}")
 
 
+def _fnPrintCommandLine(sCommand):
+    """Print a copy-pasteable shell command indented under its result."""
+    print(f"    $ {sCommand}")
+
+
+def _fnPrintDetailBlock(resultPreflight):
+    """Print remediation text and command, when present."""
+    if resultPreflight.sRemediation:
+        _fnPrintRemediationBlock(resultPreflight.sRemediation)
+    if resultPreflight.sCommand:
+        _fnPrintCommandLine(resultPreflight.sCommand)
+
+
 def fnPrintPreflightReport(listResults):
-    """Print one line per result; expand remediation under each fail."""
+    """Print one line per result; expand remediation under each fail/warn."""
     for resultPreflight in listResults:
         sPrefix = _fsLevelPrefix(resultPreflight.sLevel)
         print(f"{sPrefix} {resultPreflight.sName}: {resultPreflight.sMessage}")
-        if resultPreflight.sLevel == "fail" and resultPreflight.sRemediation:
-            _fnPrintRemediationBlock(resultPreflight.sRemediation)
+        if resultPreflight.sLevel in _SET_LEVELS_WITH_DETAIL:
+            _fnPrintDetailBlock(resultPreflight)

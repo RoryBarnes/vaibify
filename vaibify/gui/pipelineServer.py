@@ -60,6 +60,7 @@ from . import actionCatalog
 from . import agentSessionBridge
 from . import conftestManager
 from . import workflowManager
+from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
     fnRunAllSteps,
@@ -1370,7 +1371,13 @@ def _fconnectionCreateDocker():
 
 def _fnRecordDockerError(sError):
     """Store the most recent Docker init failure for surfacing in UI."""
-    dictDiagnosis = fdictDiagnoseDockerError(sError)
+    import sys
+    from ..docker.dockerContext import fsActiveDockerContext
+    dictDiagnosis = fdictDiagnoseDockerError(
+        sError,
+        sContext=fsActiveDockerContext(),
+        sPlatform=sys.platform,
+    )
     _dictDockerStatus["sError"] = sError
     _dictDockerStatus["sHint"] = dictDiagnosis["sHint"]
     _dictDockerStatus["sCommand"] = dictDiagnosis["sCommand"]
@@ -1381,71 +1388,6 @@ def _fnClearDockerError():
     _dictDockerStatus["sError"] = ""
     _dictDockerStatus["sHint"] = ""
     _dictDockerStatus["sCommand"] = ""
-
-
-def fdictDiagnoseDockerError(sError):
-    """Return ``{sHint, sCommand}`` for a Docker init error string.
-
-    Pattern-matches common runtime failures (Colima stale disk lock,
-    daemon not running, docker binary missing, socket permission
-    denied) and emits an actionable hint plus a copy-pasteable shell
-    command. The verbatim error is always carried alongside in
-    ``_dictDockerStatus`` so an unrecognized failure mode still
-    reaches the user instead of being hidden behind a generic hint.
-    """
-    sLower = (sError or "").lower()
-    if "in use by instance" in sLower:
-        return {
-            "sHint": "Colima's VM lock is stale, likely from an "
-                     "unclean shutdown. Force-stop and restart Colima.",
-            "sCommand": "colima stop --force && colima start",
-        }
-    if _fbErrorIsDaemonUnreachable(sLower):
-        return {
-            "sHint": "The Docker daemon is not reachable. Start your "
-                     "Docker runtime (Colima or Docker Desktop).",
-            "sCommand": "colima start",
-        }
-    if _fbErrorIsBinaryMissing(sLower):
-        return {
-            "sHint": "The 'docker' command was not found on PATH. "
-                     "Install Docker Desktop or Colima.",
-            "sCommand": "brew install colima docker",
-        }
-    if "permission denied" in sLower:
-        return {
-            "sHint": "Docker socket permission was denied. Restart "
-                     "your runtime so the socket is recreated with "
-                     "the expected ownership.",
-            "sCommand": "colima restart",
-        }
-    return {
-        "sHint": "Docker is not reachable. Verify that your Docker "
-                 "runtime is running and that 'docker info' succeeds.",
-        "sCommand": "docker info",
-    }
-
-
-def _fbErrorIsDaemonUnreachable(sLower):
-    """True if the error text suggests the daemon socket is down."""
-    if "cannot connect" in sLower and (
-        "daemon" in sLower or "docker.sock" in sLower
-    ):
-        return True
-    if "connection refused" in sLower and "docker" in sLower:
-        return True
-    return False
-
-
-def _fbErrorIsBinaryMissing(sLower):
-    """True if the error text suggests the 'docker' binary is absent."""
-    if "filenotfounderror" in sLower:
-        return True
-    if "no such file or directory" in sLower and "docker" in sLower:
-        return True
-    if "[errno 2]" in sLower and "docker" in sLower:
-        return True
-    return False
 
 
 def fdictGetDockerStatus():

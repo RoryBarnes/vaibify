@@ -28,19 +28,27 @@ def _fdictContainerStatus(bExists=False, bRunning=False, sStatus="not found"):
 # -----------------------------------------------------------------------
 
 
+_S_DAEMON_UNREACHABLE_STDERR = (
+    "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"
+)
+
+
 def test_preflight_fails_when_daemon_unreachable_colima():
     """Daemon-down with colima active suggests `colima start`."""
     from vaibify.cli.commandStart import flistRunStartPreflight
     config = _fConfigForPreflight()
     with patch(
-        "vaibify.docker.fbDockerDaemonReachable", return_value=False,
+        "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+        return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
     ), patch(
-        "vaibify.docker.dockerContext.fbColimaActive", return_value=True,
+        "vaibify.docker.dockerContext.fsActiveDockerContext",
+        return_value="colima",
     ):
         listResults = flistRunStartPreflight(config)
     assert listResults[0].sLevel == "fail"
     assert listResults[0].sName == "docker-daemon"
     assert "colima start" in listResults[0].sRemediation
+    assert listResults[0].sCommand == "colima start"
     assert len(listResults) == 1
 
 
@@ -49,9 +57,11 @@ def test_preflight_fails_when_daemon_unreachable_no_colima():
     from vaibify.cli.commandStart import flistRunStartPreflight
     config = _fConfigForPreflight()
     with patch(
-        "vaibify.docker.fbDockerDaemonReachable", return_value=False,
+        "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+        return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
     ), patch(
-        "vaibify.docker.dockerContext.fbColimaActive", return_value=False,
+        "vaibify.docker.dockerContext.fsActiveDockerContext",
+        return_value="desktop-linux",
     ):
         listResults = flistRunStartPreflight(config)
     assert listResults[0].sLevel == "fail"
@@ -95,7 +105,8 @@ def test_preflight_fails_when_image_missing():
     from vaibify.cli.commandStart import flistRunStartPreflight
     config = _fConfigForPreflight(sProjectName="missingproj")
     with patch(
-        "vaibify.docker.fbDockerDaemonReachable", return_value=True,
+        "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+        return_value=(0, ""),
     ), patch(
         "vaibify.docker.fbImageExists", return_value=False,
     ), patch(

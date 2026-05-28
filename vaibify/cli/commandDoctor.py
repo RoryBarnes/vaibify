@@ -12,9 +12,11 @@ import click
 
 from .configLoader import fconfigResolveProject
 from .preflightChecks import (
+    fpreflightColimaHostagentLog,
     fpreflightColimaVersion,
     fpreflightDaemon,
     fpreflightDockerContextActive,
+    fpreflightLinuxDockerService,
 )
 from .preflightResult import fnPrintPreflightReport
 
@@ -50,15 +52,23 @@ def _flistStartOnlyChecks(config):
     return listResults
 
 
+def _flistOptionalSharedChecks():
+    """Run optional shared probes; return only the non-None results."""
+    listOptional = [
+        fpreflightColimaVersion(),
+        fpreflightColimaHostagentLog(),
+        fpreflightLinuxDockerService(),
+    ]
+    return [r for r in listOptional if r is not None]
+
+
 def _flistSharedChecks():
     """Run pre-flight helpers shared across every doctor scope."""
     listResults = [
         fpreflightDockerContextActive(),
         fpreflightDaemon(),
     ]
-    resultColimaVersion = fpreflightColimaVersion()
-    if resultColimaVersion is not None:
-        listResults.append(resultColimaVersion)
+    listResults.extend(_flistOptionalSharedChecks())
     return listResults
 
 

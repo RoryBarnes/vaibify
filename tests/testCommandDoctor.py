@@ -44,31 +44,103 @@ def _fresultFail(sName="check"):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=True)
-def test_fpreflightDaemon_reachable_returns_ok(mockDaemon):
+_S_COLIMA_DAEMON_STDERR = (
+    "Cannot connect to the Docker daemon at "
+    "unix:///Users/x/.colima/default/docker.sock. "
+    "Is the docker daemon running?\n"
+)
+
+
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
+def test_fpreflightDaemon_reachable_returns_ok(mockProbe):
     """A reachable daemon yields an ok-level result."""
     resultPreflight = fpreflightDaemon()
     assert resultPreflight.sLevel == "ok"
     assert resultPreflight.sName == "docker-daemon"
 
 
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
-def test_fpreflightDaemon_colima_remediation(mockColima, mockDaemon):
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="colima",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_COLIMA_DAEMON_STDERR),
+)
+def test_fpreflightDaemon_colima_remediation(mockProbe, mockContext):
     """Colima-active failure points the user at `colima start`."""
     resultPreflight = fpreflightDaemon("build")
     assert resultPreflight.sLevel == "fail"
-    assert "colima start" in resultPreflight.sRemediation.lower()
+    assert resultPreflight.sCommand == "colima start"
+    assert "colima" in resultPreflight.sRemediation.lower()
     assert "vaibify build" in resultPreflight.sRemediation
 
 
-@patch("vaibify.docker.fbDockerDaemonReachable", return_value=False)
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
-def test_fpreflightDaemon_no_colima_remediation(mockColima, mockDaemon):
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="desktop-linux",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_COLIMA_DAEMON_STDERR),
+)
+def test_fpreflightDaemon_no_colima_remediation(mockProbe, mockContext):
     """Non-Colima failure points the user at Docker Desktop."""
     resultPreflight = fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "Docker Desktop" in resultPreflight.sRemediation
+
+
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="colima",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(
+        1,
+        "failed to run attach disk \"colima\", in use by instance \"colima\"",
+    ),
+)
+def test_fpreflightDaemon_surfaces_colima_stale_lock(mockProbe, mockContext):
+    """A stale-lock stderr produces the specific catalog hint and command."""
+    resultPreflight = fpreflightDaemon("start")
+    assert resultPreflight.sLevel == "fail"
+    assert resultPreflight.sCommand == "colima stop --force && colima start"
+    assert "stale" in resultPreflight.sRemediation.lower()
+
+
+@patch(
+    "vaibify.docker.dockerContext.fsActiveDockerContext",
+    return_value="colima",
+)
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_COLIMA_DAEMON_STDERR),
+)
+def test_fpreflightDaemon_carries_raw_error(mockProbe, mockContext):
+    """The verbatim daemon stderr is appended as a `Raw error:` line."""
+    resultPreflight = fpreflightDaemon()
+    assert "Raw error:" in resultPreflight.sRemediation
+    assert "Cannot connect to the Docker daemon" in resultPreflight.sRemediation
+
+
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(
+        1,
+        "Permission denied while trying to connect to the Docker "
+        "daemon socket at unix:///var/run/docker.sock",
+    ),
+)
+def test_fpreflightDaemon_socket_permission_branch(mockProbe):
+    """A permission-denied stderr uses the dedicated socket-perm hint."""
+    resultPreflight = fpreflightDaemon()
+    assert resultPreflight.sLevel == "fail"
+    assert "Docker socket unreadable" in resultPreflight.sRemediation
 
 
 # -----------------------------------------------------------------------
@@ -279,3 +351,61 @@ def test_doctor_command_registered_on_main_cli():
     result = CliRunner().invoke(main, ["doctor", "--help"])
     assert result.exit_code == 0
     assert "Run pre-flight checks" in result.output
+
+
+# -----------------------------------------------------------------------
+# doctor — optional shared probes wired into _flistSharedChecks
+# -----------------------------------------------------------------------
+
+
+def test_doctor_shared_checks_include_optional_probes():
+    """`_flistSharedChecks` invokes the hostagent-log and systemd probes."""
+    from vaibify.cli.commandDoctor import _flistSharedChecks
+    with patch(
+        "vaibify.cli.commandDoctor.fpreflightDockerContextActive",
+        return_value=_fresultOk("docker-context"),
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightDaemon",
+        return_value=_fresultOk("docker-daemon"),
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightColimaVersion",
+        return_value=None,
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightColimaHostagentLog",
+        return_value=None,
+    ) as mockHostagent, patch(
+        "vaibify.cli.commandDoctor.fpreflightLinuxDockerService",
+        return_value=None,
+    ) as mockSystemd:
+        _flistSharedChecks()
+    mockHostagent.assert_called_once()
+    mockSystemd.assert_called_once()
+
+
+def test_doctor_shared_checks_includes_hostagent_warn():
+    """A warn from the hostagent probe is included in shared results."""
+    from vaibify.cli.commandDoctor import _flistSharedChecks
+    resultWarn = PreflightResult(
+        sName="colima-hostagent-log", sLevel="warn",
+        sMessage="recent error",
+        sRemediation="Restart Colima.",
+        sCommand="colima stop --force && colima start",
+    )
+    with patch(
+        "vaibify.cli.commandDoctor.fpreflightDockerContextActive",
+        return_value=_fresultOk("docker-context"),
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightDaemon",
+        return_value=_fresultOk("docker-daemon"),
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightColimaVersion",
+        return_value=None,
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightColimaHostagentLog",
+        return_value=resultWarn,
+    ), patch(
+        "vaibify.cli.commandDoctor.fpreflightLinuxDockerService",
+        return_value=None,
+    ):
+        listResults = _flistSharedChecks()
+    assert any(r.sName == "colima-hostagent-log" for r in listResults)
