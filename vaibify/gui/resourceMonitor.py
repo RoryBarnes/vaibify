@@ -137,9 +137,19 @@ def _fdictGetDiskStats(sContainerId):
 
 
 def _ftRunContainerDiskQuery(sContainerId):
-    """Run df inside the container and return (bSuccess, sReason, sStdout)."""
+    """Run df inside the container and return (bSuccess, sReason, sStdout).
+
+    The ``-u`` flag pins exec to the unprivileged install user from the
+    project registry rather than inheriting the container's runtime
+    user, which is root because vaibify launches with ``--user 0`` so
+    the entrypoint's root phase can chown the workspace. ``df -PB1 /``
+    reads the same rootfs regardless of user; the explicit ``-u``
+    keeps this call consistent with every other dispatch.
+    """
+    from vaibify.config.registryManager import fsGetContainerUser
+    sUser = fsGetContainerUser(sContainerId)
     listCommand = [
-        "docker", "exec", sContainerId,
+        "docker", "exec", "-u", sUser, sContainerId,
         "df", "-PB1", "/",
     ]
     try:

@@ -180,9 +180,15 @@ def test_fnWriteFile_uses_exec(mockGetDocker):
 
 
 def _fMockContainerWithUser(sUser):
-    """Mock container whose image-Config.User field is ``sUser``."""
+    """Mock container whose image USER directive is ``sUser``.
+
+    The resolver reads ``container.image.attrs["Config"]["User"]``,
+    which is the immutable USER directive baked into the image at
+    build time — not ``container.attrs["Config"]["User"]``, which is
+    the runtime user (overridable by ``docker run --user``).
+    """
     mockContainer = _fMockContainer()
-    mockContainer.attrs = {"Config": {"User": sUser}}
+    mockContainer.image.attrs = {"Config": {"User": sUser}}
     return mockContainer
 
 
@@ -244,6 +250,30 @@ def test_resolve_user_falls_back_to_researcher_when_attrs_missing(
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
     mockContainer = _fMockContainerWithUser("")
+    mockContainer.exec_run.return_value = (0, (b"ok", b""))
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamed("abc123", "id")
+    dictKwargs = mockContainer.exec_run.call_args[1]
+    assert dictKwargs["user"] == "researcher"
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_resolve_user_ignores_run_user_zero_override(mockGetDocker):
+    """``docker run --user 0`` must not propagate into dispatched exec.
+
+    Regression for the L1-gate bug: vaibify starts containers with
+    ``--user 0`` so the entrypoint's root phase can chown the
+    workspace, then ``gosu``-drops to the unprivileged user for PID 1.
+    The resolver must follow the image's install identity (USER
+    directive), not the runtime override.
+    """
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    _CACHED_CONTAINER_USER.clear()
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockContainer.attrs = {"Config": {"User": "0"}}
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()

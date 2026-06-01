@@ -22,6 +22,7 @@ __all__ = [
     "testDockerfileDisablesAptSandboxBeforeFirstUpdate",
     "testGitRoutesAlwaysPassProjectRepoToContainerGit",
     "testNoWorkspaceRootedMarkerHardcodeInSource",
+    "testNoUnscopedDockerExecOutsideConnection",
     "testAgentActionRegistered",
     "testAgentActionCatalogShape",
     "testWireFormatPathsAreRepoRelative",
@@ -686,6 +687,173 @@ def testNoWorkspaceRootedMarkerHardcodeInSource():
         + "\n".join(
             f"  {sFile}:{iLine}: {sText}"
             for sFile, iLine, sText in listViolations
+        )
+    )
+
+
+SET_SUBPROCESS_RUN_ATTRS = {
+    "run", "Popen", "call", "check_call", "check_output",
+}
+
+
+def _fbIsSubprocessRunCall(nodeCall):
+    """Return True when nodeCall invokes one of subprocess's run-style APIs."""
+    if not isinstance(nodeCall.func, ast.Attribute):
+        return False
+    if nodeCall.func.attr not in SET_SUBPROCESS_RUN_ATTRS:
+        return False
+    nodeValue = nodeCall.func.value
+    if not isinstance(nodeValue, ast.Name):
+        return False
+    return nodeValue.id == "subprocess"
+
+
+def _flistArgvFromListNode(nodeList):
+    """Return string literals from an ``ast.List``; non-strings become None.
+
+    A None entry marks "some value lives here, but it isn't a string
+    literal" so adjacency checks (e.g. ``docker exec``) still work and
+    flag presence checks (``-u``) remain conservative.
+    """
+    listValues = []
+    for nodeElement in nodeList.elts:
+        if isinstance(nodeElement, ast.Constant) and isinstance(
+            nodeElement.value, str,
+        ):
+            listValues.append(nodeElement.value)
+        else:
+            listValues.append(None)
+    return listValues
+
+
+def _fnIndexAssignmentsInScope(nodeScope, dictByName):
+    """Record every ``name = [literal-list]`` assignment within nodeScope.
+
+    Does not descend into nested function or class definitions so each
+    scope owns its own variable bindings (matters when the same name
+    like ``listCommand`` is reused across helpers in the same module).
+    """
+    for nodeChild in ast.iter_child_nodes(nodeScope):
+        if isinstance(nodeChild, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                  ast.ClassDef)):
+            continue
+        if isinstance(nodeChild, ast.Assign) and isinstance(
+            nodeChild.value, ast.List,
+        ):
+            for nodeTarget in nodeChild.targets:
+                if isinstance(nodeTarget, ast.Name):
+                    dictByName[nodeTarget.id] = _flistArgvFromListNode(
+                        nodeChild.value,
+                    )
+        _fnIndexAssignmentsInScope(nodeChild, dictByName)
+
+
+def _fdictCollectScopedListAssignments(treeAst):
+    """Map ``ast.Call`` -> ``{name: argv}`` resolved at the call's own scope.
+
+    Each call inherits the module-level assignments plus the
+    assignments inside its enclosing function/class. Names declared in
+    sibling functions are intentionally invisible so a literal in one
+    helper cannot poison the resolution of a same-named variable in
+    another helper.
+    """
+    dictModule = {}
+    _fnIndexAssignmentsInScope(treeAst, dictModule)
+    dictByCall = {}
+    for nodeScope in _flistFunctionLikeScopes(treeAst):
+        dictScoped = dict(dictModule)
+        _fnIndexAssignmentsInScope(nodeScope, dictScoped)
+        for nodeCall in ast.walk(nodeScope):
+            if isinstance(nodeCall, ast.Call):
+                dictByCall[id(nodeCall)] = dictScoped
+    return dictByCall, dictModule
+
+
+def _flistFunctionLikeScopes(treeAst):
+    """Return every FunctionDef/AsyncFunctionDef node in treeAst."""
+    listScopes = []
+    for nodeScope in ast.walk(treeAst):
+        if isinstance(nodeScope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            listScopes.append(nodeScope)
+    return listScopes
+
+
+def _flistExtractStaticArgv(nodeCall, dictByCall, dictModule):
+    """Return string literals from the call's first positional argv.
+
+    Accepts an inline ``ast.List`` or an ``ast.Name`` that refers to a
+    list assigned in the call's enclosing function (or module). Returns
+    an empty list when argv is neither shape — the bug we guard against
+    requires a statically resolvable command list to be useful.
+    """
+    if not nodeCall.args:
+        return []
+    nodeArgv = nodeCall.args[0]
+    if isinstance(nodeArgv, ast.List):
+        return _flistArgvFromListNode(nodeArgv)
+    if isinstance(nodeArgv, ast.Name):
+        dictScope = dictByCall.get(id(nodeCall), dictModule)
+        return list(dictScope.get(nodeArgv.id, []))
+    return []
+
+
+def _fbArgvInvokesDockerExec(listArgv):
+    """Return True when listArgv begins ``docker exec ...`` (as adjacent tokens)."""
+    for iIndex in range(len(listArgv) - 1):
+        if listArgv[iIndex] == "docker" and listArgv[iIndex + 1] == "exec":
+            return True
+    return False
+
+
+def _fbArgvPinsUser(listArgv):
+    """Return True when listArgv contains an explicit -u or --user flag."""
+    return "-u" in listArgv or "--user" in listArgv
+
+
+def testNoUnscopedDockerExecOutsideConnection():
+    """Direct ``docker exec`` subprocess calls must pin -u explicitly.
+
+    Prevents reintroduction of the root-default exec bug: any
+    host-side code that bypasses ``dockerConnection`` and shells out
+    to ``docker exec`` must specify the user, because plain
+    ``docker exec`` inherits the container's runtime user — which is
+    root for vaibify containers (the entrypoint phase requires
+    ``docker run --user 0`` before ``gosu``-dropping to the install
+    user for PID 1). Routing through ``dockerConnection`` is the
+    preferred fix; an explicit ``-u`` flag is the escape hatch when
+    the dispatcher is not available (e.g. CLI commands).
+    """
+    pathVaibify = REPO_ROOT / "vaibify"
+    listOffenders = []
+    for pathFile in pathVaibify.rglob("*.py"):
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        try:
+            _, treeAst = ftParseFile(pathFile)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        dictByCall, dictModule = _fdictCollectScopedListAssignments(treeAst)
+        for node in ast.walk(treeAst):
+            if not isinstance(node, ast.Call):
+                continue
+            if not _fbIsSubprocessRunCall(node):
+                continue
+            listArgv = _flistExtractStaticArgv(node, dictByCall, dictModule)
+            if not _fbArgvInvokesDockerExec(listArgv):
+                continue
+            if _fbArgvPinsUser(listArgv):
+                continue
+            listOffenders.append(
+                (pathFile.relative_to(REPO_ROOT), node.lineno)
+            )
+    assert listOffenders == [], (
+        "Direct `docker exec` subprocess calls must pass -u explicitly "
+        "(route through dockerConnection.ftResultExecuteCommand or add "
+        "-u/--user). Without -u, exec lands as the container's runtime "
+        "user, which is root when --user 0 was used at docker run.\n"
+        + "\n".join(
+            f"  {pathRel}:{iLine}"
+            for pathRel, iLine in listOffenders
         )
     )
 

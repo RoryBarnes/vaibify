@@ -211,7 +211,8 @@ def verify(sProjectName):
     sUser = configProject.sContainerUser
     sScript = f"/home/{sUser}/checkIsolation.sh"
     subprocess.run(
-        ["docker", "exec", "-it", configProject.sProjectName, sScript]
+        ["docker", "exec", "-it", "-u", sUser,
+         configProject.sProjectName, sScript]
     )
 
 

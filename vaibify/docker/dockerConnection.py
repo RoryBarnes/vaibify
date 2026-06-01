@@ -27,17 +27,21 @@ _CACHED_CONTAINER_USER = {}
 def _fsResolveContainerUser(container):
     """Return the unprivileged user baked into the image, cached per id.
 
-    Defaults to ``researcher`` when the image has no ``User`` field
-    (older images built before USER was pinned). Docker SDK exposes
-    the value via ``container.attrs["Config"]["User"]``; we cache by
-    container id so we only inspect once per session.
+    Reads the image's ``USER`` directive
+    (``container.image.attrs["Config"]["User"]``) rather than the
+    container's effective user. The container's effective user can be
+    overridden by ``docker run --user`` (vaibify does this so the
+    entrypoint's root phase can chown the workspace before ``gosu``-ing
+    down), but the image's USER is the install identity and is what
+    every dispatched command should run as. Falls back to
+    ``researcher`` when the image has no USER pinned.
     """
     sContainerId = getattr(container, "id", None) or ""
     if isinstance(sContainerId, str) and sContainerId in _CACHED_CONTAINER_USER:
         return _CACHED_CONTAINER_USER[sContainerId]
     sUser = "researcher"
     try:
-        sValue = container.attrs["Config"]["User"]
+        sValue = container.image.attrs["Config"]["User"]
         if isinstance(sValue, str) and sValue:
             sUser = sValue
     except (AttributeError, KeyError, TypeError):
