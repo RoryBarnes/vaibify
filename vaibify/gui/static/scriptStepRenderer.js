@@ -83,7 +83,8 @@ var VaibifyStepRenderer = (function () {
 
         var sStepNumber = dictContext.fsComputeStepLabel(iIndex);
 
-        var sHtml = '<div class="step-wrapper">' +
+        var sHtml = '<div class="step-wrapper" '
+            + 'data-step-index="' + iIndex + '">' +
             '<div class="step-item' + (bSelected ? " selected" : "") +
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +

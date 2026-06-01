@@ -190,6 +190,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState[sKey] = dictDefaults[sKey];
         }
         _fnResetUiState();
+        _fnInvalidateAllRenderCaches();
         PipeleyenTestManager.fnResetState();
         PipeleyenPipelineRunner.fnResetState();
         VaibifyOverleafMirror.fnResetState();
@@ -259,6 +260,7 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictWorkflow = dictData.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = dictData.sWorkflowPath;
         _fnClearFileCaches();
+        _fnInvalidateAllRenderCaches();
         fnRenderStepList();
         fnPollAllStepFiles();
     }
@@ -268,6 +270,7 @@ const PipeleyenApp = (function () {
         var dictPriorExpanded = _fdictSnapshotExpansionSets();
         _dictWorkflowState.dictWorkflow = dictWorkflowNew;
         _fnClearFileCaches();
+        _fnInvalidateAllRenderCaches();
         fnRenderStepList();
         var iStepCount = (dictWorkflowNew.listSteps || []).length;
         _fnRestoreUiSelection(iPriorSelected, iStepCount);
@@ -962,6 +965,44 @@ const PipeleyenApp = (function () {
 
     var _bRenderScheduled = false;
 
+    // Per-step render memoization. _dictRenderedStepHashes maps
+    // iIndex -> sHash, where sHash captures every input
+    // fsRenderStepItem reads. On each render the loop skips steps
+    // whose hash is unchanged and replaces only the changed cards in
+    // place, instead of blowing away all 5K-20K DOM nodes for 100
+    // steps every poll tick. Structural changes (step count delta,
+    // interactive-boundary shift) trigger a full innerHTML rebuild.
+    var _dictRenderedStepHashes = {};
+    var _sLastBoundarySignature = null;
+
+    // Change 6: dependency-graph memo. flistGetStepDependencies is
+    // O(N) per step (directory-overlap probe against every prior
+    // step), so the naive call site is O(N^2) per render. The memo
+    // is cleared by _fnInvalidateAllRenderCaches on workflow swap.
+    var _dictStepDepsByIndex = {};
+    // Reverse index used by the badge-driven partial-render entry:
+    // sFilePath -> iStep, so a change set of affected files can be
+    // mapped to step indices in O(F) instead of O(N x F).
+    var _dictStepIndexByFilePath = {};
+
+    // Change 7: step-label memo. The legacy fallback in
+    // fsComputeStepLabel walks 0..iIndex to count interactive vs
+    // automated steps, which is O(N) per call. Build the entire
+    // index in one forward pass on workflow load.
+    var _dictStepLabelByIndex = {};
+
+    function _fnInvalidateAllRenderCaches() {
+        _dictRenderedStepHashes = {};
+        _sLastBoundarySignature = null;
+        _dictStepDepsByIndex = {};
+        _dictStepIndexByFilePath = {};
+        _dictStepLabelByIndex = {};
+    }
+
+    function _fnInvalidateRenderCache(iIndex) {
+        delete _dictRenderedStepHashes[iIndex];
+    }
+
     function fnRenderStepList() {
         if (_bRenderScheduled) return;
         _bRenderScheduled = true;
@@ -976,6 +1017,30 @@ const PipeleyenApp = (function () {
         _fnRenderStepListImmediate();
     }
 
+    function _fsBoundarySignature(listSteps) {
+        // Compact key that changes when the step count or the
+        // automated/interactive boundary positions shift. Used to
+        // detect "structural change" so the renderer can fall back
+        // to the full innerHTML rebuild path.
+        var sKey = String(listSteps.length);
+        for (var i = 0; i < listSteps.length; i++) {
+            sKey += listSteps[i].bInteractive === true ? "I" : "A";
+        }
+        return sKey;
+    }
+
+    function _fsComputeStepRenderHash(step, iIndex, dictContext) {
+        // The hash captures every render-affecting input
+        // fsRenderStepItem reads. JSON.stringify of the step object
+        // is the most defensive choice: if any field changes,
+        // including verification, file lists, names, command arrays,
+        // the hash flips and the step re-renders.
+        return JSON.stringify(step)
+            + "\x01" + (dictContext.dictStepStatus[iIndex] || "")
+            + "\x01" + (iIndex === dictContext.iSelectedStepIndex ? "1" : "0")
+            + "\x01" + (dictContext.setExpandedSteps.has(iIndex) ? "1" : "0");
+    }
+
     function _fnRenderStepListImmediate() {
         if (typeof VaibifySyncManager !== "undefined"
             && typeof VaibifySyncManager.fnDismissAllPicklists
@@ -985,13 +1050,34 @@ const PipeleyenApp = (function () {
         var elList = document.getElementById("listSteps");
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) {
             elList.innerHTML = "";
+            _fnInvalidateAllRenderCaches();
             return;
         }
+        var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
+        var sBoundary = _fsBoundarySignature(listSteps);
         var dictVars = fdictBuildClientVariables();
         var dictContext = fdictBuildRenderContext();
+        if (sBoundary !== _sLastBoundarySignature) {
+            _fnRenderStepListFull(
+                elList, listSteps, dictVars, dictContext, sBoundary);
+        } else {
+            _fnRenderStepListIncremental(
+                elList, listSteps, dictVars, dictContext);
+        }
+        fnApplyTimestampVisibility();
+        fnBindStepEvents();
+        fnUpdateHighlightState();
+        PipeleyenFileOps.fnScheduleFileExistenceCheck(
+            _dictWorkflowState);
+    }
+
+    function _fnRenderStepListFull(
+        elList, listSteps, dictVars, dictContext, sBoundary
+    ) {
         var sHtml = "";
         var bPreviousInteractive = null;
-        _dictWorkflowState.dictWorkflow.listSteps.forEach(function (step, iIndex) {
+        _dictRenderedStepHashes = {};
+        listSteps.forEach(function (step, iIndex) {
             var bInteractive = step.bInteractive === true;
             if (bInteractive !== bPreviousInteractive) {
                 sHtml += fsRenderStepTypeBanner(bInteractive);
@@ -999,13 +1085,48 @@ const PipeleyenApp = (function () {
             }
             sHtml += VaibifyStepRenderer.fsRenderStepItem(
                 step, iIndex, dictVars, dictContext);
+            _dictRenderedStepHashes[iIndex] =
+                _fsComputeStepRenderHash(step, iIndex, dictContext);
         });
         elList.innerHTML = sHtml;
-        fnApplyTimestampVisibility();
-        fnBindStepEvents();
-        fnUpdateHighlightState();
-        PipeleyenFileOps.fnScheduleFileExistenceCheck(
-            _dictWorkflowState);
+        _sLastBoundarySignature = sBoundary;
+    }
+
+    function _fnRenderStepListIncremental(
+        elList, listSteps, dictVars, dictContext
+    ) {
+        listSteps.forEach(function (step, iIndex) {
+            var sHash = _fsComputeStepRenderHash(
+                step, iIndex, dictContext);
+            if (_dictRenderedStepHashes[iIndex] === sHash) return;
+            var sHtml = VaibifyStepRenderer.fsRenderStepItem(
+                step, iIndex, dictVars, dictContext);
+            var elExisting = elList.querySelector(
+                ".step-wrapper[data-step-index=\"" + iIndex + "\"]");
+            if (!elExisting) return;
+            var elTemp = document.createElement("div");
+            elTemp.innerHTML = sHtml;
+            var elNew = elTemp.firstElementChild;
+            if (elNew) {
+                elExisting.replaceWith(elNew);
+                _dictRenderedStepHashes[iIndex] = sHash;
+            }
+        });
+    }
+
+    function fnRenderStepListPartial(listAffectedFiles) {
+        // Badge-side entry point (change 8 wiring) — maps the list of
+        // changed files to step indices via _dictStepIndexByFilePath,
+        // invalidates only those indices, then schedules a render
+        // which will use the incremental path.
+        if (!listAffectedFiles || !listAffectedFiles.length) {
+            return fnRenderStepList();
+        }
+        listAffectedFiles.forEach(function (sFile) {
+            var iStep = _dictStepIndexByFilePath[sFile];
+            if (iStep !== undefined) _fnInvalidateRenderCache(iStep);
+        });
+        fnRenderStepList();
     }
 
     function fsRenderStepTypeBanner(bInteractive) {
@@ -1097,14 +1218,31 @@ const PipeleyenApp = (function () {
         }
         // TODO(2026-07-01): drop this fallback once every response
         // path carries step.sLabel. Kept as a transition shim.
-        var bInteractive = step.bInteractive === true;
-        var sPrefix = bInteractive ? "I" : "A";
-        var iCount = 0;
-        for (var i = 0; i <= iIndex; i++) {
-            var bSameType = listSteps[i].bInteractive === bInteractive;
-            if (bSameType) iCount++;
+        if (_dictStepLabelByIndex[iIndex] !== undefined) {
+            return _dictStepLabelByIndex[iIndex];
         }
-        return sPrefix + String(iCount).padStart(2, "0");
+        _fnPopulateStepLabelMemo(listSteps);
+        return _dictStepLabelByIndex[iIndex];
+    }
+
+    function _fnPopulateStepLabelMemo(listSteps) {
+        // Walk the list once, counting interactive vs automated steps
+        // up to each index. Replaces the original O(N) per-step walk
+        // with an O(N) one-time pass; subsequent lookups are O(1).
+        var iAuto = 0;
+        var iInter = 0;
+        for (var i = 0; i < listSteps.length; i++) {
+            var bInteractive = listSteps[i].bInteractive === true;
+            if (bInteractive) {
+                iInter++;
+                _dictStepLabelByIndex[i] =
+                    "I" + String(iInter).padStart(2, "0");
+            } else {
+                iAuto++;
+                _dictStepLabelByIndex[i] =
+                    "A" + String(iAuto).padStart(2, "0");
+            }
+        }
     }
 
     function fsBuildWarningBadge(step, iIndex) {
@@ -1249,6 +1387,16 @@ const PipeleyenApp = (function () {
 
     function flistGetStepDependencies(iStep) {
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return [];
+        if (_dictStepDepsByIndex[iStep] !== undefined) {
+            return _dictStepDepsByIndex[iStep];
+        }
+        var listDeps = _flistComputeStepDependencies(iStep);
+        _dictStepDepsByIndex[iStep] = listDeps;
+        _fnIndexStepFilesIntoReverseMap(iStep);
+        return listDeps;
+    }
+
+    function _flistComputeStepDependencies(iStep) {
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         var step = listSteps[iStep];
         var setDeps = {};
@@ -1279,6 +1427,21 @@ const PipeleyenApp = (function () {
         return Object.keys(setDeps).map(Number).sort(
             function (a, b) { return a - b; }
         );
+    }
+
+    function _fnIndexStepFilesIntoReverseMap(iStep) {
+        // Populate _dictStepIndexByFilePath so the badge-driven
+        // partial render can map "this file's badge changed" to
+        // "this step's card needs re-rendering" in O(1).
+        var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
+        if (!step) return;
+        var listFileKeys = ["saDataFiles", "saPlotFiles",
+            "saOutputFiles", "saTestFiles"];
+        listFileKeys.forEach(function (sKey) {
+            (step[sKey] || []).forEach(function (sFile) {
+                if (sFile) _dictStepIndexByFilePath[sFile] = iStep;
+            });
+        });
     }
 
     function fbStepFullyPassing(iStep, dictVisited) {
@@ -2393,6 +2556,8 @@ const PipeleyenApp = (function () {
         fnInitialize: fnInitialize,
         fnShowToast: fnShowToast,
         fnRenderStepList: fnRenderStepList,
+        fnRenderStepListPartial: fnRenderStepListPartial,
+        _fnInvalidateAllRenderCaches: _fnInvalidateAllRenderCaches,
         fsGetContainerId: function () {
             return _dictSessionState.sContainerId;
         },
