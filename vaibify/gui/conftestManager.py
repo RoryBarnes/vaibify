@@ -6,12 +6,15 @@ __all__ = [
     "fsConftestContent",
     "fsBuildConftestSource",
     "fsReadInstalledConftestVersion",
+    "fdictReadInstalledConftestVersions",
     "fnWriteConftestMarker",
+    "fnWriteConftestMarkersBatch",
     "fnEnsureTestsDirectory",
     "fnEnsureConftestsCurrent",
     "fnMigrateFlatMarkers",
 ]
 
+import json
 import logging
 import posixpath
 import re
@@ -30,6 +33,23 @@ S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
 )
+
+
+# Switch-time de-dup: connect runs ``_fnRefreshConftestsAndMigrateMarkers``
+# once, then the first poll runs it again. Both calls are idempotent
+# from the container's perspective, but each was paying ~5–15 s on a
+# 100-step workflow. These process-local caches make the second call a
+# no-op so a fresh switch pays the refresh cost once, not twice. Caches
+# invalidate on process restart (which is when ``S_CONFTEST_VERSION``
+# bumps land via a vaibify reload).
+_SET_REFRESHED_KEYS = set()
+_SET_MIGRATED_FLAT_KEYS = set()
+
+
+def fnClearRefreshCaches():
+    """Clear the per-process refresh + migration caches (test helper)."""
+    _SET_REFRESHED_KEYS.clear()
+    _SET_MIGRATED_FLAT_KEYS.clear()
 
 
 def fsConftestPath(sStepDirectory):
@@ -138,57 +158,165 @@ def fnEnsureTestsDirectory(
     )
 
 
+def fdictReadInstalledConftestVersions(
+    connectionDocker, sContainerId, listConftestPaths,
+):
+    """Probe ``# vaibify-conftest-version:`` stamps in one docker exec.
+
+    Returns ``{sPath: sVersion}`` for every conftest that was readable
+    and carried the sentinel. Paths that are missing, unreadable, or
+    lack the sentinel are omitted — the refresh helper treats absence
+    the same as "needs rewriting". One batched probe keeps switch-time
+    flat at N=100 steps; the single-file
+    ``fsReadInstalledConftestVersion`` stays available for callers
+    (and tests) that probe one path at a time.
+    """
+    if not listConftestPaths:
+        return {}
+    sCommand = _fsBuildVersionsProbeCommand(listConftestPaths)
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        return {}
+    return _fdictParseVersionsProbeOutput(sOutput)
+
+
+def _fsBuildVersionsProbeCommand(listConftestPaths):
+    """Build a single ``python3 -c`` command that reads many conftest files."""
+    from .pipelineRunner import fsShellQuote
+    sPathsJson = json.dumps(list(listConftestPaths))
+    sScript = (
+        "import json, re, sys\n"
+        "rx = re.compile("
+        "r'^# vaibify-conftest-version:\\s*(\\S+)\\s*$', re.M)\n"
+        "out = {}\n"
+        "for p in json.loads(sys.stdin.read()):\n"
+        "    try:\n"
+        "        with open(p, 'r', encoding='utf-8') as f: s = f.read()\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "    m = rx.search(s)\n"
+        "    if m:\n"
+        "        out[p] = m.group(1)\n"
+        "print(json.dumps(out))\n"
+    )
+    return (
+        "python3 -c " + fsShellQuote(sScript)
+        + " <<< " + fsShellQuote(sPathsJson)
+    )
+
+
+def _fdictParseVersionsProbeOutput(sOutput):
+    """Return the trailing JSON dict from the probe stdout, or empty."""
+    try:
+        dictLoaded = json.loads(
+            (sOutput or "").strip().splitlines()[-1]
+        )
+    except (ValueError, IndexError):
+        return {}
+    if not isinstance(dictLoaded, dict):
+        return {}
+    return dictLoaded
+
+
+def fnWriteConftestMarkersBatch(
+    connectionDocker, sContainerId, listConftestPaths, sContent,
+):
+    """Write the same conftest source to every path in a single docker exec.
+
+    Used by ``fnEnsureConftestsCurrent`` when the version-bump rollout
+    needs to rewrite many files at once — N writes collapse to one
+    ``python3 -c`` invocation. Returns True on docker-exec success.
+    The single-file ``fnWriteConftestMarker`` is unchanged for callers
+    that target one step directory at a time.
+    """
+    if not listConftestPaths:
+        return True
+    sCommand = _fsBuildConftestBatchWriteCommand(
+        listConftestPaths, sContent,
+    )
+    iExit, _sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    return iExit == 0
+
+
+def _fsBuildConftestBatchWriteCommand(listConftestPaths, sContent):
+    """Build a ``python3 -c`` command that writes sContent to every path."""
+    from .pipelineRunner import fsShellQuote
+    sPayload = json.dumps({
+        "listPaths": list(listConftestPaths),
+        "sContent": sContent,
+    })
+    sScript = (
+        "import json, os, sys\n"
+        "d = json.loads(sys.stdin.read())\n"
+        "for p in d['listPaths']:\n"
+        "    os.makedirs(os.path.dirname(p), exist_ok=True)\n"
+        "    with open(p, 'w', encoding='utf-8') as f:\n"
+        "        f.write(d['sContent'])\n"
+        "print('OK')\n"
+    )
+    return (
+        "python3 -c " + fsShellQuote(sScript)
+        + " <<< " + fsShellQuote(sPayload)
+    )
+
+
 def fnEnsureConftestsCurrent(
     connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
 ):
     """Refresh stale or missing conftest.py copies in each step's tests/.
 
-    For every step directory in ``listStepDirs``, compares the
-    installed conftest's embedded version stamp against
-    ``S_CONFTEST_VERSION``. When the stamp is absent (legacy conftest
-    or no file at all) or mismatched (template bumped since the file
-    was written), rewrites the file with the current
-    ``fsBuildConftestSource`` output. Idempotent: a current file is
-    left untouched. Short-circuits when ``listStepDirs`` is empty so
-    the connect path pays no per-step cost on a brand-new workflow.
+    Batches both the version probe and the rewrite into one
+    ``docker exec`` each, so switch-time stays flat at ~100 steps.
+    Idempotent at any N: current files are left untouched. Empty
+    input short-circuits before any container work. A successful
+    sweep is cached in ``_SET_REFRESHED_KEYS`` so the connect-time
+    and first-poll callers no longer pay the cost twice.
     """
     if not listStepDirs:
         return
-    for sStepDir in listStepDirs:
-        sAbsStepDir = _fsAbsoluteStepDir(sStepDir, sProjectRepoPath)
-        sConftestPath = fsConftestPath(sAbsStepDir)
-        sInstalled = fsReadInstalledConftestVersion(
-            connectionDocker, sContainerId, sConftestPath,
-        )
-        if sInstalled == S_CONFTEST_VERSION:
-            continue
-        _fnRewriteConftest(
-            connectionDocker, sContainerId, sStepDir,
-            sProjectRepoPath, sInstalled,
-        )
+    tKey = (sContainerId, sProjectRepoPath, S_CONFTEST_VERSION)
+    if tKey in _SET_REFRESHED_KEYS:
+        return
+    listConftestPaths = [
+        fsConftestPath(_fsAbsoluteStepDir(sDir, sProjectRepoPath))
+        for sDir in listStepDirs
+    ]
+    dictInstalled = fdictReadInstalledConftestVersions(
+        connectionDocker, sContainerId, listConftestPaths,
+    )
+    listStale = [
+        sPath for sPath in listConftestPaths
+        if dictInstalled.get(sPath) != S_CONFTEST_VERSION
+    ]
+    if not listStale:
+        _SET_REFRESHED_KEYS.add(tKey)
+        return
+    sContent = fsBuildConftestSource(sProjectRepoPath)
+    bWritten = fnWriteConftestMarkersBatch(
+        connectionDocker, sContainerId, listStale, sContent,
+    )
+    _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
+    if bWritten:
+        _SET_REFRESHED_KEYS.add(tKey)
 
 
-def _fnRewriteConftest(
-    connectionDocker, sContainerId, sStepDirectory,
-    sProjectRepoPath, sInstalledVersion,
-):
-    """Write a fresh conftest.py and log the version transition."""
-    try:
-        fnWriteConftestMarker(
-            connectionDocker, sContainerId,
-            sStepDirectory, sProjectRepoPath,
-        )
-    except Exception as exc:
+def _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled):
+    """Log per-path transitions after a batched conftest rewrite."""
+    if not bWritten:
         logger.error(
-            "Failed to refresh conftest.py for %s: %s",
-            sStepDirectory, exc,
+            "Batch conftest rewrite failed for %d paths", len(listStale),
         )
         return
-    logger.info(
-        "Refreshed conftest.py for %s (installed=%r -> %r)",
-        sStepDirectory, sInstalledVersion or "absent",
-        S_CONFTEST_VERSION,
-    )
+    for sPath in listStale:
+        sInstalled = dictInstalled.get(sPath, "")
+        logger.info(
+            "Refreshed conftest.py at %s (installed=%r -> %r)",
+            sPath, sInstalled or "absent", S_CONFTEST_VERSION,
+        )
 
 
 def fnMigrateFlatMarkers(
@@ -202,9 +330,14 @@ def fnMigrateFlatMarkers(
     helper moves any flat ``*.json`` siblings of the slug subdir into
     that subdir so stranded results re-appear in the dashboard. Safe
     to call repeatedly: when no flat markers exist it logs nothing and
-    exits. Files in the slug subdir are never touched.
+    exits. Files in the slug subdir are never touched. Cached in
+    ``_SET_MIGRATED_FLAT_KEYS`` so the connect-time and first-poll
+    callers do not both pay the migration cost.
     """
     if not sProjectRepoPath or not sWorkflowSlug:
+        return
+    tKey = (sContainerId, sProjectRepoPath, sWorkflowSlug)
+    if tKey in _SET_MIGRATED_FLAT_KEYS:
         return
     from .pipelineRunner import fsShellQuote
     sCommand = _fsBuildFlatMarkerMigrationCommand(
@@ -214,6 +347,8 @@ def fnMigrateFlatMarkers(
         sContainerId, sCommand,
     )
     _fnLogMigrationOutcome(iExit, sOutput, sWorkflowSlug)
+    if iExit == 0:
+        _SET_MIGRATED_FLAT_KEYS.add(tKey)
 
 
 def _fsBuildFlatMarkerMigrationCommand(sProjectRepoPath, sWorkflowSlug):
