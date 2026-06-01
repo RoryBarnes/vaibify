@@ -156,41 +156,64 @@ var VaibifyGitBadges = (function () {
         return sHtml;
     }
 
-    function fnRefresh(sContainerId) {
-        if (!sContainerId) {
-            return Promise.resolve();
+    function _fnApplyBadgeRefresh(dictResult) {
+        if (!dictResult || typeof dictResult !== "object") return;
+        var dictDiff = _fbBadgeMapChanged(
+            _dictState.dictBadges, dictResult.dictBadges || {});
+        _dictState.dictBadges = dictResult.dictBadges || {};
+        _dictState.dictRepoSummary = dictResult.dictGit ||
+            _dictState.dictRepoSummary;
+        if (dictDiff.bChanged) {
+            _fnRequestStepListRerender(dictDiff.listAffectedFiles);
         }
+    }
+
+    function fnRefresh(sContainerId) {
+        if (!sContainerId) return Promise.resolve();
         _dictState.sCurrentContainerId = sContainerId;
         return VaibifyApi.fdictGet(
             "/api/git/" + encodeURIComponent(sContainerId) + "/badges"
-        ).then(function (dictResult) {
-            if (!dictResult || typeof dictResult !== "object") return;
-            var bChanged = _fbBadgeMapChanged(
-                _dictState.dictBadges, dictResult.dictBadges || {});
-            _dictState.dictBadges = dictResult.dictBadges || {};
-            _dictState.dictRepoSummary = dictResult.dictGit ||
-                _dictState.dictRepoSummary;
-            if (bChanged) _fnRequestStepListRerender();
-        }).catch(function () {
+        ).then(_fnApplyBadgeRefresh).catch(function () {
             _dictState.dictBadges = {};
         });
     }
 
 
     function _fbBadgeMapChanged(dictOld, dictNew) {
-        var aOldKeys = Object.keys(dictOld || {});
-        var aNewKeys = Object.keys(dictNew || {});
-        if (aOldKeys.length !== aNewKeys.length) return true;
+        /* Returns {bChanged, listAffectedFiles}. The dict is truthy
+           so existing callers that only inspect the boolean still
+           short-circuit correctly; new callers read .bChanged and
+           consume listAffectedFiles for partial re-renders. */
+        var dictOldSafe = dictOld || {};
+        var dictNewSafe = dictNew || {};
+        var listAffectedFiles = _flistDiffBadgeKeys(
+            dictOldSafe, dictNewSafe);
+        return {
+            bChanged: listAffectedFiles.length > 0,
+            listAffectedFiles: listAffectedFiles,
+        };
+    }
+
+
+    function _flistDiffBadgeKeys(dictOld, dictNew) {
+        var listAffected = [];
+        var aNewKeys = Object.keys(dictNew);
         for (var i = 0; i < aNewKeys.length; i++) {
             var sKey = aNewKeys[i];
             var dictOldEntry = dictOld[sKey];
-            var dictNewEntry = dictNew[sKey];
-            if (!dictOldEntry) return true;
-            if (_fbBadgeEntryChanged(dictOldEntry, dictNewEntry)) {
-                return true;
+            if (!dictOldEntry ||
+                _fbBadgeEntryChanged(dictOldEntry, dictNew[sKey])) {
+                listAffected.push(sKey);
             }
         }
-        return false;
+        var aOldKeys = Object.keys(dictOld);
+        for (var j = 0; j < aOldKeys.length; j++) {
+            if (!Object.prototype.hasOwnProperty.call(
+                dictNew, aOldKeys[j])) {
+                listAffected.push(aOldKeys[j]);
+            }
+        }
+        return listAffected;
     }
 
 
@@ -203,8 +226,12 @@ var VaibifyGitBadges = (function () {
     }
 
 
-    function _fnRequestStepListRerender() {
+    function _fnRequestStepListRerender(listAffectedFiles) {
         if (typeof PipeleyenApp === "undefined") return;
+        if (typeof PipeleyenApp.fnRenderStepListPartial === "function") {
+            PipeleyenApp.fnRenderStepListPartial(listAffectedFiles || []);
+            return;
+        }
         if (typeof PipeleyenApp.fnRenderStepList !== "function") return;
         PipeleyenApp.fnRenderStepList();
     }
