@@ -576,14 +576,40 @@ def _fnLogFreshnessCheck(
     )
 
 
-def _ftEvaluateFreshness(iIndex, dictStep, dictModTimes, dictVars):
+def _fdictResolvePlotPathsForAttestedSteps(dictWorkflow, dictVars):
+    """Resolve plot paths once per user-attested step.
+
+    Returns ``{iIndex: [resolved_path, ...]}`` skipping any step where
+    ``sUser != "passed"`` — the only steps that the stale-attestation
+    check needs to inspect. Pre-resolving once at the top of
+    ``_fbCheckStaleUserVerification`` keeps the per-poll cost flat as
+    the inner loop grows: ``_flistResolvePlotPaths`` is invoked
+    exactly once per attested step, not interleaved with the
+    evaluation work.
+    """
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []),
+    ):
+        dictV = dictStep.get("dictVerification", {})
+        if dictV.get("sUser") != "passed":
+            continue
+        dictResult[iIndex] = [
+            tEntry[0]
+            for tEntry in _flistResolvePlotPaths(dictStep, dictVars)
+        ]
+    return dictResult
+
+
+def _ftEvaluateFreshness(iIndex, dictStep, dictModTimes, listPlotPaths):
     """Return ``(bChecked, bStale)`` for the stale-attestation check.
 
-    ``bChecked`` is False when the step is not user-attested, has no
-    ``sLastUserUpdate`` field, or carries an unparseable timestamp —
-    in any of those cases the caller skips the step. When
-    ``bChecked`` is True the freshness-check log line has been
-    emitted as a side effect.
+    ``listPlotPaths`` is pre-resolved by the caller (see
+    ``_fdictResolvePlotPathsForAttestedSteps``). ``bChecked`` is False
+    when the step is not user-attested, has no ``sLastUserUpdate``
+    field, or carries an unparseable timestamp — in any of those
+    cases the caller skips the step. When ``bChecked`` is True the
+    freshness-check log line has been emitted as a side effect.
     """
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUser") != "passed":
@@ -594,9 +620,6 @@ def _ftEvaluateFreshness(iIndex, dictStep, dictModTimes, dictVars):
     iUserEpoch = _fiParseUtcTimestamp(sLastUserUpdate)
     if iUserEpoch is None:
         return False, False
-    listPlotPaths = [
-        tEntry[0] for tEntry in _flistResolvePlotPaths(dictStep, dictVars)
-    ]
     bStale = _fbAnyMtimeNewerThan(
         listPlotPaths, dictModTimes, iUserEpoch,
     )
@@ -617,11 +640,15 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
     bChanged = False
     if dictVars is None:
         dictVars = _fdictDefaultPlotVars(dictWorkflow)
+    dictPathsByStep = _fdictResolvePlotPathsForAttestedSteps(
+        dictWorkflow, dictVars,
+    )
     for iIndex, dictStep in enumerate(
         dictWorkflow.get("listSteps", []),
     ):
+        listPlotPaths = dictPathsByStep.get(iIndex, [])
         bChecked, bStale = _ftEvaluateFreshness(
-            iIndex, dictStep, dictModTimes, dictVars,
+            iIndex, dictStep, dictModTimes, listPlotPaths,
         )
         if not bChecked:
             continue

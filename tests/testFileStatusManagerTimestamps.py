@@ -679,3 +679,58 @@ def test_computeTestCategoryMtimes_preserves_zero_mtime():
     assert dictResult == {
         "0": {"integrity": "0", "qualitative": "1000"},
     }
+
+
+def test_stale_user_check_resolves_plot_paths_once_per_attested_step():
+    """Switch-time perf invariant: ``_flistResolvePlotPaths`` is called
+    once per user-attested step in the pre-pass, never interleaved
+    with per-step evaluation. A future refactor that re-introduces a
+    nested resolution loop would fail this counter test.
+    """
+    from unittest.mock import patch
+    from vaibify.gui.fileStatusManager import _fbCheckStaleUserVerification
+    dictAttested = {
+        "sDirectory": "/repo/attA",
+        "saPlotFiles": ["one.png", "two.png"],
+        "dictVerification": {
+            "sUser": "passed",
+            "sLastUserUpdate": "2026-05-01T12:00:00Z",
+        },
+    }
+    dictUnattested = {
+        "sDirectory": "/repo/unA",
+        "saPlotFiles": ["x.png"],
+        "dictVerification": {"sUser": "untested"},
+    }
+    dictWorkflow = {
+        "listSteps": [dictAttested, dictAttested, dictUnattested],
+        "sPlotDirectory": "Plot",
+        "sFigureType": "png",
+    }
+    with patch(
+        "vaibify.gui.fileStatusManager._flistResolvePlotPaths",
+        wraps=lambda dictStep, dictVars: [],
+    ) as mockResolve:
+        _fbCheckStaleUserVerification(dictWorkflow, dictModTimes={})
+    assert mockResolve.call_count == 2
+
+
+def test_stale_user_check_skips_resolution_when_no_steps_are_attested():
+    """When every step is untested, the resolver is never invoked."""
+    from unittest.mock import patch
+    from vaibify.gui.fileStatusManager import _fbCheckStaleUserVerification
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sDirectory": "/repo/s1",
+                "saPlotFiles": ["p.png"],
+                "dictVerification": {"sUser": "untested"},
+            }
+        ] * 5,
+    }
+    with patch(
+        "vaibify.gui.fileStatusManager._flistResolvePlotPaths",
+        wraps=lambda dictStep, dictVars: [],
+    ) as mockResolve:
+        _fbCheckStaleUserVerification(dictWorkflow, dictModTimes={})
+    assert mockResolve.call_count == 0

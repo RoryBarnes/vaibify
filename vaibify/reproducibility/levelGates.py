@@ -12,6 +12,8 @@ each concern has one owner. The composition lives here so the level
 decision lives in one module.
 """
 
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,25 +61,63 @@ __all__ = [
     "fdictL3ReadinessGaps",
     "fdictLevel2Gaps",
     "fiAICSLevel",
+    "fnLevelComputationContext",
 ]
 
 
 F_MAX_STALE_HOURS = 24.0
 
 
+# Per-call memoization scope for the L1/L2/L3 chain.
+#
+# ``fiAICSLevel`` evaluates L1, then L2 (which internally calls L1),
+# then L3 (which internally calls L2, which calls L1). At N=100 steps
+# the inner L1 calls iterate the verifications three times even though
+# the answer is identical. ``fnLevelComputationContext`` activates a
+# thread-local memo dict that ``fbAtLeastLevel1`` / ``fbAtLeastLevel2``
+# consult before recomputing. The memo lives only for the lifetime of
+# the context — no cross-poll state, no stale-cache risk.
+_THREAD_LOCAL = threading.local()
+
+
+@contextmanager
+def fnLevelComputationContext():
+    """Activate a per-call memo for ``fbAtLeastLevel{1,2}``.
+
+    Use inside ``fiAICSLevel`` or any other path that drives the L1/L2/L3
+    chain repeatedly on the same workflow + project-repo pair. Outside
+    the context, the gates fall back to uncached evaluation so individual
+    callers (e.g. the auto-archive envelope-refresh hook) keep their
+    existing behavior.
+    """
+    _THREAD_LOCAL.dictMemo = {}
+    try:
+        yield _THREAD_LOCAL.dictMemo
+    finally:
+        _THREAD_LOCAL.dictMemo = None
+
+
+def _fdictActiveLevelMemo():
+    """Return the active per-call memo, or None when no context is active."""
+    return getattr(_THREAD_LOCAL, "dictMemo", None)
+
+
 def fiAICSLevel(dictWorkflow, sProjectRepoPath):
     """Return the integer AICS level (0..3) for a workflow.
 
-    Short-circuits up the ladder so each gate runs at most once.
-    Phase 2 ships L1 + L2; L3 always returns False until Phase 3.
+    Short-circuits up the ladder so each gate runs at most once. Wraps
+    the L1/L2/L3 chain in ``fnLevelComputationContext`` so the inner
+    recursive calls (L2 -> L1, L3 -> L2 -> L1) hit a memo instead of
+    re-iterating every step.
     """
-    if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
-        return 0
-    if not fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
-        return 1
-    if not fbAtLeastLevel3(dictWorkflow, sProjectRepoPath):
-        return 2
-    return 3
+    with fnLevelComputationContext():
+        if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
+            return 0
+        if not fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
+            return 1
+        if not fbAtLeastLevel3(dictWorkflow, sProjectRepoPath):
+            return 2
+        return 3
 
 
 def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
@@ -88,6 +128,17 @@ def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
     timing-clean (no upstream-modified flag, no outstanding modified
     files), and every step's defined test categories are green.
     """
+    dictMemo = _fdictActiveLevelMemo()
+    if dictMemo is not None and "bL1" in dictMemo:
+        return dictMemo["bL1"]
+    bResult = _fbComputeLevel1(dictWorkflow, sProjectRepoPath)
+    if dictMemo is not None:
+        dictMemo["bL1"] = bResult
+    return bResult
+
+
+def _fbComputeLevel1(dictWorkflow, sProjectRepoPath):
+    """Uncached L1 evaluation — the body of the original gate."""
     if not fbWorkflowHasProjectRepo(sProjectRepoPath):
         return False
     listSteps = dictWorkflow.get("listSteps", [])
@@ -137,6 +188,17 @@ def fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
     the workflow's configured endpoint, and the workflow contains an
     AI Declaration step (which L1 already requires to be user-attested).
     """
+    dictMemo = _fdictActiveLevelMemo()
+    if dictMemo is not None and "bL2" in dictMemo:
+        return dictMemo["bL2"]
+    bResult = _fbComputeLevel2(dictWorkflow, sProjectRepoPath)
+    if dictMemo is not None:
+        dictMemo["bL2"] = bResult
+    return bResult
+
+
+def _fbComputeLevel2(dictWorkflow, sProjectRepoPath):
+    """Uncached L2 evaluation — the body of the original gate."""
     if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
         return False
     if not fbWorkflowFullySyncedWithGithub(
