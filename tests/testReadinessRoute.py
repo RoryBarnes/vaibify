@@ -227,6 +227,34 @@ def test_probe_matching_version_passes_through():
     assert dictResult["sStatus"] == "ok"
 
 
+def test_probe_booting_marker_with_matching_version_is_not_flagged():
+    """A booting marker that carries the current host-expected
+    version must surface as ``sStatus == "booting"`` (bReady False),
+    never as ``stale-version``. The entrypoint writes such a marker
+    at the start of the workspace phase to overwrite any stale
+    marker from a previous container session — without this case
+    being silent, the dashboard would show a misleading version
+    mismatch for the entire workspace-setup window."""
+    sJson = json.dumps(
+        {
+            "sStatus": "booting",
+            "sReason": "container initializing",
+            "saWarnings": [],
+            "sEntrypointVersion":
+                systemRoutes._S_EXPECTED_ENTRYPOINT_VERSION,
+        }
+    )
+    connectionDocker = _MockDockerConnection(
+        (0, _fsMarkerPayload(sJson)),
+    )
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc",
+    )
+    assert dictResult["sStatus"] == "booting"
+    assert dictResult["bReady"] is False
+    assert "Rebuild" not in dictResult.get("sReason", "")
+
+
 def test_probe_timeout_returns_stalled(monkeypatch):
     """When docker exec hangs past the timeout, status is 'stalled'."""
     monkeypatch.setattr(

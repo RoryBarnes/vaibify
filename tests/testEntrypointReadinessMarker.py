@@ -97,6 +97,67 @@ def test_write_readiness_marker_includes_warnings(tmp_path):
     assert "vplot: c-build: make opt failed" in dictMarker["saWarnings"]
 
 
+def test_write_readiness_marker_booting_carries_current_version(tmp_path):
+    """A ``"booting"`` marker must include the current
+    ``sEntrypointVersion`` so that the host probe — which fires during
+    workspace boot — does not surface a version-mismatch warning
+    against a stale marker left behind in the persistent /workspace
+    volume from a previous container session.
+    """
+    sWorkspace = str(tmp_path)
+    sBody = 'fnWriteReadinessMarker "booting" "container initializing"\n'
+    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    assert resultProc.returncode == 0, resultProc.stderr
+    dictMarker = _fdictReadMarker(sWorkspace)
+    assert dictMarker["sStatus"] == "booting"
+    assert dictMarker["sReason"] == "container initializing"
+    assert dictMarker["sEntrypointVersion"]
+    sExpected = _fsExtractEntrypointVersionConstant()
+    assert dictMarker["sEntrypointVersion"] == sExpected
+
+
+def _fsExtractEntrypointVersionConstant():
+    """Read the S_ENTRYPOINT_VERSION constant declared in entrypoint.sh."""
+    with open(_S_ENTRYPOINT, "r", encoding="utf-8") as fileHandle:
+        sSource = fileHandle.read()
+    for sLine in sSource.splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("S_ENTRYPOINT_VERSION="):
+            return sStripped.split("=", 1)[1].strip('"')
+    raise AssertionError(
+        "entrypoint.sh missing S_ENTRYPOINT_VERSION constant",
+    )
+
+
+def test_workspace_phase_writes_booting_marker_before_long_steps():
+    """The workspace phase must claim the marker file before any
+    long-running step. /workspace is a persistent named volume — a
+    stale "ok" marker from a prior container session survives the
+    rebuild and is read by the host probe during boot, surfacing a
+    bogus version-mismatch warning for the multi-minute window
+    before the new "ok" marker overwrites it."""
+    with open(_S_ENTRYPOINT, "r", encoding="utf-8") as fileHandle:
+        sSource = fileHandle.read()
+    iStart = sSource.find("fnRunWorkspacePhase() {")
+    assert iStart != -1
+    iEnd = sSource.find("\n}\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    iBootingPos = sBlock.find('fnWriteReadinessMarker "booting"')
+    iSyncPos = sBlock.find("fnSyncAllRepos")
+    iInstallPos = sBlock.find("fnInstallAllRepos")
+    assert iBootingPos != -1, (
+        "fnRunWorkspacePhase must write a booting marker so the host "
+        "probe never sees a stale marker from a previous container "
+        "session during the long workspace setup."
+    )
+    assert iBootingPos < iSyncPos, (
+        "Booting marker must precede fnSyncAllRepos; otherwise the "
+        "host probe reads the stale marker for the entire repo-sync "
+        "window."
+    )
+    assert iBootingPos < iInstallPos
+
+
 def test_write_readiness_marker_escapes_quotes(tmp_path):
     """A reason containing double quotes must not break the JSON."""
     sWorkspace = str(tmp_path)

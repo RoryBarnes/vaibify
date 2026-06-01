@@ -1203,6 +1203,14 @@ fnRunRootPhase() {
 # fnRunWorkspacePhase: Workspace and home-directory setup as container user
 # ---------------------------------------------------------------------------
 fnRunWorkspacePhase() {
+    # Overwrite any stale marker from a prior container session
+    # before any long-running step. /workspace is a persistent named
+    # volume, so a marker from a previous image lives on across
+    # rebuilds; without this line the host probe reads the prior
+    # marker (often a previous entrypoint version) during the multi-
+    # minute workspace boot and surfaces a misleading version-
+    # mismatch warning until the "ok" marker is written below.
+    fnWriteReadinessMarker "booting" "container initializing"
     fnPrintBanner
     export PIP_USER=1
     fnSourceBinariesInEnv
