@@ -40,12 +40,22 @@ def _fsReadStaticFile(sName):
 
 
 def test_badge_map_changed_returns_list_of_affected_files():
-    """The diff helper must publish ``listAffectedFiles`` so callers
-    can scope a partial re-render to just the changed step rows."""
+    """The diff helper must publish ``listAffectedFiles`` on the return
+    dict — not merely mention it in a comment. Assert the return
+    statement of ``_fbBadgeMapChanged`` actually carries the key, so a
+    revert that drops it from the dict literal fails."""
     sSource = _fsReadStaticFile("scriptGitBadges.js")
-    assert "listAffectedFiles" in sSource, (
-        "_fbBadgeMapChanged must expose listAffectedFiles so the "
-        "application layer can render only the affected step cards"
+    iStart = sSource.find("function _fbBadgeMapChanged(")
+    assert iStart != -1, "_fbBadgeMapChanged missing"
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    assert "listAffectedFiles:" in sBlock, (
+        "_fbBadgeMapChanged return dict must carry the "
+        "listAffectedFiles key so the application layer can render "
+        "only the affected step cards."
+    )
+    assert "return " in sBlock and "bChanged:" in sBlock, (
+        "Return must be the dict {bChanged, listAffectedFiles}."
     )
 
 

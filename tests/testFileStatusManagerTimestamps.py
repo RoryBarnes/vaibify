@@ -734,3 +734,37 @@ def test_stale_user_check_skips_resolution_when_no_steps_are_attested():
     ) as mockResolve:
         _fbCheckStaleUserVerification(dictWorkflow, dictModTimes={})
     assert mockResolve.call_count == 0
+
+
+def test_stale_user_check_attested_step_with_no_plot_files_is_safe():
+    """An attested step that declares no plot files still goes through
+    the resolver (one call) but the evaluation must short-circuit with
+    no false-positive staleness. Guards against a regression that
+    treats an empty plot list as 'no timestamp anchor', which would
+    re-set sUser to untested on any L1-ready workflow."""
+    from vaibify.gui.fileStatusManager import _fbCheckStaleUserVerification
+    dictWorkflow = {
+        "listSteps": [
+            {
+                "sDirectory": "/repo/s1",
+                "saPlotFiles": [],
+                "dictVerification": {
+                    "sUser": "passed",
+                    "sLastUserUpdate": "2026-05-01T12:00:00Z",
+                },
+            },
+        ],
+        "sPlotDirectory": "Plot",
+        "sFigureType": "png",
+    }
+    bChanged = _fbCheckStaleUserVerification(
+        dictWorkflow, dictModTimes={},
+    )
+    assert bChanged is False, (
+        "Attested step with empty plot list must not trigger a "
+        "stale-verdict flip."
+    )
+    assert (
+        dictWorkflow["listSteps"][0]["dictVerification"]["sUser"]
+        == "passed"
+    ), "sUser must remain 'passed' when there are no plot files."

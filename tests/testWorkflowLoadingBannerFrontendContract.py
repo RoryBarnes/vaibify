@@ -104,11 +104,24 @@ def test_select_workflow_shows_and_hides_banner():
     )
 
 
-def test_banner_threshold_is_documented():
-    """The size threshold lives in a named constant so future tuning
-    happens in one place and is greppable."""
+def test_banner_threshold_is_declared_and_compared():
+    """The size threshold must be a real ``var`` (greppable, one place
+    to tune) and ``fnSelectWorkflow`` must actually compare the
+    incoming size against it — not merely mention the symbol name in a
+    comment."""
     sSource = _fsReadStaticFile("scriptWorkflowManager.js")
-    assert "_I_LARGE_WORKFLOW_BYTES" in sSource
+    assert "var _I_LARGE_WORKFLOW_BYTES" in sSource, (
+        "_I_LARGE_WORKFLOW_BYTES must be declared as a real module-level "
+        "binding so future tuning happens in one place."
+    )
+    iStart = sSource.find("async function fnSelectWorkflow(")
+    assert iStart != -1
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    assert "_I_LARGE_WORKFLOW_BYTES" in sBlock, (
+        "fnSelectWorkflow must compare against the threshold; "
+        "otherwise the banner never gates on size."
+    )
 
 
 def test_banner_shows_workflow_name_and_size():

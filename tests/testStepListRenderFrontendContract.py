@@ -40,24 +40,45 @@ def _fsReadStaticFile(sName):
 # -----------------------------------------------------------------------
 
 
-def test_render_hash_memo_symbol_exists():
-    """The per-step render-hash memo must be declared at module scope
-    so the incremental render path has somewhere to compare against."""
+def test_render_hash_memo_declared_as_module_var():
+    """The per-step render-hash memo must be declared as a module-scoped
+    ``var`` (not just mentioned in a comment) so the incremental render
+    path has a real binding to compare against between ticks. A bare
+    string-presence check would pass even if the symbol survived only
+    in a comment after a revert."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "_dictRenderedStepHashes" in sSource, (
-        "Module-level _dictRenderedStepHashes memo missing — the "
-        "incremental render path needs a place to store per-step "
-        "hashes between ticks."
+    assert "var _dictRenderedStepHashes" in sSource, (
+        "Module-level _dictRenderedStepHashes declaration missing — "
+        "the incremental render path needs a real binding, not a "
+        "comment, to store per-step hashes between ticks."
     )
 
 
-def test_structural_change_signature_exists():
+def test_structural_change_signature_drives_dispatch():
     """A structural-change signature must drive the full-vs-incremental
-    decision; otherwise a step insertion or interactive-boundary move
-    would silently produce a corrupt DOM."""
+    decision. Assert the signature variable is *both* declared and
+    actually compared inside ``_fnRenderStepListImmediate``; otherwise
+    a revert that leaves only a comment mentioning it would pass."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "_fsBoundarySignature" in sSource
-    assert "_sLastBoundarySignature" in sSource
+    assert "function _fsBoundarySignature(" in sSource, (
+        "_fsBoundarySignature must be a real function, not a comment "
+        "reference."
+    )
+    assert "var _sLastBoundarySignature" in sSource, (
+        "_sLastBoundarySignature must be a real module-scoped variable."
+    )
+    iStart = sSource.find("function _fnRenderStepListImmediate(")
+    assert iStart != -1
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    assert "_fsBoundarySignature(" in sBlock, (
+        "_fnRenderStepListImmediate must actually call the signature "
+        "helper — otherwise the full-vs-incremental dispatch is dead."
+    )
+    assert "_sLastBoundarySignature" in sBlock, (
+        "The dispatcher must compare the new signature against the "
+        "stored _sLastBoundarySignature."
+    )
 
 
 def test_incremental_render_uses_per_step_replace():
@@ -107,11 +128,27 @@ def test_step_wrapper_carries_data_step_index_attribute():
 # -----------------------------------------------------------------------
 
 
-def test_invalidate_all_render_caches_helper_exists():
-    """The invalidator must be a single helper so future state
-    mutators can call it instead of clearing each memo by hand."""
+def test_invalidate_all_render_caches_clears_every_memo():
+    """The invalidator must clear *every* render memo, not just exist
+    as a no-op shell. A revert that left the function but emptied its
+    body would silently reintroduce cross-workflow hash bleed-through."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "function _fnInvalidateAllRenderCaches(" in sSource
+    iStart = sSource.find("function _fnInvalidateAllRenderCaches(")
+    assert iStart != -1, "invalidator helper missing"
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    # Each render memo must actually be reset inside the body.
+    for sMemo in [
+        "_dictRenderedStepHashes",
+        "_sLastBoundarySignature",
+        "_dictStepDepsByIndex",
+        "_dictStepIndexByFilePath",
+        "_dictStepLabelByIndex",
+    ]:
+        assert sMemo in sBlock, (
+            "_fnInvalidateAllRenderCaches must clear " + sMemo
+            + " — otherwise a workflow swap leaves stale entries."
+        )
 
 
 def test_invalidate_runs_on_workflow_reset():
@@ -154,37 +191,98 @@ def test_invalidate_runs_on_out_of_band_reload():
 
 
 def test_dependency_graph_is_memoized():
-    """``flistGetStepDependencies`` must consult the memo before
-    re-running the O(N) directory-overlap scan, otherwise the render
-    path is O(N^2) at the level of dependency computation."""
+    """``flistGetStepDependencies`` must read the memo *before* falling
+    through to the expensive compute helper, and it must also write the
+    result back. A revert to a per-call recompute that leaves both
+    identifiers in the body would defeat the optimization but pass a
+    bare substring check, so we assert order: the cache-hit guard
+    appears before the compute-and-store line."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "_dictStepDepsByIndex" in sSource
+    assert "var _dictStepDepsByIndex" in sSource, (
+        "Module-level _dictStepDepsByIndex declaration missing."
+    )
     iStart = sSource.find("function flistGetStepDependencies(")
     assert iStart != -1
     iEnd = sSource.find("\n    }\n", iStart)
     sBlock = sSource[iStart:iEnd]
-    assert "_dictStepDepsByIndex" in sBlock
-    assert "_flistComputeStepDependencies" in sBlock
+    iCacheGuard = sBlock.find("_dictStepDepsByIndex[iStep] !== undefined")
+    iCompute = sBlock.find("_flistComputeStepDependencies(")
+    iStore = sBlock.find("_dictStepDepsByIndex[iStep] =")
+    assert iCacheGuard != -1, (
+        "Cache-hit guard missing — dependency lookup is no longer "
+        "memoized."
+    )
+    assert iCompute != -1, (
+        "_flistComputeStepDependencies call missing — dependency body "
+        "was inlined back into the public function."
+    )
+    assert iStore != -1, (
+        "Memo write missing — computed deps are never cached."
+    )
+    assert iCacheGuard < iCompute, (
+        "Cache must be checked BEFORE recomputing; otherwise the "
+        "memo is dead weight."
+    )
 
 
 def test_step_label_memo_exists_and_is_consulted():
     """``fsComputeStepLabel`` must consult ``_dictStepLabelByIndex``
-    before falling through to the original O(N) iterative count."""
+    before falling through to the O(N) populator. Assert both the
+    module-level declaration and the cache-hit guard inside the
+    function body; bare substring would tolerate a comment-only
+    revert."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "_dictStepLabelByIndex" in sSource
+    assert "var _dictStepLabelByIndex" in sSource, (
+        "Module-level _dictStepLabelByIndex declaration missing."
+    )
     iStart = sSource.find("function fsComputeStepLabel(")
     assert iStart != -1
     iEnd = sSource.find("\n    }\n", iStart)
     sBlock = sSource[iStart:iEnd]
-    assert "_dictStepLabelByIndex[iIndex] !== undefined" in sBlock
+    iGuard = sBlock.find("_dictStepLabelByIndex[iIndex] !== undefined")
+    iReturn = sBlock.find("return _dictStepLabelByIndex[iIndex]")
+    iPopulate = sBlock.find("_fnPopulateStepLabelMemo(")
+    assert iGuard != -1, (
+        "Cache-hit guard missing inside fsComputeStepLabel."
+    )
+    assert iReturn != -1, (
+        "Cache-hit return missing — guarded path must short-circuit."
+    )
+    assert iPopulate != -1, (
+        "Populator call missing — first miss must populate the memo."
+    )
+    # On cache miss the populator runs and *then* the memo is read.
+    assert iGuard < iPopulate, (
+        "Guard must precede populate to short-circuit on cache hit."
+    )
 
 
 def test_label_memo_populated_in_single_forward_pass():
-    """The label-memo populator must walk the list once, not
-    re-scan from zero for each lookup."""
+    """The label-memo populator must walk the list once with running
+    automated/interactive counters — not recurse or call back into
+    fsComputeStepLabel. A revert that turns the populator into N calls
+    to the old per-index walker would still have the function defined,
+    so we assert structural properties of the body."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     iStart = sSource.find("function _fnPopulateStepLabelMemo(")
     assert iStart != -1
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    # Must contain a single forward loop over listSteps.
+    assert "for (" in sBlock, (
+        "_fnPopulateStepLabelMemo must contain a forward loop, not "
+        "recurse or delegate per-index to fsComputeStepLabel."
+    )
+    assert "listSteps.length" in sBlock, (
+        "Populator must iterate the full step list up to .length."
+    )
+    # Must not call fsComputeStepLabel (would re-introduce O(N^2)).
+    assert "fsComputeStepLabel" not in sBlock, (
+        "Populator must not delegate to fsComputeStepLabel — that "
+        "would re-introduce the O(N^2) walk it replaces."
+    )
+    # Must write into the memo dict.
+    assert "_dictStepLabelByIndex[" in sBlock
 
 
 # -----------------------------------------------------------------------
@@ -195,22 +293,49 @@ def test_label_memo_populated_in_single_forward_pass():
 def test_fnRenderStepListPartial_exposes_on_public_api():
     """The partial-render entry must live on ``PipeleyenApp`` so
     cross-module callers (notably the git-badges refresh) can
-    invalidate just the affected indices without a full re-render."""
+    invalidate just the affected indices without a full re-render.
+    Assert the exposed key, the function it points at, and the
+    function definition itself — three independent guards so a
+    rename or comment-only revert cannot slip through."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "fnRenderStepListPartial: fnRenderStepListPartial" in sSource
+    assert "fnRenderStepListPartial: fnRenderStepListPartial" in sSource, (
+        "PipeleyenApp must expose fnRenderStepListPartial in its "
+        "public-API return object."
+    )
+    assert "function fnRenderStepListPartial(" in sSource, (
+        "fnRenderStepListPartial must be defined as a real function "
+        "inside the IIFE, not aliased to something else."
+    )
 
 
 def test_fnRenderStepListPartial_maps_files_via_reverse_index():
     """The partial-render entry must read ``_dictStepIndexByFilePath``
     so it can answer "which step does this file belong to?" without
-    iterating the workflow."""
+    iterating the workflow. Verify lookup precedes invalidation and
+    that an empty/missing listAffectedFiles falls back to full render
+    so the caller cannot accidentally render nothing."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     iStart = sSource.find("function fnRenderStepListPartial(")
     assert iStart != -1
     iEnd = sSource.find("\n    }\n", iStart)
     sBlock = sSource[iStart:iEnd]
-    assert "_dictStepIndexByFilePath" in sBlock
-    assert "_fnInvalidateRenderCache" in sBlock
+    iLookup = sBlock.find("_dictStepIndexByFilePath[")
+    iInvalidate = sBlock.find("_fnInvalidateRenderCache(")
+    assert iLookup != -1, (
+        "Partial-render must look up step indices via the reverse map."
+    )
+    assert iInvalidate != -1, (
+        "Partial-render must invalidate per-step caches before render."
+    )
+    assert iLookup < iInvalidate, (
+        "Lookup must precede invalidation; otherwise the entry is "
+        "dropping the wrong caches."
+    )
+    # Empty / missing input must short-circuit to a full render.
+    assert "!listAffectedFiles" in sBlock or ".length" in sBlock, (
+        "Empty input must fall back to full render so an empty diff "
+        "doesn't silently skip the re-render."
+    )
 
 
 # -----------------------------------------------------------------------
@@ -223,7 +348,8 @@ def test_poll_skips_steps_with_known_output_mtime():
     ``dictOutputMtimes`` entry is already populated — that already
     proves the step's output files exist on disk, so re-issuing
     PipeleyenFileOps.fnCheckStepDataFiles would be ~1000 redundant
-    file probes per poll at N=100."""
+    file probes per poll at N=100. Assert ordering: the existence
+    lookup must precede the (only) call to ``fnCheckStepDataFiles``."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     iStart = sSource.find("function fnPollAllStepFiles(")
     assert iStart != -1
@@ -233,4 +359,89 @@ def test_poll_skips_steps_with_known_output_mtime():
         "fnPollAllStepFiles must consult dictOutputMtimes to decide "
         "whether the per-step existence probe is necessary."
     )
-    assert "dictMtimes[String(iStep)]" in sBlock
+    iLookup = sBlock.find("dictMtimes[String(iStep)]")
+    iCheck = sBlock.find("fnCheckStepDataFiles")
+    assert iLookup != -1, (
+        "fnPollAllStepFiles must look up the per-step mtime via "
+        "dictMtimes[String(iStep)]."
+    )
+    assert iCheck != -1, (
+        "fnPollAllStepFiles must still call fnCheckStepDataFiles for "
+        "never-run steps."
+    )
+    assert iLookup < iCheck, (
+        "The mtime existence-cache lookup must short-circuit BEFORE "
+        "the per-step file probe; otherwise the optimization is dead."
+    )
+    # The early-return must take the form `if (...) return;` so the
+    # check is actually skipped — not e.g. logged-but-still-called.
+    assert "return;" in sBlock
+
+
+# -----------------------------------------------------------------------
+# Edge cases: empty workflow, structural-change-on-first-render
+# -----------------------------------------------------------------------
+
+
+def test_immediate_render_handles_missing_listSteps():
+    """A workflow without listSteps (or no workflow at all) must clear
+    the DOM and invalidate caches rather than crashing — otherwise the
+    workflow-picker swap into an empty-pipeline state explodes."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iStart = sSource.find("function _fnRenderStepListImmediate(")
+    assert iStart != -1
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    # Guard must check for missing workflow OR listSteps and clear the DOM.
+    assert "!_dictWorkflowState.dictWorkflow" in sBlock or (
+        "dictWorkflow.listSteps" in sBlock
+    ), "Missing-listSteps branch absent from _fnRenderStepListImmediate."
+    assert 'innerHTML = ""' in sBlock, (
+        "Empty-state branch must blank out the step list."
+    )
+    assert "_fnInvalidateAllRenderCaches" in sBlock, (
+        "Empty-state branch must also invalidate the render caches."
+    )
+
+
+def test_boundary_signature_distinguishes_count_and_interactive_mix():
+    """The boundary signature key must change when either the step
+    count or the interactive-flag pattern changes. The implementation
+    concatenates length + per-step I/A markers; verify the body shape
+    so a future revert to e.g. just length cannot slip through."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iStart = sSource.find("function _fsBoundarySignature(")
+    assert iStart != -1
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    assert "listSteps.length" in sBlock, (
+        "Boundary signature must mix step count into the key."
+    )
+    assert ".bInteractive" in sBlock, (
+        "Boundary signature must distinguish interactive from "
+        "automated steps; otherwise inserting an interactive step "
+        "would skip the structural-change fallback."
+    )
+
+
+def test_first_render_after_invalidate_takes_full_path():
+    """After ``_fnInvalidateAllRenderCaches`` resets the boundary
+    signature to its initial value, the next render must hit the full
+    rebuild path — otherwise the very first render of a freshly-loaded
+    workflow would try to ``replaceWith`` on cards that don't exist
+    in the DOM yet."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    # Locate the module-level initial value of _sLastBoundarySignature.
+    iDecl = sSource.find("var _sLastBoundarySignature")
+    assert iDecl != -1
+    sLine = sSource[iDecl:sSource.find("\n", iDecl)]
+    # Must be initialized to something that no _fsBoundarySignature
+    # output (which always starts with a digit) can equal — null or "".
+    assert any(sSentinel in sLine for sSentinel in [
+        "null", '""', "''"
+    ]), (
+        "_sLastBoundarySignature must initialize to a sentinel "
+        "(null or empty) so the first render takes the full-rebuild "
+        "path; otherwise the incremental path would target an empty "
+        "DOM."
+    )

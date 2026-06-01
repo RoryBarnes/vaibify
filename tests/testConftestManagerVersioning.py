@@ -57,6 +57,16 @@ class _FakeDocker:
         self.dictFiles[sPath] = baContent
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
+        # NOTE: the probe/write discrimination below is intentionally
+        # fragile against drift in the production-side helper scripts:
+        # if ``_fsBuildVersionsProbeCommand`` ever stops embedding the
+        # literal ``re.compile(`` / ``vaibify-conftest-version``, or
+        # ``_fsBuildConftestBatchWriteCommand`` stops embedding
+        # ``os.makedirs(``, this fake silently falls through to the
+        # default result and several tests below will fail loudly. That
+        # is the design — production-side renames must be visible in
+        # the test surface. If you rename those identifiers in the
+        # production helpers, update *both* sides in the same commit.
         self.listCommands.append(sCommand)
         if "re.compile(" in sCommand and "vaibify-conftest-version" in sCommand:
             return self._tHandleBatchProbe(sCommand)
@@ -391,3 +401,128 @@ def test_migrate_flat_markers_no_ops_when_slug_empty():
         fakeDocker, _S_CONTAINER_ID, _S_PROJECT_REPO, "",
     )
     assert fakeDocker.listCommands == []
+
+
+# -----------------------------------------------------------------------
+# Edge cases: empty batch input, shell-hostile path characters
+# -----------------------------------------------------------------------
+
+
+def test_fnWriteConftestMarkersBatch_short_circuits_on_empty_list():
+    """Empty path list returns True and does zero docker work."""
+    fakeDocker = _FakeDocker()
+    bWritten = conftestManager.fnWriteConftestMarkersBatch(
+        fakeDocker, _S_CONTAINER_ID, [], "# vaibify-conftest-version: 2\n",
+    )
+    assert bWritten is True
+    assert fakeDocker.listCommands == []
+
+
+def test_fdictReadInstalledConftestVersions_returns_empty_on_nonzero_exit():
+    """A failed probe must return {} (treated as 'all stale') instead
+    of crashing. Otherwise a transient container hiccup at connect
+    time would leave the dashboard with an exception in the log and
+    no badges refreshed."""
+    fakeDocker = _FakeDocker()
+    fakeDocker.tExecuteResult = (1, "boom")
+    # The fake's _tHandleBatchProbe branch returns based on heredoc
+    # content; force the fallback path by avoiding the probe regex
+    # discriminator. Override ftResultExecuteCommand directly.
+    fakeDocker.ftResultExecuteCommand = (
+        lambda sContainerId, sCommand: (1, "transient error")
+    )
+    dictResult = conftestManager.fdictReadInstalledConftestVersions(
+        fakeDocker, _S_CONTAINER_ID, ["/a/conftest.py"],
+    )
+    assert dictResult == {}
+
+
+def test_ensure_current_handles_paths_with_single_quotes():
+    """Step directory names containing single quotes (legal on POSIX
+    filesystems) must round-trip through the batched probe and write
+    helpers without breaking the embedded ``python3 -c`` quoting.
+    The ``fsShellQuote`` idiom (``'\\''``) is the load-bearing piece
+    here; this test fails loud if a future refactor swaps it for a
+    naive quote scheme."""
+    fakeDocker = _FakeDocker()
+    sNastyStepDir = "step's_dir"
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDocker, _S_CONTAINER_ID, [sNastyStepDir], _S_PROJECT_REPO,
+    )
+    # One probe (with the quoted path inside JSON) + one batched write.
+    assert len(fakeDocker.listCommands) >= 1
+    assert len(fakeDocker.listWrites) == 1
+    sWrittenPath, _baContent = fakeDocker.listWrites[0]
+    assert "step's_dir" in sWrittenPath, (
+        "Path with single quote must survive shell quoting end-to-end."
+    )
+
+
+def test_dedup_cache_key_includes_container_id():
+    """The de-dup cache key must include the container ID so a second
+    container reusing the same project repo does not silently skip its
+    own refresh sweep. Otherwise switching between two workflows on
+    two different containers leaves the second container's tests dir
+    un-refreshed."""
+    fakeDockerA = _FakeDocker()
+    fakeDockerB = _FakeDocker()
+    listStepDirs = ["step01"]
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDockerA, "container-A", listStepDirs, _S_PROJECT_REPO,
+    )
+    assert fakeDockerA.listCommands, (
+        "first container should have run a probe"
+    )
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDockerB, "container-B", listStepDirs, _S_PROJECT_REPO,
+    )
+    assert fakeDockerB.listCommands, (
+        "Second container with same project repo must still refresh; "
+        "dedup key must include containerId, not just repo+version."
+    )
+
+
+def test_dedup_cache_key_includes_project_repo():
+    """Same as above but for the project repo dimension: two workflows
+    in different project repos on the same container must each pay
+    the refresh once."""
+    fakeDocker = _FakeDocker()
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDocker, _S_CONTAINER_ID, ["step01"], "/workspace/repoA",
+    )
+    iAfterA = len(fakeDocker.listCommands)
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDocker, _S_CONTAINER_ID, ["step01"], "/workspace/repoB",
+    )
+    assert len(fakeDocker.listCommands) > iAfterA, (
+        "Second project repo must trigger its own refresh; dedup key "
+        "must include sProjectRepoPath."
+    )
+
+
+def test_dedup_cache_does_not_set_when_write_fails():
+    """If the batched write returns non-zero exit, the cache must NOT
+    be marked as refreshed — otherwise a transient failure poisons the
+    cache and silently breaks the next switch."""
+    fakeDocker = _FakeDocker()
+
+    def fnFailingExec(sContainerId, sCommand):
+        fakeDocker.listCommands.append(sCommand)
+        if "os.makedirs(" in sCommand:
+            return (1, "write failure")
+        if "re.compile(" in sCommand:
+            return (0, "{}")
+        return (0, "")
+    fakeDocker.ftResultExecuteCommand = fnFailingExec
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDocker, _S_CONTAINER_ID, ["step01"], _S_PROJECT_REPO,
+    )
+    iCmdsAfterFail = len(fakeDocker.listCommands)
+    # Second call must retry because the cache was not poisoned.
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDocker, _S_CONTAINER_ID, ["step01"], _S_PROJECT_REPO,
+    )
+    assert len(fakeDocker.listCommands) > iCmdsAfterFail, (
+        "Failed write must leave the dedup cache empty so the next "
+        "refresh retries."
+    )
