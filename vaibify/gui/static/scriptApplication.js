@@ -1029,16 +1029,54 @@ const PipeleyenApp = (function () {
         return sKey;
     }
 
-    function _fsComputeStepRenderHash(step, iIndex, dictContext) {
+    function _fsExpansionSliceForStep(iIndex, dictContext) {
+        // Captures every UI-expansion bit that fsRenderStepItem
+        // reads for this step. Each toggle handler mutates one of
+        // these Sets and calls fnRenderStepList — if the bit is not
+        // in the hash, the incremental path silently skips the
+        // re-render and the user's click appears to do nothing.
+        return (
+            (iIndex === dictContext.iSelectedStepIndex ? "1" : "0")
+            + (dictContext.setExpandedSteps.has(iIndex) ? "1" : "0")
+            + (dictContext.setExpandedDeps.has(iIndex) ? "1" : "0")
+            + (dictContext.setExpandedUnitTests.has(iIndex) ? "1" : "0")
+            + (dictContext.setGeneratingInFlight.has(iIndex) ? "1" : "0")
+            + (dictContext.setStepsWithData.has(iIndex) ? "1" : "0")
+            + (dictContext.fsetGetExpandedCategory("qualitative").has(iIndex) ? "1" : "0")
+            + (dictContext.fsetGetExpandedCategory("quantitative").has(iIndex) ? "1" : "0")
+            + (dictContext.fsetGetExpandedCategory("integrity").has(iIndex) ? "1" : "0")
+        );
+    }
+
+    function _fsContextSliceForStep(iIndex, dictContext) {
+        // Per-step slice of the context dicts that vary independently
+        // of the step object itself. Anything fsRenderStepItem reads
+        // off dictContext keyed by iIndex must be represented here or
+        // the incremental renderer will leave a stale card on screen.
+        var sIdx = String(iIndex);
+        return JSON.stringify([
+            dictContext.dictScriptModified[iIndex] || "",
+            dictContext.dictStaleArtifacts[iIndex] || null,
+            dictContext.dictDiscoveredOutputs[iIndex] || null,
+            dictContext.dictOutputMtimes[sIdx] || "",
+            dictContext.dictMarkerMtimeByStep[sIdx] || "",
+            dictContext.dictMaxDataMtimeByStep[sIdx] || "",
+            dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
+            dictContext.dictTestCategoryMtimes[sIdx] || null,
+        ]);
+    }
+
+    function _fsComputeStepRenderHash(step, iIndex, dictContext, dictVars) {
         // The hash captures every render-affecting input
-        // fsRenderStepItem reads. JSON.stringify of the step object
-        // is the most defensive choice: if any field changes,
-        // including verification, file lists, names, command arrays,
-        // the hash flips and the step re-renders.
+        // fsRenderStepItem reads: the step object itself plus the
+        // per-step slices of dictContext and the resolved template
+        // variables (so a global-setting save invalidates every
+        // card's hash).
         return JSON.stringify(step)
             + "\x01" + (dictContext.dictStepStatus[iIndex] || "")
-            + "\x01" + (iIndex === dictContext.iSelectedStepIndex ? "1" : "0")
-            + "\x01" + (dictContext.setExpandedSteps.has(iIndex) ? "1" : "0");
+            + "\x01" + _fsExpansionSliceForStep(iIndex, dictContext)
+            + "\x01" + _fsContextSliceForStep(iIndex, dictContext)
+            + "\x01" + JSON.stringify(dictVars || {});
     }
 
     function _fnRenderStepListImmediate() {
@@ -1075,18 +1113,18 @@ const PipeleyenApp = (function () {
         elList, listSteps, dictVars, dictContext, sBoundary
     ) {
         var sHtml = "";
-        var bPreviousInteractive = null;
+        var bPrior = null;
         _dictRenderedStepHashes = {};
         listSteps.forEach(function (step, iIndex) {
             var bInteractive = step.bInteractive === true;
-            if (bInteractive !== bPreviousInteractive) {
+            if (bInteractive !== bPrior) {
                 sHtml += fsRenderStepTypeBanner(bInteractive);
-                bPreviousInteractive = bInteractive;
+                bPrior = bInteractive;
             }
             sHtml += VaibifyStepRenderer.fsRenderStepItem(
                 step, iIndex, dictVars, dictContext);
-            _dictRenderedStepHashes[iIndex] =
-                _fsComputeStepRenderHash(step, iIndex, dictContext);
+            _dictRenderedStepHashes[iIndex] = _fsComputeStepRenderHash(
+                step, iIndex, dictContext, dictVars);
         });
         elList.innerHTML = sHtml;
         _sLastBoundarySignature = sBoundary;
@@ -1097,7 +1135,7 @@ const PipeleyenApp = (function () {
     ) {
         listSteps.forEach(function (step, iIndex) {
             var sHash = _fsComputeStepRenderHash(
-                step, iIndex, dictContext);
+                step, iIndex, dictContext, dictVars);
             if (_dictRenderedStepHashes[iIndex] === sHash) return;
             var sHtml = VaibifyStepRenderer.fsRenderStepItem(
                 step, iIndex, dictVars, dictContext);
@@ -1107,25 +1145,28 @@ const PipeleyenApp = (function () {
             var elTemp = document.createElement("div");
             elTemp.innerHTML = sHtml;
             var elNew = elTemp.firstElementChild;
-            if (elNew) {
-                elExisting.replaceWith(elNew);
-                _dictRenderedStepHashes[iIndex] = sHash;
-            }
+            if (!elNew) return;
+            elExisting.replaceWith(elNew);
+            _dictRenderedStepHashes[iIndex] = sHash;
         });
     }
 
     function fnRenderStepListPartial(listAffectedFiles) {
-        // Badge-side entry point (change 8 wiring) — maps the list of
-        // changed files to step indices via _dictStepIndexByFilePath,
-        // invalidates only those indices, then schedules a render
-        // which will use the incremental path.
+        // Maps changed files to step indices via the reverse map.
+        // When no file matches (badge keys are workspace-relative;
+        // raw step file values may not be), invalidate everything so
+        // the next render rebuilds rather than leaving stale badges.
         if (!listAffectedFiles || !listAffectedFiles.length) {
             return fnRenderStepList();
         }
+        var iMatched = 0;
         listAffectedFiles.forEach(function (sFile) {
             var iStep = _dictStepIndexByFilePath[sFile];
-            if (iStep !== undefined) _fnInvalidateRenderCache(iStep);
+            if (iStep === undefined) return;
+            _fnInvalidateRenderCache(iStep);
+            iMatched++;
         });
+        if (iMatched === 0) _dictRenderedStepHashes = {};
         fnRenderStepList();
     }
 
@@ -1439,11 +1480,13 @@ const PipeleyenApp = (function () {
     function _fnIndexStepFilesIntoReverseMap(iStep) {
         // Populate _dictStepIndexByFilePath so the badge-driven
         // partial render can map "this file's badge changed" to
-        // "this step's card needs re-rendering" in O(1).
+        // "this step's card needs re-rendering" in O(1). Must cover
+        // every file family that fsRenderStepItem renders a git
+        // badge for: data, plot, step scripts, and test standards.
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (!step) return;
         var listFileKeys = ["saDataFiles", "saPlotFiles",
-            "saOutputFiles", "saTestFiles"];
+            "saStepScripts", "saTestStandards"];
         listFileKeys.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sFile) {
                 if (sFile) _dictStepIndexByFilePath[sFile] = iStep;
