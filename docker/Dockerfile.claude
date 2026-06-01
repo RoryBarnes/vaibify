@@ -35,8 +35,32 @@ RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
         exit 1; \
     fi \
     && bash /tmp/nodesource_setup.sh \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -f /tmp/nodesource_setup.sh \
+    && rm -f /tmp/nodesource_setup.sh
+
+# Install Node.js itself. Kept in its own RUN so an apt failure here
+# carries its own diagnostic rather than masquerading as the
+# NodeSource-download failure above. The most common cause in
+# practice is the Docker VM running out of disk; surface a hint.
+RUN if ! apt-get install -y --no-install-recommends nodejs; then \
+        echo "" >&2; \
+        printf '%s\n' "vaibify build (claude overlay): apt-get install nodejs failed." >&2; \
+        printf '%s\n' "  - apt was unable to install the nodejs package from the" >&2; \
+        printf '%s\n' "    NodeSource repository that the previous step configured." >&2; \
+        printf '%s\n' "  - Free space inside the build VM right now:" >&2; \
+        (df -h /var/cache/apt /var/lib/dpkg 2>/dev/null \
+            | sed 's/^/      /' >&2) || true; \
+        printf '%s\n' "Likely causes, in order:" >&2; \
+        printf '%s\n' "  1. The Docker VM is out of disk. Reclaim space on the host:" >&2; \
+        printf '%s\n' "       docker builder prune -af" >&2; \
+        printf '%s\n' "       docker image prune -f" >&2; \
+        printf '%s\n' "     (frees build cache + dangling layers; tagged images," >&2; \
+        printf '%s\n' "      volumes, and running containers are untouched)." >&2; \
+        printf '%s\n' "  2. The NodeSource APT repo became unreachable between the" >&2; \
+        printf '%s\n' "     setup step above and this install step." >&2; \
+        printf '%s\n' "  3. apt-get is being rate-limited or blocked by a proxy." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI from the npm registry. npm's default of two

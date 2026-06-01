@@ -88,6 +88,26 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
             sPreviousTag, bNoCache)
         sPreviousTag = sNewTag
     _fnTagFinalImage(sProjectName, sPreviousTag)
+    _fnPruneDanglingImages()
+
+
+def _fnPruneDanglingImages():
+    """Remove dangling image layers orphaned by the rebuild.
+
+    Each ``docker build -t name:tag`` that replaces an existing tag
+    orphans the previous image's tagless layers; they accumulate and
+    eat disk in the Docker VM. ``image prune -f`` (no ``-a``) removes
+    only those dangling layers — tagged images, volumes, and running
+    containers are not touched. Best-effort: a failure here must not
+    fail the build, since the build itself already succeeded.
+    """
+    try:
+        subprocess.run(
+            ["docker", "image", "prune", "-f"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
 
 
 def flistDetermineOverlays(config):
