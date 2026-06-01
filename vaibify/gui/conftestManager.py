@@ -281,27 +281,63 @@ def fnEnsureConftestsCurrent(
     tKey = (sContainerId, sProjectRepoPath, S_CONFTEST_VERSION)
     if tKey in _SET_REFRESHED_KEYS:
         return
-    listConftestPaths = [
-        fsConftestPath(_fsAbsoluteStepDir(sDir, sProjectRepoPath))
-        for sDir in listStepDirs
-    ]
+    listConftestPaths = _flistConftestPathsForSteps(
+        listStepDirs, sProjectRepoPath,
+    )
     dictInstalled = fdictReadInstalledConftestVersions(
         connectionDocker, sContainerId, listConftestPaths,
     )
-    listStale = [
-        sPath for sPath in listConftestPaths
-        if dictInstalled.get(sPath) != S_CONFTEST_VERSION
-    ]
+    listStale = _flistStalePaths(listConftestPaths, dictInstalled)
     if not listStale:
         _SET_REFRESHED_KEYS.add(tKey)
         return
-    sContent = fsBuildConftestSource(sProjectRepoPath)
     bWritten = fnWriteConftestMarkersBatch(
-        connectionDocker, sContainerId, listStale, sContent,
+        connectionDocker, sContainerId, listStale,
+        fsBuildConftestSource(sProjectRepoPath),
     )
     _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
     if bWritten:
         _SET_REFRESHED_KEYS.add(tKey)
+
+
+def _flistConftestPathsForSteps(listStepDirs, sProjectRepoPath):
+    """Return the absolute conftest path for every step in input order.
+
+    Defense-in-depth: filters out any path that, after normalization,
+    does not live under ``sProjectRepoPath``. Workflow load-time
+    validation already rejects ``..``-escaping ``sDirectory`` values,
+    so a non-empty drop here means a refactor regressed that gate.
+    """
+    listResolved = [
+        fsConftestPath(_fsAbsoluteStepDir(sDir, sProjectRepoPath))
+        for sDir in listStepDirs
+    ]
+    if not sProjectRepoPath:
+        return listResolved
+    return _flistPathsWithinRoot(listResolved, sProjectRepoPath)
+
+
+def _flistPathsWithinRoot(listPaths, sRoot):
+    """Return paths whose normalized form is under sRoot. Log dropped paths."""
+    sNormRoot = posixpath.normpath(sRoot)
+    listKept = []
+    for sPath in listPaths:
+        sNorm = posixpath.normpath(sPath)
+        if sNorm == sNormRoot or sNorm.startswith(sNormRoot + "/"):
+            listKept.append(sPath)
+        else:
+            logging.warning(
+                "conftestManager: dropped path outside project repo: %s", sPath,
+            )
+    return listKept
+
+
+def _flistStalePaths(listConftestPaths, dictInstalled):
+    """Return paths whose installed version does not match the current stamp."""
+    return [
+        sPath for sPath in listConftestPaths
+        if dictInstalled.get(sPath) != S_CONFTEST_VERSION
+    ]
 
 
 def _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled):

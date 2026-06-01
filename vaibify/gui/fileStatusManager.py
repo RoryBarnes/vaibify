@@ -650,18 +650,23 @@ def _fbCheckStaleUserVerification(dictWorkflow, dictModTimes,
         bChecked, bStale = _ftEvaluateFreshness(
             iIndex, dictStep, dictModTimes, listPlotPaths,
         )
-        if not bChecked:
-            continue
-        dictVerification = dictStep["dictVerification"]
-        if bStale:
-            _fnResetUserAttestationIfStale(dictVerification)
-            dictStep["dictVerification"] = dictVerification
-            bChanged = True
-        elif dictVerification.get("listModifiedFiles"):
-            _fnClearPlotInvalidationFlags(dictVerification)
-            dictStep["dictVerification"] = dictVerification
+        if bChecked and _fbApplyStaleVerdict(dictStep, bStale):
             bChanged = True
     return bChanged
+
+
+def _fbApplyStaleVerdict(dictStep, bStale):
+    """Persist the stale/fresh verdict on a step. Returns True iff mutated."""
+    dictVerification = dictStep["dictVerification"]
+    if bStale:
+        _fnResetUserAttestationIfStale(dictVerification)
+        dictStep["dictVerification"] = dictVerification
+        return True
+    if dictVerification.get("listModifiedFiles"):
+        _fnClearPlotInvalidationFlags(dictVerification)
+        dictStep["dictVerification"] = dictVerification
+        return True
+    return False
 
 
 def _fnApplyDataInvalidation(
