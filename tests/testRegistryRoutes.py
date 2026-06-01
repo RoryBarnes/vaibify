@@ -402,6 +402,67 @@ def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
     assert response.status_code == 500
 
 
+def testBuildFailureSurfacesStderrTail(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Without the stderr tail in the response, the next disk-full
+    build looks identical to a network failure: the user is left
+    guessing. The route must surface ``sStderrTail`` from the raised
+    exception so the GUI can show the actual buildx output."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "tail-build")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+
+    def _fnRaiseWithTail(dictProject, bNoCache=False):
+        errorBuild = RuntimeError("Docker command failed (exit 1)")
+        errorBuild.sStderrTail = (
+            "E: You don't have enough free space in "
+            "/var/cache/apt/archives/.\n"
+        )
+        raise errorBuild
+
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        _fnRaiseWithTail,
+    )
+    response = fixtureClient.post(
+        "/api/containers/tail-build/build",
+    )
+    assert response.status_code == 500
+    dictDetail = response.json()["detail"]
+    assert dictDetail["sMessage"] == "Build failed"
+    assert "Docker command failed" in dictDetail["sError"]
+    assert "enough free space" in dictDetail["sStderrTail"]
+
+
+def testBuildFailureWithoutTailStillStructured(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """An exception without ``sStderrTail`` (legacy/path errors) must
+    still produce a structured detail so the GUI's dict-detail
+    handler does not break."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "notail-build")
+    fixtureClient.post(
+        "/api/registry",
+        json={"sDirectory": sProjectDir},
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
+            RuntimeError("config not found")
+        ),
+    )
+    response = fixtureClient.post(
+        "/api/containers/notail-build/build",
+    )
+    assert response.status_code == 500
+    dictDetail = response.json()["detail"]
+    assert dictDetail["sMessage"] == "Build failed"
+    assert dictDetail["sStderrTail"] == ""
+
+
 def testBuildRunsOffEventLoopThread(
     fixtureClient, tmp_path, monkeypatch,
 ):

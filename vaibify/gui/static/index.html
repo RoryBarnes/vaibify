@@ -161,6 +161,28 @@
     </div>
 </div>
 
+<!-- Build Failure Overlay -->
+<div class="modal-overlay" id="modalBuildFailure" style="display: none;">
+    <div class="modal">
+        <h2 style="color: var(--color-error, #d24a4a);">Build Failed</h2>
+        <p id="buildFailureMessage" style="font-size: 13px;
+           color: var(--text-secondary);">Build failed.</p>
+        <p style="font-size: 12px; color: var(--text-secondary);
+           margin-top: 8px;">Last lines of build output:</p>
+        <pre id="buildFailureTail" style="max-height: 320px;
+            overflow: auto; padding: 10px; font-size: 11px;
+            background: var(--bg-elevated, #1a1a1a);
+            color: var(--text-primary, #e0e0e0);
+            border: 1px solid var(--border-default, #333);
+            border-radius: 4px; white-space: pre-wrap;
+            word-break: break-word; margin-top: 4px;"></pre>
+        <div style="text-align: right; margin-top: 12px;">
+            <button id="buttonBuildFailureClose"
+                    class="button-primary">Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Container Initializing Overlay -->
 <div class="modal-overlay" id="modalInitializing" style="display: none;">
     <div class="modal modal-small">

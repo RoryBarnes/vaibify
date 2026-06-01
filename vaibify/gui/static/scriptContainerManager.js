@@ -401,13 +401,37 @@ var PipeleyenContainerManager = (function () {
             PipeleyenApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            _fnReportBuildFailure(error);
         } finally {
             elOverlay.style.display = "none";
             fnLoadContainers();
         }
+    }
+
+    function _fnReportBuildFailure(error) {
+        var sTail = (error.dictDetail && error.dictDetail.sStderrTail)
+            || "";
+        if (!sTail) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+            return;
+        }
+        _fnShowBuildFailureModal(error.message, sTail);
+    }
+
+    function _fnShowBuildFailureModal(sMessage, sTail) {
+        var elModal = document.getElementById("modalBuildFailure");
+        var elMessage = document.getElementById("buildFailureMessage");
+        var elTail = document.getElementById("buildFailureTail");
+        var elClose = document.getElementById("buttonBuildFailureClose");
+        elMessage.textContent =
+            VaibifyUtilities.fsSanitizeErrorForUser(sMessage);
+        elTail.textContent = sTail;
+        elClose.onclick = function () {
+            elModal.style.display = "none";
+        };
+        elModal.style.display = "flex";
     }
 
     function fnSetTilePending(sName) {

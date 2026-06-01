@@ -49,15 +49,25 @@ var VaibifyApi = (function () {
 
     async function _fnThrowForStatus(response, sFallback) {
         var dictError = await fdictParseJsonSafely(response);
-        var sMessage =
-            dictError.detail ||
-            (sFallback + " (" + response.status + ")");
-        if (response.status === 401) {
-            throw fnTagError(
-                "unauthorized", response.status, sMessage
-            );
-        }
-        throw fnTagError("http", response.status, sMessage);
+        var dictDetail = _fdictExtractDetail(dictError);
+        var sMessage = dictDetail.sMessage
+            || (sFallback + " (" + response.status + ")");
+        var sKind = response.status === 401 ? "unauthorized" : "http";
+        var error = fnTagError(sKind, response.status, sMessage);
+        error.dictDetail = dictDetail;
+        throw error;
+    }
+
+    function _fdictExtractDetail(dictError) {
+        // FastAPI's `detail` is either a plain string or a structured
+        // object. Normalize both shapes so callers always read
+        // `sMessage` and can opt-in to richer fields like
+        // `sStderrTail` without breaking older string-detail routes.
+        var detail = dictError && dictError.detail;
+        if (detail === undefined || detail === null) return {};
+        if (typeof detail === "string") return {sMessage: detail};
+        if (typeof detail === "object") return detail;
+        return {sMessage: String(detail)};
     }
 
     async function fdictGet(sUrl) {

@@ -233,8 +233,15 @@ def _fnRegisterBuildContainer(app, dictCtx):
                 _fnExecuteBuild, dictProject, bNoCache,
             )
         except Exception as error:
-            logger.error("Build failed for %s: %s", sName, error)
-            raise HTTPException(500, "Build failed")
+            sTail = getattr(error, "sStderrTail", "") or ""
+            logger.error(
+                "Build failed for %s: %s%s",
+                sName, error,
+                "\nstderr tail:\n" + sTail if sTail else "",
+            )
+            raise HTTPException(
+                500, detail=_fdictBuildFailureDetail(error, sTail),
+            )
         return {"bSuccess": True, "sMessage": "Build complete"}
 
 
@@ -249,6 +256,20 @@ def _fnExecuteBuild(dictProject, bNoCache=False):
     )
     sDockerDir = fsDockerDir()
     fnBuildFromConfig(configProject, sDockerDir, bNoCache=bNoCache)
+
+
+def _fdictBuildFailureDetail(error, sStderrTail):
+    """Format the FastAPI detail payload for a build failure.
+
+    The tail has already been credential-redacted by imageBuilder's
+    ``fsRedactBuildOutputCredentials`` before it lands on the
+    exception, so it is safe to surface to the GUI.
+    """
+    return {
+        "sMessage": "Build failed",
+        "sError": str(error),
+        "sStderrTail": sStderrTail,
+    }
 
 
 def _fnRegisterStartContainer(app, dictCtx):
