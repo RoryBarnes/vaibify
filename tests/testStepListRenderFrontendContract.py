@@ -211,3 +211,26 @@ def test_fnRenderStepListPartial_maps_files_via_reverse_index():
     sBlock = sSource[iStart:iEnd]
     assert "_dictStepIndexByFilePath" in sBlock
     assert "_fnInvalidateRenderCache" in sBlock
+
+
+# -----------------------------------------------------------------------
+# Change 9: mtime-as-existence-cache in the file-poll loop
+# -----------------------------------------------------------------------
+
+
+def test_poll_skips_steps_with_known_output_mtime():
+    """``fnPollAllStepFiles`` must short-circuit on any step whose
+    ``dictOutputMtimes`` entry is already populated — that already
+    proves the step's output files exist on disk, so re-issuing
+    PipeleyenFileOps.fnCheckStepDataFiles would be ~1000 redundant
+    file probes per poll at N=100."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iStart = sSource.find("function fnPollAllStepFiles(")
+    assert iStart != -1
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    assert "dictOutputMtimes" in sBlock, (
+        "fnPollAllStepFiles must consult dictOutputMtimes to decide "
+        "whether the per-step existence probe is necessary."
+    )
+    assert "dictMtimes[String(iStep)]" in sBlock

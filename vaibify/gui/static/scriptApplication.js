@@ -1167,8 +1167,15 @@ const PipeleyenApp = (function () {
     function fnPollAllStepFiles() {
         if (!_dictSessionState.sContainerId ||
             !_dictWorkflowState.dictWorkflow) return;
+        // Skip the per-step existence check for any step whose output
+        // mtime is already populated by the polling response — its
+        // files demonstrably exist on disk, so re-issuing the check
+        // would waste ~1000 file probes per poll on a 100-step
+        // workflow. New / never-run steps still get the check.
+        var dictMtimes = _dictWorkflowState.dictOutputMtimes || {};
         _dictWorkflowState.dictWorkflow.listSteps.forEach(
             function (step, iStep) {
+                if (dictMtimes[String(iStep)]) return;
                 PipeleyenFileOps.fnCheckStepDataFiles(
                     step, iStep, _dictWorkflowState);
             });
