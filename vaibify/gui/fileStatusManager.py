@@ -669,6 +669,9 @@ def _fbApplyStaleVerdict(dictStep, bStale):
     return False
 
 
+_SET_PASSED_TEST_STATES = frozenset({"passed", "passed-from-marker"})
+
+
 def _fnApplyDataInvalidation(
     dictVerification, listChangedPaths, listDataFiles,
 ):
@@ -676,9 +679,11 @@ def _fnApplyDataInvalidation(
 
     Mutations-only on ``dictVerification``; outer caller persists.
     Steps whose category is ``unnecessary`` (no commands) stay sticky
-    so the dashboard does not show false invalidation.
+    so the dashboard does not show false invalidation. Marker-bootstrapped
+    steps (``passed-from-marker``) demote on data change just like fresh
+    ``passed`` — the guard short-circuits only the no-op states.
     """
-    if dictVerification.get("sUnitTest") != "passed":
+    if dictVerification.get("sUnitTest") not in _SET_PASSED_TEST_STATES:
         return
     if not _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
         return
@@ -753,7 +758,7 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
 def _fnInvalidateDownstreamStep(dictStep):
     """Mark a downstream step as affected by upstream changes."""
     dictVerification = dictStep.get("dictVerification", {})
-    if dictVerification.get("sUnitTest") == "passed":
+    if dictVerification.get("sUnitTest") in _SET_PASSED_TEST_STATES:
         dictVerification["sUnitTest"] = "untested"
         for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
             if dictVerification.get(sVerifKey) == "unnecessary":
