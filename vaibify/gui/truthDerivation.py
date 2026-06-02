@@ -54,26 +54,34 @@ T_TEST_CATEGORY_AXIS_KEYS = (
 def fdictComputeTestAxes(
     dictMarker, dictOnDiskHashes, listAvailableCategories,
 ):
-    """Return the four-axis test verification dict for one step.
-
-    Pure (declared baseline) + (observation) + (predicate) -> status.
-    """
+    """Return the four-axis test verification dict from marker + observation."""
     if not dictMarker:
         return _fdictEmptyTestAxes()
     dictExpected = dictMarker.get("dictOutputHashes", {}) or {}
     sHashStatus = _fsStatusFromHashes(dictExpected, dictOnDiskHashes)
     listChanged = _flistChangedOutputs(dictExpected, dictOnDiskHashes)
     iExitStatus = dictMarker.get("iExitStatus", 0)
-    dictCategoryCounts = dictMarker.get("dictCategories", {}) or {}
+    dictCounts = dictMarker.get("dictCategories", {}) or {}
     dictResult = _fdictBaseAxisFields(dictMarker, listChanged)
+    _fnFillAllAxes(
+        dictResult, sHashStatus, iExitStatus, dictCounts,
+        listAvailableCategories,
+    )
+    return dictResult
+
+
+def _fnFillAllAxes(
+    dictResult, sHashStatus, iExitStatus, dictCounts,
+    listAvailableCategories,
+):
+    """Fill per-category axes plus the aggregate sUnitTest axis."""
     _fnFillCategoryAxes(
-        dictResult, sHashStatus, iExitStatus, dictCategoryCounts,
+        dictResult, sHashStatus, iExitStatus, dictCounts,
         listAvailableCategories,
     )
     _fnFillUnitTestAxis(
-        dictResult, sHashStatus, iExitStatus, dictCategoryCounts,
+        dictResult, sHashStatus, iExitStatus, dictCounts,
     )
-    return dictResult
 
 
 def fsAggregateUnitTestFromAxes(listAxisValues):
