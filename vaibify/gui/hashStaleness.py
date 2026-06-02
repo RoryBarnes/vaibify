@@ -45,21 +45,28 @@ def fbMarkerHasHashes(dictMarker):
     return isinstance(dictHashes, dict) and len(dictHashes) > 0
 
 
-def fsetStaleOutputsForStep(dictMarker, sWorkspaceRoot, dictCache):
+def fsetStaleOutputsForStep(
+    dictMarker, sWorkspaceRoot, dictCache, dictMtimeHints=None,
+):
     """Return the set of repo-relative paths whose content has drifted.
 
     Reads ``dictMarker['dictOutputHashes']`` as the baseline and
     compares each file's current blob SHA (via the mtime cache) to
     its baseline digest. Missing files are treated as stale; markers
     lacking hashes yield an empty set (nothing to compare).
+    ``dictMtimeHints`` is an optional ``{sRepoRelPath: fMtime}`` map
+    so a caller that already stat'd the files can spare the redundant
+    ``os.stat`` per cache lookup; ``None`` falls back to live stats.
     """
     setStale = set()
     if not fbMarkerHasHashes(dictMarker):
         return setStale
     dictBaseline = dictMarker["dictOutputHashes"]
+    dictHints = dictMtimeHints or {}
     for sRelPath, sBaselineSha in dictBaseline.items():
         bMatches = mtimeCache.fbFileMatchesDigest(
             sWorkspaceRoot, sRelPath, sBaselineSha, dictCache,
+            fMtimeHint=dictHints.get(sRelPath),
         )
         if not bMatches:
             setStale.add(sRelPath)
