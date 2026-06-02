@@ -78,17 +78,20 @@ def _fsHostPathFor(sWorkspaceRoot, sRepoRelPath):
     return os.path.join(sWorkspaceRoot, *sRepoRelPath.split("/"))
 
 
-def fsBlobShaForFile(sWorkspaceRoot, sRepoRelPath, dictCache):
+def fsBlobShaForFile(
+    sWorkspaceRoot, sRepoRelPath, dictCache, fMtimeHint=None,
+):
     """Return current git blob SHA for a file, using the cache when valid.
 
     Updates ``dictCache`` in place. Returns an empty string if the
     file does not exist; the caller can detect that and treat it as a
-    cache miss or a deleted file.
+    cache miss or a deleted file. ``fMtimeHint`` lets a caller that
+    already stat'd the file pass the mtime in to skip a redundant
+    syscall; ``None`` falls back to ``os.path.getmtime``.
     """
     sHostPath = _fsHostPathFor(sWorkspaceRoot, sRepoRelPath)
-    try:
-        fMtime = os.path.getmtime(sHostPath)
-    except OSError:
+    fMtime = _ffResolveMtime(sHostPath, fMtimeHint)
+    if fMtime is None:
         dictCache.pop(sRepoRelPath, None)
         return ""
     dictEntry = dictCache.get(sRepoRelPath)
@@ -109,13 +112,29 @@ def fsBlobShaForFile(sWorkspaceRoot, sRepoRelPath, dictCache):
     return sSha
 
 
+def _ffResolveMtime(sHostPath, fMtimeHint):
+    """Return a float mtime via ``fMtimeHint`` when provided, else stat."""
+    if fMtimeHint is not None:
+        try:
+            return float(fMtimeHint)
+        except (TypeError, ValueError):
+            pass
+    try:
+        return os.path.getmtime(sHostPath)
+    except OSError:
+        return None
+
+
 def fbFileMatchesDigest(
     sWorkspaceRoot, sRepoRelPath, sBaselineSha, dictCache,
+    fMtimeHint=None,
 ):
     """Return True if the file's current blob SHA matches the baseline."""
     if not sBaselineSha:
         return False
-    sCurrent = fsBlobShaForFile(sWorkspaceRoot, sRepoRelPath, dictCache)
+    sCurrent = fsBlobShaForFile(
+        sWorkspaceRoot, sRepoRelPath, dictCache, fMtimeHint,
+    )
     if not sCurrent:
         return False
     return sCurrent == sBaselineSha

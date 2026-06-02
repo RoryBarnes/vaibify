@@ -35,6 +35,8 @@ __all__ = [
     "testNoFlatTestMarkerWritesInSource",
     "testEmptyCommandCategoryIsUnnecessaryAfterLoad",
     "testAtLeastLevel1IffAllFourCriteria",
+    "testHashCheckRunsRegardlessOfMtime",
+    "testMarkerCoversAllDeclaredOutputs",
 ]
 
 
@@ -1577,3 +1579,131 @@ def testAtLeastLevel1IffAllFourCriteria():
             f"flags={dictFlags} expected={bExpected} actual={bActual}"
         )
 
+
+def _fnSeedHashStaleStep(tmp_path, sUnitTestState):
+    """Set up a single-step workflow with matching mtime + drifted content."""
+    import os
+    from vaibify.gui import mtimeCache
+    sStepDir = tmp_path / "step1"
+    sStepDir.mkdir()
+    sBaselinePath = tmp_path / "baseline.json"
+    sBaselinePath.write_text("baseline-bytes")
+    sBaselineSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "baseline.json", {},
+    )
+    sLivePath = sStepDir / "out.json"
+    sLivePath.write_text("drifted-bytes")
+    fSharedMtime = 1_700_000_000.0
+    os.utime(str(sLivePath), (fSharedMtime, fSharedMtime))
+    os.utime(str(sBaselinePath), (fSharedMtime, fSharedMtime))
+    dictWorkflow = {
+        "sPath": "/workspace/repo/.vaibify/workflows/main.json",
+        "sProjectRepoPath": str(tmp_path),
+        "listSteps": [{
+            "sLabel": "A01",
+            "sDirectory": "step1",
+            "saDataFiles": ["out.json"],
+            "dictVerification": {
+                "sUnitTest": sUnitTestState,
+                "sIntegrity": sUnitTestState,
+                "sQualitative": sUnitTestState,
+                "sQuantitative": sUnitTestState,
+            },
+        }],
+    }
+    dictMarker = {
+        "sDirectory": "step1",
+        "sLabel": "A01",
+        "iExitStatus": 0,
+        "dictOutputHashes": {"step1/out.json": sBaselineSha},
+    }
+    return dictWorkflow, dictMarker, str(sLivePath), fSharedMtime
+
+
+def testHashCheckRunsRegardlessOfMtime(tmp_path):
+    """Hash drift must invalidate even when output mtime matches baseline.
+
+    Constructs a step whose ``out.json`` retains a baseline mtime (the
+    failure mode created by ``shutil.copy2``) but whose content diverges
+    from the marker's recorded blob SHA. After one poll cycle, all four
+    test axes must drop to ``untested``.
+    """
+    from vaibify.gui.fileStatusManager import _flistDetectAndInvalidate
+
+    class _FakeDocker:
+        def ftResultExecuteCommand(self, sId, sCmd):
+            return (1, "")
+
+    def _fnSave(sId, dictWf):
+        return
+
+    dictWorkflow, dictMarker, sLivePath, fMtime = _fnSeedHashStaleStep(
+        tmp_path, "passed-from-marker",
+    )
+    sMtime = str(int(fMtime))
+    dictNewModTimes = {sLivePath: sMtime}
+    dictCtx = {
+        "docker": _FakeDocker(),
+        "save": _fnSave,
+        "dictPreviousModTimes": {"cid": {sLivePath: sMtime}},
+    }
+    _flistDetectAndInvalidate(
+        dictCtx, "cid", dictWorkflow, dictNewModTimes,
+        dictVars={"sRepoRoot": str(tmp_path)},
+        dictMarkersByStep={0: dictMarker},
+        dictCache={},
+    )
+    dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
+    for sKey in (
+        "sUnitTest", "sIntegrity", "sQualitative", "sQuantitative",
+    ):
+        assert dictVerify[sKey] == "untested", (
+            f"axis {sKey} should have been invalidated; "
+            f"got {dictVerify[sKey]}"
+        )
+
+
+def _fnSeedPlotCoverageFiles(tmp_path):
+    """Lay down step1/Plot/fig.pdf and step1/data/out.csv under ``tmp_path``."""
+    sStepDir = tmp_path / "step1"
+    (sStepDir / "Plot").mkdir(parents=True)
+    (sStepDir / "data").mkdir()
+    (sStepDir / "Plot" / "fig.pdf").write_text("fig")
+    (sStepDir / "data" / "out.csv").write_text("csv")
+    return sStepDir
+
+
+def _fnWritePlotCoverageWorkflow(tmp_path):
+    """Write a workflow.json mixing literal + templated outputs under ``tmp_path``."""
+    import json as jsonModule
+    sWorkflowsDir = tmp_path / ".vaibify" / "workflows"
+    sWorkflowsDir.mkdir(parents=True)
+    (sWorkflowsDir / "main.json").write_text(jsonModule.dumps({
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saDataFiles": ["data/out.csv", "data/{iteration}.csv"],
+            "saPlotFiles": ["Plot/fig.pdf"],
+        }],
+    }))
+
+
+def _fdictComputePlotCoverageHashes(tmp_path, sStepDir):
+    """Execute the conftest plugin's hasher against ``sStepDir`` and return its dict."""
+    from vaibify.gui import conftestManager
+    sSource = conftestManager.fsBuildConftestSource(str(tmp_path))
+    dictNs = {}
+    exec(compile(sSource, "<template>", "exec"), dictNs)
+    return dictNs["_fdictComputeOutputHashes"](str(sStepDir))
+
+
+def testMarkerCoversAllDeclaredOutputs(tmp_path):
+    """Every literal saDataFiles / saPlotFiles entry hashes into the marker."""
+    sStepDir = _fnSeedPlotCoverageFiles(tmp_path)
+    _fnWritePlotCoverageWorkflow(tmp_path)
+    dictHashes = _fdictComputePlotCoverageHashes(tmp_path, sStepDir)
+    assert "step1/data/out.csv" in dictHashes
+    assert "step1/Plot/fig.pdf" in dictHashes
+    for sPath in dictHashes:
+        assert "{" not in sPath, (
+            f"templated path {sPath} leaked into marker hashes"
+        )
