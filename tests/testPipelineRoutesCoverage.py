@@ -31,42 +31,47 @@ from vaibify.gui.routes.pipelineRoutes import (
 # ── Line 73: _fnMarkPipelineStopped when dictState is running ─────
 
 class TestFnMarkPipelineStopped:
-    def test_state_is_running_writes_completed(self):
-        """Cover line 73: pipelineState.fnUpdateState called."""
+    @pytest.mark.asyncio
+    async def test_state_is_running_writes_completed(self):
+        """A live pipeline gets flipped to bRunning=False on kill."""
         mockDocker = MagicMock()
-        dictState = {"bRunning": True}
+        dictCtx = {"docker": mockDocker}
         with patch(
-            "vaibify.gui.pipelineState.fdictReadState",
-            return_value=dictState,
+            "vaibify.gui.pipelineState.fdictReadReconciledState",
+            new=AsyncMock(return_value={"bRunning": True}),
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate, patch(
             "vaibify.gui.pipelineState.fdictBuildCompletedState",
             return_value={"bRunning": False},
         ):
-            _fnMarkPipelineStopped(mockDocker, "cid1")
+            await _fnMarkPipelineStopped(dictCtx, "cid1")
             mockUpdate.assert_called_once()
 
-    def test_state_none_returns_early(self):
+    @pytest.mark.asyncio
+    async def test_state_none_returns_early(self):
         mockDocker = MagicMock()
+        dictCtx = {"docker": mockDocker}
         with patch(
-            "vaibify.gui.pipelineState.fdictReadState",
-            return_value=None,
+            "vaibify.gui.pipelineState.fdictReadReconciledState",
+            new=AsyncMock(return_value=None),
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
-            _fnMarkPipelineStopped(mockDocker, "cid1")
+            await _fnMarkPipelineStopped(dictCtx, "cid1")
             mockUpdate.assert_not_called()
 
-    def test_state_not_running_returns_early(self):
+    @pytest.mark.asyncio
+    async def test_state_not_running_returns_early(self):
         mockDocker = MagicMock()
+        dictCtx = {"docker": mockDocker}
         with patch(
-            "vaibify.gui.pipelineState.fdictReadState",
-            return_value={"bRunning": False},
+            "vaibify.gui.pipelineState.fdictReadReconciledState",
+            new=AsyncMock(return_value={"bRunning": False}),
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
-            _fnMarkPipelineStopped(mockDocker, "cid1")
+            await _fnMarkPipelineStopped(dictCtx, "cid1")
             mockUpdate.assert_not_called()
 
 
@@ -186,7 +191,8 @@ class TestPipelineKillRoute:
             "vaibify.gui.routes.pipelineRoutes.fdictRequireWorkflow",
             return_value=dictWorkflow,
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fnMarkPipelineStopped"
+            "vaibify.gui.routes.pipelineRoutes._fnMarkPipelineStopped",
+            new=AsyncMock(),
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterPipelineKill,
@@ -1075,9 +1081,11 @@ class TestFdictComputeFileStatus:
 
 from vaibify.gui.routes.pipelineRoutes import (
     _fbApplyRandomnessLint,
-    _fdictReconcileLivenessIfNeeded,
-    _fsBuildHeartbeatStaleReason,
     _ffParseMtime,
+)
+from vaibify.gui.pipelineState import (
+    fdictReadReconciledState,
+    fsBuildHeartbeatStaleReason,
 )
 
 
@@ -1143,24 +1151,34 @@ class TestFbApplyRandomnessLint:
         assert bChanged is False
 
 
-class TestFdictReconcileLivenessIfNeeded:
+class TestFdictReadReconciledStateShortCircuit:
     def test_not_running_returns_state_unchanged(self):
-        """Line 194: bRunning False short-circuits."""
+        """A non-running state is returned through the reader untouched.
+
+        The reconciler is the canonical liveness arbiter (after the
+        pipeline-routes consolidation moved the body into
+        ``pipelineState``). A state file already showing
+        ``bRunning: False`` must not be rewritten — that would burn an
+        atomic-write cycle on every poll for completed pipelines.
+        """
         import asyncio
-        dictState = {"bRunning": False}
-        dictResult = asyncio.run(
-            _fdictReconcileLivenessIfNeeded(
-                MagicMock(), "cid", dictState,
-            ),
+        import json
+        connection = MagicMock()
+        connection.ftResultExecuteCommand.return_value = (
+            0, json.dumps({"bRunning": False}),
         )
-        assert dictResult is dictState
+        dictResult = asyncio.run(
+            fdictReadReconciledState({"docker": connection}, "cid"),
+        )
+        assert dictResult == {"bRunning": False}
+        connection.fnWriteFile.assert_not_called()
 
 
 class TestFsBuildHeartbeatStaleReason:
     def test_unparseable_timestamp_returns_safe_string(self):
-        """Line 222-223: bad isoformat falls back to a generic reason."""
+        """Bad isoformat falls back to a generic reason."""
         dictState = {"sLastHeartbeat": "not-a-timestamp"}
-        sReason = _fsBuildHeartbeatStaleReason(dictState)
+        sReason = fsBuildHeartbeatStaleReason(dictState)
         assert "unparseable" in sReason
 
 
