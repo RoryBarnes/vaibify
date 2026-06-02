@@ -132,6 +132,9 @@ def _flistBuildCleanCommands(dictWorkflow):
         dictStep["dictVerification"] = {
             "sUnitTest": "untested",
             "sUser": "untested",
+            "sIntegrity": "untested",
+            "sQualitative": "untested",
+            "sQuantitative": "untested",
         }
     return listCleanCommands
 
@@ -988,21 +991,19 @@ def _fnApplyMarkerCategory(
 ):
     """Apply a single category result from a marker; return True if changed.
 
-    "unnecessary" is sticky — a marker arriving for a category that
-    the workflow declares as empty-commands is anomalous (commands
-    were removed but the test runner still produced a result). We log
-    a warning so the discrepancy is observable and leave the verified
-    state intact rather than silently re-locking the all-green gate.
+    The truth-claim value is resolved by the canonical
+    ``truthDerivation.fsResolveCategoryAxisFromCounts`` so the rule
+    "what counts as passed/failed?" lives in one place; this site
+    handles the sticky-``"unnecessary"`` policy that a workflow with
+    no commands must never get silently re-locked by a stray marker.
     """
+    from .. import truthDerivation
     if sCategory not in dictCategories:
         return False
-    dictCat = dictCategories[sCategory]
-    sNewValue = None
-    if dictCat.get("iFailed", 0) > 0:
-        sNewValue = "failed"
-    elif dictCat.get("iPassed", 0) > 0:
-        sNewValue = "passed"
-    if sNewValue is None or dictVerify.get(sVerifyKey) == sNewValue:
+    sNewValue = truthDerivation.fsResolveCategoryAxisFromCounts(
+        dictCategories[sCategory],
+    )
+    if not sNewValue or dictVerify.get(sVerifyKey) == sNewValue:
         return False
     if dictVerify.get(sVerifyKey) == "unnecessary":
         logger.warning(
