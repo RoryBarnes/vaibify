@@ -1671,7 +1671,6 @@ def testMarkerCoversAllDeclaredOutputs(tmp_path):
     resolved files — but every concrete path on disk must appear.
     """
     import json as jsonModule
-    import os
     from vaibify.gui import conftestManager
     sStepDir = tmp_path / "step1"
     (sStepDir / "Plot").mkdir(parents=True)
