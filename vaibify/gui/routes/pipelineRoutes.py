@@ -419,17 +419,6 @@ async def _fdictFetchOutputStatus(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
         bPipelineRunning=bPipelineRunning,
     )
-    return _fdictAssemblePollResponse(
-        dictWorkflow, dictModTimes, dictVars, dictReload,
-        sWorkflowPath, listInvalidated,
-    )
-
-
-def _fdictAssemblePollResponse(
-    dictWorkflow, dictModTimes, dictVars, dictReload,
-    sWorkflowPath, listInvalidated,
-):
-    """Combine mtime normalization and the rest of the poll response."""
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
