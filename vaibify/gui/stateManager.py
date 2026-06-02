@@ -518,77 +518,18 @@ def _fdictHashOnDiskOutputs(
 
 
 def _fdictVerificationFromMarker(dictMarker, dictOnDiskHashes):
-    """Return a synthesized dictVerification for one step."""
-    dictExpected = dictMarker.get("dictOutputHashes", {}) or {}
-    sHashStatus = _fsStatusFromHashes(dictExpected, dictOnDiskHashes)
-    listChanged = _flistChangedOutputs(dictExpected, dictOnDiskHashes)
-    iExitStatus = dictMarker.get("iExitStatus", 0)
-    dictVerification = {
-        "sUser": "",
-        "sLastTestRun": dictMarker.get("sRunAtUtc", ""),
-        "listModifiedFiles": listChanged,
-    }
-    dictCategories = dictMarker.get("dictCategories", {}) or {}
-    for sCategory, dictCounts in dictCategories.items():
-        sKey = "s" + sCategory[:1].upper() + sCategory[1:]
-        dictVerification[sKey] = _fsCategoryStatus(
-            sHashStatus, iExitStatus, dictCounts or {},
-        )
-    if "sUnitTest" not in dictVerification:
-        dictVerification["sUnitTest"] = _fsCategoryStatus(
-            sHashStatus, iExitStatus, {},
-        )
-    return dictVerification
+    """Return a synthesized dictVerification for one step.
 
-
-def _fsCategoryStatus(sHashStatus, iExitStatus, dictCounts):
-    """Combine hash status, marker exit code, and per-category counts.
-
-    Hash mismatches (``outputs-missing`` / ``outputs-changed``) win
-    because they signal that the marker no longer describes the on-disk
-    state. Otherwise a non-zero ``iExitStatus`` or any ``iFailed`` in the
-    category demotes the badge to ``failed`` rather than letting a
-    failed run masquerade as ``passed-from-marker``.
+    Thin delegate to the canonical truth-derivation module. Lives
+    here as a back-compat seam: this is the historical name the
+    bootstrap path uses. New callers should reach for
+    ``truthDerivation.fdictComputeTestAxes`` directly.
     """
-    if sHashStatus in ("outputs-missing", "outputs-changed"):
-        return sHashStatus
-    if sHashStatus == "untested":
-        return "untested"
-    if iExitStatus != 0:
-        return "failed"
-    if int(dictCounts.get("iFailed", 0) or 0) > 0:
-        return "failed"
-    return "passed-from-marker"
-
-
-def _fsStatusFromHashes(dictExpected, dictOnDisk):
-    """Classify a step as passed-from-marker / outputs-changed / outputs-missing."""
-    if not dictExpected:
-        return "untested"
-    bAnyMissing = False
-    bAnyChanged = False
-    for sPath, sExpectedSha in dictExpected.items():
-        sActual = dictOnDisk.get(sPath, "")
-        if not sActual:
-            bAnyMissing = True
-            continue
-        if sActual != sExpectedSha:
-            bAnyChanged = True
-    if bAnyMissing:
-        return "outputs-missing"
-    if bAnyChanged:
-        return "outputs-changed"
-    return "passed-from-marker"
-
-
-def _flistChangedOutputs(dictExpected, dictOnDisk):
-    """Return repo-relative paths whose on-disk hash differs from the marker."""
-    listResult = []
-    for sPath, sExpectedSha in dictExpected.items():
-        sActual = dictOnDisk.get(sPath, "")
-        if sActual and sActual != sExpectedSha:
-            listResult.append(sPath)
-    return sorted(listResult)
+    from . import truthDerivation
+    listCategories = [s for s, _ in truthDerivation.T_TEST_CATEGORY_AXIS_KEYS]
+    return truthDerivation.fdictComputeTestAxes(
+        dictMarker, dictOnDiskHashes, listCategories,
+    )
 
 
 def _fsCurrentUtcIso():
