@@ -33,6 +33,7 @@ __all__ = [
     "testManifestWriterKnowsEverySaPathListInGuiSource",
     "testConftestTemplateHasVersionStamp",
     "testNoFlatTestMarkerWritesInSource",
+    "testNoDirectTruthClaimWrites",
     "testEmptyCommandCategoryIsUnnecessaryAfterLoad",
     "testAtLeastLevel1IffAllFourCriteria",
     "testHashCheckRunsRegardlessOfMtime",
@@ -187,19 +188,29 @@ def ftParseFile(sPath):
     return sSource, ast.parse(sSource, filename=str(sPath))
 
 
+_T_LEAF_MODULE_NAMES = ("pipelineUtils.py", "truthDerivation.py")
+
+
 def testLeafModuleHasNoIntraPackageImports():
-    """pipelineUtils.py must not import from the vaibify package."""
-    sPath = GUI_DIR / "pipelineUtils.py"
-    _, treeAst = ftParseFile(sPath)
-    listImports = flistExtractImports(treeAst)
-    listViolations = [
-        (sName, iLine) for sName, iLine in listImports
-        if sName.startswith("vaibify") or sName.startswith(".")
-    ]
-    assert listViolations == [], (
-        f"pipelineUtils.py must be a leaf module but imports: "
-        f"{listViolations}"
-    )
+    """Designated leaf modules must not import from the vaibify package.
+
+    ``pipelineUtils.py`` and ``truthDerivation.py`` are deliberate
+    leaf modules — they break circular dependency cycles and ensure
+    the canonical truth-derivation home stays composable from
+    anywhere in the package graph.
+    """
+    for sLeafName in _T_LEAF_MODULE_NAMES:
+        sPath = GUI_DIR / sLeafName
+        _, treeAst = ftParseFile(sPath)
+        listImports = flistExtractImports(treeAst)
+        listViolations = [
+            (sName, iLine) for sName, iLine in listImports
+            if sName.startswith("vaibify") or sName.startswith(".")
+        ]
+        assert listViolations == [], (
+            f"{sLeafName} must be a leaf module but imports: "
+            f"{listViolations}"
+        )
 
 
 def testStateManagerHasNoTopLevelIntraPackageImports():
@@ -1280,13 +1291,18 @@ def testPipelineStateCarriesLivenessFields():
         "pipelineRunner must spawn a heartbeat loop; without it the "
         "poll endpoint cannot detect a vanished runner."
     )
+    assert "fbHeartbeatIsStale" in sPipelineStateSource, (
+        "pipelineState.fdictReadReconciledState must call "
+        "fbHeartbeatIsStale to reconcile a vanished runner; without "
+        "this branch the always-on watchdog cannot flip bRunning."
+    )
     sPipelineRoutesSource = fsReadSource(
         ROUTES_DIR / "pipelineRoutes.py",
     )
-    assert "fbHeartbeatIsStale" in sPipelineRoutesSource, (
-        "pipelineRoutes.fnGetPipelineState must call "
-        "pipelineState.fbHeartbeatIsStale to reconcile a vanished "
-        "runner before returning state to the frontend."
+    assert "fdictReadReconciledState" in sPipelineRoutesSource, (
+        "pipelineRoutes.fnGetPipelineState must delegate to "
+        "pipelineState.fdictReadReconciledState so the /state endpoint "
+        "and every other state reader share one reconciliation path."
     )
 
 
@@ -1455,6 +1471,125 @@ def testNoFlatTestMarkerWritesInSource():
         + "\n".join(
             f"  {sFile}:{iLine}: {sText}"
             for sFile, iLine, sText in listViolations
+        )
+    )
+
+
+# Truth-claim axis keys whose literal assignments must route through
+# ``truthDerivation``. Future L2/L3 truths extend this set with one line
+# so a new axis becomes invariant-protected the moment its key is added.
+SET_TRUTH_CLAIM_AXIS_KEYS = frozenset({
+    "sUnitTest",
+    "sIntegrity",
+    "sQualitative",
+    "sQuantitative",
+})
+
+# String literals that constitute a truth claim. ``"untested"`` and
+# ``"unnecessary"`` are state-machine values, not truth claims, and are
+# intentionally absent.
+SET_TRUTH_CLAIM_LITERALS = frozenset({
+    "passed",
+    "passed-from-marker",
+    "failed",
+})
+
+# Files exempt from the invariant. Only the canonical writer itself is
+# allowed to assign these literals to a truth-claim axis.
+SET_TRUTH_DERIVATION_EXEMPT_FILES = frozenset({
+    "truthDerivation.py",
+})
+
+
+def _flistFindTruthClaimViolations(pathFile, sSource):
+    """Return ``[(iLineNo, sKey, sLiteral), ...]`` for one source file."""
+    treeAst = ast.parse(sSource, filename=str(pathFile))
+    listViolations = []
+    for node in ast.walk(treeAst):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not _fbAssignsLiteral(node, SET_TRUTH_CLAIM_LITERALS):
+            continue
+        for sKey in _flistAssignedAxisKeys(node):
+            listViolations.append(
+                (node.lineno, sKey, _fsExtractLiteralValue(node.value)),
+            )
+    return listViolations
+
+
+def _fbAssignsLiteral(nodeAssign, setLiterals):
+    """Return True iff the assignment's RHS is one of the watched string literals."""
+    sValue = _fsExtractLiteralValue(nodeAssign.value)
+    return sValue in setLiterals
+
+
+def _fsExtractLiteralValue(nodeValue):
+    """Return the string literal value of ``nodeValue`` or '' for non-literals."""
+    if isinstance(nodeValue, ast.Constant) and isinstance(
+        nodeValue.value, str,
+    ):
+        return nodeValue.value
+    return ""
+
+
+def _flistAssignedAxisKeys(nodeAssign):
+    """Return the set of truth-claim axis keys this assignment writes to."""
+    listKeys = []
+    for nodeTarget in nodeAssign.targets:
+        sKey = _fsSubscriptKey(nodeTarget)
+        if sKey in SET_TRUTH_CLAIM_AXIS_KEYS:
+            listKeys.append(sKey)
+    return listKeys
+
+
+def _fsSubscriptKey(nodeTarget):
+    """Return the string key for ``dict["key"]`` or '' for any other shape."""
+    if not isinstance(nodeTarget, ast.Subscript):
+        return ""
+    nodeSlice = nodeTarget.slice
+    if isinstance(nodeSlice, ast.Constant) and isinstance(
+        nodeSlice.value, str,
+    ):
+        return nodeSlice.value
+    return ""
+
+
+def testNoDirectTruthClaimWrites():
+    """Truth-claim axes are written only by the canonical truth-derivation module.
+
+    The dashboard's ground truth — whether a step's tests passed, its
+    integrity check held, its qualitative/quantitative criteria
+    satisfied — must always be derived from observation, never
+    asserted by a producer. Direct literal assignments of
+    ``"passed"``, ``"passed-from-marker"``, or ``"failed"`` to a
+    truth-claim axis key bypass the canonical derivation and let
+    a producer claim a truth it cannot observe. ``"untested"`` and
+    ``"unnecessary"`` are state-machine values and remain allowed at
+    their original sites.
+
+    A future L2/L3 PR extends ``SET_TRUTH_CLAIM_AXIS_KEYS`` with the
+    new key (e.g. ``"sGithubSync"``) and the invariant immediately
+    protects it; no further test scaffolding is required.
+    """
+    pathGui = GUI_DIR
+    listViolations = []
+    for pathFile in pathGui.rglob("*.py"):
+        if pathFile.name in SET_TRUTH_DERIVATION_EXEMPT_FILES:
+            continue
+        sSource = fsReadSource(pathFile)
+        for iLineNo, sKey, sLiteral in _flistFindTruthClaimViolations(
+            pathFile, sSource,
+        ):
+            listViolations.append(
+                (pathFile.name, iLineNo, sKey, sLiteral),
+            )
+    assert listViolations == [], (
+        "Truth-claim axis writes must go through "
+        "``truthDerivation`` so the dashboard reflects observation "
+        "not assertion:\n"
+        + "\n".join(
+            f"  {sFile}:{iLine}: {sKey!r} = {sLit!r}"
+            for sFile, iLine, sKey, sLit in listViolations
         )
     )
 

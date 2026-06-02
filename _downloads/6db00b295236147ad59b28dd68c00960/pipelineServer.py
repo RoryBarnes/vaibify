@@ -1336,6 +1336,7 @@ def fdictBuildContext(connectionDocker):
         "sourceCodeDeps": {},
         "lastSelfWriteMtimes": {},
         "lastDiscoveredWorkflows": {},
+        "dictPipelineStateLocks": {},
     }
     fnRequire, fnSave, fnVariables, fnWorkflowDir = _ftupleBuildHelpers(
         dictRaw, dictWorkflows, dictPaths
