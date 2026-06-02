@@ -7,7 +7,6 @@ import json
 import logging
 import posixpath
 import re
-from datetime import datetime, timezone
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
@@ -84,15 +83,22 @@ def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
     return True
 
 
-def _fnMarkPipelineStopped(connectionDocker, sContainerId):
-    """Write a stopped state file so the UI shows not running."""
+async def _fnMarkPipelineStopped(dictCtx, sContainerId):
+    """Write a stopped state file so the UI shows not running.
+
+    Reads through the reconciling reader so a kill issued against a
+    container whose runner already vanished does not double-write —
+    the watchdog will have already flipped ``bRunning`` to False.
+    """
     from .. import pipelineState
-    dictState = pipelineState.fdictReadState(
-        connectionDocker, sContainerId)
+    dictState = await pipelineState.fdictReadReconciledState(
+        dictCtx, sContainerId,
+    )
     if dictState is None or not dictState.get("bRunning"):
         return
-    pipelineState.fnUpdateState(
-        connectionDocker, sContainerId, dictState,
+    await asyncio.to_thread(
+        pipelineState.fnUpdateState,
+        dictCtx["docker"], sContainerId, dictState,
         pipelineState.fdictBuildCompletedState(130),
     )
 
@@ -170,62 +176,14 @@ def _fnRegisterPipelineState(app, dictCtx):
 
     @app.get("/api/pipeline/{sContainerId}/state")
     async def fnGetPipelineState(sContainerId: str):
-        from ..pipelineState import fdictReadState
+        from ..pipelineState import fdictReadReconciledState
         dictCtx["require"]()
-        dictState = await asyncio.to_thread(
-            fdictReadState, dictCtx["docker"], sContainerId
+        dictState = await fdictReadReconciledState(
+            dictCtx, sContainerId,
         )
         if dictState is None:
             return {"bRunning": False}
-        return await _fdictReconcileLivenessIfNeeded(
-            dictCtx["docker"], sContainerId, dictState
-        )
-
-
-async def _fdictReconcileLivenessIfNeeded(
-    connectionDocker, sContainerId, dictState,
-):
-    """Detect a runner that vanished without finalizing and update state.
-
-    Pure read-side check: ``sLastHeartbeat`` is the truth signal. If
-    the recorded heartbeat is older than the staleness window and the
-    state still claims ``bRunning: True``, we declare the runner dead,
-    overwrite the state file with ``bRunning: False`` and a populated
-    ``sFailureReason``, then return the reconciled state. Subsequent
-    polls see ``bRunning: False`` and fall through unchanged.
-    """
-    from .. import pipelineState
-    if not dictState.get("bRunning"):
         return dictState
-    if not pipelineState.fbHeartbeatIsStale(dictState):
-        return dictState
-    sFailureReason = _fsBuildHeartbeatStaleReason(dictState)
-    dictReconciled = dict(dictState)
-    dictReconciled.update(
-        pipelineState.fdictBuildCompletedState(
-            pipelineState.I_EXIT_CODE_RUNNER_DISAPPEARED))
-    dictReconciled["sFailureReason"] = sFailureReason
-    await asyncio.to_thread(
-        pipelineState.fnWriteState,
-        connectionDocker, sContainerId, dictReconciled,
-    )
-    return dictReconciled
-
-
-def _fsBuildHeartbeatStaleReason(dictState):
-    """Format a human-readable reason string for a stale heartbeat."""
-    from .. import pipelineState
-    sLastHeartbeat = dictState.get("sLastHeartbeat", "")
-    try:
-        dtBeat = datetime.fromisoformat(sLastHeartbeat)
-        fAgeSeconds = (
-            datetime.now(timezone.utc).timestamp() - dtBeat.timestamp())
-        return (
-            f"heartbeat_stale (last beat {fAgeSeconds:.0f}s ago, "
-            f"window {pipelineState.I_HEARTBEAT_STALE_SECONDS}s)"
-        )
-    except (ValueError, TypeError):
-        return "heartbeat_stale (unparseable timestamp)"
 
 
 def _fnRegisterPipelineKill(app, dictCtx):
@@ -252,8 +210,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
                     dictCtx["docker"], sContainerId,
                     listPatterns,
                 )
-        _fnMarkPipelineStopped(
-            dictCtx["docker"], sContainerId)
+        await _fnMarkPipelineStopped(dictCtx, sContainerId)
         return {
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
@@ -423,6 +380,23 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
         }
 
 
+async def _fbResolvePipelineRunning(dictCtx, sContainerId):
+    """Reconcile pipeline state and return the post-reconciliation bRunning.
+
+    The reconciling reader runs ahead of poll side-effects so a vanished
+    runner is reflected before invalidation logic asks "is a pipeline
+    still running?" — without this the watchdog would suppress
+    file-change invalidation for hours after the runner crashed.
+    """
+    from ..pipelineState import fdictReadReconciledState
+    dictPipelineState = await fdictReadReconciledState(
+        dictCtx, sContainerId,
+    )
+    return bool(
+        dictPipelineState and dictPipelineState.get("bRunning"),
+    )
+
+
 async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
@@ -433,6 +407,9 @@ async def _fdictFetchOutputStatus(
     the last transformation before the wire — enforced by
     ``testWireFormatPathsAreRepoRelative``.
     """
+    bPipelineRunning = await _fbResolvePipelineRunning(
+        dictCtx, sContainerId,
+    )
     dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
         dictCtx, sContainerId, dictWorkflow, dictVars,
     )
@@ -440,6 +417,7 @@ async def _fdictFetchOutputStatus(
         dictWorkflow = dictReload["dictWorkflow"]
     listInvalidated = _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+        bPipelineRunning=bPipelineRunning,
     )
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     dictRest = _fdictBuildPollResponseRest(
@@ -574,6 +552,7 @@ def _fnPersistMtimeCacheForPoll(dictWorkflow, dictCache):
 
 def _flistRunPollSideEffects(
     dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+    bPipelineRunning=False,
 ):
     """Apply stale-check, invalidate, reconcile; return invalidated steps."""
     if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, dictVars):
@@ -589,6 +568,7 @@ def _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
         dictMarkersByStep=dictMarkersByStep,
         dictCache=dictMtimeCache,
+        bPipelineRunning=bPipelineRunning,
     )
     _fnPersistMtimeCacheForPoll(dictWorkflow, dictMtimeCache)
     _fnLogInvalidations(sContainerId, listInvalidated)

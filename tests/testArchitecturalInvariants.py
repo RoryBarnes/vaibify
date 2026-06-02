@@ -1280,13 +1280,18 @@ def testPipelineStateCarriesLivenessFields():
         "pipelineRunner must spawn a heartbeat loop; without it the "
         "poll endpoint cannot detect a vanished runner."
     )
+    assert "fbHeartbeatIsStale" in sPipelineStateSource, (
+        "pipelineState.fdictReadReconciledState must call "
+        "fbHeartbeatIsStale to reconcile a vanished runner; without "
+        "this branch the always-on watchdog cannot flip bRunning."
+    )
     sPipelineRoutesSource = fsReadSource(
         ROUTES_DIR / "pipelineRoutes.py",
     )
-    assert "fbHeartbeatIsStale" in sPipelineRoutesSource, (
-        "pipelineRoutes.fnGetPipelineState must call "
-        "pipelineState.fbHeartbeatIsStale to reconcile a vanished "
-        "runner before returning state to the frontend."
+    assert "fdictReadReconciledState" in sPipelineRoutesSource, (
+        "pipelineRoutes.fnGetPipelineState must delegate to "
+        "pipelineState.fdictReadReconciledState so the /state endpoint "
+        "and every other state reader share one reconciliation path."
     )
 
 

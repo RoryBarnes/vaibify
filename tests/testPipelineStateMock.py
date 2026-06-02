@@ -9,11 +9,12 @@ from vaibify.gui.pipelineState import (
     fdictReadState,
     fnClearState,
     S_STATE_PATH,
+    S_STATE_PATH_TEMP,
 )
 
 
 class MockDockerConnection:
-    """Mock Docker connection for testing state persistence."""
+    """Mock Docker connection that models temp-file + rename writes."""
 
     def __init__(self):
         self.dictFiles = {}
@@ -24,14 +25,35 @@ class MockDockerConnection:
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listCommands.append(sCommand)
-        sKey = (sContainerId, S_STATE_PATH)
-        if "cat" in sCommand and sKey in self.dictFiles:
-            sContent = self.dictFiles[sKey].decode("utf-8")
-            return (0, sContent)
+        if sCommand.startswith("mv "):
+            return self._ftHandleRename(sContainerId, sCommand)
+        if sCommand.startswith("cat "):
+            return self._ftHandleRead(sContainerId, sCommand)
         if "rm -f" in sCommand:
-            self.dictFiles.pop(sKey, None)
+            self._fnHandleRemove(sContainerId, sCommand)
             return (0, "")
         return (1, "")
+
+    def _ftHandleRename(self, sContainerId, sCommand):
+        listParts = sCommand.split()
+        sSrc, sDst = listParts[1], listParts[2]
+        sKey = (sContainerId, sSrc)
+        if sKey not in self.dictFiles:
+            return (1, "")
+        self.dictFiles[(sContainerId, sDst)] = self.dictFiles.pop(sKey)
+        return (0, "")
+
+    def _ftHandleRead(self, sContainerId, sCommand):
+        sPath = sCommand.split()[1]
+        sKey = (sContainerId, sPath)
+        if sKey not in self.dictFiles:
+            return (1, "")
+        return (0, self.dictFiles[sKey].decode("utf-8"))
+
+    def _fnHandleRemove(self, sContainerId, sCommand):
+        for sToken in sCommand.split():
+            if sToken.startswith("/"):
+                self.dictFiles.pop((sContainerId, sToken), None)
 
 
 def test_fnWriteState_stores():

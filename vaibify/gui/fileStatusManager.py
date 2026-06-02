@@ -250,7 +250,15 @@ def _flistResolvePlotPaths(dictStep, dictVars):
 
 
 def _fbPipelineIsRunning(dictCtx, sContainerId):
-    """Return True if a pipeline is currently running in container."""
+    """Return True if a pipeline is currently running in container.
+
+    Raw read — does not reconcile a vanished runner. Async callers
+    must resolve liveness via ``pipelineState.fdictReadReconciledState``
+    and pass the resulting boolean down through
+    ``_flistDetectAndInvalidate``; this helper survives as the sync
+    fallback for code paths (and tests) that don't have an event loop
+    on hand.
+    """
     dictState = pipelineState.fdictReadState(
         dictCtx["docker"], sContainerId)
     if dictState is None:
@@ -1120,8 +1128,14 @@ def _fiMarkerMtime(dictMarkerMtimeByStep, iIndex):
 
 def _fdictDetectChangedFiles(dictCtx, sContainerId,
                              dictWorkflow, dictNewModTimes,
-                             dictVars=None):
-    """Return changed files by step index, or empty if none changed."""
+                             dictVars=None, bPipelineRunning=None):
+    """Return changed files by step index, or empty if none changed.
+
+    ``bPipelineRunning`` is resolved by the async caller via the
+    reconciling reader so a vanished runner does not silently suppress
+    invalidation. Falling back to the sync read keeps non-async callers
+    (e.g. legacy tests) working without observable change.
+    """
     if "dictPreviousModTimes" not in dictCtx:
         dictCtx["dictPreviousModTimes"] = {}
     dictPrevByContainer = dictCtx["dictPreviousModTimes"]
@@ -1129,7 +1143,9 @@ def _fdictDetectChangedFiles(dictCtx, sContainerId,
     dictPrevByContainer[sContainerId] = dict(dictNewModTimes)
     if not dictOldModTimes:
         return {}
-    if _fbPipelineIsRunning(dictCtx, sContainerId):
+    if bPipelineRunning is None:
+        bPipelineRunning = _fbPipelineIsRunning(dictCtx, sContainerId)
+    if bPipelineRunning:
         return {}
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars)
@@ -1281,11 +1297,13 @@ def _fdictUnionChangedFiles(dictMtimeChanged, dictHashStaleAbs):
 def _flistDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
     dictVars=None, dictMarkersByStep=None, dictCache=None,
+    bPipelineRunning=None,
 ):
     """Detect mtime + hash drift and invalidate affected steps."""
     dictChangedFiles = _fdictDetectChangedFiles(
         dictCtx, sContainerId, dictWorkflow,
         dictNewModTimes, dictVars,
+        bPipelineRunning=bPipelineRunning,
     )
     dictHashStaleByStep = _fdictHashStaleFromMarkers(
         dictWorkflow, dictNewModTimes, dictMarkersByStep, dictCache,
