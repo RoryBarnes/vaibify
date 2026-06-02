@@ -94,30 +94,29 @@ def _fnNoopSave(sContainerId, dictWorkflow):
 
 
 def _fnSeedShutilCopyScenario(tmp_path, sUnitTestState):
-    """Build the workflow, marker, on-disk file, and ctx for the test.
-
-    Sets up a step1/out.json whose mtime matches a baseline but whose
-    content differs from the baseline-recorded hash. Mirrors the
-    ``shutil.copy2`` failure path that motivated this wiring.
-    """
-    sBaselineContent = "baseline-content"
-    sCurrentContent = "drifted-content"
+    """Build the workflow, marker, on-disk file, and ctx for the test."""
     fSharedMtime = 1_700_000_000.0
-    sBaselinePath = _fsWrite(
-        str(tmp_path), "baseline/out.json", sBaselineContent,
-    )
-    sBaselineSha = mtimeCache.fsBlobShaForFile(
-        str(tmp_path), "baseline/out.json", {},
-    )
-    sLivePath = _fsWrite(str(tmp_path), "step1/out.json", sCurrentContent)
-    _fnTouchMtime(sLivePath, fSharedMtime)
-    _fnTouchMtime(sBaselinePath, fSharedMtime)
+    sBaselineSha = _fsSeedDriftFilesAtSharedMtime(tmp_path, fSharedMtime)
     dictWorkflow = _fdictBuildOneStepWorkflow(str(tmp_path), sUnitTestState)
     dictMarker = _fdictBuildMarker({"step1/out.json": sBaselineSha})
     sAbsLive = os.path.join(str(tmp_path), "step1", "out.json")
     dictNewModTimes = {sAbsLive: str(int(fSharedMtime))}
     dictCtx = _fdictBuildCtx({"cid": dict(dictNewModTimes)})
     return dictWorkflow, dictMarker, dictNewModTimes, dictCtx
+
+
+def _fsSeedDriftFilesAtSharedMtime(tmp_path, fSharedMtime):
+    """Write a baseline + live file with divergent content but shared mtime."""
+    sBaselinePath = _fsWrite(
+        str(tmp_path), "baseline/out.json", "baseline-content",
+    )
+    sBaselineSha = mtimeCache.fsBlobShaForFile(
+        str(tmp_path), "baseline/out.json", {},
+    )
+    sLivePath = _fsWrite(str(tmp_path), "step1/out.json", "drifted-content")
+    _fnTouchMtime(sLivePath, fSharedMtime)
+    _fnTouchMtime(sBaselinePath, fSharedMtime)
+    return sBaselineSha
 
 
 def _fnAssertStepInvalidated(dictWorkflow):

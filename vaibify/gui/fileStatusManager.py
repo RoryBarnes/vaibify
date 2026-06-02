@@ -1169,56 +1169,60 @@ def _flistDetectHashStaleFiles(
     dictWorkflow, sWorkspaceRoot, dictCache,
     dictMarkersByStep, dictMtimeHintsByStep=None,
 ):
-    """Return ``{iStepIndex: [stale_repo_rel_paths]}`` per marker drift.
-
-    Compares each step's marker-recorded ``dictOutputHashes`` against
-    current on-disk content via :func:`hashStaleness.fsetStaleOutputsForStep`.
-    Skips steps where the marker's ``sLabel`` no longer matches the live
-    step's label — a rename or reorder would otherwise surface as false
-    drift against an outdated marker. ``dictMtimeHintsByStep`` is the
-    same shape, used by the cache to skip redundant ``os.stat`` calls.
-    """
-    from . import hashStaleness
+    """Return ``{iStepIndex: [stale_repo_rel_paths]}`` per marker drift."""
     dictResult = {}
     listSteps = dictWorkflow.get("listSteps", [])
     dictHintsByStep = dictMtimeHintsByStep or {}
     for iIndex, dictStep in enumerate(listSteps):
-        dictMarker = _fdictMarkerForStep(
-            dictStep, iIndex, dictMarkersByStep,
+        listStale = _flistStaleOutputsForStepIndex(
+            dictStep, iIndex, dictMarkersByStep, sWorkspaceRoot,
+            dictCache, dictHintsByStep,
         )
-        if dictMarker is None:
-            continue
-        if not hashStaleness.fbMarkerHasHashes(dictMarker):
-            continue
-        setStale = hashStaleness.fsetStaleOutputsForStep(
-            dictMarker, sWorkspaceRoot, dictCache,
-            dictMtimeHints=dictHintsByStep.get(iIndex),
-        )
-        if setStale:
-            dictResult[iIndex] = sorted(setStale)
+        if listStale:
+            dictResult[iIndex] = listStale
     return dictResult
 
 
-def _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep):
-    """Return the marker for this step iff ``sLabel`` and ``sDirectory`` agree.
+def _flistStaleOutputsForStepIndex(
+    dictStep, iIndex, dictMarkersByStep, sWorkspaceRoot,
+    dictCache, dictHintsByStep,
+):
+    """Return sorted stale repo-rel paths for one step, or ``[]`` when none."""
+    from . import hashStaleness
+    dictMarker = _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep)
+    if dictMarker is None:
+        return []
+    if not hashStaleness.fbMarkerHasHashes(dictMarker):
+        return []
+    setStale = hashStaleness.fsetStaleOutputsForStep(
+        dictMarker, sWorkspaceRoot, dictCache,
+        dictMtimeHints=dictHintsByStep.get(iIndex),
+    )
+    return sorted(setStale) if setStale else []
 
-    Guards against a renamed or reordered step claiming an outdated
-    marker's drift. Returns ``None`` when the marker is missing or its
-    recorded label/directory diverges from the live step.
-    """
+
+def _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep):
+    """Return the marker iff its ``sLabel`` and ``sDirectory`` match the live step."""
     dictMarker = dictMarkersByStep.get(iIndex)
     if not isinstance(dictMarker, dict):
         return None
+    if not _fbMarkerIdentityMatchesStep(dictStep, dictMarker):
+        return None
+    return dictMarker
+
+
+def _fbMarkerIdentityMatchesStep(dictStep, dictMarker):
+    """Return True iff marker label/directory agree with the live step."""
     sLiveLabel = dictStep.get("sLabel", "")
     sLiveDirectory = dictStep.get("sDirectory", "")
     sMarkerLabel = dictMarker.get("sLabel", "")
     sMarkerDirectory = dictMarker.get("sDirectory", "")
     if sLiveLabel and sMarkerLabel and sLiveLabel != sMarkerLabel:
-        return None
+        return False
     if sLiveDirectory and sMarkerDirectory:
         if _fsRepoRelDirectory(sLiveDirectory) != sMarkerDirectory:
-            return None
-    return dictMarker
+            return False
+    return True
 
 
 def _fsRepoRelDirectory(sDirectory):
@@ -1238,17 +1242,22 @@ def _fdictHashStaleAbsPathsByStep(
     each entry directly against the project repo root rather than
     re-joining the step directory.
     """
-    sRepoRoot = (dictVars or {}).get("sRepoRoot", "") or dictWorkflow.get(
-        "sProjectRepoPath", "",
-    )
+    sRepoRoot = _fsResolveRepoRoot(dictWorkflow, dictVars)
     dictResult = {}
     for iIndex, listRelPaths in dictHashStaleByStep.items():
-        listAbs = [
+        dictResult[iIndex] = [
             _fsAbsFromRepoRelative(sRelPath, sRepoRoot)
             for sRelPath in listRelPaths
         ]
-        dictResult[iIndex] = listAbs
     return dictResult
+
+
+def _fsResolveRepoRoot(dictWorkflow, dictVars):
+    """Pick the repo root from ``dictVars`` first, falling back to workflow."""
+    sFromVars = (dictVars or {}).get("sRepoRoot", "")
+    if sFromVars:
+        return sFromVars
+    return dictWorkflow.get("sProjectRepoPath", "")
 
 
 def _fsAbsFromRepoRelative(sRepoRelPath, sRepoRoot):
@@ -1273,13 +1282,7 @@ def _flistDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
     dictVars=None, dictMarkersByStep=None, dictCache=None,
 ):
-    """Detect mtime + hash drift and invalidate affected steps.
-
-    Hash drift uses each step's test marker. When the marker is absent
-    or carries no ``dictOutputHashes``, only the mtime arm fires for
-    that step. ``dictCache`` is the mtime cache used to skip redundant
-    blob hashes between polls; pass ``None`` to use a transient cache.
-    """
+    """Detect mtime + hash drift and invalidate affected steps."""
     dictChangedFiles = _fdictDetectChangedFiles(
         dictCtx, sContainerId, dictWorkflow,
         dictNewModTimes, dictVars,
@@ -1289,6 +1292,19 @@ def _flistDetectAndInvalidate(
     )
     if not dictChangedFiles and not dictHashStaleByStep:
         return {}
+    dictInvalidated = _fdictApplyInvalidationFromDrifts(
+        dictWorkflow, dictChangedFiles, dictHashStaleByStep,
+        dictNewModTimes, dictVars,
+    )
+    dictCtx["save"](sContainerId, dictWorkflow)
+    return dictInvalidated
+
+
+def _fdictApplyInvalidationFromDrifts(
+    dictWorkflow, dictChangedFiles, dictHashStaleByStep,
+    dictNewModTimes, dictVars,
+):
+    """Merge mtime + hash drift and invalidate affected steps in-place."""
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     dictHashStaleAbs = _fdictHashStaleAbsPathsByStep(
         dictHashStaleByStep, dictWorkflow, dictVars,
@@ -1296,10 +1312,9 @@ def _flistDetectAndInvalidate(
     dictUnionChanged = _fdictUnionChangedFiles(
         dictChangedFiles, dictHashStaleAbs,
     )
-    dictInvalidated = _fdictInvalidateAffectedSteps(
-        dictWorkflow, dictUnionChanged, dictNewModTimes, sRepoRoot)
-    dictCtx["save"](sContainerId, dictWorkflow)
-    return dictInvalidated
+    return _fdictInvalidateAffectedSteps(
+        dictWorkflow, dictUnionChanged, dictNewModTimes, sRepoRoot,
+    )
 
 
 def _fdictHashStaleFromMarkers(

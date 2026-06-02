@@ -1663,22 +1663,19 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         )
 
 
-def testMarkerCoversAllDeclaredOutputs(tmp_path):
-    """Every literal saDataFiles / saPlotFiles entry hashes into the marker.
-
-    Templated paths (``{sPlotDirectory}``, ``{sFigureType}``) are
-    skipped by the conftest writer so the marker only carries
-    resolved files — but every concrete path on disk must appear.
-    """
-    import json as jsonModule
-    from vaibify.gui import conftestManager
+def _fnSeedPlotCoverageFiles(tmp_path):
+    """Lay down step1/Plot/fig.pdf and step1/data/out.csv under ``tmp_path``."""
     sStepDir = tmp_path / "step1"
     (sStepDir / "Plot").mkdir(parents=True)
     (sStepDir / "data").mkdir()
-    sFigPath = sStepDir / "Plot" / "fig.pdf"
-    sCsvPath = sStepDir / "data" / "out.csv"
-    sFigPath.write_text("fig")
-    sCsvPath.write_text("csv")
+    (sStepDir / "Plot" / "fig.pdf").write_text("fig")
+    (sStepDir / "data" / "out.csv").write_text("csv")
+    return sStepDir
+
+
+def _fnWritePlotCoverageWorkflow(tmp_path):
+    """Write a workflow.json mixing literal + templated outputs under ``tmp_path``."""
+    import json as jsonModule
     sWorkflowsDir = tmp_path / ".vaibify" / "workflows"
     sWorkflowsDir.mkdir(parents=True)
     (sWorkflowsDir / "main.json").write_text(jsonModule.dumps({
@@ -1688,10 +1685,22 @@ def testMarkerCoversAllDeclaredOutputs(tmp_path):
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
     }))
+
+
+def _fdictComputePlotCoverageHashes(tmp_path, sStepDir):
+    """Execute the conftest plugin's hasher against ``sStepDir`` and return its dict."""
+    from vaibify.gui import conftestManager
     sSource = conftestManager.fsBuildConftestSource(str(tmp_path))
     dictNs = {}
     exec(compile(sSource, "<template>", "exec"), dictNs)
-    dictHashes = dictNs["_fdictComputeOutputHashes"](str(sStepDir))
+    return dictNs["_fdictComputeOutputHashes"](str(sStepDir))
+
+
+def testMarkerCoversAllDeclaredOutputs(tmp_path):
+    """Every literal saDataFiles / saPlotFiles entry hashes into the marker."""
+    sStepDir = _fnSeedPlotCoverageFiles(tmp_path)
+    _fnWritePlotCoverageWorkflow(tmp_path)
+    dictHashes = _fdictComputePlotCoverageHashes(tmp_path, sStepDir)
     assert "step1/data/out.csv" in dictHashes
     assert "step1/Plot/fig.pdf" in dictHashes
     for sPath in dictHashes:
