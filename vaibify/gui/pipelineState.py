@@ -217,14 +217,11 @@ def fsBuildHeartbeatStaleReason(dictState, fNowEpoch=None):
         return "heartbeat_stale (unparseable timestamp)"
 
 
-def _flockAcquireStateLockForContainer(dictCtx, sContainerId):
-    """Lazily allocate and return the per-container reconciliation lock."""
+def _fnEnsureStateLockForContainer(dictCtx, sContainerId):
+    """Lazily allocate a per-container reconciliation lock in dictCtx."""
     dictLocks = dictCtx.setdefault("dictPipelineStateLocks", {})
-    lockState = dictLocks.get(sContainerId)
-    if lockState is None:
-        lockState = asyncio.Lock()
-        dictLocks[sContainerId] = lockState
-    return lockState
+    if sContainerId not in dictLocks:
+        dictLocks[sContainerId] = asyncio.Lock()
 
 
 def _fdictReconcileStaleHeartbeat(dictState, fNow=None):
@@ -250,7 +247,8 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
     already-reconciled file and return it unchanged.
     """
     connectionDocker = dictCtx["docker"]
-    lockState = _flockAcquireStateLockForContainer(dictCtx, sContainerId)
+    _fnEnsureStateLockForContainer(dictCtx, sContainerId)
+    lockState = dictCtx["dictPipelineStateLocks"][sContainerId]
     async with lockState:
         dictState = await asyncio.to_thread(
             fdictReadState, connectionDocker, sContainerId,
