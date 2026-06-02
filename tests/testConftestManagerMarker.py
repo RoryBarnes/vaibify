@@ -119,6 +119,46 @@ def test_flistStepOutputFiles_skips_template_placeholders(tmp_path):
     assert listResult == ["step1/out.csv"]
 
 
+def test_flistStepOutputFiles_includes_both_data_and_plot_files(tmp_path):
+    """saPlotFiles must produce hashed marker entries alongside saDataFiles.
+
+    A regression in plot coverage would leave the dashboard unable to
+    detect drift on figure outputs after the fact, so the contract is
+    asserted explicitly here.
+    """
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saDataFiles": ["data/out.csv"],
+            "saPlotFiles": ["Plot/fig.pdf", "Plot/extra.png"],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    listResult = ns._flistStepOutputFiles(str(tmp_path / "step1"))
+    assert "step1/data/out.csv" in listResult
+    assert "step1/Plot/fig.pdf" in listResult
+    assert "step1/Plot/extra.png" in listResult
+
+
+def test_fdictComputeOutputHashes_covers_every_declared_plot_file(tmp_path):
+    """Every literal saPlotFiles path must appear in dictOutputHashes."""
+    _fsWrite(str(tmp_path), "step1/Plot/fig.pdf", "fig-bytes")
+    _fsWrite(str(tmp_path), "step1/Plot/extra.png", "png-bytes")
+    _fsWrite(str(tmp_path), "step1/data/out.csv", "csv-bytes")
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saDataFiles": ["data/out.csv"],
+            "saPlotFiles": ["Plot/fig.pdf", "Plot/extra.png"],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    dictHashes = ns._fdictComputeOutputHashes(str(tmp_path / "step1"))
+    assert "step1/data/out.csv" in dictHashes
+    assert "step1/Plot/fig.pdf" in dictHashes
+    assert "step1/Plot/extra.png" in dictHashes
+
+
 def test_flistStepOutputFiles_ignores_other_steps(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [

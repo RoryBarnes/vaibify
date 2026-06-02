@@ -511,6 +511,67 @@ def _fnLogInvalidations(sContainerId, listInvalidated):
         )
 
 
+def _fdictLoadMarkersForPoll(dictCtx, sContainerId, dictWorkflow):
+    """Return ``{iStepIndex: dictMarker_or_None}`` for the live workflow.
+
+    Reuses :func:`stateManager._flistFetchMarkers` so the marker on-disk
+    contract has one reader. Missing markers map to ``None`` and the
+    hash-staleness pass skips them gracefully.
+    """
+    from .. import stateManager
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        return {}
+    sWorkflowSlug = fsWorkflowSlugFromPath(
+        dictWorkflow.get("sPath", ""),
+    )
+    if not sWorkflowSlug:
+        return {}
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    listMarkers = stateManager._flistFetchMarkers(
+        dictCtx["docker"], sContainerId, sProjectRepoPath,
+        sWorkflowSlug, listSteps,
+    )
+    return _fdictMarkersByStepIndex(listMarkers, listSteps)
+
+
+def _fdictMarkersByStepIndex(listMarkers, listSteps):
+    """Map ``[(sDirectory, dictMarker)]`` onto live step indices."""
+    dictByDirectory = {
+        sDirectory: dictMarker for sDirectory, dictMarker in listMarkers
+    }
+    dictResult = {}
+    for iIndex, dictStep in enumerate(listSteps):
+        sDirectory = dictStep.get("sDirectory", "")
+        if sDirectory and sDirectory in dictByDirectory:
+            dictResult[iIndex] = dictByDirectory[sDirectory]
+    return dictResult
+
+
+def _fdictLoadMtimeCacheForPoll(dictWorkflow):
+    """Load the persistent mtime cache from the project repo, if available."""
+    from .. import mtimeCache
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        return {}
+    return mtimeCache.fdictLoadCache(sProjectRepoPath)
+
+
+def _fnPersistMtimeCacheForPoll(dictWorkflow, dictCache):
+    """Save the mtime cache atomically; absent project repo is a no-op."""
+    from .. import mtimeCache
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath or not dictCache:
+        return
+    try:
+        mtimeCache.fnSaveCache(sProjectRepoPath, dictCache)
+    except OSError as error:
+        logger.warning(
+            "POLL mtime cache persist failed for %s: %s",
+            sProjectRepoPath, error,
+        )
+
+
 def _flistRunPollSideEffects(
     dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
 ):
@@ -520,9 +581,16 @@ def _flistRunPollSideEffects(
             "POLL stale-check reset sUser for container=%s", sContainerId,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
+    dictMarkersByStep = _fdictLoadMarkersForPoll(
+        dictCtx, sContainerId, dictWorkflow,
+    )
+    dictMtimeCache = _fdictLoadMtimeCacheForPoll(dictWorkflow)
     listInvalidated = _flistDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+        dictMarkersByStep=dictMarkersByStep,
+        dictCache=dictMtimeCache,
     )
+    _fnPersistMtimeCacheForPoll(dictWorkflow, dictMtimeCache)
     _fnLogInvalidations(sContainerId, listInvalidated)
     dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
     dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(
