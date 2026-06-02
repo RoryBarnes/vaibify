@@ -137,6 +137,7 @@ async def _fdictRunAllTestCategories(
     dictVerification = dictStep.setdefault(
         "dictVerification", {})
     dictTests = dictStep.get("dictTests", {})
+    from .. import truthDerivation
     dictCategoryResults = {}
     for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
         dictResult = await _fdictRunOneTestCategory(
@@ -145,8 +146,9 @@ async def _fdictRunAllTestCategories(
         )
         if dictResult is None:
             continue
+        iExitCode = 0 if dictResult["bPassed"] else 1
         dictVerification[sVerifKey] = (
-            "passed" if dictResult["bPassed"] else "failed")
+            truthDerivation.fsResolveUnitTestFromExitCode(iExitCode))
         sCatOutput = dictResult.get("sOutput", "")
         if sCatOutput and sCategory in dictTests:
             dictTests[sCategory]["sLastOutput"] = sCatOutput
@@ -378,8 +380,11 @@ def _fnRecordCategoryOutcome(
     dictStep, dictCat, sVerifKey, bPassed, sOutput,
 ):
     """Update dictVerification + aggregate state after a category run."""
+    from .. import truthDerivation
     dictVerification = dictStep.setdefault("dictVerification", {})
-    dictVerification[sVerifKey] = "passed" if bPassed else "failed"
+    iExitCode = 0 if bPassed else 1
+    dictVerification[sVerifKey] = (
+        truthDerivation.fsResolveUnitTestFromExitCode(iExitCode))
     dictVerification.pop("listModifiedFiles", None)
     dictVerification.pop("bUpstreamModified", None)
     if sOutput:

@@ -65,11 +65,18 @@ def _fdictBuildTestResponse(bAllPassed, dictCategoryResults):
 
 def _fnRecordTestResult(dictStep, bPassed, dictWorkflow,
                         iStepIndex):
-    """Update verification state after test execution."""
+    """Update verification state after test execution.
+
+    The truth-claim value resolves through the canonical
+    ``truthDerivation`` so a fresh in-process run participates in
+    the same derivation pattern future L2/L3 truths use.
+    """
+    from . import truthDerivation
     dictVerification = dictStep.setdefault(
         "dictVerification", {})
+    iExitCode = 0 if bPassed else 1
     dictVerification["sUnitTest"] = (
-        "passed" if bPassed else "failed")
+        truthDerivation.fsResolveUnitTestFromExitCode(iExitCode))
     dictVerification.pop("listModifiedFiles", None)
     dictVerification.pop("bUpstreamModified", None)
     if bPassed:
@@ -121,14 +128,11 @@ def _fnRemoveTestDirectory(
     )
 
 
-def _fnUpdateAggregateTestState(dictStep):
-    """Compute aggregate sUnitTest from per-category states.
+def _flistEligibleCategoryStates(dictStep):
+    """Return per-category axis values that participate in the aggregate.
 
-    Categories with no ``saCommands`` are reported as "unnecessary"
-    by the workflow-load derivation hook; both empty-command and
-    already-unnecessary per-category states are excluded from the
-    aggregate. When every category is empty the aggregate itself
-    becomes "unnecessary".
+    Empty-command and already-``"unnecessary"`` categories are
+    excluded so the fold reflects only categories demanding a result.
     """
     dictVerification = dictStep.get("dictVerification", {})
     dictTests = dictStep.get("dictTests", {})
@@ -141,11 +145,13 @@ def _fnUpdateAggregateTestState(dictStep):
         if sState == "unnecessary":
             continue
         listStates.append(sState)
-    if not listStates:
-        dictVerification["sUnitTest"] = "unnecessary"
-    elif "failed" in listStates:
-        dictVerification["sUnitTest"] = "failed"
-    elif all(s == "passed" for s in listStates):
-        dictVerification["sUnitTest"] = "passed"
-    else:
-        dictVerification["sUnitTest"] = "untested"
+    return listStates
+
+
+def _fnUpdateAggregateTestState(dictStep):
+    """Recompute ``sUnitTest`` from per-category axes via the canonical fold."""
+    from . import truthDerivation
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    listStates = _flistEligibleCategoryStates(dictStep)
+    dictVerification["sUnitTest"] = (
+        truthDerivation.fsAggregateUnitTestFromAxes(listStates))
