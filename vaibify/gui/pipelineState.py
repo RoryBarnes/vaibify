@@ -11,6 +11,7 @@ __all__ = [
     "I_HEARTBEAT_STALE_SECONDS",
     "I_EXIT_CODE_RUNNER_DISAPPEARED",
     "S_STATE_PATH",
+    "S_STATE_PATH_TEMP",
     "fdictBuildInitialState",
     "fdictBuildStepStarted",
     "fdictBuildStepResult",
@@ -23,9 +24,12 @@ __all__ = [
     "fnRecordStepResult",
     "fnAppendOutput",
     "fdictReadState",
+    "fdictReadReconciledState",
+    "fsBuildHeartbeatStaleReason",
     "fnClearState",
 ]
 
+import asyncio
 import json
 from datetime import datetime, timezone
 
@@ -38,6 +42,7 @@ I_HEARTBEAT_STALE_SECONDS = 15
 # a runner crash from any real subprocess exit.
 I_EXIT_CODE_RUNNER_DISAPPEARED = -9999
 S_STATE_PATH = "/workspace/.vaibify/pipeline_state.json"
+S_STATE_PATH_TEMP = "/workspace/.vaibify/pipeline_state.json.tmp"
 
 
 def fdictBuildInitialState(sAction, sLogPath, iStepCount, iRunnerPid=0):
@@ -102,10 +107,20 @@ def fdictBuildInteractivePauseState(iStepNumber, sStepName):
 
 
 def fnWriteState(connectionDocker, sContainerId, dictState):
-    """Write the full state dict to the container."""
+    """Write the state dict atomically via temp-then-rename.
+
+    A concurrent reader (badge poll, agent CLI, watchdog reconciler)
+    must never observe a half-written JSON document. The temp-file
+    plus ``mv`` pattern relies on POSIX rename atomicity within the
+    same filesystem so the canonical path either has the previous
+    contents or the new contents — never a truncated mix.
+    """
     sContent = json.dumps(dictState, indent=2)
     connectionDocker.fnWriteFile(
-        sContainerId, S_STATE_PATH, sContent.encode("utf-8")
+        sContainerId, S_STATE_PATH_TEMP, sContent.encode("utf-8")
+    )
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"mv {S_STATE_PATH_TEMP} {S_STATE_PATH}",
     )
 
 
@@ -160,7 +175,13 @@ def fbHeartbeatIsStale(dictState, fNowEpoch=None):
 
 
 def fdictReadState(connectionDocker, sContainerId):
-    """Read the pipeline state from the container, or None."""
+    """Read the pipeline state from the container, or None.
+
+    Any failure mode — docker daemon hiccup, half-written file mid-rename,
+    container down — degrades to ``None`` so callers (badge poll, agent
+    CLI, watchdog) always have a usable answer instead of an exception
+    bubbling up to the request handler.
+    """
     try:
         iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId,
@@ -169,12 +190,79 @@ def fdictReadState(connectionDocker, sContainerId):
         if iExitCode != 0 or not sOutput.strip():
             return None
         return json.loads(sOutput)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         return None
 
 
 def fnClearState(connectionDocker, sContainerId):
     """Remove the pipeline state file."""
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"rm -f {S_STATE_PATH}"
+        sContainerId, f"rm -f {S_STATE_PATH} {S_STATE_PATH_TEMP}"
     )
+
+
+def fsBuildHeartbeatStaleReason(dictState, fNowEpoch=None):
+    """Return a human-readable reason string for a stale heartbeat."""
+    sLastHeartbeat = dictState.get("sLastHeartbeat", "")
+    try:
+        dtBeat = datetime.fromisoformat(sLastHeartbeat)
+        if fNowEpoch is None:
+            fNowEpoch = datetime.now(timezone.utc).timestamp()
+        fAgeSeconds = fNowEpoch - dtBeat.timestamp()
+        return (
+            f"heartbeat_stale (last beat {fAgeSeconds:.0f}s ago, "
+            f"window {I_HEARTBEAT_STALE_SECONDS}s)"
+        )
+    except (ValueError, TypeError):
+        return "heartbeat_stale (unparseable timestamp)"
+
+
+def _flockAcquireStateLockForContainer(dictCtx, sContainerId):
+    """Lazily allocate and return the per-container reconciliation lock."""
+    dictLocks = dictCtx.setdefault("dictPipelineStateLocks", {})
+    lockState = dictLocks.get(sContainerId)
+    if lockState is None:
+        lockState = asyncio.Lock()
+        dictLocks[sContainerId] = lockState
+    return lockState
+
+
+def _fdictReconcileStaleHeartbeat(dictState, fNow=None):
+    """Return a reconciled copy of state where the runner is declared dead."""
+    dictReconciled = dict(dictState)
+    dictReconciled.update(
+        fdictBuildCompletedState(I_EXIT_CODE_RUNNER_DISAPPEARED),
+    )
+    dictReconciled["sFailureReason"] = fsBuildHeartbeatStaleReason(
+        dictState, fNow,
+    )
+    return dictReconciled
+
+
+async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
+    """Read pipeline state and reconcile a vanished runner inline.
+
+    The runner stamps ``sLastHeartbeat`` from a daemon thread; if the
+    file still claims ``bRunning: True`` but the heartbeat is older
+    than ``I_HEARTBEAT_STALE_SECONDS``, the runner is presumed dead.
+    The reconciler flips ``bRunning`` to False, stamps the sentinel
+    exit code, and writes atomically. Subsequent calls observe the
+    already-reconciled file and return it unchanged.
+    """
+    connectionDocker = dictCtx["docker"]
+    lockState = _flockAcquireStateLockForContainer(dictCtx, sContainerId)
+    async with lockState:
+        dictState = await asyncio.to_thread(
+            fdictReadState, connectionDocker, sContainerId,
+        )
+        if dictState is None:
+            return None
+        if not dictState.get("bRunning"):
+            return dictState
+        if not fbHeartbeatIsStale(dictState, fNow):
+            return dictState
+        dictReconciled = _fdictReconcileStaleHeartbeat(dictState, fNow)
+        await asyncio.to_thread(
+            fnWriteState, connectionDocker, sContainerId, dictReconciled,
+        )
+        return dictReconciled
