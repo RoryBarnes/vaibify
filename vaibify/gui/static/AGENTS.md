@@ -87,6 +87,21 @@ and related). Do not manipulate the state dicts or the DOM directly
 from feature modules; always go through the application's public
 methods.
 
+## Stale-output advisories
+
+The poll response carries `listStaleOutputAdvisories` produced by
+[vaibify/gui/staleOutputDetector.py](../staleOutputDetector.py). Each
+advisory has `iConsumerStepIndex`, `iLikelyProducerStepIndex`,
+`listOffendingFiles`, and `fAgeDeltaSeconds`. When rendering the
+Step Viewer, treat each path in `listOffendingFiles` exactly like an
+L1-blocker offending file — same failure-mode glyph, no separate icon
+set — and surface the suggested undeclared upstream as an extra row
+in the consumer step's dependency list with a "Declare as upstream"
+affordance that writes the producer's token(s) into the consumer's
+`saDependencies`. The only resolution paths are "Declare as upstream"
+(workflow JSON update) and the existing `run-step`. Do not add an
+acknowledge or dismiss action.
+
 ## Non-refactored island
 
 `scriptFigureViewer.js` is a single large module that was not part of
