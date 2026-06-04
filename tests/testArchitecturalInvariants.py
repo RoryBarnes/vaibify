@@ -38,6 +38,7 @@ __all__ = [
     "testAtLeastLevel1IffAllFourCriteria",
     "testHashCheckRunsRegardlessOfMtime",
     "testMarkerCoversAllDeclaredOutputs",
+    "testTemplateCommandsUseStepTokens",
 ]
 
 
@@ -1842,3 +1843,92 @@ def testMarkerCoversAllDeclaredOutputs(tmp_path):
         assert "{" not in sPath, (
             f"templated path {sPath} leaked into marker hashes"
         )
+
+
+_TEMPLATES_DIR = REPO_ROOT / "templates"
+
+# Extensions that signal a token is a file path argument.
+_T_PATH_EXTENSIONS = (
+    ".json", ".npy", ".csv", ".txt", ".pdf", ".png", ".npz",
+    ".jpg", ".jpeg", ".svg", ".h5", ".hdf5", ".nc",
+)
+
+
+def _fbLooksLikeFilePath(sToken):
+    """Return True when a command argument resembles a file path."""
+    if not sToken or sToken.startswith("-"):
+        return False
+    if "/" in sToken:
+        return True
+    sLower = sToken.lower()
+    return any(sLower.endswith(sExt) for sExt in _T_PATH_EXTENSIONS)
+
+
+def _fbPathIsTokenised(sToken, sStepDirectory):
+    """Return True when a path argument is wrapped in a known substitution."""
+    if "{Step" in sToken or "{sPlotDirectory" in sToken:
+        return True
+    if "{sFigureType" in sToken:
+        return True
+    if sStepDirectory and sToken.split("/", 1)[0] == sStepDirectory:
+        return True
+    return not ("/" in sToken)
+
+
+def _flistScanCommandForHardcodedPaths(sCommand, sStepDirectory):
+    """Return tokens in sCommand that look like un-tokenised cross-step paths."""
+    listOffending = []
+    for sToken in sCommand.split():
+        if not _fbLooksLikeFilePath(sToken):
+            continue
+        if _fbPathIsTokenised(sToken, sStepDirectory):
+            continue
+        listOffending.append(sToken)
+    return listOffending
+
+
+def _flistCollectTemplateWorkflows():
+    """Return every workflow.json under vaibify/templates/."""
+    return sorted(_TEMPLATES_DIR.rglob("workflow.json"))
+
+
+def _flistFindTemplateViolations(pathWorkflow):
+    """Return (sStepName, sField, sCommand, sToken) tuples for one template."""
+    import json as jsonModule
+    listViolations = []
+    dictWorkflow = jsonModule.loads(pathWorkflow.read_text())
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sStepDirectory = dictStep.get("sDirectory", "")
+        for sField in ("saDataCommands", "saPlotCommands"):
+            for sCommand in dictStep.get(sField, []):
+                for sToken in _flistScanCommandForHardcodedPaths(
+                    sCommand, sStepDirectory,
+                ):
+                    listViolations.append(
+                        (dictStep.get("sName", ""), sField, sCommand, sToken),
+                    )
+    return listViolations
+
+
+def testTemplateCommandsUseStepTokens():
+    """Vaibify-shipped templates only reference paths via {StepNN.*} tokens.
+
+    The dashboard's dependency parser only sees `{StepNN.varname}`
+    tokens; hardcoded cross-step paths break the AICS Level 1
+    contract. Enforce the doctrine on every workflow.json under
+    `vaibify/templates/`.
+    """
+    listAllViolations = []
+    for pathWorkflow in _flistCollectTemplateWorkflows():
+        for tEntry in _flistFindTemplateViolations(pathWorkflow):
+            listAllViolations.append((pathWorkflow, *tEntry))
+    assert listAllViolations == [], (
+        "Hardcoded cross-step paths found in vaibify templates:\n"
+        + "\n".join(
+            f"  {pathWorkflow.relative_to(REPO_ROOT)} "
+            f"[step={sStepName} field={sField}]: "
+            f"command={sCommand!r} offending={sToken!r}"
+            for pathWorkflow, sStepName, sField, sCommand, sToken
+            in listAllViolations
+        )
+    )

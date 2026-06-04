@@ -978,10 +978,29 @@ Follow the style guide (check the repo's CLAUDE.md first, then the workspace CLA
 3. **Functions under 20 lines** — extract reusable blocks into separate functions
 4. **No abbreviations** for words under 8 characters
 5. **Import vplot** for any matplotlib plotting
-6. **Accept paths as command-line arguments** so the director can resolve `{StepNN.stem}`,
-   `{sPlotDirectory}`, and `{sFigureType}` variables
-7. **Data outputs** go in the step's own directory
-8. **Plot outputs** go in `{sPlotDirectory}/`
+6. **Accept inputs as command-line arguments — this is a strict requirement, not a style suggestion**. Every file your script reads from another step *must* be a CLI argument, and the workflow JSON command *must* reference it via a \`{StepNN.varname}\` token. Hardcoded paths to another step's outputs (e.g. \`open("../OtherStep/output.json")\`) are invisible to vaibify's dependency parser and silently break the AICS Level 1 contract. Your own step-directory files may be hardcoded; the boundary is the step.
+7. **CLI naming convention**: kebab-case for the argument (\`--flare-samples\`), snake_case for the matching token (\`{Step02.flare_samples}\`). The variable name in the token is the basename (without extension) of the producer step's \`saDataFiles\` entry.
+8. **Use argparse, not raw sys.argv**, so the contract is explicit.
+9. **Data outputs** go in the step's own directory
+10. **Plot outputs** go in \`{sPlotDirectory}/\`
+
+Worked example — A02 (producer) declares its output; A03 (consumer) reads it via token:
+
+\`\`\`json
+{
+  "iIndex": 2, "sName": "KeplerFfd",
+  "saDataCommands": ["python dataKeplerFfd.py"],
+  "saDataFiles": ["flare_samples.npy"]
+}
+{
+  "iIndex": 3, "sName": "FfdAgeComparison",
+  "saPlotCommands": [
+    "python plotFfd.py --flare-samples {Step02.flare_samples} {sPlotDirectory}/ffd.{sFigureType}"
+  ]
+}
+\`\`\`
+
+A03's plot script uses argparse to accept \`--flare-samples\`; the director substitutes the actual path at runtime. The A02 → A03 edge becomes visible to vaibify automatically.
 
 Data script pattern:
 ```python
