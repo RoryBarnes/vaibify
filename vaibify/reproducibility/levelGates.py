@@ -61,8 +61,35 @@ __all__ = [
     "fdictL3ReadinessGaps",
     "fdictLevel2Gaps",
     "fiAICSLevel",
+    "flistLevel1Blockers",
     "fnLevelComputationContext",
 ]
+
+
+# L2/L3 blocker-list namespace reservation.
+#
+# Part C of the L1 honest-rendering work introduces ``flistLevel1Blockers``
+# as the per-step diagnostic surface that drives the dashboard's check
+# rendering, banner glyphs, and file/edge glyphs. The same shape is
+# expected at the higher levels:
+#
+#   def flistLevel2Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
+#       """Return per-step L2 blockers (publication-gate criteria).
+#
+#       Reserved for the Phase 2 follow-up. Will surface gaps in the
+#       GitHub mirror / Zenodo deposit / AI-declaration step the same
+#       way L1 surfaces upstream-modified / axis-not-green / user-not-
+#       approved. NOT IMPLEMENTED IN THIS PHASE.
+#       """
+#
+#   def flistLevel3Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
+#       """Return per-step L3 blockers (reproducibility-gate criteria).
+#
+#       Reserved for the Phase 3 follow-up. Will surface gaps in the
+#       manifest / dependency lock / environment snapshot / Dockerfile /
+#       reproduce script / determinism declaration the same way L1
+#       surfaces its three criteria. NOT IMPLEMENTED IN THIS PHASE.
+#       """
 
 
 F_MAX_STALE_HOURS = 24.0
@@ -138,16 +165,206 @@ def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
 
 
 def _fbComputeLevel1(dictWorkflow, sProjectRepoPath):
-    """Uncached L1 evaluation — the body of the original gate."""
+    """Uncached L1 evaluation — the body of the original gate.
+
+    Delegates to ``flistLevel1Blockers`` so the boolean gate and the
+    per-step diagnostic surface share one implementation: no blockers
+    means L1 is clean. Preserves the historical contract — an empty
+    workflow or a missing project repo still returns False.
+    """
     if not fbWorkflowHasProjectRepo(sProjectRepoPath):
         return False
-    listSteps = dictWorkflow.get("listSteps", [])
+    listSteps = dictWorkflow.get("listSteps", []) or []
     if not listSteps:
         return False
-    for dictStep in listSteps:
-        if not fbStepIsAtLeastLevel1(dictStep):
-            return False
-    return True
+    listBlockers = flistLevel1Blockers(
+        dictWorkflow, {}, sProjectRepoPath,
+    )
+    return len(listBlockers) == 0
+
+
+def flistLevel1Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
+    """Return per-step L1 blockers with per-file granularity.
+
+    Each entry has the shape::
+
+        {"iStepIndex": int, "sStepLabel": str, "sCriterion": str,
+         "listOffendingFiles": [repo-relative paths],
+         "listOffendingUpstreamSteps": [0-based step indices]}
+
+    ``sCriterion`` is one of ``"user-not-approved"``,
+    ``"upstream-modified"``, ``"axis-not-green"``. When both
+    ``bUpstreamModified`` and an axis-untested condition fire on the
+    same step only ``upstream-modified`` is emitted (root cause; the
+    axis-untested condition is its downstream effect after the L1
+    invalidation cascade). The list is sorted by ``iStepIndex`` so
+    rendering order is deterministic. Returns ``[]`` for an L1-clean
+    workflow or one with no project repo.
+    """
+    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+        return []
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    if not listSteps:
+        return []
+    dictUpstreamByStep = _fdictUpstreamStepsByConsumer(dictWorkflow)
+    listBlockers = []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        dictBlocker = _fdictBuildStepBlocker(
+            dictWorkflow, iStepIndex, dictStep,
+            dictNewModTimes, dictUpstreamByStep,
+        )
+        if dictBlocker is not None:
+            listBlockers.append(dictBlocker)
+    return sorted(listBlockers, key=lambda dictEntry: dictEntry["iStepIndex"])
+
+
+def _fdictBuildStepBlocker(
+    dictWorkflow, iStepIndex, dictStep,
+    dictNewModTimes, dictUpstreamByStep,
+):
+    """Return the single dominant blocker dict for a step, or None.
+
+    Priority: ``upstream-modified`` > ``axis-not-green`` >
+    ``user-not-approved``. The first applicable criterion wins so a
+    step never emits two blockers; the dashboard's banner glyph
+    therefore has a deterministic single source. Corrupt step entries
+    (``None``, non-dict, missing ``dictVerification``) cannot satisfy
+    any criterion and are surfaced as ``user-not-approved`` so the
+    L1 gate matches its historical defensive contract.
+    """
+    if not isinstance(dictStep, dict):
+        return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
+    if not fbStepTimingClean(dictStep):
+        return _fdictUpstreamModifiedBlocker(
+            dictWorkflow, iStepIndex, dictStep,
+            dictNewModTimes, dictUpstreamByStep,
+        )
+    if not fbStepTestsPassing(dictStep):
+        return _fdictAxisNotGreenBlocker(
+            dictWorkflow, iStepIndex, dictStep,
+        )
+    if not fbStepUserApproved(dictStep):
+        return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
+    return None
+
+
+def _fdictUpstreamModifiedBlocker(
+    dictWorkflow, iStepIndex, dictStep,
+    dictNewModTimes, dictUpstreamByStep,
+):
+    """Build the ``upstream-modified`` blocker entry for one step."""
+    listUpstreamIndices = sorted(_flistOffendingUpstream(
+        iStepIndex, dictNewModTimes, dictUpstreamByStep,
+    ))
+    listOffendingFiles = _flistStepOutputFiles(dictStep)
+    return {
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sCriterion": "upstream-modified",
+        "listOffendingFiles": listOffendingFiles,
+        "listOffendingUpstreamSteps": listUpstreamIndices,
+    }
+
+
+def _fdictAxisNotGreenBlocker(dictWorkflow, iStepIndex, dictStep):
+    """Build the ``axis-not-green`` blocker entry for one step."""
+    return {
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sCriterion": "axis-not-green",
+        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingUpstreamSteps": [],
+    }
+
+
+def _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex):
+    """Build the ``user-not-approved`` blocker entry for one step."""
+    return {
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sCriterion": "user-not-approved",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+    }
+
+
+def _flistStepOutputFiles(dictStep):
+    """Return repo-relative data + plot file paths declared on a step."""
+    listFiles = []
+    for sKey in ("saDataFiles", "saPlotFiles"):
+        for sPath in dictStep.get(sKey, []) or []:
+            if isinstance(sPath, str) and sPath:
+                listFiles.append(sPath)
+    return listFiles
+
+
+def _flistOffendingUpstream(
+    iConsumerIndex, dictNewModTimes, dictUpstreamByStep,
+):
+    """Return upstream indices whose max mtime exceeds the consumer's."""
+    iConsumerMtime = _fiStepMaxMtime(iConsumerIndex, dictNewModTimes)
+    listOffending = []
+    for iUpstreamIndex in dictUpstreamByStep.get(iConsumerIndex, []):
+        iUpstreamMtime = _fiStepMaxMtime(iUpstreamIndex, dictNewModTimes)
+        if iUpstreamMtime > iConsumerMtime:
+            listOffending.append(iUpstreamIndex)
+    return listOffending
+
+
+def _fiStepMaxMtime(iStepIndex, dictNewModTimes):
+    """Return integer max mtime for a step, 0 if missing or malformed."""
+    sValue = (dictNewModTimes or {}).get(str(iStepIndex))
+    if sValue is None:
+        return 0
+    try:
+        return int(sValue)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fdictUpstreamStepsByConsumer(dictWorkflow):
+    """Return ``{iConsumerIndex: [iUpstreamIndex, ...]}`` for declared edges.
+
+    Inverts ``fdictBuildDirectDependencies``'s
+    ``{iUpstream: set(iDownstream)}`` representation. Lazily imports
+    workflowManager so the reproducibility leaf does not take a
+    load-time dependency on the GUI subtree. Catches the broad family
+    of attribute / type / lookup errors raised by the upstream parser
+    when a workflow carries corrupt ``listSteps`` entries (``None``,
+    string, missing key) so a malformed workflow degrades to "no
+    declared edges" rather than crashing the L1 gate.
+    """
+    from vaibify.gui.workflowManager import fdictBuildDirectDependencies
+    try:
+        dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    except (AttributeError, KeyError, TypeError):
+        return {}
+    dictResult = {}
+    for iUpstream, setDownstream in (dictDirect or {}).items():
+        for iDownstream in setDownstream:
+            dictResult.setdefault(iDownstream, []).append(iUpstream)
+    return dictResult
+
+
+def _fsLabelForStep(dictWorkflow, iStepIndex):
+    """Return ``sLabel`` for a step, falling back to the canonical generator.
+
+    Falls back to a numeric ``"NN"`` label when the canonical generator
+    would dereference a corrupt step entry (``None`` / non-dict); the
+    label is purely diagnostic and never load-bearing for routing.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    if 0 <= iStepIndex < len(listSteps):
+        dictStored = listSteps[iStepIndex]
+        if isinstance(dictStored, dict):
+            sStoredLabel = dictStored.get("sLabel")
+            if isinstance(sStoredLabel, str) and sStoredLabel:
+                return sStoredLabel
+    from vaibify.gui.pipelineUtils import fsLabelFromStepIndex
+    try:
+        return fsLabelFromStepIndex(dictWorkflow, iStepIndex)
+    except (AttributeError, TypeError):
+        return f"{iStepIndex + 1:02d}"
 
 
 def fbStepIsAtLeastLevel1(dictStep):
