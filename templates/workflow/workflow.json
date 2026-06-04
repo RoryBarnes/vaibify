@@ -4,18 +4,32 @@
     "iNumberOfCores": -1,
     "listSteps": [
         {
-            "sName": "AnalyzeData",
-            "sDirectory": ".",
+            "sName": "GenerateSamples",
+            "sDirectory": "Sampler",
             "bRunEnabled": true,
             "bPlotOnly": false,
             "saDataCommands": [
-                "python runAnalysis.py"
+                "python dataGenerateSamples.py --output samples.npy"
             ],
+            "saDataFiles": [
+                "samples.npy"
+            ],
+            "saPlotCommands": [],
+            "saPlotFiles": []
+        },
+        {
+            "sName": "PlotHistogram",
+            "sDirectory": "Plot",
+            "bRunEnabled": true,
+            "bPlotOnly": true,
+            "saDataCommands": [],
             "saDataFiles": [],
             "saPlotCommands": [
-                "python makePlot.py"
+                "python plotHistogram.py --samples {Step01.samples} {sPlotDirectory}/histogram.{sFigureType}"
             ],
-            "saPlotFiles": []
+            "saPlotFiles": [
+                "{sPlotDirectory}/histogram.{sFigureType}"
+            ]
         }
     ]
 }

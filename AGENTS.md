@@ -198,6 +198,40 @@ the right one, not to remove the test. Deleting or disabling a test to
 unblock a run is effectively unrecoverable: future regressions have no
 guardrail.
 
+## Cross-step references via tokens
+
+**Every cross-step file reference in a vaibify workflow script must be
+passed as a CLI argument, named in the step's command via a
+`{StepNN.varname}` token.** Hardcoded paths in Python (or any other
+language) that cross step boundaries are forbidden. The contract is
+that the workflow JSON, parsed mechanically, declares the complete
+dependency graph.
+
+The dependency parser at
+[workflowManager.py::fdictBuildDirectDependencies:1471-1487](vaibify/gui/workflowManager.py#L1471-L1487)
+scans only `{StepNN.varname}` tokens in command strings. It cannot
+introspect arbitrary script source. A cross-step reference hidden
+inside a script literal (e.g. `path = "../OtherStep/output.json"`) is
+invisible to the parser, so the dependency edge does not exist in the
+graph, `bUpstreamModified` cannot fire correctly, and the workflow
+cannot honestly reach AICS Level 1.
+
+A step's script *may* read its own step-directory files via hardcoded
+relative paths. The boundary is the step. Anything from another step
+must be tokenized.
+
+The `saDependencies` field is the escape hatch when the data flow
+doesn't naturally express the dependency (e.g., a plot script
+implicitly relies on a sibling step's output): list one or more
+`{StepNN.*}` tokens there and the parser will pick the edge up.
+
+Full developer documentation, including the naming convention,
+worked examples, and how to handle colliding basenames, is in
+[docs/scriptAuthoring.md](docs/scriptAuthoring.md). The architectural
+invariant `testTemplateCommandsUseStepTokens` in
+`tests/testArchitecturalInvariants.py` enforces this rule on every
+vaibify-shipped template at CI time.
+
 ## Adding a UI action
 
 Every new state-mutating HTTP or WebSocket route that a researcher can
