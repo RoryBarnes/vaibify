@@ -25,7 +25,32 @@ def _fMockDocker(iExitCode=0, sOutput=""):
     mockDocker.ftResultExecuteCommand.return_value = (
         iExitCode, sOutput,
     )
+    _fnConfigureStreamingMock(mockDocker, [(iExitCode, sOutput)])
     return mockDocker
+
+
+def _fnConfigureStreamingMock(mockDocker, listResults):
+    """Mirror the legacy mock onto texecRunInContainerStreamedWithChunks."""
+    from vaibify.docker.dockerConnection import ExecResult
+    listPending = list(listResults)
+
+    def fnStreamingSideEffect(
+        sContainerId, sCommand, fnEmitChunk,
+        sWorkdir=None, sUser=None,
+    ):
+        if listPending:
+            iExitCode, sOutput = listPending.pop(0)
+        else:
+            iExitCode, sOutput = 0, ""
+        for sLine in sOutput.splitlines():
+            fnEmitChunk("stdout", sLine)
+        return ExecResult(
+            iExitCode=iExitCode, sStdout=sOutput, sStderr="",
+        )
+
+    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+        fnStreamingSideEffect
+    )
 
 
 def _fMockCallback():
@@ -70,12 +95,10 @@ def test_ftRunSingleCommand_cpu_line_not_emitted_as_output():
 def test_fiRunStepCommands_returns_on_setup_failure():
     """If data commands fail, plot commands should not run."""
     mockDocker = MagicMock()
-    # First call: mkdir Plot directory succeeds.
-    # Second call: data command fails.
-    mockDocker.ftResultExecuteCommand.side_effect = [
-        (0, ""),       # mkdir Plot
-        (5, "oops"),   # first data command fails with exit=5
-    ]
+    # mkdir Plot still uses the blocking exec; data/plot commands
+    # now use the streaming exec, so the failure goes there.
+    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    _fnConfigureStreamingMock(mockDocker, [(5, "oops")])
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {
         "sDirectory": "/ws/step",
@@ -88,15 +111,12 @@ def test_fiRunStepCommands_returns_on_setup_failure():
     ))
     assert iExitCode == 5
     # The plot command should never have been invoked.
-    listCalls = [
-        c.args[1] for c in mockDocker.ftResultExecuteCommand.call_args_list
-    ]
+    listCalls = _flistAllExecutedCommands(mockDocker)
     assert not any("plot.py" in sCmd for sCmd in listCalls)
 
 
 def test_fiRunStepCommands_runs_plot_when_setup_succeeds():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {
         "sDirectory": "/ws/step",
@@ -108,10 +128,22 @@ def test_fiRunStepCommands_runs_plot_when_setup_succeeds():
         mockDocker, "cid", dictStep, "/ws", {}, fnCallback,
     ))
     assert iExitCode == 0
-    listCalls = [
-        c.args[1] for c in mockDocker.ftResultExecuteCommand.call_args_list
-    ]
+    listCalls = _flistAllExecutedCommands(mockDocker)
     assert any("plot.py" in sCmd for sCmd in listCalls)
+
+
+def _flistAllExecutedCommands(mockDocker):
+    """Collect commands from both the legacy and the streaming exec mocks."""
+    listLegacy = [
+        c.args[1]
+        for c in mockDocker.ftResultExecuteCommand.call_args_list
+    ]
+    listStreamed = [
+        c.args[1]
+        for c in
+        mockDocker.texecRunInContainerStreamedWithChunks.call_args_list
+    ]
+    return listLegacy + listStreamed
 
 
 # ---------------------------------------------------------------
@@ -129,10 +161,7 @@ def _fdictStepForRunMode():
 
 
 def _flistExecutedCommands(mockDocker):
-    return [
-        c.args[1]
-        for c in mockDocker.ftResultExecuteCommand.call_args_list
-    ]
+    return _flistAllExecutedCommands(mockDocker)
 
 
 def test_fiRunStepCommands_plotsOnly_skips_data_and_tests():

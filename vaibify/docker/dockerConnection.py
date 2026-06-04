@@ -210,6 +210,97 @@ class DockerConnection:
             baStdout, baStderr = tOutput, None
         return baStdout or b"", baStderr or b""
 
+    def texecRunInContainerStreamedWithChunks(
+        self, sContainerId, sCommand, fnEmitChunk,
+        sWorkdir=None, sUser=None,
+    ):
+        """Run a command, invoking ``fnEmitChunk(sStream, sLine)`` per line.
+
+        ``sStream`` is ``"stdout"`` or ``"stderr"``; ``sLine`` is the
+        decoded text with the trailing newline stripped. Partial
+        trailing data is buffered across docker-py chunks and flushed
+        on process exit. Returns an :class:`ExecResult` with the same
+        contract as :meth:`texecRunInContainerStreamed` so callers can
+        keep their post-exec bookkeeping unchanged.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        if sUser is None:
+            sUser = _fsResolveContainerUser(container)
+        dictKwargs = self._fdictBuildExecCreateKwargs(
+            sCommand, sWorkdir, sUser,
+        )
+        sExecId = self._clientDocker.api.exec_create(
+            container.id, **dictKwargs,
+        )["Id"]
+        sStdout, sStderr = self._ftStreamExecLines(sExecId, fnEmitChunk)
+        dictInspect = self._clientDocker.api.exec_inspect(sExecId)
+        return ExecResult(
+            iExitCode=int(dictInspect.get("ExitCode") or 0),
+            sStdout=sStdout, sStderr=sStderr,
+        )
+
+    @staticmethod
+    def _fdictBuildExecCreateKwargs(sCommand, sWorkdir, sUser):
+        """Assemble keyword arguments for docker-py's ``exec_create``."""
+        dictKwargs = {"cmd": ["/bin/bash", "-c", sCommand]}
+        if sWorkdir:
+            dictKwargs["workdir"] = sWorkdir
+        if sUser:
+            dictKwargs["user"] = sUser
+        return dictKwargs
+
+    def _ftStreamExecLines(self, sExecId, fnEmitChunk):
+        """Stream demuxed exec output, emitting one line at a time."""
+        dictBuf = {"stdout": b"", "stderr": b""}
+        dictAccum = {"stdout": [], "stderr": []}
+        generator = self._clientDocker.api.exec_start(
+            sExecId, stream=True, demux=True,
+        )
+        for tDuplet in generator:
+            for sStream, baChunk in zip(
+                ("stdout", "stderr"), tDuplet,
+            ):
+                if baChunk:
+                    self._fnEmitLines(
+                        sStream, baChunk, dictBuf, dictAccum,
+                        fnEmitChunk,
+                    )
+        return self._ftFinalizeStreamBuffers(
+            dictBuf, dictAccum, fnEmitChunk,
+        )
+
+    def _fnEmitLines(
+        self, sStream, baChunk, dictBuf, dictAccum, fnEmitChunk,
+    ):
+        """Emit complete lines from a chunk; buffer the partial tail."""
+        listLines, dictBuf[sStream] = self._ftSplitChunkOnNewlines(
+            baChunk, dictBuf[sStream],
+        )
+        for baLine in listLines:
+            sLine = baLine.decode("utf-8", errors="replace")
+            fnEmitChunk(sStream, sLine)
+            dictAccum[sStream].append(sLine)
+
+    @staticmethod
+    def _ftSplitChunkOnNewlines(baChunk, baCarry):
+        """Return (list of complete lines, leftover bytes) after baChunk."""
+        listLines = (baCarry + baChunk).split(b"\n")
+        return listLines[:-1], listLines[-1]
+
+    @staticmethod
+    def _ftFinalizeStreamBuffers(dictBuf, dictAccum, fnEmitChunk):
+        """Flush any trailing partial line; return (sStdout, sStderr)."""
+        for sStream in ("stdout", "stderr"):
+            baLeftover = dictBuf[sStream]
+            if baLeftover:
+                sLine = baLeftover.decode("utf-8", errors="replace")
+                fnEmitChunk(sStream, sLine)
+                dictAccum[sStream].append(sLine)
+        return (
+            "\n".join(dictAccum["stdout"]),
+            "\n".join(dictAccum["stderr"]),
+        )
+
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None
     ):

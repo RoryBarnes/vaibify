@@ -19,6 +19,9 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnHandlePipelineEvent(dictEvent) {
+        if (dictEvent.sType === "wsHeartbeat") {
+            return;
+        }
         if (dictEvent.sType === "output") {
             fnAppendPipelineOutput(dictEvent.sLine);
         } else if (dictEvent.sType === "commandFailed") {

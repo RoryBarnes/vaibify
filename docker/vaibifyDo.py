@@ -34,7 +34,7 @@ S_CATALOG_JSON_PATH = "/tmp/vaibify-action-catalog.json"
 S_SESSION_HEADER_NAME = "X-Vaibify-Session"
 S_EXPECTED_SCHEMA = "1.0"
 F_CONNECT_TIMEOUT = 2.0
-F_READ_TIMEOUT = 600.0
+F_READ_TIMEOUT = 60.0
 F_LABEL_LOOKUP_TIMEOUT = 10.0
 RE_STEP_LABEL = re.compile(r"^[AIai]\d{1,3}$")
 
@@ -382,12 +382,21 @@ def fnWebsocketHandshake(sockConn, sHost, iPort, sPath):
 
 def fnSendWsText(sockConn, sPayload):
     """Write one masked text frame to the open WebSocket."""
-    dataPayload = sPayload.encode("utf-8")
+    _fnSendWsFrame(sockConn, 0x81, sPayload.encode("utf-8"))
+
+
+def fnSendWsPong(sockConn, dataPayload):
+    """Reply to a server PING with a masked PONG echoing its payload."""
+    _fnSendWsFrame(sockConn, 0x8A, dataPayload)
+
+
+def _fnSendWsFrame(sockConn, iOpcodeByte, dataPayload):
+    """Write one masked client frame with the given opcode and payload."""
     dataMask = secrets.token_bytes(4)
     dataMasked = bytes(b ^ dataMask[i % 4]
                        for i, b in enumerate(dataPayload))
     iLength = len(dataPayload)
-    dataHeader = bytes([0x81])
+    dataHeader = bytes([iOpcodeByte])
     if iLength < 126:
         dataHeader += bytes([0x80 | iLength])
     elif iLength < 65536:
@@ -407,11 +416,18 @@ def _fnRecvExact(sockConn, iCount):
     return dataBuffer
 
 
-def fsRecvWsFrame(sockConn):
-    """Read one unmasked server text frame; returns '' on close."""
+def ftRecvWsFrame(sockConn):
+    """Read one unmasked server frame.
+
+    Returns a ``(sKind, dataPayload)`` tuple where ``sKind`` is one of
+    ``"text"``, ``"ping"``, ``"skip"``, or ``"close"``. For text frames
+    ``dataPayload`` is already UTF-8-decoded into a ``str``; for ping
+    frames it is the raw ``bytes`` that must be echoed back in the PONG
+    per RFC 6455 §5.5.3.
+    """
     dataHeader = _fnRecvExact(sockConn, 2)
     if len(dataHeader) < 2:
-        return ""
+        return ("close", b"")
     iOpcode = dataHeader[0] & 0x0F
     iLength = dataHeader[1] & 0x7F
     if iLength == 126:
@@ -420,12 +436,12 @@ def fsRecvWsFrame(sockConn):
         iLength = int.from_bytes(_fnRecvExact(sockConn, 8), "big")
     dataPayload = _fnRecvExact(sockConn, iLength) if iLength else b""
     if iOpcode == 0x8:
-        return ""
+        return ("close", b"")
     if iOpcode == 0x9:
-        return "__PING__"
+        return ("ping", dataPayload)
     if iOpcode != 0x1:
-        return "__SKIP__"
-    return dataPayload.decode("utf-8", errors="replace")
+        return ("skip", b"")
+    return ("text", dataPayload.decode("utf-8", errors="replace"))
 
 
 def fnRunWebsocket(dictEnv, dictPayload, bJsonMode):
@@ -441,22 +457,45 @@ def fnRunWebsocket(dictEnv, dictPayload, bJsonMode):
         fnFail("vaibify host unreachable at " + dictEnv["VAIBIFY_HOST_URL"]
                + "; reconnect the container from the dashboard", iCode=4)
     sockConn.settimeout(F_READ_TIMEOUT)
+    fnEnableTcpKeepalive(sockConn)
     fnWebsocketHandshake(sockConn, sHost, iPort, sPath)
     fnSendWsText(sockConn, json.dumps(dictPayload))
     return _fnStreamWsEvents(sockConn, bJsonMode)
 
 
+def fnEnableTcpKeepalive(sockConn):
+    """Enable TCP keepalives so the Docker NAT can't silently drop us.
+
+    The container runs Linux, so the per-connection knobs
+    (``TCP_KEEPIDLE`` / ``TCP_KEEPINTVL`` / ``TCP_KEEPCNT``) are
+    available; each is guarded so this module still imports on macOS
+    for unit tests.
+    """
+    sockConn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    for sName, iValue in (
+        ("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 15), ("TCP_KEEPCNT", 4),
+    ):
+        iOpt = getattr(socket, sName, None)
+        if iOpt is not None:
+            sockConn.setsockopt(socket.IPPROTO_TCP, iOpt, iValue)
+
+
 def _fnStreamWsEvents(sockConn, bJsonMode):
     """Read events until 'completed' or error; return exit code."""
     while True:
-        sFrame = fsRecvWsFrame(sockConn)
-        if sFrame == "":
+        sKind, dataFrame = ftRecvWsFrame(sockConn)
+        if sKind == "close":
             return 1
-        if sFrame in ("__PING__", "__SKIP__"):
+        if sKind == "ping":
+            fnSendWsPong(sockConn, dataFrame)
+            continue
+        if sKind == "skip":
             continue
         try:
-            dictEvent = json.loads(sFrame)
+            dictEvent = json.loads(dataFrame)
         except ValueError:
+            continue
+        if dictEvent.get("sType") == "wsHeartbeat":
             continue
         _fnPrintEvent(dictEvent, bJsonMode)
         sType = dictEvent.get("sType", "")

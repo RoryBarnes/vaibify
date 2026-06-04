@@ -45,14 +45,45 @@ def _fnRunAsync(coroutine):
 
 
 def _fMockDocker(iExitCode=0, sOutput=""):
-    """Return a mock Docker connection."""
+    """Return a mock Docker connection that handles both exec paths."""
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (
         iExitCode, sOutput
     )
+    _fnConfigureStreamingMock(mockDocker, [(iExitCode, sOutput)])
     mockDocker.fnWriteFile = MagicMock()
     mockDocker.fbaFetchFile.return_value = b"{}"
     return mockDocker
+
+
+def _fnConfigureStreamingMock(mockDocker, listResults):
+    """Set ``texecRunInContainerStreamedWithChunks`` to stream listResults.
+
+    Each ``(iExitCode, sOutput)`` is consumed by one call to the
+    streaming method. The mock walks ``sOutput`` line-by-line and
+    invokes the caller-supplied ``fnEmitChunk`` exactly as the real
+    docker-py streaming exec does, then returns an ``ExecResult``.
+    """
+    from vaibify.docker.dockerConnection import ExecResult
+    listPending = list(listResults)
+
+    def fnStreamingSideEffect(
+        sContainerId, sCommand, fnEmitChunk,
+        sWorkdir=None, sUser=None,
+    ):
+        if listPending:
+            iExitCode, sOutput = listPending.pop(0)
+        else:
+            iExitCode, sOutput = 0, ""
+        for sLine in sOutput.splitlines():
+            fnEmitChunk("stdout", sLine)
+        return ExecResult(
+            iExitCode=iExitCode, sStdout=sOutput, sStderr="",
+        )
+
+    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+        fnStreamingSideEffect
+    )
 
 
 def _fMockCallback():
@@ -109,9 +140,7 @@ def test_ftRunCommandList_empty():
 
 def test_ftRunCommandList_stops_on_failure():
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.side_effect = [
-        (1, "fail"),
-    ]
+    _fnConfigureStreamingMock(mockDocker, [(1, "fail")])
     fnCallback, _ = _fMockCallback()
     iResult, fCpu = _fnRunAsync(_ftRunCommandList(
         mockDocker, "cid", ["cmd1", "cmd2"],
@@ -899,7 +928,8 @@ def test_ftRunCommandList_threads_env_prefix_to_executed_command():
         mockDocker, "cid", ["echo hi"],
         "/work", dictVariables, fnCallback,
     ))
-    sExecuted = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+        .call_args[0][1]
     assert "SOURCE_DATE_EPOCH=42" in sExecuted
 
 
@@ -909,7 +939,8 @@ def test_ftRunSingleCommand_no_env_prefix_by_default():
     _fnRunAsync(_ftRunSingleCommand(
         mockDocker, "cid", "echo hi", "echo hi", "/work", fnCallback,
     ))
-    sExecuted = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+        .call_args[0][1]
     assert "SOURCE_DATE_EPOCH" not in sExecuted
 
 

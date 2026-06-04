@@ -1,10 +1,12 @@
 """Execute workflow steps by running commands directly in containers."""
 
 import asyncio
+import contextlib
 import logging
 import os
 import posixpath
 import threading
+import time
 
 from . import pipelineState
 from . import workflowManager
@@ -243,28 +245,95 @@ async def _ftRunSingleCommand(
     sOriginal, sResolved, sWorkdir, fnStatusCallback,
     sEnvPrefix="",
 ):
-    """Execute one command, return (iExitCode, fCpuSeconds)."""
+    """Execute one command, return (iExitCode, fCpuSeconds).
+
+    Output is streamed line-by-line via the docker-py low-level exec
+    API; ``fnStatusCallback`` receives ``{"sType":"output",...}``
+    events as the command produces them, so the in-container
+    ``vaibify-do`` WebSocket sees traffic throughout the run.
+    """
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
     )
     sTimedCmd = _fsWrapWithTime(sEnvPrefix + sResolved)
-    iExitCode, sOutput = await asyncio.to_thread(
-        connectionDocker.ftResultExecuteCommand,
-        sContainerId, sTimedCmd, sWorkdir=sWorkdir,
+    loopMain = asyncio.get_running_loop()
+    dictAccum = {"fCpu": 0.0}
+    fnEmitChunk = _ffBuildStreamingChunkEmitter(
+        fnStatusCallback, loopMain, dictAccum,
     )
-    fCpuSeconds = _fParseCpuTime(sOutput)
-    for sLine in sOutput.splitlines():
-        if sLine.startswith("__VAIBIFY_CPU__ "):
-            continue
-        await fnStatusCallback({"sType": "output", "sLine": sLine})
-    if iExitCode != 0:
+    async with _actxWebSocketHeartbeat(fnStatusCallback):
+        resultExec = await asyncio.to_thread(
+            connectionDocker.texecRunInContainerStreamedWithChunks,
+            sContainerId, sTimedCmd, fnEmitChunk,
+            sWorkdir=sWorkdir,
+        )
+    if resultExec.iExitCode != 0:
         await fnStatusCallback({
             "sType": "commandFailed",
             "sCommand": sResolved,
             "sDirectory": sWorkdir,
-            "iExitCode": iExitCode,
+            "iExitCode": resultExec.iExitCode,
         })
-    return (iExitCode, fCpuSeconds)
+    return (resultExec.iExitCode, dictAccum["fCpu"])
+
+
+def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
+    """Build the sync callback handed to the streaming exec worker.
+
+    ``__VAIBIFY_CPU__`` lines are absorbed into ``dictAccum["fCpu"]``;
+    every other line is forwarded to the WebSocket via
+    ``run_coroutine_threadsafe`` so the worker thread can talk to the
+    event loop without blocking it. The worker waits on each callback
+    so back-pressure from the socket reaches the producer.
+    """
+    def fnEmitChunk(sStream, sLine):
+        if sLine.startswith("__VAIBIFY_CPU__ "):
+            dictAccum["fCpu"] = _fParseCpuTime(sLine)
+            return
+        future = asyncio.run_coroutine_threadsafe(
+            fnStatusCallback({"sType": "output", "sLine": sLine}),
+            loopMain,
+        )
+        future.result()
+    return fnEmitChunk
+
+
+# Interval in seconds between server-emitted ``wsHeartbeat`` frames
+# during a single command. Tuned for the default 60 s F_READ_TIMEOUT on
+# the vaibify-do client; tests monkeypatch this constant to drive the
+# loop in a fraction of a second.
+F_WS_HEARTBEAT_INTERVAL = 15.0
+
+
+@contextlib.asynccontextmanager
+async def _actxWebSocketHeartbeat(fnStatusCallback):
+    """Emit ``wsHeartbeat`` events on the WS while a command runs.
+
+    Keeps the in-container ``vaibify-do`` socket's per-recv inactivity
+    timer reset across multi-minute blocking commands without coupling
+    to the underlying docker exec call.
+    """
+    taskBeat = asyncio.create_task(
+        _fnEmitHeartbeatLoop(fnStatusCallback)
+    )
+    try:
+        yield
+    finally:
+        taskBeat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await taskBeat
+
+
+async def _fnEmitHeartbeatLoop(fnStatusCallback):
+    """Loop emitting ``wsHeartbeat`` events until cancelled."""
+    while True:
+        await asyncio.sleep(F_WS_HEARTBEAT_INTERVAL)
+        try:
+            await fnStatusCallback(
+                {"sType": "wsHeartbeat", "fEpoch": time.time()}
+            )
+        except Exception:
+            return
 
 
 def _fsWrapWithTime(sCommand):

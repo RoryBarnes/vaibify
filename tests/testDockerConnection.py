@@ -361,3 +361,118 @@ def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
         listMembers = tar.getmembers()
     assert len(listMembers) == 1
     assert iBefore <= listMembers[0].mtime <= iAfter
+
+
+# -----------------------------------------------------------------------
+# texecRunInContainerStreamedWithChunks
+# -----------------------------------------------------------------------
+
+
+def _fMockExecForStream(mockClient, listChunks, iExitCode=0):
+    """Wire up the low-level docker-py exec mocks for streaming.
+
+    ``listChunks`` is the sequence yielded by ``exec_start(stream=True,
+    demux=True)``; each element is a ``(stdout_bytes, stderr_bytes)``
+    tuple. ``iExitCode`` is what ``exec_inspect`` reports afterwards.
+    """
+    mockClient.api.exec_create.return_value = {"Id": "exec-1"}
+    mockClient.api.exec_start.return_value = iter(listChunks)
+    mockClient.api.exec_inspect.return_value = {"ExitCode": iExitCode}
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_streamed_with_chunks_emits_per_line(mockGetDocker):
+    """Each complete line in the demuxed stream becomes one emit call."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockClient.containers.get.return_value = mockContainer
+    _fMockExecForStream(mockClient, [
+        (b"first\nsecond\n", None),
+        (b"third\n", b"oops\n"),
+    ])
+    listEmits = []
+    conn = DockerConnection()
+    resultExec = conn.texecRunInContainerStreamedWithChunks(
+        "abc123", "do-it",
+        lambda sStream, sLine: listEmits.append((sStream, sLine)),
+    )
+    assert resultExec.iExitCode == 0
+    assert listEmits == [
+        ("stdout", "first"),
+        ("stdout", "second"),
+        ("stdout", "third"),
+        ("stderr", "oops"),
+    ]
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_streamed_with_chunks_buffers_partial_lines(mockGetDocker):
+    """A line split across chunks is reassembled before emitting."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockClient.containers.get.return_value = mockContainer
+    _fMockExecForStream(mockClient, [
+        (b"part-", None),
+        (b"ial\n", None),
+    ])
+    listEmits = []
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamedWithChunks(
+        "abc123", "cmd",
+        lambda sStream, sLine: listEmits.append((sStream, sLine)),
+    )
+    assert listEmits == [("stdout", "part-ial")]
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_streamed_with_chunks_flushes_trailing_partial(mockGetDocker):
+    """A trailing chunk without a newline is still emitted on exit."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockClient.containers.get.return_value = mockContainer
+    _fMockExecForStream(mockClient, [
+        (b"no-newline-here", None),
+    ])
+    listEmits = []
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamedWithChunks(
+        "abc123", "cmd",
+        lambda sStream, sLine: listEmits.append((sStream, sLine)),
+    )
+    assert listEmits == [("stdout", "no-newline-here")]
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_streamed_with_chunks_propagates_exit_code(mockGetDocker):
+    """exec_inspect's ExitCode is the iExitCode on the returned ExecResult."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockClient.containers.get.return_value = mockContainer
+    _fMockExecForStream(mockClient, [(b"hi\n", None)], iExitCode=7)
+    conn = DockerConnection()
+    resultExec = conn.texecRunInContainerStreamedWithChunks(
+        "abc123", "cmd", lambda sStream, sLine: None,
+    )
+    assert resultExec.iExitCode == 7
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_streamed_with_chunks_passes_workdir_and_user(mockGetDocker):
+    """sWorkdir and sUser thread through to exec_create."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockClient.containers.get.return_value = mockContainer
+    _fMockExecForStream(mockClient, [])
+    conn = DockerConnection()
+    conn.texecRunInContainerStreamedWithChunks(
+        "abc123", "pwd", lambda sStream, sLine: None,
+        sWorkdir="/workspace", sUser="root",
+    )
+    dictKwargs = mockClient.api.exec_create.call_args[1]
+    assert dictKwargs["workdir"] == "/workspace"
+    assert dictKwargs["user"] == "root"

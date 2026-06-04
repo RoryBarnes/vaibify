@@ -710,6 +710,7 @@ class _MockSocket:
         self._listQueue = [bytes(c) for c in listRecvChunks]
         self.listSent = []
         self._iTimeout = None
+        self.listSockOpts = []
 
     def sendall(self, data):
         self.listSent.append(data)
@@ -727,6 +728,9 @@ class _MockSocket:
 
     def settimeout(self, iTimeout):
         self._iTimeout = iTimeout
+
+    def setsockopt(self, iLevel, iOption, iValue):
+        self.listSockOpts.append((iLevel, iOption, iValue))
 
     def close(self):
         pass
@@ -765,50 +769,70 @@ def test_fnSendWsText_large_frame_uses_127(modCli):
     assert iLen == 70000
 
 
-def test_fsRecvWsFrame_reads_text(modCli):
-    # Text frame, len=2, payload "hi" -> 0x81 0x02 h i
+def test_ftRecvWsFrame_reads_text(modCli):
     sock = _MockSocket([bytes([0x81, 0x02]), b"hi"])
-    assert modCli.fsRecvWsFrame(sock) == "hi"
+    assert modCli.ftRecvWsFrame(sock) == ("text", "hi")
 
 
-def test_fsRecvWsFrame_close_opcode_returns_empty(modCli):
+def test_ftRecvWsFrame_close_opcode_returns_close_tuple(modCli):
     sock = _MockSocket([bytes([0x88, 0x00])])
-    assert modCli.fsRecvWsFrame(sock) == ""
+    assert modCli.ftRecvWsFrame(sock) == ("close", b"")
 
 
-def test_fsRecvWsFrame_ping_returns_sentinel(modCli):
-    sock = _MockSocket([bytes([0x89, 0x00])])
-    assert modCli.fsRecvWsFrame(sock) == "__PING__"
+def test_ftRecvWsFrame_ping_returns_payload(modCli):
+    dataPayload = b"keepalive-42"
+    sock = _MockSocket([
+        bytes([0x89, len(dataPayload)]),
+        dataPayload,
+    ])
+    assert modCli.ftRecvWsFrame(sock) == ("ping", dataPayload)
 
 
-def test_fsRecvWsFrame_other_opcode_skip(modCli):
+def test_ftRecvWsFrame_other_opcode_returns_skip(modCli):
     sock = _MockSocket([bytes([0x82, 0x00])])
-    assert modCli.fsRecvWsFrame(sock) == "__SKIP__"
+    assert modCli.ftRecvWsFrame(sock) == ("skip", b"")
 
 
-def test_fsRecvWsFrame_len_126_reads_extended(modCli):
+def test_ftRecvWsFrame_len_126_reads_extended(modCli):
     dataPayload = b"a" * 300
     sock = _MockSocket([
         bytes([0x81, 126]),
         (300).to_bytes(2, "big"),
         dataPayload,
     ])
-    assert modCli.fsRecvWsFrame(sock) == "a" * 300
+    assert modCli.ftRecvWsFrame(sock) == ("text", "a" * 300)
 
 
-def test_fsRecvWsFrame_len_127_reads_extended(modCli):
+def test_ftRecvWsFrame_len_127_reads_extended(modCli):
     dataPayload = b"b" * 70000
     sock = _MockSocket([
         bytes([0x81, 127]),
         (70000).to_bytes(8, "big"),
         dataPayload,
     ])
-    assert modCli.fsRecvWsFrame(sock) == "b" * 70000
+    assert modCli.ftRecvWsFrame(sock) == ("text", "b" * 70000)
 
 
-def test_fsRecvWsFrame_short_header_returns_empty(modCli):
+def test_ftRecvWsFrame_short_header_returns_close(modCli):
     sock = _MockSocket([b""])
-    assert modCli.fsRecvWsFrame(sock) == ""
+    assert modCli.ftRecvWsFrame(sock) == ("close", b"")
+
+
+def test_fnSendWsPong_echoes_payload_with_pong_opcode(modCli):
+    sock = _MockSocket([])
+    dataPayload = b"keepalive-42"
+    modCli.fnSendWsPong(sock, dataPayload)
+    dataFrame = sock.listSent[0]
+    # First byte is 0x8A (FIN + pong opcode).
+    assert dataFrame[0] == 0x8A
+    # Mask bit set; payload length in low 7 bits.
+    assert dataFrame[1] == 0x80 | len(dataPayload)
+    dataMask = dataFrame[2:6]
+    dataMasked = dataFrame[6:]
+    dataEchoed = bytes(
+        b ^ dataMask[i % 4] for i, b in enumerate(dataMasked)
+    )
+    assert dataEchoed == dataPayload
 
 
 def test_recv_exact_returns_empty_on_short_read(modCli):
@@ -925,6 +949,47 @@ def test_fnRunWebsocket_full_flow_completed(
     assert iCode == 0
 
 
+def test_fnRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
+    """Connecting must turn on SO_KEEPALIVE plus the Linux tuning knobs."""
+    dataDone = b'{"sType":"completed","iExitCode":0}'
+    sockMock = _MockSocket([
+        b"HTTP/1.1 101 Switching Protocols\r\n\r\n",
+        bytes([0x81, len(dataDone)]) + dataDone,
+    ])
+    with patch.object(
+        modCli.socket, "create_connection", return_value=sockMock,
+    ):
+        modCli.fnRunWebsocket(
+            dictValidEnv, {"sAction": "runAll"}, False,
+        )
+    setOptions = {(iLevel, iOpt) for iLevel, iOpt, _ in sockMock.listSockOpts}
+    assert (socket.SOL_SOCKET, socket.SO_KEEPALIVE) in setOptions
+    # The TCP_KEEP* knobs are Linux-only; only assert when the host
+    # exposes them so this test runs on macOS too.
+    for sName in ("TCP_KEEPIDLE", "TCP_KEEPINTVL", "TCP_KEEPCNT"):
+        iOpt = getattr(socket, sName, None)
+        if iOpt is None:
+            continue
+        assert (socket.IPPROTO_TCP, iOpt) in setOptions
+
+
+def test_fnEnableTcpKeepalive_sets_keepalive_flag(modCli):
+    sock = _MockSocket([])
+    modCli.fnEnableTcpKeepalive(sock)
+    listLevels = [iLevel for iLevel, _, _ in sock.listSockOpts]
+    assert socket.SOL_SOCKET in listLevels
+
+
+def test_f_read_timeout_below_graceful_ceiling(modCli):
+    """Keep the inactivity ceiling tight; regressions surface fast.
+
+    With server-side wsHeartbeat events and per-line streaming, a 120 s
+    ceiling is generous. A future bump back toward 600 s would
+    reintroduce the long-vconverge drop bug.
+    """
+    assert modCli.F_READ_TIMEOUT <= 120.0
+
+
 def test_fnRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
     dataError = b'{"sType":"error","sMessage":"boom"}'
     sock = _MockSocket([
@@ -963,15 +1028,39 @@ def test_stream_ws_events_pipeline_error_returns_one(modCli):
     assert modCli._fnStreamWsEvents(sock, False) == 1
 
 
-def test_stream_ws_events_skips_ping_and_skip_frames(modCli):
-    """Ping and non-text frames are skipped, then completed fires."""
+def test_stream_ws_events_pongs_ping_and_skips_binary(modCli):
+    """A server PING gets a PONG; binary frames are dropped silently."""
+    dataPing = b"abc"
     dataDone = b'{"sType":"completed","iExitCode":0}'
     sock = _MockSocket([
-        bytes([0x89, 0x00]),  # ping -> __PING__
-        bytes([0x82, 0x00]),  # binary -> __SKIP__
+        bytes([0x89, len(dataPing)]) + dataPing,
+        bytes([0x82, 0x00]),  # binary -> skip
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
     assert modCli._fnStreamWsEvents(sock, False) == 0
+    # Exactly one frame was sent in reply: the PONG echoing dataPing.
+    assert len(sock.listSent) == 1
+    dataFrame = sock.listSent[0]
+    assert dataFrame[0] == 0x8A  # FIN + pong opcode
+    dataMask = dataFrame[2:6]
+    dataMasked = dataFrame[6:]
+    dataEchoed = bytes(
+        b ^ dataMask[i % 4] for i, b in enumerate(dataMasked)
+    )
+    assert dataEchoed == dataPing
+
+
+def test_stream_ws_events_drops_ws_heartbeat_silently(modCli, capsys):
+    """wsHeartbeat events are plumbing and must not reach stdout."""
+    dataBeat = b'{"sType":"wsHeartbeat","fEpoch":1.0}'
+    dataDone = b'{"sType":"completed","iExitCode":0}'
+    sock = _MockSocket([
+        bytes([0x81, len(dataBeat)]) + dataBeat,
+        bytes([0x81, len(dataDone)]) + dataDone,
+    ])
+    assert modCli._fnStreamWsEvents(sock, False) == 0
+    sOut = capsys.readouterr().out
+    assert "wsHeartbeat" not in sOut
 
 
 def test_print_event_text_mode(modCli, capsys):
