@@ -34,6 +34,8 @@ const PipeleyenApp = (function () {
             dictTestSourceMtimeByStep: {},
             dictTestCategoryMtimes: {},
             dictPlotStandardExists: {},
+            dictBlockersByStep: {},
+            iL1BlockerCount: 0,
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -333,6 +335,8 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictTestSourceMtimeByStep = {};
         _dictWorkflowState.dictTestCategoryMtimes = {};
         _dictWorkflowState.dictPlotStandardExists = {};
+        _dictWorkflowState.dictBlockersByStep = {};
+        _dictWorkflowState.iL1BlockerCount = 0;
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -960,6 +964,10 @@ const PipeleyenApp = (function () {
             ftComputeDepAxisStates: ftComputeDepAxisStates,
             fsetGetExpandedCategory: fsetGetExpandedCategory,
             fdictBuildClientVariables: fdictBuildClientVariables,
+            dictBlockersByStep: _dictWorkflowState.dictBlockersByStep,
+            fbFileIsL1Offending: fbFileIsL1Offending,
+            fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
+            fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
         };
     }
 
@@ -1294,6 +1302,7 @@ const PipeleyenApp = (function () {
     }
 
     function fsBuildWarningBadge(step, iIndex) {
+        var sBlockerGlyph = fsBuildL1BlockerBannerGlyph(iIndex);
         var listWarnings = [];
         var dictV = step.dictVerification || {};
         var listMod = dictV.listModifiedFiles || [];
@@ -1307,10 +1316,64 @@ const PipeleyenApp = (function () {
             listWarnings.push(
                 "Upstream changed; rerun to re-verify");
         }
-        if (listWarnings.length === 0) return "";
+        if (listWarnings.length === 0) return sBlockerGlyph;
         var sTooltip = fnEscapeHtml(listWarnings.join("\n"));
-        return '<span class="data-modified-badge" ' +
+        return sBlockerGlyph + '<span class="data-modified-badge" ' +
             'title="' + sTooltip + '">&#9888;</span>';
+    }
+
+    var _DICT_BLOCKER_CRITERION_GLYPHS = {
+        "upstream-modified": {
+            sIcon: "⚠",
+            sLabel: "Upstream changed; re-run to clear blocker",
+            sClass: "step-blocker-glyph-upstream",
+        },
+        "axis-not-green": {
+            sIcon: "✗",
+            sLabel: "Tests are not green; re-run to clear blocker",
+            sClass: "step-blocker-glyph-axis",
+        },
+        "user-not-approved": {
+            sIcon: "—",
+            sLabel: "User attestation pending",
+            sClass: "step-blocker-glyph-user",
+        },
+    };
+
+    function fsBuildL1BlockerBannerGlyph(iIndex) {
+        var dictEntry = _dictWorkflowState.dictBlockersByStep[iIndex];
+        if (!dictEntry) return "";
+        var dictMeta = _DICT_BLOCKER_CRITERION_GLYPHS[
+            dictEntry.sCriterion];
+        if (!dictMeta) return "";
+        return '<span class="step-blocker-glyph ' + dictMeta.sClass +
+            '" title="' + fnEscapeHtml(dictMeta.sLabel) + '">' +
+            dictMeta.sIcon + '</span>';
+    }
+
+    var S_L1_FAILURE_GLYPH = "⚠";
+
+    function fbFileIsL1Offending(iStepIndex, sRawPath) {
+        var dictEntry = _dictWorkflowState.dictBlockersByStep[iStepIndex];
+        if (!dictEntry) return false;
+        var listOffending = dictEntry.listOffendingFiles || [];
+        for (var i = 0; i < listOffending.length; i++) {
+            if (listOffending[i] === sRawPath) return true;
+        }
+        return false;
+    }
+
+    function fbUpstreamStepIsL1Offending(iStepIndex, iUpstreamIndex) {
+        var dictEntry = _dictWorkflowState.dictBlockersByStep[iStepIndex];
+        if (!dictEntry) return false;
+        var listOffending = dictEntry.listOffendingUpstreamSteps || [];
+        return listOffending.indexOf(iUpstreamIndex) !== -1;
+    }
+
+    function fsBuildL1FailureGlyph(sTooltip) {
+        return '<span class="l1-blocker-file-glyph" title="' +
+            fnEscapeHtml(sTooltip || "Blocking L1 verification") +
+            '">' + S_L1_FAILURE_GLYPH + '</span>';
     }
 
     function fbAnyDepTimingStale(iStep) {
@@ -1656,8 +1719,11 @@ const PipeleyenApp = (function () {
         var bAnyPassed = listSignals.some(function (s) {
             return s === "passed";
         });
+        var bL1Blocked = !!_dictWorkflowState
+            .dictBlockersByStep[iIndex];
 
-        if (bAllPassed) return bDirty ? "partial" : "verified";
+        if (bAllPassed && !bL1Blocked) return bDirty ? "partial" : "verified";
+        if (bAllPassed && bL1Blocked) return "partial";
         if (bAnyPassed) return "partial";
         return "fail";
     }
@@ -2380,6 +2446,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictTestCategoryMtimes =
                 dictStatus.dictTestCategoryMtimes;
         }
+        _fnApplyBlockersFromPoll(dictStatus);
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
@@ -2396,6 +2463,22 @@ const PipeleyenApp = (function () {
             PipeleyenTestManager.fnNotifyTestFileChanges(
                 dictStatus.dictTestFileChanges);
         }
+    }
+
+    function _fnApplyBlockersFromPoll(dictStatus) {
+        var dictByStep = {};
+        var listBlockers = dictStatus.listBlockers || [];
+        for (var i = 0; i < listBlockers.length; i++) {
+            var dictEntry = listBlockers[i];
+            if (dictEntry && typeof dictEntry.iStepIndex === "number") {
+                dictByStep[dictEntry.iStepIndex] = dictEntry;
+            }
+        }
+        _dictWorkflowState.dictBlockersByStep = dictByStep;
+        _dictWorkflowState.iL1BlockerCount =
+            (typeof dictStatus.iL1BlockerCount === "number")
+                ? dictStatus.iL1BlockerCount
+                : Object.keys(dictByStep).length;
     }
 
     function fnResetStaleUserVerifications() {
@@ -2657,6 +2740,9 @@ const PipeleyenApp = (function () {
         fnToggleStepEnabled: fnToggleStepEnabled,
         fnClearFileExistenceCache: function () {
             _dictWorkflowState.dictFileExistenceCache = {};
+        },
+        fiGetL1BlockerCount: function () {
+            return _dictWorkflowState.iL1BlockerCount || 0;
         },
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
 

@@ -628,7 +628,9 @@ def _fdictBuildPollResponseRest(
     inspect-this-function home. Helpers here operate on the
     absolute-keyed mtimes dict.
     """
-    from vaibify.reproducibility.levelGates import fiAICSLevel
+    from vaibify.reproducibility.levelGates import (
+        fiAICSLevel, flistLevel1Blockers,
+    )
     dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
     )
@@ -636,8 +638,13 @@ def _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictMarkerPathsByStep,
     )
     dictWorkflow["iAICSLevel"] = fiAICSLevel(dictWorkflow, sRepoRoot)
+    listBlockers = flistLevel1Blockers(
+        dictWorkflow, dictMtimes["dictMaxMtimeByStep"], sRepoRoot,
+    )
     return {
         "iAICSLevel": dictWorkflow["iAICSLevel"],
+        "listBlockers": listBlockers,
+        "iL1BlockerCount": _fiCountUniqueBlockingSteps(listBlockers),
         **dictMtimes,
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": _fdictBuildScriptStatus(
@@ -648,6 +655,16 @@ def _fdictBuildPollResponseRest(
         "sWorkflowReloadError": dictReload["sError"],
         "dictWorkflow": _fdictBuildReloadedWorkflowShape(dictReload),
     }
+
+
+def _fiCountUniqueBlockingSteps(listBlockers):
+    """Return the count of distinct step indices appearing in blockers."""
+    setSteps = set()
+    for dictEntry in listBlockers or []:
+        iIndex = dictEntry.get("iStepIndex")
+        if isinstance(iIndex, int):
+            setSteps.add(iIndex)
+    return len(setSteps)
 
 
 def _fdictBuildReloadedWorkflowShape(dictReload):
