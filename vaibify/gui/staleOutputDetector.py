@@ -90,12 +90,9 @@ def _fdictMaybeAdvisory(
     setDeclared, listSteps, fMarginSeconds,
 ):
     """Return one advisory dict iff the producer is undeclared and newer."""
-    if iProducer == iConsumer or iProducer in setDeclared:
+    if _fbShouldSkipPair(iConsumer, iProducer, setDeclared, listSteps):
         return None
-    if _fbStepsAreSiblings(listSteps[iConsumer], listSteps[iProducer]):
-        return None
-    dictProducerMtimes = dictMtimesByIndex.get(iProducer, {})
-    fProducerMax = _fMaxMtime(dictProducerMtimes)
+    fProducerMax = _fMaxMtime(dictMtimesByIndex.get(iProducer, {}))
     if fProducerMax <= 0:
         return None
     listOffending, fAgeDelta = _flistOffendingForPair(
@@ -106,6 +103,13 @@ def _fdictMaybeAdvisory(
     return _fdictBuildAdvisoryEntry(
         iConsumer, iProducer, listOffending, fAgeDelta,
     )
+
+
+def _fbShouldSkipPair(iConsumer, iProducer, setDeclared, listSteps):
+    """Return True when iProducer is self, declared, or a sibling of iConsumer."""
+    if iProducer == iConsumer or iProducer in setDeclared:
+        return True
+    return _fbStepsAreSiblings(listSteps[iConsumer], listSteps[iProducer])
 
 
 def _fdictBuildAdvisoryEntry(
@@ -158,9 +162,9 @@ def _fsetOutputBasenames(dictStep):
     setNames = set()
     for sKey in ("saDataFiles", "saPlotFiles"):
         for sPath in dictStep.get(sKey, []) or []:
-            sBase = posixpath.basename(sPath)
-            if sBase and "{" not in sBase:
-                setNames.add(sBase)
+            sBasename = posixpath.basename(sPath)
+            if sBasename and "{" not in sBasename:
+                setNames.add(sBasename)
     return setNames
 
 
