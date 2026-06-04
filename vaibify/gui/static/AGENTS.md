@@ -95,6 +95,17 @@ comparison, and history. When working inside it, follow its existing
 internal structure rather than imposing the newer IIFE + state-dict
 pattern wholesale.
 
+## L1 blocker surfacing
+
+- L1 blocker state lives at `_dictWorkflowState.dictBlockersByStep`
+  (populated from each poll's `listBlockers`). A step's check icon
+  renders only when that map has no entry for the step; not-verified
+  steps get one banner glyph per `sCriterion` (`upstream-modified`,
+  `axis-not-green`, `user-not-approved`), plus the existing
+  failure-mode glyph on every offending file and dependency edge.
+  Do not introduce an acknowledge affordance in any blocker context
+  — the only path to clear a blocker is `run-step`.
+
 ## Discovery commands
 
 - `ls vaibify/gui/static/*.js` — current JS modules

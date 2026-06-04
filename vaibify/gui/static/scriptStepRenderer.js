@@ -480,9 +480,15 @@ var VaibifyStepRenderer = (function () {
         var tStates = dictContext.ftComputeDepAxisStates(
             iIndex, iDep);
         var sNum = dictContext.fsComputeStepLabel(iDep);
+        var sGlyph = "";
+        if (dictContext.fbUpstreamStepIsL1Offending &&
+            dictContext.fbUpstreamStepIsL1Offending(iIndex, iDep)) {
+            sGlyph = " " + dictContext.fsBuildL1FailureGlyph(
+                "Upstream outputs newer than this step; re-run to clear");
+        }
         return '<div class="dep-item">' +
             '<div class="dep-header"><span class="dep-label">' +
-            sNum + ' ' + fnEscapeHtml(depStep.sName) +
+            sNum + ' ' + fnEscapeHtml(depStep.sName) + sGlyph +
             '</span></div>' +
             fsRenderDepAxisRow(
                 "Step Status", tStates.sStepStatus, "", dictContext) +
@@ -804,6 +810,14 @@ var VaibifyStepRenderer = (function () {
             sFileClass = " " + dictContext.fsInitialFileStatusClass(
                 iStepIdx, sArrayKey, sRaw
             );
+        }
+        if (sType === "output" && !bInvalid &&
+            (sArrayKey === "saDataFiles" ||
+                sArrayKey === "saPlotFiles") &&
+            dictContext.fbFileIsL1Offending &&
+            dictContext.fbFileIsL1Offending(iStepIdx, sRaw)) {
+            sHtml += dictContext.fsBuildL1FailureGlyph(
+                "Blocking L1: re-run step to clear");
         }
         if ((sArrayKey === "saPlotFiles" ||
             sArrayKey === "saDataFiles") && !bInvalid) {

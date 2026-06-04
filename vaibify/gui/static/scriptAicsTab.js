@@ -170,13 +170,27 @@ var VaibifyAicsTab = (function () {
     function _fsRenderHeaderCard(iLevel) {
         var dictHeader = _DICT_LEVEL_HEADERS[iLevel] ||
             _DICT_LEVEL_HEADERS[0];
+        var sTitle = dictHeader.sTitle;
+        if (iLevel === 0) {
+            sTitle += _fsFormatBlockerCountSuffix();
+        }
         return '<div class="aics-header-card aics-level-' +
             iLevel + '-tint">' +
             '<div class="aics-header-title">' +
-            fnEscapeHtml(dictHeader.sTitle) + '</div>' +
+            fnEscapeHtml(sTitle) + '</div>' +
             '<div class="aics-header-subtitle">' +
             fnEscapeHtml(dictHeader.sSubtitle) + '</div>' +
             '</div>';
+    }
+
+    function _fsFormatBlockerCountSuffix() {
+        if (!PipeleyenApp || !PipeleyenApp.fiGetL1BlockerCount) {
+            return "";
+        }
+        var iCount = PipeleyenApp.fiGetL1BlockerCount();
+        if (iCount <= 0) return "";
+        var sNoun = iCount === 1 ? "step" : "steps";
+        return " — L0 (" + iCount + " " + sNoun + " blocking)";
     }
 
     function _fsRenderLevel2ReadinessCard(iLevel, dictGaps) {
