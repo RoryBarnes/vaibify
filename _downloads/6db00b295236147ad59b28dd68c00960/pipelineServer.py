@@ -544,7 +544,19 @@ async def fnPipelineMessageLoop(
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
     dictPipelineTasks=None,
 ):
-    """Receive and dispatch pipeline WebSocket messages."""
+    """Receive and dispatch pipeline WebSocket messages.
+
+    Event types the server emits on this socket (consumed by frontend
+    dispatchers and the in-container ``vaibify-do`` CLI):
+
+    - ``output`` / ``commandFailed`` / ``stepResult`` / ``completed`` /
+      ``progress`` / ``error`` / ``pipelineError`` — pipeline status.
+    - ``wsHeartbeat`` — emitted by ``_actxWebSocketHeartbeat`` in
+      ``pipelineRunner`` every ``F_WS_HEARTBEAT_INTERVAL`` seconds
+      while a single command is running. Pure keepalive: clients must
+      ignore it (frontend filter in ``scriptPipelineRunner.js``,
+      ``vaibify-do`` filter in ``_fnStreamWsEvents``).
+    """
     from .pipelineRunner import (
         fdictCreateInteractiveContext,
         fnSetInteractiveResponse,
