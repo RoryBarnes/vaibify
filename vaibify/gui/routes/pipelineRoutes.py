@@ -637,9 +637,16 @@ def _fdictBuildPollResponseRest(
     dictMtimes = _fdictComputeAllPerStepMtimes(
         dictWorkflow, dictModTimes, dictVars, dictMarkerPathsByStep,
     )
-    dictWorkflow["iAICSLevel"] = fiAICSLevel(dictWorkflow, sRepoRoot)
+    dictScriptStatus = _fdictBuildScriptStatus(
+        dictWorkflow, dictModTimes, dictVars,
+        dictMarkerMtimeByStep=dictMtimes["dictMarkerMtimeByStep"],
+    )
+    dictWorkflow["iAICSLevel"] = fiAICSLevel(
+        dictWorkflow, sRepoRoot, dictScriptStatus,
+    )
     listBlockers = flistLevel1Blockers(
         dictWorkflow, dictMtimes["dictMaxMtimeByStep"], sRepoRoot,
+        dictScriptStatus,
     )
     return {
         "iAICSLevel": dictWorkflow["iAICSLevel"],
@@ -647,10 +654,7 @@ def _fdictBuildPollResponseRest(
         "iL1BlockerCount": _fiCountUniqueBlockingSteps(listBlockers),
         **dictMtimes,
         "dictInvalidatedSteps": listInvalidated,
-        "dictScriptStatus": _fdictBuildScriptStatus(
-            dictWorkflow, dictModTimes, dictVars,
-            dictMarkerMtimeByStep=dictMtimes["dictMarkerMtimeByStep"],
-        ),
+        "dictScriptStatus": dictScriptStatus,
         "listStaleOutputAdvisories": _flistBuildStaleOutputAdvisories(
             dictWorkflow, dictModTimes,
         ),

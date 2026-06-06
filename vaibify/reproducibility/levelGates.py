@@ -129,16 +129,19 @@ def _fdictActiveLevelMemo():
     return getattr(_THREAD_LOCAL, "dictMemo", None)
 
 
-def fiAICSLevel(dictWorkflow, sProjectRepoPath):
+def fiAICSLevel(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
     """Return the integer AICS level (0..3) for a workflow.
 
     Short-circuits up the ladder so each gate runs at most once. Wraps
     the L1/L2/L3 chain in ``fnLevelComputationContext`` so the inner
     recursive calls (L2 -> L1, L3 -> L2 -> L1) hit a memo instead of
-    re-iterating every step.
+    re-iterating every step. ``dictScriptStatus`` threads through to
+    L1 so callers with mtime info honor the script-stale criterion.
     """
     with fnLevelComputationContext():
-        if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
+        if not fbAtLeastLevel1(
+            dictWorkflow, sProjectRepoPath, dictScriptStatus,
+        ):
             return 0
         if not fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
             return 1
@@ -147,24 +150,29 @@ def fiAICSLevel(dictWorkflow, sProjectRepoPath):
         return 3
 
 
-def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
+def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
     """Return True iff the workflow meets the L1 Self-Consistent gate.
 
     L1 requires four criteria, all enforced per-step: workflow lives
     in a git project repo, every step is user-approved, every step is
     timing-clean (no upstream-modified flag, no outstanding modified
-    files), and every step's defined test categories are green.
+    files), and every step's defined test categories are green. When
+    ``dictScriptStatus`` is provided, the script-stale criterion also
+    blocks the gate; callers without script-status info preserve the
+    historical truth-table.
     """
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL1" in dictMemo:
         return dictMemo["bL1"]
-    bResult = _fbComputeLevel1(dictWorkflow, sProjectRepoPath)
+    bResult = _fbComputeLevel1(
+        dictWorkflow, sProjectRepoPath, dictScriptStatus,
+    )
     if dictMemo is not None:
         dictMemo["bL1"] = bResult
     return bResult
 
 
-def _fbComputeLevel1(dictWorkflow, sProjectRepoPath):
+def _fbComputeLevel1(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
     """Uncached L1 evaluation — the body of the original gate.
 
     Delegates to ``flistLevel1Blockers`` so the boolean gate and the
@@ -178,12 +186,15 @@ def _fbComputeLevel1(dictWorkflow, sProjectRepoPath):
     if not listSteps:
         return False
     listBlockers = flistLevel1Blockers(
-        dictWorkflow, {}, sProjectRepoPath,
+        dictWorkflow, {}, sProjectRepoPath, dictScriptStatus,
     )
     return len(listBlockers) == 0
 
 
-def flistLevel1Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
+def flistLevel1Blockers(
+    dictWorkflow, dictNewModTimes, sProjectRepoPath,
+    dictScriptStatus=None,
+):
     """Return per-step L1 blockers with per-file granularity.
 
     Each entry has the shape::
@@ -193,18 +204,15 @@ def flistLevel1Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
          "listOffendingUpstreamSteps": [0-based step indices]}
 
     ``sCriterion`` is one of ``"user-not-approved"``,
-    ``"upstream-modified"``, ``"axis-not-green"``, or
-    ``"attestation-stale"``. ``attestation-stale`` fires when the
-    researcher *did* attest (``sLastUserUpdate`` is present) but the
-    outputs were rewritten after the attestation, flipping
-    ``sUser`` to ``"stale"``; ``user-not-approved`` fires when the
-    step was never attested. When both ``bUpstreamModified`` and an
-    axis-untested condition fire on the same step only
-    ``upstream-modified`` is emitted (root cause; the axis-untested
-    condition is its downstream effect after the L1 invalidation
-    cascade). The list is sorted by ``iStepIndex`` so rendering order
-    is deterministic. Returns ``[]`` for an L1-clean workflow or one
-    with no project repo.
+    ``"upstream-modified"``, ``"script-stale"``, ``"axis-not-green"``,
+    or ``"attestation-stale"``. ``script-stale`` fires when the step's
+    script has been edited after its declared outputs landed; suppressed
+    when the outputs' hashes still match ``MANIFEST.sha256`` (fresh
+    clones). Priority order is ``upstream-modified`` > ``script-stale``
+    > ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
+    The list is sorted by ``iStepIndex`` so rendering order is
+    deterministic. Returns ``[]`` for an L1-clean workflow or one with
+    no project repo.
     """
     if not fbWorkflowHasProjectRepo(sProjectRepoPath):
         return []
@@ -217,6 +225,7 @@ def flistLevel1Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
         dictBlocker = _fdictBuildStepBlocker(
             dictWorkflow, iStepIndex, dictStep,
             dictNewModTimes, dictUpstreamByStep,
+            dictScriptStatus, sProjectRepoPath,
         )
         if dictBlocker is not None:
             listBlockers.append(dictBlocker)
@@ -226,17 +235,18 @@ def flistLevel1Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
 def _fdictBuildStepBlocker(
     dictWorkflow, iStepIndex, dictStep,
     dictNewModTimes, dictUpstreamByStep,
+    dictScriptStatus=None, sProjectRepoPath="",
 ):
     """Return the single dominant blocker dict for a step, or None.
 
-    Priority: ``upstream-modified`` > ``axis-not-green`` >
-    ``attestation-stale`` > ``user-not-approved``. The first
-    applicable criterion wins so a step never emits two blockers; the
-    dashboard's banner glyph therefore has a deterministic single
-    source. Corrupt step entries (``None``, non-dict, missing
-    ``dictVerification``) cannot satisfy any criterion and are
-    surfaced as ``user-not-approved`` so the L1 gate matches its
-    historical defensive contract.
+    Priority: ``upstream-modified`` > ``script-stale`` >
+    ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
+    The first applicable criterion wins so a step never emits two
+    blockers; the dashboard's banner glyph therefore has a deterministic
+    single source. Corrupt step entries (``None``, non-dict, missing
+    ``dictVerification``) cannot satisfy any criterion and are surfaced
+    as ``user-not-approved`` so the L1 gate matches its historical
+    defensive contract.
     """
     if not isinstance(dictStep, dict):
         return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
@@ -244,6 +254,12 @@ def _fdictBuildStepBlocker(
         return _fdictUpstreamModifiedBlocker(
             dictWorkflow, iStepIndex, dictStep,
             dictNewModTimes, dictUpstreamByStep,
+        )
+    if _fbStepScriptStale(
+        iStepIndex, dictStep, dictScriptStatus, sProjectRepoPath,
+    ):
+        return _fdictScriptStaleBlocker(
+            dictWorkflow, iStepIndex, dictStep,
         )
     if not fbStepTestsPassing(dictStep):
         return _fdictAxisNotGreenBlocker(
@@ -334,6 +350,112 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     }
 
 
+def _fbStepScriptStale(
+    iStepIndex, dictStep, dictScriptStatus, sProjectRepoPath,
+):
+    """Return True iff the step's script is newer than its outputs.
+
+    Fires when ``_fdictBuildScriptStatus`` reports ``sStatus='modified'``
+    for this step and the outputs' content does not still match
+    ``MANIFEST.sha256``. The manifest short-circuit prevents a fresh
+    git clone — where every mtime is "now" — from tripping the
+    criterion before the workflow has been re-run. When the caller
+    does not supply ``dictScriptStatus`` (legacy paths) the criterion
+    is silently skipped so the historical truth-table is preserved.
+    """
+    if not dictScriptStatus:
+        return False
+    dictEntry = dictScriptStatus.get(iStepIndex)
+    if not dictEntry or dictEntry.get("sStatus") != "modified":
+        return False
+    return not _fbStepHashesMatchManifest(
+        dictStep, sProjectRepoPath,
+    )
+
+
+def _fbStepHashesMatchManifest(dictStep, sProjectRepoPath):
+    """Return True iff every declared output's hash matches MANIFEST.sha256.
+
+    Delegates to ``hashStaleness`` for the manifest read and the
+    per-output content comparison so the suppression rule has the
+    same authority the file-status manager uses. Conservative on every
+    error path: missing repo, missing manifest, no declared outputs,
+    or any drifted entry returns False so the script-stale criterion
+    remains visible.
+    """
+    if not sProjectRepoPath:
+        return False
+    listRelPaths = _flistStepOutputsRepoRelative(
+        dictStep, sProjectRepoPath,
+    )
+    if not listRelPaths:
+        return False
+    from vaibify.gui import hashStaleness
+    if not hashStaleness.fbManifestExists(sProjectRepoPath):
+        return False
+    dictEntries = hashStaleness._fdictReadManifestEntries(sProjectRepoPath)
+    if not dictEntries:
+        return False
+    if _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
+        return False
+    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
+        sProjectRepoPath, listRelPaths, {},
+    )
+    return len(setStale) == 0
+
+
+def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
+    """Return True iff any declared output is absent from the manifest."""
+    for sRelPath in listRelPaths:
+        if sRelPath not in dictEntries:
+            return True
+    return False
+
+
+def _flistStepOutputsRepoRelative(dictStep, sProjectRepoPath):
+    """Return repo-relative output paths declared on a step.
+
+    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    step directory the same way ``_fsResolveStepFilePath`` does, then
+    strips the repo root so the result lines up with manifest keys.
+    Lazily imports the GUI helper so the reproducibility leaf stays
+    importable without GUI side effects at module load.
+    """
+    from vaibify.gui.fileStatusManager import _fsResolveStepFilePath
+    from vaibify.gui.pathContract import fsAbsToRepoRelative
+    sStepDir = dictStep.get("sDirectory", "") or ""
+    listRelative = []
+    for sFile in (dictStep.get("saDataFiles", []) or []) + (
+        dictStep.get("saPlotFiles", []) or []
+    ):
+        if not sFile:
+            continue
+        sAbs = _fsResolveStepFilePath(
+            sFile, sStepDir, {"sRepoRoot": sProjectRepoPath},
+        )
+        listRelative.append(
+            fsAbsToRepoRelative(sAbs, sProjectRepoPath),
+        )
+    return listRelative
+
+
+def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
+    """Build the ``script-stale`` blocker entry for one step.
+
+    Fires when the step's script mtime is newer than its outputs,
+    indicating the researcher edited the producer without re-running.
+    ``listOffendingFiles`` projects the step's declared outputs so the
+    dashboard can mark them with the *re-run-to-clear* remediation.
+    """
+    return {
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sCriterion": "script-stale",
+        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingUpstreamSteps": [],
+    }
+
+
 def _flistStepOutputFiles(dictStep):
     """Return repo-relative data + plot file paths declared on a step."""
     listFiles = []
@@ -413,12 +535,17 @@ def _fsLabelForStep(dictWorkflow, iStepIndex):
         return f"{iStepIndex + 1:02d}"
 
 
-def fbStepIsAtLeastLevel1(dictStep):
+def fbStepIsAtLeastLevel1(
+    dictStep, dictScriptStatus=None, iStepIndex=None,
+):
     """Return True iff a single step meets the L1 per-step criteria.
 
-    Thin composition of the three orthogonal predicates so callers
-    can ask "is this step contributing to L1" without re-implementing
-    the rule (e.g. file-status badges, auto-archive transition).
+    Thin composition of the orthogonal predicates so callers can ask
+    "is this step contributing to L1" without re-implementing the rule
+    (e.g. file-status badges, auto-archive transition). When
+    ``dictScriptStatus`` is supplied, a ``sStatus='modified'`` entry
+    for ``iStepIndex`` also blocks the step; legacy callers that omit
+    these parameters preserve the historical truth-table.
     """
     if not isinstance(dictStep, dict):
         return False
@@ -428,6 +555,10 @@ def fbStepIsAtLeastLevel1(dictStep):
         return False
     if not fbStepTestsPassing(dictStep):
         return False
+    if dictScriptStatus and iStepIndex is not None:
+        dictEntry = dictScriptStatus.get(iStepIndex) or {}
+        if dictEntry.get("sStatus") == "modified":
+            return False
     return True
 
 

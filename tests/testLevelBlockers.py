@@ -418,3 +418,132 @@ def testAxisNotGreenPriorityBeatsAttestationStale():
     )
     assert len(listBlockers) == 1
     assert listBlockers[0]["sCriterion"] == "axis-not-green"
+
+
+# ------------------------------------------------------------------------
+# script-stale promotion to L1
+# ------------------------------------------------------------------------
+
+
+def _fnWriteFile(sRoot, sRelPath, sContent):
+    """Write a file under ``sRoot`` at the repo-relative path."""
+    import os
+    sAbs = os.path.join(sRoot, *sRelPath.split("/"))
+    os.makedirs(os.path.dirname(sAbs) or sAbs, exist_ok=True)
+    with open(sAbs, "w") as fileHandle:
+        fileHandle.write(sContent)
+
+
+def _fnWriteManifest(sRoot, listEntries):
+    """Write a MANIFEST.sha256 with ``[(sHash, sRelPath), ...]`` entries."""
+    import os
+    sPath = os.path.join(sRoot, "MANIFEST.sha256")
+    with open(sPath, "w", encoding="utf-8", newline="\n") as fileHandle:
+        fileHandle.write("# SHA-256 manifest of workflow artefacts\n")
+        for sHash, sRelPath in listEntries:
+            fileHandle.write(f"{sHash}  {sRelPath}\n")
+
+
+def testScriptStaleCriterionFiresWhenScriptMtimeNewerThanOutput(tmp_path):
+    """A step whose script status is ``modified`` and whose outputs do
+    not match MANIFEST.sha256 emits the ``script-stale`` criterion."""
+    dictStep = _fdictAllGreenStep()
+    dictScriptStatus = {0: {"sStatus": "modified", "listStaleArtifacts": []}}
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, str(tmp_path),
+        dictScriptStatus,
+    )
+    assert len(listBlockers) == 1
+    dictEntry = listBlockers[0]
+    assert dictEntry["sCriterion"] == "script-stale"
+    assert dictEntry["listOffendingFiles"] == [
+        "A/data.csv", "A/plot.pdf",
+    ]
+    assert dictEntry["listOffendingUpstreamSteps"] == []
+
+
+def _fdictManifestFriendlyStep():
+    """Return a step whose declared outputs resolve cleanly under
+    ``sDirectory``. The shared ``_fdictAllGreenStep`` doubles the
+    directory prefix at resolution time; this fixture matches the
+    production convention where ``saDataFiles`` entries are step-
+    directory-relative names (e.g. ``data.csv``), not repo-relative."""
+    return {
+        "sName": "stepOne", "sDirectory": "stepOne",
+        "saDataFiles": ["data.csv"],
+        "saPlotFiles": ["plot.pdf"],
+        "dictVerification": {
+            "sUser": "passed",
+            "sUnitTest": "passed",
+            "sIntegrity": "passed",
+            "sQualitative": "passed",
+            "sQuantitative": "passed",
+        },
+    }
+
+
+def testScriptStaleSuppressedWhenManifestHashMatches(tmp_path):
+    """When every declared output's content matches MANIFEST.sha256 the
+    script-stale criterion is suppressed even with ``sStatus='modified''."""
+    from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
+    dictStep = _fdictManifestFriendlyStep()
+    _fnWriteFile(str(tmp_path), "stepOne/data.csv", "data-payload")
+    _fnWriteFile(str(tmp_path), "stepOne/plot.pdf", "plot-payload")
+    import os
+    sHashData = fsComputeFileHash(
+        os.path.join(str(tmp_path), "stepOne/data.csv"),
+    )
+    sHashPlot = fsComputeFileHash(
+        os.path.join(str(tmp_path), "stepOne/plot.pdf"),
+    )
+    _fnWriteManifest(str(tmp_path), [
+        (sHashData, "stepOne/data.csv"),
+        (sHashPlot, "stepOne/plot.pdf"),
+    ])
+    dictScriptStatus = {0: {"sStatus": "modified", "listStaleArtifacts": []}}
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, str(tmp_path),
+        dictScriptStatus,
+    )
+    assert listBlockers == []
+
+
+def testUpstreamModifiedBeatsScriptStale(tmp_path):
+    """Priority rule: a step that is both upstream-modified and
+    script-stale emits ``upstream-modified`` (root cause)."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["bUpstreamModified"] = True
+    dictScriptStatus = {0: {"sStatus": "modified", "listStaleArtifacts": []}}
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, str(tmp_path),
+        dictScriptStatus,
+    )
+    assert len(listBlockers) == 1
+    assert listBlockers[0]["sCriterion"] == "upstream-modified"
+
+
+def testScriptStaleBeatsAxisNotGreen(tmp_path):
+    """Priority rule: a step that is both axis-failing and script-stale
+    emits ``script-stale`` because the edited script invalidates the
+    test result that produced the axis verdict."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUnitTest"] = "failed"
+    dictScriptStatus = {0: {"sStatus": "modified", "listStaleArtifacts": []}}
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, str(tmp_path),
+        dictScriptStatus,
+    )
+    assert len(listBlockers) == 1
+    assert listBlockers[0]["sCriterion"] == "script-stale"
+
+
+def testScriptStaleBlocksStepLevelGate():
+    """``fbStepIsAtLeastLevel1`` must return False for a step whose
+    script status reports ``modified`` (boolean gate preservation)."""
+    from vaibify.reproducibility.levelGates import fbStepIsAtLeastLevel1
+    dictStep = _fdictAllGreenStep()
+    dictScriptStatus = {0: {"sStatus": "modified", "listStaleArtifacts": []}}
+    assert fbStepIsAtLeastLevel1(
+        dictStep, dictScriptStatus, iStepIndex=0,
+    ) is False
+    assert fbStepIsAtLeastLevel1(dictStep) is True
