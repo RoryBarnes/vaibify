@@ -416,6 +416,26 @@ LIST_AGENT_ACTIONS = [
                      "and write .vaibify/l3_attestation.json. "
                      "User-only because the rebuild can take hours "
                      "and is the only L3 promotion path."},
+    {"sName": "declare-standalone-binaries", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/binaries/declare",
+     "bAgentSafe": False,
+     "sDescription": "Set the workflow's binary-declaration state: "
+                     "either {bNoStandaloneBinaries: true, "
+                     "listDeclaredBinaries: []} (waiver) or "
+                     "{bNoStandaloneBinaries: false, "
+                     "listDeclaredBinaries: [{sBinaryPath, sPurpose, "
+                     "sExpectedVersion}, ...]} (declaration). "
+                     "User-only because misdeclaration produces a "
+                     "falsely-passing L3 attestation."},
+    {"sName": "capture-binary-environment", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/binaries/capture",
+     "bAgentSafe": True,
+     "sDescription": "Hash a declared binary and capture its --version "
+                     "output, appending the result to "
+                     ".vaibify/environment.json so the L3 envelope "
+                     "records the binary's SHA + version."},
     # ---- Files ----
     {"sName": "pull-file", "sCategory": "files",
      "sMethod": "POST",
