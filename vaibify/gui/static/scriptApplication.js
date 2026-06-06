@@ -35,7 +35,9 @@ const PipeleyenApp = (function () {
             dictTestCategoryMtimes: {},
             dictPlotStandardExists: {},
             dictBlockersByStep: {},
+            dictBlockersByStepLevel2: {},
             iL1BlockerCount: 0,
+            iL2BlockerCount: 0,
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -336,7 +338,9 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictTestCategoryMtimes = {};
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictBlockersByStep = {};
+        _dictWorkflowState.dictBlockersByStepLevel2 = {};
         _dictWorkflowState.iL1BlockerCount = 0;
+        _dictWorkflowState.iL2BlockerCount = 0;
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -1348,6 +1352,39 @@ const PipeleyenApp = (function () {
             sIcon: "—",
             sLabel: "User attestation pending",
             sClass: "step-blocker-glyph-user",
+        },
+    };
+
+    var _DICT_L2_BLOCKER_GLYPHS = {
+        "not-in-github-mirror": {
+            sIcon: "⚠",
+            sLabel: "Outputs differ from GitHub mirror — " +
+                "push to clear blocker",
+            sClass: "step-blocker-glyph-l2-mirror",
+        },
+        "not-in-zenodo-deposit": {
+            sIcon: "⚠",
+            sLabel: "Outputs differ from Zenodo deposit — " +
+                "archive to clear blocker",
+            sClass: "step-blocker-glyph-l2-zenodo",
+        },
+        "github-verify-stale": {
+            sIcon: "⚠",
+            sLabel: "GitHub sync check is stale — " +
+                "re-verify to refresh status",
+            sClass: "step-blocker-glyph-l2-github-stale",
+        },
+        "zenodo-verify-stale": {
+            sIcon: "⚠",
+            sLabel: "Zenodo sync check is stale — " +
+                "re-verify to refresh status",
+            sClass: "step-blocker-glyph-l2-zenodo-stale",
+        },
+        "missing-ai-declaration-step": {
+            sIcon: "—",
+            sLabel: "Add an AI declaration step to " +
+                "record agent involvement",
+            sClass: "step-blocker-glyph-l2-ai-declaration",
         },
     };
 
@@ -2477,19 +2514,32 @@ const PipeleyenApp = (function () {
     }
 
     function _fnApplyBlockersFromPoll(dictStatus) {
-        var dictByStep = {};
-        var listBlockers = dictStatus.listBlockers || [];
-        for (var i = 0; i < listBlockers.length; i++) {
-            var dictEntry = listBlockers[i];
-            if (dictEntry && typeof dictEntry.iStepIndex === "number") {
-                dictByStep[dictEntry.iStepIndex] = dictEntry;
-            }
-        }
+        var dictByStep = _fdictBlockersByStepIndex(
+            dictStatus.listBlockers);
         _dictWorkflowState.dictBlockersByStep = dictByStep;
         _dictWorkflowState.iL1BlockerCount =
             (typeof dictStatus.iL1BlockerCount === "number")
                 ? dictStatus.iL1BlockerCount
                 : Object.keys(dictByStep).length;
+        var dictByStepL2 = _fdictBlockersByStepIndex(
+            dictStatus.listLevel2Blockers);
+        _dictWorkflowState.dictBlockersByStepLevel2 = dictByStepL2;
+        _dictWorkflowState.iL2BlockerCount =
+            (typeof dictStatus.iL2BlockerCount === "number")
+                ? dictStatus.iL2BlockerCount
+                : Object.keys(dictByStepL2).length;
+    }
+
+    function _fdictBlockersByStepIndex(listBlockers) {
+        var dictByStep = {};
+        var listSafe = listBlockers || [];
+        for (var i = 0; i < listSafe.length; i++) {
+            var dictEntry = listSafe[i];
+            if (dictEntry && typeof dictEntry.iStepIndex === "number") {
+                dictByStep[dictEntry.iStepIndex] = dictEntry;
+            }
+        }
+        return dictByStep;
     }
 
     function fnResetStaleUserVerifications() {

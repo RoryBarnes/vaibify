@@ -629,7 +629,7 @@ def _fdictBuildPollResponseRest(
     absolute-keyed mtimes dict.
     """
     from vaibify.reproducibility.levelGates import (
-        fiAICSLevel, flistLevel1Blockers,
+        fiAICSLevel, flistLevel1Blockers, flistLevel2Blockers,
     )
     dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
@@ -648,10 +648,15 @@ def _fdictBuildPollResponseRest(
         dictWorkflow, dictMtimes["dictMaxMtimeByStep"], sRepoRoot,
         dictScriptStatus,
     )
+    listLevel2Blockers = flistLevel2Blockers(dictWorkflow, sRepoRoot)
     return {
         "iAICSLevel": dictWorkflow["iAICSLevel"],
         "listBlockers": listBlockers,
         "iL1BlockerCount": _fiCountUniqueBlockingSteps(listBlockers),
+        "listLevel2Blockers": listLevel2Blockers,
+        "iL2BlockerCount": _fiCountUniqueBlockingSteps(
+            listLevel2Blockers,
+        ),
         **dictMtimes,
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
