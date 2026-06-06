@@ -1328,6 +1328,11 @@ const PipeleyenApp = (function () {
             sLabel: "Upstream changed; re-run to clear blocker",
             sClass: "step-blocker-glyph-upstream",
         },
+        "script-stale": {
+            sIcon: "⚠",
+            sLabel: "Script edited after output — re-run to clear blocker",
+            sClass: "step-blocker-glyph-script-stale",
+        },
         "axis-not-green": {
             sIcon: "✗",
             sLabel: "Tests are not green; re-run to clear blocker",

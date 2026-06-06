@@ -5099,3 +5099,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .step-blocker-glyph-attestation-stale {
     color: var(--color-orange);
 }
+
+.step-blocker-glyph-script-stale {
+    color: var(--color-orange);
+}
