@@ -21,12 +21,14 @@ from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
 
 
 __all__ = [
+    "fbBinaryCaptured",
+    "fbEnvironmentDigestPinned",
     "fdictCaptureContainerImageDigest",
     "fdictCaptureHostBinaryHashes",
+    "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
-    "fnWriteEnvironmentJson",
-    "fbEnvironmentDigestPinned",
     "fdictReadEnvironmentJson",
+    "fnWriteEnvironmentJson",
 ]
 
 
@@ -108,19 +110,55 @@ def fdictCaptureHostBinaryHashes(listBinaryPaths):
     """Hash each host binary and capture its --version output."""
     listBinaries = []
     for sPath in listBinaryPaths:
-        listBinaries.append(_fdictCaptureSingleBinary(sPath))
+        listBinaries.append(fdictCaptureSingleBinary(sPath))
     return {"listBinaries": listBinaries}
 
 
-def _fdictCaptureSingleBinary(sPath):
+def fdictCaptureSingleBinary(sBinaryPath):
     """Return the hash and version metadata for one binary path."""
-    if not Path(sPath).is_file():
-        return {"sBinaryPath": sPath, "sSha256": None, "sVersion": None}
+    if not Path(sBinaryPath).is_file():
+        return {
+            "sBinaryPath": sBinaryPath,
+            "sSha256": None,
+            "sVersion": None,
+        }
     return {
-        "sBinaryPath": sPath,
-        "sSha256": fsComputeFileHash(sPath),
-        "sVersion": _fsCaptureBinaryVersion(sPath),
+        "sBinaryPath": sBinaryPath,
+        "sSha256": fsComputeFileHash(sBinaryPath),
+        "sVersion": _fsCaptureBinaryVersion(sBinaryPath),
     }
+
+
+def fbBinaryCaptured(dictEnv, sBinaryPath):
+    """Return True iff ``dictEnv`` already records ``sBinaryPath``.
+
+    Looks at ``dictHostBinaries.listBinaries`` first (the canonical
+    layout written by the L3 envelope) and falls back to the top-level
+    ``listBinaries`` shape produced by ``fdictCaptureHostBinaryHashes``
+    so callers that pass the raw capture dict still work.
+    """
+    if not isinstance(dictEnv, dict) or not sBinaryPath:
+        return False
+    listBinaries = _flistResolveCapturedBinaries(dictEnv)
+    for dictEntry in listBinaries:
+        if not isinstance(dictEntry, dict):
+            continue
+        if dictEntry.get("sBinaryPath") == sBinaryPath:
+            return True
+    return False
+
+
+def _flistResolveCapturedBinaries(dictEnv):
+    """Return the ``listBinaries`` list from either supported layout."""
+    dictHost = dictEnv.get("dictHostBinaries")
+    if isinstance(dictHost, dict):
+        listNested = dictHost.get("listBinaries")
+        if isinstance(listNested, list):
+            return listNested
+    listTop = dictEnv.get("listBinaries")
+    if isinstance(listTop, list):
+        return listTop
+    return []
 
 
 def _fsCaptureBinaryVersion(sPath):
