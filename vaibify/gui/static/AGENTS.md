@@ -116,10 +116,70 @@ pattern wholesale.
   (populated from each poll's `listBlockers`). A step's check icon
   renders only when that map has no entry for the step; not-verified
   steps get one banner glyph per `sCriterion` (`upstream-modified`,
-  `axis-not-green`, `user-not-approved`), plus the existing
-  failure-mode glyph on every offending file and dependency edge.
-  Do not introduce an acknowledge affordance in any blocker context
-  — the only path to clear a blocker is `run-step`.
+  `script-stale`, `axis-not-green`, `attestation-stale`,
+  `user-not-approved`), plus the existing failure-mode glyph on every
+  offending file and dependency edge. Do not introduce an acknowledge
+  affordance in any blocker context — the only path to clear a
+  blocker is `run-step` (or `verify-step` for `user-not-approved`).
+
+## L2 and L3 blocker surfacing
+
+- L2 blocker state lives at `_dictWorkflowState.dictBlockersByStepLevel2`
+  (populated from each poll's `listLevel2Blockers`). Criteria:
+  `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`
+  (per-step); `github-verify-stale`, `zenodo-verify-stale`,
+  `missing-ai-declaration-step`, `arxiv-not-submitted`,
+  `arxiv-mismatch`, `arxiv-version-stale` (workflow-scope,
+  `iStepIndex=-1`). Workflow-scope blockers render as banner rows
+  above the step list, not as per-step glyphs.
+- L3 blocker state lives at `_dictWorkflowState.dictBlockersByStepLevel3`
+  (populated from `listLevel3Blockers`). Per-step criteria:
+  `missing-from-manifest`, `script-not-pinned`,
+  `nondeterminism-undeclared`, `binary-not-declared`,
+  `binary-not-captured`. Workflow-scope criteria mirror the existing
+  `fbL3ReadinessOK` conjuncts: `dockerfile-not-pinned`,
+  `dependency-lock-missing`, `environment-snapshot-missing`,
+  `reproduce-script-missing`, `l3-attestation-stale`,
+  `binaries-not-declared-or-waived`.
+- Every blocker entry carries `iLevel`, `iStepIndex`, `sStepLabel`,
+  `sScope`, `sCriterion`, `listOffendingFiles`,
+  `listOffendingUpstreamSteps`, `sRemediationHint`. Glyph tooltips
+  prefer `sRemediationHint` (server-supplied per-criterion language)
+  over the static-dict `sLabel` fallback. This is enforced by the
+  contract test `tests/testStepRendererBlockerGlyphs.py`.
+
+## Climbing-the-ladder UX
+
+- The AICS chip in the dashboard header renders a 4-state
+  progression: L0 = "Self-Consistent (N steps blocking)" red, L1 =
+  "Self-Consistent ✓ · Published (N blocking)" orange, L2 =
+  "Published ✓ · Reproducible (env pending)" yellow, L3 =
+  "Reproducible ✓" green. Each segment is clickable and scrolls the
+  AICS tab to the corresponding readiness card. Logic lives in
+  `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
+- Per-step level dots (`scriptStepRenderer.js::_fsBuildStepLevelDots`)
+  render additively to the existing axis dots. The manifest-membership
+  dot appears at L1+, the mirror-state dot at L2+, the envelope dot
+  at L3+. Color follows the test-axis vocabulary the researcher
+  already reads (green/yellow/red/grey).
+- The pencil banner glyph on the step card is suppressed when an L1
+  blocker is active (the `⚠ script-stale` glyph carries the same
+  fact). The per-script pencil badge in the verification panel is
+  preserved — it identifies which script went stale.
+- The `?` button next to the AICS chip opens
+  `scriptLegendPanel.js`'s legend modal. It lists every glyph per
+  level with live counts of active blockers. The only resolution
+  paths listed are `run-step` and `verify-step` — there is no
+  acknowledge affordance.
+- File-list red text now distinguishes three states via modifier
+  classes on `.file-necessary-red`: `.file-missing-state` (upright),
+  `.file-stale-state` (dotted underline), `.file-unattested-state`
+  (italic). Same color, different secondary affordance so the user
+  can scan without expanding the verification panel. Logic in
+  `scriptFileOperations.js::_fsRedModifierClass`.
+- `_dictWorkflowState.iCachedAicsLevel` is a scalar (not a Set);
+  mutate it via `PipeleyenApp.fnSetCachedAicsLevel(iLevel)`. The
+  shared-Sets-by-reference trap does not apply.
 
 ## Discovery commands
 
