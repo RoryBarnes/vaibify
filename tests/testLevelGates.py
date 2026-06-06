@@ -349,11 +349,13 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bAtLeastLevel1",
         "bGithubFullySynced",
         "bZenodoFullySynced",
+        "bArxivFullySynced",
         "bAiDeclarationStepPresent",
         "bAtLeastLevel2",
     }
     assert dictGaps["bAiDeclarationStepPresent"] is True
     assert dictGaps["bGithubFullySynced"] is False
+    assert dictGaps["bArxivFullySynced"] is True
 
 
 def test_fdictLevel2Gaps_all_green_when_l2_satisfied(tmp_path):

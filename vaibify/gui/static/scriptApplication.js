@@ -1390,6 +1390,30 @@ const PipeleyenApp = (function () {
                 "record agent involvement",
             sClass: "step-blocker-glyph-l2-ai-declaration",
         },
+        "figure-not-frozen": {
+            sIcon: "⚠",
+            sLabel: "Plot not pushed to Overleaf at recorded commit — " +
+                "push manuscript figures",
+            sClass: "step-blocker-glyph-l2-figure",
+        },
+        "arxiv-not-submitted": {
+            sIcon: "—",
+            sLabel: "No arXiv ID recorded — submit manuscript and " +
+                "record the arXiv ID",
+            sClass: "step-blocker-glyph-l2-arxiv-submit",
+        },
+        "arxiv-mismatch": {
+            sIcon: "⚠",
+            sLabel: "arXiv tarball doesn't match Overleaf push at " +
+                "recorded commit",
+            sClass: "step-blocker-glyph-l2-arxiv-mismatch",
+        },
+        "arxiv-version-stale": {
+            sIcon: "⚠",
+            sLabel: "arXiv has a newer version — update sArxivVersion " +
+                "or re-submit",
+            sClass: "step-blocker-glyph-l2-arxiv-version",
+        },
     };
 
     var _DICT_L3_BLOCKER_GLYPHS = {

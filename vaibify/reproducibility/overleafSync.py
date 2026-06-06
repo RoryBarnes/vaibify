@@ -93,6 +93,82 @@ _EXIT_RATE_LIMIT = 4
 _EXIT_ERROR = 1
 
 
+S_OVERLEAF_PUSH_MANIFEST_FILENAME = "overleafPushManifest.json"
+_S_VAIBIFY_DIRECTORY = ".vaibify"
+
+
+def _fsPushManifestPath(sProjectRepoPath):
+    """Return the absolute path of the Overleaf push manifest file."""
+    return os.path.join(
+        sProjectRepoPath, _S_VAIBIFY_DIRECTORY,
+        S_OVERLEAF_PUSH_MANIFEST_FILENAME,
+    )
+
+
+def flistOverleafPushedFiguresAt(sProjectRepoPath, sCommitHash):
+    """Return repo-relative plot paths pushed to Overleaf at ``sCommitHash``.
+
+    The manifest is a JSON object of the shape
+    ``{sCommitHash: [sPlotPath, ...]}`` recorded by
+    :func:`fnRecordOverleafPushManifest` after every successful push.
+    Returns ``[]`` when the file does not exist, is unreadable, or has
+    no entry for the requested commit so callers can treat the absence
+    of evidence as "nothing pushed for that commit".
+    """
+    if not sProjectRepoPath or not sCommitHash:
+        return []
+    sPath = _fsPushManifestPath(sProjectRepoPath)
+    if not os.path.isfile(sPath):
+        return []
+    try:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
+            dictAll = json.load(fileHandle)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(dictAll, dict):
+        return []
+    listPaths = dictAll.get(sCommitHash) or []
+    if not isinstance(listPaths, list):
+        return []
+    return [sEntry for sEntry in listPaths if isinstance(sEntry, str)]
+
+
+def fnRecordOverleafPushManifest(
+    sProjectRepoPath, sCommitHash, listPlotPaths,
+):
+    """Record the plot-paths pushed to Overleaf at ``sCommitHash``.
+
+    Writes/updates ``.vaibify/overleafPushManifest.json`` atomically so
+    a later :func:`flistOverleafPushedFiguresAt` call against the same
+    commit returns the recorded list. Skipped (no-op) when either input
+    is empty so callers do not need to branch.
+    """
+    if not sProjectRepoPath or not sCommitHash:
+        return
+    sPath = _fsPushManifestPath(sProjectRepoPath)
+    os.makedirs(os.path.dirname(sPath), exist_ok=True)
+    dictAll = _fdictReadPushManifest(sPath)
+    dictAll[sCommitHash] = [
+        sEntry for sEntry in listPlotPaths if isinstance(sEntry, str)
+    ]
+    sTempPath = sPath + ".tmp"
+    with open(sTempPath, "w", encoding="utf-8") as fileHandle:
+        json.dump(dictAll, fileHandle, indent=2, sort_keys=True)
+    os.replace(sTempPath, sPath)
+
+
+def _fdictReadPushManifest(sPath):
+    """Return the parsed push-manifest dict, or an empty dict on error."""
+    if not os.path.isfile(sPath):
+        return {}
+    try:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
+            dictAll = json.load(fileHandle)
+    except (OSError, ValueError):
+        return {}
+    return dictAll if isinstance(dictAll, dict) else {}
+
+
 # ------------------------------------------------------------------
 # Public API
 # ------------------------------------------------------------------
