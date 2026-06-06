@@ -86,6 +86,8 @@ def _fdictBuildL3ReadyWorkflow():
     return {
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }
 
 

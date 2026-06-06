@@ -124,6 +124,8 @@ def _fdictBuildLevel3Workflow():
             },
         },
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }
 
 

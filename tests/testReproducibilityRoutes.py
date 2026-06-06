@@ -45,6 +45,8 @@ def _fdictBuildWorkflow(sProjectRepo):
         "dictRemotes": {},
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }
 
 

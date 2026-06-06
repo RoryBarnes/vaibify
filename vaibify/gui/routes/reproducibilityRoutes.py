@@ -40,7 +40,9 @@ from ...reproducibility.l3Attestation import (
     fsCurrentManifestDigest,
 )
 from ...reproducibility.environmentSnapshot import (
+    fdictCaptureSingleBinary,
     fdictReadEnvironmentJson,
+    fnWriteEnvironmentJson,
 )
 from ...reproducibility.levelGates import (
     fbL3ReadinessOK,
@@ -359,9 +361,122 @@ def _fnRegisterGenerateScript(app, dictCtx):
         }
 
 
+def _fnRegisterDeclareBinaries(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/binaries/declare."""
+
+    @fnAgentAction("declare-standalone-binaries")
+    @app.post(
+        "/api/workflow/{sContainerId}/binaries/declare"
+    )
+    async def fnDeclareBinaries(sContainerId: str, request: dict):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fnValidateBinaryDeclarationBody(request)
+        dictWorkflow["bNoStandaloneBinaries"] = bool(
+            request.get("bNoStandaloneBinaries", False),
+        )
+        dictWorkflow["listDeclaredBinaries"] = list(
+            request.get("listDeclaredBinaries") or [],
+        )
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {
+            "bNoStandaloneBinaries":
+                dictWorkflow["bNoStandaloneBinaries"],
+            "listDeclaredBinaries":
+                dictWorkflow["listDeclaredBinaries"],
+        }
+
+
+def _fnValidateBinaryDeclarationBody(dictRequest):
+    """Raise HTTP 400 when the declaration body violates the state machine."""
+    if not isinstance(dictRequest, dict):
+        raise HTTPException(400, "Body must be a JSON object.")
+    bWaiver = bool(dictRequest.get("bNoStandaloneBinaries", False))
+    listDeclared = dictRequest.get("listDeclaredBinaries") or []
+    if not isinstance(listDeclared, list):
+        raise HTTPException(
+            400, "listDeclaredBinaries must be a list.",
+        )
+    if bWaiver and listDeclared:
+        raise HTTPException(
+            400,
+            "Waiver requires listDeclaredBinaries to be empty.",
+        )
+    if not bWaiver and not listDeclared:
+        raise HTTPException(
+            400,
+            "Without the waiver, listDeclaredBinaries must be "
+            "non-empty.",
+        )
+    _fnValidateDeclaredBinaryEntries(listDeclared)
+
+
+def _fnValidateDeclaredBinaryEntries(listDeclared):
+    """Raise HTTP 400 when any declared entry is missing required fields."""
+    for iIndex, dictEntry in enumerate(listDeclared):
+        if not isinstance(dictEntry, dict):
+            raise HTTPException(
+                400, f"Entry {iIndex} is not an object.",
+            )
+        for sKey in ("sBinaryPath", "sPurpose", "sExpectedVersion"):
+            sValue = dictEntry.get(sKey)
+            if not isinstance(sValue, str) or not sValue.strip():
+                raise HTTPException(
+                    400,
+                    f"Entry {iIndex} missing string {sKey!r}.",
+                )
+
+
+def _fnRegisterCaptureBinary(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/binaries/capture."""
+
+    @fnAgentAction("capture-binary-environment")
+    @app.post(
+        "/api/workflow/{sContainerId}/binaries/capture"
+    )
+    async def fnCaptureBinary(sContainerId: str, request: dict):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
+        sBinaryPath = (request or {}).get("sBinaryPath") or ""
+        if not isinstance(sBinaryPath, str) or not sBinaryPath.strip():
+            raise HTTPException(400, "sBinaryPath is required.")
+        dictCaptured = fdictCaptureSingleBinary(sBinaryPath)
+        _fnAppendBinaryToEnvironmentJson(sProjectRepo, dictCaptured)
+        return {"dictCaptured": dictCaptured}
+
+
+def _fnAppendBinaryToEnvironmentJson(sProjectRepo, dictCaptured):
+    """Append or replace a binary entry in .vaibify/environment.json."""
+    dictPayload = fdictReadEnvironmentJson(sProjectRepo) or {}
+    dictHost = dictPayload.get("dictHostBinaries")
+    if not isinstance(dictHost, dict):
+        dictHost = {"listBinaries": []}
+    listBinaries = dictHost.get("listBinaries")
+    if not isinstance(listBinaries, list):
+        listBinaries = []
+    listFiltered = [
+        d for d in listBinaries
+        if not (
+            isinstance(d, dict)
+            and d.get("sBinaryPath") == dictCaptured["sBinaryPath"]
+        )
+    ]
+    listFiltered.append(dictCaptured)
+    dictHost["listBinaries"] = listFiltered
+    dictPayload["dictHostBinaries"] = dictHost
+    fnWriteEnvironmentJson(sProjectRepo, dictPayload)
+
+
 def fnRegisterAll(app, dictCtx):
     """Register every L3 reproducibility endpoint."""
     _fnRegisterReadiness(app, dictCtx)
     _fnRegisterAttestation(app, dictCtx)
     _fnRegisterVerify(app, dictCtx)
     _fnRegisterGenerateScript(app, dictCtx)
+    _fnRegisterDeclareBinaries(app, dictCtx)
+    _fnRegisterCaptureBinary(app, dictCtx)

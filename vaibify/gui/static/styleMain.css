@@ -5,6 +5,7 @@
 :root {
     --color-red: #c91111;
     --color-orange: #e09401;
+    --color-blue: #1976d2;
     --color-pale-blue: #13aed5;
     --color-dark-blue: #1321d8;
     --color-purple: #c084fc;
@@ -5115,4 +5116,21 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .step-blocker-glyph-l2-zenodo-stale,
 .step-blocker-glyph-l2-ai-declaration {
     color: var(--color-orange);
+}
+
+/* L3 blocker glyphs — Reproducibility gate (containerization, pinning,
+   determinism, binary declaration/capture). Blue per the level-by-color
+   scheme: L1=red, L2=amber, L3=blue. */
+.step-blocker-glyph-l3-manifest,
+.step-blocker-glyph-l3-pin,
+.step-blocker-glyph-l3-determinism,
+.step-blocker-glyph-l3-binary-declared,
+.step-blocker-glyph-l3-binary-captured,
+.step-blocker-glyph-l3-workflow-dockerfile,
+.step-blocker-glyph-l3-workflow-lock,
+.step-blocker-glyph-l3-workflow-env,
+.step-blocker-glyph-l3-workflow-reproduce,
+.step-blocker-glyph-l3-workflow-attestation,
+.step-blocker-glyph-l3-workflow-binaries {
+    color: var(--color-blue);
 }

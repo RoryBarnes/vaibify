@@ -43,6 +43,7 @@ from .stepPredicates import (
 
 __all__ = [
     "F_MAX_STALE_HOURS",
+    "TUPLE_COMMON_SCIENTIFIC_BINARIES",
     "fbAtLeastLevel1",
     "fbAtLeastLevel2",
     "fbAtLeastLevel3",
@@ -54,6 +55,7 @@ __all__ = [
     "fbVerifyEnvironmentSnapshot",
     "fbVerifyManifestComplete",
     "fbVerifyReproduceScript",
+    "fbWorkflowDeclaresBinaries",
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowHasAiDeclarationStep",
@@ -63,6 +65,7 @@ __all__ = [
     "fiAICSLevel",
     "flistLevel1Blockers",
     "flistLevel2Blockers",
+    "flistLevel3Blockers",
     "fnLevelComputationContext",
 ]
 
@@ -668,7 +671,47 @@ def fbL3ReadinessOK(dictWorkflow, sProjectRepoPath):
         and fbVerifyDockerfilePinned(sProjectRepoPath)
         and fbVerifyReproduceScript(sProjectRepoPath, dictWorkflow)
         and fbVerifyDeterminismDeclared(sProjectRepoPath, dictWorkflow)
+        and fbWorkflowDeclaresBinaries(dictWorkflow)
     )
+
+
+def fbWorkflowDeclaresBinaries(dictWorkflow):
+    """Return True iff the workflow has a coherent binary-declaration state.
+
+    Exactly one of two states is valid:
+
+    * Waiver: ``bNoStandaloneBinaries`` is True AND
+      ``listDeclaredBinaries`` is empty.
+    * Declaration: ``bNoStandaloneBinaries`` is False AND
+      ``listDeclaredBinaries`` is a non-empty list of entries with
+      string ``sBinaryPath``, ``sPurpose``, and ``sExpectedVersion``.
+
+    Any other shape — waiver with a non-empty declaration list, an
+    unset waiver with no declaration, or malformed entries — fails
+    so the L3 gate cannot close on a half-answered question.
+    """
+    if not isinstance(dictWorkflow, dict):
+        return False
+    bWaiver = bool(dictWorkflow.get("bNoStandaloneBinaries", False))
+    listDeclared = dictWorkflow.get("listDeclaredBinaries") or []
+    if not isinstance(listDeclared, list):
+        return False
+    if bWaiver:
+        return len(listDeclared) == 0
+    if not listDeclared:
+        return False
+    return all(_fbBinaryDeclarationEntryValid(e) for e in listDeclared)
+
+
+def _fbBinaryDeclarationEntryValid(dictEntry):
+    """Return True iff a single declared-binary entry has all three fields."""
+    if not isinstance(dictEntry, dict):
+        return False
+    for sKey in ("sBinaryPath", "sPurpose", "sExpectedVersion"):
+        sValue = dictEntry.get(sKey)
+        if not isinstance(sValue, str) or not sValue.strip():
+            return False
+    return True
 
 
 def fbVerifyManifestComplete(sProjectRepoPath, dictWorkflow):
@@ -742,7 +785,7 @@ def fbVerifyDeterminismDeclared(sProjectRepoPath, dictWorkflow):
 
 
 def _fdictCollectL3ReadinessFlags(dictWorkflow, sProjectRepoPath, bRepo):
-    """Return the six per-verifier booleans that gate L3 readiness."""
+    """Return the per-verifier booleans that gate L3 readiness."""
     return {
         "bManifestComplete": bRepo and fbVerifyManifestComplete(
             sProjectRepoPath, dictWorkflow,
@@ -761,6 +804,9 @@ def _fdictCollectL3ReadinessFlags(dictWorkflow, sProjectRepoPath, bRepo):
         ),
         "bDeterminismDeclared": bRepo and fbVerifyDeterminismDeclared(
             sProjectRepoPath, dictWorkflow,
+        ),
+        "bBinariesDeclaredOrWaived": bRepo and fbWorkflowDeclaresBinaries(
+            dictWorkflow,
         ),
     }
 
@@ -1156,3 +1202,401 @@ def _fdictZenodoVerifyStaleBlocker():
         "sRemediationHint":
             "Zenodo sync check is stale — re-verify to refresh status",
     }
+
+
+# ----------------------------------------------------------------------
+# L3 per-step blockers + workflow-scope blockers (Stage 5).
+# ----------------------------------------------------------------------
+
+# Allowlist of common scientific binaries scanned for heuristically in
+# step commands. The plan calls these out by name as the realistic
+# false-waiver defenders; full static parsing of arbitrary commands is
+# explicitly out of scope (see plan section E).
+TUPLE_COMMON_SCIENTIFIC_BINARIES = (
+    "vplanet", "vconverge", "multiplanet", "bigplanet", "vspace",
+)
+
+
+def flistLevel3Blockers(dictWorkflow, sProjectRepoPath):
+    """Return per-step + workflow-scope L3 blockers with the unified schema.
+
+    Each entry has ``iLevel=3``, ``iStepIndex`` (-1 for workflow scope),
+    ``sStepLabel`` ("(workflow)" for workflow scope), ``sCriterion``,
+    ``listOffendingFiles``, ``listOffendingUpstreamSteps``, ``sScope``,
+    and ``sRemediationHint``. Returns an empty list when the workflow
+    has no project repo so the caller treats missing repo the same as
+    L1 does.
+    """
+    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+        return []
+    listBlockers = []
+    listBlockers.extend(
+        _flistL3WorkflowScopeBlockers(dictWorkflow, sProjectRepoPath),
+    )
+    listBlockers.extend(
+        _flistL3PerStepBlockers(dictWorkflow, sProjectRepoPath),
+    )
+    return listBlockers
+
+
+def _flistL3WorkflowScopeBlockers(dictWorkflow, sProjectRepoPath):
+    """Return the workflow-scope L3 blocker entries."""
+    dictChecks = _fdictL3WorkflowChecks(dictWorkflow, sProjectRepoPath)
+    listBlockers = []
+    for sCriterion, bPassed in dictChecks.items():
+        if not bPassed:
+            listBlockers.append(
+                _fdictBuildL3WorkflowBlocker(sCriterion),
+            )
+    return listBlockers
+
+
+def _fdictL3WorkflowChecks(dictWorkflow, sProjectRepoPath):
+    """Return ``{sCriterion: bPassed}`` for every workflow-scope L3 check."""
+    return {
+        "dockerfile-not-pinned": fbVerifyDockerfilePinned(sProjectRepoPath),
+        "dependency-lock-missing": fbVerifyDependencyLock(sProjectRepoPath),
+        "environment-snapshot-missing": fbVerifyEnvironmentSnapshot(
+            sProjectRepoPath,
+        ),
+        "reproduce-script-missing": fbVerifyReproduceScript(
+            sProjectRepoPath, dictWorkflow,
+        ),
+        "l3-attestation-stale": fbL3AttestationCurrent(sProjectRepoPath),
+        "binaries-not-declared-or-waived": fbWorkflowDeclaresBinaries(
+            dictWorkflow,
+        ),
+    }
+
+
+_DICT_L3_REMEDIATION_HINTS = {
+    "dockerfile-not-pinned":
+        "Pin every FROM line to '@sha256:...' in the Dockerfile.",
+    "dependency-lock-missing":
+        "Generate requirements.lock with --require-hashes.",
+    "environment-snapshot-missing":
+        "Capture the container image digest into "
+        ".vaibify/environment.json.",
+    "reproduce-script-missing":
+        "Generate reproduce.sh and pin it in MANIFEST.sha256.",
+    "l3-attestation-stale":
+        "Re-run the L3 verification to refresh the attestation.",
+    "binaries-not-declared-or-waived":
+        "Open 'Declare standalone binaries' and either waive or list "
+        "each binary with sBinaryPath / sPurpose / sExpectedVersion.",
+    "missing-from-manifest":
+        "Run 'vaibify manifest refresh' so every declared output, "
+        "script, and standard appears in MANIFEST.sha256.",
+    "script-not-pinned":
+        "Step script changed since manifest write — rerun the step "
+        "or regenerate the manifest.",
+    "nondeterminism-undeclared":
+        "Seed every RNG explicitly or extend dictDeterminism to "
+        "cover the offending step.",
+    "binary-not-declared":
+        "Step invokes an external binary missing from "
+        "listDeclaredBinaries — open the binary-declaration modal.",
+    "binary-not-captured":
+        "Declared binary lacks an environment.json entry — click "
+        "'Capture version + SHA' next to it.",
+}
+
+
+def _fdictBuildL3WorkflowBlocker(sCriterion):
+    """Build one workflow-scope L3 blocker entry."""
+    return {
+        "iLevel": 3,
+        "iStepIndex": -1,
+        "sStepLabel": "(workflow)",
+        "sScope": "workflow",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": _DICT_L3_REMEDIATION_HINTS.get(
+            sCriterion, "",
+        ),
+    }
+
+
+def _flistL3PerStepBlockers(dictWorkflow, sProjectRepoPath):
+    """Return per-step L3 blockers, one dominant criterion per step."""
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    dictContext = _fdictL3PerStepContext(
+        dictWorkflow, sProjectRepoPath,
+    )
+    listBlockers = []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        dictEntry = _fdictBuildL3StepBlocker(
+            dictWorkflow, iStepIndex, dictStep, dictContext,
+        )
+        if dictEntry is not None:
+            listBlockers.append(dictEntry)
+    return listBlockers
+
+
+def _fdictL3PerStepContext(dictWorkflow, sProjectRepoPath):
+    """Pre-compute manifest + environment state shared across all steps."""
+    return {
+        "dictManifestPathHashes": _fdictReadManifestPathHashes(
+            sProjectRepoPath,
+        ),
+        "setManifestPaths": _fsetReadManifestPaths(sProjectRepoPath),
+        "setNondeterministicSteps": _fsetNondeterministicSteps(
+            dictWorkflow,
+        ),
+        "dictEnvironment": _fdictReadEnvironmentForL3(sProjectRepoPath),
+        "sProjectRepoPath": sProjectRepoPath,
+        "listDeclaredBinaries": _flistDeclaredBinariesNormalized(
+            dictWorkflow,
+        ),
+        "bWaiver": bool(
+            (dictWorkflow or {}).get("bNoStandaloneBinaries", False),
+        ),
+    }
+
+
+def _fdictReadManifestPathHashes(sProjectRepoPath):
+    """Return ``{sPath: sExpected}`` for every manifest entry, or {}."""
+    try:
+        listEntries = flistParseManifestLines(sProjectRepoPath)
+    except (FileNotFoundError, OSError, ValueError):
+        return {}
+    return {d["sPath"]: d["sExpected"] for d in listEntries}
+
+
+def _fsetReadManifestPaths(sProjectRepoPath):
+    """Return the set of paths declared in MANIFEST.sha256."""
+    return set(_fdictReadManifestPathHashes(sProjectRepoPath).keys())
+
+
+def _fsetNondeterministicSteps(dictWorkflow):
+    """Return the set of 0-based step indices flagged for unseeded RNG."""
+    setIndices = set()
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    for iIndex, dictStep in enumerate(listSteps):
+        if not isinstance(dictStep, dict):
+            continue
+        if dictStep.get("bUnseededRandomnessWarning") is True:
+            setIndices.add(iIndex)
+    return setIndices
+
+
+def _fdictReadEnvironmentForL3(sProjectRepoPath):
+    """Return the parsed environment.json or an empty dict."""
+    from .environmentSnapshot import fdictReadEnvironmentJson
+    dictEnv = fdictReadEnvironmentJson(sProjectRepoPath)
+    return dictEnv if isinstance(dictEnv, dict) else {}
+
+
+def _flistDeclaredBinariesNormalized(dictWorkflow):
+    """Return the declared-binaries list filtered to well-formed entries."""
+    listRaw = (dictWorkflow or {}).get("listDeclaredBinaries") or []
+    if not isinstance(listRaw, list):
+        return []
+    return [d for d in listRaw if _fbBinaryDeclarationEntryValid(d)]
+
+
+def _fdictBuildL3StepBlocker(
+    dictWorkflow, iStepIndex, dictStep, dictContext,
+):
+    """Return the dominant L3 blocker entry for one step, or None.
+
+    Priority order: ``missing-from-manifest`` > ``script-not-pinned`` >
+    ``nondeterminism-undeclared`` > ``binary-not-declared`` >
+    ``binary-not-captured``. The first applicable criterion wins so a
+    single dashboard glyph has a deterministic source.
+    """
+    if not isinstance(dictStep, dict):
+        return None
+    sCriterion, listOffenders = _ftL3StepCriterion(
+        iStepIndex, dictStep, dictContext,
+    )
+    if sCriterion is None:
+        return None
+    return _fdictBuildL3StepEntry(
+        dictWorkflow, iStepIndex, sCriterion, listOffenders,
+    )
+
+
+def _ftL3StepCriterion(iStepIndex, dictStep, dictContext):
+    """Return ``(sCriterion, listOffendingFiles)`` or ``(None, [])``."""
+    listMissing = _flistStepPathsMissingFromManifest(dictStep, dictContext)
+    if listMissing:
+        return ("missing-from-manifest", listMissing)
+    listDrifted = _flistStepScriptsDriftedFromManifest(
+        dictStep, dictContext,
+    )
+    if listDrifted:
+        return ("script-not-pinned", listDrifted)
+    if iStepIndex in dictContext["setNondeterministicSteps"]:
+        return ("nondeterminism-undeclared", [])
+    listUndeclared = _flistUndeclaredBinaryInvocations(
+        dictStep, dictContext,
+    )
+    if listUndeclared:
+        return ("binary-not-declared", listUndeclared)
+    listUncaptured = _flistDeclaredBinariesNotCaptured(
+        dictStep, dictContext,
+    )
+    if listUncaptured:
+        return ("binary-not-captured", listUncaptured)
+    return (None, [])
+
+
+def _fdictBuildL3StepEntry(
+    dictWorkflow, iStepIndex, sCriterion, listOffenders,
+):
+    """Build one per-step L3 blocker entry from criterion + offender list."""
+    return {
+        "iLevel": 3,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": listOffenders,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": _DICT_L3_REMEDIATION_HINTS.get(
+            sCriterion, "",
+        ),
+    }
+
+
+def _flistStepDeclaredPaths(dictStep):
+    """Return repo-relative outputs + scripts + standards for a step."""
+    from .manifestPaths import (
+        flistStepScriptRepoPaths,
+        flistStepStandardsRepoPaths,
+    )
+    listPaths = list(_flistStepOutputFiles(dictStep))
+    listPaths.extend(flistStepScriptRepoPaths(dictStep))
+    listPaths.extend(flistStepStandardsRepoPaths(dictStep))
+    return [sPath for sPath in listPaths if sPath]
+
+
+def _flistStepPathsMissingFromManifest(dictStep, dictContext):
+    """Return step-declared paths absent from MANIFEST.sha256."""
+    setManifest = dictContext["setManifestPaths"]
+    listMissing = []
+    for sPath in _flistStepDeclaredPaths(dictStep):
+        if sPath not in setManifest:
+            listMissing.append(sPath)
+    return listMissing
+
+
+def _flistStepScriptsDriftedFromManifest(dictStep, dictContext):
+    """Return step scripts whose on-disk hash differs from MANIFEST.sha256."""
+    from .manifestPaths import flistStepScriptRepoPaths
+    from .provenanceTracker import fsComputeFileHash
+    dictHashes = dictContext["dictManifestPathHashes"]
+    sRepoRoot = dictContext["sProjectRepoPath"]
+    listDrifted = []
+    for sScriptPath in flistStepScriptRepoPaths(dictStep):
+        sExpected = dictHashes.get(sScriptPath)
+        if sExpected is None:
+            continue
+        if _fbScriptHashMatches(
+            sRepoRoot, sScriptPath, sExpected, fsComputeFileHash,
+        ):
+            continue
+        listDrifted.append(sScriptPath)
+    return listDrifted
+
+
+def _fbScriptHashMatches(
+    sRepoRoot, sScriptPath, sExpected, fnHash,
+):
+    """Return True iff ``sScriptPath`` on disk hashes to ``sExpected``."""
+    pathFile = Path(sRepoRoot) / sScriptPath
+    if not pathFile.is_file():
+        return False
+    try:
+        return fnHash(str(pathFile)) == sExpected
+    except (OSError, ValueError):
+        return False
+
+
+def _flistStepCommandStrings(dictStep):
+    """Return the concatenated data + plot command strings for a step."""
+    listCommands = []
+    for sKey in ("saDataCommands", "saPlotCommands"):
+        for sCmd in dictStep.get(sKey, []) or []:
+            if isinstance(sCmd, str) and sCmd:
+                listCommands.append(sCmd)
+    return listCommands
+
+
+def _flistUndeclaredBinaryInvocations(dictStep, dictContext):
+    """Return common-scientific-binary names invoked but not declared.
+
+    Matches the basename or absolute path of each entry in
+    :data:`TUPLE_COMMON_SCIENTIFIC_BINARIES` against the step's data
+    and plot commands via a word-boundary regex. Suppresses any name
+    whose absolute path is already in ``listDeclaredBinaries``.
+    """
+    setDeclaredBasenames = _fsetDeclaredBasenames(
+        dictContext["listDeclaredBinaries"],
+    )
+    listCommands = _flistStepCommandStrings(dictStep)
+    if not listCommands:
+        return []
+    listOffenders = []
+    for sBinary in TUPLE_COMMON_SCIENTIFIC_BINARIES:
+        if sBinary in setDeclaredBasenames:
+            continue
+        if _fbCommandsInvokeBinary(listCommands, sBinary):
+            listOffenders.append(sBinary)
+    return listOffenders
+
+
+def _fsetDeclaredBasenames(listDeclared):
+    """Return the set of basenames recorded in listDeclaredBinaries."""
+    setBasenames = set()
+    for dictEntry in listDeclared:
+        sPath = dictEntry.get("sBinaryPath", "")
+        if not sPath:
+            continue
+        setBasenames.add(Path(sPath).name)
+    return setBasenames
+
+
+def _fbCommandsInvokeBinary(listCommands, sBinary):
+    """Return True iff ``sBinary`` appears as a word in any command."""
+    import re as _re
+    regexBinary = _re.compile(r"\b" + _re.escape(sBinary) + r"\b")
+    for sCommand in listCommands:
+        if regexBinary.search(sCommand):
+            return True
+    return False
+
+
+def _flistDeclaredBinariesNotCaptured(dictStep, dictContext):
+    """Return declared binary paths referenced by step but missing from env."""
+    from .environmentSnapshot import fbBinaryCaptured
+    listDeclared = dictContext["listDeclaredBinaries"]
+    if not listDeclared:
+        return []
+    listCommands = _flistStepCommandStrings(dictStep)
+    if not listCommands:
+        return []
+    dictEnv = dictContext["dictEnvironment"]
+    listUncaptured = []
+    for dictEntry in listDeclared:
+        sPath = dictEntry.get("sBinaryPath") or ""
+        if not _fbStepReferencesDeclaredBinary(listCommands, sPath):
+            continue
+        if not fbBinaryCaptured(dictEnv, sPath):
+            listUncaptured.append(sPath)
+    return listUncaptured
+
+
+def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
+    """Return True iff a step command mentions the binary (basename or path)."""
+    if not sBinaryPath:
+        return False
+    sBasename = Path(sBinaryPath).name
+    for sCommand in listCommands:
+        if sBinaryPath in sCommand:
+            return True
+        if _fbCommandsInvokeBinary([sCommand], sBasename):
+            return True
+    return False

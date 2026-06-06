@@ -36,8 +36,10 @@ const PipeleyenApp = (function () {
             dictPlotStandardExists: {},
             dictBlockersByStep: {},
             dictBlockersByStepLevel2: {},
+            dictBlockersByStepLevel3: {},
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
+            iL3BlockerCount: 0,
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -339,8 +341,10 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictBlockersByStep = {};
         _dictWorkflowState.dictBlockersByStepLevel2 = {};
+        _dictWorkflowState.dictBlockersByStepLevel3 = {};
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
+        _dictWorkflowState.iL3BlockerCount = 0;
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -1385,6 +1389,67 @@ const PipeleyenApp = (function () {
             sLabel: "Add an AI declaration step to " +
                 "record agent involvement",
             sClass: "step-blocker-glyph-l2-ai-declaration",
+        },
+    };
+
+    var _DICT_L3_BLOCKER_GLYPHS = {
+        "missing-from-manifest": {
+            sIcon: "⚠",
+            sLabel: "Path missing from MANIFEST.sha256 — refresh manifest",
+            sClass: "step-blocker-glyph-l3-manifest",
+        },
+        "script-not-pinned": {
+            sIcon: "✗",
+            sLabel: "Script hash drifted from MANIFEST — re-run or " +
+                "refresh manifest",
+            sClass: "step-blocker-glyph-l3-pin",
+        },
+        "nondeterminism-undeclared": {
+            sIcon: "✗",
+            sLabel: "Step has unseeded RNG; declare or seed it",
+            sClass: "step-blocker-glyph-l3-determinism",
+        },
+        "binary-not-declared": {
+            sIcon: "⚠",
+            sLabel: "Step invokes a binary not in listDeclaredBinaries",
+            sClass: "step-blocker-glyph-l3-binary-declared",
+        },
+        "binary-not-captured": {
+            sIcon: "⚠",
+            sLabel: "Declared binary missing from environment.json — " +
+                "capture SHA + version",
+            sClass: "step-blocker-glyph-l3-binary-captured",
+        },
+        "dockerfile-not-pinned": {
+            sIcon: "⚠",
+            sLabel: "Dockerfile FROM line not pinned with @sha256:",
+            sClass: "step-blocker-glyph-l3-workflow-dockerfile",
+        },
+        "dependency-lock-missing": {
+            sIcon: "⚠",
+            sLabel: "requirements.lock missing or unhashed",
+            sClass: "step-blocker-glyph-l3-workflow-lock",
+        },
+        "environment-snapshot-missing": {
+            sIcon: "⚠",
+            sLabel: "environment.json missing or unpinned",
+            sClass: "step-blocker-glyph-l3-workflow-env",
+        },
+        "reproduce-script-missing": {
+            sIcon: "⚠",
+            sLabel: "reproduce.sh missing or unpinned in MANIFEST",
+            sClass: "step-blocker-glyph-l3-workflow-reproduce",
+        },
+        "l3-attestation-stale": {
+            sIcon: "⚠",
+            sLabel: "L3 attestation stale — re-run verification",
+            sClass: "step-blocker-glyph-l3-workflow-attestation",
+        },
+        "binaries-not-declared-or-waived": {
+            sIcon: "⚠",
+            sLabel: "Open 'Declare standalone binaries' and waive " +
+                "or declare each binary",
+            sClass: "step-blocker-glyph-l3-workflow-binaries",
         },
     };
 
@@ -2528,6 +2593,7 @@ const PipeleyenApp = (function () {
             (typeof dictStatus.iL2BlockerCount === "number")
                 ? dictStatus.iL2BlockerCount
                 : Object.keys(dictByStepL2).length;
+        _fnApplyL3BlockersFromPoll(dictStatus);
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {
@@ -2540,6 +2606,24 @@ const PipeleyenApp = (function () {
             }
         }
         return dictByStep;
+    }
+
+    function _fnApplyL3BlockersFromPoll(dictStatus) {
+        var dictByStepL3 = {};
+        var listL3 = dictStatus.listLevel3Blockers || [];
+        for (var i = 0; i < listL3.length; i++) {
+            var dictEntry = listL3[i];
+            if (!dictEntry || typeof dictEntry.iStepIndex !== "number") {
+                continue;
+            }
+            if (dictEntry.iStepIndex < 0) continue;
+            dictByStepL3[dictEntry.iStepIndex] = dictEntry;
+        }
+        _dictWorkflowState.dictBlockersByStepLevel3 = dictByStepL3;
+        _dictWorkflowState.iL3BlockerCount =
+            (typeof dictStatus.iL3BlockerCount === "number")
+                ? dictStatus.iL3BlockerCount
+                : Object.keys(dictByStepL3).length;
     }
 
     function fnResetStaleUserVerifications() {
