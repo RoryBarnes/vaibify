@@ -246,6 +246,51 @@ def testStaleZenodoCacheFiresWorkflowScopeOnly(tmp_path):
     assert listZenodo[0]["iStepIndex"] == -1
 
 
+def testNeverVerifiedSyncCacheFiresWorkflowScopeOnly(tmp_path):
+    """A cache with no ``sLastVerified`` is treated as stale, not as clean.
+
+    When the dashboard first lands on a workflow the sync cache may
+    exist (manifest counts populated, divergence list populated) but
+    have never been verified against the remote. Treating this as
+    fresh would silently emit per-step ``not-in-github-mirror`` rows
+    from divergence data that no live verify has ever blessed. The
+    correct surface is the workflow-scope ``github-verify-stale``
+    blocker that prompts the researcher to run verify now.
+    """
+    sProjectRepo = str(tmp_path)
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": {
+            "sService": "github",
+            "sLastVerified": None,
+            "iTotalFiles": 5, "iMatching": 4,
+            "listDiverged": [{
+                "sPath": "B/data.csv",
+                "sExpected": "x", "sActual": "y",
+            }],
+            "sCommittedShaVerified": "abc123",
+        },
+        "zenodo": _fdictFreshZenodoCache()["zenodo"],
+    })
+    dictWorkflow = {
+        "listSteps": [
+            _fdictGreenStep(sName="A"),
+            _fdictGreenStep(sName="B"),
+            _fdictAiDeclarationStep(),
+        ],
+    }
+    listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+    listGithub = [
+        dictEntry for dictEntry in listBlockers
+        if dictEntry["sCriterion"] in
+        ("github-verify-stale", "not-in-github-mirror")
+    ]
+    assert len(listGithub) == 1
+    assert listGithub[0]["sCriterion"] == "github-verify-stale"
+    assert listGithub[0]["sScope"] == "workflow"
+    assert listGithub[0]["iStepIndex"] == -1
+    assert listGithub[0]["sStepLabel"] == "(workflow)"
+
+
 # ------------------------------------------------------------------------
 # Missing AI declaration (workflow-scope)
 # ------------------------------------------------------------------------
@@ -354,8 +399,23 @@ def testSchemaUnificationAppliedToL1():
 
     Stage 3 unifies the schema across L1/L2 (and the future L3) so the
     frontend can iterate one shape regardless of level. This test fails
-    if any L1 builder forgets to stamp the new fields.
+    if any L1 builder forgets to stamp the new fields. All four L1
+    criteria (``upstream-modified``, ``axis-not-green``,
+    ``attestation-stale``, ``user-not-approved``) are exercised so a
+    missed builder is caught regardless of which one regressed.
     """
+    dictStepUpstreamModified = {
+        "sName": "Up", "sDirectory": "Up",
+        "saDataFiles": ["Up/data.csv"], "saPlotFiles": [],
+        "dictVerification": {
+            "sUser": "passed",
+            "sUnitTest": "passed",
+            "sIntegrity": "passed",
+            "sQualitative": "passed",
+            "sQuantitative": "passed",
+            "bUpstreamModified": True,
+        },
+    }
     dictStepUserUntested = {
         "sName": "A", "sDirectory": "A",
         "saDataFiles": ["A/data.csv"], "saPlotFiles": [],
@@ -386,11 +446,17 @@ def testSchemaUnificationAppliedToL1():
     }
     listBlockers = flistLevel1Blockers(
         {"listSteps": [
-            dictStepUserUntested, dictStepAxisFail, dictStepAttestStale,
+            dictStepUpstreamModified, dictStepUserUntested,
+            dictStepAxisFail, dictStepAttestStale,
         ]},
         {}, "/repo",
     )
-    assert len(listBlockers) == 3
+    assert len(listBlockers) == 4
+    setCriteria = {dictEntry["sCriterion"] for dictEntry in listBlockers}
+    assert setCriteria == {
+        "upstream-modified", "axis-not-green",
+        "attestation-stale", "user-not-approved",
+    }
     for dictEntry in listBlockers:
         assert dictEntry["iLevel"] == 1
         assert dictEntry["sScope"] == "step"

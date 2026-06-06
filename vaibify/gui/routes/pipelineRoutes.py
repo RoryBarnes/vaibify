@@ -670,7 +670,13 @@ def _fdictBuildPollResponseRest(
 
 
 def _fiCountUniqueBlockingSteps(listBlockers):
-    """Return the count of distinct step indices appearing in blockers."""
+    """Return the count of distinct step indices appearing in blockers.
+
+    Workflow-scope entries carry ``iStepIndex=-1`` and intentionally
+    count as one slot in this total, so a header like "3 steps
+    blocking L2" reflects two real steps plus one workflow-scope
+    issue when present. Stage 6 consumes this directly.
+    """
     setSteps = set()
     for dictEntry in listBlockers or []:
         iIndex = dictEntry.get("iStepIndex")
