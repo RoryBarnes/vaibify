@@ -1560,7 +1560,12 @@ def _fsetDeclaredBasenames(listDeclared):
 
 
 def _fbCommandsInvokeBinary(listCommands, sBinary):
-    """Return True iff ``sBinary`` appears as a word in any command."""
+    """Return True iff ``sBinary`` appears as a word in any command.
+
+    Match is case-sensitive: POSIX binary names on Linux/macOS are
+    case-sensitive, and matching ``VPLANET`` against ``vplanet`` would
+    produce false positives on case-preserving file systems.
+    """
     import re as _re
     regexBinary = _re.compile(r"\b" + _re.escape(sBinary) + r"\b")
     for sCommand in listCommands:

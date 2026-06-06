@@ -164,30 +164,60 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     assert "vplanet" in listUndeclared[0]["listOffendingFiles"]
 
 
-def testFalseWaiverCheatingDefeatedByAllowlist(fixtureL3Repo):
-    """The allowlist beats a false waiver — vplanet still fires."""
-    sRel = "A/data.csv"
-    (fixtureL3Repo / "A").mkdir()
-    (fixtureL3Repo / sRel).write_text("x\n")
+def _fnSeedStepDataFile(pathRepo, sRel):
+    """Materialize a step data file and pin it in MANIFEST."""
+    (pathRepo / "A").mkdir()
+    (pathRepo / sRel).write_text("x\n")
     _fnWriteManifestCoveringPaths(
-        fixtureL3Repo,
+        pathRepo,
         [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME, sRel],
     )
+
+
+def _fdictWaivedWorkflowWithCommand(sCommand, sRel):
+    """Build a falsely-waivered workflow whose step runs ``sCommand``."""
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
         "saDataFiles": [sRel],
         "saPlotFiles": [],
-        "saDataCommands": ["vplanet input.in"],
+        "saDataCommands": [sCommand],
         "saPlotCommands": [],
     }]
+    return dictWorkflow
+
+
+@pytest.mark.parametrize(
+    "sCommand, bExpectFire",
+    [
+        ("vplanet input.in", True),
+        ("/usr/local/bin/vplanet input.in", True),
+        ("./bin/vplanet input.in", True),
+        ("VPLANET input.in", False),
+    ],
+    ids=["basename", "absolute-path", "relative-path", "case-mismatch"],
+)
+def testFalseWaiverCheatingDefeatedByAllowlist(
+    fixtureL3Repo, sCommand, bExpectFire,
+):
+    """The allowlist beats a false waiver across path forms.
+
+    Basename, absolute, and relative invocations all trip the
+    word-boundary regex, but POSIX case-sensitivity means an
+    uppercase ``VPLANET`` is treated as a distinct binary and does
+    not fire.
+    """
+    sRel = "A/data.csv"
+    _fnSeedStepDataFile(fixtureL3Repo, sRel)
+    dictWorkflow = _fdictWaivedWorkflowWithCommand(sCommand, sRel)
     listBlockers = flistLevel3Blockers(
         dictWorkflow, str(fixtureL3Repo),
     )
     listUndeclared = _flistFindByCriterion(
         listBlockers, "binary-not-declared",
     )
-    assert len(listUndeclared) == 1
+    iExpected = 1 if bExpectFire else 0
+    assert len(listUndeclared) == iExpected
 
 
 def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
