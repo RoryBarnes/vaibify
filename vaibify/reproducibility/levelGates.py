@@ -396,13 +396,20 @@ def _fbStepHashesMatchManifest(dictStep, sProjectRepoPath):
     dictEntries = hashStaleness._fdictReadManifestEntries(sProjectRepoPath)
     if not dictEntries:
         return False
-    for sRelPath in listRelPaths:
-        if sRelPath not in dictEntries:
-            return False
+    if _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
+        return False
     setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
         sProjectRepoPath, listRelPaths, {},
     )
     return len(setStale) == 0
+
+
+def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
+    """Return True iff any declared output is absent from the manifest."""
+    for sRelPath in listRelPaths:
+        if sRelPath not in dictEntries:
+            return True
+    return False
 
 
 def _flistStepOutputsRepoRelative(dictStep, sProjectRepoPath):
