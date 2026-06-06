@@ -5095,3 +5095,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     border-radius: 3px;
     font-size: 11px;
 }
+
+.step-blocker-glyph-attestation-stale {
+    color: var(--color-orange);
+}

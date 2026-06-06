@@ -22,6 +22,7 @@ _T_GREEN_VERIF_VALUES = ("passed", "passed-from-marker", "unnecessary")
 
 
 __all__ = [
+    "fbStepAttestationFresh",
     "fbStepTestsPassing",
     "fbStepTimingClean",
     "fbStepUserApproved",
@@ -34,7 +35,27 @@ def fbStepUserApproved(dictStep):
     The researcher attestation is the only field that requires a
     human click; every other gate field is derived. A corrupt step
     (non-dict, missing ``dictVerification``) reads as not-approved
-    so callers do not crash with ``AttributeError``.
+    so callers do not crash with ``AttributeError``. ``stale`` and
+    ``untested`` both read as not-approved; the discriminator between
+    them lives in the blocker dispatcher, not in this boolean gate.
+    """
+    if not isinstance(dictStep, dict):
+        return False
+    dictV = dictStep.get("dictVerification", {})
+    if not isinstance(dictV, dict):
+        return False
+    return dictV.get("sUser") == "passed"
+
+
+def fbStepAttestationFresh(dictStep):
+    """Return True iff ``sUser`` is ``passed`` (fresh attestation).
+
+    A companion to ``fbStepUserApproved`` exposing the same boolean
+    under the name the blocker discriminator reads. The discriminator
+    uses ``sUser == "stale"`` to distinguish *outputs-changed-after-
+    attestation* from *never-attested*; this helper is the positive
+    side of that split for callers that want to ask "is the
+    attestation still current?" without re-implementing the check.
     """
     if not isinstance(dictStep, dict):
         return False

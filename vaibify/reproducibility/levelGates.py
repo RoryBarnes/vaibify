@@ -193,13 +193,18 @@ def flistLevel1Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
          "listOffendingUpstreamSteps": [0-based step indices]}
 
     ``sCriterion`` is one of ``"user-not-approved"``,
-    ``"upstream-modified"``, ``"axis-not-green"``. When both
-    ``bUpstreamModified`` and an axis-untested condition fire on the
-    same step only ``upstream-modified`` is emitted (root cause; the
-    axis-untested condition is its downstream effect after the L1
-    invalidation cascade). The list is sorted by ``iStepIndex`` so
-    rendering order is deterministic. Returns ``[]`` for an L1-clean
-    workflow or one with no project repo.
+    ``"upstream-modified"``, ``"axis-not-green"``, or
+    ``"attestation-stale"``. ``attestation-stale`` fires when the
+    researcher *did* attest (``sLastUserUpdate`` is present) but the
+    outputs were rewritten after the attestation, flipping
+    ``sUser`` to ``"stale"``; ``user-not-approved`` fires when the
+    step was never attested. When both ``bUpstreamModified`` and an
+    axis-untested condition fire on the same step only
+    ``upstream-modified`` is emitted (root cause; the axis-untested
+    condition is its downstream effect after the L1 invalidation
+    cascade). The list is sorted by ``iStepIndex`` so rendering order
+    is deterministic. Returns ``[]`` for an L1-clean workflow or one
+    with no project repo.
     """
     if not fbWorkflowHasProjectRepo(sProjectRepoPath):
         return []
@@ -225,12 +230,13 @@ def _fdictBuildStepBlocker(
     """Return the single dominant blocker dict for a step, or None.
 
     Priority: ``upstream-modified`` > ``axis-not-green`` >
-    ``user-not-approved``. The first applicable criterion wins so a
-    step never emits two blockers; the dashboard's banner glyph
-    therefore has a deterministic single source. Corrupt step entries
-    (``None``, non-dict, missing ``dictVerification``) cannot satisfy
-    any criterion and are surfaced as ``user-not-approved`` so the
-    L1 gate matches its historical defensive contract.
+    ``attestation-stale`` > ``user-not-approved``. The first
+    applicable criterion wins so a step never emits two blockers; the
+    dashboard's banner glyph therefore has a deterministic single
+    source. Corrupt step entries (``None``, non-dict, missing
+    ``dictVerification``) cannot satisfy any criterion and are
+    surfaced as ``user-not-approved`` so the L1 gate matches its
+    historical defensive contract.
     """
     if not isinstance(dictStep, dict):
         return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
@@ -243,9 +249,31 @@ def _fdictBuildStepBlocker(
         return _fdictAxisNotGreenBlocker(
             dictWorkflow, iStepIndex, dictStep,
         )
-    if not fbStepUserApproved(dictStep):
-        return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
-    return None
+    return _fdictUserDispositionBlocker(
+        dictWorkflow, iStepIndex, dictStep,
+    )
+
+
+def _fdictUserDispositionBlocker(dictWorkflow, iStepIndex, dictStep):
+    """Return the user-axis blocker for a step, or None when approved.
+
+    Discriminates between ``attestation-stale`` (researcher attested,
+    outputs changed since) and ``user-not-approved`` (never attested)
+    by inspecting ``sUser`` and ``sLastUserUpdate``. Returns None when
+    ``fbStepUserApproved`` is True so the L1 boolean gate is preserved.
+    """
+    if fbStepUserApproved(dictStep):
+        return None
+    dictV = dictStep.get("dictVerification", {})
+    bStale = (
+        dictV.get("sUser") == "stale"
+        and dictV.get("sLastUserUpdate") is not None
+    )
+    if bStale:
+        return _fdictAttestationStaleBlocker(
+            dictWorkflow, iStepIndex, dictStep,
+        )
+    return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
 
 
 def _fdictUpstreamModifiedBlocker(
@@ -284,6 +312,24 @@ def _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex):
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
         "sCriterion": "user-not-approved",
         "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+    }
+
+
+def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
+    """Build the ``attestation-stale`` blocker entry for one step.
+
+    Fires when the researcher previously attested (``sLastUserUpdate``
+    present) but the outputs changed since, flipping ``sUser`` to
+    ``stale``. ``listOffendingFiles`` projects the step's declared
+    outputs so the dashboard can mark them red with the
+    *re-verify-or-re-run* remediation.
+    """
+    return {
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sCriterion": "attestation-stale",
+        "listOffendingFiles": _flistStepOutputFiles(dictStep),
         "listOffendingUpstreamSteps": [],
     }
 

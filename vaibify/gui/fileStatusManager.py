@@ -549,14 +549,17 @@ def _fbAnyMtimeNewerThan(listPaths, dictModTimes, iThreshold):
 
 
 def _fnResetUserAttestationIfStale(dictVerification):
-    """Reset ``sUser`` to ``untested`` and clear ``sLastUserUpdate``.
+    """Mark ``sUser`` as ``stale`` while preserving ``sLastUserUpdate``.
 
-    Mutations-only. Caller owns the
-    ``dictStep["dictVerification"] = dictVerification`` write-back per
-    the dashboard-ground-truth contract — this helper never persists.
+    Two-state semantics: ``sUser`` flips to ``stale`` (the researcher
+    *did* attest, but the outputs changed since) and ``sLastUserUpdate``
+    is preserved as evidence of the prior attestation. ``untested`` is
+    reserved for steps that were never attested. Mutations-only; caller
+    owns the ``dictStep["dictVerification"] = dictVerification``
+    write-back per the dashboard-ground-truth contract — this helper
+    never persists.
     """
-    dictVerification["sUser"] = "untested"
-    dictVerification.pop("sLastUserUpdate", None)
+    dictVerification["sUser"] = "stale"
 
 
 def _fnClearPlotInvalidationFlags(dictVerification):
@@ -778,21 +781,22 @@ def _fnInvalidateDownstreamStep(dictStep):
 
 
 def fbReconcileUserVerificationTimestamps(dictWorkflow):
-    """Strip ``sLastUserUpdate`` from steps where ``sUser`` is not 'passed'.
+    """Strip ``sLastUserUpdate`` from steps where it carries no evidence.
 
-    ``sLastUserUpdate`` is only meaningful while the researcher's
-    attestation stands. When ``sUser`` flips to ``untested`` or
-    ``failed`` the timestamp becomes ghost data that misleads the UI
-    ("Last updated 2026-04-07" on a step currently marked untested)
-    and re-introduces stale-artifact warnings via any comparison
-    that still reads the field. Enforces the "no stale timestamps"
-    invariant as a pure derived state, independent of transition
-    sites. Returns True when any step changed so the caller persists.
+    ``sLastUserUpdate`` is only meaningful while attestation evidence
+    exists. ``"passed"`` (currently attested) and ``"stale"`` (was
+    attested, outputs changed since) both retain the timestamp — the
+    ``"stale"`` case is the load-bearing distinction that lets the
+    dashboard tell *"outputs changed after you verified"* apart from
+    *"never verified"*. ``"untested"`` and ``"failed"`` strip the
+    timestamp: there was no attestation, so the field is ghost data
+    that misleads the UI and re-introduces stale-artifact warnings.
+    Returns True when any step changed so the caller persists.
     """
     bAnyChanged = False
     for dictStep in dictWorkflow.get("listSteps", []):
         dictVerify = dictStep.get("dictVerification", {})
-        if dictVerify.get("sUser") == "passed":
+        if dictVerify.get("sUser") in ("passed", "stale"):
             continue
         if "sLastUserUpdate" in dictVerify:
             dictVerify.pop("sLastUserUpdate", None)

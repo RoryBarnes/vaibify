@@ -350,7 +350,10 @@ class TestFbCheckStaleUserVerification:
             dictWorkflow, dictMod)
         assert bChanged is True
         assert dictWorkflow["listSteps"][0][
-            "dictVerification"]["sUser"] == "untested"
+            "dictVerification"]["sUser"] == "stale"
+        assert dictWorkflow["listSteps"][0][
+            "dictVerification"]["sLastUserUpdate"] == (
+                "2020-01-01 00:00:00 UTC")
 
     def test_preserves_fresh_verification(self):
         dictWorkflow = {

@@ -139,7 +139,9 @@ def test_fnInvalidateStepFiles_user_passed_plot_newer_resets():
         dictStep, ["/ws/figure.pdf"],
         dictModTimes={"/ws/figure.pdf": "1900000000"},
     )
-    assert dictStep["dictVerification"]["sUser"] == "untested"
+    assert dictStep["dictVerification"]["sUser"] == "stale"
+    assert dictStep["dictVerification"]["sLastUserUpdate"] == (
+        "2020-01-01 00:00:00 UTC")
 
 
 def test_fnInvalidateStepFiles_user_passed_plot_older_preserved():
