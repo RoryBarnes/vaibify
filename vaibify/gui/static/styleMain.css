@@ -5139,3 +5139,208 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .step-blocker-glyph-l3-workflow-binaries {
     color: var(--color-blue);
 }
+
+/* --- Section G: red-disambiguation modifier classes on
+   ``.file-necessary-red``. One red hue, three secondary affordances so
+   the researcher can distinguish missing from stale from never-attested
+   without losing the trained "red = needs attention" association.
+   Applied to ``.detail-text`` inside ``.detail-item.output``. */
+.detail-item.output .detail-text.file-necessary-red.file-missing-state {
+    color: #c91111;
+}
+
+.detail-item.output .detail-text.file-necessary-red.file-stale-state {
+    color: #c91111;
+    text-decoration: underline dotted;
+}
+
+.detail-item.output .detail-text.file-necessary-red.file-unattested-state {
+    color: #c91111;
+    font-style: italic;
+}
+
+/* --- Section F: workflow header progression. Four states (L0..L3)
+   each rendered as two clickable segments inside ``#aicsHeaderProgress``.
+   ``aics-progress-segment`` carries the colour; ``aics-progress-divider``
+   is the literal middle dot. */
+.aics-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aics-progress-segment {
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 1px dotted transparent;
+}
+
+.aics-progress-segment:hover {
+    border-bottom-color: currentColor;
+}
+
+.aics-progress-segment.aics-progress-state-red {
+    color: var(--color-red);
+}
+
+.aics-progress-segment.aics-progress-state-orange {
+    color: var(--color-orange);
+}
+
+.aics-progress-segment.aics-progress-state-yellow {
+    color: #d9c200;
+}
+
+.aics-progress-segment.aics-progress-state-green {
+    color: #4caf50;
+}
+
+.aics-progress-divider {
+    color: var(--text-muted);
+    margin: 0 2px;
+}
+
+/* --- Section F: per-step level dots. Additive to today's status dot —
+   one extra dot per active ladder level, color-coded green/yellow/red so
+   the researcher can read each step's ladder-segment readiness at a
+   glance. The dot reuses the existing ``.step-status`` shape vocabulary
+   for visual consistency with the legacy verification dot. */
+.step-level-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-left: 4px;
+    vertical-align: middle;
+    background: var(--text-muted);
+    cursor: help;
+}
+
+.step-level-dot.state-green {
+    background: #4caf50;
+}
+
+.step-level-dot.state-yellow {
+    background: #d9c200;
+}
+
+.step-level-dot.state-red {
+    background: var(--color-red);
+}
+
+.step-level-dot.state-grey {
+    background: var(--text-muted);
+}
+
+/* --- Section G: legend mechanism. A fixed-position panel anchored
+   beneath the dashboard header help button. ``aria-hidden=true`` by
+   default; the JS toggles ``.is-open`` to reveal it. */
+.aics-help-button {
+    margin-left: 6px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.aics-help-button:hover {
+    background: var(--bg-hover);
+}
+
+.aics-legend-panel {
+    display: none;
+    position: fixed;
+    top: 60px;
+    right: 24px;
+    width: 360px;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--bg-modal);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    z-index: 5000;
+    padding: 12px 14px;
+}
+
+.aics-legend-panel.is-open {
+    display: block;
+}
+
+.aics-legend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 6px;
+}
+
+.aics-legend-close {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.aics-legend-section {
+    margin-bottom: 10px;
+}
+
+.aics-legend-section-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.aics-legend-section-title .aics-legend-glyph {
+    display: inline-block;
+    width: 16px;
+    margin-right: 6px;
+    text-align: center;
+    font-weight: 700;
+}
+
+.aics-legend-section.aics-level-1-tint .aics-legend-glyph {
+    color: var(--color-red);
+}
+
+.aics-legend-section.aics-level-2-tint .aics-legend-glyph {
+    color: var(--color-orange);
+}
+
+.aics-legend-section.aics-level-3-tint .aics-legend-glyph {
+    color: var(--color-blue);
+}
+
+.aics-legend-criteria {
+    margin: 0;
+    padding-left: 22px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.aics-legend-footer {
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+    padding-top: 6px;
+    margin-top: 6px;
+}
+
+.aics-legend-count {
+    color: var(--text-secondary);
+    font-weight: 400;
+    margin-left: 4px;
+    font-size: 12px;
+}

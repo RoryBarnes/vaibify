@@ -21,6 +21,43 @@ var VaibifyStepRenderer = (function () {
         "user|plotFile": "User verification older than plot files",
     };
 
+    function _fbHasL1Blocker(dictContext, iIndex) {
+        // True iff the step has an L1 blocker entry. Used to suppress
+        // banner glyphs that the L1 blocker glyph already conveys.
+        var dictBlockers = dictContext.dictBlockersByStep || {};
+        return Boolean(dictBlockers[iIndex]);
+    }
+
+    var _DICT_LEVEL_DOT_TOOLTIPS = {
+        manifest: "L1 manifest membership",
+        mirror: "L2 mirror state",
+        envelope: "L3 reproducibility envelope",
+    };
+
+    function _fsBuildStepLevelDots(dictContext, iIndex) {
+        // Section F: additive per-step level dots. Each dot reuses the
+        // existing colour vocabulary (green / yellow / red / grey) so
+        // the step card can show ladder-segment readiness at a glance.
+        // Empty string when the corresponding rung isn't the current
+        // dashboard target.
+        return _fsLevelDot(dictContext.fsStepManifestDotState,
+                iIndex, "manifest") +
+            _fsLevelDot(dictContext.fsStepMirrorDotState,
+                iIndex, "mirror") +
+            _fsLevelDot(dictContext.fsStepEnvelopeDotState,
+                iIndex, "envelope");
+    }
+
+    function _fsLevelDot(fsState, iIndex, sKind) {
+        if (!fsState) return "";
+        var sState = fsState(iIndex);
+        if (!sState) return "";
+        return '<span class="step-level-dot step-level-dot-' + sKind +
+            ' state-' + sState + '" title="' +
+            fnEscapeHtml(_DICT_LEVEL_DOT_TOOLTIPS[sKind]) +
+            '"></span>';
+    }
+
     function _fdictGroupStaleArtifacts(listArtifacts) {
         var dictGrouped = {};
         for (var i = 0; i < listArtifacts.length; i++) {
@@ -95,7 +132,14 @@ var VaibifyStepRenderer = (function () {
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
-            (dictContext.dictScriptModified[iIndex] === "modified" ?
+            // Section F/G: suppress the per-step pencil banner glyph
+            // on the step card when an L1 blocker is already in flight
+            // — Stage 2 added the ``script-stale`` banner glyph via
+            // ``fsBuildWarningBadge`` so showing both is redundant.
+            // The per-script pencil badge in the verification panel
+            // still renders to identify *which* script is stale.
+            ((dictContext.dictScriptModified[iIndex] === "modified" &&
+                !_fbHasL1Blocker(dictContext, iIndex)) ?
                 '<span class="script-modified-badge" ' +
                 'title="Scripts modified since last run">' +
                 '&#9998;</span>' : '') +
@@ -109,6 +153,7 @@ var VaibifyStepRenderer = (function () {
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
+            _fsBuildStepLevelDots(dictContext, iIndex) +
             sVerifiedBadge +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
@@ -483,8 +528,10 @@ var VaibifyStepRenderer = (function () {
         var sGlyph = "";
         if (dictContext.fbUpstreamStepIsL1Offending &&
             dictContext.fbUpstreamStepIsL1Offending(iIndex, iDep)) {
-            sGlyph = " " + dictContext.fsBuildL1FailureGlyph(
-                "Upstream outputs newer than this step; re-run to clear");
+            var sHint = (dictContext.fsBlockerHintForStep &&
+                dictContext.fsBlockerHintForStep(iIndex)) ||
+                "Upstream outputs newer than this step; re-run to clear";
+            sGlyph = " " + dictContext.fsBuildL1FailureGlyph(sHint);
         }
         return '<div class="dep-item">' +
             '<div class="dep-header"><span class="dep-label">' +
@@ -816,8 +863,10 @@ var VaibifyStepRenderer = (function () {
                 sArrayKey === "saPlotFiles") &&
             dictContext.fbFileIsL1Offending &&
             dictContext.fbFileIsL1Offending(iStepIdx, sRaw)) {
-            sHtml += dictContext.fsBuildL1FailureGlyph(
-                "Blocking L1: re-run step to clear");
+            var sFileHint = (dictContext.fsBlockerHintForFile &&
+                dictContext.fsBlockerHintForFile(iStepIdx, sRaw)) ||
+                "Blocking L1: re-run step to clear";
+            sHtml += dictContext.fsBuildL1FailureGlyph(sFileHint);
         }
         if ((sArrayKey === "saPlotFiles" ||
             sArrayKey === "saDataFiles") && !bInvalid) {
