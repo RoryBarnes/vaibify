@@ -473,13 +473,21 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     indicating the researcher edited the producer without re-running.
     ``listOffendingFiles`` projects the step's declared outputs so the
     dashboard can mark them with the *re-run-to-clear* remediation.
+    Conforms to the unified blocker schema (Section A of the
+    AICS-ladder plan): every L1 entry carries ``iLevel``, ``sScope``,
+    and a non-empty ``sRemediationHint`` so the Section G tooltip
+    pipeline can read it directly.
     """
     return {
+        "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
         "sCriterion": "script-stale",
         "listOffendingFiles": _flistStepOutputFiles(dictStep),
         "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Script edited after output — re-run step to clear blocker",
     }
 
 

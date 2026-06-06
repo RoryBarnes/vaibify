@@ -165,32 +165,121 @@ var VaibifyAicsTab = (function () {
         _fnBindGapFixLinks();
         _fnBindGenerateTemplateButton();
         _fnBindVerifyL3Button();
+        _fnBindProgressSegments();
+    }
+
+    function _fnNotifyCachedAicsLevel(iLevel) {
+        // Mirror the AICS-tab's read of /level2/readiness into the
+        // application state so per-step level dots can render before
+        // the AICS tab is open.
+        if (PipeleyenApp && PipeleyenApp.fnSetCachedAicsLevel) {
+            PipeleyenApp.fnSetCachedAicsLevel(iLevel);
+        }
     }
 
     function _fsRenderHeaderCard(iLevel) {
+        _fnNotifyCachedAicsLevel(iLevel);
         var dictHeader = _DICT_LEVEL_HEADERS[iLevel] ||
             _DICT_LEVEL_HEADERS[0];
-        var sTitle = dictHeader.sTitle;
-        if (iLevel === 0) {
-            sTitle += _fsFormatBlockerCountSuffix();
-        }
         return '<div class="aics-header-card aics-level-' +
             iLevel + '-tint">' +
             '<div class="aics-header-title">' +
-            fnEscapeHtml(sTitle) + '</div>' +
+            fnEscapeHtml(dictHeader.sTitle) + '</div>' +
             '<div class="aics-header-subtitle">' +
             fnEscapeHtml(dictHeader.sSubtitle) + '</div>' +
-            '</div>';
+            '<div class="aics-header-progress-wrap">' +
+            _fsFormatBlockerCountSuffix(iLevel) +
+            '</div></div>';
     }
 
-    function _fsFormatBlockerCountSuffix() {
-        if (!PipeleyenApp || !PipeleyenApp.fiGetL1BlockerCount) {
-            return "";
+    function _fsFormatBlockerCountSuffix(iLevel) {
+        // Section F: workflow-header progression. Four states (L0..L3),
+        // each rendered as two clickable segments separated by ' · '.
+        // Reuses the existing AICS-tab readiness cards as the click
+        // target so the header is a navigation aid, not a new page.
+        var dictCounts = _fdictBlockerCountsByLevel();
+        var listSegments = _flistProgressSegments(iLevel, dictCounts);
+        if (listSegments.length === 0) return "";
+        var sHtml = '<div class="aics-progress">';
+        for (var i = 0; i < listSegments.length; i++) {
+            if (i > 0) {
+                sHtml += '<span class="aics-progress-divider"> · </span>';
+            }
+            sHtml += listSegments[i];
         }
-        var iCount = PipeleyenApp.fiGetL1BlockerCount();
-        if (iCount <= 0) return "";
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function _fdictBlockerCountsByLevel() {
+        if (PipeleyenApp && PipeleyenApp.fdictBlockerCountsByLevel) {
+            return PipeleyenApp.fdictBlockerCountsByLevel();
+        }
+        var iCount = (PipeleyenApp && PipeleyenApp.fiGetL1BlockerCount)
+            ? PipeleyenApp.fiGetL1BlockerCount() : 0;
+        return {iLevel1: iCount, iLevel2: 0, iLevel3: 0};
+    }
+
+    function _flistProgressSegments(iLevel, dictCounts) {
+        if (iLevel >= 3) return [_fsProgressSegment("L3", "Reproducible ✓", "green")];
+        if (iLevel === 2) return _flistL2DoneSegments();
+        if (iLevel === 1) return _flistL1DoneSegments(dictCounts);
+        return [_fsProgressSegment("L1",
+            "Self-Consistent (" + dictCounts.iLevel1 +
+            _fsBlockerNoun(dictCounts.iLevel1) + ")", "red")];
+    }
+
+    function _flistL1DoneSegments(dictCounts) {
+        return [
+            _fsProgressSegment("L1", "Self-Consistent ✓", "green"),
+            _fsProgressSegment("L2",
+                "Published (" + dictCounts.iLevel2 + " blocking)", "orange"),
+        ];
+    }
+
+    function _flistL2DoneSegments() {
+        return [
+            _fsProgressSegment("L2", "Published ✓", "green"),
+            _fsProgressSegment("L3", "Reproducible (env pending)", "yellow"),
+        ];
+    }
+
+    function _fsProgressSegment(sLevelKey, sLabel, sColorClass) {
+        return '<span class="aics-progress-segment ' +
+            'aics-progress-state-' + sColorClass + '" ' +
+            'data-progress-target="' + sLevelKey + '" ' +
+            'title="Jump to ' + sLevelKey + ' readiness">' +
+            fnEscapeHtml(sLabel) + '</span>';
+    }
+
+    function _fsBlockerNoun(iCount) {
         var sNoun = iCount === 1 ? "step" : "steps";
-        return " — L0 (" + iCount + " " + sNoun + " blocking)";
+        return " " + sNoun + " blocking";
+    }
+
+    function _fnBindProgressSegments() {
+        var elContent = _felGetTabContent();
+        if (!elContent) return;
+        var listSegments = elContent.querySelectorAll(
+            ".aics-progress-segment");
+        Array.prototype.forEach.call(listSegments, function (elSegment) {
+            elSegment.addEventListener("click", function () {
+                _fnScrollToReadiness(elSegment.dataset.progressTarget);
+            });
+        });
+    }
+
+    function _fnScrollToReadiness(sLevelKey) {
+        var sSelector = sLevelKey === "L3"
+            ? ".aics-level3-card"
+            : (sLevelKey === "L2" ? ".aics-level2-card"
+                : ".aics-header-card");
+        var el = _felGetTabContent();
+        if (!el) return;
+        var elTarget = el.querySelector(sSelector);
+        if (!elTarget) return;
+        elTarget.scrollIntoView({behavior: "smooth", block: "start"});
+        elTarget.classList.remove("collapsed");
     }
 
     function _fsRenderLevel2ReadinessCard(iLevel, dictGaps) {

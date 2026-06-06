@@ -40,6 +40,7 @@ const PipeleyenApp = (function () {
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
+            iCachedAicsLevel: null,
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -345,6 +346,7 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
         _dictWorkflowState.iL3BlockerCount = 0;
+        _dictWorkflowState.iCachedAicsLevel = null;
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -976,6 +978,11 @@ const PipeleyenApp = (function () {
             fbFileIsL1Offending: fbFileIsL1Offending,
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
+            fsBlockerHintForStep: fsBlockerHintForStep,
+            fsBlockerHintForFile: fsBlockerHintForFile,
+            fsStepManifestDotState: fsStepManifestDotState,
+            fsStepMirrorDotState: fsStepMirrorDotState,
+            fsStepEnvelopeDotState: fsStepEnvelopeDotState,
         };
     }
 
@@ -1483,8 +1490,12 @@ const PipeleyenApp = (function () {
         var dictMeta = _DICT_BLOCKER_CRITERION_GLYPHS[
             dictEntry.sCriterion];
         if (!dictMeta) return "";
+        // Section G: prefer the backend's per-criterion remediation
+        // hint (Stage 3 schema field) over the static glyph label so
+        // the tooltip language stays in lock-step with the gate.
+        var sTooltip = dictEntry.sRemediationHint || dictMeta.sLabel;
         return '<span class="step-blocker-glyph ' + dictMeta.sClass +
-            '" title="' + fnEscapeHtml(dictMeta.sLabel) + '">' +
+            '" title="' + fnEscapeHtml(sTooltip) + '">' +
             dictMeta.sIcon + '</span>';
     }
 
@@ -1511,6 +1522,127 @@ const PipeleyenApp = (function () {
         return '<span class="l1-blocker-file-glyph" title="' +
             fnEscapeHtml(sTooltip || "Blocking L1 verification") +
             '">' + S_L1_FAILURE_GLYPH + '</span>';
+    }
+
+    function _flistBlockerLevels() {
+        return [
+            _dictWorkflowState.dictBlockersByStep,
+            _dictWorkflowState.dictBlockersByStepLevel2,
+            _dictWorkflowState.dictBlockersByStepLevel3,
+        ];
+    }
+
+    function fsBlockerHintForStep(iStepIndex) {
+        // Section G: surface the dominant blocker's per-criterion
+        // remediation hint for the step. Walks L1 → L2 → L3 so the
+        // file-glyph tooltip language matches the banner glyph's.
+        var listLevels = _flistBlockerLevels();
+        for (var i = 0; i < listLevels.length; i++) {
+            var dictEntry = (listLevels[i] || {})[iStepIndex];
+            if (dictEntry && dictEntry.sRemediationHint) {
+                return dictEntry.sRemediationHint;
+            }
+        }
+        return "";
+    }
+
+    function fsBlockerHintForFile(iStepIndex, sRawPath) {
+        // Hook up file-list red glyphs to the per-criterion hint of the
+        // first blocker whose ``listOffendingFiles`` contains the file.
+        // Falls back to the step's dominant hint when the file isn't
+        // individually offending.
+        var listLevels = _flistBlockerLevels();
+        for (var i = 0; i < listLevels.length; i++) {
+            var dictEntry = (listLevels[i] || {})[iStepIndex];
+            if (!dictEntry || !dictEntry.sRemediationHint) continue;
+            var listOffending = dictEntry.listOffendingFiles || [];
+            if (listOffending.indexOf(sRawPath) !== -1) {
+                return dictEntry.sRemediationHint;
+            }
+        }
+        return fsBlockerHintForStep(iStepIndex);
+    }
+
+    var _SET_L3_MANIFEST_CRITERIA = {
+        "missing-from-manifest": true,
+        "script-not-pinned": true,
+    };
+
+    function fsStepManifestDotState(iStepIndex) {
+        // Section F: "manifest membership" dot. Green when the step has
+        // no L3 manifest blocker, yellow when only some declared paths
+        // are missing, gray when no MANIFEST.sha256 is available.
+        if (_fiTargetLevel() < 1) return "";
+        var dictL3 = (_dictWorkflowState.dictBlockersByStepLevel3 ||
+            {})[iStepIndex];
+        if (!dictL3) return "green";
+        if (_SET_L3_MANIFEST_CRITERIA[dictL3.sCriterion]) {
+            return (dictL3.listOffendingFiles || []).length > 0
+                ? "yellow" : "grey";
+        }
+        return "green";
+    }
+
+    function fsStepMirrorDotState(iStepIndex) {
+        // Section F: "mirror state" dot. Green when GitHub-sync is
+        // clean for the step, yellow when the cache is stale, red when
+        // the outputs diverged from the recorded SHA.
+        if (_fiTargetLevel() < 2) return "";
+        var dictL2 = (_dictWorkflowState.dictBlockersByStepLevel2 ||
+            {})[iStepIndex];
+        if (!dictL2) return "green";
+        if (dictL2.sCriterion === "not-in-github-mirror") return "red";
+        if (dictL2.sCriterion === "github-verify-stale") return "yellow";
+        return "green";
+    }
+
+    var _SET_L3_ENVELOPE_CRITERIA = {
+        "missing-from-manifest": true,
+        "script-not-pinned": true,
+        "nondeterminism-undeclared": true,
+        "binary-not-declared": true,
+        "binary-not-captured": true,
+    };
+
+    function fsStepEnvelopeDotState(iStepIndex) {
+        // Section F: "envelope" dot. Green when manifest + scripts +
+        // standards are hashed and determinism is declared for the
+        // step; red when any envelope criterion fails.
+        if (_fiTargetLevel() < 3) return "";
+        var dictL3 = (_dictWorkflowState.dictBlockersByStepLevel3 ||
+            {})[iStepIndex];
+        if (!dictL3) return "green";
+        if (_SET_L3_ENVELOPE_CRITERIA[dictL3.sCriterion]) return "red";
+        return "green";
+    }
+
+    function _fiTargetLevel() {
+        // The dashboard's current AICS rung. Mirrors what the AICS
+        // tab reads from /level2/readiness; falls back to a derived
+        // value (0/1/2/3 - whether a blocker count is non-zero at
+        // each rung) so the dots render before the first AICS poll.
+        var iCached = _dictWorkflowState.iCachedAicsLevel;
+        if (typeof iCached === "number") return iCached;
+        if ((_dictWorkflowState.iL1BlockerCount || 0) > 0) return 0;
+        if ((_dictWorkflowState.iL2BlockerCount || 0) > 0) return 1;
+        if ((_dictWorkflowState.iL3BlockerCount || 0) > 0) return 2;
+        return 3;
+    }
+
+    function fnSetCachedAicsLevel(iLevel) {
+        _dictWorkflowState.iCachedAicsLevel =
+            typeof iLevel === "number" ? iLevel : null;
+    }
+
+    function fdictBlockerCountsByLevel() {
+        // Section G legend panel: live counts of active blockers per
+        // ladder rung. The panel renders one count per level so the
+        // researcher can sanity-check the header progression.
+        return {
+            iLevel1: _dictWorkflowState.iL1BlockerCount || 0,
+            iLevel2: _dictWorkflowState.iL2BlockerCount || 0,
+            iLevel3: _dictWorkflowState.iL3BlockerCount || 0,
+        };
     }
 
     function fbAnyDepTimingStale(iStep) {
@@ -2913,6 +3045,20 @@ const PipeleyenApp = (function () {
         fiGetL1BlockerCount: function () {
             return _dictWorkflowState.iL1BlockerCount || 0;
         },
+        fiGetL2BlockerCount: function () {
+            return _dictWorkflowState.iL2BlockerCount || 0;
+        },
+        fiGetL3BlockerCount: function () {
+            return _dictWorkflowState.iL3BlockerCount || 0;
+        },
+        fiGetCachedAicsLevel: function () {
+            var iCached = _dictWorkflowState.iCachedAicsLevel;
+            return typeof iCached === "number" ? iCached : null;
+        },
+        fnSetCachedAicsLevel: fnSetCachedAicsLevel,
+        fdictBlockerCountsByLevel: fdictBlockerCountsByLevel,
+        fsBlockerHintForStep: fsBlockerHintForStep,
+        fsBlockerHintForFile: fsBlockerHintForFile,
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
 
         /* New public methods for extracted modules */

@@ -254,8 +254,14 @@
                 <span class="vaibify-checkmark" data-aics-level="3"
                       title="AICS L3: Reproducible"><img
                       src="/static/favicon.png" alt="L3"></span>
+                <button id="aicsLegendButton" type="button"
+                        class="aics-help-button"
+                        title="Reproducibility ladder legend">?</button>
                 <div id="workflowDropdown" class="workflow-dropdown"></div>
             </div>
+            <div id="aicsLegendPanel" class="aics-legend-panel"
+                 aria-hidden="true" role="dialog"
+                 aria-label="Reproducibility ladder legend"></div>
         </div>
         <!-- Run Menu -->
         <div class="toolbar-menu" id="toolbarMenuRun">
@@ -900,6 +906,7 @@
 <script src="/static/scriptReposPanel.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAicsTab.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApplication.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptLegendPanel.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptTestManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPipelineRunner.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFiles.js?v=__CACHE_VERSION__"></script>

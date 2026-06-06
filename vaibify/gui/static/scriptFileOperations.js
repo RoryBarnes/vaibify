@@ -309,6 +309,8 @@ var PipeleyenFileOps = (function () {
         "file-necessary-valid", "file-supplementary-valid",
         "file-supplementary-missing", "file-binary",
         "file-pending",
+        "file-missing-state", "file-stale-state",
+        "file-unattested-state",
     ];
 
     function _fnRemoveAllFileStatusClasses(elText) {
@@ -329,6 +331,38 @@ var PipeleyenFileOps = (function () {
             iStep, sArrayKey, sRaw, sResolved, bExists
         );
         elText.classList.add(sClass);
+        if (sClass === "file-necessary-red") {
+            elText.classList.add(_fsRedModifierClass(
+                iStep, sResolved, bExists
+            ));
+        }
+        _fnApplyBlockerTooltip(elText, iStep, sRaw);
+    }
+
+    function _fsRedModifierClass(iStep, sResolved, bExists) {
+        // Section G: red-disambiguation modifier. Picks the modifier
+        // for the .file-necessary-red treatment so the researcher can
+        // tell missing apart from stale apart from never-attested.
+        if (!bExists) return "file-missing-state";
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictStep = (dictWorkflow.listSteps || [])[iStep] || {};
+        var dictVerify = PipeleyenApp.fdictGetVerification(dictStep);
+        if ((dictVerify.listModifiedFiles || []).length > 0) {
+            return "file-stale-state";
+        }
+        return "file-unattested-state";
+    }
+
+    function _fnApplyBlockerTooltip(elText, iStep, sRaw) {
+        // Section G: tooltip on file-list red glyphs sources from
+        // ``dictEntry.sRemediationHint`` when the file appears in any
+        // blocker's ``listOffendingFiles`` at any level. Falls back to
+        // the resolved-path title only when no blocker matches.
+        if (!PipeleyenApp.fsBlockerHintForFile) return;
+        var sHint = PipeleyenApp.fsBlockerHintForFile(iStep, sRaw);
+        if (sHint) {
+            elText.setAttribute("title", sHint);
+        }
     }
 
     function _fsComputeFileStatusClass(
