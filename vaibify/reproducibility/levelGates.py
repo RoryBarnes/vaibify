@@ -56,6 +56,7 @@ __all__ = [
     "fbVerifyManifestComplete",
     "fbVerifyReproduceScript",
     "fbWorkflowDeclaresBinaries",
+    "fbWorkflowFullySyncedWithArxiv",
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowHasAiDeclarationStep",
@@ -618,7 +619,14 @@ def fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
 
 
 def _fbComputeLevel2(dictWorkflow, sProjectRepoPath):
-    """Uncached L2 evaluation — the body of the original gate."""
+    """Uncached L2 evaluation — the body of the original gate.
+
+    Stage 4 adds the arXiv conjunct so a workflow with an Overleaf
+    binding must also be synced to a recorded arXiv submission. A
+    workflow with no Overleaf binding is treated as data-only and the
+    arXiv conjunct returns True trivially, preserving the L2 contract
+    for manuscript-free reproducibility.
+    """
     if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
         return False
     if not fbWorkflowFullySyncedWithGithub(
@@ -630,6 +638,10 @@ def _fbComputeLevel2(dictWorkflow, sProjectRepoPath):
     ):
         return False
     if not fbWorkflowHasAiDeclarationStep(dictWorkflow):
+        return False
+    if not fbWorkflowFullySyncedWithArxiv(
+        dictWorkflow, sProjectRepoPath,
+    ):
         return False
     return True
 
@@ -971,6 +983,107 @@ def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
     return sVerifiedEndpoint == sLiveEndpoint
 
 
+def _fbWorkflowHasOverleafBinding(dictWorkflow):
+    """Return True iff the workflow has a non-empty Overleaf binding.
+
+    The L2 arXiv criteria, plus the per-step ``figure-not-frozen``
+    criterion, are entirely suppressed when this returns False: a
+    data-only workflow is L2-publishable without a manuscript.
+    """
+    dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
+    dictOverleaf = dictRemotes.get("overleaf") or {}
+    return bool(dictOverleaf.get("sProjectId") or "")
+
+
+def fbWorkflowFullySyncedWithArxiv(dictWorkflow, sProjectRepoPath):
+    """Return True iff the workflow's arXiv submission matches the manuscript.
+
+    True trivially without an Overleaf binding (data-only workflows
+    reach L2 without a manuscript). With a binding, requires a non-empty
+    ``sArxivId``, arXiv-tarball hashes that match the local Overleaf
+    push manifest, and an ``sArxivVersion`` equal to the latest arXiv
+    advertises. ``ArxivError`` from the client is treated as "not
+    synced".
+    """
+    if not _fbWorkflowHasOverleafBinding(dictWorkflow):
+        return True
+    dictArxiv = _fdictArxivConfig(dictWorkflow)
+    if not (dictArxiv.get("sArxivId") or ""):
+        return False
+    if not _fbArxivTarballMatchesPushManifest(
+        dictWorkflow, sProjectRepoPath,
+    ):
+        return False
+    return _fbArxivVersionCurrent(dictArxiv)
+
+
+def _fdictArxivConfig(dictWorkflow):
+    """Return the workflow's ``dictRemotes.arxiv`` config, or an empty dict."""
+    dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
+    dictArxiv = dictRemotes.get("arxiv") or {}
+    return dictArxiv if isinstance(dictArxiv, dict) else {}
+
+
+def _fbArxivTarballMatchesPushManifest(dictWorkflow, sProjectRepoPath):
+    """Return True iff arXiv hashes match the Overleaf push manifest paths."""
+    from .overleafSync import flistOverleafPushedFiguresAt
+    sCommit = _fsOverleafRecordedCommit(dictWorkflow)
+    listPushed = flistOverleafPushedFiguresAt(
+        sProjectRepoPath, sCommit,
+    )
+    if not listPushed:
+        return False
+    return _fbArxivHashesCoverPushList(
+        dictWorkflow, sProjectRepoPath, listPushed,
+    )
+
+
+def _fbArxivHashesCoverPushList(
+    dictWorkflow, sProjectRepoPath, listPushed,
+):
+    """Return True iff every pushed path resolves to a hash in the tarball."""
+    from . import arxivClient
+    dictArxiv = _fdictArxivConfig(dictWorkflow)
+    sArxivId = dictArxiv.get("sArxivId") or ""
+    dictPathMap = dictArxiv.get("dictPathMap") or None
+    sCacheDir = _fsArxivCacheDir(sProjectRepoPath)
+    try:
+        dictHashes = arxivClient.fdictFetchRemoteHashes(
+            sArxivId, listPushed,
+            dictPathMap=dictPathMap, sCacheDir=sCacheDir,
+        )
+    except arxivClient.ArxivError:
+        return False
+    return all(dictHashes.get(sPath) for sPath in listPushed)
+
+
+def _fsArxivCacheDir(sProjectRepoPath):
+    """Return the workflow-local arXiv cache directory."""
+    return str(Path(sProjectRepoPath) / ".vaibify" / "arxivCache")
+
+
+def _fbArxivVersionCurrent(dictArxiv):
+    """Return True iff the recorded ``sArxivVersion`` is the latest published."""
+    from . import arxivClient
+    sRecorded = dictArxiv.get("sArxivVersion") or ""
+    if not sRecorded:
+        return False
+    try:
+        sLatest = arxivClient.fsResolveLatestVersion(
+            dictArxiv.get("sArxivId") or "",
+        )
+    except arxivClient.ArxivError:
+        return False
+    return sRecorded == sLatest
+
+
+def _fsOverleafRecordedCommit(dictWorkflow):
+    """Return the git commit hash recorded for the last Overleaf push."""
+    dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
+    dictOverleaf = dictRemotes.get("overleaf") or {}
+    return dictOverleaf.get("sLastPushCommit") or ""
+
+
 def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
     """Return per-criterion pass/fail for the L2 readiness card.
 
@@ -980,12 +1093,15 @@ def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
             "bAtLeastLevel1": bool,
             "bGithubFullySynced": bool,
             "bZenodoFullySynced": bool,
+            "bArxivFullySynced": bool,
             "bAiDeclarationStepPresent": bool,
             "bAtLeastLevel2": bool,
         }
 
     The frontend AICS tab consumes this dict directly; each False
-    entry maps to a red row with a "fix here" link.
+    entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
+    is True trivially when the workflow has no Overleaf binding so
+    data-only workflows do not surface a fake gap.
     """
     bL1 = fbAtLeastLevel1(dictWorkflow, sProjectRepoPath)
     bGithub = fbWorkflowFullySyncedWithGithub(
@@ -994,13 +1110,18 @@ def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
     bZenodo = fbWorkflowFullySyncedWithZenodo(
         dictWorkflow, sProjectRepoPath,
     )
+    bArxiv = fbWorkflowFullySyncedWithArxiv(
+        dictWorkflow, sProjectRepoPath,
+    )
     bDecl = fbWorkflowHasAiDeclarationStep(dictWorkflow)
     return {
         "bAtLeastLevel1": bL1,
         "bGithubFullySynced": bGithub,
         "bZenodoFullySynced": bZenodo,
+        "bArxivFullySynced": bArxiv,
         "bAiDeclarationStepPresent": bDecl,
-        "bAtLeastLevel2": bL1 and bGithub and bZenodo and bDecl,
+        "bAtLeastLevel2":
+            bL1 and bGithub and bZenodo and bArxiv and bDecl,
     }
 
 
@@ -1038,8 +1159,11 @@ def flistLevel2Blockers(dictWorkflow, sProjectRepoPath):
 
     The list is sorted by ``iStepIndex`` (workflow-scope entries with
     ``iStepIndex=-1`` sort to the front). Returns ``[]`` when the
-    workflow has no project repo. This function adds visibility only;
-    the boolean L2 gate (``_fbComputeLevel2``) is unchanged.
+    workflow has no project repo. Stage 4 adds the Overleaf
+    ``figure-not-frozen`` per-step criterion and the workflow-scope
+    arXiv criteria (``arxiv-not-submitted`` / ``arxiv-mismatch`` /
+    ``arxiv-version-stale``); both sets are suppressed when the
+    workflow has no Overleaf binding (data-only workflows pass).
     """
     if not fbWorkflowHasProjectRepo(sProjectRepoPath):
         return []
@@ -1052,6 +1176,12 @@ def flistLevel2Blockers(dictWorkflow, sProjectRepoPath):
     ))
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
         dictWorkflow,
+    ))
+    listBlockers.extend(_flistOverleafLevel2Blockers(
+        dictWorkflow, sProjectRepoPath,
+    ))
+    listBlockers.extend(_flistArxivLevel2Blockers(
+        dictWorkflow, sProjectRepoPath,
     ))
     return sorted(
         listBlockers, key=lambda dictEntry: dictEntry["iStepIndex"],
@@ -1201,6 +1331,134 @@ def _fdictZenodoVerifyStaleBlocker():
         "listOffendingUpstreamSteps": [],
         "sRemediationHint":
             "Zenodo sync check is stale — re-verify to refresh status",
+    }
+
+
+# ----------------------------------------------------------------------
+# L2 Overleaf + arXiv blocker surfaces (Stage 4 of the AICS-ladder plan).
+#
+# All five criteria are suppressed entirely when the workflow has no
+# Overleaf binding — a data-only workflow is L2-publishable without a
+# manuscript. The Overleaf helper emits per-step ``figure-not-frozen``
+# blockers; the arXiv helper emits workflow-scope ``arxiv-not-submitted``,
+# ``arxiv-mismatch``, and ``arxiv-version-stale`` blockers.
+# ----------------------------------------------------------------------
+
+
+def _flistOverleafLevel2Blockers(dictWorkflow, sProjectRepoPath):
+    """Return per-step ``figure-not-frozen`` blockers, or empty list."""
+    if not _fbWorkflowHasOverleafBinding(dictWorkflow):
+        return []
+    setPushed = _fsetPushedFigurePaths(dictWorkflow, sProjectRepoPath)
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    listBlockers = []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        if not isinstance(dictStep, dict):
+            continue
+        listOffending = _flistStepFiguresNotFrozen(dictStep, setPushed)
+        if listOffending:
+            listBlockers.append(_fdictFigureNotFrozenBlocker(
+                dictWorkflow, iStepIndex, listOffending,
+            ))
+    return listBlockers
+
+
+def _fsetPushedFigurePaths(dictWorkflow, sProjectRepoPath):
+    """Return the set of repo-relative figure paths in the push manifest."""
+    from .overleafSync import flistOverleafPushedFiguresAt
+    sCommit = _fsOverleafRecordedCommit(dictWorkflow)
+    return set(flistOverleafPushedFiguresAt(sProjectRepoPath, sCommit))
+
+
+def _flistStepFiguresNotFrozen(dictStep, setPushed):
+    """Return declared plot paths absent from the Overleaf push manifest."""
+    listOffending = []
+    for sPath in dictStep.get("saPlotFiles", []) or []:
+        if isinstance(sPath, str) and sPath and sPath not in setPushed:
+            listOffending.append(sPath)
+    return listOffending
+
+
+def _fdictFigureNotFrozenBlocker(
+    dictWorkflow, iStepIndex, listOffendingFiles,
+):
+    """Build one per-step ``figure-not-frozen`` blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "figure-not-frozen",
+        "listOffendingFiles": listOffendingFiles,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Plot not pushed to Overleaf at recorded commit — "
+            "push manuscript figures",
+    }
+
+
+def _flistArxivLevel2Blockers(dictWorkflow, sProjectRepoPath):
+    """Return workflow-scope arXiv L2 blockers, or empty list."""
+    if not _fbWorkflowHasOverleafBinding(dictWorkflow):
+        return []
+    dictArxiv = _fdictArxivConfig(dictWorkflow)
+    if not (dictArxiv.get("sArxivId") or ""):
+        return [_fdictArxivNotSubmittedBlocker()]
+    listBlockers = []
+    if not _fbArxivTarballMatchesPushManifest(
+        dictWorkflow, sProjectRepoPath,
+    ):
+        listBlockers.append(_fdictArxivMismatchBlocker())
+    if not _fbArxivVersionCurrent(dictArxiv):
+        listBlockers.append(_fdictArxivVersionStaleBlocker())
+    return listBlockers
+
+
+def _fdictArxivNotSubmittedBlocker():
+    """Build the workflow-scope ``arxiv-not-submitted`` blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": "arxiv-not-submitted",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "No arXiv ID recorded — submit manuscript and record "
+            "the arXiv ID",
+    }
+
+
+def _fdictArxivMismatchBlocker():
+    """Build the workflow-scope ``arxiv-mismatch`` blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": "arxiv-mismatch",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "arXiv tarball doesn't match Overleaf push at recorded "
+            "commit",
+    }
+
+
+def _fdictArxivVersionStaleBlocker():
+    """Build the workflow-scope ``arxiv-version-stale`` blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": "arxiv-version-stale",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "arXiv has a newer version — update sArxivVersion or "
+            "re-submit",
     }
 
 
