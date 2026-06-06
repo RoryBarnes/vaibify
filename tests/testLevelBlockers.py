@@ -13,6 +13,7 @@ produced by this backend, so a regression that drops the binding
 fails the suite without requiring a browser.
 """
 
+from vaibify.gui.fileStatusManager import _fnResetUserAttestationIfStale
 from vaibify.reproducibility.levelGates import (
     fbAtLeastLevel1,
     flistLevel1Blockers,
@@ -274,4 +275,81 @@ def test_step_check_rendering_contract_ties_check_to_blocker_emptiness():
     assert 0 in dictBlockersByStep
     assert fbAtLeastLevel1(
         _fdictWorkflowWithSteps([dictStep]), "/repo",
+    ) is False
+
+
+# ------------------------------------------------------------------------
+# attestation-stale split
+# ------------------------------------------------------------------------
+
+
+def testAttestationStaleCriterionFiresWhenOutputsNewerThanAttestation():
+    """A step with ``sUser='stale'`` and prior ``sLastUserUpdate`` emits
+    ``attestation-stale`` rather than ``user-not-approved``.
+
+    The two states are semantically different: the researcher *did*
+    attest (evidence in ``sLastUserUpdate``) but outputs changed since.
+    The discriminator at the blocker layer must preserve that
+    distinction so the dashboard tooltip reflects reality.
+    """
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUser"] = "stale"
+    dictStep["dictVerification"]["sLastUserUpdate"] = (
+        "2026-05-01 00:00:00 UTC"
+    )
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert len(listBlockers) == 1
+    dictEntry = listBlockers[0]
+    assert dictEntry["sCriterion"] == "attestation-stale"
+    assert dictEntry["listOffendingFiles"] == [
+        "A/data.csv", "A/plot.pdf",
+    ]
+    assert dictEntry["listOffendingUpstreamSteps"] == []
+
+
+def testUserNotApprovedCriterionPersistsWhenNeverAttested():
+    """A step with ``sUser='untested'`` and no ``sLastUserUpdate`` keeps
+    the existing ``user-not-approved`` criterion."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUser"] = "untested"
+    dictStep["dictVerification"].pop("sLastUserUpdate", None)
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert len(listBlockers) == 1
+    assert listBlockers[0]["sCriterion"] == "user-not-approved"
+
+
+def testAttestationStalePreservesLastUserUpdate():
+    """``_fnResetUserAttestationIfStale`` must preserve the attestation
+    evidence so the dashboard can render the *re-verify-or-re-run*
+    affordance rather than the *never-attested* one."""
+    dictVerification = {
+        "sUser": "passed",
+        "sLastUserUpdate": "2026-05-01 00:00:00 UTC",
+    }
+    _fnResetUserAttestationIfStale(dictVerification)
+    assert dictVerification["sUser"] == "stale"
+    assert dictVerification["sLastUserUpdate"] == (
+        "2026-05-01 00:00:00 UTC"
+    )
+
+
+def testStaleAndUntestedBothBlockBooleanGate():
+    """Boolean L1 truth-table is preserved across the split: both
+    ``stale`` and ``untested`` must fail ``fbAtLeastLevel1``."""
+    dictStale = _fdictAllGreenStep(sName="A")
+    dictStale["dictVerification"]["sUser"] = "stale"
+    dictStale["dictVerification"]["sLastUserUpdate"] = (
+        "2026-05-01 00:00:00 UTC"
+    )
+    dictUntested = _fdictAllGreenStep(sName="B")
+    dictUntested["dictVerification"]["sUser"] = "untested"
+    assert fbAtLeastLevel1(
+        _fdictWorkflowWithSteps([dictStale]), "/repo",
+    ) is False
+    assert fbAtLeastLevel1(
+        _fdictWorkflowWithSteps([dictUntested]), "/repo",
     ) is False

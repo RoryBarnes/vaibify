@@ -1333,6 +1333,12 @@ const PipeleyenApp = (function () {
             sLabel: "Tests are not green; re-run to clear blocker",
             sClass: "step-blocker-glyph-axis",
         },
+        "attestation-stale": {
+            sIcon: "—",
+            sLabel: "Outputs changed since you verified — " +
+                "re-verify or re-run",
+            sClass: "step-blocker-glyph-attestation-stale",
+        },
         "user-not-approved": {
             sIcon: "—",
             sLabel: "User attestation pending",
