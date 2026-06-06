@@ -118,15 +118,7 @@ def flistOverleafPushedFiguresAt(sProjectRepoPath, sCommitHash):
     if not sProjectRepoPath or not sCommitHash:
         return []
     sPath = _fsPushManifestPath(sProjectRepoPath)
-    if not os.path.isfile(sPath):
-        return []
-    try:
-        with open(sPath, "r", encoding="utf-8") as fileHandle:
-            dictAll = json.load(fileHandle)
-    except (OSError, ValueError):
-        return []
-    if not isinstance(dictAll, dict):
-        return []
+    dictAll = _fdictReadPushManifest(sPath)
     listPaths = dictAll.get(sCommitHash) or []
     if not isinstance(listPaths, list):
         return []
@@ -151,6 +143,11 @@ def fnRecordOverleafPushManifest(
     dictAll[sCommitHash] = [
         sEntry for sEntry in listPlotPaths if isinstance(sEntry, str)
     ]
+    _fnWritePushManifestAtomic(sPath, dictAll)
+
+
+def _fnWritePushManifestAtomic(sPath, dictAll):
+    """Write ``dictAll`` to ``sPath`` atomically via a sibling temp file."""
     sTempPath = sPath + ".tmp"
     with open(sTempPath, "w", encoding="utf-8") as fileHandle:
         json.dump(dictAll, fileHandle, indent=2, sort_keys=True)

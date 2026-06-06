@@ -998,20 +998,17 @@ def _fbWorkflowHasOverleafBinding(dictWorkflow):
 def fbWorkflowFullySyncedWithArxiv(dictWorkflow, sProjectRepoPath):
     """Return True iff the workflow's arXiv submission matches the manuscript.
 
-    Returns True trivially when the workflow has no Overleaf binding;
-    data-only workflows reach L2 without a manuscript. With a binding,
-    the workflow must record a non-empty ``sArxivId``, the arXiv
-    tarball's hashes must match the local Overleaf push manifest at the
-    recorded commit, and ``sArxivVersion`` must equal the latest
-    version arXiv currently advertises. Any network failure or missing
-    config raises through the underlying arxivClient exceptions; the
-    boolean treats them as "not synced".
+    True trivially without an Overleaf binding (data-only workflows
+    reach L2 without a manuscript). With a binding, requires a non-empty
+    ``sArxivId``, arXiv-tarball hashes that match the local Overleaf
+    push manifest, and an ``sArxivVersion`` equal to the latest arXiv
+    advertises. ``ArxivError`` from the client is treated as "not
+    synced".
     """
     if not _fbWorkflowHasOverleafBinding(dictWorkflow):
         return True
     dictArxiv = _fdictArxivConfig(dictWorkflow)
-    sArxivId = dictArxiv.get("sArxivId") or ""
-    if not sArxivId:
+    if not (dictArxiv.get("sArxivId") or ""):
         return False
     if not _fbArxivTarballMatchesPushManifest(
         dictWorkflow, sProjectRepoPath,
@@ -1352,11 +1349,7 @@ def _flistOverleafLevel2Blockers(dictWorkflow, sProjectRepoPath):
     """Return per-step ``figure-not-frozen`` blockers, or empty list."""
     if not _fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
-    from .overleafSync import flistOverleafPushedFiguresAt
-    sCommit = _fsOverleafRecordedCommit(dictWorkflow)
-    setPushed = set(flistOverleafPushedFiguresAt(
-        sProjectRepoPath, sCommit,
-    ))
+    setPushed = _fsetPushedFigurePaths(dictWorkflow, sProjectRepoPath)
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     listBlockers = []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -1368,6 +1361,13 @@ def _flistOverleafLevel2Blockers(dictWorkflow, sProjectRepoPath):
                 dictWorkflow, iStepIndex, listOffending,
             ))
     return listBlockers
+
+
+def _fsetPushedFigurePaths(dictWorkflow, sProjectRepoPath):
+    """Return the set of repo-relative figure paths in the push manifest."""
+    from .overleafSync import flistOverleafPushedFiguresAt
+    sCommit = _fsOverleafRecordedCommit(dictWorkflow)
+    return set(flistOverleafPushedFiguresAt(sProjectRepoPath, sCommit))
 
 
 def _flistStepFiguresNotFrozen(dictStep, setPushed):
