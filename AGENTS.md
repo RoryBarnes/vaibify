@@ -227,7 +227,7 @@ implicitly relies on a sibling step's output): list one or more
 
 Full developer documentation, including the naming convention,
 worked examples, and how to handle colliding basenames, is in
-[docs/scriptAuthoring.md](docs/scriptAuthoring.md). The architectural
+[vaibify/docs/scriptAuthoring.md](vaibify/docs/scriptAuthoring.md). The architectural
 invariant `testTemplateCommandsUseStepTokens` in
 `tests/testArchitecturalInvariants.py` enforces this rule on every
 vaibify-shipped template at CI time.
