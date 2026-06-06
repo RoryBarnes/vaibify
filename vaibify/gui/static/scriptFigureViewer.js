@@ -609,18 +609,69 @@ const PipeleyenFigureViewer = (function () {
                  elSave: elSave, elCancel: elCancel };
     }
 
-    function fnEnterEditMode(sText, sUrl, elViewport) {
-        elViewport.innerHTML = "";
-        elViewport.style.flexDirection = "column";
-        elViewport.style.alignItems = "stretch";
-        var dictToolbar = fnCreateEditorToolbar();
+    function fiOffsetOfLine(sText, iLine) {
+        if (iLine <= 0) return 0;
+        var iOffset = 0;
+        var iFound = 0;
+        while (iFound < iLine) {
+            var iNext = sText.indexOf("\n", iOffset);
+            if (iNext === -1) return sText.length;
+            iOffset = iNext + 1;
+            iFound++;
+        }
+        return iOffset;
+    }
+
+    function fiFirstVisibleLineInViewer(elViewport) {
+        var elPre = elViewport.querySelector("pre");
+        if (!elPre) return 0;
+        var elScroll = (elPre.scrollTop > 0) ? elPre : elViewport;
+        var iScrollTop = elScroll.scrollTop;
+        if (iScrollTop <= 0) return 0;
+        var iScrollHeight = elScroll.scrollHeight;
+        if (iScrollHeight <= 0) return 0;
+        var sText = elPre.textContent || "";
+        var iTotalLines = sText.split("\n").length;
+        var fRatio = iScrollTop / iScrollHeight;
+        return Math.floor(fRatio * iTotalLines);
+    }
+
+    function felBuildEditorTextarea(sText) {
         var elTextarea = document.createElement("textarea");
         elTextarea.className = "editor-textarea";
         elTextarea.value = sText;
         elTextarea.spellcheck = false;
+        elTextarea.setAttribute("autocomplete", "off");
+        elTextarea.setAttribute("autocorrect", "off");
+        elTextarea.setAttribute("autocapitalize", "off");
+        elTextarea.setAttribute("inputmode", "text");
+        elTextarea.setAttribute("data-gramm", "false");
+        elTextarea.setAttribute("data-gramm_editor", "false");
+        return elTextarea;
+    }
+
+    function fnPlaceCursorAtLine(elTextarea, sText, iLine) {
+        var iOffset = fiOffsetOfLine(sText, iLine);
+        elTextarea.focus();
+        elTextarea.setSelectionRange(iOffset, iOffset);
+        var iTotalLines = sText.split("\n").length;
+        var iScrollHeight = elTextarea.scrollHeight;
+        if (iTotalLines > 0 && iScrollHeight > 0) {
+            elTextarea.scrollTop =
+                (iLine / iTotalLines) * iScrollHeight;
+        }
+    }
+
+    function fnEnterEditMode(sText, sUrl, elViewport) {
+        var iLine = fiFirstVisibleLineInViewer(elViewport);
+        elViewport.innerHTML = "";
+        elViewport.style.flexDirection = "column";
+        elViewport.style.alignItems = "stretch";
+        var dictToolbar = fnCreateEditorToolbar();
+        var elTextarea = felBuildEditorTextarea(sText);
         elViewport.appendChild(dictToolbar.elToolbar);
         elViewport.appendChild(elTextarea);
-        elTextarea.focus();
+        fnPlaceCursorAtLine(elTextarea, sText, iLine);
         fnBindEditorFind(dictToolbar.elFind, elTextarea);
         dictToolbar.elSave.addEventListener("click", function () {
             fnSaveEditedFile(sUrl, elTextarea.value, elViewport);
