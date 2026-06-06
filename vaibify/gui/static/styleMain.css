@@ -5103,3 +5103,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .step-blocker-glyph-script-stale {
     color: var(--color-orange);
 }
+
+/* L2 blocker glyphs (Publication gate: GitHub + Zenodo sync state).
+   All use --color-orange (amber) per the level-by-color scheme: L1=red,
+   L2=amber, L3=blue. The classes are distinct so future per-criterion
+   secondary affordances (e.g., underline-dotted on stale) can land
+   without touching the glyph dispatch. */
+.step-blocker-glyph-l2-mirror,
+.step-blocker-glyph-l2-zenodo,
+.step-blocker-glyph-l2-github-stale,
+.step-blocker-glyph-l2-zenodo-stale,
+.step-blocker-glyph-l2-ai-declaration {
+    color: var(--color-orange);
+}

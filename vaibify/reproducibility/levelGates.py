@@ -62,6 +62,7 @@ __all__ = [
     "fdictLevel2Gaps",
     "fiAICSLevel",
     "flistLevel1Blockers",
+    "flistLevel2Blockers",
     "fnLevelComputationContext",
 ]
 
@@ -197,11 +198,17 @@ def flistLevel1Blockers(
 ):
     """Return per-step L1 blockers with per-file granularity.
 
-    Each entry has the shape::
+    Each entry uses the unified blocker schema (Section A of the
+    AICS-ladder plan)::
 
-        {"iStepIndex": int, "sStepLabel": str, "sCriterion": str,
+        {"iLevel": 1,
+         "iStepIndex": int,
+         "sStepLabel": str,
+         "sScope": "step",
+         "sCriterion": str,
          "listOffendingFiles": [repo-relative paths],
-         "listOffendingUpstreamSteps": [0-based step indices]}
+         "listOffendingUpstreamSteps": [0-based step indices],
+         "sRemediationHint": str}
 
     ``sCriterion`` is one of ``"user-not-approved"``,
     ``"upstream-modified"``, ``"script-stale"``, ``"axis-not-green"``,
@@ -302,33 +309,45 @@ def _fdictUpstreamModifiedBlocker(
     ))
     listOffendingFiles = _flistStepOutputFiles(dictStep)
     return {
+        "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
         "sCriterion": "upstream-modified",
         "listOffendingFiles": listOffendingFiles,
         "listOffendingUpstreamSteps": listUpstreamIndices,
+        "sRemediationHint":
+            "Re-run step to clear stale outputs",
     }
 
 
 def _fdictAxisNotGreenBlocker(dictWorkflow, iStepIndex, dictStep):
     """Build the ``axis-not-green`` blocker entry for one step."""
     return {
+        "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
         "sCriterion": "axis-not-green",
         "listOffendingFiles": _flistStepOutputFiles(dictStep),
         "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Re-run failing tests then verify",
     }
 
 
 def _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex):
     """Build the ``user-not-approved`` blocker entry for one step."""
     return {
+        "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
         "sCriterion": "user-not-approved",
         "listOffendingFiles": [],
         "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Step has never been verified — click verify when satisfied",
     }
 
 
@@ -342,11 +361,15 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     *re-verify-or-re-run* remediation.
     """
     return {
+        "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
         "sCriterion": "attestation-stale",
         "listOffendingFiles": _flistStepOutputFiles(dictStep),
         "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Outputs changed since you verified — re-verify or re-run",
     }
 
 
@@ -932,4 +955,204 @@ def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
         "bZenodoFullySynced": bZenodo,
         "bAiDeclarationStepPresent": bDecl,
         "bAtLeastLevel2": bL1 and bGithub and bZenodo and bDecl,
+    }
+
+
+# ------------------------------------------------------------------------
+# L2 per-step blocker surface (Stage 3 of the AICS-ladder plan).
+#
+# ``flistLevel2Blockers`` mirrors ``flistLevel1Blockers`` but for the
+# Publication gate. It does NOT change the boolean ``_fbComputeLevel2``;
+# its purpose is *visibility* — the dashboard's banner glyphs and per-step
+# rows want per-step granularity for "your A09 output diverged from the
+# Zenodo deposit" without re-running the boolean gate.
+#
+# Per-step criteria emitted here:
+#   - ``not-in-github-mirror`` — any output file of the step appears in
+#     the cached GitHub-sync ``listDiverged``.
+#   - ``not-in-zenodo-deposit`` — same, against the Zenodo cache.
+#
+# Workflow-scope criteria (``iStepIndex=-1``, ``sScope="workflow"``):
+#   - ``github-verify-stale`` / ``zenodo-verify-stale`` — cached
+#     ``sLastVerified`` older than ``F_MAX_STALE_HOURS``. When firing,
+#     suppresses the per-step ``not-in-*`` row for that endpoint
+#     (single root cause; the per-step rows would be misleading because
+#     the cache itself is untrustworthy).
+#   - ``missing-ai-declaration-step`` — workflow has no
+#     ``sType: ai-declaration`` step. Reuses
+#     ``fbWorkflowHasAiDeclarationStep``.
+# ------------------------------------------------------------------------
+
+
+_S_WORKFLOW_SCOPE_LABEL = "(workflow)"
+
+
+def flistLevel2Blockers(dictWorkflow, sProjectRepoPath):
+    """Return per-step + workflow-scope L2 blockers, unified schema.
+
+    The list is sorted by ``iStepIndex`` (workflow-scope entries with
+    ``iStepIndex=-1`` sort to the front). Returns ``[]`` when the
+    workflow has no project repo. This function adds visibility only;
+    the boolean L2 gate (``_fbComputeLevel2``) is unchanged.
+    """
+    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+        return []
+    listBlockers = []
+    listBlockers.extend(_flistGithubLevel2Blockers(
+        dictWorkflow, sProjectRepoPath,
+    ))
+    listBlockers.extend(_flistZenodoLevel2Blockers(
+        dictWorkflow, sProjectRepoPath,
+    ))
+    listBlockers.extend(_flistAiDeclarationLevel2Blockers(
+        dictWorkflow,
+    ))
+    return sorted(
+        listBlockers, key=lambda dictEntry: dictEntry["iStepIndex"],
+    )
+
+
+def _flistGithubLevel2Blockers(dictWorkflow, sProjectRepoPath):
+    """Return github-related L2 blockers (workflow stale suppresses per-step)."""
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        sProjectRepoPath, "github",
+    )
+    if _fbSyncCacheStale(dictStatus):
+        return [_fdictGithubVerifyStaleBlocker()]
+    return _flistPerStepSyncBlockers(
+        dictWorkflow, dictStatus,
+        sCriterion="not-in-github-mirror",
+        sRemediationHint=(
+            "Outputs differ from GitHub mirror — push to clear blocker"
+        ),
+    )
+
+
+def _flistZenodoLevel2Blockers(dictWorkflow, sProjectRepoPath):
+    """Return zenodo-related L2 blockers (workflow stale suppresses per-step)."""
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        sProjectRepoPath, "zenodo",
+    )
+    if _fbSyncCacheStale(dictStatus):
+        return [_fdictZenodoVerifyStaleBlocker()]
+    return _flistPerStepSyncBlockers(
+        dictWorkflow, dictStatus,
+        sCriterion="not-in-zenodo-deposit",
+        sRemediationHint=(
+            "Outputs differ from Zenodo deposit — archive to clear blocker"
+        ),
+    )
+
+
+def _flistAiDeclarationLevel2Blockers(dictWorkflow):
+    """Return the workflow-scope ai-declaration blocker, or empty list."""
+    if fbWorkflowHasAiDeclarationStep(dictWorkflow):
+        return []
+    return [{
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": "missing-ai-declaration-step",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Add an AI declaration step to record agent involvement",
+    }]
+
+
+def _fbSyncCacheStale(dictStatus):
+    """Return True iff the cached verify is too old to trust per-step rows.
+
+    A never-verified cache (``sLastVerified`` is None / absent) counts
+    as stale for blocker-surfacing purposes: the dashboard should tell
+    the researcher to verify, not silently emit per-step rows from
+    empty divergence data.
+    """
+    return not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS)
+
+
+def _flistPerStepSyncBlockers(
+    dictWorkflow, dictStatus, sCriterion, sRemediationHint,
+):
+    """Project the divergence list onto each step's declared outputs."""
+    setDiverged = _fsetDivergedPaths(dictStatus)
+    if not setDiverged:
+        return []
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    listBlockers = []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        if not isinstance(dictStep, dict):
+            continue
+        listOffending = _flistStepDivergedFiles(dictStep, setDiverged)
+        if not listOffending:
+            continue
+        listBlockers.append(_fdictBuildSyncStepBlocker(
+            dictWorkflow, iStepIndex,
+            listOffending, sCriterion, sRemediationHint,
+        ))
+    return listBlockers
+
+
+def _fsetDivergedPaths(dictStatus):
+    """Return the set of repo-relative paths in ``listDiverged``."""
+    setPaths = set()
+    for dictEntry in (dictStatus or {}).get("listDiverged", []) or []:
+        if isinstance(dictEntry, dict):
+            sPath = dictEntry.get("sPath")
+            if isinstance(sPath, str) and sPath:
+                setPaths.add(sPath)
+    return setPaths
+
+
+def _flistStepDivergedFiles(dictStep, setDiverged):
+    """Return the step's output files that intersect ``setDiverged``."""
+    listFiles = _flistStepOutputFiles(dictStep)
+    return [sPath for sPath in listFiles if sPath in setDiverged]
+
+
+def _fdictBuildSyncStepBlocker(
+    dictWorkflow, iStepIndex,
+    listOffendingFiles, sCriterion, sRemediationHint,
+):
+    """Build a per-step L2 blocker entry for a sync-divergence criterion."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": listOffendingFiles,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": sRemediationHint,
+    }
+
+
+def _fdictGithubVerifyStaleBlocker():
+    """Build the workflow-scope ``github-verify-stale`` blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": "github-verify-stale",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "GitHub sync check is stale — re-verify to refresh status",
+    }
+
+
+def _fdictZenodoVerifyStaleBlocker():
+    """Build the workflow-scope ``zenodo-verify-stale`` blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": "zenodo-verify-stale",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Zenodo sync check is stale — re-verify to refresh status",
     }
