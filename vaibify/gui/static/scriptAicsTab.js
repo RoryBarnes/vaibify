@@ -221,28 +221,27 @@ var VaibifyAicsTab = (function () {
     }
 
     function _flistProgressSegments(iLevel, dictCounts) {
-        if (iLevel === 0) {
-            return [_fsProgressSegment("L1",
-                "Self-Consistent (" + dictCounts.iLevel1 +
-                _fsBlockerNoun(dictCounts.iLevel1) + ")",
-                "red")];
-        }
-        if (iLevel === 1) {
-            return [
-                _fsProgressSegment("L1", "Self-Consistent ✓", "green"),
-                _fsProgressSegment("L2",
-                    "Published (" + dictCounts.iLevel2 +
-                    " blocking)", "orange"),
-            ];
-        }
-        if (iLevel === 2) {
-            return [
-                _fsProgressSegment("L2", "Published ✓", "green"),
-                _fsProgressSegment("L3",
-                    "Reproducible (env pending)", "yellow"),
-            ];
-        }
-        return [_fsProgressSegment("L3", "Reproducible ✓", "green")];
+        if (iLevel >= 3) return [_fsProgressSegment("L3", "Reproducible ✓", "green")];
+        if (iLevel === 2) return _flistL2DoneSegments();
+        if (iLevel === 1) return _flistL1DoneSegments(dictCounts);
+        return [_fsProgressSegment("L1",
+            "Self-Consistent (" + dictCounts.iLevel1 +
+            _fsBlockerNoun(dictCounts.iLevel1) + ")", "red")];
+    }
+
+    function _flistL1DoneSegments(dictCounts) {
+        return [
+            _fsProgressSegment("L1", "Self-Consistent ✓", "green"),
+            _fsProgressSegment("L2",
+                "Published (" + dictCounts.iLevel2 + " blocking)", "orange"),
+        ];
+    }
+
+    function _flistL2DoneSegments() {
+        return [
+            _fsProgressSegment("L2", "Published ✓", "green"),
+            _fsProgressSegment("L3", "Reproducible (env pending)", "yellow"),
+        ];
     }
 
     function _fsProgressSegment(sLevelKey, sLabel, sColorClass) {
