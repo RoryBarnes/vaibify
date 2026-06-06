@@ -186,7 +186,7 @@ var VaibifyWorkflowManager = (function () {
             elBanner.classList.add("dirty");
             elBanner.innerHTML = _fsBuildDirtyMarkup(dictRefusal);
             elBanner.hidden = false;
-            _fnAttachDriftBannerDismiss(elBanner);
+            _fnAttachDirtyBannerActions(elBanner);
             return;
         }
         var iBehind = (dictStatus && dictStatus.iBehind) || 0;
@@ -202,6 +202,40 @@ var VaibifyWorkflowManager = (function () {
             elPull.addEventListener("click", fnPullProjectRepo);
         }
         _fnAttachDriftBannerDismiss(elBanner);
+    }
+
+    function _fnAttachDirtyBannerActions(elBanner) {
+        var elCommitPull = elBanner.querySelector(
+            ".drift-banner-commit-and-pull");
+        if (elCommitPull) {
+            elCommitPull.addEventListener(
+                "click", fnCommitCanonicalAndPull);
+        }
+        _fnAttachDriftBannerDismiss(elBanner);
+    }
+
+    async function fnCommitCanonicalAndPull() {
+        var sId = PipeleyenApp.fsGetContainerId();
+        if (!sId) return;
+        try {
+            var dictCommit = await VaibifyApi.fdictPost(
+                "/api/git/" + sId + "/commit-canonical", {});
+            if (!dictCommit || !dictCommit.bSuccess) {
+                PipeleyenApp.fnShowToast(
+                    "Could not commit canonical state files",
+                    "error");
+                return;
+            }
+            PipeleyenApp.fnShowToast(
+                "Committed " + (dictCommit.iFilesCommitted || 0) +
+                " state files — pulling…",
+                "info");
+            await fnPullProjectRepo();
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+        }
     }
 
     function _fnAttachDriftBannerDismiss(elBanner) {
@@ -238,10 +272,14 @@ var VaibifyWorkflowManager = (function () {
         }
         return '<div class="drift-banner-message">' +
             'Cannot fast-forward: working tree has uncommitted ' +
-            'changes. Commit or revert these files, then click ' +
-            'Pull again.<ul class="drift-banner-dirty-list">' +
+            'changes. Commit canonical state files (test markers, ' +
+            'MANIFEST.sha256, requirements.lock, workflow.json) and ' +
+            'pull, or handle them yourself first.' +
+            '<ul class="drift-banner-dirty-list">' +
             listItems.join("") + '</ul></div>' +
             '<div class="drift-banner-actions">' +
+            '<button type="button" class="drift-banner-commit-and-pull">' +
+            'Commit state &amp; Pull</button>' +
             '<button type="button" class="drift-banner-dismiss" ' +
             'aria-label="Dismiss drift banner">×</button>' +
             '</div>';

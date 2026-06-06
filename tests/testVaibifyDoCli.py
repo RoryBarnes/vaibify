@@ -1163,6 +1163,34 @@ def test_main_dry_run_ws(
     assert "runAll" in capsys.readouterr().out
 
 
+def test_main_dry_run_after_action_is_rejected(
+    modCli, tmp_path, dictSampleCatalog, dictValidEnv, capsys,
+):
+    argv = ["vaibify-do", "run-all", "--dry-run"]
+    with _fnPatchCatalog(modCli, tmp_path, dictSampleCatalog):
+        with _fnPatchSession(modCli, tmp_path, dictValidEnv):
+            with patch.object(sys, "argv", argv):
+                with pytest.raises(SystemExit) as excInfo:
+                    modCli.main()
+    assert excInfo.value.code == 2
+    sErr = capsys.readouterr().err
+    assert "--dry-run" in sErr
+    assert "before the action name" in sErr
+
+
+def test_main_json_after_action_is_rejected(
+    modCli, tmp_path, dictSampleCatalog, dictValidEnv, capsys,
+):
+    argv = ["vaibify-do", "run-all", "--json"]
+    with _fnPatchCatalog(modCli, tmp_path, dictSampleCatalog):
+        with _fnPatchSession(modCli, tmp_path, dictValidEnv):
+            with patch.object(sys, "argv", argv):
+                with pytest.raises(SystemExit) as excInfo:
+                    modCli.main()
+    assert excInfo.value.code == 2
+    assert "--json" in capsys.readouterr().err
+
+
 def test_main_user_only_refused(
     modCli, tmp_path, dictSampleCatalog, dictValidEnv, capsys,
 ):

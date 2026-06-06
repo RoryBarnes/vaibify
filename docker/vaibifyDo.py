@@ -585,8 +585,31 @@ def fnParseArguments():
     return parser.parse_args()
 
 
+TUPLE_GLOBAL_FLAGS_REJECTED_AFTER_ACTION = (
+    "--dry-run", "--json", "--list", "--describe",
+)
+
+
+def fnRejectGlobalFlagsInRemainder(listArgs):
+    """Fail loudly when a vaibify-do global flag appears after the action.
+
+    ``argparse.REMAINDER`` silently swallows flags placed after the
+    positional ``sAction``, so ``vaibify-do commit-canonical --dry-run``
+    would otherwise run the action for real. Refuse with a usage hint
+    instead of running a destructive command the user wanted previewed.
+    """
+    for sArg in listArgs or []:
+        if sArg in TUPLE_GLOBAL_FLAGS_REJECTED_AFTER_ACTION:
+            fnFail(
+                sArg + " must appear before the action name "
+                "(e.g. 'vaibify-do " + sArg + " <action> ...').",
+                iCode=2,
+            )
+
+
 def main():
     args = fnParseArguments()
+    fnRejectGlobalFlagsInRemainder(args.listArgs)
     dictCatalog = fdictReadCatalog()
     if args.list:
         fnPrintList(dictCatalog)
