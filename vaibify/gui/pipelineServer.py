@@ -564,9 +564,12 @@ async def fnPipelineMessageLoop(
         fnSetInteractiveResponse,
     )
     dictInteractive = fdictCreateInteractiveContext()
+    dictSocketState = {"bOpen": True}
 
     async def fnCallback(dictEvent):
-        await websocket.send_json(dictEvent)
+        await _fnSendEventIfSocketOpen(
+            websocket, dictSocketState, dictEvent,
+        )
 
     while True:
         dictRequest = json.loads(await websocket.receive_text())
@@ -592,6 +595,26 @@ async def fnPipelineMessageLoop(
         )
         if dictPipelineTasks is not None:
             dictPipelineTasks[sContainerId] = taskPipeline
+
+
+async def _fnSendEventIfSocketOpen(websocket, dictSocketState, dictEvent):
+    """Send a pipeline event, degrading to no-op after client disconnect.
+
+    A detached WebSocket client must never kill the run: the pipeline
+    keeps executing headless, and its results still land in state.json
+    and the run log. The first failed send flips the shared flag so
+    every later event is skipped without touching the dead socket.
+    """
+    if not dictSocketState["bOpen"]:
+        return
+    try:
+        await websocket.send_json(dictEvent)
+    except Exception as error:
+        dictSocketState["bOpen"] = False
+        logger.info(
+            "WebSocket client detached mid-run; pipeline continues "
+            "headless: %s", error,
+        )
 
 
 async def _fnSafeDispatch(

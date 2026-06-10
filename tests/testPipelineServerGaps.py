@@ -782,3 +782,40 @@ class TestCaffeinateRunning:
         with patch("subprocess.run", side_effect=FileNotFoundError):
             bResult = _fbCaffeinateRunning()
             assert bResult is False
+
+
+class TestSendEventIfSocketOpen:
+    """A detached WebSocket client must never kill the pipeline run."""
+
+    @pytest.mark.asyncio
+    async def test_send_failure_flips_flag_and_swallows(self):
+        from vaibify.gui.pipelineServer import _fnSendEventIfSocketOpen
+        websocketDead = MagicMock()
+        websocketDead.send_json = AsyncMock(
+            side_effect=RuntimeError(
+                "Unexpected ASGI message 'websocket.send', after "
+                "sending 'websocket.close'"
+            )
+        )
+        dictSocketState = {"bOpen": True}
+        await _fnSendEventIfSocketOpen(
+            websocketDead, dictSocketState, {"sType": "output"},
+        )
+        assert dictSocketState["bOpen"] is False
+        await _fnSendEventIfSocketOpen(
+            websocketDead, dictSocketState, {"sType": "stepDone"},
+        )
+        assert websocketDead.send_json.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_open_socket_receives_events(self):
+        from vaibify.gui.pipelineServer import _fnSendEventIfSocketOpen
+        websocketLive = MagicMock()
+        websocketLive.send_json = AsyncMock()
+        dictSocketState = {"bOpen": True}
+        await _fnSendEventIfSocketOpen(
+            websocketLive, dictSocketState, {"sType": "output"},
+        )
+        assert dictSocketState["bOpen"] is True
+        websocketLive.send_json.assert_awaited_once_with(
+            {"sType": "output"})
