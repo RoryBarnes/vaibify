@@ -16,48 +16,74 @@ var VaibifyLegendPanel = (function () {
     var _bOpen = false;
     var _bOutsideClickBound = false;
 
+    // Criterion rows are generated live from
+    // ``PipeleyenApp.fdictBlockerGlyphCatalog()`` — the same dicts the
+    // step renderer draws from — so the legend cannot drift from the
+    // glyphs actually rendered. Only the section chrome is static.
     var _DICT_LEGEND_SECTIONS = {
         1: {
             sTitle: "Level 1 — Self-Consistent",
-            sGlyph: "⚠",
             sColorClass: "aics-level-1-tint",
-            listCriteria: [
-                "upstream-modified — rerun the step",
-                "script-stale — rerun after editing the script",
-                "axis-not-green — fix failing tests",
-                "attestation-stale — outputs changed since you verified",
-                "user-not-approved — never attested",
-            ],
+            sCatalogKey: "iLevel1",
         },
         2: {
             sTitle: "Level 2 — Published",
-            sGlyph: "⚠",
             sColorClass: "aics-level-2-tint",
-            listCriteria: [
-                "not-in-github-mirror — push to mirror",
-                "not-in-zenodo-deposit — archive to Zenodo",
-                "figure-not-frozen — push figure to Overleaf",
-                "arxiv-not-submitted — submit to arXiv",
-                "missing-ai-declaration-step — add AI declaration step",
-            ],
+            sCatalogKey: "iLevel2",
         },
         3: {
             sTitle: "Level 3 — Reproducible",
-            sGlyph: "✗",
             sColorClass: "aics-level-3-tint",
-            listCriteria: [
-                "missing-from-manifest — refresh MANIFEST.sha256",
-                "script-not-pinned — rerun or refresh manifest",
-                "nondeterminism-undeclared — seed RNGs",
-                "binary-not-declared — declare external binaries",
-                "binary-not-captured — capture SHA + version",
-                "dockerfile-not-pinned — pin FROM @sha256",
-                "dependency-lock-missing — generate requirements.lock",
-                "environment-snapshot-missing — capture environment.json",
-                "reproduce-script-missing — generate reproduce.sh",
-            ],
+            sCatalogKey: "iLevel3",
         },
     };
+
+    // Marks that are not per-criterion blocker glyphs but appear on
+    // step cards, file lists, and dependency edges. Static by design:
+    // each entry names the CSS class that styles the live mark.
+    var _LIST_OTHER_MARKS = [
+        {
+            sIcon: "⚠", sClass: "l1-blocker-file-glyph",
+            sLabel: "Offending file or dependency edge — " +
+                "blocking verification; re-run the step",
+        },
+        {
+            sIcon: "✓", sClass: "aics-legend-check-sample",
+            sLabel: "Test axis passed (fresh run or restored " +
+                "from a committed test marker)",
+        },
+        {
+            sIcon: "", sClass: "step-level-dot state-green",
+            sLabel: "Level dots — L1 manifest membership, L2 mirror " +
+                "state, L3 envelope (green / yellow / red / grey)",
+        },
+        {
+            sIcon: "✎", sClass: "script-modified-badge",
+            sLabel: "Script edited since the last run",
+        },
+        {
+            sIcon: "⚠", sClass: "script-unseeded-badge",
+            sLabel: "Unseeded randomness detected — add a seed",
+        },
+        {
+            sIcon: "⚠", sClass: "data-modified-badge",
+            sLabel: "Output files modified since the last run",
+        },
+        {
+            sIcon: "file", sClass: "aics-legend-red-missing-sample",
+            sLabel: "Red upright file name — declared file missing",
+        },
+        {
+            sIcon: "file", sClass: "aics-legend-red-stale-sample",
+            sLabel: "Red dotted-underlined file name — file changed " +
+                "since its last test run",
+        },
+        {
+            sIcon: "file", sClass: "aics-legend-red-unattested-sample",
+            sLabel: "Red italic file name — present but never " +
+                "verified by you",
+        },
+    ];
 
     function fnInitialize() {
         var elButton = document.getElementById(_S_BUTTON_ID);
@@ -123,6 +149,7 @@ var VaibifyLegendPanel = (function () {
             _fsRenderSection(1, dictCounts.iLevel1) +
             _fsRenderSection(2, dictCounts.iLevel2) +
             _fsRenderSection(3, dictCounts.iLevel3) +
+            _fsRenderOtherMarksSection() +
             _fsRenderFooter();
     }
 
@@ -131,6 +158,13 @@ var VaibifyLegendPanel = (function () {
             return PipeleyenApp.fdictBlockerCountsByLevel();
         }
         return {iLevel1: 0, iLevel2: 0, iLevel3: 0};
+    }
+
+    function _fdictGlyphCatalog() {
+        if (PipeleyenApp && PipeleyenApp.fdictBlockerGlyphCatalog) {
+            return PipeleyenApp.fdictBlockerGlyphCatalog();
+        }
+        return {};
     }
 
     function _fsRenderHeader() {
@@ -144,25 +178,45 @@ var VaibifyLegendPanel = (function () {
     function _fsRenderSection(iLevel, iCount) {
         var dictSection = _DICT_LEGEND_SECTIONS[iLevel];
         if (!dictSection) return "";
+        var dictGlyphs =
+            _fdictGlyphCatalog()[dictSection.sCatalogKey] || {};
         return '<div class="aics-legend-section ' +
             dictSection.sColorClass + '">' +
             '<div class="aics-legend-section-title">' +
-            '<span class="aics-legend-glyph">' +
-            fnEscapeHtml(dictSection.sGlyph) + '</span>' +
             fnEscapeHtml(dictSection.sTitle) +
             '<span class="aics-legend-count">(' + iCount +
             ' active)</span></div>' +
-            _fsRenderCriteriaList(dictSection.listCriteria) +
+            _fsRenderCriteriaRows(dictGlyphs) +
             '</div>';
     }
 
-    function _fsRenderCriteriaList(listCriteria) {
+    function _fsRenderCriteriaRows(dictGlyphs) {
         var sHtml = '<ul class="aics-legend-criteria">';
-        for (var i = 0; i < listCriteria.length; i++) {
-            sHtml += '<li>' + fnEscapeHtml(listCriteria[i]) + '</li>';
-        }
+        Object.keys(dictGlyphs).forEach(function (sCriterion) {
+            var dictMeta = dictGlyphs[sCriterion];
+            sHtml += '<li><span class="aics-legend-glyph ' +
+                fnEscapeHtml(dictMeta.sClass) + '">' +
+                fnEscapeHtml(dictMeta.sIcon) + '</span> ' +
+                fnEscapeHtml(sCriterion) + ' — ' +
+                fnEscapeHtml(dictMeta.sLabel) + '</li>';
+        });
         sHtml += '</ul>';
         return sHtml;
+    }
+
+    function _fsRenderOtherMarksSection() {
+        var sHtml = '<div class="aics-legend-section">' +
+            '<div class="aics-legend-section-title">' +
+            'Other marks</div>' +
+            '<ul class="aics-legend-criteria">';
+        for (var i = 0; i < _LIST_OTHER_MARKS.length; i++) {
+            var dictMark = _LIST_OTHER_MARKS[i];
+            sHtml += '<li><span class="aics-legend-glyph ' +
+                fnEscapeHtml(dictMark.sClass) + '">' +
+                fnEscapeHtml(dictMark.sIcon) + '</span> ' +
+                fnEscapeHtml(dictMark.sLabel) + '</li>';
+        }
+        return sHtml + '</ul></div>';
     }
 
     function _fsRenderFooter() {

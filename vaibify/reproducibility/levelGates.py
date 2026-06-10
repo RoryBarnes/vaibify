@@ -34,8 +34,10 @@ from .manifestWriter import (
     flistDeclaredButMissingFromManifest,
     flistParseManifestLines,
 )
+from .repoFiles import ffilesEnsureRepoFiles, fsRepoRootOf
 from .reproduceScriptGenerator import S_REPRODUCE_SCRIPT_FILENAME
 from .stepPredicates import (
+    _T_GREEN_VERIF_VALUES,
     fbStepTestsPassing,
     fbStepTimingClean,
     fbStepUserApproved,
@@ -134,7 +136,7 @@ def _fdictActiveLevelMemo():
     return getattr(_THREAD_LOCAL, "dictMemo", None)
 
 
-def fiAICSLevel(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
+def fiAICSLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
     """Return the integer AICS level (0..3) for a workflow.
 
     Short-circuits up the ladder so each gate runs at most once. Wraps
@@ -142,20 +144,23 @@ def fiAICSLevel(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
     recursive calls (L2 -> L1, L3 -> L2 -> L1) hit a memo instead of
     re-iterating every step. ``dictScriptStatus`` threads through to
     L1 so callers with mtime info honor the script-stale criterion.
+    ``filesRepo`` is a project-repo path string (host clone) or a
+    ``repoFiles`` adapter (container or poll snapshot).
     """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     with fnLevelComputationContext():
         if not fbAtLeastLevel1(
-            dictWorkflow, sProjectRepoPath, dictScriptStatus,
+            dictWorkflow, filesRepo, dictScriptStatus,
         ):
             return 0
-        if not fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
+        if not fbAtLeastLevel2(dictWorkflow, filesRepo):
             return 1
-        if not fbAtLeastLevel3(dictWorkflow, sProjectRepoPath):
+        if not fbAtLeastLevel3(dictWorkflow, filesRepo):
             return 2
         return 3
 
 
-def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
+def fbAtLeastLevel1(dictWorkflow, filesRepo, dictScriptStatus=None):
     """Return True iff the workflow meets the L1 Self-Consistent gate.
 
     L1 requires four criteria, all enforced per-step: workflow lives
@@ -170,14 +175,14 @@ def fbAtLeastLevel1(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
     if dictMemo is not None and "bL1" in dictMemo:
         return dictMemo["bL1"]
     bResult = _fbComputeLevel1(
-        dictWorkflow, sProjectRepoPath, dictScriptStatus,
+        dictWorkflow, filesRepo, dictScriptStatus,
     )
     if dictMemo is not None:
         dictMemo["bL1"] = bResult
     return bResult
 
 
-def _fbComputeLevel1(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
+def _fbComputeLevel1(dictWorkflow, filesRepo, dictScriptStatus=None):
     """Uncached L1 evaluation — the body of the original gate.
 
     Delegates to ``flistLevel1Blockers`` so the boolean gate and the
@@ -185,19 +190,19 @@ def _fbComputeLevel1(dictWorkflow, sProjectRepoPath, dictScriptStatus=None):
     means L1 is clean. Preserves the historical contract — an empty
     workflow or a missing project repo still returns False.
     """
-    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+    if not fbWorkflowHasProjectRepo(filesRepo):
         return False
     listSteps = dictWorkflow.get("listSteps", []) or []
     if not listSteps:
         return False
     listBlockers = flistLevel1Blockers(
-        dictWorkflow, {}, sProjectRepoPath, dictScriptStatus,
+        dictWorkflow, {}, filesRepo, dictScriptStatus,
     )
     return len(listBlockers) == 0
 
 
 def flistLevel1Blockers(
-    dictWorkflow, dictNewModTimes, sProjectRepoPath,
+    dictWorkflow, dictNewModTimes, filesRepo,
     dictScriptStatus=None,
 ):
     """Return per-step L1 blockers with per-file granularity.
@@ -224,8 +229,18 @@ def flistLevel1Blockers(
     The list is sorted by ``iStepIndex`` so rendering order is
     deterministic. Returns ``[]`` for an L1-clean workflow or one with
     no project repo.
+
+    Entries may also carry an optional ``dictOffendingFileHints``
+    field, ``{sRawPath: sHint}``, keyed by paths exactly as they
+    appear in ``listOffendingFiles``, holding a per-file remediation
+    tooltip. Emitted by ``upstream-modified`` (names the modified
+    upstream steps), ``attestation-stale`` (output changed after the
+    researcher attested), and ``axis-not-green`` when the non-green
+    cause is marker drift (``outputs-changed``). Consumers must
+    tolerate its absence — older payloads do not carry it.
     """
-    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listSteps = dictWorkflow.get("listSteps", []) or []
     if not listSteps:
@@ -236,7 +251,7 @@ def flistLevel1Blockers(
         dictBlocker = _fdictBuildStepBlocker(
             dictWorkflow, iStepIndex, dictStep,
             dictNewModTimes, dictUpstreamByStep,
-            dictScriptStatus, sProjectRepoPath,
+            dictScriptStatus, filesRepo,
         )
         if dictBlocker is not None:
             listBlockers.append(dictBlocker)
@@ -246,7 +261,7 @@ def flistLevel1Blockers(
 def _fdictBuildStepBlocker(
     dictWorkflow, iStepIndex, dictStep,
     dictNewModTimes, dictUpstreamByStep,
-    dictScriptStatus=None, sProjectRepoPath="",
+    dictScriptStatus=None, filesRepo=None,
 ):
     """Return the single dominant blocker dict for a step, or None.
 
@@ -267,14 +282,14 @@ def _fdictBuildStepBlocker(
             dictNewModTimes, dictUpstreamByStep,
         )
     if _fbStepScriptStale(
-        iStepIndex, dictStep, dictScriptStatus, sProjectRepoPath,
+        iStepIndex, dictStep, dictScriptStatus, filesRepo,
     ):
         return _fdictScriptStaleBlocker(
             dictWorkflow, iStepIndex, dictStep,
         )
     if not fbStepTestsPassing(dictStep):
         return _fdictAxisNotGreenBlocker(
-            dictWorkflow, iStepIndex, dictStep,
+            dictWorkflow, iStepIndex, dictStep, filesRepo,
         )
     return _fdictUserDispositionBlocker(
         dictWorkflow, iStepIndex, dictStep,
@@ -312,7 +327,7 @@ def _fdictUpstreamModifiedBlocker(
         iStepIndex, dictNewModTimes, dictUpstreamByStep,
     ))
     listOffendingFiles = _flistStepOutputFiles(dictStep)
-    return {
+    dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
@@ -323,11 +338,158 @@ def _fdictUpstreamModifiedBlocker(
         "sRemediationHint":
             "Re-run step to clear stale outputs",
     }
+    _fnAttachUpstreamFileHints(
+        dictBlocker, dictWorkflow, listUpstreamIndices,
+    )
+    return dictBlocker
 
 
-def _fdictAxisNotGreenBlocker(dictWorkflow, iStepIndex, dictStep):
-    """Build the ``axis-not-green`` blocker entry for one step."""
-    return {
+def _fnAttachUpstreamFileHints(
+    dictBlocker, dictWorkflow, listUpstreamIndices,
+):
+    """Attach per-file hints naming the modified upstream steps."""
+    if not listUpstreamIndices or not dictBlocker["listOffendingFiles"]:
+        return
+    sLabels = ", ".join(
+        _fsLabelForStep(dictWorkflow, iUpstream)
+        for iUpstream in listUpstreamIndices
+    )
+    sHint = (
+        f"Upstream step {sLabels} modified after this output was "
+        "produced — re-run this step"
+    )
+    dictBlocker["dictOffendingFileHints"] = {
+        sPath: sHint for sPath in dictBlocker["listOffendingFiles"]
+    }
+
+
+_S_MARKER_DRIFT_HINT = (
+    "Output changed since the last test run (file newer than its "
+    "verification marker) — re-run tests, then verify"
+)
+
+
+_T_AXIS_CATEGORY_NAMES = (
+    ("sUnitTest", "unit"),
+    ("sIntegrity", "integrity"),
+    ("sQualitative", "qualitative"),
+    ("sQuantitative", "quantitative"),
+)
+
+
+def _flistNonGreenAxes(dictStep):
+    """Return ``[(sCategoryName, sValue)]`` for every non-green test axis."""
+    dictV = dictStep.get("dictVerification", {}) or {}
+    listResult = []
+    for sAxisKey, sCategoryName in _T_AXIS_CATEGORY_NAMES:
+        if sAxisKey not in dictV:
+            continue
+        sValue = dictV[sAxisKey]
+        if sValue in _T_GREEN_VERIF_VALUES:
+            continue
+        listResult.append((sCategoryName, sValue))
+    return listResult
+
+
+def _fsJoinAxisNames(listNonGreenAxes, sTargetValue):
+    """Join category names matching a value; drop the redundant aggregate."""
+    listNames = [
+        sName for sName, sValue in listNonGreenAxes
+        if sValue == sTargetValue
+    ]
+    if len(listNames) > 1 and "unit" in listNames:
+        listNames = [sName for sName in listNames if sName != "unit"]
+    return ", ".join(listNames)
+
+
+def _fsAxisNotGreenHint(dictStep):
+    """Return the state-aware remediation hint for ``axis-not-green``.
+
+    Priority: any ``failed`` keeps the failing-tests language naming
+    the failed categories; ``outputs-missing`` and ``outputs-changed``
+    describe the marker-versus-disk mismatch; otherwise the categories
+    were simply never run.
+    """
+    listNonGreenAxes = _flistNonGreenAxes(dictStep)
+    sFailedNames = _fsJoinAxisNames(listNonGreenAxes, "failed")
+    if sFailedNames:
+        return f"Re-run failing tests ({sFailedNames}), then verify"
+    listValues = [sValue for _, sValue in listNonGreenAxes]
+    if "outputs-missing" in listValues:
+        return "Declared output missing — re-run step, then verify"
+    if "outputs-changed" in listValues:
+        return _S_MARKER_DRIFT_HINT
+    sUntestedNames = _fsJoinAxisNames(listNonGreenAxes, "untested")
+    if sUntestedNames:
+        return (
+            f"Test category never run ({sUntestedNames}) — "
+            "run tests, then verify"
+        )
+    return "Re-run failing tests, then verify"
+
+
+def _fbAxisDriftIsRootCause(dictStep):
+    """Return True iff marker drift, not failure, explains axis-not-green."""
+    listValues = [sValue for _, sValue in _flistNonGreenAxes(dictStep)]
+    if "failed" in listValues or "outputs-missing" in listValues:
+        return False
+    return "outputs-changed" in listValues
+
+
+def _flistMarkerDriftFiles(dictStep, filesRepo, listDeclared):
+    """Narrow declared outputs to those listed in ``listModifiedFiles``.
+
+    ``listModifiedFiles`` holds repo-relative paths from the marker
+    hash comparison while ``listOffendingFiles`` carries the raw
+    declared paths, so each declared path is mapped to its
+    repo-relative form (same resolution as
+    ``_flistStepOutputsRepoRelative``) before matching. Falls back to
+    the full declared list when nothing matches, so the blocker never
+    under-reports.
+    """
+    listModified = (dictStep.get("dictVerification", {}) or {}).get(
+        "listModifiedFiles", []) or []
+    if not listModified:
+        return listDeclared
+    setModified = set(listModified)
+    dictRelativeByRaw = _fdictRepoRelativeByRawPath(
+        dictStep, filesRepo, listDeclared,
+    )
+    listNarrowed = [
+        sRaw for sRaw in listDeclared
+        if sRaw in setModified or dictRelativeByRaw.get(sRaw) in setModified
+    ]
+    return listNarrowed or listDeclared
+
+
+def _fdictRepoRelativeByRawPath(dictStep, filesRepo, listDeclared):
+    """Map each raw declared output path to its repo-relative form."""
+    sRepoRoot = fsRepoRootOf(filesRepo)
+    if not sRepoRoot:
+        return {}
+    from vaibify.gui.fileStatusManager import _fsResolveStepFilePath
+    from vaibify.gui.pathContract import fsAbsToRepoRelative
+    sStepDir = dictStep.get("sDirectory", "") or ""
+    dictResult = {}
+    for sRaw in listDeclared:
+        sAbs = _fsResolveStepFilePath(
+            sRaw, sStepDir, {"sRepoRoot": sRepoRoot},
+        )
+        dictResult[sRaw] = fsAbsToRepoRelative(sAbs, sRepoRoot)
+    return dictResult
+
+
+def _fdictAxisNotGreenBlocker(
+    dictWorkflow, iStepIndex, dictStep, filesRepo=None,
+):
+    """Build the ``axis-not-green`` blocker entry for one step.
+
+    The remediation hint is state-aware (failed vs. marker drift vs.
+    never run). For pure marker drift the offending files narrow to
+    the drifted outputs and each carries a per-file hint in
+    ``dictOffendingFileHints``.
+    """
+    dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
@@ -335,8 +497,23 @@ def _fdictAxisNotGreenBlocker(dictWorkflow, iStepIndex, dictStep):
         "sCriterion": "axis-not-green",
         "listOffendingFiles": _flistStepOutputFiles(dictStep),
         "listOffendingUpstreamSteps": [],
-        "sRemediationHint":
-            "Re-run failing tests then verify",
+        "sRemediationHint": _fsAxisNotGreenHint(dictStep),
+    }
+    if _fbAxisDriftIsRootCause(dictStep):
+        _fnAttachMarkerDriftFileHints(
+            dictBlocker, dictStep, filesRepo,
+        )
+    return dictBlocker
+
+
+def _fnAttachMarkerDriftFileHints(dictBlocker, dictStep, filesRepo):
+    """Narrow offending files to drifted outputs and add per-file hints."""
+    listNarrowed = _flistMarkerDriftFiles(
+        dictStep, filesRepo, dictBlocker["listOffendingFiles"],
+    )
+    dictBlocker["listOffendingFiles"] = listNarrowed
+    dictBlocker["dictOffendingFileHints"] = {
+        sPath: _S_MARKER_DRIFT_HINT for sPath in listNarrowed
     }
 
 
@@ -362,23 +539,29 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     present) but the outputs changed since, flipping ``sUser`` to
     ``stale``. ``listOffendingFiles`` projects the step's declared
     outputs so the dashboard can mark them red with the
-    *re-verify-or-re-run* remediation.
+    *re-verify-or-re-run* remediation; each offending file also
+    carries the same fact in ``dictOffendingFileHints``.
     """
+    listOffendingFiles = _flistStepOutputFiles(dictStep)
+    sFileHint = "This output changed after you verified — re-verify or re-run"
     return {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
         "sScope": "step",
         "sCriterion": "attestation-stale",
-        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingFiles": listOffendingFiles,
         "listOffendingUpstreamSteps": [],
         "sRemediationHint":
             "Outputs changed since you verified — re-verify or re-run",
+        "dictOffendingFileHints": {
+            sPath: sFileHint for sPath in listOffendingFiles
+        },
     }
 
 
 def _fbStepScriptStale(
-    iStepIndex, dictStep, dictScriptStatus, sProjectRepoPath,
+    iStepIndex, dictStep, dictScriptStatus, filesRepo,
 ):
     """Return True iff the step's script is newer than its outputs.
 
@@ -396,11 +579,11 @@ def _fbStepScriptStale(
     if not dictEntry or dictEntry.get("sStatus") != "modified":
         return False
     return not _fbStepHashesMatchManifest(
-        dictStep, sProjectRepoPath,
+        dictStep, filesRepo,
     )
 
 
-def _fbStepHashesMatchManifest(dictStep, sProjectRepoPath):
+def _fbStepHashesMatchManifest(dictStep, filesRepo):
     """Return True iff every declared output's hash matches MANIFEST.sha256.
 
     Delegates to ``hashStaleness`` for the manifest read and the
@@ -410,23 +593,23 @@ def _fbStepHashesMatchManifest(dictStep, sProjectRepoPath):
     or any drifted entry returns False so the script-stale criterion
     remains visible.
     """
-    if not sProjectRepoPath:
+    if not fsRepoRootOf(filesRepo):
         return False
     listRelPaths = _flistStepOutputsRepoRelative(
-        dictStep, sProjectRepoPath,
+        dictStep, filesRepo,
     )
     if not listRelPaths:
         return False
     from vaibify.gui import hashStaleness
-    if not hashStaleness.fbManifestExists(sProjectRepoPath):
+    if not hashStaleness.fbManifestExists(filesRepo):
         return False
-    dictEntries = hashStaleness._fdictReadManifestEntries(sProjectRepoPath)
+    dictEntries = hashStaleness._fdictReadManifestEntries(filesRepo)
     if not dictEntries:
         return False
     if _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
         return False
     setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
-        sProjectRepoPath, listRelPaths, {},
+        filesRepo, listRelPaths, {},
     )
     return len(setStale) == 0
 
@@ -439,7 +622,7 @@ def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
     return False
 
 
-def _flistStepOutputsRepoRelative(dictStep, sProjectRepoPath):
+def _flistStepOutputsRepoRelative(dictStep, filesRepo):
     """Return repo-relative output paths declared on a step.
 
     Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
@@ -450,6 +633,7 @@ def _flistStepOutputsRepoRelative(dictStep, sProjectRepoPath):
     """
     from vaibify.gui.fileStatusManager import _fsResolveStepFilePath
     from vaibify.gui.pathContract import fsAbsToRepoRelative
+    sRepoRoot = fsRepoRootOf(filesRepo)
     sStepDir = dictStep.get("sDirectory", "") or ""
     listRelative = []
     for sFile in (dictStep.get("saDataFiles", []) or []) + (
@@ -458,10 +642,10 @@ def _flistStepOutputsRepoRelative(dictStep, sProjectRepoPath):
         if not sFile:
             continue
         sAbs = _fsResolveStepFilePath(
-            sFile, sStepDir, {"sRepoRoot": sProjectRepoPath},
+            sFile, sStepDir, {"sRepoRoot": sRepoRoot},
         )
         listRelative.append(
-            fsAbsToRepoRelative(sAbs, sProjectRepoPath),
+            fsAbsToRepoRelative(sAbs, sRepoRoot),
         )
     return listRelative
 
@@ -597,18 +781,19 @@ def fbStepIsAtLeastLevel1(
     return True
 
 
-def fbWorkflowHasProjectRepo(sProjectRepoPath):
+def fbWorkflowHasProjectRepo(filesRepo):
     """Return True iff the workflow has a non-empty project repo path.
 
     L1's "under git control" criterion is the existence of the repo
     discovery itself — the load-time auto-detector only populates
     ``sProjectRepoPath`` when the workflow.json lives inside a git
-    work tree. Tracked-and-matched semantics belong to L2.
+    work tree. Tracked-and-matched semantics belong to L2. Accepts a
+    path string or a ``repoFiles`` adapter (whose root is consulted).
     """
-    return bool(sProjectRepoPath)
+    return bool(fsRepoRootOf(filesRepo))
 
 
-def fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
+def fbAtLeastLevel2(dictWorkflow, filesRepo):
     """Return True iff the workflow meets the L2 Publication gate.
 
     L2 builds on L1 with three additional criteria: every canonical
@@ -620,13 +805,13 @@ def fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL2" in dictMemo:
         return dictMemo["bL2"]
-    bResult = _fbComputeLevel2(dictWorkflow, sProjectRepoPath)
+    bResult = _fbComputeLevel2(dictWorkflow, filesRepo)
     if dictMemo is not None:
         dictMemo["bL2"] = bResult
     return bResult
 
 
-def _fbComputeLevel2(dictWorkflow, sProjectRepoPath):
+def _fbComputeLevel2(dictWorkflow, filesRepo):
     """Uncached L2 evaluation — the body of the original gate.
 
     Stage 4 adds the arXiv conjunct so a workflow with an Overleaf
@@ -635,26 +820,27 @@ def _fbComputeLevel2(dictWorkflow, sProjectRepoPath):
     arXiv conjunct returns True trivially, preserving the L2 contract
     for manuscript-free reproducibility.
     """
-    if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not fbAtLeastLevel1(dictWorkflow, filesRepo):
         return False
     if not fbWorkflowFullySyncedWithGithub(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ):
         return False
     if not fbWorkflowFullySyncedWithZenodo(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ):
         return False
     if not fbWorkflowHasAiDeclarationStep(dictWorkflow):
         return False
     if not fbWorkflowFullySyncedWithArxiv(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ):
         return False
     return True
 
 
-def fbAtLeastLevel3(dictWorkflow, sProjectRepoPath):
+def fbAtLeastLevel3(dictWorkflow, filesRepo):
     """Return True iff the workflow meets the L3 Reproducibility gate.
 
     L3 requires L2 plus a green readiness check (six orthogonal
@@ -663,16 +849,17 @@ def fbAtLeastLevel3(dictWorkflow, sProjectRepoPath):
     only L3 criterion that touches a multi-hour operation; the
     other five are cheap and re-evaluated on every level recompute.
     """
-    if not fbAtLeastLevel2(dictWorkflow, sProjectRepoPath):
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not fbAtLeastLevel2(dictWorkflow, filesRepo):
         return False
-    if not fbL3ReadinessOK(dictWorkflow, sProjectRepoPath):
+    if not fbL3ReadinessOK(dictWorkflow, filesRepo):
         return False
-    if not fbL3AttestationCurrent(sProjectRepoPath):
+    if not fbL3AttestationCurrent(filesRepo):
         return False
     return True
 
 
-def fbL3ReadinessOK(dictWorkflow, sProjectRepoPath):
+def fbL3ReadinessOK(dictWorkflow, filesRepo):
     """Return True iff every cheap L3 readiness verifier passes.
 
     The composition is intentionally short: each verifier owns its
@@ -682,15 +869,16 @@ def fbL3ReadinessOK(dictWorkflow, sProjectRepoPath):
     attempting a rebuild?", attestation answers "has that rebuild
     actually been done and verified?".
     """
-    if not sProjectRepoPath:
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not fbWorkflowHasProjectRepo(filesRepo):
         return False
     return (
-        fbVerifyManifestComplete(sProjectRepoPath, dictWorkflow)
-        and fbVerifyDependencyLock(sProjectRepoPath)
-        and fbVerifyEnvironmentSnapshot(sProjectRepoPath)
-        and fbVerifyDockerfilePinned(sProjectRepoPath)
-        and fbVerifyReproduceScript(sProjectRepoPath, dictWorkflow)
-        and fbVerifyDeterminismDeclared(sProjectRepoPath, dictWorkflow)
+        fbVerifyManifestComplete(filesRepo, dictWorkflow)
+        and fbVerifyDependencyLock(filesRepo)
+        and fbVerifyEnvironmentSnapshot(filesRepo)
+        and fbVerifyDockerfilePinned(filesRepo)
+        and fbVerifyReproduceScript(filesRepo, dictWorkflow)
+        and fbVerifyDeterminismDeclared(filesRepo, dictWorkflow)
         and fbWorkflowDeclaresBinaries(dictWorkflow)
     )
 
@@ -734,7 +922,7 @@ def _fbBinaryDeclarationEntryValid(dictEntry):
     return True
 
 
-def fbVerifyManifestComplete(sProjectRepoPath, dictWorkflow):
+def fbVerifyManifestComplete(filesRepo, dictWorkflow):
     """Return True iff every workflow-declared path is in the manifest.
 
     A missing manifest is treated as failure (no envelope at all),
@@ -744,7 +932,7 @@ def fbVerifyManifestComplete(sProjectRepoPath, dictWorkflow):
     """
     try:
         listMissing = flistDeclaredButMissingFromManifest(
-            sProjectRepoPath, dictWorkflow,
+            filesRepo, dictWorkflow,
         )
     except FileNotFoundError:
         return False
@@ -753,24 +941,24 @@ def fbVerifyManifestComplete(sProjectRepoPath, dictWorkflow):
     return not listMissing
 
 
-def fbVerifyDependencyLock(sProjectRepoPath):
+def fbVerifyDependencyLock(filesRepo):
     """Return True iff ``requirements.lock`` exists and every entry is hashed."""
-    listIssues = flistVerifyRequirementsLock(sProjectRepoPath)
+    listIssues = flistVerifyRequirementsLock(filesRepo)
     return not listIssues
 
 
-def fbVerifyEnvironmentSnapshot(sProjectRepoPath):
+def fbVerifyEnvironmentSnapshot(filesRepo):
     """Return True iff ``.vaibify/environment.json`` records a sha256 digest."""
-    return fbEnvironmentDigestPinned(sProjectRepoPath)
+    return fbEnvironmentDigestPinned(filesRepo)
 
 
-def fbVerifyDockerfilePinned(sProjectRepoPath):
+def fbVerifyDockerfilePinned(filesRepo):
     """Return True iff the Dockerfile passes the L3 pin lint."""
-    listIssues = flistLintDockerfile(sProjectRepoPath)
+    listIssues = flistLintDockerfile(filesRepo)
     return not listIssues
 
 
-def fbVerifyReproduceScript(sProjectRepoPath, dictWorkflow):
+def fbVerifyReproduceScript(filesRepo, dictWorkflow):
     """Return True iff ``reproduce.sh`` exists and is in MANIFEST.sha256.
 
     Presence-on-disk alone is insufficient: an unhashed copy could
@@ -778,52 +966,52 @@ def fbVerifyReproduceScript(sProjectRepoPath, dictWorkflow):
     in the parsed manifest entries so a downstream consumer's
     ``sha256sum -c`` would detect drift.
     """
-    pathScript = Path(sProjectRepoPath) / S_REPRODUCE_SCRIPT_FILENAME
-    if not pathScript.is_file():
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME):
         return False
     try:
-        listEntries = flistParseManifestLines(sProjectRepoPath)
+        listEntries = flistParseManifestLines(filesRepo)
     except (FileNotFoundError, OSError, ValueError):
         return False
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     return S_REPRODUCE_SCRIPT_FILENAME in setPaths
 
 
-def fbVerifyDeterminismDeclared(sProjectRepoPath, dictWorkflow):
+def fbVerifyDeterminismDeclared(filesRepo, dictWorkflow):
     """Return True iff no step warns about unseeded RNG and BLAS is declared.
 
     The check rejects any step carrying ``bUnseededRandomnessWarning``
     in addition to requiring the workflow-level
-    ``dictDeterminism`` block (or its waiver). ``sProjectRepoPath`` is
+    ``dictDeterminism`` block (or its waiver). ``filesRepo`` is
     accepted for symmetry with the other verifiers; the audit is
-    workflow-level so the path is only used by future per-script
+    workflow-level so the repo is only used by future per-script
     extensions.
     """
-    del sProjectRepoPath  # noqa: F841 — reserved for future per-script audit
+    del filesRepo  # noqa: F841 — reserved for future per-script audit
     listIssues = flistAuditWorkflow(dictWorkflow)
     return not listIssues
 
 
-def _fdictCollectL3ReadinessFlags(dictWorkflow, sProjectRepoPath, bRepo):
+def _fdictCollectL3ReadinessFlags(dictWorkflow, filesRepo, bRepo):
     """Return the per-verifier booleans that gate L3 readiness."""
     return {
         "bManifestComplete": bRepo and fbVerifyManifestComplete(
-            sProjectRepoPath, dictWorkflow,
+            filesRepo, dictWorkflow,
         ),
         "bDependencyLockHashed": bRepo and fbVerifyDependencyLock(
-            sProjectRepoPath,
+            filesRepo,
         ),
         "bEnvironmentDigestPinned": bRepo and fbVerifyEnvironmentSnapshot(
-            sProjectRepoPath,
+            filesRepo,
         ),
         "bDockerfilePinned": bRepo and fbVerifyDockerfilePinned(
-            sProjectRepoPath,
+            filesRepo,
         ),
         "bReproduceScriptPinned": bRepo and fbVerifyReproduceScript(
-            sProjectRepoPath, dictWorkflow,
+            filesRepo, dictWorkflow,
         ),
         "bDeterminismDeclared": bRepo and fbVerifyDeterminismDeclared(
-            sProjectRepoPath, dictWorkflow,
+            filesRepo, dictWorkflow,
         ),
         "bBinariesDeclaredOrWaived": bRepo and fbWorkflowDeclaresBinaries(
             dictWorkflow,
@@ -831,7 +1019,7 @@ def _fdictCollectL3ReadinessFlags(dictWorkflow, sProjectRepoPath, bRepo):
     }
 
 
-def fdictL3ReadinessGaps(dictWorkflow, sProjectRepoPath):
+def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     """Return per-verifier pass/fail for the L3 readiness card.
 
     The shape matches what the AICS tab's L3 readiness card binds
@@ -840,18 +1028,19 @@ def fdictL3ReadinessGaps(dictWorkflow, sProjectRepoPath):
     separate read so the UI can render the "Verify L3 Reproducibility"
     button state independently of the readiness verifiers.
     """
-    bRepo = fbWorkflowHasProjectRepo(sProjectRepoPath)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    bRepo = fbWorkflowHasProjectRepo(filesRepo)
     dictFlags = _fdictCollectL3ReadinessFlags(
-        dictWorkflow, sProjectRepoPath, bRepo,
+        dictWorkflow, filesRepo, bRepo,
     )
     bAllReadiness = all(dictFlags.values())
     dictResult = {sKey: bool(bValue) for sKey, bValue in dictFlags.items()}
-    dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["bL3AttestationCurrent"] = (
-        fbL3AttestationCurrent(sProjectRepoPath) if bRepo else False
+        fbL3AttestationCurrent(filesRepo) if bRepo else False
     )
+    dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
-        fsCurrentManifestDigest(sProjectRepoPath) if bRepo else ""
+        fsCurrentManifestDigest(filesRepo) if bRepo else ""
     )
     return dictResult
 
@@ -909,7 +1098,7 @@ def _fbCachedSyncStatusFullMatch(dictStatus):
 
 
 def fbWorkflowFullySyncedWithGithub(
-    dictWorkflow, sProjectRepoPath,
+    dictWorkflow, filesRepo,
 ):
     """Return True iff every manifest file matches the GitHub mirror.
 
@@ -921,7 +1110,7 @@ def fbWorkflowFullySyncedWithGithub(
     made (but not yet pushed) new commits.
     """
     dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
-        sProjectRepoPath, "github",
+        filesRepo, "github",
     )
     if not _fbCachedSyncStatusFullMatch(dictStatus):
         return False
@@ -953,7 +1142,7 @@ def _fbGithubHeadMatchesVerifiedSha(dictWorkflow, dictStatus):
 
 
 def fbWorkflowFullySyncedWithZenodo(
-    dictWorkflow, sProjectRepoPath,
+    dictWorkflow, filesRepo,
 ):
     """Return True iff every manifest file matches the Zenodo deposit.
 
@@ -965,7 +1154,7 @@ def fbWorkflowFullySyncedWithZenodo(
     other.
     """
     dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
-        sProjectRepoPath, "zenodo",
+        filesRepo, "zenodo",
     )
     if not _fbCachedSyncStatusFullMatch(dictStatus):
         return False
@@ -1003,7 +1192,7 @@ def _fbWorkflowHasOverleafBinding(dictWorkflow):
     return bool(dictOverleaf.get("sProjectId") or "")
 
 
-def fbWorkflowFullySyncedWithArxiv(dictWorkflow, sProjectRepoPath):
+def fbWorkflowFullySyncedWithArxiv(dictWorkflow, filesRepo):
     """Return True iff the workflow's arXiv submission matches the manuscript.
 
     True trivially without an Overleaf binding (data-only workflows
@@ -1019,7 +1208,7 @@ def fbWorkflowFullySyncedWithArxiv(dictWorkflow, sProjectRepoPath):
     if not (dictArxiv.get("sArxivId") or ""):
         return False
     if not _fbArxivTarballMatchesPushManifest(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ):
         return False
     return _fbArxivVersionCurrent(dictArxiv)
@@ -1032,29 +1221,29 @@ def _fdictArxivConfig(dictWorkflow):
     return dictArxiv if isinstance(dictArxiv, dict) else {}
 
 
-def _fbArxivTarballMatchesPushManifest(dictWorkflow, sProjectRepoPath):
+def _fbArxivTarballMatchesPushManifest(dictWorkflow, filesRepo):
     """Return True iff arXiv hashes match the Overleaf push manifest paths."""
     from .overleafSync import flistOverleafPushedFiguresAt
     sCommit = _fsOverleafRecordedCommit(dictWorkflow)
     listPushed = flistOverleafPushedFiguresAt(
-        sProjectRepoPath, sCommit,
+        filesRepo, sCommit,
     )
     if not listPushed:
         return False
     return _fbArxivHashesCoverPushList(
-        dictWorkflow, sProjectRepoPath, listPushed,
+        dictWorkflow, filesRepo, listPushed,
     )
 
 
 def _fbArxivHashesCoverPushList(
-    dictWorkflow, sProjectRepoPath, listPushed,
+    dictWorkflow, filesRepo, listPushed,
 ):
     """Return True iff every pushed path resolves to a hash in the tarball."""
     from . import arxivClient
     dictArxiv = _fdictArxivConfig(dictWorkflow)
     sArxivId = dictArxiv.get("sArxivId") or ""
     dictPathMap = dictArxiv.get("dictPathMap") or None
-    sCacheDir = _fsArxivCacheDir(sProjectRepoPath)
+    sCacheDir = scheduledReverify.fsArxivCacheDir(filesRepo)
     try:
         dictHashes = arxivClient.fdictFetchRemoteHashes(
             sArxivId, listPushed,
@@ -1063,11 +1252,6 @@ def _fbArxivHashesCoverPushList(
     except arxivClient.ArxivError:
         return False
     return all(dictHashes.get(sPath) for sPath in listPushed)
-
-
-def _fsArxivCacheDir(sProjectRepoPath):
-    """Return the workflow-local arXiv cache directory."""
-    return str(Path(sProjectRepoPath) / ".vaibify" / "arxivCache")
 
 
 def _fbArxivVersionCurrent(dictArxiv):
@@ -1092,7 +1276,7 @@ def _fsOverleafRecordedCommit(dictWorkflow):
     return dictOverleaf.get("sLastPushCommit") or ""
 
 
-def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
+def fdictLevel2Gaps(dictWorkflow, filesRepo):
     """Return per-criterion pass/fail for the L2 readiness card.
 
     Returned shape::
@@ -1111,15 +1295,15 @@ def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
     is True trivially when the workflow has no Overleaf binding so
     data-only workflows do not surface a fake gap.
     """
-    bL1 = fbAtLeastLevel1(dictWorkflow, sProjectRepoPath)
+    bL1 = fbAtLeastLevel1(dictWorkflow, filesRepo)
     bGithub = fbWorkflowFullySyncedWithGithub(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     )
     bZenodo = fbWorkflowFullySyncedWithZenodo(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     )
     bArxiv = fbWorkflowFullySyncedWithArxiv(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     )
     bDecl = fbWorkflowHasAiDeclarationStep(dictWorkflow)
     return {
@@ -1162,7 +1346,7 @@ def fdictLevel2Gaps(dictWorkflow, sProjectRepoPath):
 _S_WORKFLOW_SCOPE_LABEL = "(workflow)"
 
 
-def flistLevel2Blockers(dictWorkflow, sProjectRepoPath):
+def flistLevel2Blockers(dictWorkflow, filesRepo):
     """Return per-step + workflow-scope L2 blockers, unified schema.
 
     The list is sorted by ``iStepIndex`` (workflow-scope entries with
@@ -1173,33 +1357,33 @@ def flistLevel2Blockers(dictWorkflow, sProjectRepoPath):
     ``arxiv-version-stale``); both sets are suppressed when the
     workflow has no Overleaf binding (data-only workflows pass).
     """
-    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+    if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listBlockers = []
     listBlockers.extend(_flistGithubLevel2Blockers(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ))
     listBlockers.extend(_flistZenodoLevel2Blockers(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ))
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
         dictWorkflow,
     ))
     listBlockers.extend(_flistOverleafLevel2Blockers(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ))
     listBlockers.extend(_flistArxivLevel2Blockers(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ))
     return sorted(
         listBlockers, key=lambda dictEntry: dictEntry["iStepIndex"],
     )
 
 
-def _flistGithubLevel2Blockers(dictWorkflow, sProjectRepoPath):
+def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
     """Return github-related L2 blockers (workflow stale suppresses per-step)."""
     dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
-        sProjectRepoPath, "github",
+        filesRepo, "github",
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictGithubVerifyStaleBlocker()]
@@ -1212,10 +1396,10 @@ def _flistGithubLevel2Blockers(dictWorkflow, sProjectRepoPath):
     )
 
 
-def _flistZenodoLevel2Blockers(dictWorkflow, sProjectRepoPath):
+def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     """Return zenodo-related L2 blockers (workflow stale suppresses per-step)."""
     dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
-        sProjectRepoPath, "zenodo",
+        filesRepo, "zenodo",
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictZenodoVerifyStaleBlocker()]
@@ -1353,11 +1537,11 @@ def _fdictZenodoVerifyStaleBlocker():
 # ----------------------------------------------------------------------
 
 
-def _flistOverleafLevel2Blockers(dictWorkflow, sProjectRepoPath):
+def _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
     """Return per-step ``figure-not-frozen`` blockers, or empty list."""
     if not _fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
-    setPushed = _fsetPushedFigurePaths(dictWorkflow, sProjectRepoPath)
+    setPushed = _fsetPushedFigurePaths(dictWorkflow, filesRepo)
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     listBlockers = []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -1371,11 +1555,11 @@ def _flistOverleafLevel2Blockers(dictWorkflow, sProjectRepoPath):
     return listBlockers
 
 
-def _fsetPushedFigurePaths(dictWorkflow, sProjectRepoPath):
+def _fsetPushedFigurePaths(dictWorkflow, filesRepo):
     """Return the set of repo-relative figure paths in the push manifest."""
     from .overleafSync import flistOverleafPushedFiguresAt
     sCommit = _fsOverleafRecordedCommit(dictWorkflow)
-    return set(flistOverleafPushedFiguresAt(sProjectRepoPath, sCommit))
+    return set(flistOverleafPushedFiguresAt(filesRepo, sCommit))
 
 
 def _flistStepFiguresNotFrozen(dictStep, setPushed):
@@ -1405,7 +1589,7 @@ def _fdictFigureNotFrozenBlocker(
     }
 
 
-def _flistArxivLevel2Blockers(dictWorkflow, sProjectRepoPath):
+def _flistArxivLevel2Blockers(dictWorkflow, filesRepo):
     """Return workflow-scope arXiv L2 blockers, or empty list."""
     if not _fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
@@ -1414,7 +1598,7 @@ def _flistArxivLevel2Blockers(dictWorkflow, sProjectRepoPath):
         return [_fdictArxivNotSubmittedBlocker()]
     listBlockers = []
     if not _fbArxivTarballMatchesPushManifest(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     ):
         listBlockers.append(_fdictArxivMismatchBlocker())
     if not _fbArxivVersionCurrent(dictArxiv):
@@ -1483,7 +1667,7 @@ TUPLE_COMMON_SCIENTIFIC_BINARIES = (
 )
 
 
-def flistLevel3Blockers(dictWorkflow, sProjectRepoPath):
+def flistLevel3Blockers(dictWorkflow, filesRepo):
     """Return per-step + workflow-scope L3 blockers with the unified schema.
 
     Each entry has ``iLevel=3``, ``iStepIndex`` (-1 for workflow scope),
@@ -1493,21 +1677,21 @@ def flistLevel3Blockers(dictWorkflow, sProjectRepoPath):
     has no project repo so the caller treats missing repo the same as
     L1 does.
     """
-    if not fbWorkflowHasProjectRepo(sProjectRepoPath):
+    if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listBlockers = []
     listBlockers.extend(
-        _flistL3WorkflowScopeBlockers(dictWorkflow, sProjectRepoPath),
+        _flistL3WorkflowScopeBlockers(dictWorkflow, filesRepo),
     )
     listBlockers.extend(
-        _flistL3PerStepBlockers(dictWorkflow, sProjectRepoPath),
+        _flistL3PerStepBlockers(dictWorkflow, filesRepo),
     )
     return listBlockers
 
 
-def _flistL3WorkflowScopeBlockers(dictWorkflow, sProjectRepoPath):
+def _flistL3WorkflowScopeBlockers(dictWorkflow, filesRepo):
     """Return the workflow-scope L3 blocker entries."""
-    dictChecks = _fdictL3WorkflowChecks(dictWorkflow, sProjectRepoPath)
+    dictChecks = _fdictL3WorkflowChecks(dictWorkflow, filesRepo)
     listBlockers = []
     for sCriterion, bPassed in dictChecks.items():
         if not bPassed:
@@ -1517,18 +1701,18 @@ def _flistL3WorkflowScopeBlockers(dictWorkflow, sProjectRepoPath):
     return listBlockers
 
 
-def _fdictL3WorkflowChecks(dictWorkflow, sProjectRepoPath):
+def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
     """Return ``{sCriterion: bPassed}`` for every workflow-scope L3 check."""
     return {
-        "dockerfile-not-pinned": fbVerifyDockerfilePinned(sProjectRepoPath),
-        "dependency-lock-missing": fbVerifyDependencyLock(sProjectRepoPath),
+        "dockerfile-not-pinned": fbVerifyDockerfilePinned(filesRepo),
+        "dependency-lock-missing": fbVerifyDependencyLock(filesRepo),
         "environment-snapshot-missing": fbVerifyEnvironmentSnapshot(
-            sProjectRepoPath,
+            filesRepo,
         ),
         "reproduce-script-missing": fbVerifyReproduceScript(
-            sProjectRepoPath, dictWorkflow,
+            filesRepo, dictWorkflow,
         ),
-        "l3-attestation-stale": fbL3AttestationCurrent(sProjectRepoPath),
+        "l3-attestation-stale": fbL3AttestationCurrent(filesRepo),
         "binaries-not-declared-or-waived": fbWorkflowDeclaresBinaries(
             dictWorkflow,
         ),
@@ -1584,11 +1768,11 @@ def _fdictBuildL3WorkflowBlocker(sCriterion):
     }
 
 
-def _flistL3PerStepBlockers(dictWorkflow, sProjectRepoPath):
+def _flistL3PerStepBlockers(dictWorkflow, filesRepo):
     """Return per-step L3 blockers, one dominant criterion per step."""
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     dictContext = _fdictL3PerStepContext(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     )
     listBlockers = []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -1600,18 +1784,25 @@ def _flistL3PerStepBlockers(dictWorkflow, sProjectRepoPath):
     return listBlockers
 
 
-def _fdictL3PerStepContext(dictWorkflow, sProjectRepoPath):
-    """Pre-compute manifest + environment state shared across all steps."""
+def _fdictL3PerStepContext(dictWorkflow, filesRepo):
+    """Pre-compute manifest + environment state shared across all steps.
+
+    Every step script is hashed in ONE adapter batch
+    (``dictScriptHashesOnDisk``) so the per-step drift check is a pure
+    dict lookup rather than a per-file IO call.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictManifestHashes = _fdictReadManifestPathHashes(filesRepo)
     return {
-        "dictManifestPathHashes": _fdictReadManifestPathHashes(
-            sProjectRepoPath,
-        ),
-        "setManifestPaths": _fsetReadManifestPaths(sProjectRepoPath),
+        "dictManifestPathHashes": dictManifestHashes,
+        "setManifestPaths": set(dictManifestHashes.keys()),
         "setNondeterministicSteps": _fsetNondeterministicSteps(
             dictWorkflow,
         ),
-        "dictEnvironment": _fdictReadEnvironmentForL3(sProjectRepoPath),
-        "sProjectRepoPath": sProjectRepoPath,
+        "dictEnvironment": _fdictReadEnvironmentForL3(filesRepo),
+        "dictScriptHashesOnDisk": filesRepo.fdictHashFiles(
+            _flistAllStepScriptPaths(dictWorkflow),
+        ),
         "listDeclaredBinaries": _flistDeclaredBinariesNormalized(
             dictWorkflow,
         ),
@@ -1621,18 +1812,28 @@ def _fdictL3PerStepContext(dictWorkflow, sProjectRepoPath):
     }
 
 
-def _fdictReadManifestPathHashes(sProjectRepoPath):
+def _flistAllStepScriptPaths(dictWorkflow):
+    """Return the deduplicated script paths across every workflow step."""
+    from .manifestPaths import flistStepScriptRepoPaths
+    setPaths = set()
+    for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
+        if isinstance(dictStep, dict):
+            setPaths.update(flistStepScriptRepoPaths(dictStep))
+    return sorted(sPath for sPath in setPaths if sPath)
+
+
+def _fdictReadManifestPathHashes(filesRepo):
     """Return ``{sPath: sExpected}`` for every manifest entry, or {}."""
     try:
-        listEntries = flistParseManifestLines(sProjectRepoPath)
+        listEntries = flistParseManifestLines(filesRepo)
     except (FileNotFoundError, OSError, ValueError):
         return {}
     return {d["sPath"]: d["sExpected"] for d in listEntries}
 
 
-def _fsetReadManifestPaths(sProjectRepoPath):
+def _fsetReadManifestPaths(filesRepo):
     """Return the set of paths declared in MANIFEST.sha256."""
-    return set(_fdictReadManifestPathHashes(sProjectRepoPath).keys())
+    return set(_fdictReadManifestPathHashes(filesRepo).keys())
 
 
 def _fsetNondeterministicSteps(dictWorkflow):
@@ -1647,10 +1848,10 @@ def _fsetNondeterministicSteps(dictWorkflow):
     return setIndices
 
 
-def _fdictReadEnvironmentForL3(sProjectRepoPath):
+def _fdictReadEnvironmentForL3(filesRepo):
     """Return the parsed environment.json or an empty dict."""
     from .environmentSnapshot import fdictReadEnvironmentJson
-    dictEnv = fdictReadEnvironmentJson(sProjectRepoPath)
+    dictEnv = fdictReadEnvironmentJson(filesRepo)
     return dictEnv if isinstance(dictEnv, dict) else {}
 
 
@@ -1752,33 +1953,28 @@ def _flistStepPathsMissingFromManifest(dictStep, dictContext):
 def _flistStepScriptsDriftedFromManifest(dictStep, dictContext):
     """Return step scripts whose on-disk hash differs from MANIFEST.sha256."""
     from .manifestPaths import flistStepScriptRepoPaths
-    from .provenanceTracker import fsComputeFileHash
     dictHashes = dictContext["dictManifestPathHashes"]
-    sRepoRoot = dictContext["sProjectRepoPath"]
+    dictOnDisk = dictContext.get("dictScriptHashesOnDisk") or {}
     listDrifted = []
     for sScriptPath in flistStepScriptRepoPaths(dictStep):
         sExpected = dictHashes.get(sScriptPath)
         if sExpected is None:
             continue
-        if _fbScriptHashMatches(
-            sRepoRoot, sScriptPath, sExpected, fsComputeFileHash,
-        ):
+        if _fbScriptHashMatches(dictOnDisk, sScriptPath, sExpected):
             continue
         listDrifted.append(sScriptPath)
     return listDrifted
 
 
-def _fbScriptHashMatches(
-    sRepoRoot, sScriptPath, sExpected, fnHash,
-):
-    """Return True iff ``sScriptPath`` on disk hashes to ``sExpected``."""
-    pathFile = Path(sRepoRoot) / sScriptPath
-    if not pathFile.is_file():
-        return False
-    try:
-        return fnHash(str(pathFile)) == sExpected
-    except (OSError, ValueError):
-        return False
+def _fbScriptHashMatches(dictOnDisk, sScriptPath, sExpected):
+    """Return True iff the batched on-disk hash equals ``sExpected``.
+
+    Pure dict lookup against the per-context batch; a missing or
+    unhashable script (``sSha256`` of ``None``) counts as drifted so
+    the blocker stays visible.
+    """
+    sActual = (dictOnDisk.get(sScriptPath) or {}).get("sSha256")
+    return bool(sActual) and sActual == sExpected
 
 
 def _flistStepCommandStrings(dictStep):

@@ -27,7 +27,9 @@ Symbolic links anywhere on a declared path — leaf or intermediate
 directory — are rejected at write and verify time. Following them
 would let the manifest hash a target the declared path no longer
 points to. The first symlink component on the path is named in the
-error so the offending segment is easy to locate.
+error so the offending segment is easy to locate. The enforcement
+lives in the ``repoFiles`` adapter so it runs *inside* the container
+when the repo lives there.
 
 Path escaping follows the GNU ``sha256sum`` convention. When a
 path contains a literal newline or backslash, the line is prefixed
@@ -36,12 +38,18 @@ with a single backslash and the path itself is encoded with
 prefix tells ``sha256sum -c`` that the path is escaped; with this
 convention an attacker cannot smuggle a forged second line through
 the manifest by injecting a newline into a filename.
+
+Every public function accepts either a project-repo path string
+(wrapped in ``HostRepoFiles``) or a ``repoFiles`` adapter, so the
+same code is correct on a host clone and inside a container.
 """
 
 import os
-from pathlib import Path
 
-from vaibify.reproducibility.provenanceTracker import fsComputeFileHash
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
+)
 from vaibify.reproducibility.manifestPaths import (
     TUPLE_OUTPUT_KEYS,
     flistStepScriptRepoPaths,
@@ -66,26 +74,30 @@ _MANIFEST_HEADER = "# SHA-256 manifest of workflow artefacts\n"
 _OUTPUT_KEYS = TUPLE_OUTPUT_KEYS
 
 
-def fnWriteManifest(sProjectRepo, dictWorkflow):
+def fnWriteManifest(filesRepo, dictWorkflow):
     """Write a sorted SHA-256 manifest of every declared workflow artefact.
 
     Walks ``dictWorkflow['listSteps']`` and collects every output path
     (``saOutputFiles``, ``saPlotFiles``, ``saDataFiles``), every step
     script referenced by ``saDataCommands`` / ``saPlotCommands``, and
-    every test ``sStandardsPath`` under ``dictTests``. Hashes each
-    file with ``fsComputeFileHash`` and writes GNU shasum format
+    every test ``sStandardsPath`` under ``dictTests``. Hashes the
+    files in one adapter batch and writes GNU shasum format
     (``<hash>  <relpath>\\n``, escaped when needed) to
-    ``<sProjectRepo>/MANIFEST.sha256``. Paths are repo-relative
-    POSIX, sorted lexicographically. Raises ``ValueError`` if any
-    component on a declared path is a symbolic link.
+    ``<repo>/MANIFEST.sha256``. Paths are repo-relative POSIX, sorted
+    lexicographically. Raises ``ValueError`` if any component on a
+    declared path is a symbolic link or escapes the repo root.
     """
-    pathRepo = Path(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     listRelativePaths = _flistCollectManifestPaths(dictWorkflow)
-    listEntries = _flistBuildManifestEntries(pathRepo, listRelativePaths)
-    _fnWriteManifestFile(pathRepo, listEntries)
+    listEntries = _flistBuildManifestEntries(filesRepo, listRelativePaths)
+    sBody = _MANIFEST_HEADER + "".join(
+        _fsFormatManifestLine(sHash, sRelativePath)
+        for sHash, sRelativePath in listEntries
+    )
+    filesRepo.fnWriteTextAtomic(_MANIFEST_FILENAME, sBody)
 
 
-def flistVerifyManifest(sProjectRepo):
+def flistVerifyManifest(filesRepo):
     """Recompute hashes for every manifest entry and report mismatches.
 
     Returns a list of dicts of the form
@@ -99,19 +111,24 @@ def flistVerifyManifest(sProjectRepo):
     ``flistDeclaredButMissingFromManifest`` query, which both the
     dashboard route and the reproduce CLI consume.
     """
-    pathRepo = Path(sProjectRepo)
-    listEntries = flistParseManifestLines(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listEntries = flistParseManifestLines(filesRepo)
+    dictHashed = _fdictHashCheckedPaths(
+        filesRepo, [dictEntry["sPath"] for dictEntry in listEntries],
+    )
     listMismatches = []
     for dictEntry in listEntries:
-        dictMismatch = _fdictCheckEntry(
-            pathRepo, dictEntry["sExpected"], dictEntry["sPath"],
-        )
-        if dictMismatch is not None:
-            listMismatches.append(dictMismatch)
+        sActual = dictHashed[dictEntry["sPath"]]
+        if sActual != dictEntry["sExpected"]:
+            listMismatches.append({
+                "sPath": dictEntry["sPath"],
+                "sExpected": dictEntry["sExpected"],
+                "sActual": sActual,
+            })
     return listMismatches
 
 
-def flistDeclaredButMissingFromManifest(sProjectRepo, dictWorkflow):
+def flistDeclaredButMissingFromManifest(filesRepo, dictWorkflow):
     """Return repo-relative paths the workflow declares but the manifest omits.
 
     Pure helper that surfaces the manifest-completeness gap honestly.
@@ -120,13 +137,13 @@ def flistDeclaredButMissingFromManifest(sProjectRepo, dictWorkflow):
     is silently weaker than the new envelope guarantees. Raises
     ``FileNotFoundError`` when the manifest is absent.
     """
-    listEntries = flistParseManifestLines(sProjectRepo)
+    listEntries = flistParseManifestLines(filesRepo)
     setManifestPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     listDeclared = _flistCollectManifestPaths(dictWorkflow)
     return [sPath for sPath in listDeclared if sPath not in setManifestPaths]
 
 
-def flistParseManifestLines(sProjectRepo):
+def flistParseManifestLines(filesRepo):
     """Return parsed manifest entries as a list of dicts.
 
     Each dict has ``sPath`` (repo-relative path, un-escaped) and
@@ -135,21 +152,24 @@ def flistParseManifestLines(sProjectRepo):
     number and offending content). Raises ``FileNotFoundError`` when
     the manifest is absent.
     """
-    pathManifest = Path(sProjectRepo) / _MANIFEST_FILENAME
-    if not pathManifest.is_file():
-        raise FileNotFoundError(f"manifest not found: '{pathManifest}'")
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.fbIsFile(_MANIFEST_FILENAME):
+        sDisplayPath = os.path.join(
+            fsRepoRootOf(filesRepo), _MANIFEST_FILENAME,
+        )
+        raise FileNotFoundError(f"manifest not found: '{sDisplayPath}'")
     listEntries = []
-    with open(pathManifest, "r", encoding="utf-8") as fileHandle:
-        for iLineNumber, sLine in enumerate(fileHandle, start=1):
-            dictEntry = _fdictParseManifestLine(sLine, iLineNumber)
-            if dictEntry is not None:
-                listEntries.append(dictEntry)
+    listLines = filesRepo.fsReadText(_MANIFEST_FILENAME).splitlines(True)
+    for iLineNumber, sLine in enumerate(listLines, start=1):
+        dictEntry = _fdictParseManifestLine(sLine, iLineNumber)
+        if dictEntry is not None:
+            listEntries.append(dictEntry)
     return listEntries
 
 
-def fiCountManifestEntries(sProjectRepo):
+def fiCountManifestEntries(filesRepo):
     """Return the number of non-comment, non-blank entries in the manifest."""
-    return len(flistParseManifestLines(sProjectRepo))
+    return len(flistParseManifestLines(filesRepo))
 
 
 def _flistCollectManifestPaths(dictWorkflow):
@@ -190,81 +210,66 @@ def _fsNormalizeRelativePath(sPath):
     return str(sPath)
 
 
-def _flistBuildManifestEntries(pathRepo, listRelativePaths):
+def _flistBuildManifestEntries(filesRepo, listRelativePaths):
     """Return a list of ``(hash, relpath)`` tuples in sorted-input order."""
+    dictHashed = _fdictHashCheckedPaths(filesRepo, listRelativePaths)
     listEntries = []
     for sRelativePath in listRelativePaths:
-        pathFile = pathRepo / sRelativePath
-        _fnRejectSymlinkComponent(pathRepo, sRelativePath)
-        _fnRejectPathEscape(pathRepo, sRelativePath)
-        sHash = fsComputeFileHash(str(pathFile))
+        sHash = dictHashed[sRelativePath]
+        if sHash is None:
+            _fnRaiseUnhashableFile(filesRepo, sRelativePath)
         listEntries.append((sHash, sRelativePath))
     return listEntries
 
 
-def _fnRejectPathEscape(pathRepo, sRelativePath):
-    """Raise ``ValueError`` if the relative path escapes ``pathRepo``.
+def _fdictHashCheckedPaths(filesRepo, listRelativePaths):
+    """Hash paths in one adapter batch, raising on symlink/escape findings.
 
-    Rejects absolute paths and any relative path whose realpath does
-    not stay strictly inside ``pathRepo``. Symlink rejection runs
-    first; this guard catches plain ``..`` traversal that bypasses the
-    symlink check because ``..`` is not itself a link.
+    Returns ``{sRelativePath: sSha256_or_None}``. ``None`` means the
+    file is absent or unreadable; the *write* path treats that as an
+    error while the *verify* path reports it as a mismatch with
+    ``sActual = None``, matching the historical contracts.
     """
+    for sRelativePath in listRelativePaths:
+        _fnRejectAbsolutePath(sRelativePath)
+    dictResults = filesRepo.fdictHashFiles(listRelativePaths)
+    dictHashed = {}
+    for sRelativePath in listRelativePaths:
+        dictEntry = dictResults.get(sRelativePath) or {}
+        _fnRejectAdapterFindings(sRelativePath, dictEntry)
+        dictHashed[sRelativePath] = dictEntry.get("sSha256")
+    return dictHashed
+
+
+def _fnRejectAbsolutePath(sRelativePath):
+    """Raise ``ValueError`` when a declared path is absolute."""
     if os.path.isabs(sRelativePath):
         raise ValueError(
             f"refusing to hash absolute path: '{sRelativePath}'"
         )
-    sRepoReal = os.path.realpath(str(pathRepo))
-    sCandidateReal = os.path.realpath(os.path.join(sRepoReal, sRelativePath))
-    if sCandidateReal != sRepoReal and not sCandidateReal.startswith(
-        sRepoReal + os.sep,
-    ):
-        raise ValueError(
-            f"refusing to hash path escaping repo root: '{sRelativePath}'"
-        )
 
 
-def _fnRejectSymlinkComponent(pathRepo, sRelativePath):
-    """Raise ``ValueError`` if any component of the path is a symlink.
-
-    Walks the relative path one segment at a time from ``pathRepo``
-    and uses ``Path.is_symlink`` (which inspects the link itself,
-    not the target). The first offending component is reported by
-    name so the user can locate it without scanning the full tree.
-    """
-    sFirstSymlink = _fsFindFirstSymlinkSegment(pathRepo, sRelativePath)
+def _fnRejectAdapterFindings(sRelativePath, dictEntry):
+    """Raise ``ValueError`` for symlink-component or escape findings."""
+    sFirstSymlink = dictEntry.get("sSymlinkSegment")
     if sFirstSymlink is not None:
         raise ValueError(
             f"refusing to hash path crossing symlink '{sFirstSymlink}' "
             f"in declared output: '{sRelativePath}'"
         )
+    if dictEntry.get("bEscapesRoot"):
+        raise ValueError(
+            f"refusing to hash path escaping repo root: '{sRelativePath}'"
+        )
 
 
-def _fsFindFirstSymlinkSegment(pathRepo, sRelativePath):
-    """Return the first symlinked segment along the path, or ``None``."""
-    listSegments = _flistSplitRelativePath(sRelativePath)
-    pathCurrent = pathRepo
-    for sSegment in listSegments:
-        pathCurrent = pathCurrent / sSegment
-        if pathCurrent.is_symlink():
-            return sSegment
-    return None
-
-
-def _flistSplitRelativePath(sRelativePath):
-    """Split a relative path into ordered segments, ignoring empties."""
-    sNormalized = _fsNormalizeRelativePath(sRelativePath)
-    return [sPart for sPart in sNormalized.split("/") if sPart]
-
-
-def _fnWriteManifestFile(pathRepo, listEntries):
-    """Persist the manifest, header first then sorted shasum lines."""
-    pathManifest = pathRepo / _MANIFEST_FILENAME
-    pathManifest.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathManifest, "w", encoding="utf-8", newline="\n") as fileHandle:
-        fileHandle.write(_MANIFEST_HEADER)
-        for sHash, sRelativePath in listEntries:
-            fileHandle.write(_fsFormatManifestLine(sHash, sRelativePath))
+def _fnRaiseUnhashableFile(filesRepo, sRelativePath):
+    """Raise ``FileNotFoundError`` naming the unhashable declared file."""
+    sDisplayPath = os.path.join(fsRepoRootOf(filesRepo), sRelativePath)
+    raise FileNotFoundError(
+        "Cannot hash file (refusing to follow symlink or open): "
+        f"'{sDisplayPath}'"
+    )
 
 
 def _fsFormatManifestLine(sHash, sRelativePath):
@@ -324,24 +329,3 @@ def _fdictParseManifestLine(sLine, iLineNumber):
     sStoredPath = sBody[iSplit + len(sSeparator):]
     sPath = _fsUnescapeManifestPath(sStoredPath) if bEscaped else sStoredPath
     return {"sPath": sPath, "sExpected": sHash}
-
-
-def _fdictCheckEntry(pathRepo, sExpectedHash, sRelativePath):
-    """Return mismatch dict or ``None`` when hashes agree."""
-    _fnRejectSymlinkComponent(pathRepo, sRelativePath)
-    _fnRejectPathEscape(pathRepo, sRelativePath)
-    pathFile = pathRepo / sRelativePath
-    if not pathFile.is_file():
-        return {
-            "sPath": sRelativePath,
-            "sExpected": sExpectedHash,
-            "sActual": None,
-        }
-    sActualHash = fsComputeFileHash(str(pathFile))
-    if sActualHash == sExpectedHash:
-        return None
-    return {
-        "sPath": sRelativePath,
-        "sExpected": sExpectedHash,
-        "sActual": sActualHash,
-    }

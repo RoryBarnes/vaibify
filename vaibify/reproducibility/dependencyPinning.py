@@ -12,12 +12,18 @@ The module exposes three orthogonal helpers: a generator
 (``fbIsUvAvailable``).
 """
 
+import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from vaibify.reproducibility.credentialRedactor import (
     fsRedactCredentials,
+)
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
 )
 
 
@@ -42,32 +48,55 @@ def fbIsUvAvailable():
     return shutil.which("uv") is not None
 
 
-def fnGenerateRequirementsLock(sProjectRepo):
-    """Generate ``<sProjectRepo>/requirements.lock`` via ``uv``.
+def fnGenerateRequirementsLock(filesRepo):
+    """Generate ``<repo>/requirements.lock`` via ``uv``.
 
     Selects the input source in priority order: ``pyproject.toml``
     first, then ``requirements.in``. Raises ``FileNotFoundError`` if
     ``uv`` is missing or neither input file exists. Surfaces uv
     failures as ``subprocess.CalledProcessError``.
+
+    ``uv`` runs on the host. When the repo is a host directory, uv
+    compiles in place. When the repo lives in a container, the input
+    file is staged into a host temp directory, compiled there, and
+    the resulting lockfile is written back through the adapter.
     """
-    pathRepo = Path(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbIsUvAvailable():
         raise FileNotFoundError(_S_UV_MISSING_MESSAGE)
-    sInput = _fsResolveLockInput(pathRepo)
-    _fnRunUvCompile(pathRepo, sInput)
+    sInput = _fsResolveLockInput(filesRepo)
+    sLocalRoot = filesRepo.fsLocalRootOrNone()
+    if sLocalRoot is not None:
+        _fnRunUvCompile(Path(sLocalRoot), sInput)
+        return
+    _fnCompileLockViaStaging(filesRepo, sInput)
 
 
-def _fsResolveLockInput(pathRepo):
+def _fnCompileLockViaStaging(filesRepo, sInput):
+    """Compile the lock in a host temp directory; write back via adapter."""
+    sInputContents = filesRepo.fsReadText(sInput)
+    with tempfile.TemporaryDirectory() as sStagingDir:
+        sStagedInput = os.path.join(sStagingDir, sInput)
+        with open(sStagedInput, "w", encoding="utf-8") as fileHandle:
+            fileHandle.write(sInputContents)
+        _fnRunUvCompile(Path(sStagingDir), sInput)
+        with open(
+            os.path.join(sStagingDir, _S_LOCK_FILENAME),
+            "r", encoding="utf-8",
+        ) as fileHandle:
+            sLockContents = fileHandle.read()
+    filesRepo.fnWriteTextAtomic(_S_LOCK_FILENAME, sLockContents)
+
+
+def _fsResolveLockInput(filesRepo):
     """Return the input filename uv should compile from."""
-    pathPyproject = pathRepo / "pyproject.toml"
-    pathRequirements = pathRepo / "requirements.in"
-    if pathPyproject.is_file():
+    if filesRepo.fbIsFile("pyproject.toml"):
         return "pyproject.toml"
-    if pathRequirements.is_file():
+    if filesRepo.fbIsFile("requirements.in"):
         return "requirements.in"
     raise FileNotFoundError(
         "No dependency input found in '"
-        + str(pathRepo)
+        + fsRepoRootOf(filesRepo)
         + "'; expected pyproject.toml or requirements.in"
     )
 
@@ -126,7 +155,7 @@ def _fnRunUvCompile(pathRepo, sInput):
         )
 
 
-def flistVerifyRequirementsLock(sProjectRepo):
+def flistVerifyRequirementsLock(filesRepo):
     """Return a list of structural issues with the lockfile.
 
     An empty list means the lockfile exists, parses, and every
@@ -134,17 +163,18 @@ def flistVerifyRequirementsLock(sProjectRepo):
     This is a format-only check; actual install verification is the
     user's call to ``pip install --require-hashes``.
     """
-    pathLock = Path(sProjectRepo) / _S_LOCK_FILENAME
-    if not pathLock.is_file():
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sDisplayPath = os.path.join(fsRepoRootOf(filesRepo), _S_LOCK_FILENAME)
+    if not filesRepo.fbIsFile(_S_LOCK_FILENAME):
         return [
-            "requirements.lock not found at '" + str(pathLock) + "'"
+            "requirements.lock not found at '" + sDisplayPath + "'"
         ]
-    sContents = pathLock.read_text()
+    sContents = filesRepo.fsReadText(_S_LOCK_FILENAME)
     listEntries = _flistParseLockEntries(sContents)
     if not listEntries:
         return [
             "requirements.lock at '"
-            + str(pathLock)
+            + sDisplayPath
             + "' contains no dependency entries"
         ]
     return _flistFindUnhashedEntries(listEntries)

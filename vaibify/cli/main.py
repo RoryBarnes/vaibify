@@ -4,26 +4,43 @@ Registers all subcommands with the top-level Click group.
 """
 
 import logging
+import logging.handlers
 import os
 import subprocess
 import sys
 
 import click
 
+I_LOG_MAX_BYTES = 10 * 1024 * 1024
+I_LOG_BACKUP_COUNT = 5
 
-def _fnConfigureErrorLogging():
-    """Write vaibify activity to ~/.vaibify/vaibify.log."""
-    sLogDir = os.path.expanduser("~/.vaibify")
+
+def _fbHasFileHandlerAttached(loggerVaibify):
+    """Return True when any file handler is already attached."""
+    return any(
+        isinstance(handlerExisting, logging.FileHandler)
+        for handlerExisting in loggerVaibify.handlers
+    )
+
+
+def _fnConfigureErrorLogging(sLogDirOverride=None):
+    """Attach one rotating file handler for ~/.vaibify/vaibify.log."""
+    sLogDir = sLogDirOverride or os.path.expanduser("~/.vaibify")
     os.makedirs(sLogDir, exist_ok=True)
     sLogPath = os.path.join(sLogDir, "vaibify.log")
-    fileHandler = logging.FileHandler(sLogPath)
-    fileHandler.setLevel(logging.INFO)
-    fileHandler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    ))
     loggerVaibify = logging.getLogger("vaibify")
     loggerVaibify.setLevel(logging.INFO)
-    loggerVaibify.addHandler(fileHandler)
+    if _fbHasFileHandlerAttached(loggerVaibify):
+        return
+    rotatingHandler = logging.handlers.RotatingFileHandler(
+        sLogPath, maxBytes=I_LOG_MAX_BYTES,
+        backupCount=I_LOG_BACKUP_COUNT,
+    )
+    rotatingHandler.setLevel(logging.INFO)
+    rotatingHandler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    ))
+    loggerVaibify.addHandler(rotatingHandler)
 
 from .commandBuild import build
 from .commandCat import cat
@@ -59,7 +76,6 @@ def _fnEnsureFirstTimeSetup():
 
 
 _fnEnsureFirstTimeSetup()
-_fnConfigureErrorLogging()
 
 
 @click.group(invoke_without_command=True)
@@ -77,6 +93,7 @@ _fnConfigureErrorLogging()
 @click.pass_context
 def main(ctx, sConfigPath, iPort):
     """Vaibify - Vibe boldly. Verify everything."""
+    _fnConfigureErrorLogging()
     if sConfigPath:
         from .configLoader import fnSetConfigPath
         fnSetConfigPath(sConfigPath)

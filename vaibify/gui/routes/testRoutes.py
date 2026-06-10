@@ -12,6 +12,7 @@ from ..fileStatusManager import (
     fsWorkflowSlugFromPath,
 )
 from vaibify.reproducibility.levelGates import fiAICSLevel
+from ..routeContext import ffilesForWorkflow
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
     fbDeriveUnnecessaryVerification,
@@ -344,7 +345,8 @@ def _fdictResolveCategoryContext(
         dictStep, sDictKey, sCategory,
     )
     iLevelBefore = fiAICSLevel(
-        dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+        dictWorkflow,
+        ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
     )
     return (
         dictWorkflow, dictStep, dictCat, listCmds, sVerifKey, iLevelBefore,
@@ -420,7 +422,8 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         iLevelBefore = fiAICSLevel(
-            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+            dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
         _fnPersistTestEdit(dictCtx["docker"], sContainerId, request)
         resultExec = await _fresultRunSaveAndRunTest(
@@ -457,7 +460,8 @@ def _fnRegisterTestRun(app, dictCtx):
         if not listCmds:
             raise HTTPException(400, "No test commands")
         iLevelBefore = fiAICSLevel(
-            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+            dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
         dictCategoryResults = await _fdictRunAllTestCategories(
             dictCtx, sContainerId, dictStep,

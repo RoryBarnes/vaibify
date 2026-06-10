@@ -80,7 +80,7 @@ def test_fbDeclarationFileExists_empty_relative_path_returns_false():
 
 def test_fnWriteDeclarationTemplate_rejects_empty_project_repo():
     """Validation: empty project repo raises ValueError before any IO."""
-    with pytest.raises(ValueError, match="sProjectRepoPath"):
+    with pytest.raises(ValueError, match="project repo path or adapter"):
         fnWriteDeclarationTemplate("", "AI_USAGE.md")
 
 
@@ -303,12 +303,12 @@ def test_fnInvalidateAttestation_returns_false_when_missing(tmp_path):
 
 
 def test_fnInvalidateAttestation_returns_false_when_os_remove_fails(tmp_path):
-    """Lines 161-162: an OSError during os.remove returns False, not raise."""
+    """An OSError during the adapter's file removal returns False, not raise."""
     pathDir = tmp_path / ".vaibify"
     pathDir.mkdir(parents=True, exist_ok=True)
     (pathDir / "l3_attestation.json").write_text("{}")
     with patch(
-        "vaibify.reproducibility.l3Attestation.os.remove",
+        "vaibify.reproducibility.repoFiles.os.remove",
         side_effect=OSError("permission denied"),
     ):
         assert fnInvalidateAttestation(str(tmp_path)) is False
@@ -343,7 +343,7 @@ def test_atomic_write_cleans_up_temp_on_failure(tmp_path):
         1.0, 1, 1, [], "",
     )
     with patch(
-        "vaibify.reproducibility.l3Attestation.os.replace",
+        "vaibify.reproducibility.repoFiles.os.replace",
         side_effect=OSError("disk full"),
     ):
         with pytest.raises(OSError):
@@ -371,10 +371,10 @@ def test_atomic_write_cleanup_tolerates_missing_temp(tmp_path):
         1.0, 1, 1, [], "",
     )
     with patch(
-        "vaibify.reproducibility.l3Attestation.os.replace",
+        "vaibify.reproducibility.repoFiles.os.replace",
         side_effect=OSError("disk full"),
     ), patch(
-        "vaibify.reproducibility.l3Attestation.os.remove",
+        "vaibify.reproducibility.repoFiles.os.remove",
         side_effect=OSError("temp missing"),
     ):
         with pytest.raises(OSError, match="disk full"):

@@ -5097,12 +5097,58 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-size: 11px;
 }
 
+/* L1 blocker glyphs (Self-Consistent gate). Red per the
+   level-by-color scheme: L1=red, L2=amber, L3=blue; the user
+   attestation glyph is orange because it awaits a human click rather
+   than signalling a broken artifact. */
+.step-blocker-glyph {
+    margin-left: 4px;
+    cursor: help;
+}
+
+.step-blocker-glyph-axis,
+.step-blocker-glyph-upstream {
+    color: var(--color-red);
+}
+
+.step-blocker-glyph-user {
+    color: var(--color-orange);
+}
+
 .step-blocker-glyph-attestation-stale {
     color: var(--color-orange);
 }
 
 .step-blocker-glyph-script-stale {
     color: var(--color-orange);
+}
+
+.l1-blocker-file-glyph {
+    color: var(--color-red);
+    margin-right: 4px;
+    cursor: help;
+}
+
+/* Legend-panel "Other marks" samples. The blocker and badge marks
+   reuse their live classes; these classes style the marks that are
+   normally scoped to the file list (red-text modifiers) or have no
+   standalone glyph (the green check). */
+.aics-legend-check-sample {
+    color: #4caf50;
+}
+
+.aics-legend-red-missing-sample {
+    color: #c91111;
+}
+
+.aics-legend-red-stale-sample {
+    color: #c91111;
+    text-decoration: underline dotted;
+}
+
+.aics-legend-red-unattested-sample {
+    color: #c91111;
+    font-style: italic;
 }
 
 /* L2 blocker glyphs (Publication gate: GitHub + Zenodo + Overleaf +

@@ -8,7 +8,26 @@ The class also acts as a dict for backward compatibility — existing
 code using ``dictCtx["key"]`` continues to work unchanged.
 """
 
-__all__ = ["RouteContext"]
+__all__ = ["RouteContext", "ffilesForWorkflow"]
+
+
+def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):
+    """Return the repo-file adapter for a workflow's project repo.
+
+    Production contexts carry a ``files`` callable that builds a
+    ``ContainerRepoFiles`` rooted at the workflow's project repo —
+    ``sProjectRepoPath`` is a container path, so container IO is the
+    only honest reader. Legacy and test contexts without the callable
+    fall back to a host adapter over the raw path string, preserving
+    host-clone semantics.
+    """
+    fnFiles = dictCtx.get("files")
+    if fnFiles is not None:
+        return fnFiles(sContainerId)
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    return ffilesEnsureRepoFiles(
+        (dictWorkflow or {}).get("sProjectRepoPath") or "",
+    )
 
 
 class RouteContext:
@@ -79,6 +98,10 @@ class RouteContext:
     def workflowDir(self, sContainerId):
         """Return the workflow directory path for a container."""
         return self._dictRaw["workflowDir"](sContainerId)
+
+    def files(self, sContainerId):
+        """Return a ContainerRepoFiles rooted at the workflow's project repo."""
+        return self._dictRaw["files"](sContainerId)
 
     # --- dict-compatible access for backward compatibility ---
 

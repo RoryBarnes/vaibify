@@ -354,10 +354,12 @@ var PipeleyenFileOps = (function () {
     }
 
     function _fnApplyBlockerTooltip(elText, iStep, sRaw) {
-        // Section G: tooltip on file-list red glyphs sources from
-        // ``dictEntry.sRemediationHint`` when the file appears in any
-        // blocker's ``listOffendingFiles`` at any level. Falls back to
-        // the resolved-path title only when no blocker matches.
+        // Section G: tooltip on file-list red glyphs sources from the
+        // per-file ``dictOffendingFileHints`` entry, then the owning
+        // blocker's ``sRemediationHint`` — but only when the file
+        // appears in a blocker's ``listOffendingFiles``. Files that
+        // are not individually offending keep the resolved-path title;
+        // the step-level hint belongs to the banner glyph, not here.
         if (!PipeleyenApp.fsBlockerHintForFile) return;
         var sHint = PipeleyenApp.fsBlockerHintForFile(iStep, sRaw);
         if (sHint) {

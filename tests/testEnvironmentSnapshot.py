@@ -347,7 +347,7 @@ def test_fnWriteEnvironmentJson_atomic_replace_preserves_old(tmp_path):
         "vaibify.reproducibility.environmentSnapshot._fsCurrentTimestamp",
         return_value=sFakeStamp,
     ), patch(
-        "vaibify.reproducibility.environmentSnapshot.os.replace",
+        "vaibify.reproducibility.repoFiles.os.replace",
         side_effect=fnFailingReplace,
     ):
         with pytest.raises(OSError):
@@ -371,3 +371,104 @@ def test_capture_binary_version_returns_none_for_none_path():
     """A ``None`` ``sPath`` must short-circuit instead of crashing."""
     sVersion = _fsCaptureBinaryVersion(None)
     assert sVersion is None
+
+
+# ------------------------------------------------------------------
+# fbBinaryCaptured honesty: a null-hash record is NOT a capture
+# ------------------------------------------------------------------
+
+
+def _fdictEnvWithBinaryEntry(dictEntry):
+    """Wrap one binary entry in the canonical environment.json layout."""
+    return {"dictHostBinaries": {"listBinaries": [dictEntry]}}
+
+
+def test_binary_captured_requires_a_real_hash():
+    from vaibify.reproducibility.environmentSnapshot import (
+        fbBinaryCaptured,
+    )
+    dictEnv = _fdictEnvWithBinaryEntry({
+        "sBinaryPath": "/usr/local/bin/tool",
+        "sSha256": "a" * 64,
+        "sVersion": "tool 1.0",
+    })
+    assert fbBinaryCaptured(dictEnv, "/usr/local/bin/tool") is True
+
+
+@pytest.mark.parametrize("badSha256", [None, ""])
+def test_binary_with_null_hash_does_not_count_as_captured(badSha256):
+    """A ``{sBinaryPath, sSha256: None}`` record proves nothing.
+
+    Without this conjunct a failed capture (binary missing at capture
+    time) would permanently satisfy the ``binary-not-captured``
+    blocker while attesting to a binary identity nobody ever hashed.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fbBinaryCaptured,
+    )
+    dictEnv = _fdictEnvWithBinaryEntry({
+        "sBinaryPath": "/usr/local/bin/tool",
+        "sSha256": badSha256,
+        "sVersion": None,
+    })
+    assert fbBinaryCaptured(dictEnv, "/usr/local/bin/tool") is False
+
+
+def test_null_hash_entry_keeps_binary_not_captured_blocker_up():
+    """The L3 blocker stays up until a real hash exists for the binary."""
+    from vaibify.reproducibility.levelGates import (
+        _flistDeclaredBinariesNotCaptured,
+    )
+    dictStep = {
+        "saDataCommands": ["/usr/local/bin/tool --run input.dat"],
+    }
+    dictContext = {
+        "listDeclaredBinaries": [{
+            "sBinaryPath": "/usr/local/bin/tool",
+            "sPurpose": "model integration",
+            "sExpectedVersion": "1.0",
+        }],
+        "dictEnvironment": _fdictEnvWithBinaryEntry({
+            "sBinaryPath": "/usr/local/bin/tool",
+            "sSha256": None,
+            "sVersion": None,
+        }),
+    }
+    assert _flistDeclaredBinariesNotCaptured(dictStep, dictContext) == [
+        "/usr/local/bin/tool",
+    ]
+
+
+def test_capture_single_binary_hashes_through_the_adapter():
+    """Hash and version probes run where the repo adapter points.
+
+    A container-rooted adapter must hash the *container's* binary; a
+    host-side hash of a container path silently captures the wrong
+    (or no) file.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictCaptureSingleBinary,
+    )
+
+    class _FakeAdapter:
+        def __init__(self):
+            self.listHashCalls = []
+            self.listRunCalls = []
+
+        def fdictHashAbsolutePaths(self, listAbsPaths):
+            self.listHashCalls.append(list(listAbsPaths))
+            return {sPath: "b" * 64 for sPath in listAbsPaths}
+
+        def ftRunCommand(self, saCommand, fTimeoutSeconds):
+            self.listRunCalls.append(list(saCommand))
+            return (0, "tool 2.0\n", "")
+
+    filesFake = _FakeAdapter()
+    dictEntry = fdictCaptureSingleBinary(filesFake, "/opt/tool")
+    assert dictEntry == {
+        "sBinaryPath": "/opt/tool",
+        "sSha256": "b" * 64,
+        "sVersion": "tool 2.0",
+    }
+    assert filesFake.listHashCalls == [["/opt/tool"]]
+    assert filesFake.listRunCalls == [["/opt/tool", "--version"]]

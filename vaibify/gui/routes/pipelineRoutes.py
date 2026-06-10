@@ -16,6 +16,7 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     fbValidateWebSocketOrigin,
     fdictRequireWorkflow,
+    fiGetSyncEpoch,
     fnHandlePipelineWs,
     fsSanitizeExceptionForClient,
 )
@@ -42,6 +43,8 @@ from ..fileStatusManager import (
     fsWorkflowSlugFromPath,
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
+from ..testStatusManager import fbRefreshAggregateTestStates
+from ..routeContext import ffilesForWorkflow
 from ..pathContract import fdictAbsKeysToRepoRelative
 from ..randomnessLint import fnApplyRandomnessLintToWorkflow
 from ..llmInvoker import fsReadFileFromContainer
@@ -184,8 +187,10 @@ def _fnRegisterPipelineState(app, dictCtx):
         dictState = await fdictReadReconciledState(
             dictCtx, sContainerId,
         )
+        iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
         if dictState is None:
-            return {"bRunning": False}
+            return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
+        dictState["iSyncEpoch"] = iSyncEpoch
         return dictState
 
 
@@ -423,9 +428,13 @@ async def _fdictFetchOutputStatus(
         bPipelineRunning=bPipelineRunning,
     )
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    filesPoll = await asyncio.to_thread(
+        _ffilesFetchPollSnapshot, dictCtx, sContainerId, dictWorkflow,
+        dictModTimes,
+    )
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
-        sWorkflowPath, listInvalidated, sRepoRoot,
+        sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
     )
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(
@@ -617,17 +626,121 @@ def _fdictComputeAllPerStepMtimes(
     }
 
 
+
+
+def _fdictManifestShaCache(dictCtx, sContainerId):
+    """Return the per-container in-memory mtime->sha output cache.
+
+    Process lifetime is the cache's honest scope: every entry is
+    revalidated against the container mtime fetched this same poll
+    before it is reused, so a server restart only costs one rehash
+    batch and a stale entry can never outlive its file.
+    """
+    dictByContainer = dictCtx.setdefault("dictManifestShaCache", {})
+    return dictByContainer.setdefault(sContainerId, {})
+
+
+def _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot):
+    """Return deduplicated repo-relative declared outputs across steps."""
+    from ..fileStatusManager import _flistStepOutputsRepoRelative
+    setPaths = set()
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        setPaths.update(
+            _flistStepOutputsRepoRelative(dictStep, sRepoRoot),
+        )
+    return sorted(sPath for sPath in setPaths if sPath)
+
+
+def _fiCoercePollMtime(mtimeValue):
+    """Return the poll mtime as an int, or None when absent/malformed."""
+    try:
+        return int(float(mtimeValue))
+    except (TypeError, ValueError):
+        return None
+
+
+def _ftSplitCachedAndChanged(listRelPaths, dictMtimesRel, dictShaCache):
+    """Split outputs into cache-validated seed entries and a rehash list."""
+    dictSeed = {}
+    listNeedHash = []
+    for sRelPath in listRelPaths:
+        iMtime = _fiCoercePollMtime(dictMtimesRel.get(sRelPath))
+        dictEntry = dictShaCache.get(sRelPath) or {}
+        bCacheValid = (
+            iMtime is not None
+            and dictEntry.get("iMtime") == iMtime
+            and dictEntry.get("sSha256")
+        )
+        if bCacheValid:
+            dictSeed[sRelPath] = {
+                "sSha256": dictEntry["sSha256"],
+                "sSymlinkSegment": None, "bEscapesRoot": False,
+            }
+        else:
+            listNeedHash.append(sRelPath)
+    return dictSeed, listNeedHash
+
+
+def _fnUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
+    """Record freshly hashed outputs in the in-memory cache."""
+    dictFresh = filesPoll.fdictHashFiles(listHashed)
+    for sRelPath in listHashed:
+        sSha256 = (dictFresh.get(sRelPath) or {}).get("sSha256")
+        iMtime = _fiCoercePollMtime(dictMtimesRel.get(sRelPath))
+        if sSha256 and iMtime is not None:
+            dictShaCache[sRelPath] = {
+                "iMtime": iMtime, "sSha256": sSha256,
+            }
+
+
+def _ffilesFetchPollSnapshot(
+    dictCtx, sContainerId, dictWorkflow, dictModTimes,
+):
+    """Fetch the one-exec container snapshot every poll gate reads.
+
+    Returns the raw repo path string (host dual-accept) when there is
+    no project repo or the context predates the ``files`` callable, so
+    legacy callers and tests keep host-clone semantics.
+    """
+    from vaibify.reproducibility.levelGates import _flistAllStepScriptPaths
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    if not sRepoRoot or dictCtx.get("files") is None:
+        return sRepoRoot
+    dictMtimesRel = fdictAbsKeysToRepoRelative(
+        dict(dictModTimes), sRepoRoot,
+    )
+    dictShaCache = _fdictManifestShaCache(dictCtx, sContainerId)
+    dictSeed, listNeedHash = _ftSplitCachedAndChanged(
+        _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot),
+        dictMtimesRel, dictShaCache,
+    )
+    filesPoll = SnapshotRepoFiles.ffilesFetch(
+        dictCtx["docker"], sContainerId, sRepoRoot,
+        listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
+        listHashRelPaths=listNeedHash,
+        dictSeedHashes=dictSeed,
+    )
+    _fnUpdateShaCache(dictShaCache, filesPoll, listNeedHash, dictMtimesRel)
+    return filesPoll
+
+
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
-    sWorkflowPath, listInvalidated, sRepoRoot,
+    sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
     The outer ``_fdictFetchOutputStatus`` owns the ``dictModTimes``
     normalization so the wire-format invariant has a single
     inspect-this-function home. Helpers here operate on the
-    absolute-keyed mtimes dict.
+    absolute-keyed mtimes dict. ``filesPoll`` is the per-poll container
+    snapshot (one docker exec, fetched by the caller); every level
+    gate and the manifest short-circuit read it so the dashboard
+    reflects container truth. ``sRepoRoot`` remains for path math.
     """
+    if filesPoll is None:
+        filesPoll = sRepoRoot
     from vaibify.reproducibility.levelGates import (
         fiAICSLevel, flistLevel1Blockers, flistLevel2Blockers,
         flistLevel3Blockers,
@@ -641,16 +754,17 @@ def _fdictBuildPollResponseRest(
     dictScriptStatus = _fdictBuildScriptStatus(
         dictWorkflow, dictModTimes, dictVars,
         dictMarkerMtimeByStep=dictMtimes["dictMarkerMtimeByStep"],
+        filesRepo=filesPoll,
     )
     dictWorkflow["iAICSLevel"] = fiAICSLevel(
-        dictWorkflow, sRepoRoot, dictScriptStatus,
+        dictWorkflow, filesPoll, dictScriptStatus,
     )
     listBlockers = flistLevel1Blockers(
-        dictWorkflow, dictMtimes["dictMaxMtimeByStep"], sRepoRoot,
+        dictWorkflow, dictMtimes["dictMaxMtimeByStep"], filesPoll,
         dictScriptStatus,
     )
-    listLevel2Blockers = flistLevel2Blockers(dictWorkflow, sRepoRoot)
-    listLevel3Blockers = flistLevel3Blockers(dictWorkflow, sRepoRoot)
+    listLevel2Blockers = flistLevel2Blockers(dictWorkflow, filesPoll)
+    listLevel3Blockers = flistLevel3Blockers(dictWorkflow, filesPoll)
     return {
         "iAICSLevel": dictWorkflow["iAICSLevel"],
         "listBlockers": listBlockers,
@@ -742,6 +856,7 @@ async def _fdictFetchTestStatus(
     bChanged = _fnApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
+    bChanged = fbRefreshAggregateTestStates(dictWorkflow) or bChanged
     if bChanged:
         dictCtx["save"](sContainerId, dictWorkflow)
     return {
@@ -1170,29 +1285,31 @@ def _fnRegisterManifestVerify(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         listMismatches, listIncomplete = await _ftRunManifestVerify(
-            manifestWriter, dictWorkflow,
+            manifestWriter, dictWorkflow, filesRepo,
         )
         return _fdictBuildManifestVerifyResult(
-            dictWorkflow, listMismatches, listIncomplete,
+            filesRepo, listMismatches, listIncomplete,
         )
 
 
-async def _ftRunManifestVerify(manifestWriter, dictWorkflow):
+async def _ftRunManifestVerify(manifestWriter, dictWorkflow, filesRepo):
     """Run the verify+gap queries off the loop and translate failures.
 
     Raises ``HTTPException`` 409 on missing manifest, 422 on a
     malformed manifest. Returns ``(listMismatches, listIncomplete)``
     on success.
     """
-    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
     try:
         listMismatches = await asyncio.to_thread(
-            manifestWriter.flistVerifyManifest, sProjectRepo,
+            manifestWriter.flistVerifyManifest, filesRepo,
         )
         listIncomplete = await asyncio.to_thread(
             manifestWriter.flistDeclaredButMissingFromManifest,
-            sProjectRepo, dictWorkflow,
+            filesRepo, dictWorkflow,
         )
     except FileNotFoundError as errorMissing:
         raise HTTPException(
@@ -1214,7 +1331,7 @@ async def _ftRunManifestVerify(manifestWriter, dictWorkflow):
 
 
 def _fdictBuildManifestVerifyResult(
-    dictWorkflow, listMismatches, listIncomplete,
+    filesRepo, listMismatches, listIncomplete,
 ):
     """Compose the manifest-verify response payload.
 
@@ -1231,9 +1348,8 @@ def _fdictBuildManifestVerifyResult(
     advisory, not a failure.
     """
     from vaibify.reproducibility import manifestWriter
-    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
     try:
-        iTotal = manifestWriter.fiCountManifestEntries(sProjectRepo)
+        iTotal = manifestWriter.fiCountManifestEntries(filesRepo)
     except FileNotFoundError:
         iTotal = 0
     return {

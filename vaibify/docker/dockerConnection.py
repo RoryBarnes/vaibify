@@ -23,6 +23,14 @@ from dataclasses import dataclass
 
 _CACHED_CONTAINER_USER = {}
 
+# docker-py defaults to a 60-second read timeout, which a slow
+# ``git push`` over docker exec routinely exceeds: the host raises
+# ReadTimeout while the push completes inside the container, leaving
+# the outcome indeterminate. Ten minutes covers large pushes; routes
+# still probe the repository state as a safety net when even this
+# limit is hit.
+I_DOCKER_CLIENT_TIMEOUT_SECONDS = 600
+
 
 def _fsResolveContainerUser(container):
     """Return the unprivileged user baked into the image, cached per id.
@@ -119,7 +127,9 @@ class DockerConnection:
 
     def __init__(self):
         _fnEnsureDockerHost()
-        self._clientDocker = _fmoduleGetDocker().from_env()
+        self._clientDocker = _fmoduleGetDocker().from_env(
+            timeout=I_DOCKER_CLIENT_TIMEOUT_SECONDS,
+        )
         self._dictContainers = {}
 
     def flistGetRunningContainers(self):

@@ -20,9 +20,8 @@ Phase 2 ships the helpers + tests so the foundation is in place and
 validated independently.
 """
 
-import os
-
 from vaibify.reproducibility import manifestWriter
+from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
 from . import mtimeCache
 
@@ -73,17 +72,16 @@ def fsetStaleOutputsForStep(
     return setStale
 
 
-def fbManifestExists(sProjectRepo):
-    """Return True iff ``<sProjectRepo>/MANIFEST.sha256`` is a file."""
-    if not sProjectRepo:
+def fbManifestExists(filesRepo):
+    """Return True iff ``<repo>/MANIFEST.sha256`` is a file."""
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.sRootPath:
         return False
-    return os.path.isfile(
-        os.path.join(sProjectRepo, _MANIFEST_FILENAME),
-    )
+    return filesRepo.fbIsFile(_MANIFEST_FILENAME)
 
 
 def fsetStaleOutputsAgainstManifest(
-    sProjectRepo, listRelPaths, dictCache,
+    filesRepo, listRelPaths, dictCache, dictMtimeHints=None,
 ):
     """Return paths whose current SHA-256 disagrees with MANIFEST.sha256.
 
@@ -93,26 +91,96 @@ def fsetStaleOutputsAgainstManifest(
     listed in the manifest but missing on disk are reported as stale.
     Returns the empty set when the manifest does not exist — the
     caller decides whether absence is meaningful.
+
+    Host-rooted repos keep the persistent on-disk mtime cache;
+    container-rooted repos recompute through the adapter, keyed off
+    container mtimes (``dictMtimeHints``) against the in-memory
+    ``dictCache`` whose honest scope is the server process lifetime.
     """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     setStale = set()
-    if not fbManifestExists(sProjectRepo):
+    if not fbManifestExists(filesRepo):
         return setStale
-    dictManifest = _fdictReadManifestEntries(sProjectRepo)
+    dictManifest = _fdictReadManifestEntries(filesRepo)
     if not dictManifest:
         return setStale
-    for sRelPath in listRelPaths:
-        sExpected = dictManifest.get(sRelPath)
-        if sExpected is None:
-            continue
-        sActual = mtimeCache.fsSha256ForFile(
-            sProjectRepo, sRelPath, dictCache,
-        )
-        if not sActual or sActual != sExpected:
+    listTracked = [s for s in listRelPaths if s in dictManifest]
+    dictActual = _fdictActualShas(
+        filesRepo, listTracked, dictCache, dictMtimeHints or {},
+    )
+    for sRelPath in listTracked:
+        sActual = dictActual.get(sRelPath)
+        if not sActual or sActual != dictManifest[sRelPath]:
             setStale.add(sRelPath)
     return setStale
 
 
-def _fdictReadManifestEntries(sProjectRepo):
+def _fdictActualShas(filesRepo, listTracked, dictCache, dictMtimeHints):
+    """Return ``{sRelPath: sSha256_or_None}`` for the tracked paths."""
+    sLocalRoot = filesRepo.fsLocalRootOrNone()
+    if sLocalRoot is not None:
+        return {
+            sRelPath: mtimeCache.fsSha256ForFile(
+                sLocalRoot, sRelPath, dictCache,
+            )
+            for sRelPath in listTracked
+        }
+    return _fdictContainerShas(
+        filesRepo, listTracked, dictCache, dictMtimeHints,
+    )
+
+
+def _fdictContainerShas(filesRepo, listTracked, dictCache, dictMtimeHints):
+    """Resolve container-side SHA-256s via the in-memory mtime cache.
+
+    A path whose hinted container mtime matches its cached entry
+    reuses the cached digest; everything else is hashed in ONE adapter
+    batch and the cache updated in place. Missing hints force a
+    rehash, never a stale cached answer.
+    """
+    dictShas = {}
+    listNeedHash = []
+    for sRelPath in listTracked:
+        iMtime = _fiCoerceMtime(dictMtimeHints.get(sRelPath))
+        dictEntry = (dictCache or {}).get(sRelPath) or {}
+        bCacheHit = (
+            iMtime is not None
+            and dictEntry.get("iMtime") == iMtime
+            and dictEntry.get("sSha256")
+        )
+        if bCacheHit:
+            dictShas[sRelPath] = dictEntry["sSha256"]
+        else:
+            listNeedHash.append((sRelPath, iMtime))
+    _fnHashAndCache(filesRepo, listNeedHash, dictShas, dictCache)
+    return dictShas
+
+
+def _fnHashAndCache(filesRepo, listNeedHash, dictShas, dictCache):
+    """Batch-hash uncached paths; record results in dictShas + dictCache."""
+    if not listNeedHash:
+        return
+    dictHashed = filesRepo.fdictHashFiles(
+        [sRelPath for sRelPath, _iMtime in listNeedHash],
+    )
+    for sRelPath, iMtime in listNeedHash:
+        sSha256 = (dictHashed.get(sRelPath) or {}).get("sSha256")
+        dictShas[sRelPath] = sSha256
+        if sSha256 and iMtime is not None and dictCache is not None:
+            dictCache[sRelPath] = {"iMtime": iMtime, "sSha256": sSha256}
+
+
+def _fiCoerceMtime(mtimeValue):
+    """Return the mtime as an int, or None when absent/malformed."""
+    if mtimeValue is None:
+        return None
+    try:
+        return int(float(mtimeValue))
+    except (TypeError, ValueError):
+        return None
+
+
+def _fdictReadManifestEntries(filesRepo):
     """Parse MANIFEST.sha256 into a ``{sRelPath: sExpectedHash}`` dict.
 
     Delegates to ``manifestWriter.flistParseManifestLines`` so the
@@ -122,7 +190,7 @@ def _fdictReadManifestEntries(sProjectRepo):
     by the dashboard.
     """
     try:
-        listEntries = manifestWriter.flistParseManifestLines(sProjectRepo)
+        listEntries = manifestWriter.flistParseManifestLines(filesRepo)
     except (FileNotFoundError, ValueError, OSError):
         return {}
     return {dictEntry["sPath"]: dictEntry["sExpected"]

@@ -388,11 +388,21 @@ def _fdictFindStemMatch(
 def _fnStoreCommitHash(
     dictWorkflow, listFilePaths, sCommitHash,
 ):
-    """Store the git commit hash in sync status for each file."""
+    """Store the git commit hash in sync status for each file.
+
+    ``dictSyncStatus`` keys are repo-relative (see
+    ``workflowManager.fnUpdateSyncStatus``), so each incoming path is
+    normalized with ``fsToSyncStatusKey`` before lookup; raw absolute
+    container paths would otherwise silently miss every entry.
+    """
     dictSync = dictWorkflow.get("dictSyncStatus", {})
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     for sPath in listFilePaths:
-        if sPath in dictSync:
-            dictSync[sPath]["sGithubCommit"] = sCommitHash
+        sKey = workflowManager.fsToSyncStatusKey(
+            sPath, sProjectRepoPath,
+        )
+        if sKey in dictSync:
+            dictSync[sKey]["sGithubCommit"] = sCommitHash
 
 
 def fnRegisterAll(app, dictCtx):

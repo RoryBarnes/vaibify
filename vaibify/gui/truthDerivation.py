@@ -84,22 +84,34 @@ def _fnFillAllAxes(
     )
 
 
+_T_GREEN_AXIS_VALUES = ("passed", "passed-from-marker", "unnecessary")
+
+
 def fsAggregateUnitTestFromAxes(listAxisValues):
     """Fold per-category axes into the aggregate ``sUnitTest`` value.
 
     Empty input collapses to ``"unnecessary"`` because there are no
     categories to demand a result; any ``"failed"`` short-circuits;
-    all-``"passed"`` (fresh runs) folds to ``"passed"``; mixed
-    states fold to ``"untested"`` so the badge accurately reflects
-    "no fresh result for every category".
+    all-green axes fold green, where green is any of ``"passed"``,
+    ``"passed-from-marker"``, or ``"unnecessary"`` (the same set
+    ``stepPredicates`` treats as green). When every demanded result
+    came from a fresh run the aggregate is ``"passed"``; when any
+    result was restored from a committed marker the aggregate is
+    ``"passed-from-marker"`` so the badge stays honest about its
+    provenance. Any non-green, non-failed axis folds to
+    ``"untested"`` — "no current result for every category".
     """
     if not listAxisValues:
         return "unnecessary"
     if "failed" in listAxisValues:
         return "failed"
-    if all(sState == "passed" for sState in listAxisValues):
+    if any(sState not in _T_GREEN_AXIS_VALUES for sState in listAxisValues):
+        return "untested"
+    if "passed-from-marker" in listAxisValues:
+        return "passed-from-marker"
+    if "passed" in listAxisValues:
         return "passed"
-    return "untested"
+    return "unnecessary"
 
 
 def fsResolveUnitTestFromExitCode(iExitCode):

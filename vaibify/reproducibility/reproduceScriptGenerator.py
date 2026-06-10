@@ -24,6 +24,8 @@ connection and routes the bytes through ``fnWriteFile`` /
 
 import posixpath
 
+from vaibify.reproducibility.repoFiles import fsShellQuotePosix
+
 
 __all__ = [
     "S_REPRODUCE_SCRIPT_FILENAME",
@@ -166,4 +168,4 @@ def _flistGatherStepCommands(dictStep):
 
 def _fsShellQuote(sValue):
     """Return sValue as a POSIX single-quoted shell argument."""
-    return "'" + sValue.replace("'", "'\\''") + "'"
+    return fsShellQuotePosix(sValue)

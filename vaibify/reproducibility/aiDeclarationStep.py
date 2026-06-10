@@ -17,13 +17,18 @@ codebase has one place to look:
    template to ``<projectRepo>/<sRelativePath>`` without clobbering an
    existing file.
 
-The host filesystem write (vs. an in-container write) is intentional:
-the project repo is always a host directory; the declaration file is
-tracked alongside the workflow's other canonical artifacts and lives
-inside the git work tree on the host.
+File probes and writes go through the ``repoFiles`` adapter seam
+(dual-accept: a raw path string wraps into ``HostRepoFiles``) so the
+declaration file lands inside the project repo wherever it actually
+lives — a host clone for the CLI, the container for GUI routes.
 """
 
-import os
+import posixpath
+
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
+)
 
 
 __all__ = [
@@ -73,36 +78,34 @@ def fbStepIsAiDeclaration(dictStep):
     return dictStep.get("sStepKind") == S_AI_DECLARATION_STEP_KIND
 
 
-def fbDeclarationFileExists(sProjectRepoPath, sRelativePath):
-    """Return True iff the declaration file exists on disk."""
-    if not sProjectRepoPath or not sRelativePath:
+def fbDeclarationFileExists(filesRepo, sRelativePath):
+    """Return True iff the declaration file exists in the project repo."""
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.sRootPath or not sRelativePath:
         return False
-    sAbsolutePath = os.path.join(sProjectRepoPath, sRelativePath)
-    return os.path.isfile(sAbsolutePath)
+    return filesRepo.fbIsFile(sRelativePath)
 
 
-def fnWriteDeclarationTemplate(sProjectRepoPath, sRelativePath):
+def fnWriteDeclarationTemplate(filesRepo, sRelativePath):
     """Write the starter template to <projectRepo>/<sRelativePath>.
 
-    Refuses to overwrite an existing file (caller should check
-    ``fbDeclarationFileExists`` first and route a re-generate request
-    through an explicit overwrite path if that becomes needed).
-    Creates parent directories as required. Returns the absolute path
-    written for the caller's response payload.
+    Refuses to overwrite an existing file or directory (caller should
+    check ``fbDeclarationFileExists`` first and route a re-generate
+    request through an explicit overwrite path if that becomes
+    needed). Creates parent directories as required. Returns the
+    repo-absolute path written for the caller's response payload.
     """
-    if not sProjectRepoPath:
-        raise ValueError("sProjectRepoPath is required")
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.sRootPath:
+        raise ValueError("a project repo path or adapter is required")
     if not sRelativePath:
         raise ValueError("sRelativePath is required")
-    sAbsolutePath = os.path.join(sProjectRepoPath, sRelativePath)
-    if os.path.exists(sAbsolutePath):
+    if filesRepo.fbIsFile(sRelativePath) or filesRepo.fbIsDir(sRelativePath):
         raise FileExistsError(
             f"Refusing to overwrite existing file: {sRelativePath}"
         )
-    os.makedirs(os.path.dirname(sAbsolutePath) or ".", exist_ok=True)
-    with open(sAbsolutePath, "w", encoding="utf-8") as fileHandle:
-        fileHandle.write(S_DECLARATION_TEMPLATE)
-    return sAbsolutePath
+    filesRepo.fnWriteTextAtomic(sRelativePath, S_DECLARATION_TEMPLATE)
+    return posixpath.join(fsRepoRootOf(filesRepo), sRelativePath)
 
 
 def _fdictEmptyTestsBlock():

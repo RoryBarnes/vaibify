@@ -610,6 +610,8 @@ def testNoScienceSpecificIdentifiersInSource():
 SET_CONTAINER_GIT_WORKSPACE_FUNCTIONS = {
     "fdictGitStatusInContainer",
     "fdictComputeBlobShasInContainer",
+    "fdictProbePushOutcome",
+    "fdictRemoteHeadsInContainer",
     "flistListContainerFiles",
     "fsGitHeadShaInContainer",
     "ftResultGitAddInContainer",
@@ -634,16 +636,8 @@ def _fbIsContainerGitCall(nodeCall):
     return nodeCall.func.value.id == "containerGit"
 
 
-def testGitRoutesAlwaysPassProjectRepoToContainerGit():
-    """Every containerGit.* call in gitRoutes.py passes sWorkspace explicitly.
-
-    The workspace default is ``/workspace`` (a Docker-managed volume
-    that is not itself a git work tree). Routes must resolve the
-    active workflow's project repo and forward it explicitly — a
-    silent fallback to the default would reintroduce the all-grey
-    badge bug where every request runs git against a non-repo path.
-    """
-    sPath = ROUTES_DIR / "gitRoutes.py"
+def _flistWorkspaceKwargViolations(sPath):
+    """Return (name, line) containerGit calls missing sWorkspace=."""
     _, treeAst = ftParseFile(sPath)
     listViolations = []
     for node in ast.walk(treeAst):
@@ -656,12 +650,33 @@ def testGitRoutesAlwaysPassProjectRepoToContainerGit():
             continue
         if not _fbCallProvidesWorkspaceKwarg(node):
             listViolations.append((sAttr, node.lineno))
-    assert listViolations == [], (
-        "gitRoutes.py must pass sWorkspace=<project-repo> to every "
+    return listViolations
+
+
+def testGitRoutesAlwaysPassProjectRepoToContainerGit():
+    """Every containerGit.* route call passes sWorkspace explicitly.
+
+    The workspace default is ``/workspace`` (a Docker-managed volume
+    that is not itself a git work tree). Routes must resolve the
+    active workflow's project repo and forward it explicitly — a
+    silent fallback to the default would reintroduce the all-grey
+    badge bug where every request runs git against a non-repo path.
+    ``syncRoutes.py`` is scanned alongside ``gitRoutes.py`` because
+    its push-hardening helpers also call containerGit.
+    """
+    listAllViolations = []
+    for sFileName in ("gitRoutes.py", "syncRoutes.py"):
+        for sAttr, iLine in _flistWorkspaceKwargViolations(
+            ROUTES_DIR / sFileName,
+        ):
+            listAllViolations.append((sFileName, sAttr, iLine))
+    assert listAllViolations == [], (
+        "Route modules must pass sWorkspace=<project-repo> to every "
         "containerGit.* call; relying on the default reintroduces the "
         "/workspace-as-repo bug:\n"
         + "\n".join(
-            f"  {sAttr}() on line {iLine}" for sAttr, iLine in listViolations
+            f"  {sFile}: {sAttr}() on line {iLine}"
+            for sFile, sAttr, iLine in listAllViolations
         )
     )
 
@@ -1930,5 +1945,117 @@ def testTemplateCommandsUseStepTokens():
             f"command={sCommand!r} offending={sToken!r}"
             for pathWorkflow, sStepName, sField, sCommand, sToken
             in listAllViolations
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reproducibility IO goes through the repo-file adapter, never a raw
+# container path string (the host cannot read container files).
+# ---------------------------------------------------------------------------
+
+SET_REPRO_FILES_ENTRY_POINTS = frozenset({
+    "fiAICSLevel", "fbAtLeastLevel1", "fbAtLeastLevel2",
+    "fbAtLeastLevel3", "fbL3ReadinessOK", "fdictL3ReadinessGaps",
+    "fdictLevel2Gaps", "flistLevel1Blockers", "flistLevel2Blockers",
+    "flistLevel3Blockers",
+    "fnWriteManifest", "flistVerifyManifest",
+    "flistDeclaredButMissingFromManifest", "flistParseManifestLines",
+    "fiCountManifestEntries",
+    "fnGenerateRequirementsLock", "flistVerifyRequirementsLock",
+    "fbDockerfilePresent", "flistLintDockerfile",
+    "fdictReadEnvironmentJson", "fnWriteEnvironmentJson",
+    "fbEnvironmentDigestPinned", "fdictCaptureSystemTools",
+    "fdictCaptureHostBinaryHashes", "fdictCaptureSingleBinary",
+    "fdictReadAttestation", "fnWriteAttestation",
+    "fnInvalidateAttestation", "flistReadAttestationHistory",
+    "fsCurrentManifestDigest", "fbL3AttestationCurrent",
+    "fdictReadCachedSyncStatus", "fnWriteSyncStatus",
+    "fdictVerifyRemoteService", "fdictLoadManifestExpectedHashes",
+    "fnGenerateReproducibilityEnvelope",
+    "fbManifestExists", "fsetStaleOutputsAgainstManifest",
+    "fbDeclarationFileExists", "fnWriteDeclarationTemplate",
+})
+
+SET_RAW_REPO_PATH_NAMES = frozenset({
+    "sProjectRepo", "sProjectRepoPath", "sRepo", "sRepoRoot",
+    "sRepoPath",
+})
+
+# director.py is the host-side parallel runner (host paths are its
+# truth), so its raw host-path arguments into the dual-accept entry
+# points are correct as written.
+SET_REPRO_IO_EXEMPT_FILES = frozenset({
+    "director.py",
+})
+
+
+def _fsCalledFunctionName(nodeCall):
+    """Return the simple name a Call invokes, or empty string."""
+    if isinstance(nodeCall.func, ast.Name):
+        return nodeCall.func.id
+    if isinstance(nodeCall.func, ast.Attribute):
+        return nodeCall.func.attr
+    return ""
+
+
+def _fbArgIsRawRepoPath(nodeArg):
+    """Return True iff an argument is a bare raw-repo-path expression."""
+    if isinstance(nodeArg, ast.Name):
+        return nodeArg.id in SET_RAW_REPO_PATH_NAMES
+    if isinstance(nodeArg, ast.Subscript):
+        return (
+            isinstance(nodeArg.slice, ast.Constant)
+            and nodeArg.slice.value == "sProjectRepoPath"
+        )
+    bIsGetCall = (
+        isinstance(nodeArg, ast.Call)
+        and isinstance(nodeArg.func, ast.Attribute)
+        and nodeArg.func.attr == "get"
+        and nodeArg.args
+        and isinstance(nodeArg.args[0], ast.Constant)
+        and nodeArg.args[0].value == "sProjectRepoPath"
+    )
+    return bIsGetCall
+
+
+def _flistRawRepoPathViolations(sPath):
+    """Return (function, line) pairs passing raw paths into repro IO."""
+    _, treeAst = ftParseFile(sPath)
+    listViolations = []
+    for node in ast.walk(treeAst):
+        if not isinstance(node, ast.Call):
+            continue
+        sName = _fsCalledFunctionName(node)
+        if sName not in SET_REPRO_FILES_ENTRY_POINTS:
+            continue
+        for nodeArg in list(node.args) + [kw.value for kw in node.keywords]:
+            if _fbArgIsRawRepoPath(nodeArg):
+                listViolations.append((sName, node.lineno))
+    return listViolations
+
+
+def testGuiNeverPassesRawRepoPathToReproducibilityIO():
+    """GUI callers hand reproducibility IO an adapter, not a path string.
+
+    ``sProjectRepoPath`` is a *container* path. A raw string handed to
+    a reproducibility entry point wraps into a host adapter that probes
+    the host filesystem at a container path — every conjunct then fails
+    conservatively forever (the dirty-banner bug class). Production
+    callers must pass ``dictCtx.files(sContainerId)``, the poll
+    snapshot, or another ``repoFiles`` adapter.
+    """
+    listAllViolations = []
+    for pathModule in sorted(GUI_DIR.rglob("*.py")):
+        if pathModule.name in SET_REPRO_IO_EXEMPT_FILES:
+            continue
+        for tEntry in _flistRawRepoPathViolations(pathModule):
+            listAllViolations.append((pathModule, *tEntry))
+    assert listAllViolations == [], (
+        "Raw repo-path strings passed to reproducibility IO in "
+        "vaibify/gui (pass a repoFiles adapter instead):\n"
+        + "\n".join(
+            f"  {pathModule.relative_to(REPO_ROOT)}:{iLine} {sName}()"
+            for pathModule, sName, iLine in listAllViolations
         )
     )

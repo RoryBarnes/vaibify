@@ -175,3 +175,111 @@ def testResolveUnitTestFromExitCodeMapsNonZeroToFailed():
     """Any non-zero exit yields ``failed`` regardless of magnitude."""
     assert fsResolveUnitTestFromExitCode(1) == "failed"
     assert fsResolveUnitTestFromExitCode(137) == "failed"
+
+
+def testAggregateUnitTestFromAllMarkerAxesIsPassedFromMarker():
+    """All-green marker-restored axes fold green and keep the honest
+    marker provenance in the aggregate."""
+    assert fsAggregateUnitTestFromAxes(
+        ["passed-from-marker", "passed-from-marker"]
+    ) == "passed-from-marker"
+
+
+def testAggregateUnitTestFromMixedFreshAndMarkerIsPassedFromMarker():
+    """A mix of fresh passes and marker-restored passes is still green;
+    any marker provenance makes the aggregate ``passed-from-marker``."""
+    assert fsAggregateUnitTestFromAxes(
+        ["passed", "passed-from-marker", "passed"]
+    ) == "passed-from-marker"
+
+
+def testAggregateUnitTestFailedBeatsMarkerGreen():
+    """A failure short-circuits even when sibling axes are
+    marker-green."""
+    assert fsAggregateUnitTestFromAxes(
+        ["passed-from-marker", "failed"]
+    ) == "failed"
+
+
+def testAggregateUnitTestMarkerWithUntestedIsUntested():
+    """Marker-green plus a never-run category is not green overall."""
+    assert fsAggregateUnitTestFromAxes(
+        ["passed-from-marker", "untested"]
+    ) == "untested"
+
+
+def testAggregateUnitTestUnnecessaryCountsAsGreen():
+    """``unnecessary`` axes never drag a green fold down to untested."""
+    assert fsAggregateUnitTestFromAxes(
+        ["passed", "unnecessary"]
+    ) == "passed"
+
+
+def testAggregateUnitTestOutputsChangedIsUntested():
+    """Hash-drift axis values are not green and fold to untested."""
+    assert fsAggregateUnitTestFromAxes(
+        ["passed", "outputs-changed"]
+    ) == "untested"
+
+
+def _fdictStepWithCategoryStates(dictStates):
+    """Build a step with commands for every category in ``dictStates``."""
+    dictTests = {}
+    dictVerification = {"sUnitTest": "untested"}
+    dictKeyByCategory = {
+        "sIntegrity": "dictIntegrity",
+        "sQualitative": "dictQualitative",
+        "sQuantitative": "dictQuantitative",
+    }
+    for sVerifKey, sState in dictStates.items():
+        dictTests[dictKeyByCategory[sVerifKey]] = {
+            "saCommands": ["python -m pytest tests -v"],
+        }
+        dictVerification[sVerifKey] = sState
+    return {
+        "dictTests": dictTests,
+        "dictVerification": dictVerification,
+    }
+
+
+def testRefreshAggregateTestStatesHealsStuckUntestedAggregate():
+    """A persisted ``untested`` aggregate over all-marker-green axes
+    self-corrects to ``passed-from-marker`` (the live-workflow bug)."""
+    from vaibify.gui.testStatusManager import fbRefreshAggregateTestStates
+    dictStep = _fdictStepWithCategoryStates({
+        "sIntegrity": "passed-from-marker",
+        "sQualitative": "passed-from-marker",
+        "sQuantitative": "passed-from-marker",
+    })
+    dictWorkflow = {"listSteps": [dictStep]}
+    assert fbRefreshAggregateTestStates(dictWorkflow) is True
+    assert dictStep["dictVerification"]["sUnitTest"] == (
+        "passed-from-marker"
+    )
+
+
+def testRefreshAggregateTestStatesReportsNoChangeWhenCorrect():
+    """A correct aggregate is left untouched and reports no change."""
+    from vaibify.gui.testStatusManager import fbRefreshAggregateTestStates
+    dictStep = _fdictStepWithCategoryStates({
+        "sIntegrity": "passed",
+        "sQualitative": "passed",
+        "sQuantitative": "passed",
+    })
+    dictStep["dictVerification"]["sUnitTest"] = "passed"
+    dictWorkflow = {"listSteps": [dictStep]}
+    assert fbRefreshAggregateTestStates(dictWorkflow) is False
+    assert dictStep["dictVerification"]["sUnitTest"] == "passed"
+
+
+def testRefreshAggregateTestStatesSkipsStepsWithoutEligibleCategories():
+    """Steps with no category commands keep their aggregate untouched
+    (a legacy unit-test ``passed`` must not be clobbered)."""
+    from vaibify.gui.testStatusManager import fbRefreshAggregateTestStates
+    dictStep = {
+        "dictTests": {},
+        "dictVerification": {"sUnitTest": "passed"},
+    }
+    dictWorkflow = {"listSteps": [dictStep, None]}
+    assert fbRefreshAggregateTestStates(dictWorkflow) is False
+    assert dictStep["dictVerification"]["sUnitTest"] == "passed"

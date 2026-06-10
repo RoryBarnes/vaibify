@@ -749,7 +749,7 @@ class TestCreateDocker:
 
 class TestWorkflowDir:
     def test_returns_workspace_root_when_no_path(self):
-        _, _, _, fnWorkflowDir = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
             MagicMock(), {}, {},
         )
         sResult = fnWorkflowDir("ctr1")
@@ -757,7 +757,7 @@ class TestWorkflowDir:
 
     def test_returns_parent_of_vaibify_dir(self):
         dictPaths = {"ctr1": "/workspace/project/.vaibify/w.yml"}
-        _, _, _, fnWorkflowDir = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
             MagicMock(), {}, dictPaths,
         )
         sResult = fnWorkflowDir("ctr1")
@@ -765,7 +765,7 @@ class TestWorkflowDir:
 
     def test_returns_dirname_without_vaibify(self):
         dictPaths = {"ctr1": "/workspace/project/workflow.yml"}
-        _, _, _, fnWorkflowDir = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
             MagicMock(), {}, dictPaths,
         )
         sResult = fnWorkflowDir("ctr1")

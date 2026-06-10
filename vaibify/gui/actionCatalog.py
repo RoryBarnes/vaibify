@@ -231,6 +231,17 @@ LIST_AGENT_ACTIONS = [
                      "against origin/<branch>. Cached for 30s; pass "
                      "{bForce: true} to bypass. Does not modify the "
                      "working tree."},
+    {"sName": "refresh-remotes", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/refresh-remotes",
+     "bAgentSafe": True,
+     "sDescription": "Fetch origin and return HEAD and upstream shas, "
+                     "committer dates, and ahead/behind counts so the "
+                     "dashboard reconciles with GitHub in one round "
+                     "trip. Args: {bForce: bool, default true} to "
+                     "bypass the 30s fetch cache. Agent-safe: only "
+                     "remote-tracking refs change; the working tree "
+                     "is untouched."},
     {"sName": "pull-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/git/{sContainerId}/pull-project-repo",

@@ -381,9 +381,10 @@ def test_acquire_sync_status_lock_retry_budget_is_at_least_one_second():
     ``_I_LOCK_RETRY_MAX`` and ``_F_LOCK_RETRY_SLEEP`` constants must
     product to at least 1 second of patience before declaring failure.
     """
+    from vaibify.reproducibility import repoFiles
     fBudget = (
-        scheduledReverify._I_LOCK_RETRY_MAX
-        * scheduledReverify._F_LOCK_RETRY_SLEEP
+        repoFiles._I_LOCK_RETRY_MAX
+        * repoFiles._F_LOCK_RETRY_SLEEP
     )
     assert fBudget >= 1.0, (
         f"lock retry budget {fBudget:.2f}s is too short for "
@@ -421,7 +422,7 @@ def test_sync_status_lock_releases_on_persist_exception(tmp_path):
         "listDiverged": [],
     }
     with patch(
-        "vaibify.reproducibility.scheduledReverify._fnPersistSyncStatusEntry",
+        "vaibify.reproducibility.repoFiles.HostRepoFiles.fnWriteJsonAtomic",
         side_effect=OSError("disk full"),
     ):
         with pytest.raises(OSError):

@@ -53,6 +53,7 @@ var VaibifyPolling = (function () {
 
     function fnStartPipelinePolling(sContainerId) {
         fnStopPipelinePolling();
+        _iLastSyncEpoch = null;
         _iPipelinePollTimer = setInterval(function () {
             _fnPollPipelineState(sContainerId);
         }, 10000);
@@ -71,11 +72,31 @@ var VaibifyPolling = (function () {
                 "/api/pipeline/" + sContainerId + "/state"
             );
             _fnReportPollSuccess("pipeline-state");
+            _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictState);
             if (_fnOnPipelineState) {
                 _fnOnPipelineState(dictState);
             }
         } catch (error) {
             _fnReportPollFailure("pipeline-state", error);
+        }
+    }
+
+    var _iLastSyncEpoch = null;
+
+    /* A sync-mutating route (push, pull, fetch, refresh-remotes)
+       bumps the server-side epoch. Detecting the bump here triggers
+       exactly one badge refresh — no extra polling loops and no
+       remote git queries on a timer. */
+    function _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictState) {
+        var iEpoch = dictState ? dictState.iSyncEpoch : undefined;
+        if (typeof iEpoch !== "number") return;
+        var bChanged = _iLastSyncEpoch !== null &&
+            iEpoch !== _iLastSyncEpoch;
+        _iLastSyncEpoch = iEpoch;
+        if (!bChanged) return;
+        if (typeof VaibifyGitBadges !== "undefined" &&
+            typeof VaibifyGitBadges.fnRefresh === "function") {
+            VaibifyGitBadges.fnRefresh(sContainerId);
         }
     }
 

@@ -3,6 +3,7 @@
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import logging
 import os
 import posixpath
 import re
@@ -10,9 +11,10 @@ import re
 from fastapi import HTTPException
 from fastapi.responses import Response
 
-from .. import workflowManager
+from .. import containerGit, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
+from ..routeContext import ffilesForWorkflow
 from ..pipelineServer import (
     ArxivConfigureRequest,
     DatasetDownloadRequest,
@@ -25,9 +27,12 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     ZenodoMetadataRequest,
     fdictRequireWorkflow,
+    fnBumpSyncEpoch,
     fnValidatePathWithinRoot,
 )
 from .scriptRoutes import _fnStoreCommitHash
+
+logger = logging.getLogger("vaibify")
 
 
 _S_ISOLATION_BLOCK_ERROR = "isolation-mode-blocks-network"
@@ -565,9 +570,198 @@ def _fnAssertGithubTokenBoundToRemote(
         raise HTTPException(status_code=409, detail=str(errorBinding))
 
 
+_S_INDETERMINATE_PUSH_MESSAGE = (
+    "The push was interrupted before its outcome could be "
+    "confirmed; it may still have completed on GitHub. Use "
+    "'Refresh from GitHub' to reconcile the dashboard."
+)
+
+
+def _fdictIndeterminatePushResult():
+    """Build the honest result for an unverifiable push outcome."""
+    return {
+        "bSuccess": False,
+        "sErrorType": "indeterminate",
+        "sMessage": _S_INDETERMINATE_PUSH_MESSAGE,
+    }
+
+
+def _fdictResolveInterruptedPush(dictCtx, sContainerId, sWorkdir):
+    """Probe the repo after a push exec raised; never fabricate success.
+
+    Returns a result shaped like ``fdictSyncResult``: ``bSuccess`` is
+    True only when the probe verifies the upstream already holds the
+    local HEAD; otherwise the outcome is reported as indeterminate so
+    the user can refresh instead of receiving a bare 500.
+    """
+    try:
+        dictProbe = containerGit.fdictProbePushOutcome(
+            dictCtx["docker"], sContainerId, sWorkspace=sWorkdir,
+        )
+    except Exception:
+        logger.error("Push outcome probe failed for container %s",
+                     sContainerId, exc_info=True)
+        return _fdictIndeterminatePushResult()
+    if not dictProbe.get("bPushLanded"):
+        return _fdictIndeterminatePushResult()
+    logger.info("GitHub push confirmed by probe after transport "
+                "interruption: container=%s", sContainerId)
+    return {
+        "bSuccess": True,
+        "sOutput": "Push confirmed by repository probe after a "
+                   "transport interruption.",
+    }
+
+
+async def _fdictHandlePushExecFailure(
+    dictCtx, sContainerId, sWorkdir, sOperation,
+):
+    """Log the raised exec and resolve the outcome via the repo probe."""
+    logger.error(
+        "GitHub %s exec raised for container %s; probing outcome",
+        sOperation, sContainerId, exc_info=True,
+    )
+    return await asyncio.to_thread(
+        _fdictResolveInterruptedPush, dictCtx, sContainerId, sWorkdir,
+    )
+
+
+def _fdictLogIncompletePush(sContainerId, dictResult):
+    """Log a non-success push result and pass it through unchanged."""
+    logger.info(
+        "GitHub push did not complete: container=%s sErrorType=%s",
+        sContainerId, dictResult.get("sErrorType", ""),
+    )
+    return dictResult
+
+
+def _fsFetchCommitHashAfterPush(dictCtx, sContainerId, sWorkdir):
+    """Return the post-push HEAD sha via git, or "" when the lookup fails.
+
+    Replaces the old splitlines()[-1] parse of merged stdout+stderr,
+    which captured git push's stderr noise instead of the hash.
+    """
+    try:
+        return containerGit.fsGitHeadShaInContainer(
+            dictCtx["docker"], sContainerId, sWorkspace=sWorkdir,
+        )
+    except Exception:
+        logger.warning(
+            "Post-push HEAD sha lookup failed for container %s",
+            sContainerId, exc_info=True,
+        )
+        return ""
+
+
+def _fdictRemoteStateAfterPush(dictCtx, sContainerId, sWorkdir):
+    """Return the post-push remote summary, or None when unavailable."""
+    try:
+        dictGit = containerGit.fdictGitStatusInContainer(
+            dictCtx["docker"], sContainerId, sWorkspace=sWorkdir,
+        )
+    except Exception:
+        logger.warning(
+            "Post-push remote state lookup failed for container %s",
+            sContainerId, exc_info=True,
+        )
+        return None
+    return {
+        "sHeadSha": dictGit.get("sHeadSha", ""),
+        "sBranch": dictGit.get("sBranch", ""),
+        "iAhead": dictGit.get("iAhead", 0),
+        "iBehind": dictGit.get("iBehind", 0),
+        "sRefreshedAt": dictGit.get("sRefreshedAt", ""),
+    }
+
+
+def _fdictAttachCommitStateToResult(
+    dictCtx, sContainerId, sWorkdir, dictResult,
+):
+    """Stamp the verified commit hash and remote state onto a success."""
+    dictResult["sCommitHash"] = _fsFetchCommitHashAfterPush(
+        dictCtx, sContainerId, sWorkdir,
+    )
+    dictRemoteState = _fdictRemoteStateAfterPush(
+        dictCtx, sContainerId, sWorkdir,
+    )
+    if dictRemoteState is not None:
+        dictResult["dictRemoteState"] = dictRemoteState
+    return dictResult
+
+
+def _fsApplyPushBookkeeping(
+    dictCtx, sContainerId, dictWorkflow, listFilePaths, sCommitHash,
+):
+    """Record sync status and commit hash; never fail the push response.
+
+    The push itself already landed, so an exception here must not
+    convert success into a 500. Returns "" on success or a warning
+    string for the response's ``sBookkeepingWarning`` field.
+    """
+    try:
+        workflowManager.fnUpdateSyncStatus(
+            dictWorkflow, listFilePaths, "Github")
+        _fnStoreCommitHash(dictWorkflow, listFilePaths, sCommitHash)
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return ""
+    except Exception:
+        logger.error(
+            "GitHub push bookkeeping failed for container %s",
+            sContainerId, exc_info=True,
+        )
+        return (
+            "Push succeeded, but recording the sync status locally "
+            "failed; badges may lag until the next refresh."
+        )
+
+
+def _fdictFinishSuccessfulPush(
+    dictCtx, sContainerId, dictWorkflow, listFilePaths, sWorkdir,
+    dictResult,
+):
+    """Attach commit hash, remote state, and non-fatal bookkeeping."""
+    dictResult = _fdictAttachCommitStateToResult(
+        dictCtx, sContainerId, sWorkdir, dictResult,
+    )
+    sWarning = _fsApplyPushBookkeeping(
+        dictCtx, sContainerId, dictWorkflow, listFilePaths,
+        dictResult.get("sCommitHash", ""),
+    )
+    if sWarning:
+        dictResult["sBookkeepingWarning"] = sWarning
+    logger.info(
+        "GitHub push succeeded: container=%s commit=%s",
+        sContainerId, dictResult.get("sCommitHash", "") or "<unknown>",
+    )
+    return dictResult
+
+
+async def _fdictRunGithubPush(
+    dictCtx, sContainerId, dictWorkflow, sWorkdir, request,
+):
+    """Run the push, resolving exec failures into honest results."""
+    from .. import syncDispatcher
+    try:
+        iExit, sOut = await asyncio.to_thread(
+            syncDispatcher.ftResultPushToGithub,
+            dictCtx["docker"], sContainerId,
+            request.listFilePaths, request.sCommitMessage, sWorkdir,
+        )
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+    except Exception:
+        dictResult = await _fdictHandlePushExecFailure(
+            dictCtx, sContainerId, sWorkdir, "push",
+        )
+    if not dictResult["bSuccess"]:
+        return _fdictLogIncompletePush(sContainerId, dictResult)
+    return await asyncio.to_thread(
+        _fdictFinishSuccessfulPush, dictCtx, sContainerId,
+        dictWorkflow, request.listFilePaths, sWorkdir, dictResult,
+    )
+
+
 def _fnRegisterGithubPush(app, dictCtx):
     """Register POST /api/github/{id}/push endpoint."""
-    from .. import syncDispatcher
 
     @fnAgentAction("push-to-github")
     @app.post("/api/github/{sContainerId}/push")
@@ -584,23 +778,14 @@ def _fnRegisterGithubPush(app, dictCtx):
             _fnAssertGithubTokenBoundToRemote,
             dictCtx["docker"], sContainerId, sWorkdir,
         )
-        iExit, sOut = await asyncio.to_thread(
-            syncDispatcher.ftResultPushToGithub,
-            dictCtx["docker"], sContainerId,
-            request.listFilePaths, request.sCommitMessage,
-            sWorkdir,
+        logger.info(
+            "GitHub push requested: container=%s files=%d",
+            sContainerId, len(request.listFilePaths or []),
         )
-        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
-        if not dictResult["bSuccess"]:
-            return dictResult
-        sCommitHash = (
-            sOut.strip().splitlines()[-1] if sOut else "")
-        workflowManager.fnUpdateSyncStatus(
-            dictWorkflow, request.listFilePaths, "Github")
-        _fnStoreCommitHash(
-            dictWorkflow, request.listFilePaths, sCommitHash)
-        dictCtx["save"](sContainerId, dictWorkflow)
-        dictResult["sCommitHash"] = sCommitHash
+        dictResult = await _fdictRunGithubPush(
+            dictCtx, sContainerId, dictWorkflow, sWorkdir, request,
+        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResult
 
 
@@ -669,9 +854,32 @@ def _ftWriteGitIdentity(
     )
 
 
+async def _fdictRunGithubAddFile(
+    dictCtx, sContainerId, sWorkdir, request,
+):
+    """Run the single-file push, resolving exec failures honestly."""
+    from .. import syncDispatcher
+    try:
+        iExit, sOut = await asyncio.to_thread(
+            syncDispatcher.ftResultAddFileToGithub,
+            dictCtx["docker"], sContainerId,
+            request.sFilePath, request.sCommitMessage, sWorkdir,
+        )
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+    except Exception:
+        dictResult = await _fdictHandlePushExecFailure(
+            dictCtx, sContainerId, sWorkdir, "add-file",
+        )
+    if not dictResult["bSuccess"]:
+        return _fdictLogIncompletePush(sContainerId, dictResult)
+    return await asyncio.to_thread(
+        _fdictAttachCommitStateToResult,
+        dictCtx, sContainerId, sWorkdir, dictResult,
+    )
+
+
 def _fnRegisterGithubAddFile(app, dictCtx):
     """Register POST /api/github/{id}/add-file endpoint."""
-    from .. import syncDispatcher
 
     @fnAgentAction("add-file-to-github")
     @app.post("/api/github/{sContainerId}/add-file")
@@ -688,17 +896,13 @@ def _fnRegisterGithubAddFile(app, dictCtx):
             ),
             WORKSPACE_ROOT,
         )
-        iExit, sOut = await asyncio.to_thread(
-            syncDispatcher.ftResultAddFileToGithub,
-            dictCtx["docker"], sContainerId,
-            request.sFilePath, request.sCommitMessage,
-            sWorkdir,
+        logger.info(
+            "GitHub add-file requested: container=%s", sContainerId,
         )
-        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
-        if dictResult["bSuccess"]:
-            sHash = (
-                sOut.strip().splitlines()[-1] if sOut else "")
-            dictResult["sCommitHash"] = sHash
+        dictResult = await _fdictRunGithubAddFile(
+            dictCtx, sContainerId, sWorkdir, request,
+        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResult
 
 
@@ -1468,14 +1672,13 @@ def _fnValidateVerifyService(sService):
         )
 
 
-def _fdictRunRemoteVerifyBlocking(dictWorkflow, sService):
+def _fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):
     """Run the synchronous verify call against the remote and return status."""
     from vaibify.reproducibility import scheduledReverify
-    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
     dictStatus = scheduledReverify.fdictVerifyRemoteService(
-        sProjectRepo, dictWorkflow, sService,
+        filesRepo, dictWorkflow, sService,
     )
-    scheduledReverify.fnWriteSyncStatus(sProjectRepo, dictStatus)
+    scheduledReverify.fnWriteSyncStatus(filesRepo, dictStatus)
     return dictStatus
 
 
@@ -1553,9 +1756,13 @@ def _fnRegisterRemoteVerify(app, dictCtx):
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         try:
             return await asyncio.to_thread(
                 _fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
+                filesRepo,
             )
         except HTTPException:
             raise
@@ -1574,10 +1781,12 @@ def _fnRegisterRemoteVerifyStatus(app, dictCtx):
         _fnValidateVerifyService(sService)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         return await asyncio.to_thread(
             scheduledReverify.fdictReadCachedSyncStatus,
-            sProjectRepo, sService,
+            filesRepo, sService,
         )
 
 
@@ -1659,15 +1868,14 @@ def _fnPersistArxivConfig(dictCtx, sContainerId, dictWorkflow, dictConfig):
     dictCtx["save"](sContainerId, dictWorkflow)
 
 
-def _fdictRunArxivVerifyAfterConfig(dictWorkflow):
+def _fdictRunArxivVerifyAfterConfig(dictWorkflow, filesRepo):
     """Run a best-effort verify after a save; capture errors on the response."""
     from vaibify.reproducibility import scheduledReverify
-    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
     try:
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
-            sProjectRepo, dictWorkflow, "arxiv",
+            filesRepo, dictWorkflow, "arxiv",
         )
-        scheduledReverify.fnWriteSyncStatus(sProjectRepo, dictStatus)
+        scheduledReverify.fnWriteSyncStatus(filesRepo, dictStatus)
         return {"dictArxivStatus": dictStatus, "sVerifyError": ""}
     except Exception as errorAny:
         return {"dictArxivStatus": None, "sVerifyError": str(errorAny)}
@@ -1695,6 +1903,7 @@ def _fnRegisterArxivConfigure(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, dictConfig)
         dictVerify = await asyncio.to_thread(
             _fdictRunArxivVerifyAfterConfig, dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
         return {
             "dictArxivConfig": dictConfig,

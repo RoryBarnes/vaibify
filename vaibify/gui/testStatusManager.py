@@ -1,6 +1,6 @@
 """Test status tracking, result recording, and test file management."""
 
-__all__ = []
+__all__ = ["fbRefreshAggregateTestStates"]
 
 import posixpath
 
@@ -155,3 +155,25 @@ def _fnUpdateAggregateTestState(dictStep):
     listStates = _flistEligibleCategoryStates(dictStep)
     dictVerification["sUnitTest"] = (
         truthDerivation.fsAggregateUnitTestFromAxes(listStates))
+
+
+def fbRefreshAggregateTestStates(dictWorkflow):
+    """Recompute every step's ``sUnitTest`` aggregate; return True on change.
+
+    Self-heal hook for persisted state whose aggregate predates the
+    canonical fold (e.g. green per-category axes stuck under an
+    ``"untested"`` aggregate). Poll-side marker application should
+    call this after applying category results so ``state.json``
+    corrects itself without requiring a fresh test run.
+    """
+    bChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            continue
+        if not _flistEligibleCategoryStates(dictStep):
+            continue
+        sBefore = dictStep.get("dictVerification", {}).get("sUnitTest")
+        _fnUpdateAggregateTestState(dictStep)
+        if dictStep["dictVerification"].get("sUnitTest") != sBefore:
+            bChanged = True
+    return bChanged

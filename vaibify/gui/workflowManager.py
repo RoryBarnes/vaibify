@@ -41,6 +41,7 @@ __all__ = [
     "fdictLoadWorkflowFromContainer",
     "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
+    "fnMigrateLegacyRemotes",
     "fnNormalizeSceneReferences",
     "flistBuildTestCommands",
     "flistCollectArchiveDataFiles",
@@ -247,6 +248,7 @@ def fdictLoadWorkflowFromContainer(
     workflowMigrations.fnApplyMigrations(
         dictWorkflow, sProjectRepoPath=sRepoPath,
     )
+    fnMigrateLegacyRemotes(dictWorkflow)
     sFailure = fsDescribeValidationFailure(dictWorkflow)
     if sFailure:
         raise ValueError(
@@ -258,8 +260,92 @@ def fdictLoadWorkflowFromContainer(
     fbDeriveUnnecessaryVerification(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
-    _fnDeriveAICSLevel(dictWorkflow, sRepoPath)
+    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+        connectionDocker, sContainerId, sRepoPath,
+    ))
     return dictWorkflow
+
+
+def fnMigrateLegacyRemotes(dictWorkflow):
+    """Populate ``dictRemotes`` entries from legacy top-level keys.
+
+    Recomputed on every load and save, like ``fnAttachStepLabels``.
+    Idempotent and non-destructive: an existing explicit
+    ``dictRemotes`` entry is never overwritten, legacy keys are never
+    removed, and verify-produced fields (e.g. ``sCommittedSha``,
+    ``sLastPushCommit``) are never invented.
+    """
+    dictDerived = {
+        "overleaf": _fdictLegacyOverleafEntry(dictWorkflow),
+        "zenodo": _fdictLegacyZenodoEntry(dictWorkflow),
+        "github": _fdictLegacyGithubEntry(dictWorkflow),
+    }
+    dictRemotes = dictWorkflow.get("dictRemotes") or {}
+    for sService, dictEntry in dictDerived.items():
+        if dictEntry and sService not in dictRemotes:
+            dictRemotes[sService] = dictEntry
+    if dictRemotes:
+        dictWorkflow["dictRemotes"] = dictRemotes
+
+
+def _fdictLegacyOverleafEntry(dictWorkflow):
+    """Build ``dictRemotes.overleaf`` from legacy ``sOverleafProjectId``."""
+    sProjectId = dictWorkflow.get("sOverleafProjectId") or ""
+    if not sProjectId:
+        return {}
+    return {"sProjectId": sProjectId}
+
+
+def _fdictLegacyZenodoEntry(dictWorkflow):
+    """Build ``dictRemotes.zenodo`` from legacy DOI/deposit/service keys."""
+    sDoi = (
+        dictWorkflow.get("sZenodoDoi")
+        or dictWorkflow.get("sZenodoLatestDoi") or ""
+    )
+    sRecordId = _fsLegacyZenodoRecordId(dictWorkflow, sDoi)
+    if not sDoi and not sRecordId:
+        return {}
+    dictEntry = {}
+    if sRecordId:
+        dictEntry["sRecordId"] = sRecordId
+    if sDoi:
+        dictEntry["sDoi"] = sDoi
+    sService = dictWorkflow.get("sZenodoService") or ""
+    if sService:
+        dictEntry["sService"] = sService
+    return dictEntry
+
+
+def _fsLegacyZenodoRecordId(dictWorkflow, sDoi):
+    """Return the Zenodo record id from legacy keys, or an empty string.
+
+    The DOI fallback only fires for genuine Zenodo DOIs, whose suffix
+    is always ``/zenodo.NNN``; foreign DOIs whose suffix merely ends
+    in ``zenodo.NNN`` (e.g. ``10.9999/notzenodo.123``) must not have
+    a record id invented from them.
+    """
+    sDepositionId = str(dictWorkflow.get("sZenodoDepositionId") or "")
+    if sDepositionId and sDepositionId != "0":
+        return sDepositionId
+    matchDoi = re.search(r"/zenodo\.(\d+)$", sDoi)
+    return matchDoi.group(1) if matchDoi else ""
+
+
+def _fdictLegacyGithubEntry(dictWorkflow):
+    """Build ``dictRemotes.github`` from legacy ``sGithubBaseUrl``.
+
+    Only the owner/repository binding is derivable from the URL;
+    ``sBranch`` falls back to the verifier's default and
+    ``sCommittedSha`` is left for verify to record.
+    """
+    from vaibify.reproducibility.githubAuth import (
+        ftParseOwnerRepoFromRemoteUrl,
+    )
+    sBaseUrl = dictWorkflow.get("sGithubBaseUrl") or ""
+    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sBaseUrl)
+    if not sOwner or not sRepo:
+        return {}
+    return {"sOwner": sOwner, "sRepo": sRepo}
 
 
 def _fnLoadAndMergeState(
@@ -650,7 +736,7 @@ def fbDeriveUnnecessaryVerification(dictWorkflow):
     return bAnyChanged
 
 
-def _fnDeriveAICSLevel(dictWorkflow, sProjectRepoPath):
+def _fnDeriveAICSLevel(dictWorkflow, filesRepo):
     """Compute and persist the workflow's current AICS level.
 
     Writes ``iAICSLevel`` on the dict. Called from the load-after-merge
@@ -658,11 +744,25 @@ def _fnDeriveAICSLevel(dictWorkflow, sProjectRepoPath):
     always current with the per-step verification state. The level
     is not authoritative — the derivation is; treat the persisted
     value as a cache invalidated on every load and save.
+    ``filesRepo`` is a ``repoFiles`` adapter (container) so the L2/L3
+    conjuncts read container truth; a raw path string keeps host-clone
+    semantics for legacy callers.
     """
     from vaibify.reproducibility.levelGates import fiAICSLevel
     dictWorkflow["iAICSLevel"] = fiAICSLevel(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     )
+
+
+def _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath):
+    """Return the container repo-file adapter for the project repo.
+
+    ``sRepoPath`` is a *container* path, so a ``ContainerRepoFiles``
+    over the live docker connection is the only honest reader for the
+    level derivation performed on every load and save.
+    """
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    return ContainerRepoFiles(connectionDocker, sContainerId, sRepoPath)
 
 
 def fdictCreateStep(
@@ -871,9 +971,12 @@ def fnSaveWorkflowToContainer(
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     fnAttachStepLabels(dictWorkflow)
+    fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
-    _fnDeriveAICSLevel(dictWorkflow, sRepoPath)
+    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+        connectionDocker, sContainerId, sRepoPath,
+    ))
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
     dictDeclarative, dictState = stateManager.ftSplitMergedDict(

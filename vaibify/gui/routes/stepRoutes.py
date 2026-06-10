@@ -8,6 +8,7 @@ from .. import workflowManager
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import fnMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiAICSLevel
+from ..routeContext import ffilesForWorkflow
 from ..pipelineServer import (
     ReorderRequest,
     StepCreateRequest,
@@ -141,7 +142,8 @@ def _fnRegisterStepUpdate(app, dictCtx):
             request.bConfirmDestructive,
         )
         iLevelBefore = fiAICSLevel(
-            dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+            dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
         try:
             workflowManager.fnUpdateStep(

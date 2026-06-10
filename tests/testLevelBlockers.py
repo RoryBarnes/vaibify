@@ -547,3 +547,168 @@ def testScriptStaleBlocksStepLevelGate():
         dictStep, dictScriptStatus, iStepIndex=0,
     ) is False
     assert fbStepIsAtLeastLevel1(dictStep) is True
+
+
+# ------------------------------------------------------------------------
+# state-aware axis-not-green hints + per-file hints
+# ------------------------------------------------------------------------
+
+
+def testAxisNotGreenNeverRunHintNamesUntestedCategory():
+    """Quantitative never run (others passed) yields the never-run
+    language naming the category, not the failing-tests language."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sQuantitative"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sCriterion"] == "axis-not-green"
+    assert listBlockers[0]["sRemediationHint"] == (
+        "Test category never run (quantitative) — "
+        "run tests, then verify"
+    )
+
+
+def testAxisNotGreenFailedHintNamesFailedCategory():
+    """A true test failure keeps the failing-tests language and names
+    the failed category."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "failed"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sRemediationHint"] == (
+        "Re-run failing tests (integrity), then verify"
+    )
+
+
+def testAxisNotGreenFailedHintDropsRedundantAggregate():
+    """When a category failed, the aggregate ``unit`` name is dropped
+    from the hint so the researcher sees the root-cause category."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUnitTest"] = "failed"
+    dictStep["dictVerification"]["sIntegrity"] = "failed"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sRemediationHint"] == (
+        "Re-run failing tests (integrity), then verify"
+    )
+
+
+def testAxisNotGreenOutputsMissingHint():
+    """``outputs-missing`` dominates ``untested`` in the hint."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-missing"
+    dictStep["dictVerification"]["sQualitative"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sRemediationHint"] == (
+        "Declared output missing — re-run step, then verify"
+    )
+
+
+def testAxisNotGreenOutputsChangedHintAndPerFileHints():
+    """Marker drift produces the drift hint plus per-file hints for
+    every offending file (no narrowing without ``listModifiedFiles``)."""
+    sExpectedHint = (
+        "Output changed since the last test run (file newer than its "
+        "verification marker) — re-run tests, then verify"
+    )
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-changed"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    dictEntry = listBlockers[0]
+    assert dictEntry["sRemediationHint"] == sExpectedHint
+    assert dictEntry["listOffendingFiles"] == [
+        "A/data.csv", "A/plot.pdf",
+    ]
+    assert dictEntry["dictOffendingFileHints"] == {
+        "A/data.csv": sExpectedHint,
+        "A/plot.pdf": sExpectedHint,
+    }
+
+
+def testAxisNotGreenMarkerDriftNarrowsOffendingFiles():
+    """With ``listModifiedFiles`` populated, the offending files narrow
+    to the drifted outputs via the repo-relative path mapping."""
+    from vaibify.reproducibility.levelGates import (
+        _fdictAxisNotGreenBlocker,
+    )
+    sExpectedHint = (
+        "Output changed since the last test run (file newer than its "
+        "verification marker) — re-run tests, then verify"
+    )
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-changed"
+    dictStep["dictVerification"]["listModifiedFiles"] = ["A/A/data.csv"]
+    dictEntry = _fdictAxisNotGreenBlocker(
+        _fdictWorkflowWithSteps([dictStep]), 0, dictStep, "/repo",
+    )
+    assert dictEntry["listOffendingFiles"] == ["A/data.csv"]
+    assert dictEntry["dictOffendingFileHints"] == {
+        "A/data.csv": sExpectedHint,
+    }
+
+
+def testAxisNotGreenFailedKeepsAllDeclaredOutputs():
+    """A true failure never narrows the offending files and emits no
+    per-file drift hints."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "failed"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    dictEntry = listBlockers[0]
+    assert dictEntry["listOffendingFiles"] == [
+        "A/data.csv", "A/plot.pdf",
+    ]
+    assert "dictOffendingFileHints" not in dictEntry
+
+
+def testUpstreamModifiedPerFileHintNamesUpstreamLabel():
+    """Each offending file of an upstream-modified step carries a hint
+    naming the modified upstream step's label."""
+    dictA = _fdictAllGreenStep(sName="A")
+    dictB = _fdictAllGreenStep(sName="B")
+    dictB["saDataCommands"] = ["python s.py {Step01.data}"]
+    dictB["dictVerification"]["bUpstreamModified"] = True
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictA, dictB]),
+        {"0": "20", "1": "10"},
+        "/repo",
+    )
+    dictEntry = listBlockers[0]
+    sExpectedHint = (
+        "Upstream step A01 modified after this output was produced — "
+        "re-run this step"
+    )
+    assert dictEntry["dictOffendingFileHints"] == {
+        "B/data.csv": sExpectedHint,
+        "B/plot.pdf": sExpectedHint,
+    }
+
+
+def testAttestationStalePerFileHints():
+    """Each offending file of an attestation-stale step carries the
+    re-verify-or-re-run hint."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUser"] = "stale"
+    dictStep["dictVerification"]["sLastUserUpdate"] = (
+        "2026-01-01T00:00:00Z"
+    )
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    dictEntry = listBlockers[0]
+    assert dictEntry["sCriterion"] == "attestation-stale"
+    sExpectedHint = (
+        "This output changed after you verified — re-verify or re-run"
+    )
+    assert dictEntry["dictOffendingFileHints"] == {
+        "A/data.csv": sExpectedHint,
+        "A/plot.pdf": sExpectedHint,
+    }

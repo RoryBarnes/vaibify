@@ -24,6 +24,7 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
 )
+from ..routeContext import ffilesForWorkflow
 from ...reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_FILENAME,
     fbDeclarationFileExists,
@@ -93,10 +94,12 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
-        dictGaps = fdictLevel2Gaps(dictWorkflow, sProjectRepo)
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow,
+        )
+        dictGaps = fdictLevel2Gaps(dictWorkflow, filesRepo)
         return {
-            "iAICSLevel": fiAICSLevel(dictWorkflow, sProjectRepo),
+            "iAICSLevel": fiAICSLevel(dictWorkflow, filesRepo),
             "dictLevel2Gaps": dictGaps,
         }
 
@@ -117,9 +120,12 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
+        _fsRequireProjectRepo(dictWorkflow)
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         sRelative = _fsValidateRelativePath(request.sRelativePath)
-        if fbDeclarationFileExists(sProjectRepo, sRelative):
+        if fbDeclarationFileExists(filesRepo, sRelative):
             raise HTTPException(
                 409,
                 f"Declaration file already exists at '{sRelative}'; "
@@ -127,7 +133,7 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
             )
         try:
             sAbsolute = fnWriteDeclarationTemplate(
-                sProjectRepo, sRelative,
+                filesRepo, sRelative,
             )
         except (OSError, ValueError) as error:
             raise HTTPException(

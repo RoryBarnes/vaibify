@@ -30,6 +30,11 @@ from fastapi import HTTPException
 
 from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow
+from ..routeContext import ffilesForWorkflow
+from ...reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
+)
 from ...reproducibility.l3Attestation import (
     S_STATUS_FAILED,
     S_STATUS_PASSED,
@@ -89,10 +94,10 @@ def _fnRegisterReadiness(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
-        dictGaps = fdictL3ReadinessGaps(dictWorkflow, sProjectRepo)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
         return {
-            "iAICSLevel": fiAICSLevel(dictWorkflow, sProjectRepo),
+            "iAICSLevel": fiAICSLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
         }
 
@@ -107,18 +112,20 @@ def _fnRegisterAttestation(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         return _fdictBuildAttestationResponse(
-            sContainerId, sProjectRepo,
+            sContainerId, filesRepo,
         )
 
 
-def _fdictBuildAttestationResponse(sContainerId, sProjectRepo):
+def _fdictBuildAttestationResponse(sContainerId, filesRepo):
     """Return the attestation payload shape consumed by the AICS tab."""
-    dictCurrent = fdictReadAttestation(sProjectRepo) if sProjectRepo else None
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    bHasRepo = bool(fsRepoRootOf(filesRepo))
+    dictCurrent = fdictReadAttestation(filesRepo) if bHasRepo else None
     listHistory = (
-        flistReadAttestationHistory(sProjectRepo)
-        if sProjectRepo else []
+        flistReadAttestationHistory(filesRepo)
+        if bHasRepo else []
     )
     dictStatus = _DICT_VERIFY_TASKS.get(sContainerId, {}).get(
         "dictStatus"
@@ -128,8 +135,8 @@ def _fdictBuildAttestationResponse(sContainerId, sProjectRepo):
         "listHistory": listHistory,
         "dictInFlight": dictStatus,
         "sLiveManifestDigest": (
-            fsCurrentManifestDigest(sProjectRepo)
-            if sProjectRepo else ""
+            fsCurrentManifestDigest(filesRepo)
+            if bHasRepo else ""
         ),
     }
 
@@ -144,16 +151,17 @@ def _fnRegisterVerify(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
+        _fsRequireProjectRepo(dictWorkflow)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         _fnRefuseIfTaskInFlight(sContainerId)
-        if not fbL3ReadinessOK(dictWorkflow, sProjectRepo):
+        if not fbL3ReadinessOK(dictWorkflow, filesRepo):
             raise HTTPException(
                 409,
                 "L3 readiness checks must all pass before triggering "
                 "verification; open the AICS tab to see gaps.",
             )
         return _fdictKickOffVerification(
-            sContainerId, sProjectRepo, dictWorkflow,
+            sContainerId, filesRepo, dictWorkflow,
         )
 
 
@@ -170,16 +178,16 @@ def _fnRefuseIfTaskInFlight(sContainerId):
         )
 
 
-def _fdictKickOffVerification(sContainerId, sProjectRepo, dictWorkflow):
+def _fdictKickOffVerification(sContainerId, filesRepo, dictWorkflow):
     """Snapshot manifest, schedule the worker, and return the handle."""
-    sManifestDigest = fsCurrentManifestDigest(sProjectRepo)
+    sManifestDigest = fsCurrentManifestDigest(filesRepo)
     dictStatus = {
         "sPhase": "starting",
         "fStartedAtMonotonic": time.monotonic(),
         "sManifestDigestAtAttestation": sManifestDigest,
     }
     coroutineWorker = _fnRunVerificationWorker(
-        sContainerId, sProjectRepo, sManifestDigest, dictWorkflow,
+        sContainerId, filesRepo, sManifestDigest, dictWorkflow,
     )
     taskWorker = asyncio.create_task(coroutineWorker)
     _DICT_VERIFY_TASKS[sContainerId] = {
@@ -193,7 +201,7 @@ def _fdictKickOffVerification(sContainerId, sProjectRepo, dictWorkflow):
 
 
 async def _fnRunVerificationWorker(
-    sContainerId, sProjectRepo, sManifestDigest, dictWorkflow,
+    sContainerId, filesRepo, sManifestDigest, dictWorkflow,
 ):
     """Run the rebuild in a worker thread and persist the attestation.
 
@@ -210,7 +218,7 @@ async def _fnRunVerificationWorker(
     fStarted = time.monotonic()
     try:
         dictResult = await asyncio.to_thread(
-            _fdictRunReproductionSync, sProjectRepo, dictWorkflow,
+            _fdictRunReproductionSync, filesRepo, dictWorkflow,
         )
     except Exception as exc:  # noqa: BLE001 — surface as failed attestation
         logger.exception("L3 verification crashed: %s", exc)
@@ -224,14 +232,14 @@ async def _fnRunVerificationWorker(
         }
     fDuration = time.monotonic() - fStarted
     _fnPersistAttestation(
-        sProjectRepo, sManifestDigest, dictResult, fDuration,
+        filesRepo, sManifestDigest, dictResult, fDuration,
     )
     dictStatus["sPhase"] = (
         "passed" if dictResult.get("bPassed") else "failed"
     )
 
 
-def _fdictRunReproductionSync(sProjectRepo, dictWorkflow):
+def _fdictRunReproductionSync(filesRepo, dictWorkflow):
     """Run the expensive L3 reproduction synchronously.
 
     Delegates to ``commandReproduce.fbRerunWorkflow`` which resolves the
@@ -245,9 +253,10 @@ def _fdictRunReproductionSync(sProjectRepo, dictWorkflow):
     ``/level3/readiness``.
     """
     del dictWorkflow  # workflow state is loaded from the container
-    bRerunSucceeded = _fbInvokeRerunWorkflow(sProjectRepo)
-    listMismatches = flistVerifyManifest(sProjectRepo)
-    iTotalEntries = _fiManifestEntryCount(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    bRerunSucceeded = _fbInvokeRerunWorkflow(fsRepoRootOf(filesRepo))
+    listMismatches = flistVerifyManifest(filesRepo)
+    iTotalEntries = _fiManifestEntryCount(filesRepo)
     iMatching = max(iTotalEntries - len(listMismatches), 0)
     listDiverged = [
         dictMismatch["sPath"] for dictMismatch in listMismatches
@@ -256,7 +265,7 @@ def _fdictRunReproductionSync(sProjectRepo, dictWorkflow):
         listDiverged = (
             ["pipeline rerun exited non-zero"] + listDiverged
         )
-    sImageDigest = _fsResolveImageDigest(sProjectRepo)
+    sImageDigest = _fsResolveImageDigest(filesRepo)
     return {
         "bPassed": bRerunSucceeded and not listMismatches,
         "iOutputHashesMatched": iMatching,
@@ -288,20 +297,20 @@ def _fbInvokeRerunWorkflow(sProjectRepo):
         return False
 
 
-def _fiManifestEntryCount(sProjectRepo):
+def _fiManifestEntryCount(filesRepo):
     """Return the manifest entry count, treating absence as zero."""
     from ...reproducibility.manifestWriter import (
         fiCountManifestEntries,
     )
     try:
-        return fiCountManifestEntries(sProjectRepo)
+        return fiCountManifestEntries(filesRepo)
     except (FileNotFoundError, OSError, ValueError):
         return 0
 
 
-def _fsResolveImageDigest(sProjectRepo):
+def _fsResolveImageDigest(filesRepo):
     """Return the recorded image digest or empty string."""
-    dictPayload = fdictReadEnvironmentJson(sProjectRepo)
+    dictPayload = fdictReadEnvironmentJson(filesRepo)
     if not dictPayload:
         return ""
     dictContainer = dictPayload.get("dictContainer")
@@ -311,7 +320,7 @@ def _fsResolveImageDigest(sProjectRepo):
 
 
 def _fnPersistAttestation(
-    sProjectRepo, sManifestDigest, dictResult, fDuration,
+    filesRepo, sManifestDigest, dictResult, fDuration,
 ):
     """Write the attestation file and update the in-flight status dict."""
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
@@ -326,7 +335,7 @@ def _fnPersistAttestation(
         sRunLogPath=dictResult.get("sRunLogPath", ""),
     )
     try:
-        fnWriteAttestation(sProjectRepo, dictAttestation)
+        fnWriteAttestation(filesRepo, dictAttestation)
     except OSError as exc:
         logger.error("Could not persist L3 attestation: %s", exc)
 
@@ -441,18 +450,19 @@ def _fnRegisterCaptureBinary(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
+        _fsRequireProjectRepo(dictWorkflow)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         sBinaryPath = (request or {}).get("sBinaryPath") or ""
         if not isinstance(sBinaryPath, str) or not sBinaryPath.strip():
             raise HTTPException(400, "sBinaryPath is required.")
-        dictCaptured = fdictCaptureSingleBinary(sBinaryPath)
-        _fnAppendBinaryToEnvironmentJson(sProjectRepo, dictCaptured)
+        dictCaptured = fdictCaptureSingleBinary(filesRepo, sBinaryPath)
+        _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured)
         return {"dictCaptured": dictCaptured}
 
 
-def _fnAppendBinaryToEnvironmentJson(sProjectRepo, dictCaptured):
+def _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured):
     """Append or replace a binary entry in .vaibify/environment.json."""
-    dictPayload = fdictReadEnvironmentJson(sProjectRepo) or {}
+    dictPayload = fdictReadEnvironmentJson(filesRepo) or {}
     dictHost = dictPayload.get("dictHostBinaries")
     if not isinstance(dictHost, dict):
         dictHost = {"listBinaries": []}
@@ -469,7 +479,7 @@ def _fnAppendBinaryToEnvironmentJson(sProjectRepo, dictCaptured):
     listFiltered.append(dictCaptured)
     dictHost["listBinaries"] = listFiltered
     dictPayload["dictHostBinaries"] = dictHost
-    fnWriteEnvironmentJson(sProjectRepo, dictPayload)
+    fnWriteEnvironmentJson(filesRepo, dictPayload)
 
 
 def fnRegisterAll(app, dictCtx):

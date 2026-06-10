@@ -25,3 +25,6 @@ docker/zenodoClient.py
 docker/requirements.txt
 docker/system-packages.txt
 docker/workflows/
+
+# Runtime state written by vaibify itself when run from this checkout
+/.vaibify/

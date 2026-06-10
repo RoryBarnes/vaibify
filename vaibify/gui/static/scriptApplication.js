@@ -1547,20 +1547,25 @@ const PipeleyenApp = (function () {
     }
 
     function fsBlockerHintForFile(iStepIndex, sRawPath) {
-        // Hook up file-list red glyphs to the per-criterion hint of the
-        // first blocker whose ``listOffendingFiles`` contains the file.
-        // Falls back to the step's dominant hint when the file isn't
-        // individually offending.
+        // Hook up file-list red glyphs to the per-file hint
+        // (``dictOffendingFileHints``, when the backend supplies it)
+        // of the first blocker whose ``listOffendingFiles`` contains
+        // the file, then to that blocker's per-criterion hint.
+        // Returns "" when the file is in no ``listOffendingFiles`` so
+        // non-offending files never inherit the step-level hint.
         var listLevels = _flistBlockerLevels();
         for (var i = 0; i < listLevels.length; i++) {
             var dictEntry = (listLevels[i] || {})[iStepIndex];
-            if (!dictEntry || !dictEntry.sRemediationHint) continue;
+            if (!dictEntry) continue;
             var listOffending = dictEntry.listOffendingFiles || [];
-            if (listOffending.indexOf(sRawPath) !== -1) {
+            if (listOffending.indexOf(sRawPath) === -1) continue;
+            var dictFileHints = dictEntry.dictOffendingFileHints || {};
+            if (dictFileHints[sRawPath]) return dictFileHints[sRawPath];
+            if (dictEntry.sRemediationHint) {
                 return dictEntry.sRemediationHint;
             }
         }
-        return fsBlockerHintForStep(iStepIndex);
+        return "";
     }
 
     var _SET_L3_MANIFEST_CRITERIA = {
@@ -1642,6 +1647,17 @@ const PipeleyenApp = (function () {
             iLevel1: _dictWorkflowState.iL1BlockerCount || 0,
             iLevel2: _dictWorkflowState.iL2BlockerCount || 0,
             iLevel3: _dictWorkflowState.iL3BlockerCount || 0,
+        };
+    }
+
+    function fdictBlockerGlyphCatalog() {
+        // Section G legend panel: the authoritative glyph dicts per
+        // ladder rung. The legend generates its criterion rows from
+        // these so the panel cannot drift from the rendered glyphs.
+        return {
+            iLevel1: _DICT_BLOCKER_CRITERION_GLYPHS,
+            iLevel2: _DICT_L2_BLOCKER_GLYPHS,
+            iLevel3: _DICT_L3_BLOCKER_GLYPHS,
         };
     }
 
@@ -3057,6 +3073,7 @@ const PipeleyenApp = (function () {
         },
         fnSetCachedAicsLevel: fnSetCachedAicsLevel,
         fdictBlockerCountsByLevel: fdictBlockerCountsByLevel,
+        fdictBlockerGlyphCatalog: fdictBlockerGlyphCatalog,
         fsBlockerHintForStep: fsBlockerHintForStep,
         fsBlockerHintForFile: fsBlockerHintForFile,
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,

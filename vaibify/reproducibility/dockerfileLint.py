@@ -13,8 +13,13 @@ gap list. The composition function ``flistLintDockerfile`` is what
 ``levelGates.fbVerifyDockerfilePinned`` consumes.
 """
 
+import os
 import re
-from pathlib import Path
+
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
+)
 
 
 __all__ = [
@@ -46,22 +51,25 @@ _REGEX_SDE = re.compile(
 )
 
 
-def fbDockerfilePresent(sProjectRepo):
+def fbDockerfilePresent(filesRepo):
     """Return True iff a Dockerfile exists at the project repo root."""
-    return (Path(sProjectRepo) / S_DOCKERFILE_FILENAME).is_file()
+    return ffilesEnsureRepoFiles(filesRepo).fbIsFile(S_DOCKERFILE_FILENAME)
 
 
-def flistLintDockerfile(sProjectRepo):
+def flistLintDockerfile(filesRepo):
     """Return a list of pin-and-determinism issues with the Dockerfile.
 
     Empty list means the Dockerfile satisfies all three L3 pinning
     requirements. A missing Dockerfile is reported as a single issue
     (the L3 gate treats absence as a failure, not as N/A).
     """
-    pathDockerfile = Path(sProjectRepo) / S_DOCKERFILE_FILENAME
-    if not pathDockerfile.is_file():
-        return [f"Dockerfile not found at '{pathDockerfile}'"]
-    listLines = pathDockerfile.read_text().splitlines()
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.fbIsFile(S_DOCKERFILE_FILENAME):
+        sDisplayPath = os.path.join(
+            fsRepoRootOf(filesRepo), S_DOCKERFILE_FILENAME,
+        )
+        return [f"Dockerfile not found at '{sDisplayPath}'"]
+    listLines = filesRepo.fsReadText(S_DOCKERFILE_FILENAME).splitlines()
     listIssues = []
     listIssues.extend(flistCheckBaseImageDigests(listLines))
     listIssues.extend(flistCheckAptVersionPins(listLines))

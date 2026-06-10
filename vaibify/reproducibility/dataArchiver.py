@@ -17,6 +17,10 @@ from vaibify.reproducibility.provenanceTracker import (
     fnUpdateProvenance,
     fsComputeFileHash,
 )
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
+)
 from vaibify.reproducibility.zenodoClient import (
     ZenodoClient,
     ZenodoError,
@@ -56,58 +60,61 @@ def fnArchiveOutputs(config, dictWorkflow, sWorkdir):
     _fnSaveProvenanceFile(dictProvenance, sWorkdir)
 
 
-def fnGenerateReproducibilityEnvelope(sProjectRepo, dictWorkflow,
+def fnGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
                                       sContainerName=None,
                                       listHostBinaries=None):
     """Write the three-tier AICS Level 3 reproducibility envelope.
 
-    Tier 1 writes ``MANIFEST.sha256`` at the project repo root via
-    ``manifestWriter.fnWriteManifest``. Tier 2 writes
-    ``requirements.lock`` via ``dependencyPinning.fnGenerateRequirementsLock``;
-    when ``uv`` is missing or the project has no dependency input the
-    failure is logged and the other tiers continue. Tier 3 writes
+    ``filesRepo`` is a project-repo path string (host clone) or a
+    repo-file adapter (container). Tier 1 writes ``MANIFEST.sha256``
+    at the project repo root via ``manifestWriter.fnWriteManifest``.
+    Tier 2 writes ``requirements.lock`` via
+    ``dependencyPinning.fnGenerateRequirementsLock``; when ``uv`` is
+    missing or the project has no dependency input the failure is
+    logged and the other tiers continue. Tier 3 writes
     ``.vaibify/environment.json`` via ``environmentSnapshot`` only when
     ``sContainerName`` is supplied. Each tier's failure is isolated so
     a partial envelope is preferred over no envelope.
     """
-    _fnWriteManifestTier(sProjectRepo, dictWorkflow)
-    _fnWriteLockTier(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    _fnWriteManifestTier(filesRepo, dictWorkflow)
+    _fnWriteLockTier(filesRepo)
     _fnWriteEnvironmentTier(
-        sProjectRepo, sContainerName, listHostBinaries,
+        filesRepo, sContainerName, listHostBinaries,
     )
 
 
-def _fnWriteManifestTier(sProjectRepo, dictWorkflow):
+def _fnWriteManifestTier(filesRepo, dictWorkflow):
     """Write MANIFEST.sha256 (Tier 1); log and swallow any failure."""
     from vaibify.reproducibility import manifestWriter
     try:
-        manifestWriter.fnWriteManifest(sProjectRepo, dictWorkflow)
+        manifestWriter.fnWriteManifest(filesRepo, dictWorkflow)
     except (OSError, ValueError) as error:
         logger.warning(
             "Reproducibility envelope: MANIFEST.sha256 write "
-            "failed for '%s': %s", sProjectRepo, error,
+            "failed for '%s': %s", fsRepoRootOf(filesRepo), error,
         )
 
 
-def _fnWriteLockTier(sProjectRepo):
+def _fnWriteLockTier(filesRepo):
     """Write requirements.lock (Tier 2); log and swallow any failure."""
     from vaibify.reproducibility import dependencyPinning
     try:
-        dependencyPinning.fnGenerateRequirementsLock(sProjectRepo)
+        dependencyPinning.fnGenerateRequirementsLock(filesRepo)
     except FileNotFoundError as error:
         logger.warning(
             "Reproducibility envelope: requirements.lock skipped "
-            "for '%s': %s", sProjectRepo, error,
+            "for '%s': %s", fsRepoRootOf(filesRepo), error,
         )
     except subprocess.CalledProcessError as error:
         logger.warning(
             "Reproducibility envelope: uv compile failed for "
             "'%s' (exit %s): %s",
-            sProjectRepo, error.returncode, error.stderr,
+            fsRepoRootOf(filesRepo), error.returncode, error.stderr,
         )
 
 
-def _fnWriteEnvironmentTier(sProjectRepo, sContainerName,
+def _fnWriteEnvironmentTier(filesRepo, sContainerName,
                              listHostBinaries):
     """Write .vaibify/environment.json (Tier 3); skip when container absent."""
     if not sContainerName:
@@ -115,31 +122,32 @@ def _fnWriteEnvironmentTier(sProjectRepo, sContainerName,
     from vaibify.reproducibility import environmentSnapshot
     try:
         dictEnvironment = _fdictBuildEnvironmentPayload(
-            sContainerName, listHostBinaries,
+            filesRepo, sContainerName, listHostBinaries,
         )
         environmentSnapshot.fnWriteEnvironmentJson(
-            sProjectRepo, dictEnvironment,
+            filesRepo, dictEnvironment,
         )
     except (FileNotFoundError, OSError,
             subprocess.CalledProcessError) as error:
         logger.warning(
             "Reproducibility envelope: environment.json failed "
-            "for '%s': %s", sProjectRepo, error,
+            "for '%s': %s", fsRepoRootOf(filesRepo), error,
         )
 
 
-def _fdictBuildEnvironmentPayload(sContainerName, listHostBinaries):
+def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
+                                  listHostBinaries):
     """Assemble the environment.json payload from snapshot helpers."""
     from vaibify.reproducibility import environmentSnapshot
     dictPayload = {
         "dictContainer": environmentSnapshot.
             fdictCaptureContainerImageDigest(sContainerName),
         "dictSystemTools": environmentSnapshot.
-            fdictCaptureSystemTools(),
+            fdictCaptureSystemTools(filesRepo),
     }
     if listHostBinaries:
         dictPayload["dictHostBinaries"] = environmentSnapshot.\
-            fdictCaptureHostBinaryHashes(listHostBinaries)
+            fdictCaptureHostBinaryHashes(filesRepo, listHostBinaries)
     return dictPayload
 
 

@@ -211,3 +211,41 @@ def testL3WorkflowAndStepBuildersAlwaysDelegateToHintDict():
         "L3 criteria missing from _DICT_L3_REMEDIATION_HINTS: " +
         ", ".join(sorted(setMissing))
     )
+
+
+_STYLE_MAIN_REL = "vaibify/gui/static/styleMain.css"
+
+_RE_JS_S_CLASS = re.compile(r'sClass:\s*"([a-z0-9-]+)"')
+
+
+def _fsetAllJsGlyphClasses() -> Set[str]:
+    """Return every ``sClass`` named in the three JS glyph dicts plus
+    the base banner class and the per-file failure glyph class."""
+    sSource = _fsReadText(_SCRIPT_APPLICATION_REL)
+    setClasses: Set[str] = set()
+    for sDictName in (
+        "_DICT_BLOCKER_CRITERION_GLYPHS",
+        "_DICT_L2_BLOCKER_GLYPHS",
+        "_DICT_L3_BLOCKER_GLYPHS",
+    ):
+        sBody = _fsExtractJsDictBody(sSource, sDictName)
+        setClasses.update(_RE_JS_S_CLASS.findall(sBody))
+    setClasses.add("step-blocker-glyph")
+    setClasses.add("l1-blocker-file-glyph")
+    return setClasses
+
+
+def testEveryGlyphClassHasCssRule():
+    """Every glyph class the JS can stamp on a span must have at least
+    one CSS rule in styleMain.css; an unruled class renders in the
+    default (white) text color, hiding the level-by-color scheme."""
+    sCss = _fsReadText(_STYLE_MAIN_REL)
+    setMissing: Set[str] = set()
+    for sClass in _fsetAllJsGlyphClasses():
+        sPattern = r"\." + re.escape(sClass) + r"(?![a-z0-9-])"
+        if not re.search(sPattern, sCss):
+            setMissing.add(sClass)
+    assert setMissing == set(), (
+        "JS glyph classes with no CSS rule (would render white): " +
+        ", ".join(sorted(setMissing))
+    )

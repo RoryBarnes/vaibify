@@ -164,6 +164,7 @@ const PipeleyenTerminal = (function () {
             fitAddon: null,
             websocket: null,
             resizeObserver: null,
+            bFitDeferred: false,
         };
         dictPane.listTabs.push(dictTab);
         fnRenderPaneTabs(iPaneId);
@@ -268,10 +269,40 @@ const PipeleyenTerminal = (function () {
         dictTab.fitAddon = fitAddon;
         dictTab.elKillButton = elKillButton;
 
+        fnBindCopyAndSelectionHandlers(dictTab, terminal);
         fnConnectTerminalWebSocket(dictTab, terminal);
         fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon);
 
         terminal.focus();
+    }
+
+    function fbHandleCopyKeyEvent(event, terminal) {
+        if (event.type !== "keydown") return true;
+        if (String(event.key).toLowerCase() !== "c") return true;
+        var bMacintoshCopy = event.metaKey && !event.ctrlKey;
+        var bLinuxCopy = event.ctrlKey && event.shiftKey;
+        if (!bMacintoshCopy && !bLinuxCopy) return true;
+        if (!terminal.hasSelection()) return true;
+        event.preventDefault();
+        PipeleyenFileOps.fnCopyToClipboard(terminal.getSelection());
+        return false;
+    }
+
+    function fnFlushDeferredFit(dictTab) {
+        if (!dictTab.bFitDeferred) return;
+        if (dictTab.terminal && dictTab.terminal.hasSelection()) return;
+        dictTab.bFitDeferred = false;
+        if (dictTab.fitAddon) dictTab.fitAddon.fit();
+    }
+
+    function fnBindCopyAndSelectionHandlers(dictTab, terminal) {
+        terminal.attachCustomKeyEventHandler(function (event) {
+            return fbHandleCopyKeyEvent(event, terminal);
+        });
+        dictTab.disposableOnSelectionChange =
+            terminal.onSelectionChange(function () {
+                fnFlushDeferredFit(dictTab);
+            });
     }
 
     function fnConnectTerminalWebSocket(dictTab, terminal) {
@@ -357,17 +388,26 @@ const PipeleyenTerminal = (function () {
         }
     }
 
+    function fnRefitTabPreservingSelection(dictTab, fitAddon) {
+        if (dictTab.terminal && dictTab.terminal.hasSelection()) {
+            dictTab.bFitDeferred = true;
+            return;
+        }
+        dictTab.bFitDeferred = false;
+        var dictBefore = fdictCaptureTerminalMetrics(dictTab.terminal);
+        var dictProposed = null;
+        try { dictProposed = fitAddon.proposeDimensions(); } catch (_) {}
+        fitAddon.fit();
+        var dictAfter = fdictCaptureTerminalMetrics(dictTab.terminal);
+        fnLogResizeChange(dictBefore, dictAfter, dictProposed);
+    }
+
     function fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon) {
         var resizeObserver = new ResizeObserver(function () {
             if (dictPane.listTabs[dictPane.iActiveTabIndex] !== dictTab) {
                 return;
             }
-            var dictBefore = fdictCaptureTerminalMetrics(dictTab.terminal);
-            var dictProposed = null;
-            try { dictProposed = fitAddon.proposeDimensions(); } catch (_) {}
-            fitAddon.fit();
-            var dictAfter = fdictCaptureTerminalMetrics(dictTab.terminal);
-            fnLogResizeChange(dictBefore, dictAfter, dictProposed);
+            fnRefitTabPreservingSelection(dictTab, fitAddon);
         });
         resizeObserver.observe(elContainer);
         dictTab.resizeObserver = resizeObserver;
@@ -394,6 +434,11 @@ const PipeleyenTerminal = (function () {
         dictTab.disposableOnData = null;
         if (dictTab.disposableOnResize) dictTab.disposableOnResize.dispose();
         dictTab.disposableOnResize = null;
+        if (dictTab.disposableOnSelectionChange) {
+            dictTab.disposableOnSelectionChange.dispose();
+        }
+        dictTab.disposableOnSelectionChange = null;
+        dictTab.bFitDeferred = false;
         if (dictTab.elKillButton && dictTab.elKillButton.parentNode) {
             dictTab.elKillButton.parentNode.removeChild(
                 dictTab.elKillButton
@@ -490,7 +535,10 @@ const PipeleyenTerminal = (function () {
             if (dictPane.iActiveTabIndex >= 0 &&
                 dictPane.iActiveTabIndex < dictPane.listTabs.length) {
                 var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
-                if (dictTab.fitAddon) dictTab.fitAddon.fit();
+                if (dictTab.fitAddon) {
+                    fnRefitTabPreservingSelection(
+                        dictTab, dictTab.fitAddon);
+                }
             }
         });
     }
@@ -563,6 +611,7 @@ const PipeleyenTerminal = (function () {
     }
 
     function fnUpdateCursorColor(sColor) {
+        if (sColor === sCurrentCursorColor) return;
         sCurrentCursorColor = sColor;
         for (var i = 0; i < listPanes.length; i++) {
             var listTabs = listPanes[i].listTabs;

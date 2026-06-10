@@ -42,6 +42,8 @@ __all__ = [
     "fdictFilterNonNone",
     "fdictRequireWorkflow",
     "fdictStepFromRequest",
+    "fiGetSyncEpoch",
+    "fnBumpSyncEpoch",
     "fsSanitizeExceptionForClient",
     "fsComputeStaticCacheVersion",
     "fdictDiagnoseDockerError",
@@ -1173,6 +1175,7 @@ from .testStatusManager import (  # noqa: F401
     _fnRemoveTestFiles,
     _fnUpdateAggregateTestState,
     _fsBuildPytestCommand,
+    fbRefreshAggregateTestStates,
 )
 
 
@@ -1323,7 +1326,33 @@ def _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths):
                 :sWorkflowDirectory.index("/.vaibify")]
         return sWorkflowDirectory
 
-    return fnRequire, fnSave, fnVariables, fnWorkflowDir
+    def fnFiles(sContainerId):
+        from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+        dictWorkflow = dictWorkflows.get(sContainerId) or {}
+        sRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+        return ContainerRepoFiles(
+            dictRaw["docker"], sContainerId, sRepoPath,
+        )
+
+    return fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles
+
+
+def fnBumpSyncEpoch(dictCtx, sContainerId):
+    """Increment the per-container sync epoch.
+
+    Every sync-mutating route (push, add-file, commit-canonical,
+    pull/fetch/refresh of the project repo) bumps this counter so the
+    state poll can detect that remote-facing git state may have
+    changed and trigger exactly one badge refresh — no timers, no
+    extra polling loops.
+    """
+    dictEpochs = dictCtx.setdefault("dictSyncEpochs", {})
+    dictEpochs[sContainerId] = dictEpochs.get(sContainerId, 0) + 1
+
+
+def fiGetSyncEpoch(dictCtx, sContainerId):
+    """Return the current sync epoch for a container (0 when untouched)."""
+    return dictCtx.get("dictSyncEpochs", {}).get(sContainerId, 0)
 
 
 def fdictBuildContext(connectionDocker):
@@ -1349,14 +1378,16 @@ def fdictBuildContext(connectionDocker):
         "lastSelfWriteMtimes": {},
         "lastDiscoveredWorkflows": {},
         "dictPipelineStateLocks": {},
+        "dictSyncEpochs": {},
     }
-    fnRequire, fnSave, fnVariables, fnWorkflowDir = _ftupleBuildHelpers(
-        dictRaw, dictWorkflows, dictPaths
+    fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles = (
+        _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths)
     )
     dictRaw["require"] = fnRequire
     dictRaw["save"] = fnSave
     dictRaw["variables"] = fnVariables
     dictRaw["workflowDir"] = fnWorkflowDir
+    dictRaw["files"] = fnFiles
     return RouteContext(dictRaw)
 
 
@@ -1644,6 +1675,30 @@ async def _fnInvokeMaybeAsync(fnHook, app):
         await objectResult
 
 
+def _fnRegisterLastResortExceptionHandler(app):
+    """Convert any unhandled route exception into a sanitized 500 JSON.
+
+    Without this handler an unexpected exception becomes a bare 500
+    whose traceback goes only to uvicorn's stderr — never to the
+    vaibify log file — and the client receives no structured body.
+    The full traceback is logged to the "vaibify" logger; the client
+    sees only ``fsSanitizeExceptionForClient`` output so internal
+    paths and credentials can never leak.
+    """
+    from fastapi.responses import JSONResponse
+
+    @app.exception_handler(Exception)
+    async def fnHandleUnexpectedRouteException(request, exc):
+        logger.error(
+            "Unhandled exception on %s %s",
+            request.method, request.url.path, exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": fsSanitizeExceptionForClient(exc)},
+        )
+
+
 def fappCreateApplication(
     sWorkspaceRoot="/workspace", sTerminalUserArg=None,
     iExpectedPort=0,
@@ -1668,6 +1723,7 @@ def fappCreateApplication(
     app.state.iExpectedPort = iExpectedPort
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    _fnRegisterLastResortExceptionHandler(app)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["iPort"] = iExpectedPort
@@ -1695,6 +1751,7 @@ def fappCreateHubApplication(iExpectedPort=0):
     app.state.dictContainerLocks = {}
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    _fnRegisterLastResortExceptionHandler(app)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["iPort"] = iExpectedPort

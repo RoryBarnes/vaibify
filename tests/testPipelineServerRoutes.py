@@ -92,6 +92,16 @@ class MockDockerConnection:
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self._dictFiles[sPath] = baContent
 
+    def texecRunInContainerStreamed(
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+    ):
+        from types import SimpleNamespace
+        iExit, sOutput = self.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+        return SimpleNamespace(
+            iExitCode=iExit, sStdout=sOutput, sStderr="",
+        )
 
     def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
         return "exec-id-mock"

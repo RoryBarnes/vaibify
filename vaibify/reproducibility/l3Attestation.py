@@ -37,9 +37,10 @@ Adding a future migrator is one tuple append: see
 """
 
 import json
-import os
+import posixpath
 from datetime import datetime, timezone
-from pathlib import Path
+
+from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
 
 __all__ = [
@@ -72,7 +73,7 @@ _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 _LIST_ATTESTATION_MIGRATORS = []
 
 
-def fsCurrentManifestDigest(sProjectRepo):
+def fsCurrentManifestDigest(filesRepo):
     """Return the SHA-256 of ``MANIFEST.sha256`` or the empty string.
 
     The digest is the byte-exact identity of the L3 envelope: when
@@ -80,14 +81,15 @@ def fsCurrentManifestDigest(sProjectRepo):
     attestation is considered stale. Returns ``""`` when the manifest
     is absent so callers can short-circuit cleanly.
     """
-    pathManifest = Path(sProjectRepo) / _S_MANIFEST_FILENAME
-    if not pathManifest.is_file():
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictHashed = filesRepo.fdictHashFiles([_S_MANIFEST_FILENAME])
+    sHash = (dictHashed.get(_S_MANIFEST_FILENAME) or {}).get("sSha256")
+    if not sHash:
         return ""
-    from vaibify.reproducibility._hashing import fsHashFileSha256
-    return "sha256:" + fsHashFileSha256(str(pathManifest))
+    return "sha256:" + sHash
 
 
-def fdictReadAttestation(sProjectRepo):
+def fdictReadAttestation(filesRepo):
     """Return the parsed top-level attestation file or ``None``.
 
     Missing file, malformed JSON, and non-dict payload all map to
@@ -96,20 +98,20 @@ def fdictReadAttestation(sProjectRepo):
     record is walked through ``_LIST_ATTESTATION_MIGRATORS`` so
     callers always see the current schema shape.
     """
-    dictRaw = _fdictReadRaw(sProjectRepo)
+    dictRaw = _fdictReadRaw(filesRepo)
     if dictRaw is None:
         return None
     return _fdictMigrateAttestation(dictRaw)
 
 
-def _fdictReadRaw(sProjectRepo):
+def _fdictReadRaw(filesRepo):
     """Return the parsed attestation file as-written, or ``None``."""
-    pathFile = _fpathAttestationFile(sProjectRepo)
-    if not pathFile.is_file():
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sRelPath = _fsAttestationRelativePath()
+    if not filesRepo.fbIsFile(sRelPath):
         return None
     try:
-        with open(pathFile, "r", encoding="utf-8") as fileHandle:
-            dictPayload = json.load(fileHandle)
+        dictPayload = json.loads(filesRepo.fsReadText(sRelPath))
     except (OSError, ValueError):
         return None
     if not isinstance(dictPayload, dict):
@@ -135,14 +137,15 @@ def _fdictMigrateAttestation(dictPayload):
     return dictPayload
 
 
-def fbL3AttestationCurrent(sProjectRepo):
+def fbL3AttestationCurrent(filesRepo):
     """Return True iff an L3 attestation exists, passed, and is not stale.
 
     Staleness is keyed against ``fsCurrentManifestDigest`` so any
     workflow edit that re-generates the manifest invalidates the
     attestation without requiring a separate timestamp.
     """
-    dictPayload = fdictReadAttestation(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictPayload = fdictReadAttestation(filesRepo)
     if dictPayload is None:
         return False
     if dictPayload.get("sStatus") != S_STATUS_PASSED:
@@ -150,7 +153,7 @@ def fbL3AttestationCurrent(sProjectRepo):
     sRecorded = dictPayload.get("sManifestDigestAtAttestation") or ""
     if not sRecorded:
         return False
-    return sRecorded == fsCurrentManifestDigest(sProjectRepo)
+    return sRecorded == fsCurrentManifestDigest(filesRepo)
 
 
 def fdictBuildAttestation(
@@ -179,90 +182,70 @@ def fdictBuildAttestation(
     }
 
 
-def fnWriteAttestation(sProjectRepo, dictAttestation):
+def fnWriteAttestation(filesRepo, dictAttestation):
     """Persist the attestation and archive a timestamped copy.
 
-    The atomic write uses a sibling ``.tmp`` file followed by
-    ``os.replace`` so a crash during the write cannot leave a
-    half-written attestation that would be silently treated as
-    "passed". A copy is also written to the history directory; the
-    history filename embeds the attestation timestamp for sortability.
+    The adapter's atomic write (sibling temp file + rename) ensures a
+    crash during the write cannot leave a half-written attestation
+    that would be silently treated as "passed". A copy is also
+    written to the history directory; the history filename embeds the
+    attestation timestamp for sortability.
     """
-    pathDir = _fpathVaibifyDir(sProjectRepo)
-    pathDir.mkdir(parents=True, exist_ok=True)
-    pathHistoryDir = pathDir / S_ATTESTATION_HISTORY_DIR
-    pathHistoryDir.mkdir(parents=True, exist_ok=True)
-    _fnAtomicWriteJson(
-        _fpathAttestationFile(sProjectRepo), dictAttestation,
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    filesRepo.fnWriteJsonAtomic(
+        _fsAttestationRelativePath(), dictAttestation,
     )
     sHistoryName = _fsHistoryFilenameFor(dictAttestation)
-    _fnAtomicWriteJson(
-        pathHistoryDir / sHistoryName, dictAttestation,
+    filesRepo.fnWriteJsonAtomic(
+        posixpath.join(
+            _S_VAIBIFY_DIRECTORY, S_ATTESTATION_HISTORY_DIR, sHistoryName,
+        ),
+        dictAttestation,
     )
 
 
-def fnInvalidateAttestation(sProjectRepo):
+def fnInvalidateAttestation(filesRepo):
     """Remove the top-level attestation file (history is preserved).
 
     Used by the dashboard when a researcher explicitly clears an
     attestation. Returns True iff a file was actually removed.
     """
-    pathFile = _fpathAttestationFile(sProjectRepo)
-    if not pathFile.is_file():
-        return False
-    try:
-        os.remove(str(pathFile))
-    except OSError:
-        return False
-    return True
+    return ffilesEnsureRepoFiles(filesRepo).fbRemoveFile(
+        _fsAttestationRelativePath(),
+    )
 
 
-def flistReadAttestationHistory(sProjectRepo):
+def flistReadAttestationHistory(filesRepo):
     """Return all archived attestations newest-first.
 
     Returns an empty list when the history directory is absent or
     every file fails to parse. Each entry is the parsed JSON dict;
     callers render the columns the UI needs (timestamp, status,
-    manifest digest, duration).
+    manifest digest, duration). Container adapters batch the reads in
+    one exec via ``fdictReadDirJsonContents``.
     """
-    pathDir = _fpathVaibifyDir(sProjectRepo) / S_ATTESTATION_HISTORY_DIR
-    if not pathDir.is_dir():
-        return []
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sRelDir = posixpath.join(
+        _S_VAIBIFY_DIRECTORY, S_ATTESTATION_HISTORY_DIR,
+    )
+    dictContents = filesRepo.fdictReadDirJsonContents(sRelDir)
     listEntries = []
-    for pathFile in sorted(pathDir.glob("*.json"), reverse=True):
+    for sFilename in sorted(dictContents, reverse=True):
         try:
-            with open(pathFile, "r", encoding="utf-8") as fileHandle:
-                dictPayload = json.load(fileHandle)
-        except (OSError, ValueError):
+            dictPayload = json.loads(dictContents[sFilename])
+        except ValueError:
             continue
         if isinstance(dictPayload, dict):
             listEntries.append(dictPayload)
     return listEntries
 
 
-def _fnAtomicWriteJson(pathOutput, dictPayload):
-    """Write JSON atomically via a temp file + os.replace."""
-    pathTemp = pathOutput.with_suffix(pathOutput.suffix + ".tmp")
-    try:
-        with open(pathTemp, "w", encoding="utf-8") as fileHandle:
-            json.dump(dictPayload, fileHandle, indent=2, sort_keys=True)
-        os.replace(str(pathTemp), str(pathOutput))
-    except OSError:
-        try:
-            os.remove(str(pathTemp))
-        except OSError:
-            pass
-        raise
+_S_VAIBIFY_DIRECTORY = ".vaibify"
 
 
-def _fpathVaibifyDir(sProjectRepo):
-    """Return the ``<repo>/.vaibify`` Path."""
-    return Path(sProjectRepo) / ".vaibify"
-
-
-def _fpathAttestationFile(sProjectRepo):
-    """Return the top-level attestation file Path."""
-    return _fpathVaibifyDir(sProjectRepo) / S_ATTESTATION_FILENAME
+def _fsAttestationRelativePath():
+    """Return the repo-relative path of the top-level attestation file."""
+    return posixpath.join(_S_VAIBIFY_DIRECTORY, S_ATTESTATION_FILENAME)
 
 
 def _fsCurrentTimestamp():

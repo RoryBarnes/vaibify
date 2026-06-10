@@ -301,7 +301,7 @@ def test_all_green_refresh_writes_environment_json(tmp_path):
         return_value={"/usr/bin/git": "abc"},
     ):
         asyncio.run(fileStatusManager.fnMaybeAutoArchive(
-            MagicMock(), "container-id-123",
+            None, "container-id-123",
             dictWorkflow, 0, iAICSLevelBefore=0,
         ))
     assert (tmp_path / _ENVIRONMENT_RELPATH).is_file()

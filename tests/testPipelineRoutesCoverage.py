@@ -161,7 +161,9 @@ class TestPipelineStateRoute:
             _fnRegisterPipelineState(app, dictCtx)
             client = TestClient(app)
             response = client.get("/api/pipeline/cid1/state")
-            assert response.json() == {"bRunning": False}
+            assert response.json() == {
+                "bRunning": False, "iSyncEpoch": 0,
+            }
 
 
 # ── Line 172: kill route with processes > 0 ──────────────────────
@@ -1074,6 +1076,91 @@ class TestFdictComputeFileStatus:
         assert dictResult["dictTestMarkers"] == (
             {"0": {"sUnitTest": "passed"}}
         )
+
+
+# ── _fdictFetchTestStatus: aggregate self-heal on the poll path ──
+
+
+from vaibify.gui.routes.pipelineRoutes import _fdictFetchTestStatus
+
+
+def _fdictStuckAggregateStep(sIntegrityState):
+    """Build a step whose aggregate is stuck at ``untested``."""
+    return {
+        "sDirectory": "A",
+        "dictTests": {
+            "dictIntegrity": {"saCommands": ["python -m pytest"]},
+        },
+        "dictVerification": {
+            "sUnitTest": "untested",
+            "sIntegrity": sIntegrityState,
+        },
+    }
+
+
+class TestFdictFetchTestStatusAggregateSelfHeal:
+    async def _fdictRunFetchTestStatus(
+        self, dictWorkflow, dictTestMarkers, mockSave,
+    ):
+        dictCtx = {
+            "docker": MagicMock(),
+            "paths": {"cid1": "/repo/workflow.json"},
+            "save": mockSave,
+        }
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fnRefreshConftestsAndMigrateMarkers",
+            new=AsyncMock(),
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictFetchTestMarkers",
+            return_value={"markers": {}, "testFiles": {}},
+        ), patch(
+            "vaibify.gui.routes.pipelineRoutes"
+            "._fdictBuildTestMarkerStatus",
+            return_value=dictTestMarkers,
+        ):
+            return await _fdictFetchTestStatus(
+                dictCtx, "cid1", dictWorkflow,
+            )
+
+    @pytest.mark.asyncio
+    async def test_green_marker_categories_heal_stuck_aggregate(self):
+        """Applying a green marker category recomputes the stuck
+        ``untested`` aggregate and persists the workflow."""
+        dictStep = _fdictStuckAggregateStep("untested")
+        dictWorkflow = {"listSteps": [dictStep]}
+        dictTestMarkers = {
+            "0": {
+                "bStale": False,
+                "dictMarker": {
+                    "dictCategories": {
+                        "integrity": {"iPassed": 3, "iFailed": 0},
+                    },
+                },
+            },
+        }
+        mockSave = MagicMock()
+        await self._fdictRunFetchTestStatus(
+            dictWorkflow, dictTestMarkers, mockSave,
+        )
+        assert dictStep["dictVerification"]["sIntegrity"] == "passed"
+        assert dictStep["dictVerification"]["sUnitTest"] == "passed"
+        mockSave.assert_called_once_with("cid1", dictWorkflow)
+
+    @pytest.mark.asyncio
+    async def test_stuck_aggregate_heals_even_without_marker_change(self):
+        """The live bug: marker-green axes under a persisted
+        ``untested`` aggregate self-correct on poll even when the
+        marker application itself changes nothing."""
+        dictStep = _fdictStuckAggregateStep("passed-from-marker")
+        dictWorkflow = {"listSteps": [dictStep]}
+        mockSave = MagicMock()
+        await self._fdictRunFetchTestStatus(dictWorkflow, {}, mockSave)
+        assert dictStep["dictVerification"]["sUnitTest"] == (
+            "passed-from-marker"
+        )
+        mockSave.assert_called_once_with("cid1", dictWorkflow)
 
 
 # ── _fbApplyRandomnessLint ────────────────────────────────────────
