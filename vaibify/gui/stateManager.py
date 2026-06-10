@@ -40,6 +40,7 @@ __all__ = [
     "S_VAIBIFY_GITIGNORE_RELATIVE",
     "T_STATEFUL_STEP_FIELDS",
     "T_STATEFUL_TOP_FIELDS",
+    "fbRatchetLevelHighWater",
     "fdictBootstrapStateFromMarkers",
     "fdictBuildEmptyState",
     "fdictLoadStateFromContainer",
@@ -53,7 +54,13 @@ __all__ = [
 ]
 
 
-I_CURRENT_STATE_SCHEMA_VERSION = 1
+# Schema v2 adds the add-only AICS level high-water fields
+# (``dictLevelHighWater`` per step, ``dictWorkflowLevelHighWater`` at
+# the top level). Version 1 files load unchanged: the tuple-generic
+# merge/split copies only keys that are present, so an absent
+# high-water dict simply means the level was never attained. No
+# migration code exists or is needed in either direction.
+I_CURRENT_STATE_SCHEMA_VERSION = 2
 S_STATE_FILE_RELATIVE = ".vaibify/state.json"
 S_VAIBIFY_GITIGNORE_RELATIVE = ".vaibify/.gitignore"
 S_TEST_MARKERS_RELATIVE = ".vaibify/test_markers"
@@ -62,8 +69,13 @@ S_VAIBIFY_GITIGNORE_BODY = (
     "state.json\n"
 )
 
-T_STATEFUL_STEP_FIELDS = ("dictVerification", "dictRunStats")
-T_STATEFUL_TOP_FIELDS = ("bArchiveTrackingMigrated", "iAICSLevel")
+T_STATEFUL_STEP_FIELDS = (
+    "dictVerification", "dictRunStats", "dictLevelHighWater",
+)
+T_STATEFUL_TOP_FIELDS = (
+    "bArchiveTrackingMigrated", "iAICSLevel",
+    "dictWorkflowLevelHighWater",
+)
 
 
 def fsStatePathFromRepo(sProjectRepoPath):
@@ -376,6 +388,57 @@ def ftSplitMergedDict(dictWorkflow):
         if sKey in dictDeclarative:
             dictState[sKey] = dictDeclarative.pop(sKey)
     return dictDeclarative, dictState
+
+
+def fbRatchetLevelHighWater(
+    dictWorkflow, dictStepLevelStates, dictWorkflowScopeStates,
+):
+    """Stamp first-attainment timestamps for newly attained AICS levels.
+
+    ``dictStepLevelStates`` maps ``iStepIndex`` to
+    ``{"s1": sState, "s2": sState, "s3": sState}`` with states in
+    ``("attained", "blocked", "unknown")``; ``dictWorkflowScopeStates``
+    is one such state dict for the workflow header row. The ratchet is
+    ADD-ONLY: a level that regresses to ``blocked`` or ``unknown``
+    never loses its recorded first-attainment timestamp — regression
+    memory is the feature. ``unknown`` never stamps. Returns True iff
+    any timestamp was newly recorded.
+    """
+    sNow = _fsCurrentUtcIso()
+    bChanged = False
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        if not isinstance(dictStep, dict):
+            continue
+        dictStates = (dictStepLevelStates or {}).get(iStepIndex) or {}
+        bChanged = _fbStampAttainedLevels(
+            dictStep, "dictLevelHighWater", dictStates, sNow,
+        ) or bChanged
+    bChanged = _fbStampAttainedLevels(
+        dictWorkflow, "dictWorkflowLevelHighWater",
+        dictWorkflowScopeStates or {}, sNow,
+    ) or bChanged
+    return bChanged
+
+
+def _fbStampAttainedLevels(dictHolder, sFieldKey, dictLevelStates, sNow):
+    """Record ``sNow`` for each newly attained level; never overwrite.
+
+    Levels already carrying a timestamp keep it (re-attainment is not
+    a new event); non-``attained`` states stamp nothing. The holder's
+    high-water dict is created lazily so an all-grey step never gains
+    an empty field.
+    """
+    bChanged = False
+    for sLevel in ("1", "2", "3"):
+        if dictLevelStates.get("s" + sLevel) != "attained":
+            continue
+        dictHighWater = dictHolder.setdefault(sFieldKey, {})
+        if sLevel in dictHighWater:
+            continue
+        dictHighWater[sLevel] = sNow
+        bChanged = True
+    return bChanged
 
 
 def fnEnsureVaibifyGitignore(

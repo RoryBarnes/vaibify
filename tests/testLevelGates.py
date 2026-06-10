@@ -408,6 +408,8 @@ def test_fdictBuildAiDeclarationStep_has_unnecessary_categories():
     dictStep = fdictBuildAiDeclarationStep("AI Use", "AI_USAGE.md")
     assert dictStep["sStepKind"] == S_AI_DECLARATION_STEP_KIND
     assert dictStep["sDeclarationFile"] == "AI_USAGE.md"
+    assert dictStep["bInteractive"] is True
+    assert dictStep["sDirectory"] == "aiDeclaration"
     dictV = dictStep["dictVerification"]
     for sKey in (
         "sUnitTest", "sIntegrity", "sQualitative", "sQuantitative",

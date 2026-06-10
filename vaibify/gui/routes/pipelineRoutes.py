@@ -436,6 +436,9 @@ async def _fdictFetchOutputStatus(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
     )
+    _fnSaveIfLevelHighWaterChanged(
+        dictCtx, sContainerId, dictWorkflow, dictRest,
+    )
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
@@ -765,7 +768,12 @@ def _fdictBuildPollResponseRest(
     )
     listLevel2Blockers = flistLevel2Blockers(dictWorkflow, filesPoll)
     listLevel3Blockers = flistLevel3Blockers(dictWorkflow, filesPoll)
+    dictLevelPayload = _fdictBuildLevelStatePayload(
+        dictWorkflow, listBlockers, listLevel2Blockers,
+        listLevel3Blockers,
+    )
     return {
+        **dictLevelPayload,
         "iAICSLevel": dictWorkflow["iAICSLevel"],
         "listBlockers": listBlockers,
         "iL1BlockerCount": _fiCountUniqueBlockingSteps(listBlockers),
@@ -785,6 +793,96 @@ def _fdictBuildPollResponseRest(
         "sWorkflowReloadError": dictReload["sError"],
         "dictWorkflow": _fdictBuildReloadedWorkflowShape(dictReload),
     }
+
+
+_S_LEVEL_RATCHET_FLAG_KEY = "_bLevelHighWaterChanged"
+
+
+def _ftComputeLevelStates(
+    dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
+):
+    """Project blocker lists into per-step and workflow-scope states."""
+    from vaibify.reproducibility.levelGates import (
+        fdictComputeStepLevelStates,
+        fdictComputeWorkflowScopeLevelStates,
+    )
+    dictStepStates = fdictComputeStepLevelStates(
+        dictWorkflow, listBlockers, listLevel2Blockers,
+        listLevel3Blockers,
+    )
+    dictScopeStates = fdictComputeWorkflowScopeLevelStates(
+        dictWorkflow, listLevel2Blockers, listLevel3Blockers,
+    )
+    return dictStepStates, dictScopeStates
+
+
+def _fdictKeyStatesByStepString(dictStepStates):
+    """Re-key per-step level states by step-index string for the wire."""
+    return {
+        str(iIndex): dictStates
+        for iIndex, dictStates in dictStepStates.items()
+    }
+
+
+def _fdictProjectStepLevelHighWater(dictWorkflow):
+    """Project each step's high-water stamps, keyed by step-index string.
+
+    Sourced from the merged step dicts so the frontend reads
+    regression memory straight off the poll payload — a step whose
+    levels regressed keeps its first-attainment timestamps here.
+    """
+    dictResult = {}
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    for iIndex, dictStep in enumerate(listSteps):
+        if isinstance(dictStep, dict):
+            dictResult[str(iIndex)] = dict(
+                dictStep.get("dictLevelHighWater") or {},
+            )
+    return dictResult
+
+
+def _fdictBuildLevelStatePayload(
+    dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
+):
+    """Build the level-state wire keys plus the private ratchet flag.
+
+    The ratchet runs here so a freshly attained level appears in the
+    same poll payload that attained it. The private flag key is
+    popped by ``_fnSaveIfLevelHighWaterChanged`` before the response
+    is returned — it must never reach the wire.
+    """
+    from .. import stateManager
+    dictStepStates, dictScopeStates = _ftComputeLevelStates(
+        dictWorkflow, listBlockers, listLevel2Blockers,
+        listLevel3Blockers,
+    )
+    bChanged = stateManager.fbRatchetLevelHighWater(
+        dictWorkflow, dictStepStates, dictScopeStates,
+    )
+    return {
+        "dictStepLevels": _fdictKeyStatesByStepString(dictStepStates),
+        "dictStepLevelHighWater":
+            _fdictProjectStepLevelHighWater(dictWorkflow),
+        "dictWorkflowScopeLevels": dictScopeStates,
+        "dictWorkflowLevelHighWater": dict(
+            dictWorkflow.get("dictWorkflowLevelHighWater") or {},
+        ),
+        _S_LEVEL_RATCHET_FLAG_KEY: bChanged,
+    }
+
+
+def _fnSaveIfLevelHighWaterChanged(
+    dictCtx, sContainerId, dictWorkflow, dictRest,
+):
+    """Pop the private ratchet flag and persist at most one save.
+
+    Mirrors the ``bAnyReconciled`` conditional-save precedent in
+    ``_flistRunPollSideEffects``: a level transition stamps new
+    high-water timestamps onto the workflow, which must be saved
+    exactly once; steady-state polls save nothing.
+    """
+    if dictRest.pop(_S_LEVEL_RATCHET_FLAG_KEY, False):
+        dictCtx["save"](sContainerId, dictWorkflow)
 
 
 def _fiCountUniqueBlockingSteps(listBlockers):

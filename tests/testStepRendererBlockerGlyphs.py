@@ -249,3 +249,130 @@ def testEveryGlyphClassHasCssRule():
         "JS glyph classes with no CSS rule (would render white): " +
         ", ".join(sorted(setMissing))
     )
+
+
+_LEGEND_PANEL_REL = "vaibify/gui/static/scriptLegendPanel.js"
+
+_RE_JS_DICT_KEY_OR_NULL = re.compile(
+    r'"([a-z0-9-]+)"\s*:\s*(?:\{|null)'
+)
+
+_LIST_SCOPE_F_CSS_CLASSES = [
+    "step-level-strip",
+    "step-level-cell",
+    "level-cell-attained",
+    "level-cell-regressed",
+    "level-cell-never",
+    "level-cell-unknown",
+    "workflow-level-header-row",
+    "file-mark-stale",
+    "ghost-ai-declaration-row",
+    "step-blocker-glyph-outputs-changed",
+    "ai-declaration-preview",
+]
+
+
+def _fsExtractPythonFunctionBody(
+    sSource: str, sFunctionName: str,
+) -> str:
+    """Return one function's source with its docstring stripped."""
+    sNeedle = f"def {sFunctionName}("
+    iStart = sSource.find(sNeedle)
+    if iStart == -1:
+        raise AssertionError(
+            f"could not locate Python function {sFunctionName}"
+        )
+    iEnd = sSource.find("\ndef ", iStart + 1)
+    sBody = sSource[iStart:iEnd if iEnd != -1 else len(sSource)]
+    return re.sub(r'"""[\s\S]*?"""', "", sBody)
+
+
+def testAxisSubStateGlyphKeysEqualPythonSubStateLiterals():
+    """The JS ``_DICT_AXIS_SUBSTATE_GLYPHS`` keys must equal the
+    sub-state literals ``levelGates._fsAxisNotGreenSubState`` can
+    return, or a backend cause would silently render the wrong banner
+    glyph (the dict lookup would miss and fall back)."""
+    sJsBody = _fsExtractJsDictBody(
+        _fsReadText(_SCRIPT_APPLICATION_REL),
+        "_DICT_AXIS_SUBSTATE_GLYPHS",
+    )
+    setJsKeys = set(_RE_JS_DICT_KEY_OR_NULL.findall(sJsBody))
+    sPythonBody = _fsExtractPythonFunctionBody(
+        _fsReadText(_LEVEL_GATES_REL), "_fsAxisNotGreenSubState",
+    )
+    setPython = set(re.findall(r'"([a-z-]+)"', sPythonBody))
+    assert setJsKeys == setPython, (
+        f"JS sub-state keys {sorted(setJsKeys)} != Python literals "
+        f"{sorted(setPython)}"
+    )
+
+
+def testUntestedSubStateRendersNoBannerGlyph():
+    """``untested`` must map to null: no banner glyph at all — the
+    orange status light already carries 'work not yet done'."""
+    sJsBody = _fsExtractJsDictBody(
+        _fsReadText(_SCRIPT_APPLICATION_REL),
+        "_DICT_AXIS_SUBSTATE_GLYPHS",
+    )
+    assert re.search(r'"untested"\s*:\s*null', sJsBody), (
+        "untested sub-state must map to null (no banner glyph)"
+    )
+
+
+@pytest.mark.parametrize(
+    "sDictName,sCriterion",
+    [
+        ("_DICT_BLOCKER_CRITERION_GLYPHS", "upstream-modified"),
+        ("_DICT_BLOCKER_CRITERION_GLYPHS", "script-stale"),
+        ("_DICT_BLOCKER_CRITERION_GLYPHS", "attestation-stale"),
+        ("_DICT_AXIS_SUBSTATE_GLYPHS", "outputs-changed"),
+    ],
+)
+def testStaleSeverityCriteriaUsePencilIcon(sDictName, sCriterion):
+    """Recoverable-by-re-run staleness renders the pencil, reserving
+    red ✗ marks for genuinely failed or missing artifacts."""
+    sBody = _fsExtractJsDictBody(
+        _fsReadText(_SCRIPT_APPLICATION_REL), sDictName,
+    )
+    matchIcon = re.search(
+        r'"' + re.escape(sCriterion) +
+        r'"\s*:\s*\{[^}]*sIcon:\s*"([^"]+)"',
+        sBody,
+    )
+    assert matchIcon is not None, (
+        f"{sCriterion} missing from {sDictName}"
+    )
+    assert matchIcon.group(1) == "✎", (
+        f"{sCriterion} must use the pencil icon, "
+        f"got {matchIcon.group(1)!r}"
+    )
+
+
+def testEveryLevelCellAndFileMarkClassHasCssRule():
+    """Every Scope-F level-cell, header, ghost-row, and file-mark
+    class stamped by the JS must have a CSS rule."""
+    sCss = _fsReadText(_STYLE_MAIN_REL)
+    setMissing: Set[str] = set()
+    for sClass in _LIST_SCOPE_F_CSS_CLASSES:
+        sPattern = r"\." + re.escape(sClass) + r"(?![a-z0-9-])"
+        if not re.search(sPattern, sCss):
+            setMissing.add(sClass)
+    assert setMissing == set(), (
+        "Scope-F classes with no CSS rule: " +
+        ", ".join(sorted(setMissing))
+    )
+
+
+def testLegendReferencesAxisSubStateCatalogKey():
+    """The legend must draw the axis sub-state rows from the same
+    catalog key the application exposes, so it cannot drift from the
+    rendered banner glyphs."""
+    sApplication = _fsReadText(_SCRIPT_APPLICATION_REL)
+    assert re.search(
+        r"dictAxisSubStates:\s*_DICT_AXIS_SUBSTATE_GLYPHS",
+        sApplication,
+    ), "fdictBlockerGlyphCatalog must expose dictAxisSubStates"
+    sLegend = _fsReadText(_LEGEND_PANEL_REL)
+    assert "dictAxisSubStates" in sLegend, (
+        "legend panel must render rows from dictAxisSubStates"
+    )

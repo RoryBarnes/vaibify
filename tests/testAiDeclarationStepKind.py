@@ -19,13 +19,17 @@ Covers the contract that a step with ``sStepKind == "ai-declaration"``:
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from vaibify.gui import workflowManager
 from vaibify.gui.workflowManager import (
     fsDescribeValidationFailure,
 )
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
+    S_DEFAULT_DECLARATION_DIRECTORY,
     S_DEFAULT_DECLARATION_FILENAME,
+    S_DEFAULT_DECLARATION_STEP_NAME,
     fdictBuildAiDeclarationStep,
 )
 from vaibify.reproducibility.levelGates import (
@@ -52,6 +56,40 @@ def test_fdictBuildAiDeclarationStep_passes_structural_validator():
         "ai-declaration step must satisfy the same structural "
         f"validator as data steps; got: {sFailure!r}"
     )
+
+
+def test_builder_defaults_name_directory_and_interactive():
+    """No-argument builds get the documented defaults and I-label flag."""
+    dictStep = fdictBuildAiDeclarationStep()
+    assert dictStep["sName"] == S_DEFAULT_DECLARATION_STEP_NAME
+    assert dictStep["sDirectory"] == S_DEFAULT_DECLARATION_DIRECTORY
+    assert dictStep["sDeclarationFile"] == S_DEFAULT_DECLARATION_FILENAME
+    assert dictStep["bInteractive"] is True
+
+
+def test_builder_rejects_empty_directory():
+    """An empty sDirectory would lose per-step state across reloads.
+
+    ``stateManager.ftSplitMergedDict`` keys per-step state by
+    sDirectory and silently drops entries with an empty key, so the
+    builder must refuse to create a step that cannot persist its
+    attestation.
+    """
+    with pytest.raises(ValueError):
+        fdictBuildAiDeclarationStep(sDirectory="")
+    with pytest.raises(ValueError):
+        fdictBuildAiDeclarationStep(sDirectory="   ")
+
+
+def test_builder_strips_and_keeps_custom_directory_and_name():
+    dictStep = fdictBuildAiDeclarationStep(
+        sName="  Declaration of AI Use  ",
+        sDeclarationFile="docs/AI_USAGE.md",
+        sDirectory=" declarations ",
+    )
+    assert dictStep["sName"] == "Declaration of AI Use"
+    assert dictStep["sDirectory"] == "declarations"
+    assert dictStep["sDeclarationFile"] == "docs/AI_USAGE.md"
 
 
 def test_ai_declaration_step_l1_passes_when_user_attests():

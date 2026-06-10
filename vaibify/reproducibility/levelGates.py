@@ -63,9 +63,12 @@ __all__ = [
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowHasAiDeclarationStep",
     "fbWorkflowHasProjectRepo",
+    "fdictComputeStepLevelStates",
+    "fdictComputeWorkflowScopeLevelStates",
     "fdictL3ReadinessGaps",
     "fdictLevel2Gaps",
     "fiAICSLevel",
+    "fiStepAICSLevel",
     "flistLevel1Blockers",
     "flistLevel2Blockers",
     "flistLevel3Blockers",
@@ -238,6 +241,20 @@ def flistLevel1Blockers(
     researcher attested), and ``axis-not-green`` when the non-green
     cause is marker drift (``outputs-changed``). Consumers must
     tolerate its absence — older payloads do not carry it.
+
+    ``axis-not-green`` entries additionally carry ``sSubState``, one
+    of ``"failed"`` / ``"outputs-missing"`` / ``"outputs-changed"`` /
+    ``"untested"`` — the machine-readable cause behind the prose hint
+    (same priority ladder, via ``_fsAxisNotGreenSubState``).
+
+    Entries may carry an optional ``dictOffendingFileMarks`` field,
+    ``{sRawPath: "stale" | "failed" | "missing"}``, whose keys exactly
+    mirror ``listOffendingFiles``. Emitted by ``axis-not-green``
+    (drift files ``"stale"``, ``outputs-missing`` ``"missing"``,
+    ``failed`` ``"failed"``; the ``untested`` sub-state attaches no
+    marks), ``upstream-modified`` (all ``"stale"``), ``script-stale``
+    (all ``"stale"``), and ``attestation-stale`` (all ``"stale"``).
+    Consumers must tolerate its absence.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbWorkflowHasProjectRepo(filesRepo):
@@ -341,6 +358,7 @@ def _fdictUpstreamModifiedBlocker(
     _fnAttachUpstreamFileHints(
         dictBlocker, dictWorkflow, listUpstreamIndices,
     )
+    _fnAttachOffendingFileMarks(dictBlocker, "stale")
     return dictBlocker
 
 
@@ -402,22 +420,37 @@ def _fsJoinAxisNames(listNonGreenAxes, sTargetValue):
     return ", ".join(listNames)
 
 
+def _fsAxisNotGreenSubState(dictStep):
+    """Return the dominant non-green axis state for a step.
+
+    One of ``"failed"``, ``"outputs-missing"``, ``"outputs-changed"``,
+    or ``"untested"``, in that priority order — the same ladder the
+    remediation hint has always used, extracted so the blocker dict
+    can carry the machine-readable cause alongside the prose.
+    """
+    listValues = [
+        sValue for _, sValue in _flistNonGreenAxes(dictStep)
+    ]
+    for sCandidate in ("failed", "outputs-missing", "outputs-changed"):
+        if sCandidate in listValues:
+            return sCandidate
+    return "untested"
+
+
 def _fsAxisNotGreenHint(dictStep):
     """Return the state-aware remediation hint for ``axis-not-green``.
 
-    Priority: any ``failed`` keeps the failing-tests language naming
-    the failed categories; ``outputs-missing`` and ``outputs-changed``
-    describe the marker-versus-disk mismatch; otherwise the categories
-    were simply never run.
+    A lookup over :func:`_fsAxisNotGreenSubState` so the hint and the
+    blocker's ``sSubState`` field can never disagree about the cause.
     """
+    sSubState = _fsAxisNotGreenSubState(dictStep)
     listNonGreenAxes = _flistNonGreenAxes(dictStep)
-    sFailedNames = _fsJoinAxisNames(listNonGreenAxes, "failed")
-    if sFailedNames:
+    if sSubState == "failed":
+        sFailedNames = _fsJoinAxisNames(listNonGreenAxes, "failed")
         return f"Re-run failing tests ({sFailedNames}), then verify"
-    listValues = [sValue for _, sValue in listNonGreenAxes]
-    if "outputs-missing" in listValues:
+    if sSubState == "outputs-missing":
         return "Declared output missing — re-run step, then verify"
-    if "outputs-changed" in listValues:
+    if sSubState == "outputs-changed":
         return _S_MARKER_DRIFT_HINT
     sUntestedNames = _fsJoinAxisNames(listNonGreenAxes, "untested")
     if sUntestedNames:
@@ -426,6 +459,29 @@ def _fsAxisNotGreenHint(dictStep):
             "run tests, then verify"
         )
     return "Re-run failing tests, then verify"
+
+
+_DICT_AXIS_SUBSTATE_FILE_MARKS = {
+    "failed": "failed",
+    "outputs-missing": "missing",
+    "outputs-changed": "stale",
+}
+
+
+def _fnAttachOffendingFileMarks(dictBlocker, sMark):
+    """Attach ``dictOffendingFileMarks`` mirroring ``listOffendingFiles``.
+
+    Every key is exactly one of the blocker's offending-file paths and
+    every value is one of ``"stale"`` / ``"failed"`` / ``"missing"``.
+    A falsy ``sMark`` (e.g. the ``untested`` axis sub-state, whose
+    files are not wrong, merely unexercised) attaches nothing so the
+    dashboard never paints a false defect on an untested file.
+    """
+    if not sMark:
+        return
+    dictBlocker["dictOffendingFileMarks"] = {
+        sPath: sMark for sPath in dictBlocker["listOffendingFiles"]
+    }
 
 
 def _fbAxisDriftIsRootCause(dictStep):
@@ -487,23 +543,42 @@ def _fdictAxisNotGreenBlocker(
     The remediation hint is state-aware (failed vs. marker drift vs.
     never run). For pure marker drift the offending files narrow to
     the drifted outputs and each carries a per-file hint in
-    ``dictOffendingFileHints``.
+    ``dictOffendingFileHints``. The file marks attach after the drift
+    narrowing so their keys mirror the final offending-file list.
     """
+    sSubState = _fsAxisNotGreenSubState(dictStep)
     dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
         "sScope": "step",
         "sCriterion": "axis-not-green",
+        "sSubState": sSubState,
         "listOffendingFiles": _flistStepOutputFiles(dictStep),
         "listOffendingUpstreamSteps": [],
         "sRemediationHint": _fsAxisNotGreenHint(dictStep),
     }
+    _fnDecorateAxisNotGreenBlocker(
+        dictBlocker, dictStep, filesRepo, sSubState,
+    )
+    return dictBlocker
+
+
+def _fnDecorateAxisNotGreenBlocker(
+    dictBlocker, dictStep, filesRepo, sSubState,
+):
+    """Apply drift narrowing, then attach the per-file marks.
+
+    Order matters: marks must mirror the *narrowed* offending files
+    when marker drift is the root cause.
+    """
     if _fbAxisDriftIsRootCause(dictStep):
         _fnAttachMarkerDriftFileHints(
             dictBlocker, dictStep, filesRepo,
         )
-    return dictBlocker
+    _fnAttachOffendingFileMarks(
+        dictBlocker, _DICT_AXIS_SUBSTATE_FILE_MARKS.get(sSubState),
+    )
 
 
 def _fnAttachMarkerDriftFileHints(dictBlocker, dictStep, filesRepo):
@@ -544,7 +619,7 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     """
     listOffendingFiles = _flistStepOutputFiles(dictStep)
     sFileHint = "This output changed after you verified — re-verify or re-run"
-    return {
+    dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
@@ -558,6 +633,8 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
             sPath: sFileHint for sPath in listOffendingFiles
         },
     }
+    _fnAttachOffendingFileMarks(dictBlocker, "stale")
+    return dictBlocker
 
 
 def _fbStepScriptStale(
@@ -662,7 +739,7 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     and a non-empty ``sRemediationHint`` so the Section G tooltip
     pipeline can read it directly.
     """
-    return {
+    dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
@@ -673,6 +750,8 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
         "sRemediationHint":
             "Script edited after output — re-run step to clear blocker",
     }
+    _fnAttachOffendingFileMarks(dictBlocker, "stale")
+    return dictBlocker
 
 
 def _flistStepOutputFiles(dictStep):
@@ -2066,4 +2145,157 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
             return True
         if _fbCommandsInvokeBinary([sCommand], sBasename):
             return True
+    return False
+
+
+# ----------------------------------------------------------------------
+# Per-step and workflow-scope level-state projection.
+#
+# These functions are PURE projections of the already-computed blocker
+# lists — they never re-evaluate a gate or touch the repo. The wire
+# vocabulary is exactly three states per level: ``"attained"``,
+# ``"blocked"``, and ``"unknown"``. ``unknown`` exists because a stale
+# sync-verify cache suppresses the per-step L2 rows; rendering an
+# otherwise-clean step as ``attained`` from an untrustworthy cache
+# would misrepresent the dashboard's ground truth.
+# ----------------------------------------------------------------------
+
+
+_T_VERIFY_STALE_CRITERIA = (
+    "github-verify-stale", "zenodo-verify-stale",
+)
+
+
+def fdictComputeStepLevelStates(
+    dictWorkflow, listLevel1Blockers,
+    listLevel2Blockers, listLevel3Blockers,
+):
+    """Return ``{iStepIndex: {"s1","s2","s3"}}`` level states per step.
+
+    Each state is ``"attained"``, ``"blocked"``, or ``"unknown"``.
+    Levels are cumulative: a blocked level forces every higher level
+    to ``blocked``; ``unknown`` propagates upward over otherwise-clean
+    levels. When a workflow-scope verify-stale blocker fires the
+    per-step sync rows are suppressed at the source, so an
+    otherwise-clean step's ``s2`` (and propagated ``s3``) reports
+    ``unknown`` — never ``attained`` from a stale cache.
+    """
+    setLevel1Blocked = _fsetPerStepBlockedIndices(listLevel1Blockers)
+    setLevel2Blocked = _fsetPerStepBlockedIndices(listLevel2Blockers)
+    setLevel3Blocked = _fsetPerStepBlockedIndices(listLevel3Blockers)
+    bSyncCacheUnknown = _fbAnyVerifyStaleBlocker(listLevel2Blockers)
+    dictResult = {}
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    for iStepIndex in range(len(listSteps)):
+        dictResult[iStepIndex] = _fdictOneStepLevelStates(
+            iStepIndex, setLevel1Blocked, setLevel2Blocked,
+            setLevel3Blocked, bSyncCacheUnknown,
+        )
+    return dictResult
+
+
+def _fsetPerStepBlockedIndices(listBlockers):
+    """Return the step indices carrying a per-step blocker entry.
+
+    Workflow-scope entries are distinguished by ``iStepIndex`` of -1
+    (or an absent field, treated the same defensively) and excluded.
+    """
+    setIndices = set()
+    for dictEntry in listBlockers or []:
+        iStepIndex = dictEntry.get("iStepIndex", -1)
+        if isinstance(iStepIndex, int) and iStepIndex >= 0:
+            setIndices.add(iStepIndex)
+    return setIndices
+
+
+def _fbAnyVerifyStaleBlocker(listLevel2Blockers):
+    """Return True iff a workflow-scope verify-stale blocker is present."""
+    for dictEntry in listLevel2Blockers or []:
+        if dictEntry.get("sCriterion") in _T_VERIFY_STALE_CRITERIA:
+            return True
+    return False
+
+
+def _fdictOneStepLevelStates(
+    iStepIndex, setLevel1Blocked, setLevel2Blocked,
+    setLevel3Blocked, bSyncCacheUnknown,
+):
+    """Return the cumulative ``{"s1","s2","s3"}`` states for one step."""
+    sStateOne = (
+        "blocked" if iStepIndex in setLevel1Blocked else "attained"
+    )
+    sStateTwo = _fsComposeLevelState(
+        sStateOne, iStepIndex in setLevel2Blocked, bSyncCacheUnknown,
+    )
+    sStateThree = _fsComposeLevelState(
+        sStateTwo, iStepIndex in setLevel3Blocked, False,
+    )
+    return {"s1": sStateOne, "s2": sStateTwo, "s3": sStateThree}
+
+
+def _fsComposeLevelState(sLowerState, bOwnBlocker, bOwnUnknown):
+    """Compose one level's state from the level below plus its own signals.
+
+    ``blocked`` dominates (own blocker or inherited); ``unknown``
+    (own or inherited) beats ``attained``; only a clean level atop a
+    clean ladder reports ``attained``.
+    """
+    if sLowerState == "blocked" or bOwnBlocker:
+        return "blocked"
+    if bOwnUnknown or sLowerState == "unknown":
+        return "unknown"
+    return "attained"
+
+
+def fiStepAICSLevel(dictStepStates):
+    """Return the highest contiguous attained level (0-3) for one step.
+
+    Contiguity matters: ``{"s1": "attained", "s2": "blocked",
+    "s3": "attained"}`` is level 1, not 3 — a gap in the ladder caps
+    the climb at the rung below it.
+    """
+    iLevel = 0
+    for iCandidate in (1, 2, 3):
+        sState = (dictStepStates or {}).get(f"s{iCandidate}")
+        if sState != "attained":
+            break
+        iLevel = iCandidate
+    return iLevel
+
+
+def fdictComputeWorkflowScopeLevelStates(
+    dictWorkflow, listLevel2Blockers, listLevel3Blockers,
+):
+    """Return the header-row ``{"s1","s2","s3"}`` workflow-scope states.
+
+    ``s1`` is ``attained`` iff the workflow has a project repo — the
+    blocker lists are all empty when the repo is missing, so this
+    header is the only honest home for that gap. ``s2`` projects the
+    workflow-scope L2 blockers excluding ``missing-ai-declaration-step``
+    (re-homed to the ghost AI-declaration step row); the verify-stale
+    criteria render here as ``blocked``. ``s3`` projects the
+    workflow-scope L3 blockers. Cumulative like the per-step states.
+    """
+    bHasRepo = fbWorkflowHasProjectRepo(
+        (dictWorkflow or {}).get("sProjectRepoPath") or "",
+    )
+    sStateOne = "attained" if bHasRepo else "blocked"
+    bLevel2Blocked = _fbAnyWorkflowScopeBlocker(
+        listLevel2Blockers, ("missing-ai-declaration-step",),
+    )
+    sStateTwo = _fsComposeLevelState(sStateOne, bLevel2Blocked, False)
+    bLevel3Blocked = _fbAnyWorkflowScopeBlocker(listLevel3Blockers, ())
+    sStateThree = _fsComposeLevelState(sStateTwo, bLevel3Blocked, False)
+    return {"s1": sStateOne, "s2": sStateTwo, "s3": sStateThree}
+
+
+def _fbAnyWorkflowScopeBlocker(listBlockers, tExcludedCriteria):
+    """Return True iff a non-excluded workflow-scope blocker fires."""
+    for dictEntry in listBlockers or []:
+        iStepIndex = dictEntry.get("iStepIndex", -1)
+        if isinstance(iStepIndex, int) and iStepIndex >= 0:
+            continue
+        if dictEntry.get("sCriterion") in tExcludedCriteria:
+            continue
+        return True
     return False

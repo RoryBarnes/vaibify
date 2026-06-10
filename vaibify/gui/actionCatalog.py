@@ -361,6 +361,19 @@ LIST_AGENT_ACTIONS = [
                      "to point at. Refuses to overwrite an existing "
                      "file. Args: {sRelativePath?: str} (default "
                      "AI_USAGE.md)."},
+    {"sName": "add-ai-declaration-step", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}"
+              "/ai-declaration/add-step",
+     "bAgentSafe": True,
+     "sDescription": "Append an AI Declaration step to the end of "
+                     "the active workflow. 409 when a declaration "
+                     "step already exists. Args: {sName?, "
+                     "sDirectory?, sDeclarationFile?}; sDirectory "
+                     "must be repo-relative and unique among step "
+                     "directories (default aiDeclaration). The step "
+                     "is interactive: only the researcher's sUser "
+                     "badge can pass it."},
     {"sName": "check-l3-readiness", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
@@ -439,6 +452,18 @@ LIST_AGENT_ACTIONS = [
                      "sExpectedVersion}, ...]} (declaration). "
                      "User-only because misdeclaration produces a "
                      "falsely-passing L3 attestation."},
+    {"sName": "declare-determinism", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/determinism/declare",
+     "bAgentSafe": False,
+     "sDescription": "Write the workflow's dictDeterminism block "
+                     "read by the L3 determinism gate. Args: at "
+                     "least one of {bAcceptBlasVariance: bool, "
+                     "dOmpNumThreads: number, sMklCbwr: str}; "
+                     "scalar JSON values only. User-only because "
+                     "the bAcceptBlasVariance waiver passes the L3 "
+                     "determinism gate and must remain a researcher "
+                     "decision."},
     {"sName": "capture-binary-environment", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/binaries/capture",

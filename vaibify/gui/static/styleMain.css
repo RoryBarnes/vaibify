@@ -4979,6 +4979,22 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     color: var(--text-muted);
 }
 
+/* Monospace preview of the first lines of the declaration file,
+   filled asynchronously after render. */
+.ai-declaration-preview {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 4px 0;
+    white-space: pre-wrap;
+    max-height: 150px;
+    overflow: auto;
+}
+
 .ai-declaration-attestation {
     margin-top: 10px;
 }
@@ -5106,9 +5122,14 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     cursor: help;
 }
 
-.step-blocker-glyph-axis,
-.step-blocker-glyph-upstream {
+.step-blocker-glyph-axis {
     color: var(--color-red);
+}
+
+/* Upstream drift is recoverable by a re-run, so its pencil glyph is
+   orange like the other stale-not-broken marks. */
+.step-blocker-glyph-upstream {
+    color: var(--color-orange);
 }
 
 .step-blocker-glyph-user {
@@ -5248,36 +5269,94 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     margin: 0 2px;
 }
 
-/* --- Section F: per-step level dots. Additive to today's status dot —
-   one extra dot per active ladder level, color-coded green/yellow/red so
-   the researcher can read each step's ladder-segment readiness at a
-   glance. The dot reuses the existing ``.step-status`` shape vocabulary
-   for visual consistency with the legacy verification dot. */
-.step-level-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-left: 4px;
+/* --- Scope F: per-step level strip. Three always-visible cells
+   L1|L2|L3 on every step card and on the workflow header row. Cell
+   color encodes attainment state: green attained, orange regressed
+   (was attained, now blocked), red never attained, grey unknown. */
+.step-level-strip {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: 6px;
     vertical-align: middle;
-    background: var(--text-muted);
+}
+
+.step-level-cell {
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 0 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    cursor: help;
+    white-space: nowrap;
+}
+
+.level-cell-attained {
+    color: #4caf50;
+}
+
+.level-cell-regressed {
+    color: var(--color-orange);
+}
+
+.level-cell-never {
+    color: var(--color-red);
+}
+
+.level-cell-unknown {
+    color: var(--text-muted);
+}
+
+/* The workflow-scope ladder strip rendered as the first child of
+   #listSteps, above every step card. */
+.workflow-level-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+/* Ghost row rendered after the last step when the workflow has no
+   AI-declaration step: the absence blocks L2 for the whole workflow,
+   so the cells render in the never-attained red. */
+.ghost-ai-declaration-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    border: 1px dashed var(--color-red);
+    border-radius: var(--border-radius);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* Orange per-file pencil for outputs that are merely stale (re-run
+   recovers them); red ✗ via .l1-blocker-file-glyph stays reserved
+   for failed/missing. */
+.file-mark-stale {
+    color: var(--color-orange);
+    margin-right: 4px;
     cursor: help;
 }
 
-.step-level-dot.state-green {
-    background: #4caf50;
+/* Orange pencil banner glyph for the outputs-changed axis sub-state. */
+.step-blocker-glyph-outputs-changed {
+    color: var(--color-orange);
 }
 
-.step-level-dot.state-yellow {
-    background: #d9c200;
+/* Legend sample for the orange status light. */
+.aics-legend-orange-light-sample {
+    color: var(--color-orange);
 }
 
-.step-level-dot.state-red {
-    background: var(--color-red);
-}
-
-.step-level-dot.state-grey {
-    background: var(--text-muted);
+.aics-legend-subsection-title {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 600;
 }
 
 /* --- Section G: legend mechanism. A fixed-position panel anchored

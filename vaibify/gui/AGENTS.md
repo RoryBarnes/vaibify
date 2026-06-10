@@ -112,6 +112,29 @@ Invariants:
 Any change to these transitions is an ask-first operation — consult
 the user before proceeding.
 
+## State schema v2: level high-water marks
+
+`state.json` (schema version 2, `stateManager.py`) persists two
+add-only ratchet fields beside the verification state:
+
+- Per step: `dictLevelHighWater` (`{"1": isoFirstAttained, "2": ...,
+  "3": ...}`) under `dictStepState[sDirectory]`.
+- Workflow scope: `dictWorkflowLevelHighWater` (same shape) as a
+  top-level key.
+
+Both are stamped by `stateManager.fbRatchetLevelHighWater`, called
+from the poll path (`pipelineRoutes.py`) after the per-step level
+states are projected from the blocker lists
+(`levelGates.fdictComputeStepLevelStates` /
+`fdictComputeWorkflowScopeLevelStates`). Invariants: stamps are
+ADD-ONLY — regression never erases a stamp (the dashboard's
+"regressed" ⚠ cell depends on the stamp surviving); the "unknown"
+state (stale sync cache) never stamps; saves are issued only when the
+ratchet reports a change. v1 state files load without migration —
+absent keys mean "never attained on this machine"; a fresh clone
+honestly shows red cells until re-attained. Do not move high-water
+into committed test markers.
+
 ## Discovery commands
 
 - `ls vaibify/gui/*.py` — top-level backend modules

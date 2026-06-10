@@ -53,13 +53,30 @@ var VaibifyLegendPanel = (function () {
                 "from a committed test marker)",
         },
         {
-            sIcon: "", sClass: "step-level-dot state-green",
-            sLabel: "Level dots — L1 manifest membership, L2 mirror " +
-                "state, L3 envelope (green / yellow / red / grey)",
+            sIcon: "✓", sClass: "step-level-cell level-cell-attained",
+            sLabel: "Level cell — attained",
+        },
+        {
+            sIcon: "⚠", sClass: "step-level-cell level-cell-regressed",
+            sLabel: "Level cell — regressed since first attainment",
+        },
+        {
+            sIcon: "✗", sClass: "step-level-cell level-cell-never",
+            sLabel: "Level cell — never attained",
+        },
+        {
+            sIcon: "?", sClass: "step-level-cell level-cell-unknown",
+            sLabel: "Level cell — unknown; sync state stale, " +
+                "re-verify",
         },
         {
             sIcon: "✎", sClass: "script-modified-badge",
-            sLabel: "Script edited since the last run",
+            sLabel: "Output or script out of date — re-run",
+        },
+        {
+            sIcon: "●", sClass: "aics-legend-orange-light-sample",
+            sLabel: "Orange status light = work not yet done " +
+                "(never-run tests / pending attestation)",
         },
         {
             sIcon: "⚠", sClass: "script-unseeded-badge",
@@ -180,6 +197,8 @@ var VaibifyLegendPanel = (function () {
         if (!dictSection) return "";
         var dictGlyphs =
             _fdictGlyphCatalog()[dictSection.sCatalogKey] || {};
+        var sSubStateRows = iLevel === 1
+            ? _fsRenderAxisSubStateRows() : "";
         return '<div class="aics-legend-section ' +
             dictSection.sColorClass + '">' +
             '<div class="aics-legend-section-title">' +
@@ -187,7 +206,30 @@ var VaibifyLegendPanel = (function () {
             '<span class="aics-legend-count">(' + iCount +
             ' active)</span></div>' +
             _fsRenderCriteriaRows(dictGlyphs) +
+            sSubStateRows +
             '</div>';
+    }
+
+    function _fsRenderAxisSubStateRows() {
+        // The axis-not-green causes, drawn from the same
+        // ``dictAxisSubStates`` catalog the banner glyph dispatches
+        // through. The null ``untested`` entry renders no row — the
+        // orange status light carries that state.
+        var dictSubStates =
+            _fdictGlyphCatalog().dictAxisSubStates || {};
+        var sHtml = '<div class="aics-legend-subsection-title">' +
+            'axis-not-green causes</div>' +
+            '<ul class="aics-legend-criteria">';
+        Object.keys(dictSubStates).forEach(function (sSubState) {
+            var dictMeta = dictSubStates[sSubState];
+            if (!dictMeta) return;
+            sHtml += '<li><span class="aics-legend-glyph ' +
+                fnEscapeHtml(dictMeta.sClass) + '">' +
+                fnEscapeHtml(dictMeta.sIcon) + '</span> ' +
+                fnEscapeHtml(sSubState) + ' — ' +
+                fnEscapeHtml(dictMeta.sLabel) + '</li>';
+        });
+        return sHtml + '</ul>';
     }
 
     function _fsRenderCriteriaRows(dictGlyphs) {

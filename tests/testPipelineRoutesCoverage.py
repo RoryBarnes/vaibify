@@ -1,9 +1,13 @@
 """Tests for uncovered lines in vaibify.gui.routes.pipelineRoutes."""
 
+import contextlib
+
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from vaibify.gui.routes.pipelineRoutes import (
+    _S_LEVEL_RATCHET_FLAG_KEY,
+    _fnSaveIfLevelHighWaterChanged,
     _fbCancelPipelineTask,
     _fbMarkerStale,
     _fdictBuildTestFileChanges,
@@ -1387,3 +1391,194 @@ class TestWorkflowDiscoveryRoute:
         dictBody = response.json()
         assert dictBody["bWorkflowsChanged"] is False
         assert dictBody["listNewWorkflowPaths"] == []
+
+
+_LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
+    "_fdictGetModTimes",
+    "fdictCollectOutputPathsByStep",
+    "fnCollectMarkerPathsByStep",
+    "_flistDetectAndInvalidate",
+    "_fdictLoadMarkersForPoll",
+    "_fdictLoadMtimeCacheForPoll",
+    "_fdictComputeMaxMtimeByStep",
+    "_fdictComputeMaxPlotMtimeByStep",
+    "_fdictComputeMaxDataMtimeByStep",
+    "_fdictComputeMarkerMtimeByStep",
+    "_fdictBuildScriptStatus",
+]
+
+
+def _fdictPollLevelPatchReturns(listLevel1, listLevel2, listLevel3):
+    """Map patch targets to return values for poll level-state tests."""
+    sModule = "vaibify.gui.routes.pipelineRoutes."
+    sGates = "vaibify.reproducibility.levelGates."
+    dictReturns = {
+        sModule + sName: {}
+        for sName in _LIST_EMPTY_DICT_POLL_PATCH_NAMES
+    }
+    dictReturns[sModule + "_flistCollectOutputPaths"] = []
+    dictReturns[sModule + "_fbCheckStaleUserVerification"] = False
+    dictReturns[sGates + "fiAICSLevel"] = 1
+    dictReturns[sGates + "flistLevel1Blockers"] = listLevel1
+    dictReturns[sGates + "flistLevel2Blockers"] = listLevel2
+    dictReturns[sGates + "flistLevel3Blockers"] = listLevel3
+    return dictReturns
+
+
+def _fstackEnterPollLevelPatches(listLevel1, listLevel2, listLevel3):
+    """Return an entered ExitStack holding the poll mock battery."""
+    stackPatches = contextlib.ExitStack()
+    dictReturns = _fdictPollLevelPatchReturns(
+        listLevel1, listLevel2, listLevel3,
+    )
+    for sTarget, returnValue in dictReturns.items():
+        stackPatches.enter_context(
+            patch(sTarget, return_value=returnValue),
+        )
+    return stackPatches
+
+
+def _fdictBuildLevelWorkflow(listSteps):
+    """Return a minimal merged workflow dict with a project repo."""
+    return {
+        "listSteps": listSteps,
+        "sProjectRepoPath": "/workspace/proj",
+    }
+
+
+def _fdictBuildLevelPollContext():
+    """Return the minimal poll context with a save spy."""
+    return {"docker": MagicMock(), "save": MagicMock(), "paths": {}}
+
+
+_DICT_ALL_ATTAINED_STATES = {
+    "s1": "attained", "s2": "attained", "s3": "attained",
+}
+
+_DICT_PRIOR_HIGH_WATER = {
+    "1": "2026-01-01T00:00:00Z",
+    "2": "2026-01-02T00:00:00Z",
+    "3": "2026-01-03T00:00:00Z",
+}
+
+
+class TestPollLevelStatePayload:
+    @pytest.mark.asyncio
+    async def test_response_carries_level_state_keys(self):
+        """The four new wire keys arrive with their documented shapes."""
+        dictWorkflow = _fdictBuildLevelWorkflow(
+            [{"sDirectory": "stepA", "sName": "A"}],
+        )
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        assert dictResult["dictStepLevels"] == {
+            "0": _DICT_ALL_ATTAINED_STATES,
+        }
+        assert dictResult["dictWorkflowScopeLevels"] == (
+            _DICT_ALL_ATTAINED_STATES
+        )
+        assert set(dictResult["dictStepLevelHighWater"]["0"]) == {
+            "1", "2", "3",
+        }
+        assert set(dictResult["dictWorkflowLevelHighWater"]) == {
+            "1", "2", "3",
+        }
+
+    @pytest.mark.asyncio
+    async def test_level_transition_triggers_exactly_one_save(self):
+        """First attainment stamps high water and persists once."""
+        dictWorkflow = _fdictBuildLevelWorkflow(
+            [{"sDirectory": "stepA", "sName": "A"}],
+        )
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []):
+            await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        dictCtx["save"].assert_called_once_with("cid1", dictWorkflow)
+
+    @pytest.mark.asyncio
+    async def test_steady_state_poll_triggers_zero_saves(self):
+        """Already-stamped levels re-attaining persist nothing."""
+        dictWorkflow = _fdictBuildLevelWorkflow([{
+            "sDirectory": "stepA", "sName": "A",
+            "dictLevelHighWater": dict(_DICT_PRIOR_HIGH_WATER),
+        }])
+        dictWorkflow["dictWorkflowLevelHighWater"] = dict(
+            _DICT_PRIOR_HIGH_WATER,
+        )
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []):
+            await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        dictCtx["save"].assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_private_flag_absent_from_response(self):
+        """The ratchet plumbing key never reaches the wire."""
+        dictWorkflow = _fdictBuildLevelWorkflow(
+            [{"sDirectory": "stepA", "sName": "A"}],
+        )
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        assert _S_LEVEL_RATCHET_FLAG_KEY not in dictResult
+
+    @pytest.mark.asyncio
+    async def test_regressed_step_high_water_still_in_payload(self):
+        """Regression memory: blocked step keeps its stamps, no save."""
+        dictWorkflow = _fdictBuildLevelWorkflow([{
+            "sDirectory": "stepA", "sName": "A",
+            "dictLevelHighWater": dict(_DICT_PRIOR_HIGH_WATER),
+        }])
+        dictWorkflow["dictWorkflowLevelHighWater"] = dict(
+            _DICT_PRIOR_HIGH_WATER,
+        )
+        dictCtx = _fdictBuildLevelPollContext()
+        listLevel1 = [{"iStepIndex": 0, "sCriterion": "axis-not-green"}]
+        with _fstackEnterPollLevelPatches(listLevel1, [], []):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        assert dictResult["dictStepLevels"]["0"] == {
+            "s1": "blocked", "s2": "blocked", "s3": "blocked",
+        }
+        assert dictResult["dictStepLevelHighWater"]["0"] == (
+            _DICT_PRIOR_HIGH_WATER
+        )
+        dictCtx["save"].assert_not_called()
+
+
+class TestFnSaveIfLevelHighWaterChanged:
+    def test_flag_true_saves_once_and_pops_key(self):
+        dictCtx = {"save": MagicMock()}
+        dictWorkflow = {"listSteps": []}
+        dictRest = {_S_LEVEL_RATCHET_FLAG_KEY: True, "iAICSLevel": 1}
+        _fnSaveIfLevelHighWaterChanged(
+            dictCtx, "cid1", dictWorkflow, dictRest,
+        )
+        dictCtx["save"].assert_called_once_with("cid1", dictWorkflow)
+        assert _S_LEVEL_RATCHET_FLAG_KEY not in dictRest
+
+    def test_flag_false_pops_key_without_save(self):
+        dictCtx = {"save": MagicMock()}
+        dictRest = {_S_LEVEL_RATCHET_FLAG_KEY: False}
+        _fnSaveIfLevelHighWaterChanged(
+            dictCtx, "cid1", {"listSteps": []}, dictRest,
+        )
+        dictCtx["save"].assert_not_called()
+        assert _S_LEVEL_RATCHET_FLAG_KEY not in dictRest
+
+    def test_flag_absent_saves_nothing(self):
+        dictCtx = {"save": MagicMock()}
+        dictRest = {"iAICSLevel": 1}
+        _fnSaveIfLevelHighWaterChanged(
+            dictCtx, "cid1", {"listSteps": []}, dictRest,
+        )
+        dictCtx["save"].assert_not_called()

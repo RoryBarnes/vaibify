@@ -712,3 +712,208 @@ def testAttestationStalePerFileHints():
         "A/data.csv": sExpectedHint,
         "A/plot.pdf": sExpectedHint,
     }
+
+
+# ------------------------------------------------------------------------
+# sSubState on axis-not-green
+# ------------------------------------------------------------------------
+
+
+def testAxisSubStateFailedDominates():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUnitTest"] = "failed"
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-missing"
+    dictStep["dictVerification"]["sQualitative"] = "outputs-changed"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sSubState"] == "failed"
+
+
+def testAxisSubStateOutputsMissingBeatsChangedAndUntested():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-missing"
+    dictStep["dictVerification"]["sQualitative"] = "outputs-changed"
+    dictStep["dictVerification"]["sQuantitative"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sSubState"] == "outputs-missing"
+
+
+def testAxisSubStateOutputsChangedBeatsUntested():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-changed"
+    dictStep["dictVerification"]["sQuantitative"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sSubState"] == "outputs-changed"
+
+
+def testAxisSubStateUntestedWhenNothingWorse():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sQuantitative"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sSubState"] == "untested"
+
+
+def testAxisSubStateMatchesHintForEveryState():
+    """The hint must remain a projection of the sub-state — they can
+    never disagree about the cause."""
+    dictExpectedHintBySubState = {
+        "failed": "Re-run failing tests (integrity), then verify",
+        "outputs-missing":
+            "Declared output missing — re-run step, then verify",
+        "outputs-changed": (
+            "Output changed since the last test run (file newer than "
+            "its verification marker) — re-run tests, then verify"
+        ),
+        "untested": (
+            "Test category never run (integrity) — "
+            "run tests, then verify"
+        ),
+    }
+    dictAxisValueBySubState = {
+        "failed": "failed",
+        "outputs-missing": "outputs-missing",
+        "outputs-changed": "outputs-changed",
+        "untested": "untested",
+    }
+    for sSubState, sAxisValue in dictAxisValueBySubState.items():
+        dictStep = _fdictAllGreenStep()
+        dictStep["dictVerification"]["sIntegrity"] = sAxisValue
+        listBlockers = flistLevel1Blockers(
+            _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+        )
+        assert listBlockers[0]["sSubState"] == sSubState
+        assert listBlockers[0]["sRemediationHint"] == (
+            dictExpectedHintBySubState[sSubState]
+        )
+
+
+# ------------------------------------------------------------------------
+# dictOffendingFileMarks
+# ------------------------------------------------------------------------
+
+
+def testAxisFailedMarksEveryOffendingFileFailed():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "failed"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    dictEntry = listBlockers[0]
+    assert dictEntry["dictOffendingFileMarks"] == {
+        "A/data.csv": "failed", "A/plot.pdf": "failed",
+    }
+
+
+def testAxisOutputsMissingMarksFilesMissing():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-missing"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["dictOffendingFileMarks"] == {
+        "A/data.csv": "missing", "A/plot.pdf": "missing",
+    }
+
+
+def testAxisDriftMarksNarrowedFilesStale():
+    """Marks attach after drift narrowing so the keys exactly mirror
+    the narrowed ``listOffendingFiles``."""
+    from vaibify.reproducibility.levelGates import (
+        _fdictAxisNotGreenBlocker,
+    )
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sIntegrity"] = "outputs-changed"
+    dictStep["dictVerification"]["listModifiedFiles"] = ["A/A/data.csv"]
+    dictEntry = _fdictAxisNotGreenBlocker(
+        _fdictWorkflowWithSteps([dictStep]), 0, dictStep, "/repo",
+    )
+    assert dictEntry["listOffendingFiles"] == ["A/data.csv"]
+    assert dictEntry["dictOffendingFileMarks"] == {
+        "A/data.csv": "stale",
+    }
+
+
+def testAxisUntestedAttachesNoFileMarks():
+    """Untested files are not wrong, merely unexercised — marking them
+    would misrepresent the dashboard's ground truth."""
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sQuantitative"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert "dictOffendingFileMarks" not in listBlockers[0]
+
+
+def testUpstreamModifiedMarksAllFilesStale():
+    dictA = _fdictAllGreenStep(sName="A")
+    dictB = _fdictAllGreenStep(sName="B")
+    dictB["saDataCommands"] = ["python s.py {Step01.data}"]
+    dictB["dictVerification"]["bUpstreamModified"] = True
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictA, dictB]),
+        {"0": "20", "1": "10"},
+        "/repo",
+    )
+    assert listBlockers[0]["dictOffendingFileMarks"] == {
+        "B/data.csv": "stale", "B/plot.pdf": "stale",
+    }
+
+
+def testScriptStaleMarksAllFilesStale(tmp_path):
+    dictStep = _fdictAllGreenStep()
+    dictScriptStatus = {0: {"sStatus": "modified", "listStaleArtifacts": []}}
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, str(tmp_path),
+        dictScriptStatus,
+    )
+    assert listBlockers[0]["sCriterion"] == "script-stale"
+    assert listBlockers[0]["dictOffendingFileMarks"] == {
+        "A/data.csv": "stale", "A/plot.pdf": "stale",
+    }
+
+
+def testAttestationStaleMarksAllFilesStale():
+    dictStep = _fdictAllGreenStep()
+    dictStep["dictVerification"]["sUser"] = "stale"
+    dictStep["dictVerification"]["sLastUserUpdate"] = (
+        "2026-05-01 00:00:00 UTC"
+    )
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sCriterion"] == "attestation-stale"
+    assert listBlockers[0]["dictOffendingFileMarks"] == {
+        "A/data.csv": "stale", "A/plot.pdf": "stale",
+    }
+
+
+def testFileMarkKeysMirrorOffendingFilesForEveryEmitter():
+    """Structural contract: whenever ``dictOffendingFileMarks`` is
+    present its keys are exactly ``listOffendingFiles``."""
+    listScenarios = []
+    dictFailed = _fdictAllGreenStep()
+    dictFailed["dictVerification"]["sIntegrity"] = "failed"
+    listScenarios.append(dictFailed)
+    dictStale = _fdictAllGreenStep()
+    dictStale["dictVerification"]["sUser"] = "stale"
+    dictStale["dictVerification"]["sLastUserUpdate"] = (
+        "2026-05-01 00:00:00 UTC"
+    )
+    listScenarios.append(dictStale)
+    for dictStep in listScenarios:
+        listBlockers = flistLevel1Blockers(
+            _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+        )
+        dictEntry = listBlockers[0]
+        assert sorted(dictEntry["dictOffendingFileMarks"].keys()) == (
+            sorted(dictEntry["listOffendingFiles"])
+        )
+        for sMark in dictEntry["dictOffendingFileMarks"].values():
+            assert sMark in ("stale", "failed", "missing")

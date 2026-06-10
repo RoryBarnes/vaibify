@@ -180,7 +180,9 @@ def test_fnSaveStateToContainer_stamps_sLastUpdated_and_writes():
     assert sContainerId == "cid"
     assert sPath == "/state.json.tmp"
     dictPersisted = json.loads(baPayload.decode("utf-8"))
-    assert dictPersisted["iStateSchemaVersion"] == 1
+    assert dictPersisted["iStateSchemaVersion"] == (
+        stateManager.I_CURRENT_STATE_SCHEMA_VERSION
+    )
     assert dictPersisted["sLastUpdated"]
     listCommands = [
         call.args[1]

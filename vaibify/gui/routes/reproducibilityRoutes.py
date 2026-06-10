@@ -49,6 +49,11 @@ from ...reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
     fnWriteEnvironmentJson,
 )
+from ...reproducibility.determinismGate import (
+    S_ACCEPT_BLAS_WAIVER_KEY,
+    S_MKL_CBWR_KEY,
+    S_OMP_NUM_THREADS_KEY,
+)
 from ...reproducibility.levelGates import (
     fbL3ReadinessOK,
     fdictL3ReadinessGaps,
@@ -482,6 +487,86 @@ def _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured):
     fnWriteEnvironmentJson(filesRepo, dictPayload)
 
 
+# Wire-format keys and their accepted scalar JSON types for the
+# determinism declaration route; these are exactly the keys
+# determinismGate.fbWorkflowDeclaresDeterminism reads.
+_DICT_DETERMINISM_KEY_TYPES = {
+    S_ACCEPT_BLAS_WAIVER_KEY: (bool,),
+    S_OMP_NUM_THREADS_KEY: (int, float),
+    S_MKL_CBWR_KEY: (str,),
+}
+
+
+def _fnRequireScalarType(sKey, jsonValue, tTypesExpected):
+    """Raise HTTP 422 when jsonValue is not the expected JSON scalar.
+
+    Booleans are rejected for numeric keys (Python bool subclasses
+    int) and required for boolean keys, so type confusion cannot
+    smuggle a waiver through as a thread count or vice versa.
+    """
+    bIsBoolean = isinstance(jsonValue, bool)
+    bWantsBoolean = bool in tTypesExpected
+    if bIsBoolean != bWantsBoolean or not isinstance(
+        jsonValue, tTypesExpected,
+    ):
+        sTypeNames = " or ".join(
+            typeOption.__name__ for typeOption in tTypesExpected
+        )
+        raise HTTPException(
+            422, f"{sKey} must be a JSON {sTypeNames} scalar.",
+        )
+
+
+def _fdictValidateDeterminismBody(dictRequest):
+    """Return the validated determinism keys or raise HTTP 422.
+
+    Accepts only the three scalar keys the L3 determinism gate reads;
+    at least one must be present and every value must match its
+    declared scalar type. Unknown keys are rejected outright so typos
+    cannot silently fail the readiness gate later.
+    """
+    if not isinstance(dictRequest, dict) or not dictRequest:
+        raise HTTPException(
+            422,
+            "Body must declare at least one of: "
+            + ", ".join(sorted(_DICT_DETERMINISM_KEY_TYPES)) + ".",
+        )
+    dictDeclared = {}
+    for sKey, jsonValue in dictRequest.items():
+        tTypesExpected = _DICT_DETERMINISM_KEY_TYPES.get(sKey)
+        if tTypesExpected is None:
+            raise HTTPException(
+                422,
+                f"Unknown determinism key {sKey!r}; accepted keys: "
+                + ", ".join(sorted(_DICT_DETERMINISM_KEY_TYPES)) + ".",
+            )
+        _fnRequireScalarType(sKey, jsonValue, tTypesExpected)
+        dictDeclared[sKey] = jsonValue
+    return dictDeclared
+
+
+def _fnRegisterDeclareDeterminism(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/determinism/declare."""
+
+    @fnAgentAction("declare-determinism")
+    @app.post(
+        "/api/workflow/{sContainerId}/determinism/declare"
+    )
+    async def fnDeclareDeterminism(sContainerId: str, request: dict):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictDeclared = _fdictValidateDeterminismBody(request)
+        dictDeterminism = dict(
+            dictWorkflow.get("dictDeterminism") or {},
+        )
+        dictDeterminism.update(dictDeclared)
+        dictWorkflow["dictDeterminism"] = dictDeterminism
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"dictDeterminism": dictDeterminism}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register every L3 reproducibility endpoint."""
     _fnRegisterReadiness(app, dictCtx)
@@ -490,3 +575,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterGenerateScript(app, dictCtx)
     _fnRegisterDeclareBinaries(app, dictCtx)
     _fnRegisterCaptureBinary(app, dictCtx)
+    _fnRegisterDeclareDeterminism(app, dictCtx)

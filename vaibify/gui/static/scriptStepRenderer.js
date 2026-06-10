@@ -21,41 +21,64 @@ var VaibifyStepRenderer = (function () {
         "user|plotFile": "User verification older than plot files",
     };
 
-    function _fbHasL1Blocker(dictContext, iIndex) {
-        // True iff the step has an L1 blocker entry. Used to suppress
-        // banner glyphs that the L1 blocker glyph already conveys.
-        var dictBlockers = dictContext.dictBlockersByStep || {};
-        return Boolean(dictBlockers[iIndex]);
-    }
+    /* --- Level strip (Scope F) ---
+       Three ALWAYS-visible cells L1|L2|L3 per step card, plus the
+       same strip on the workflow header row (iIndex -1). Cell state
+       and tooltip come from the application's level-state projection
+       (``fsLevelCellState`` / ``fsLevelCellTooltip``). */
 
-    var _DICT_LEVEL_DOT_TOOLTIPS = {
-        manifest: "L1 manifest membership",
-        mirror: "L2 mirror state",
-        envelope: "L3 reproducibility envelope",
+    var _DICT_LEVEL_CELL_GLYPHS = {
+        attained: "✓",
+        regressed: "⚠",
+        never: "✗",
+        unknown: "?",
     };
 
-    function _fsBuildStepLevelDots(dictContext, iIndex) {
-        // Section F: additive per-step level dots. Each dot reuses the
-        // existing colour vocabulary (green / yellow / red / grey) so
-        // the step card can show ladder-segment readiness at a glance.
-        // Empty string when the corresponding rung isn't the current
-        // dashboard target.
-        return _fsLevelDot(dictContext.fsStepManifestDotState,
-                iIndex, "manifest") +
-            _fsLevelDot(dictContext.fsStepMirrorDotState,
-                iIndex, "mirror") +
-            _fsLevelDot(dictContext.fsStepEnvelopeDotState,
-                iIndex, "envelope");
+    function _fsBuildLevelCell(iLevel, sGlyphState, sTooltip) {
+        return '<span class="step-level-cell level-cell-' +
+            sGlyphState + '" title="' + fnEscapeHtml(sTooltip) +
+            '">L' + iLevel + ' ' +
+            _DICT_LEVEL_CELL_GLYPHS[sGlyphState] + '</span>';
     }
 
-    function _fsLevelDot(fsState, iIndex, sKind) {
-        if (!fsState) return "";
-        var sState = fsState(iIndex);
-        if (!sState) return "";
-        return '<span class="step-level-dot step-level-dot-' + sKind +
-            ' state-' + sState + '" title="' +
-            fnEscapeHtml(_DICT_LEVEL_DOT_TOOLTIPS[sKind]) +
-            '"></span>';
+    function _fsBuildStepLevelStrip(dictContext, iIndex) {
+        if (!dictContext.fsLevelCellState) return "";
+        var sHtml = '<span class="step-level-strip">';
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            sHtml += _fsBuildLevelCell(
+                iLevel,
+                dictContext.fsLevelCellState(iIndex, iLevel),
+                dictContext.fsLevelCellTooltip(iIndex, iLevel));
+        }
+        return sHtml + '</span>';
+    }
+
+    function fsRenderWorkflowLevelHeader(dictContext) {
+        // First child of #listSteps: the workflow-scope ladder strip,
+        // driven by dictWorkflowScopeLevels + the workflow high-water
+        // marks (iIndex -1 selects the workflow scope).
+        return '<div class="workflow-level-header-row">' +
+            '<span class="workflow-level-header-label">Workflow' +
+            '</span>' +
+            _fsBuildStepLevelStrip(dictContext, -1) +
+            '</div>';
+    }
+
+    function fsRenderGhostAiDeclarationRow() {
+        // Rendered after the last step when no ai-declaration step
+        // exists: the missing step blocks L2 for the whole workflow.
+        var sTooltip = "No AI declaration step — blocks L2 for the " +
+            "whole workflow";
+        var sHtml = '<div class="ghost-ai-declaration-row">' +
+            '<span class="ghost-ai-declaration-label">' +
+            'AI Declaration (missing)</span>' +
+            '<span class="step-level-strip">';
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            sHtml += _fsBuildLevelCell(iLevel, "never", sTooltip);
+        }
+        return sHtml + '</span>' +
+            '<button class="btn btn-add-ai-declaration-step" ' +
+            'type="button">Add AI declaration step</button></div>';
     }
 
     function _fdictGroupStaleArtifacts(listArtifacts) {
@@ -133,13 +156,14 @@ var VaibifyStepRenderer = (function () {
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
             // Section F/G: suppress the per-step pencil banner glyph
-            // on the step card when an L1 blocker is already in flight
-            // — Stage 2 added the ``script-stale`` banner glyph via
-            // ``fsBuildWarningBadge`` so showing both is redundant.
-            // The per-script pencil badge in the verification panel
-            // still renders to identify *which* script is stale.
+            // on the step card when the active L1 blocker banner
+            // itself renders a pencil — each row carries exactly one
+            // pencil. The per-script pencil badge in the verification
+            // panel still renders to identify *which* script is stale.
             ((dictContext.dictScriptModified[iIndex] === "modified" &&
-                !_fbHasL1Blocker(dictContext, iIndex)) ?
+                !(dictContext.fbBlockerBannerRendersPencil &&
+                    dictContext.fbBlockerBannerRendersPencil(iIndex)))
+                ?
                 '<span class="script-modified-badge" ' +
                 'title="Scripts modified since last run">' +
                 '&#9998;</span>' : '') +
@@ -153,7 +177,7 @@ var VaibifyStepRenderer = (function () {
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
-            _fsBuildStepLevelDots(dictContext, iIndex) +
+            _fsBuildStepLevelStrip(dictContext, iIndex) +
             sVerifiedBadge +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
@@ -866,7 +890,10 @@ var VaibifyStepRenderer = (function () {
             var sFileHint = (dictContext.fsBlockerHintForFile &&
                 dictContext.fsBlockerHintForFile(iStepIdx, sRaw)) ||
                 "Blocking L1: re-run step to clear";
-            sHtml += dictContext.fsBuildL1FailureGlyph(sFileHint);
+            sHtml += dictContext.fsBuildFileMarkGlyph
+                ? dictContext.fsBuildFileMarkGlyph(
+                    iStepIdx, sRaw, sFileHint)
+                : dictContext.fsBuildL1FailureGlyph(sFileHint);
         }
         if ((sArrayKey === "saPlotFiles" ||
             sArrayKey === "saDataFiles") && !bInvalid) {
@@ -999,14 +1026,55 @@ var VaibifyStepRenderer = (function () {
         return '<div class="ai-declaration-viewer" ' +
             'data-step="' + iIndex + '" ' +
             'data-file="' + fnEscapeHtml(sFilePath) + '">' +
-            '<div class="ai-declaration-viewer-placeholder">' +
-            'Open the file in viewer A to review it before ' +
-            'attesting.</div>' +
+            '<pre class="ai-declaration-preview" ' +
+            'data-file="' + fnEscapeHtml(sFilePath) + '">' +
+            'Loading declaration preview…</pre>' +
             ' <button class="btn btn-ai-declaration-open" ' +
             'data-step="' + iIndex + '" ' +
             'data-file="' + fnEscapeHtml(sFilePath) + '" ' +
             'type="button">Open in viewer</button>' +
             '</div>';
+    }
+
+    var _I_DECLARATION_PREVIEW_LINES = 8;
+
+    function fnFillAiDeclarationPreviews() {
+        // Async fill of the preview shells fsRenderAiDeclarationViewer
+        // rendered. Each shell is filled once per render of its card;
+        // re-renders (hash change) produce a fresh shell and a fresh
+        // fetch, so the preview tracks the file's real content.
+        var listShells = document.querySelectorAll(
+            ".ai-declaration-preview[data-file]");
+        for (var i = 0; i < listShells.length; i++) {
+            if (listShells[i].dataset.bFilled === "1") continue;
+            listShells[i].dataset.bFilled = "1";
+            _fnFetchDeclarationPreview(listShells[i]);
+        }
+    }
+
+    function _fnFetchDeclarationPreview(elShell) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        var sFilePath = elShell.dataset.file.replace(/^\/+/, "");
+        var sRepoRoot = PipeleyenApp.fdictBuildClientVariables()
+            .sRepoRoot || "";
+        var sUrl = "/api/figure/" + sContainerId + "/" + sFilePath +
+            "?sWorkdir=" + encodeURIComponent(sRepoRoot);
+        VaibifyApi.fsGetText(sUrl).then(function (sText) {
+            // textContent assignment never parses HTML, so the file
+            // body cannot inject markup into the dashboard.
+            elShell.textContent = _fsTruncateToLines(
+                sText, _I_DECLARATION_PREVIEW_LINES);
+        }).catch(function () {
+            elShell.textContent =
+                "Declaration file could not be read.";
+        });
+    }
+
+    function _fsTruncateToLines(sText, iMaxLines) {
+        var listLines = (sText || "").split("\n");
+        if (listLines.length <= iMaxLines) return sText;
+        return listLines.slice(0, iMaxLines).join("\n") + "\n…";
     }
 
     function fsRenderAiDeclarationAttestation(
@@ -1046,5 +1114,8 @@ var VaibifyStepRenderer = (function () {
         fsFormatDuration: fsFormatDuration,
         fsFormatUnixTimestamp: fsFormatUnixTimestamp,
         fsRenderAiDeclarationBody: fsRenderAiDeclarationBody,
+        fsRenderWorkflowLevelHeader: fsRenderWorkflowLevelHeader,
+        fsRenderGhostAiDeclarationRow: fsRenderGhostAiDeclarationRow,
+        fnFillAiDeclarationPreviews: fnFillAiDeclarationPreviews,
     };
 })();

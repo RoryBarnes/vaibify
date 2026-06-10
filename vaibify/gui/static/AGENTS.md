@@ -157,11 +157,30 @@ pattern wholesale.
   "Reproducible ✓" green. Each segment is clickable and scrolls the
   AICS tab to the corresponding readiness card. Logic lives in
   `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
-- Per-step level dots (`scriptStepRenderer.js::_fsBuildStepLevelDots`)
-  render additively to the existing axis dots. The manifest-membership
-  dot appears at L1+, the mirror-state dot at L2+, the envelope dot
-  at L3+. Color follows the test-axis vocabulary the researcher
-  already reads (green/yellow/red/grey).
+- Per-step level cells (`scriptStepRenderer.js::_fsBuildStepLevelStrip`)
+  replaced the old level dots. Every step row always shows three cells
+  L1|L2|L3 with four glyph states from
+  `scriptApplication.js::fsLevelCellGlyphState`: ✓ green = currently
+  attained, ⚠ orange = attained in the past but regressed (the
+  first-attainment date persists in `dictLevelHighWater` in
+  state.json and is never erased), ✗ red = never attained, ? grey =
+  unknown (sync verify cache stale — a stale cache must NEVER render
+  a green cell). A workflow header row
+  (`fsRenderWorkflowLevelHeader`) carries the same three cells for
+  workflow-scope criteria; the AI-declaration criterion is excluded
+  from the header — its home is the AI Declaration interactive step
+  (or the ghost row offering to add one). Inside an expanded step,
+  blocker surfaces are gated to the step's next unattained level
+  (`fiStepNextTargetLevel`) — higher-level requirements stay hidden
+  until they are the immediate obstacle.
+- Blocker glyph severity is structured, not parsed from hints:
+  `axis-not-green` carries `sSubState`
+  (failed/outputs-missing/outputs-changed/untested) mapped through
+  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing render red ✗,
+  outputs-changed renders the orange pencil ✎, and untested renders
+  NO banner glyph (the orange status light carries "not yet done").
+  Per-file marks read `dictOffendingFileMarks` ("stale" → orange ✎,
+  "failed"/"missing" → red ✗).
 - The pencil banner glyph on the step card is suppressed when an L1
   blocker is active (the `⚠ script-stale` glyph carries the same
   fact). The per-script pencil badge in the verification panel is

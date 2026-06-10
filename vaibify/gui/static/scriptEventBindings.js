@@ -251,6 +251,21 @@ var PipeleyenEventBindings = (function () {
             parseInt(elMatch.dataset.idx));
     }
 
+    function _fnHandleAiDeclarationOpen(event, elMatch) {
+        event.stopPropagation();
+        var sFilePath = elMatch.dataset.file || "";
+        if (!sFilePath) return;
+        var sRepoRoot = PipeleyenApp.fdictBuildClientVariables()
+            .sRepoRoot || "";
+        PipeleyenFigureViewer.fnDisplayFileInViewer(
+            "A", sFilePath, sRepoRoot);
+    }
+
+    function _fnHandleAddAiDeclarationStep(event, elMatch) {
+        event.stopPropagation();
+        PipeleyenApp.fnAddAiDeclarationStep();
+    }
+
     var _DICT_CLICK_HANDLERS = {
         ".action-download": _fnHandleActionDownload,
         ".action-edit": _fnHandleActionEdit,
@@ -289,6 +304,8 @@ var PipeleyenEventBindings = (function () {
         ".test-log-link": _fnHandleTestLogLink,
         ".test-edit-cmd": _fnHandleTestEditCmd,
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
+        ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
+        ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
     };
 
     /* --- Delegated Event Dispatch --- */
@@ -958,13 +975,31 @@ var PipeleyenEventBindings = (function () {
         );
     }
 
-    /* --- Refresh Workflow --- */
+    /* --- Refresh Remote Status --- */
 
-    function fnBindRefreshWorkflow() {
+    function fnBindRefreshRemoteStatus() {
         document.getElementById("btnRefreshWorkflow")
-            .addEventListener("click", function () {
-                VaibifyWorkflowManager.fnRefreshWorkflow();
-            });
+            .addEventListener("click", _fnRefreshRemoteStatus);
+    }
+
+    async function _fnRefreshRemoteStatus() {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/git/" + encodeURIComponent(sContainerId) +
+                "/refresh-remotes", {bForce: true});
+            if (typeof VaibifyGitBadges !== "undefined") {
+                await VaibifyGitBadges.fnRefresh(sContainerId);
+            }
+            PipeleyenApp.fnRenderStepList();
+            PipeleyenApp.fnShowToast(
+                "Remote status refreshed", "success");
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+        }
     }
 
     /* --- Error Modal --- */
@@ -986,7 +1021,7 @@ var PipeleyenEventBindings = (function () {
         fnBindLeftPanelTabs: fnBindLeftPanelTabs,
         fnBindResizeHandles: fnBindResizeHandles,
         fnBindGlobalSettingsToggle: fnBindGlobalSettingsToggle,
-        fnBindRefreshWorkflow: fnBindRefreshWorkflow,
+        fnBindRefreshRemoteStatus: fnBindRefreshRemoteStatus,
         fnBindErrorModal: fnBindErrorModal,
     };
 })();

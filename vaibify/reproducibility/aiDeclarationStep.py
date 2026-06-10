@@ -33,7 +33,9 @@ from vaibify.reproducibility.repoFiles import (
 
 __all__ = [
     "S_AI_DECLARATION_STEP_KIND",
+    "S_DEFAULT_DECLARATION_DIRECTORY",
     "S_DEFAULT_DECLARATION_FILENAME",
+    "S_DEFAULT_DECLARATION_STEP_NAME",
     "S_DECLARATION_TEMPLATE",
     "fbStepIsAiDeclaration",
     "fbDeclarationFileExists",
@@ -44,6 +46,8 @@ __all__ = [
 
 S_AI_DECLARATION_STEP_KIND = "ai-declaration"
 S_DEFAULT_DECLARATION_FILENAME = "AI_USAGE.md"
+S_DEFAULT_DECLARATION_DIRECTORY = "aiDeclaration"
+S_DEFAULT_DECLARATION_STEP_NAME = "AI Declaration"
 
 
 S_DECLARATION_TEMPLATE = """# AI Usage Declaration
@@ -133,28 +137,61 @@ def _fdictEmptyVerificationBlock():
     }
 
 
-def fdictBuildAiDeclarationStep(sName, sDeclarationFile):
-    """Return a fresh ai-declaration step dict with empty command lists.
-
-    The returned shape mirrors a normal data step so the rest of the
-    workflow plumbing (mtime tracking, sUser attestation, verification
-    state) keeps working unchanged; the kind discriminator lives only
-    in ``sStepKind`` and ``sDeclarationFile``.
-    """
+def _fdictEmptyCommandBlock():
+    """Return the empty command and file-list fields shared by step kinds."""
     return {
-        "sName": sName,
-        "sDirectory": "",
-        "sStepKind": S_AI_DECLARATION_STEP_KIND,
-        "sDeclarationFile": sDeclarationFile or "",
-        "bRunEnabled": True,
-        "bPlotOnly": False,
-        "bInteractive": False,
         "saDataCommands": [],
         "saDataFiles": [],
         "saTestCommands": [],
         "saPlotCommands": [],
         "saPlotFiles": [],
         "saStepScripts": [],
+    }
+
+
+def _fsRequireStepDirectory(sDirectory):
+    """Return the stripped step directory or raise ValueError when empty.
+
+    ``stateManager.ftSplitMergedDict`` keys per-step state (including
+    the ``sUser`` attestation) by ``sDirectory`` and silently drops
+    entries with an empty key, so an ai-declaration step without a
+    directory would lose its attestation across reloads.
+    """
+    sCleanDirectory = (sDirectory or "").strip()
+    if not sCleanDirectory:
+        raise ValueError(
+            "ai-declaration steps require a non-empty sDirectory; "
+            "per-step state is keyed by sDirectory and an empty value "
+            "would drop the attestation on reload"
+        )
+    return sCleanDirectory
+
+
+def fdictBuildAiDeclarationStep(
+    sName=S_DEFAULT_DECLARATION_STEP_NAME,
+    sDeclarationFile=S_DEFAULT_DECLARATION_FILENAME,
+    sDirectory=S_DEFAULT_DECLARATION_DIRECTORY,
+):
+    """Return a fresh ai-declaration step dict with empty command lists.
+
+    The returned shape mirrors a normal data step so the rest of the
+    workflow plumbing (mtime tracking, sUser attestation, verification
+    state) keeps working unchanged; the kind discriminator lives only
+    in ``sStepKind`` and ``sDeclarationFile``. The step is interactive
+    (``bInteractive`` True) so it earns an I-label and follows the
+    sUser-only pass rule, and ``sDirectory`` must be non-empty so the
+    attestation survives the workflow.json / state.json split.
+    """
+    dictStep = {
+        "sName": (sName or "").strip() or S_DEFAULT_DECLARATION_STEP_NAME,
+        "sDirectory": _fsRequireStepDirectory(sDirectory),
+        "sStepKind": S_AI_DECLARATION_STEP_KIND,
+        "sDeclarationFile": sDeclarationFile or "",
+        "bRunEnabled": True,
+        "bPlotOnly": False,
+        "bInteractive": True,
         "dictTests": _fdictEmptyTestsBlock(),
         "dictVerification": _fdictEmptyVerificationBlock(),
     }
+    dictStep.update(_fdictEmptyCommandBlock())
+    return dictStep

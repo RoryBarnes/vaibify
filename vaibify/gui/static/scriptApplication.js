@@ -37,6 +37,10 @@ const PipeleyenApp = (function () {
             dictBlockersByStep: {},
             dictBlockersByStepLevel2: {},
             dictBlockersByStepLevel3: {},
+            dictStepLevels: {},
+            dictStepLevelHighWater: {},
+            dictWorkflowScopeLevels: null,
+            dictWorkflowLevelHighWater: {},
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
@@ -163,7 +167,7 @@ const PipeleyenApp = (function () {
         PipeleyenEventBindings.fnBindLeftPanelTabs();
         PipeleyenEventBindings.fnBindResizeHandles();
         PipeleyenEventBindings.fnBindGlobalSettingsToggle();
-        PipeleyenEventBindings.fnBindRefreshWorkflow();
+        PipeleyenEventBindings.fnBindRefreshRemoteStatus();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -340,9 +344,17 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictTestSourceMtimeByStep = {};
         _dictWorkflowState.dictTestCategoryMtimes = {};
         _dictWorkflowState.dictPlotStandardExists = {};
+        _fnClearBlockerAndLevelState();
+    }
+
+    function _fnClearBlockerAndLevelState() {
         _dictWorkflowState.dictBlockersByStep = {};
         _dictWorkflowState.dictBlockersByStepLevel2 = {};
         _dictWorkflowState.dictBlockersByStepLevel3 = {};
+        _dictWorkflowState.dictStepLevels = {};
+        _dictWorkflowState.dictStepLevelHighWater = {};
+        _dictWorkflowState.dictWorkflowScopeLevels = null;
+        _dictWorkflowState.dictWorkflowLevelHighWater = {};
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
         _dictWorkflowState.iL3BlockerCount = 0;
@@ -975,14 +987,22 @@ const PipeleyenApp = (function () {
             fsetGetExpandedCategory: fsetGetExpandedCategory,
             fdictBuildClientVariables: fdictBuildClientVariables,
             dictBlockersByStep: _dictWorkflowState.dictBlockersByStep,
+            dictBlockersByStepLevel2:
+                _dictWorkflowState.dictBlockersByStepLevel2,
+            dictBlockersByStepLevel3:
+                _dictWorkflowState.dictBlockersByStepLevel3,
+            dictStepLevels: _dictWorkflowState.dictStepLevels,
+            dictStepLevelHighWater:
+                _dictWorkflowState.dictStepLevelHighWater,
             fbFileIsL1Offending: fbFileIsL1Offending,
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
+            fsBuildFileMarkGlyph: fsBuildFileMarkGlyph,
+            fbBlockerBannerRendersPencil: fbBlockerBannerRendersPencil,
             fsBlockerHintForStep: fsBlockerHintForStep,
             fsBlockerHintForFile: fsBlockerHintForFile,
-            fsStepManifestDotState: fsStepManifestDotState,
-            fsStepMirrorDotState: fsStepMirrorDotState,
-            fsStepEnvelopeDotState: fsStepEnvelopeDotState,
+            fsLevelCellState: fsLevelCellState,
+            fsLevelCellTooltip: fsLevelCellTooltip,
         };
     }
 
@@ -1041,15 +1061,34 @@ const PipeleyenApp = (function () {
     }
 
     function _fsBoundarySignature(listSteps) {
-        // Compact key that changes when the step count or the
-        // automated/interactive boundary positions shift. Used to
-        // detect "structural change" so the renderer can fall back
-        // to the full innerHTML rebuild path.
+        // Compact key that changes when the step count, the
+        // automated/interactive boundary positions, the presence of
+        // an AI-declaration step (ghost-row trigger), or the
+        // workflow-level header inputs shift. Used to detect
+        // "structural change" so the renderer falls back to the full
+        // innerHTML rebuild path instead of orphaning the header row
+        // or ghost row that only the full path renders.
         var sKey = String(listSteps.length);
         for (var i = 0; i < listSteps.length; i++) {
-            sKey += listSteps[i].bInteractive === true ? "I" : "A";
+            if (listSteps[i].sStepKind === "ai-declaration") {
+                sKey += "D";
+            } else {
+                sKey += listSteps[i].bInteractive === true ? "I" : "A";
+            }
         }
-        return sKey;
+        return sKey + "|" + _fsWorkflowHeaderSignature();
+    }
+
+    function _fsWorkflowHeaderSignature() {
+        // Every input the workflow-level header row reads. Including
+        // the workflow-scope L2 blocker keeps the header tooltip in
+        // sync with the dominant remediation hint.
+        return JSON.stringify([
+            _dictWorkflowState.dictWorkflowScopeLevels,
+            _dictWorkflowState.dictWorkflowLevelHighWater,
+            (_dictWorkflowState.dictBlockersByStepLevel2 || {})[-1] ||
+                null,
+        ]);
     }
 
     function _fsExpansionSliceForStep(iIndex, dictContext) {
@@ -1086,7 +1125,23 @@ const PipeleyenApp = (function () {
             dictContext.dictMaxDataMtimeByStep[sIdx] || "",
             dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
             dictContext.dictTestCategoryMtimes[sIdx] || null,
-        ]);
+        ].concat(_flistBlockerAndLevelSlice(iIndex, dictContext)));
+    }
+
+    function _flistBlockerAndLevelSlice(iIndex, dictContext) {
+        // Blocker entries and level-cell inputs the card renders.
+        // Without these, a poll that flips a blocker or a level cell
+        // leaves a stale card on screen under the incremental path.
+        var sIdx = String(iIndex);
+        return [
+            (dictContext.dictBlockersByStep || {})[iIndex] || null,
+            (dictContext.dictBlockersByStepLevel2 || {})[iIndex] ||
+                null,
+            (dictContext.dictBlockersByStepLevel3 || {})[iIndex] ||
+                null,
+            (dictContext.dictStepLevels || {})[sIdx] || null,
+            (dictContext.dictStepLevelHighWater || {})[sIdx] || null,
+        ];
     }
 
     function _fsComputeStepRenderHash(step, iIndex, dictContext, dictVars) {
@@ -1128,6 +1183,7 @@ const PipeleyenApp = (function () {
         fnApplyTimestampVisibility();
         fnBindStepEvents();
         fnUpdateHighlightState();
+        VaibifyStepRenderer.fnFillAiDeclarationPreviews();
         PipeleyenFileOps.fnScheduleFileExistenceCheck(
             _dictWorkflowState);
     }
@@ -1135,7 +1191,8 @@ const PipeleyenApp = (function () {
     function _fnRenderStepListFull(
         elList, listSteps, dictVars, dictContext, sBoundary
     ) {
-        var sHtml = "";
+        var sHtml = VaibifyStepRenderer.fsRenderWorkflowLevelHeader(
+            dictContext);
         var bPrior = null;
         _dictRenderedStepHashes = {};
         listSteps.forEach(function (step, iIndex) {
@@ -1149,8 +1206,23 @@ const PipeleyenApp = (function () {
             _dictRenderedStepHashes[iIndex] = _fsComputeStepRenderHash(
                 step, iIndex, dictContext, dictVars);
         });
+        if (!_fbWorkflowHasAiDeclarationStep()) {
+            sHtml += VaibifyStepRenderer
+                .fsRenderGhostAiDeclarationRow();
+        }
         elList.innerHTML = sHtml;
         _sLastBoundarySignature = sBoundary;
+    }
+
+    function _fbWorkflowHasAiDeclarationStep() {
+        var listSteps = (_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [];
+        for (var i = 0; i < listSteps.length; i++) {
+            if (listSteps[i].sStepKind === "ai-declaration") {
+                return true;
+            }
+        }
+        return false;
     }
 
     function _fnRenderStepListIncremental(
@@ -1339,12 +1411,12 @@ const PipeleyenApp = (function () {
 
     var _DICT_BLOCKER_CRITERION_GLYPHS = {
         "upstream-modified": {
-            sIcon: "⚠",
+            sIcon: "✎",
             sLabel: "Upstream changed; re-run to clear blocker",
             sClass: "step-blocker-glyph-upstream",
         },
         "script-stale": {
-            sIcon: "⚠",
+            sIcon: "✎",
             sLabel: "Script edited after output — re-run to clear blocker",
             sClass: "step-blocker-glyph-script-stale",
         },
@@ -1354,7 +1426,7 @@ const PipeleyenApp = (function () {
             sClass: "step-blocker-glyph-axis",
         },
         "attestation-stale": {
-            sIcon: "—",
+            sIcon: "✎",
             sLabel: "Outputs changed since you verified — " +
                 "re-verify or re-run",
             sClass: "step-blocker-glyph-attestation-stale",
@@ -1364,6 +1436,31 @@ const PipeleyenApp = (function () {
             sLabel: "User attestation pending",
             sClass: "step-blocker-glyph-user",
         },
+    };
+
+    // Severity refinement for ``axis-not-green``: the blocker's
+    // ``sSubState`` (mirroring levelGates._fsAxisNotGreenSubState)
+    // selects the banner glyph. ``untested`` is deliberately null —
+    // no banner glyph; the orange status light already carries
+    // "work not yet done". Keys must equal the Python sub-state
+    // literals (pinned by tests/testStepRendererBlockerGlyphs.py).
+    var _DICT_AXIS_SUBSTATE_GLYPHS = {
+        "failed": {
+            sIcon: "✗",
+            sLabel: "Unit tests failed — fix the step and re-run",
+            sClass: "step-blocker-glyph-axis",
+        },
+        "outputs-missing": {
+            sIcon: "✗",
+            sLabel: "Declared outputs missing — run the step",
+            sClass: "step-blocker-glyph-axis",
+        },
+        "outputs-changed": {
+            sIcon: "✎",
+            sLabel: "Outputs changed since tests last passed — re-run",
+            sClass: "step-blocker-glyph-outputs-changed",
+        },
+        "untested": null,
     };
 
     var _DICT_L2_BLOCKER_GLYPHS = {
@@ -1487,8 +1584,7 @@ const PipeleyenApp = (function () {
     function fsBuildL1BlockerBannerGlyph(iIndex) {
         var dictEntry = _dictWorkflowState.dictBlockersByStep[iIndex];
         if (!dictEntry) return "";
-        var dictMeta = _DICT_BLOCKER_CRITERION_GLYPHS[
-            dictEntry.sCriterion];
+        var dictMeta = _fdictBannerGlyphMeta(dictEntry);
         if (!dictMeta) return "";
         // Section G: prefer the backend's per-criterion remediation
         // hint (Stage 3 schema field) over the static glyph label so
@@ -1497,6 +1593,30 @@ const PipeleyenApp = (function () {
         return '<span class="step-blocker-glyph ' + dictMeta.sClass +
             '" title="' + fnEscapeHtml(sTooltip) + '">' +
             dictMeta.sIcon + '</span>';
+    }
+
+    function _fdictBannerGlyphMeta(dictEntry) {
+        // ``axis-not-green`` dispatches through the sub-state dict
+        // when the backend supplies ``sSubState``; the static entry
+        // is the fallback for older payloads that lack the field.
+        if (dictEntry.sCriterion === "axis-not-green" &&
+            _DICT_AXIS_SUBSTATE_GLYPHS.hasOwnProperty(
+                dictEntry.sSubState)) {
+            return _DICT_AXIS_SUBSTATE_GLYPHS[dictEntry.sSubState];
+        }
+        return _DICT_BLOCKER_CRITERION_GLYPHS[dictEntry.sCriterion];
+    }
+
+    function fbBlockerBannerRendersPencil(iStepIndex) {
+        // True when the step's active L1 blocker banner glyph is the
+        // pencil. The step card suppresses its standalone
+        // script-modified pencil in that case so each row carries
+        // exactly one pencil.
+        var dictEntry = _dictWorkflowState.dictBlockersByStep[
+            iStepIndex];
+        if (!dictEntry) return false;
+        var dictMeta = _fdictBannerGlyphMeta(dictEntry);
+        return Boolean(dictMeta) && dictMeta.sIcon === "✎";
     }
 
     var S_L1_FAILURE_GLYPH = "⚠";
@@ -1524,6 +1644,33 @@ const PipeleyenApp = (function () {
             '">' + S_L1_FAILURE_GLYPH + '</span>';
     }
 
+    // Per-file severity marks driven by the blocker's optional
+    // ``dictOffendingFileMarks`` field ({sRawPath: "stale" | "failed"
+    // | "missing"}). ``stale`` is recoverable by a re-run, so it
+    // renders the orange pencil; ``failed`` / ``missing`` stay red.
+    var _DICT_FILE_MARK_GLYPHS = {
+        "stale": {sIcon: "✎", sClass: "file-mark-stale"},
+        "failed": {sIcon: "✗", sClass: "l1-blocker-file-glyph"},
+        "missing": {sIcon: "✗", sClass: "l1-blocker-file-glyph"},
+    };
+
+    function _fsFileMarkForPath(iStepIndex, sRawPath) {
+        var dictEntry = _dictWorkflowState.dictBlockersByStep[
+            iStepIndex];
+        if (!dictEntry) return "";
+        return (dictEntry.dictOffendingFileMarks || {})[sRawPath] ||
+            "";
+    }
+
+    function fsBuildFileMarkGlyph(iStepIndex, sRawPath, sTooltip) {
+        var dictMeta = _DICT_FILE_MARK_GLYPHS[
+            _fsFileMarkForPath(iStepIndex, sRawPath)];
+        if (!dictMeta) return fsBuildL1FailureGlyph(sTooltip);
+        return '<span class="' + dictMeta.sClass + '" title="' +
+            fnEscapeHtml(sTooltip || "Blocking L1 verification") +
+            '">' + dictMeta.sIcon + '</span>';
+    }
+
     function _flistBlockerLevels() {
         return [
             _dictWorkflowState.dictBlockersByStep,
@@ -1532,12 +1679,23 @@ const PipeleyenApp = (function () {
         ];
     }
 
+    function _fiBlockerLevelWalkLimit(iStepIndex) {
+        // Per-step gating: a step only surfaces work for its next
+        // target rung. A step dirty at L1 shows only its L1 work;
+        // L2 requirements appear once L1 is attained for that step.
+        return Math.min(
+            fiStepNextTargetLevel(iStepIndex),
+            _flistBlockerLevels().length);
+    }
+
     function fsBlockerHintForStep(iStepIndex) {
         // Section G: surface the dominant blocker's per-criterion
-        // remediation hint for the step. Walks L1 → L2 → L3 so the
-        // file-glyph tooltip language matches the banner glyph's.
+        // remediation hint for the step. Walks L1 upward, but only
+        // to the step's next target rung, so the file-glyph tooltip
+        // language matches the banner glyph's.
         var listLevels = _flistBlockerLevels();
-        for (var i = 0; i < listLevels.length; i++) {
+        var iLimit = _fiBlockerLevelWalkLimit(iStepIndex);
+        for (var i = 0; i < iLimit; i++) {
             var dictEntry = (listLevels[i] || {})[iStepIndex];
             if (dictEntry && dictEntry.sRemediationHint) {
                 return dictEntry.sRemediationHint;
@@ -1554,7 +1712,8 @@ const PipeleyenApp = (function () {
         // Returns "" when the file is in no ``listOffendingFiles`` so
         // non-offending files never inherit the step-level hint.
         var listLevels = _flistBlockerLevels();
-        for (var i = 0; i < listLevels.length; i++) {
+        var iLimit = _fiBlockerLevelWalkLimit(iStepIndex);
+        for (var i = 0; i < iLimit; i++) {
             var dictEntry = (listLevels[i] || {})[iStepIndex];
             if (!dictEntry) continue;
             var listOffending = dictEntry.listOffendingFiles || [];
@@ -1568,70 +1727,104 @@ const PipeleyenApp = (function () {
         return "";
     }
 
-    var _SET_L3_MANIFEST_CRITERIA = {
-        "missing-from-manifest": true,
-        "script-not-pinned": true,
+    /* --- Level cells (Scope F) ---
+       Each step card and the workflow header row render an
+       always-visible L1|L2|L3 strip. The cell state comes from the
+       poll's level-state projection (``dictStepLevels`` /
+       ``dictWorkflowScopeLevels``); regression memory comes from the
+       first-attainment high-water marks. ``iStepIndex`` of -1 selects
+       the workflow scope. */
+
+    var _DICT_LEVEL_CELL_LABELS = {
+        1: "L1 Self-Consistent",
+        2: "L2 Published",
+        3: "L3 Reproducible",
     };
 
-    function fsStepManifestDotState(iStepIndex) {
-        // Section F: "manifest membership" dot. Green when the step has
-        // no L3 manifest blocker, yellow when only some declared paths
-        // are missing, gray when no MANIFEST.sha256 is available.
-        if (_fiTargetLevel() < 1) return "";
-        var dictL3 = (_dictWorkflowState.dictBlockersByStepLevel3 ||
-            {})[iStepIndex];
-        if (!dictL3) return "green";
-        if (_SET_L3_MANIFEST_CRITERIA[dictL3.sCriterion]) {
-            return (dictL3.listOffendingFiles || []).length > 0
-                ? "yellow" : "grey";
+    function fsLevelCellGlyphState(sState, bEverAttained) {
+        if (sState === "attained") return "attained";
+        if (sState === "blocked") {
+            return bEverAttained ? "regressed" : "never";
         }
-        return "green";
+        return "unknown";
     }
 
-    function fsStepMirrorDotState(iStepIndex) {
-        // Section F: "mirror state" dot. Green when GitHub-sync is
-        // clean for the step, yellow when the cache is stale, red when
-        // the outputs diverged from the recorded SHA.
-        if (_fiTargetLevel() < 2) return "";
-        var dictL2 = (_dictWorkflowState.dictBlockersByStepLevel2 ||
-            {})[iStepIndex];
-        if (!dictL2) return "green";
-        if (dictL2.sCriterion === "not-in-github-mirror") return "red";
-        if (dictL2.sCriterion === "github-verify-stale") return "yellow";
-        return "green";
+    function _fdictLevelStatesForScope(iStepIndex) {
+        if (iStepIndex < 0) {
+            return _dictWorkflowState.dictWorkflowScopeLevels || {};
+        }
+        return (_dictWorkflowState.dictStepLevels || {})[
+            String(iStepIndex)] || {};
     }
 
-    var _SET_L3_ENVELOPE_CRITERIA = {
-        "missing-from-manifest": true,
-        "script-not-pinned": true,
-        "nondeterminism-undeclared": true,
-        "binary-not-declared": true,
-        "binary-not-captured": true,
-    };
-
-    function fsStepEnvelopeDotState(iStepIndex) {
-        // Section F: "envelope" dot. Green when manifest + scripts +
-        // standards are hashed and determinism is declared for the
-        // step; red when any envelope criterion fails.
-        if (_fiTargetLevel() < 3) return "";
-        var dictL3 = (_dictWorkflowState.dictBlockersByStepLevel3 ||
-            {})[iStepIndex];
-        if (!dictL3) return "green";
-        if (_SET_L3_ENVELOPE_CRITERIA[dictL3.sCriterion]) return "red";
-        return "green";
+    function _fdictLevelHighWaterForScope(iStepIndex) {
+        if (iStepIndex < 0) {
+            return _dictWorkflowState.dictWorkflowLevelHighWater ||
+                {};
+        }
+        return (_dictWorkflowState.dictStepLevelHighWater || {})[
+            String(iStepIndex)] || {};
     }
 
-    function _fiTargetLevel() {
-        // The dashboard's current AICS rung. Mirrors what the AICS
-        // tab reads from /level2/readiness; falls back to a derived
-        // value (0/1/2/3 - whether a blocker count is non-zero at
-        // each rung) so the dots render before the first AICS poll.
-        var iCached = _dictWorkflowState.iCachedAicsLevel;
-        if (typeof iCached === "number") return iCached;
-        if ((_dictWorkflowState.iL1BlockerCount || 0) > 0) return 0;
-        if ((_dictWorkflowState.iL2BlockerCount || 0) > 0) return 1;
-        if ((_dictWorkflowState.iL3BlockerCount || 0) > 0) return 2;
-        return 3;
+    function fsLevelCellState(iStepIndex, iLevel) {
+        var sState = _fdictLevelStatesForScope(iStepIndex)[
+            "s" + iLevel] || "unknown";
+        var bEverAttained = Boolean(
+            _fdictLevelHighWaterForScope(iStepIndex)[String(iLevel)]);
+        return fsLevelCellGlyphState(sState, bEverAttained);
+    }
+
+    function fsLevelCellTooltip(iStepIndex, iLevel) {
+        var sGlyphState = fsLevelCellState(iStepIndex, iLevel);
+        var sFirstAttained = _fdictLevelHighWaterForScope(
+            iStepIndex)[String(iLevel)] || "";
+        return _fsComposeLevelCellTooltip(
+            _DICT_LEVEL_CELL_LABELS[iLevel], sGlyphState,
+            sFirstAttained,
+            _fsLevelBlockerHint(iStepIndex, iLevel));
+    }
+
+    function _fsComposeLevelCellTooltip(
+        sLabel, sGlyphState, sFirstAttained, sHint
+    ) {
+        var listParts = [sLabel];
+        if (sGlyphState === "attained" && sFirstAttained) {
+            listParts.push("First attained " + sFirstAttained);
+        } else if (sGlyphState === "regressed") {
+            listParts.push("Attained on " + sFirstAttained +
+                ", currently blocked");
+        } else if (sGlyphState === "never") {
+            listParts.push("Never attained");
+        } else if (sGlyphState === "unknown") {
+            listParts.push(
+                "State unknown — sync check stale; re-verify");
+        }
+        if (sHint && sGlyphState !== "attained") {
+            listParts.push(sHint);
+        }
+        return listParts.join("\n");
+    }
+
+    function _fsLevelBlockerHint(iStepIndex, iLevel) {
+        // Dominant blocker hint for one rung of one scope. Workflow
+        // scope (-1) hits the workflow-scope L2 entries that
+        // _fdictBlockersByStepIndex keys under -1; L1 and L3 have no
+        // workflow-scope entries in these dicts, so the hint is "".
+        var dictEntry = (_flistBlockerLevels()[iLevel - 1] || {})[
+            iStepIndex];
+        return (dictEntry && dictEntry.sRemediationHint) || "";
+    }
+
+    function fiStepNextTargetLevel(iStepIndex) {
+        // First rung whose cell is not attained — the rung the step
+        // is currently working toward. 4 when all three are attained.
+        var dictStates = _fdictLevelStatesForScope(iStepIndex);
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            if (dictStates["s" + iLevel] !== "attained") {
+                return iLevel;
+            }
+        }
+        return 4;
     }
 
     function fnSetCachedAicsLevel(iLevel) {
@@ -1658,6 +1851,7 @@ const PipeleyenApp = (function () {
             iLevel1: _DICT_BLOCKER_CRITERION_GLYPHS,
             iLevel2: _DICT_L2_BLOCKER_GLYPHS,
             iLevel3: _DICT_L3_BLOCKER_GLYPHS,
+            dictAxisSubStates: _DICT_AXIS_SUBSTATE_GLYPHS,
         };
     }
 
@@ -1998,18 +2192,27 @@ const PipeleyenApp = (function () {
             listSignals.push(_fsClassifyVerificationSignal(sDeps));
         }
 
+        var bL1Blocked = !!_dictWorkflowState
+            .dictBlockersByStep[iIndex];
+        return _fsDotStateFromSignals(listSignals, bDirty, bL1Blocked);
+    }
+
+    function _fsDotStateFromSignals(listSignals, bDirty, bL1Blocked) {
         var bAllPassed = listSignals.every(function (s) {
             return s === "passed";
         });
         var bAnyPassed = listSignals.some(function (s) {
             return s === "passed";
         });
-        var bL1Blocked = !!_dictWorkflowState
-            .dictBlockersByStep[iIndex];
-
+        var bAnyFailed = listSignals.some(function (s) {
+            return s === "failed";
+        });
         if (bAllPassed && !bL1Blocked) return bDirty ? "partial" : "verified";
         if (bAllPassed && bL1Blocked) return "partial";
         if (bAnyPassed) return "partial";
+        // Nothing failed and nothing passed: the signals are merely
+        // untested/pending — work not yet done is orange, not red.
+        if (!bAnyFailed) return "partial";
         return "fail";
     }
 
@@ -2731,7 +2934,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictTestCategoryMtimes =
                 dictStatus.dictTestCategoryMtimes;
         }
-        _fnApplyBlockersFromPoll(dictStatus);
+        _fnApplyBlockerAndLevelState(dictStatus);
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
@@ -2766,6 +2969,53 @@ const PipeleyenApp = (function () {
                 ? dictStatus.iL2BlockerCount
                 : Object.keys(dictByStepL2).length;
         _fnApplyL3BlockersFromPoll(dictStatus);
+    }
+
+    function _fnApplyBlockerAndLevelState(dictStatus) {
+        // A poll can change blockers or level cells without touching
+        // any other rendered input; re-render when (and only when)
+        // they actually moved so the dashboard never shows a stale
+        // ladder. The incremental renderer skips unchanged cards.
+        var sPriorState = _fsBlockerAndLevelSnapshot();
+        _fnApplyBlockersFromPoll(dictStatus);
+        _fnApplyLevelStatesFromPoll(dictStatus);
+        if (_fsBlockerAndLevelSnapshot() !== sPriorState) {
+            fnRenderStepList();
+        }
+    }
+
+    function _fsBlockerAndLevelSnapshot() {
+        return JSON.stringify([
+            _dictWorkflowState.dictBlockersByStep,
+            _dictWorkflowState.dictBlockersByStepLevel2,
+            _dictWorkflowState.dictBlockersByStepLevel3,
+            _dictWorkflowState.dictStepLevels,
+            _dictWorkflowState.dictStepLevelHighWater,
+            _dictWorkflowState.dictWorkflowScopeLevels,
+            _dictWorkflowState.dictWorkflowLevelHighWater,
+        ]);
+    }
+
+    function _fnApplyLevelStatesFromPoll(dictStatus) {
+        // Level-cell wire keys (Scope B/P backend projection). Each
+        // key is optional so older payloads degrade to the previous
+        // state rather than blanking the cells.
+        if (dictStatus.dictStepLevels) {
+            _dictWorkflowState.dictStepLevels =
+                dictStatus.dictStepLevels;
+        }
+        if (dictStatus.dictStepLevelHighWater) {
+            _dictWorkflowState.dictStepLevelHighWater =
+                dictStatus.dictStepLevelHighWater;
+        }
+        if (dictStatus.dictWorkflowScopeLevels) {
+            _dictWorkflowState.dictWorkflowScopeLevels =
+                dictStatus.dictWorkflowScopeLevels;
+        }
+        if (dictStatus.dictWorkflowLevelHighWater) {
+            _dictWorkflowState.dictWorkflowLevelHighWater =
+                dictStatus.dictWorkflowLevelHighWater;
+        }
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {
@@ -2890,6 +3140,23 @@ const PipeleyenApp = (function () {
     }
 
     var fnShowErrorModal = PipeleyenModals.fnShowErrorModal;
+
+    async function fnAddAiDeclarationStep() {
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId || !_dictWorkflowState.dictWorkflow) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                "/ai-declaration/add-step", {});
+            _dictWorkflowState.dictWorkflow.listSteps.push(
+                dictResult.dictStep);
+            fnRenderStepList();
+            fnShowToast("AI declaration step added", "success");
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+        }
+    }
 
     function fnOpenVsCode() {
         var sHexId = _dictSessionState.sContainerId.replace(/-/g, "");
@@ -3076,6 +3343,7 @@ const PipeleyenApp = (function () {
         fdictBlockerGlyphCatalog: fdictBlockerGlyphCatalog,
         fsBlockerHintForStep: fsBlockerHintForStep,
         fsBlockerHintForFile: fsBlockerHintForFile,
+        fnAddAiDeclarationStep: fnAddAiDeclarationStep,
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
 
         /* New public methods for extracted modules */
