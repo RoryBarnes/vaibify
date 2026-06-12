@@ -13,6 +13,7 @@ Tracked:
 - Step outputs (plot + data files, archive and supporting) under the
   size threshold
 - Test standards referenced by dictTests[*].sStandardsPath
+- Test files referenced by dictTests[*].sFilePath and saTestCommands
 - Workspace-root config: requirements.txt, environment.yml, Dockerfile,
   pyproject.toml
 
@@ -34,6 +35,7 @@ import posixpath
 
 from . import workflowManager
 from vaibify.reproducibility import manifestPaths
+from vaibify.reproducibility import manifestWriter
 
 __all__ = [
     "I_LARGE_FILE_THRESHOLD_BYTES",
@@ -140,6 +142,18 @@ def _flistStepStandardsRepoPaths(dictStep):
     return manifestPaths.flistStepStandardsRepoPaths(dictStep)
 
 
+def _flistStepTestFileRepoPaths(dictStep):
+    """Return repo-relative paths of test files for one step.
+
+    Delegates to ``manifestWriter.flistStepTestFileRepoPaths`` so the
+    canonical-tracked-files set, the archive manifest, and the Zenodo
+    archive share one extraction path for test files. Test files are
+    always git-tracked; ``bArchiveTests`` gates archiving, not source
+    control.
+    """
+    return manifestWriter.flistStepTestFileRepoPaths(dictStep)
+
+
 def _flistVaibifyTrackedFiles(sWorkspaceRoot):
     """Return repo-relative paths under .vaibify/ that round-trip through git.
 
@@ -211,6 +225,14 @@ def _fsetExcludedRepoPaths(dictStep):
     }
 
 
+def _fsetWorkflowExcludedRepoPaths(dictWorkflow):
+    """Return the union of every step's excluded repo paths."""
+    setExcluded = set()
+    for dictStep in dictWorkflow.get("listSteps", []):
+        setExcluded.update(_fsetExcludedRepoPaths(dictStep))
+    return setExcluded
+
+
 def _fnAppendUniqueAllowed(
     listPaths, setSeen, setExcluded, listIncoming,
 ):
@@ -240,9 +262,7 @@ def flistCanonicalTrackedFilesFromScans(
     }
     listPaths = []
     setSeen = set()
-    setExcluded = set()
-    for dictStep in dictWorkflow.get("listSteps", []):
-        setExcluded.update(_fsetExcludedRepoPaths(dictStep))
+    setExcluded = _fsetWorkflowExcludedRepoPaths(dictWorkflow)
     _fnAppendUniqueAllowed(
         listPaths, setSeen, setExcluded, listVaibifyTracked,
     )
@@ -250,19 +270,25 @@ def flistCanonicalTrackedFilesFromScans(
         listPaths, setSeen, setExcluded, listRootConfigs,
     )
     for dictStep in dictWorkflow.get("listSteps", []):
-        _fnAppendUniqueAllowed(
-            listPaths, setSeen, setExcluded,
-            _flistStepScriptRepoPaths(dictStep),
-        )
-        _fnAppendUniqueAllowed(
-            listPaths, setSeen, setExcluded,
-            _flistStepOutputRepoPaths(dictStep, dictVars),
-        )
-        _fnAppendUniqueAllowed(
-            listPaths, setSeen, setExcluded,
-            _flistStepStandardsRepoPaths(dictStep),
+        _fnAppendStepTrackedPaths(
+            dictStep, dictVars, listPaths, setSeen, setExcluded,
         )
     return listPaths
+
+
+def _fnAppendStepTrackedPaths(
+    dictStep, dictVars, listPaths, setSeen, setExcluded,
+):
+    """Append one step's scripts, outputs, standards, and test files."""
+    for listIncoming in (
+        _flistStepScriptRepoPaths(dictStep),
+        _flistStepOutputRepoPaths(dictStep, dictVars),
+        _flistStepStandardsRepoPaths(dictStep),
+        _flistStepTestFileRepoPaths(dictStep),
+    ):
+        _fnAppendUniqueAllowed(
+            listPaths, setSeen, setExcluded, listIncoming,
+        )
 
 
 def flistCanonicalTrackedFiles(dictWorkflow, sWorkspaceRoot):

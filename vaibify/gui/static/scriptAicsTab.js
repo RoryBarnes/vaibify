@@ -539,9 +539,16 @@ var VaibifyAicsTab = (function () {
             '</div></div>';
     }
 
+    function _fsBuildHistoryStatusIconHtml(sStatus) {
+        // Warning glyph, never an X: a non-passed reproduction
+        // attempt is a failed verification, so the glyph reads red.
+        if (sStatus === "passed") return "✓";
+        return '<span class="aics-history-fail-glyph">⚠</span>';
+    }
+
     function _fsRenderHistoryRow(dictEntry) {
         var sStatus = dictEntry.sStatus || "?";
-        var sIcon = sStatus === "passed" ? "✓" : "✗";
+        var sIconHtml = _fsBuildHistoryStatusIconHtml(sStatus);
         var sManifest = (dictEntry.sManifestDigestAtAttestation ||
             "").slice(0, 19);
         var fDuration = dictEntry.fDurationSeconds || 0;
@@ -549,7 +556,8 @@ var VaibifyAicsTab = (function () {
             '<td><code>' + fnEscapeHtml(
                 dictEntry.sAttestedAtUtc || "?") +
             '</code></td>' +
-            '<td>' + sIcon + ' ' + fnEscapeHtml(sStatus) + '</td>' +
+            '<td>' + sIconHtml + ' ' + fnEscapeHtml(sStatus) +
+            '</td>' +
             '<td><code>' + fnEscapeHtml(sManifest) +
             '…</code></td>' +
             '<td>' + fDuration.toFixed(1) + ' s</td></tr>';

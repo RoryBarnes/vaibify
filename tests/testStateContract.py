@@ -167,6 +167,48 @@ def test_flistCanonicalTrackedFiles_includes_test_standards(tmp_path):
     assert "step1/tests/standards/quant.json" in listResult
 
 
+def test_flistCanonicalTrackedFiles_includes_test_files(tmp_path):
+    dictStep = _fdictStep(sDirectory="step1", dictStandards={
+        "dictQuantitative": {
+            "sFilePath": "step1/tests/test_quant.py",
+        },
+    })
+    dictStep["saTestCommands"] = ["pytest tests/test_legacy.py"]
+    dictWorkflow = {"listSteps": [dictStep]}
+    listResult = stateContract.flistCanonicalTrackedFiles(
+        dictWorkflow, str(tmp_path))
+    assert "step1/tests/test_quant.py" in listResult
+    assert "step1/tests/test_legacy.py" in listResult
+
+
+def test_flistCanonicalTrackedFilesFromScans_includes_test_files():
+    dictStep = _fdictStep(sDirectory="step1", dictStandards={
+        "dictIntegrity": {
+            "sFilePath": "step1/tests/test_integrity.py",
+        },
+    })
+    dictWorkflow = {"listSteps": [dictStep]}
+    listResult = stateContract.flistCanonicalTrackedFilesFromScans(
+        dictWorkflow, [], [])
+    assert "step1/tests/test_integrity.py" in listResult
+
+
+def test_flistCanonicalTrackedFiles_excludes_marked_test_files():
+    dictStep = _fdictStep(
+        sDirectory="step1",
+        dictStandards={
+            "dictQuantitative": {
+                "sFilePath": "step1/tests/test_quant.py",
+            },
+        },
+        dictExcluded={"step1/tests/test_quant.py": True},
+    )
+    dictWorkflow = {"listSteps": [dictStep]}
+    listResult = stateContract.flistCanonicalTrackedFilesFromScans(
+        dictWorkflow, [], [])
+    assert "step1/tests/test_quant.py" not in listResult
+
+
 def test_flistCanonicalTrackedFiles_includes_root_config(tmp_path):
     _fnWriteFile(str(tmp_path), "requirements.txt", "numpy\n")
     _fnWriteFile(str(tmp_path), "Dockerfile", "FROM python\n")

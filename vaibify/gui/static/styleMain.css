@@ -3142,7 +3142,7 @@ body.aics-level-3 .toolbar-label {
     margin-top: 12px;
 }
 
-.test-fail-x {
+.test-fail-glyph {
     font-size: 1.1em;
     margin-right: 4px;
 }
@@ -5106,6 +5106,10 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     color: #ff7070;
 }
 
+.aics-history-fail-glyph {
+    color: var(--color-red);
+}
+
 .aics-history-table code {
     background: rgba(255, 255, 255, 0.05);
     padding: 1px 3px;
@@ -5269,63 +5273,187 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     margin: 0 2px;
 }
 
-/* --- Scope F: per-step level strip. Three always-visible cells
-   L1|L2|L3 on every step card and on the workflow header row. Cell
-   color encodes attainment state: green attained, orange regressed
-   (was attained, now blocked), red never attained, grey unknown. */
+/* --- Scope F: per-step level strip. Four right-aligned columns on
+   every step card and on the workflow header row: the regression
+   warning column, then L1|L2|L3. Cell visuals encode independent
+   per-level progress: grey filled circle = not started, red circle =
+   no requirements met, orange circle = partially met, favicon =
+   attained, hollow grey circle = unknown (stale sync cache). */
 .step-level-strip {
     display: inline-flex;
     gap: 3px;
-    margin-left: 6px;
+    margin-left: auto;
     vertical-align: middle;
 }
 
-.step-level-cell {
-    font-size: 10px;
-    line-height: 1.5;
-    padding: 0 3px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
+.step-level-cell,
+.step-regression-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 16px;
+    font-size: 11px;
     cursor: help;
     white-space: nowrap;
 }
 
-.level-cell-attained {
-    color: #4caf50;
+.level-cell-circle {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
 }
 
-.level-cell-regressed {
-    color: var(--color-orange);
+.level-cell-not-started .level-cell-circle {
+    background: var(--text-muted);
 }
 
-.level-cell-never {
+.level-cell-none .level-cell-circle {
+    background: var(--color-red);
+}
+
+.level-cell-partial .level-cell-circle {
+    background: var(--color-orange);
+}
+
+/* Attained renders the favicon image instead of a circle. */
+.level-cell-attained .level-cell-circle {
+    display: none;
+}
+
+.level-cell-favicon {
+    width: 13px;
+    height: 13px;
+}
+
+/* Hollow outlined circle, deliberately distinct from the filled
+   not-started grey: the state is unknowable until a re-verify. */
+.level-cell-unknown .level-cell-circle {
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
+}
+
+/* Regression column: empty unless the backend's consolidated
+   warning (dictStepLevelWarnings) fires at the lowest non-attained
+   level. */
+.step-regression-cell.regression-warning-red {
     color: var(--color-red);
 }
 
-.level-cell-unknown {
-    color: var(--text-muted);
+.step-regression-cell.regression-warning-orange {
+    color: var(--color-orange);
 }
 
-/* The workflow-scope ladder strip rendered as the first child of
+/* One-time column labels at the top of the step list; the cells
+   themselves carry no L1/L2/L3 text. */
+.level-column-header-row {
+    display: flex;
+    align-items: center;
+    /* Right padding matches .step-item so the column labels align
+       with every row's cells. */
+    padding: 2px 14px 0 10px;
+}
+
+.level-column-header-cell {
+    font-size: 9px;
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+/* The expandable workflow row rendered as the first row of
    #listSteps, above every step card. */
 .workflow-level-header-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 6px 14px 6px 10px;
     border-bottom: 1px solid var(--border-color);
     font-weight: 600;
     font-size: 13px;
+    cursor: pointer;
+}
+
+.workflow-level-header-row:hover {
+    background: var(--bg-hover);
+}
+
+/* Expanded body of the workflow row: the reproducibility envelope
+   (software, artifacts, determinism, remote syncs). */
+.workflow-level-detail {
+    padding: 6px 14px 10px 24px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+}
+
+.envelope-section-title {
+    font-weight: 600;
+    margin-top: 8px;
+    margin-bottom: 3px;
+    color: var(--text-secondary);
+}
+
+.envelope-binary-row,
+.envelope-artifact-row,
+.envelope-sync-row,
+.envelope-determinism-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.envelope-light {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-light-green {
+    background: #4caf50;
+}
+
+.envelope-light-red {
+    background: var(--color-red);
+}
+
+.envelope-light-orange {
+    background: var(--color-orange);
+}
+
+/* Hollow grey = never verified / unknowable; a null sync cache must
+   never render green. */
+.envelope-light-unknown {
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
+}
+
+.envelope-binary-name,
+.envelope-artifact-name,
+.envelope-sync-name {
+    font-weight: 600;
+}
+
+.envelope-binary-versions,
+.envelope-binary-purpose,
+.envelope-sync-note {
+    color: var(--text-secondary);
+}
+
+.envelope-empty-note {
+    color: var(--text-secondary);
+    font-style: italic;
 }
 
 /* Ghost row rendered after the last step when the workflow has no
    AI-declaration step: the absence blocks L2 for the whole workflow,
-   so the cells render in the never-attained red. */
+   so the cells render the red no-requirements-met circle. */
 .ghost-ai-declaration-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 6px 14px 6px 10px;
     margin-top: 6px;
     border: 1px dashed var(--color-red);
     border-radius: var(--border-radius);
@@ -5334,8 +5462,8 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 /* Orange per-file pencil for outputs that are merely stale (re-run
-   recovers them); red ✗ via .l1-blocker-file-glyph stays reserved
-   for failed/missing. */
+   recovers them); the red warning glyph via .l1-blocker-file-glyph
+   stays reserved for failed/missing. */
 .file-mark-stale {
     color: var(--color-orange);
     margin-right: 4px;

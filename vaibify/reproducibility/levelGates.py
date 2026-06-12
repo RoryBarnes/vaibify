@@ -38,6 +38,7 @@ from .repoFiles import ffilesEnsureRepoFiles, fsRepoRootOf
 from .reproduceScriptGenerator import S_REPRODUCE_SCRIPT_FILENAME
 from .stepPredicates import (
     _T_GREEN_VERIF_VALUES,
+    _T_TEST_VERIF_KEYS,
     fbStepTestsPassing,
     fbStepTimingClean,
     fbStepUserApproved,
@@ -64,10 +65,12 @@ __all__ = [
     "fbWorkflowHasAiDeclarationStep",
     "fbWorkflowHasProjectRepo",
     "fdictComputeStepLevelStates",
+    "fdictComputeStepLevelWarnings",
     "fdictComputeWorkflowScopeLevelStates",
     "fdictL3ReadinessGaps",
     "fdictLevel2Gaps",
     "fiAICSLevel",
+    "fiLowestNonAttainedLevel",
     "fiStepAICSLevel",
     "flistLevel1Blockers",
     "flistLevel2Blockers",
@@ -2149,20 +2152,55 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
 
 
 # ----------------------------------------------------------------------
-# Per-step and workflow-scope level-state projection.
+# Per-step and workflow-scope level-state projection (independent levels).
 #
 # These functions are PURE projections of the already-computed blocker
-# lists — they never re-evaluate a gate or touch the repo. The wire
-# vocabulary is exactly three states per level: ``"attained"``,
-# ``"blocked"``, and ``"unknown"``. ``unknown`` exists because a stale
-# sync-verify cache suppresses the per-step L2 rows; rendering an
-# otherwise-clean step as ``attained`` from an untrustworthy cache
-# would misrepresent the dashboard's ground truth.
+# lists plus the step dicts — they never re-evaluate a gate or touch
+# the repo. Each level cell is computed INDEPENDENTLY per level: a
+# blocked lower level never propagates upward, so a step may honestly
+# report L1 attained, L2 partial, and L3 attained-with-regression at
+# the same time.
+#
+# Wire cell shape (one per step per level, and per workflow per level)::
+#
+#     {"sState": "not-started" | "none" | "partial"
+#                | "attained" | "unknown",
+#      "iSatisfied": int,   # requirements of that level currently met
+#      "iTotal": int,       # requirements of that level applicable
+#      "bRegression": bool} # high-water stamp exists but not attained
+#
+# ``not-started`` — the step has no activity at all (no run stats,
+# every present test axis untested, never attested); all three of its
+# cells read not-started. ``none`` — activity exists but zero
+# requirements satisfied. ``partial`` — some but not all. ``attained``
+# — all satisfied. ``unknown`` — ONLY for per-step L2 when the
+# github/zenodo verify cache is stale: the per-step sync truth is
+# unavailable and must never render as attained from a stale cache.
 # ----------------------------------------------------------------------
 
 
-_T_VERIFY_STALE_CRITERIA = (
+_T_TIMING_BLOCKER_CRITERIA = (
+    "upstream-modified", "script-stale", "attestation-stale",
+)
+
+_T_STEP_LEVEL3_CRITERIA = (
+    "missing-from-manifest", "script-not-pinned",
+    "nondeterminism-undeclared", "binary-not-declared",
+    "binary-not-captured",
+)
+
+_T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
     "github-verify-stale", "zenodo-verify-stale",
+)
+
+_T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
+    "arxiv-not-submitted", "arxiv-mismatch", "arxiv-version-stale",
+)
+
+_T_WORKFLOW_LEVEL3_CRITERIA = (
+    "dockerfile-not-pinned", "dependency-lock-missing",
+    "environment-snapshot-missing", "reproduce-script-missing",
+    "l3-attestation-stale", "binaries-not-declared-or-waived",
 )
 
 
@@ -2170,132 +2208,532 @@ def fdictComputeStepLevelStates(
     dictWorkflow, listLevel1Blockers,
     listLevel2Blockers, listLevel3Blockers,
 ):
-    """Return ``{iStepIndex: {"s1","s2","s3"}}`` level states per step.
+    """Return ``{iStepIndex: {"s1": dictCell, "s2": ..., "s3": ...}}``.
 
-    Each state is ``"attained"``, ``"blocked"``, or ``"unknown"``.
-    Levels are cumulative: a blocked level forces every higher level
-    to ``blocked``; ``unknown`` propagates upward over otherwise-clean
-    levels. When a workflow-scope verify-stale blocker fires the
-    per-step sync rows are suppressed at the source, so an
-    otherwise-clean step's ``s2`` (and propagated ``s3``) reports
-    ``unknown`` — never ``attained`` from a stale cache.
+    Each cell carries the independent-level wire shape documented in
+    the section header above. Per-step requirement sets:
+
+    * L1 — each PRESENT test axis green (``passed`` /
+      ``passed-from-marker`` / ``unnecessary``), user attestation
+      (``sUser`` is ``passed``), and timing clean (no
+      upstream-modified / script-stale / attestation-stale signal).
+    * L2 — github mirror match, zenodo deposit match, and (when the
+      workflow has an Overleaf binding and the step declares plots)
+      figure frozen. A stale verify cache makes the cell ``unknown``.
+    * L3 — the five per-step criteria in
+      :data:`_T_STEP_LEVEL3_CRITERIA`, one requirement each.
+
+    ``bRegression`` reads the step's ``dictLevelHighWater`` stamps:
+    True when the level was attained before but is not attained now.
+    A workflow with no project repo zeroes L2/L3 satisfaction — sync
+    and manifest truth cannot exist without a repo.
     """
-    setLevel1Blocked = _fsetPerStepBlockedIndices(listLevel1Blockers)
-    setLevel2Blocked = _fsetPerStepBlockedIndices(listLevel2Blockers)
-    setLevel3Blocked = _fsetPerStepBlockedIndices(listLevel3Blockers)
-    bSyncCacheUnknown = _fbAnyVerifyStaleBlocker(listLevel2Blockers)
+    dictContext = _fdictStepProjectionContext(
+        dictWorkflow, listLevel1Blockers,
+        listLevel2Blockers, listLevel3Blockers,
+    )
     dictResult = {}
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
-    for iStepIndex in range(len(listSteps)):
-        dictResult[iStepIndex] = _fdictOneStepLevelStates(
-            iStepIndex, setLevel1Blocked, setLevel2Blocked,
-            setLevel3Blocked, bSyncCacheUnknown,
+    for iStepIndex, dictStep in enumerate(listSteps):
+        dictResult[iStepIndex] = _fdictOneStepLevelCells(
+            iStepIndex, dictStep, dictContext,
         )
     return dictResult
 
 
-def _fsetPerStepBlockedIndices(listBlockers):
-    """Return the step indices carrying a per-step blocker entry.
+def _fdictStepProjectionContext(
+    dictWorkflow, listLevel1Blockers,
+    listLevel2Blockers, listLevel3Blockers,
+):
+    """Pre-compute the shared lookups the per-step cell builders read."""
+    dictContext = _fdictBuildPerLevelCriteriaLookups(
+        listLevel1Blockers, listLevel2Blockers, listLevel3Blockers,
+    )
+    dictContext["bGithubCacheStale"] = _fbAnyWorkflowCriterion(
+        listLevel2Blockers, "github-verify-stale",
+    )
+    dictContext["bZenodoCacheStale"] = _fbAnyWorkflowCriterion(
+        listLevel2Blockers, "zenodo-verify-stale",
+    )
+    dictContext["bOverleafBound"] = _fbWorkflowHasOverleafBinding(
+        dictWorkflow,
+    )
+    dictContext["bHasRepo"] = fbWorkflowHasProjectRepo(
+        (dictWorkflow or {}).get("sProjectRepoPath") or "",
+    )
+    return dictContext
 
-    Workflow-scope entries are distinguished by ``iStepIndex`` of -1
-    (or an absent field, treated the same defensively) and excluded.
+
+def _fdictBuildPerLevelCriteriaLookups(
+    listLevel1Blockers, listLevel2Blockers, listLevel3Blockers,
+):
+    """Index each level's per-step blocker criteria by step index."""
+    return {
+        "dictLevel1CriteriaByStep": _fdictCriteriaByStep(
+            listLevel1Blockers,
+        ),
+        "dictLevel2CriteriaByStep": _fdictCriteriaByStep(
+            listLevel2Blockers,
+        ),
+        "dictLevel3CriteriaByStep": _fdictCriteriaByStep(
+            listLevel3Blockers,
+        ),
+    }
+
+
+def _fdictCriteriaByStep(listBlockers):
+    """Return ``{iStepIndex: set(sCriterion)}`` for per-step entries.
+
+    Workflow-scope entries (``iStepIndex`` of -1, or absent, treated
+    the same defensively) are excluded.
     """
-    setIndices = set()
+    dictResult = {}
     for dictEntry in listBlockers or []:
         iStepIndex = dictEntry.get("iStepIndex", -1)
         if isinstance(iStepIndex, int) and iStepIndex >= 0:
-            setIndices.add(iStepIndex)
-    return setIndices
+            dictResult.setdefault(iStepIndex, set()).add(
+                dictEntry.get("sCriterion"),
+            )
+    return dictResult
 
 
-def _fbAnyVerifyStaleBlocker(listLevel2Blockers):
-    """Return True iff a workflow-scope verify-stale blocker is present."""
-    for dictEntry in listLevel2Blockers or []:
-        if dictEntry.get("sCriterion") in _T_VERIFY_STALE_CRITERIA:
+def _fbAnyWorkflowCriterion(listBlockers, sCriterion):
+    """Return True iff any blocker entry carries ``sCriterion``."""
+    for dictEntry in listBlockers or []:
+        if dictEntry.get("sCriterion") == sCriterion:
             return True
     return False
 
 
-def _fdictOneStepLevelStates(
-    iStepIndex, setLevel1Blocked, setLevel2Blocked,
-    setLevel3Blocked, bSyncCacheUnknown,
-):
-    """Return the cumulative ``{"s1","s2","s3"}`` states for one step."""
-    sStateOne = (
-        "blocked" if iStepIndex in setLevel1Blocked else "attained"
+def _fdictOneStepLevelCells(iStepIndex, dictStep, dictContext):
+    """Return the three INDEPENDENT level cells for one step."""
+    bNotStarted = _fbStepHasNoActivity(dictStep)
+    dictHighWater = _fdictGetStepLevelHighWater(dictStep)
+    dictCountsByLevel = _fdictCountStepLevelRequirements(
+        iStepIndex, dictStep, dictContext,
     )
-    sStateTwo = _fsComposeLevelState(
-        sStateOne, iStepIndex in setLevel2Blocked, bSyncCacheUnknown,
-    )
-    sStateThree = _fsComposeLevelState(
-        sStateTwo, iStepIndex in setLevel3Blocked, False,
-    )
-    return {"s1": sStateOne, "s2": sStateTwo, "s3": sStateThree}
+    dictResult = {}
+    for sLevel in ("1", "2", "3"):
+        iSatisfied, iTotal, bUnknown = dictCountsByLevel[sLevel]
+        dictResult["s" + sLevel] = _fdictBuildLevelCell(
+            iSatisfied, iTotal, bNotStarted, bUnknown,
+            sLevel in dictHighWater,
+        )
+    return dictResult
 
 
-def _fsComposeLevelState(sLowerState, bOwnBlocker, bOwnUnknown):
-    """Compose one level's state from the level below plus its own signals.
+def _fdictGetStepLevelHighWater(dictStep):
+    """Return the step's first-attainment stamps; corrupt steps have none."""
+    if isinstance(dictStep, dict):
+        return dictStep.get("dictLevelHighWater") or {}
+    return {}
 
-    ``blocked`` dominates (own blocker or inherited); ``unknown``
-    (own or inherited) beats ``attained``; only a clean level atop a
-    clean ladder reports ``attained``.
+
+def _fdictCountStepLevelRequirements(iStepIndex, dictStep, dictContext):
+    """Return ``{sLevel: (iSatisfied, iTotal, bUnknown)}`` for one step."""
+    iSatisfiedOne, iTotalOne = _ftStepLevel1Counts(
+        dictStep,
+        dictContext["dictLevel1CriteriaByStep"].get(iStepIndex, set()),
+    )
+    iSatisfiedTwo, iTotalTwo, bUnknownTwo = _ftStepLevel2Counts(
+        dictStep,
+        dictContext["dictLevel2CriteriaByStep"].get(iStepIndex, set()),
+        dictContext,
+    )
+    iSatisfiedThree, iTotalThree = _ftStepLevel3Counts(
+        dictContext["dictLevel3CriteriaByStep"].get(iStepIndex, set()),
+        dictContext,
+    )
+    return {
+        "1": (iSatisfiedOne, iTotalOne, False),
+        "2": (iSatisfiedTwo, iTotalTwo, bUnknownTwo),
+        "3": (iSatisfiedThree, iTotalThree, False),
+    }
+
+
+def _fbStepHasNoActivity(dictStep):
+    """Return True iff the step has never run, tested, or been attested.
+
+    The not-started discriminator: no run stats, every present test
+    axis still ``untested``, ``sUser`` never moved off ``untested``,
+    and no attestation timestamp. A corrupt (non-dict) step entry has
+    no readable activity and reads as not-started.
     """
-    if sLowerState == "blocked" or bOwnBlocker:
-        return "blocked"
-    if bOwnUnknown or sLowerState == "unknown":
+    if not isinstance(dictStep, dict):
+        return True
+    if dictStep.get("dictRunStats"):
+        return False
+    dictV = dictStep.get("dictVerification") or {}
+    if not isinstance(dictV, dict):
+        dictV = {}
+    if dictV.get("sLastUserUpdate"):
+        return False
+    if dictV.get("sUser") not in (None, "untested"):
+        return False
+    for sAxisKey in _T_TEST_VERIF_KEYS:
+        if sAxisKey in dictV and dictV[sAxisKey] != "untested":
+            return False
+    return True
+
+
+def _ftCountGreenAxes(dictStep):
+    """Return ``(iGreen, iPresent)`` over the step's present test axes."""
+    dictV = {}
+    if isinstance(dictStep, dict):
+        dictV = dictStep.get("dictVerification") or {}
+    if not isinstance(dictV, dict):
+        dictV = {}
+    iGreen, iPresent = 0, 0
+    for sAxisKey in _T_TEST_VERIF_KEYS:
+        if sAxisKey not in dictV:
+            continue
+        iPresent += 1
+        if dictV[sAxisKey] in _T_GREEN_VERIF_VALUES:
+            iGreen += 1
+    return (iGreen, iPresent)
+
+
+def _ftStepLevel1Counts(dictStep, setCriteria):
+    """Return ``(iSatisfied, iTotal)`` over the step's L1 requirements.
+
+    Requirements: one per PRESENT test axis, plus user attestation,
+    plus timing cleanliness — so ``iTotal`` is axis count + 2.
+    """
+    iGreen, iPresent = _ftCountGreenAxes(dictStep)
+    iSatisfied = iGreen
+    if fbStepUserApproved(dictStep):
+        iSatisfied += 1
+    if _fbStepTimingRequirementMet(dictStep, setCriteria):
+        iSatisfied += 1
+    return (iSatisfied, iPresent + 2)
+
+
+def _fbStepTimingRequirementMet(dictStep, setCriteria):
+    """Return True iff no timestamp-out-of-order signal hits the step.
+
+    Combines the step-local timing flags (``bUpstreamModified``,
+    ``listModifiedFiles``, attestation gone ``stale``) with the
+    blocker-only criteria (``script-stale`` needs the poll's script
+    status; the dominant-blocker masking cannot hide it because
+    every masking criterion is itself a timing criterion).
+    """
+    if not fbStepTimingClean(dictStep):
+        return False
+    if set(setCriteria) & set(_T_TIMING_BLOCKER_CRITERIA):
+        return False
+    return not _fbAttestationStaleOnStep(dictStep)
+
+
+def _fbAttestationStaleOnStep(dictStep):
+    """Return True iff the researcher attested but outputs changed since."""
+    if not isinstance(dictStep, dict):
+        return False
+    dictV = dictStep.get("dictVerification") or {}
+    if not isinstance(dictV, dict):
+        return False
+    return (
+        dictV.get("sUser") == "stale"
+        and dictV.get("sLastUserUpdate") is not None
+    )
+
+
+def _ftStepLevel2Counts(dictStep, setCriteria, dictContext):
+    """Return ``(iSatisfied, iTotal, bUnknown)`` for one step's L2 cell.
+
+    Applicable criteria: github mirror match, zenodo deposit match,
+    and figure frozen when the workflow has an Overleaf binding and
+    the step declares plot files. A stale verify cache makes the
+    matching criterion unknowable: it still counts in ``iTotal`` but
+    never in ``iSatisfied``, and the cell state is ``unknown``. A
+    missing project repo zeroes satisfaction — there is no sync truth
+    to satisfy.
+    """
+    if not dictContext["bHasRepo"]:
+        return (0, 2, False)
+    bGithubStale = dictContext["bGithubCacheStale"]
+    bZenodoStale = dictContext["bZenodoCacheStale"]
+    iSatisfied = _fiCountSyncCriteriaSatisfied(
+        setCriteria, bGithubStale, bZenodoStale,
+    )
+    iTotal = 2
+    if _fbFigureFreezeApplicable(dictStep, dictContext):
+        iTotal += 1
+        if "figure-not-frozen" not in setCriteria:
+            iSatisfied += 1
+    return (iSatisfied, iTotal, bGithubStale or bZenodoStale)
+
+
+def _fiCountSyncCriteriaSatisfied(setCriteria, bGithubStale, bZenodoStale):
+    """Count the github/zenodo criteria that are known to be satisfied."""
+    iSatisfied = 0
+    if not bGithubStale and "not-in-github-mirror" not in setCriteria:
+        iSatisfied += 1
+    if not bZenodoStale and "not-in-zenodo-deposit" not in setCriteria:
+        iSatisfied += 1
+    return iSatisfied
+
+
+def _fbFigureFreezeApplicable(dictStep, dictContext):
+    """Return True iff ``figure-not-frozen`` applies to this step."""
+    if not dictContext["bOverleafBound"]:
+        return False
+    if not isinstance(dictStep, dict):
+        return False
+    for sPath in dictStep.get("saPlotFiles", []) or []:
+        if isinstance(sPath, str) and sPath:
+            return True
+    return False
+
+
+def _ftStepLevel3Counts(setCriteria, dictContext):
+    """Return ``(iSatisfied, iTotal)`` over the five per-step L3 criteria.
+
+    The blocker generator emits one dominant criterion per step, so
+    ``iSatisfied`` reflects the criteria currently *known* to be
+    unsatisfied; clearing the dominant one re-evaluates the rest on
+    the next poll. A missing project repo zeroes satisfaction.
+    """
+    iTotal = len(_T_STEP_LEVEL3_CRITERIA)
+    if not dictContext["bHasRepo"]:
+        return (0, iTotal)
+    iBlocked = len(set(setCriteria) & set(_T_STEP_LEVEL3_CRITERIA))
+    return (iTotal - iBlocked, iTotal)
+
+
+def _fdictBuildLevelCell(
+    iSatisfied, iTotal, bNotStarted, bUnknown, bStamped,
+):
+    """Return one wire cell with state, counts, and regression flag.
+
+    State precedence: ``not-started`` > ``unknown`` > the count-derived
+    states. ``bRegression`` is True when the level holds a high-water
+    stamp (the add-only ratchet recorded a first attainment) but the
+    current state is not ``attained``.
+    """
+    sState = _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown)
+    return {
+        "sState": sState,
+        "iSatisfied": int(iSatisfied),
+        "iTotal": int(iTotal),
+        "bRegression": bool(bStamped and sState != "attained"),
+    }
+
+
+def _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown):
+    """Map counts plus the two override flags onto the five-state wire."""
+    if bNotStarted:
+        return "not-started"
+    if bUnknown:
         return "unknown"
-    return "attained"
+    if iTotal > 0 and iSatisfied >= iTotal:
+        return "attained"
+    if iSatisfied > 0:
+        return "partial"
+    return "none"
 
 
 def fiStepAICSLevel(dictStepStates):
     """Return the highest contiguous attained level (0-3) for one step.
 
-    Contiguity matters: ``{"s1": "attained", "s2": "blocked",
-    "s3": "attained"}`` is level 1, not 3 — a gap in the ladder caps
-    the climb at the rung below it.
+    Contiguity matters: an attained L3 above a partial L2 is level 1
+    — a gap in the ladder caps the climb at the rung below it, even
+    though the cells themselves are computed independently.
     """
     iLevel = 0
     for iCandidate in (1, 2, 3):
-        sState = (dictStepStates or {}).get(f"s{iCandidate}")
-        if sState != "attained":
+        dictCell = (dictStepStates or {}).get(f"s{iCandidate}")
+        if not isinstance(dictCell, dict):
+            break
+        if dictCell.get("sState") != "attained":
             break
         iLevel = iCandidate
     return iLevel
 
 
+def fiLowestNonAttainedLevel(dictStepStates):
+    """Return the lowest level (1-3) whose cell is not attained, or 4.
+
+    4 means every level is attained — there is no warning anchor.
+    """
+    return fiStepAICSLevel(dictStepStates) + 1
+
+
+def fdictComputeStepLevelWarnings(
+    dictWorkflow, dictStepStates, listLevel1Blockers,
+):
+    """Return ``{iStepIndex: dictWarning}`` for the regression column.
+
+    Per-step wire shape::
+
+        {"iLowestNonAttainedLevel": 1-4,
+         "iWarningLevel": int or None,
+         "sWarningSeverity": "red" | "orange" | None,
+         "sWarningHint": str}
+
+    A warning fires ONLY when, AT the lowest non-attained level, the
+    cell carries ``bRegression`` or — level 1 only — a
+    timestamp-out-of-order blocker (upstream-modified / script-stale /
+    attestation-stale) applies. A regression strictly above the lowest
+    non-attained level emits no warning: the researcher's next action
+    lives at the lower rung. Severity is ``red`` when the cause
+    includes failed tests at that level, ``orange`` for pure
+    staleness or regression.
+    """
+    dictCriteriaByStep = _fdictCriteriaByStep(listLevel1Blockers)
+    dictResult = {}
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        dictResult[iStepIndex] = _fdictOneStepWarning(
+            dictStep,
+            (dictStepStates or {}).get(iStepIndex) or {},
+            dictCriteriaByStep.get(iStepIndex, set()),
+        )
+    return dictResult
+
+
+def _fdictOneStepWarning(dictStep, dictStates, setLevel1Criteria):
+    """Return one step's consolidated warning dict (or the no-warning shape)."""
+    iLowest = fiLowestNonAttainedLevel(dictStates)
+    if iLowest > 3:
+        return _fdictNoWarning(iLowest)
+    dictCell = dictStates.get(f"s{iLowest}") or {}
+    bTimingBlocker = iLowest == 1 and bool(
+        set(setLevel1Criteria) & set(_T_TIMING_BLOCKER_CRITERIA),
+    )
+    if not (dictCell.get("bRegression") or bTimingBlocker):
+        return _fdictNoWarning(iLowest)
+    bFailedTests = iLowest == 1 and _fbStepHasFailedAxis(dictStep)
+    sSeverity = "red" if bFailedTests else "orange"
+    return {
+        "iLowestNonAttainedLevel": iLowest,
+        "iWarningLevel": iLowest,
+        "sWarningSeverity": sSeverity,
+        "sWarningHint": _fsWarningHint(
+            iLowest, sSeverity, bTimingBlocker,
+        ),
+    }
+
+
+def _fdictNoWarning(iLowestNonAttainedLevel):
+    """Return the warning dict for a step with nothing to flag."""
+    return {
+        "iLowestNonAttainedLevel": iLowestNonAttainedLevel,
+        "iWarningLevel": None,
+        "sWarningSeverity": None,
+        "sWarningHint": "",
+    }
+
+
+def _fbStepHasFailedAxis(dictStep):
+    """Return True iff any present test axis on the step reads ``failed``."""
+    if not isinstance(dictStep, dict):
+        return False
+    dictV = dictStep.get("dictVerification") or {}
+    if not isinstance(dictV, dict):
+        return False
+    return any(
+        dictV.get(sAxisKey) == "failed"
+        for sAxisKey in _T_TEST_VERIF_KEYS
+    )
+
+
+def _fsWarningHint(iWarningLevel, sSeverity, bTimingBlocker):
+    """Return the prose remediation hint for one step warning."""
+    if sSeverity == "red":
+        return (
+            "Tests failed at Level 1 — re-run the failing tests, "
+            "then verify"
+        )
+    if bTimingBlocker:
+        return (
+            "Outputs are out of timestamp order — re-run the step "
+            "to clear it"
+        )
+    return (
+        f"Level {iWarningLevel} was previously attained and has "
+        "regressed"
+    )
+
+
 def fdictComputeWorkflowScopeLevelStates(
     dictWorkflow, listLevel2Blockers, listLevel3Blockers,
 ):
-    """Return the header-row ``{"s1","s2","s3"}`` workflow-scope states.
+    """Return the header-row ``{"s1","s2","s3"}`` workflow-scope cells.
 
-    ``s1`` is ``attained`` iff the workflow has a project repo — the
-    blocker lists are all empty when the repo is missing, so this
-    header is the only honest home for that gap. ``s2`` projects the
-    workflow-scope L2 blockers excluding ``missing-ai-declaration-step``
-    (re-homed to the ghost AI-declaration step row); the verify-stale
-    criteria render here as ``blocked``. ``s3`` projects the
-    workflow-scope L3 blockers. Cumulative like the per-step states.
+    Same independent-cell wire shape as the per-step projection, over
+    the workflow-scope requirement sets: L1 — project repo present
+    (one requirement); L2 — github/zenodo verify freshness plus the
+    three arXiv criteria when an Overleaf binding exists, EXCLUDING
+    ``missing-ai-declaration-step`` (re-homed to the ghost
+    AI-declaration step row); L3 — the six workflow-scope checks in
+    :data:`_T_WORKFLOW_LEVEL3_CRITERIA`. Workflow cells never report
+    ``not-started`` or ``unknown``: at this scope a stale verify cache
+    is itself the unsatisfied requirement, not missing information.
+    ``bRegression`` reads ``dictWorkflowLevelHighWater``. A missing
+    repo zeroes satisfaction at every level — the blocker lists are
+    empty in that case and must not be mistaken for attainment.
     """
     bHasRepo = fbWorkflowHasProjectRepo(
         (dictWorkflow or {}).get("sProjectRepoPath") or "",
     )
-    sStateOne = "attained" if bHasRepo else "blocked"
-    bLevel2Blocked = _fbAnyWorkflowScopeBlocker(
-        listLevel2Blockers, ("missing-ai-declaration-step",),
+    dictCountsByLevel = {
+        "1": (1 if bHasRepo else 0, 1),
+        "2": _ftWorkflowLevel2Counts(
+            dictWorkflow, listLevel2Blockers, bHasRepo,
+        ),
+        "3": _ftWorkflowLevel3Counts(listLevel3Blockers, bHasRepo),
+    }
+    return _fdictBuildWorkflowScopeCells(dictWorkflow, dictCountsByLevel)
+
+
+def _fdictBuildWorkflowScopeCells(dictWorkflow, dictCountsByLevel):
+    """Assemble the three workflow-scope cells from their counts."""
+    dictHighWater = (
+        (dictWorkflow or {}).get("dictWorkflowLevelHighWater") or {}
     )
-    sStateTwo = _fsComposeLevelState(sStateOne, bLevel2Blocked, False)
-    bLevel3Blocked = _fbAnyWorkflowScopeBlocker(listLevel3Blockers, ())
-    sStateThree = _fsComposeLevelState(sStateTwo, bLevel3Blocked, False)
-    return {"s1": sStateOne, "s2": sStateTwo, "s3": sStateThree}
+    dictResult = {}
+    for sLevel in ("1", "2", "3"):
+        iSatisfied, iTotal = dictCountsByLevel[sLevel]
+        dictResult["s" + sLevel] = _fdictBuildLevelCell(
+            iSatisfied, iTotal, False, False, sLevel in dictHighWater,
+        )
+    return dictResult
 
 
-def _fbAnyWorkflowScopeBlocker(listBlockers, tExcludedCriteria):
-    """Return True iff a non-excluded workflow-scope blocker fires."""
+def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
+    """Return ``(iSatisfied, iTotal)`` for the workflow-scope L2 cell."""
+    tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
+    if _fbWorkflowHasOverleafBinding(dictWorkflow):
+        tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
+    return _ftCountWorkflowCriteria(
+        listLevel2Blockers, tApplicable, bHasRepo,
+    )
+
+
+def _ftWorkflowLevel3Counts(listLevel3Blockers, bHasRepo):
+    """Return ``(iSatisfied, iTotal)`` for the workflow-scope L3 cell."""
+    return _ftCountWorkflowCriteria(
+        listLevel3Blockers, _T_WORKFLOW_LEVEL3_CRITERIA, bHasRepo,
+    )
+
+
+def _ftCountWorkflowCriteria(listBlockers, tApplicable, bHasRepo):
+    """Count the applicable workflow-scope criteria not currently blocked."""
+    iTotal = len(tApplicable)
+    if not bHasRepo:
+        return (0, iTotal)
+    setBlocked = (
+        _fsetWorkflowScopeCriteria(listBlockers) & set(tApplicable)
+    )
+    return (iTotal - len(setBlocked), iTotal)
+
+
+def _fsetWorkflowScopeCriteria(listBlockers):
+    """Return distinct criteria on workflow-scope blocker entries."""
+    setCriteria = set()
     for dictEntry in listBlockers or []:
         iStepIndex = dictEntry.get("iStepIndex", -1)
         if isinstance(iStepIndex, int) and iStepIndex >= 0:
             continue
-        if dictEntry.get("sCriterion") in tExcludedCriteria:
-            continue
-        return True
-    return False
+        setCriteria.add(dictEntry.get("sCriterion"))
+    return setCriteria

@@ -7,6 +7,14 @@ import subprocess
 import uuid
 
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
+from vaibify.reproducibility.manifestPaths import (
+    flistStepScriptRepoPaths,
+    flistStepStandardsRepoPaths,
+)
+from vaibify.reproducibility.manifestWriter import (
+    fbWorkflowArchivesTests,
+    flistStepTestFileRepoPaths,
+)
 from vaibify.reproducibility.overleafAuth import (
     fnValidateOverleafProjectId,
     fsWriteAskpassScript,
@@ -1462,14 +1470,78 @@ def flistCollectOutputFiles(
 def _flistCollectRawOutputFiles(
     dictWorkflow, dictSyncStatus, dictVars, sWorkflowRoot,
 ):
-    """Collect raw (resolved) output-file entries across every step."""
+    """Collect raw (resolved) output-file entries across every step.
+
+    Beyond declared data and plot outputs, every step's scripts are
+    offered, plus its test files and test standards unless the
+    workflow opts out via ``bArchiveTests`` (absent means True) —
+    mirroring ``manifestWriter._flistCollectManifestPaths`` so the
+    push-modal candidate list and the archived manifest can never
+    silently disagree.
+    """
     listFiles = []
+    bArchiveTests = fbWorkflowArchivesTests(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):
         _fnAppendStepOutputFiles(
             dictStep, dictSyncStatus, dictVars,
             sWorkflowRoot, listFiles,
         )
+        _fnAppendStepArchivalFiles(
+            dictStep, bArchiveTests, dictSyncStatus,
+            dictVars, sWorkflowRoot, listFiles,
+        )
     return listFiles
+
+
+def _fdictStepArchivalPathsByCategory(dictStep, bArchiveTests):
+    """Map archival category to one step's repo-relative paths."""
+    dictPathsByCategory = {
+        "script": flistStepScriptRepoPaths(dictStep),
+    }
+    if bArchiveTests:
+        dictPathsByCategory["test"] = (
+            flistStepTestFileRepoPaths(dictStep))
+        dictPathsByCategory["standards"] = (
+            flistStepStandardsRepoPaths(dictStep))
+    return dictPathsByCategory
+
+
+def _fnAppendStepArchivalFiles(
+    dictStep, bArchiveTests, dictSyncStatus, dictVars,
+    sWorkflowRoot, listFiles,
+):
+    """Append one step's script, test-file, and standards entries."""
+    setSeen = {dictFile["sPath"] for dictFile in listFiles}
+    dictPathsByCategory = _fdictStepArchivalPathsByCategory(
+        dictStep, bArchiveTests,
+    )
+    for sCategory, listRepoPaths in dictPathsByCategory.items():
+        for sRepoPath in listRepoPaths:
+            _fnAppendArchivalEntry(
+                sRepoPath, sCategory, dictSyncStatus, dictVars,
+                sWorkflowRoot, listFiles, setSeen,
+            )
+
+
+def _fnAppendArchivalEntry(
+    sRepoPath, sCategory, dictSyncStatus, dictVars,
+    sWorkflowRoot, listFiles, setSeen,
+):
+    """Append one resolved archival entry, skipping duplicates."""
+    sResolved = workflowManager.fsResolveVariables(sRepoPath, dictVars)
+    if "{" in sResolved:
+        return
+    sAbsolute = _fsResolveAbsoluteStepPath("", sResolved, sWorkflowRoot)
+    if sAbsolute in setSeen:
+        return
+    setSeen.add(sAbsolute)
+    listFiles.append({
+        "sPath": sAbsolute,
+        "sCategory": sCategory,
+        "dictSync": _fdictLookupSyncForPath(
+            sAbsolute, dictSyncStatus, sWorkflowRoot,
+        ),
+    })
 
 
 def _fnAppendStepOutputFiles(
@@ -1498,6 +1570,15 @@ def _fsResolveAbsoluteStepPath(
     return sResolvedFile
 
 
+def _fdictLookupSyncForPath(sAbsolute, dictSyncStatus, sWorkflowRoot):
+    """Return the sync-status entry for one resolved path."""
+    return workflowManager.fdictLookupSyncEntry(
+        dictSyncStatus,
+        workflowManager.fsToSyncStatusKey(sAbsolute, sWorkflowRoot),
+        sWorkflowRoot,
+    )
+
+
 def _fdictBuildOutputEntry(
     dictStep, sKey, sFile, dictSyncStatus, dictVars, sWorkflowRoot,
 ):
@@ -1514,12 +1595,8 @@ def _fdictBuildOutputEntry(
     return {
         "sPath": sAbsolute,
         "sCategory": sCategory,
-        "dictSync": workflowManager.fdictLookupSyncEntry(
-            dictSyncStatus,
-            workflowManager.fsToSyncStatusKey(
-                sAbsolute, sWorkflowRoot,
-            ),
-            sWorkflowRoot,
+        "dictSync": _fdictLookupSyncForPath(
+            sAbsolute, dictSyncStatus, sWorkflowRoot,
         ),
     }
 

@@ -317,3 +317,74 @@ def test_flistCollectOutputFiles_empty_workflow():
     dictWorkflow = {"listSteps": []}
     listFiles = flistCollectOutputFiles(dictWorkflow, {})
     assert listFiles == []
+
+
+def _fdictArchivalStep():
+    return {
+        "sDirectory": "step1",
+        "saDataFiles": ["data.h5"],
+        "saPlotFiles": [],
+        "saDataCommands": ["python run.py"],
+        "saTestCommands": ["pytest tests/test_run.py"],
+        "dictTests": {
+            "dictQuantitative": {
+                "sFilePath": "step1/tests/test_quant.py",
+                "sStandardsPath": "step1/tests/standards/quant.json",
+            },
+        },
+    }
+
+
+def test_flistCollectOutputFiles_offers_scripts_tests_standards():
+    dictWorkflow = {"listSteps": [_fdictArchivalStep()]}
+    listFiles = flistCollectOutputFiles(dictWorkflow, {})
+    dictCategoryByPath = {
+        dictFile["sPath"]: dictFile["sCategory"]
+        for dictFile in listFiles
+    }
+    assert dictCategoryByPath["step1/run.py"] == "script"
+    assert dictCategoryByPath["step1/tests/test_run.py"] == "test"
+    assert dictCategoryByPath["step1/tests/test_quant.py"] == "test"
+    assert dictCategoryByPath[
+        "step1/tests/standards/quant.json"] == "standards"
+
+
+def test_flistCollectOutputFiles_archive_tests_opt_out():
+    dictWorkflow = {
+        "bArchiveTests": False,
+        "listSteps": [_fdictArchivalStep()],
+    }
+    listFiles = flistCollectOutputFiles(dictWorkflow, {})
+    setCategories = {dictFile["sCategory"] for dictFile in listFiles}
+    setPaths = {dictFile["sPath"] for dictFile in listFiles}
+    assert "step1/run.py" in setPaths
+    assert "test" not in setCategories
+    assert "standards" not in setCategories
+
+
+def test_flistCollectOutputFiles_archival_paths_use_workflow_root():
+    dictWorkflow = {"listSteps": [_fdictArchivalStep()]}
+    listFiles = flistCollectOutputFiles(
+        dictWorkflow, {}, {}, None, "/workspace/project",
+    )
+    setPaths = {dictFile["sPath"] for dictFile in listFiles}
+    assert "/workspace/project/step1/run.py" in setPaths
+    assert "/workspace/project/step1/tests/test_run.py" in setPaths
+
+
+def test_flistCollectOutputFiles_deduplicates_archival_paths():
+    dictStep = _fdictArchivalStep()
+    dictStep["saTestCommands"] = ["pytest step1/tests/test_quant.py"]
+    dictStep["sDirectory"] = ""
+    dictWorkflow = {"listSteps": [dictStep]}
+    listFiles = flistCollectOutputFiles(dictWorkflow, {})
+    listPaths = [dictFile["sPath"] for dictFile in listFiles]
+    assert listPaths.count("step1/tests/test_quant.py") == 1
+
+
+def test_flistCollectOutputFiles_overleaf_drops_archival_files():
+    dictWorkflow = {"listSteps": [_fdictArchivalStep()]}
+    listFiles = flistCollectOutputFiles(
+        dictWorkflow, {}, {}, "overleaf",
+    )
+    assert listFiles == []

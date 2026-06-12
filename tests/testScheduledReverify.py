@@ -432,3 +432,72 @@ def test_sync_status_lock_releases_on_persist_exception(tmp_path):
     scheduledReverify.fnWriteSyncStatus(sRepo, dictStatus)
     dictRead = scheduledReverify.fdictReadCachedSyncStatus(sRepo, "github")
     assert dictRead["sService"] == "github"
+
+# --------- Test files in the verify comparison set ---------
+
+
+def _fnWriteManifestWithTestFile(sProjectRepo):
+    """Write a manifest pinning one data file and one test file."""
+    sManifest = os.path.join(sProjectRepo, "MANIFEST.sha256")
+    with open(sManifest, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write(
+            "# SHA-256 manifest of workflow artefacts\n"
+            f"{'a' * 64}  step01/data.csv\n"
+            f"{'b' * 64}  step01/tests/test_quantitative.py\n"
+        )
+
+
+def testVerifyCountsTestFileEntriesFromManifest(tmp_path):
+    """Manifest test-file entries are part of the remote comparison set."""
+    sRepo = str(tmp_path / "project")
+    os.makedirs(sRepo, exist_ok=True)
+    _fnWriteManifestWithTestFile(sRepo)
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    mockFetch = MagicMock(return_value={
+        "step01/data.csv": "a" * 64,
+        "step01/tests/test_quantitative.py": "b" * 64,
+    })
+    with patch(
+        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        mockFetch,
+    ):
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "zenodo",
+        )
+    assert dictStatus["iTotalFiles"] == 2
+    assert dictStatus["iMatching"] == 2
+    _argsCall, dictKwargs = mockFetch.call_args
+    assert (
+        "step01/tests/test_quantitative.py"
+        in dictKwargs["listRelPaths"]
+    )
+
+
+def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
+    """A test file absent on the remote is reported as a divergence.
+
+    The honest failure mode: the verify completes (sStatus stays ok),
+    the gap shows up in listDiverged with sActual None.
+    """
+    sRepo = str(tmp_path / "project")
+    os.makedirs(sRepo, exist_ok=True)
+    _fnWriteManifestWithTestFile(sRepo)
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    with patch(
+        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        return_value={"step01/data.csv": "a" * 64},
+    ):
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "zenodo",
+        )
+        dictAttempt = scheduledReverify._fdictAttemptOneVerify(
+            sRepo, dictWorkflow, "zenodo", "2026-06-11T00:00:00Z",
+        )
+    assert dictStatus["iTotalFiles"] == 2
+    assert dictStatus["iMatching"] == 1
+    assert dictStatus["listDiverged"] == [{
+        "sPath": "step01/tests/test_quantitative.py",
+        "sExpected": "b" * 64,
+        "sActual": None,
+    }]
+    assert dictAttempt["sStatus"] == "ok"

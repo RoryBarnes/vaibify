@@ -85,3 +85,80 @@ def test_fdictCollectOutputFiles_empty():
     dictWorkflow = {"listSteps": []}
     dictOutputs = fdictCollectOutputFiles(dictWorkflow, "/tmp")
     assert dictOutputs == {}
+
+def _fdictBuildWorkflowWithTests():
+    """Return a one-step workflow declaring outputs, tests, standards."""
+    return {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "stepA",
+        "saDataFiles": ["stepA/data.csv"],
+        "saPlotFiles": ["stepA/figure.pdf"],
+        "saTestCommands": ["pytest tests/test_step01.py"],
+        "dictTests": {
+            "dictQuantitative": {
+                "sFilePath": "stepA/tests/test_quantitative.py",
+                "sStandardsPath":
+                    "stepA/tests/quantitative_standards.json",
+            },
+        },
+    }]}
+
+
+def test_flistCollectArchiveFilePaths_includes_tests_by_default():
+    from vaibify.reproducibility.dataArchiver import (
+        flistCollectArchiveFilePaths,
+    )
+    listPaths = flistCollectArchiveFilePaths(
+        _fdictBuildWorkflowWithTests(), "/work",
+    )
+    assert set(listPaths) == {
+        "/work/stepA/data.csv",
+        "/work/stepA/figure.pdf",
+        "/work/stepA/tests/test_step01.py",
+        "/work/stepA/tests/test_quantitative.py",
+        "/work/stepA/tests/quantitative_standards.json",
+    }
+
+
+def test_flistCollectArchiveFilePaths_honors_opt_out_flag():
+    from vaibify.reproducibility.dataArchiver import (
+        flistCollectArchiveFilePaths,
+    )
+    dictWorkflow = _fdictBuildWorkflowWithTests()
+    dictWorkflow["bArchiveTests"] = False
+    listPaths = flistCollectArchiveFilePaths(dictWorkflow, "/work")
+    assert set(listPaths) == {
+        "/work/stepA/data.csv",
+        "/work/stepA/figure.pdf",
+    }
+
+
+def test_fdictCollectOutputFiles_hashes_tests_and_standards(tmp_path):
+    sTestsDir = os.path.join(str(tmp_path), "stepA", "tests")
+    os.makedirs(sTestsDir, exist_ok=True)
+    with open(os.path.join(str(tmp_path), "stepA", "data.csv"), "w") as fh:
+        fh.write("a,b\n")
+    with open(
+        os.path.join(sTestsDir, "test_quantitative.py"), "w",
+    ) as fh:
+        fh.write("def test(): pass\n")
+    with open(
+        os.path.join(sTestsDir, "quantitative_standards.json"), "w",
+    ) as fh:
+        fh.write('{"k": 1}\n')
+    dictOutputs = fdictCollectOutputFiles(
+        _fdictBuildWorkflowWithTests(), str(tmp_path),
+    )
+    setBasenames = {os.path.basename(sPath) for sPath in dictOutputs}
+    assert setBasenames == {
+        "data.csv", "test_quantitative.py",
+        "quantitative_standards.json",
+    }
+
+
+def test_fdictCollectOutputFiles_missing_test_file_is_not_an_error(tmp_path):
+    """A declared-but-absent test file is omitted, never raised on."""
+    dictOutputs = fdictCollectOutputFiles(
+        _fdictBuildWorkflowWithTests(), str(tmp_path),
+    )
+    assert dictOutputs == {}

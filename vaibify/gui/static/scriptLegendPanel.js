@@ -41,6 +41,8 @@ var VaibifyLegendPanel = (function () {
     // Marks that are not per-criterion blocker glyphs but appear on
     // step cards, file lists, and dependency edges. Static by design:
     // each entry names the CSS class that styles the live mark.
+    // Entries with ``sSampleHtml`` render that static markup verbatim
+    // so the legend sample matches the live cell exactly.
     var _LIST_OTHER_MARKS = [
         {
             sIcon: "⚠", sClass: "l1-blocker-file-glyph",
@@ -53,21 +55,50 @@ var VaibifyLegendPanel = (function () {
                 "from a committed test marker)",
         },
         {
-            sIcon: "✓", sClass: "step-level-cell level-cell-attained",
-            sLabel: "Level cell — attained",
+            sSampleHtml: '<span class="step-level-cell ' +
+                'level-cell-not-started">' +
+                '<span class="level-cell-circle"></span></span>',
+            sLabel: "Level cell, grey circle — not started: the " +
+                "step has no activity at this level yet",
         },
         {
-            sIcon: "⚠", sClass: "step-level-cell level-cell-regressed",
-            sLabel: "Level cell — regressed since first attainment",
+            sSampleHtml: '<span class="step-level-cell ' +
+                'level-cell-none">' +
+                '<span class="level-cell-circle"></span></span>',
+            sLabel: "Level cell, red circle — no requirements met",
         },
         {
-            sIcon: "✗", sClass: "step-level-cell level-cell-never",
-            sLabel: "Level cell — never attained",
+            sSampleHtml: '<span class="step-level-cell ' +
+                'level-cell-partial">' +
+                '<span class="level-cell-circle"></span></span>',
+            sLabel: "Level cell, orange circle — partially met",
         },
         {
-            sIcon: "?", sClass: "step-level-cell level-cell-unknown",
-            sLabel: "Level cell — unknown; sync state stale, " +
-                "re-verify",
+            sSampleHtml: '<span class="step-level-cell ' +
+                'level-cell-attained">' +
+                '<img src="/static/favicon.png" ' +
+                'class="level-cell-favicon" alt="attained"></span>',
+            sLabel: "Level cell, vaibify badge — attained: every " +
+                "requirement at this level is met",
+        },
+        {
+            sSampleHtml: '<span class="step-level-cell ' +
+                'level-cell-unknown">' +
+                '<span class="level-cell-circle"></span></span>',
+            sLabel: "Level cell, hollow grey circle — sync state " +
+                "unknown; refresh remote status",
+        },
+        {
+            sIcon: "⚠", sClass: "step-regression-cell " +
+                "regression-warning-red",
+            sLabel: "Regression column, red — tests failing at " +
+                "the level being climbed",
+        },
+        {
+            sIcon: "⚠", sClass: "step-regression-cell " +
+                "regression-warning-orange",
+            sLabel: "Regression column, orange — previously " +
+                "attained level has regressed or gone stale",
         },
         {
             sIcon: "✎", sClass: "script-modified-badge",
@@ -253,12 +284,19 @@ var VaibifyLegendPanel = (function () {
             '<ul class="aics-legend-criteria">';
         for (var i = 0; i < _LIST_OTHER_MARKS.length; i++) {
             var dictMark = _LIST_OTHER_MARKS[i];
-            sHtml += '<li><span class="aics-legend-glyph ' +
-                fnEscapeHtml(dictMark.sClass) + '">' +
-                fnEscapeHtml(dictMark.sIcon) + '</span> ' +
+            sHtml += '<li>' + _fsRenderMarkSample(dictMark) + ' ' +
                 fnEscapeHtml(dictMark.sLabel) + '</li>';
         }
         return sHtml + '</ul></div>';
+    }
+
+    function _fsRenderMarkSample(dictMark) {
+        // ``sSampleHtml`` entries are static, trusted markup defined
+        // above — never user data — so they render verbatim.
+        if (dictMark.sSampleHtml) return dictMark.sSampleHtml;
+        return '<span class="aics-legend-glyph ' +
+            fnEscapeHtml(dictMark.sClass) + '">' +
+            fnEscapeHtml(dictMark.sIcon) + '</span>';
     }
 
     function _fsRenderFooter() {

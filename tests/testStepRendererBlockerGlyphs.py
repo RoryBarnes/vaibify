@@ -257,14 +257,33 @@ _RE_JS_DICT_KEY_OR_NULL = re.compile(
     r'"([a-z0-9-]+)"\s*:\s*(?:\{|null)'
 )
 
+# The level-cell vocabulary intentionally changed with the
+# independent per-level projection: regressed/never cells were
+# replaced by the not-started/none/partial/attained/unknown circle
+# and favicon cells, plus the regression-warning column and the
+# expandable workflow-row envelope.
 _LIST_SCOPE_F_CSS_CLASSES = [
     "step-level-strip",
     "step-level-cell",
+    "level-cell-circle",
+    "level-cell-favicon",
+    "level-cell-not-started",
+    "level-cell-none",
+    "level-cell-partial",
     "level-cell-attained",
-    "level-cell-regressed",
-    "level-cell-never",
     "level-cell-unknown",
+    "step-regression-cell",
+    "regression-warning-red",
+    "regression-warning-orange",
+    "level-column-header-row",
+    "level-column-header-cell",
     "workflow-level-header-row",
+    "workflow-level-detail",
+    "envelope-light",
+    "envelope-light-green",
+    "envelope-light-red",
+    "envelope-light-orange",
+    "envelope-light-unknown",
     "file-mark-stale",
     "ghost-ai-declaration-row",
     "step-blocker-glyph-outputs-changed",
@@ -360,6 +379,102 @@ def testEveryLevelCellAndFileMarkClassHasCssRule():
     assert setMissing == set(), (
         "Scope-F classes with no CSS rule: " +
         ", ".join(sorted(setMissing))
+    )
+
+
+_STEP_RENDERER_REL = "vaibify/gui/static/scriptStepRenderer.js"
+
+_LIST_ALL_GLYPH_DICT_NAMES = [
+    "_DICT_BLOCKER_CRITERION_GLYPHS",
+    "_DICT_AXIS_SUBSTATE_GLYPHS",
+    "_DICT_L2_BLOCKER_GLYPHS",
+    "_DICT_L3_BLOCKER_GLYPHS",
+    "_DICT_FILE_MARK_GLYPHS",
+]
+
+_TUPLE_FORBIDDEN_X_GLYPHS = ("✗", "✕", "×")
+
+
+@pytest.mark.parametrize("sDictName", _LIST_ALL_GLYPH_DICT_NAMES)
+def testNoXGlyphInAnyGlyphDict(sDictName):
+    """The X mark is not part of the vaibify glyph language: failed
+    and missing artifacts render the red warning glyph, staleness the
+    orange pencil. No glyph dict may reintroduce an X."""
+    sBody = _fsExtractJsDictBody(
+        _fsReadText(_SCRIPT_APPLICATION_REL), sDictName,
+    )
+    for sGlyph in _TUPLE_FORBIDDEN_X_GLYPHS:
+        assert sGlyph not in sBody, (
+            f"{sDictName} contains the forbidden X glyph {sGlyph!r}; "
+            "use the warning glyph instead"
+        )
+
+
+def testNoXStatusGlyphInLevelCellRenderers():
+    """Level cells render circles or the favicon, never an X; the
+    legend samples mirror the live cells. The X status mark must not
+    appear in either renderer's source."""
+    for sRelativePath in (_STEP_RENDERER_REL, _LEGEND_PANEL_REL):
+        sSource = _fsReadText(sRelativePath)
+        for sGlyph in _TUPLE_FORBIDDEN_X_GLYPHS:
+            assert sGlyph not in sSource, (
+                f"{sRelativePath} contains the forbidden X glyph "
+                f"{sGlyph!r}"
+            )
+
+
+def testLevelCellStatePhrasesMatchWireVocabulary():
+    """The application's tooltip phrase dict must cover exactly the
+    five sState values the backend projection can emit, so every wire
+    state renders an honest, specific tooltip."""
+    sBody = _fsExtractJsDictBody(
+        _fsReadText(_SCRIPT_APPLICATION_REL),
+        "_DICT_LEVEL_CELL_STATE_PHRASES",
+    )
+    setKeys = set(re.findall(r'"([a-z-]+)"\s*:', sBody))
+    setExpected = {
+        "not-started", "none", "partial", "attained", "unknown",
+    }
+    assert setKeys == setExpected, (
+        f"tooltip phrase keys {sorted(setKeys)} != wire states "
+        f"{sorted(setExpected)}"
+    )
+
+
+def testRendererStampsEveryLevelCellStateClass():
+    """The step renderer derives the cell class from the wire state
+    (``level-cell-<sState>``) and renders the favicon only for the
+    attained state; the unknown cell must stay a hollow circle."""
+    sSource = _fsReadText(_STEP_RENDERER_REL)
+    assert "level-cell-' + sState" in sSource, (
+        "cell class must derive from the wire sState verbatim"
+    )
+    assert re.search(
+        r'sState === "attained"[\s\S]{0,200}?favicon\.png', sSource,
+    ), "attained cells must render the favicon image"
+
+
+def testLegendDescribesLevelCellVocabulary():
+    """The legend must sample every level-cell state, both regression
+    severities, and the favicon, using the new circle vocabulary."""
+    sLegend = _fsReadText(_LEGEND_PANEL_REL)
+    listNeedles = [
+        "level-cell-not-started",
+        "level-cell-none",
+        "level-cell-partial",
+        "level-cell-attained",
+        "level-cell-unknown",
+        "regression-warning-red",
+        "regression-warning-orange",
+        "favicon.png",
+        "level-cell-circle",
+    ]
+    listMissing = [
+        sNeedle for sNeedle in listNeedles if sNeedle not in sLegend
+    ]
+    assert listMissing == [], (
+        "legend panel missing level-cell vocabulary entries: " +
+        ", ".join(listMissing)
     )
 
 

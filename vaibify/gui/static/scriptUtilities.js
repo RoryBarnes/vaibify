@@ -15,9 +15,15 @@ var VaibifyUtilities = (function () {
     ]);
 
     function fnEscapeHtml(sText) {
-        var el = document.createElement("span");
-        el.textContent = sText;
-        return el.innerHTML;
+        // Escapes quotes as well as angle brackets so the result is
+        // safe inside double- or single-quoted HTML attributes
+        // (title tooltips carry workflow-derived strings).
+        return String(sText == null ? "" : sText)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
     }
 
     function fbIsFigureFile(sPath) {

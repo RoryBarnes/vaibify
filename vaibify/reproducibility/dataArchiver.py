@@ -12,6 +12,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from vaibify.reproducibility._hashing import fsHashFileSha256
+from vaibify.reproducibility.manifestPaths import (
+    TUPLE_OUTPUT_KEYS,
+    flistStepStandardsRepoPaths,
+)
+from vaibify.reproducibility.manifestWriter import (
+    fbWorkflowArchivesTests,
+    flistStepTestFileRepoPaths,
+)
 from vaibify.reproducibility.provenanceTracker import (
     flistDetectChangedOutputs,
     fnUpdateProvenance,
@@ -151,8 +159,44 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
     return dictPayload
 
 
+def flistCollectArchiveFilePaths(dictWorkflow, sWorkdir):
+    """Return absolute paths of every artefact the archive should cover.
+
+    Spans every declared output (``saOutputFiles``, ``saPlotFiles``,
+    ``saDataFiles``) plus — unless the workflow opts out via
+    ``bArchiveTests`` (default True) — each step's declared test files
+    and test standards. Enumeration is pure path logic; existence is
+    the caller's concern so a missing file surfaces as a divergence
+    downstream, never as a silent exclusion here.
+    """
+    bArchiveTests = fbWorkflowArchivesTests(dictWorkflow)
+    listAbsolutePaths = []
+    for dictStep in dictWorkflow.get("listSteps", []):
+        for sDeclared in _flistStepArchiveDeclaredPaths(
+            dictStep, bArchiveTests,
+        ):
+            listAbsolutePaths.append(
+                str(_fpathResolveOutput(sDeclared, sWorkdir))
+            )
+    return listAbsolutePaths
+
+
+def _flistStepArchiveDeclaredPaths(dictStep, bArchiveTests):
+    """Return one step's declared archive-relevant paths."""
+    listDeclared = []
+    for sKey in TUPLE_OUTPUT_KEYS:
+        listDeclared.extend(dictStep.get(sKey, []) or [])
+    if bArchiveTests:
+        listDeclared.extend(flistStepTestFileRepoPaths(dictStep))
+        listDeclared.extend(flistStepStandardsRepoPaths(dictStep))
+    return listDeclared
+
+
 def fdictCollectOutputFiles(dictWorkflow, sWorkdir):
-    """Collect all output file paths from workflow.json steps.
+    """Collect archivable file paths from workflow.json steps.
+
+    Covers every declared output plus, by default, each step's test
+    files and test standards (see ``flistCollectArchiveFilePaths``).
 
     Parameters
     ----------
@@ -165,11 +209,12 @@ def fdictCollectOutputFiles(dictWorkflow, sWorkdir):
     -------
     dict
         Mapping of file path to SHA-256 hash for every existing
-        output file.
+        archivable file.
     """
     dictOutputs = {}
-    for dictStep in dictWorkflow.get("listSteps", []):
-        _fnCollectStepOutputs(dictStep, sWorkdir, dictOutputs)
+    for sPath in flistCollectArchiveFilePaths(dictWorkflow, sWorkdir):
+        if Path(sPath).is_file():
+            dictOutputs[sPath] = fsComputeFileHash(sPath)
     return dictOutputs
 
 

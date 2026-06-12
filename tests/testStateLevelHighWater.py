@@ -2,9 +2,12 @@
 
 The high-water record answers "when did this step (or the workflow
 header) first attain each level?". The ratchet is ADD-ONLY: regression
-to ``blocked`` or ``unknown`` never erases a recorded timestamp —
-regression memory is the feature, and the dashboard renders it
-truthfully. Schema v2 carries the new fields through the same
+to any non-attained state (``none`` / ``partial`` / ``unknown`` /
+``not-started``) never erases a recorded timestamp — regression memory
+is the feature, and the dashboard renders it truthfully. The ratchet
+consumes the independent-level cell dicts
+(``{"sState", "iSatisfied", "iTotal", "bRegression"}``) and ONLY
+``attained`` stamps. Schema v2 carries the new fields through the same
 tuple-generic split/merge that handles every other stateful field, so
 v1 ``state.json`` files load with no migration.
 """
@@ -31,14 +34,31 @@ def _fdictWorkflowWithOneStep():
     }
 
 
+def _fdictCell(sState):
+    """Return one independent-level cell with the given state."""
+    return {
+        "sState": sState, "iSatisfied": 0, "iTotal": 1,
+        "bRegression": False,
+    }
+
+
+def _fdictAllInState(sState):
+    """Return a level-state dict with every level cell in one state."""
+    return {
+        "s1": _fdictCell(sState),
+        "s2": _fdictCell(sState),
+        "s3": _fdictCell(sState),
+    }
+
+
 def _fdictAllAttained():
     """Return a level-state dict with every level attained."""
-    return {"s1": "attained", "s2": "attained", "s3": "attained"}
+    return _fdictAllInState("attained")
 
 
-def _fdictAllBlocked():
-    """Return a level-state dict with every level blocked."""
-    return {"s1": "blocked", "s2": "blocked", "s3": "blocked"}
+def _fdictAllRegressed():
+    """Return a level-state dict with every level back to none."""
+    return _fdictAllInState("none")
 
 
 def testSchemaVersionBumpedToTwo():
@@ -65,7 +85,11 @@ def testAttainStampsStepAndWorkflowTimestamps():
 
 def testPartialAttainmentStampsOnlyAttainedLevels():
     dictWorkflow = _fdictWorkflowWithOneStep()
-    dictStates = {"s1": "attained", "s2": "blocked", "s3": "blocked"}
+    dictStates = {
+        "s1": _fdictCell("attained"),
+        "s2": _fdictCell("partial"),
+        "s3": _fdictCell("none"),
+    }
     bChanged = fbRatchetLevelHighWater(
         dictWorkflow, {0: dictStates}, dictStates,
     )
@@ -81,7 +105,7 @@ def testRegressionSurvivesAndReturnsFalse():
     )
     dictBefore = copy.deepcopy(dictWorkflow)
     bChanged = fbRatchetLevelHighWater(
-        dictWorkflow, {0: _fdictAllBlocked()}, _fdictAllBlocked(),
+        dictWorkflow, {0: _fdictAllRegressed()}, _fdictAllRegressed(),
     )
     assert bChanged is False
     assert dictWorkflow == dictBefore
@@ -108,15 +132,18 @@ def testReattainmentKeepsOriginalTimestamp(monkeypatch):
     assert dictStepHighWater["1"] == "2026-06-01T00:00:00Z"
 
 
-def testUnknownNeverStamps():
-    dictWorkflow = _fdictWorkflowWithOneStep()
-    dictStates = {"s1": "unknown", "s2": "unknown", "s3": "unknown"}
-    bChanged = fbRatchetLevelHighWater(
-        dictWorkflow, {0: dictStates}, dictStates,
-    )
-    assert bChanged is False
-    assert "dictLevelHighWater" not in dictWorkflow["listSteps"][0]
-    assert "dictWorkflowLevelHighWater" not in dictWorkflow
+def testOnlyAttainedEverStamps():
+    """Every non-attained cell state — including unknown, partial,
+    and not-started — must stamp nothing."""
+    for sState in ("unknown", "partial", "none", "not-started"):
+        dictWorkflow = _fdictWorkflowWithOneStep()
+        dictStates = _fdictAllInState(sState)
+        bChanged = fbRatchetLevelHighWater(
+            dictWorkflow, {0: dictStates}, dictStates,
+        )
+        assert bChanged is False, sState
+        assert "dictLevelHighWater" not in dictWorkflow["listSteps"][0]
+        assert "dictWorkflowLevelHighWater" not in dictWorkflow
 
 
 def testRatchetReturnsFalseWithEmptyStates():

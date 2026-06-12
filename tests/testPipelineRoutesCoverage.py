@@ -1,6 +1,7 @@
 """Tests for uncovered lines in vaibify.gui.routes.pipelineRoutes."""
 
 import contextlib
+import json
 
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
@@ -1451,8 +1452,39 @@ def _fdictBuildLevelPollContext():
     return {"docker": MagicMock(), "save": MagicMock(), "paths": {}}
 
 
-_DICT_ALL_ATTAINED_STATES = {
-    "s1": "attained", "s2": "attained", "s3": "attained",
+def _fdictActivePollStep():
+    """Return a step with activity whose L1 requirements are all met."""
+    return {
+        "sDirectory": "stepA", "sName": "A",
+        "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
+    }
+
+
+def _fdictAttainedCell(iSatisfied, iTotal):
+    """Return one expected attained wire cell."""
+    return {
+        "sState": "attained", "iSatisfied": iSatisfied,
+        "iTotal": iTotal, "bRegression": False,
+    }
+
+
+_DICT_ALL_ATTAINED_STEP_CELLS = {
+    "s1": _fdictAttainedCell(3, 3),
+    "s2": _fdictAttainedCell(2, 2),
+    "s3": _fdictAttainedCell(5, 5),
+}
+
+_DICT_ALL_ATTAINED_SCOPE_CELLS = {
+    "s1": _fdictAttainedCell(1, 1),
+    "s2": _fdictAttainedCell(2, 2),
+    "s3": _fdictAttainedCell(6, 6),
+}
+
+_DICT_NO_WARNING = {
+    "iLowestNonAttainedLevel": 4,
+    "iWarningLevel": None,
+    "sWarningSeverity": None,
+    "sWarningHint": "",
 }
 
 _DICT_PRIOR_HIGH_WATER = {
@@ -1465,21 +1497,22 @@ _DICT_PRIOR_HIGH_WATER = {
 class TestPollLevelStatePayload:
     @pytest.mark.asyncio
     async def test_response_carries_level_state_keys(self):
-        """The four new wire keys arrive with their documented shapes."""
-        dictWorkflow = _fdictBuildLevelWorkflow(
-            [{"sDirectory": "stepA", "sName": "A"}],
-        )
+        """The level-state wire keys arrive with their documented shapes."""
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
         dictCtx = _fdictBuildLevelPollContext()
         with _fstackEnterPollLevelPatches([], [], []):
             dictResult = await _fdictFetchOutputStatus(
                 dictCtx, "cid1", dictWorkflow, {},
             )
         assert dictResult["dictStepLevels"] == {
-            "0": _DICT_ALL_ATTAINED_STATES,
+            "0": _DICT_ALL_ATTAINED_STEP_CELLS,
         }
         assert dictResult["dictWorkflowScopeLevels"] == (
-            _DICT_ALL_ATTAINED_STATES
+            _DICT_ALL_ATTAINED_SCOPE_CELLS
         )
+        assert dictResult["dictStepLevelWarnings"] == {
+            "0": _DICT_NO_WARNING,
+        }
         assert set(dictResult["dictStepLevelHighWater"]["0"]) == {
             "1", "2", "3",
         }
@@ -1488,11 +1521,29 @@ class TestPollLevelStatePayload:
         }
 
     @pytest.mark.asyncio
+    async def test_response_carries_envelope_detail_keys(self):
+        """The envelope-detail payload arrives with its four sections."""
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        dictDetail = dictResult["dictWorkflowEnvelopeDetail"]
+        assert set(dictDetail.keys()) == {
+            "listBinaries", "dictArtifacts",
+            "dictDeterminism", "dictRemoteSyncs",
+        }
+        assert dictDetail["listBinaries"] == []
+        assert dictDetail["dictDeterminism"] is None
+        assert set(dictDetail["dictRemoteSyncs"].keys()) == {
+            "github", "zenodo", "overleaf", "arxiv",
+        }
+
+    @pytest.mark.asyncio
     async def test_level_transition_triggers_exactly_one_save(self):
         """First attainment stamps high water and persists once."""
-        dictWorkflow = _fdictBuildLevelWorkflow(
-            [{"sDirectory": "stepA", "sName": "A"}],
-        )
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
         dictCtx = _fdictBuildLevelPollContext()
         with _fstackEnterPollLevelPatches([], [], []):
             await _fdictFetchOutputStatus(
@@ -1503,10 +1554,9 @@ class TestPollLevelStatePayload:
     @pytest.mark.asyncio
     async def test_steady_state_poll_triggers_zero_saves(self):
         """Already-stamped levels re-attaining persist nothing."""
-        dictWorkflow = _fdictBuildLevelWorkflow([{
-            "sDirectory": "stepA", "sName": "A",
-            "dictLevelHighWater": dict(_DICT_PRIOR_HIGH_WATER),
-        }])
+        dictStep = _fdictActivePollStep()
+        dictStep["dictLevelHighWater"] = dict(_DICT_PRIOR_HIGH_WATER)
+        dictWorkflow = _fdictBuildLevelWorkflow([dictStep])
         dictWorkflow["dictWorkflowLevelHighWater"] = dict(
             _DICT_PRIOR_HIGH_WATER,
         )
@@ -1520,9 +1570,7 @@ class TestPollLevelStatePayload:
     @pytest.mark.asyncio
     async def test_private_flag_absent_from_response(self):
         """The ratchet plumbing key never reaches the wire."""
-        dictWorkflow = _fdictBuildLevelWorkflow(
-            [{"sDirectory": "stepA", "sName": "A"}],
-        )
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
         dictCtx = _fdictBuildLevelPollContext()
         with _fstackEnterPollLevelPatches([], [], []):
             dictResult = await _fdictFetchOutputStatus(
@@ -1532,11 +1580,12 @@ class TestPollLevelStatePayload:
 
     @pytest.mark.asyncio
     async def test_regressed_step_high_water_still_in_payload(self):
-        """Regression memory: blocked step keeps its stamps, no save."""
-        dictWorkflow = _fdictBuildLevelWorkflow([{
-            "sDirectory": "stepA", "sName": "A",
-            "dictLevelHighWater": dict(_DICT_PRIOR_HIGH_WATER),
-        }])
+        """Regression memory: a regressed step keeps its stamps, no save,
+        and the cell carries the bRegression flag."""
+        dictStep = _fdictActivePollStep()
+        dictStep["dictVerification"]["sUnitTest"] = "failed"
+        dictStep["dictLevelHighWater"] = dict(_DICT_PRIOR_HIGH_WATER)
+        dictWorkflow = _fdictBuildLevelWorkflow([dictStep])
         dictWorkflow["dictWorkflowLevelHighWater"] = dict(
             _DICT_PRIOR_HIGH_WATER,
         )
@@ -1546,12 +1595,16 @@ class TestPollLevelStatePayload:
             dictResult = await _fdictFetchOutputStatus(
                 dictCtx, "cid1", dictWorkflow, {},
             )
-        assert dictResult["dictStepLevels"]["0"] == {
-            "s1": "blocked", "s2": "blocked", "s3": "blocked",
+        assert dictResult["dictStepLevels"]["0"]["s1"] == {
+            "sState": "partial", "iSatisfied": 2, "iTotal": 3,
+            "bRegression": True,
         }
         assert dictResult["dictStepLevelHighWater"]["0"] == (
             _DICT_PRIOR_HIGH_WATER
         )
+        dictWarning = dictResult["dictStepLevelWarnings"]["0"]
+        assert dictWarning["iWarningLevel"] == 1
+        assert dictWarning["sWarningSeverity"] == "red"
         dictCtx["save"].assert_not_called()
 
 
@@ -1582,3 +1635,174 @@ class TestFnSaveIfLevelHighWaterChanged:
             dictCtx, "cid1", {"listSteps": []}, dictRest,
         )
         dictCtx["save"].assert_not_called()
+
+
+class TestBuildWorkflowEnvelopeDetail:
+    """Unit tests for the expandable Workflow-row envelope payload."""
+
+    def _fdictWorkflowWithBinary(self, sRepoPath):
+        """Return a workflow declaring one standalone binary."""
+        return {
+            "sProjectRepoPath": sRepoPath,
+            "listSteps": [],
+            "listDeclaredBinaries": [{
+                "sBinaryPath": "/usr/local/bin/toolx",
+                "sPurpose": "core solver",
+                "sExpectedVersion": "2.0",
+            }],
+        }
+
+    def _fnWriteEnvironmentCapture(self, pathRepo, sVersion, sSha256):
+        """Write an environment.json capturing the declared binary."""
+        pathVaibify = pathRepo / ".vaibify"
+        pathVaibify.mkdir(exist_ok=True)
+        (pathVaibify / "environment.json").write_text(json.dumps({
+            "dictHostBinaries": {"listBinaries": [{
+                "sBinaryPath": "/usr/local/bin/toolx",
+                "sVersion": sVersion,
+                "sSha256": sSha256,
+            }]},
+        }))
+
+    def test_binary_version_mismatch_reported_honestly(self, tmp_path):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        dictWorkflow = self._fdictWorkflowWithBinary(str(tmp_path))
+        self._fnWriteEnvironmentCapture(tmp_path, "1.9", "a" * 64)
+        dictDetail = _fdictBuildWorkflowEnvelopeDetail(
+            dictWorkflow, str(tmp_path),
+        )
+        dictEntry = dictDetail["listBinaries"][0]
+        assert dictEntry["sExpectedVersion"] == "2.0"
+        assert dictEntry["sCapturedVersion"] == "1.9"
+        assert dictEntry["bVersionMatch"] is False
+        assert dictEntry["bHashCurrent"] is True
+        assert dictEntry["sCapturedSha256"] == "a" * 64
+
+    def test_binary_version_match_when_both_known(self, tmp_path):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        dictWorkflow = self._fdictWorkflowWithBinary(str(tmp_path))
+        self._fnWriteEnvironmentCapture(tmp_path, "2.0", "b" * 64)
+        dictEntry = _fdictBuildWorkflowEnvelopeDetail(
+            dictWorkflow, str(tmp_path),
+        )["listBinaries"][0]
+        assert dictEntry["bVersionMatch"] is True
+
+    def test_uncaptured_binary_keeps_nulls_never_fabricates(
+        self, tmp_path,
+    ):
+        """NULL-CAPTURE HONESTY: no environment.json entry means null
+        capture fields, an unknowable (None) version match, and a
+        false bHashCurrent — never invented values."""
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        dictWorkflow = self._fdictWorkflowWithBinary(str(tmp_path))
+        dictEntry = _fdictBuildWorkflowEnvelopeDetail(
+            dictWorkflow, str(tmp_path),
+        )["listBinaries"][0]
+        assert dictEntry["sCapturedVersion"] is None
+        assert dictEntry["sCapturedSha256"] is None
+        assert dictEntry["bVersionMatch"] is None
+        assert dictEntry["bHashCurrent"] is False
+
+    def test_null_sha_capture_does_not_count_as_hash_current(
+        self, tmp_path,
+    ):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        dictWorkflow = self._fdictWorkflowWithBinary(str(tmp_path))
+        self._fnWriteEnvironmentCapture(tmp_path, "2.0", None)
+        dictEntry = _fdictBuildWorkflowEnvelopeDetail(
+            dictWorkflow, str(tmp_path),
+        )["listBinaries"][0]
+        assert dictEntry["bHashCurrent"] is False
+        assert dictEntry["bVersionMatch"] is True
+
+    def test_artifacts_pair_presence_with_satisfaction(self, tmp_path):
+        """An unhashed requirements.lock is present but not satisfied;
+        a missing manifest is neither."""
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        (tmp_path / "requirements.lock").write_text("packagex==1.0\n")
+        dictDetail = _fdictBuildWorkflowEnvelopeDetail(
+            {"sProjectRepoPath": str(tmp_path), "listSteps": []},
+            str(tmp_path),
+        )
+        dictArtifacts = dictDetail["dictArtifacts"]
+        assert set(dictArtifacts.keys()) == {
+            "manifest", "dependencyLock", "environmentSnapshot",
+            "dockerfile", "reproduceScript",
+        }
+        assert dictArtifacts["dependencyLock"] == {
+            "bPresent": True, "bSatisfied": False,
+        }
+        assert dictArtifacts["manifest"] == {
+            "bPresent": False, "bSatisfied": False,
+        }
+
+    def test_determinism_declaration_passes_through(self, tmp_path):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        dictDeterminism = {"sBlasBackend": "openblas", "iGlobalSeed": 7}
+        dictDetail = _fdictBuildWorkflowEnvelopeDetail(
+            {
+                "sProjectRepoPath": str(tmp_path),
+                "listSteps": [],
+                "dictDeterminism": dictDeterminism,
+            },
+            str(tmp_path),
+        )
+        assert dictDetail["dictDeterminism"] == dictDeterminism
+
+    def test_remote_sync_summary_from_cache_counts_and_staleness(
+        self, tmp_path,
+    ):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        pathVaibify = tmp_path / ".vaibify"
+        pathVaibify.mkdir()
+        (pathVaibify / "syncStatus.json").write_text(json.dumps({
+            "github": {
+                "sService": "github",
+                "sLastVerified": "2020-01-01T00:00:00Z",
+                "iTotalFiles": 3,
+                "iMatching": 2,
+                "listDiverged": [{"sPath": "data/output.json"}],
+            },
+        }))
+        dictSyncs = _fdictBuildWorkflowEnvelopeDetail(
+            {"sProjectRepoPath": str(tmp_path), "listSteps": []},
+            str(tmp_path),
+        )["dictRemoteSyncs"]
+        assert dictSyncs["github"] == {
+            "sLastVerified": "2020-01-01T00:00:00Z",
+            "iTotalFiles": 3,
+            "iMatching": 2,
+            "iDivergedCount": 1,
+            "bStale": True,
+        }
+        assert dictSyncs["zenodo"] is None
+        assert dictSyncs["overleaf"] is None
+        assert dictSyncs["arxiv"] is None
+
+    def test_missing_repo_yields_empty_honest_payload(self):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fdictBuildWorkflowEnvelopeDetail,
+        )
+        dictDetail = _fdictBuildWorkflowEnvelopeDetail(
+            {"sProjectRepoPath": "", "listSteps": []}, "",
+        )
+        assert dictDetail["dictArtifacts"] == {}
+        assert dictDetail["listBinaries"] == []
+        assert dictDetail["dictRemoteSyncs"] == {
+            "github": None, "zenodo": None,
+            "overleaf": None, "arxiv": None,
+        }

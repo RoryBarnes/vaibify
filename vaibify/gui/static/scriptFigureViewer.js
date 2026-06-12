@@ -942,7 +942,7 @@ const PipeleyenFigureViewer = (function () {
             elResult.innerHTML = bPassed ?
                 '<img src="/static/favicon.png" ' +
                 'class="vaib-verified-badge"> All tests pass!' :
-                '<span class="test-fail-x">&#10007;</span> ' +
+                '<span class="test-fail-glyph">&#9888;</span> ' +
                 'Some tests failed.';
             elProgress.appendChild(elResult);
             var dictWorkflow = PipeleyenApp.fdictGetWorkflow();

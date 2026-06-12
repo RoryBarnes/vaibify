@@ -744,10 +744,24 @@ def _fdictBuildPollResponseRest(
     """
     if filesPoll is None:
         filesPoll = sRepoRoot
-    from vaibify.reproducibility.levelGates import (
-        fiAICSLevel, flistLevel1Blockers, flistLevel2Blockers,
-        flistLevel3Blockers,
+    dictMtimes, dictScriptStatus = _ftComputePollScriptContext(
+        dictWorkflow, dictModTimes, dictVars, sWorkflowPath,
+        sRepoRoot, filesPoll,
     )
+    dictGates = _fdictComputePollLevelGates(
+        dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
+    )
+    return _fdictAssemblePollResponse(
+        dictWorkflow, dictModTimes, dictReload, listInvalidated,
+        dictMtimes, dictScriptStatus, dictGates, filesPoll,
+    )
+
+
+def _ftComputePollScriptContext(
+    dictWorkflow, dictModTimes, dictVars, sWorkflowPath,
+    sRepoRoot, filesPoll,
+):
+    """Compute the per-step mtimes and script status for one poll."""
     dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
     )
@@ -759,36 +773,81 @@ def _fdictBuildPollResponseRest(
         dictMarkerMtimeByStep=dictMtimes["dictMarkerMtimeByStep"],
         filesRepo=filesPoll,
     )
+    return dictMtimes, dictScriptStatus
+
+
+def _fdictComputePollLevelGates(
+    dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
+):
+    """Evaluate the AICS level and the three blocker lists for one poll."""
+    from vaibify.reproducibility.levelGates import (
+        fiAICSLevel, flistLevel1Blockers, flistLevel2Blockers,
+        flistLevel3Blockers,
+    )
     dictWorkflow["iAICSLevel"] = fiAICSLevel(
         dictWorkflow, filesPoll, dictScriptStatus,
     )
-    listBlockers = flistLevel1Blockers(
-        dictWorkflow, dictMtimes["dictMaxMtimeByStep"], filesPoll,
-        dictScriptStatus,
-    )
-    listLevel2Blockers = flistLevel2Blockers(dictWorkflow, filesPoll)
-    listLevel3Blockers = flistLevel3Blockers(dictWorkflow, filesPoll)
+    return {
+        "listBlockers": flistLevel1Blockers(
+            dictWorkflow, dictMtimes["dictMaxMtimeByStep"], filesPoll,
+            dictScriptStatus,
+        ),
+        "listLevel2Blockers": flistLevel2Blockers(
+            dictWorkflow, filesPoll,
+        ),
+        "listLevel3Blockers": flistLevel3Blockers(
+            dictWorkflow, filesPoll,
+        ),
+    }
+
+
+def _fdictAssemblePollResponse(
+    dictWorkflow, dictModTimes, dictReload, listInvalidated,
+    dictMtimes, dictScriptStatus, dictGates, filesPoll,
+):
+    """Assemble the poll wire payload from the computed pieces."""
     dictLevelPayload = _fdictBuildLevelStatePayload(
-        dictWorkflow, listBlockers, listLevel2Blockers,
-        listLevel3Blockers,
+        dictWorkflow, dictGates["listBlockers"],
+        dictGates["listLevel2Blockers"], dictGates["listLevel3Blockers"],
     )
     return {
         **dictLevelPayload,
-        "iAICSLevel": dictWorkflow["iAICSLevel"],
-        "listBlockers": listBlockers,
-        "iL1BlockerCount": _fiCountUniqueBlockingSteps(listBlockers),
-        "listLevel2Blockers": listLevel2Blockers,
-        "iL2BlockerCount": _fiCountUniqueBlockingSteps(
-            listLevel2Blockers,
-        ),
-        "listLevel3Blockers": listLevel3Blockers,
-        "iL3BlockerCount": _fiCountUniqueBlockingSteps(listLevel3Blockers),
+        **_fdictBuildBlockerWireKeys(dictGates),
         **dictMtimes,
+        "dictWorkflowEnvelopeDetail": _fdictBuildWorkflowEnvelopeDetail(
+            dictWorkflow, filesPoll,
+        ),
+        "iAICSLevel": dictWorkflow["iAICSLevel"],
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
         "listStaleOutputAdvisories": _flistBuildStaleOutputAdvisories(
             dictWorkflow, dictModTimes,
         ),
+        **_fdictBuildReloadWireKeys(dictReload),
+    }
+
+
+def _fdictBuildBlockerWireKeys(dictGates):
+    """Build the blocker-list and unique-step-count wire keys."""
+    return {
+        "listBlockers": dictGates["listBlockers"],
+        "iL1BlockerCount": _fiCountUniqueBlockingSteps(
+            dictGates["listBlockers"],
+        ),
+        "listLevel2Blockers": dictGates["listLevel2Blockers"],
+        "iL2BlockerCount": _fiCountUniqueBlockingSteps(
+            dictGates["listLevel2Blockers"],
+        ),
+        "listLevel3Blockers": dictGates["listLevel3Blockers"],
+        "iL3BlockerCount": _fiCountUniqueBlockingSteps(
+            dictGates["listLevel3Blockers"],
+        ),
+    }
+
+
+def _fdictBuildReloadWireKeys(dictReload):
+    """Build the workflow-reload wire keys of the poll payload."""
+    return {
         "bWorkflowReloaded": dictReload["bReplaced"],
         "sWorkflowReloadError": dictReload["sError"],
         "dictWorkflow": _fdictBuildReloadedWorkflowShape(dictReload),
@@ -846,10 +905,18 @@ def _fdictBuildLevelStatePayload(
 ):
     """Build the level-state wire keys plus the private ratchet flag.
 
-    The ratchet runs here so a freshly attained level appears in the
-    same poll payload that attained it. The private flag key is
-    popped by ``_fnSaveIfLevelHighWaterChanged`` before the response
-    is returned — it must never reach the wire.
+    ``dictStepLevels`` / ``dictWorkflowScopeLevels`` carry the
+    independent-level cell dicts (``{"sState", "iSatisfied",
+    "iTotal", "bRegression"}`` per level — see
+    ``levelGates.fdictComputeStepLevelStates``);
+    ``dictStepLevelWarnings`` carries the consolidated per-step
+    regression-column warning (``{"iLowestNonAttainedLevel",
+    "iWarningLevel", "sWarningSeverity", "sWarningHint"}``). The
+    ratchet runs here so a freshly attained level appears in the
+    same poll payload that attained it; only ``attained`` cells
+    stamp. The private flag key is popped by
+    ``_fnSaveIfLevelHighWaterChanged`` before the response is
+    returned — it must never reach the wire.
     """
     from .. import stateManager
     dictStepStates, dictScopeStates = _ftComputeLevelStates(
@@ -859,15 +926,37 @@ def _fdictBuildLevelStatePayload(
     bChanged = stateManager.fbRatchetLevelHighWater(
         dictWorkflow, dictStepStates, dictScopeStates,
     )
+    dictPayload = _fdictBuildLevelStateWireKeys(
+        dictWorkflow, dictStepStates, dictScopeStates, listBlockers,
+    )
+    dictPayload[_S_LEVEL_RATCHET_FLAG_KEY] = bChanged
+    return dictPayload
+
+
+def _fdictBuildLevelStateWireKeys(
+    dictWorkflow, dictStepStates, dictScopeStates, listBlockers,
+):
+    """Build the public level-state keys of the poll payload.
+
+    Runs after the ratchet so freshly stamped high-water marks are
+    already on the workflow when the projection reads them.
+    """
+    from vaibify.reproducibility.levelGates import (
+        fdictComputeStepLevelWarnings,
+    )
+    dictStepWarnings = fdictComputeStepLevelWarnings(
+        dictWorkflow, dictStepStates, listBlockers,
+    )
     return {
         "dictStepLevels": _fdictKeyStatesByStepString(dictStepStates),
+        "dictStepLevelWarnings":
+            _fdictKeyStatesByStepString(dictStepWarnings),
         "dictStepLevelHighWater":
             _fdictProjectStepLevelHighWater(dictWorkflow),
         "dictWorkflowScopeLevels": dictScopeStates,
         "dictWorkflowLevelHighWater": dict(
             dictWorkflow.get("dictWorkflowLevelHighWater") or {},
         ),
-        _S_LEVEL_RATCHET_FLAG_KEY: bChanged,
     }
 
 
@@ -883,6 +972,193 @@ def _fnSaveIfLevelHighWaterChanged(
     """
     if dictRest.pop(_S_LEVEL_RATCHET_FLAG_KEY, False):
         dictCtx["save"](sContainerId, dictWorkflow)
+
+
+_T_ENVELOPE_SYNC_SERVICES = ("github", "zenodo", "overleaf", "arxiv")
+
+
+def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
+    """Assemble the expandable Workflow-row envelope payload.
+
+    Built entirely from sources this poll already fetched (the
+    one-exec container snapshot plus the workflow dict) — NO
+    additional container execs. Wire shape::
+
+        {"listBinaries": [...per-binary capture status...],
+         "dictArtifacts": {sName: {"bPresent", "bSatisfied"}}
+             (empty dict when there is no project repo),
+         "dictDeterminism": declared dict or None,
+         "dictRemoteSyncs": {sService: dictSummary or None}}
+    """
+    from vaibify.reproducibility.repoFiles import (
+        ffilesEnsureRepoFiles, fsRepoRootOf,
+    )
+    filesRepo = ffilesEnsureRepoFiles(filesPoll)
+    bHasRepo = bool(fsRepoRootOf(filesRepo))
+    return {
+        "listBinaries": _flistEnvelopeBinaries(
+            dictWorkflow, filesRepo, bHasRepo,
+        ),
+        "dictArtifacts": (
+            _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
+            if bHasRepo else {}
+        ),
+        "dictDeterminism":
+            (dictWorkflow or {}).get("dictDeterminism") or None,
+        "dictRemoteSyncs": (
+            _fdictEnvelopeRemoteSyncs(filesRepo) if bHasRepo
+            else dict.fromkeys(_T_ENVELOPE_SYNC_SERVICES)
+        ),
+    }
+
+
+def _flistEnvelopeBinaries(dictWorkflow, filesRepo, bHasRepo):
+    """Project declared binaries against the environment.json captures."""
+    dictCapturesByPath = _fdictIndexCapturedBinariesByPath(
+        filesRepo, bHasRepo,
+    )
+    listResult = []
+    for dictDeclared in (
+        (dictWorkflow or {}).get("listDeclaredBinaries") or []
+    ):
+        if isinstance(dictDeclared, dict):
+            listResult.append(_fdictEnvelopeBinaryEntry(
+                dictDeclared,
+                dictCapturesByPath.get(dictDeclared.get("sBinaryPath")),
+            ))
+    return listResult
+
+
+def _fdictIndexCapturedBinariesByPath(filesRepo, bHasRepo):
+    """Index the environment.json binary captures by binary path."""
+    from vaibify.reproducibility.environmentSnapshot import (
+        _flistResolveCapturedBinaries,
+        fdictReadEnvironmentJson,
+    )
+    dictEnvironment = {}
+    if bHasRepo:
+        dictEnvironment = fdictReadEnvironmentJson(filesRepo) or {}
+    dictResult = {}
+    for dictCapture in _flistResolveCapturedBinaries(dictEnvironment):
+        if isinstance(dictCapture, dict):
+            dictResult[dictCapture.get("sBinaryPath")] = dictCapture
+    return dictResult
+
+
+def _fdictEnvelopeBinaryEntry(dictDeclared, dictCapture):
+    """Build one wire entry for a declared binary; nulls stay null.
+
+    ``bVersionMatch`` is True/False only when both the expected and
+    captured versions are known, ``None`` otherwise — an unknowable
+    comparison must not render as a pass or a fail. ``bHashCurrent``
+    requires a capture with a non-null sha256.
+    """
+    sExpected = dictDeclared.get("sExpectedVersion") or None
+    sCapturedVersion = (dictCapture or {}).get("sVersion") or None
+    sCapturedSha256 = (dictCapture or {}).get("sSha256") or None
+    bVersionMatch = None
+    if sExpected and sCapturedVersion:
+        bVersionMatch = sExpected == sCapturedVersion
+    return {
+        "sBinaryPath": dictDeclared.get("sBinaryPath") or "",
+        "sPurpose": dictDeclared.get("sPurpose") or "",
+        "sExpectedVersion": sExpected,
+        "sCapturedVersion": sCapturedVersion,
+        "sCapturedSha256": sCapturedSha256,
+        "bVersionMatch": bVersionMatch,
+        "bHashCurrent": bool(sCapturedSha256),
+    }
+
+
+def _fdictEnvelopeArtifacts(dictWorkflow, filesRepo):
+    """Pair on-disk presence with the L3 verdict for each artifact."""
+    dictPresence = _fdictEnvelopeArtifactPresence(filesRepo)
+    dictSatisfaction = _fdictEnvelopeArtifactSatisfaction(
+        dictWorkflow, filesRepo,
+    )
+    return {
+        sName: {
+            "bPresent": bool(dictPresence[sName]),
+            "bSatisfied": bool(dictSatisfaction[sName]),
+        }
+        for sName in dictPresence
+    }
+
+
+def _fdictEnvelopeArtifactPresence(filesRepo):
+    """Return on-disk presence for the five envelope artifacts."""
+    from vaibify.reproducibility.dependencyPinning import _S_LOCK_FILENAME
+    from vaibify.reproducibility.dockerfileLint import fbDockerfilePresent
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictReadEnvironmentJson,
+    )
+    from vaibify.reproducibility.reproduceScriptGenerator import (
+        S_REPRODUCE_SCRIPT_FILENAME,
+    )
+    from ..hashStaleness import fbManifestExists
+    return {
+        "manifest": fbManifestExists(filesRepo),
+        "dependencyLock": filesRepo.fbIsFile(_S_LOCK_FILENAME),
+        "environmentSnapshot":
+            fdictReadEnvironmentJson(filesRepo) is not None,
+        "dockerfile": fbDockerfilePresent(filesRepo),
+        "reproduceScript":
+            filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME),
+    }
+
+
+def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
+    """Return the L3 readiness verdict for the five envelope artifacts."""
+    from vaibify.reproducibility import levelGates
+    return {
+        "manifest": levelGates.fbVerifyManifestComplete(
+            filesRepo, dictWorkflow,
+        ),
+        "dependencyLock": levelGates.fbVerifyDependencyLock(filesRepo),
+        "environmentSnapshot": levelGates.fbVerifyEnvironmentSnapshot(
+            filesRepo,
+        ),
+        "dockerfile": levelGates.fbVerifyDockerfilePinned(filesRepo),
+        "reproduceScript": levelGates.fbVerifyReproduceScript(
+            filesRepo, dictWorkflow,
+        ),
+    }
+
+
+def _fdictEnvelopeRemoteSyncs(filesRepo):
+    """Return the cached verify summary per remote service, or None.
+
+    Reads only the already-snapshotted ``syncStatus.json`` — a service
+    with no cached verify maps to ``None``, never a fabricated
+    summary.
+    """
+    from vaibify.reproducibility import scheduledReverify
+    dictResult = {}
+    for sService in _T_ENVELOPE_SYNC_SERVICES:
+        dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+            filesRepo, sService,
+        )
+        dictResult[sService] = _fdictProjectSyncSummary(dictStatus)
+    return dictResult
+
+
+def _fdictProjectSyncSummary(dictStatus):
+    """Project one cached verify status onto the wire summary, or None."""
+    from vaibify.reproducibility.levelGates import (
+        F_MAX_STALE_HOURS,
+        _fbCachedSyncStatusFresh,
+    )
+    if not dictStatus or not dictStatus.get("sLastVerified"):
+        return None
+    return {
+        "sLastVerified": dictStatus.get("sLastVerified"),
+        "iTotalFiles": int(dictStatus.get("iTotalFiles") or 0),
+        "iMatching": int(dictStatus.get("iMatching") or 0),
+        "iDivergedCount": len(dictStatus.get("listDiverged") or []),
+        "bStale": not _fbCachedSyncStatusFresh(
+            dictStatus, F_MAX_STALE_HOURS,
+        ),
+    }
 
 
 def _fiCountUniqueBlockingSteps(listBlockers):

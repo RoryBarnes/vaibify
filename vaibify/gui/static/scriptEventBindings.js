@@ -266,6 +266,13 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnAddAiDeclarationStep();
     }
 
+    function _fnHandleWorkflowHeaderToggle(event, elMatch) {
+        // The workflow row expands like a step row; its detail body
+        // is a sibling element, so clicks inside the expanded
+        // envelope never re-enter this handler.
+        PipeleyenApp.fnToggleWorkflowRowExpand();
+    }
+
     var _DICT_CLICK_HANDLERS = {
         ".action-download": _fnHandleActionDownload,
         ".action-edit": _fnHandleActionEdit,
@@ -306,6 +313,7 @@ var PipeleyenEventBindings = (function () {
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
+        ".workflow-level-header-row": _fnHandleWorkflowHeaderToggle,
     };
 
     /* --- Delegated Event Dispatch --- */

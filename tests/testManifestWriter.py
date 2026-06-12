@@ -834,3 +834,120 @@ def test_python_dash_m_module_does_not_appear_in_manifest(tmp_path):
     listPaths = [d["sPath"] for d in listEntries]
     assert all("mymod" not in s for s in listPaths)
     assert all("-m" not in s for s in listPaths)
+
+# ----------------------------------------------------------------------
+# 22. Test files are archived by default (bArchiveTests)
+# ----------------------------------------------------------------------
+
+
+def _fdictWorkflowWithTests():
+    """Return a one-step workflow declaring tests, standards, and data."""
+    return {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "stepA",
+        "saDataFiles": ["stepA/data.csv"],
+        "saTestCommands": ["pytest tests/test_step01.py"],
+        "dictTests": {
+            "dictQuantitative": {
+                "sFilePath": "stepA/tests/test_quantitative.py",
+                "sStandardsPath":
+                    "stepA/tests/quantitative_standards.json",
+            },
+            "dictIntegrity": {
+                "sFilePath": "stepA/tests/test_integrity.py",
+            },
+        },
+    }]}
+
+
+def _fnWriteTestArtifacts(tmp_path):
+    """Create on disk every file _fdictWorkflowWithTests declares."""
+    _fnWriteFile(tmp_path, "stepA/data.csv", "a,b\n1,2\n")
+    _fnWriteFile(tmp_path, "stepA/tests/test_step01.py", "def test(): pass\n")
+    _fnWriteFile(
+        tmp_path, "stepA/tests/test_quantitative.py", "def test(): pass\n",
+    )
+    _fnWriteFile(
+        tmp_path, "stepA/tests/test_integrity.py", "def test(): pass\n",
+    )
+    _fnWriteFile(
+        tmp_path, "stepA/tests/quantitative_standards.json", '{"k": 1}\n',
+    )
+
+
+def test_test_files_are_hashed_into_manifest_by_default(tmp_path):
+    """dictTests[*].sFilePath and saTestCommands files appear by default."""
+    _fnWriteTestArtifacts(tmp_path)
+    fnWriteManifest(str(tmp_path), _fdictWorkflowWithTests())
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {
+        "stepA/data.csv",
+        "stepA/tests/test_step01.py",
+        "stepA/tests/test_quantitative.py",
+        "stepA/tests/test_integrity.py",
+        "stepA/tests/quantitative_standards.json",
+    }
+    assert flistVerifyManifest(str(tmp_path)) == []
+
+
+def test_bArchiveTests_false_excludes_tests_and_standards(tmp_path):
+    """The per-workflow opt-out flag removes tests and standards only."""
+    _fnWriteTestArtifacts(tmp_path)
+    dictWorkflow = _fdictWorkflowWithTests()
+    dictWorkflow["bArchiveTests"] = False
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {"stepA/data.csv"}
+
+
+def test_saTestCommands_path_resolves_against_step_directory(tmp_path):
+    """``pytest tests/x.py`` in stepA lands at ``stepA/tests/x.py``."""
+    _fnWriteFile(tmp_path, "stepB/tests/test_alpha.py", "def test(): pass\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "stepB",
+        "saTestCommands": ["pytest -q tests/test_alpha.py"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {"stepB/tests/test_alpha.py"}
+
+
+def test_flistDeclaredButMissingFromManifest_reports_test_files(tmp_path):
+    """A legacy manifest without test entries surfaces them as a gap."""
+    _fnWriteTestArtifacts(tmp_path)
+    dictLegacy = {"listSteps": [{
+        "sName": "S1",
+        "saDataFiles": ["stepA/data.csv"],
+    }]}
+    fnWriteManifest(str(tmp_path), dictLegacy)
+    listMissing = flistDeclaredButMissingFromManifest(
+        str(tmp_path), _fdictWorkflowWithTests(),
+    )
+    assert set(listMissing) == {
+        "stepA/tests/test_step01.py",
+        "stepA/tests/test_quantitative.py",
+        "stepA/tests/test_integrity.py",
+        "stepA/tests/quantitative_standards.json",
+    }
+
+
+def test_templated_test_file_path_is_skipped(tmp_path):
+    """A templated sFilePath never enters the manifest envelope."""
+    _fnWriteFile(tmp_path, "stepA/data.csv", "x\n")
+    dictWorkflow = {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "stepA",
+        "saDataFiles": ["stepA/data.csv"],
+        "saTestCommands": ["pytest {scriptDir}/test_x.py"],
+        "dictTests": {
+            "dictIntegrity": {"sFilePath": "{scriptDir}/test_y.py"},
+        },
+    }]}
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {"stepA/data.csv"}

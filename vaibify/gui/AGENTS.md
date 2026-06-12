@@ -126,14 +126,24 @@ Both are stamped by `stateManager.fbRatchetLevelHighWater`, called
 from the poll path (`pipelineRoutes.py`) after the per-step level
 states are projected from the blocker lists
 (`levelGates.fdictComputeStepLevelStates` /
-`fdictComputeWorkflowScopeLevelStates`). Invariants: stamps are
-ADD-ONLY — regression never erases a stamp (the dashboard's
-"regressed" ⚠ cell depends on the stamp surviving); the "unknown"
-state (stale sync cache) never stamps; saves are issued only when the
+`fdictComputeWorkflowScopeLevelStates`). Levels are INDEPENDENT
+five-state cells (`sState`:
+not-started/none/partial/attained/unknown with
+`iSatisfied`/`iTotal`/`bRegression`); only "attained" stamps.
+The poll also emits `dictStepLevelWarnings` (regression/timestamp
+warnings gated server-side to each step's lowest non-attained level)
+and `dictWorkflowEnvelopeDetail` (declared-binary version/hash
+match, envelope artifacts, determinism, remote sync summaries —
+assembled with zero extra container execs). Invariants: stamps are
+ADD-ONLY — regression never erases a stamp (the regression column
+depends on the stamp surviving); "unknown" (stale sync cache) never
+stamps and never renders attained; saves are issued only when the
 ratchet reports a change. v1 state files load without migration —
 absent keys mean "never attained on this machine"; a fresh clone
-honestly shows red cells until re-attained. Do not move high-water
-into committed test markers.
+honestly shows not-started/none cells until re-attained. Do not move
+high-water into committed test markers. Archive scope: test files
+and standards are manifest-pinned, verified, and offered for archive
+by default (`bArchiveTests`, absent means true).
 
 ## Discovery commands
 

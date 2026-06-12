@@ -22,6 +22,13 @@ the outputs themselves:
   ``dictIntegrity``. Standards are golden references; without them
   hash-pinned, a consumer can't tell if a "passing" test row was
   passing against the original reference or a substituted one.
+* Test files: every ``sFilePath`` declared under the same
+  ``dictTests`` categories, plus every ``.py`` file named in a
+  step's ``saTestCommands`` (e.g. ``pytest tests/test_step01.py``).
+  Tests are part of the verification chain; a deposit without them
+  cannot prove what "passing" meant. Workflows may opt out of
+  archiving tests and standards by setting ``bArchiveTests`` to
+  ``False`` at the workflow root; the default is ``True``.
 
 Symbolic links anywhere on a declared path — leaf or intermediate
 directory — are rejected at write and verify time. Following them
@@ -45,6 +52,7 @@ same code is correct on a host clone and inside a container.
 """
 
 import os
+import posixpath
 
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
@@ -52,8 +60,10 @@ from vaibify.reproducibility.repoFiles import (
 )
 from vaibify.reproducibility.manifestPaths import (
     TUPLE_OUTPUT_KEYS,
+    TUPLE_TEST_CATEGORY_KEYS,
     flistStepScriptRepoPaths,
     flistStepStandardsRepoPaths,
+    fsToRepoRelative,
 )
 
 
@@ -63,6 +73,8 @@ __all__ = [
     "flistParseManifestLines",
     "flistDeclaredButMissingFromManifest",
     "fiCountManifestEntries",
+    "fbWorkflowArchivesTests",
+    "flistStepTestFileRepoPaths",
 ]
 
 
@@ -172,19 +184,96 @@ def fiCountManifestEntries(filesRepo):
     return len(flistParseManifestLines(filesRepo))
 
 
+def fbWorkflowArchivesTests(dictWorkflow):
+    """Return True unless the workflow sets ``bArchiveTests`` to False.
+
+    Tests and standards are archived and verified by default; the
+    opt-out is an explicit per-workflow flag, never a silent
+    exclusion.
+    """
+    return bool(dictWorkflow.get("bArchiveTests", True))
+
+
+def flistStepTestFileRepoPaths(dictStep):
+    """Return repo-relative paths of the test files one step declares.
+
+    Covers the ``sFilePath`` of every ``dictTests`` category and every
+    ``.py`` file named in ``saTestCommands`` (the legacy unit-test
+    invocation, e.g. ``pytest tests/test_step01.py``). Command-derived
+    paths are resolved against the step directory because the test
+    commands run from the step's workdir.
+    """
+    listPaths = _flistTestCategoryFilePaths(dictStep)
+    listPaths.extend(_flistTestCommandScriptPaths(dictStep))
+    return listPaths
+
+
+def _flistTestCategoryFilePaths(dictStep):
+    """Return repo-relative ``dictTests[*].sFilePath`` entries."""
+    dictTests = dictStep.get("dictTests", {})
+    if not isinstance(dictTests, dict):
+        return []
+    listPaths = []
+    for sCategory in TUPLE_TEST_CATEGORY_KEYS:
+        dictCategory = dictTests.get(sCategory, {})
+        if not isinstance(dictCategory, dict):
+            continue
+        sFilePath = dictCategory.get("sFilePath", "")
+        if sFilePath and "{" not in sFilePath:
+            listPaths.append(fsToRepoRelative(sFilePath))
+    return listPaths
+
+
+def _flistTestCommandScriptPaths(dictStep):
+    """Return repo-relative ``.py`` paths named in saTestCommands."""
+    sDirectory = dictStep.get("sDirectory", "") or ""
+    listPaths = []
+    for sCommand in dictStep.get("saTestCommands", []) or []:
+        for sToken in str(sCommand).split():
+            if _fbLooksLikeTestScriptToken(sToken):
+                listPaths.append(
+                    _fsResolveTestPathToRepoPath(sToken, sDirectory)
+                )
+    return listPaths
+
+
+def _fbLooksLikeTestScriptToken(sToken):
+    """Return True for a concrete ``.py`` path token (no flag/template)."""
+    return (
+        sToken.endswith(".py")
+        and "{" not in sToken
+        and not sToken.startswith("-")
+    )
+
+
+def _fsResolveTestPathToRepoPath(sPath, sDirectory):
+    """Return ``sPath`` resolved against the step directory as repo path."""
+    if sPath.startswith("/"):
+        return fsToRepoRelative(sPath)
+    if sDirectory:
+        sJoined = posixpath.normpath(posixpath.join(sDirectory, sPath))
+        return fsToRepoRelative(sJoined)
+    return fsToRepoRelative(sPath)
+
+
 def _flistCollectManifestPaths(dictWorkflow):
     """Return a sorted, deduplicated list of repo-relative artefact paths.
 
-    The set spans declared outputs, step scripts, and test standards
-    so that the manifest pins the entire input-to-output chain. Each
-    path-extraction sub-helper is single-purposed and orthogonal so
-    the union never silently drops a category.
+    The set spans declared outputs, step scripts, and — unless the
+    workflow opts out via ``bArchiveTests`` — test files and test
+    standards, so that the manifest pins the entire
+    input-to-output-to-verification chain. Each path-extraction
+    sub-helper is single-purposed and orthogonal so the union never
+    silently drops a category.
     """
     setPaths = set()
+    bArchiveTests = fbWorkflowArchivesTests(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):
         setPaths.update(_flistStepOutputPaths(dictStep))
         setPaths.update(flistStepScriptRepoPaths(dictStep))
-        setPaths.update(flistStepStandardsRepoPaths(dictStep))
+        if bArchiveTests:
+            setPaths.update(flistStepStandardsRepoPaths(dictStep))
+            setPaths.update(flistStepTestFileRepoPaths(dictStep))
     return sorted(sPath for sPath in setPaths if sPath)
 
 

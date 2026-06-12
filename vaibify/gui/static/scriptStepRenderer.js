@@ -22,31 +22,66 @@ var VaibifyStepRenderer = (function () {
     };
 
     /* --- Level strip (Scope F) ---
-       Three ALWAYS-visible cells L1|L2|L3 per step card, plus the
-       same strip on the workflow header row (iIndex -1). Cell state
-       and tooltip come from the application's level-state projection
-       (``fsLevelCellState`` / ``fsLevelCellTooltip``). */
+       Four right-aligned columns on every step card and on the
+       workflow header row (iIndex -1): the regression-warning
+       column, then L1|L2|L3. Cells carry no level text — the column
+       header row labels the columns once. Cell state and tooltip
+       come from the application's level-state projection
+       (``fsLevelCellState`` / ``fsLevelCellTooltip``). Cell visuals:
+       grey filled circle = not started, red circle = none, orange
+       circle = partial, favicon = attained, hollow grey circle =
+       unknown. */
 
-    var _DICT_LEVEL_CELL_GLYPHS = {
-        attained: "✓",
-        regressed: "⚠",
-        never: "✗",
-        unknown: "?",
-    };
+    function _fsBuildLevelCellInner(sState) {
+        if (sState === "attained") {
+            return '<img src="/static/favicon.png" ' +
+                'class="level-cell-favicon" alt="attained">';
+        }
+        return '<span class="level-cell-circle"></span>';
+    }
 
-    function _fsBuildLevelCell(iLevel, sGlyphState, sTooltip) {
-        return '<span class="step-level-cell level-cell-' +
-            sGlyphState + '" title="' + fnEscapeHtml(sTooltip) +
-            '">L' + iLevel + ' ' +
-            _DICT_LEVEL_CELL_GLYPHS[sGlyphState] + '</span>';
+    function _fsBuildRegressionCell(dictContext, iIndex) {
+        var dictWarning = dictContext.fdictRegressionWarning
+            ? dictContext.fdictRegressionWarning(iIndex) : null;
+        if (!dictWarning) {
+            return '<span class="step-regression-cell"></span>';
+        }
+        return '<span class="step-regression-cell ' +
+            'regression-warning-' + dictWarning.sWarningSeverity +
+            '" title="' +
+            fnEscapeHtml(dictWarning.sWarningHint || "") +
+            '">⚠</span>';
+    }
+
+    function _fsRenderLevelColumnHeaderRow() {
+        // Labels the four level columns once at the top of the list;
+        // the cells themselves carry no L1/L2/L3 text.
+        return '<div class="level-column-header-row">' +
+            '<span class="step-level-strip">' +
+            '<span class="step-regression-cell ' +
+            'level-column-header-cell" ' +
+            'title="Regression warnings"></span>' +
+            '<span class="step-level-cell level-column-header-cell"' +
+            '>L1</span>' +
+            '<span class="step-level-cell level-column-header-cell"' +
+            '>L2</span>' +
+            '<span class="step-level-cell level-column-header-cell"' +
+            '>L3</span>' +
+            '</span></div>';
+    }
+
+    function _fsBuildLevelCell(sState, sTooltip) {
+        return '<span class="step-level-cell level-cell-' + sState +
+            '" title="' + fnEscapeHtml(sTooltip) + '">' +
+            _fsBuildLevelCellInner(sState) + '</span>';
     }
 
     function _fsBuildStepLevelStrip(dictContext, iIndex) {
         if (!dictContext.fsLevelCellState) return "";
-        var sHtml = '<span class="step-level-strip">';
+        var sHtml = '<span class="step-level-strip">' +
+            _fsBuildRegressionCell(dictContext, iIndex);
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsBuildLevelCell(
-                iLevel,
                 dictContext.fsLevelCellState(iIndex, iLevel),
                 dictContext.fsLevelCellTooltip(iIndex, iLevel));
         }
@@ -54,14 +89,24 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderWorkflowLevelHeader(dictContext) {
-        // First child of #listSteps: the workflow-scope ladder strip,
-        // driven by dictWorkflowScopeLevels + the workflow high-water
-        // marks (iIndex -1 selects the workflow scope).
-        return '<div class="workflow-level-header-row">' +
+        // Column header row + expandable workflow row (iIndex -1);
+        // expanding reveals the reproducibility-envelope detail.
+        var bExpanded = dictContext.setExpandedSteps &&
+            dictContext.setExpandedSteps.has(-1);
+        var sHtml = _fsRenderLevelColumnHeaderRow() +
+            '<div class="workflow-level-header-row' +
+            (bExpanded ? ' expanded' : '') + '">' +
+            '<span class="expand-triangle">' +
+            (bExpanded ? "▾" : "▸") + '</span>' +
             '<span class="workflow-level-header-label">Workflow' +
             '</span>' +
             _fsBuildStepLevelStrip(dictContext, -1) +
             '</div>';
+        if (bExpanded) {
+            sHtml += fsRenderWorkflowEnvelopeDetail(
+                dictContext.dictWorkflowEnvelopeDetail);
+        }
+        return sHtml;
     }
 
     function fsRenderGhostAiDeclarationRow() {
@@ -72,13 +117,227 @@ var VaibifyStepRenderer = (function () {
         var sHtml = '<div class="ghost-ai-declaration-row">' +
             '<span class="ghost-ai-declaration-label">' +
             'AI Declaration (missing)</span>' +
-            '<span class="step-level-strip">';
-        for (var iLevel = 1; iLevel <= 3; iLevel++) {
-            sHtml += _fsBuildLevelCell(iLevel, "never", sTooltip);
-        }
-        return sHtml + '</span>' +
             '<button class="btn btn-add-ai-declaration-step" ' +
-            'type="button">Add AI declaration step</button></div>';
+            'type="button">Add AI declaration step</button>' +
+            '<span class="step-level-strip">' +
+            '<span class="step-regression-cell"></span>';
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            sHtml += _fsBuildLevelCell("none", sTooltip);
+        }
+        return sHtml + '</span></div>';
+    }
+
+    /* --- Workflow envelope detail (Scope F) ---
+       The expanded body of the workflow row, rendered verbatim from
+       the poll's ``dictWorkflowEnvelopeDetail``: declared software
+       with version/hash status lights, envelope artifacts,
+       determinism declaration, and per-service remote sync state. A
+       null remote-sync cache renders the hollow grey "never
+       verified" light — never green. */
+
+    var _DICT_ENVELOPE_ARTIFACT_LABELS = {
+        manifest: "Manifest (MANIFEST.sha256)",
+        dependencyLock: "Dependency lock (requirements.lock)",
+        environmentSnapshot: "Environment snapshot",
+        dockerfile: "Dockerfile",
+        reproduceScript: "Reproduce script (reproduce.sh)",
+    };
+
+    var _LIST_ENVELOPE_SYNC_SERVICES = [
+        "github", "zenodo", "overleaf", "arxiv"];
+
+    function _fsBuildEnvelopeLight(sState, sTooltip) {
+        return '<span class="envelope-light envelope-light-' +
+            sState + '" title="' + fnEscapeHtml(sTooltip) +
+            '"></span>';
+    }
+
+    function _fsLightStateFromBoolean(bValue) {
+        if (bValue === true) return "green";
+        if (bValue === false) return "red";
+        return "unknown";
+    }
+
+    function fsRenderWorkflowEnvelopeDetail(dictDetail) {
+        var dictSafe = dictDetail || {};
+        return '<div class="workflow-level-detail">' +
+            _fsRenderEnvelopeSoftwareSection(
+                dictSafe.listBinaries || []) +
+            _fsRenderEnvelopeArtifactSection(
+                dictSafe.dictArtifacts || {}) +
+            _fsRenderEnvelopeDeterminismSection(
+                dictSafe.dictDeterminism || null) +
+            _fsRenderEnvelopeRemoteSyncSection(
+                dictSafe.dictRemoteSyncs || {}) +
+            '</div>';
+    }
+
+    function _fsRenderEnvelopeSoftwareSection(listBinaries) {
+        var sHtml = '<div class="envelope-section-title">Software' +
+            '</div>';
+        if (listBinaries.length === 0) {
+            return sHtml + '<div class="envelope-empty-note">' +
+                'No declared binaries.</div>';
+        }
+        for (var i = 0; i < listBinaries.length; i++) {
+            sHtml += _fsRenderEnvelopeBinaryRow(listBinaries[i]);
+        }
+        return sHtml;
+    }
+
+    function _fsRenderEnvelopeBinaryRow(dictBinary) {
+        return '<div class="envelope-binary-row">' +
+            _fsBuildEnvelopeLight(
+                _fsLightStateFromBoolean(dictBinary.bVersionMatch),
+                _fsDescribeVersionMatch(dictBinary)) +
+            _fsBuildEnvelopeLight(
+                dictBinary.bHashCurrent === true ? "green" : "red",
+                dictBinary.bHashCurrent === true
+                    ? "Binary hash captured"
+                    : "Binary hash not captured") +
+            '<span class="envelope-binary-name">' +
+            fnEscapeHtml(dictBinary.sBinaryPath || "") + '</span>' +
+            '<span class="envelope-binary-versions">expected ' +
+            fnEscapeHtml(dictBinary.sExpectedVersion || "—") +
+            ' · captured ' +
+            fnEscapeHtml(dictBinary.sCapturedVersion || "—") +
+            '</span>' +
+            _fsRenderEnvelopeBinaryPurpose(dictBinary) + '</div>';
+    }
+
+    function _fsRenderEnvelopeBinaryPurpose(dictBinary) {
+        if (!dictBinary.sPurpose) return "";
+        return '<span class="envelope-binary-purpose">' +
+            fnEscapeHtml(dictBinary.sPurpose) + '</span>';
+    }
+
+    function _fsDescribeVersionMatch(dictBinary) {
+        if (dictBinary.bVersionMatch === true) {
+            return "Captured version matches the declaration";
+        }
+        if (dictBinary.bVersionMatch === false) {
+            return "Captured version differs from the declaration";
+        }
+        return "Version match unknown — expected or captured " +
+            "version not recorded";
+    }
+
+    function _fsRenderEnvelopeArtifactSection(dictArtifacts) {
+        var sHtml = '<div class="envelope-section-title">' +
+            'Envelope artifacts</div>';
+        if (Object.keys(dictArtifacts).length === 0) {
+            return sHtml + '<div class="envelope-empty-note">' +
+                'No project repository detected — envelope ' +
+                'artifacts unavailable.</div>';
+        }
+        var listKeys = Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS);
+        for (var i = 0; i < listKeys.length; i++) {
+            sHtml += _fsRenderEnvelopeArtifactRow(
+                listKeys[i], dictArtifacts[listKeys[i]] || {});
+        }
+        return sHtml;
+    }
+
+    function _fsRenderEnvelopeArtifactRow(sKey, dictArtifact) {
+        return '<div class="envelope-artifact-row">' +
+            _fsBuildEnvelopeLight(
+                _fsLightStateFromBoolean(
+                    dictArtifact.bPresent === true),
+                dictArtifact.bPresent === true
+                    ? "Present" : "Missing") +
+            _fsBuildEnvelopeLight(
+                _fsLightStateFromBoolean(
+                    dictArtifact.bSatisfied === true),
+                dictArtifact.bSatisfied === true
+                    ? "Requirement satisfied"
+                    : "Requirement not satisfied") +
+            '<span class="envelope-artifact-name">' +
+            fnEscapeHtml(_DICT_ENVELOPE_ARTIFACT_LABELS[sKey]) +
+            '</span></div>';
+    }
+
+    function _fsRenderEnvelopeDeterminismSection(dictDeterminism) {
+        var sHtml = '<div class="envelope-section-title">' +
+            'Determinism</div>';
+        if (!dictDeterminism ||
+            Object.keys(dictDeterminism).length === 0) {
+            return sHtml + '<div class="envelope-empty-note">' +
+                'No determinism declaration recorded.</div>';
+        }
+        Object.keys(dictDeterminism).forEach(function (sKey) {
+            sHtml += '<div class="envelope-determinism-row">' +
+                fnEscapeHtml(sKey) + ': ' +
+                fnEscapeHtml(_fsStringifyEnvelopeValue(
+                    dictDeterminism[sKey])) + '</div>';
+        });
+        return sHtml;
+    }
+
+    function _fsStringifyEnvelopeValue(jsonValue) {
+        if (jsonValue === null || jsonValue === undefined) return "—";
+        if (typeof jsonValue === "object") {
+            return JSON.stringify(jsonValue);
+        }
+        return String(jsonValue);
+    }
+
+    function _fsRenderEnvelopeRemoteSyncSection(dictRemoteSyncs) {
+        var sHtml = '<div class="envelope-section-title">' +
+            'Remote syncs</div>';
+        var listServices = _LIST_ENVELOPE_SYNC_SERVICES;
+        for (var i = 0; i < listServices.length; i++) {
+            sHtml += _fsRenderEnvelopeSyncRow(
+                listServices[i],
+                dictRemoteSyncs[listServices[i]] || null);
+        }
+        return sHtml;
+    }
+
+    function _fsRenderNeverVerifiedSyncRow(sService) {
+        // A null cache means the remote was never verified; the
+        // hollow grey light is the honest rendering — never green.
+        return '<div class="envelope-sync-row">' +
+            _fsBuildEnvelopeLight("unknown", "Never verified") +
+            '<span class="envelope-sync-name">' +
+            fnEscapeHtml(sService) + '</span>' +
+            '<span class="envelope-sync-note">never verified' +
+            '</span></div>';
+    }
+
+    function _fsRenderEnvelopeSyncRow(sService, dictSync) {
+        if (!dictSync) {
+            return _fsRenderNeverVerifiedSyncRow(sService);
+        }
+        return '<div class="envelope-sync-row">' +
+            _fsBuildEnvelopeLight(
+                _fsSyncLightState(dictSync),
+                _fsDescribeSyncState(dictSync)) +
+            '<span class="envelope-sync-name">' +
+            fnEscapeHtml(sService) + '</span>' +
+            '<span class="envelope-sync-note">' +
+            fnEscapeHtml(_fsDescribeSyncState(dictSync)) +
+            '</span></div>';
+    }
+
+    function _fsSyncLightState(dictSync) {
+        if ((dictSync.iDivergedCount || 0) > 0) return "red";
+        if (dictSync.bStale === true) return "orange";
+        return "green";
+    }
+
+    function _fsDescribeSyncState(dictSync) {
+        var sText = (dictSync.iMatching || 0) + " of " +
+            (dictSync.iTotalFiles || 0) + " files matching";
+        if ((dictSync.iDivergedCount || 0) > 0) {
+            sText += ", " + dictSync.iDivergedCount + " diverged";
+        }
+        if (dictSync.bStale === true) {
+            sText += " · stale — re-verify";
+        }
+        if (dictSync.sLastVerified) {
+            sText += " · last verified " + dictSync.sLastVerified;
+        }
+        return sText;
     }
 
     function _fdictGroupStaleArtifacts(listArtifacts) {
@@ -177,11 +436,14 @@ var VaibifyStepRenderer = (function () {
             (sStatusClass === "verified" ? "" :
                 '<span class="step-status ' + sStatusClass +
                 '"></span>') +
-            _fsBuildStepLevelStrip(dictContext, iIndex) +
             sVerifiedBadge +
             '<span class="step-actions">' +
             '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
-            "</span></div>";
+            "</span>" +
+            // The level strip renders last so the four cells
+            // right-align into the columns the header row labels.
+            _fsBuildStepLevelStrip(dictContext, iIndex) +
+            "</div>";
 
         if (!bExpanded) {
             return sHtml + '</div>';

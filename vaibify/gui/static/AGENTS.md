@@ -158,29 +158,41 @@ pattern wholesale.
   AICS tab to the corresponding readiness card. Logic lives in
   `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
 - Per-step level cells (`scriptStepRenderer.js::_fsBuildStepLevelStrip`)
-  replaced the old level dots. Every step row always shows three cells
-  L1|L2|L3 with four glyph states from
-  `scriptApplication.js::fsLevelCellGlyphState`: ✓ green = currently
-  attained, ⚠ orange = attained in the past but regressed (the
-  first-attainment date persists in `dictLevelHighWater` in
-  state.json and is never erased), ✗ red = never attained, ? grey =
-  unknown (sync verify cache stale — a stale cache must NEVER render
-  a green cell). A workflow header row
-  (`fsRenderWorkflowLevelHeader`) carries the same three cells for
-  workflow-scope criteria; the AI-declaration criterion is excluded
-  from the header — its home is the AI Declaration interactive step
-  (or the ghost row offering to add one). Inside an expanded step,
-  blocker surfaces are gated to the step's next unattained level
-  (`fiStepNextTargetLevel`) — higher-level requirements stay hidden
-  until they are the immediate obstacle.
-- Blocker glyph severity is structured, not parsed from hints:
-  `axis-not-green` carries `sSubState`
+  render four columns per step row: a regression-warning column, then
+  L1|L2|L3 (no text in the cells; one column-header row labels them).
+  Each level is computed INDEPENDENTLY (no upward propagation) and
+  arrives as a CELL dict (`sState`, `iSatisfied`, `iTotal`,
+  `bRegression`). Visual vocabulary: grey filled circle =
+  "not-started" (the step has no activity), red circle = "none"
+  (activity, nothing satisfied), orange circle = "partial", the
+  vaibify favicon image = "attained", hollow outlined grey circle =
+  "unknown" (sync verify cache stale — a stale cache must NEVER
+  render attained). First-attainment dates persist in
+  `dictLevelHighWater` in state.json and are never erased.
+- The regression column renders `dictStepLevelWarnings` VERBATIM —
+  the backend gates the warning to the step's lowest non-attained
+  level (a regression at a higher level is suppressed until lower
+  levels pass); red ⚠ only when failed tests underlie it, orange ⚠
+  for staleness/regression. Never derive warning logic client-side
+  for steps.
+- The Workflow row (`fsRenderWorkflowLevelHeader`) is an expandable
+  step-like row: collapsed shows the same four columns at workflow
+  scope; expanded renders `dictWorkflowEnvelopeDetail` (declared
+  binaries with version-match and hash lights, envelope artifacts,
+  determinism, remote sync summaries — a never-verified cache
+  renders hollow grey, never green). The AI-declaration criterion is
+  excluded from the header; its home is the AI Declaration
+  interactive step (or the ghost row offering to add one).
+- NO ✗/X status glyphs anywhere — failures and missing items use the
+  red warning glyph ⚠; staleness uses orange ⚠ or the pencil ✎.
+  X-shaped characters are permitted only as close/delete BUTTON
+  chrome. `axis-not-green` carries `sSubState`
   (failed/outputs-missing/outputs-changed/untested) mapped through
-  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing render red ✗,
+  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing render red ⚠,
   outputs-changed renders the orange pencil ✎, and untested renders
   NO banner glyph (the orange status light carries "not yet done").
   Per-file marks read `dictOffendingFileMarks` ("stale" → orange ✎,
-  "failed"/"missing" → red ✗).
+  "failed"/"missing" → red ⚠).
 - The pencil banner glyph on the step card is suppressed when an L1
   blocker is active (the `⚠ script-stale` glyph carries the same
   fact). The per-script pencil badge in the verification panel is

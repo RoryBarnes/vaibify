@@ -396,13 +396,14 @@ def fbRatchetLevelHighWater(
     """Stamp first-attainment timestamps for newly attained AICS levels.
 
     ``dictStepLevelStates`` maps ``iStepIndex`` to
-    ``{"s1": sState, "s2": sState, "s3": sState}`` with states in
-    ``("attained", "blocked", "unknown")``; ``dictWorkflowScopeStates``
-    is one such state dict for the workflow header row. The ratchet is
-    ADD-ONLY: a level that regresses to ``blocked`` or ``unknown``
-    never loses its recorded first-attainment timestamp — regression
-    memory is the feature. ``unknown`` never stamps. Returns True iff
-    any timestamp was newly recorded.
+    ``{"s1": dictCell, "s2": dictCell, "s3": dictCell}`` where each
+    cell carries ``sState`` in ``("not-started", "none", "partial",
+    "attained", "unknown")``; ``dictWorkflowScopeStates`` is one such
+    cell dict for the workflow header row. The ratchet is ADD-ONLY:
+    a level that regresses never loses its recorded first-attainment
+    timestamp — regression memory is the feature. ONLY ``attained``
+    stamps; every other state (including ``unknown`` and ``partial``)
+    stamps nothing. Returns True iff any timestamp was newly recorded.
     """
     sNow = _fsCurrentUtcIso()
     bChanged = False
@@ -431,7 +432,9 @@ def _fbStampAttainedLevels(dictHolder, sFieldKey, dictLevelStates, sNow):
     """
     bChanged = False
     for sLevel in ("1", "2", "3"):
-        if dictLevelStates.get("s" + sLevel) != "attained":
+        if _fsLevelCellState(dictLevelStates.get("s" + sLevel)) != (
+            "attained"
+        ):
             continue
         dictHighWater = dictHolder.setdefault(sFieldKey, {})
         if sLevel in dictHighWater:
@@ -439,6 +442,13 @@ def _fbStampAttainedLevels(dictHolder, sFieldKey, dictLevelStates, sNow):
         dictHighWater[sLevel] = sNow
         bChanged = True
     return bChanged
+
+
+def _fsLevelCellState(dictCell):
+    """Return a level cell's ``sState``; tolerate the legacy string form."""
+    if isinstance(dictCell, dict):
+        return dictCell.get("sState")
+    return dictCell
 
 
 def fnEnsureVaibifyGitignore(

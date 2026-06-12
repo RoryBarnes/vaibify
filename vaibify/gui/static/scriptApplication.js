@@ -39,8 +39,10 @@ const PipeleyenApp = (function () {
             dictBlockersByStepLevel3: {},
             dictStepLevels: {},
             dictStepLevelHighWater: {},
+            dictStepLevelWarnings: {},
             dictWorkflowScopeLevels: null,
             dictWorkflowLevelHighWater: {},
+            dictWorkflowEnvelopeDetail: null,
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
@@ -323,15 +325,23 @@ const PipeleyenApp = (function () {
              dictPrior.setIntegrity],
         ];
         for (var iPair = 0; iPair < listPairs.length; iPair++) {
-            var setLive = listPairs[iPair][0];
-            var setPrior = listPairs[iPair][1];
-            setLive.clear();
-            setPrior.forEach(function (iIndex) {
-                if (iIndex >= 0 && iIndex < iStepCount) {
-                    setLive.add(iIndex);
-                }
-            });
+            _fnCopyIndicesWithinRange(
+                listPairs[iPair][0], listPairs[iPair][1], iStepCount);
         }
+        if (dictPrior.setSteps.has(-1)) {
+            // -1 is the expandable workflow row, valid in every
+            // workflow regardless of step count.
+            _dictUiState.setExpandedSteps.add(-1);
+        }
+    }
+
+    function _fnCopyIndicesWithinRange(setLive, setPrior, iStepCount) {
+        setLive.clear();
+        setPrior.forEach(function (iIndex) {
+            if (iIndex >= 0 && iIndex < iStepCount) {
+                setLive.add(iIndex);
+            }
+        });
     }
 
     function _fnClearFileCaches() {
@@ -353,8 +363,10 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictBlockersByStepLevel3 = {};
         _dictWorkflowState.dictStepLevels = {};
         _dictWorkflowState.dictStepLevelHighWater = {};
+        _dictWorkflowState.dictStepLevelWarnings = {};
         _dictWorkflowState.dictWorkflowScopeLevels = null;
         _dictWorkflowState.dictWorkflowLevelHighWater = {};
+        _dictWorkflowState.dictWorkflowEnvelopeDetail = null;
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
         _dictWorkflowState.iL3BlockerCount = 0;
@@ -994,6 +1006,10 @@ const PipeleyenApp = (function () {
             dictStepLevels: _dictWorkflowState.dictStepLevels,
             dictStepLevelHighWater:
                 _dictWorkflowState.dictStepLevelHighWater,
+            dictStepLevelWarnings:
+                _dictWorkflowState.dictStepLevelWarnings,
+            dictWorkflowEnvelopeDetail:
+                _dictWorkflowState.dictWorkflowEnvelopeDetail,
             fbFileIsL1Offending: fbFileIsL1Offending,
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
@@ -1003,6 +1019,7 @@ const PipeleyenApp = (function () {
             fsBlockerHintForFile: fsBlockerHintForFile,
             fsLevelCellState: fsLevelCellState,
             fsLevelCellTooltip: fsLevelCellTooltip,
+            fdictRegressionWarning: fdictRegressionWarning,
         };
     }
 
@@ -1088,6 +1105,10 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflowLevelHighWater,
             (_dictWorkflowState.dictBlockersByStepLevel2 || {})[-1] ||
                 null,
+            (_dictWorkflowState.dictStepLevelWarnings || {})["-1"] ||
+                null,
+            _dictWorkflowState.dictWorkflowEnvelopeDetail,
+            _dictUiState.setExpandedSteps.has(-1),
         ]);
     }
 
@@ -1141,6 +1162,7 @@ const PipeleyenApp = (function () {
                 null,
             (dictContext.dictStepLevels || {})[sIdx] || null,
             (dictContext.dictStepLevelHighWater || {})[sIdx] || null,
+            (dictContext.dictStepLevelWarnings || {})[sIdx] || null,
         ];
     }
 
@@ -1421,7 +1443,7 @@ const PipeleyenApp = (function () {
             sClass: "step-blocker-glyph-script-stale",
         },
         "axis-not-green": {
-            sIcon: "✗",
+            sIcon: "⚠",
             sLabel: "Tests are not green; re-run to clear blocker",
             sClass: "step-blocker-glyph-axis",
         },
@@ -1446,12 +1468,12 @@ const PipeleyenApp = (function () {
     // literals (pinned by tests/testStepRendererBlockerGlyphs.py).
     var _DICT_AXIS_SUBSTATE_GLYPHS = {
         "failed": {
-            sIcon: "✗",
+            sIcon: "⚠",
             sLabel: "Unit tests failed — fix the step and re-run",
             sClass: "step-blocker-glyph-axis",
         },
         "outputs-missing": {
-            sIcon: "✗",
+            sIcon: "⚠",
             sLabel: "Declared outputs missing — run the step",
             sClass: "step-blocker-glyph-axis",
         },
@@ -1527,13 +1549,13 @@ const PipeleyenApp = (function () {
             sClass: "step-blocker-glyph-l3-manifest",
         },
         "script-not-pinned": {
-            sIcon: "✗",
+            sIcon: "⚠",
             sLabel: "Script hash drifted from MANIFEST — re-run or " +
                 "refresh manifest",
             sClass: "step-blocker-glyph-l3-pin",
         },
         "nondeterminism-undeclared": {
-            sIcon: "✗",
+            sIcon: "⚠",
             sLabel: "Step has unseeded RNG; declare or seed it",
             sClass: "step-blocker-glyph-l3-determinism",
         },
@@ -1647,11 +1669,12 @@ const PipeleyenApp = (function () {
     // Per-file severity marks driven by the blocker's optional
     // ``dictOffendingFileMarks`` field ({sRawPath: "stale" | "failed"
     // | "missing"}). ``stale`` is recoverable by a re-run, so it
-    // renders the orange pencil; ``failed`` / ``missing`` stay red.
+    // renders the orange pencil; ``failed`` / ``missing`` render the
+    // red warning glyph (no X marks in the vaibify glyph language).
     var _DICT_FILE_MARK_GLYPHS = {
         "stale": {sIcon: "✎", sClass: "file-mark-stale"},
-        "failed": {sIcon: "✗", sClass: "l1-blocker-file-glyph"},
-        "missing": {sIcon: "✗", sClass: "l1-blocker-file-glyph"},
+        "failed": {sIcon: "⚠", sClass: "l1-blocker-file-glyph"},
+        "missing": {sIcon: "⚠", sClass: "l1-blocker-file-glyph"},
     };
 
     function _fsFileMarkForPath(iStepIndex, sRawPath) {
@@ -1728,12 +1751,13 @@ const PipeleyenApp = (function () {
     }
 
     /* --- Level cells (Scope F) ---
-       Each step card and the workflow header row render an
-       always-visible L1|L2|L3 strip. The cell state comes from the
-       poll's level-state projection (``dictStepLevels`` /
-       ``dictWorkflowScopeLevels``); regression memory comes from the
-       first-attainment high-water marks. ``iStepIndex`` of -1 selects
-       the workflow scope. */
+       Each step card and the workflow header row render a regression
+       cell plus an always-visible L1|L2|L3 strip. Every cell comes
+       from the poll's independent per-level projection
+       (``dictStepLevels`` / ``dictWorkflowScopeLevels``), whose CELL
+       dicts carry {sState, iSatisfied, iTotal, bRegression}.
+       First-attainment dates come from the high-water marks.
+       ``iStepIndex`` of -1 selects the workflow scope. */
 
     var _DICT_LEVEL_CELL_LABELS = {
         1: "L1 Self-Consistent",
@@ -1741,13 +1765,13 @@ const PipeleyenApp = (function () {
         3: "L3 Reproducible",
     };
 
-    function fsLevelCellGlyphState(sState, bEverAttained) {
-        if (sState === "attained") return "attained";
-        if (sState === "blocked") {
-            return bEverAttained ? "regressed" : "never";
-        }
-        return "unknown";
-    }
+    var _DICT_LEVEL_CELL_STATE_PHRASES = {
+        "not-started": "not started",
+        "none": "no requirements met",
+        "partial": "partially met",
+        "attained": "attained",
+        "unknown": "sync state unknown — refresh remote status",
+    };
 
     function _fdictLevelStatesForScope(iStepIndex) {
         if (iStepIndex < 0) {
@@ -1766,43 +1790,51 @@ const PipeleyenApp = (function () {
             String(iStepIndex)] || {};
     }
 
+    function fdictLevelCellForScope(iStepIndex, iLevel) {
+        var dictCell = _fdictLevelStatesForScope(iStepIndex)[
+            "s" + iLevel];
+        if (dictCell && typeof dictCell === "object") {
+            return dictCell;
+        }
+        return null;
+    }
+
     function fsLevelCellState(iStepIndex, iLevel) {
-        var sState = _fdictLevelStatesForScope(iStepIndex)[
-            "s" + iLevel] || "unknown";
-        var bEverAttained = Boolean(
-            _fdictLevelHighWaterForScope(iStepIndex)[String(iLevel)]);
-        return fsLevelCellGlyphState(sState, bEverAttained);
+        // Rendered verbatim from the backend projection. An absent
+        // cell renders the hollow grey "unknown" — never a fake
+        // attained or not-started claim.
+        var dictCell = fdictLevelCellForScope(iStepIndex, iLevel);
+        return (dictCell && dictCell.sState) || "unknown";
     }
 
     function fsLevelCellTooltip(iStepIndex, iLevel) {
-        var sGlyphState = fsLevelCellState(iStepIndex, iLevel);
-        var sFirstAttained = _fdictLevelHighWaterForScope(
-            iStepIndex)[String(iLevel)] || "";
-        return _fsComposeLevelCellTooltip(
-            _DICT_LEVEL_CELL_LABELS[iLevel], sGlyphState,
-            sFirstAttained,
-            _fsLevelBlockerHint(iStepIndex, iLevel));
+        var dictCell = fdictLevelCellForScope(iStepIndex, iLevel);
+        var sState = fsLevelCellState(iStepIndex, iLevel);
+        var listParts = [
+            _DICT_LEVEL_CELL_LABELS[iLevel] + " — " +
+                (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
+        ];
+        if (dictCell) {
+            listParts.push(dictCell.iSatisfied + " of " +
+                dictCell.iTotal + " requirements met");
+        }
+        return _flistAppendLevelTooltipContext(
+            listParts, iStepIndex, iLevel, sState).join("\n");
     }
 
-    function _fsComposeLevelCellTooltip(
-        sLabel, sGlyphState, sFirstAttained, sHint
+    function _flistAppendLevelTooltipContext(
+        listParts, iStepIndex, iLevel, sState
     ) {
-        var listParts = [sLabel];
-        if (sGlyphState === "attained" && sFirstAttained) {
+        var sFirstAttained = _fdictLevelHighWaterForScope(
+            iStepIndex)[String(iLevel)] || "";
+        if (sFirstAttained) {
             listParts.push("First attained " + sFirstAttained);
-        } else if (sGlyphState === "regressed") {
-            listParts.push("Attained on " + sFirstAttained +
-                ", currently blocked");
-        } else if (sGlyphState === "never") {
-            listParts.push("Never attained");
-        } else if (sGlyphState === "unknown") {
-            listParts.push(
-                "State unknown — sync check stale; re-verify");
         }
-        if (sHint && sGlyphState !== "attained") {
+        var sHint = _fsLevelBlockerHint(iStepIndex, iLevel);
+        if (sHint && sState !== "attained") {
             listParts.push(sHint);
         }
-        return listParts.join("\n");
+        return listParts;
     }
 
     function _fsLevelBlockerHint(iStepIndex, iLevel) {
@@ -1818,13 +1850,56 @@ const PipeleyenApp = (function () {
     function fiStepNextTargetLevel(iStepIndex) {
         // First rung whose cell is not attained — the rung the step
         // is currently working toward. 4 when all three are attained.
-        var dictStates = _fdictLevelStatesForScope(iStepIndex);
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
-            if (dictStates["s" + iLevel] !== "attained") {
+            if (fsLevelCellState(iStepIndex, iLevel) !== "attained") {
                 return iLevel;
             }
         }
         return 4;
+    }
+
+    function fdictRegressionWarning(iStepIndex) {
+        // Consolidated regression/timing warning for the regression
+        // column. Per-step entries arrive precomputed in
+        // ``dictStepLevelWarnings`` and render verbatim; the workflow
+        // row falls back to the cell-level regression flag when the
+        // poll carries no "-1" entry.
+        var dictEntry = (_dictWorkflowState.dictStepLevelWarnings ||
+            {})[String(iStepIndex)];
+        if (!dictEntry && iStepIndex < 0) {
+            dictEntry = _fdictDeriveWorkflowScopeWarning();
+        }
+        if (!dictEntry || !dictEntry.sWarningSeverity) return null;
+        return dictEntry;
+    }
+
+    function _fdictDeriveWorkflowScopeWarning() {
+        // Mirrors the backend rule at workflow scope: warn only when
+        // the lowest non-attained level was attained before
+        // (bRegression). Severity is orange — red is reserved for
+        // failed L1 test axes, which do not exist at workflow scope.
+        var iLevel = fiStepNextTargetLevel(-1);
+        if (iLevel > 3) return null;
+        var dictCell = fdictLevelCellForScope(-1, iLevel);
+        if (!dictCell || dictCell.bRegression !== true) return null;
+        return {
+            iWarningLevel: iLevel,
+            sWarningSeverity: "orange",
+            sWarningHint: _DICT_LEVEL_CELL_LABELS[iLevel] +
+                " was attained before and has regressed",
+        };
+    }
+
+    function fnToggleWorkflowRowExpand() {
+        // The workflow header row expands like a step row; -1 keys
+        // its expansion in the shared Set (mutated in place — the
+        // render context holds the Set by reference).
+        if (_dictUiState.setExpandedSteps.has(-1)) {
+            _dictUiState.setExpandedSteps.delete(-1);
+        } else {
+            _dictUiState.setExpandedSteps.add(-1);
+        }
+        fnRenderStepList();
     }
 
     function fnSetCachedAicsLevel(iLevel) {
@@ -2991,8 +3066,10 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictBlockersByStepLevel3,
             _dictWorkflowState.dictStepLevels,
             _dictWorkflowState.dictStepLevelHighWater,
+            _dictWorkflowState.dictStepLevelWarnings,
             _dictWorkflowState.dictWorkflowScopeLevels,
             _dictWorkflowState.dictWorkflowLevelHighWater,
+            _dictWorkflowState.dictWorkflowEnvelopeDetail,
         ]);
     }
 
@@ -3015,6 +3092,22 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictWorkflowLevelHighWater) {
             _dictWorkflowState.dictWorkflowLevelHighWater =
                 dictStatus.dictWorkflowLevelHighWater;
+        }
+        _fnApplyWarningAndEnvelopeFromPoll(dictStatus);
+    }
+
+    function _fnApplyWarningAndEnvelopeFromPoll(dictStatus) {
+        // Consolidated regression warnings and the workflow envelope
+        // detail (software, artifacts, determinism, remote syncs).
+        // Both keys are optional so older payloads degrade to the
+        // previous state rather than blanking the cells.
+        if (dictStatus.dictStepLevelWarnings) {
+            _dictWorkflowState.dictStepLevelWarnings =
+                dictStatus.dictStepLevelWarnings;
+        }
+        if (dictStatus.dictWorkflowEnvelopeDetail) {
+            _dictWorkflowState.dictWorkflowEnvelopeDetail =
+                dictStatus.dictWorkflowEnvelopeDetail;
         }
     }
 
@@ -3355,6 +3448,7 @@ const PipeleyenApp = (function () {
         fnToggleUnitTestExpand: fnToggleUnitTestExpand,
         fnToggleDepsExpand: fnToggleDepsExpand,
         fnToggleStepExpand: fnToggleStepExpand,
+        fnToggleWorkflowRowExpand: fnToggleWorkflowRowExpand,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
