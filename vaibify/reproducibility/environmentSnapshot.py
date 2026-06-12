@@ -46,18 +46,59 @@ _DOCKER_INSTALL_HINT = (
 
 
 def fdictCaptureContainerImageDigest(sContainerName):
-    """Return the image digest for a running container."""
+    """Return the image digest for a running container.
+
+    A container has no ``RepoDigests`` field of its own, so the
+    capture resolves the container's image ID first (``{{.Image}}``)
+    and then reads the *image's* ``RepoDigests``. A locally built
+    image has no registry digest; its image ID — itself a sha256
+    content digest — is recorded instead, with ``bLocalImageOnly``
+    marking the local-only provenance honestly. Nothing is ever
+    fabricated: when neither form is available the digest is None.
+    """
     _fnEnsureDockerAvailable()
-    saCommand = [
-        "docker", "inspect",
-        "--format", "{{.RepoDigests}}",
-        sContainerName,
-    ]
-    sStdout = _fsRunCheckedCommand(saCommand)
+    sImageId = _fsInspectFormatValue(sContainerName, "{{.Image}}")
+    sRepoDigest = None
+    if sImageId:
+        sRepoDigest = _fsParseRepoDigests(
+            _fsInspectFormatValue(sImageId, "{{.RepoDigests}}"),
+        )
+    return _fdictBuildImageDigestEntry(
+        sContainerName, sImageId, sRepoDigest,
+    )
+
+
+def _fsInspectFormatValue(sTarget, sFormat):
+    """Run ``docker inspect --format sFormat sTarget``; return stdout."""
+    return _fsRunCheckedCommand(
+        ["docker", "inspect", "--format", sFormat, sTarget],
+    )
+
+
+def _fdictBuildImageDigestEntry(sContainerName, sImageId, sRepoDigest):
+    """Assemble the digest entry, preferring the registry digest."""
+    if sRepoDigest:
+        return {
+            "sContainerName": sContainerName,
+            "sImageDigest": sRepoDigest,
+            "bLocalImageOnly": False,
+        }
+    bImageIdUsable = _fbIsImageIdDigest(sImageId)
     return {
         "sContainerName": sContainerName,
-        "sImageDigest": _fsParseRepoDigests(sStdout),
+        "sImageDigest": sImageId if bImageIdUsable else None,
+        "bLocalImageOnly": bImageIdUsable,
     }
+
+
+def _fbIsImageIdDigest(sImageId):
+    """Return True iff sImageId is a ``sha256:<64 hex>`` content digest."""
+    if not sImageId or not sImageId.startswith("sha256:"):
+        return False
+    sHexPart = sImageId[len("sha256:"):]
+    return len(sHexPart) == 64 and all(
+        sCharacter in "0123456789abcdef" for sCharacter in sHexPart
+    )
 
 
 def _fnEnsureDockerAvailable():
@@ -391,12 +432,14 @@ def fdictReadEnvironmentJson(filesRepo):
 
 
 def fbEnvironmentDigestPinned(filesRepo):
-    """Return True iff environment.json records an ``@sha256:`` digest.
+    """Return True iff environment.json records a sha256 content digest.
 
     The schema places the digest at either the top-level
     ``sImageDigest`` (legacy layout) or at
     ``dictContainer.sImageDigest`` (the layout the AICS L3 envelope
-    writes). Both must be a ``image@sha256:<hex>`` string — a
+    writes). Two forms pin honestly: a registry digest
+    (``image@sha256:<hex>``) or a locally built image's ID
+    (``sha256:<64 hex>``), which is itself a content digest. A
     floating tag (``image:latest``) fails the check honestly even
     though docker would accept it.
     """
@@ -406,7 +449,7 @@ def fbEnvironmentDigestPinned(filesRepo):
     sDigest = _fsExtractImageDigest(dictPayload)
     if not sDigest:
         return False
-    return "@sha256:" in sDigest
+    return "@sha256:" in sDigest or _fbIsImageIdDigest(sDigest)
 
 
 def _fsExtractImageDigest(dictPayload):

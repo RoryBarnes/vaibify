@@ -280,6 +280,28 @@ def testDockerfileNotPinnedFiresAsWorkflowScope(fixtureL3Repo):
     assert listPinned[0]["sRemediationHint"]
 
 
+def testDependencyLockMissingHintNamesInstallableTools(fixtureL3Repo):
+    """The lock-missing hint must tell the user what to install.
+
+    Without uv (or pip-tools) the lock silently never appears; the
+    actionable remediation belongs in the L3 readiness payload, not
+    only in a host log line.
+    """
+    (fixtureL3Repo / "requirements.lock").unlink()
+    dictWorkflow = _fdictWaivedWorkflow()
+    listBlockers = flistLevel3Blockers(
+        dictWorkflow, str(fixtureL3Repo),
+    )
+    listLockBlockers = _flistFindByCriterion(
+        listBlockers, "dependency-lock-missing",
+    )
+    assert len(listLockBlockers) == 1
+    sHint = listLockBlockers[0]["sRemediationHint"]
+    assert "uv" in sHint
+    assert "pip-tools" in sHint
+    assert "https://docs.astral.sh/uv/" in sHint
+
+
 # ---------------------------------------------------------------------
 # Boolean-gate truth-table preservation
 # ---------------------------------------------------------------------

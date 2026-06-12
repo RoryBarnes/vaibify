@@ -10,6 +10,7 @@ import pytest
 from vaibify.reproducibility.environmentSnapshot import (
     _fsCaptureBinaryVersion,
     _fsCaptureGccVersion,
+    fbEnvironmentDigestPinned,
     fdictCaptureContainerImageDigest,
     fdictCaptureHostBinaryHashes,
     fdictCaptureSystemTools,
@@ -29,26 +30,71 @@ def _fnMakeCompletedProcess(iReturnCode, sStdout="", sStderr=""):
 # ------------------------------------------------------------------
 
 
+_S_FAKE_IMAGE_ID = "sha256:" + "1234567890abcdef" * 4
+
+
 def test_fdictCaptureContainerImageDigest_happy_path():
+    """The capture inspects the container's IMAGE, not the container.
+
+    ``docker inspect --format {{.RepoDigests}} <container>`` always
+    fails because containers carry no RepoDigests field; the capture
+    must resolve ``{{.Image}}`` first and then inspect that image.
+    """
     sFakeDigest = (
         "vaibify@sha256:"
         "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
     )
-    sStdout = f"[{sFakeDigest}]\n"
+    listCalls = []
+
+    def fnFakeRun(saCommand, **dictKwargs):
+        listCalls.append(saCommand)
+        if "{{.Image}}" in saCommand:
+            return _fnMakeCompletedProcess(
+                0, sStdout=_S_FAKE_IMAGE_ID + "\n",
+            )
+        return _fnMakeCompletedProcess(0, sStdout=f"[{sFakeDigest}]\n")
+
     with patch(
         "vaibify.reproducibility.environmentSnapshot.shutil.which",
         return_value="/usr/local/bin/docker",
     ), patch(
         "vaibify.reproducibility.environmentSnapshot.subprocess.run",
-        return_value=_fnMakeCompletedProcess(0, sStdout=sStdout),
+        side_effect=fnFakeRun,
     ):
         dictResult = fdictCaptureContainerImageDigest("vaibify-test")
 
     assert dictResult["sContainerName"] == "vaibify-test"
     assert dictResult["sImageDigest"] == sFakeDigest
+    assert dictResult["bLocalImageOnly"] is False
+    assert listCalls[0][-2:] == ["{{.Image}}", "vaibify-test"]
+    assert listCalls[1][-2:] == ["{{.RepoDigests}}", _S_FAKE_IMAGE_ID]
+
+
+def test_fdictCaptureContainerImageDigest_local_image_falls_back():
+    """A locally built image (empty RepoDigests) records its image ID."""
+
+    def fnFakeRun(saCommand, **dictKwargs):
+        if "{{.Image}}" in saCommand:
+            return _fnMakeCompletedProcess(
+                0, sStdout=_S_FAKE_IMAGE_ID + "\n",
+            )
+        return _fnMakeCompletedProcess(0, sStdout="[]\n")
+
+    with patch(
+        "vaibify.reproducibility.environmentSnapshot.shutil.which",
+        return_value="/usr/local/bin/docker",
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot.subprocess.run",
+        side_effect=fnFakeRun,
+    ):
+        dictResult = fdictCaptureContainerImageDigest("vaibify-test")
+
+    assert dictResult["sImageDigest"] == _S_FAKE_IMAGE_ID
+    assert dictResult["bLocalImageOnly"] is True
 
 
 def test_fdictCaptureContainerImageDigest_no_digest_returns_none():
+    """Garbage image references are never recorded as a digest."""
     with patch(
         "vaibify.reproducibility.environmentSnapshot.shutil.which",
         return_value="/usr/local/bin/docker",
@@ -59,7 +105,32 @@ def test_fdictCaptureContainerImageDigest_no_digest_returns_none():
         dictResult = fdictCaptureContainerImageDigest("vaibify-test")
 
     assert dictResult["sImageDigest"] is None
+    assert dictResult["bLocalImageOnly"] is False
     assert dictResult["sContainerName"] == "vaibify-test"
+
+
+def test_digest_pinned_accepts_local_image_id(tmp_path):
+    """A bare ``sha256:<64 hex>`` image ID counts as a pinned digest."""
+    pathDir = tmp_path / ".vaibify"
+    pathDir.mkdir(parents=True, exist_ok=True)
+    (pathDir / "environment.json").write_text(json.dumps({
+        "dictContainer": {
+            "sImageDigest": _S_FAKE_IMAGE_ID,
+            "bLocalImageOnly": True,
+        },
+    }))
+    assert fbEnvironmentDigestPinned(str(tmp_path)) is True
+
+
+def test_digest_pinned_rejects_short_or_non_hex_image_id(tmp_path):
+    """Truncated or non-hex sha256 strings never count as pinned."""
+    for sBadDigest in ["sha256:abc123", "sha256:" + "z" * 64]:
+        pathDir = tmp_path / ".vaibify"
+        pathDir.mkdir(parents=True, exist_ok=True)
+        (pathDir / "environment.json").write_text(json.dumps({
+            "sImageDigest": sBadDigest,
+        }))
+        assert fbEnvironmentDigestPinned(str(tmp_path)) is False
 
 
 def test_fdictCaptureContainerImageDigest_docker_missing_raises():

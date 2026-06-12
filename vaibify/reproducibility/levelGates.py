@@ -19,7 +19,10 @@ from pathlib import Path
 
 from . import scheduledReverify
 from .aiDeclarationStep import fbStepIsAiDeclaration
-from .dependencyPinning import flistVerifyRequirementsLock
+from .dependencyPinning import (
+    S_LOCK_TOOL_INSTALL_HINT,
+    flistVerifyRequirementsLock,
+)
 from .dockerfileLint import flistLintDockerfile
 from .determinismGate import (
     fbWorkflowDeclaresDeterminism,
@@ -1805,7 +1808,8 @@ _DICT_L3_REMEDIATION_HINTS = {
     "dockerfile-not-pinned":
         "Pin every FROM line to '@sha256:...' in the Dockerfile.",
     "dependency-lock-missing":
-        "Generate requirements.lock with --require-hashes.",
+        "requirements.lock with hash pins is missing or unhashed. "
+        + S_LOCK_TOOL_INSTALL_HINT,
     "environment-snapshot-missing":
         "Capture the container image digest into "
         ".vaibify/environment.json.",

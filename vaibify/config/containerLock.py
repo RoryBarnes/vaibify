@@ -21,9 +21,12 @@ import json
 import os
 import re
 
+from vaibify.config.processLiveness import fbIsProcessAlive
+
 
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
 _RE_VALID_PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_I_MAX_ACQUIRE_ATTEMPTS = 3
 
 
 class ContainerLockedError(RuntimeError):
@@ -110,28 +113,125 @@ def fnAcquireContainerLock(sProjectName, iPort):
     """Acquire an exclusive lock on the container and return the fd.
 
     Raises ``InvalidProjectNameError`` if ``sProjectName`` is unsafe,
-    or ``ContainerLockedError`` if another process holds the lock.
-    The returned file handle must be kept open for the duration of
-    the claim; passing it to ``fnReleaseContainerLock`` releases it.
+    or ``ContainerLockedError`` if a live process holds the lock. A
+    claim whose recorded holder PID no longer exists is reaped and
+    taken over silently. The returned file handle must be kept open
+    for the duration of the claim; passing it to
+    ``fnReleaseContainerLock`` releases it.
     """
     _fnValidateProjectName(sProjectName)
     _fnEnsureLockDirectory()
     sPath = fsLockPathFor(sProjectName)
+    for _ in range(_I_MAX_ACQUIRE_ATTEMPTS):
+        fileHandle = _ffileTryAcquireFlock(sPath, sProjectName, iPort)
+        if fileHandle is not None:
+            return fileHandle
+    raise ContainerLockedError(sProjectName, 0, 0)
+
+
+def _ffileTryAcquireFlock(sPath, sProjectName, iPort):
+    """Attempt one flock acquisition; return None when a retry is due.
+
+    Raises ``ContainerLockedError`` when a live process holds the
+    flock. Returns None after reaping a dead holder's lock file, or
+    when the locked inode was unlinked by a concurrent reaper. The
+    holder payload is written before the inode check so a concurrent
+    reaper sees a live PID as early as possible.
+    """
     fileHandle = _ffileOpenLockFileNoFollow(sPath)
     try:
         fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        dictHolder = _fdictReadHolderFromHandle(fileHandle)
-        fileHandle.close()
+        _fnReapDeadHolderOrRaise(fileHandle, sPath, sProjectName)
+        return None
+    _fnWriteHolderPayload(
+        fileHandle, _fdictBuildHolderPayload(sProjectName, iPort),
+    )
+    if _fbHandleMatchesPath(fileHandle, sPath):
+        return fileHandle
+    fileHandle.close()
+    return None
+
+
+def _fnReapDeadHolderOrRaise(fileHandle, sPath, sProjectName):
+    """Unlink a dead holder's lock file or raise for a live holder."""
+    dictHolder = _fdictReadHolderFromHandle(fileHandle)
+    fileHandle.close()
+    if not _fbClaimIsStale(dictHolder):
         raise ContainerLockedError(
             sProjectName,
             dictHolder.get("iPid", 0),
             dictHolder.get("iPort", 0),
         )
-    _fnWriteHolderPayload(
-        fileHandle, _fdictBuildHolderPayload(sProjectName, iPort),
+    _fnUnlinkLockFileSafely(sPath)
+
+
+def _fbClaimIsStale(dictHolder):
+    """Return True when the recorded holder process has exited.
+
+    A payload without a positive integer PID is treated as live: it
+    may belong to a holder that flocked but has not yet written its
+    identity, and breaking that lock would race a real acquisition.
+    """
+    iPid = dictHolder.get("iPid", 0)
+    if not isinstance(iPid, int) or isinstance(iPid, bool) or iPid <= 0:
+        return False
+    return not fbIsProcessAlive(iPid)
+
+
+def _fbHandleMatchesPath(fileHandle, sPath):
+    """Return True when the open handle is still the file at sPath."""
+    try:
+        statHandle = os.fstat(fileHandle.fileno())
+        statPath = os.stat(sPath)
+    except OSError:
+        return False
+    return (statHandle.st_ino, statHandle.st_dev) == (
+        statPath.st_ino, statPath.st_dev,
     )
-    return fileHandle
+
+
+def _fnUnlinkLockFileSafely(sPath):
+    """Remove a stale lock file, ignoring races with other reapers."""
+    try:
+        os.unlink(sPath)
+    except OSError:
+        pass
+
+
+def fnReapStaleContainerLocks():
+    """Remove lock files whose recorded holder process has exited.
+
+    Called at hub startup and on every container-list refresh so a
+    claim orphaned by a killed vaibify server (its flock leaked into
+    a surviving file descriptor) never blocks a fresh session. Live
+    claims are never touched.
+    """
+    if not os.path.isdir(_S_LOCK_DIRECTORY):
+        return
+    try:
+        listEntries = os.listdir(_S_LOCK_DIRECTORY)
+    except OSError:
+        return
+    for sEntry in listEntries:
+        if sEntry.endswith(".lock"):
+            _fnReapLockFileIfStale(
+                os.path.join(_S_LOCK_DIRECTORY, sEntry),
+            )
+
+
+def _fnReapLockFileIfStale(sPath):
+    """Unlink one lock file when its recorded holder is dead."""
+    try:
+        fileHandle = _ffileOpenLockFileNoFollow(sPath)
+    except OSError:
+        return
+    try:
+        dictHolder = _fdictReadHolderFromHandle(fileHandle)
+    finally:
+        fileHandle.close()
+    if _fbClaimIsStale(dictHolder):
+        _fnUnlinkLockFileSafely(sPath)
 
 
 def fnReleaseContainerLock(fileHandle):
@@ -155,11 +255,13 @@ def _fdictReadHolderFromHandle(fileHandle):
 
 
 def fdictReadLockHolder(sProjectName):
-    """Return holder info if another process holds the lock.
+    """Return holder info if another live process holds the lock.
 
     Returns an empty dict when the lock file is absent, stale, held
     by the current process (comparing against ``os.getpid()``), or
-    the name fails validation.
+    the name fails validation. A held flock whose recorded holder
+    PID is dead is reaped on the spot and reported as unheld, so a
+    container-list refresh recovers orphaned claims by itself.
     """
     if not fbIsValidProjectName(sProjectName):
         return {}
@@ -174,11 +276,19 @@ def fdictReadLockHolder(sProjectName):
         try:
             fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            dictHolder = _fdictReadHolderFromHandle(fileHandle)
-            if dictHolder.get("iPid") == os.getpid():
-                return {}
-            return dictHolder
+            return _fdictHolderUnlessStale(fileHandle, sPath)
         fcntl.flock(fileHandle, fcntl.LOCK_UN)
         return {}
     finally:
         fileHandle.close()
+
+
+def _fdictHolderUnlessStale(fileHandle, sPath):
+    """Return the holder payload, reaping it first when its PID is dead."""
+    dictHolder = _fdictReadHolderFromHandle(fileHandle)
+    if dictHolder.get("iPid") == os.getpid():
+        return {}
+    if _fbClaimIsStale(dictHolder):
+        _fnUnlinkLockFileSafely(sPath)
+        return {}
+    return dictHolder

@@ -235,7 +235,14 @@ class HostRepoFiles:
         return dictResult
 
     def _fdictHashOneFile(self, sRelPath):
-        """Return the hash-entry dict for one repo-relative path."""
+        """Return the hash-entry dict for one repo-relative path.
+
+        A symlink component is reported in ``sSymlinkSegment`` but is
+        only fatal when its resolved target escapes the repo root
+        (``bEscapesRoot``). An in-root symlink hashes its resolved
+        target so the manifest can pin the content under the declared
+        path; an out-of-root target is never opened or hashed.
+        """
         dictEntry = {
             "sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False,
         }
@@ -243,13 +250,11 @@ class HostRepoFiles:
             dictEntry["bEscapesRoot"] = True
             return dictEntry
         dictEntry["sSymlinkSegment"] = self._fsFirstSymlinkSegment(sRelPath)
-        if dictEntry["sSymlinkSegment"] is not None:
-            return dictEntry
         if self._fbEscapesRoot(sRelPath):
             dictEntry["bEscapesRoot"] = True
             return dictEntry
         dictEntry["sSha256"] = _fsHashHostFileOrNone(
-            self._fsAbsolute(sRelPath),
+            os.path.realpath(self._fsAbsolute(sRelPath)),
         )
         return dictEntry
 
@@ -392,13 +397,13 @@ def _fdictEntry(sRel):
         sCur = os.path.join(sCur, sSeg)
         if os.path.islink(sCur):
             d["sSymlinkSegment"] = sSeg
-            return d
+            break
     sRootReal = os.path.realpath(sRoot)
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
         d["bEscapesRoot"] = True
         return d
-    d["sSha256"] = _fsHash(os.path.join(sRoot, sRel))
+    d["sSha256"] = _fsHash(sReal)
     return d
 for sRel in dictArgs["listRelPaths"]:
     dictOut[sRel] = _fdictEntry(sRel)
@@ -729,13 +734,13 @@ def _fdictEntry(sRel):
         sCur = os.path.join(sCur, sSeg)
         if os.path.islink(sCur):
             d["sSymlinkSegment"] = sSeg
-            return d
+            break
     sRootReal = os.path.realpath(sRoot)
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
         d["bEscapesRoot"] = True
         return d
-    d["sSha256"] = _fsHash(os.path.join(sRoot, sRel))
+    d["sSha256"] = _fsHash(sReal)
     return d
 for sRel in dictArgs["listHashPaths"]:
     dictOut["dictHashes"][sRel] = _fdictEntry(sRel)

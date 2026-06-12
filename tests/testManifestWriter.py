@@ -139,11 +139,11 @@ def test_binary_file_hash_is_stable(tmp_path):
 
 
 # ----------------------------------------------------------------------
-# 5. Symlink rejection
+# 5. Symlink containment policy
 # ----------------------------------------------------------------------
 
 
-def test_symlink_in_outputs_raises_value_error(tmp_path):
+def test_in_root_symlink_hashes_target_under_symlink_path(tmp_path):
     pathTarget = _fnWriteFile(tmp_path, "real/target.csv", "x\n")
     pathLink = tmp_path / "out" / "linked.csv"
     pathLink.parent.mkdir(parents=True, exist_ok=True)
@@ -153,9 +153,14 @@ def test_symlink_in_outputs_raises_value_error(tmp_path):
         saOutputFiles=["out/linked.csv"],
     )
 
-    with pytest.raises(ValueError) as excInfo:
-        fnWriteManifest(str(tmp_path), dictWorkflow)
-    assert "out/linked.csv" in str(excInfo.value)
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    dictByPath = {
+        dictEntry["sPath"]: dictEntry["sExpected"]
+        for dictEntry in flistParseManifestLines(str(tmp_path))
+    }
+    sTargetHash = hashlib.sha256(b"x\n").hexdigest()
+    assert dictByPath["out/linked.csv"] == sTargetHash
+    assert flistVerifyManifest(str(tmp_path)) == []
 
 
 # ----------------------------------------------------------------------
@@ -299,23 +304,28 @@ def test_stable_ordering_byte_identical_writes(tmp_path):
 
 
 # ----------------------------------------------------------------------
-# 11. Symlinked parent / intermediate directory rejection
+# 11. Symlinked parent / intermediate directory containment
 # ----------------------------------------------------------------------
 
 
-def test_symlinked_parent_directory_raises_value_error(tmp_path):
+def test_in_root_symlinked_parent_directory_hashes_target(tmp_path):
     pathTargetDir = tmp_path / "real_dir"
     pathTargetDir.mkdir()
     (pathTargetDir / "a.csv").write_bytes(b"hello\n")
     pathParent = tmp_path / "out"
     pathParent.symlink_to(pathTargetDir, target_is_directory=True)
     dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
-    with pytest.raises(ValueError) as excInfo:
-        fnWriteManifest(str(tmp_path), dictWorkflow)
-    assert "out" in str(excInfo.value)
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    dictByPath = {
+        dictEntry["sPath"]: dictEntry["sExpected"]
+        for dictEntry in flistParseManifestLines(str(tmp_path))
+    }
+    assert dictByPath["out/a.csv"] == hashlib.sha256(
+        b"hello\n",
+    ).hexdigest()
 
 
-def test_symlinked_intermediate_directory_raises_value_error(tmp_path):
+def test_in_root_symlinked_intermediate_directory_hashes_target(tmp_path):
     pathRealDeep = tmp_path / "real_a" / "real_b"
     pathRealDeep.mkdir(parents=True)
     (pathRealDeep / "deep.csv").write_bytes(b"deep\n")
@@ -328,9 +338,14 @@ def test_symlinked_intermediate_directory_raises_value_error(tmp_path):
     dictWorkflow = _fdictWorkflowFromPaths(
         saOutputFiles=["a/b/deep.csv"],
     )
-    with pytest.raises(ValueError) as excInfo:
-        fnWriteManifest(str(tmp_path), dictWorkflow)
-    assert "b" in str(excInfo.value)
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    dictByPath = {
+        dictEntry["sPath"]: dictEntry["sExpected"]
+        for dictEntry in flistParseManifestLines(str(tmp_path))
+    }
+    assert dictByPath["a/b/deep.csv"] == hashlib.sha256(
+        b"deep\n",
+    ).hexdigest()
 
 
 # ----------------------------------------------------------------------
@@ -519,16 +534,16 @@ def test_legal_path_inside_repo_still_accepted(tmp_path):
 # ----------------------------------------------------------------------
 
 
-def test_deep_component_symlink_outside_repo_is_rejected(tmp_path):
-    """Symlink discovered late in the path-walk must abort the manifest.
+def test_deep_component_symlink_outside_repo_skips_single_entry(tmp_path):
+    """An out-of-root symlink is a per-file gap, never a full abort.
 
-    Threat model: workflow declares ``a/b/c.csv`` where ``a`` is a real
-    directory and ``a/b`` is a symlink to ``/tmp/attacker``. The
-    symlink check must catch this before the realpath escape check
-    (which would only flag plain ``..`` traversal). Without
-    component-by-component link inspection, an attacker could substitute
-    a symlink for an intermediate directory and have manifest hashing
-    follow it transparently.
+    Threat model: workflow declares ``a/b/c.csv`` where ``a`` is a
+    real directory and ``a/b`` is a symlink to a directory outside
+    the repo. The outside target must never be opened or hashed —
+    but the *other* declared outputs must still land in the
+    manifest, and the skipped path must stay visible through
+    ``flistDeclaredButMissingFromManifest`` so the
+    manifest-completeness blocker reports the gap honestly.
     """
     pathOutside = tmp_path / "outside"
     pathOutside.mkdir()
@@ -538,25 +553,58 @@ def test_deep_component_symlink_outside_repo_is_rejected(tmp_path):
     (pathRepo / "a").mkdir()
     pathLink = pathRepo / "a" / "b"
     pathLink.symlink_to(pathOutside, target_is_directory=True)
+    _fnWriteFile(pathRepo, "out/good.csv", "good\n")
 
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["a/b/c.csv"],
+        saOutputFiles=["a/b/c.csv", "out/good.csv"],
     )
-    with pytest.raises(ValueError) as excInfo:
-        fnWriteManifest(str(pathRepo), dictWorkflow)
-    assert "b" in str(excInfo.value)
+    fnWriteManifest(str(pathRepo), dictWorkflow)
+    setManifestPaths = {
+        dictEntry["sPath"]
+        for dictEntry in flistParseManifestLines(str(pathRepo))
+    }
+    assert "out/good.csv" in setManifestPaths
+    assert "a/b/c.csv" not in setManifestPaths
+    assert flistDeclaredButMissingFromManifest(
+        str(pathRepo), dictWorkflow,
+    ) == ["a/b/c.csv"]
 
 
-def test_symlinked_leaf_pointing_inside_repo_still_rejected(tmp_path):
-    """Even an in-repo symlink leaf is rejected — the rule is not "outside"."""
+def test_loot_content_never_appears_in_manifest_for_escape(tmp_path):
+    """The out-of-root target's content hash must never be recorded."""
+    pathOutside = tmp_path / "outside.csv"
+    pathOutside.write_bytes(b"loot\n")
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    (pathRepo / "alias.csv").symlink_to(pathOutside)
+    _fnWriteFile(pathRepo, "out/good.csv", "good\n")
+    dictWorkflow = _fdictWorkflowFromPaths(
+        saOutputFiles=["alias.csv", "out/good.csv"],
+    )
+    fnWriteManifest(str(pathRepo), dictWorkflow)
+    sLootHash = hashlib.sha256(b"loot\n").hexdigest()
+    sManifestBody = (pathRepo / _MANIFEST_FILENAME).read_text()
+    assert sLootHash not in sManifestBody
+    assert "alias.csv" not in sManifestBody
+
+
+def test_symlinked_leaf_pointing_inside_repo_hashes_target(tmp_path):
+    """An in-repo symlink leaf records the target content's hash."""
     pathRepo = tmp_path / "repo"
     pathRepo.mkdir()
     (pathRepo / "real.csv").write_bytes(b"data\n")
     pathLink = pathRepo / "alias.csv"
     pathLink.symlink_to(pathRepo / "real.csv")
     dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["alias.csv"])
-    with pytest.raises(ValueError):
-        fnWriteManifest(str(pathRepo), dictWorkflow)
+    fnWriteManifest(str(pathRepo), dictWorkflow)
+    dictByPath = {
+        dictEntry["sPath"]: dictEntry["sExpected"]
+        for dictEntry in flistParseManifestLines(str(pathRepo))
+    }
+    assert dictByPath["alias.csv"] == hashlib.sha256(
+        b"data\n",
+    ).hexdigest()
+    assert flistVerifyManifest(str(pathRepo)) == []
 
 
 # ----------------------------------------------------------------------

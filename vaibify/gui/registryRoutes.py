@@ -89,6 +89,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         from vaibify.config.registryManager import (
             flistGetAllProjectsWithStatus,
         )
+        _fnReapStaleContainerClaims()
         listRegistered = flistGetAllProjectsWithStatus()
         listVaibify, listUnrecognized = (
             _ftupleDiscoverAllContainers(dictCtx)
@@ -101,6 +102,17 @@ def _fnRegisterGetRegistry(app, dictCtx):
             "listContainers": listContainers,
             "listUnrecognized": listUnrecognized,
         }
+
+
+def _fnReapStaleContainerClaims():
+    """Reap claims whose holder PID is dead before listing containers.
+
+    Runs on every GET /api/registry (the container-picker refresh
+    path) so a claim orphaned by a killed vaibify server is released
+    without restarting the hub.
+    """
+    from vaibify.config.containerLock import fnReapStaleContainerLocks
+    fnReapStaleContainerLocks()
 
 
 def _fnAnnotateLockState(listContainers):

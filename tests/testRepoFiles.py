@@ -1,9 +1,8 @@
 """Tests for vaibify.reproducibility.repoFiles — the adapter seam.
 
 ``HostRepoFiles`` is exercised against real ``tmp_path`` trees so the
-atomicity, symlink-rejection, and escape-rejection semantics that the
-reproducibility modules historically enforced are preserved
-bit-for-bit. ``ContainerRepoFiles`` is exercised against a fake docker
+atomicity, symlink-containment, and escape-rejection semantics that
+the reproducibility modules enforce are preserved bit-for-bit. ``ContainerRepoFiles`` is exercised against a fake docker
 connection that *actually executes* the adapter's shell commands in a
 host shell rooted at a tmp directory, so the embedded hash/stat/read
 scripts are tested for real behavior — while every exec is recorded so
@@ -167,15 +166,21 @@ def test_host_hash_files_round_trip(filesHost):
     assert dictHashes["missing.csv"]["sSha256"] is None
 
 
-def test_host_hash_rejects_symlink_segment(filesHost, tmp_path):
+def test_host_hash_resolves_in_root_symlink_to_target_content(
+    filesHost, tmp_path,
+):
     (tmp_path / "real.txt").write_text("x")
     (tmp_path / "link.txt").symlink_to(tmp_path / "real.txt")
     dictEntry = filesHost.fdictHashFiles(["link.txt"])["link.txt"]
     assert dictEntry["sSymlinkSegment"] == "link.txt"
-    assert dictEntry["sSha256"] is None
+    assert dictEntry["bEscapesRoot"] is False
+    sDirectHash = filesHost.fdictHashFiles(["real.txt"])["real.txt"][
+        "sSha256"
+    ]
+    assert dictEntry["sSha256"] == sDirectHash
 
 
-def test_host_hash_rejects_symlinked_directory_component(
+def test_host_hash_resolves_in_root_symlinked_directory_component(
     filesHost, tmp_path,
 ):
     (tmp_path / "actual").mkdir()
@@ -183,6 +188,23 @@ def test_host_hash_rejects_symlinked_directory_component(
     (tmp_path / "alias").symlink_to(tmp_path / "actual")
     dictEntry = filesHost.fdictHashFiles(["alias/f.txt"])["alias/f.txt"]
     assert dictEntry["sSymlinkSegment"] == "alias"
+    assert dictEntry["bEscapesRoot"] is False
+    assert dictEntry["sSha256"] == filesHost.fdictHashFiles(
+        ["actual/f.txt"],
+    )["actual/f.txt"]["sSha256"]
+
+
+def test_host_hash_refuses_symlink_escaping_root(tmp_path):
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    pathOutside = tmp_path / "outside.txt"
+    pathOutside.write_text("loot")
+    (pathRepo / "link.txt").symlink_to(pathOutside)
+    filesHost = HostRepoFiles(str(pathRepo))
+    dictEntry = filesHost.fdictHashFiles(["link.txt"])["link.txt"]
+    assert dictEntry["sSymlinkSegment"] == "link.txt"
+    assert dictEntry["bEscapesRoot"] is True
+    assert dictEntry["sSha256"] is None
 
 
 def test_host_hash_rejects_absolute_path(filesHost):
@@ -307,13 +329,33 @@ def test_container_hash_matches_host_hash(
     assert sContainerSha == sHostSha
 
 
-def test_container_hash_rejects_symlink_inside_container(
+def test_container_hash_resolves_in_root_symlink(
     filesContainer, tmp_path,
 ):
     (tmp_path / "real.txt").write_text("x")
     (tmp_path / "link.txt").symlink_to(tmp_path / "real.txt")
     dictEntry = filesContainer.fdictHashFiles(["link.txt"])["link.txt"]
     assert dictEntry["sSymlinkSegment"] == "link.txt"
+    assert dictEntry["bEscapesRoot"] is False
+    assert dictEntry["sSha256"] == filesContainer.fdictHashFiles(
+        ["real.txt"],
+    )["real.txt"]["sSha256"]
+
+
+def test_container_hash_refuses_symlink_escaping_root(
+    connectionFake, tmp_path,
+):
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    pathOutside = tmp_path / "outside.txt"
+    pathOutside.write_text("loot")
+    (pathRepo / "link.txt").symlink_to(pathOutside)
+    filesContainer = ContainerRepoFiles(
+        connectionFake, "cid", str(pathRepo),
+    )
+    dictEntry = filesContainer.fdictHashFiles(["link.txt"])["link.txt"]
+    assert dictEntry["sSymlinkSegment"] == "link.txt"
+    assert dictEntry["bEscapesRoot"] is True
     assert dictEntry["sSha256"] is None
 
 

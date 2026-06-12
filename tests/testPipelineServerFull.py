@@ -333,6 +333,48 @@ def test_fdictHandleConnect_error():
         )
 
 
+def test_connect_marker_migration_passes_workflow_slug():
+    """Regression: the connect path must pass the slug to the migration.
+
+    The stale call site omitted ``sWorkflowSlug``, so every connect
+    logged "fnMigrateFlatMarkers() missing 1 required positional
+    argument" and legacy flat markers were never migrated.
+    """
+    import asyncio
+    mockDocker = MagicMock()
+    dictCtx = {"docker": mockDocker}
+    dictWorkflow = {
+        "sProjectRepoPath": "/workspace/DemoRepo",
+        "listSteps": [{"sDirectory": "stepA"}],
+    }
+    with patch(
+        "vaibify.gui.conftestManager.fnEnsureConftestsCurrent",
+    ), patch(
+        "vaibify.gui.conftestManager.fnMigrateFlatMarkers",
+    ) as mockMigrate:
+        asyncio.run(
+            pipelineServer._fnRefreshConftestsAndMigrateMarkers(
+                dictCtx, S_CONTAINER_ID, dictWorkflow,
+                "/workspace/DemoRepo/.vaibify/workflows/demo.json",
+            )
+        )
+    mockMigrate.assert_called_once_with(
+        mockDocker, S_CONTAINER_ID, "/workspace/DemoRepo", "demo",
+    )
+
+
+def test_connect_marker_migration_call_binds_to_real_signature():
+    """The connect-path call must bind to fnMigrateFlatMarkers' signature."""
+    import inspect
+    from vaibify.gui import conftestManager
+    signatureMigrate = inspect.signature(
+        conftestManager.fnMigrateFlatMarkers,
+    )
+    signatureMigrate.bind(
+        MagicMock(), S_CONTAINER_ID, "/workspace/DemoRepo", "demo",
+    )
+
+
 def test_flistCollectOutputPaths():
     dictWorkflow = {
         "sPlotDirectory": "Plot",

@@ -31,12 +31,17 @@ the outputs themselves:
   ``False`` at the workflow root; the default is ``True``.
 
 Symbolic links anywhere on a declared path — leaf or intermediate
-directory — are rejected at write and verify time. Following them
-would let the manifest hash a target the declared path no longer
-points to. The first symlink component on the path is named in the
-error so the offending segment is easy to locate. The enforcement
-lives in the ``repoFiles`` adapter so it runs *inside* the container
-when the repo lives there.
+directory — are resolved and validated against the repo root. A
+symlink whose resolved target stays *inside* the root hashes that
+target's content, recorded under the declared (symlink) path. A
+symlink whose target escapes the root is never opened or hashed;
+the write path skips that single entry as a per-file gap (logged,
+and surfaced by ``flistDeclaredButMissingFromManifest`` in the
+manifest-completeness blockers) instead of aborting the whole
+manifest. Non-symlink paths that escape the root (``..`` traversal)
+still raise. The resolution and containment checks live in the
+``repoFiles`` adapter so they run *inside* the container when the
+repo lives there.
 
 Path escaping follows the GNU ``sha256sum`` convention. When a
 path contains a literal newline or backslash, the line is prefixed
@@ -51,6 +56,7 @@ Every public function accepts either a project-repo path string
 same code is correct on a host clone and inside a container.
 """
 
+import logging
 import os
 import posixpath
 
@@ -78,6 +84,9 @@ __all__ = [
 ]
 
 
+logger = logging.getLogger("vaibify")
+
+
 _MANIFEST_FILENAME = "MANIFEST.sha256"
 _MANIFEST_HEADER = "# SHA-256 manifest of workflow artefacts\n"
 # Re-exported as a module attribute so the architectural-invariant test
@@ -96,8 +105,11 @@ def fnWriteManifest(filesRepo, dictWorkflow):
     files in one adapter batch and writes GNU shasum format
     (``<hash>  <relpath>\\n``, escaped when needed) to
     ``<repo>/MANIFEST.sha256``. Paths are repo-relative POSIX, sorted
-    lexicographically. Raises ``ValueError`` if any component on a
-    declared path is a symbolic link or escapes the repo root.
+    lexicographically. A symlinked path resolving inside the repo
+    root hashes its target content; one resolving outside the root is
+    skipped as a logged per-file gap so a single stray symlink never
+    aborts the write. Raises ``ValueError`` only when a non-symlink
+    declared path escapes the repo root.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     listRelativePaths = _flistCollectManifestPaths(dictWorkflow)
@@ -114,9 +126,10 @@ def flistVerifyManifest(filesRepo):
 
     Returns a list of dicts of the form
     ``{'sPath': ..., 'sExpected': ..., 'sActual': ...}`` where
-    ``sActual`` is ``None`` when the file is missing on disk. An empty
-    list means every recorded file matches its stored hash. Raises
-    ``ValueError`` if any component on a verified path is a symlink.
+    ``sActual`` is ``None`` when the file is missing on disk or its
+    symlink target escapes the repo root. An empty list means every
+    recorded file matches its stored hash. In-root symlinked entries
+    verify against their resolved target's content.
 
     Manifest-completeness (workflow declares paths the manifest does
     not cover) is surfaced via the explicit
@@ -130,7 +143,7 @@ def flistVerifyManifest(filesRepo):
     )
     listMismatches = []
     for dictEntry in listEntries:
-        sActual = dictHashed[dictEntry["sPath"]]
+        sActual = dictHashed[dictEntry["sPath"]].get("sSha256")
         if sActual != dictEntry["sExpected"]:
             listMismatches.append({
                 "sPath": dictEntry["sPath"],
@@ -300,11 +313,22 @@ def _fsNormalizeRelativePath(sPath):
 
 
 def _flistBuildManifestEntries(filesRepo, listRelativePaths):
-    """Return a list of ``(hash, relpath)`` tuples in sorted-input order."""
+    """Return ``(hash, relpath)`` tuples, skipping out-of-root symlinks.
+
+    A declared path whose symlink target resolves outside the repo
+    root is skipped as a per-file gap (logged here, surfaced by
+    ``flistDeclaredButMissingFromManifest``) so one stray symlink can
+    never abort the whole manifest write. Missing or unreadable
+    regular files still raise so a broken declaration stays loud.
+    """
     dictHashed = _fdictHashCheckedPaths(filesRepo, listRelativePaths)
     listEntries = []
     for sRelativePath in listRelativePaths:
-        sHash = dictHashed[sRelativePath]
+        dictEntry = dictHashed[sRelativePath]
+        if _fbSymlinkTargetEscapesRoot(dictEntry):
+            _fnLogSkippedSymlinkGap(filesRepo, sRelativePath, dictEntry)
+            continue
+        sHash = dictEntry.get("sSha256")
         if sHash is None:
             _fnRaiseUnhashableFile(filesRepo, sRelativePath)
         listEntries.append((sHash, sRelativePath))
@@ -312,12 +336,13 @@ def _flistBuildManifestEntries(filesRepo, listRelativePaths):
 
 
 def _fdictHashCheckedPaths(filesRepo, listRelativePaths):
-    """Hash paths in one adapter batch, raising on symlink/escape findings.
+    """Hash paths in one adapter batch, raising on traversal findings.
 
-    Returns ``{sRelativePath: sSha256_or_None}``. ``None`` means the
-    file is absent or unreadable; the *write* path treats that as an
-    error while the *verify* path reports it as a mismatch with
-    ``sActual = None``, matching the historical contracts.
+    Returns ``{sRelativePath: dictAdapterEntry}`` where each entry
+    carries ``sSha256`` (``None`` when the file is absent, unreadable,
+    or an out-of-root symlink), ``sSymlinkSegment``, and
+    ``bEscapesRoot``. Only a *non-symlink* escape (``..`` traversal or
+    an absolute path) raises here; symlink policy is the callers'.
     """
     for sRelativePath in listRelativePaths:
         _fnRejectAbsolutePath(sRelativePath)
@@ -326,7 +351,7 @@ def _fdictHashCheckedPaths(filesRepo, listRelativePaths):
     for sRelativePath in listRelativePaths:
         dictEntry = dictResults.get(sRelativePath) or {}
         _fnRejectAdapterFindings(sRelativePath, dictEntry)
-        dictHashed[sRelativePath] = dictEntry.get("sSha256")
+        dictHashed[sRelativePath] = dictEntry
     return dictHashed
 
 
@@ -339,17 +364,37 @@ def _fnRejectAbsolutePath(sRelativePath):
 
 
 def _fnRejectAdapterFindings(sRelativePath, dictEntry):
-    """Raise ``ValueError`` for symlink-component or escape findings."""
-    sFirstSymlink = dictEntry.get("sSymlinkSegment")
-    if sFirstSymlink is not None:
-        raise ValueError(
-            f"refusing to hash path crossing symlink '{sFirstSymlink}' "
-            f"in declared output: '{sRelativePath}'"
-        )
-    if dictEntry.get("bEscapesRoot"):
+    """Raise ``ValueError`` for a non-symlink path escaping the repo root.
+
+    Symlinked paths never raise here: an in-root target hashes
+    normally, while an out-of-root target is skipped per-file by the
+    write path and reported as ``sActual = None`` by the verify path.
+    """
+    if dictEntry.get("bEscapesRoot") and (
+        dictEntry.get("sSymlinkSegment") is None
+    ):
         raise ValueError(
             f"refusing to hash path escaping repo root: '{sRelativePath}'"
         )
+
+
+def _fbSymlinkTargetEscapesRoot(dictEntry):
+    """Return True when a symlinked path resolves outside the repo root."""
+    return bool(
+        dictEntry.get("sSymlinkSegment") is not None
+        and dictEntry.get("bEscapesRoot")
+    )
+
+
+def _fnLogSkippedSymlinkGap(filesRepo, sRelativePath, dictEntry):
+    """Log the per-file gap left by an out-of-root symlinked declaration."""
+    logger.warning(
+        "MANIFEST.sha256 skips '%s': symlink '%s' resolves outside "
+        "repo root '%s'; the gap stays visible in the "
+        "manifest-completeness blockers.",
+        sRelativePath, dictEntry.get("sSymlinkSegment"),
+        fsRepoRootOf(filesRepo),
+    )
 
 
 def _fnRaiseUnhashableFile(filesRepo, sRelativePath):

@@ -891,7 +891,7 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             )
         )
         await _fnRefreshConftestsAndMigrateMarkers(
-            dictCtx, sContainerId, dictWorkflow,
+            dictCtx, sContainerId, dictWorkflow, sResolved,
         )
         from .workflowReloadDetector import fnRecordSelfWriteMtime
         fnRecordSelfWriteMtime(dictCtx, sContainerId, sResolved)
@@ -922,14 +922,16 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
 
 
 async def _fnRefreshConftestsAndMigrateMarkers(
-    dictCtx, sContainerId, dictWorkflow,
+    dictCtx, sContainerId, dictWorkflow, sWorkflowPath,
 ):
     """Refresh stale conftests and migrate flat markers at connect time.
 
     Both operations are process-cached inside ``conftestManager`` so
     poll-time calls in ``_fdictAttachTestStatus`` become no-ops after
-    the first sweep here. Failures log and swallow so a connect
-    handshake never fails on a migration issue.
+    the first sweep here. The migration is namespaced by the workflow
+    slug derived from ``sWorkflowPath`` so flat markers land in the
+    same per-slug subdirectory the poll path reads. Failures log and
+    swallow so a connect handshake never fails on a migration issue.
     """
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if not sProjectRepoPath:
@@ -948,6 +950,7 @@ async def _fnRefreshConftestsAndMigrateMarkers(
         await asyncio.to_thread(
             conftestManager.fnMigrateFlatMarkers,
             dictCtx["docker"], sContainerId, sProjectRepoPath,
+            fsWorkflowSlugFromPath(sWorkflowPath),
         )
     except Exception as error:
         logger.warning(
@@ -1781,8 +1784,26 @@ def fappCreateHubApplication(iExpectedPort=0):
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
     fnRegisterRegistryRoutes(app, dictCtx)
-    _fnRegisterHubShutdownReleaseLocks(app)
+    _fnRegisterHubLockLifecycle(app)
     return app
+
+
+def _fnRegisterHubLockLifecycle(app):
+    """Reap stale claims at startup; release held locks at shutdown."""
+    _fnRegisterHubStartupReapStaleClaims(app)
+    _fnRegisterHubShutdownReleaseLocks(app)
+
+
+def _fnRegisterHubStartupReapStaleClaims(app):
+    """Reap dead-PID container locks before the hub serves requests."""
+
+    async def fnReapStaleClaims(app):
+        del app
+        from vaibify.config.containerLock import (
+            fnReapStaleContainerLocks,
+        )
+        fnReapStaleContainerLocks()
+    app.state.listLifespanStartup.append(fnReapStaleClaims)
 
 
 def _fnRegisterHubShutdownReleaseLocks(app):

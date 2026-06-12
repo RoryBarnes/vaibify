@@ -1,12 +1,14 @@
 """Tests for vaibify.reproducibility.dependencyPinning."""
 
 import subprocess
+import sys
 from unittest import mock
 
 import pytest
 
 from vaibify.reproducibility.dependencyPinning import (
     fbIsUvAvailable,
+    flistResolveLockCompileCommand,
     flistVerifyRequirementsLock,
     fnGenerateRequirementsLock,
 )
@@ -112,16 +114,84 @@ def test_fnGenerateRequirementsLock_no_input_files(tmp_path):
     assert "requirements.in" in sMessage
 
 
-def test_fnGenerateRequirementsLock_uv_missing(tmp_path):
+def test_fnGenerateRequirementsLock_no_generator_actionable_message(
+    tmp_path,
+):
     (tmp_path / "pyproject.toml").write_text("[project]\n")
     sModule = "vaibify.reproducibility.dependencyPinning"
     with mock.patch(sModule + ".shutil.which", return_value=None):
-        with pytest.raises(FileNotFoundError) as excInfo:
-            fnGenerateRequirementsLock(str(tmp_path))
+        with mock.patch(
+            sModule + "._fbModuleAvailable", return_value=False,
+        ):
+            with pytest.raises(FileNotFoundError) as excInfo:
+                fnGenerateRequirementsLock(str(tmp_path))
 
     sMessage = str(excInfo.value)
     assert "uv" in sMessage
     assert "https://docs.astral.sh/uv/" in sMessage
+    assert "pip-tools" in sMessage
+
+
+def test_resolve_compile_command_prefers_path_uv():
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        assert flistResolveLockCompileCommand() == [
+            "uv", "pip", "compile",
+        ]
+
+
+def test_resolve_compile_command_falls_back_to_uv_module():
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value=None):
+        with mock.patch(
+            sModule + "._fbModuleAvailable",
+            side_effect=lambda sName: sName == "uv",
+        ):
+            assert flistResolveLockCompileCommand() == [
+                sys.executable, "-m", "uv", "pip", "compile",
+            ]
+
+
+def test_resolve_compile_command_falls_back_to_piptools():
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value=None):
+        with mock.patch(
+            sModule + "._fbModuleAvailable",
+            side_effect=lambda sName: sName == "piptools",
+        ):
+            assert flistResolveLockCompileCommand() == [
+                sys.executable, "-m", "piptools", "compile",
+            ]
+
+
+def test_resolve_compile_command_empty_when_nothing_installed():
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value=None):
+        with mock.patch(
+            sModule + "._fbModuleAvailable", return_value=False,
+        ):
+            assert flistResolveLockCompileCommand() == []
+
+
+def test_generate_lock_uses_piptools_fallback_with_hashes(tmp_path):
+    """pip-tools fallback still compiles with --generate-hashes."""
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value=None):
+        with mock.patch(
+            sModule + "._fbModuleAvailable",
+            side_effect=lambda sName: sName == "piptools",
+        ):
+            with mock.patch(
+                sModule + ".subprocess.run",
+                side_effect=_fnFakeRunWriteLock(_S_VALID_LOCK),
+            ) as mockRun:
+                fnGenerateRequirementsLock(str(tmp_path))
+
+    listCommand = mockRun.call_args.args[0]
+    assert listCommand[:3] == [sys.executable, "-m", "piptools"]
+    assert "--generate-hashes" in listCommand
+    assert (tmp_path / "requirements.lock").is_file()
 
 
 def test_fnGenerateRequirementsLock_compile_failure(tmp_path):

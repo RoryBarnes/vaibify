@@ -1,10 +1,56 @@
 """Tests for the /api/registry/{sName}/claim and /release routes."""
 
+import fcntl
+import json
+import multiprocessing
 import os
+import signal
+import time
 
 import pytest
 
 from vaibify.config import containerLock
+
+
+def _fnHoldLockInChildProcess(sTempDir, sProjectName, iPort, eventReady):
+    """Child: acquire the lock and block until the parent sets event."""
+    import vaibify.config.containerLock as childLockModule
+    childLockModule._S_LOCK_DIRECTORY = sTempDir
+    fileHandleChildLock = childLockModule.fnAcquireContainerLock(
+        sProjectName, iPort,
+    )
+    eventReady.wait(timeout=10)
+    fileHandleChildLock.close()
+
+
+def _fnAwaitLockFile(tmp_path, sProjectName):
+    """Block until the child has created its lock file."""
+    for _ in range(100):
+        if (tmp_path / f"{sProjectName}.lock").exists():
+            return
+        time.sleep(0.05)
+
+
+def _fiSpawnDeadPid():
+    """Return the PID of a forked child that has already exited."""
+    contextFork = multiprocessing.get_context("fork")
+    processChild = contextFork.Process(target=lambda: None)
+    processChild.start()
+    processChild.join(timeout=5)
+    return processChild.pid
+
+
+def _ffileHoldFlockWithDeadHolderPayload(tmp_path, sProjectName):
+    """Hold a flock whose payload records a dead PID (orphaned claim)."""
+    sPath = os.path.join(str(tmp_path), f"{sProjectName}.lock")
+    fileHandleStuck = open(sPath, "a+")
+    fileHandleStuck.write(json.dumps({
+        "iPid": _fiSpawnDeadPid(), "iPort": 8099,
+        "sProjectName": sProjectName,
+    }))
+    fileHandleStuck.flush()
+    fcntl.flock(fileHandleStuck, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fileHandleStuck
 
 
 @pytest.fixture(autouse=True)
@@ -44,24 +90,59 @@ def testClaimReturnsOkWhenContainerFree(fixtureClient, fixtureHubApp):
 def testClaimReturns409WhenContainerLockedByOtherProcess(
     fixtureClient, tmp_path,
 ):
-    import fcntl
-    sPath = os.path.join(str(tmp_path), "demo.lock")
-    fileHandleExternal = open(sPath, "a+")
-    fileHandleExternal.write(
-        '{"iPid": 99999, "iPort": 8099, "sProjectName": "demo"}'
+    contextFork = multiprocessing.get_context("fork")
+    eventReady = contextFork.Event()
+    processChild = contextFork.Process(
+        target=_fnHoldLockInChildProcess,
+        args=(str(tmp_path), "demo", 8099, eventReady),
     )
-    fileHandleExternal.flush()
-    fcntl.flock(fileHandleExternal, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    processChild.start()
     try:
+        _fnAwaitLockFile(tmp_path, "demo")
         response = fixtureClient.post("/api/registry/demo/claim")
         assert response.status_code == 409
         dictDetail = response.json()["detail"]
         assert dictDetail["sName"] == "demo"
-        assert dictDetail["iLockedByPid"] == 99999
+        assert dictDetail["iLockedByPid"] == processChild.pid
         assert dictDetail["iLockedByPort"] == 8099
     finally:
-        fcntl.flock(fileHandleExternal, fcntl.LOCK_UN)
-        fileHandleExternal.close()
+        eventReady.set()
+        processChild.join(timeout=5)
+
+
+def testClaimSucceedsWhenRecordedHolderIsDead(
+    fixtureClient, fixtureHubApp, tmp_path,
+):
+    """A flock that outlived its dead holder must be taken over silently."""
+    fileHandleStuck = _ffileHoldFlockWithDeadHolderPayload(
+        tmp_path, "demo",
+    )
+    try:
+        response = fixtureClient.post("/api/registry/demo/claim")
+        assert response.status_code == 200
+        assert response.json() == {"sName": "demo", "bClaimed": True}
+        assert "demo" in fixtureHubApp.state.dictContainerLocks
+    finally:
+        fileHandleStuck.close()
+
+
+def testClaimSucceedsAfterOwnerKilledWithoutHubRestart(
+    fixtureClient, tmp_path,
+):
+    """SIGKILLing the claim owner frees the container for the next claim."""
+    contextFork = multiprocessing.get_context("fork")
+    eventReady = contextFork.Event()
+    processChild = contextFork.Process(
+        target=_fnHoldLockInChildProcess,
+        args=(str(tmp_path), "demo", 8099, eventReady),
+    )
+    processChild.start()
+    _fnAwaitLockFile(tmp_path, "demo")
+    os.kill(processChild.pid, signal.SIGKILL)
+    processChild.join(timeout=5)
+    response = fixtureClient.post("/api/registry/demo/claim")
+    assert response.status_code == 200
+    assert response.json() == {"sName": "demo", "bClaimed": True}
 
 
 def testClaimIsIdempotentInSameHubProcess(fixtureClient, fixtureHubApp):

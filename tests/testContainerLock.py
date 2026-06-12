@@ -281,3 +281,118 @@ def test_fdictReadLockHolder_returns_empty_when_lockfile_is_unheld(
     fnReleaseContainerLock(fileHandleLock)
     assert os.path.isfile(str(tmp_lock_dir / "demo.lock"))
     assert fdictReadLockHolder("demo") == {}
+
+
+def _fiSpawnDeadPid():
+    """Return the PID of a forked child that has already exited."""
+    contextFork = multiprocessing.get_context("fork")
+    processChild = contextFork.Process(target=lambda: None)
+    processChild.start()
+    processChild.join(timeout=5)
+    return processChild.pid
+
+
+def _ffileHoldFlockWithDeadHolderPayload(tmp_lock_dir, sProjectName):
+    """Hold a flock whose payload records a dead PID (orphaned claim)."""
+    import fcntl
+    sPath = str(tmp_lock_dir / f"{sProjectName}.lock")
+    fileHandleStuck = open(sPath, "a+")
+    fileHandleStuck.write(json.dumps({
+        "iPid": _fiSpawnDeadPid(), "iPort": 8044,
+        "sProjectName": sProjectName,
+    }))
+    fileHandleStuck.flush()
+    fcntl.flock(fileHandleStuck, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fileHandleStuck
+
+
+def test_fnAcquireContainerLock_takes_over_dead_holder_claim(
+    tmp_lock_dir,
+):
+    """A held flock recorded against a dead PID is taken over silently."""
+    from vaibify.config.containerLock import (
+        fnAcquireContainerLock, fnReleaseContainerLock,
+    )
+    fileHandleStuck = _ffileHoldFlockWithDeadHolderPayload(
+        tmp_lock_dir, "demo",
+    )
+    try:
+        fileHandleLock = fnAcquireContainerLock("demo", 8050)
+        with open(str(tmp_lock_dir / "demo.lock")) as fileHandleRead:
+            dictPayload = json.load(fileHandleRead)
+        assert dictPayload["iPid"] == os.getpid()
+        fnReleaseContainerLock(fileHandleLock)
+    finally:
+        fileHandleStuck.close()
+
+
+def test_fnAcquireContainerLock_still_respects_live_child_holder(
+    tmp_lock_dir,
+):
+    """Liveness reaping must never break the claim of a live process."""
+    from vaibify.config.containerLock import (
+        ContainerLockedError, fnAcquireContainerLock,
+    )
+    contextSpawn = multiprocessing.get_context("fork")
+    eventReady = contextSpawn.Event()
+    processChild = contextSpawn.Process(
+        target=_fnHoldLockInChildProcess,
+        args=(str(tmp_lock_dir), "demo", 9300, eventReady),
+    )
+    processChild.start()
+    try:
+        for _ in range(50):
+            if (tmp_lock_dir / "demo.lock").exists():
+                break
+            time.sleep(0.05)
+        with pytest.raises(ContainerLockedError):
+            fnAcquireContainerLock("demo", 8050)
+    finally:
+        eventReady.set()
+        processChild.join(timeout=5)
+
+
+def test_fdictReadLockHolder_reaps_claim_of_dead_holder(tmp_lock_dir):
+    """A held flock recorded against a dead PID reads as unheld."""
+    from vaibify.config.containerLock import fdictReadLockHolder
+    fileHandleStuck = _ffileHoldFlockWithDeadHolderPayload(
+        tmp_lock_dir, "demo",
+    )
+    try:
+        assert fdictReadLockHolder("demo") == {}
+        assert not (tmp_lock_dir / "demo.lock").exists()
+    finally:
+        fileHandleStuck.close()
+
+
+def test_fnReapStaleContainerLocks_removes_only_dead_holder_files(
+    tmp_lock_dir,
+):
+    """Reaping removes dead-PID lock files and keeps live claims."""
+    from vaibify.config.containerLock import (
+        fnAcquireContainerLock, fnReapStaleContainerLocks,
+        fnReleaseContainerLock,
+    )
+    fileHandleLive = fnAcquireContainerLock("alive", 8050)
+    sDeadPath = str(tmp_lock_dir / "orphan.lock")
+    with open(sDeadPath, "w") as fileHandleDead:
+        json.dump({"iPid": _fiSpawnDeadPid(), "iPort": 8033,
+                   "sProjectName": "orphan"}, fileHandleDead)
+    try:
+        fnReapStaleContainerLocks()
+        assert not os.path.isfile(sDeadPath)
+        assert os.path.isfile(str(tmp_lock_dir / "alive.lock"))
+    finally:
+        fnReleaseContainerLock(fileHandleLive)
+
+
+def test_fnReapStaleContainerLocks_handles_missing_directory(
+    tmp_path, monkeypatch,
+):
+    """A missing lock directory is a no-op, not an error."""
+    import vaibify.config.containerLock as containerLockModule
+    monkeypatch.setattr(
+        containerLockModule, "_S_LOCK_DIRECTORY",
+        str(tmp_path / "does-not-exist"),
+    )
+    containerLockModule.fnReapStaleContainerLocks()

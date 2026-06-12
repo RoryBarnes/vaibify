@@ -77,9 +77,12 @@ def fnGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
     repo-file adapter (container). Tier 1 writes ``MANIFEST.sha256``
     at the project repo root via ``manifestWriter.fnWriteManifest``.
     Tier 2 writes ``requirements.lock`` via
-    ``dependencyPinning.fnGenerateRequirementsLock``; when ``uv`` is
-    missing or the project has no dependency input the failure is
-    logged and the other tiers continue. Tier 3 writes
+    ``dependencyPinning.fnGenerateRequirementsLock`` (uv on PATH,
+    ``python -m uv``, or pip-tools, in that order); when no generator
+    is installed or the project has no dependency input the failure
+    is logged here and surfaced as the actionable
+    ``dependency-lock-missing`` blocker hint, and the other tiers
+    continue. Tier 3 writes
     ``.vaibify/environment.json`` via ``environmentSnapshot`` only when
     ``sContainerName`` is supplied. Each tier's failure is isolated so
     a partial envelope is preferred over no envelope.

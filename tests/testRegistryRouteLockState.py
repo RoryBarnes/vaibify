@@ -1,11 +1,42 @@
 """Tests that /api/registry annotates containers with lock state."""
 
 import fcntl
+import json
+import multiprocessing
 import os
+import time
 
 import pytest
 
 from vaibify.config import containerLock
+
+
+def _fnHoldLockInChildProcess(sTempDir, sProjectName, iPort, eventReady):
+    """Child: acquire the lock and block until the parent sets event."""
+    import vaibify.config.containerLock as childLockModule
+    childLockModule._S_LOCK_DIRECTORY = sTempDir
+    fileHandleChildLock = childLockModule.fnAcquireContainerLock(
+        sProjectName, iPort,
+    )
+    eventReady.wait(timeout=10)
+    fileHandleChildLock.close()
+
+
+def _fnAwaitLockFile(tmp_path, sProjectName):
+    """Block until the child has created its lock file."""
+    for _ in range(100):
+        if (tmp_path / f"{sProjectName}.lock").exists():
+            return
+        time.sleep(0.05)
+
+
+def _fiSpawnDeadPid():
+    """Return the PID of a forked child that has already exited."""
+    contextFork = multiprocessing.get_context("fork")
+    processChild = contextFork.Process(target=lambda: None)
+    processChild.start()
+    processChild.join(timeout=5)
+    return processChild.pid
 
 
 @pytest.fixture(autouse=True)
@@ -65,22 +96,48 @@ def testRegistryReportsLockedWhenOtherProcessHoldsLock(
         monkeypatch,
         [{"sName": "demo", "sContainerName": "demo"}],
     )
-    sPath = os.path.join(str(tmp_path), "demo.lock")
-    fileHandleExternal = open(sPath, "a+")
-    fileHandleExternal.write(
-        '{"iPid": 77777, "iPort": 8055, "sProjectName": "demo"}'
+    contextFork = multiprocessing.get_context("fork")
+    eventReady = contextFork.Event()
+    processChild = contextFork.Process(
+        target=_fnHoldLockInChildProcess,
+        args=(str(tmp_path), "demo", 8055, eventReady),
     )
-    fileHandleExternal.flush()
-    fcntl.flock(fileHandleExternal, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    processChild.start()
     try:
+        _fnAwaitLockFile(tmp_path, "demo")
         response = fixtureClient.get("/api/registry")
         dictContainer = response.json()["listContainers"][0]
         assert dictContainer["bLocked"] is True
-        assert dictContainer["iLockedByPid"] == 77777
+        assert dictContainer["iLockedByPid"] == processChild.pid
         assert dictContainer["iLockedByPort"] == 8055
     finally:
-        fcntl.flock(fileHandleExternal, fcntl.LOCK_UN)
-        fileHandleExternal.close()
+        eventReady.set()
+        processChild.join(timeout=5)
+
+
+def testRegistryRefreshReapsClaimOfDeadHolder(
+    fixtureClient, monkeypatch, tmp_path,
+):
+    """A held flock recorded against a dead PID unlocks on refresh."""
+    _fnPatchRegistrySources(
+        monkeypatch,
+        [{"sName": "demo", "sContainerName": "demo"}],
+    )
+    sPath = os.path.join(str(tmp_path), "demo.lock")
+    fileHandleStuck = open(sPath, "a+")
+    fileHandleStuck.write(json.dumps({
+        "iPid": _fiSpawnDeadPid(), "iPort": 8055,
+        "sProjectName": "demo",
+    }))
+    fileHandleStuck.flush()
+    fcntl.flock(fileHandleStuck, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        response = fixtureClient.get("/api/registry")
+        dictContainer = response.json()["listContainers"][0]
+        assert dictContainer["bLocked"] is False
+        assert not os.path.isfile(sPath)
+    finally:
+        fileHandleStuck.close()
 
 
 def testRegistryReportsUnlockedForSelfHeldClaim(

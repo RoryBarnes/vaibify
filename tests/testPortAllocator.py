@@ -334,6 +334,29 @@ def test_fiResolveHubPort_returns_persisted_when_port_free():
         assert fiResolveHubPort(iExplicitPort=None) == iPort
 
 
+def test_fiResolveHubPort_ignores_stale_hub_port_file_pid():
+    """A hub-port.json left by a dead hub never blocks the next launch."""
+    import json
+    import multiprocessing
+    import os
+    import tempfile
+    from vaibify.cli.portAllocator import fiResolveHubPort
+    contextFork = multiprocessing.get_context("fork")
+    processChild = contextFork.Process(target=lambda: None)
+    processChild.start()
+    processChild.join(timeout=5)
+    iFreePort, sock = _ftReservedPort()
+    sock.close()
+    with tempfile.TemporaryDirectory() as sTmp:
+        with open(os.path.join(sTmp, "hub-port.json"), "w") as fileHandle:
+            json.dump({"iPort": iFreePort, "iPid": processChild.pid,
+                       "sStartedIso": "2026-01-01T00:00:00"}, fileHandle)
+        with patch(
+            "vaibify.config.hubPortRegistry._S_VAIBIFY_DIRECTORY", sTmp,
+        ):
+            assert fiResolveHubPort(iExplicitPort=None) == iFreePort
+
+
 def test_fiResolveHubPort_first_run_assigns_and_persists():
     """With no persisted port, allocator picks one and writes it back."""
     from vaibify.cli.portAllocator import fiResolveHubPort

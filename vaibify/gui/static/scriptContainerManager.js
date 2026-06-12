@@ -141,10 +141,14 @@ var PipeleyenContainerManager = (function () {
         var sId = dictContainer.sContainerId || "";
         var bLocked = dictContainer.bLocked === true;
         var sLockedClass = bLocked ? " container-tile--locked" : "";
+        var sLockedMessage = bLocked
+            ? _fsLockedMessage(dictContainer.iLockedByPort) : "";
         var sLockedTitle = bLocked
-            ? ' title="Already accessed by another vaibify session"'
+            ? ' title="' + sLockedMessage + '"' : "";
+        var sLockedAttr = bLocked
+            ? ' data-locked="true" data-locked-message="' +
+              sLockedMessage + '"'
             : "";
-        var sLockedAttr = bLocked ? ' data-locked="true"' : "";
         return (
             '<div class="container-tile' + sLockedClass +
             '" data-name="' +
@@ -176,6 +180,12 @@ var PipeleyenContainerManager = (function () {
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
         );
+    }
+
+    function _fsLockedMessage(iLockedByPort) {
+        var sSuffix = iLockedByPort
+            ? " on port " + iLockedByPort : "";
+        return "In use by another vaibify session" + sSuffix + ".";
     }
 
     function _fsStatusDotClass(sStatus) {
@@ -238,8 +248,9 @@ var PipeleyenContainerManager = (function () {
         );
         if (elTile && elTile.dataset.locked === "true") {
             PipeleyenApp.fnShowToast(
-                "Container '" + sName + "' is already accessed by "
-                + "another vaibify session.", "warning");
+                "Container '" + sName + "': " +
+                (elTile.dataset.lockedMessage ||
+                 _fsLockedMessage(0)), "warning");
             return;
         }
         var elDot = elTile ? elTile.querySelector(".status-dot") : null;
@@ -285,9 +296,12 @@ var PipeleyenContainerManager = (function () {
                 {});
             return true;
         } catch (error) {
+            var dictDetail = error.dictDetail || {};
+            var sReason = dictDetail.iLockedByPort
+                ? _fsLockedMessage(dictDetail.iLockedByPort)
+                : _fsLockedMessage(0);
             PipeleyenApp.fnShowToast(
-                "Container '" + sName + "' is already accessed by "
-                + "another vaibify session.", "warning");
+                "Container '" + sName + "': " + sReason, "warning");
             return false;
         }
     }

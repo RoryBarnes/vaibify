@@ -155,6 +155,75 @@ def test_stale_slot_from_dead_process_is_not_counted(tmp_session_dir):
 
 
 # ---------------------------------------------------------------------------
+# fnReapStaleSessionSlots
+# ---------------------------------------------------------------------------
+
+
+def _fiSpawnDeadPid():
+    """Return the PID of a forked child that has already exited."""
+    contextFork = multiprocessing.get_context("fork")
+    processChild = contextFork.Process(target=lambda: None)
+    processChild.start()
+    processChild.join(timeout=5)
+    return processChild.pid
+
+
+def test_fnReapStaleSessionSlots_removes_dead_pid_slot_file(
+    tmp_session_dir,
+):
+    from vaibify.config.sessionRegistry import fnReapStaleSessionSlots
+    sDeadSlot = f"{_fiSpawnDeadPid()}.slot"
+    (tmp_session_dir / sDeadSlot).write_text("{}")
+    fnReapStaleSessionSlots()
+    assert not (tmp_session_dir / sDeadSlot).exists()
+
+
+def test_fnReapStaleSessionSlots_keeps_live_pid_slot_file(
+    tmp_session_dir,
+):
+    """A slot named for a live PID survives even with no flock held."""
+    from vaibify.config.sessionRegistry import fnReapStaleSessionSlots
+    sLiveSlot = f"{os.getpid()}.slot"
+    (tmp_session_dir / sLiveSlot).write_text("{}")
+    fnReapStaleSessionSlots()
+    assert (tmp_session_dir / sLiveSlot).exists()
+
+
+def test_fnReapStaleSessionSlots_removes_malformed_slot_names(
+    tmp_session_dir,
+):
+    from vaibify.config.sessionRegistry import fnReapStaleSessionSlots
+    (tmp_session_dir / "garbage.slot").write_text("{}")
+    fnReapStaleSessionSlots()
+    assert not (tmp_session_dir / "garbage.slot").exists()
+
+
+def test_fnReapStaleSessionSlots_handles_missing_directory(
+    tmp_path, monkeypatch,
+):
+    import vaibify.config.sessionRegistry as sessionRegistryModule
+    monkeypatch.setattr(
+        sessionRegistryModule, "_S_SESSION_DIRECTORY",
+        str(tmp_path / "does-not-exist"),
+    )
+    sessionRegistryModule.fnReapStaleSessionSlots()
+
+
+def test_fnAcquireSessionSlot_reaps_dead_slots_first(tmp_session_dir):
+    """Acquiring a slot cleans out files left by killed processes."""
+    from vaibify.config.sessionRegistry import (
+        fnAcquireSessionSlot, fnReleaseSessionSlot,
+    )
+    sDeadSlot = f"{_fiSpawnDeadPid()}.slot"
+    (tmp_session_dir / sDeadSlot).write_text("{}")
+    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    try:
+        assert not (tmp_session_dir / sDeadSlot).exists()
+    finally:
+        fnReleaseSessionSlot(fileHandleSlot)
+
+
+# ---------------------------------------------------------------------------
 # fdictReadHubSlotByPort
 # ---------------------------------------------------------------------------
 
