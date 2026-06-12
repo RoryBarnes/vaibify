@@ -1002,20 +1002,30 @@ def fsetExtractStepReferences(sText):
 
 
 def fdictBuildStemRegistry(dictWorkflow):
-    """Map each StepNN.stem to the step that produces it."""
+    """Map each StepNN.stem to the step that produces it.
+
+    Colliding basenames within a step register only under qualified
+    stems (``pipelineUtils.fdictMapOutputTokenStems``), so standard
+    scientific output filenames never need renaming for tokens.
+    """
+    from .pipelineUtils import fdictMapOutputTokenStems
     dictRegistry = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
-        listAllOutputs = (
-            dictStep.get("saDataFiles", [])
-            + dictStep.get("saPlotFiles", [])
-            + dictStep.get("saOutputFiles", [])
-        )
-        for sOutputFile in listAllOutputs:
-            sBasename = posixpath.basename(sOutputFile)
-            sStem = posixpath.splitext(sBasename)[0]
+        dictTokenStems = fdictMapOutputTokenStems(
+            _flistStepDeclaredOutputs(dictStep))
+        for sStem in dictTokenStems:
             dictRegistry[f"Step{iNumber:02d}.{sStem}"] = iNumber
     return dictRegistry
+
+
+def _flistStepDeclaredOutputs(dictStep):
+    """Return every declared output file path for a step."""
+    return (
+        dictStep.get("saDataFiles", [])
+        + dictStep.get("saPlotFiles", [])
+        + dictStep.get("saOutputFiles", [])
+    )
 
 
 def flistCollectReferenceStrings(dictStep):
@@ -1076,22 +1086,24 @@ def _fnCheckCommandReferences(
 
 
 def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
-    """Map StepNN.stem to resolved absolute output paths."""
+    """Map StepNN.stem to resolved absolute output paths.
+
+    Token stems come from the declared (unresolved) entries via
+    ``fdictMapOutputTokenStems`` so collision qualification matches
+    ``fdictBuildStemRegistry`` exactly.
+    """
+    from .pipelineUtils import fdictMapOutputTokenStems
     dictStepVars = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
         sStepDirectory = dictStep.get("sDirectory", "")
-        listAllOutputs = (
-            dictStep.get("saDataFiles", [])
-            + dictStep.get("saPlotFiles", [])
-            + dictStep.get("saOutputFiles", [])
-        )
-        for sOutputFile in listAllOutputs:
+        dictTokenStems = fdictMapOutputTokenStems(
+            _flistStepDeclaredOutputs(dictStep))
+        for sStem, sOutputFile in dictTokenStems.items():
             sResolved = fsResolveVariables(sOutputFile, dictGlobalVars)
             sAbsPath = _fsResolveStepOutputPath(
                 sResolved, sStepDirectory, dictGlobalVars
             )
-            sStem = posixpath.splitext(posixpath.basename(sAbsPath))[0]
             dictStepVars[f"Step{iNumber:02d}.{sStem}"] = sAbsPath
     return dictStepVars
 

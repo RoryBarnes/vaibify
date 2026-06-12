@@ -314,9 +314,9 @@ def fsResolveOutputPath(sOutputFile, dictVariables, sAbsDirectory):
     return os.path.join(sAbsDirectory, sResolvedPath)
 
 
-def _fnRegisterFiles(listFiles, dictVariables, sStepLabel, sAbsDirectory):
+def _fnRegisterFiles(dictTokenStems, dictVariables, sStepLabel, sAbsDirectory):
     """Verify files exist and register them as {sStepLabel.stem} variables."""
-    for sOutputFile in listFiles:
+    for sStem, sOutputFile in dictTokenStems.items():
         sAbsPath = fsResolveOutputPath(
             sOutputFile, dictVariables, sAbsDirectory)
         if not os.path.exists(sAbsPath):
@@ -325,23 +325,26 @@ def _fnRegisterFiles(listFiles, dictVariables, sStepLabel, sAbsDirectory):
         iFileSize = os.path.getsize(sAbsPath)
         if iFileSize < 1024:
             print(f"  WARNING: {sAbsPath} is only {iFileSize} bytes")
-        sStem = os.path.splitext(os.path.basename(sAbsPath))[0]
         sKey = f"{sStepLabel}.{sStem}"
         dictVariables[sKey] = sAbsPath
         print(f"  Registered: {{{sKey}}} -> {sAbsPath}")
 
 
 def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
-    """Verify output files exist and register them as variables."""
+    """Verify output files exist and register them as variables.
+
+    Token stems come from ``pipelineUtils.fdictMapOutputTokenStems`` so
+    colliding basenames qualify identically to the container-path
+    resolver in ``workflowManager``.
+    """
+    from .pipelineUtils import fdictMapOutputTokenStems
     sDirectory = fsResolveVariables(
         dictStep["sDirectory"], dictVariables)
     sAbsDirectory = _fsJoinStepDirectory(dictVariables, sDirectory)
-
+    listDeclared = (
+        dictStep.get("saDataFiles", []) + dictStep["saPlotFiles"])
     _fnRegisterFiles(
-        dictStep.get("saDataFiles", []),
-        dictVariables, sStepLabel, sAbsDirectory)
-    _fnRegisterFiles(
-        dictStep["saPlotFiles"],
+        fdictMapOutputTokenStems(listDeclared),
         dictVariables, sStepLabel, sAbsDirectory)
 
 

@@ -96,7 +96,7 @@ def test_fnRegisterFiles_resolves_variables(tmp_path):
         fh.write(b"x" * 2048)
     dictVars = {"sDir": str(tmp_path)}
     _fnRegisterFiles(
-        ["{sDir}/result.pdf"], dictVars,
+        {"result": "{sDir}/result.pdf"}, dictVars,
         "Step01", str(tmp_path),
     )
     assert "Step01.result" in dictVars
@@ -108,7 +108,7 @@ def test_fnRegisterFiles_absolute_path(tmp_path):
         fh.write(b"x" * 2048)
     dictVars = {}
     _fnRegisterFiles(
-        [sFilePath], dictVars, "Step01", str(tmp_path),
+        {"abs": sFilePath}, dictVars, "Step01", str(tmp_path),
     )
     assert "Step01.abs" in dictVars
 

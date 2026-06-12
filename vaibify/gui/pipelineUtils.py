@@ -4,10 +4,13 @@ This module has ZERO intra-package imports. It exists to break circular
 dependency cycles between pipelineRunner and its extracted submodules.
 """
 
+import posixpath
+import re
 import time
 
 
 __all__ = [
+    "fdictMapOutputTokenStems",
     "fsShellQuote",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
@@ -17,6 +20,51 @@ __all__ = [
     "fnAttachStepLabels",
     "fnClearOutputModifiedFlags",
 ]
+
+
+def _fsPlainTokenStem(sOutputFile):
+    """Return the basename-without-extension token stem for a path."""
+    sBasename = posixpath.basename(sOutputFile.replace("\\", "/"))
+    return posixpath.splitext(sBasename)[0]
+
+
+def _fsQualifiedTokenStem(sOutputFile, sStem):
+    """Return a collision-safe token stem qualified by the path prefix.
+
+    Scientific output filenames are public API and must not be renamed
+    just to disambiguate tokens; instead the token gains the leading
+    path segment: ``EngleBarnes/output/Converged_Param_Dictionary.json``
+    becomes ``EngleBarnes_Converged_Param_Dictionary``.
+    """
+    sNormalized = sOutputFile.replace("\\", "/")
+    sDirectory = posixpath.dirname(sNormalized)
+    sQualifier = sDirectory.split("/")[0] if sDirectory else ""
+    sCandidate = f"{sQualifier}_{sStem}" if sQualifier else sStem
+    return re.sub(r"[^0-9A-Za-z_]", "_", sCandidate)
+
+
+def fdictMapOutputTokenStems(listOutputFiles):
+    """Map token stems to output paths, qualifying colliding basenames.
+
+    Non-colliding entries keep the historical bare stem. When two
+    declared outputs share a basename stem, EVERY colliding entry is
+    registered only under its qualified stem and the ambiguous bare
+    stem is dropped, so a stale reference fails loudly in reference
+    validation instead of silently resolving to the last writer.
+    """
+    dictStemCounts = {}
+    for sOutputFile in listOutputFiles:
+        sStem = _fsPlainTokenStem(sOutputFile)
+        dictStemCounts[sStem] = dictStemCounts.get(sStem, 0) + 1
+    dictTokenStems = {}
+    for sOutputFile in listOutputFiles:
+        sStem = _fsPlainTokenStem(sOutputFile)
+        if dictStemCounts[sStem] > 1:
+            dictTokenStems[
+                _fsQualifiedTokenStem(sOutputFile, sStem)] = sOutputFile
+        else:
+            dictTokenStems[sStem] = sOutputFile
+    return dictTokenStems
 
 
 def fsShellQuote(sValue):

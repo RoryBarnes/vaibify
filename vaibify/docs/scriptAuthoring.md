@@ -128,27 +128,21 @@ to anyone reading the command.
 
 The runtime resolver keys `{StepNN.varname}` lookups by the basename
 (without extension) of each entry in the producer step's `saDataFiles`.
-If a single step has two outputs with the same basename — for example,
-`EngleBarnes/output/Converged_Param_Dictionary.json` and
-`RibasBarnes/output/Converged_Param_Dictionary.json` — both entries
-collapse to one token key, with the later entry overwriting the
-earlier. Consumer steps trying to reference one or the other cannot
-disambiguate.
+When a single step declares two outputs with the same basename — for
+example, `EngleBarnes/output/Converged_Param_Dictionary.json` and
+`RibasBarnes/output/Converged_Param_Dictionary.json` — each colliding
+entry registers under a QUALIFIED token instead: the leading path
+segment joined to the stem with an underscore. Consumers reference
+`{Step10.EngleBarnes_Converged_Param_Dictionary}` and
+`{Step10.RibasBarnes_Converged_Param_Dictionary}` unambiguously, and
+the bare colliding stem is deliberately not registered, so a stale
+bare reference fails loudly in reference validation rather than
+silently resolving to the last writer.
 
-The fix is to rename the outputs to unique stems and update the writer
-script to write to those stems:
-
-```json
-"saDataFiles": [
-  "EngleBarnes/output/engle_barnes_converged.json",
-  "RibasBarnes/output/ribas_barnes_converged.json"
-]
-```
-
-Consumers then reference `{Step10.engle_barnes_converged}` and
-`{Step10.ribas_barnes_converged}` unambiguously. The writer (often a
-wrapper like `dataRunVconverge.py`) is responsible for producing files
-at those exact paths.
+Do NOT rename scientific output files to dodge token collisions —
+output filenames are part of a scientific code's public interface, and
+benchmark tests bind to them. Keep the tool's standard filenames and
+let the qualified tokens disambiguate.
 
 ## Worked example: a 2-step workflow
 

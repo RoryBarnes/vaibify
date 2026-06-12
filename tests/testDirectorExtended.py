@@ -169,7 +169,7 @@ def test_fnRegisterFiles_raises_on_missing_file():
         dictVars = {}
         with pytest.raises(FileNotFoundError):
             _fnRegisterFiles(
-                ["missing.pdf"], dictVars, "Step01", sTmpDir)
+                {"missing": "missing.pdf"}, dictVars, "Step01", sTmpDir)
 
 
 def test_fnRegisterFiles_warns_on_small_file(capsys):
@@ -179,7 +179,7 @@ def test_fnRegisterFiles_warns_on_small_file(capsys):
             fh.write(b"x" * 10)
         dictVars = {}
         _fnRegisterFiles(
-            ["tiny.pdf"], dictVars, "Step01", sTmpDir)
+            {"tiny": "tiny.pdf"}, dictVars, "Step01", sTmpDir)
         sCaptured = capsys.readouterr().out
         assert "WARNING" in sCaptured
 

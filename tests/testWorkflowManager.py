@@ -717,3 +717,57 @@ def test_flistValidateOutputFilePaths_empty_workflow_returns_empty():
     from vaibify.gui.workflowManager import flistValidateOutputFilePaths
     assert flistValidateOutputFilePaths({}) == []
     assert flistValidateOutputFilePaths({"listSteps": []}) == []
+
+
+class TestOutputTokenStemCollisions:
+    """Colliding basenames qualify by leading path segment (no renames)."""
+
+    def test_fdictMapOutputTokenStems_plain_when_unique(self):
+        from vaibify.gui.pipelineUtils import fdictMapOutputTokenStems
+        dictStems = fdictMapOutputTokenStems(
+            ["output/result.json", "Plot/figure.pdf"])
+        assert dictStems == {
+            "result": "output/result.json",
+            "figure": "Plot/figure.pdf",
+        }
+
+    def test_fdictMapOutputTokenStems_qualifies_collisions(self):
+        from vaibify.gui.pipelineUtils import fdictMapOutputTokenStems
+        dictStems = fdictMapOutputTokenStems([
+            "EngleBarnes/output/Converged_Param_Dictionary.json",
+            "RibasBarnes/output/Converged_Param_Dictionary.json",
+        ])
+        assert dictStems == {
+            "EngleBarnes_Converged_Param_Dictionary":
+                "EngleBarnes/output/Converged_Param_Dictionary.json",
+            "RibasBarnes_Converged_Param_Dictionary":
+                "RibasBarnes/output/Converged_Param_Dictionary.json",
+        }
+
+    def test_fdictBuildStemRegistry_registers_qualified_tokens(self):
+        from vaibify.gui.workflowManager import fdictBuildStemRegistry
+        dictWorkflow = {"listSteps": [{
+            "saDataFiles": [
+                "EngleBarnes/output/Converged_Param_Dictionary.json",
+                "RibasBarnes/output/Converged_Param_Dictionary.json",
+            ],
+        }]}
+        dictRegistry = fdictBuildStemRegistry(dictWorkflow)
+        assert "Step01.EngleBarnes_Converged_Param_Dictionary" in dictRegistry
+        assert "Step01.RibasBarnes_Converged_Param_Dictionary" in dictRegistry
+        assert "Step01.Converged_Param_Dictionary" not in dictRegistry
+
+    def test_fdictBuildStepVariables_resolves_qualified_tokens(self):
+        from vaibify.gui.workflowManager import fdictBuildStepVariables
+        dictWorkflow = {"listSteps": [{
+            "sDirectory": "XuvEvolution",
+            "saDataFiles": [
+                "EngleBarnes/output/Converged_Param_Dictionary.json",
+                "RibasBarnes/output/Converged_Param_Dictionary.json",
+            ],
+        }]}
+        dictVars = fdictBuildStepVariables(
+            dictWorkflow, {"sRepoRoot": "/repo"})
+        sKey = "Step01.EngleBarnes_Converged_Param_Dictionary"
+        assert dictVars[sKey].endswith(
+            "EngleBarnes/output/Converged_Param_Dictionary.json")

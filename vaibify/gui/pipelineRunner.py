@@ -12,6 +12,7 @@ from . import pipelineState
 from . import workflowManager
 
 __all__ = [
+    "fdictMapOutputTokenStems",
     "fsShellQuote",
     "fnRunAllSteps",
     "fnRunFromStep",
@@ -35,6 +36,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 # ---------------------------------------------------------------------------
 
 from .pipelineUtils import (  # noqa: F401
+    fdictMapOutputTokenStems,
     fsShellQuote,
     fsLabelFromStepIndex,
     fiStepIndexFromLabel,
