@@ -89,9 +89,17 @@ class MockDockerConnection:
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
 
-    def fnWriteFile(self, sContainerId, sPath, baContent):
+    def fnWriteFile(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
         self._dictFiles[sPath] = baContent
 
+    def fnWriteFileViaTar(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        self._dictFiles[sPath] = baContent
 
     def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
         return "exec-id-mock"

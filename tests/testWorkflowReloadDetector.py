@@ -34,9 +34,19 @@ class _FakeDocker:
     def __init__(self):
         self.dictMtimes = {}
         self.listStatCommands = []
+        self._sLastPathFile = ""
 
     def fnSetMtime(self, sPath, sMtime):
         self.dictMtimes[sPath] = sMtime
+
+    def fnWriteFileViaTar(
+        self, sContainerId, sFilePath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        self._sLastPathFile = (
+            baContent.decode("utf-8")
+            if isinstance(baContent, bytes) else baContent
+        )
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listStatCommands.append(sCommand)
@@ -45,6 +55,8 @@ class _FakeDocker:
                 if "'" + sPath + "'" in sCommand or sPath in sCommand:
                     return (0, "exists:1")
             return (0, "exists:0")
+        if sCommand.startswith("xargs -d "):
+            return (0, self._fsStatPathsFromFile())
         if not sCommand.startswith("stat -c '%n %Y' "):
             return (0, "")
         listLines = []
@@ -52,6 +64,14 @@ class _FakeDocker:
             if "'" + sPath + "'" in sCommand:
                 listLines.append(f"{sPath} {sMtime}")
         return (0, "\n".join(listLines))
+
+    def _fsStatPathsFromFile(self):
+        listLines = []
+        for sPath in self._sLastPathFile.strip().split("\n"):
+            sMtime = self.dictMtimes.get(sPath)
+            if sMtime:
+                listLines.append(f"{sPath} {sMtime}")
+        return "\n".join(listLines)
 
 
 def _fdictMakeContext(connectionDocker):

@@ -46,17 +46,29 @@ class _MockDocker:
             _S_WORKFLOW_PATH: json.dumps(_fdictBaseWorkflow())
             .encode("utf-8"),
         }
+        self._sLastPathFile = ""
 
     # --- helpers used by the test, not the route ---
 
     def fnSetWorkflowBytes(self, baContent, sMtime):
-        """Simulate an out-of-band edit: new bytes, new mtime."""
+        """Simulate an out-of-band edit: new bytes, new mtime.
+
+        Real editors save via atomic write-rename, which bumps the
+        parent directory's mtime; model that so the parent-mtime
+        cache in fileStatusManager correctly detects the change.
+        """
         self.dictFiles[_S_WORKFLOW_PATH] = baContent
         self.dictMtimes[_S_WORKFLOW_PATH] = sMtime
+        self.dictMtimes[
+            _S_WORKFLOW_PATH.rsplit("/", 1)[0]
+        ] = sMtime
 
     def fnDeleteWorkflow(self):
         self.dictFiles.pop(_S_WORKFLOW_PATH, None)
-        self.dictMtimes.pop(_S_WORKFLOW_PATH, None)
+        sPrevMtime = self.dictMtimes.pop(_S_WORKFLOW_PATH, "1700000000")
+        self.dictMtimes[
+            _S_WORKFLOW_PATH.rsplit("/", 1)[0]
+        ] = str(int(sPrevMtime) + 1)
 
     # --- DockerConnection-shaped methods ---
 
@@ -75,13 +87,31 @@ class _MockDocker:
             return self.dictFiles[sPath]
         raise FileNotFoundError(sPath)
 
-    def fnWriteFile(self, sContainerId, sPath, baContent):
+    def fnWriteFile(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
         self.dictFiles[sPath] = baContent
-        # Simulate a slightly-later mtime on every write
+        # Simulate a slightly-later mtime on every write; bump the
+        # parent dir too (atomic write-rename semantics) so the
+        # parent-mtime cache invalidates correctly.
         sCurrent = self.dictMtimes.get(sPath, "1700000000")
-        self.dictMtimes[sPath] = str(int(sCurrent) + 1)
+        sNewMtime = str(int(sCurrent) + 1)
+        self.dictMtimes[sPath] = sNewMtime
+        self.dictMtimes[sPath.rsplit("/", 1)[0]] = sNewMtime
+
+    def fnWriteFileViaTar(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        self._sLastPathFile = (
+            baContent.decode("utf-8")
+            if isinstance(baContent, bytes) else baContent
+        )
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
+        if sCommand.startswith("xargs -d "):
+            return (0, self._fsBuildStatLinesFromFile())
         if sCommand.startswith("stat -c '%n %Y' "):
             return (0, self._fsBuildStatLines(sCommand))
         if sCommand.startswith("test -e ") and "exists:" in sCommand:
@@ -104,6 +134,14 @@ class _MockDocker:
         listLines = []
         for sPath, sMtime in self.dictMtimes.items():
             if "'" + sPath + "'" in sCommand:
+                listLines.append(f"{sPath} {sMtime}")
+        return "\n".join(listLines)
+
+    def _fsBuildStatLinesFromFile(self):
+        listLines = []
+        for sPath in self._sLastPathFile.strip().split("\n"):
+            sMtime = self.dictMtimes.get(sPath)
+            if sMtime:
                 listLines.append(f"{sPath} {sMtime}")
         return "\n".join(listLines)
 

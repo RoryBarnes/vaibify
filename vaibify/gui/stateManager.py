@@ -63,7 +63,11 @@ S_VAIBIFY_GITIGNORE_BODY = (
 )
 
 T_STATEFUL_STEP_FIELDS = ("dictVerification", "dictRunStats")
-T_STATEFUL_TOP_FIELDS = ("bArchiveTrackingMigrated", "iAICSLevel")
+T_STATEFUL_TOP_FIELDS = (
+    "bArchiveTrackingMigrated",
+    "iAICSLevel",
+    "bWarnedHundredSteps",
+)
 
 
 def fsStatePathFromRepo(sProjectRepoPath):
@@ -88,6 +92,7 @@ def fdictBuildEmptyState():
         "iStateSchemaVersion": I_CURRENT_STATE_SCHEMA_VERSION,
         "sLastUpdated": _fsCurrentUtcIso(),
         "dictStepState": {},
+        "bWarnedHundredSteps": False,
     }
 
 

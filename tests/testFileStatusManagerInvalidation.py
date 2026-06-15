@@ -10,7 +10,8 @@ from vaibify.gui.fileStatusManager import (
     _fbPlotNewerThanUserVerification,
     _fdictBuildScriptStatus,
     _fdictDetectChangedFiles,
-    _fdictStatBatch,
+    _fdictParseStatLines,
+    _fdictStatViaPathfile,
     _fiMarkerMtime,
     _flistDetectAndInvalidate,
     _flistNewerPaths,
@@ -349,24 +350,21 @@ def test_flistDetectAndInvalidate_no_save_when_no_changes():
 
 
 # ---------------------------------------------------------------
-# _fdictStatBatch: empty listPaths early return (line 721)
+# Single-exec stat helpers: empty input + line parsing
 # ---------------------------------------------------------------
 
 
-def test_fdictStatBatch_empty_paths_returns_empty():
+def test_fdictStatViaPathfile_empty_paths_returns_empty():
     mockDocker = MagicMock()
-    dictResult = _fdictStatBatch(mockDocker, "cid", [])
+    dictResult = _fdictStatViaPathfile(mockDocker, "cid", [])
     assert dictResult == {}
     mockDocker.ftResultExecuteCommand.assert_not_called()
+    mockDocker.fnWriteFileViaTar.assert_not_called()
 
 
-def test_fdictStatBatch_parses_stat_output():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (
-        0, "/ws/a.dat 123\n/ws/b.dat 456\n",
-    )
-    dictResult = _fdictStatBatch(
-        mockDocker, "cid", ["/ws/a.dat", "/ws/b.dat"],
+def test_fdictParseStatLines_parses_stat_output():
+    dictResult = _fdictParseStatLines(
+        "/ws/a.dat 123\n/ws/b.dat 456\n",
     )
     assert dictResult == {
         "/ws/a.dat": "123",
@@ -374,13 +372,9 @@ def test_fdictStatBatch_parses_stat_output():
     }
 
 
-def test_fdictStatBatch_skips_malformed_lines():
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (
-        0, "malformed_line_no_space\n/ws/good.dat 999\n\n",
-    )
-    dictResult = _fdictStatBatch(
-        mockDocker, "cid", ["/ws/good.dat"],
+def test_fdictParseStatLines_skips_malformed_lines():
+    dictResult = _fdictParseStatLines(
+        "malformed_line_no_space\n/ws/good.dat 999\n\n",
     )
     assert dictResult == {"/ws/good.dat": "999"}
 
