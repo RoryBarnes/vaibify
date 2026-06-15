@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.0.1.dev350 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.0.1.dev351 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=269345fc"></script>
+      <script src="_static/documentation_options.js?v=82ebc1e5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -51,7 +51,10 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Pipelines</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-file">Workflow File</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#step-object">Step Object</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-object">Step Object</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#workflow-size-limits">Workflow size limits</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#example">Example</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#core-allocation">Core Allocation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-a-pipeline">Running a Pipeline</a></li>
@@ -204,6 +207,24 @@ four top-level fields:</p>
 </tr>
 </tbody>
 </table>
+<section id="workflow-size-limits">
+<h3>Workflow size limits<a class="headerlink" href="#workflow-size-limits" title="Link to this heading"></a></h3>
+<p>Vaibify shows a one-shot “Workflow milestone” modal the first time a
+workflow’s <code class="docutils literal notranslate"><span class="pre">listSteps</span></code> reaches 100 entries. The acknowledgment is
+persisted in the project repo’s <code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code> as
+<code class="docutils literal notranslate"><span class="pre">bWarnedHundredSteps</span></code>, so the warning does not reappear on reload or
+on subsequent additions. The threshold exists because polling cost
+(file-status, repos, discovery) grows roughly linearly with the
+number of tracked outputs, scripts, and markers, and beyond about
+100 steps users typically notice some latency in the dashboard.</p>
+<p>Vaibify refuses to add a 501st step to any workflow. The dashboard
+shows a “Step limit reached” modal; the backend rejects direct API
+calls with HTTP 400. The rationale is that the per-poll Docker exec
+budget and the dashboard render budget both break down beyond this
+scale. If a project requires more than 500 steps, split it into
+sibling workflows within the same project repo — vaibify supports
+multiple workflows per container.</p>
+</section>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading"></a></h2>

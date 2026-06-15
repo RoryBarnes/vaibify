@@ -39,6 +39,7 @@ __all__ = [
     "testHashCheckRunsRegardlessOfMtime",
     "testMarkerCoversAllDeclaredOutputs",
     "testTemplateCommandsUseStepTokens",
+    "testStepCountCapEnforcedOnAddRoutes",
 ]
 
 
@@ -1932,3 +1933,46 @@ def testTemplateCommandsUseStepTokens():
             in listAllViolations
         )
     )
+
+
+def _fsExtractFunctionBody(sSource, sFunctionName):
+    """Return the slice of sSource starting at sFunctionName up to the next def."""
+    sMarker = f"async def {sFunctionName}"
+    iStart = sSource.find(sMarker)
+    if iStart < 0:
+        sMarker = f"def {sFunctionName}"
+        iStart = sSource.find(sMarker)
+    if iStart < 0:
+        return ""
+    iBodyStart = iStart + len(sMarker)
+    iNextAsync = sSource.find("\n    async def ", iBodyStart)
+    iNextSync = sSource.find("\n    def ", iBodyStart)
+    listEnds = [iEnd for iEnd in (iNextAsync, iNextSync) if iEnd > 0]
+    iEnd = min(listEnds) if listEnds else len(sSource)
+    return sSource[iBodyStart:iEnd]
+
+
+def testStepCountCapEnforcedOnAddRoutes():
+    """Both fnCreateStep and fnInsertStep must reference _I_STEP_COUNT_MAX.
+
+    The 500-step hard cap is server-authoritative: the client UX
+    check can be bypassed by a direct API call, so the routes that
+    add steps must each enforce the cap. Static substring assertion
+    against the source of each function body is sufficient.
+    """
+    sPath = GUI_DIR / "routes" / "stepRoutes.py"
+    sSource = Path(sPath).read_text(encoding="utf-8")
+    for sFunctionName in ("fnCreateStep", "fnInsertStep"):
+        sBody = _fsExtractFunctionBody(sSource, sFunctionName)
+        assert sBody, (
+            f"{sFunctionName} not found in stepRoutes.py — cannot "
+            f"verify the 500-step cap is enforced."
+        )
+        bDirect = "_I_STEP_COUNT_MAX" in sBody
+        bViaHelper = "_fnRaiseIfAtStepCap" in sBody
+        assert bDirect or bViaHelper, (
+            f"{sFunctionName} in stepRoutes.py does not reference "
+            f"_I_STEP_COUNT_MAX or _fnRaiseIfAtStepCap. The 500-step "
+            f"hard cap must be enforced server-side in every "
+            f"step-adding route."
+        )
