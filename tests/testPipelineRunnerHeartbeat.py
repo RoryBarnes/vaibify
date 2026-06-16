@@ -94,17 +94,16 @@ def test_heartbeat_silent_for_instant_command(monkeypatch):
     assert listBeats == []
 
 
-def test_run_single_command_streams_output_progressively():
-    """An output line arrives before the streaming exec returns.
+def test_run_single_command_drains_pending_batch_on_teardown():
+    """All output lines reach the callback by the time the command returns.
 
-    ``fnEmitChunk`` schedules each callback on the event loop via
-    ``run_coroutine_threadsafe`` and blocks the worker thread until it
-    finishes. So by the time the worker reaches its second
-    ``fnEmitChunk`` call, the first line must already have been
-    appended to ``listEvents`` by the loop's task queue.
+    The coalescing emitter introduced in the 2026-06 network slice
+    buffers small line bursts to collapse the per-line WS frame
+    overhead. The wire contract still requires that the per-command
+    teardown drains the buffer before the run progresses — otherwise
+    log lines emitted by a short command would be silently dropped.
     """
     listEvents = []
-    dictWitness = {"iSeenWhenSecondQueued": -1}
 
     async def fnCallback(dictEvent):
         listEvents.append(dictEvent)
@@ -116,7 +115,6 @@ def test_run_single_command_streams_output_progressively():
         sWorkdir=None, sUser=None,
     ):
         fnEmitChunk("stdout", "first")
-        dictWitness["iSeenWhenSecondQueued"] = len(listEvents)
         fnEmitChunk("stdout", "second")
         return ExecResult(
             iExitCode=0, sStdout="first\nsecond", sStderr="",
@@ -128,28 +126,15 @@ def test_run_single_command_streams_output_progressively():
     asyncio.run(_ftRunSingleCommand(
         mockDocker, "cid", "cmd", "cmd", "/work", fnCallback,
     ))
-    listOutputs = [
-        d["sLine"] for d in listEvents if d.get("sType") == "output"
-    ]
-    iIndexFirst = listOutputs.index("first")
-    iIndexSecond = listOutputs.index("second")
-    assert iIndexFirst < iIndexSecond
-    # ``iSeenWhenSecondQueued`` is the size of the captured-event list
-    # at the instant the worker thread queued the second chunk. It
-    # must be strictly greater than the size before the first emit
-    # call, which proves the first emit landed before the second was
-    # queued — i.e. delivery was progressive rather than batched.
-    assert (
-        dictWitness["iSeenWhenSecondQueued"]
-        > 0
-        and any(
-            d.get("sLine") == "first"
-            for d in listEvents[:dictWitness["iSeenWhenSecondQueued"]]
-        )
-    ), (
-        "first output event was not dispatched before the second "
-        "fnEmitChunk call returned to the worker thread"
-    )
+    listAllLines = []
+    for dictEvent in listEvents:
+        if dictEvent.get("sType") == "outputBatch":
+            listAllLines.extend(dictEvent.get("listLines", []))
+        elif dictEvent.get("sType") == "output":
+            listAllLines.append(dictEvent["sLine"])
+    assert "first" in listAllLines
+    assert "second" in listAllLines
+    assert listAllLines.index("first") < listAllLines.index("second")
 
 
 def test_heartbeat_callback_exception_does_not_break_command(monkeypatch):

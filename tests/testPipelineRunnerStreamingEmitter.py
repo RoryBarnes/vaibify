@@ -153,12 +153,16 @@ def test_batching_emitter_coalesces_lines_within_window():
 
     loop, threadLoop = _ftupleLoopInBackground()
     dictAccum = {"fCpu": 0.0}
-    fnEmit, fnFlush = _ftBuildBatchingEmitter(
+    fnEmit, faDrain = _ftBuildBatchingEmitter(
         fnCallback, loop, dictAccum)
     try:
         for iLine in range(50):
             fnEmit("stdout", "line " + str(iLine))
-        fnFlush()
+        # Worker-thread path already flushed the size-threshold
+        # batch; teardown drain has nothing pending to ship.
+        asyncio.run_coroutine_threadsafe(
+            faDrain(), loop,
+        ).result()
     finally:
         _fnStopLoop(loop, threadLoop)
 
@@ -167,8 +171,8 @@ def test_batching_emitter_coalesces_lines_within_window():
     assert len(listEvents[0]["listLines"]) == 50
 
 
-def test_batching_emitter_flush_drains_pending_buffer():
-    """fnFlushPending must emit a partial buffer (lines below threshold)."""
+def test_batching_emitter_drain_emits_partial_buffer():
+    """faDrainPending must ship a sub-threshold buffer on teardown."""
     from vaibify.gui.pipelineRunner import _ftBuildBatchingEmitter
 
     listEvents = []
@@ -178,12 +182,14 @@ def test_batching_emitter_flush_drains_pending_buffer():
 
     loop, threadLoop = _ftupleLoopInBackground()
     dictAccum = {"fCpu": 0.0}
-    fnEmit, fnFlush = _ftBuildBatchingEmitter(
+    fnEmit, faDrain = _ftBuildBatchingEmitter(
         fnCallback, loop, dictAccum)
     try:
         fnEmit("stdout", "single")
         assert listEvents == []
-        fnFlush()
+        asyncio.run_coroutine_threadsafe(
+            faDrain(), loop,
+        ).result()
     finally:
         _fnStopLoop(loop, threadLoop)
 
@@ -206,7 +212,7 @@ def test_batching_emitter_flushes_after_time_window():
 
     loop, threadLoop = _ftupleLoopInBackground()
     dictAccum = {"fCpu": 0.0}
-    fnEmit, fnFlush = _ftBuildBatchingEmitter(
+    fnEmit, _faDrain = _ftBuildBatchingEmitter(
         fnCallback, loop, dictAccum)
     try:
         fnEmit("stdout", "first")

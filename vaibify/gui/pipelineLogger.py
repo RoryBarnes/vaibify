@@ -51,8 +51,8 @@ def ffBuildLoggingCallback(fnOriginalCallback, listLogLines):
 
     async def fnLoggingCallback(dictEvent):
         await fnOriginalCallback(dictEvent)
-        sLine = _fsExtractLogLine(dictEvent)
-        if sLine is not None:
+        listLines = _flistExtractLogLines(dictEvent)
+        for sLine in listLines:
             sLineCapped = _fsCapLineBytes(sLine, I_LOG_LINE_BYTE_CAP)
             _fnAppendLogLineWithBudget(
                 listLogLines, sLineCapped, dictByteAccum,
@@ -94,13 +94,29 @@ def _fnAppendLogLineWithBudget(listLogLines, sLine, dictByteAccum):
 
 
 def _fsExtractLogLine(dictEvent):
-    """Return the log line from a pipeline event, or None."""
+    """Return the log line from a pipeline event, or None.
+
+    Single-line shim kept for legacy callers that expect one line per
+    event; new ``outputBatch`` events carry many lines and must go
+    through :func:`_flistExtractLogLines`.
+    """
     if dictEvent.get("sType") == "output":
         return dictEvent.get("sLine", "")
     if dictEvent.get("sType") == "commandFailed":
         return (f"FAILED: {dictEvent.get('sCommand', '')} "
                 f"(exit {dictEvent.get('iExitCode', '?')})")
     return None
+
+
+def _flistExtractLogLines(dictEvent):
+    """Return zero or more log lines from a pipeline event."""
+    sType = dictEvent.get("sType")
+    if sType == "outputBatch":
+        return list(dictEvent.get("listLines") or [])
+    sLine = _fsExtractLogLine(dictEvent)
+    if sLine is None:
+        return []
+    return [sLine]
 
 
 async def fnWriteLogToContainer(
@@ -278,6 +294,9 @@ def _fnDispatchEventToWriter(stateWriter, dictEvent):
     sEventType = dictEvent.get("sType", "")
     if sEventType == "output":
         stateWriter.fnEnqueueOutputLine(dictEvent.get("sLine", ""))
+    elif sEventType == "outputBatch":
+        for sLine in (dictEvent.get("listLines") or []):
+            stateWriter.fnEnqueueOutputLine(sLine)
     elif sEventType == "stepStarted":
         stateWriter.fnEnqueueUpdate(
             pipelineState.fdictBuildStepStarted(dictEvent["iStepNumber"])
@@ -301,6 +320,12 @@ def _fnDispatchEventInline(
         with lockState:
             pipelineState.fnAppendOutput(
                 dictState, dictEvent.get("sLine", ""))
+    elif sEventType == "outputBatch":
+        listLines = dictEvent.get("listLines") or []
+        if listLines:
+            with lockState:
+                for sLine in listLines:
+                    pipelineState.fnAppendOutput(dictState, sLine)
     elif sEventType == "stepStarted":
         with lockState:
             pipelineState.fnUpdateState(

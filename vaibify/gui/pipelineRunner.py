@@ -288,7 +288,7 @@ async def _ftRunSingleCommand(
     sTimedCmd = _fsWrapWithTime(sEnvPrefix + sResolved)
     loopMain = asyncio.get_running_loop()
     dictAccum = {"fCpu": 0.0}
-    fnEmitChunk, fnFlushPending = _ftBuildBatchingEmitter(
+    fnEmitChunk, faDrainPending = _ftBuildBatchingEmitter(
         fnStatusCallback, loopMain, dictAccum,
     )
     async with _actxWebSocketHeartbeat(fnStatusCallback):
@@ -299,7 +299,7 @@ async def _ftRunSingleCommand(
                 sWorkdir=sWorkdir,
             )
         finally:
-            fnFlushPending()
+            await faDrainPending()
     if resultExec.iExitCode != 0:
         await fnStatusCallback({
             "sType": "commandFailed",
@@ -319,18 +319,21 @@ F_BATCH_MAX_INTERVAL_SECONDS = 0.1
 
 
 def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
-    """Build a (fnEmitChunk, fnFlushPending) pair that coalesces lines.
+    """Build a ``(fnEmitChunk, faDrainPending)`` pair that coalesces lines.
 
     Lines arriving on the worker thread are accumulated into a buffer
     and flushed as a single ``{"sType": "outputBatch", "listLines":
     [...]}`` event when the buffer reaches ``I_BATCH_MAX_LINES`` or
     ``F_BATCH_MAX_INTERVAL_SECONDS`` have elapsed since the first
-    un-flushed line. ``fnFlushPending`` empties the buffer on
-    per-command teardown so no lines are stuck after the docker exec
-    returns. Errors forwarding a batch (WS closed, MemoryError on a
-    huge scientific line, asyncio cancellation) are logged exactly
-    once; subsequent chunks become no-ops so the producer worker
-    finishes the docker exec instead of tearing the whole run down.
+    un-flushed line. ``faDrainPending`` is an async coroutine that
+    empties the buffer on per-command teardown so no lines are stuck
+    after the docker exec returns; it must be ``await``-ed from the
+    event-loop thread (the same thread that runs the docker
+    ``asyncio.to_thread`` await). Errors forwarding a batch (WS
+    closed, MemoryError on a huge scientific line, asyncio
+    cancellation) are logged exactly once; subsequent chunks become
+    no-ops so the producer worker finishes the docker exec instead of
+    tearing the whole run down.
     """
     dictBatch = {
         "listLines": [], "fFirstLineAt": 0.0, "bDisabled": False,
@@ -347,21 +350,22 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
             dictBatch, lockBuffer, sLine,
         )
         if listToSend:
-            _fnFlushBatchToCallback(
+            _fnFlushBatchFromWorker(
                 dictBatch, fnStatusCallback, loopMain, listToSend,
             )
 
-    def fnFlushPending():
+    async def faDrainPending():
         with lockBuffer:
             listToSend = dictBatch["listLines"]
             dictBatch["listLines"] = []
             dictBatch["fFirstLineAt"] = 0.0
-        if listToSend and not dictBatch["bDisabled"]:
-            _fnFlushBatchToCallback(
-                dictBatch, fnStatusCallback, loopMain, listToSend,
-            )
+        if not listToSend or dictBatch["bDisabled"]:
+            return
+        await _faFlushBatchFromLoop(
+            dictBatch, fnStatusCallback, listToSend,
+        )
 
-    return fnEmitChunk, fnFlushPending
+    return fnEmitChunk, faDrainPending
 
 
 def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
@@ -383,10 +387,15 @@ def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
         return listDrained
 
 
-def _fnFlushBatchToCallback(
+def _fnFlushBatchFromWorker(
     dictBatch, fnStatusCallback, loopMain, listLines,
 ):
-    """Ship one batch via ``run_coroutine_threadsafe``; disable on error."""
+    """Ship one batch via ``run_coroutine_threadsafe``; disable on error.
+
+    Called from the docker-py streaming worker thread, NOT the event
+    loop thread; ``future.result()`` is therefore safe (it blocks the
+    worker while the loop services the coroutine).
+    """
     try:
         future = asyncio.run_coroutine_threadsafe(
             fnStatusCallback(
@@ -403,24 +412,54 @@ def _fnFlushBatchToCallback(
         )
 
 
+async def _faFlushBatchFromLoop(
+    dictBatch, fnStatusCallback, listLines,
+):
+    """Await one batch directly on the event-loop thread.
+
+    The teardown path runs on the same loop that the docker
+    ``asyncio.to_thread`` was awaited on, so we must NOT use
+    ``run_coroutine_threadsafe`` + ``.result()`` (which would
+    deadlock the loop). Awaiting the coroutine in place is the safe
+    equivalent.
+    """
+    try:
+        await fnStatusCallback(
+            {"sType": "outputBatch", "listLines": listLines}
+        )
+    except BaseException as error:
+        dictBatch["bDisabled"] = True
+        logging.getLogger("vaibify").warning(
+            "streaming chunk emitter disabled after error: %s",
+            error,
+        )
+
+
 def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
     """Backwards-compatible shim that flushes after every line.
 
     Production callers should use :func:`_ftBuildBatchingEmitter` to
-    benefit from the per-100ms / 50-line coalescing. This shim exists
-    for callers that imported the symbol directly and treat the
-    emitter as a one-line-at-a-time forwarder; each emit triggers an
-    immediate batch-of-one flush so the dispatched event shape
-    matches the production contract (``outputBatch`` with
-    ``listLines``).
+    benefit from the per-100ms / 50-line coalescing and the matching
+    ``faDrainPending`` async teardown. This shim exists for callers
+    that imported the symbol directly and treat the emitter as a
+    one-line-at-a-time forwarder; each emit triggers an immediate
+    batch-of-one flush so the dispatched event shape matches the
+    production contract (``outputBatch`` with ``listLines``). The
+    shim assumes ``loopMain`` is running on a different thread than
+    the caller, which is always true for the docker streaming worker
+    callbacks and for the legacy emitter tests.
     """
-    fnEmitChunk, fnFlushPending = _ftBuildBatchingEmitter(
-        fnStatusCallback, loopMain, dictAccum,
-    )
+    dictBatch = {"bDisabled": False}
 
     def fnEmitOne(sStream, sLine):
-        fnEmitChunk(sStream, sLine)
-        fnFlushPending()
+        if sLine.startswith("__VAIBIFY_CPU__ "):
+            dictAccum["fCpu"] = _fParseCpuTime(sLine)
+            return
+        if dictBatch["bDisabled"]:
+            return
+        _fnFlushBatchFromWorker(
+            dictBatch, fnStatusCallback, loopMain, [sLine],
+        )
 
     return fnEmitOne
 

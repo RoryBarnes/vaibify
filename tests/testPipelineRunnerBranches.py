@@ -76,9 +76,15 @@ def test_ftRunSingleCommand_cpu_line_not_emitted_as_output():
     ))
     assert iResult == 0
     # The CPU line is extracted for timing but never forwarded as output.
-    listOutputLines = [
-        d["sLine"] for d in listCaptured if d.get("sType") == "output"
-    ]
+    # Output is now delivered as coalesced ``outputBatch`` events
+    # carrying ``listLines``; legacy single-line ``output`` events
+    # remain a backward-compat fallback path.
+    listOutputLines = []
+    for dictEvent in listCaptured:
+        if dictEvent.get("sType") == "outputBatch":
+            listOutputLines.extend(dictEvent.get("listLines", []))
+        elif dictEvent.get("sType") == "output":
+            listOutputLines.append(dictEvent["sLine"])
     assert "before" in listOutputLines
     assert "after" in listOutputLines
     for sLine in listOutputLines:
