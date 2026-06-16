@@ -13,6 +13,7 @@ __all__ = [
     "fdictMapOutputTokenStems",
     "fsShellQuote",
     "fsLabelFromStepIndex",
+    "flistComputeAllStepLabels",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
     "fdictWorkflowWithLabels",
@@ -81,20 +82,36 @@ def fsLabelFromStepIndex(dictWorkflow, iStepIndex):
 
     Labels are per-type sequential: ``A09`` means the 9th automated
     step, ``I01`` means the 1st interactive step. See ``CLAUDE.md``
-    Traps for why this differs from ``listSteps[index]``.
+    Traps for why this differs from ``listSteps[index]``. For bulk
+    label computation prefer ``flistComputeAllStepLabels`` so the
+    pre-scan amortizes across the whole workflow.
     """
     listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return f"{iStepIndex + 1:02d}"
-    bInteractive = listSteps[iStepIndex].get("bInteractive", False)
-    sPrefix = "I" if bInteractive else "A"
-    iCount = 0
-    for iPos in range(iStepIndex + 1):
-        bSameType = listSteps[iPos].get(
-            "bInteractive", False) == bInteractive
-        if bSameType:
-            iCount += 1
-    return f"{sPrefix}{iCount:02d}"
+    listLabels = flistComputeAllStepLabels(listSteps)
+    return listLabels[iStepIndex]
+
+
+def flistComputeAllStepLabels(listSteps):
+    """Return per-step labels in one linear pass over ``listSteps``.
+
+    Counts automated and interactive steps inline so the whole label
+    vector is produced in O(N) time instead of the historical O(N**2)
+    cost incurred by per-step ``fsLabelFromStepIndex`` calls.
+    """
+    listLabels = []
+    iAutomated = 0
+    iInteractive = 0
+    for dictStep in listSteps:
+        bInteractive = dictStep.get("bInteractive", False)
+        if bInteractive:
+            iInteractive += 1
+            listLabels.append(f"I{iInteractive:02d}")
+        else:
+            iAutomated += 1
+            listLabels.append(f"A{iAutomated:02d}")
+    return listLabels
 
 
 def fiStepIndexFromLabel(dictWorkflow, sLabel):
@@ -148,10 +165,11 @@ def flistStepsWithLabels(dictWorkflow):
     ``workflow.json``.
     """
     listSteps = dictWorkflow.get("listSteps", [])
+    listLabels = flistComputeAllStepLabels(listSteps)
     listOut = []
     for iIndex, dictStep in enumerate(listSteps):
         dictCopy = dict(dictStep)
-        dictCopy["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iIndex)
+        dictCopy["sLabel"] = listLabels[iIndex]
         listOut.append(dictCopy)
     return listOut
 
@@ -178,10 +196,10 @@ def fnAttachStepLabels(dictWorkflow):
     is always fresh — insertions, deletions, or reorderings produce
     the correct per-type-sequential label on the next save.
     """
-    for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", []),
-    ):
-        dictStep["sLabel"] = fsLabelFromStepIndex(dictWorkflow, iIndex)
+    listSteps = dictWorkflow.get("listSteps", [])
+    listLabels = flistComputeAllStepLabels(listSteps)
+    for iIndex, dictStep in enumerate(listSteps):
+        dictStep["sLabel"] = listLabels[iIndex]
 
 
 def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0):
