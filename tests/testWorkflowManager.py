@@ -771,3 +771,117 @@ class TestOutputTokenStemCollisions:
         sKey = "Step01.EngleBarnes_Converged_Param_Dictionary"
         assert dictVars[sKey].endswith(
             "EngleBarnes/output/Converged_Param_Dictionary.json")
+
+
+# ---------------------------------------------------------------
+# audit MEDIUM #16: generic scratch-cleanup hook
+# ---------------------------------------------------------------
+
+
+def test_flistResolveStepScratchDirs_joins_to_step_workdir():
+    from vaibify.gui.workflowManager import flistResolveStepScratchDirs
+    dictStep = {"sDirectory": "stepA", "saScratchDirs": ["tmp", "cache"]}
+    listAbs = flistResolveStepScratchDirs(
+        dictStep, {"sRepoRoot": "/repo"},
+    )
+    assert listAbs == ["/repo/stepA/tmp", "/repo/stepA/cache"]
+
+
+def test_flistResolveStepScratchDirs_skips_absolute_entries():
+    from vaibify.gui.workflowManager import flistResolveStepScratchDirs
+    dictStep = {"sDirectory": "stepA", "saScratchDirs": ["/etc", "ok"]}
+    listAbs = flistResolveStepScratchDirs(
+        dictStep, {"sRepoRoot": "/repo"},
+    )
+    assert listAbs == ["/repo/stepA/ok"]
+
+
+def test_flistResolveStepScratchDirs_empty_when_absent():
+    from vaibify.gui.workflowManager import flistResolveStepScratchDirs
+    dictStep = {"sDirectory": "stepA"}
+    assert flistResolveStepScratchDirs(dictStep, {}) == []
+
+
+def test_fnCleanStepScratchDirs_invokes_rm_rf_per_path():
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnCleanStepScratchDirs
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    dictStep = {"sDirectory": "stepA", "saScratchDirs": ["tmp", "cache"]}
+    listResults = fnCleanStepScratchDirs(
+        mockDocker, "cid", dictStep, {"sRepoRoot": "/repo"},
+    )
+    assert listResults == [
+        ("/repo/stepA/tmp", 0),
+        ("/repo/stepA/cache", 0),
+    ]
+    listCommands = [
+        tCall[0][1]
+        for tCall in mockDocker.ftResultExecuteCommand.call_args_list
+    ]
+    assert all(sCmd.startswith("rm -rf -- ") for sCmd in listCommands)
+    assert any("/repo/stepA/tmp" in sCmd for sCmd in listCommands)
+
+
+def test_fnCleanStepScratchDirs_returns_empty_when_absent():
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnCleanStepScratchDirs
+    mockDocker = MagicMock()
+    dictStep = {"sDirectory": "stepA"}
+    listResults = fnCleanStepScratchDirs(mockDocker, "cid", dictStep, {})
+    assert listResults == []
+    mockDocker.ftResultExecuteCommand.assert_not_called()
+
+
+def test_fnCleanStepScratchDirs_reports_nonzero_exit():
+    from unittest.mock import MagicMock
+    from vaibify.gui.workflowManager import fnCleanStepScratchDirs
+    mockDocker = MagicMock()
+    mockDocker.ftResultExecuteCommand.return_value = (1, "missing")
+    dictStep = {"sDirectory": "stepA", "saScratchDirs": ["tmp"]}
+    listResults = fnCleanStepScratchDirs(
+        mockDocker, "cid", dictStep, {"sRepoRoot": "/repo"},
+    )
+    assert listResults == [("/repo/stepA/tmp", 1)]
+
+
+def test_validate_rejects_absolute_scratch_dir():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "A", "sDirectory": "stepA",
+            "saScratchDirs": ["/etc/passwd"],
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+        "sPlotDirectory": "plots",
+    }
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert any("saScratchDirs" in sW for sW in listWarnings)
+
+
+def test_validate_rejects_escaping_scratch_dir():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "A", "sDirectory": "stepA",
+            "saScratchDirs": ["../../escape"],
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+        "sPlotDirectory": "plots",
+    }
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert any("saScratchDirs" in sW for sW in listWarnings)
+
+
+def test_validate_accepts_repo_relative_scratch_dir():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "A", "sDirectory": "stepA",
+            "saScratchDirs": ["tmp"],
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+        "sPlotDirectory": "plots",
+    }
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert not any("saScratchDirs" in sW for sW in listWarnings)

@@ -57,7 +57,9 @@ __all__ = [
     "flistFindWorkflowsInContainer",
     "flistResolveOutputFiles",
     "flistResolveTestCommands",
+    "flistResolveStepScratchDirs",
     "flistValidateOutputFilePaths",
+    "fnCleanStepScratchDirs",
     "flistValidateReferences",
     "flistValidateStepDirectories",
     "fnDeleteStep",
@@ -465,9 +467,9 @@ def fsDescribeValidationFailure(dictWorkflow):
 def flistValidateOutputFilePaths(dictWorkflow):
     """Return warnings for output paths that leave the project repo.
 
-    Scans ``saOutputFiles``, ``saDataFiles``, and ``saPlotFiles`` on
-    every step plus ``listDatasets[].sDestination`` and the
-    workflow-level ``sPlotDirectory``. Absolute paths and
+    Scans ``saOutputFiles``, ``saDataFiles``, ``saPlotFiles``, and
+    ``saScratchDirs`` on every step plus ``listDatasets[].sDestination``
+    and the workflow-level ``sPlotDirectory``. Absolute paths and
     ``..``-escaping paths are flagged; template-bearing paths
     (containing ``{``) are skipped because they are resolved against
     the global variables dict at run time.
@@ -476,7 +478,9 @@ def flistValidateOutputFilePaths(dictWorkflow):
     for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
         sLabel = f"Step{iIndex + 1:02d}"
         sDirectory = dictStep.get("sDirectory", "")
-        for sKey in ("saOutputFiles", "saDataFiles", "saPlotFiles"):
+        for sKey in (
+            "saOutputFiles", "saDataFiles", "saPlotFiles", "saScratchDirs",
+        ):
             for sPath in dictStep.get(sKey, []):
                 sWarning = _fsCheckOutputPathBoundary(
                     sPath, sDirectory, sLabel, sKey,
@@ -1130,6 +1134,73 @@ def fsResolveStepWorkdir(sStepDirectory, dictVariables):
     if not sRepoRoot:
         return sStepDirectory
     return posixpath.join(sRepoRoot, sStepDirectory)
+
+
+# ---------------------------------------------------------------------------
+# audit MEDIUM #16: generic scratch-cleanup hook
+# ---------------------------------------------------------------------------
+
+
+def _fsResolveOneScratchDir(sPath, sStepWorkdir, dictVariables):
+    """Resolve one scratch path; return empty string when invalid."""
+    sResolved = fsResolveVariables(sPath, dictVariables or {})
+    if not sResolved or posixpath.isabs(sResolved):
+        return ""
+    return posixpath.join(sStepWorkdir, sResolved)
+
+
+def flistResolveStepScratchDirs(dictStep, dictVariables):
+    """Return absolute container paths to delete before a step runs.
+
+    Each entry in ``saScratchDirs`` is a repo-relative path joined to
+    the step's ``sDirectory``. Template-bearing entries are resolved
+    against ``dictVariables``. Returns an empty list when
+    ``saScratchDirs`` is absent or empty.
+    """
+    listRaw = dictStep.get("saScratchDirs", []) or []
+    sStepWorkdir = fsResolveStepWorkdir(
+        dictStep.get("sDirectory", ""), dictVariables,
+    )
+    listResolved = []
+    for sPath in listRaw:
+        sAbsolute = _fsResolveOneScratchDir(
+            sPath, sStepWorkdir, dictVariables,
+        )
+        if sAbsolute:
+            listResolved.append(sAbsolute)
+    return listResolved
+
+
+def _fnRmRfDirectory(connectionDocker, sContainerId, sAbsPath):
+    """rm -rf one absolute path inside the container; return exit code."""
+    sShellSafe = sAbsPath.replace("'", "'\"'\"'")
+    sCommand = f"rm -rf -- '{sShellSafe}'"
+    iExitCode, _sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    return iExitCode
+
+
+def fnCleanStepScratchDirs(
+    connectionDocker, sContainerId, dictStep, dictVariables,
+):
+    """Recursively delete a step's saScratchDirs in the container.
+
+    Contract for audit MEDIUM #16: the runner calls this at step-start,
+    before invoking the step's commands, so per-run scratch state from
+    an earlier crashed attempt cannot poison the next run. Each
+    deletion is one ``rm -rf`` via ``ftResultExecuteCommand``. Returns
+    a list of (sAbsPath, iExitCode) tuples; missing dirs surface as
+    non-zero exits and are never raised — that is the normal
+    pre-clean case. Runner integration can land later.
+    """
+    listAbsPaths = flistResolveStepScratchDirs(dictStep, dictVariables)
+    return [
+        (sAbsPath, _fnRmRfDirectory(
+            connectionDocker, sContainerId, sAbsPath,
+        ))
+        for sAbsPath in listAbsPaths
+    ]
 
 
 def flistFilterFigureFiles(listOutputPaths):
