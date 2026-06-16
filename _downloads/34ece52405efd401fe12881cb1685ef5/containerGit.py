@@ -24,6 +24,7 @@ import json
 import posixpath
 import re
 import shlex
+import time
 
 from . import gitStatus
 
@@ -31,6 +32,8 @@ __all__ = [
     "S_CONTAINER_WORKSPACE",
     "fdictGitStatusInContainer",
     "fdictComputeBlobShasInContainer",
+    "fdictProbePushOutcome",
+    "fdictRemoteHeadsInContainer",
     "flistListContainerFiles",
     "fsDetectProjectRepoInContainer",
     "fsRemoteUrlInContainer",
@@ -349,6 +352,141 @@ def _fsStripUrlUserinfo(sUrl):
     if not sUrl:
         return ""
     return re.sub(r"(https?://)[^/\s@]+@", r"\1", sUrl, flags=re.I)
+
+
+def _ftParseAheadBehindCounts(sLine):
+    """Parse 'iAhead<TAB>iBehind' emitted by git rev-list --left-right --count."""
+    listParts = (sLine or "").split()
+    if len(listParts) != 2:
+        return (None, None)
+    try:
+        return (int(listParts[0]), int(listParts[1]))
+    except ValueError:
+        return (None, None)
+
+
+def _fdictProbePushOnce(connectionDocker, sContainerId, sWorkspace):
+    """Run one HEAD + ahead/behind probe; return None when inconclusive."""
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git rev-parse HEAD && "
+        "git rev-list --left-right --count 'HEAD...@{upstream}'"
+    )
+    try:
+        iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+    except Exception:
+        return None
+    if iExit != 0:
+        return None
+    listLines = [
+        sLine for sLine in (sOutput or "").strip().splitlines()
+        if sLine.strip()
+    ]
+    if len(listLines) < 2:
+        return None
+    iAhead, iBehind = _ftParseAheadBehindCounts(listLines[-1])
+    if iAhead is None:
+        return None
+    return {
+        "sHeadSha": listLines[0].strip(),
+        "iAhead": iAhead,
+        "iBehind": iBehind,
+    }
+
+
+def fdictProbePushOutcome(
+    connectionDocker, sContainerId, sWorkspace=S_CONTAINER_WORKSPACE,
+    iAttempts=3, fDelaySeconds=2.0,
+):
+    """Probe whether an interrupted push actually reached the upstream.
+
+    Used when the host-side ``docker exec`` for a push raised (e.g. a
+    read timeout) while the push may still have completed inside the
+    container. Retries a bounded number of times because the original
+    exec can still be finishing. ``bPushLanded`` is True only when a
+    conclusive probe shows zero commits ahead of ``@{upstream}`` —
+    the probe never fabricates success.
+    """
+    dictProbe = {
+        "bProbeConclusive": False, "bPushLanded": False,
+        "sHeadSha": "", "iAhead": -1, "iBehind": -1,
+    }
+    for iAttempt in range(max(1, iAttempts)):
+        if iAttempt > 0:
+            time.sleep(fDelaySeconds)
+        dictOnce = _fdictProbePushOnce(
+            connectionDocker, sContainerId, sWorkspace,
+        )
+        if dictOnce is None:
+            continue
+        dictProbe.update(dictOnce)
+        dictProbe["bProbeConclusive"] = True
+        if dictProbe["iAhead"] == 0:
+            dictProbe["bPushLanded"] = True
+            return dictProbe
+    return dictProbe
+
+
+def _ftSplitShaAndCommitDate(sLine):
+    """Split one 'sha date' git log line; '-' placeholders become ''."""
+    listParts = (sLine or "").strip().split()
+    sSha = listParts[0] if listParts else ""
+    sDate = listParts[1] if len(listParts) > 1 else ""
+    if sSha == "-":
+        sSha = ""
+    if sDate == "-":
+        sDate = ""
+    return (sSha, sDate)
+
+
+def _fdictParseRemoteHeads(sOutput):
+    """Parse the three-line remote-heads probe into a response dict."""
+    listLines = [
+        sLine for sLine in (sOutput or "").strip().splitlines()
+        if sLine.strip()
+    ]
+    if len(listLines) < 3:
+        return {"bSuccess": False, "sReason": "unexpected git output"}
+    tHead = _ftSplitShaAndCommitDate(listLines[0])
+    tUpstream = _ftSplitShaAndCommitDate(listLines[1])
+    iAhead, iBehind = _ftParseAheadBehindCounts(listLines[2])
+    return {
+        "bSuccess": True,
+        "sHeadSha": tHead[0], "sHeadCommittedAt": tHead[1],
+        "sUpstreamSha": tUpstream[0],
+        "sUpstreamCommittedAt": tUpstream[1],
+        "iAhead": iAhead if iAhead is not None else 0,
+        "iBehind": iBehind if iBehind is not None else 0,
+        "sRefreshedAt": gitStatus._fsUtcNow(),
+    }
+
+
+def fdictRemoteHeadsInContainer(
+    connectionDocker, sContainerId, sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """Return HEAD and upstream shas, committer dates, and ahead/behind.
+
+    Single docker exec so the dashboard can reconcile against the
+    freshly fetched remote-tracking refs in one round trip. The
+    upstream lines fall back to '-' placeholders when no upstream is
+    configured, which parse to empty strings rather than failing.
+    """
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git log -1 --format='%H %cI' HEAD && "
+        "{ git log -1 --format='%H %cI' '@{upstream}' 2>/dev/null"
+        " || echo '- -'; } && "
+        "{ git rev-list --left-right --count 'HEAD...@{upstream}'"
+        " 2>/dev/null || printf '0\\t0\\n'; }"
+    )
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExit != 0:
+        return {"bSuccess": False, "sReason": (sOutput or "").strip()}
+    return _fdictParseRemoteHeads(sOutput)
 
 
 def ftResultGitPullFastForwardInContainer(

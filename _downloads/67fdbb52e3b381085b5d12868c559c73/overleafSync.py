@@ -97,15 +97,23 @@ S_OVERLEAF_PUSH_MANIFEST_FILENAME = "overleafPushManifest.json"
 _S_VAIBIFY_DIRECTORY = ".vaibify"
 
 
-def _fsPushManifestPath(sProjectRepoPath):
-    """Return the absolute path of the Overleaf push manifest file."""
-    return os.path.join(
-        sProjectRepoPath, _S_VAIBIFY_DIRECTORY,
-        S_OVERLEAF_PUSH_MANIFEST_FILENAME,
-    )
+def _ffilesEnsurePushManifestRepo(filesRepo):
+    """Wrap a repo path/adapter for the push-manifest helpers.
+
+    Lazy import so the standalone container-script invocation of this
+    module (which cannot import from ``vaibify``) stays importable;
+    the push-manifest helpers are host-process-only callers.
+    """
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    return ffilesEnsureRepoFiles(filesRepo)
 
 
-def flistOverleafPushedFiguresAt(sProjectRepoPath, sCommitHash):
+def _fsPushManifestRelativePath():
+    """Return the repo-relative path of the Overleaf push manifest file."""
+    return _S_VAIBIFY_DIRECTORY + "/" + S_OVERLEAF_PUSH_MANIFEST_FILENAME
+
+
+def flistOverleafPushedFiguresAt(filesRepo, sCommitHash):
     """Return repo-relative plot paths pushed to Overleaf at ``sCommitHash``.
 
     The manifest is a JSON object of the shape
@@ -115,10 +123,10 @@ def flistOverleafPushedFiguresAt(sProjectRepoPath, sCommitHash):
     no entry for the requested commit so callers can treat the absence
     of evidence as "nothing pushed for that commit".
     """
-    if not sProjectRepoPath or not sCommitHash:
+    if not sCommitHash:
         return []
-    sPath = _fsPushManifestPath(sProjectRepoPath)
-    dictAll = _fdictReadPushManifest(sPath)
+    filesRepo = _ffilesEnsurePushManifestRepo(filesRepo)
+    dictAll = _fdictReadPushManifest(filesRepo)
     listPaths = dictAll.get(sCommitHash) or []
     if not isinstance(listPaths, list):
         return []
@@ -126,7 +134,7 @@ def flistOverleafPushedFiguresAt(sProjectRepoPath, sCommitHash):
 
 
 def fnRecordOverleafPushManifest(
-    sProjectRepoPath, sCommitHash, listPlotPaths,
+    filesRepo, sCommitHash, listPlotPaths,
 ):
     """Record the plot-paths pushed to Overleaf at ``sCommitHash``.
 
@@ -135,32 +143,27 @@ def fnRecordOverleafPushManifest(
     commit returns the recorded list. Skipped (no-op) when either input
     is empty so callers do not need to branch.
     """
-    if not sProjectRepoPath or not sCommitHash:
+    if not sCommitHash:
         return
-    sPath = _fsPushManifestPath(sProjectRepoPath)
-    os.makedirs(os.path.dirname(sPath), exist_ok=True)
-    dictAll = _fdictReadPushManifest(sPath)
+    filesRepo = _ffilesEnsurePushManifestRepo(filesRepo)
+    if not filesRepo.sRootPath:
+        return
+    dictAll = _fdictReadPushManifest(filesRepo)
     dictAll[sCommitHash] = [
         sEntry for sEntry in listPlotPaths if isinstance(sEntry, str)
     ]
-    _fnWritePushManifestAtomic(sPath, dictAll)
+    filesRepo.fnWriteJsonAtomic(_fsPushManifestRelativePath(), dictAll)
 
 
-def _fnWritePushManifestAtomic(sPath, dictAll):
-    """Write ``dictAll`` to ``sPath`` atomically via a sibling temp file."""
-    sTempPath = sPath + ".tmp"
-    with open(sTempPath, "w", encoding="utf-8") as fileHandle:
-        json.dump(dictAll, fileHandle, indent=2, sort_keys=True)
-    os.replace(sTempPath, sPath)
-
-
-def _fdictReadPushManifest(sPath):
+def _fdictReadPushManifest(filesRepo):
     """Return the parsed push-manifest dict, or an empty dict on error."""
-    if not os.path.isfile(sPath):
+    if not filesRepo.sRootPath:
+        return {}
+    sRelPath = _fsPushManifestRelativePath()
+    if not filesRepo.fbIsFile(sRelPath):
         return {}
     try:
-        with open(sPath, "r", encoding="utf-8") as fileHandle:
-            dictAll = json.load(fileHandle)
+        dictAll = json.loads(filesRepo.fsReadText(sRelPath))
     except (OSError, ValueError):
         return {}
     return dictAll if isinstance(dictAll, dict) else {}

@@ -41,6 +41,7 @@ __all__ = [
     "fdictLoadWorkflowFromContainer",
     "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
+    "fnMigrateLegacyRemotes",
     "fnNormalizeSceneReferences",
     "flistBuildTestCommands",
     "flistCollectArchiveDataFiles",
@@ -56,7 +57,9 @@ __all__ = [
     "flistFindWorkflowsInContainer",
     "flistResolveOutputFiles",
     "flistResolveTestCommands",
+    "flistResolveStepScratchDirs",
     "flistValidateOutputFilePaths",
+    "fnCleanStepScratchDirs",
     "flistValidateReferences",
     "flistValidateStepDirectories",
     "fnDeleteStep",
@@ -247,6 +250,7 @@ def fdictLoadWorkflowFromContainer(
     workflowMigrations.fnApplyMigrations(
         dictWorkflow, sProjectRepoPath=sRepoPath,
     )
+    fnMigrateLegacyRemotes(dictWorkflow)
     sFailure = fsDescribeValidationFailure(dictWorkflow)
     if sFailure:
         raise ValueError(
@@ -258,8 +262,92 @@ def fdictLoadWorkflowFromContainer(
     fbDeriveUnnecessaryVerification(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
-    _fnDeriveAICSLevel(dictWorkflow, sRepoPath)
+    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+        connectionDocker, sContainerId, sRepoPath,
+    ))
     return dictWorkflow
+
+
+def fnMigrateLegacyRemotes(dictWorkflow):
+    """Populate ``dictRemotes`` entries from legacy top-level keys.
+
+    Recomputed on every load and save, like ``fnAttachStepLabels``.
+    Idempotent and non-destructive: an existing explicit
+    ``dictRemotes`` entry is never overwritten, legacy keys are never
+    removed, and verify-produced fields (e.g. ``sCommittedSha``,
+    ``sLastPushCommit``) are never invented.
+    """
+    dictDerived = {
+        "overleaf": _fdictLegacyOverleafEntry(dictWorkflow),
+        "zenodo": _fdictLegacyZenodoEntry(dictWorkflow),
+        "github": _fdictLegacyGithubEntry(dictWorkflow),
+    }
+    dictRemotes = dictWorkflow.get("dictRemotes") or {}
+    for sService, dictEntry in dictDerived.items():
+        if dictEntry and sService not in dictRemotes:
+            dictRemotes[sService] = dictEntry
+    if dictRemotes:
+        dictWorkflow["dictRemotes"] = dictRemotes
+
+
+def _fdictLegacyOverleafEntry(dictWorkflow):
+    """Build ``dictRemotes.overleaf`` from legacy ``sOverleafProjectId``."""
+    sProjectId = dictWorkflow.get("sOverleafProjectId") or ""
+    if not sProjectId:
+        return {}
+    return {"sProjectId": sProjectId}
+
+
+def _fdictLegacyZenodoEntry(dictWorkflow):
+    """Build ``dictRemotes.zenodo`` from legacy DOI/deposit/service keys."""
+    sDoi = (
+        dictWorkflow.get("sZenodoDoi")
+        or dictWorkflow.get("sZenodoLatestDoi") or ""
+    )
+    sRecordId = _fsLegacyZenodoRecordId(dictWorkflow, sDoi)
+    if not sDoi and not sRecordId:
+        return {}
+    dictEntry = {}
+    if sRecordId:
+        dictEntry["sRecordId"] = sRecordId
+    if sDoi:
+        dictEntry["sDoi"] = sDoi
+    sService = dictWorkflow.get("sZenodoService") or ""
+    if sService:
+        dictEntry["sService"] = sService
+    return dictEntry
+
+
+def _fsLegacyZenodoRecordId(dictWorkflow, sDoi):
+    """Return the Zenodo record id from legacy keys, or an empty string.
+
+    The DOI fallback only fires for genuine Zenodo DOIs, whose suffix
+    is always ``/zenodo.NNN``; foreign DOIs whose suffix merely ends
+    in ``zenodo.NNN`` (e.g. ``10.9999/notzenodo.123``) must not have
+    a record id invented from them.
+    """
+    sDepositionId = str(dictWorkflow.get("sZenodoDepositionId") or "")
+    if sDepositionId and sDepositionId != "0":
+        return sDepositionId
+    matchDoi = re.search(r"/zenodo\.(\d+)$", sDoi)
+    return matchDoi.group(1) if matchDoi else ""
+
+
+def _fdictLegacyGithubEntry(dictWorkflow):
+    """Build ``dictRemotes.github`` from legacy ``sGithubBaseUrl``.
+
+    Only the owner/repository binding is derivable from the URL;
+    ``sBranch`` falls back to the verifier's default and
+    ``sCommittedSha`` is left for verify to record.
+    """
+    from vaibify.reproducibility.githubAuth import (
+        ftParseOwnerRepoFromRemoteUrl,
+    )
+    sBaseUrl = dictWorkflow.get("sGithubBaseUrl") or ""
+    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sBaseUrl)
+    if not sOwner or not sRepo:
+        return {}
+    return {"sOwner": sOwner, "sRepo": sRepo}
 
 
 def _fnLoadAndMergeState(
@@ -379,9 +467,9 @@ def fsDescribeValidationFailure(dictWorkflow):
 def flistValidateOutputFilePaths(dictWorkflow):
     """Return warnings for output paths that leave the project repo.
 
-    Scans ``saOutputFiles``, ``saDataFiles``, and ``saPlotFiles`` on
-    every step plus ``listDatasets[].sDestination`` and the
-    workflow-level ``sPlotDirectory``. Absolute paths and
+    Scans ``saOutputFiles``, ``saDataFiles``, ``saPlotFiles``, and
+    ``saScratchDirs`` on every step plus ``listDatasets[].sDestination``
+    and the workflow-level ``sPlotDirectory``. Absolute paths and
     ``..``-escaping paths are flagged; template-bearing paths
     (containing ``{``) are skipped because they are resolved against
     the global variables dict at run time.
@@ -390,7 +478,9 @@ def flistValidateOutputFilePaths(dictWorkflow):
     for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
         sLabel = f"Step{iIndex + 1:02d}"
         sDirectory = dictStep.get("sDirectory", "")
-        for sKey in ("saOutputFiles", "saDataFiles", "saPlotFiles"):
+        for sKey in (
+            "saOutputFiles", "saDataFiles", "saPlotFiles", "saScratchDirs",
+        ):
             for sPath in dictStep.get(sKey, []):
                 sWarning = _fsCheckOutputPathBoundary(
                     sPath, sDirectory, sLabel, sKey,
@@ -650,7 +740,7 @@ def fbDeriveUnnecessaryVerification(dictWorkflow):
     return bAnyChanged
 
 
-def _fnDeriveAICSLevel(dictWorkflow, sProjectRepoPath):
+def _fnDeriveAICSLevel(dictWorkflow, filesRepo):
     """Compute and persist the workflow's current AICS level.
 
     Writes ``iAICSLevel`` on the dict. Called from the load-after-merge
@@ -658,11 +748,25 @@ def _fnDeriveAICSLevel(dictWorkflow, sProjectRepoPath):
     always current with the per-step verification state. The level
     is not authoritative — the derivation is; treat the persisted
     value as a cache invalidated on every load and save.
+    ``filesRepo`` is a ``repoFiles`` adapter (container) so the L2/L3
+    conjuncts read container truth; a raw path string keeps host-clone
+    semantics for legacy callers.
     """
     from vaibify.reproducibility.levelGates import fiAICSLevel
     dictWorkflow["iAICSLevel"] = fiAICSLevel(
-        dictWorkflow, sProjectRepoPath,
+        dictWorkflow, filesRepo,
     )
+
+
+def _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath):
+    """Return the container repo-file adapter for the project repo.
+
+    ``sRepoPath`` is a *container* path, so a ``ContainerRepoFiles``
+    over the live docker connection is the only honest reader for the
+    level derivation performed on every load and save.
+    """
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    return ContainerRepoFiles(connectionDocker, sContainerId, sRepoPath)
 
 
 def fdictCreateStep(
@@ -871,9 +975,12 @@ def fnSaveWorkflowToContainer(
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     fnAttachStepLabels(dictWorkflow)
+    fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
-    _fnDeriveAICSLevel(dictWorkflow, sRepoPath)
+    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+        connectionDocker, sContainerId, sRepoPath,
+    ))
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     dictClean = _fdictStripComputedFields(dictWorkflow)
     dictDeclarative, dictState = stateManager.ftSplitMergedDict(
@@ -899,20 +1006,30 @@ def fsetExtractStepReferences(sText):
 
 
 def fdictBuildStemRegistry(dictWorkflow):
-    """Map each StepNN.stem to the step that produces it."""
+    """Map each StepNN.stem to the step that produces it.
+
+    Colliding basenames within a step register only under qualified
+    stems (``pipelineUtils.fdictMapOutputTokenStems``), so standard
+    scientific output filenames never need renaming for tokens.
+    """
+    from .pipelineUtils import fdictMapOutputTokenStems
     dictRegistry = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
-        listAllOutputs = (
-            dictStep.get("saDataFiles", [])
-            + dictStep.get("saPlotFiles", [])
-            + dictStep.get("saOutputFiles", [])
-        )
-        for sOutputFile in listAllOutputs:
-            sBasename = posixpath.basename(sOutputFile)
-            sStem = posixpath.splitext(sBasename)[0]
+        dictTokenStems = fdictMapOutputTokenStems(
+            _flistStepDeclaredOutputs(dictStep))
+        for sStem in dictTokenStems:
             dictRegistry[f"Step{iNumber:02d}.{sStem}"] = iNumber
     return dictRegistry
+
+
+def _flistStepDeclaredOutputs(dictStep):
+    """Return every declared output file path for a step."""
+    return (
+        dictStep.get("saDataFiles", [])
+        + dictStep.get("saPlotFiles", [])
+        + dictStep.get("saOutputFiles", [])
+    )
 
 
 def flistCollectReferenceStrings(dictStep):
@@ -973,22 +1090,24 @@ def _fnCheckCommandReferences(
 
 
 def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
-    """Map StepNN.stem to resolved absolute output paths."""
+    """Map StepNN.stem to resolved absolute output paths.
+
+    Token stems come from the declared (unresolved) entries via
+    ``fdictMapOutputTokenStems`` so collision qualification matches
+    ``fdictBuildStemRegistry`` exactly.
+    """
+    from .pipelineUtils import fdictMapOutputTokenStems
     dictStepVars = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
         sStepDirectory = dictStep.get("sDirectory", "")
-        listAllOutputs = (
-            dictStep.get("saDataFiles", [])
-            + dictStep.get("saPlotFiles", [])
-            + dictStep.get("saOutputFiles", [])
-        )
-        for sOutputFile in listAllOutputs:
+        dictTokenStems = fdictMapOutputTokenStems(
+            _flistStepDeclaredOutputs(dictStep))
+        for sStem, sOutputFile in dictTokenStems.items():
             sResolved = fsResolveVariables(sOutputFile, dictGlobalVars)
             sAbsPath = _fsResolveStepOutputPath(
                 sResolved, sStepDirectory, dictGlobalVars
             )
-            sStem = posixpath.splitext(posixpath.basename(sAbsPath))[0]
             dictStepVars[f"Step{iNumber:02d}.{sStem}"] = sAbsPath
     return dictStepVars
 
@@ -1015,6 +1134,86 @@ def fsResolveStepWorkdir(sStepDirectory, dictVariables):
     if not sRepoRoot:
         return sStepDirectory
     return posixpath.join(sRepoRoot, sStepDirectory)
+
+
+# ---------------------------------------------------------------------------
+# audit MEDIUM #16: generic scratch-cleanup hook
+# ---------------------------------------------------------------------------
+
+
+def _fsResolveOneScratchDir(sPath, sStepWorkdir, dictVariables):
+    """Resolve one scratch path; return empty string when invalid.
+
+    Rejects absolute paths and ``..``-escaping paths after template
+    expansion. Without the post-expansion check a template like
+    ``{sUserVar}`` could resolve to ``../../etc/something`` and the
+    runner's ``rm -rf`` would escape the step directory (the
+    CLAUDE.md path-traversal threat).
+    """
+    sResolved = fsResolveVariables(sPath, dictVariables or {})
+    if not sResolved or posixpath.isabs(sResolved):
+        return ""
+    sJoined = posixpath.normpath(
+        posixpath.join(sStepWorkdir, sResolved),
+    )
+    sWorkdirNorm = posixpath.normpath(sStepWorkdir) + "/"
+    if not (sJoined + "/").startswith(sWorkdirNorm):
+        return ""
+    return sJoined
+
+
+def flistResolveStepScratchDirs(dictStep, dictVariables):
+    """Return absolute container paths to delete before a step runs.
+
+    Each entry in ``saScratchDirs`` is a repo-relative path joined to
+    the step's ``sDirectory``. Template-bearing entries are resolved
+    against ``dictVariables``. Returns an empty list when
+    ``saScratchDirs`` is absent or empty.
+    """
+    listRaw = dictStep.get("saScratchDirs", []) or []
+    sStepWorkdir = fsResolveStepWorkdir(
+        dictStep.get("sDirectory", ""), dictVariables,
+    )
+    listResolved = []
+    for sPath in listRaw:
+        sAbsolute = _fsResolveOneScratchDir(
+            sPath, sStepWorkdir, dictVariables,
+        )
+        if sAbsolute:
+            listResolved.append(sAbsolute)
+    return listResolved
+
+
+def _fnRmRfDirectory(connectionDocker, sContainerId, sAbsPath):
+    """rm -rf one absolute path inside the container; return exit code."""
+    sShellSafe = sAbsPath.replace("'", "'\"'\"'")
+    sCommand = f"rm -rf -- '{sShellSafe}'"
+    iExitCode, _sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    return iExitCode
+
+
+def fnCleanStepScratchDirs(
+    connectionDocker, sContainerId, dictStep, dictVariables,
+):
+    """Recursively delete a step's saScratchDirs in the container.
+
+    Contract for audit MEDIUM #16: the runner calls this at step-start,
+    before invoking the step's commands, so per-run scratch state from
+    an earlier crashed attempt cannot poison the next run. Each
+    deletion is one ``rm -rf`` via ``ftResultExecuteCommand``. Returns
+    a list of (sAbsPath, iExitCode) tuples; missing dirs surface as
+    non-zero exits and are never raised — that is the normal
+    pre-clean case. Runner integration can land later.
+    """
+    listAbsPaths = flistResolveStepScratchDirs(dictStep, dictVariables)
+    return [
+        (sAbsPath, _fnRmRfDirectory(
+            connectionDocker, sContainerId, sAbsPath,
+        ))
+        for sAbsPath in listAbsPaths
+    ]
 
 
 def flistFilterFigureFiles(listOutputPaths):

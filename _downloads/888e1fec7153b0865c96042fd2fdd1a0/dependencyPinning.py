@@ -1,23 +1,35 @@
 """Generate and validate hash-pinned Python dependency lockfiles.
 
-Wraps ``uv pip compile --generate-hashes`` so each L3 archive deposit
-ships a ``requirements.lock`` that pins every Python dependency by
-exact version with SHA-256 hashes. Verifiers can then install the
-pinned environment with ``pip install --require-hashes -r
-requirements.lock`` without needing ``uv`` themselves.
+Wraps ``uv pip compile --generate-hashes`` (or, when ``uv`` is not
+installed, ``python -m uv`` or pip-tools' ``python -m piptools
+compile --generate-hashes``) so each L3 archive deposit ships a
+``requirements.lock`` that pins every Python dependency by exact
+version with SHA-256 hashes. Verifiers can then install the pinned
+environment with ``pip install --require-hashes -r
+requirements.lock`` without needing the generator themselves.
 
-The module exposes three orthogonal helpers: a generator
+The module exposes four orthogonal helpers: a generator
 (``fnGenerateRequirementsLock``), a structural validator
-(``flistVerifyRequirementsLock``), and a tooling probe
-(``fbIsUvAvailable``).
+(``flistVerifyRequirementsLock``), a tooling probe
+(``fbIsUvAvailable``), and a generator-command resolver
+(``flistResolveLockCompileCommand``) whose empty result means no
+hashed lock is producible on this host.
 """
 
+import importlib.util
+import os
 import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 from vaibify.reproducibility.credentialRedactor import (
     fsRedactCredentials,
+)
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
 )
 
 
@@ -25,14 +37,23 @@ __all__ = [
     "fnGenerateRequirementsLock",
     "flistVerifyRequirementsLock",
     "fbIsUvAvailable",
+    "flistResolveLockCompileCommand",
+    "S_LOCK_TOOL_INSTALL_HINT",
 ]
 
 
 _S_UV_INSTALL_URL = (
     "https://docs.astral.sh/uv/getting-started/installation/"
 )
-_S_UV_MISSING_MESSAGE = (
-    "uv was not found on PATH; install uv: " + _S_UV_INSTALL_URL
+S_LOCK_TOOL_INSTALL_HINT = (
+    "Install uv (" + _S_UV_INSTALL_URL + ") or pip-tools "
+    "(python3 -m pip install pip-tools), then regenerate the "
+    "reproducibility envelope."
+)
+_S_LOCK_TOOL_MISSING_MESSAGE = (
+    "No hashed-lockfile generator found: uv is not on PATH, the uv "
+    "module is not importable, and pip-tools is not installed. "
+    + S_LOCK_TOOL_INSTALL_HINT
 )
 _S_LOCK_FILENAME = "requirements.lock"
 
@@ -42,42 +63,92 @@ def fbIsUvAvailable():
     return shutil.which("uv") is not None
 
 
-def fnGenerateRequirementsLock(sProjectRepo):
-    """Generate ``<sProjectRepo>/requirements.lock`` via ``uv``.
+def _fbModuleAvailable(sModuleName):
+    """Return True iff ``sModuleName`` is importable in this interpreter."""
+    try:
+        return importlib.util.find_spec(sModuleName) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def flistResolveLockCompileCommand():
+    """Return the argv prefix of the first available lock generator.
+
+    Probes in priority order: the ``uv`` executable on PATH, the
+    ``uv`` Python module (``python -m uv``), then pip-tools
+    (``python -m piptools compile``). Every candidate produces a
+    hash-pinned lockfile via ``--generate-hashes``. Returns an empty
+    list when no generator is available, so callers can surface the
+    gap instead of fabricating an unhashed lock.
+    """
+    if fbIsUvAvailable():
+        return ["uv", "pip", "compile"]
+    if _fbModuleAvailable("uv"):
+        return [sys.executable, "-m", "uv", "pip", "compile"]
+    if _fbModuleAvailable("piptools"):
+        return [sys.executable, "-m", "piptools", "compile"]
+    return []
+
+
+def fnGenerateRequirementsLock(filesRepo):
+    """Generate ``<repo>/requirements.lock`` with hash pins.
 
     Selects the input source in priority order: ``pyproject.toml``
     first, then ``requirements.in``. Raises ``FileNotFoundError`` if
-    ``uv`` is missing or neither input file exists. Surfaces uv
-    failures as ``subprocess.CalledProcessError``.
+    no lock generator is installed (the message names what to
+    install) or neither input file exists. Surfaces compile failures
+    as ``subprocess.CalledProcessError``.
+
+    The generator runs on the host. When the repo is a host
+    directory, it compiles in place. When the repo lives in a
+    container, the input file is staged into a host temp directory,
+    compiled there, and the resulting lockfile is written back
+    through the adapter.
     """
-    pathRepo = Path(sProjectRepo)
-    if not fbIsUvAvailable():
-        raise FileNotFoundError(_S_UV_MISSING_MESSAGE)
-    sInput = _fsResolveLockInput(pathRepo)
-    _fnRunUvCompile(pathRepo, sInput)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listCompilePrefix = flistResolveLockCompileCommand()
+    if not listCompilePrefix:
+        raise FileNotFoundError(_S_LOCK_TOOL_MISSING_MESSAGE)
+    sInput = _fsResolveLockInput(filesRepo)
+    sLocalRoot = filesRepo.fsLocalRootOrNone()
+    if sLocalRoot is not None:
+        _fnRunLockCompile(Path(sLocalRoot), sInput, listCompilePrefix)
+        return
+    _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix)
 
 
-def _fsResolveLockInput(pathRepo):
+def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
+    """Compile the lock in a host temp directory; write back via adapter."""
+    sInputContents = filesRepo.fsReadText(sInput)
+    with tempfile.TemporaryDirectory() as sStagingDir:
+        sStagedInput = os.path.join(sStagingDir, sInput)
+        with open(sStagedInput, "w", encoding="utf-8") as fileHandle:
+            fileHandle.write(sInputContents)
+        _fnRunLockCompile(Path(sStagingDir), sInput, listCompilePrefix)
+        with open(
+            os.path.join(sStagingDir, _S_LOCK_FILENAME),
+            "r", encoding="utf-8",
+        ) as fileHandle:
+            sLockContents = fileHandle.read()
+    filesRepo.fnWriteTextAtomic(_S_LOCK_FILENAME, sLockContents)
+
+
+def _fsResolveLockInput(filesRepo):
     """Return the input filename uv should compile from."""
-    pathPyproject = pathRepo / "pyproject.toml"
-    pathRequirements = pathRepo / "requirements.in"
-    if pathPyproject.is_file():
+    if filesRepo.fbIsFile("pyproject.toml"):
         return "pyproject.toml"
-    if pathRequirements.is_file():
+    if filesRepo.fbIsFile("requirements.in"):
         return "requirements.in"
     raise FileNotFoundError(
         "No dependency input found in '"
-        + str(pathRepo)
+        + fsRepoRootOf(filesRepo)
         + "'; expected pyproject.toml or requirements.in"
     )
 
 
-def _flistBuildUvCompileCommand(sInput):
-    """Return the ``uv pip compile`` argv for sInput."""
-    return [
-        "uv",
-        "pip",
-        "compile",
+def _flistBuildLockCompileCommand(listCompilePrefix, sInput):
+    """Return the full hash-pinning compile argv for sInput."""
+    return list(listCompilePrefix) + [
         "--generate-hashes",
         sInput,
         "-o",
@@ -85,26 +156,27 @@ def _flistBuildUvCompileCommand(sInput):
     ]
 
 
-def _fnRaiseUvTimeout(listCommand, errorTimeout):
-    """Re-raise an uv timeout as a CalledProcessError with redacted stderr."""
+def _fnRaiseLockCompileTimeout(listCommand, errorTimeout):
+    """Re-raise a compile timeout as a CalledProcessError."""
     raise subprocess.CalledProcessError(
         124, listCommand,
         output="",
-        stderr="uv pip compile timed out after "
+        stderr="lockfile compile timed out after "
         + f"{int(errorTimeout.timeout)}s",
     ) from None
 
 
-def _fnRunUvCompile(pathRepo, sInput):
-    """Invoke ``uv pip compile --generate-hashes`` in pathRepo.
+def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix):
+    """Invoke the resolved hash-pinning compiler in pathRepo.
 
-    Surfaces uv failures as ``CalledProcessError`` with the captured
-    stderr scrubbed of credentials so an index URL with embedded
-    ``user:token@`` cannot leak. The ``FileNotFoundError`` arm guards
-    against the rare race where ``uv`` disappears between
-    :func:`fbIsUvAvailable` and the subprocess invocation.
+    Surfaces compile failures as ``CalledProcessError`` with the
+    captured stderr scrubbed of credentials so an index URL with
+    embedded ``user:token@`` cannot leak. The ``FileNotFoundError``
+    arm guards against the rare race where the generator disappears
+    between :func:`flistResolveLockCompileCommand` and the
+    subprocess invocation.
     """
-    listCommand = _flistBuildUvCompileCommand(sInput)
+    listCommand = _flistBuildLockCompileCommand(listCompilePrefix, sInput)
     try:
         completed = subprocess.run(
             listCommand,
@@ -114,9 +186,9 @@ def _fnRunUvCompile(pathRepo, sInput):
             timeout=120.0,
         )
     except FileNotFoundError:
-        raise FileNotFoundError(_S_UV_MISSING_MESSAGE) from None
+        raise FileNotFoundError(_S_LOCK_TOOL_MISSING_MESSAGE) from None
     except subprocess.TimeoutExpired as errorTimeout:
-        _fnRaiseUvTimeout(listCommand, errorTimeout)
+        _fnRaiseLockCompileTimeout(listCommand, errorTimeout)
     if completed.returncode != 0:
         raise subprocess.CalledProcessError(
             completed.returncode,
@@ -126,7 +198,7 @@ def _fnRunUvCompile(pathRepo, sInput):
         )
 
 
-def flistVerifyRequirementsLock(sProjectRepo):
+def flistVerifyRequirementsLock(filesRepo):
     """Return a list of structural issues with the lockfile.
 
     An empty list means the lockfile exists, parses, and every
@@ -134,17 +206,18 @@ def flistVerifyRequirementsLock(sProjectRepo):
     This is a format-only check; actual install verification is the
     user's call to ``pip install --require-hashes``.
     """
-    pathLock = Path(sProjectRepo) / _S_LOCK_FILENAME
-    if not pathLock.is_file():
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sDisplayPath = os.path.join(fsRepoRootOf(filesRepo), _S_LOCK_FILENAME)
+    if not filesRepo.fbIsFile(_S_LOCK_FILENAME):
         return [
-            "requirements.lock not found at '" + str(pathLock) + "'"
+            "requirements.lock not found at '" + sDisplayPath + "'"
         ]
-    sContents = pathLock.read_text()
+    sContents = filesRepo.fsReadText(_S_LOCK_FILENAME)
     listEntries = _flistParseLockEntries(sContents)
     if not listEntries:
         return [
             "requirements.lock at '"
-            + str(pathLock)
+            + sDisplayPath
             + "' contains no dependency entries"
         ]
     return _flistFindUnhashedEntries(listEntries)

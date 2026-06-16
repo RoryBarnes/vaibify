@@ -7,6 +7,7 @@ Exposes:
 - ``POST /api/git/{id}/commit-canonical``     commit canonical files
 - ``POST /api/git/{id}/fetch-project-repo``   refresh remote-tracking refs
 - ``POST /api/git/{id}/pull-project-repo``    fast-forward to origin
+- ``POST /api/git/{id}/refresh-remotes``      fetch + remote-heads view
 
 All git execution runs inside the container via ``docker exec`` — the
 default vaibify workspace is a Docker-managed named volume whose
@@ -38,7 +39,8 @@ from .. import (
     stateContract,
 )
 from ..actionCatalog import fnAgentAction
-from ..pipelineServer import fdictRequireWorkflow
+from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
+from ..routeContext import ffilesForWorkflow
 
 
 F_FETCH_CACHE_SECONDS = 30.0
@@ -77,6 +79,11 @@ class CommitCanonicalRequest(BaseModel):
 class FetchProjectRepoRequest(BaseModel):
     """Body for ``POST /api/git/{id}/fetch-project-repo``."""
     bForce: bool = False
+
+
+class RefreshRemotesRequest(BaseModel):
+    """Body for ``POST /api/git/{id}/refresh-remotes``."""
+    bForce: bool = True
 
 
 def _fsRequireProjectRepo(dictWorkflow):
@@ -130,11 +137,11 @@ def _fbArxivConfiguredFor(dictWorkflow):
     return bool(dictArxiv.get("sArxivId"))
 
 
-def _fdictLoadCachedArxivStatus(sProjectRepoPath):
+def _fdictLoadCachedArxivStatus(filesRepo):
     """Return the cached arxiv verify report from ``syncStatus.json``."""
     from vaibify.reproducibility import scheduledReverify
     return scheduledReverify.fdictReadCachedSyncStatus(
-        sProjectRepoPath, "arxiv",
+        filesRepo, "arxiv",
     )
 
 
@@ -242,7 +249,8 @@ def _fnRegisterGitBadges(app, dictCtx):
             )
         )
         dictArxivStatus = await asyncio.to_thread(
-            _fdictLoadCachedArxivStatus, sRepo,
+            _fdictLoadCachedArxivStatus,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit,
@@ -347,6 +355,7 @@ def _fnRegisterCommitCanonical(app, dictCtx):
             containerGit.fsGitHeadShaInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         return _fdictCommitCanonicalSuccess(
             sCommitHash, len(listNeedsCommit),
         )
@@ -426,7 +435,12 @@ def _fnRecordFetchTime(sContainerId):
 
 
 async def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
-    """Run ``git fetch`` in the container, raising HTTP 502 on failure."""
+    """Run ``git fetch`` in the container, raising HTTP 502 on failure.
+
+    The failure detail is scrubbed of URL userinfo because git's
+    "unable to access" errors echo the remote URL verbatim, which
+    would leak an embedded credential to the client and the log.
+    """
     iExit, sOut = await asyncio.to_thread(
         containerGit.ftResultGitFetchInContainer,
         docker, sContainerId, sWorkspace=sRepo,
@@ -434,7 +448,8 @@ async def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
     if iExit != 0:
         raise HTTPException(
             status_code=502,
-            detail="git fetch failed: " + (sOut or "").strip(),
+            detail="git fetch failed: "
+            + containerGit._fsStripUrlUserinfo((sOut or "").strip()),
         )
 
 
@@ -471,11 +486,63 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
                 docker, sContainerId, sRepo,
             )
             _fnRecordFetchTime(sContainerId)
+            fnBumpSyncEpoch(dictCtx, sContainerId)
         dictGit = await asyncio.to_thread(
             containerGit.fdictGitStatusInContainer,
             docker, sContainerId, sWorkspace=sRepo,
         )
         return _fdictFetchStatusView(dictGit, bCacheUsed)
+
+
+async def _fdictCollectRefreshRemotesView(
+    docker, sContainerId, sRepo, bCacheUsed,
+):
+    """Gather remote heads, repo status, and remote URL after a fetch."""
+    dictRemoteHeads = await asyncio.to_thread(
+        containerGit.fdictRemoteHeadsInContainer,
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    dictGit = await asyncio.to_thread(
+        containerGit.fdictGitStatusInContainer,
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    sRemoteUrl = await asyncio.to_thread(
+        containerGit.fsRemoteUrlInContainer,
+        docker, sContainerId, sRepo,
+    )
+    return {
+        "bSuccess": True,
+        "bCacheUsed": bCacheUsed,
+        "dictRemoteHeads": dictRemoteHeads,
+        "dictGit": _fdictProjectGitView(dictGit, sRemoteUrl),
+    }
+
+
+def _fnRegisterRefreshRemotes(app, dictCtx):
+    """Register POST /api/git/{sContainerId}/refresh-remotes."""
+
+    @fnAgentAction("refresh-remotes")
+    @app.post("/api/git/{sContainerId}/refresh-remotes")
+    async def fnRefreshRemotes(
+        sContainerId: str,
+        request: RefreshRemotesRequest = RefreshRemotesRequest(),
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
+        docker = dictCtx["docker"]
+        bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
+        if not bCacheUsed:
+            await _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
+            _fnRecordFetchTime(sContainerId)
+        dictResponse = await _fdictCollectRefreshRemotesView(
+            docker, sContainerId, sRepo, bCacheUsed,
+        )
+        if not bCacheUsed:
+            fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictResponse
 
 
 def _fdictDirtyRefusalResponse(dictGit, listDirty):
@@ -498,7 +565,8 @@ async def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
     if iExit != 0:
         raise HTTPException(
             status_code=502,
-            detail="git pull --ff-only failed: " + (sOut or "").strip(),
+            detail="git pull --ff-only failed: "
+            + containerGit._fsStripUrlUserinfo((sOut or "").strip()),
         )
 
 
@@ -525,6 +593,7 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
             docker, sContainerId, sRepo,
         )
         _fnRecordFetchTime(sContainerId)
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         sNewHead = await asyncio.to_thread(
             containerGit.fsGitHeadShaInContainer,
             docker, sContainerId, sWorkspace=sRepo,
@@ -550,3 +619,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterCommitCanonical(app, dictCtx)
     _fnRegisterFetchProjectRepo(app, dictCtx)
     _fnRegisterPullProjectRepo(app, dictCtx)
+    _fnRegisterRefreshRemotes(app, dictCtx)

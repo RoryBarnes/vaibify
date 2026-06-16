@@ -825,22 +825,69 @@ var VaibifySyncManager = (function () {
             );
             _fnRemoveToast(elProgress);
             if (!dictResult.bSuccess) {
+                if (dictResult.sErrorType === "indeterminate") {
+                    _fnHandleIndeterminatePushResult(
+                        sContainerId, dictResult);
+                    return;
+                }
                 fnShowSyncError(dictResult, _sPushService);
                 return;
             }
-            if (_sPushService === "zenodo" && dictResult.sDoi) {
-                _fnShowZenodoSuccessToast(dictResult);
-                if (typeof VaibifyZenodoDepositCard !== "undefined") {
-                    VaibifyZenodoDepositCard.fnUpdateFromPushResult(
-                        dictResult);
-                }
-            } else {
-                PipeleyenApp.fnShowToast(
-                    "Push complete!", "success");
-            }
+            _fnSurfacePushSuccess(dictResult);
+            await _fnRefreshBadgesAfterSync(sContainerId);
             PipeleyenApp.fnRenderStepList();
         } catch (error) {
             _fnRemoveToast(elProgress);
+            PipeleyenApp.fnShowToast(
+                _fsSanitizeError(error.message), "error");
+        }
+    }
+
+    function _fnSurfacePushSuccess(dictResult) {
+        if (_sPushService === "zenodo" && dictResult.sDoi) {
+            _fnShowZenodoSuccessToast(dictResult);
+            if (typeof VaibifyZenodoDepositCard !== "undefined") {
+                VaibifyZenodoDepositCard.fnUpdateFromPushResult(
+                    dictResult);
+            }
+        } else {
+            PipeleyenApp.fnShowToast("Push complete!", "success");
+        }
+        if (dictResult.sBookkeepingWarning) {
+            PipeleyenApp.fnShowToast(
+                dictResult.sBookkeepingWarning, "info");
+        }
+    }
+
+    async function _fnRefreshBadgesAfterSync(sContainerId) {
+        if (typeof VaibifyGitBadges === "undefined") return;
+        try {
+            await VaibifyGitBadges.fnRefresh(sContainerId);
+        } catch (error) { /* badge refresh is best-effort */ }
+    }
+
+    function _fnHandleIndeterminatePushResult(
+        sContainerId, dictResult,
+    ) {
+        PipeleyenApp.fnShowToast(
+            (dictResult.sMessage ||
+                "The push outcome could not be confirmed.") +
+            " Checking GitHub now…", "info");
+        _fnRefreshRemotesFromGithub(sContainerId);
+    }
+
+    async function _fnRefreshRemotesFromGithub(sContainerId) {
+        var sId = sContainerId || PipeleyenApp.fsGetContainerId();
+        if (!sId) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/git/" + encodeURIComponent(sId) +
+                "/refresh-remotes", {bForce: true});
+            await _fnRefreshBadgesAfterSync(sId);
+            PipeleyenApp.fnRenderStepList();
+            PipeleyenApp.fnShowToast(
+                "Refreshed from GitHub.", "success");
+        } catch (error) {
             PipeleyenApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
@@ -1509,6 +1556,10 @@ var VaibifySyncManager = (function () {
             });
         }
         listItems.push({
+            sLabel: "Refresh from GitHub",
+            sAction: "refreshRemotes",
+        });
+        listItems.push({
             sLabel: "Edit GitHub remote settings…",
             sAction: "editSettings",
         });
@@ -1672,6 +1723,10 @@ var VaibifySyncManager = (function () {
         }
         if (dictItem.sAction === "primary") {
             fnSyncFileToRemote(sRemoteKey, sResolved, sWorkdir);
+            return;
+        }
+        if (dictItem.sAction === "refreshRemotes") {
+            _fnRefreshRemotesFromGithub("");
             return;
         }
         if (dictItem.sAction === "editSettings") {

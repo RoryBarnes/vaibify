@@ -580,11 +580,23 @@ def _fdictDefaultPlotVars(dictWorkflow):
     }
 
 
+_dictLastLoggedStaleByStep = {}
+
+
 def _fnLogFreshnessCheck(
     iIndex, sLastUserUpdate, iUserEpoch, listPlotPaths, bStale,
 ):
-    """Emit the per-step freshness-check log line."""
-    logger.info(
+    """Log freshness at DEBUG per poll, at INFO on a staleness transition."""
+    bPreviousStale = _dictLastLoggedStaleByStep.get(iIndex)
+    _dictLastLoggedStaleByStep[iIndex] = bStale
+    if bPreviousStale is not None and bPreviousStale != bStale:
+        logger.info(
+            "Freshness transition step %d: bStale %s -> %s "
+            "(sLastUserUpdate=%s)",
+            iIndex, bPreviousStale, bStale, sLastUserUpdate,
+        )
+        return
+    logger.debug(
         "Freshness check step %d: sLastUserUpdate=%s "
         "iUserEpoch=%s paths=%s bStale=%s",
         iIndex, sLastUserUpdate, iUserEpoch, listPlotPaths, bStale,
@@ -999,6 +1011,7 @@ def _flistSplitOutputPaths(
 def _fdictBuildStepStatusEntry(
     dictStep, dictStepScripts, listOutputs, dictModTimes,
     dictResolvedVars, iMarkerMtime=None, dictManifestCache=None,
+    filesRepo=None,
 ):
     """Compute {sStatus, listStaleArtifacts} for a single step.
 
@@ -1020,7 +1033,7 @@ def _fdictBuildStepStatusEntry(
         setResolvedPlotPaths=setPlotPaths,
     )
     if bStale and _fbStepHashesMatchManifest(
-        dictStep, dictResolvedVars, dictManifestCache,
+        dictStep, dictResolvedVars, dictManifestCache, filesRepo,
     ):
         bStale = False
         listStale = []
@@ -1031,7 +1044,7 @@ def _fdictBuildStepStatusEntry(
 
 
 def _fbStepHashesMatchManifest(
-    dictStep, dictResolvedVars, dictManifestCache,
+    dictStep, dictResolvedVars, dictManifestCache, filesRepo=None,
 ):
     """Return True iff every output's content matches MANIFEST.sha256.
 
@@ -1040,31 +1053,35 @@ def _fbStepHashesMatchManifest(
     the manifest (cannot prove freshness without an entry), or any
     tracked output drifted from its expected hash. Only when every
     declared output is both manifest-tracked and bit-identical to its
-    expected hash does the short-circuit fire.
+    expected hash does the short-circuit fire. ``filesRepo`` (the
+    poll's container snapshot) supersedes the host-path fallback so
+    the manifest is read where it actually lives.
     """
     if dictManifestCache is None:
         return False
     sRepoRoot = (dictResolvedVars or {}).get("sRepoRoot", "")
+    if filesRepo is None:
+        filesRepo = sRepoRoot
     if not sRepoRoot:
         return False
     from . import hashStaleness
-    if not hashStaleness.fbManifestExists(sRepoRoot):
+    if not hashStaleness.fbManifestExists(filesRepo):
         return False
     listRelPaths = _flistStepOutputsRepoRelative(dictStep, sRepoRoot)
     if not listRelPaths:
         return False
-    if not _fbAllPathsTrackedByManifest(sRepoRoot, listRelPaths):
+    if not _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
         return False
     setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
-        sRepoRoot, listRelPaths, dictManifestCache,
+        filesRepo, listRelPaths, dictManifestCache,
     )
     return len(setStale) == 0
 
 
-def _fbAllPathsTrackedByManifest(sRepoRoot, listRelPaths):
+def _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
     """Return True iff every path appears as a manifest entry."""
     from . import hashStaleness
-    dictEntries = hashStaleness._fdictReadManifestEntries(sRepoRoot)
+    dictEntries = hashStaleness._fdictReadManifestEntries(filesRepo)
     if not dictEntries:
         return False
     for sRelPath in listRelPaths:
@@ -1098,9 +1115,14 @@ def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
 
 def _fdictBuildScriptStatus(
     dictWorkflow, dictModTimes, dictVars=None,
-    dictMarkerMtimeByStep=None,
+    dictMarkerMtimeByStep=None, filesRepo=None,
 ):
-    """Return per-step pencil status via timestamp staleness comparison."""
+    """Return per-step pencil status via timestamp staleness comparison.
+
+    ``filesRepo`` is the poll's repo snapshot; when supplied, the
+    manifest short-circuit reads container truth instead of probing
+    the host filesystem at a container path.
+    """
     dictScriptsByStep = fnCollectScriptPathsByStep(dictWorkflow)
     dictOutputsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
@@ -1119,6 +1141,7 @@ def _fdictBuildScriptStatus(
             dictModTimes, dictResolvedVars,
             iMarkerMtime=_fiMarkerMtime(dictMarkerMtimes, iIndex),
             dictManifestCache=dictManifestCache,
+            filesRepo=filesRepo,
         )
     return dictResult
 
@@ -1516,6 +1539,63 @@ def fnInvalidateParentCacheForContainer(dictCtx, sContainerId):
     dictAll.pop(sContainerId, None)
 
 
+def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
+    """Drop and return cache keys that aren't in setKeysToKeep."""
+    listEvicted = [
+        sKey for sKey in list(dictAll.keys())
+        if sKey not in setKeysToKeep
+    ]
+    for sKey in listEvicted:
+        dictAll.pop(sKey, None)
+    return listEvicted
+
+
+def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
+    """Evict cache entries for containers absent from the running list.
+
+    Contract for audit HIGH #13: ``dictParentMtimeCache`` was keyed by
+    container id and never evicted. The container-lifecycle agent that
+    owns ``flistGetRunningContainers`` must call this helper after each
+    running-list refresh, passing the authoritative list. Returns the
+    evicted container ids so the caller can log the sweep.
+    """
+    if dictCtx is None:
+        return []
+    dictAll = dictCtx.get("dictParentMtimeCache")
+    if not dictAll:
+        return []
+    return _flistEvictAbsentKeys(
+        dictAll, set(listRunningContainers or []),
+    )
+
+
+def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
+    """Fan eviction across every per-container cache vaibify keeps.
+
+    Without one coordinator the docker-substrate cache, the state-lock
+    dict, and the parent-mtime cache drift out of phase: a container
+    that has been gone for hours can still hold an asyncio.Lock or a
+    file-status entry while the docker handle has already been
+    evicted. Call this from the same place that refreshes the running
+    list (e.g. the registry route) so all three sweeps see one
+    consistent snapshot. Returns the union of evicted container ids.
+    """
+    setRunning = set(listRunningContainers or [])
+    setEvicted = set(
+        fnSweepParentMtimeCache(dictCtx, listRunningContainers)
+    )
+    if dictCtx is None:
+        return setEvicted
+    dictLocks = dictCtx.get("dictPipelineStateLocks") or {}
+    for sContainerId in list(dictLocks.keys()):
+        if sContainerId not in setRunning:
+            pipelineState.fnEvictStateLockForContainer(
+                dictCtx, sContainerId,
+            )
+            setEvicted.add(sContainerId)
+    return setEvicted
+
+
 def _fdictGetModTimes(
     connectionDocker, sContainerId, listPaths,
     dictCtx=None, bPipelineRunning=False,
@@ -1731,7 +1811,27 @@ def _fdictAutoArchiveZenodoDigests(
     }
 
 
-def _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId=None):
+def _ffilesForWorkflowRepo(dictWorkflow, connectionDocker, sContainerId):
+    """Return the repo-file adapter for the workflow's project repo.
+
+    ``sProjectRepoPath`` is a *container* path, so the honest adapter
+    is a ``ContainerRepoFiles`` whenever a docker connection is in
+    hand. Without one (legacy callers, unit tests on host clones) the
+    raw path string is returned and the reproducibility entry points'
+    dual-accept wraps it in a host adapter.
+    """
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if connectionDocker is None or not sContainerId:
+        return sProjectRepoPath
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    return ContainerRepoFiles(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+
+
+def _fnRefreshEnvelopeIfLevel1(
+    dictWorkflow, sContainerId=None, connectionDocker=None,
+):
     """Regenerate the L3 reproducibility envelope on L1 transition.
 
     Called from the same hook that drives auto-archive. Failures are
@@ -1741,16 +1841,19 @@ def _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId=None):
     reflects the latest verified state. ``sContainerId`` is threaded
     through so the Tier 3 environment.json (which requires the
     running container's image digest) is written, not silently
-    skipped.
+    skipped. With ``connectionDocker`` supplied the envelope is read
+    and written *inside the container*, where the project repo lives.
     """
     from vaibify.reproducibility.levelGates import fbAtLeastLevel1
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if not fbAtLeastLevel1(dictWorkflow, sProjectRepoPath):
+    filesRepo = _ffilesForWorkflowRepo(
+        dictWorkflow, connectionDocker, sContainerId,
+    )
+    if not fbAtLeastLevel1(dictWorkflow, filesRepo):
         return
     try:
         from vaibify.reproducibility import dataArchiver
         dataArchiver.fnGenerateReproducibilityEnvelope(
-            sProjectRepoPath, dictWorkflow,
+            filesRepo, dictWorkflow,
             sContainerName=sContainerId,
             listHostBinaries=dictWorkflow.get("saHostBinaries"),
         )
@@ -1761,7 +1864,7 @@ def _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId=None):
 
 
 def _fnDispatchEnvelopeRefreshIfPromoted(
-    dictWorkflow, sContainerId, bPromoted,
+    dictWorkflow, sContainerId, bPromoted, connectionDocker=None,
 ):
     """Refresh L3 envelope on the L0->L1 transition.
 
@@ -1772,7 +1875,9 @@ def _fnDispatchEnvelopeRefreshIfPromoted(
     branch.
     """
     if bPromoted:
-        _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId)
+        _fnRefreshEnvelopeIfLevel1(
+            dictWorkflow, sContainerId, connectionDocker,
+        )
 
 
 async def _fbDispatchOverleafAutoPush(
@@ -1845,11 +1950,13 @@ async def fnMaybeAutoArchive(
     reflects the latest fully-verified state.
     """
     from vaibify.reproducibility.levelGates import fiAICSLevel
-    sRepo = dictWorkflow.get("sProjectRepoPath", "")
-    iLevelNow = fiAICSLevel(dictWorkflow, sRepo)
+    filesRepo = _ffilesForWorkflowRepo(
+        dictWorkflow, connectionDocker, sContainerId,
+    )
+    iLevelNow = fiAICSLevel(dictWorkflow, filesRepo)
     bPromoted = iAICSLevelBefore < 1 <= iLevelNow
     _fnDispatchEnvelopeRefreshIfPromoted(
-        dictWorkflow, sContainerId, bPromoted,
+        dictWorkflow, sContainerId, bPromoted, connectionDocker,
     )
     if not dictWorkflow.get("bAutoArchive") or not bPromoted:
         return False

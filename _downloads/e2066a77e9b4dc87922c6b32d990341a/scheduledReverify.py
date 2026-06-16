@@ -23,10 +23,10 @@ event loop.
 """
 
 import asyncio
-import fcntl
+import hashlib
 import json
 import os
-import time
+import posixpath
 from datetime import datetime, timezone
 
 from vaibify.reproducibility import (
@@ -36,6 +36,7 @@ from vaibify.reproducibility import (
     overleafMirror,
     zenodoClient,
 )
+from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
 
 __all__ = [
@@ -49,6 +50,7 @@ __all__ = [
     "fdictRunReverifyForWorkflow",
     "fnRunReverifyOnce",
     "fnScheduleReverify",
+    "fsArxivCacheDir",
 ]
 
 
@@ -58,15 +60,13 @@ S_VAIBIFY_DIRECTORY = ".vaibify"
 LIST_SUPPORTED_SERVICES = ("github", "overleaf", "zenodo", "arxiv")
 S_ARXIV_CACHE_DIRECTORY = "arxivCache"
 _F_DEFAULT_CADENCE_HOURS = 6.0
-_I_LOCK_RETRY_MAX = 30
-_F_LOCK_RETRY_SLEEP = 0.05
 
 
 class ReverifyConfigError(ValueError):
     """Raised when a workflow has missing/invalid remote configuration."""
 
 
-def fdictLoadManifestExpectedHashes(sProjectRepo):
+def fdictLoadManifestExpectedHashes(filesRepo):
     """Return ``{relpath: sha256_hex}`` parsed from MANIFEST.sha256.
 
     Delegates to :func:`manifestWriter.flistParseManifestLines` so all
@@ -77,7 +77,7 @@ def fdictLoadManifestExpectedHashes(sProjectRepo):
     from the parser so corrupt manifests surface as 5xx rather than
     being silently treated as empty.
     """
-    listEntries = manifestWriter.flistParseManifestLines(sProjectRepo)
+    listEntries = manifestWriter.flistParseManifestLines(filesRepo)
     return {
         dictEntry["sPath"]: dictEntry["sExpected"]
         for dictEntry in listEntries
@@ -100,7 +100,7 @@ def _fdictRequireServiceConfig(dictWorkflow, sService):
 
 
 def _fdictFetchHashesForService(
-    sService, dictConfig, listRelPaths, sProjectRepo,
+    sService, dictConfig, listRelPaths, filesRepo,
 ):
     """Dispatch to the right mirror module for one service."""
     if sService == "github":
@@ -109,12 +109,37 @@ def _fdictFetchHashesForService(
         return _fdictFetchOverleafHashes(dictConfig, listRelPaths)
     if sService == "arxiv":
         return _fdictFetchArxivHashes(
-            dictConfig, listRelPaths, sProjectRepo,
+            dictConfig, listRelPaths, filesRepo,
         )
     return _fdictFetchZenodoHashes(dictConfig, listRelPaths)
 
 
-def _fdictFetchArxivHashes(dictConfig, listRelPaths, sProjectRepo):
+def fsArxivCacheDir(filesRepo):
+    """Return the host directory caching downloaded arXiv tarballs.
+
+    The arXiv tarball cache is genuinely host network + disk work, so
+    it must live on the host even when the project repo lives in a
+    container. A host-rooted adapter keeps the historical
+    ``<repo>/.vaibify/arxivCache`` location; a container-rooted
+    adapter maps to a per-repo directory under ``~/.vaibify`` keyed by
+    a hash of the container root path.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sLocalRoot = filesRepo.fsLocalRootOrNone()
+    if sLocalRoot is not None:
+        return os.path.join(
+            sLocalRoot, S_VAIBIFY_DIRECTORY, S_ARXIV_CACHE_DIRECTORY,
+        )
+    sRootKey = hashlib.sha256(
+        (filesRepo.sRootPath or "").encode("utf-8"),
+    ).hexdigest()[:16]
+    return os.path.join(
+        os.path.expanduser("~"), S_VAIBIFY_DIRECTORY,
+        S_ARXIV_CACHE_DIRECTORY, sRootKey,
+    )
+
+
+def _fdictFetchArxivHashes(dictConfig, listRelPaths, filesRepo):
     """Fetch arXiv hashes; require sArxivId."""
     sArxivId = dictConfig.get("sArxivId") or ""
     if not sArxivId:
@@ -122,12 +147,9 @@ def _fdictFetchArxivHashes(dictConfig, listRelPaths, sProjectRepo):
             "Remote not configured: configure arxiv in vaibify.yml"
         )
     dictPathMap = dictConfig.get("dictPathMap") or None
-    sCacheDir = os.path.join(
-        sProjectRepo, S_VAIBIFY_DIRECTORY, S_ARXIV_CACHE_DIRECTORY,
-    )
     return arxivClient.fdictFetchRemoteHashes(
         sArxivId, listRelPaths,
-        dictPathMap=dictPathMap, sCacheDir=sCacheDir,
+        dictPathMap=dictPathMap, sCacheDir=fsArxivCacheDir(filesRepo),
     )
 
 
@@ -188,7 +210,7 @@ def _fsBuildIsoTimestamp():
 
 
 def fdictVerifyRemoteService(
-    sProjectRepo, dictWorkflow, sService, sNowIso=None,
+    filesRepo, dictWorkflow, sService, sNowIso=None,
 ):
     """Compare manifest hashes to the remote and return a status dict.
 
@@ -203,11 +225,12 @@ def fdictVerifyRemoteService(
     L2 readiness check can detect when the live workflow state has
     drifted away from the last successful verification.
     """
-    dictExpected = fdictLoadManifestExpectedHashes(sProjectRepo)
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictExpected = fdictLoadManifestExpectedHashes(filesRepo)
     dictConfig = _fdictRequireServiceConfig(dictWorkflow, sService)
     listRelPaths = sorted(dictExpected.keys())
     dictActual = _fdictFetchHashesForService(
-        sService, dictConfig, listRelPaths, sProjectRepo,
+        sService, dictConfig, listRelPaths, filesRepo,
     )
     listDiverged = _flistBuildDivergenceList(dictExpected, dictActual)
     iTotal = len(dictExpected)
@@ -241,28 +264,19 @@ def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
         )
 
 
-def _fsSyncStatusPath(sProjectRepo):
-    """Return the absolute path of the workflow's syncStatus.json."""
-    return os.path.join(
-        sProjectRepo, S_VAIBIFY_DIRECTORY, S_SYNC_STATUS_FILENAME,
-    )
+def _fsSyncStatusRelativePath():
+    """Return the repo-relative path of the workflow's syncStatus.json."""
+    return posixpath.join(S_VAIBIFY_DIRECTORY, S_SYNC_STATUS_FILENAME)
 
 
-def fdictReadCachedSyncStatus(sProjectRepo, sService):
+def fdictReadCachedSyncStatus(filesRepo, sService):
     """Return the cached status for sService or an empty default.
 
     Backfills the Phase-2 service-identity fields with ``None`` when a
     pre-Phase-2 file omits them, so callers can ``.get(...)`` against
     a stable shape without separately probing for the upgrade marker.
     """
-    sPath = _fsSyncStatusPath(sProjectRepo)
-    if not os.path.isfile(sPath):
-        return _fdictEmptyServiceStatus(sService)
-    try:
-        with open(sPath, "r", encoding="utf-8") as fileHandle:
-            dictAll = json.load(fileHandle)
-    except (OSError, ValueError):
-        return _fdictEmptyServiceStatus(sService)
+    dictAll = _fdictReadAllStatuses(filesRepo)
     dictEntry = dictAll.get(sService)
     if not isinstance(dictEntry, dict):
         return _fdictEmptyServiceStatus(sService)
@@ -302,111 +316,62 @@ def _fdictEmptyServiceStatus(sService):
     return dictEmpty
 
 
-def fnWriteSyncStatus(sProjectRepo, dictStatus):
+def fnWriteSyncStatus(filesRepo, dictStatus):
     """Persist a per-service status entry to syncStatus.json atomically.
 
-    Holds an advisory ``fcntl`` lock on a sibling lock file across the
-    full read-modify-write critical section so concurrent writes for
-    different services cannot lose each other's updates. The lock is
-    acquired non-blocking with a short bounded retry loop to avoid
-    deadlocking on a stale lock holder; on retry exhaustion a
-    ``RuntimeError`` is raised so the caller surfaces the problem
-    rather than silently overwriting a peer's entry.
+    Holds the adapter's write lock across the full read-modify-write
+    critical section so concurrent writes for different services
+    cannot lose each other's updates. Host adapters use an advisory
+    ``fcntl`` lock with a bounded retry budget (raising
+    ``RuntimeError`` on exhaustion); container adapters use a
+    process-local lock keyed by container + path, which is honest
+    because every container-path writer (verify route, scheduled
+    loop, UI button) lives in the single FastAPI process.
     """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     sService = dictStatus["sService"]
-    sPath = _fsSyncStatusPath(sProjectRepo)
-    os.makedirs(os.path.dirname(sPath), exist_ok=True)
-    sLockPath = sPath + ".lock"
-    with _fnAcquireSyncStatusLock(sLockPath):
-        _fnPersistSyncStatusEntry(sPath, sService, dictStatus)
+    sRelPath = _fsSyncStatusRelativePath()
+    with filesRepo.fnWithLock(sRelPath):
+        dictAll = _fdictReadAllStatuses(filesRepo)
+        dictAll[sService] = dictStatus
+        filesRepo.fnWriteJsonAtomic(sRelPath, dictAll)
 
 
-def _fnPersistSyncStatusEntry(sPath, sService, dictStatus):
-    """Read, mutate, and atomically rewrite the syncStatus.json file."""
-    dictAll = _fdictReadAllStatuses(sPath)
-    dictAll[sService] = dictStatus
-    sTempPath = sPath + ".tmp"
-    with open(sTempPath, "w", encoding="utf-8") as fileHandle:
-        json.dump(dictAll, fileHandle, indent=2, sort_keys=True)
-    os.replace(sTempPath, sPath)
-
-
-class _SyncStatusLockHolder:
-    """Context manager wrapping the open file descriptor + flock release."""
-
-    def __init__(self, iFileDescriptor):
-        self.iFileDescriptor = iFileDescriptor
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, classExc, valueExc, traceback):
-        try:
-            fcntl.flock(self.iFileDescriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(self.iFileDescriptor)
-
-
-def _fnAcquireSyncStatusLock(sLockPath):
-    """Return a context manager holding an exclusive flock on sLockPath.
-
-    Retries up to ``_I_LOCK_RETRY_MAX`` times with ``_F_LOCK_RETRY_SLEEP``
-    second sleeps in between (≈ 1.5 s budget). The previous 250 ms
-    budget was insufficient when three legitimate writers contend for
-    the lock simultaneously: the verify route, the scheduled loop, and
-    a manual UI button can all fire within a single user interaction
-    and a JSON read-modify-write of a many-service status file can
-    plausibly take 100 ms each on a busy host. Closes the file
-    descriptor in every exit path so a stale ``open`` does not leak
-    when retries are exhausted.
-    """
-    iFileDescriptor = os.open(
-        sLockPath, os.O_WRONLY | os.O_CREAT, 0o600,
-    )
-    for _iAttempt in range(_I_LOCK_RETRY_MAX):
-        try:
-            fcntl.flock(
-                iFileDescriptor, fcntl.LOCK_EX | fcntl.LOCK_NB,
-            )
-            return _SyncStatusLockHolder(iFileDescriptor)
-        except BlockingIOError:
-            time.sleep(_F_LOCK_RETRY_SLEEP)
-    os.close(iFileDescriptor)
-    raise RuntimeError(
-        f"could not acquire syncStatus lock at '{sLockPath}' "
-        f"after {_I_LOCK_RETRY_MAX} attempts"
-    )
-
-
-def _fdictReadAllStatuses(sPath):
+def _fdictReadAllStatuses(filesRepo):
     """Return the full syncStatus.json dict, or an empty dict on error."""
-    if not os.path.isfile(sPath):
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sRelPath = _fsSyncStatusRelativePath()
+    if not filesRepo.fbIsFile(sRelPath):
         return {}
     try:
-        with open(sPath, "r", encoding="utf-8") as fileHandle:
-            dictAll = json.load(fileHandle)
+        dictAll = json.loads(filesRepo.fsReadText(sRelPath))
     except (OSError, ValueError):
         return {}
     return dictAll if isinstance(dictAll, dict) else {}
 
 
-def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None):
+def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None, filesRepo=None):
     """Verify every configured remote for one workflow; never raises.
 
     Returns a list-of-dicts result block ``{sWorkflowId, listResults}``
     suitable for inclusion in the scheduled-loop summary. Each service
     failure is captured as an entry with ``sStatus='error'`` so a
     single bad remote does not abort the workflow's other services.
+    ``filesRepo`` defaults to a host adapter rooted at the workflow's
+    ``sProjectRepoPath``; the GUI scheduler passes the container
+    adapter for that workflow instead.
     """
     sWorkflowId = dictWorkflow.get("sWorkflowId") or ""
-    sProjectRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    if filesRepo is None:
+        filesRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictRemotes = dictWorkflow.get("dictRemotes") or {}
     listResults = []
     for sService in LIST_SUPPORTED_SERVICES:
         if sService not in dictRemotes:
             continue
         dictResult = _fdictAttemptOneVerify(
-            sProjectRepo, dictWorkflow, sService, sNowIso,
+            filesRepo, dictWorkflow, sService, sNowIso,
         )
         dictResult["sWorkflowId"] = sWorkflowId
         listResults.append(dictResult)
@@ -414,12 +379,12 @@ def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None):
 
 
 def _fdictAttemptOneVerify(
-    sProjectRepo, dictWorkflow, sService, sNowIso,
+    filesRepo, dictWorkflow, sService, sNowIso,
 ):
     """Run one verify; return ok/error dict; never raises."""
     try:
         dictStatus = fdictVerifyRemoteService(
-            sProjectRepo, dictWorkflow, sService, sNowIso=sNowIso,
+            filesRepo, dictWorkflow, sService, sNowIso=sNowIso,
         )
     except Exception as errorAny:
         return {
@@ -428,7 +393,7 @@ def _fdictAttemptOneVerify(
             "sError": _fsRedactError(str(errorAny)),
         }
     try:
-        fnWriteSyncStatus(sProjectRepo, dictStatus)
+        fnWriteSyncStatus(filesRepo, dictStatus)
     except OSError as errorOs:
         return {
             "sService": sService,
@@ -447,27 +412,42 @@ def _fsRedactError(sMessage):
 def fnRunReverifyOnce(dictCtx, listWorkflows, sNowIso=None):
     """Run one scheduler iteration; return the aggregated report.
 
-    ``dictCtx`` is accepted so the function signature matches the
-    scheduled task. The current implementation does not consult the
-    context — every input the worker needs lives on the workflow
-    dicts — but accepting it keeps callsites uniform with other
-    long-running tasks in the codebase.
+    ``listWorkflows`` entries are either bare workflow dicts (legacy
+    callers and tests — verified through the host fallback) or
+    ``(sContainerId, dictWorkflow)`` tuples from
+    ``_flistEnumerateWorkflows``, in which case the context's
+    ``files`` callable supplies the container adapter so the verify
+    reads the manifest where it actually lives.
     """
     sIso = sNowIso or _fsBuildIsoTimestamp()
     listResults = []
-    for dictWorkflow in listWorkflows:
+    for entryWorkflow in listWorkflows:
+        dictWorkflow, filesRepo = _ftResolveWorkflowEntry(
+            dictCtx, entryWorkflow,
+        )
         dictWorkflowReport = fdictRunReverifyForWorkflow(
-            dictWorkflow, sNowIso=sIso,
+            dictWorkflow, sNowIso=sIso, filesRepo=filesRepo,
         )
         for dictResult in dictWorkflowReport["listResults"]:
             listResults.append(dictResult)
     return {"sNowIso": sIso, "listResults": listResults}
 
 
+def _ftResolveWorkflowEntry(dictCtx, entryWorkflow):
+    """Return ``(dictWorkflow, filesRepo_or_None)`` for one loop entry."""
+    if isinstance(entryWorkflow, dict):
+        return entryWorkflow, None
+    sContainerId, dictWorkflow = entryWorkflow
+    fnFiles = dictCtx.get("files") if dictCtx else None
+    if fnFiles is None:
+        return dictWorkflow, None
+    return dictWorkflow, fnFiles(sContainerId)
+
+
 def _flistEnumerateWorkflows(dictCtx):
-    """Pull every loaded workflow from the route context."""
+    """Pull ``(sContainerId, dictWorkflow)`` pairs from the route context."""
     dictWorkflows = dictCtx.get("workflows") or {}
-    return list(dictWorkflows.values())
+    return list(dictWorkflows.items())
 
 
 async def _fnReverifyLoop(dictCtx, fHoursCadence):

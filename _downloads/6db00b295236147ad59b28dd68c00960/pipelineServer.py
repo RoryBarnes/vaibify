@@ -33,6 +33,7 @@ __all__ = [
     "fnRejectNotConnected",
     "fnRejectTerminalStart",
     "fnRunTerminalSession",
+    "fnSignalTerminalAbnormalExit",
     "fnTerminalInputLoop",
     "fnTerminalReadLoop",
     "fnValidatePathWithinRoot",
@@ -43,6 +44,8 @@ __all__ = [
     "fdictFilterNonNone",
     "fdictRequireWorkflow",
     "fdictStepFromRequest",
+    "fiGetSyncEpoch",
+    "fnBumpSyncEpoch",
     "fsSanitizeExceptionForClient",
     "fsComputeStaticCacheVersion",
     "fdictDiagnoseDockerError",
@@ -590,6 +593,22 @@ def ffBuildResilientWsCallback(websocket):
     return fnCallback
 
 
+# Module-level registry the terminal route consults to hand the active
+# runner's interactive context to ``fnTerminalReadLoop`` so an abnormal
+# terminal exit posts the runner-unblock sentinel (audit HIGH #9).
+DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER = {}
+
+
+def _fnPublishInteractiveContext(sContainerId, dictInteractive):
+    """Publish a runner's interactive context for the terminal route."""
+    DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER[sContainerId] = dictInteractive
+
+
+def fdictInteractiveContextForContainer(sContainerId):
+    """Return the active runner's interactive context, or ``None``."""
+    return DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId)
+
+
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
@@ -614,6 +633,7 @@ async def fnPipelineMessageLoop(
     )
     dictInteractive = fdictCreateInteractiveContext()
     fnCallback = ffBuildResilientWsCallback(websocket)
+    _fnPublishInteractiveContext(sContainerId, dictInteractive)
 
     while True:
         dictRequest = json.loads(await websocket.receive_text())
@@ -638,7 +658,9 @@ async def fnPipelineMessageLoop(
             )
         )
         if dictPipelineTasks is not None:
-            dictPipelineTasks[sContainerId] = taskPipeline
+            _fnRegisterPipelineTask(
+                dictPipelineTasks, sContainerId, taskPipeline,
+            )
 
 
 async def _fnSafeDispatch(
@@ -646,7 +668,12 @@ async def _fnSafeDispatch(
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive,
 ):
-    """Wrap fnDispatchAction with error handling."""
+    """Wrap fnDispatchAction with error handling.
+
+    Tags the failure log with ``sContainerId`` so the host-incident
+    ring buffer (consumed by ``pipelineState._fdictReconcileStaleHeartbeat``)
+    can pair the exception with the dying container's state file.
+    """
     try:
         await fnDispatchAction(
             sAction, dictRequest, connectionDocker,
@@ -658,6 +685,7 @@ async def _fnSafeDispatch(
         logger.error(
             "Pipeline action '%s' failed: %s", sAction, exc,
             exc_info=True,
+            extra={"sContainerId": sContainerId},
         )
         try:
             await fnCallback({
@@ -667,6 +695,24 @@ async def _fnSafeDispatch(
             })
         except Exception:
             pass
+
+
+def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):
+    """Store a pipeline task and arrange for self-eviction on completion.
+
+    Without the done-callback, completed-normally tasks linger in
+    ``dictPipelineTasks`` forever — a memory leak proportional to the
+    number of runs across the container's lifetime. The callback fires
+    after the task finishes (success, failure, or cancellation) and
+    drops the entry only if it still points at this task, so a brand-new
+    run for the same container is never accidentally evicted.
+    """
+    dictPipelineTasks[sContainerId] = taskPipeline
+
+    def fnEvictOnDone(taskCompleted):
+        if dictPipelineTasks.get(sContainerId) is taskCompleted:
+            dictPipelineTasks.pop(sContainerId, None)
+    taskPipeline.add_done_callback(fnEvictOnDone)
 
 
 def _fnHandleInteractiveResponse(
@@ -693,17 +739,59 @@ def _fnHandleInteractiveComplete(dictInteractive, dictRequest):
 # Terminal session functions
 # ---------------------------------------------------------------
 
-async def fnTerminalReadLoop(session, websocket):
-    """Continuously read terminal output and send to WebSocket."""
-    while session._bRunning:
-        try:
-            baOutput = session.fbaReadOutput()
-            if baOutput:
-                await websocket.send_bytes(baOutput)
-            else:
-                await asyncio.sleep(0.05)
-        except Exception:
-            break
+I_TERMINAL_ABNORMAL_EXIT_CODE = 130
+
+
+def fnSignalTerminalAbnormalExit(dictInteractive):
+    """Post a complete:130 sentinel to the interactive context.
+
+    The runner's interactive paused-state awaits on
+    ``interactiveSteps.fnSetInteractiveResponse``. When the terminal
+    WebSocket dies abnormally (subprocess crash, kernel hangup, exec
+    pipe break) the runner would otherwise block forever. This helper
+    converts the dead terminal into a runner-visible step failure.
+
+    Callers should pass ``dictInteractive`` only when the terminal
+    session is tied to an active interactive step. ``None`` is a
+    no-op so the helper is safe to call from generic terminal paths.
+    """
+    if dictInteractive is None:
+        return
+    from .interactiveSteps import fnSetInteractiveResponse
+    fnSetInteractiveResponse(
+        dictInteractive,
+        f"complete:{I_TERMINAL_ABNORMAL_EXIT_CODE}",
+    )
+
+
+async def _fbReadOnceAndForward(session, websocket):
+    """Read one chunk and forward to the websocket; True on success."""
+    baOutput = session.fbaReadOutput()
+    if baOutput:
+        await websocket.send_bytes(baOutput)
+    else:
+        await asyncio.sleep(0.05)
+    return True
+
+
+async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
+    """Continuously read terminal output and send to WebSocket.
+
+    Posts ``complete:130`` to ``dictInteractive`` via
+    :func:`fnSignalTerminalAbnormalExit` on abnormal exit so a runner
+    paused at ``interactiveComplete`` does not block forever.
+    """
+    bAbnormal = False
+    try:
+        while session._bRunning:
+            try:
+                await _fbReadOnceAndForward(session, websocket)
+            except Exception:
+                bAbnormal = True
+                break
+    finally:
+        if bAbnormal or not session._bRunning:
+            fnSignalTerminalAbnormalExit(dictInteractive)
 
 
 async def fnTerminalInputLoop(session, websocket):
@@ -749,16 +837,22 @@ async def fnRejectNotConnected(websocket):
 
 
 async def fnRunTerminalSession(
-    session, websocket, dictTerminalSessions,
+    session, websocket, dictTerminalSessions, dictInteractive=None,
 ):
-    """Manage terminal session lifecycle after successful start."""
+    """Manage terminal session lifecycle after successful start.
+
+    ``dictInteractive`` is the active runner's interactive context; when
+    provided, ``fnTerminalReadLoop`` posts a ``complete:130`` sentinel
+    on abnormal exit so a runner paused at ``interactiveComplete`` does
+    not deadlock when the terminal-WS dies (audit HIGH #9).
+    """
     sSessionId = session.sSessionId
     dictTerminalSessions[sSessionId] = session
     await websocket.send_json(
         {"sType": "connected", "sSessionId": sSessionId}
     )
     taskReader = asyncio.create_task(
-        fnTerminalReadLoop(session, websocket)
+        fnTerminalReadLoop(session, websocket, dictInteractive)
     )
     try:
         await fnTerminalInputLoop(session, websocket)
@@ -915,7 +1009,7 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             )
         )
         await _fnRefreshConftestsAndMigrateMarkers(
-            dictCtx, sContainerId, dictWorkflow,
+            dictCtx, sContainerId, dictWorkflow, sResolved,
         )
         from .workflowReloadDetector import fnRecordSelfWriteMtime
         fnRecordSelfWriteMtime(dictCtx, sContainerId, sResolved)
@@ -946,14 +1040,16 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
 
 
 async def _fnRefreshConftestsAndMigrateMarkers(
-    dictCtx, sContainerId, dictWorkflow,
+    dictCtx, sContainerId, dictWorkflow, sWorkflowPath,
 ):
     """Refresh stale conftests and migrate flat markers at connect time.
 
     Both operations are process-cached inside ``conftestManager`` so
     poll-time calls in ``_fdictAttachTestStatus`` become no-ops after
-    the first sweep here. Failures log and swallow so a connect
-    handshake never fails on a migration issue.
+    the first sweep here. The migration is namespaced by the workflow
+    slug derived from ``sWorkflowPath`` so flat markers land in the
+    same per-slug subdirectory the poll path reads. Failures log and
+    swallow so a connect handshake never fails on a migration issue.
     """
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if not sProjectRepoPath:
@@ -972,6 +1068,7 @@ async def _fnRefreshConftestsAndMigrateMarkers(
         await asyncio.to_thread(
             conftestManager.fnMigrateFlatMarkers,
             dictCtx["docker"], sContainerId, sProjectRepoPath,
+            fsWorkflowSlugFromPath(sWorkflowPath),
         )
     except Exception as error:
         logger.warning(
@@ -1223,6 +1320,7 @@ from .testStatusManager import (  # noqa: F401
     _fnRemoveTestFiles,
     _fnUpdateAggregateTestState,
     _fsBuildPytestCommand,
+    fbRefreshAggregateTestStates,
 )
 
 
@@ -1373,7 +1471,33 @@ def _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths):
                 :sWorkflowDirectory.index("/.vaibify")]
         return sWorkflowDirectory
 
-    return fnRequire, fnSave, fnVariables, fnWorkflowDir
+    def fnFiles(sContainerId):
+        from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+        dictWorkflow = dictWorkflows.get(sContainerId) or {}
+        sRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+        return ContainerRepoFiles(
+            dictRaw["docker"], sContainerId, sRepoPath,
+        )
+
+    return fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles
+
+
+def fnBumpSyncEpoch(dictCtx, sContainerId):
+    """Increment the per-container sync epoch.
+
+    Every sync-mutating route (push, add-file, commit-canonical,
+    pull/fetch/refresh of the project repo) bumps this counter so the
+    state poll can detect that remote-facing git state may have
+    changed and trigger exactly one badge refresh — no timers, no
+    extra polling loops.
+    """
+    dictEpochs = dictCtx.setdefault("dictSyncEpochs", {})
+    dictEpochs[sContainerId] = dictEpochs.get(sContainerId, 0) + 1
+
+
+def fiGetSyncEpoch(dictCtx, sContainerId):
+    """Return the current sync epoch for a container (0 when untouched)."""
+    return dictCtx.get("dictSyncEpochs", {}).get(sContainerId, 0)
 
 
 def fdictBuildContext(connectionDocker):
@@ -1399,14 +1523,16 @@ def fdictBuildContext(connectionDocker):
         "lastSelfWriteMtimes": {},
         "lastDiscoveredWorkflows": {},
         "dictPipelineStateLocks": {},
+        "dictSyncEpochs": {},
     }
-    fnRequire, fnSave, fnVariables, fnWorkflowDir = _ftupleBuildHelpers(
-        dictRaw, dictWorkflows, dictPaths
+    fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles = (
+        _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths)
     )
     dictRaw["require"] = fnRequire
     dictRaw["save"] = fnSave
     dictRaw["variables"] = fnVariables
     dictRaw["workflowDir"] = fnWorkflowDir
+    dictRaw["files"] = fnFiles
     return RouteContext(dictRaw)
 
 
@@ -1694,6 +1820,30 @@ async def _fnInvokeMaybeAsync(fnHook, app):
         await objectResult
 
 
+def _fnRegisterLastResortExceptionHandler(app):
+    """Convert any unhandled route exception into a sanitized 500 JSON.
+
+    Without this handler an unexpected exception becomes a bare 500
+    whose traceback goes only to uvicorn's stderr — never to the
+    vaibify log file — and the client receives no structured body.
+    The full traceback is logged to the "vaibify" logger; the client
+    sees only ``fsSanitizeExceptionForClient`` output so internal
+    paths and credentials can never leak.
+    """
+    from fastapi.responses import JSONResponse
+
+    @app.exception_handler(Exception)
+    async def fnHandleUnexpectedRouteException(request, exc):
+        logger.error(
+            "Unhandled exception on %s %s",
+            request.method, request.url.path, exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": fsSanitizeExceptionForClient(exc)},
+        )
+
+
 def fappCreateApplication(
     sWorkspaceRoot="/workspace", sTerminalUserArg=None,
     iExpectedPort=0,
@@ -1718,6 +1868,7 @@ def fappCreateApplication(
     app.state.iExpectedPort = iExpectedPort
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    _fnRegisterLastResortExceptionHandler(app)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["iPort"] = iExpectedPort
@@ -1745,14 +1896,33 @@ def fappCreateHubApplication(iExpectedPort=0):
     app.state.dictContainerLocks = {}
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    _fnRegisterLastResortExceptionHandler(app)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["iPort"] = iExpectedPort
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
     fnRegisterRegistryRoutes(app, dictCtx)
-    _fnRegisterHubShutdownReleaseLocks(app)
+    _fnRegisterHubLockLifecycle(app)
     return app
+
+
+def _fnRegisterHubLockLifecycle(app):
+    """Reap stale claims at startup; release held locks at shutdown."""
+    _fnRegisterHubStartupReapStaleClaims(app)
+    _fnRegisterHubShutdownReleaseLocks(app)
+
+
+def _fnRegisterHubStartupReapStaleClaims(app):
+    """Reap dead-PID container locks before the hub serves requests."""
+
+    async def fnReapStaleClaims(app):
+        del app
+        from vaibify.config.containerLock import (
+            fnReapStaleContainerLocks,
+        )
+        fnReapStaleContainerLocks()
+    app.state.listLifespanStartup.append(fnReapStaleClaims)
 
 
 def _fnRegisterHubShutdownReleaseLocks(app):
