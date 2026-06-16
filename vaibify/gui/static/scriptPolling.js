@@ -126,15 +126,17 @@ var VaibifyPolling = (function () {
     }
 
     async function _fnPollFileChangesBody(sContainerId) {
-        var pBadges = (typeof VaibifyGitBadges !== "undefined")
-            ? VaibifyGitBadges.fnRefresh(sContainerId)
-            : Promise.resolve();
+        /* Badge refresh is owned by the sync-epoch-bump path in
+           _fnMaybeRefreshBadgesOnSyncEpoch; the file-status tick used
+           to also unconditionally call VaibifyGitBadges.fnRefresh,
+           which doubled the per-tick container exec load for no
+           observable user benefit. The badge UI now updates only
+           when a sync operation actually bumps the server epoch. */
         try {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/file-status"
             );
             _fnReportPollSuccess("file-status");
-            try { await pBadges; } catch (e) { /* badges optional */ }
             if (_fnOnFileStatus) {
                 _fnOnFileStatus(dictStatus);
             }

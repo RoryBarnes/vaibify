@@ -22,7 +22,12 @@ var PipeleyenPipelineRunner = (function () {
         if (dictEvent.sType === "wsHeartbeat") {
             return;
         }
-        if (dictEvent.sType === "output") {
+        if (dictEvent.sType === "outputBatch") {
+            var listLines = dictEvent.listLines || [];
+            for (var iLine = 0; iLine < listLines.length; iLine++) {
+                fnAppendPipelineOutput(listLines[iLine]);
+            }
+        } else if (dictEvent.sType === "output") {
             fnAppendPipelineOutput(dictEvent.sLine);
         } else if (dictEvent.sType === "commandFailed") {
             var sMessage =

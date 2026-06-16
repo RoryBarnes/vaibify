@@ -7,6 +7,12 @@ var VaibifyWebSocket = (function () {
     var _listPendingActions = [];
     var I_MAX_PENDING_ACTIONS = 100;
     var _dictEventHandlers = {};
+    var _sActiveContainerId = null;
+    var _sActiveSessionToken = null;
+    var _bIntentionalDisconnect = false;
+    var _iReconnectAttempt = 0;
+    var _iReconnectTimer = null;
+    var _laReconnectDelaysSeconds = [1, 2, 4, 8, 16];
 
     function fnOnEvent(sType, fnHandler) {
         if (!_dictEventHandlers[sType]) {
@@ -43,43 +49,94 @@ var VaibifyWebSocket = (function () {
             try { _wsPipeline.close(); } catch (e) { /* ignore */ }
             _wsPipeline = null;
         }
+        _sActiveContainerId = sContainerId;
+        _sActiveSessionToken = sSessionToken;
+        _bIntentionalDisconnect = false;
+        _fnClearReconnectTimer();
+        _wsPipeline = _fnOpenSocket(sContainerId, sSessionToken);
+        return _wsPipeline;
+    }
+
+    function _fnOpenSocket(sContainerId, sSessionToken) {
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
         var sUrl = sProtocol + "//" + window.location.host +
             "/ws/pipeline/" + sContainerId +
             "?sToken=" + encodeURIComponent(sSessionToken);
-        _wsPipeline = new WebSocket(sUrl);
-        _wsPipeline.onopen = function () {
+        var wsNew = new WebSocket(sUrl);
+        wsNew.onopen = function () {
             console.log("[WS] open, flushing",
                 _listPendingActions.length, "pending actions");
+            _iReconnectAttempt = 0;
             _fnFlushPendingActions();
         };
-        _wsPipeline.onmessage = function (event) {
+        wsNew.onmessage = function (event) {
             console.log(
                 "[WS] message:", event.data.substring(0, 200));
             _fnDispatchEvent(JSON.parse(event.data));
         };
-        _wsPipeline.onclose = function (event) {
+        wsNew.onclose = function (event) {
             console.log("[WS] close, code:", event.code);
             _wsPipeline = null;
-            var bActionsDropped = _listPendingActions.length > 0;
-            _listPendingActions.length = 0;
-            _fnDispatchEvent({
-                sType: "_wsClose",
-                iCode: event.code,
-                bActionsDropped: bActionsDropped,
-            });
+            _fnHandleSocketClose(event);
         };
-        _wsPipeline.onerror = function () {
-            _wsPipeline = null;
-            var bActionsDropped = _listPendingActions.length > 0;
-            _listPendingActions.length = 0;
-            _fnDispatchEvent({
-                sType: "_wsError",
-                bActionsDropped: bActionsDropped,
-            });
+        wsNew.onerror = function () {
+            /* onclose always follows onerror; defer dispatch to it. */
         };
-        return _wsPipeline;
+        return wsNew;
+    }
+
+    function _fnHandleSocketClose(event) {
+        var bNormal = event.code === 1000 || event.code === 1001;
+        if (_bIntentionalDisconnect || bNormal) {
+            _fnEmitCloseEventAndDropPending(event);
+            return;
+        }
+        if (_iReconnectAttempt >= _laReconnectDelaysSeconds.length) {
+            _fnEmitCloseEventAndDropPending(event);
+            return;
+        }
+        var iDelaySeconds =
+            _laReconnectDelaysSeconds[_iReconnectAttempt];
+        _iReconnectAttempt++;
+        console.log(
+            "[WS] scheduling reconnect attempt",
+            _iReconnectAttempt, "in", iDelaySeconds, "s",
+        );
+        _iReconnectTimer = setTimeout(
+            _fnAttemptReconnect, iDelaySeconds * 1000,
+        );
+    }
+
+    function _fnEmitCloseEventAndDropPending(event) {
+        var bActionsDropped = _listPendingActions.length > 0;
+        _listPendingActions.length = 0;
+        _fnDispatchEvent({
+            sType: "_wsClose",
+            iCode: event.code,
+            bActionsDropped: bActionsDropped,
+        });
+    }
+
+    function _fnAttemptReconnect() {
+        _iReconnectTimer = null;
+        if (_bIntentionalDisconnect) return;
+        if (!_sActiveContainerId || !_sActiveSessionToken) return;
+        if (_wsPipeline) return;
+        console.log(
+            "[WS] reconnecting attempt", _iReconnectAttempt,
+        );
+        _wsPipeline = _fnOpenSocket(
+            _sActiveContainerId, _sActiveSessionToken,
+        );
+    }
+
+    function _fnClearReconnectTimer() {
+        if (_iReconnectTimer !== null) {
+            clearTimeout(_iReconnectTimer);
+            _iReconnectTimer = null;
+        }
+        _iReconnectAttempt = 0;
     }
 
     function fnSend(dictAction) {
@@ -110,6 +167,10 @@ var VaibifyWebSocket = (function () {
     }
 
     function fnDisconnect() {
+        _bIntentionalDisconnect = true;
+        _fnClearReconnectTimer();
+        _sActiveContainerId = null;
+        _sActiveSessionToken = null;
         if (_wsPipeline) {
             /*
              * Close with code 1000 (Normal Closure) so the onclose

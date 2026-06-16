@@ -16,6 +16,7 @@ var VaibifyMonitor = (function () {
     var elMonitorPanel = null;
     var bVisible = false;
     var dictCanvasContextCache = {};
+    var _bMonitorInFlight = false;
 
     /* --- Initialization --- */
 
@@ -164,6 +165,8 @@ var VaibifyMonitor = (function () {
 
     async function fnFetchMonitorData() {
         if (!sContainerId) return;
+        if (_bMonitorInFlight) return;
+        _bMonitorInFlight = true;
         try {
             var response = await fetch(
                 "/api/monitor/" + sContainerId
@@ -173,6 +176,8 @@ var VaibifyMonitor = (function () {
             fnUpdateDisplay(dictData);
         } catch (error) {
             /* Silently ignore fetch errors during polling */
+        } finally {
+            _bMonitorInFlight = false;
         }
     }
 

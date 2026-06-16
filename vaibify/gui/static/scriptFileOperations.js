@@ -104,85 +104,232 @@ var PipeleyenFileOps = (function () {
             dictState.iFileCheckTimer = null;
             dictState.bFileCheckInProgress = false;
             dictState.iInflightRequests = 0;
-            fnCheckOutputFileExistence(dictState);
-            fnCheckDataFileExistence(dictState);
-            if (dictState.iInflightRequests === 0) {
-                dictState.bFileCheckInProgress = false;
-            } else {
-                setTimeout(function () {
-                    dictState.bFileCheckInProgress = false;
-                }, 10000);
-            }
+            _fnRunBatchedExistenceCheck(dictState);
         }, 200);
     }
 
-    function _fnFileCheckComplete(dictState) {
-        dictState.iInflightRequests--;
-        if (dictState.iInflightRequests <= 0) {
-            dictState.bFileCheckInProgress = false;
+    function _fnRunBatchedExistenceCheck(dictState) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        var dictPlan = _fdictPlanExistenceRequests(dictState);
+        if (dictPlan.listPaths.length === 0) {
+            _fnAfterExistenceResolved(dictPlan, {}, dictState);
+            return;
         }
+        dictState.bFileCheckInProgress = true;
+        VaibifyApi.fdictPost(
+            "/api/files/" + sContainerId + "/exist",
+            {saRelativePaths: dictPlan.listPaths}
+        ).then(function (dictResponse) {
+            var dictExists = (dictResponse &&
+                dictResponse.dictExists) || {};
+            _fnAfterExistenceResolved(
+                dictPlan, dictExists, dictState
+            );
+        }).catch(function () {
+            dictState.bFileCheckInProgress = false;
+        });
     }
 
-    function fnCheckDataFileExistence(dictState) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+    function _fnAfterExistenceResolved(
+        dictPlan, dictExists, dictState
+    ) {
+        _fnApplyOutputExistence(
+            dictPlan.listOutputItems, dictExists, dictState
+        );
+        _fnApplyDataExistence(
+            dictPlan.listDataItems, dictExists, dictState
+        );
+        dictState.bFileCheckInProgress = false;
+    }
+
+    function _fsComposeAbsoluteOrRelative(sResolved, sWorkdir) {
+        if (!sResolved) return "";
+        if (sResolved.charAt(0) === "/") return sResolved;
+        if (!sWorkdir) return sResolved;
+        return sWorkdir.replace(/\/+$/, "") + "/" + sResolved;
+    }
+
+    function _fdictPlanExistenceRequests(dictState) {
+        var dictPlan = {
+            listPaths: [],
+            listOutputItems: [],
+            listDataItems: [],
+        };
+        var setSeenPaths = {};
+        _fnCollectOutputElementPlan(dictPlan, setSeenPaths, dictState);
+        _fnCollectDataFilePlan(dictPlan, setSeenPaths, dictState);
+        return dictPlan;
+    }
+
+    function _fnCollectOutputElementPlan(
+        dictPlan, setSeenPaths, dictState
+    ) {
+        document.querySelectorAll(
+            '.detail-item.output'
+        ).forEach(function (el) {
+            var dictItem = _fdictOutputItemForPlan(el, dictState);
+            if (!dictItem) return;
+            dictPlan.listOutputItems.push(dictItem);
+            if (dictItem.bNeedsLookup &&
+                !setSeenPaths[dictItem.sLookupPath]) {
+                setSeenPaths[dictItem.sLookupPath] = true;
+                dictPlan.listPaths.push(dictItem.sLookupPath);
+            }
+        });
+    }
+
+    function _fdictOutputItemForPlan(el, dictState) {
+        var elText = el.querySelector(".detail-text");
+        if (!elText || elText.classList.contains("file-invalid")) {
+            return null;
+        }
+        var sResolved = el.dataset.resolved || "";
+        var sWorkdir = el.dataset.workdir || "";
+        var sCacheKey = el.dataset.step + ":" + sResolved +
+            ":" + sWorkdir;
+        var bCachedTrue =
+            dictState.dictFileExistenceCache[sCacheKey] === true;
+        var bCachedFalse =
+            dictState.dictFileExistenceCache[sCacheKey] === false;
+        return {
+            el: el,
+            sCacheKey: sCacheKey,
+            sLookupPath:
+                _fsComposeAbsoluteOrRelative(sResolved, sWorkdir),
+            bCachedTrue: bCachedTrue,
+            bCachedFalse: bCachedFalse,
+            bNeedsLookup: !bCachedTrue && !bCachedFalse,
+        };
+    }
+
+    function _fnCollectDataFilePlan(
+        dictPlan, setSeenPaths, dictState
+    ) {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-        if (!sContainerId || !dictWorkflow) return;
+        if (!dictWorkflow) return;
         var setExpanded = PipeleyenApp.fsetGetExpandedSteps();
         dictWorkflow.listSteps.forEach(function (step, iStep) {
             if (!setExpanded.has(iStep)) return;
-            _fnCheckStepDataFiles(step, iStep, dictState);
+            _fnCollectStepDataPlan(
+                step, iStep, dictPlan, setSeenPaths, dictState
+            );
         });
+    }
+
+    function _fnCollectStepDataPlan(
+        step, iStep, dictPlan, setSeenPaths, dictState
+    ) {
+        if (PipeleyenTestManager.fsetGetStepsWithData()
+            .has(iStep)) return;
+        var listNecessary = _flistNecessaryDataFiles(step, iStep);
+        if (listNecessary.length === 0) return;
+        var sDir = step.sDirectory || "";
+        listNecessary.forEach(function (sFile) {
+            var sCacheKey = iStep + ":" + sFile;
+            var bCached =
+                dictState.dictFileExistenceCache[sCacheKey] === true;
+            var sLookup =
+                _fsComposeAbsoluteOrRelative(sFile, sDir);
+            dictPlan.listDataItems.push({
+                iStep: iStep,
+                sFile: sFile,
+                sCacheKey: sCacheKey,
+                sLookupPath: sLookup,
+                iStepTotal: listNecessary.length,
+                bCachedTrue: bCached,
+            });
+            if (!bCached && !setSeenPaths[sLookup]) {
+                setSeenPaths[sLookup] = true;
+                dictPlan.listPaths.push(sLookup);
+            }
+        });
+    }
+
+    function _fnApplyOutputExistence(
+        listOutputItems, dictExists, dictState
+    ) {
+        var dictDataCounts = {};
+        var dictDataPresent = {};
+        listOutputItems.forEach(function (dictItem) {
+            var bExists = _fbResolveItemExistence(dictItem, dictExists);
+            _fnRecordItemExistenceCache(dictItem, bExists, dictState);
+            fnUpdateFileStatus(dictItem.el, bExists);
+            _fnTrackOutputItemForCounts(
+                dictItem.el, bExists, dictDataCounts, dictDataPresent
+            );
+        });
+    }
+
+    function _fbResolveItemExistence(dictItem, dictExists) {
+        if (dictItem.bCachedTrue) return true;
+        if (dictItem.bCachedFalse) return false;
+        return !!dictExists[dictItem.sLookupPath];
+    }
+
+    function _fnRecordItemExistenceCache(dictItem, bExists, dictState) {
+        if (dictItem.bCachedTrue || dictItem.bCachedFalse) return;
+        fnSetFileExistenceCache(
+            dictState.dictFileExistenceCache,
+            dictItem.sCacheKey, bExists
+        );
+    }
+
+    function _fnTrackOutputItemForCounts(
+        el, bExists, dictDataCounts, dictDataPresent
+    ) {
+        var iStep = parseInt(el.dataset.step);
+        var sArray = el.dataset.array;
+        var sRaw = el.dataset.raw || "";
+        var bNecessaryData = sArray === "saDataFiles" &&
+            PipeleyenApp.fsGetFileCategory(
+                iStep, sRaw, sArray) === "archive";
+        if (bNecessaryData) {
+            dictDataCounts[iStep] =
+                (dictDataCounts[iStep] || 0) + 1;
+        }
+        if (bExists) {
+            _fnTrackDataPresence(
+                iStep, bNecessaryData,
+                dictDataCounts, dictDataPresent
+            );
+        }
+    }
+
+    function _fnApplyDataExistence(
+        listDataItems, dictExists, dictState
+    ) {
+        var dictPresentCount = {};
+        listDataItems.forEach(function (dictItem) {
+            var bExists = dictItem.bCachedTrue ||
+                !!dictExists[dictItem.sLookupPath];
+            if (!bExists) return;
+            fnSetFileExistenceCache(
+                dictState.dictFileExistenceCache,
+                dictItem.sCacheKey, true
+            );
+            dictPresentCount[dictItem.iStep] =
+                (dictPresentCount[dictItem.iStep] || 0) + 1;
+            if (dictPresentCount[dictItem.iStep] >=
+                dictItem.iStepTotal) {
+                PipeleyenTestManager.fsetGetStepsWithData()
+                    .add(dictItem.iStep);
+                _fnUpdateGenerateButton(dictItem.iStep);
+            }
+        });
+    }
+
+    function fnCheckDataFileExistence(dictState) {
+        /* Compatibility shim: the batched scheduler now covers both
+           output and data file checks in one round-trip. Callers that
+           still poke this function trigger a fresh batched pass. */
+        fnScheduleFileExistenceCheck(dictState);
     }
 
     function fnCheckStepDataFilesPublic(step, iStep, dictState) {
-        _fnCheckStepDataFiles(step, iStep, dictState);
-    }
-
-    function _fnCheckStepDataFiles(step, iStep, dictState) {
-        if (PipeleyenTestManager.fsetGetStepsWithData()
-            .has(iStep)) return;
-        var listNecessary = _flistNecessaryDataFiles(
-            step, iStep);
-        if (listNecessary.length === 0) return;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var iPresent = 0;
-        var iTotal = listNecessary.length;
-        listNecessary.forEach(function (sFile) {
-            var sDir = step.sDirectory || "";
-            var sCacheKey = iStep + ":" + sFile;
-            if (dictState.dictFileExistenceCache[sCacheKey]) {
-                iPresent++;
-                if (iPresent >= iTotal) {
-                    PipeleyenTestManager.fsetGetStepsWithData()
-                        .add(iStep);
-                    _fnUpdateGenerateButton(iStep);
-                }
-                return;
-            }
-            var sUrl = "/api/figure/" + sContainerId +
-                "/" + sFile + "?sWorkdir=" +
-                encodeURIComponent(sDir);
-            dictState.iInflightRequests++;
-            VaibifyApi.fbHead(sUrl).then(
-                function (bExists) {
-                    if (bExists) {
-                        fnSetFileExistenceCache(
-                            dictState.dictFileExistenceCache,
-                            sCacheKey, true);
-                        iPresent++;
-                        if (iPresent >= iTotal) {
-                            PipeleyenTestManager
-                                .fsetGetStepsWithData()
-                                .add(iStep);
-                            _fnUpdateGenerateButton(iStep);
-                        }
-                    }
-                    _fnFileCheckComplete(dictState);
-                }
-            ).catch(function () {
-                _fnFileCheckComplete(dictState);
-            });
-        });
+        /* Compatibility shim: per-step checks fold into the batched
+           scheduler — issuing one batched POST instead of N HEADs. */
+        fnScheduleFileExistenceCheck(dictState);
     }
 
     function _flistNecessaryDataFiles(step, iStep) {
@@ -194,92 +341,11 @@ var PipeleyenFileOps = (function () {
         });
     }
 
-    function fnCheckSingleOutputFile(
-        el, dictDataCounts, dictDataPresent,
-        signalFileCheck, dictState
-    ) {
-        var elText = el.querySelector(".detail-text");
-        if (!elText || elText.classList.contains("file-invalid")) {
-            return;
-        }
-        var iStep = parseInt(el.dataset.step);
-        var sArray = el.dataset.array;
-        var sResolved = el.dataset.resolved;
-        var sWorkdir = el.dataset.workdir || "";
-        var sCacheKey = iStep + ":" + sResolved + ":" + sWorkdir;
-        var sRaw = el.dataset.raw || "";
-        var bNecessaryData = sArray === "saDataFiles" &&
-            PipeleyenApp.fsGetFileCategory(
-                iStep, sRaw, sArray) === "archive";
-        if (bNecessaryData) {
-            dictDataCounts[iStep] =
-                (dictDataCounts[iStep] || 0) + 1;
-        }
-        if (dictState.dictFileExistenceCache[sCacheKey] === true) {
-            fnUpdateFileStatus(el, true);
-            _fnTrackDataPresence(
-                iStep, bNecessaryData,
-                dictDataCounts, dictDataPresent
-            );
-            return;
-        }
-        if (dictState.dictFileExistenceCache[sCacheKey] === false) {
-            fnUpdateFileStatus(el, false);
-            return;
-        }
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var sUrl = "/api/figure/" + sContainerId + "/" + sResolved;
-        if (sWorkdir) {
-            sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
-        }
-        dictState.iInflightRequests++;
-        VaibifyApi.fbHead(sUrl, {signal: signalFileCheck})
-            .then(function (bExists) {
-                if (bExists) {
-                    fnSetFileExistenceCache(
-                        dictState.dictFileExistenceCache,
-                        sCacheKey, true);
-                    fnUpdateFileStatus(el, true);
-                    _fnTrackDataPresence(
-                        iStep, bNecessaryData,
-                        dictDataCounts, dictDataPresent
-                    );
-                } else {
-                    fnSetFileExistenceCache(
-                        dictState.dictFileExistenceCache,
-                        sCacheKey, false);
-                    fnUpdateFileStatus(el, false);
-                }
-                _fnFileCheckComplete(dictState);
-            }).catch(function (err) {
-                if (err.name === "AbortError") return;
-                fnSetFileExistenceCache(
-                    dictState.dictFileExistenceCache,
-                    sCacheKey, false);
-                fnUpdateFileStatus(el, false);
-                _fnFileCheckComplete(dictState);
-            });
-    }
-
     function fnCheckOutputFileExistence(dictState) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId) return;
-        if (dictState.abortControllerFileCheck) {
-            dictState.abortControllerFileCheck.abort();
-        }
-        dictState.abortControllerFileCheck = new AbortController();
-        var signalFileCheck =
-            dictState.abortControllerFileCheck.signal;
-        var dictDataCounts = {};
-        var dictDataPresent = {};
-        document.querySelectorAll(
-            '.detail-item.output'
-        ).forEach(function (el) {
-            fnCheckSingleOutputFile(
-                el, dictDataCounts, dictDataPresent,
-                signalFileCheck, dictState
-            );
-        });
+        /* Compatibility shim: the batched scheduler now covers both
+           output and data file checks in one round-trip; route
+           callers through it to keep the wire footprint flat. */
+        fnScheduleFileExistenceCheck(dictState);
     }
 
     function _fnTrackDataPresence(

@@ -17,6 +17,19 @@ var PipeleyenReposPanel = (function () {
         return document.getElementById("reposPanelContainer");
     }
 
+    function _fbReposPanelIsVisible() {
+        /* Mirror the existing visibility-gate idiom used elsewhere in
+           the dashboard: a left-tab panel is "in view" only when its
+           wrapper carries the .active class, set by the tab switcher
+           in scriptEventBindings.js::fnBindLeftPanelTabs. Polling
+           while hidden burns container execs for status no one is
+           looking at. */
+        if (document.hidden) return false;
+        var elPanel = document.getElementById("panelRepos");
+        if (!elPanel) return false;
+        return elPanel.classList.contains("active");
+    }
+
     function _fsApiBase() {
         return "/api/repos/" + _sContainerId;
     }
@@ -120,6 +133,16 @@ var PipeleyenReposPanel = (function () {
         elContainer.innerHTML = "";
         elContainer.appendChild(_felBuildPanelHeader());
         elContainer.appendChild(_felBuildRowsContainer());
+        _fnEnsurePollingMatchesVisibility();
+    }
+
+    function _fnEnsurePollingMatchesVisibility() {
+        if (!_sContainerId) return;
+        if (_fbReposPanelIsVisible()) {
+            VaibifyPolling.fnStartReposPolling(_sContainerId);
+        } else {
+            VaibifyPolling.fnStopReposPolling();
+        }
     }
 
     function _fdictFindRepo(sName) {
@@ -531,7 +554,18 @@ var PipeleyenReposPanel = (function () {
         _fnShowLoadingIndicator();
         await _fnRefreshNow();
         VaibifyPolling.fnSetReposHandler(fnHandleStatusUpdate);
-        VaibifyPolling.fnStartReposPolling(sContainerId);
+        _fnInstallVisibilityListener();
+        _fnEnsurePollingMatchesVisibility();
+    }
+
+    var _bVisibilityListenerInstalled = false;
+
+    function _fnInstallVisibilityListener() {
+        if (_bVisibilityListenerInstalled) return;
+        _bVisibilityListenerInstalled = true;
+        document.addEventListener(
+            "visibilitychange", _fnEnsurePollingMatchesVisibility,
+        );
     }
 
     function _fnShowLoadingIndicator() {
