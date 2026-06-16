@@ -27,11 +27,24 @@ __all__ = [
     "fdictReadReconciledState",
     "fsBuildHeartbeatStaleReason",
     "fnClearState",
+    "StateWriter",
+    "fnEvictStateLockForContainer",
 ]
 
 import asyncio
 import json
+import logging
+import queue
+import threading
 from datetime import datetime, timezone
+
+try:
+    import docker.errors as _dockerErrors
+    _T_DOCKER_API_ERROR = (_dockerErrors.APIError,)
+except ImportError:  # docker SDK absent in some test environments
+    _T_DOCKER_API_ERROR = ()
+
+_loggerState = logging.getLogger("vaibify")
 
 I_MAX_OUTPUT_LINES = 500
 I_HEARTBEAT_INTERVAL_SECONDS = 5
@@ -185,6 +198,10 @@ def fdictReadState(connectionDocker, sContainerId):
     CLI, watchdog) always have a usable answer instead of an exception
     bubbling up to the request handler.
     """
+    tBenignErrors = (
+        (json.JSONDecodeError, OSError, TypeError, ValueError)
+        + _T_DOCKER_API_ERROR
+    )
     try:
         iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId,
@@ -193,7 +210,7 @@ def fdictReadState(connectionDocker, sContainerId):
         if iExitCode != 0 or not sOutput.strip():
             return None
         return json.loads(sOutput)
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+    except tBenignErrors:
         return None
 
 
@@ -225,6 +242,19 @@ def _fnEnsureStateLockForContainer(dictCtx, sContainerId):
     dictLocks = dictCtx.setdefault("dictPipelineStateLocks", {})
     if sContainerId not in dictLocks:
         dictLocks[sContainerId] = asyncio.Lock()
+
+
+def fnEvictStateLockForContainer(dictCtx, sContainerId):
+    """Drop a per-container reconciliation lock when the container is gone.
+
+    The lock dict grew without bound across the GUI lifetime — every
+    container ever observed leaked an asyncio.Lock. Eviction is safe
+    only when no coroutine is currently awaiting the lock; callers
+    should invoke this from the same sweep that culls stale entries
+    from the running-container snapshot.
+    """
+    dictLocks = dictCtx.get("dictPipelineStateLocks", {})
+    dictLocks.pop(sContainerId, None)
 
 
 def _fnStampHostIncidentFields(dictReconciled, dictIncident):
@@ -315,3 +345,124 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
             fnWriteState, connectionDocker, sContainerId, dictReconciled,
         )
         return dictReconciled
+
+
+# ---------------------------------------------------------------------------
+# Single-writer state-write queue (runner-side architecture).
+#
+# Producers (heartbeat thread, flushing callback, finalize) enqueue
+# small mutation closures via the public ``fnEnqueue*`` methods. The
+# producer holds the in-memory lock only across the dict.update; the
+# writer thread does all docker I/O without touching that lock. This
+# eliminates the multi-second pause where a heartbeat could wait
+# behind a step-result writing 4 MB of log over a slow docker exec.
+# ---------------------------------------------------------------------------
+
+_SENTINEL_WRITE = object()
+_SENTINEL_SHUTDOWN = object()
+
+
+class StateWriter:
+    """Single-writer queue for ``pipeline_state.json`` writes per run.
+
+    Producers call ``fnEnqueueUpdate``/``fnEnqueueStepResult``/etc.,
+    which merge into the in-memory ``dictState`` under a short-lived
+    lock and then signal the writer thread. The writer thread snapshots
+    the state under the same lock and performs the (slow) docker I/O
+    outside it, so producers never block on docker.
+    """
+
+    def __init__(self, connectionDocker, sContainerId, dictState):
+        self.connectionDocker = connectionDocker
+        self.sContainerId = sContainerId
+        self.dictState = dictState
+        self.lockState = threading.Lock()
+        self.queueWrites = queue.Queue()
+        self.eventStop = threading.Event()
+        self.threadWriter = threading.Thread(
+            target=self._fnRunWriter,
+            name=f"vaibify-state-writer-{sContainerId[:8]}",
+            daemon=True,
+        )
+
+    def fnStart(self):
+        """Start the writer thread and persist the initial state."""
+        self.threadWriter.start()
+        self.queueWrites.put(_SENTINEL_WRITE)
+
+    def fnEnqueueUpdate(self, dictUpdate):
+        """Merge ``dictUpdate`` into state and request a persist."""
+        with self.lockState:
+            self.dictState.update(dictUpdate)
+        self.queueWrites.put(_SENTINEL_WRITE)
+
+    def fnEnqueueStepResult(self, dictResult):
+        """Record a step result in state and request a persist."""
+        with self.lockState:
+            sKey = str(dictResult["iStepNumber"])
+            self.dictState.setdefault("dictStepResults", {})[sKey] = {
+                "sStatus": dictResult["sStatus"],
+                "iExitCode": dictResult["iExitCode"],
+            }
+        self.queueWrites.put(_SENTINEL_WRITE)
+
+    def fnEnqueueOutputLine(self, sLine):
+        """Append an output line; no immediate persist (next write coalesces)."""
+        with self.lockState:
+            fnAppendOutput(self.dictState, sLine)
+
+    def fnStop(self):
+        """Signal the writer to drain and exit, then join with no timeout."""
+        self.eventStop.set()
+        self.queueWrites.put(_SENTINEL_SHUTDOWN)
+        self.threadWriter.join()
+
+    def _fnRunWriter(self):
+        """Consume the queue; coalesce bursts; write each snapshot."""
+        while True:
+            item = self.queueWrites.get()
+            if item is _SENTINEL_SHUTDOWN:
+                self._fnFlushPendingWrites()
+                return
+            self._fnDrainCoalesced()
+            self._fnPersistSnapshot()
+
+    def _fnDrainCoalesced(self):
+        """Pull any other pending write tokens without blocking."""
+        while True:
+            try:
+                item = self.queueWrites.get_nowait()
+            except queue.Empty:
+                return
+            if item is _SENTINEL_SHUTDOWN:
+                self.queueWrites.put(_SENTINEL_SHUTDOWN)
+                return
+
+    def _fnFlushPendingWrites(self):
+        """On shutdown, write one final snapshot reflecting all updates."""
+        self._fnPersistSnapshot()
+
+    def _fnPersistSnapshot(self):
+        """Snapshot under lock; persist outside it; log on failure."""
+        with self.lockState:
+            dictSnapshot = _fdictDeepCopyState(self.dictState)
+        try:
+            fnWriteState(
+                self.connectionDocker, self.sContainerId, dictSnapshot,
+            )
+        except Exception as error:
+            _loggerState.warning(
+                "pipeline state write failed: %s", error,
+            )
+
+
+def _fdictDeepCopyState(dictState):
+    """Return a snapshot safe to hand to docker I/O without re-entry races."""
+    dictSnapshot = dict(dictState)
+    dictResults = dictState.get("dictStepResults")
+    if isinstance(dictResults, dict):
+        dictSnapshot["dictStepResults"] = dict(dictResults)
+    listOutput = dictState.get("listRecentOutput")
+    if isinstance(listOutput, list):
+        dictSnapshot["listRecentOutput"] = list(listOutput)
+    return dictSnapshot
