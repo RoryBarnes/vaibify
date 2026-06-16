@@ -641,7 +641,9 @@ async def fnPipelineMessageLoop(
             )
         )
         if dictPipelineTasks is not None:
-            dictPipelineTasks[sContainerId] = taskPipeline
+            _fnRegisterPipelineTask(
+                dictPipelineTasks, sContainerId, taskPipeline,
+            )
 
 
 async def _fnSafeDispatch(
@@ -649,7 +651,12 @@ async def _fnSafeDispatch(
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive,
 ):
-    """Wrap fnDispatchAction with error handling."""
+    """Wrap fnDispatchAction with error handling.
+
+    Tags the failure log with ``sContainerId`` so the host-incident
+    ring buffer (consumed by ``pipelineState._fdictReconcileStaleHeartbeat``)
+    can pair the exception with the dying container's state file.
+    """
     try:
         await fnDispatchAction(
             sAction, dictRequest, connectionDocker,
@@ -661,6 +668,7 @@ async def _fnSafeDispatch(
         logger.error(
             "Pipeline action '%s' failed: %s", sAction, exc,
             exc_info=True,
+            extra={"sContainerId": sContainerId},
         )
         try:
             await fnCallback({
@@ -670,6 +678,24 @@ async def _fnSafeDispatch(
             })
         except Exception:
             pass
+
+
+def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):
+    """Store a pipeline task and arrange for self-eviction on completion.
+
+    Without the done-callback, completed-normally tasks linger in
+    ``dictPipelineTasks`` forever — a memory leak proportional to the
+    number of runs across the container's lifetime. The callback fires
+    after the task finishes (success, failure, or cancellation) and
+    drops the entry only if it still points at this task, so a brand-new
+    run for the same container is never accidentally evicted.
+    """
+    dictPipelineTasks[sContainerId] = taskPipeline
+
+    def fnEvictOnDone(taskCompleted):
+        if dictPipelineTasks.get(sContainerId) is taskCompleted:
+            dictPipelineTasks.pop(sContainerId, None)
+    taskPipeline.add_done_callback(fnEvictOnDone)
 
 
 def _fnHandleInteractiveResponse(

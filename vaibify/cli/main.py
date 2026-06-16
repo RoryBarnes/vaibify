@@ -23,6 +23,32 @@ def _fbHasFileHandlerAttached(loggerVaibify):
     )
 
 
+def _fbHasIncidentHandlerAttached(loggerVaibify):
+    """Return True when the host-incident handler is already attached."""
+    from vaibify.gui.hostIncidents import HostIncidentHandler
+    return any(
+        isinstance(handlerExisting, HostIncidentHandler)
+        for handlerExisting in loggerVaibify.handlers
+    )
+
+
+def _fnAttachHostIncidentHandler(loggerVaibify):
+    """Attach the in-memory ring-buffer handler if not already mounted.
+
+    Captures host-side exceptions tagged with ``sContainerId`` so the
+    pipeline-state reconciler can stamp the cause-of-death into the
+    container-readable state file. Runs at INFO level alongside the
+    rotating file handler so warnings as well as errors land in the
+    ring.
+    """
+    from vaibify.gui.hostIncidents import HostIncidentHandler
+    if _fbHasIncidentHandlerAttached(loggerVaibify):
+        return
+    handlerIncident = HostIncidentHandler()
+    handlerIncident.setLevel(logging.INFO)
+    loggerVaibify.addHandler(handlerIncident)
+
+
 def _fnConfigureErrorLogging(sLogDirOverride=None):
     """Attach one rotating file handler for ~/.vaibify/vaibify.log."""
     sLogDir = sLogDirOverride or os.path.expanduser("~/.vaibify")
@@ -30,17 +56,17 @@ def _fnConfigureErrorLogging(sLogDirOverride=None):
     sLogPath = os.path.join(sLogDir, "vaibify.log")
     loggerVaibify = logging.getLogger("vaibify")
     loggerVaibify.setLevel(logging.INFO)
-    if _fbHasFileHandlerAttached(loggerVaibify):
-        return
-    rotatingHandler = logging.handlers.RotatingFileHandler(
-        sLogPath, maxBytes=I_LOG_MAX_BYTES,
-        backupCount=I_LOG_BACKUP_COUNT,
-    )
-    rotatingHandler.setLevel(logging.INFO)
-    rotatingHandler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    ))
-    loggerVaibify.addHandler(rotatingHandler)
+    if not _fbHasFileHandlerAttached(loggerVaibify):
+        rotatingHandler = logging.handlers.RotatingFileHandler(
+            sLogPath, maxBytes=I_LOG_MAX_BYTES,
+            backupCount=I_LOG_BACKUP_COUNT,
+        )
+        rotatingHandler.setLevel(logging.INFO)
+        rotatingHandler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s"
+        ))
+        loggerVaibify.addHandler(rotatingHandler)
+    _fnAttachHostIncidentHandler(loggerVaibify)
 
 from .commandBuild import build
 from .commandCat import cat
