@@ -5,9 +5,11 @@ from unittest.mock import MagicMock
 import docker.errors
 
 from vaibify.gui.fileStatusManager import (
+    _LIST_CONTAINER_KEYED_CACHES,
     _fdictGetModTimes,
     _fdictStatViaPathfile,
     fnInvalidateParentCacheForContainer,
+    fnSweepAllContainerCaches,
     fnSweepParentMtimeCache,
 )
 
@@ -280,3 +282,81 @@ def test_sweep_handles_none_running_list():
     listEvicted = fnSweepParentMtimeCache(dictCtx, None)
     assert listEvicted == ["a"]
     assert dictCtx["dictParentMtimeCache"] == {}
+
+
+# ---------------------------------------------------------------
+# Lifecycle completeness: fnSweepAllContainerCaches fans across every
+# container-keyed dict and out to sibling modules (docker pool +
+# host incidents).
+# ---------------------------------------------------------------
+
+
+def _fdictBuildStaleAndRunningCtx(listStale, listRunning):
+    """Seed a fake dictCtx with stale + running entries in every cache."""
+    dictCtx = {"docker": None}
+    for sCacheName in _LIST_CONTAINER_KEYED_CACHES:
+        dictCtx[sCacheName] = {
+            sCid: {"sCacheName": sCacheName}
+            for sCid in (listStale + listRunning)
+        }
+    dictCtx["dictParentMtimeCache"] = {
+        sCid: {"dictParentMtime": {}, "dictChildMtimes": {}}
+        for sCid in (listStale + listRunning)
+    }
+    return dictCtx
+
+
+def test_sweep_evicts_stale_from_every_container_keyed_cache():
+    listStale = ["dead-1", "dead-2", "dead-3"]
+    listRunning = ["alive-1", "alive-2"]
+    dictCtx = _fdictBuildStaleAndRunningCtx(listStale, listRunning)
+
+    setEvicted = fnSweepAllContainerCaches(dictCtx, listRunning)
+
+    for sCacheName in _LIST_CONTAINER_KEYED_CACHES:
+        assert set(dictCtx[sCacheName].keys()) == set(listRunning), (
+            f"cache {sCacheName!r} retained stale ids"
+        )
+    assert set(dictCtx["dictParentMtimeCache"].keys()) == set(listRunning)
+    assert set(listStale).issubset(setEvicted)
+
+
+def test_sweep_includes_interactive_contexts_dict():
+    """Module-level interactive contexts get pruned in the same sweep."""
+    from vaibify.gui import pipelineServer
+    dictContexts = pipelineServer.DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER
+    dictContexts["ghost-cid"] = {"fake": True}
+    dictContexts["live-cid"] = {"fake": True}
+    try:
+        fnSweepAllContainerCaches({"docker": None}, ["live-cid"])
+        assert "ghost-cid" not in dictContexts
+        assert "live-cid" in dictContexts
+    finally:
+        dictContexts.pop("ghost-cid", None)
+        dictContexts.pop("live-cid", None)
+
+
+def test_sweep_fans_out_to_host_incidents():
+    from vaibify.gui import hostIncidents
+    hostIncidents.fnResetHostIncidents()
+    try:
+        hostIncidents.fnRecordHostIncident("zombie", {"sMessage": "x"})
+        hostIncidents.fnRecordHostIncident("alive", {"sMessage": "y"})
+        fnSweepAllContainerCaches({"docker": None}, ["alive"])
+        assert hostIncidents.flistIncidentsForContainer("zombie") == []
+        assert (
+            hostIncidents.flistIncidentsForContainer("alive")[0]["sMessage"]
+            == "y"
+        )
+    finally:
+        hostIncidents.fnResetHostIncidents()
+
+
+def test_sweep_fans_out_to_docker_pool_eviction():
+    """The docker connection.fnEvictAbsentContainers receives the running set."""
+    mockConnection = MagicMock()
+    dictCtx = {"docker": mockConnection}
+    fnSweepAllContainerCaches(dictCtx, ["a", "b"])
+    mockConnection.fnEvictAbsentContainers.assert_called_once_with(
+        {"a", "b"},
+    )

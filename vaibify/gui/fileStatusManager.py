@@ -1569,16 +1569,43 @@ def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
     )
 
 
+# Authoritative list of every container-id-keyed dict that lives on
+# the shared ``dictCtx`` and grows once per container forever unless
+# swept. Two side effects:
+#   1. ``fnSweepAllContainerCaches`` iterates this list to evict stale
+#      keys from each dict in lockstep with the running-container set.
+#   2. ``fdictBuildContext`` in ``pipelineServer`` initializes the
+#      same keys; adding a new container-keyed cache means appending
+#      it both here and there so the sweep does not silently miss it.
+# ``dictPipelineStateLocks`` is evicted via the dedicated lock helper
+# (``pipelineState.fnEvictStateLockForContainer``) so the asyncio.Lock
+# objects are released cleanly rather than dropped raw, and is omitted
+# from this plain-dict list for that reason. ``dictParentMtimeCache``
+# is likewise evicted via ``fnSweepParentMtimeCache``.
+_LIST_CONTAINER_KEYED_CACHES = (
+    "workflows",
+    "paths",
+    "containerUsers",
+    "pipelineTasks",
+    "sourceCodeDeps",
+    "lastSelfWriteMtimes",
+    "lastDiscoveredWorkflows",
+    "dictSyncEpochs",
+    "dictManifestShaCache",
+)
+
+
 def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
     """Fan eviction across every per-container cache vaibify keeps.
 
     Without one coordinator the docker-substrate cache, the state-lock
-    dict, and the parent-mtime cache drift out of phase: a container
+    dict, and the file-status cache drift out of phase: a container
     that has been gone for hours can still hold an asyncio.Lock or a
-    file-status entry while the docker handle has already been
+    workflow snapshot while the docker handle has already been
     evicted. Call this from the same place that refreshes the running
-    list (e.g. the registry route) so all three sweeps see one
-    consistent snapshot. Returns the union of evicted container ids.
+    list (e.g. the registry route, the periodic background sweep) so
+    all sweeps see one consistent snapshot. Returns the union of
+    evicted container ids.
     """
     setRunning = set(listRunningContainers or [])
     setEvicted = set(
@@ -1586,6 +1613,30 @@ def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
     )
     if dictCtx is None:
         return setEvicted
+    setEvicted |= _fsetSweepPlainDicts(dictCtx, setRunning)
+    setEvicted |= _fsetSweepStateLocks(dictCtx, setRunning)
+    setEvicted |= _fsetSweepInteractiveContexts(setRunning)
+    _fnFanOutToSiblingModules(dictCtx, setRunning)
+    return setEvicted
+
+
+def _fsetSweepPlainDicts(dictCtx, setRunning):
+    """Evict stale keys from every dict named in _LIST_CONTAINER_KEYED_CACHES."""
+    setEvicted = set()
+    for sCacheName in _LIST_CONTAINER_KEYED_CACHES:
+        dictCache = dictCtx.get(sCacheName)
+        if not isinstance(dictCache, dict):
+            continue
+        for sContainerId in list(dictCache.keys()):
+            if sContainerId not in setRunning:
+                dictCache.pop(sContainerId, None)
+                setEvicted.add(sContainerId)
+    return setEvicted
+
+
+def _fsetSweepStateLocks(dictCtx, setRunning):
+    """Evict pipeline-state asyncio locks for absent containers."""
+    setEvicted = set()
     dictLocks = dictCtx.get("dictPipelineStateLocks") or {}
     for sContainerId in list(dictLocks.keys()):
         if sContainerId not in setRunning:
@@ -1594,6 +1645,67 @@ def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
             )
             setEvicted.add(sContainerId)
     return setEvicted
+
+
+def _fsetSweepInteractiveContexts(setRunning):
+    """Evict module-level interactive-context registrations for absent ids.
+
+    ``DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER`` is published from
+    ``fnPipelineMessageLoop``'s own ``finally`` block, but a crashed
+    container that never reaches the finally (process kill, ws abort)
+    can leak its registration; this sweep is the safety net.
+    """
+    setEvicted = set()
+    try:
+        from . import pipelineServer
+    except ImportError:
+        return setEvicted
+    dictContexts = getattr(
+        pipelineServer, "DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER", None,
+    )
+    if not isinstance(dictContexts, dict):
+        return setEvicted
+    for sContainerId in list(dictContexts.keys()):
+        if sContainerId not in setRunning:
+            dictContexts.pop(sContainerId, None)
+            setEvicted.add(sContainerId)
+    return setEvicted
+
+
+def _fnFanOutToSiblingModules(dictCtx, setRunning):
+    """Notify sibling modules (docker pool, host incidents) of the sweep.
+
+    Each fan-out is wrapped so a missing module or one-off failure
+    cannot abort the rest of the sweep.
+    """
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if connectionDocker is not None:
+        try:
+            connectionDocker.fnEvictAbsentContainers(setRunning)
+        except Exception:
+            logging.getLogger("vaibify").debug(
+                "fnEvictAbsentContainers failed during sweep",
+                exc_info=True,
+            )
+    try:
+        from . import hostIncidents
+    except ImportError:
+        return
+    _fnEvictHostIncidentBuckets(hostIncidents, setRunning)
+
+
+def _fnEvictHostIncidentBuckets(moduleHostIncidents, setRunning):
+    """Drop per-container incident deques for ids no longer running."""
+    dictIncidents = getattr(
+        moduleHostIncidents, "_dictHostIncidents", None,
+    )
+    if not isinstance(dictIncidents, dict):
+        return
+    for sContainerId in list(dictIncidents.keys()):
+        if sContainerId not in setRunning:
+            moduleHostIncidents.fnEvictHostIncidentsForContainer(
+                sContainerId,
+            )
 
 
 def _fdictGetModTimes(
