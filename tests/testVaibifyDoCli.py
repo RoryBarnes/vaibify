@@ -290,6 +290,71 @@ def test_parse_positional_args_inline_json_overrides(modCli):
     assert listPos == []
 
 
+def test_parse_positional_args_translates_long_flag_alias(modCli):
+    """--lines=200 must map to iLines=200 so GETs bind cleanly."""
+    listPos, dictBody = modCli.ftParsePositionalArgs(
+        ["--lines=200"],
+    )
+    assert dictBody == {"iLines": 200}
+    assert listPos == []
+
+
+def test_parse_positional_args_unknown_long_flag_kept_as_camelcase(modCli):
+    """An unknown --long-flag drops its dashes but keeps its name."""
+    listPos, dictBody = modCli.ftParsePositionalArgs(
+        ["--unknown=value"],
+    )
+    assert dictBody == {"unknown": "value"}
+    assert listPos == []
+
+
+def test_fnSendHttp_get_method_promotes_body_to_query_string(modCli):
+    """GET requests put dictBody contents into the URL query string."""
+    dictTarget = {
+        "sUrl": "http://x/api/pipeline/c-1/host-log-tail",
+        "dictBody": {"iLines": 200},
+    }
+    dictCapturedRequests = {}
+
+    def fnFakeUrlopen(request, timeout=None):
+        dictCapturedRequests["sUrl"] = request.full_url
+        dictCapturedRequests["dataBody"] = request.data
+        return _MockResponse(b'{"ok": true}')
+
+    with patch.object(
+        modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
+    ):
+        iCode = modCli.fnSendHttp(dictTarget, "tok", "GET", False)
+    assert iCode == 0
+    assert "iLines=200" in dictCapturedRequests["sUrl"]
+    assert dictCapturedRequests["dataBody"] is None
+
+
+def test_fnSendHttp_post_method_still_uses_json_body(modCli):
+    """POST keeps the JSON body path; GET behavior must be isolated."""
+    dictTarget = {
+        "sUrl": "http://x/api/anything",
+        "dictBody": {"sFoo": "bar"},
+    }
+    dictCaptured = {}
+
+    def fnFakeUrlopen(request, timeout=None):
+        dictCaptured["sUrl"] = request.full_url
+        dictCaptured["dataBody"] = request.data
+        return _MockResponse(b'{"ok": true}')
+
+    with patch.object(
+        modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
+    ):
+        modCli.fnSendHttp(dictTarget, "tok", "POST", False)
+    assert "sFoo" not in dictCaptured["sUrl"]
+    assert dictCaptured["dataBody"] is not None
+    import json as jsonModule
+    assert jsonModule.loads(
+        dictCaptured["dataBody"].decode("utf-8"),
+    ) == {"sFoo": "bar"}
+
+
 # -----------------------------------------------------------------------
 # flistPathPlaceholders + fsFillPath
 # -----------------------------------------------------------------------

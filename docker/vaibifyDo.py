@@ -113,13 +113,33 @@ def fnPrintDescribe(dictEntry):
     print(json.dumps(dictEntry, indent=2, sort_keys=True))
 
 
+DICT_LONG_FLAG_ALIASES = {
+    "lines": "iLines",
+}
+
+
+def _fsResolveLongFlagAlias(sKey):
+    """Return the camelCase key for a --long-flag style alias, else sKey."""
+    sStripped = sKey.lstrip("-")
+    return DICT_LONG_FLAG_ALIASES.get(sStripped, sStripped)
+
+
 def ftParsePositionalArgs(listArgs):
-    """Split CLI args into positional path values and a JSON body dict."""
+    """Split CLI args into positional path values and a JSON body dict.
+
+    Accepts both ``key=value`` and ``--long-flag=value`` forms; long
+    flags are mapped to camelCase API names via
+    :data:`DICT_LONG_FLAG_ALIASES` so an in-container agent can use the
+    natural ``--lines=200`` form without knowing the camelCase
+    parameter name.
+    """
     listPositional = []
     dictBody = {}
     for sArg in listArgs:
         if "=" in sArg and not sArg.startswith("{"):
             sKey, sValue = sArg.split("=", 1)
+            if sKey.startswith("--"):
+                sKey = _fsResolveLongFlagAlias(sKey)
             dictBody[sKey] = _fnCoerceScalar(sValue)
         elif sArg.startswith("{"):
             dictBody.update(json.loads(sArg))
@@ -294,15 +314,36 @@ def fdictResolveWsPayload(dictEntry, listArgs):
     return dictPayload
 
 
+def _fsAppendQueryString(sUrl, dictParams):
+    """Return sUrl with dictParams encoded as a query string appended."""
+    if not dictParams:
+        return sUrl
+    sJoiner = "&" if "?" in sUrl else "?"
+    sQuery = urllib.parse.urlencode(
+        {sKey: str(sValue) for sKey, sValue in dictParams.items()}
+    )
+    return sUrl + sJoiner + sQuery
+
+
 def fnSendHttp(dictTarget, sToken, sMethod, bJsonMode):
-    """Perform the HTTP call and print the response."""
+    """Perform the HTTP call and print the response.
+
+    For GET requests, fields parsed from key=value CLI args become
+    query-string parameters rather than a JSON body, because a GET body
+    is non-portable and FastAPI bind queries by default for primitive
+    types like ``iLines: int``.
+    """
     dataBody = None
     dictHeaders = {S_SESSION_HEADER_NAME: sToken}
+    sUrl = dictTarget["sUrl"]
     if dictTarget["dictBody"]:
-        dataBody = json.dumps(dictTarget["dictBody"]).encode("utf-8")
-        dictHeaders["Content-Type"] = "application/json"
+        if sMethod == "GET":
+            sUrl = _fsAppendQueryString(sUrl, dictTarget["dictBody"])
+        else:
+            dataBody = json.dumps(dictTarget["dictBody"]).encode("utf-8")
+            dictHeaders["Content-Type"] = "application/json"
     request = urllib.request.Request(
-        dictTarget["sUrl"], data=dataBody,
+        sUrl, data=dataBody,
         headers=dictHeaders, method=sMethod)
     try:
         with urllib.request.urlopen(request, timeout=F_READ_TIMEOUT) as resp:

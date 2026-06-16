@@ -494,6 +494,27 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/pipeline/{sContainerId}/clean",
      "bAgentSafe": False,
      "sDescription": "Delete all step outputs. User-only: destructive."},
+    # ---- Diagnostics (read-only; safe for in-container agents) ----
+    {"sName": "get-host-log-tail", "sCategory": "diagnostics",
+     "sMethod": "GET",
+     "sPath": "/api/pipeline/{sContainerId}/host-log-tail",
+     "bAgentSafe": True,
+     "sDescription": "Return the last N lines of ~/.vaibify/vaibify.log "
+                     "filtered to this container. Args: {iLines: int, "
+                     "default 200, cap 1000}. Read-only; lets an "
+                     "in-container agent self-diagnose a run that died "
+                     "with exit-code -9999 by reading the actual host "
+                     "trigger instead of the symptom in pipeline_state.json."},
+    {"sName": "get-pipeline-state", "sCategory": "diagnostics",
+     "sMethod": "GET",
+     "sPath": "/api/pipeline/{sContainerId}/state",
+     "bAgentSafe": True,
+     "sDescription": "Return the reconciled pipeline_state.json for this "
+                     "container, identical to the dashboard's /state poll. "
+                     "Read-only; lets the in-container agent see the same "
+                     "post-reconciliation view the dashboard sees (with "
+                     "stale-heartbeat fields stamped, including "
+                     "sFailureCauseHost and iActiveStepAtDeath)."},
 ]
 
 

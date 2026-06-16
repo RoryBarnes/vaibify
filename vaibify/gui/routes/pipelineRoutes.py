@@ -180,8 +180,15 @@ async def _fnKillMatchingProcesses(
 
 
 def _fnRegisterPipelineState(app, dictCtx):
-    """Register GET /api/pipeline/{id}/state endpoint."""
+    """Register GET /api/pipeline/{id}/state endpoint.
 
+    Also exposed as the ``get-pipeline-state`` agent action so an
+    in-container Claude can read the same post-reconciliation view the
+    dashboard sees without re-implementing the stale-heartbeat
+    reconciliation against the raw pipeline_state.json file.
+    """
+
+    @fnAgentAction("get-pipeline-state")
     @app.get("/api/pipeline/{sContainerId}/state")
     async def fnGetPipelineState(sContainerId: str):
         from ..pipelineState import fdictReadReconciledState
@@ -194,6 +201,77 @@ def _fnRegisterPipelineState(app, dictCtx):
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState["iSyncEpoch"] = iSyncEpoch
         return dictState
+
+
+I_HOST_LOG_TAIL_DEFAULT_LINES = 200
+I_HOST_LOG_TAIL_MAX_LINES = 1000
+
+
+def _fsResolveHostLogPath():
+    """Return the absolute path to the host vaibify.log file."""
+    import os
+    return os.path.expanduser("~/.vaibify/vaibify.log")
+
+
+def _fiClampLineCount(iRequested):
+    """Clamp the requested tail-line count to [1, MAX]."""
+    iLines = iRequested if isinstance(iRequested, int) else (
+        I_HOST_LOG_TAIL_DEFAULT_LINES
+    )
+    if iLines < 1:
+        return 1
+    if iLines > I_HOST_LOG_TAIL_MAX_LINES:
+        return I_HOST_LOG_TAIL_MAX_LINES
+    return iLines
+
+
+def _flistTailLogLinesForContainer(sLogPath, sContainerId, iLines):
+    """Return the last iLines log lines that mention sContainerId.
+
+    Walks the file once and keeps a bounded deque so a multi-megabyte
+    rotated log never loads in full. Filtering on substring keeps the
+    contract simple: any log line that names the container (the
+    ``_fnSafeDispatch`` ``extra={"sContainerId": cid}`` tag is included
+    by the default formatter via ``%(message)s`` references) qualifies.
+    """
+    from collections import deque
+    import os
+    if not os.path.isfile(sLogPath):
+        return []
+    dequeMatches = deque(maxlen=iLines)
+    with open(sLogPath, "r", encoding="utf-8", errors="replace") as fileLog:
+        for sLine in fileLog:
+            if sContainerId in sLine:
+                dequeMatches.append(sLine.rstrip("\n"))
+    return list(dequeMatches)
+
+
+def _fnRegisterHostLogTail(app, dictCtx):
+    """Register GET /api/pipeline/{id}/host-log-tail endpoint."""
+
+    @fnAgentAction("get-host-log-tail")
+    @app.get("/api/pipeline/{sContainerId}/host-log-tail")
+    async def fnGetHostLogTail(
+        sContainerId: str,
+        iLines: int = I_HOST_LOG_TAIL_DEFAULT_LINES,
+    ):
+        from vaibify.gui.hostIncidents import (
+            flistIncidentsForContainer,
+        )
+        iEffectiveLines = _fiClampLineCount(iLines)
+        sLogPath = _fsResolveHostLogPath()
+        listLines = await asyncio.to_thread(
+            _flistTailLogLinesForContainer,
+            sLogPath, sContainerId, iEffectiveLines,
+        )
+        listIncidents = flistIncidentsForContainer(sContainerId)
+        return {
+            "sLogPath": sLogPath,
+            "iRequestedLines": iLines,
+            "iEffectiveLines": iEffectiveLines,
+            "listLines": listLines,
+            "listIncidents": listIncidents[-iEffectiveLines:],
+        }
 
 
 def _fnRegisterPipelineKill(app, dictCtx):
@@ -1774,6 +1852,7 @@ def _fdictBuildManifestVerifyResult(
 def fnRegisterAll(app, dictCtx):
     """Register all pipeline control routes."""
     _fnRegisterPipelineState(app, dictCtx)
+    _fnRegisterHostLogTail(app, dictCtx)
     _fnRegisterPipelineKill(app, dictCtx)
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
