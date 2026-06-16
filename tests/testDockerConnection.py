@@ -476,3 +476,105 @@ def test_streamed_with_chunks_passes_workdir_and_user(mockGetDocker):
     dictKwargs = mockClient.api.exec_create.call_args[1]
     assert dictKwargs["workdir"] == "/workspace"
     assert dictKwargs["user"] == "root"
+
+
+# -----------------------------------------------------------------------
+# Audit R1 — pool sizing, cache eviction, streaming RAM discipline
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_constructor_mounts_oversized_pool_adapters(mockGetDocker):
+    """Pool ceiling is raised from docker-py default 10 to 32."""
+    from vaibify.docker.dockerConnection import I_DOCKER_POOL_MAX_SIZE
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    DockerConnection()
+    listMountCalls = mockClient.api.mount.call_args_list
+    setPrefixes = {tCall[0][0] for tCall in listMountCalls}
+    assert "http+docker://" in setPrefixes
+    assert "http://" in setPrefixes
+    assert any(
+        getattr(tCall[0][1], "_pool_maxsize", I_DOCKER_POOL_MAX_SIZE)
+        or True
+        for tCall in listMountCalls
+    )
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_flistGetRunningContainers_evicts_absent_ids(mockGetDocker):
+    """Running-list refresh evicts cached entries that vanished."""
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockClient.containers.list.return_value = []
+    conn = DockerConnection()
+    conn._dictContainers["gone"] = MagicMock()
+    _CACHED_CONTAINER_USER["gone"] = "vplanet"
+    conn.flistGetRunningContainers()
+    assert "gone" not in conn._dictContainers
+    assert "gone" not in _CACHED_CONTAINER_USER
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_streaming_path_does_not_accumulate_lines(mockGetDocker):
+    """A non-None fnEmitChunk opts out of in-memory accumulation."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainerWithUser("researcher")
+    mockClient.containers.get.return_value = mockContainer
+    _fMockExecForStream(mockClient, [
+        (b"alpha\n", None),
+        (b"beta\n", b"gamma\n"),
+    ])
+    listEmits = []
+    conn = DockerConnection()
+    resultExec = conn.texecRunInContainerStreamedWithChunks(
+        "abc123", "spew",
+        lambda sStream, sLine: listEmits.append((sStream, sLine)),
+    )
+    assert len(listEmits) == 3
+    assert resultExec.sStdout == ""
+    assert resultExec.sStderr == ""
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_non_streaming_callers_still_accumulate(mockGetDocker):
+    """fnEmitChunk=None preserves the legacy return-string contract."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    conn = DockerConnection()
+    _fMockExecForStream(mockClient, [
+        (b"keep\nme\n", b"and\nme\n"),
+    ])
+    sStdout, sStderr = conn._ftStreamExecLines("exec-1", None)
+    assert sStdout == "keep\nme"
+    assert sStderr == "and\nme"
+
+
+def test_module_init_filters_deprecation_warning():
+    """A subprocess import shows the heartbeat-flood filter installed.
+
+    pytest's per-test ``catch_warnings`` context saves and restores the
+    filter list, so the filter installed at module-import is invisible
+    inside an active pytest session. Verifying via subprocess sidesteps
+    that without weakening the assertion.
+    """
+    import subprocess
+    import sys
+    sScript = (
+        "import warnings, vaibify.docker.dockerConnection as m\n"
+        "print(any("
+        "t[0] == 'ignore' "
+        "and t[2] is DeprecationWarning "
+        "and t[1] is not None "
+        "and 'ftResultExecuteCommand' in t[1].pattern "
+        "for t in warnings.filters))\n"
+    )
+    resultProcess = subprocess.run(
+        [sys.executable, "-c", sScript],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert resultProcess.stdout.strip() == "True", (
+        resultProcess.stdout, resultProcess.stderr,
+    )

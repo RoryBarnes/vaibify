@@ -31,6 +31,47 @@ _CACHED_CONTAINER_USER = {}
 # limit is hit.
 I_DOCKER_CLIENT_TIMEOUT_SECONDS = 600
 
+# docker-py defaults the urllib3 connection pool to 10 sockets. The
+# streaming run permanently pins one (``exec_start(stream=True)``);
+# the badge collector fans out three concurrent execs; the heartbeat
+# loop competes every 5 s; the file-status poll adds more on every
+# refresh. Raise the ceiling so transient saturation never starves
+# the heartbeat thread (audit CRITICAL #3).
+I_DOCKER_POOL_MAX_SIZE = 32
+
+# The heartbeat loop calls ``ftResultExecuteCommand`` on every tick,
+# which currently raises a ``DeprecationWarning`` per invocation.
+# Multi-day runs flood the host log; the migration to the streamed
+# entry point is tracked elsewhere. Filter the specific warning at
+# import time so production logs stay readable (audit MEDIUM #18).
+warnings.filterwarnings(
+    "ignore",
+    message=r".*ftResultExecuteCommand merges stdout and stderr.*",
+    category=DeprecationWarning,
+)
+
+
+def _fnTuneDockerSessionPool(clientDocker):
+    """Mount oversized HTTPAdapters on the docker client's session.
+
+    docker-py exposes its ``requests.Session`` as ``client.api``.
+    Replacing both schemes covers TCP daemons; the unix-socket
+    adapter is mounted by docker-py at ``http+docker://`` with its
+    default pool size and is replaced here in-place.
+    """
+    from requests.adapters import HTTPAdapter
+    session = getattr(clientDocker, "api", None)
+    if session is None or not hasattr(session, "mount"):
+        return
+    for sPrefix in ("http://", "https://", "http+docker://"):
+        try:
+            session.mount(sPrefix, HTTPAdapter(
+                pool_connections=I_DOCKER_POOL_MAX_SIZE,
+                pool_maxsize=I_DOCKER_POOL_MAX_SIZE,
+            ))
+        except Exception:
+            continue
+
 
 def _fsResolveContainerUser(container):
     """Return the unprivileged user baked into the image, cached per id.
@@ -130,14 +171,37 @@ class DockerConnection:
         self._clientDocker = _fmoduleGetDocker().from_env(
             timeout=I_DOCKER_CLIENT_TIMEOUT_SECONDS,
         )
+        _fnTuneDockerSessionPool(self._clientDocker)
         self._dictContainers = {}
 
+    def fnEvictAbsentContainers(self, setRunningContainerIds):
+        """Drop instance + module caches for ids no longer running.
+
+        Without this the per-container caches grew unbounded across
+        rebuilds; multi-week uptimes accumulate stale handles for
+        every container that ever existed (audit HIGH #13). Callers
+        should invoke this from the same sweep that powers
+        ``flistGetRunningContainers``.
+        """
+        for sContainerId in list(self._dictContainers.keys()):
+            if sContainerId not in setRunningContainerIds:
+                self._dictContainers.pop(sContainerId, None)
+        for sContainerId in list(_CACHED_CONTAINER_USER.keys()):
+            if sContainerId not in setRunningContainerIds:
+                _CACHED_CONTAINER_USER.pop(sContainerId, None)
+
     def flistGetRunningContainers(self):
-        """Return list of dicts with container id, name, image."""
+        """Return list of dicts with container id, name, image.
+
+        Refreshes the instance container cache and evicts entries for
+        ids no longer running so multi-week uptimes do not accumulate
+        stale handles (audit HIGH #13).
+        """
         listContainers = self._clientDocker.containers.list(
             filters={"status": "running"}
         )
         listResult = []
+        setRunning = set()
         for container in listContainers:
             listResult.append(
                 {
@@ -150,6 +214,8 @@ class DockerConnection:
                 }
             )
             self._dictContainers[container.id] = container
+            setRunning.add(container.id)
+        self.fnEvictAbsentContainers(setRunning)
         return listResult
 
     def fcontainerGetById(self, sContainerId):
@@ -264,9 +330,20 @@ class DockerConnection:
         return dictKwargs
 
     def _ftStreamExecLines(self, sExecId, fnEmitChunk):
-        """Stream demuxed exec output, emitting one line at a time."""
+        """Stream demuxed exec output, emitting one line at a time.
+
+        ``dictAccum`` mirrors the streamed text for the legacy contract
+        in ``texecRunInContainerStreamedWithChunks``; the only in-tree
+        caller (the runner's chunk emitter) never reads ``sStdout`` /
+        ``sStderr``. Multi-day runs accumulating every line in memory
+        leak proportional to throughput, so when ``fnEmitChunk`` is
+        passed by that caller we discard rather than retain (audit
+        HIGH #7). Test paths that consume the strings pass ``None`` to
+        opt back in.
+        """
         dictBuf = {"stdout": b"", "stderr": b""}
         dictAccum = {"stdout": [], "stderr": []}
+        bAccumulate = fnEmitChunk is None
         generator = self._clientDocker.api.exec_start(
             sExecId, stream=True, demux=True,
         )
@@ -277,14 +354,15 @@ class DockerConnection:
                 if baChunk:
                     self._fnEmitLines(
                         sStream, baChunk, dictBuf, dictAccum,
-                        fnEmitChunk,
+                        fnEmitChunk, bAccumulate,
                     )
         return self._ftFinalizeStreamBuffers(
-            dictBuf, dictAccum, fnEmitChunk,
+            dictBuf, dictAccum, fnEmitChunk, bAccumulate,
         )
 
     def _fnEmitLines(
         self, sStream, baChunk, dictBuf, dictAccum, fnEmitChunk,
+        bAccumulate=True,
     ):
         """Emit complete lines from a chunk; buffer the partial tail."""
         listLines, dictBuf[sStream] = self._ftSplitChunkOnNewlines(
@@ -292,8 +370,10 @@ class DockerConnection:
         )
         for baLine in listLines:
             sLine = baLine.decode("utf-8", errors="replace")
-            fnEmitChunk(sStream, sLine)
-            dictAccum[sStream].append(sLine)
+            if fnEmitChunk is not None:
+                fnEmitChunk(sStream, sLine)
+            if bAccumulate:
+                dictAccum[sStream].append(sLine)
 
     @staticmethod
     def _ftSplitChunkOnNewlines(baChunk, baCarry):
@@ -302,14 +382,18 @@ class DockerConnection:
         return listLines[:-1], listLines[-1]
 
     @staticmethod
-    def _ftFinalizeStreamBuffers(dictBuf, dictAccum, fnEmitChunk):
+    def _ftFinalizeStreamBuffers(
+        dictBuf, dictAccum, fnEmitChunk, bAccumulate=True,
+    ):
         """Flush any trailing partial line; return (sStdout, sStderr)."""
         for sStream in ("stdout", "stderr"):
             baLeftover = dictBuf[sStream]
             if baLeftover:
                 sLine = baLeftover.decode("utf-8", errors="replace")
-                fnEmitChunk(sStream, sLine)
-                dictAccum[sStream].append(sLine)
+                if fnEmitChunk is not None:
+                    fnEmitChunk(sStream, sLine)
+                if bAccumulate:
+                    dictAccum[sStream].append(sLine)
         return (
             "\n".join(dictAccum["stdout"]),
             "\n".join(dictAccum["stderr"]),
