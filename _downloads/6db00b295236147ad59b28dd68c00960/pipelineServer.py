@@ -26,6 +26,7 @@ __all__ = [
     "fbIsAllowedHostHeader",
     "fdictBuildContext",
     "fdictHandleConnect",
+    "ffBuildResilientWsCallback",
     "fnDispatchAction",
     "fnHandlePipelineWs",
     "fnPipelineMessageLoop",
@@ -539,6 +540,56 @@ async def _fnDispatchSelected(
     )
 
 
+def _fbExceptionIsWsClosed(exc):
+    """Return True iff ``exc`` signals the WebSocket has already closed.
+
+    A closed browser tab, overnight network blip, or background-tab
+    throttle used to crash long-running pipelines through the streaming
+    chunk emitter; this narrow classification keeps real runtime bugs
+    visible while the WS-closed family becomes a benign signal at the
+    callback boundary. Callers drop the chunk and continue the run;
+    reconnecting clients catch up via ``pipelineState`` polls.
+    """
+    if isinstance(exc, WebSocketDisconnect):
+        return True
+    if not isinstance(exc, RuntimeError):
+        return False
+    sMessage = str(exc).lower()
+    return (
+        "websocket.send" in sMessage
+        or "websocket.close" in sMessage
+        or "response already completed" in sMessage
+    )
+
+
+def ffBuildResilientWsCallback(websocket):
+    """Return an async callback that swallows WS-closed errors silently.
+
+    The runner is callback-agnostic; this boundary wrapper is the only
+    site that knows about WebSocket semantics. After the first closed-WS
+    signal, subsequent invocations short-circuit so the runner stays
+    decoupled from frontend liveness for the rest of the run.
+    """
+    dictState = {"bWsClosed": False}
+
+    async def fnCallback(dictEvent):
+        if dictState["bWsClosed"]:
+            return
+        try:
+            await websocket.send_json(dictEvent)
+        except Exception as exc:
+            if not _fbExceptionIsWsClosed(exc):
+                raise
+            dictState["bWsClosed"] = True
+            logger.warning(
+                "WebSocket closed mid-run; runner continues. "
+                "Reconnecting clients reconcile via pipelineState. "
+                "Trigger: %s",
+                exc,
+            )
+    return fnCallback
+
+
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
@@ -562,9 +613,7 @@ async def fnPipelineMessageLoop(
         fnSetInteractiveResponse,
     )
     dictInteractive = fdictCreateInteractiveContext()
-
-    async def fnCallback(dictEvent):
-        await websocket.send_json(dictEvent)
+    fnCallback = ffBuildResilientWsCallback(websocket)
 
     while True:
         dictRequest = json.loads(await websocket.receive_text())
