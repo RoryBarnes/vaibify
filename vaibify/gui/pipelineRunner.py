@@ -726,6 +726,10 @@ async def _fiExecuteAndRecord(
     sStepDir = workflowManager.fsResolveStepWorkdir(
         dictStep.get("sDirectory", sWorkdir), dictVariables,
     )
+    await asyncio.to_thread(
+        workflowManager.fnCleanStepScratchDirs,
+        connectionDocker, sContainerId, dictStep, dictVariables,
+    )
     setFilesBefore = await _fsetSnapshotDirectory(
         connectionDocker, sContainerId, sStepDir,
         _fiDiscoveryMaxDepthForStep(dictStep),

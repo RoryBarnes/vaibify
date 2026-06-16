@@ -593,6 +593,22 @@ def ffBuildResilientWsCallback(websocket):
     return fnCallback
 
 
+# Module-level registry the terminal route consults to hand the active
+# runner's interactive context to ``fnTerminalReadLoop`` so an abnormal
+# terminal exit posts the runner-unblock sentinel (audit HIGH #9).
+DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER = {}
+
+
+def _fnPublishInteractiveContext(sContainerId, dictInteractive):
+    """Publish a runner's interactive context for the terminal route."""
+    DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER[sContainerId] = dictInteractive
+
+
+def fdictInteractiveContextForContainer(sContainerId):
+    """Return the active runner's interactive context, or ``None``."""
+    return DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId)
+
+
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
@@ -617,6 +633,7 @@ async def fnPipelineMessageLoop(
     )
     dictInteractive = fdictCreateInteractiveContext()
     fnCallback = ffBuildResilientWsCallback(websocket)
+    _fnPublishInteractiveContext(sContainerId, dictInteractive)
 
     while True:
         dictRequest = json.loads(await websocket.receive_text())
@@ -820,16 +837,22 @@ async def fnRejectNotConnected(websocket):
 
 
 async def fnRunTerminalSession(
-    session, websocket, dictTerminalSessions,
+    session, websocket, dictTerminalSessions, dictInteractive=None,
 ):
-    """Manage terminal session lifecycle after successful start."""
+    """Manage terminal session lifecycle after successful start.
+
+    ``dictInteractive`` is the active runner's interactive context; when
+    provided, ``fnTerminalReadLoop`` posts a ``complete:130`` sentinel
+    on abnormal exit so a runner paused at ``interactiveComplete`` does
+    not deadlock when the terminal-WS dies (audit HIGH #9).
+    """
     sSessionId = session.sSessionId
     dictTerminalSessions[sSessionId] = session
     await websocket.send_json(
         {"sType": "connected", "sSessionId": sSessionId}
     )
     taskReader = asyncio.create_task(
-        fnTerminalReadLoop(session, websocket)
+        fnTerminalReadLoop(session, websocket, dictInteractive)
     )
     try:
         await fnTerminalInputLoop(session, websocket)

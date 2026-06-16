@@ -45,8 +45,15 @@ def _fnRegisterTerminalWs(app, dictCtx):
         except Exception as error:
             await fnRejectTerminalStart(websocket, error)
             return
+        from .. import pipelineServer
+        dictInteractive = (
+            pipelineServer.fdictInteractiveContextForContainer(
+                sContainerId,
+            )
+        )
         await fnRunTerminalSession(
-            session, websocket, dictCtx["terminals"]
+            session, websocket, dictCtx["terminals"],
+            dictInteractive=dictInteractive,
         )
 
 

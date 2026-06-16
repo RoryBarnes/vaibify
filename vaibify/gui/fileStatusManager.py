@@ -1569,6 +1569,33 @@ def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
     )
 
 
+def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
+    """Fan eviction across every per-container cache vaibify keeps.
+
+    Without one coordinator the docker-substrate cache, the state-lock
+    dict, and the parent-mtime cache drift out of phase: a container
+    that has been gone for hours can still hold an asyncio.Lock or a
+    file-status entry while the docker handle has already been
+    evicted. Call this from the same place that refreshes the running
+    list (e.g. the registry route) so all three sweeps see one
+    consistent snapshot. Returns the union of evicted container ids.
+    """
+    setRunning = set(listRunningContainers or [])
+    setEvicted = set(
+        fnSweepParentMtimeCache(dictCtx, listRunningContainers)
+    )
+    if dictCtx is None:
+        return setEvicted
+    dictLocks = dictCtx.get("dictPipelineStateLocks") or {}
+    for sContainerId in list(dictLocks.keys()):
+        if sContainerId not in setRunning:
+            pipelineState.fnEvictStateLockForContainer(
+                dictCtx, sContainerId,
+            )
+            setEvicted.add(sContainerId)
+    return setEvicted
+
+
 def _fdictGetModTimes(
     connectionDocker, sContainerId, listPaths,
     dictCtx=None, bPipelineRunning=False,

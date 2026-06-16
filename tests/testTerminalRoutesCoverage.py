@@ -212,6 +212,7 @@ class TestTerminalWsSuccessfulSession:
         mockSession.fnStart.assert_called_once()
         mockRun.assert_awaited_once_with(
             mockSession, mockWs, dictCtx["terminals"],
+            dictInteractive=None,
         )
 
 

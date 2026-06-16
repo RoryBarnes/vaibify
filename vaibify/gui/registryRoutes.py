@@ -521,7 +521,25 @@ def _ftupleDiscoverAllContainers(dictCtx):
         listContainers = connectionDocker.flistGetRunningContainers()
     except Exception:
         return [], []
+    _fnSweepSiblingContainerCaches(dictCtx, listContainers)
     return _ftupleSplitContainers(connectionDocker, listContainers)
+
+
+def _fnSweepSiblingContainerCaches(dictCtx, listContainers):
+    """Evict the file-status and state-lock caches alongside docker's own.
+
+    ``DockerConnection.flistGetRunningContainers`` already sweeps its
+    instance + module caches; this hook lets the sibling caches
+    (parent-mtime, pipeline-state lock dict) see the same snapshot in
+    the same tick. Imported lazily so this route module stays
+    light-weight when no GUI features are exercised.
+    """
+    try:
+        from .fileStatusManager import fnSweepAllContainerCaches
+    except ImportError:
+        return
+    listIds = [d.get("sContainerId", "") for d in listContainers]
+    fnSweepAllContainerCaches(dictCtx, [s for s in listIds if s])
 
 
 def _ftupleSplitContainers(connectionDocker, listContainers):
