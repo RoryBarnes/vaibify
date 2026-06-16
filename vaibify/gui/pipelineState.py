@@ -356,10 +356,19 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
 # writer thread does all docker I/O without touching that lock. This
 # eliminates the multi-second pause where a heartbeat could wait
 # behind a step-result writing 4 MB of log over a slow docker exec.
+#
+# Step-result events are debounce-coalesced: at high step rates (1000
+# steps in a sweep) emitting one write per result is O(N) writes of an
+# O(N)-sized state file, i.e. O(N^2) write volume. The debounce window
+# collapses bursts to a single write per ``_F_STEP_RESULT_DEBOUNCE``
+# seconds; terminal updates (``bRunning: False``) flush immediately so
+# the dashboard's "done" transition is never delayed by a debounce.
 # ---------------------------------------------------------------------------
 
 _SENTINEL_WRITE = object()
 _SENTINEL_SHUTDOWN = object()
+_SENTINEL_FLUSH = object()
+_F_STEP_RESULT_DEBOUNCE = 1.0
 
 
 class StateWriter:
@@ -379,6 +388,10 @@ class StateWriter:
         self.lockState = threading.Lock()
         self.queueWrites = queue.Queue()
         self.eventStop = threading.Event()
+        self.fStepResultDebounce = _F_STEP_RESULT_DEBOUNCE
+        self.lockDebounce = threading.Lock()
+        self.bStepResultPending = False
+        self.timerDebounce = None
         self.threadWriter = threading.Thread(
             target=self._fnRunWriter,
             name=f"vaibify-state-writer-{sContainerId[:8]}",
@@ -391,20 +404,33 @@ class StateWriter:
         self.queueWrites.put(_SENTINEL_WRITE)
 
     def fnEnqueueUpdate(self, dictUpdate):
-        """Merge ``dictUpdate`` into state and request a persist."""
+        """Merge ``dictUpdate`` into state and request a persist.
+
+        A terminal transition (``bRunning: False``) is flushed
+        immediately so the dashboard's "done" state cannot be delayed
+        by a pending step-result debounce window.
+        """
         with self.lockState:
             self.dictState.update(dictUpdate)
+        if self._fbIsTerminalUpdate(dictUpdate):
+            self._fnFlushDebouncedStepResults()
         self.queueWrites.put(_SENTINEL_WRITE)
 
     def fnEnqueueStepResult(self, dictResult):
-        """Record a step result in state and request a persist."""
+        """Record a step result in state and debounce-coalesce the write.
+
+        Bursts of step results inside a single
+        ``fStepResultDebounce``-second window produce at most one
+        persist. The in-memory state always reflects every result the
+        moment this method returns; only the docker write is deferred.
+        """
         with self.lockState:
             sKey = str(dictResult["iStepNumber"])
             self.dictState.setdefault("dictStepResults", {})[sKey] = {
                 "sStatus": dictResult["sStatus"],
                 "iExitCode": dictResult["iExitCode"],
             }
-        self.queueWrites.put(_SENTINEL_WRITE)
+        self._fnArmStepResultDebounce()
 
     def fnEnqueueOutputLine(self, sLine):
         """Append an output line; no immediate persist (next write coalesces)."""
@@ -414,8 +440,58 @@ class StateWriter:
     def fnStop(self):
         """Signal the writer to drain and exit, then join with no timeout."""
         self.eventStop.set()
+        self._fnCancelDebounceTimer()
         self.queueWrites.put(_SENTINEL_SHUTDOWN)
         self.threadWriter.join()
+
+    @staticmethod
+    def _fbIsTerminalUpdate(dictUpdate):
+        """Return True iff ``dictUpdate`` ends the run (must flush)."""
+        if "bRunning" in dictUpdate and not dictUpdate.get("bRunning"):
+            return True
+        return False
+
+    def _fnArmStepResultDebounce(self):
+        """Start (or extend) the debounce timer for step-result flushes."""
+        with self.lockDebounce:
+            self.bStepResultPending = True
+            if self.timerDebounce is not None:
+                return
+            timerNew = threading.Timer(
+                self.fStepResultDebounce,
+                self._fnFireStepResultDebounce,
+            )
+            timerNew.daemon = True
+            self.timerDebounce = timerNew
+            timerNew.start()
+
+    def _fnFireStepResultDebounce(self):
+        """Timer callback: enqueue one persist for the coalesced batch."""
+        with self.lockDebounce:
+            self.timerDebounce = None
+            if not self.bStepResultPending:
+                return
+            self.bStepResultPending = False
+        self.queueWrites.put(_SENTINEL_WRITE)
+
+    def _fnFlushDebouncedStepResults(self):
+        """Cancel any pending debounce and enqueue an immediate persist."""
+        with self.lockDebounce:
+            bWasPending = self.bStepResultPending
+            self.bStepResultPending = False
+            if self.timerDebounce is not None:
+                self.timerDebounce.cancel()
+                self.timerDebounce = None
+        if bWasPending:
+            self.queueWrites.put(_SENTINEL_WRITE)
+
+    def _fnCancelDebounceTimer(self):
+        """Stop the debounce timer; pending state survives via dictState."""
+        with self.lockDebounce:
+            if self.timerDebounce is not None:
+                self.timerDebounce.cancel()
+                self.timerDebounce = None
+            self.bStepResultPending = False
 
     def _fnRunWriter(self):
         """Consume the queue; coalesce bursts; write each snapshot."""

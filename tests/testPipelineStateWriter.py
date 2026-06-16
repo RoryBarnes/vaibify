@@ -258,3 +258,107 @@ def test_output_lines_accumulate_in_state():
     dictRead = _fdictLatestState(mockDocker, "ctr1")
     assert "a" in dictRead["listRecentOutput"]
     assert "c" in dictRead["listRecentOutput"]
+
+
+# ---------------------------------------------------------------------------
+# Step-result debounce coalescing — collapses bursts of step results
+# into one write per debounce window so a 1000-step run stays O(N) in
+# write volume rather than O(N^2).
+# ---------------------------------------------------------------------------
+
+
+def _fiCountManifestWrites(mockDocker, sContainerId):
+    """Return how many ``mv`` commands persisted the canonical state file."""
+    sExpected = f"mv {S_STATE_PATH}".replace("/pipeline", "/pipeline")
+    iCount = 0
+    for sCommand in mockDocker.listCommands:
+        if sCommand.startswith("mv ") and S_STATE_PATH in sCommand:
+            iCount += 1
+    return iCount
+
+
+def test_step_result_burst_coalesces_to_at_most_two_writes():
+    """50 step-results inside one debounce window emit <= 2 docker writes."""
+    mockDocker = MockDockerConnection()
+    dictState = fdictBuildInitialState("runAll", "/log", 50)
+    stateWriter = StateWriter(mockDocker, "ctr1", dictState)
+    # Long debounce so the whole burst fits inside one window.
+    stateWriter.fStepResultDebounce = 5.0
+    stateWriter.fnStart()
+    for iStep in range(1, 51):
+        stateWriter.fnEnqueueStepResult({
+            "iStepNumber": iStep, "sStatus": "passed", "iExitCode": 0,
+        })
+    # Sleep below the debounce window so the timer has not fired yet.
+    time.sleep(0.1)
+    # The initial-state persist plus the (debounced) burst should be
+    # at most two write attempts so far.
+    iWritesBeforeStop = _fiCountManifestWrites(mockDocker, "ctr1")
+    assert iWritesBeforeStop <= 2, (
+        f"expected <= 2 writes inside debounce window, "
+        f"observed {iWritesBeforeStop}"
+    )
+    stateWriter.fnStop()
+    dictRead = _fdictLatestState(mockDocker, "ctr1")
+    # Every step result must survive the coalescing.
+    assert len(dictRead["dictStepResults"]) == 50
+    for iStep in range(1, 51):
+        assert dictRead["dictStepResults"][str(iStep)]["sStatus"] == "passed"
+
+
+def test_step_result_debounce_eventually_flushes():
+    """The debounce timer fires within its window and persists the batch."""
+    mockDocker = MockDockerConnection()
+    dictState = fdictBuildInitialState("runAll", "/log", 5)
+    stateWriter = StateWriter(mockDocker, "ctr1", dictState)
+    stateWriter.fStepResultDebounce = 0.05
+    stateWriter.fnStart()
+    for iStep in range(1, 6):
+        stateWriter.fnEnqueueStepResult({
+            "iStepNumber": iStep, "sStatus": "passed", "iExitCode": 0,
+        })
+    # Wait long enough for the debounce timer to fire and the writer to drain.
+    time.sleep(0.3)
+    dictRead = _fdictLatestState(mockDocker, "ctr1")
+    assert dictRead is not None
+    assert len(dictRead["dictStepResults"]) == 5
+    stateWriter.fnStop()
+
+
+def test_terminal_update_flushes_pending_step_results_immediately():
+    """A ``bRunning: False`` update cancels the debounce and writes now."""
+    mockDocker = MockDockerConnection()
+    dictState = fdictBuildInitialState("runAll", "/log", 3)
+    stateWriter = StateWriter(mockDocker, "ctr1", dictState)
+    stateWriter.fStepResultDebounce = 5.0
+    stateWriter.fnStart()
+    for iStep in range(1, 4):
+        stateWriter.fnEnqueueStepResult({
+            "iStepNumber": iStep, "sStatus": "passed", "iExitCode": 0,
+        })
+    stateWriter.fnEnqueueUpdate({"bRunning": False, "iExitCode": 0})
+    stateWriter.fnStop()
+    dictRead = _fdictLatestState(mockDocker, "ctr1")
+    assert dictRead["bRunning"] is False
+    # All three results must be present despite the long debounce.
+    assert len(dictRead["dictStepResults"]) == 3
+
+
+def test_step_result_window_holds_lock_only_for_memory_update():
+    """Producers never block on docker when the writer is slow."""
+    mockDocker = MockDockerConnection()
+    mockDocker.fSleepPerWrite = 0.2
+    dictState = fdictBuildInitialState("runAll", "/log", 3)
+    stateWriter = StateWriter(mockDocker, "ctr1", dictState)
+    stateWriter.fStepResultDebounce = 5.0
+    stateWriter.fnStart()
+    fEnqueueStart = time.monotonic()
+    for iStep in range(1, 51):
+        stateWriter.fnEnqueueStepResult({
+            "iStepNumber": iStep, "sStatus": "passed", "iExitCode": 0,
+        })
+    fEnqueueElapsed = time.monotonic() - fEnqueueStart
+    assert fEnqueueElapsed < 0.3, (
+        f"producer blocked on docker I/O: {fEnqueueElapsed:.2f}s"
+    )
+    stateWriter.fnStop()
