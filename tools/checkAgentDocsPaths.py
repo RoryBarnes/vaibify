@@ -24,12 +24,19 @@ REGEX_BARE_FILENAME = re.compile(
     r"`([A-Za-z0-9_-]+\.(?:py|md|js|rst|json|yml|yaml|ts|txt|ini|cfg|toml))`"
 )
 SET_SCHEME_PREFIXES = ("http://", "https://", "mailto:", "#")
-# Generic/illustrative filenames used in templates and examples that are not
-# meant to resolve to a concrete file on disk.
+# Backticked filenames that AGENTS.md / SKILL.md docs name but that do
+# not (and should not) resolve to a concrete file in the source tree.
+# Two categories live here:
+#   * Generic/illustrative filenames used as templates ("Routes.py").
+#   * Per-machine runtime artifacts written into the container/repo at
+#     runtime ("state.json", "pipeline_state.json") that are gitignored
+#     and therefore absent from the source tree.
 SET_GENERIC_FILENAME_EXAMPLES = {
     "Routes.py",
     "metricsRoutes.py",
     "userRoutes.py",
+    "state.json",
+    "pipeline_state.json",
 }
 
 
