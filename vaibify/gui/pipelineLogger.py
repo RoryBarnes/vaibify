@@ -127,12 +127,23 @@ async def fnWriteLogToContainer(
 def _fnAppendLogContent(
     connectionDocker, sContainerId, sLogPath, sContent,
 ):
-    """Append ``sContent`` to ``sLogPath`` inside the container via cat >>."""
+    """Append ``sContent`` to ``sLogPath`` inside the container.
+
+    Encodes the payload as base64 and decodes it inside the container,
+    so a scientific stdout line containing any shell metacharacter — or
+    a literal heredoc sentinel — cannot escape into command execution.
+    The previous ``cat <<'EOF'`` form was vulnerable: a line equal to
+    the sentinel terminated the heredoc and the remainder of the buffer
+    ran as shell (CLAUDE.md command-injection threat).
+    """
+    import base64
     sQuotedPath = fsShellQuote(sLogPath)
-    sHereTag = "VAIBIFY_LOG_EOF"
+    sEncoded = base64.b64encode(
+        sContent.encode("utf-8", errors="replace"),
+    ).decode("ascii")
     sCommand = (
-        f"cat >> {sQuotedPath} <<'{sHereTag}'\n"
-        f"{sContent}{sHereTag}\n"
+        f"printf '%s' {fsShellQuote(sEncoded)} | "
+        f"base64 -d >> {sQuotedPath}"
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,
@@ -143,17 +154,31 @@ def _fnAppendLogContent(
         )
 
 
+# Files modified inside this window are presumed to belong to an
+# active run that is still appending; prune leaves them alone so
+# concurrent workflow runs on the same container cannot truncate
+# each other's logs (R2 review).
+I_LOG_PRUNE_AGE_MINUTES = 10
+
+
 async def fnPruneOldLogs(
     connectionDocker, sContainerId, sLogsDir,
     iRetentionCount=I_LOG_RETENTION_COUNT,
 ):
-    """Delete all but the ``iRetentionCount`` most recent log files."""
+    """Delete all but the ``iRetentionCount`` most recent log files.
+
+    Files modified in the last ``I_LOG_PRUNE_AGE_MINUTES`` minutes are
+    excluded so concurrent runs in the same container cannot unlink
+    each other's still-active logs.
+    """
     sQuoted = fsShellQuote(sLogsDir)
     iKeepPlusOne = iRetentionCount + 1
     sCommand = (
-        f"ls -1t {sQuoted}/*.log 2>/dev/null | "
+        f"find {sQuoted} -maxdepth 1 -type f -name '*.log' "
+        f"-mmin +{I_LOG_PRUNE_AGE_MINUTES} -printf '%T@ %p\\n' "
+        f"2>/dev/null | sort -rn | "
         f"tail -n +{iKeepPlusOne} | "
-        f"xargs -r rm -f"
+        f"cut -d' ' -f2- | xargs -r rm -f"
     )
     await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,

@@ -289,7 +289,9 @@ def test_fnEmitCommandHeader_resolved_differs():
 
 
 def test_fnWriteLogToContainer_calls_write():
-    """Appends via ``cat >>`` so a tar-encoding hiccup cannot truncate the log."""
+    """Appends via base64-pipe so tar hiccups cannot truncate and shell
+    metacharacters in log content cannot escape into command execution."""
+    import base64
     mockConnection = MagicMock()
     mockConnection.ftResultExecuteCommand.return_value = (0, "")
     listLines = ["line1", "line2"]
@@ -298,10 +300,10 @@ def test_fnWriteLogToContainer_calls_write():
     ))
     mockConnection.ftResultExecuteCommand.assert_called_once()
     sCommand = mockConnection.ftResultExecuteCommand.call_args[0][1]
-    assert "cat >>" in sCommand
+    assert "base64 -d >> " in sCommand
     assert "/log.txt" in sCommand
-    assert "line1" in sCommand
-    assert "line2" in sCommand
+    sExpected = base64.b64encode(b"line1\nline2\n").decode("ascii")
+    assert sExpected in sCommand
     # The buffer is cleared on successful append so the next flush is
     # incremental and the in-memory budget cannot grow unbounded.
     assert listLines == []

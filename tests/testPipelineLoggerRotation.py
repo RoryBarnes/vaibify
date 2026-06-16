@@ -33,8 +33,14 @@ def _frunAsync(coro):
 # ---------------------------------------------------------------------------
 
 
-def test_log_write_uses_append_mode_not_full_rewrite():
-    """fnWriteLogToContainer must append via cat >>, not rewrite the file."""
+def test_log_write_uses_base64_append_not_full_rewrite():
+    """fnWriteLogToContainer must base64-pipe-append, not rewrite the file.
+
+    The base64 form is content-immune: a line containing any shell
+    metacharacter — or a literal heredoc sentinel — cannot escape into
+    command execution.
+    """
+    import base64
     mockConn = MagicMock()
     mockConn.ftResultExecuteCommand.return_value = (0, "")
 
@@ -44,11 +50,33 @@ def test_log_write_uses_append_mode_not_full_rewrite():
 
     mockConn.ftResultExecuteCommand.assert_called_once()
     sCommand = mockConn.ftResultExecuteCommand.call_args[0][1]
-    assert "cat >>" in sCommand
-    assert "line one" in sCommand
-    assert "line two" in sCommand
+    assert "base64 -d" in sCommand
+    assert ">> '/log.txt'" in sCommand
+    sExpected = base64.b64encode(
+        b"line one\nline two\n",
+    ).decode("ascii")
+    assert sExpected in sCommand
     # The legacy put_archive path must not be touched.
     mockConn.fnWriteFile.assert_not_called()
+
+
+def test_log_write_immune_to_heredoc_sentinel_in_payload():
+    """A scientific stdout line equal to the old sentinel cannot break out."""
+    mockConn = MagicMock()
+    mockConn.ftResultExecuteCommand.return_value = (0, "")
+    listLines = [
+        "first line",
+        "VAIBIFY_LOG_EOF",
+        "rm -rf /  # would have run under heredoc",
+        "third line",
+    ]
+    asyncio.run(fnWriteLogToContainer(
+        mockConn, "cid", "/log.txt", listLines,
+    ))
+    sCommand = mockConn.ftResultExecuteCommand.call_args[0][1]
+    # No here-doc; no raw payload in the command line.
+    assert "<<" not in sCommand
+    assert "rm -rf" not in sCommand
 
 
 def test_log_write_clears_buffer_after_successful_append():
@@ -121,7 +149,8 @@ def test_log_byte_budget_evicts_head():
 
 
 def test_prune_old_logs_keeps_only_recent():
-    """fnPruneOldLogs issues an ls + tail + xargs rm pipeline."""
+    """fnPruneOldLogs issues a find + sort + tail + xargs rm pipeline."""
+    from vaibify.gui.pipelineLogger import I_LOG_PRUNE_AGE_MINUTES
     mockConn = MagicMock()
     mockConn.ftResultExecuteCommand.return_value = (0, "")
     asyncio.run(fnPruneOldLogs(
@@ -129,8 +158,9 @@ def test_prune_old_logs_keeps_only_recent():
     ))
     mockConn.ftResultExecuteCommand.assert_called_once()
     sCommand = mockConn.ftResultExecuteCommand.call_args[0][1]
-    assert "ls -1t" in sCommand
+    assert "find " in sCommand
     assert "/workspace/.vaibify/logs" in sCommand
+    assert f"-mmin +{I_LOG_PRUNE_AGE_MINUTES}" in sCommand
     assert f"tail -n +{I_LOG_RETENTION_COUNT + 1}" in sCommand
     assert "xargs -r rm -f" in sCommand
 
@@ -143,3 +173,13 @@ def test_prune_old_logs_respects_custom_retention():
     ))
     sCommand = mockConn.ftResultExecuteCommand.call_args[0][1]
     assert "tail -n +6" in sCommand
+
+
+def test_prune_old_logs_excludes_recently_modified_files():
+    """The -mmin guard prevents truncating another concurrent run's log."""
+    from vaibify.gui.pipelineLogger import I_LOG_PRUNE_AGE_MINUTES
+    mockConn = MagicMock()
+    mockConn.ftResultExecuteCommand.return_value = (0, "")
+    asyncio.run(fnPruneOldLogs(mockConn, "cid", "/logs"))
+    sCommand = mockConn.ftResultExecuteCommand.call_args[0][1]
+    assert f"-mmin +{I_LOG_PRUNE_AGE_MINUTES}" in sCommand

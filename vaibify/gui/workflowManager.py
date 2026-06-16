@@ -1142,11 +1142,24 @@ def fsResolveStepWorkdir(sStepDirectory, dictVariables):
 
 
 def _fsResolveOneScratchDir(sPath, sStepWorkdir, dictVariables):
-    """Resolve one scratch path; return empty string when invalid."""
+    """Resolve one scratch path; return empty string when invalid.
+
+    Rejects absolute paths and ``..``-escaping paths after template
+    expansion. Without the post-expansion check a template like
+    ``{sUserVar}`` could resolve to ``../../etc/something`` and the
+    runner's ``rm -rf`` would escape the step directory (the
+    CLAUDE.md path-traversal threat).
+    """
     sResolved = fsResolveVariables(sPath, dictVariables or {})
     if not sResolved or posixpath.isabs(sResolved):
         return ""
-    return posixpath.join(sStepWorkdir, sResolved)
+    sJoined = posixpath.normpath(
+        posixpath.join(sStepWorkdir, sResolved),
+    )
+    sWorkdirNorm = posixpath.normpath(sStepWorkdir) + "/"
+    if not (sJoined + "/").startswith(sWorkdirNorm):
+        return ""
+    return sJoined
 
 
 def flistResolveStepScratchDirs(dictStep, dictVariables):

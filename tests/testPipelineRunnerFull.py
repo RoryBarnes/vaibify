@@ -803,14 +803,16 @@ def test_fiCheckDependencies_missing():
 
 
 def test_fnWriteTestLog_writes_file():
-    """Test log appended via ``cat >>`` (resilient to disk-full mid-tar)."""
+    """Test log appended via base64 pipe (resilient to disk-full and
+    immune to shell metacharacters in log content)."""
+    import base64
     mockDocker = _fMockDocker()
     _fnRunAsync(_fnWriteTestLog(
         mockDocker, "cid", 1, ["test passed"],
     ))
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "cat >>" in sCommand
-    assert "test passed" in sCommand
+    assert "base64 -d >> " in sCommand
+    assert base64.b64encode(b"test passed\n").decode("ascii") in sCommand
 
 
 # -----------------------------------------------------------------------
