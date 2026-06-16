@@ -104,7 +104,7 @@ async def _flistPreflightValidate(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
     iStartStep=1, setRunStepIndices=None,
 ):
-    """Validate step directories and scripts exist before running."""
+    """Validate step directories, scripts, and disk space before running."""
     listErrors = []
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
@@ -125,7 +125,29 @@ async def _flistPreflightValidate(
             connectionDocker, sContainerId, dictStep,
             sStepDir, dictVariables, iStepNumber, listErrors,
         )
+    _fnAppendDiskSpaceWarning(
+        connectionDocker, sContainerId, dictWorkflow, listErrors,
+    )
     return listErrors
+
+
+def _fnAppendDiskSpaceWarning(
+    connectionDocker, sContainerId, dictWorkflow, listErrors,
+):
+    """Append a low-disk-space warning to listErrors when applicable.
+
+    The check reads ``iEstimatedOutputBytes`` from the workflow root
+    (optional; default 0). The pre-flight asserts free space against
+    ``max(1 GB, 2x estimated)``. A negative probe (df unavailable)
+    is treated as "unknown" and never blocks the run.
+    """
+    from . import diskSpace
+    iEstimatedBytes = int(dictWorkflow.get("iEstimatedOutputBytes", 0) or 0)
+    dictWarning = diskSpace.fdictAssertSpaceForOutputs(
+        connectionDocker, sContainerId, iEstimatedBytes,
+    )
+    if dictWarning is not None:
+        listErrors.append(dictWarning["sMessage"])
 
 
 # ---------------------------------------------------------------------------
