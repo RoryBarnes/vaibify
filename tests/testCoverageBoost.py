@@ -162,7 +162,7 @@ class MockDockerBoost:
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):

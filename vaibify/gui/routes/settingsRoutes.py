@@ -82,7 +82,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
         try:
             baContent = await asyncio.to_thread(
                 dictCtx["docker"].fbaFetchFile,
-                sContainerId, sLogPath,
+                sContainerId, sLogPath, iMaxBytes=None,
             )
             return Response(
                 content=baContent, media_type="text/plain"

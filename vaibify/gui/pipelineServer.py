@@ -329,9 +329,17 @@ def fbaFetchFigureWithFallback(
     connectionDocker, sContainerId, sAbsPath,
     sWorkflowDirectory, sWorkdir, sFilePath,
 ):
-    """Try primary path, then fallback with sWorkdir prefix."""
+    """Try primary path, then fallback with sWorkdir prefix.
+
+    Multi-panel scientific figures routinely exceed the small-file
+    64 MB cap, so the figure fetch opts out (``iMaxBytes=None``); the
+    cap is a default for callers fetching JSON/markers, not for
+    user-authored binary content.
+    """
     try:
-        return connectionDocker.fbaFetchFile(sContainerId, sAbsPath)
+        return connectionDocker.fbaFetchFile(
+            sContainerId, sAbsPath, iMaxBytes=None,
+        )
     except Exception:
         pass
     if sWorkdir and not sFilePath.startswith("/"):
@@ -354,7 +362,9 @@ def _fbaFetchFallback(
             sWorkflowDirectory, sWorkdir, sFilePath)
     fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT)
     try:
-        return connectionDocker.fbaFetchFile(sContainerId, sFallback)
+        return connectionDocker.fbaFetchFile(
+            sContainerId, sFallback, iMaxBytes=None,
+        )
     except Exception as error:
         raise HTTPException(
             404, f"Figure not found: "

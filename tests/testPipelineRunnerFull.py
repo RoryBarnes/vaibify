@@ -444,11 +444,13 @@ def test_fbVerifyStepOutputs_no_files():
 
 
 def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
-    """A step with N output files must still produce only ONE exec.
+    """A step with N output files produces a bounded constant exec count.
 
     Pre-batch the helper ran one ``test -f`` per file; for 1000 steps
     × 3 files that's 3000 round-trips. The batched path writes the
-    list into the container once and runs a single xargs.
+    list into the container once, runs a single xargs, and cleans up
+    the per-call pathfile with one rm — three execs total, independent
+    of N (vs ~N+1 pre-batch and N+2 with cleanup-per-file).
     """
     listFiles = [f"out_{i:03d}.dat" for i in range(20)]
     sOutput = "\n".join(f"/work/{s}" for s in listFiles) + "\n"
@@ -460,9 +462,9 @@ def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
     ))
     assert bResult is True
-    # Exactly one exec: the xargs batch. fnWriteFile counts as a write,
+    # xargs batch + per-call rm cleanup. The fnWriteFile is a write,
     # not an exec, so it does not appear in ftResultExecuteCommand calls.
-    assert mockDocker.ftResultExecuteCommand.call_count == 1
+    assert mockDocker.ftResultExecuteCommand.call_count == 2
 
 
 def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():

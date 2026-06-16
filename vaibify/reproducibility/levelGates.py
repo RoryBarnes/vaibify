@@ -246,6 +246,32 @@ def _fsScriptStatusFingerprint(dictScriptStatus):
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
+def _fsSyncStatusFingerprint(filesRepo):
+    """SHA over GitHub + Zenodo sync caches so verify-completion busts L2/L3.
+
+    The previous L2/L3 cache keys ignored
+    ``scheduledReverify.fdictReadCachedSyncStatus`` results, so a GitHub
+    or Zenodo verify-completion that did not change the workflow content
+    left blocker lists stale on the dashboard. Including the cache
+    contents in the fingerprint forces a re-compute the next poll after
+    any verify writes a fresh ``sLastVerified`` / ``sLastSha`` / status
+    field. Returns ``"none"`` when the repo has no sync cache yet.
+    """
+    listEntries = []
+    for sService in ("github", "zenodo"):
+        try:
+            dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+                filesRepo, sService,
+            )
+        except Exception:
+            dictStatus = None
+        listEntries.append((sService, dictStatus or {}))
+    if not any(d for _s, d in listEntries):
+        return "none"
+    sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
 def _fsRepoFingerprint(filesRepo):
     """Return a stable identifier for the repo adapter or path."""
     sRepoRoot = fsRepoRootOf(filesRepo)
@@ -1575,6 +1601,7 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
         "L2",
         _fsWorkflowBlockerFingerprint(dictWorkflow),
         _fsRepoFingerprint(filesRepo),
+        _fsSyncStatusFingerprint(filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -1911,6 +1938,7 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
         "L3",
         _fsWorkflowBlockerFingerprint(dictWorkflow),
         _fsRepoFingerprint(filesRepo),
+        _fsSyncStatusFingerprint(filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:

@@ -104,7 +104,7 @@ async def _flistPreflightValidate(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
     iStartStep=1, setRunStepIndices=None,
 ):
-    """Validate step directories, scripts, and disk space before running."""
+    """Return preflight errors (hard-blocks). Soft warnings flow separately."""
     listErrors = []
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
@@ -125,29 +125,27 @@ async def _flistPreflightValidate(
             connectionDocker, sContainerId, dictStep,
             sStepDir, dictVariables, iStepNumber, listErrors,
         )
-    _fnAppendDiskSpaceWarning(
-        connectionDocker, sContainerId, dictWorkflow, listErrors,
-    )
     return listErrors
 
 
-def _fnAppendDiskSpaceWarning(
-    connectionDocker, sContainerId, dictWorkflow, listErrors,
+def _flistCollectPreflightWarnings(
+    connectionDocker, sContainerId, dictWorkflow,
 ):
-    """Append a low-disk-space warning to listErrors when applicable.
+    """Return soft preflight warnings — never blocks the run.
 
-    The check reads ``iEstimatedOutputBytes`` from the workflow root
-    (optional; default 0). The pre-flight asserts free space against
-    ``max(1 GB, 2x estimated)``. A negative probe (df unavailable)
-    is treated as "unknown" and never blocks the run.
+    Low disk space surfaces here so the run still starts. The runner
+    emits each warning as a ``preflightWarning`` status event before
+    executing steps. A negative probe (df unavailable) returns ``[]``.
     """
     from . import diskSpace
+    listWarnings = []
     iEstimatedBytes = int(dictWorkflow.get("iEstimatedOutputBytes", 0) or 0)
     dictWarning = diskSpace.fdictAssertSpaceForOutputs(
         connectionDocker, sContainerId, iEstimatedBytes,
     )
     if dictWarning is not None:
-        listErrors.append(dictWarning["sMessage"])
+        listWarnings.append(dictWarning["sMessage"])
+    return listWarnings
 
 
 # ---------------------------------------------------------------------------
@@ -682,7 +680,21 @@ async def _fnEmitDiscoveredOutputs(
     })
 
 
-_S_VERIFY_PATHFILE = "/tmp/vaibifyVerify.list"
+_S_VERIFY_PATHFILE_PREFIX = "/tmp/vaibifyVerify."
+
+
+def _fsVerifyPathfileForCall():
+    """Return a per-call temp pathfile so concurrent verifies don't clobber.
+
+    Two interleaved ``_fbVerifyStepList`` calls (badge-driven L3 +
+    user-triggered verify, or two parallel step runs) used to share a
+    single ``/tmp/vaibifyVerify.list``: the second write truncated the
+    first between write and read, producing false "missing" reports.
+    A uuid suffix per call keeps each invocation's pathfile distinct
+    and ``rm -f`` cleans up afterward.
+    """
+    import uuid
+    return f"{_S_VERIFY_PATHFILE_PREFIX}{uuid.uuid4().hex}.list"
 
 
 async def _fbVerifyStepOutputs(
@@ -759,18 +771,22 @@ def _fsetMissingPathsBatched(
     container fails loud rather than silently passing verification.
     """
     baContent = ("\n".join(listAbsolutePaths) + "\n").encode("utf-8")
+    sPathfile = _fsVerifyPathfileForCall()
     try:
-        _fnWriteVerifyPathfile(
-            connectionDocker, sContainerId, baContent,
-        )
-        _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId,
-            "xargs -d '\\n' -a " + _S_VERIFY_PATHFILE
-            + " -I{} sh -c 'test -e \"$1\" && printf %s\\\\n \"$1\"'"
-            " _ {} 2>/dev/null",
-        )
-    except OSError:
-        return set(listAbsolutePaths)
+        try:
+            _fnWriteVerifyPathfile(
+                connectionDocker, sContainerId, sPathfile, baContent,
+            )
+            _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+                sContainerId,
+                "xargs -d '\\n' -a " + sPathfile
+                + " -I{} sh -c 'test -e \"$1\" && printf %s\\\\n \"$1\"'"
+                " _ {} 2>/dev/null",
+            )
+        except OSError:
+            return set(listAbsolutePaths)
+    finally:
+        _fnRemoveVerifyPathfile(connectionDocker, sContainerId, sPathfile)
     setPresent = {
         sLine.strip() for sLine in (sOutput or "").splitlines()
         if sLine.strip()
@@ -778,12 +794,24 @@ def _fsetMissingPathsBatched(
     return {sPath for sPath in listAbsolutePaths if sPath not in setPresent}
 
 
-def _fnWriteVerifyPathfile(connectionDocker, sContainerId, baContent):
+def _fnWriteVerifyPathfile(
+    connectionDocker, sContainerId, sPathfile, baContent,
+):
     """Write the temp pathfile via the preferred docker write helper."""
     fnWriter = getattr(connectionDocker, "fnWriteFileViaTar", None)
     if fnWriter is None:
         fnWriter = connectionDocker.fnWriteFile
-    fnWriter(sContainerId, _S_VERIFY_PATHFILE, baContent)
+    fnWriter(sContainerId, sPathfile, baContent)
+
+
+def _fnRemoveVerifyPathfile(connectionDocker, sContainerId, sPathfile):
+    """Best-effort cleanup of the per-call verify pathfile."""
+    try:
+        connectionDocker.ftResultExecuteCommand(
+            sContainerId, f"rm -f {sPathfile}",
+        )
+    except Exception:
+        pass
 
 
 async def _fbVerifyStepList(
@@ -1171,6 +1199,13 @@ async def _fiRunWithLogging(
             sContainerId, sLogPath, listLogLines,
             listPreflightErrors, sAction,
         )
+    listPreflightWarnings = _flistCollectPreflightWarnings(
+        connectionDocker, sContainerId, dictWorkflow,
+    )
+    for sWarning in listPreflightWarnings:
+        await fnStatusCallback({
+            "sType": "preflightWarning", "sMessage": sWarning,
+        })
     return await _fiRunStepsAndLog(
         connectionDocker, sContainerId, dictWorkflow, sWorkdir,
         dictVariables, fnLogging, fnStatusCallback,

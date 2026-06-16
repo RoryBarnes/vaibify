@@ -132,9 +132,12 @@ def test_message_formats_bytes_in_human_units():
 
 
 def test_preflight_validator_surfaces_low_disk_warning():
-    """A low-disk probe result lands in listErrors as a banner string."""
-    import asyncio
+    """A low-disk probe surfaces as a soft warning, not a hard error.
 
+    Hard ``listErrors`` would abort the run — the contract is that a
+    low-disk-space warning is informative-only so a researcher can still
+    start the job and react when the warning fires in the dashboard.
+    """
     from vaibify.gui import pipelineRunner
 
     class _MixedDocker:
@@ -153,19 +156,17 @@ def test_preflight_validator_surfaces_low_disk_warning():
             "saDataCommands": [], "saPlotCommands": [],
         }],
     }
-    listErrors = asyncio.run(pipelineRunner._flistPreflightValidate(
-        _MixedDocker(), "cid", dictWorkflow, {},
-    ))
+    listWarnings = pipelineRunner._flistCollectPreflightWarnings(
+        _MixedDocker(), "cid", dictWorkflow,
+    )
     assert any(
-        "Workspace free space is low" in sError
-        for sError in listErrors
+        "Workspace free space is low" in sWarning
+        for sWarning in listWarnings
     )
 
 
 def test_preflight_validator_silent_when_disk_ample():
-    """An ample-disk probe leaves the listErrors banner clean."""
-    import asyncio
-
+    """An ample-disk probe yields no preflight warnings."""
     from vaibify.gui import pipelineRunner
 
     class _AmpleDocker:
@@ -184,10 +185,10 @@ def test_preflight_validator_silent_when_disk_ample():
             "saDataCommands": [], "saPlotCommands": [],
         }],
     }
-    listErrors = asyncio.run(pipelineRunner._flistPreflightValidate(
-        _AmpleDocker(), "cid", dictWorkflow, {},
-    ))
+    listWarnings = pipelineRunner._flistCollectPreflightWarnings(
+        _AmpleDocker(), "cid", dictWorkflow,
+    )
     assert not any(
-        "Workspace free space" in sError
-        for sError in listErrors
+        "Workspace free space" in sWarning
+        for sWarning in listWarnings
     )
