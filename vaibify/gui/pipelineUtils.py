@@ -13,7 +13,6 @@ __all__ = [
     "fdictMapOutputTokenStems",
     "fsShellQuote",
     "fsLabelFromStepIndex",
-    "flistComputeAllStepLabels",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
     "fdictWorkflowWithLabels",

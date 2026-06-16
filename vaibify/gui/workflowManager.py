@@ -1,11 +1,12 @@
 """Load, validate, and CRUD operations on workflow.json."""
 
-import copy
+import hashlib
 import json
 import os
 import posixpath
 import re
 import shlex
+from collections import OrderedDict
 
 from . import stateManager, workflowMigrations
 from .workflowMigrations import (
@@ -30,6 +31,7 @@ __all__ = [
     "fdictBuildDirectDependencies",
     "fdictBuildImplicitDependencies",
     "fdictBuildDownstreamMap",
+    "fnClearDepGraphCache",
     "fdictBuildGlobalVariables",
     "fdictBuildStepDirectoryMap",
     "fdictBuildStepVariables",
@@ -943,22 +945,42 @@ def fnAttachComputedTrackedPaths(dictWorkflow):
         )
 
 
+_T_TRANSIENT_STEP_KEYS = (
+    "saSourceCodeDeps",
+    "saStepScripts",
+    "saTestStandards",
+)
+
+
 def _fdictStripComputedFields(dictWorkflow):
-    """Return a deep copy with transient fields removed from steps.
+    """Return a shallow copy with transient fields removed from steps.
 
     ``dictStateLoadNotice`` is a one-shot toast payload attached
     during the connect-time recovery path; it must not leak into
     the persisted workflow.json or state.json. ``saStepScripts`` and
     ``saTestStandards`` are derived per-step badge-rendering caches
-    and are also non-persistent.
+    and are also non-persistent. Only the spine and the steps that
+    actually carry a transient key are copied — the historical
+    ``copy.deepcopy`` cloned every nested list and dict on every
+    save, which dominated round-trip cost at N >= 100.
     """
-    dictClean = copy.deepcopy(dictWorkflow)
+    dictClean = dict(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
-    for dictStep in dictClean.get("listSteps", []):
-        dictStep.pop("saSourceCodeDeps", None)
-        dictStep.pop("saStepScripts", None)
-        dictStep.pop("saTestStandards", None)
+    dictClean["listSteps"] = [
+        _fdictStripStepTransientKeys(dictStep)
+        for dictStep in dictWorkflow.get("listSteps", [])
+    ]
     return dictClean
+
+
+def _fdictStripStepTransientKeys(dictStep):
+    """Shallow-copy a step only when at least one transient key is present."""
+    if not any(sKey in dictStep for sKey in _T_TRANSIENT_STEP_KEYS):
+        return dictStep
+    dictCopy = dict(dictStep)
+    for sKey in _T_TRANSIENT_STEP_KEYS:
+        dictCopy.pop(sKey, None)
+    return dictCopy
 
 
 def fnSaveWorkflowToContainer(
@@ -1643,20 +1665,105 @@ def _flistResolveOutputPaths(dictStep):
     return listPaths
 
 
-def fdictBuildImplicitDependencies(dictWorkflow):
-    """Detect deps where an earlier step outputs into a later step's dir."""
-    listSteps = dictWorkflow.get("listSteps", [])
-    dictImplicit = {}
+_I_DEP_CACHE_MAX_ENTRIES = 16
+_DICT_DEP_CACHE = OrderedDict()
+
+
+def _fsWorkflowDepCacheKey(dictWorkflow):
+    """Return a SHA256 key over the dep-graph-relevant workflow fields.
+
+    Only fields that influence the dependency graph participate so
+    edits to unrelated metadata (toasts, badge caches, run stats) do
+    not bust the cache. Steps contribute their command/file lists,
+    their saDependencies escape hatch, and their sDirectory.
+    """
+    listEntries = []
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            listEntries.append(None)
+            continue
+        dictRelevant = {sKey: dictStep.get(sKey, []) for sKey in (
+            "saDataCommands", "saPlotCommands", "saTestCommands",
+            "saDataFiles", "saPlotFiles", "saDependencies",
+            "saSetupCommands", "saCommands", "saOutputFiles",
+        )}
+        dictRelevant["sDirectory"] = dictStep.get("sDirectory", "")
+        listEntries.append(dictRelevant)
+    sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
+def _fdepCacheGet(sKey, sField):
+    """Return the cached field value for sKey, or None on miss."""
+    dictEntry = _DICT_DEP_CACHE.get(sKey)
+    if dictEntry is None:
+        return None
+    _DICT_DEP_CACHE.move_to_end(sKey)
+    return dictEntry.get(sField)
+
+
+def _fnDepCacheSet(sKey, sField, value):
+    """Store value at (sKey, sField) and evict the oldest entry if needed."""
+    dictEntry = _DICT_DEP_CACHE.get(sKey)
+    if dictEntry is None:
+        dictEntry = {}
+        _DICT_DEP_CACHE[sKey] = dictEntry
+    dictEntry[sField] = value
+    _DICT_DEP_CACHE.move_to_end(sKey)
+    while len(_DICT_DEP_CACHE) > _I_DEP_CACHE_MAX_ENTRIES:
+        _DICT_DEP_CACHE.popitem(last=False)
+
+
+def fnClearDepGraphCache():
+    """Discard every cached dep graph (tests + invalidation hooks)."""
+    _DICT_DEP_CACHE.clear()
+
+
+def _flistDirectoryAncestors(sPath):
+    """Yield every ancestor directory of sPath from longest to shortest.
+
+    ``a/b/c.csv`` yields ``a/b``, ``a``. Stops before the empty root
+    so a step whose ``sDirectory`` is empty cannot match every output.
+    """
+    listAncestors = []
+    sCurrent = posixpath.dirname(sPath)
+    while sCurrent and sCurrent != "/":
+        listAncestors.append(sCurrent)
+        sCurrent = posixpath.dirname(sCurrent)
+    return listAncestors
+
+
+def _fdictIndexStepDirectories(listSteps):
+    """Return ``{normalizedDirectory: iStepIndex}`` for non-empty dirs."""
+    dictByDirectory = {}
     for iIndex, dictStep in enumerate(listSteps):
         sDirectory = dictStep.get("sDirectory", "")
         if not sDirectory:
             continue
-        sPrefix = posixpath.normpath(sDirectory) + "/"
-        for iOther in range(iIndex):
-            for sPath in _flistResolveOutputPaths(listSteps[iOther]):
-                if sPath.startswith(sPrefix) or sPath == sPrefix[:-1]:
-                    dictImplicit.setdefault(iOther, set()).add(iIndex)
-                    break
+        sNormalized = posixpath.normpath(sDirectory)
+        dictByDirectory.setdefault(sNormalized, iIndex)
+    return dictByDirectory
+
+
+def fdictBuildImplicitDependencies(dictWorkflow):
+    """Detect deps where an earlier step outputs into a later step's dir.
+
+    Algorithmic shape is O(N + total-outputs * depth): one pre-scan
+    builds ``{normalizedDirectory: iStepIndex}``, then each output
+    path probes itself and its ancestor directories against that
+    index. The old O(N**2 * M) nested scan dominated workflow-load
+    cost at N >= 100.
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    dictByDirectory = _fdictIndexStepDirectories(listSteps)
+    dictImplicit = {}
+    for iProducer, dictStep in enumerate(listSteps):
+        for sPath in _flistResolveOutputPaths(dictStep):
+            for sCandidate in [sPath] + _flistDirectoryAncestors(sPath):
+                iConsumer = dictByDirectory.get(sCandidate)
+                if iConsumer is None or iConsumer <= iProducer:
+                    continue
+                dictImplicit.setdefault(iProducer, set()).add(iConsumer)
     return dictImplicit
 
 
@@ -1667,8 +1774,8 @@ def _fnMergeImplicitDependencies(dictDirect, dictWorkflow):
         dictDirect.setdefault(iUpstream, set()).update(setDownstream)
 
 
-def fdictBuildDirectDependencies(dictWorkflow):
-    """Return {iUpstreamIndex: set(iDirectDownstreamIndices)}."""
+def _fdictComputeDirectDependencies(dictWorkflow):
+    """Uncached direct-dependency computation; see fdictBuildDirectDependencies."""
     dictDirect = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         setUpstream = set()
@@ -1679,29 +1786,88 @@ def fdictBuildDirectDependencies(dictWorkflow):
             for sItem in dictStep.get(sKey, []):
                 setUpstream |= fsetExtractUpstreamIndices(sItem)
         for iUpstream in setUpstream:
-            if iUpstream not in dictDirect:
-                dictDirect[iUpstream] = set()
-            dictDirect[iUpstream].add(iIndex)
+            dictDirect.setdefault(iUpstream, set()).add(iIndex)
     _fnMergeImplicitDependencies(dictDirect, dictWorkflow)
     return dictDirect
 
 
-def fdictBuildDownstreamMap(dictWorkflow):
-    """Return {iStepIndex: set(all downstream indices)} via BFS."""
-    from collections import deque
+def fdictBuildDirectDependencies(dictWorkflow):
+    """Return {iUpstreamIndex: set(iDirectDownstreamIndices)}.
+
+    Cached against the SHA256 of the dep-graph-relevant workflow
+    fields so repeated polls on an unchanged workflow re-use the
+    computed graph. The cache is module-level LRU bounded to
+    ``_I_DEP_CACHE_MAX_ENTRIES`` entries.
+    """
+    sKey = _fsWorkflowDepCacheKey(dictWorkflow)
+    dictCached = _fdepCacheGet(sKey, "dictDirect")
+    if dictCached is not None:
+        return dictCached
+    dictDirect = _fdictComputeDirectDependencies(dictWorkflow)
+    _fnDepCacheSet(sKey, "dictDirect", dictDirect)
+    return dictDirect
+
+
+def _fdictComputeDownstreamMap(dictWorkflow):
+    """Single O(N+E) reverse-topological closure over the direct graph."""
     dictDirect = fdictBuildDirectDependencies(dictWorkflow)
     iStepCount = len(dictWorkflow["listSteps"])
-    dictDownstream = {}
-    for iIndex in range(iStepCount):
-        setVisited = set()
-        dequeQueue = deque(dictDirect.get(iIndex, set()))
-        while dequeQueue:
-            iCurrent = dequeQueue.popleft()
-            if iCurrent in setVisited:
-                continue
-            setVisited.add(iCurrent)
-            dequeQueue.extend(dictDirect.get(iCurrent, set()))
-        dictDownstream[iIndex] = setVisited
+    listOrder = _flistReverseTopologicalOrder(iStepCount, dictDirect)
+    dictDownstream = {iIndex: set() for iIndex in range(iStepCount)}
+    for iIndex in listOrder:
+        setOut = dictDownstream[iIndex]
+        for iChild in dictDirect.get(iIndex, ()):  # noqa: PLR1714
+            setOut.add(iChild)
+            setOut |= dictDownstream[iChild]
+    return dictDownstream
+
+
+def _flistReverseTopologicalOrder(iStepCount, dictDirect):
+    """Return step indices in reverse topological order (Kahn's algorithm).
+
+    Cycles in the declared dep graph are tolerated — any node never
+    dequeued stays last in the order. Callers that care about cycles
+    detect them separately; the transitive closure remains correct
+    over the acyclic portion and bounded by the visited set on the
+    cyclic remainder.
+    """
+    from collections import deque
+    listInDegree = [0] * iStepCount
+    for setChildren in dictDirect.values():
+        for iChild in setChildren:
+            if 0 <= iChild < iStepCount:
+                listInDegree[iChild] += 1
+    dequeReady = deque(
+        iIndex for iIndex in range(iStepCount)
+        if listInDegree[iIndex] == 0
+    )
+    listTopological = []
+    while dequeReady:
+        iCurrent = dequeReady.popleft()
+        listTopological.append(iCurrent)
+        for iChild in dictDirect.get(iCurrent, ()):  # noqa: PLR1714
+            if 0 <= iChild < iStepCount:
+                listInDegree[iChild] -= 1
+                if listInDegree[iChild] == 0:
+                    dequeReady.append(iChild)
+    setRemaining = set(range(iStepCount)) - set(listTopological)
+    listTopological.extend(sorted(setRemaining))
+    return list(reversed(listTopological))
+
+
+def fdictBuildDownstreamMap(dictWorkflow):
+    """Return {iStepIndex: set(all downstream indices)}.
+
+    Replaces the historical per-step BFS (O(N*(N+E))) with one
+    O(N+E) reverse-topological-closure pass; both the direct graph
+    and the closure are cached under the same workflow-hash key.
+    """
+    sKey = _fsWorkflowDepCacheKey(dictWorkflow)
+    dictCached = _fdepCacheGet(sKey, "dictDownstream")
+    if dictCached is not None:
+        return dictCached
+    dictDownstream = _fdictComputeDownstreamMap(dictWorkflow)
+    _fnDepCacheSet(sKey, "dictDownstream", dictDownstream)
     return dictDownstream
 
 
