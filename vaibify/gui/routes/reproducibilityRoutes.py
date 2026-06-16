@@ -195,14 +195,32 @@ def _fdictKickOffVerification(sContainerId, filesRepo, dictWorkflow):
         sContainerId, filesRepo, sManifestDigest, dictWorkflow,
     )
     taskWorker = asyncio.create_task(coroutineWorker)
-    _DICT_VERIFY_TASKS[sContainerId] = {
-        "task": taskWorker, "dictStatus": dictStatus,
-    }
+    _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus)
     return {
         "bAccepted": True,
         "sPhase": "starting",
         "sManifestDigestAtAttestation": sManifestDigest,
     }
+
+
+def _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus):
+    """Store the verify task and arrange identity-checked self-eviction.
+
+    Mirrors ``pipelineServer._fnRegisterPipelineTask`` so completed
+    verifications do not linger in ``_DICT_VERIFY_TASKS`` forever.
+    The identity check on the slot's task object prevents a brand-new
+    verification that landed in the same slot from being evicted by
+    the prior task's done-callback firing late.
+    """
+    _DICT_VERIFY_TASKS[sContainerId] = {
+        "task": taskWorker, "dictStatus": dictStatus,
+    }
+
+    def fnEvictOnDone(taskCompleted):
+        dictEntry = _DICT_VERIFY_TASKS.get(sContainerId)
+        if dictEntry is not None and dictEntry.get("task") is taskCompleted:
+            _DICT_VERIFY_TASKS.pop(sContainerId, None)
+    taskWorker.add_done_callback(fnEvictOnDone)
 
 
 async def _fnRunVerificationWorker(

@@ -701,3 +701,50 @@ def test_verification_worker_marks_failed_on_diverged(fixtureProjectRepo):
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "failed"
+
+
+# ============================================================================
+# Lifecycle hygiene: completed verify tasks self-evict from the registry
+# ============================================================================
+
+
+def test_register_verify_task_self_evicts_on_completion():
+    """The done-callback drops the entry once the verify task finishes."""
+    from vaibify.gui.routes import reproducibilityRoutes
+
+    async def fnRunOnce():
+        async def fnQuick():
+            return None
+        taskWorker = asyncio.create_task(fnQuick())
+        reproducibilityRoutes._fnRegisterVerifyTask(
+            S_CONTAINER_ID, taskWorker, {"sPhase": "running"},
+        )
+        await taskWorker
+        # Give the event loop a tick to run the done-callback.
+        await asyncio.sleep(0)
+    asyncio.run(fnRunOnce())
+    assert S_CONTAINER_ID not in _DICT_VERIFY_TASKS
+
+
+def test_register_verify_task_old_callback_does_not_evict_new_entry():
+    """A late-firing done-callback must not pop a fresh same-slot entry."""
+    from vaibify.gui.routes import reproducibilityRoutes
+
+    async def fnRunOnce():
+        async def fnQuick():
+            return None
+        taskOld = asyncio.create_task(fnQuick())
+        reproducibilityRoutes._fnRegisterVerifyTask(
+            S_CONTAINER_ID, taskOld, {"sPhase": "running"},
+        )
+        await taskOld
+        # Re-use the slot before letting the callback fire.
+        taskNew = asyncio.create_task(fnQuick())
+        reproducibilityRoutes._fnRegisterVerifyTask(
+            S_CONTAINER_ID, taskNew, {"sPhase": "starting"},
+        )
+        await asyncio.sleep(0)
+        # The new task should still own the slot.
+        return _DICT_VERIFY_TASKS.get(S_CONTAINER_ID, {}).get("task")
+    objectTaskInSlot = asyncio.run(fnRunOnce())
+    assert objectTaskInSlot is not None
