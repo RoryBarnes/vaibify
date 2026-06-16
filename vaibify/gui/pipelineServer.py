@@ -33,6 +33,7 @@ __all__ = [
     "fnRejectNotConnected",
     "fnRejectTerminalStart",
     "fnRunTerminalSession",
+    "fnSignalTerminalAbnormalExit",
     "fnTerminalInputLoop",
     "fnTerminalReadLoop",
     "fnValidatePathWithinRoot",
@@ -695,17 +696,59 @@ def _fnHandleInteractiveComplete(dictInteractive, dictRequest):
 # Terminal session functions
 # ---------------------------------------------------------------
 
-async def fnTerminalReadLoop(session, websocket):
-    """Continuously read terminal output and send to WebSocket."""
-    while session._bRunning:
-        try:
-            baOutput = session.fbaReadOutput()
-            if baOutput:
-                await websocket.send_bytes(baOutput)
-            else:
-                await asyncio.sleep(0.05)
-        except Exception:
-            break
+I_TERMINAL_ABNORMAL_EXIT_CODE = 130
+
+
+def fnSignalTerminalAbnormalExit(dictInteractive):
+    """Post a complete:130 sentinel to the interactive context.
+
+    The runner's interactive paused-state awaits on
+    ``interactiveSteps.fnSetInteractiveResponse``. When the terminal
+    WebSocket dies abnormally (subprocess crash, kernel hangup, exec
+    pipe break) the runner would otherwise block forever. This helper
+    converts the dead terminal into a runner-visible step failure.
+
+    Callers should pass ``dictInteractive`` only when the terminal
+    session is tied to an active interactive step. ``None`` is a
+    no-op so the helper is safe to call from generic terminal paths.
+    """
+    if dictInteractive is None:
+        return
+    from .interactiveSteps import fnSetInteractiveResponse
+    fnSetInteractiveResponse(
+        dictInteractive,
+        f"complete:{I_TERMINAL_ABNORMAL_EXIT_CODE}",
+    )
+
+
+async def _fbReadOnceAndForward(session, websocket):
+    """Read one chunk and forward to the websocket; True on success."""
+    baOutput = session.fbaReadOutput()
+    if baOutput:
+        await websocket.send_bytes(baOutput)
+    else:
+        await asyncio.sleep(0.05)
+    return True
+
+
+async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
+    """Continuously read terminal output and send to WebSocket.
+
+    Posts ``complete:130`` to ``dictInteractive`` via
+    :func:`fnSignalTerminalAbnormalExit` on abnormal exit so a runner
+    paused at ``interactiveComplete`` does not block forever.
+    """
+    bAbnormal = False
+    try:
+        while session._bRunning:
+            try:
+                await _fbReadOnceAndForward(session, websocket)
+            except Exception:
+                bAbnormal = True
+                break
+    finally:
+        if bAbnormal or not session._bRunning:
+            fnSignalTerminalAbnormalExit(dictInteractive)
 
 
 async def fnTerminalInputLoop(session, websocket):

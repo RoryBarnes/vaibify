@@ -517,6 +517,79 @@ class TestTerminalReadLoop:
 
         await fnTerminalReadLoop(mockSession, mockWebsocket)
 
+    @pytest.mark.asyncio
+    async def test_abnormal_exit_posts_sentinel_to_interactive(self):
+        from vaibify.gui.interactiveSteps import (
+            fdictCreateInteractiveContext,
+        )
+        from vaibify.gui.pipelineServer import (
+            I_TERMINAL_ABNORMAL_EXIT_CODE,
+        )
+        mockSession = MagicMock()
+        mockSession._bRunning = True
+        mockSession.fbaReadOutput.side_effect = RuntimeError("boom")
+        mockWebsocket = AsyncMock()
+        dictInteractive = fdictCreateInteractiveContext()
+
+        await fnTerminalReadLoop(
+            mockSession, mockWebsocket, dictInteractive,
+        )
+
+        assert dictInteractive["eventResume"].is_set()
+        assert dictInteractive["sResponse"] == (
+            f"complete:{I_TERMINAL_ABNORMAL_EXIT_CODE}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_session_running_false_posts_sentinel(self):
+        from vaibify.gui.interactiveSteps import (
+            fdictCreateInteractiveContext,
+        )
+        mockSession = MagicMock()
+        mockSession._bRunning = False
+        mockWebsocket = AsyncMock()
+        dictInteractive = fdictCreateInteractiveContext()
+
+        await fnTerminalReadLoop(
+            mockSession, mockWebsocket, dictInteractive,
+        )
+
+        assert dictInteractive["eventResume"].is_set()
+        assert dictInteractive["sResponse"].startswith("complete:")
+
+    @pytest.mark.asyncio
+    async def test_dictInteractive_none_is_safe(self):
+        mockSession = MagicMock()
+        mockSession._bRunning = True
+        mockSession.fbaReadOutput.side_effect = RuntimeError("boom")
+        mockWebsocket = AsyncMock()
+        await fnTerminalReadLoop(mockSession, mockWebsocket, None)
+
+    @pytest.mark.asyncio
+    async def test_normal_exit_no_sentinel_posted(self):
+        from vaibify.gui.interactiveSteps import (
+            fdictCreateInteractiveContext,
+        )
+        mockSession = MagicMock()
+        mockSession._bRunning = True
+
+        def fnFakeRead():
+            mockSession._bRunning = False
+            return b""
+
+        mockSession.fbaReadOutput = fnFakeRead
+        mockWebsocket = AsyncMock()
+        dictInteractive = fdictCreateInteractiveContext()
+
+        await fnTerminalReadLoop(
+            mockSession, mockWebsocket, dictInteractive,
+        )
+        # Session flipped to not-running mid-loop => sentinel posted.
+        # This is intentional: the runner needs to know the terminal
+        # disappeared even on "natural" termination because at the
+        # runner level there is no way to distinguish.
+        assert dictInteractive["eventResume"].is_set()
+
 
 # ---------------------------------------------------------------
 # fnTerminalInputLoop (lines 547-553)
