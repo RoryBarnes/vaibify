@@ -227,8 +227,30 @@ def _fnEnsureStateLockForContainer(dictCtx, sContainerId):
         dictLocks[sContainerId] = asyncio.Lock()
 
 
-def _fdictReconcileStaleHeartbeat(dictState, fNow=None):
-    """Return a reconciled copy of state where the runner is declared dead."""
+def _fnStampHostIncidentFields(dictReconciled, dictIncident):
+    """Copy host-incident details into the reconciled state dict."""
+    dictReconciled["sFailureCauseHost"] = (
+        dictIncident.get("sExceptionRepr", "")
+        or dictIncident.get("sMessage", "")
+    )
+    dictReconciled["sLastHostIncidentIso"] = dictIncident.get("sIso", "")
+
+
+def _fdictReconcileStaleHeartbeat(
+    dictState, fNow=None, dictIncident=None,
+):
+    """Return a reconciled copy of state where the runner is declared dead.
+
+    When ``dictIncident`` is supplied (the latest host-side exception
+    captured for this container by :mod:`vaibify.gui.hostIncidents`),
+    its repr is stamped into ``sFailureCauseHost`` so a container-side
+    agent can read the actual cause-of-death out of the state file
+    instead of giving up at ``heartbeat_stale (...)``. The active step
+    is captured BEFORE the ``fdictBuildCompletedState`` overlay wipes
+    ``iActiveStep`` to -1, so the report still names the step that
+    was running when the runner died.
+    """
+    iActiveStepAtDeath = dictState.get("iActiveStep", -1)
     dictReconciled = dict(dictState)
     dictReconciled.update(
         fdictBuildCompletedState(I_EXIT_CODE_RUNNER_DISAPPEARED),
@@ -236,7 +258,29 @@ def _fdictReconcileStaleHeartbeat(dictState, fNow=None):
     dictReconciled["sFailureReason"] = fsBuildHeartbeatStaleReason(
         dictState, fNow,
     )
+    dictReconciled["iActiveStepAtDeath"] = iActiveStepAtDeath
+    if dictIncident:
+        _fnStampHostIncidentFields(dictReconciled, dictIncident)
+    else:
+        dictReconciled.setdefault("sFailureCauseHost", "")
+        dictReconciled.setdefault("sLastHostIncidentIso", "")
     return dictReconciled
+
+
+def _fdictLookupHostIncident(sContainerId):
+    """Return the latest host-incident dict for sContainerId, or None.
+
+    Imported lazily so this module stays importable when the incident
+    store is unavailable (e.g. narrow unit tests that mock only the
+    pipeline-state surface).
+    """
+    try:
+        from vaibify.gui.hostIncidents import (
+            fdictLatestIncidentForContainer,
+        )
+    except ImportError:
+        return None
+    return fdictLatestIncidentForContainer(sContainerId)
 
 
 async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
@@ -246,8 +290,9 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
     file still claims ``bRunning: True`` but the heartbeat is older
     than ``I_HEARTBEAT_STALE_SECONDS``, the runner is presumed dead.
     The reconciler flips ``bRunning`` to False, stamps the sentinel
-    exit code, and writes atomically. Subsequent calls observe the
-    already-reconciled file and return it unchanged.
+    exit code, plus the latest host-incident (if any) into
+    ``sFailureCauseHost``, and writes atomically. Subsequent calls
+    observe the already-reconciled file and return it unchanged.
     """
     connectionDocker = dictCtx["docker"]
     _fnEnsureStateLockForContainer(dictCtx, sContainerId)
@@ -262,7 +307,10 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
             return dictState
         if not fbHeartbeatIsStale(dictState, fNow):
             return dictState
-        dictReconciled = _fdictReconcileStaleHeartbeat(dictState, fNow)
+        dictIncident = _fdictLookupHostIncident(sContainerId)
+        dictReconciled = _fdictReconcileStaleHeartbeat(
+            dictState, fNow, dictIncident=dictIncident,
+        )
         await asyncio.to_thread(
             fnWriteState, connectionDocker, sContainerId, dictReconciled,
         )
