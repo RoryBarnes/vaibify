@@ -1031,11 +1031,11 @@ def test_fLoadJsonValue_raises_when_doubly_serialised_inner_invalid(
 
 
 def test_fLoadCsvValue_raises_value_error_when_csv_unreadable(tmp_path):
-    """An OSError during open should be raised as ValueError after wrapping.
+    """A csv.Error raised mid-iteration is wrapped as ValueError.
 
-    A directory-as-file triggers IsADirectoryError, which the loader
-    will not catch. csv.Error is hard to provoke without nul bytes; we
-    simulate that path through monkeypatching csv.DictReader instead.
+    csv.Error is hard to provoke without nul bytes; we simulate that
+    path by patching ``csv.reader`` (the streaming entry point used by
+    the loader) to raise on construction.
     """
     import csv
     import unittest.mock as _mock
@@ -1045,7 +1045,7 @@ def test_fLoadCsvValue_raises_value_error_when_csv_unreadable(tmp_path):
     def fnReaderRaises(*args, **kwargs):
         raise csv.Error("badly formed csv")
 
-    with _mock.patch("csv.DictReader", side_effect=fnReaderRaises):
+    with _mock.patch("csv.reader", side_effect=fnReaderRaises):
         with pytest.raises(ValueError, match="csv"):
             fLoadValue("readme.csv", "column:a,index:0", str(tmp_path))
 
@@ -1144,3 +1144,152 @@ def test_fLoadFastqValue_aggregate_branch(tmp_path):
         {"key": "length", "sAggregate": "mean"},
     )
     assert abs(fResult - 6.0) < 1e-9
+
+
+# ----------------------------------------------------------------------
+# Streaming HDF5 lazy slice — large datasets read only requested chunks
+# ----------------------------------------------------------------------
+
+
+def test_loader_hdf5_lazy_slice_returns_single_scalar(tmp_path):
+    """A large 1-D dataset read by index returns the correct scalar.
+
+    Builds a ~100 MB synthetic HDF5 file and asks for a single element
+    near the middle. Verifies the answer is correct without materialising
+    the full dataset on the host (correctness is the contract; the
+    speed/memory win is incidental).
+    """
+    h5py = pytest.importorskip("h5py")
+    sPath = tmp_path / "big.h5"
+    iLength = 12_500_000
+    daSource = np.arange(iLength, dtype=np.float64)
+    with h5py.File(str(sPath), "w") as fh:
+        fh.create_dataset("v", data=daSource, chunks=(65536,))
+    fResult = fLoadValue(
+        "big.h5", "dataset:v,index:6250000", str(tmp_path),
+    )
+    assert fResult == 6_250_000.0
+
+
+def test_loader_hdf5_lazy_slice_uses_native_dataset_indexing(
+    tmp_path, monkeypatch,
+):
+    """Single-scalar access must not call np.array on the whole dataset."""
+    h5py = pytest.importorskip("h5py")
+    sPath = tmp_path / "lazy.h5"
+    with h5py.File(str(sPath), "w") as fh:
+        fh.create_dataset("v", data=np.arange(64, dtype=np.float64))
+    listFullReads = []
+    fnOriginalArray = np.array
+
+    def fnSpyArray(obj, *args, **kwargs):
+        if isinstance(obj, h5py.Dataset):
+            listFullReads.append(obj.name)
+        return fnOriginalArray(obj, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "vaibify.gui.dataLoaders.np.array", fnSpyArray,
+    )
+    fLoadValue("lazy.h5", "dataset:v,index:3", str(tmp_path))
+    assert listFullReads == []
+
+
+def test_loader_hdf5_lazy_slice_multidim_flat_index(tmp_path):
+    """Multi-dim flat-index access translates to a small native slice."""
+    h5py = pytest.importorskip("h5py")
+    sPath = tmp_path / "grid.h5"
+    daSource = np.arange(100, dtype=np.float64).reshape(10, 10)
+    with h5py.File(str(sPath), "w") as fh:
+        fh.create_dataset("g", data=daSource, chunks=(5, 5))
+    fResult = fLoadValue(
+        "grid.h5", "dataset:g,index:42", str(tmp_path),
+    )
+    assert fResult == 42.0
+
+
+def test_loader_hdf5_aggregate_still_materialises(tmp_path):
+    """Aggregates require all values, so they must still match the full read."""
+    h5py = pytest.importorskip("h5py")
+    sPath = tmp_path / "agg.h5"
+    with h5py.File(str(sPath), "w") as fh:
+        fh.create_dataset(
+            "v", data=np.arange(1000, dtype=np.float64),
+        )
+    fResult = fLoadValue(
+        "agg.h5", "dataset:v,index:mean", str(tmp_path),
+    )
+    assert fResult == 499.5
+
+
+# ----------------------------------------------------------------------
+# Streaming CSV — large files read by row index do not materialise
+# ----------------------------------------------------------------------
+
+
+def test_loader_csv_streams_large_file_by_index(tmp_path):
+    """A 100k-row CSV read by index returns the correct cell."""
+    sPath = tmp_path / "huge.csv"
+    iRows = 100_000
+    listLines = ["row,value"]
+    for iRow in range(iRows):
+        listLines.append(f"{iRow},{iRow * 0.5}")
+    sPath.write_text("\n".join(listLines) + "\n", encoding="utf-8")
+    fResult = fLoadValue(
+        "huge.csv", "column:value,index:99000", str(tmp_path),
+    )
+    assert fResult == 99000 * 0.5
+
+
+def test_loader_csv_streams_does_not_materialise_full_table(tmp_path):
+    """Index-based access must stop reading rows once the target is found.
+
+    Wraps the open file in a row counter that records every row the
+    loader pulls; asks for row 50 out of 5000; asserts no more than
+    a small constant past the target is consumed (a single ``next``
+    on the reader after the match would be the most). This is the
+    falsifiable form of "does not load the whole CSV into memory".
+    """
+    sPath = tmp_path / "mid.csv"
+    listLines = ["t,v"] + [f"{i},{i}" for i in range(5000)]
+    sPath.write_text("\n".join(listLines) + "\n", encoding="utf-8")
+    iCounter = {"reads": 0}
+    fnOriginalOpen = dataLoaders._freaderOpenCsv
+
+    def fnCountingOpen(sFullPath):
+        reader, fileHandle, listHeaders = fnOriginalOpen(sFullPath)
+
+        def fnCountingReader():
+            for listRow in reader:
+                iCounter["reads"] += 1
+                yield listRow
+
+        return fnCountingReader(), fileHandle, listHeaders
+
+    dataLoaders._freaderOpenCsv = fnCountingOpen
+    try:
+        fLoadValue("mid.csv", "column:v,index:50", str(tmp_path))
+    finally:
+        dataLoaders._freaderOpenCsv = fnOriginalOpen
+    assert iCounter["reads"] <= 60
+
+
+def test_loader_csv_negative_index_uses_constant_memory_tail(tmp_path):
+    """Negative indices walk the file once and keep only the tail in RAM."""
+    sPath = tmp_path / "tail.csv"
+    listLines = ["a,b"] + [f"{i},{i * 2}" for i in range(1000)]
+    sPath.write_text("\n".join(listLines) + "\n", encoding="utf-8")
+    fResult = fLoadValue(
+        "tail.csv", "column:b,index:-1", str(tmp_path),
+    )
+    assert fResult == 999 * 2
+
+
+def test_loader_csv_aggregate_streams_one_pass(tmp_path):
+    """Aggregates over a large CSV still return the correct value."""
+    sPath = tmp_path / "agg.csv"
+    listLines = ["a,b"] + [f"{i},{i}" for i in range(1000)]
+    sPath.write_text("\n".join(listLines) + "\n", encoding="utf-8")
+    fResult = fLoadValue(
+        "agg.csv", "column:b,index:mean", str(tmp_path),
+    )
+    assert fResult == 499.5

@@ -361,45 +361,148 @@ def _fLoadJsonValue(sFullPath, dictAccess):
 
 
 def _fLoadCsvValue(sFullPath, dictAccess):
-    """Load a value from a CSV file."""
+    """Load a value from a CSV file, streaming when no full pass is needed.
+
+    Aggregates (mean, std, percentiles, ...) need every row and so
+    fall back to a single full pass. Index-based access reads only the
+    header plus the rows up to the requested index, so a 100k-row file
+    accessed at index 99000 never materialises the full table; access
+    at -1 still requires walking the file to find the last row, but
+    that walk is single-pass and constant-memory.
+    """
     import csv
     sColumn = dictAccess.get("column", "")
+    sAggregate = dictAccess.get("sAggregate")
+    listIndices = dictAccess.get("listIndices", [-1])
+    iIndex = listIndices[0] if listIndices else -1
     try:
-        with open(
-            sFullPath, newline="", encoding="utf-8", errors="replace",
-        ) as fileHandle:
-            reader = csv.DictReader(fileHandle)
-            listRows = list(reader)
-    except csv.Error as exc:
-        raise ValueError(
-            f"Failed to load {sFullPath} as csv: {exc}",
-        ) from exc
-    try:
-        sAggregate = dictAccess.get("sAggregate")
         if sAggregate and sColumn:
-            daValues = np.array([float(r[sColumn]) for r in listRows])
-            return _fApplyAggregate(daValues, sAggregate)
-        listIndices = dictAccess.get("listIndices", [-1])
-        iIndex = listIndices[0] if listIndices else -1
-        return float(listRows[iIndex][sColumn])
+            return _fLoadCsvAggregate(sFullPath, sColumn, sAggregate)
+        return _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex)
     except (KeyError, IndexError, ValueError) as exc:
         raise ValueError(
             f"Failed to access csv column in {sFullPath}: {exc}",
         ) from exc
+    except csv.Error as exc:
+        raise ValueError(
+            f"Failed to load {sFullPath} as csv: {exc}",
+        ) from exc
+
+
+def _freaderOpenCsv(sFullPath):
+    """Open ``sFullPath`` and return a ``csv.reader`` plus header list.
+
+    The reader is positioned past the header so the caller iterates
+    only over data rows. Returns ``(reader, fileHandle, listHeaders)``
+    so the caller can close the file when done.
+    """
+    import csv
+    fileHandle = open(
+        sFullPath, newline="", encoding="utf-8", errors="replace",
+    )
+    reader = csv.reader(fileHandle)
+    try:
+        listHeaders = next(reader)
+    except StopIteration:
+        listHeaders = []
+    return reader, fileHandle, listHeaders
+
+
+def _fLoadCsvAggregate(sFullPath, sColumn, sAggregate):
+    """Compute an aggregate over one CSV column with a single streaming pass."""
+    reader, fileHandle, listHeaders = _freaderOpenCsv(sFullPath)
+    try:
+        iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
+        listValues = [float(listRow[iCol]) for listRow in reader]
+    finally:
+        fileHandle.close()
+    return _fApplyAggregate(np.array(listValues), sAggregate)
+
+
+def _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex):
+    """Stream a CSV and return a single cell at the requested row index."""
+    if iIndex < 0:
+        return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)
+    reader, fileHandle, listHeaders = _freaderOpenCsv(sFullPath)
+    try:
+        iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
+        for iCurrent, listRow in enumerate(reader):
+            if iCurrent == iIndex:
+                return float(listRow[iCol])
+    finally:
+        fileHandle.close()
+    raise IndexError(f"CSV row {iIndex} out of range")
+
+
+def _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex):
+    """Return a CSV cell at a negative row index with constant-memory tail."""
+    from collections import deque
+    reader, fileHandle, listHeaders = _freaderOpenCsv(sFullPath)
+    try:
+        iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
+        dequeTail = deque(reader, maxlen=-iIndex)
+    finally:
+        fileHandle.close()
+    if len(dequeTail) < -iIndex:
+        raise IndexError(f"CSV row {iIndex} out of range")
+    return float(dequeTail[0][iCol])
+
+
+def _fiColumnIndexOrRaise(listHeaders, sColumn):
+    """Return the integer index of ``sColumn`` in ``listHeaders``.
+
+    Mirrors the historical ``DictReader``-based loader's behaviour:
+    accessing a non-existent column raises ``KeyError``; an empty
+    ``sColumn`` raises ``KeyError`` too because the legacy code did
+    ``row[""]`` which keys into a missing label.
+    """
+    if not sColumn:
+        raise KeyError("CSV column name required")
+    try:
+        return listHeaders.index(sColumn)
+    except ValueError:
+        raise KeyError(sColumn)
 
 
 def _fLoadHdf5Value(sFullPath, dictAccess):
-    """Load a value from an HDF5 file."""
+    """Load a value from an HDF5 file using h5py native slice indexing.
+
+    For datasets that hold MB-to-GB of values, materialising the whole
+    array with ``np.array(fileHdf5[sDataset])`` is fatal: a 4 GB chunked
+    dataset becomes 4 GB of host RAM just to return one scalar. h5py's
+    native slice indexing (``fileHdf5[sDataset][tuple(...)]``) reads
+    only the requested chunk(s) from disk, so cost scales with the
+    answer, not the file. Aggregates still need the full array so they
+    take the legacy ``np.array`` path.
+    """
     import h5py
     sDataset = dictAccess.get("dataset", "")
     try:
         with h5py.File(sFullPath, "r") as fileHdf5:
-            daData = np.array(fileHdf5[sDataset])
+            datasetHdf5 = fileHdf5[sDataset]
+            return _fExtractHdf5Value(datasetHdf5, dictAccess)
     except (OSError, KeyError) as exc:
         raise ValueError(
             f"Failed to load {sFullPath} as hdf5: {exc}",
         ) from exc
-    return _fExtractArrayValue(daData, dictAccess)
+
+
+def _fExtractHdf5Value(datasetHdf5, dictAccess):
+    """Extract a scalar from an h5py dataset, slicing lazily when possible."""
+    if datasetHdf5.ndim == 0:
+        return float(datasetHdf5[()])
+    sAggregate = dictAccess.get("sAggregate")
+    if sAggregate:
+        return _fApplyAggregate(np.array(datasetHdf5), sAggregate)
+    listIndices = dictAccess.get("listIndices", [-1])
+    if len(listIndices) == 1 and datasetHdf5.ndim > 1:
+        tShape = datasetHdf5.shape
+        iFlat = listIndices[0]
+        if iFlat < 0:
+            iFlat += int(np.prod(tShape))
+        tIndex = np.unravel_index(iFlat, tShape)
+        return float(datasetHdf5[tIndex])
+    return float(datasetHdf5[tuple(listIndices)])
 
 
 def _fLoadWhitespaceValue(sFullPath, dictAccess):

@@ -466,15 +466,17 @@ def _fnBenchmarkHdf5(sFullPath, sFileName, dictReport):
             if isinstance(o, h5py.Dataset) else None
         )
         for sDataset in listDatasets[:50]:
-            daData = np.array(fh[sDataset])
-            dictReport["tShape"] = list(daData.shape)
-            dictReport["sDtype"] = str(daData.dtype)
-            if np.issubdtype(daData.dtype, np.number):
-                _fnAddArrayBenchmarks(
-                    daData.flatten(), sFileName, sDataset,
-                    dictReport,
-                    sKeyPrefix=f"dataset:{{sDataset}},",
-                )
+            datasetHdf5 = fh[sDataset]
+            dictReport["tShape"] = list(datasetHdf5.shape)
+            dictReport["sDtype"] = str(datasetHdf5.dtype)
+            if not np.issubdtype(datasetHdf5.dtype, np.number):
+                continue
+            daFlat = np.array(datasetHdf5).reshape(-1)
+            _fnAddArrayBenchmarks(
+                daFlat, sFileName, sDataset,
+                dictReport,
+                sKeyPrefix=f"dataset:{{sDataset}},",
+            )
 
 def _fnBenchmarkKeyvalue(sFullPath, sFileName, dictReport):
     dictReport["sFormat"] = "keyvalue"
@@ -1077,15 +1079,17 @@ def _fnBenchmarkCgns(sFullPath, sFileName, dictReport):
         for sDataset in listDatasets[:50]:
             if len(dictReport["listBenchmarks"]) >= _I_MAX_BENCHMARKS_PER_FILE:
                 break
-            daData = np.array(fh[sDataset])
-            dictReport["tShape"] = list(daData.shape)
-            dictReport["sDtype"] = str(daData.dtype)
-            if np.issubdtype(daData.dtype, np.number):
-                _fnAddArrayBenchmarks(
-                    daData.flatten(), sFileName, sDataset,
-                    dictReport,
-                    sKeyPrefix=f"dataset:{{sDataset}},",
-                )
+            datasetHdf5 = fh[sDataset]
+            dictReport["tShape"] = list(datasetHdf5.shape)
+            dictReport["sDtype"] = str(datasetHdf5.dtype)
+            if not np.issubdtype(datasetHdf5.dtype, np.number):
+                continue
+            daFlat = np.array(datasetHdf5).reshape(-1)
+            _fnAddArrayBenchmarks(
+                daFlat, sFileName, sDataset,
+                dictReport,
+                sKeyPrefix=f"dataset:{{sDataset}},",
+            )
 
 def _fnBenchmarkSafetensors(sFullPath, sFileName, dictReport):
     try:
