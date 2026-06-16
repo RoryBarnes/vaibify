@@ -38,6 +38,25 @@ And these optional fields:
 | `saDataFiles`      | string array | `[]`    | Output data files to verify    |
 | `saTestCommands`   | string array | `[]`    | Pytest commands for the step   |
 
+### Workflow size limits
+
+Vaibify shows a one-shot "Workflow milestone" modal the first time a
+workflow's `listSteps` reaches 100 entries. The acknowledgment is
+persisted in the project repo's `.vaibify/state.json` as
+`bWarnedHundredSteps`, so the warning does not reappear on reload or
+on subsequent additions. The threshold exists because polling cost
+(file-status, repos, discovery) grows roughly linearly with the
+number of tracked outputs, scripts, and markers, and beyond about
+100 steps users typically notice some latency in the dashboard.
+
+Vaibify refuses to add a 501st step to any workflow. The dashboard
+shows a "Step limit reached" modal; the backend rejects direct API
+calls with HTTP 400. The rationale is that the per-poll Docker exec
+budget and the dashboard render budget both break down beyond this
+scale. If a project requires more than 500 steps, split it into
+sibling workflows within the same project repo — vaibify supports
+multiple workflows per container.
+
 ## Example
 
 ```json

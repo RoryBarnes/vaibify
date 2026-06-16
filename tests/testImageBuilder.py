@@ -167,21 +167,6 @@ def test_fbImageExists_returns_true_when_subprocess_succeeds():
     assert bExists is True
 
 
-def test_dockerfile_claude_is_unpinned():
-    """Ensure Dockerfile.claude installs @latest and not the old pin."""
-    import os
-    sPath = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "docker",
-            "Dockerfile.claude",
-        )
-    )
-    with open(sPath) as fileHandle:
-        sContent = fileHandle.read()
-    assert "@anthropic-ai/claude-code@latest" in sContent
-    assert "2.1.104" not in sContent
-
-
 def _fsReadDockerfileClaude():
     import os
     sPath = os.path.abspath(
@@ -194,36 +179,47 @@ def _fsReadDockerfileClaude():
         return fileHandle.read()
 
 
-def test_dockerfile_claude_separates_nodejs_install_from_setup():
-    """The nodejs install must be its own RUN so an apt failure
-    cannot wear the NodeSource-download failure diagnostic. The
-    previous shape bundled both in one RUN and a disk-full apt error
-    surfaced the network-trouble message, sending the user hunting
-    the wrong root cause."""
+def test_dockerfile_claude_uses_native_installer():
+    """Dockerfile.claude must use Anthropic's native installer, not
+    the deprecated npm install path. The native installer drops a
+    self-contained binary under the container user's home directory,
+    sidestepping the npm-prefix / root-owned-/usr/lib/node_modules
+    bug that prevented in-container auto-updates."""
     sContent = _fsReadDockerfileClaude()
-    iCurlPos = sContent.find("deb.nodesource.com/setup_20.x")
-    iInstallPos = sContent.find("apt-get install -y --no-install-recommends nodejs")
-    assert iCurlPos != -1, "NodeSource setup script reference missing"
-    assert iInstallPos != -1, "nodejs install line missing"
-    sBetween = sContent[iCurlPos:iInstallPos]
-    assert "\nRUN " in sBetween, (
-        "nodejs install must live in its own RUN so its failure "
-        "diagnostic is not masked by the NodeSource curl-failure "
-        "message above it."
+    assert "claude.ai/install.sh" in sContent, (
+        "Dockerfile.claude must download the native installer from "
+        "claude.ai/install.sh"
+    )
+    assert "@anthropic-ai/claude-code" not in sContent, (
+        "Dockerfile.claude must not install Claude via npm; the npm "
+        "path produces an install whose auto-update fails because "
+        "npm's runtime prefix isn't user-writable. Use the native "
+        "installer instead."
+    )
+    assert "nodesource" not in sContent.lower(), (
+        "Dockerfile.claude must not pull in Node.js — the native "
+        "Claude installer is self-contained and removes the Node "
+        "dependency from the overlay."
     )
 
 
-def test_dockerfile_claude_nodejs_install_mentions_disk_space():
-    """The nodejs install's failure diagnostic must mention disk
-    space as the primary cause and name the prune commands. In
-    practice the apt failure here is almost always the Docker VM
-    running out of disk; without this hint the user is left guessing."""
+def test_dockerfile_claude_installs_as_container_user():
+    """The native installer must run as ${CONTAINER_USER} so the
+    install ends up under their home directory and they own every
+    file. Running the installer as root would put it under /root
+    and break auto-update for the unprivileged runtime user — the
+    exact failure mode the rewrite fixes."""
     sContent = _fsReadDockerfileClaude()
-    iInstallPos = sContent.find("apt-get install -y --no-install-recommends nodejs")
-    sBlock = sContent[iInstallPos:iInstallPos + 2000]
-    assert "out of disk" in sBlock or "disk" in sBlock
-    assert "docker builder prune" in sBlock
-    assert "docker image prune" in sBlock
+    iInstallerPos = sContent.find("claude.ai/install.sh")
+    assert iInstallerPos != -1
+    sPreceding = sContent[:iInstallerPos]
+    iLastUserRoot = sPreceding.rfind("USER root")
+    iLastUserContainer = sPreceding.rfind("USER ${CONTAINER_USER}")
+    assert iLastUserContainer > iLastUserRoot, (
+        "The most recent USER directive before the installer must be "
+        "USER ${CONTAINER_USER}; otherwise the install runs as root "
+        "and lands outside the container user's home."
+    )
 
 
 def test_fnBuildImage_prunes_dangling_layers_post_build(monkeypatch):

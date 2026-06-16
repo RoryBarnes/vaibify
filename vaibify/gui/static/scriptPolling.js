@@ -12,6 +12,10 @@ var VaibifyPolling = (function () {
     var _fnOnFileStatus = null;
     var _fnOnReposStatus = null;
     var _fnOnWorkflowDiscovery = null;
+    var _bPipelineInFlight = false;
+    var _bFileStatusInFlight = false;
+    var _bReposInFlight = false;
+    var _bDiscoveryInFlight = false;
 
     /*
      * Failures are routed through VaibifyConnectionMonitor so a poll
@@ -67,17 +71,23 @@ var VaibifyPolling = (function () {
     }
 
     async function _fnPollPipelineState(sContainerId) {
+        if (_bPipelineInFlight) return;
+        _bPipelineInFlight = true;
         try {
-            var dictState = await VaibifyApi.fdictGet(
-                "/api/pipeline/" + sContainerId + "/state"
-            );
-            _fnReportPollSuccess("pipeline-state");
-            _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictState);
-            if (_fnOnPipelineState) {
-                _fnOnPipelineState(dictState);
+            try {
+                var dictState = await VaibifyApi.fdictGet(
+                    "/api/pipeline/" + sContainerId + "/state"
+                );
+                _fnReportPollSuccess("pipeline-state");
+                _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictState);
+                if (_fnOnPipelineState) {
+                    _fnOnPipelineState(dictState);
+                }
+            } catch (error) {
+                _fnReportPollFailure("pipeline-state", error);
             }
-        } catch (error) {
-            _fnReportPollFailure("pipeline-state", error);
+        } finally {
+            _bPipelineInFlight = false;
         }
     }
 
@@ -115,7 +125,7 @@ var VaibifyPolling = (function () {
         }
     }
 
-    async function _fnPollFileChanges(sContainerId) {
+    async function _fnPollFileChangesBody(sContainerId) {
         var pBadges = (typeof VaibifyGitBadges !== "undefined")
             ? VaibifyGitBadges.fnRefresh(sContainerId)
             : Promise.resolve();
@@ -130,6 +140,16 @@ var VaibifyPolling = (function () {
             }
         } catch (error) {
             _fnReportPollFailure("file-status", error);
+        }
+    }
+
+    async function _fnPollFileChanges(sContainerId) {
+        if (_bFileStatusInFlight) return;
+        _bFileStatusInFlight = true;
+        try {
+            await _fnPollFileChangesBody(sContainerId);
+        } finally {
+            _bFileStatusInFlight = false;
         }
     }
 
@@ -153,16 +173,22 @@ var VaibifyPolling = (function () {
     }
 
     async function _fnPollReposStatus(sContainerId) {
+        if (_bReposInFlight) return;
+        _bReposInFlight = true;
         try {
-            var dictStatus = await VaibifyApi.fdictGet(
-                "/api/repos/" + sContainerId + "/status"
-            );
-            _fnReportPollSuccess("repos-status");
-            if (_fnOnReposStatus) {
-                _fnOnReposStatus(dictStatus);
+            try {
+                var dictStatus = await VaibifyApi.fdictGet(
+                    "/api/repos/" + sContainerId + "/status"
+                );
+                _fnReportPollSuccess("repos-status");
+                if (_fnOnReposStatus) {
+                    _fnOnReposStatus(dictStatus);
+                }
+            } catch (error) {
+                _fnReportPollFailure("repos-status", error);
             }
-        } catch (error) {
-            _fnReportPollFailure("repos-status", error);
+        } finally {
+            _bReposInFlight = false;
         }
     }
 
@@ -186,16 +212,22 @@ var VaibifyPolling = (function () {
     }
 
     async function _fnPollWorkflowDiscovery(sContainerId) {
+        if (_bDiscoveryInFlight) return;
+        _bDiscoveryInFlight = true;
         try {
-            var dictResponse = await VaibifyApi.fdictGet(
-                "/api/pipeline/" + sContainerId + "/workflow-discovery"
-            );
-            _fnReportPollSuccess("workflow-discovery");
-            if (_fnOnWorkflowDiscovery) {
-                _fnOnWorkflowDiscovery(dictResponse);
+            try {
+                var dictResponse = await VaibifyApi.fdictGet(
+                    "/api/pipeline/" + sContainerId + "/workflow-discovery"
+                );
+                _fnReportPollSuccess("workflow-discovery");
+                if (_fnOnWorkflowDiscovery) {
+                    _fnOnWorkflowDiscovery(dictResponse);
+                }
+            } catch (error) {
+                _fnReportPollFailure("workflow-discovery", error);
             }
-        } catch (error) {
-            _fnReportPollFailure("workflow-discovery", error);
+        } finally {
+            _bDiscoveryInFlight = false;
         }
     }
 

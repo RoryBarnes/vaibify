@@ -26,6 +26,7 @@ __all__ = [
     "fbIsAllowedHostHeader",
     "fdictBuildContext",
     "fdictHandleConnect",
+    "ffBuildResilientWsCallback",
     "fnDispatchAction",
     "fnHandlePipelineWs",
     "fnPipelineMessageLoop",
@@ -541,6 +542,56 @@ async def _fnDispatchSelected(
     )
 
 
+def _fbExceptionIsWsClosed(exc):
+    """Return True iff ``exc`` signals the WebSocket has already closed.
+
+    A closed browser tab, overnight network blip, or background-tab
+    throttle used to crash long-running pipelines through the streaming
+    chunk emitter; this narrow classification keeps real runtime bugs
+    visible while the WS-closed family becomes a benign signal at the
+    callback boundary. Callers drop the chunk and continue the run;
+    reconnecting clients catch up via ``pipelineState`` polls.
+    """
+    if isinstance(exc, WebSocketDisconnect):
+        return True
+    if not isinstance(exc, RuntimeError):
+        return False
+    sMessage = str(exc).lower()
+    return (
+        "websocket.send" in sMessage
+        or "websocket.close" in sMessage
+        or "response already completed" in sMessage
+    )
+
+
+def ffBuildResilientWsCallback(websocket):
+    """Return an async callback that swallows WS-closed errors silently.
+
+    The runner is callback-agnostic; this boundary wrapper is the only
+    site that knows about WebSocket semantics. After the first closed-WS
+    signal, subsequent invocations short-circuit so the runner stays
+    decoupled from frontend liveness for the rest of the run.
+    """
+    dictState = {"bWsClosed": False}
+
+    async def fnCallback(dictEvent):
+        if dictState["bWsClosed"]:
+            return
+        try:
+            await websocket.send_json(dictEvent)
+        except Exception as exc:
+            if not _fbExceptionIsWsClosed(exc):
+                raise
+            dictState["bWsClosed"] = True
+            logger.warning(
+                "WebSocket closed mid-run; runner continues. "
+                "Reconnecting clients reconcile via pipelineState. "
+                "Trigger: %s",
+                exc,
+            )
+    return fnCallback
+
+
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
@@ -564,12 +615,7 @@ async def fnPipelineMessageLoop(
         fnSetInteractiveResponse,
     )
     dictInteractive = fdictCreateInteractiveContext()
-    dictSocketState = {"bOpen": True}
-
-    async def fnCallback(dictEvent):
-        await _fnSendEventIfSocketOpen(
-            websocket, dictSocketState, dictEvent,
-        )
+    fnCallback = ffBuildResilientWsCallback(websocket)
 
     while True:
         dictRequest = json.loads(await websocket.receive_text())
@@ -595,26 +641,6 @@ async def fnPipelineMessageLoop(
         )
         if dictPipelineTasks is not None:
             dictPipelineTasks[sContainerId] = taskPipeline
-
-
-async def _fnSendEventIfSocketOpen(websocket, dictSocketState, dictEvent):
-    """Send a pipeline event, degrading to no-op after client disconnect.
-
-    A detached WebSocket client must never kill the run: the pipeline
-    keeps executing headless, and its results still land in state.json
-    and the run log. The first failed send flips the shared flag so
-    every later event is skipped without touching the dead socket.
-    """
-    if not dictSocketState["bOpen"]:
-        return
-    try:
-        await websocket.send_json(dictEvent)
-    except Exception as error:
-        dictSocketState["bOpen"] = False
-        logger.info(
-            "WebSocket client detached mid-run; pipeline continues "
-            "headless: %s", error,
-        )
 
 
 async def _fnSafeDispatch(
@@ -1185,6 +1211,7 @@ from .fileStatusManager import (  # noqa: F401
     flistStepRemoteFiles,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,
+    fnInvalidateParentCacheForContainer,
     fnMaybeAutoArchive,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,

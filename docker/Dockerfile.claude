@@ -1,100 +1,68 @@
 # Vaibify — Claude Code overlay
 #
-# Adds Node.js and the Claude Code CLI on top of the base image.
-# Claude is installed to a user-writable directory so the container
-# user can auto-update without sudo.
+# Adds Claude Code via Anthropic's native installer. The installer
+# fetches a self-contained binary into the container user's home
+# (~/.local/share/claude/versions/<ver>) and a launcher symlink at
+# ~/.local/bin/claude. No Node.js, no npm, no root, no prefix
+# gotchas — the install is owned by the container user end-to-end
+# and self-updates without sudo.
 
 ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# The base image ends with USER ${CONTAINER_USER}; switch back to root
-# for system-level package installation (apt, npm global).
-USER root
+# Run as the container user so the install lands in their home and
+# is owned by them — a prerequisite for in-container auto-update.
+USER ${CONTAINER_USER}
 
-# Download the NodeSource setup script over HTTPS, then run it.
-# Splitting download from execution lets us emit an actionable
-# diagnostic when the network call fails — same template as the
-# deadsnakes block in docker/Dockerfile.
+# Download the native installer over HTTPS, then run it. Splitting
+# download from execution lets us emit an actionable diagnostic when
+# the network call fails — same template as the deadsnakes block in
+# docker/Dockerfile.
 RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
             --connect-timeout 30 \
-            https://deb.nodesource.com/setup_20.x \
-            -o /tmp/nodesource_setup.sh; then \
+            https://claude.ai/install.sh \
+            -o /tmp/claude-install.sh; then \
         echo "" >&2; \
-        printf '%s\n' "vaibify build (claude overlay): cannot download NodeSource setup script." >&2; \
-        printf '%s\n' "  - The script lives at deb.nodesource.com." >&2; \
+        printf '%s\n' "vaibify build (claude overlay): cannot download Claude Code installer." >&2; \
+        printf '%s\n' "  - The installer lives at claude.ai/install.sh." >&2; \
         printf '%s\n' "  - Download failed (likely a TLS or network failure between" >&2; \
-        printf '%s\n' "    this build host and deb.nodesource.com)." >&2; \
+        printf '%s\n' "    this build host and claude.ai)." >&2; \
         printf '%s\n' "Pick one workaround:" >&2; \
         printf '%s\n' "  1. Disable the Claude overlay (features: { claude: false })." >&2; \
         printf '%s\n' "  2. Resolve your build host's network path to" >&2; \
-        printf '%s\n' "     deb.nodesource.com (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        printf '%s\n' "     claude.ai (proxy, IPv6, MTU, TLS inspection)" >&2; \
         printf '%s\n' "     and rebuild." >&2; \
         echo "" >&2; \
         exit 1; \
     fi \
-    && bash /tmp/nodesource_setup.sh \
-    && rm -f /tmp/nodesource_setup.sh
-
-# Install Node.js itself. Kept in its own RUN so an apt failure here
-# carries its own diagnostic rather than masquerading as the
-# NodeSource-download failure above. The most common cause in
-# practice is the Docker VM running out of disk; surface a hint.
-RUN if ! apt-get install -y --no-install-recommends nodejs; then \
+    && if ! bash /tmp/claude-install.sh; then \
         echo "" >&2; \
-        printf '%s\n' "vaibify build (claude overlay): apt-get install nodejs failed." >&2; \
-        printf '%s\n' "  - apt was unable to install the nodejs package from the" >&2; \
-        printf '%s\n' "    NodeSource repository that the previous step configured." >&2; \
-        printf '%s\n' "  - Free space inside the build VM right now:" >&2; \
-        (df -h /var/cache/apt /var/lib/dpkg 2>/dev/null \
-            | sed 's/^/      /' >&2) || true; \
-        printf '%s\n' "Likely causes, in order:" >&2; \
-        printf '%s\n' "  1. The Docker VM is out of disk. Reclaim space on the host:" >&2; \
-        printf '%s\n' "       docker builder prune -af" >&2; \
-        printf '%s\n' "       docker image prune -f" >&2; \
-        printf '%s\n' "     (frees build cache + dangling layers; tagged images," >&2; \
-        printf '%s\n' "      volumes, and running containers are untouched)." >&2; \
-        printf '%s\n' "  2. The NodeSource APT repo became unreachable between the" >&2; \
-        printf '%s\n' "     setup step above and this install step." >&2; \
-        printf '%s\n' "  3. apt-get is being rate-limited or blocked by a proxy." >&2; \
-        echo "" >&2; \
-        exit 1; \
-    fi \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Claude Code CLI from the npm registry. npm's default of two
-# retries is too aggressive for transient TLS failures from Colima VMs;
-# raise the retry budget and emit an actionable diagnostic on failure.
-RUN NPM_PREFIX="/home/${CONTAINER_USER}/.npm-global" \
-    && mkdir -p "${NPM_PREFIX}" \
-    && npm config set prefix "${NPM_PREFIX}" \
-    && if ! npm install -g \
-            --fetch-retries=5 \
-            --fetch-retry-mintimeout=20000 \
-            --fetch-retry-maxtimeout=120000 \
-            @anthropic-ai/claude-code@latest; then \
-        echo "" >&2; \
-        printf '%s\n' "vaibify build (claude overlay): cannot install Claude Code CLI." >&2; \
-        printf '%s\n' "  - The package lives on registry.npmjs.org." >&2; \
-        printf '%s\n' "  - npm install failed (likely a TLS or network failure" >&2; \
-        printf '%s\n' "    between this build host and registry.npmjs.org)." >&2; \
+        printf '%s\n' "vaibify build (claude overlay): Claude Code installer failed." >&2; \
+        printf '%s\n' "  - The installer downloaded successfully but exited non-zero." >&2; \
+        printf '%s\n' "  - Binary downloads live at downloads.claude.ai." >&2; \
         printf '%s\n' "Pick one workaround:" >&2; \
-        printf '%s\n' "  1. Pin the canonical registry in case a corp proxy" >&2; \
-        printf '%s\n' "     rewrote it: npm config set registry https://registry.npmjs.org/" >&2; \
-        printf '%s\n' "  2. Disable the Claude overlay (features: { claude: false })." >&2; \
-        printf '%s\n' "  3. Resolve your build host's network path to" >&2; \
-        printf '%s\n' "     registry.npmjs.org (proxy, IPv6, MTU, TLS inspection)" >&2; \
+        printf '%s\n' "  1. Disable the Claude overlay (features: { claude: false })." >&2; \
+        printf '%s\n' "  2. Resolve your build host's network path to" >&2; \
+        printf '%s\n' "     downloads.claude.ai (proxy, IPv6, MTU, TLS inspection)" >&2; \
         printf '%s\n' "     and rebuild." >&2; \
         echo "" >&2; \
         exit 1; \
     fi \
-    && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${NPM_PREFIX}"
+    && rm -f /tmp/claude-install.sh
 
-ENV PATH="/home/${CONTAINER_USER}/.npm-global/bin:${PATH}"
+# Ensure the installer's launcher directory is on PATH for any shell
+# context (login or not). The installer adds it for login shells via
+# the user's profile, but non-login subprocesses won't see it without
+# this explicit ENV.
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
 
+# vaibify-do lives under /usr/local/bin so the container user can
+# invoke it without a home-dir lookup. Briefly switch to root for
+# the copy, then restore the unprivileged user from the base image.
+USER root
 COPY vaibifyDo.py /usr/local/bin/vaibify-do
 RUN chmod 0755 /usr/local/bin/vaibify-do
 
-# Restore the unprivileged user from the base image.
 USER ${CONTAINER_USER}

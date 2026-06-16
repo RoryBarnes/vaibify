@@ -8,6 +8,7 @@ import logging
 import posixpath
 import re
 
+from docker.errors import APIError, NotFound
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from ..actionCatalog import fnAgentAction
@@ -39,6 +40,7 @@ from ..fileStatusManager import (
     fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
+    fnInvalidateParentCacheForContainer,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -294,6 +296,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         dictModTimes = await asyncio.to_thread(
             _fdictGetModTimes,
             dictCtx["docker"], sContainerId, listPaths,
+            dictCtx=dictCtx, bPipelineRunning=False,
         )
         _fnUpdateModTimeBaseline(
             dictCtx, sContainerId, dictModTimes)
@@ -420,8 +423,10 @@ async def _fdictFetchOutputStatus(
     )
     dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
         dictCtx, sContainerId, dictWorkflow, dictVars,
+        bPipelineRunning=bPipelineRunning,
     )
     if dictReload["bReplaced"]:
+        fnInvalidateParentCacheForContainer(dictCtx, sContainerId)
         dictWorkflow = dictReload["dictWorkflow"]
     listInvalidated = _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
@@ -467,7 +472,10 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     ))
 
 
-async def _ftFetchAndReload(dictCtx, sContainerId, dictWorkflow, dictVars):
+async def _ftFetchAndReload(
+    dictCtx, sContainerId, dictWorkflow, dictVars,
+    bPipelineRunning=False,
+):
     """Fetch the union of poll mtimes and the maybe-reloaded workflow.
 
     Returns ``(dictModTimes, dictReload, sWorkflowPath)``. The mtime dict
@@ -480,6 +488,7 @@ async def _ftFetchAndReload(dictCtx, sContainerId, dictWorkflow, dictVars):
     )
     dictModTimes = await asyncio.to_thread(
         _fdictGetModTimes, dictCtx["docker"], sContainerId, listUnionPaths,
+        dictCtx=dictCtx, bPipelineRunning=bPipelineRunning,
     )
     dictReload = await asyncio.to_thread(
         _fdictMaybeReloadWorkflow, dictCtx, sContainerId,
@@ -1260,9 +1269,16 @@ def _fdictFetchTestMarkers(
     sCommand = _syncDispatcher.fsBuildTestMarkerCheckCommand(
         listStepDirs, sProjectRepoPath, sWorkflowSlug,
     )
-    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
+    try:
+        iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand
+        )
+    except (APIError, NotFound):
+        return {
+            "markers": {},
+            "testFiles": {},
+            "missingConftest": [],
+        }
     if iExit != 0:
         return {
             "markers": {},

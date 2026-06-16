@@ -116,6 +116,10 @@ def test_badges_hydrates_when_project_repo_is_set():
     }
 
     sPorcelain = "# branch.head main\n# branch.ab +0 -0\n"
+    sCombinedStatus = (
+        "true\n__VAIBIFY_HEAD__\n" + "b" * 40 + "\n"
+        "__VAIBIFY_STATUS__\n" + sPorcelain
+    )
     sTrackedJson = json.dumps([
         ".vaibify/workflows/demo.json",
     ]) + "\n"
@@ -124,12 +128,8 @@ def test_badges_hydrates_when_project_repo_is_set():
     }) + "\n"
 
     def _fExec(sContainerId, sCommand, **_kw):
-        if "rev-parse --is-inside-work-tree" in sCommand:
-            return (0, "true\n")
         if "status --porcelain=v2" in sCommand:
-            return (0, sPorcelain)
-        if "rev-parse HEAD" in sCommand:
-            return (0, "b" * 40 + "\n")
+            return (0, sCombinedStatus)
         if "python3 -c" in sCommand and "glob" in sCommand:
             return (0, sTrackedJson)
         if "python3 -c" in sCommand and "hashlib" in sCommand:
@@ -222,6 +222,10 @@ def test_commit_canonical_restricts_commit_to_curated_pathspec():
         f"1 A. N... 000000 100644 100644 {sH} {sI} "
         f"data/evil.py\n"
     )
+    sCombinedStatus = (
+        "true\n__VAIBIFY_HEAD__\n" + "b" * 40 + "\n"
+        "__VAIBIFY_STATUS__\n" + sPorcelain
+    )
     sTrackedJson = json.dumps([
         ".vaibify/workflows/demo.json",
     ]) + "\n"
@@ -229,12 +233,8 @@ def test_commit_canonical_restricts_commit_to_curated_pathspec():
 
     def _fExec(sContainerId, sCommand, **_kw):
         listIssued.append(sCommand)
-        if "rev-parse --is-inside-work-tree" in sCommand:
-            return (0, "true\n")
         if "status --porcelain=v2" in sCommand:
-            return (0, sPorcelain)
-        if "rev-parse HEAD" in sCommand:
-            return (0, "b" * 40 + "\n")
+            return (0, sCombinedStatus)
         if "python3 -c" in sCommand and "glob" in sCommand:
             return (0, sTrackedJson)
         return (0, "")

@@ -103,7 +103,16 @@ class MockDockerFull:
             return b"log content here"
         raise FileNotFoundError(f"Not found: {sPath}")
 
-    def fnWriteFile(self, sContainerId, sPath, baContent):
+    def fnWriteFile(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        self._dictFiles[sPath] = baContent
+
+    def fnWriteFileViaTar(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
         self._dictFiles[sPath] = baContent
 
     def texecRunInContainerStreamed(

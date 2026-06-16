@@ -23,6 +23,27 @@ from ..pipelineUtils import (
 )
 
 
+_I_STEP_COUNT_WARNING = 100
+_I_STEP_COUNT_MAX = 500
+
+
+def _fnRaiseIfAtStepCap(dictWorkflow):
+    """Reject step adds once the workflow has hit the hard cap."""
+    if len(dictWorkflow["listSteps"]) >= _I_STEP_COUNT_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail="Workflow cannot exceed 500 steps.",
+        )
+
+
+def _fbShouldWarnHundred(dictWorkflow, iCount):
+    """Return True iff the workflow just crossed the warning threshold."""
+    return (
+        iCount >= _I_STEP_COUNT_WARNING
+        and not dictWorkflow.get("bWarnedHundredSteps")
+    )
+
+
 def _fnRegisterStepsList(app, dictCtx):
     """Register GET /api/steps and validate routes."""
 
@@ -91,13 +112,20 @@ def _fnRegisterStepCreate(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        _fnRaiseIfAtStepCap(dictWorkflow)
         dictStep = fdictStepFromRequest(request)
         dictWorkflow["listSteps"].append(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
         iIndex = len(dictWorkflow["listSteps"]) - 1
+        iCount = len(dictWorkflow["listSteps"])
+        bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
+        if bShouldWarn:
+            dictWorkflow["bWarnedHundredSteps"] = True
+            dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "iIndex": iIndex,
             "dictStep": fdictStepWithLabel(dictWorkflow, iIndex),
+            "bShouldWarnHundredSteps": bShouldWarn,
         }
 
 
@@ -113,14 +141,21 @@ def _fnRegisterStepInsert(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        _fnRaiseIfAtStepCap(dictWorkflow)
         dictStep = fdictStepFromRequest(request)
         workflowManager.fnInsertStep(
             dictWorkflow, iPosition, dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
+        iCount = len(dictWorkflow["listSteps"])
+        bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
+        if bShouldWarn:
+            dictWorkflow["bWarnedHundredSteps"] = True
+            dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "iIndex": iPosition,
             "dictStep": fdictStepWithLabel(dictWorkflow, iPosition),
             "listSteps": flistStepsWithLabels(dictWorkflow),
+            "bShouldWarnHundredSteps": bShouldWarn,
         }
 
 

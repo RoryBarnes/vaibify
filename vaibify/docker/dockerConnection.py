@@ -55,7 +55,7 @@ def _fsResolveContainerUser(container):
     except (AttributeError, KeyError, TypeError):
         pass
     if isinstance(sContainerId, str):
-        _CACHED_CONTAINER_USER[sContainerId] = sUser
+        return _CACHED_CONTAINER_USER.setdefault(sContainerId, sUser)
     return sUser
 
 
@@ -153,12 +153,16 @@ class DockerConnection:
         return listResult
 
     def fcontainerGetById(self, sContainerId):
-        """Return the container object, refreshing if needed."""
+        """Return the container object, refreshing if needed.
+
+        Uses ``setdefault`` on the write so that concurrent fetches for
+        the same id (e.g. the parallel badge collector) end up returning
+        the same cached object instead of racing on dict assignment.
+        """
         if sContainerId in self._dictContainers:
             return self._dictContainers[sContainerId]
         container = self._clientDocker.containers.get(sContainerId)
-        self._dictContainers[sContainerId] = container
-        return container
+        return self._dictContainers.setdefault(sContainerId, container)
 
     def texecRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None

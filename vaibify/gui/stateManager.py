@@ -74,7 +74,7 @@ T_STATEFUL_STEP_FIELDS = (
 )
 T_STATEFUL_TOP_FIELDS = (
     "bArchiveTrackingMigrated", "iAICSLevel",
-    "dictWorkflowLevelHighWater",
+    "dictWorkflowLevelHighWater", "bWarnedHundredSteps",
 )
 
 
@@ -100,6 +100,7 @@ def fdictBuildEmptyState():
         "iStateSchemaVersion": I_CURRENT_STATE_SCHEMA_VERSION,
         "sLastUpdated": _fsCurrentUtcIso(),
         "dictStepState": {},
+        "bWarnedHundredSteps": False,
     }
 
 

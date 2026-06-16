@@ -35,7 +35,10 @@ from datetime import datetime, timezone
 
 I_MAX_OUTPUT_LINES = 500
 I_HEARTBEAT_INTERVAL_SECONDS = 5
-I_HEARTBEAT_STALE_SECONDS = 15
+# Tolerate ~11 missed beats so transient docker-pool contention from
+# the parallel badge/poll fan-out doesn't mass-kill healthy long runs.
+# A truly dead runner is still reconciled in under a minute.
+I_HEARTBEAT_STALE_SECONDS = 60
 # Sentinel exit code stamped by the poll-side reconciler when the
 # runner thread has vanished without writing a final state. Sits
 # outside the OS exit-code range (0-255) so callers can distinguish

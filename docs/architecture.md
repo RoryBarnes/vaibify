@@ -150,6 +150,38 @@ When an upstream step is modified, downstream steps are flagged as
 upstream-modified. The researcher sees verification badges dim
 automatically; no one has to remember to invalidate anything by hand.
 
+Each poll's path-mtime collection is one `docker exec` total, fed by
+a path list written to `/tmp/vaibifyPoll.list` via
+`connectionDocker.fnWriteFileViaTar` and consumed by
+`xargs -d '\n' -a … stat -c '%n %Y'`. The motivation is that each
+`docker exec` on Colima costs roughly 300–800 ms of API round-trip
+overhead, independent of how much work runs inside the container.
+Coalescing N batches into one is the dominant lever for poll
+latency, and it is the reason the polling endpoint scales past a few
+hundred tracked paths without saturating the daemon.
+
+The poll caches the mtime of each tracked path's parent directory
+per container in `dictCtx["dictParentMtimeCache"][sContainerId]`.
+On the next poll, if a parent's mtime has not changed, its children
+are reused from cache; if it has, the children are re-stat'd. The
+invalidation rules are: a full clear on workflow reload
+(`dictReload["bReplaced"]`), a full clear on docker error (the
+container may have restarted), and a full bypass when
+`bPipelineRunning` is True. The bypass exists because user-authored
+scripts during a run may overwrite files in place without bumping
+the parent directory's mtime, and the dashboard's honesty contract
+beats the polling-cost optimization in that window.
+
+Four module-level booleans in `scriptPolling.js` — one each for
+pipeline, file-status, repos, and discovery — short-circuit a poll
+tick when the previous tick is still pending. These are
+duplicate-request suppressors, not state caches. They do not cache
+server responses, do not extend mtime values, and do not affect what
+the next successful poll sees. Do not extend them into result
+caching: that would re-introduce the stale-dashboard failure mode
+the [AGENTS.md](../AGENTS.md) "do not suppress or misrepresent
+state" trap warns about.
+
 ## Architectural decisions with tradeoffs
 
 Each choice below has a reasonable-looking alternative. The paragraphs

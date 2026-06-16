@@ -4,13 +4,13 @@ deadsnakes-PPA fix (F-B-01).
 
 The audit document
 ``~/.claude/plans/mac-docker-failure-audit.md`` (sections F-B-02..07)
-catalogs every network call: NodeSource setup, npm install, CRAN
-keyring, IRkernel install, Julia binary, Miniforge installer. Each
-must show up here exactly once with the same three guarantees:
+catalogs every network call: Claude native installer, CRAN keyring,
+IRkernel install, Julia binary, Miniforge installer. Each must show
+up here exactly once with the same three guarantees:
 
-1. The wrapping ``RUN`` block carries a curl ``--retry`` flag (or, for
-   the npm install, ``--fetch-retries``); the IRkernel install pins a
-   single CRAN mirror instead of relying on a shell retry flag.
+1. The wrapping ``RUN`` block carries a curl ``--retry`` flag; the
+   IRkernel install pins a single CRAN mirror instead of relying on
+   a shell retry flag.
 2. The wrapping ``RUN`` block emits the ``vaibify build`` diagnostic
    prefix on failure.
 3. The wrapping ``RUN`` block exits with ``exit 1`` so a failed
@@ -89,19 +89,16 @@ def fnAssertHardenedBlock(sBlock, sExpectedRetryToken, sLabel):
     )
 
 
-def testNodeSourceCurlIsHardened():
-    """F-B-02: NodeSource setup script download must retry + diagnose."""
+def testClaudeNativeInstallerCurlIsHardened():
+    """F-B-02/03 (rewritten): the native Claude installer download
+    must retry + diagnose. The previous overlay used NodeSource + npm
+    to install Claude; the overlay was rewritten to use Anthropic's
+    self-contained native installer at claude.ai/install.sh. The
+    NodeSource and npm network calls no longer exist."""
     sSource = fsReadDockerfile("Dockerfile.claude")
-    sBlock = fsFindBlockContaining(sSource, "deb.nodesource.com")
-    fnAssertHardenedBlock(sBlock, "--retry", "Dockerfile.claude NodeSource")
-
-
-def testNpmClaudeInstallIsHardened():
-    """F-B-03: Claude Code npm install must retry + diagnose."""
-    sSource = fsReadDockerfile("Dockerfile.claude")
-    sBlock = fsFindBlockContaining(sSource, "@anthropic-ai/claude-code")
+    sBlock = fsFindBlockContaining(sSource, "claude.ai/install.sh")
     fnAssertHardenedBlock(
-        sBlock, "--fetch-retries", "Dockerfile.claude npm install"
+        sBlock, "--retry", "Dockerfile.claude native installer"
     )
 
 
