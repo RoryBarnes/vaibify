@@ -6,7 +6,10 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import WebSocketDisconnect
+
 from vaibify.gui.pipelineServer import (
+    _fbExceptionIsWsClosed,
     _fnDispatchRunFrom,
     _fnHandleInteractiveComplete,
     _fnHandleInteractiveResponse,
@@ -14,6 +17,7 @@ from vaibify.gui.pipelineServer import (
     _fnSafeDispatch,
     _fconnectionCreateDocker,
     _ftupleBuildHelpers,
+    ffBuildResilientWsCallback,
     fnDispatchAction,
     fnHandlePipelineWs,
     fnPipelineMessageLoop,
@@ -782,3 +786,111 @@ class TestCaffeinateRunning:
         with patch("subprocess.run", side_effect=FileNotFoundError):
             bResult = _fbCaffeinateRunning()
             assert bResult is False
+
+
+# ---------------------------------------------------------------
+# Resilient WS callback — regression guard for the 2026-06-16 -9999
+# crash on the GJ1132-XUV workflow. A long-running pipeline must
+# survive a browser-side WebSocket close instead of bubbling the
+# RuntimeError up through asyncio.run_coroutine_threadsafe and killing
+# the runner.
+# ---------------------------------------------------------------
+
+class TestExceptionIsWsClosed:
+    def test_recognises_websocket_disconnect(self):
+        assert _fbExceptionIsWsClosed(WebSocketDisconnect(1006)) is True
+
+    def test_recognises_runtime_error_about_send_after_close(self):
+        excClosed = RuntimeError(
+            "Unexpected ASGI message 'websocket.send', after sending "
+            "'websocket.close' or response already completed."
+        )
+        assert _fbExceptionIsWsClosed(excClosed) is True
+
+    def test_recognises_response_already_completed(self):
+        excClosed = RuntimeError("response already completed")
+        assert _fbExceptionIsWsClosed(excClosed) is True
+
+    def test_rejects_other_runtime_errors(self):
+        assert _fbExceptionIsWsClosed(RuntimeError("disk full")) is False
+
+    def test_rejects_unrelated_exceptions(self):
+        assert _fbExceptionIsWsClosed(ValueError("nope")) is False
+
+
+class TestResilientWsCallback:
+    @pytest.mark.asyncio
+    async def test_forwards_event_when_ws_is_open(self):
+        mockWebsocket = AsyncMock()
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        dictEvent = {"sType": "output", "sLine": "hello"}
+        await fnCallback(dictEvent)
+        mockWebsocket.send_json.assert_awaited_once_with(dictEvent)
+
+    @pytest.mark.asyncio
+    async def test_swallows_runtime_error_for_closed_ws(self):
+        mockWebsocket = AsyncMock()
+        mockWebsocket.send_json.side_effect = RuntimeError(
+            "Unexpected ASGI message 'websocket.send', after sending "
+            "'websocket.close' or response already completed."
+        )
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        await fnCallback({"sType": "output", "sLine": "drop me"})
+
+    @pytest.mark.asyncio
+    async def test_swallows_websocket_disconnect(self):
+        mockWebsocket = AsyncMock()
+        mockWebsocket.send_json.side_effect = WebSocketDisconnect(1006)
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        await fnCallback({"sType": "output", "sLine": "drop me"})
+
+    @pytest.mark.asyncio
+    async def test_short_circuits_after_first_closed_signal(self):
+        mockWebsocket = AsyncMock()
+        mockWebsocket.send_json.side_effect = RuntimeError(
+            "Unexpected ASGI message 'websocket.send'"
+        )
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        await fnCallback({"sType": "output", "sLine": "first"})
+        await fnCallback({"sType": "output", "sLine": "second"})
+        await fnCallback({"sType": "output", "sLine": "third"})
+        assert mockWebsocket.send_json.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_reraises_non_ws_runtime_errors(self):
+        mockWebsocket = AsyncMock()
+        mockWebsocket.send_json.side_effect = RuntimeError("disk full")
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        with pytest.raises(RuntimeError, match="disk full"):
+            await fnCallback({"sType": "output", "sLine": "x"})
+
+    @pytest.mark.asyncio
+    async def test_reraises_unrelated_exceptions(self):
+        mockWebsocket = AsyncMock()
+        mockWebsocket.send_json.side_effect = ValueError("nope")
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        with pytest.raises(ValueError, match="nope"):
+            await fnCallback({"sType": "output", "sLine": "x"})
+
+    @pytest.mark.asyncio
+    async def test_continues_streaming_after_ws_drop_mid_run(self):
+        """Regression: a closed WS during a multi-chunk stream must
+        not crash the runner; later chunks become silent no-ops."""
+        mockWebsocket = AsyncMock()
+        listCalls = []
+
+        async def fnSend(dictEvent):
+            listCalls.append(dictEvent)
+            if len(listCalls) == 2:
+                raise RuntimeError(
+                    "Unexpected ASGI message 'websocket.send', after "
+                    "sending 'websocket.close'"
+                )
+
+        mockWebsocket.send_json = fnSend
+        fnCallback = ffBuildResilientWsCallback(mockWebsocket)
+        for iChunk in range(5):
+            await fnCallback(
+                {"sType": "output", "sLine": f"chunk-{iChunk}"}
+            )
+        assert len(listCalls) == 2
