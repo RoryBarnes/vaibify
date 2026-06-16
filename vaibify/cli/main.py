@@ -49,6 +49,21 @@ def _fnAttachHostIncidentHandler(loggerVaibify):
     loggerVaibify.addHandler(handlerIncident)
 
 
+class _DefaultContainerIdFilter(logging.Filter):
+    """Ensure every record has ``sContainerId`` so the formatter never KeyErrors.
+
+    The host-log-tail diagnostic feature greps lines by container id; the
+    formatter renders ``[cid:%(sContainerId)s]`` so the substring match
+    finds entries that ``logger.error(..., extra={"sContainerId": cid})``
+    tagged. Records without the attribute (most of them) default to ``-``.
+    """
+
+    def filter(self, recordLog):
+        if not hasattr(recordLog, "sContainerId"):
+            recordLog.sContainerId = "-"
+        return True
+
+
 def _fnConfigureErrorLogging(sLogDirOverride=None):
     """Attach one rotating file handler for ~/.vaibify/vaibify.log."""
     sLogDir = sLogDirOverride or os.path.expanduser("~/.vaibify")
@@ -62,8 +77,10 @@ def _fnConfigureErrorLogging(sLogDirOverride=None):
             backupCount=I_LOG_BACKUP_COUNT,
         )
         rotatingHandler.setLevel(logging.INFO)
+        rotatingHandler.addFilter(_DefaultContainerIdFilter())
         rotatingHandler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s: %(message)s"
+            "%(asctime)s %(levelname)s %(name)s "
+            "[cid:%(sContainerId)s]: %(message)s"
         ))
         loggerVaibify.addHandler(rotatingHandler)
     _fnAttachHostIncidentHandler(loggerVaibify)

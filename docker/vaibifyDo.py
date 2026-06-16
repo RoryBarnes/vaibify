@@ -133,9 +133,10 @@ def ftParsePositionalArgs(listArgs):
     natural ``--lines=200`` form without knowing the camelCase
     parameter name.
     """
+    listMerged = _flistMergeSpaceSeparatedFlags(listArgs)
     listPositional = []
     dictBody = {}
-    for sArg in listArgs:
+    for sArg in listMerged:
         if "=" in sArg and not sArg.startswith("{"):
             sKey, sValue = sArg.split("=", 1)
             if sKey.startswith("--"):
@@ -146,6 +147,34 @@ def ftParsePositionalArgs(listArgs):
         else:
             listPositional.append(sArg)
     return listPositional, dictBody
+
+
+def _flistMergeSpaceSeparatedFlags(listArgs):
+    """Collapse ``--flag value`` pairs into ``--flag=value`` form.
+
+    Container-Claude reaches for the natural ``--lines 200`` form, but
+    the rest of the parser only understands ``--lines=200``. Merge so
+    both invocations land at the same body.
+    """
+    listMerged = []
+    iIndex = 0
+    while iIndex < len(listArgs):
+        sArg = listArgs[iIndex]
+        bIsFlagWithoutEquals = (
+            sArg.startswith("--")
+            and "=" not in sArg
+            and iIndex + 1 < len(listArgs)
+            and not listArgs[iIndex + 1].startswith("--")
+            and not listArgs[iIndex + 1].startswith("{")
+            and "=" not in listArgs[iIndex + 1]
+        )
+        if bIsFlagWithoutEquals:
+            listMerged.append(f"{sArg}={listArgs[iIndex + 1]}")
+            iIndex += 2
+        else:
+            listMerged.append(sArg)
+            iIndex += 1
+    return listMerged
 
 
 def _fnCoerceScalar(sValue):
