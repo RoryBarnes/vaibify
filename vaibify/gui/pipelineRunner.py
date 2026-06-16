@@ -276,9 +276,11 @@ async def _ftRunSingleCommand(
     """Execute one command, return (iExitCode, fCpuSeconds).
 
     Output is streamed line-by-line via the docker-py low-level exec
-    API; ``fnStatusCallback`` receives ``{"sType":"output",...}``
-    events as the command produces them, so the in-container
-    ``vaibify-do`` WebSocket sees traffic throughout the run.
+    API; ``fnStatusCallback`` receives ``{"sType":"outputBatch",...}``
+    events (with per-line fallbacks for non-line traffic) as the
+    command produces them, so the in-container ``vaibify-do`` WebSocket
+    sees traffic throughout the run without paying per-line frame
+    overhead on chatty runs.
     """
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
@@ -286,15 +288,18 @@ async def _ftRunSingleCommand(
     sTimedCmd = _fsWrapWithTime(sEnvPrefix + sResolved)
     loopMain = asyncio.get_running_loop()
     dictAccum = {"fCpu": 0.0}
-    fnEmitChunk = _ffBuildStreamingChunkEmitter(
+    fnEmitChunk, fnFlushPending = _ftBuildBatchingEmitter(
         fnStatusCallback, loopMain, dictAccum,
     )
     async with _actxWebSocketHeartbeat(fnStatusCallback):
-        resultExec = await asyncio.to_thread(
-            connectionDocker.texecRunInContainerStreamedWithChunks,
-            sContainerId, sTimedCmd, fnEmitChunk,
-            sWorkdir=sWorkdir,
-        )
+        try:
+            resultExec = await asyncio.to_thread(
+                connectionDocker.texecRunInContainerStreamedWithChunks,
+                sContainerId, sTimedCmd, fnEmitChunk,
+                sWorkdir=sWorkdir,
+            )
+        finally:
+            fnFlushPending()
     if resultExec.iExitCode != 0:
         await fnStatusCallback({
             "sType": "commandFailed",
@@ -305,38 +310,119 @@ async def _ftRunSingleCommand(
     return (resultExec.iExitCode, dictAccum["fCpu"])
 
 
-def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
-    """Build the sync callback handed to the streaming exec worker.
+# Coalescing thresholds for the streaming chunk emitter. A subprocess
+# emitting at ~100 lines/sec previously produced ~360k WS frames per
+# hour; batching collapses that into ~36k while still keeping the
+# 100 ms upper bound on perceived latency.
+I_BATCH_MAX_LINES = 50
+F_BATCH_MAX_INTERVAL_SECONDS = 0.1
 
-    ``__VAIBIFY_CPU__`` lines are absorbed into ``dictAccum["fCpu"]``;
-    every other line is forwarded to the WebSocket via
-    ``run_coroutine_threadsafe``. Any failure forwarding a chunk
-    (WS-closed, MemoryError on an enormous scientific line, asyncio
-    cancellation, generic back-pressure exception) is logged exactly
+
+def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
+    """Build a (fnEmitChunk, fnFlushPending) pair that coalesces lines.
+
+    Lines arriving on the worker thread are accumulated into a buffer
+    and flushed as a single ``{"sType": "outputBatch", "listLines":
+    [...]}`` event when the buffer reaches ``I_BATCH_MAX_LINES`` or
+    ``F_BATCH_MAX_INTERVAL_SECONDS`` have elapsed since the first
+    un-flushed line. ``fnFlushPending`` empties the buffer on
+    per-command teardown so no lines are stuck after the docker exec
+    returns. Errors forwarding a batch (WS closed, MemoryError on a
+    huge scientific line, asyncio cancellation) are logged exactly
     once; subsequent chunks become no-ops so the producer worker
     finishes the docker exec instead of tearing the whole run down.
     """
-    dictEmitState = {"bDisabled": False}
+    dictBatch = {
+        "listLines": [], "fFirstLineAt": 0.0, "bDisabled": False,
+    }
+    lockBuffer = threading.Lock()
 
     def fnEmitChunk(sStream, sLine):
         if sLine.startswith("__VAIBIFY_CPU__ "):
             dictAccum["fCpu"] = _fParseCpuTime(sLine)
             return
-        if dictEmitState["bDisabled"]:
+        if dictBatch["bDisabled"]:
             return
-        try:
-            future = asyncio.run_coroutine_threadsafe(
-                fnStatusCallback({"sType": "output", "sLine": sLine}),
-                loopMain,
+        listToSend = _flistAppendAndMaybeDrainBatch(
+            dictBatch, lockBuffer, sLine,
+        )
+        if listToSend:
+            _fnFlushBatchToCallback(
+                dictBatch, fnStatusCallback, loopMain, listToSend,
             )
-            future.result()
-        except BaseException as error:
-            dictEmitState["bDisabled"] = True
-            logging.getLogger("vaibify").warning(
-                "streaming chunk emitter disabled after error: %s",
-                error,
+
+    def fnFlushPending():
+        with lockBuffer:
+            listToSend = dictBatch["listLines"]
+            dictBatch["listLines"] = []
+            dictBatch["fFirstLineAt"] = 0.0
+        if listToSend and not dictBatch["bDisabled"]:
+            _fnFlushBatchToCallback(
+                dictBatch, fnStatusCallback, loopMain, listToSend,
             )
-    return fnEmitChunk
+
+    return fnEmitChunk, fnFlushPending
+
+
+def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
+    """Append ``sLine`` and return the drained list when the threshold trips."""
+    with lockBuffer:
+        if not dictBatch["listLines"]:
+            dictBatch["fFirstLineAt"] = time.monotonic()
+        dictBatch["listLines"].append(sLine)
+        fElapsed = time.monotonic() - dictBatch["fFirstLineAt"]
+        bSizeReached = (
+            len(dictBatch["listLines"]) >= I_BATCH_MAX_LINES
+        )
+        bTimeReached = fElapsed >= F_BATCH_MAX_INTERVAL_SECONDS
+        if not (bSizeReached or bTimeReached):
+            return []
+        listDrained = dictBatch["listLines"]
+        dictBatch["listLines"] = []
+        dictBatch["fFirstLineAt"] = 0.0
+        return listDrained
+
+
+def _fnFlushBatchToCallback(
+    dictBatch, fnStatusCallback, loopMain, listLines,
+):
+    """Ship one batch via ``run_coroutine_threadsafe``; disable on error."""
+    try:
+        future = asyncio.run_coroutine_threadsafe(
+            fnStatusCallback(
+                {"sType": "outputBatch", "listLines": listLines}
+            ),
+            loopMain,
+        )
+        future.result()
+    except BaseException as error:
+        dictBatch["bDisabled"] = True
+        logging.getLogger("vaibify").warning(
+            "streaming chunk emitter disabled after error: %s",
+            error,
+        )
+
+
+def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
+    """Backwards-compatible shim that flushes after every line.
+
+    Production callers should use :func:`_ftBuildBatchingEmitter` to
+    benefit from the per-100ms / 50-line coalescing. This shim exists
+    for callers that imported the symbol directly and treat the
+    emitter as a one-line-at-a-time forwarder; each emit triggers an
+    immediate batch-of-one flush so the dispatched event shape
+    matches the production contract (``outputBatch`` with
+    ``listLines``).
+    """
+    fnEmitChunk, fnFlushPending = _ftBuildBatchingEmitter(
+        fnStatusCallback, loopMain, dictAccum,
+    )
+
+    def fnEmitOne(sStream, sLine):
+        fnEmitChunk(sStream, sLine)
+        fnFlushPending()
+
+    return fnEmitOne
 
 
 # Interval in seconds between server-emitted ``wsHeartbeat`` frames

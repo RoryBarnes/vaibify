@@ -7,8 +7,11 @@ import posixpath
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import List
 
 from ..actionCatalog import fnAgentAction
+from ..pipelineUtils import fsShellQuote
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -20,6 +23,15 @@ from ..pipelineServer import (
     fsResolveFigurePath,
     _fsSanitizeServerError,
 )
+
+
+I_MAX_EXISTENCE_BATCH = 1000
+
+
+class FileExistenceRequest(BaseModel):
+    """Payload for batched file-existence checks."""
+
+    saRelativePaths: List[str]
 
 
 def _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
@@ -60,6 +72,79 @@ def _fnDockerCopy(sContainerId, sContainerPath, sHostDest):
         ["docker", "cp", sSource, sHostDest],
         check=True, capture_output=True,
     )
+
+
+def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
+    """Return the validated absolute container path for one input entry.
+
+    Inputs may already be absolute container paths (used by callers
+    that pre-resolved via ``workflowDir``) or repo-relative paths from
+    workflow.json. Both are normalized and validated against the most
+    permissive of (project repo, workspace root) so traversal is
+    impossible. Raises ``HTTPException`` 403 on escape.
+    """
+    if sRawPath.startswith("/"):
+        sAbs = sRawPath
+    else:
+        sBase = sProjectRepoPath or sWorkspaceRoot
+        sAbs = posixpath.join(sBase, sRawPath)
+    return fnValidatePathWithinRoot(sAbs, sWorkspaceRoot)
+
+
+def _fdictTestExistenceBatch(
+    connectionDocker, sContainerId, listAbsPaths,
+):
+    """Run a single shell loop to test each path; return ``{path: bool}``."""
+    if not listAbsPaths:
+        return {}
+    sJoined = "\n".join(listAbsPaths)
+    sScript = (
+        "while IFS= read -r p; do "
+        "if [ -e \"$p\" ]; then echo \"$p\"; fi; "
+        "done <<'__VAIBIFY_EOF__'\n" + sJoined + "\n__VAIBIFY_EOF__"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sScript,
+    )
+    setExisting = set(
+        sLine for sLine in sOutput.splitlines() if sLine
+    )
+    return {sPath: (sPath in setExisting) for sPath in listAbsPaths}
+
+
+def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
+    """Register POST /api/files/{id}/exist for batched existence checks."""
+
+    @fnAgentAction("check-files-exist")
+    @app.post("/api/files/{sContainerId}/exist")
+    async def fnCheckFilesExist(
+        sContainerId: str, request: FileExistenceRequest,
+    ):
+        import asyncio
+        dictCtx["require"]()
+        listInput = request.saRelativePaths or []
+        if len(listInput) > I_MAX_EXISTENCE_BATCH:
+            raise HTTPException(
+                400,
+                f"Batch capped at {I_MAX_EXISTENCE_BATCH} paths",
+            )
+        dictWorkflow = dictCtx["workflows"].get(sContainerId) or {}
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+        listResolved = [
+            _fsResolveExistencePath(
+                sRaw, sProjectRepoPath, sWorkspaceRoot,
+            )
+            for sRaw in listInput
+        ]
+        dictResolved = await asyncio.to_thread(
+            _fdictTestExistenceBatch,
+            dictCtx["docker"], sContainerId, listResolved,
+        )
+        dictExists = {
+            sRaw: dictResolved[sResolved]
+            for sRaw, sResolved in zip(listInput, listResolved)
+        }
+        return {"dictExists": dictExists}
 
 
 def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
@@ -263,12 +348,13 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
 def fnRegisterAll(app, dictCtx, sWorkspaceRoot):
     """Register all file management routes.
 
-    Registration order matters: specific paths like download/
-    and upload must be registered before the catch-all directory
-    listing route to prevent incorrect route matching.
+    Registration order matters: specific paths like download/, upload,
+    and the batched existence endpoint must be registered before the
+    catch-all directory listing route to prevent incorrect matching.
     """
     _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot)
+    _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot)

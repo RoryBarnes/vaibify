@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 logger = logging.getLogger("vaibify")
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -1886,6 +1887,7 @@ def fappCreateApplication(
     app.state.iExpectedPort = iExpectedPort
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     _fnRegisterLastResortExceptionHandler(app)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken
@@ -1916,6 +1918,7 @@ def fappCreateHubApplication(iExpectedPort=0):
     app.state.dictContainerLocks = {}
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     _fnRegisterLastResortExceptionHandler(app)
     dictCtx = fdictBuildContext(_fconnectionCreateDocker())
     dictCtx["sSessionToken"] = sSessionToken

@@ -122,7 +122,7 @@ def test_emitter_still_captures_cpu_line():
 
 
 def test_emitter_forwards_normal_line_when_callback_is_healthy():
-    """A healthy callback receives every line."""
+    """A healthy callback receives every line via the batched event shape."""
     listEvents = []
 
     async def fnCallback(dictEvent):
@@ -135,4 +135,86 @@ def test_emitter_forwards_normal_line_when_callback_is_healthy():
     finally:
         _fnStopLoop(loop, threadLoop)
 
-    assert [d["sLine"] for d in listEvents] == ["alpha", "beta"]
+    assert all(d["sType"] == "outputBatch" for d in listEvents)
+    listLinesAll = []
+    for dictEvent in listEvents:
+        listLinesAll.extend(dictEvent["listLines"])
+    assert listLinesAll == ["alpha", "beta"]
+
+
+def test_batching_emitter_coalesces_lines_within_window():
+    """50+ lines arriving fast must collapse into one outputBatch event."""
+    from vaibify.gui.pipelineRunner import _ftBuildBatchingEmitter
+
+    listEvents = []
+
+    async def fnCallback(dictEvent):
+        listEvents.append(dictEvent)
+
+    loop, threadLoop = _ftupleLoopInBackground()
+    dictAccum = {"fCpu": 0.0}
+    fnEmit, fnFlush = _ftBuildBatchingEmitter(
+        fnCallback, loop, dictAccum)
+    try:
+        for iLine in range(50):
+            fnEmit("stdout", "line " + str(iLine))
+        fnFlush()
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert len(listEvents) == 1
+    assert listEvents[0]["sType"] == "outputBatch"
+    assert len(listEvents[0]["listLines"]) == 50
+
+
+def test_batching_emitter_flush_drains_pending_buffer():
+    """fnFlushPending must emit a partial buffer (lines below threshold)."""
+    from vaibify.gui.pipelineRunner import _ftBuildBatchingEmitter
+
+    listEvents = []
+
+    async def fnCallback(dictEvent):
+        listEvents.append(dictEvent)
+
+    loop, threadLoop = _ftupleLoopInBackground()
+    dictAccum = {"fCpu": 0.0}
+    fnEmit, fnFlush = _ftBuildBatchingEmitter(
+        fnCallback, loop, dictAccum)
+    try:
+        fnEmit("stdout", "single")
+        assert listEvents == []
+        fnFlush()
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert len(listEvents) == 1
+    assert listEvents[0]["sType"] == "outputBatch"
+    assert listEvents[0]["listLines"] == ["single"]
+
+
+def test_batching_emitter_flushes_after_time_window():
+    """Lines older than F_BATCH_MAX_INTERVAL_SECONDS trip the time flush."""
+    import time as timeModule
+    from vaibify.gui.pipelineRunner import (
+        _ftBuildBatchingEmitter, F_BATCH_MAX_INTERVAL_SECONDS,
+    )
+
+    listEvents = []
+
+    async def fnCallback(dictEvent):
+        listEvents.append(dictEvent)
+
+    loop, threadLoop = _ftupleLoopInBackground()
+    dictAccum = {"fCpu": 0.0}
+    fnEmit, fnFlush = _ftBuildBatchingEmitter(
+        fnCallback, loop, dictAccum)
+    try:
+        fnEmit("stdout", "first")
+        timeModule.sleep(F_BATCH_MAX_INTERVAL_SECONDS + 0.02)
+        fnEmit("stdout", "second")
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert len(listEvents) == 1
+    assert listEvents[0]["sType"] == "outputBatch"
+    assert listEvents[0]["listLines"] == ["first", "second"]

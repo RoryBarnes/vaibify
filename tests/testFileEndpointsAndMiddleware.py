@@ -503,6 +503,97 @@ def test_agent_session_header_wrong_token_rejected(clientHttp):
     assert responseHttp.status_code in (400, 401)
 
 
+# ── Batched file-existence endpoint ──────────────────────────
+
+
+def _fnConnectAndPostExistence(clientHttp, dictPayload):
+    """Connect to the container then issue the batched-existence POST."""
+    _fnConnectToContainer(clientHttp)
+    return clientHttp.post(
+        f"/api/files/{S_CONTAINER_ID}/exist",
+        json=dictPayload,
+    )
+
+
+def test_files_exist_returns_dict_keyed_on_input(clientHttp):
+    """Returned dictExists must use the input strings as keys."""
+    _fnConnectToContainer(clientHttp)
+    listInput = ["/workspace/stepA/output.dat", "stepA/missing.dat"]
+    fnOriginalExec = MockDockerTransfer.ftResultExecuteCommand
+
+    def _fakeExec(self, sContainerId, sCommand, sWorkdir=None):
+        if "while IFS=" in sCommand:
+            return (0, "/workspace/stepA/output.dat\n")
+        return fnOriginalExec(self, sContainerId, sCommand, sWorkdir)
+
+    with patch.object(
+        MockDockerTransfer, "ftResultExecuteCommand", _fakeExec,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/files/{S_CONTAINER_ID}/exist",
+            json={"saRelativePaths": listInput},
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert "dictExists" in dictBody
+    assert dictBody["dictExists"]["/workspace/stepA/output.dat"] is True
+    assert dictBody["dictExists"]["stepA/missing.dat"] is False
+
+
+def test_files_exist_rejects_oversized_batch(clientHttp):
+    """A batch of >1000 entries must be rejected with HTTP 400."""
+    listInput = ["stepA/f" + str(i) for i in range(1001)]
+    responseHttp = _fnConnectAndPostExistence(
+        clientHttp, {"saRelativePaths": listInput},
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_files_exist_rejects_path_traversal(clientHttp):
+    """Inputs that escape the workspace must be rejected with 403."""
+    responseHttp = _fnConnectAndPostExistence(
+        clientHttp, {"saRelativePaths": ["../../etc/passwd"]},
+    )
+    assert responseHttp.status_code == 403
+
+
+def test_files_exist_handles_empty_payload(clientHttp):
+    """An empty list must return an empty mapping without erroring."""
+    responseHttp = _fnConnectAndPostExistence(
+        clientHttp, {"saRelativePaths": []},
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"dictExists": {}}
+
+
+# ── GZip middleware ──────────────────────────────────────────
+
+
+def test_gzip_middleware_compresses_large_response(clientHttp):
+    """Responses above the GZip threshold must be wire-compressed."""
+    from fastapi.middleware.gzip import GZipMiddleware
+
+    listMiddlewareClasses = [
+        m.cls for m in clientHttp.app.user_middleware
+    ]
+    assert GZipMiddleware in listMiddlewareClasses
+
+
+def test_gzip_middleware_registered_on_hub_app():
+    """The hub-mode app must also wire GZipMiddleware."""
+    from fastapi.middleware.gzip import GZipMiddleware
+
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        _fmockCreateDocker,
+    ):
+        appHub = pipelineServer.fappCreateHubApplication()
+    listMiddlewareClasses = [
+        m.cls for m in appHub.user_middleware
+    ]
+    assert GZipMiddleware in listMiddlewareClasses
+
+
 # ── Hub application creation ─────────────────────────────────
 
 

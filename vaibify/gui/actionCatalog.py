@@ -489,6 +489,16 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/file/{sContainerId}/{sFilePath:path}",
      "bAgentSafe": True,
      "sDescription": "Write text content to a file inside the container."},
+    {"sName": "check-files-exist", "sCategory": "files",
+     "sMethod": "POST",
+     "sPath": "/api/files/{sContainerId}/exist",
+     "bAgentSafe": True,
+     "sDescription": "Batched existence check: takes "
+                     "{saRelativePaths: [str, ...]} (max "
+                     "1000 entries, repo-relative or absolute paths) "
+                     "and returns {dictExists: {sPath: bool}}. "
+                     "Read-only; collapses the per-file HEAD storm "
+                     "the file-status pollers used to issue."},
     {"sName": "clean-outputs", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/pipeline/{sContainerId}/clean",
