@@ -535,44 +535,108 @@ async def _fnEmitDiscoveredOutputs(
     })
 
 
+_S_VERIFY_PATHFILE = "/tmp/vaibifyVerify.list"
+
+
 async def _fbVerifyStepOutputs(
     connectionDocker, sContainerId,
     dictStep, dictVars, sWorkdir, fnStatusCallback,
 ):
-    """Return True if all output files for a step exist."""
+    """Return True if every output file for a step exists; one exec total.
+
+    Writes the absolute paths into a temp file in the container, then
+    runs a single ``xargs`` invocation that prints each path that
+    exists. The set difference identifies missing files. Replaces the
+    prior pattern of one ``test -f`` exec per file (3000+ execs for a
+    1000-step × 3-output workflow).
+    """
     sStepDirectory = workflowManager.fsResolveStepWorkdir(
         dictStep.get("sDirectory", sWorkdir), dictVars,
     )
+    listAbsolutePaths = _flistBuildStepOutputAbsPaths(
+        dictStep, dictVars, sStepDirectory,
+    )
+    if not listAbsolutePaths:
+        return True
+    setMissing = await asyncio.to_thread(
+        _fsetMissingPathsBatched,
+        connectionDocker, sContainerId, listAbsolutePaths,
+    )
+    if setMissing:
+        sFirstMissing = next(
+            sPath for sPath in listAbsolutePaths if sPath in setMissing
+        )
+        await fnStatusCallback(
+            {"sType": "output", "sLine": f"Missing: {sFirstMissing}"}
+        )
+        return False
+    return True
+
+
+def _flistBuildStepOutputAbsPaths(dictStep, dictVars, sStepDirectory):
+    """Resolve a step's output files into absolute container paths."""
     listOutputFiles = (
         dictStep.get("saPlotFiles", [])
         + dictStep.get("saDataFiles", [])
     )
+    listAbsolute = []
     for sOutputFile in listOutputFiles:
         sResolved = workflowManager.fsResolveVariables(
-            sOutputFile, dictVars
+            sOutputFile, dictVars,
         )
-        bExists = await _fbFileExistsInContainer(
-            connectionDocker, sContainerId,
+        listAbsolute.append(_fsAbsoluteWithinStepDir(
             sResolved, sStepDirectory,
-        )
-        if not bExists:
-            await fnStatusCallback(
-                {"sType": "output", "sLine": f"Missing: {sResolved}"}
-            )
-            return False
-    return True
+        ))
+    return listAbsolute
 
 
-async def _fbFileExistsInContainer(
-    connectionDocker, sContainerId, sFilePath, sWorkdir,
+def _fsAbsoluteWithinStepDir(sPath, sStepDirectory):
+    """Return sPath rooted at sStepDirectory when it is repo-relative."""
+    if sPath.startswith("/"):
+        return sPath
+    if not sStepDirectory:
+        return sPath
+    return posixpath.normpath(posixpath.join(sStepDirectory, sPath))
+
+
+def _fsetMissingPathsBatched(
+    connectionDocker, sContainerId, listAbsolutePaths,
 ):
-    """Return True if a file exists inside the container."""
-    sCommand = f"test -f {fsShellQuote(sFilePath)}"
-    iExitCode, _ = await asyncio.to_thread(
-        connectionDocker.ftResultExecuteCommand,
-        sContainerId, sCommand, sWorkdir=sWorkdir,
-    )
-    return iExitCode == 0
+    """Return the set of absolute paths absent from the container.
+
+    Mirrors ``fileStatusManager._fdictStatViaPathfile``: writes the
+    path list into ``_S_VERIFY_PATHFILE`` via tar, then runs one
+    ``xargs`` that prints each path that exists. The host parses the
+    output and diffs against the requested list to find the missing
+    ones. A failed write or exec degrades to "all missing" so a broken
+    container fails loud rather than silently passing verification.
+    """
+    baContent = ("\n".join(listAbsolutePaths) + "\n").encode("utf-8")
+    try:
+        _fnWriteVerifyPathfile(
+            connectionDocker, sContainerId, baContent,
+        )
+        _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId,
+            "xargs -d '\\n' -a " + _S_VERIFY_PATHFILE
+            + " -I{} sh -c 'test -e \"$1\" && printf %s\\\\n \"$1\"'"
+            " _ {} 2>/dev/null",
+        )
+    except OSError:
+        return set(listAbsolutePaths)
+    setPresent = {
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.strip()
+    }
+    return {sPath for sPath in listAbsolutePaths if sPath not in setPresent}
+
+
+def _fnWriteVerifyPathfile(connectionDocker, sContainerId, baContent):
+    """Write the temp pathfile via the preferred docker write helper."""
+    fnWriter = getattr(connectionDocker, "fnWriteFileViaTar", None)
+    if fnWriter is None:
+        fnWriter = connectionDocker.fnWriteFile
+    fnWriter(sContainerId, _S_VERIFY_PATHFILE, baContent)
 
 
 async def _fbVerifyStepList(

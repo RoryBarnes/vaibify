@@ -401,12 +401,15 @@ def test_fsMissingDependencyFile_missing():
 
 
 # -----------------------------------------------------------------------
-# _fbVerifyStepOutputs
+# _fbVerifyStepOutputs — uses a single batched xargs exec, listing
+# every path that exists; missing paths fall out of the set diff.
 # -----------------------------------------------------------------------
 
 
 def test_fbVerifyStepOutputs_all_present():
-    mockDocker = _fMockDocker(0, "")
+    # The batched xargs prints each existing path; report the expected
+    # one so the helper sees the set as fully covered.
+    mockDocker = _fMockDocker(0, "/work/a.pdf\n")
     fnCallback, _ = _fMockCallback()
     dictStep = {"sDirectory": "/work", "saPlotFiles": ["a.pdf"]}
     dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
@@ -417,7 +420,8 @@ def test_fbVerifyStepOutputs_all_present():
 
 
 def test_fbVerifyStepOutputs_missing():
-    mockDocker = _fMockDocker(1, "")
+    # The xargs prints nothing, so every declared output is missing.
+    mockDocker = _fMockDocker(0, "")
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {"sDirectory": "/work", "saPlotFiles": ["a.pdf"]}
     dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
@@ -437,6 +441,48 @@ def test_fbVerifyStepOutputs_no_files():
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
     ))
     assert bResult is True
+
+
+def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
+    """A step with N output files must still produce only ONE exec.
+
+    Pre-batch the helper ran one ``test -f`` per file; for 1000 steps
+    × 3 files that's 3000 round-trips. The batched path writes the
+    list into the container once and runs a single xargs.
+    """
+    listFiles = [f"out_{i:03d}.dat" for i in range(20)]
+    sOutput = "\n".join(f"/work/{s}" for s in listFiles) + "\n"
+    mockDocker = _fMockDocker(0, sOutput)
+    fnCallback, _ = _fMockCallback()
+    dictStep = {"sDirectory": "/work", "saDataFiles": listFiles}
+    dictVars = {"sPlotDirectory": "Plot"}
+    bResult = _fnRunAsync(_fbVerifyStepOutputs(
+        mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
+    ))
+    assert bResult is True
+    # Exactly one exec: the xargs batch. fnWriteFile counts as a write,
+    # not an exec, so it does not appear in ftResultExecuteCommand calls.
+    assert mockDocker.ftResultExecuteCommand.call_count == 1
+
+
+def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():
+    """When some files are missing the helper names the first one."""
+    listFiles = ["a.dat", "b.dat", "c.dat"]
+    # Only b.dat reports present; a.dat and c.dat are missing.
+    mockDocker = _fMockDocker(0, "/work/b.dat\n")
+    fnCallback, listCaptured = _fMockCallback()
+    dictStep = {"sDirectory": "/work", "saDataFiles": listFiles}
+    dictVars = {"sPlotDirectory": "Plot"}
+    bResult = _fnRunAsync(_fbVerifyStepOutputs(
+        mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
+    ))
+    assert bResult is False
+    listMissingLines = [
+        d.get("sLine", "") for d in listCaptured
+        if "Missing" in d.get("sLine", "")
+    ]
+    # The first missing path (a.dat) is the one surfaced to the user.
+    assert any("a.dat" in s for s in listMissingLines)
 
 
 # -----------------------------------------------------------------------
