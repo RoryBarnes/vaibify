@@ -974,9 +974,14 @@ def _fdictStripComputedFields(dictWorkflow):
 
 
 def _fdictStripStepTransientKeys(dictStep):
-    """Shallow-copy a step only when at least one transient key is present."""
-    if not any(sKey in dictStep for sKey in _T_TRANSIENT_STEP_KEYS):
-        return dictStep
+    """Return a shallow copy of dictStep with transient keys removed.
+
+    Always shallow-copies (vs. the prior optimization that returned
+    the source dict by reference when no transient keys were present);
+    callers expect to mutate the returned step without leaking into
+    the in-memory workflow before serialization. The savings are
+    minor anyway — most steps carry at least one transient key.
+    """
     dictCopy = dict(dictStep)
     for sKey in _T_TRANSIENT_STEP_KEYS:
         dictCopy.pop(sKey, None)
@@ -1684,9 +1689,15 @@ def _fsWorkflowDepCacheKey(dictWorkflow):
             continue
         dictRelevant = {sKey: dictStep.get(sKey, []) for sKey in (
             "saDataCommands", "saPlotCommands", "saTestCommands",
-            "saDataFiles", "saPlotFiles", "saDependencies",
+            "saDataFiles", "saPlotFiles",
             "saSetupCommands", "saCommands", "saOutputFiles",
         )}
+        # saDependencies is a set semantically; sort so reorderings
+        # within the list don't bust the cache (Review B observation).
+        listDeps = dictStep.get("saDependencies", []) or []
+        dictRelevant["saDependencies"] = sorted(
+            [str(s) for s in listDeps if s is not None],
+        )
         dictRelevant["sDirectory"] = dictStep.get("sDirectory", "")
         listEntries.append(dictRelevant)
     sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
