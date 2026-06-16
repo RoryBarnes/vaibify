@@ -494,11 +494,11 @@ def test_constructor_mounts_oversized_pool_adapters(mockGetDocker):
     setPrefixes = {tCall[0][0] for tCall in listMountCalls}
     assert "http+docker://" in setPrefixes
     assert "http://" in setPrefixes
-    assert any(
-        getattr(tCall[0][1], "_pool_maxsize", I_DOCKER_POOL_MAX_SIZE)
-        or True
-        for tCall in listMountCalls
-    )
+    assert "https://" in setPrefixes
+    for tCall in listMountCalls:
+        adapterHttp = tCall[0][1]
+        assert adapterHttp._pool_maxsize == I_DOCKER_POOL_MAX_SIZE
+        assert adapterHttp._pool_connections == I_DOCKER_POOL_MAX_SIZE
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")

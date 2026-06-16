@@ -59,18 +59,21 @@ def _fnTuneDockerSessionPool(clientDocker):
     adapter is mounted by docker-py at ``http+docker://`` with its
     default pool size and is replaced here in-place.
     """
+    import logging
     from requests.adapters import HTTPAdapter
-    session = getattr(clientDocker, "api", None)
-    if session is None or not hasattr(session, "mount"):
+    sessionDocker = getattr(clientDocker, "api", None)
+    if sessionDocker is None or not hasattr(sessionDocker, "mount"):
         return
     for sPrefix in ("http://", "https://", "http+docker://"):
         try:
-            session.mount(sPrefix, HTTPAdapter(
+            sessionDocker.mount(sPrefix, HTTPAdapter(
                 pool_connections=I_DOCKER_POOL_MAX_SIZE,
                 pool_maxsize=I_DOCKER_POOL_MAX_SIZE,
             ))
-        except Exception:
-            continue
+        except Exception as error:
+            logging.getLogger("vaibify").warning(
+                "docker pool tune failed for %s: %s", sPrefix, error,
+            )
 
 
 def _fsResolveContainerUser(container):
