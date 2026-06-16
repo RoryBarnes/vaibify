@@ -1,0 +1,138 @@
+"""Tests for the broad-except behaviour of the streaming chunk emitter.
+
+Audit CRITICAL #4: a producer-side exception in the worker callback
+(WS closed, MemoryError on an enormous line, asyncio.CancelledError,
+back-pressure exception) must not tear down the whole run. The
+emitter logs once, disables itself, and subsequent calls are no-ops.
+"""
+
+import asyncio
+import logging
+import threading
+
+from vaibify.gui.pipelineRunner import _ffBuildStreamingChunkEmitter
+
+
+def _ftupleLoopInBackground():
+    """Spin a real event loop on a background thread so futures resolve."""
+    loop = asyncio.new_event_loop()
+
+    def fnRunLoop():
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    threadLoop = threading.Thread(target=fnRunLoop, daemon=True)
+    threadLoop.start()
+    return loop, threadLoop
+
+
+def _fnStopLoop(loop, threadLoop):
+    loop.call_soon_threadsafe(loop.stop)
+    threadLoop.join(timeout=2)
+    loop.close()
+
+
+def _ftupleBuildEmitter(fnCallback):
+    """Return (emitter, dictAccum, loop, thread) wired to a running loop."""
+    loop, threadLoop = _ftupleLoopInBackground()
+    dictAccum = {"fCpu": 0.0}
+    fnEmit = _ffBuildStreamingChunkEmitter(fnCallback, loop, dictAccum)
+    return fnEmit, dictAccum, loop, threadLoop
+
+
+def test_emitter_absorbs_runtime_error_from_callback(caplog):
+    """A RuntimeError (e.g. closed WS) is logged once; later chunks no-op."""
+    iCalls = {"i": 0}
+
+    async def fnCallback(dictEvent):
+        iCalls["i"] += 1
+        raise RuntimeError("ws closed")
+
+    fnEmit, _, loop, threadLoop = _ftupleBuildEmitter(fnCallback)
+    try:
+        with caplog.at_level(logging.WARNING, logger="vaibify"):
+            fnEmit("stdout", "first line")
+            fnEmit("stdout", "second line")
+            fnEmit("stdout", "third line")
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert iCalls["i"] == 1
+    assert sum(
+        "streaming chunk emitter disabled" in rec.message
+        for rec in caplog.records
+    ) == 1
+
+
+def test_emitter_absorbs_memory_error(caplog):
+    """Encoding a multi-megabyte scientific line must not raise to producer."""
+    iCalls = {"i": 0}
+
+    async def fnCallback(dictEvent):
+        iCalls["i"] += 1
+        raise MemoryError("out of memory")
+
+    fnEmit, _, loop, threadLoop = _ftupleBuildEmitter(fnCallback)
+    try:
+        with caplog.at_level(logging.WARNING, logger="vaibify"):
+            fnEmit("stdout", "X" * 1024)
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert iCalls["i"] == 1
+    assert any(
+        "streaming chunk emitter disabled" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_emitter_absorbs_cancelled_error(caplog):
+    """asyncio.CancelledError no longer escapes to the producer thread."""
+    iCalls = {"i": 0}
+
+    async def fnCallback(dictEvent):
+        iCalls["i"] += 1
+        raise asyncio.CancelledError()
+
+    fnEmit, _, loop, threadLoop = _ftupleBuildEmitter(fnCallback)
+    try:
+        with caplog.at_level(logging.WARNING, logger="vaibify"):
+            fnEmit("stdout", "data")
+            fnEmit("stdout", "more")
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert iCalls["i"] == 1
+
+
+def test_emitter_still_captures_cpu_line():
+    """The CPU-marker absorber path is independent of the disabled flag."""
+    listEvents = []
+
+    async def fnCallback(dictEvent):
+        listEvents.append(dictEvent)
+
+    fnEmit, dictAccum, loop, threadLoop = _ftupleBuildEmitter(fnCallback)
+    try:
+        fnEmit("stdout", "__VAIBIFY_CPU__ 1.5 0.5")
+    finally:
+        _fnStopLoop(loop, threadLoop)
+    assert dictAccum["fCpu"] == 2.0
+    assert listEvents == []
+
+
+def test_emitter_forwards_normal_line_when_callback_is_healthy():
+    """A healthy callback receives every line."""
+    listEvents = []
+
+    async def fnCallback(dictEvent):
+        listEvents.append(dictEvent)
+
+    fnEmit, _, loop, threadLoop = _ftupleBuildEmitter(fnCallback)
+    try:
+        fnEmit("stdout", "alpha")
+        fnEmit("stdout", "beta")
+    finally:
+        _fnStopLoop(loop, threadLoop)
+
+    assert [d["sLine"] for d in listEvents] == ["alpha", "beta"]

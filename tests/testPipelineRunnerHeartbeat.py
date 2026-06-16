@@ -153,7 +153,13 @@ def test_run_single_command_streams_output_progressively():
 
 
 def test_heartbeat_callback_exception_does_not_break_command(monkeypatch):
-    """A failing callback inside the heartbeat must not kill the command."""
+    """A failing callback inside the heartbeat must not kill the command.
+
+    Post-R2 the heartbeat loop logs and continues on every send
+    failure rather than returning on the first one, so an
+    intermittently flaky WebSocket no longer permanently disables
+    keep-alives for the rest of a multi-minute command.
+    """
     monkeypatch.setattr(
         pipelineRunner, "F_WS_HEARTBEAT_INTERVAL", 0.05,
     )
@@ -164,12 +170,15 @@ def test_heartbeat_callback_exception_does_not_break_command(monkeypatch):
             iBeatCallCount["i"] += 1
             raise RuntimeError("transient send failure")
 
-    mockDocker = _fMockDockerSlow(0.2, iExitCode=0, sOutput="done\n")
+    mockDocker = _fMockDockerSlow(0.3, iExitCode=0, sOutput="done\n")
 
     iResult, fCpu = asyncio.run(_ftRunSingleCommand(
         mockDocker, "cid", "cmd", "cmd", "/work", fnCallback,
     ))
     assert iResult == 0
-    # The first failed heartbeat ends the loop; the command still
-    # completes and returns normally.
-    assert iBeatCallCount["i"] >= 1
+    # Log-and-continue: multiple beats fire even though every one
+    # raises. (Pre-R2 the loop returned on the first failure, so
+    # only one was observed.)
+    assert iBeatCallCount["i"] >= 2, (
+        f"expected log-and-continue, got {iBeatCallCount['i']} beats"
+    )

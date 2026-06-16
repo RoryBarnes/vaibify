@@ -803,11 +803,14 @@ def test_fiCheckDependencies_missing():
 
 
 def test_fnWriteTestLog_writes_file():
+    """Test log appended via ``cat >>`` (resilient to disk-full mid-tar)."""
     mockDocker = _fMockDocker()
     _fnRunAsync(_fnWriteTestLog(
         mockDocker, "cid", 1, ["test passed"],
     ))
-    mockDocker.fnWriteFile.assert_called_once()
+    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+    assert "cat >>" in sCommand
+    assert "test passed" in sCommand
 
 
 # -----------------------------------------------------------------------

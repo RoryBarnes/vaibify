@@ -48,7 +48,13 @@ class TestFfBuildFlushingCallback:
 
     @pytest.mark.asyncio
     async def test_flushes_log_on_step_pass(self):
-        fnCallback, fnLogging, mockDocker, _ = self._fnBuildCallback()
+        fnCallback, fnLogging, mockDocker, listLogLines = (
+            self._fnBuildCallback()
+        )
+        # Append a buffered line so the flush path has something to
+        # write — the new fnWriteLogToContainer no-ops on an empty
+        # buffer to avoid an unnecessary docker exec round-trip.
+        listLogLines.append("pending line")
         dictEvent = {"sType": "stepPass", "iStepNumber": 0,
                      "iExitCode": 0}
         with patch(

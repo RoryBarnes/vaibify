@@ -71,7 +71,11 @@ from .pipelineLogger import (  # noqa: F401
     fnWriteLogToContainer,
     _fnEnsureLogsDirectory,
     fsGenerateLogFilename,
+    fnPruneOldLogs,
     I_MAX_LOG_LINES,
+    I_LOG_BYTE_BUDGET,
+    I_LOG_LINE_BYTE_CAP,
+    I_LOG_RETENTION_COUNT,
     _ffBuildFlushingCallback,
     _fnUpdatePipelineState,
     _fnSaveWorkflowStats,
@@ -284,19 +288,32 @@ def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
 
     ``__VAIBIFY_CPU__`` lines are absorbed into ``dictAccum["fCpu"]``;
     every other line is forwarded to the WebSocket via
-    ``run_coroutine_threadsafe`` so the worker thread can talk to the
-    event loop without blocking it. The worker waits on each callback
-    so back-pressure from the socket reaches the producer.
+    ``run_coroutine_threadsafe``. Any failure forwarding a chunk
+    (WS-closed, MemoryError on an enormous scientific line, asyncio
+    cancellation, generic back-pressure exception) is logged exactly
+    once; subsequent chunks become no-ops so the producer worker
+    finishes the docker exec instead of tearing the whole run down.
     """
+    dictEmitState = {"bDisabled": False}
+
     def fnEmitChunk(sStream, sLine):
         if sLine.startswith("__VAIBIFY_CPU__ "):
             dictAccum["fCpu"] = _fParseCpuTime(sLine)
             return
-        future = asyncio.run_coroutine_threadsafe(
-            fnStatusCallback({"sType": "output", "sLine": sLine}),
-            loopMain,
-        )
-        future.result()
+        if dictEmitState["bDisabled"]:
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                fnStatusCallback({"sType": "output", "sLine": sLine}),
+                loopMain,
+            )
+            future.result()
+        except BaseException as error:
+            dictEmitState["bDisabled"] = True
+            logging.getLogger("vaibify").warning(
+                "streaming chunk emitter disabled after error: %s",
+                error,
+            )
     return fnEmitChunk
 
 
@@ -327,15 +344,27 @@ async def _actxWebSocketHeartbeat(fnStatusCallback):
 
 
 async def _fnEmitHeartbeatLoop(fnStatusCallback):
-    """Loop emitting ``wsHeartbeat`` events until cancelled."""
+    """Loop emitting ``wsHeartbeat`` events until cancelled.
+
+    A failed send (closed socket, transient back-pressure exception)
+    is logged once and the loop continues. The previous behaviour was
+    to ``return`` on first exception, which permanently disabled
+    keep-alives for the rest of the command and let the
+    ``vaibify-do`` client's per-recv timer fire on long blocking
+    docker execs.
+    """
     while True:
         await asyncio.sleep(F_WS_HEARTBEAT_INTERVAL)
         try:
             await fnStatusCallback(
                 {"sType": "wsHeartbeat", "fEpoch": time.time()}
             )
-        except Exception:
-            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logging.getLogger("vaibify").warning(
+                "ws heartbeat emit failed (continuing): %s", error,
+            )
 
 
 def _fsWrapWithTime(sCommand):
@@ -761,17 +790,22 @@ def _ftInitializeRunState(
     connectionDocker, sContainerId, dictWorkflow,
     sAction, sLogPath,
 ):
-    """Build initial run state, persist it, and return (dictState, lockState)."""
+    """Build initial run state and start the single-writer thread.
+
+    Returns ``(dictState, stateWriter)``. The writer owns the only
+    docker I/O for ``pipeline_state.json``; producers (heartbeat,
+    flushing callback, finalize) enqueue updates so docker hiccups
+    never starve the heartbeat thread.
+    """
     iStepCount = len(dictWorkflow.get("listSteps", []))
     dictState = pipelineState.fdictBuildInitialState(
         sAction, sLogPath, iStepCount, iRunnerPid=os.getpid()
     )
-    lockState = threading.Lock()
-    with lockState:
-        pipelineState.fnWriteState(
-            connectionDocker, sContainerId, dictState
-        )
-    return dictState, lockState
+    stateWriter = pipelineState.StateWriter(
+        connectionDocker, sContainerId, dictState,
+    )
+    stateWriter.fnStart()
+    return dictState, stateWriter
 
 
 async def _fiRunStepsAndLog(
@@ -782,20 +816,21 @@ async def _fiRunStepsAndLog(
     setRunStepIndices=None,
 ):
     """Execute steps, write log, and emit final status."""
-    dictState, lockState = _ftInitializeRunState(
+    dictState, stateWriter = _ftInitializeRunState(
         connectionDocker, sContainerId, dictWorkflow,
         sAction, sLogPath,
     )
     eventStopHeartbeat = threading.Event()
     threadHeartbeat = _fnStartHeartbeatThread(
         connectionDocker, sContainerId, dictState,
-        lockState, eventStopHeartbeat,
+        stateWriter, eventStopHeartbeat,
     )
     try:
         await fnLogging({"sType": "started", "sCommand": sAction})
         fnLoggingWithFlush = _ffBuildFlushingCallback(
             fnLogging, connectionDocker, sContainerId,
-            dictState, sLogPath, listLogLines, lockState,
+            dictState, sLogPath, listLogLines,
+            stateWriter=stateWriter,
         )
         iResult = await _fiRunStepList(
             connectionDocker, sContainerId,
@@ -806,22 +841,33 @@ async def _fiRunStepsAndLog(
         await _fnFinalizeRun(
             connectionDocker, sContainerId, dictState, iResult,
             sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
-            fnStatusCallback, lockState,
+            fnStatusCallback, stateWriter=stateWriter,
         )
     finally:
+        # Ordering: stop heartbeat producer first so it cannot enqueue
+        # after the writer is told to drain; then drain + stop writer.
+        # ``join()`` carries no timeout — the writer drains the queue
+        # before returning, so the late-heartbeat-overwrites-completed
+        # race that motivated HIGH #12 cannot fire.
         eventStopHeartbeat.set()
-        threadHeartbeat.join(timeout=2)
+        threadHeartbeat.join()
+        stateWriter.fnStop()
     return iResult
 
 
 def _fnStartHeartbeatThread(
-    connectionDocker, sContainerId, dictState, lockState, eventStop,
+    connectionDocker, sContainerId, dictState, lockOrWriter, eventStop,
 ):
-    """Spawn a daemon thread that refreshes ``sLastHeartbeat`` periodically."""
+    """Spawn a daemon thread that refreshes ``sLastHeartbeat`` periodically.
+
+    ``lockOrWriter`` may be either a ``pipelineState.StateWriter``
+    (preferred — heartbeats enqueue and never wait on docker) or a
+    legacy ``threading.Lock`` (older callers that still write inline).
+    """
     threadHeartbeat = threading.Thread(
         target=_fnRunHeartbeatLoop,
         args=(connectionDocker, sContainerId, dictState,
-              lockState, eventStop),
+              lockOrWriter, eventStop),
         name="vaibify-pipeline-heartbeat",
         daemon=True,
     )
@@ -830,20 +876,37 @@ def _fnStartHeartbeatThread(
 
 
 def _fnRunHeartbeatLoop(
-    connectionDocker, sContainerId, dictState, lockState, eventStop,
+    connectionDocker, sContainerId, dictState, lockOrWriter, eventStop,
 ):
-    """Tick ``sLastHeartbeat`` until ``eventStop`` is set."""
+    """Tick ``sLastHeartbeat`` until ``eventStop`` is set.
+
+    ``lockOrWriter`` is a ``pipelineState.StateWriter`` (preferred) or
+    a ``threading.Lock`` (legacy). The writer path never holds a lock
+    across docker I/O — that is the architectural fix for CRITICAL #2.
+    """
     fInterval = pipelineState.I_HEARTBEAT_INTERVAL_SECONDS
     while not eventStop.wait(fInterval):
         try:
-            with lockState:
-                pipelineState.fnUpdateState(
-                    connectionDocker, sContainerId, dictState,
-                    pipelineState.fdictBuildHeartbeatUpdate(),
-                )
+            _fnPostHeartbeat(
+                connectionDocker, sContainerId, dictState, lockOrWriter,
+            )
         except Exception as error:
             logging.getLogger("vaibify").warning(
                 "pipeline heartbeat write failed: %s", error)
+
+
+def _fnPostHeartbeat(
+    connectionDocker, sContainerId, dictState, lockOrWriter,
+):
+    """Dispatch one heartbeat update via writer queue or legacy lock."""
+    dictBeat = pipelineState.fdictBuildHeartbeatUpdate()
+    if isinstance(lockOrWriter, pipelineState.StateWriter):
+        lockOrWriter.fnEnqueueUpdate(dictBeat)
+        return
+    with lockOrWriter:
+        pipelineState.fnUpdateState(
+            connectionDocker, sContainerId, dictState, dictBeat,
+        )
 
 
 async def _ftPrepareLogAndVariables(
@@ -851,10 +914,12 @@ async def _ftPrepareLogAndVariables(
     fnStatusCallback,
 ):
     """Set up log path, logging callback, variables, and clear output flags."""
+    from .pipelineLogger import fnPruneOldLogs
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
     sLogsDir = await _fnEnsureLogsDirectory(
         connectionDocker, sContainerId
     )
+    await fnPruneOldLogs(connectionDocker, sContainerId, sLogsDir)
     sLogFilename = fsGenerateLogFilename(sWorkflowName)
     sLogPath = posixpath.join(sLogsDir, sLogFilename)
     listLogLines = []

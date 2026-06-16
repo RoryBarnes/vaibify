@@ -2,9 +2,13 @@
 
 __all__ = [
     "I_MAX_LOG_LINES",
+    "I_LOG_BYTE_BUDGET",
+    "I_LOG_LINE_BYTE_CAP",
+    "I_LOG_RETENTION_COUNT",
     "fsGenerateLogFilename",
     "ffBuildLoggingCallback",
     "fnWriteLogToContainer",
+    "fnPruneOldLogs",
 ]
 
 import asyncio
@@ -12,7 +16,6 @@ import json
 import logging
 import posixpath
 import re
-import threading
 from datetime import datetime, timezone
 
 from . import pipelineState
@@ -21,6 +24,18 @@ from .pipelineUtils import fsShellQuote
 
 
 I_MAX_LOG_LINES = 10000
+# Cap each appended log line at 8 KB to keep one runaway scientific
+# print (e.g. a multi-megabyte numpy array repr) from blowing past the
+# in-memory budget or the append-mode exec line-length safety margin.
+I_LOG_LINE_BYTE_CAP = 8 * 1024
+# Cap the in-memory ring buffer at ~4 MB so a long-running pipeline
+# does not exhaust the runner heap; eviction keeps the most recent
+# lines so the final log file is contiguous from the tail.
+I_LOG_BYTE_BUDGET = 4 * 1024 * 1024
+# Keep this many historical log files in ``.vaibify/logs/`` and prune
+# the rest on each fresh run. Older logs are interesting only for
+# postmortem; they should never compete with the active run for disk.
+I_LOG_RETENTION_COUNT = 20
 
 
 def fsGenerateLogFilename(sWorkflowName):
@@ -32,14 +47,50 @@ def fsGenerateLogFilename(sWorkflowName):
 
 def ffBuildLoggingCallback(fnOriginalCallback, listLogLines):
     """Return a callback that logs output lines and forwards events."""
+    dictByteAccum = {"iBytes": _fiBytesInLines(listLogLines)}
+
     async def fnLoggingCallback(dictEvent):
         await fnOriginalCallback(dictEvent)
         sLine = _fsExtractLogLine(dictEvent)
         if sLine is not None:
-            if len(listLogLines) >= I_MAX_LOG_LINES:
-                del listLogLines[0]
-            listLogLines.append(sLine)
+            sLineCapped = _fsCapLineBytes(sLine, I_LOG_LINE_BYTE_CAP)
+            _fnAppendLogLineWithBudget(
+                listLogLines, sLineCapped, dictByteAccum,
+            )
     return fnLoggingCallback
+
+
+def _fiBytesInLines(listLogLines):
+    """Return the total UTF-8 byte size of the in-memory log buffer."""
+    return sum(_fiLineByteSize(s) for s in listLogLines)
+
+
+def _fiLineByteSize(sLine):
+    """Return the UTF-8 byte size of a line, coercing non-strings via str()."""
+    if not isinstance(sLine, str):
+        sLine = str(sLine)
+    return len(sLine.encode("utf-8", errors="replace"))
+
+
+def _fsCapLineBytes(sLine, iMaxBytes):
+    """Return ``sLine`` truncated to ``iMaxBytes`` UTF-8 bytes."""
+    baLine = sLine.encode("utf-8", errors="replace")
+    if len(baLine) <= iMaxBytes:
+        return sLine
+    return baLine[:iMaxBytes].decode("utf-8", errors="replace") + " ...[truncated]"
+
+
+def _fnAppendLogLineWithBudget(listLogLines, sLine, dictByteAccum):
+    """Append ``sLine`` and evict the head until both caps are respected."""
+    iLineBytes = _fiLineByteSize(sLine)
+    listLogLines.append(sLine)
+    dictByteAccum["iBytes"] += iLineBytes
+    while listLogLines and (
+        len(listLogLines) > I_MAX_LOG_LINES
+        or dictByteAccum["iBytes"] > I_LOG_BYTE_BUDGET
+    ):
+        sEvicted = listLogLines.pop(0)
+        dictByteAccum["iBytes"] -= _fiLineByteSize(sEvicted)
 
 
 def _fsExtractLogLine(dictEvent):
@@ -55,11 +106,58 @@ def _fsExtractLogLine(dictEvent):
 async def fnWriteLogToContainer(
     connectionDocker, sContainerId, sLogPath, listLogLines,
 ):
-    """Write accumulated log lines to a file in the container."""
+    """Append accumulated log lines to a file in the container.
+
+    Uses ``cat >>`` rather than ``put_archive`` so a transient disk-full
+    or tar-encoding error does not truncate the file — the previous
+    bytes survive even when the next append fails. Each line is already
+    capped at ``I_LOG_LINE_BYTE_CAP`` by the logging callback, so the
+    here-doc cannot collide with shell argv length limits.
+    """
+    if not listLogLines:
+        return
     sContent = "\n".join(listLogLines) + "\n"
     await asyncio.to_thread(
-        connectionDocker.fnWriteFile,
-        sContainerId, sLogPath, sContent.encode("utf-8"),
+        _fnAppendLogContent,
+        connectionDocker, sContainerId, sLogPath, sContent,
+    )
+    listLogLines.clear()
+
+
+def _fnAppendLogContent(
+    connectionDocker, sContainerId, sLogPath, sContent,
+):
+    """Append ``sContent`` to ``sLogPath`` inside the container via cat >>."""
+    sQuotedPath = fsShellQuote(sLogPath)
+    sHereTag = "VAIBIFY_LOG_EOF"
+    sCommand = (
+        f"cat >> {sQuotedPath} <<'{sHereTag}'\n"
+        f"{sContent}{sHereTag}\n"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    if iExitCode != 0:
+        logging.getLogger("vaibify").warning(
+            "log append failed (exit %s): %s", iExitCode, sOutput[:200],
+        )
+
+
+async def fnPruneOldLogs(
+    connectionDocker, sContainerId, sLogsDir,
+    iRetentionCount=I_LOG_RETENTION_COUNT,
+):
+    """Delete all but the ``iRetentionCount`` most recent log files."""
+    sQuoted = fsShellQuote(sLogsDir)
+    iKeepPlusOne = iRetentionCount + 1
+    sCommand = (
+        f"ls -1t {sQuoted}/*.log 2>/dev/null | "
+        f"tail -n +{iKeepPlusOne} | "
+        f"xargs -r rm -f"
+    )
+    await asyncio.to_thread(
+        connectionDocker.ftResultExecuteCommand,
+        sContainerId, sCommand,
     )
 
 
@@ -79,20 +177,22 @@ async def _fnEnsureLogsDirectory(connectionDocker, sContainerId):
 def _ffBuildFlushingCallback(
     fnLogging, connectionDocker, sContainerId,
     dictState, sLogPath, listLogLines, lockState=None,
+    stateWriter=None,
 ):
     """Return a callback that logs events and flushes on step results.
 
-    ``lockState`` is a ``threading.Lock`` shared with the runner's
-    heartbeat thread; pass ``None`` only from legacy callers that do
-    not run a heartbeat (a no-op lock is substituted).
+    ``stateWriter`` is the per-run ``pipelineState.StateWriter`` that
+    owns persistence; producers enqueue updates rather than calling
+    ``fnUpdateState`` directly so the heartbeat thread never sits
+    behind a docker exec. Legacy callers (standalone director, older
+    tests) may pass only ``lockState`` for the in-line write path; in
+    that case docker I/O still happens inline as before.
     """
-    if lockState is None:
-        lockState = threading.Lock()
     async def fnLoggingWithFlush(dictEvent):
         await fnLogging(dictEvent)
         _fnUpdatePipelineState(
             connectionDocker, sContainerId, dictState, dictEvent,
-            lockState,
+            lockState, stateWriter=stateWriter,
         )
         sEventType = dictEvent.get("sType", "")
         if sEventType in ("stepPass", "stepFail"):
@@ -126,16 +226,51 @@ def _fnApplyStepResultEvent(
 
 def _fnUpdatePipelineState(
     connectionDocker, sContainerId, dictState, dictEvent, lockState=None,
+    stateWriter=None,
 ):
-    """Update pipeline state based on a step event (lock-guarded).
+    """Update pipeline state based on a step event.
 
-    ``lockState`` is the threading.Lock shared with the runner's
-    heartbeat thread. Callers without a heartbeat (legacy tests, the
-    standalone director) may pass ``None`` and a fresh per-call lock
-    is substituted.
+    With ``stateWriter`` (preferred): producer holds the writer's
+    in-memory lock briefly, then a dedicated thread does the docker
+    I/O — no producer ever waits on docker. With only ``lockState``
+    (legacy / standalone director): the legacy in-line write path is
+    used, where the lock guards both the memory update and the two
+    docker calls inside ``fnUpdateState``.
     """
+    if stateWriter is not None:
+        _fnDispatchEventToWriter(stateWriter, dictEvent)
+        return
+    import threading as _threading
     if lockState is None:
-        lockState = threading.Lock()
+        lockState = _threading.Lock()
+    _fnDispatchEventInline(
+        connectionDocker, sContainerId, dictState, dictEvent, lockState,
+    )
+
+
+def _fnDispatchEventToWriter(stateWriter, dictEvent):
+    """Route a callback event through the single-writer queue."""
+    sEventType = dictEvent.get("sType", "")
+    if sEventType == "output":
+        stateWriter.fnEnqueueOutputLine(dictEvent.get("sLine", ""))
+    elif sEventType == "stepStarted":
+        stateWriter.fnEnqueueUpdate(
+            pipelineState.fdictBuildStepStarted(dictEvent["iStepNumber"])
+        )
+    elif sEventType in _DICT_STEP_RESULT_STATUS:
+        stateWriter.fnEnqueueStepResult(
+            pipelineState.fdictBuildStepResult(
+                dictEvent["iStepNumber"],
+                _DICT_STEP_RESULT_STATUS[sEventType],
+                dictEvent.get("iExitCode", 0),
+            )
+        )
+
+
+def _fnDispatchEventInline(
+    connectionDocker, sContainerId, dictState, dictEvent, lockState,
+):
+    """Legacy in-line write path used when no StateWriter is supplied."""
     sEventType = dictEvent.get("sType", "")
     if sEventType == "output":
         with lockState:
@@ -172,16 +307,20 @@ def _fnSaveWorkflowStats(
 async def _fnFinalizeRun(
     connectionDocker, sContainerId, dictState, iResult,
     sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
-    fnStatusCallback, lockState=None,
+    fnStatusCallback, lockState=None, stateWriter=None,
 ):
     """Write final state, log, and emit completion event."""
-    if lockState is None:
-        lockState = threading.Lock()
-    with lockState:
-        pipelineState.fnUpdateState(
-            connectionDocker, sContainerId, dictState,
-            pipelineState.fdictBuildCompletedState(iResult),
-        )
+    dictCompleted = pipelineState.fdictBuildCompletedState(iResult)
+    if stateWriter is not None:
+        stateWriter.fnEnqueueUpdate(dictCompleted)
+    else:
+        import threading as _threading
+        if lockState is None:
+            lockState = _threading.Lock()
+        with lockState:
+            pipelineState.fnUpdateState(
+                connectionDocker, sContainerId, dictState, dictCompleted,
+            )
     await fnWriteLogToContainer(
         connectionDocker, sContainerId, sLogPath, listLogLines
     )

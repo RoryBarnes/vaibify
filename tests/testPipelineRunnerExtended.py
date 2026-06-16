@@ -289,15 +289,22 @@ def test_fnEmitCommandHeader_resolved_differs():
 
 
 def test_fnWriteLogToContainer_calls_write():
+    """Appends via ``cat >>`` so a tar-encoding hiccup cannot truncate the log."""
     mockConnection = MagicMock()
+    mockConnection.ftResultExecuteCommand.return_value = (0, "")
     listLines = ["line1", "line2"]
     _fnRunAsync(fnWriteLogToContainer(
         mockConnection, "cid", "/log.txt", listLines,
     ))
-    mockConnection.fnWriteFile.assert_called_once()
-    baData = mockConnection.fnWriteFile.call_args[0][2]
-    assert b"line1" in baData
-    assert b"line2" in baData
+    mockConnection.ftResultExecuteCommand.assert_called_once()
+    sCommand = mockConnection.ftResultExecuteCommand.call_args[0][1]
+    assert "cat >>" in sCommand
+    assert "/log.txt" in sCommand
+    assert "line1" in sCommand
+    assert "line2" in sCommand
+    # The buffer is cleared on successful append so the next flush is
+    # incremental and the in-memory budget cannot grow unbounded.
+    assert listLines == []
 
 
 # -----------------------------------------------------------------------
