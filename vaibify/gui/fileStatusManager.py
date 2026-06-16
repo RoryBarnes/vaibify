@@ -1539,6 +1539,36 @@ def fnInvalidateParentCacheForContainer(dictCtx, sContainerId):
     dictAll.pop(sContainerId, None)
 
 
+def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
+    """Drop and return cache keys that aren't in setKeysToKeep."""
+    listEvicted = [
+        sKey for sKey in list(dictAll.keys())
+        if sKey not in setKeysToKeep
+    ]
+    for sKey in listEvicted:
+        dictAll.pop(sKey, None)
+    return listEvicted
+
+
+def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
+    """Evict cache entries for containers absent from the running list.
+
+    Contract for audit HIGH #13: ``dictParentMtimeCache`` was keyed by
+    container id and never evicted. The container-lifecycle agent that
+    owns ``flistGetRunningContainers`` must call this helper after each
+    running-list refresh, passing the authoritative list. Returns the
+    evicted container ids so the caller can log the sweep.
+    """
+    if dictCtx is None:
+        return []
+    dictAll = dictCtx.get("dictParentMtimeCache")
+    if not dictAll:
+        return []
+    return _flistEvictAbsentKeys(
+        dictAll, set(listRunningContainers or []),
+    )
+
+
 def _fdictGetModTimes(
     connectionDocker, sContainerId, listPaths,
     dictCtx=None, bPipelineRunning=False,

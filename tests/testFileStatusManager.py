@@ -8,6 +8,7 @@ from vaibify.gui.fileStatusManager import (
     _fdictGetModTimes,
     _fdictStatViaPathfile,
     fnInvalidateParentCacheForContainer,
+    fnSweepParentMtimeCache,
 )
 
 
@@ -232,3 +233,50 @@ def testCacheBypassedWhenPipelineRunning():
         sBatchText = tCall[0][2].decode("utf-8")
         for sChild in listChildren:
             assert sChild in sBatchText
+
+
+# ---------------------------------------------------------------
+# audit HIGH #13: dictParentMtimeCache eviction sweep
+# ---------------------------------------------------------------
+
+
+def test_sweep_evicts_absent_containers():
+    """Containers not in the running list have their cache entries dropped."""
+    dictCtx = {
+        "dictParentMtimeCache": {
+            "alive": {"dictParentMtime": {"/a": "1"}, "dictChildMtimes": {}},
+            "dead":  {"dictParentMtime": {"/b": "1"}, "dictChildMtimes": {}},
+            "gone":  {"dictParentMtime": {"/c": "1"}, "dictChildMtimes": {}},
+        }
+    }
+    listEvicted = fnSweepParentMtimeCache(dictCtx, ["alive"])
+    assert set(listEvicted) == {"dead", "gone"}
+    assert set(dictCtx["dictParentMtimeCache"].keys()) == {"alive"}
+
+
+def test_sweep_preserves_all_when_all_running():
+    dictCtx = {
+        "dictParentMtimeCache": {
+            "a": {"dictParentMtime": {}, "dictChildMtimes": {}},
+            "b": {"dictParentMtime": {}, "dictChildMtimes": {}},
+        }
+    }
+    listEvicted = fnSweepParentMtimeCache(dictCtx, ["a", "b"])
+    assert listEvicted == []
+    assert set(dictCtx["dictParentMtimeCache"].keys()) == {"a", "b"}
+
+
+def test_sweep_no_cache_returns_empty_safely():
+    assert fnSweepParentMtimeCache({}, ["any"]) == []
+    assert fnSweepParentMtimeCache(None, ["any"]) == []
+
+
+def test_sweep_handles_none_running_list():
+    dictCtx = {
+        "dictParentMtimeCache": {
+            "a": {"dictParentMtime": {}, "dictChildMtimes": {}},
+        }
+    }
+    listEvicted = fnSweepParentMtimeCache(dictCtx, None)
+    assert listEvicted == ["a"]
+    assert dictCtx["dictParentMtimeCache"] == {}
