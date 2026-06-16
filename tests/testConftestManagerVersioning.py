@@ -526,3 +526,60 @@ def test_dedup_cache_does_not_set_when_write_fails():
         "Failed write must leave the dedup cache empty so the next "
         "refresh retries."
     )
+
+
+# ---------------------------------------------------------------
+# Bounded FIFO de-dup caches (lifecycle hygiene)
+# ---------------------------------------------------------------
+
+
+def test_refresh_cache_bounded_evicts_oldest_when_full():
+    """The OrderedDict-backed cache caps growth at the configured limit."""
+    iCap = conftestManager.I_REFRESH_CACHE_MAX_ENTRIES
+    cacheOrdered = conftestManager._SET_REFRESHED_KEYS
+    cacheOrdered.clear()
+    for iIndex in range(iCap + 50):
+        conftestManager._fnRememberRefreshKey(
+            cacheOrdered, ("cid", "repo", f"v{iIndex}"),
+        )
+    assert len(cacheOrdered) == iCap
+    # The 50 oldest must have been evicted; the most recent entry stays.
+    assert ("cid", "repo", "v0") not in cacheOrdered
+    assert ("cid", "repo", f"v{iCap + 49}") in cacheOrdered
+
+
+def test_refresh_cache_recently_seen_still_resolves():
+    """A key seen recently registers as `in` the cache (hit semantics intact)."""
+    cacheOrdered = conftestManager._SET_REFRESHED_KEYS
+    cacheOrdered.clear()
+    conftestManager._fnRememberRefreshKey(
+        cacheOrdered, ("cid", "repo", "v-hot"),
+    )
+    assert ("cid", "repo", "v-hot") in cacheOrdered
+    # Re-touching does not duplicate the entry; size stays at one.
+    conftestManager._fnRememberRefreshKey(
+        cacheOrdered, ("cid", "repo", "v-hot"),
+    )
+    assert len(cacheOrdered) == 1
+
+
+def test_refresh_cache_retouching_promotes_to_mru():
+    """Re-touching an old key moves it to most-recent so a fill won't evict it."""
+    iCap = conftestManager.I_REFRESH_CACHE_MAX_ENTRIES
+    cacheOrdered = conftestManager._SET_REFRESHED_KEYS
+    cacheOrdered.clear()
+    conftestManager._fnRememberRefreshKey(
+        cacheOrdered, ("cid", "repo", "v-old"),
+    )
+    for iIndex in range(iCap - 1):
+        conftestManager._fnRememberRefreshKey(
+            cacheOrdered, ("cid", "repo", f"v{iIndex}"),
+        )
+    # Touch v-old before overflowing.
+    conftestManager._fnRememberRefreshKey(
+        cacheOrdered, ("cid", "repo", "v-old"),
+    )
+    conftestManager._fnRememberRefreshKey(
+        cacheOrdered, ("cid", "repo", "v-overflow"),
+    )
+    assert ("cid", "repo", "v-old") in cacheOrdered

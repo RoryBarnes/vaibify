@@ -18,9 +18,18 @@ import json
 import logging
 import posixpath
 import re
+from collections import OrderedDict
 
 
 logger = logging.getLogger("vaibify")
+
+
+# Upper bound on entries kept in the per-process de-dup caches below.
+# Each entry is a small tuple of strings, so 256 caps memory at well
+# under a kilobyte while still covering the realistic working set of
+# (container, project-repo, version/slug) keys a single host process
+# touches between restarts.
+I_REFRESH_CACHE_MAX_ENTRIES = 256
 
 
 # Bump this when the generated conftest source changes shape so installed
@@ -39,17 +48,38 @@ _REGEX_CONFTEST_VERSION = re.compile(
 # once, then the first poll runs it again. Both calls are idempotent
 # from the container's perspective, but each was paying ~5–15 s on a
 # 100-step workflow. These process-local caches make the second call a
-# no-op so a fresh switch pays the refresh cost once, not twice. Caches
-# invalidate on process restart (which is when ``S_CONFTEST_VERSION``
-# bumps land via a vaibify reload).
-_SET_REFRESHED_KEYS = set()
-_SET_MIGRATED_FLAT_KEYS = set()
+# no-op so a fresh switch pays the refresh cost once, not twice.
+#
+# Backed by ``OrderedDict`` used as an ordered set with a hard FIFO
+# cap (``I_REFRESH_CACHE_MAX_ENTRIES``). A plain ``set`` grew without
+# bound across multi-week host uptimes — every new
+# (container, project-repo, version/slug) triple landed and never left.
+# Caches invalidate on process restart (which is when
+# ``S_CONFTEST_VERSION`` bumps land via a vaibify reload).
+_SET_REFRESHED_KEYS = OrderedDict()
+_SET_MIGRATED_FLAT_KEYS = OrderedDict()
 
 
 def fnClearRefreshCaches():
     """Clear the per-process refresh + migration caches (test helper)."""
     _SET_REFRESHED_KEYS.clear()
     _SET_MIGRATED_FLAT_KEYS.clear()
+
+
+def _fnRememberRefreshKey(orderedCache, tKey):
+    """Mark ``tKey`` as recently seen, evicting the oldest if over cap.
+
+    ``OrderedDict`` preserves insertion order; ``move_to_end`` on a
+    re-add keeps the most recently touched key at the tail, so
+    ``popitem(last=False)`` evicts the actually-oldest entry instead
+    of one that has been recently re-touched.
+    """
+    if tKey in orderedCache:
+        orderedCache.move_to_end(tKey)
+        return
+    orderedCache[tKey] = None
+    while len(orderedCache) > I_REFRESH_CACHE_MAX_ENTRIES:
+        orderedCache.popitem(last=False)
 
 
 def fsConftestPath(sStepDirectory):
@@ -289,7 +319,7 @@ def fnEnsureConftestsCurrent(
     )
     listStale = _flistStalePaths(listConftestPaths, dictInstalled)
     if not listStale:
-        _SET_REFRESHED_KEYS.add(tKey)
+        _fnRememberRefreshKey(_SET_REFRESHED_KEYS, tKey)
         return
     bWritten = fnWriteConftestMarkersBatch(
         connectionDocker, sContainerId, listStale,
@@ -297,7 +327,7 @@ def fnEnsureConftestsCurrent(
     )
     _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
     if bWritten:
-        _SET_REFRESHED_KEYS.add(tKey)
+        _fnRememberRefreshKey(_SET_REFRESHED_KEYS, tKey)
 
 
 def _flistConftestPathsForSteps(listStepDirs, sProjectRepoPath):
@@ -384,7 +414,7 @@ def fnMigrateFlatMarkers(
     )
     _fnLogMigrationOutcome(iExit, sOutput, sWorkflowSlug)
     if iExit == 0:
-        _SET_MIGRATED_FLAT_KEYS.add(tKey)
+        _fnRememberRefreshKey(_SET_MIGRATED_FLAT_KEYS, tKey)
 
 
 def _fsBuildFlatMarkerMigrationCommand(sProjectRepoPath, sWorkflowSlug):

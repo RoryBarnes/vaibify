@@ -129,3 +129,22 @@ def test_HostIncidentHandler_ignores_untagged_record():
     # No buckets should exist.
     for sCid in ("", "any", "untagged"):
         assert hostIncidents.flistIncidentsForContainer(sCid) == []
+
+
+def test_fnEvictHostIncidentsForContainer_drops_bucket():
+    """Sweep-driven eviction removes the named container's deque."""
+    hostIncidents.fnRecordHostIncident("doomed", {"sMessage": "gone"})
+    hostIncidents.fnRecordHostIncident("keeper", {"sMessage": "stay"})
+    hostIncidents.fnEvictHostIncidentsForContainer("doomed")
+    assert hostIncidents.flistIncidentsForContainer("doomed") == []
+    assert (
+        hostIncidents.flistIncidentsForContainer("keeper")[0]["sMessage"]
+        == "stay"
+    )
+
+
+def test_fnEvictHostIncidentsForContainer_unknown_id_is_noop():
+    """Evicting an absent bucket does not raise or leak state."""
+    hostIncidents.fnEvictHostIncidentsForContainer("never-existed")
+    hostIncidents.fnEvictHostIncidentsForContainer("")
+    assert hostIncidents.flistIncidentsForContainer("never-existed") == []

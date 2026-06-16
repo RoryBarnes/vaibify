@@ -27,6 +27,7 @@ __all__ = [
     "HostIncidentHandler",
     "fdictLatestIncidentForContainer",
     "flistIncidentsForContainer",
+    "fnEvictHostIncidentsForContainer",
     "fnRecordHostIncident",
     "fnResetHostIncidents",
 ]
@@ -49,6 +50,19 @@ def fnResetHostIncidents():
     """Clear all recorded incidents (test-only helper)."""
     with _lockHostIncidents:
         _dictHostIncidents.clear()
+
+
+def fnEvictHostIncidentsForContainer(sContainerId):
+    """Drop the per-container deque for ``sContainerId``.
+
+    Called by the periodic cache sweep so the outer dict does not grow
+    one bucket per container forever across multi-week host uptimes.
+    Safe to call when no bucket exists (no-op).
+    """
+    if not sContainerId:
+        return
+    with _lockHostIncidents:
+        _dictHostIncidents.pop(sContainerId, None)
 
 
 def _fdequeBucketForContainer(sContainerId):
