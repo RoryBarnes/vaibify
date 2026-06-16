@@ -233,3 +233,115 @@ def test_fsSha256ForFile_sha1_and_sha256_coexist(tmp_path):
     dictEntry = dictCache["data.csv"]
     assert dictEntry.get("sBlobSha") == sSha1
     assert dictEntry.get("sSha256") == sSha256
+
+
+# ----------------------------------------------------------------------
+# Container-side sha cache — persists across server restarts so a
+# multi-GB output workflow does not re-hash every file on every poll
+# after the GUI process is restarted.
+# ----------------------------------------------------------------------
+
+
+class _FakeFileDocker:
+    """In-memory fake docker connection storing files by container path."""
+
+    def __init__(self, dictPreloaded=None):
+        self.dictFiles = dict(dictPreloaded or {})
+
+    def fbaFetchFile(self, sContainerId, sPath):
+        sKey = (sContainerId, sPath)
+        if sKey not in self.dictFiles:
+            raise FileNotFoundError(sPath)
+        return self.dictFiles[sKey]
+
+    def fnWriteFile(self, sContainerId, sPath, baContent):
+        self.dictFiles[(sContainerId, sPath)] = baContent
+
+
+def _fsContainerCacheKey():
+    """Return the container-absolute path where the cache lives."""
+    return "/workspace/myrepo/" + mtimeCache.S_CONTAINER_SHA_CACHE_RELATIVE_PATH
+
+
+def test_fdictLoadContainerCache_returns_empty_when_absent():
+    connectionFake = _FakeFileDocker()
+    dictResult = mtimeCache.fdictLoadContainerCache(
+        connectionFake, "cid", "/workspace/myrepo",
+    )
+    assert dictResult == {}
+
+
+def test_fdictLoadContainerCache_round_trip_via_save():
+    connectionFake = _FakeFileDocker()
+    dictIn = {"out/a.dat": {"iMtime": 1700, "sSha256": "abc123"}}
+    mtimeCache.fnSaveContainerCache(
+        connectionFake, "cid", "/workspace/myrepo", dictIn,
+    )
+    dictOut = mtimeCache.fdictLoadContainerCache(
+        connectionFake, "cid", "/workspace/myrepo",
+    )
+    assert dictOut == dictIn
+
+
+def test_fdictLoadContainerCache_returns_empty_for_corrupt_json():
+    connectionFake = _FakeFileDocker({
+        ("cid", _fsContainerCacheKey()): b"{not json",
+    })
+    dictResult = mtimeCache.fdictLoadContainerCache(
+        connectionFake, "cid", "/workspace/myrepo",
+    )
+    assert dictResult == {}
+
+
+def test_fdictLoadContainerCache_returns_empty_for_non_dict_payload():
+    connectionFake = _FakeFileDocker({
+        ("cid", _fsContainerCacheKey()): b"[1,2,3]",
+    })
+    dictResult = mtimeCache.fdictLoadContainerCache(
+        connectionFake, "cid", "/workspace/myrepo",
+    )
+    assert dictResult == {}
+
+
+def test_fdictLoadContainerCache_empty_when_repo_path_missing():
+    connectionFake = _FakeFileDocker()
+    assert mtimeCache.fdictLoadContainerCache(
+        connectionFake, "cid", "",
+    ) == {}
+
+
+def test_fnSaveContainerCache_swallows_docker_error(caplog):
+    import logging as _logging
+
+    class _RaisingDocker:
+        def fnWriteFile(self, *args, **kwargs):
+            raise RuntimeError("docker hiccup")
+
+    with caplog.at_level(_logging.INFO, logger="vaibify"):
+        # Must not raise even when the underlying docker call fails.
+        mtimeCache.fnSaveContainerCache(
+            _RaisingDocker(), "cid", "/workspace/myrepo",
+            {"a": {"iMtime": 1, "sSha256": "b"}},
+        )
+    assert any(
+        "container sha cache save failed" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_container_cache_survives_simulated_restart():
+    """The cache survives a recreated dictCtx by reloading from container."""
+    connectionFake = _FakeFileDocker()
+    dictOriginal = {
+        "out/big.dat": {"iMtime": 1700000000, "sSha256": "f" * 64},
+    }
+    # First "session": write the cache.
+    mtimeCache.fnSaveContainerCache(
+        connectionFake, "cid", "/workspace/myrepo", dictOriginal,
+    )
+    # Second "session": fresh dictCtx, same container — the load helper
+    # rebuilds the cache from the container so no rehash is required.
+    dictReloaded = mtimeCache.fdictLoadContainerCache(
+        connectionFake, "cid", "/workspace/myrepo",
+    )
+    assert dictReloaded == dictOriginal

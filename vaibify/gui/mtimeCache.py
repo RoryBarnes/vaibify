@@ -13,19 +13,28 @@ a file matches the cached mtime we trust the cached digest. When the
 mtime changed we recompute and update the cache in place.
 
 Paths in and out are repo-root-relative posix strings; the host
-workspace root is supplied by the caller. Container callers do not
-use this module (they run off in-container mtimes directly).
+workspace root is supplied by the caller. The host-side cache is the
+primary path for workflows whose project repo lives on the host; the
+container-side mirror (``fdictLoadContainerCache`` /
+``fnSaveContainerCache``) is the equivalent for project repos that
+live inside the container, where the host filesystem cannot reach
+the file directly without an additional bind mount.
 """
 
 import json
+import logging
 import os
+import posixpath
 
 from vaibify.reproducibility.overleafMirror import fsComputeBlobSha
 
 __all__ = [
     "S_MTIME_CACHE_RELATIVE_PATH",
+    "S_CONTAINER_SHA_CACHE_RELATIVE_PATH",
     "fdictLoadCache",
     "fnSaveCache",
+    "fdictLoadContainerCache",
+    "fnSaveContainerCache",
     "fsBlobShaForFile",
     "fbFileMatchesDigest",
     "fsSha256ForFile",
@@ -33,6 +42,11 @@ __all__ = [
 
 
 S_MTIME_CACHE_RELATIVE_PATH = ".vaibify/mtime_cache.json"
+S_CONTAINER_SHA_CACHE_RELATIVE_PATH = (
+    ".vaibify/container_mtime_cache.json"
+)
+
+_logger = logging.getLogger("vaibify")
 
 
 def _fsCachePath(sWorkspaceRoot):
@@ -71,6 +85,67 @@ def fnSaveCache(sWorkspaceRoot, dictCache):
     with open(sTempPath, "w", encoding="utf-8") as handle:
         json.dump(dictCache, handle, indent=2, sort_keys=True)
     os.replace(sTempPath, sPath)
+
+
+def _fsContainerCachePath(sProjectRepoPath):
+    """Return the container-side cache path for a project repo."""
+    return posixpath.join(
+        sProjectRepoPath, S_CONTAINER_SHA_CACHE_RELATIVE_PATH,
+    )
+
+
+def fdictLoadContainerCache(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Load the container-side sha cache; empty dict on miss/corruption.
+
+    Mirrors :func:`fdictLoadCache` for project repos that live inside
+    the container. The cache survives ``dictCtx`` rebuilds (server
+    restart, reconnect) so multi-GB outputs only need to rehash the
+    files whose mtime has changed since the last save.
+    """
+    if not sProjectRepoPath:
+        return {}
+    sPath = _fsContainerCachePath(sProjectRepoPath)
+    try:
+        baContent = connectionDocker.fbaFetchFile(sContainerId, sPath)
+    except (FileNotFoundError, OSError):
+        return {}
+    except Exception:
+        _logger.info(
+            "container sha cache fetch failed for %s", sContainerId,
+        )
+        return {}
+    try:
+        dictLoaded = json.loads(baContent.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return {}
+    if not isinstance(dictLoaded, dict):
+        return {}
+    return dictLoaded
+
+
+def fnSaveContainerCache(
+    connectionDocker, sContainerId, sProjectRepoPath, dictCache,
+):
+    """Write the container-side sha cache atomically inside the container.
+
+    A best-effort write — failures are logged at INFO and swallowed so
+    a transient docker hiccup never converts a successful poll into a
+    user-facing error. The next save reattempts.
+    """
+    if not sProjectRepoPath:
+        return
+    sPath = _fsContainerCachePath(sProjectRepoPath)
+    try:
+        baBody = json.dumps(
+            dictCache, indent=2, sort_keys=True,
+        ).encode("utf-8")
+        connectionDocker.fnWriteFile(sContainerId, sPath, baBody)
+    except Exception:
+        _logger.info(
+            "container sha cache save failed for %s", sContainerId,
+        )
 
 
 def _fsHostPathFor(sWorkspaceRoot, sRepoRelPath):

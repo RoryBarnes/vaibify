@@ -789,13 +789,45 @@ def _fdictComputeAllPerStepMtimes(
 def _fdictManifestShaCache(dictCtx, sContainerId):
     """Return the per-container in-memory mtime->sha output cache.
 
-    Process lifetime is the cache's honest scope: every entry is
-    revalidated against the container mtime fetched this same poll
-    before it is reused, so a server restart only costs one rehash
-    batch and a stale entry can never outlive its file.
+    Every entry is revalidated against the container mtime fetched
+    this same poll before it is reused, so a stale entry can never
+    outlive its file. The cache is hydrated from the container-side
+    ``.vaibify/container_mtime_cache.json`` on first access so a
+    server restart pays at most a single batch rehash for files whose
+    mtime changed while the host was down, rather than rehashing
+    every multi-GB output from scratch.
     """
     dictByContainer = dictCtx.setdefault("dictManifestShaCache", {})
-    return dictByContainer.setdefault(sContainerId, {})
+    if sContainerId not in dictByContainer:
+        dictByContainer[sContainerId] = _fdictHydrateShaCacheFromContainer(
+            dictCtx, sContainerId,
+        )
+    return dictByContainer[sContainerId]
+
+
+def _fdictHydrateShaCacheFromContainer(dictCtx, sContainerId):
+    """Load the persisted container-side cache on first access; {} on miss."""
+    sRepoRoot = _fsResolveProjectRepoRoot(dictCtx, sContainerId)
+    if not sRepoRoot:
+        return {}
+    from .. import mtimeCache
+    try:
+        return mtimeCache.fdictLoadContainerCache(
+            dictCtx["docker"], sContainerId, sRepoRoot,
+        )
+    except Exception:
+        logger.info(
+            "container sha cache hydrate failed for %s", sContainerId,
+        )
+        return {}
+
+
+def _fsResolveProjectRepoRoot(dictCtx, sContainerId):
+    """Return the project repo path for a container, or empty string."""
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
+    if not isinstance(dictWorkflow, dict):
+        return ""
+    return dictWorkflow.get("sProjectRepoPath", "") or ""
 
 
 def _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot):
@@ -840,15 +872,46 @@ def _ftSplitCachedAndChanged(listRelPaths, dictMtimesRel, dictShaCache):
 
 
 def _fnUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
-    """Record freshly hashed outputs in the in-memory cache."""
+    """Record freshly hashed outputs in the in-memory cache.
+
+    Returns True iff any cache entry was added or refreshed; the
+    caller uses the flag to decide whether the container-side
+    persistence layer needs a fresh write.
+    """
     dictFresh = filesPoll.fdictHashFiles(listHashed)
+    bAnyChange = False
     for sRelPath in listHashed:
         sSha256 = (dictFresh.get(sRelPath) or {}).get("sSha256")
         iMtime = _fiCoercePollMtime(dictMtimesRel.get(sRelPath))
         if sSha256 and iMtime is not None:
+            dictExisting = dictShaCache.get(sRelPath) or {}
+            if (
+                dictExisting.get("sSha256") != sSha256
+                or dictExisting.get("iMtime") != iMtime
+            ):
+                bAnyChange = True
             dictShaCache[sRelPath] = {
                 "iMtime": iMtime, "sSha256": sSha256,
             }
+    return bAnyChange
+
+
+def _fnPersistShaCacheToContainer(
+    dictCtx, sContainerId, sProjectRepoPath, dictShaCache,
+):
+    """Save the sha cache into the container; best-effort, never raises."""
+    if not sProjectRepoPath:
+        return
+    from .. import mtimeCache
+    try:
+        mtimeCache.fnSaveContainerCache(
+            dictCtx["docker"], sContainerId,
+            sProjectRepoPath, dictShaCache,
+        )
+    except Exception:
+        logger.info(
+            "container sha cache persist failed for %s", sContainerId,
+        )
 
 
 def _ffilesFetchPollSnapshot(
@@ -881,7 +944,13 @@ def _ffilesFetchPollSnapshot(
         listHashRelPaths=listNeedHash,
         dictSeedHashes=dictSeed,
     )
-    _fnUpdateShaCache(dictShaCache, filesPoll, listNeedHash, dictMtimesRel)
+    bShaCacheChanged = _fnUpdateShaCache(
+        dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
+    )
+    if bShaCacheChanged:
+        _fnPersistShaCacheToContainer(
+            dictCtx, sContainerId, sRepoRoot, dictShaCache,
+        )
     _fnHydrateManifestText(
         dictCtx, sContainerId, sRepoRoot, filesPoll,
     )
