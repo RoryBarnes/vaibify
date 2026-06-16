@@ -12,7 +12,10 @@ each concern has one owner. The composition lives here so the level
 decision lives in one module.
 """
 
+import hashlib
+import json
 import threading
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +81,7 @@ __all__ = [
     "flistLevel1Blockers",
     "flistLevel2Blockers",
     "flistLevel3Blockers",
+    "fnClearLevelBlockerCache",
     "fnLevelComputationContext",
 ]
 
@@ -143,6 +147,109 @@ def fnLevelComputationContext():
 def _fdictActiveLevelMemo():
     """Return the active per-call memo, or None when no context is active."""
     return getattr(_THREAD_LOCAL, "dictMemo", None)
+
+
+# Cross-poll blocker-list memo.
+#
+# Each poll calls ``flistLevel1Blockers``, ``flistLevel2Blockers``, and
+# ``flistLevel3Blockers`` once. Each call walks every step (and per-step
+# scripts/manifests/sync caches) even when nothing about the workflow or
+# the on-disk inputs has changed. The memo here keys on a fingerprint
+# of (workflow-relevant-content, mod-time-vector, repo-root,
+# script-status) so a re-poll on identical inputs returns the previous
+# list without re-walking. Bounded LRU keeps the working set small;
+# ``fnClearLevelBlockerCache`` is the test/invalidation hook.
+_I_BLOCKER_CACHE_MAX_ENTRIES = 8
+_DICT_BLOCKER_CACHE = OrderedDict()
+
+
+def fnClearLevelBlockerCache():
+    """Discard every cached blocker list (tests + invalidation hooks)."""
+    _DICT_BLOCKER_CACHE.clear()
+
+
+def _fnBlockerCacheStore(tCacheKey, listResult):
+    """Insert listResult under tCacheKey with LRU eviction."""
+    if tCacheKey in _DICT_BLOCKER_CACHE:
+        _DICT_BLOCKER_CACHE.move_to_end(tCacheKey)
+        _DICT_BLOCKER_CACHE[tCacheKey] = listResult
+        return
+    _DICT_BLOCKER_CACHE[tCacheKey] = listResult
+    while len(_DICT_BLOCKER_CACHE) > _I_BLOCKER_CACHE_MAX_ENTRIES:
+        _DICT_BLOCKER_CACHE.popitem(last=False)
+
+
+def _flistBlockerCacheLookup(tCacheKey):
+    """Return the cached list for tCacheKey, or None on miss."""
+    listCached = _DICT_BLOCKER_CACHE.get(tCacheKey)
+    if listCached is None:
+        return None
+    _DICT_BLOCKER_CACHE.move_to_end(tCacheKey)
+    return listCached
+
+
+def _fsWorkflowBlockerFingerprint(dictWorkflow):
+    """Return a SHA256 over workflow fields that influence blocker lists."""
+    listEntries = []
+    for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            listEntries.append(None)
+            continue
+        listEntries.append(_fdictBlockerRelevantStep(dictStep))
+    dictTopLevel = _fdictWorkflowTopLevelFingerprint(dictWorkflow)
+    sCanonical = json.dumps(
+        {"listSteps": listEntries, "dictTop": dictTopLevel},
+        sort_keys=True, default=str,
+    )
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
+def _fdictBlockerRelevantStep(dictStep):
+    """Capture the per-step fields that determine blocker output."""
+    return {sKey: dictStep.get(sKey) for sKey in (
+        "sName", "sDirectory", "sLabel",
+        "saDataFiles", "saPlotFiles", "saOutputFiles",
+        "saDataCommands", "saPlotCommands", "saTestCommands",
+        "saSetupCommands", "saCommands", "saDependencies",
+        "dictVerification", "dictTests", "sLastUserUpdate",
+        "bUnseededRandomnessWarning", "bInteractive",
+    )}
+
+
+def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
+    """Capture top-level workflow keys that influence blocker output."""
+    return {sKey: (dictWorkflow or {}).get(sKey) for sKey in (
+        "sPlotDirectory", "sProjectRepoPath", "sFigureType",
+        "listDeclaredBinaries", "bNoStandaloneBinaries",
+        "dictDeterminism", "dictRemoteServices", "dictAttestation",
+    )}
+
+
+def _fsModTimesFingerprint(dictNewModTimes):
+    """Return a SHA256 over the per-step mod-time vector."""
+    if not dictNewModTimes:
+        return "empty"
+    listPairs = sorted(
+        (str(sKey), value) for sKey, value in dictNewModTimes.items()
+    )
+    sCanonical = json.dumps(listPairs, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
+def _fsScriptStatusFingerprint(dictScriptStatus):
+    """Return a SHA256 over the script-status dict, or ``"none"``."""
+    if not dictScriptStatus:
+        return "none"
+    sCanonical = json.dumps(
+        dictScriptStatus, sort_keys=True, default=str,
+    )
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
+def _fsRepoFingerprint(filesRepo):
+    """Return a stable identifier for the repo adapter or path."""
+    sRepoRoot = fsRepoRootOf(filesRepo)
+    return sRepoRoot if isinstance(sRepoRoot, str) else "unknown"
 
 
 def fiAICSLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
@@ -263,6 +370,27 @@ def flistLevel1Blockers(
     Consumers must tolerate its absence.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    tCacheKey = (
+        "L1",
+        _fsWorkflowBlockerFingerprint(dictWorkflow),
+        _fsModTimesFingerprint(dictNewModTimes),
+        _fsRepoFingerprint(filesRepo),
+        _fsScriptStatusFingerprint(dictScriptStatus),
+    )
+    listCached = _flistBlockerCacheLookup(tCacheKey)
+    if listCached is not None:
+        return listCached
+    listResult = _flistComputeLevel1Blockers(
+        dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
+    )
+    _fnBlockerCacheStore(tCacheKey, listResult)
+    return listResult
+
+
+def _flistComputeLevel1Blockers(
+    dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
+):
+    """Uncached L1-blocker evaluation — the body of the original gate."""
     if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listSteps = dictWorkflow.get("listSteps", []) or []
@@ -1442,6 +1570,22 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
     ``arxiv-version-stale``); both sets are suppressed when the
     workflow has no Overleaf binding (data-only workflows pass).
     """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    tCacheKey = (
+        "L2",
+        _fsWorkflowBlockerFingerprint(dictWorkflow),
+        _fsRepoFingerprint(filesRepo),
+    )
+    listCached = _flistBlockerCacheLookup(tCacheKey)
+    if listCached is not None:
+        return listCached
+    listResult = _flistComputeLevel2Blockers(dictWorkflow, filesRepo)
+    _fnBlockerCacheStore(tCacheKey, listResult)
+    return listResult
+
+
+def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
+    """Uncached L2-blocker evaluation — the body of the original gate."""
     if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listBlockers = []
@@ -1762,6 +1906,22 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
     has no project repo so the caller treats missing repo the same as
     L1 does.
     """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    tCacheKey = (
+        "L3",
+        _fsWorkflowBlockerFingerprint(dictWorkflow),
+        _fsRepoFingerprint(filesRepo),
+    )
+    listCached = _flistBlockerCacheLookup(tCacheKey)
+    if listCached is not None:
+        return listCached
+    listResult = _flistComputeLevel3Blockers(dictWorkflow, filesRepo)
+    _fnBlockerCacheStore(tCacheKey, listResult)
+    return listResult
+
+
+def _flistComputeLevel3Blockers(dictWorkflow, filesRepo):
+    """Uncached L3-blocker evaluation — the body of the original gate."""
     if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listBlockers = []
