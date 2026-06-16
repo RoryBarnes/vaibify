@@ -37,3 +37,18 @@ def fnRedirectVaibifyLogFileForTests(tmp_path_factory):
     yield
     cliMain._fnConfigureErrorLogging = fnOriginalConfigure
     _fnRemoveFileHandlersFromVaibifyLogger()
+
+
+@pytest.fixture(autouse=True)
+def fnClearPushDedupeCache():
+    """Reset the syncRoutes push idempotency cache between tests.
+
+    The cache is keyed by ``(container, pre-push HEAD sha, file-list
+    digest)`` with a TTL. Several existing push tests share the same
+    key space; a clean cache per test keeps a prior test's cached
+    result from leaking into the next test's mock expectations.
+    """
+    from vaibify.gui.routes import syncRoutes
+    syncRoutes._DICT_RECENT_PUSH_RESULTS.clear()
+    yield
+    syncRoutes._DICT_RECENT_PUSH_RESULTS.clear()
