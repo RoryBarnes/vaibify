@@ -604,6 +604,21 @@ def _fnPublishInteractiveContext(sContainerId, dictInteractive):
     DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER[sContainerId] = dictInteractive
 
 
+def _fnUnpublishInteractiveContext(sContainerId, dictInteractive):
+    """Remove the runner's interactive context if still the published one.
+
+    The identity check guards against a fresh ``fnPipelineMessageLoop``
+    that has already published its own context in the same slot — only
+    drop the entry when it still points at the same dict this loop
+    instance published, so a new loop's registration is never evicted
+    by the prior loop's ``finally`` clean-up.
+    """
+    if DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId) is (
+        dictInteractive
+    ):
+        DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.pop(sContainerId, None)
+
+
 def fdictInteractiveContextForContainer(sContainerId):
     """Return the active runner's interactive context, or ``None``."""
     return DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId)
@@ -635,32 +650,35 @@ async def fnPipelineMessageLoop(
     fnCallback = ffBuildResilientWsCallback(websocket)
     _fnPublishInteractiveContext(sContainerId, dictInteractive)
 
-    while True:
-        dictRequest = json.loads(await websocket.receive_text())
-        sAction = dictRequest.get("sAction", "")
-        if sAction in ("interactiveResume", "interactiveSkip"):
-            _fnHandleInteractiveResponse(
-                dictInteractive, sAction,
-                dictRequest,
+    try:
+        while True:
+            dictRequest = json.loads(await websocket.receive_text())
+            sAction = dictRequest.get("sAction", "")
+            if sAction in ("interactiveResume", "interactiveSkip"):
+                _fnHandleInteractiveResponse(
+                    dictInteractive, sAction,
+                    dictRequest,
+                )
+                continue
+            if sAction == "interactiveComplete":
+                _fnHandleInteractiveComplete(
+                    dictInteractive, dictRequest,
+                )
+                continue
+            taskPipeline = asyncio.create_task(
+                _fnSafeDispatch(
+                    sAction, dictRequest, connectionDocker,
+                    sContainerId, dictWorkflow,
+                    dictWorkflowPathCache, sWorkflowDirectory,
+                    fnCallback, dictInteractive,
+                )
             )
-            continue
-        if sAction == "interactiveComplete":
-            _fnHandleInteractiveComplete(
-                dictInteractive, dictRequest,
-            )
-            continue
-        taskPipeline = asyncio.create_task(
-            _fnSafeDispatch(
-                sAction, dictRequest, connectionDocker,
-                sContainerId, dictWorkflow,
-                dictWorkflowPathCache, sWorkflowDirectory,
-                fnCallback, dictInteractive,
-            )
-        )
-        if dictPipelineTasks is not None:
-            _fnRegisterPipelineTask(
-                dictPipelineTasks, sContainerId, taskPipeline,
-            )
+            if dictPipelineTasks is not None:
+                _fnRegisterPipelineTask(
+                    dictPipelineTasks, sContainerId, taskPipeline,
+                )
+    finally:
+        _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
 
 
 async def _fnSafeDispatch(
@@ -1874,6 +1892,8 @@ def fappCreateApplication(
     dictCtx["iPort"] = iExpectedPort
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
+    _fnRegisterDefaultThreadPoolExecutor(app)
+    _fnRegisterPeriodicContainerSweep(app, dictCtx)
     return app
 
 
@@ -1904,6 +1924,8 @@ def fappCreateHubApplication(iExpectedPort=0):
     _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
     fnRegisterRegistryRoutes(app, dictCtx)
     _fnRegisterHubLockLifecycle(app)
+    _fnRegisterDefaultThreadPoolExecutor(app)
+    _fnRegisterPeriodicContainerSweep(app, dictCtx)
     return app
 
 
@@ -1937,3 +1959,137 @@ def _fnRegisterHubShutdownReleaseLocks(app):
                 pass
         app.state.dictContainerLocks.clear()
     app.state.listLifespanShutdown.append(fnReleaseAllContainerLocks)
+
+
+# Interval between periodic container-cache sweeps. The eviction work
+# itself is cheap (one Docker list + a handful of dict pops); the cap
+# determines worst-case latency between a container disappearing and
+# its cached state being dropped, which bounds memory growth across
+# multi-week host uptimes without measurably loading the event loop.
+F_CONTAINER_SWEEP_INTERVAL_SECONDS = 60.0
+
+
+def _fnRegisterPeriodicContainerSweep(app, dictCtx, fInterval=None):
+    """Install a background asyncio task that evicts caches on a timer.
+
+    Today ``fnSweepAllContainerCaches`` only fires on
+    ``GET /api/registry``; a user who never reopens the picker leaves
+    every per-container cache dormant. This loop calls the sweep every
+    ``fInterval`` seconds so eviction tracks reality even on idle hubs.
+    The task is registered on the lifespan so it is cleanly cancelled
+    at shutdown.
+    """
+    fIntervalEffective = (
+        fInterval if fInterval is not None
+        else F_CONTAINER_SWEEP_INTERVAL_SECONDS
+    )
+
+    async def fnStartSweepTask(app):
+        taskSweep = asyncio.create_task(
+            _fnPeriodicContainerSweepLoop(dictCtx, fIntervalEffective),
+            name="vaibify-container-sweep",
+        )
+        app.state.taskContainerSweep = taskSweep
+
+    async def fnStopSweepTask(app):
+        taskSweep = getattr(app.state, "taskContainerSweep", None)
+        if taskSweep is None or taskSweep.done():
+            return
+        taskSweep.cancel()
+        try:
+            await taskSweep
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    app.state.listLifespanStartup.append(fnStartSweepTask)
+    app.state.listLifespanShutdown.append(fnStopSweepTask)
+
+
+async def _fnPeriodicContainerSweepLoop(dictCtx, fInterval):
+    """Run ``fnSweepAllContainerCaches`` forever on a fixed cadence.
+
+    Exits cleanly on ``CancelledError`` (lifespan shutdown). Any other
+    exception is logged but the loop continues — a transient docker
+    error must not silently terminate the sweep for the rest of the
+    process lifetime.
+    """
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            await _fnRunOneContainerSweep(dictCtx)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Periodic container sweep iteration failed",
+                exc_info=True,
+            )
+
+
+async def _fnRunOneContainerSweep(dictCtx):
+    """Execute a single sweep tick against the current running set."""
+    from .fileStatusManager import fnSweepAllContainerCaches
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if connectionDocker is None:
+        return
+    try:
+        listContainers = await asyncio.to_thread(
+            connectionDocker.flistGetRunningContainers,
+        )
+    except Exception:
+        logger.warning(
+            "Could not list running containers for sweep",
+            exc_info=True,
+        )
+        return
+    listIds = [
+        dictRow.get("sContainerId", "") for dictRow in listContainers
+    ]
+    fnSweepAllContainerCaches(
+        dictCtx, [sId for sId in listIds if sId],
+    )
+
+
+# Docker connection pool ceiling (see ``_fnTuneDockerSessionPool``) is
+# 32 simultaneous in-flight HTTP requests against the daemon. Sizing
+# the event loop's default ThreadPoolExecutor to at least 32 workers
+# stops the pool from becoming the bottleneck for the many concurrent
+# ``asyncio.to_thread`` callers (heartbeat, badge fan-out, state
+# writer, file-status poll). The ``cpu_count() * 4`` upper bound
+# keeps small hosts honest while still scaling with core count on a
+# multi-core researcher workstation.
+I_VAIBIFY_IO_THREAD_POOL_FLOOR = 32
+
+
+def _fnRegisterDefaultThreadPoolExecutor(app):
+    """Install a named ``vaibify-io`` ThreadPoolExecutor on startup.
+
+    Python's default executor sizes to ``cpu_count() + 4`` workers,
+    which under-provisions vaibify for the concurrent docker-exec
+    workload the dashboard generates. The replacement is named so it
+    shows up in ``py-spy``/``thread dump`` output, and is shut down
+    on lifespan exit so the process exits cleanly.
+    """
+
+    async def fnInstallExecutor(app):
+        from concurrent.futures import ThreadPoolExecutor
+        iWorkers = max(
+            I_VAIBIFY_IO_THREAD_POOL_FLOOR,
+            (os.cpu_count() or 1) * 4,
+        )
+        executorIo = ThreadPoolExecutor(
+            max_workers=iWorkers,
+            thread_name_prefix="vaibify-io",
+        )
+        app.state.executorIoThreadPool = executorIo
+        asyncio.get_running_loop().set_default_executor(executorIo)
+
+    async def fnShutdownExecutor(app):
+        executorIo = getattr(app.state, "executorIoThreadPool", None)
+        if executorIo is None:
+            return
+        executorIo.shutdown(wait=False, cancel_futures=True)
+        app.state.executorIoThreadPool = None
+
+    app.state.listLifespanStartup.append(fnInstallExecutor)
+    app.state.listLifespanShutdown.append(fnShutdownExecutor)
