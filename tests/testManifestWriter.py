@@ -999,3 +999,137 @@ def test_templated_test_file_path_is_skipped(tmp_path):
     listEntries = flistParseManifestLines(str(tmp_path))
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     assert setPaths == {"stepA/data.csv"}
+
+
+# ----------------------------------------------------------------------
+# Streaming write path — entry-by-entry, no whole-body materialization.
+# ----------------------------------------------------------------------
+
+
+def _fdictBuildLargeWorkflowFixture(tmp_path, iEntryCount):
+    """Seed iEntryCount one-byte files and a workflow that declares them."""
+    listPaths = []
+    for iIndex in range(iEntryCount):
+        sRel = f"out/file_{iIndex:05d}.dat"
+        _fnWriteFile(tmp_path, sRel, b"x")
+        listPaths.append(sRel)
+    dictStep = {
+        "sName": "Big",
+        "sDirectory": "out",
+        "saDataFiles": listPaths,
+    }
+    return {"listSteps": [dictStep]}
+
+
+def test_streaming_write_matches_pre_streaming_string_body(tmp_path):
+    """The streamed manifest is byte-identical to the legacy one-shot."""
+    from vaibify.reproducibility import manifestWriter
+    dictWorkflow = _fdictBuildLargeWorkflowFixture(tmp_path, 50)
+    # Capture the body the legacy joined-string path would have built
+    # using the same entries.
+    listEntries = manifestWriter._flistBuildManifestEntries(
+        manifestWriter.ffilesEnsureRepoFiles(str(tmp_path)),
+        manifestWriter._flistCollectManifestPaths(dictWorkflow),
+    )
+    sExpected = manifestWriter._MANIFEST_HEADER + "".join(
+        manifestWriter._fsFormatManifestLine(sHash, sRel)
+        for sHash, sRel in listEntries
+    )
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    sActual = (tmp_path / _MANIFEST_FILENAME).read_text(encoding="utf-8")
+    assert sActual == sExpected
+
+
+def test_streaming_write_skips_full_body_materialization(tmp_path):
+    """Streaming path must not concatenate the full body in memory.
+
+    Proven by intercepting ``open`` for the temp file and asserting
+    that ``write`` is invoked once per entry plus one for the header,
+    never once with the entire body as a single call.
+    """
+    from vaibify.reproducibility import manifestWriter
+    iEntryCount = 200
+    dictWorkflow = _fdictBuildLargeWorkflowFixture(tmp_path, iEntryCount)
+    listWriteCallSizes = []
+    sTempPath = str(tmp_path / (_MANIFEST_FILENAME + ".tmp"))
+    import builtins
+    fnRealOpen = builtins.open
+
+    class RecordingHandle:
+        def __init__(self, fileHandle):
+            self.fileHandle = fileHandle
+
+        def write(self, sText):
+            listWriteCallSizes.append(len(sText))
+            return self.fileHandle.write(sText)
+
+        def __enter__(self):
+            self.fileHandle.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.fileHandle.__exit__(*args)
+
+    def fnFakeOpen(sPath, sMode, *args, **kwargs):
+        fileHandle = fnRealOpen(sPath, sMode, *args, **kwargs)
+        if sPath == sTempPath:
+            return RecordingHandle(fileHandle)
+        return fileHandle
+
+    builtins.open = fnFakeOpen
+    try:
+        fnWriteManifest(str(tmp_path), dictWorkflow)
+    finally:
+        builtins.open = fnRealOpen
+    # Header + N per-entry writes — never one giant write of the whole body.
+    assert len(listWriteCallSizes) == iEntryCount + 1
+    iMaxWrite = max(listWriteCallSizes)
+    # The largest single write must be much smaller than the full body.
+    iTotalSize = sum(listWriteCallSizes)
+    assert iMaxWrite < iTotalSize / 2, (
+        f"largest single write ({iMaxWrite}) too close to total "
+        f"({iTotalSize}) — looks like one-shot materialization"
+    )
+
+
+def test_streaming_write_cleans_up_temp_on_failure(tmp_path, monkeypatch):
+    """A mid-write OSError removes the streaming temp file."""
+    from vaibify.reproducibility import manifestWriter
+    dictWorkflow = _fdictBuildLargeWorkflowFixture(tmp_path, 5)
+    import builtins
+    fnRealOpen = builtins.open
+    sTempPath = str(tmp_path / (_MANIFEST_FILENAME + ".tmp"))
+
+    class _OneByteThenFail:
+        def __init__(self, fileHandle):
+            self.fileHandle = fileHandle
+            self.iWrites = 0
+
+        def write(self, sText):
+            self.iWrites += 1
+            if self.iWrites > 1:
+                raise OSError("disk full")
+            return self.fileHandle.write(sText)
+
+        def __enter__(self):
+            self.fileHandle.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.fileHandle.__exit__(*args)
+
+    def fnFakeOpen(sPath, sMode, *args, **kwargs):
+        fileHandle = fnRealOpen(sPath, sMode, *args, **kwargs)
+        if sPath == sTempPath:
+            return _OneByteThenFail(fileHandle)
+        return fileHandle
+
+    manifestWriter.open = fnFakeOpen
+    try:
+        with pytest.raises(OSError):
+            fnWriteManifest(str(tmp_path), dictWorkflow)
+    finally:
+        manifestWriter.open = fnRealOpen
+    assert not os.path.exists(sTempPath), (
+        "streaming temp file must be removed after a write failure"
+    )
