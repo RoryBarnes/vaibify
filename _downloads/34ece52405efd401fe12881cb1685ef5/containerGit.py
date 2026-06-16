@@ -78,20 +78,6 @@ def _fsHardeningPrefix():
     )
 
 
-def _fbIsRepoInContainer(connectionDocker, sContainerId, sWorkspace):
-    """Return True when the container's workspace is a git work tree."""
-    sCommand = (
-        "cd " + shlex.quote(sWorkspace) + " && "
-        "git rev-parse --is-inside-work-tree 2>/dev/null"
-    )
-    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
-    )
-    if iExit != 0:
-        return False
-    return (sOutput or "").strip() == "true"
-
-
 def fsGitHeadShaInContainer(
     connectionDocker, sContainerId, sWorkspace=S_CONTAINER_WORKSPACE,
 ):
@@ -107,24 +93,45 @@ def fsGitHeadShaInContainer(
     return (sOutput or "").strip()
 
 
+_S_HEAD_MARKER = "__VAIBIFY_HEAD__"
+_S_STATUS_MARKER = "__VAIBIFY_STATUS__"
+_S_NOT_REPO_MARKER = "__VAIBIFY_NOT_REPO__"
+
+
+def _fsBuildCombinedStatusCommand(sWorkspace):
+    """Combined exec: repo-check + HEAD SHA + porcelain status in one call."""
+    sHardening = _fsHardeningPrefix()
+    return (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "if ! git rev-parse --is-inside-work-tree "
+        ">/dev/null 2>&1; then "
+        f"echo {_S_NOT_REPO_MARKER}; exit 0; fi && "
+        f"echo {_S_HEAD_MARKER} && "
+        "(git rev-parse HEAD 2>/dev/null || true) && "
+        f"echo {_S_STATUS_MARKER} && "
+        "git " + sHardening + " "
+        "status --porcelain=v2 --branch --untracked-files=normal"
+    )
+
+
+def _ftParseCombinedStatusOutput(sOutput):
+    """Split combined exec output into (sHeadSha, sStatusBody)."""
+    sBefore, _, sStatus = sOutput.partition(_S_STATUS_MARKER + "\n")
+    _, _, sHead = sBefore.partition(_S_HEAD_MARKER + "\n")
+    return sHead.strip(), sStatus
+
+
 def fdictGitStatusInContainer(
     connectionDocker, sContainerId, sWorkspace=S_CONTAINER_WORKSPACE,
 ):
     """Return a dashboard-friendly git status snapshot for a container.
 
     Matches the shape of ``gitStatus.fdictGitStatusForWorkspace`` so
-    that badge and manifest logic can consume either source.
+    that badge and manifest logic can consume either source. Runs the
+    repo-check, HEAD SHA lookup, and porcelain status in a single
+    docker exec to halve the round-trip overhead.
     """
-    if not _fbIsRepoInContainer(
-        connectionDocker, sContainerId, sWorkspace,
-    ):
-        return gitStatus.fdictEmptyStatus("Not a git repository")
-    sHardening = _fsHardeningPrefix()
-    sCommand = (
-        "cd " + shlex.quote(sWorkspace) + " && "
-        "git " + sHardening + " "
-        "status --porcelain=v2 --branch --untracked-files=normal"
-    )
+    sCommand = _fsBuildCombinedStatusCommand(sWorkspace)
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,
     )
@@ -132,12 +139,14 @@ def fdictGitStatusInContainer(
         return gitStatus.fdictEmptyStatus(
             "git status failed: " + (sOutput or "").strip()
         )
-    dictParsed = gitStatus._fdictParsePorcelain(sOutput or "")
+    sOutput = sOutput or ""
+    if sOutput.startswith(_S_NOT_REPO_MARKER):
+        return gitStatus.fdictEmptyStatus("Not a git repository")
+    sHeadSha, sStatusBody = _ftParseCombinedStatusOutput(sOutput)
+    dictParsed = gitStatus._fdictParsePorcelain(sStatusBody)
     return {
         "bIsRepo": True,
-        "sHeadSha": fsGitHeadShaInContainer(
-            connectionDocker, sContainerId, sWorkspace,
-        ),
+        "sHeadSha": sHeadSha,
         "sBranch": dictParsed["sBranch"],
         "iAhead": dictParsed["iAhead"],
         "iBehind": dictParsed["iBehind"],
