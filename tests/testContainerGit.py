@@ -34,24 +34,31 @@ class _FakeDocker:
 # ----------------------------------------------------------------------
 
 
+def _fsCombinedOutput(sHeadSha, sPorcelain):
+    """Build the combined-exec output the route helper now expects."""
+    return (
+        "true\n"
+        "__VAIBIFY_HEAD__\n"
+        + sHeadSha + "\n"
+        + "__VAIBIFY_STATUS__\n"
+        + sPorcelain
+    )
+
+
 def test_fdictGitStatusInContainer_detects_non_repo():
     docker = _FakeDocker([
-        ("rev-parse --is-inside-work-tree", 128, ""),
+        ("git rev-parse", 0, "__VAIBIFY_NOT_REPO__\n"),
     ])
     dictResult = containerGit.fdictGitStatusInContainer(docker, "cid")
     assert dictResult["bIsRepo"] is False
 
 
 def test_fdictGitStatusInContainer_parses_clean_repo():
-    sPorcelain = (
-        "# branch.head main\n"
-        "# branch.ab +0 -0\n"
+    sOutput = _fsCombinedOutput(
+        "abc1234567890",
+        "# branch.head main\n# branch.ab +0 -0\n",
     )
-    docker = _FakeDocker([
-        ("rev-parse --is-inside-work-tree", 0, "true\n"),
-        ("status --porcelain=v2", 0, sPorcelain),
-        ("rev-parse HEAD", 0, "abc1234567890\n"),
-    ])
+    docker = _FakeDocker([("git rev-parse", 0, sOutput)])
     dictResult = containerGit.fdictGitStatusInContainer(docker, "cid")
     assert dictResult["bIsRepo"] is True
     assert dictResult["sBranch"] == "main"
@@ -60,17 +67,12 @@ def test_fdictGitStatusInContainer_parses_clean_repo():
 
 
 def test_fdictGitStatusInContainer_injects_hardening_flags():
-    docker = _FakeDocker([
-        ("rev-parse --is-inside-work-tree", 0, "true\n"),
-        ("status --porcelain=v2", 0, "# branch.head main\n"),
-        ("rev-parse HEAD", 0, "0" * 40 + "\n"),
-    ])
+    sOutput = _fsCombinedOutput("0" * 40, "# branch.head main\n")
+    docker = _FakeDocker([("git rev-parse", 0, sOutput)])
     containerGit.fdictGitStatusInContainer(docker, "cid")
-    sStatusCmd = [
-        c for c in docker.listCommands if "status --porcelain=v2" in c
-    ][0]
-    assert "protocol.file.allow=never" in sStatusCmd
-    assert "core.symlinks=false" in sStatusCmd
+    sCombinedCmd = docker.listCommands[0]
+    assert "protocol.file.allow=never" in sCombinedCmd
+    assert "core.symlinks=false" in sCombinedCmd
 
 
 def test_fdictGitStatusInContainer_reports_dirty_file():
@@ -79,24 +81,26 @@ def test_fdictGitStatusInContainer_reports_dirty_file():
         "# branch.ab +0 -0\n"
         "1 .M N... 100644 100644 100644 a b step1/fig.pdf\n"
     )
-    docker = _FakeDocker([
-        ("rev-parse --is-inside-work-tree", 0, "true\n"),
-        ("status --porcelain=v2", 0, sPorcelain),
-        ("rev-parse HEAD", 0, "0" * 40 + "\n"),
-    ])
+    sOutput = _fsCombinedOutput("0" * 40, sPorcelain)
+    docker = _FakeDocker([("git rev-parse", 0, sOutput)])
     dictResult = containerGit.fdictGitStatusInContainer(docker, "cid")
     assert dictResult["dictFileStates"]["step1/fig.pdf"] == "dirty"
 
 
 def test_fdictGitStatusInContainer_cds_to_workspace():
-    docker = _FakeDocker([
-        ("rev-parse --is-inside-work-tree", 0, "true\n"),
-        ("status --porcelain=v2", 0, "# branch.head main\n"),
-        ("rev-parse HEAD", 0, "0" * 40 + "\n"),
-    ])
+    sOutput = _fsCombinedOutput("0" * 40, "# branch.head main\n")
+    docker = _FakeDocker([("git rev-parse", 0, sOutput)])
     containerGit.fdictGitStatusInContainer(docker, "cid")
     for sCmd in docker.listCommands:
         assert "cd /workspace" in sCmd
+
+
+def test_fdictGitStatusInContainer_runs_only_one_docker_exec():
+    """The combined-command refactor must keep the exec count at 1."""
+    sOutput = _fsCombinedOutput("abc", "# branch.head main\n")
+    docker = _FakeDocker([("git rev-parse", 0, sOutput)])
+    containerGit.fdictGitStatusInContainer(docker, "cid")
+    assert len(docker.listCommands) == 1
 
 
 # ----------------------------------------------------------------------

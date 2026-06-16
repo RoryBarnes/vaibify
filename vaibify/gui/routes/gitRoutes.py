@@ -195,22 +195,30 @@ def _fdictProjectGitView(dictGit, sRemoteUrl):
 
 
 async def _tCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
-    """Gather git status, tracked blobs, hashes, and remote URL sequentially."""
-    dictGit = await asyncio.to_thread(
-        containerGit.fdictGitStatusInContainer,
-        docker, sContainerId, sWorkspace=sRepo,
-    )
-    listTracked = await asyncio.to_thread(
-        _flistCanonicalFromContainer,
-        docker, sContainerId, dictWorkflow, sRepo,
+    """Gather badge inputs: three independent execs run concurrently,
+    then blob hashing runs against the resolved tracked-file list.
+
+    The docker SDK is synchronous but multiple ``asyncio.to_thread``
+    calls dispatched together hit the docker daemon over independent
+    HTTP requests — concurrent exec_create on one connection is safe.
+    """
+    dictGit, listTracked, sRemoteUrl = await asyncio.gather(
+        asyncio.to_thread(
+            containerGit.fdictGitStatusInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        ),
+        asyncio.to_thread(
+            _flistCanonicalFromContainer,
+            docker, sContainerId, dictWorkflow, sRepo,
+        ),
+        asyncio.to_thread(
+            containerGit.fsRemoteUrlInContainer,
+            docker, sContainerId, sRepo,
+        ),
     )
     dictHashes = await asyncio.to_thread(
         containerGit.fdictComputeBlobShasInContainer,
         docker, sContainerId, listTracked, sWorkspace=sRepo,
-    )
-    sRemoteUrl = await asyncio.to_thread(
-        containerGit.fsRemoteUrlInContainer,
-        docker, sContainerId, sRepo,
     )
     return dictGit, listTracked, dictHashes, sRemoteUrl
 
