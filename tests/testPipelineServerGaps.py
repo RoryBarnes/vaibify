@@ -742,6 +742,9 @@ class TestCreateDocker:
                     side_effect=RuntimeError("no docker"),
                 ),
             ),
+            "vaibify.docker.dockerContext": MagicMock(
+                fsActiveDockerContext=MagicMock(return_value=""),
+            ),
         }):
             sResult = _fconnectionCreateDocker()
             assert sResult is None
