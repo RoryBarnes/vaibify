@@ -30,8 +30,11 @@ __all__ = [
     "ContainerRepoFiles",
     "SnapshotRepoFiles",
     "ffilesEnsureRepoFiles",
+    "fnInjectManifestTextIntoSnapshot",
     "fsRepoRootOf",
     "fsShellQuotePosix",
+    "TUPLE_SNAPSHOT_CONTENT_PATHS",
+    "TUPLE_SNAPSHOT_SKIP_TEXT_PATHS",
 ]
 
 
@@ -696,10 +699,15 @@ class ContainerRepoFiles:
 
 # Collects the fixed envelope-file set (contents + mtimes + existence)
 # plus hash entries for the requested script/output paths in one pass.
+# Paths in ``listSkipTextPaths`` get mtime + bIsFile only — never their
+# body. ``MANIFEST.sha256`` lives there because its body is hundreds of
+# KB for a real sweep and is parsed lazily by a sha-keyed host cache
+# once per manifest version, not once per poll.
 _S_SNAPSHOT_SCRIPT = '''
 import base64, hashlib, json, os, sys
 dictArgs = json.loads(base64.b64decode(%(payload)s).decode())
 sRoot = dictArgs["sRoot"]
+setSkipText = set(dictArgs.get("listSkipTextPaths", []))
 dictOut = {"dictFiles": {}, "dictHashes": {}}
 def _fsHash(sAbs):
     iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
@@ -719,8 +727,9 @@ for sRel in dictArgs["listContentPaths"]:
     if dictEntry["bIsFile"]:
         try:
             dictEntry["iMtime"] = int(os.stat(sAbs).st_mtime)
-            with open(sAbs, "r") as f:
-                dictEntry["sText"] = f.read()
+            if sRel not in setSkipText:
+                with open(sAbs, "r") as f:
+                    dictEntry["sText"] = f.read()
         except (OSError, UnicodeDecodeError):
             dictEntry["sText"] = None
     dictOut["dictFiles"][sRel] = dictEntry
@@ -761,6 +770,14 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     ".vaibify/overleafPushManifest.json",
 )
 
+# Paths whose body is intentionally excluded from the poll snapshot.
+# Their mtime + bIsFile + sha (via the hash batch) are still collected
+# so the gates can detect a change; their text is fetched lazily by an
+# explicit caller (manifest viewer route, sha-keyed parse cache).
+TUPLE_SNAPSHOT_SKIP_TEXT_PATHS = (
+    "MANIFEST.sha256",
+)
+
 
 def _fsBuildSnapshotScriptCommand(
     sRootPath, listScriptRelPaths, listHashRelPaths,
@@ -775,9 +792,30 @@ def _fsBuildSnapshotScriptCommand(
         _S_SNAPSHOT_SCRIPT, {
             "sRoot": sRootPath,
             "listContentPaths": list(TUPLE_SNAPSHOT_CONTENT_PATHS),
+            "listSkipTextPaths": list(TUPLE_SNAPSHOT_SKIP_TEXT_PATHS),
             "listHashPaths": listHashPaths,
         },
     )
+
+
+def fnInjectManifestTextIntoSnapshot(filesSnapshot, sManifestText):
+    """Splice a lazily-fetched manifest body into a snapshot entry.
+
+    The snapshot script omits ``MANIFEST.sha256`` text by default so a
+    100-step workflow does not pay the cost of carrying a multi-KB
+    body over docker exec on every poll. Callers that need the body
+    (gate logic, viewer route) fetch it once per manifest sha and pass
+    the text in here so subsequent ``fsReadText`` calls on the
+    snapshot return the same content a live read would have produced.
+    """
+    if not isinstance(filesSnapshot, SnapshotRepoFiles):
+        return
+    dictEntry = filesSnapshot._dictFiles.get("MANIFEST.sha256")
+    if not isinstance(dictEntry, dict):
+        return
+    dictEntry["sText"] = sManifestText
+    if sManifestText is not None and not dictEntry.get("bIsFile"):
+        dictEntry["bIsFile"] = True
 
 
 def _fdictSnapshotFilesOrConservative(dictParsed):

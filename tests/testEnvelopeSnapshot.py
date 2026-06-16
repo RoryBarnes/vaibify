@@ -85,13 +85,25 @@ def test_fetch_is_exactly_one_exec(filesSnapshot):
 
 
 def test_snapshot_matches_live_adapter_truth(filesSnapshot, tmp_path):
-    """Gate reads from the snapshot equal reads from a live adapter."""
+    """Gate reads from the snapshot equal reads from a live adapter.
+
+    ``MANIFEST.sha256`` text is deliberately excluded from the
+    snapshot to amortize its body cost across polls (it is hydrated
+    lazily by the poll route via a sha-keyed cache). The truth check
+    here covers existence, mtime, hashes, and the body of every other
+    envelope file.
+    """
+    from vaibify.reproducibility.repoFiles import (
+        TUPLE_SNAPSHOT_SKIP_TEXT_PATHS,
+    )
     filesLive = HostRepoFiles(str(tmp_path))
     for sRelPath in TUPLE_SNAPSHOT_CONTENT_PATHS:
         assert filesSnapshot.fbIsFile(sRelPath) == filesLive.fbIsFile(
             sRelPath,
         ), sRelPath
-        if filesLive.fbIsFile(sRelPath):
+        if filesLive.fbIsFile(sRelPath) and (
+            sRelPath not in TUPLE_SNAPSHOT_SKIP_TEXT_PATHS
+        ):
             assert filesSnapshot.fsReadText(
                 sRelPath,
             ) == filesLive.fsReadText(sRelPath), sRelPath
@@ -99,6 +111,33 @@ def test_snapshot_matches_live_adapter_truth(filesSnapshot, tmp_path):
     assert filesSnapshot.fdictHashFiles(
         listHashPaths,
     ) == filesLive.fdictHashFiles(listHashPaths)
+
+
+def test_snapshot_omits_manifest_body_but_keeps_mtime_and_sha(
+    filesSnapshot, tmp_path,
+):
+    """The manifest body is excluded; mtime and sha remain available."""
+    # The mtime is collected even for skipped-text paths so callers can
+    # invalidate caches keyed by it.
+    dictMtimes = filesSnapshot.fdictStatMtimes(["MANIFEST.sha256"])
+    assert "MANIFEST.sha256" in dictMtimes
+    # The body is intentionally not part of the snapshot — readers must
+    # hydrate it via the lazy path.
+    with pytest.raises(FileNotFoundError):
+        filesSnapshot.fsReadText("MANIFEST.sha256")
+    # The hash batch still carries the sha so a sha-keyed parse cache
+    # can short-circuit on subsequent polls.
+    dictHash = filesSnapshot.fdictHashFiles(["MANIFEST.sha256"])
+    assert dictHash["MANIFEST.sha256"]["sSha256"] is not None
+
+
+def test_manifest_text_injection_unblocks_fsReadText(filesSnapshot):
+    """Once injected, the snapshot returns the manifest body."""
+    from vaibify.reproducibility.repoFiles import (
+        fnInjectManifestTextIntoSnapshot,
+    )
+    fnInjectManifestTextIntoSnapshot(filesSnapshot, "hydrated\n")
+    assert filesSnapshot.fsReadText("MANIFEST.sha256") == "hydrated\n"
 
 
 def test_snapshot_read_of_absent_file_raises_file_not_found(filesSnapshot):

@@ -858,7 +858,9 @@ def _ffilesFetchPollSnapshot(
 
     Returns the raw repo path string (host dual-accept) when there is
     no project repo or the context predates the ``files`` callable, so
-    legacy callers and tests keep host-clone semantics.
+    legacy callers and tests keep host-clone semantics. The manifest
+    body is no longer carried inline on every poll; it is fetched once
+    per manifest sha by the lazy cache below.
     """
     from vaibify.reproducibility.levelGates import _flistAllStepScriptPaths
     from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
@@ -880,7 +882,78 @@ def _ffilesFetchPollSnapshot(
         dictSeedHashes=dictSeed,
     )
     _fnUpdateShaCache(dictShaCache, filesPoll, listNeedHash, dictMtimesRel)
+    _fnHydrateManifestText(
+        dictCtx, sContainerId, sRepoRoot, filesPoll,
+    )
     return filesPoll
+
+
+def _fdictManifestTextCache(dictCtx, sContainerId):
+    """Return the per-container ``{sSha: sText}`` manifest body cache.
+
+    Honest because the cache is keyed by the manifest's own SHA-256:
+    a stale entry can never outlive its file, and a server restart
+    pays at most one body fetch per active workflow.
+    """
+    dictByContainer = dictCtx.setdefault("dictManifestTextCache", {})
+    return dictByContainer.setdefault(sContainerId, {})
+
+
+def _fnHydrateManifestText(
+    dictCtx, sContainerId, sRepoRoot, filesPoll,
+):
+    """Inject the manifest body into the snapshot via a sha-keyed cache.
+
+    The snapshot script no longer carries ``MANIFEST.sha256`` text
+    inline. The body is fetched at most once per manifest sha via the
+    live container adapter and held in ``dictManifestTextCache`` so
+    later polls observing the same sha pay zero extra docker round
+    trips. Gate code that calls ``filesPoll.fsReadText`` keeps working
+    transparently.
+    """
+    from vaibify.reproducibility.repoFiles import (
+        fnInjectManifestTextIntoSnapshot,
+    )
+    dictHashes = getattr(filesPoll, "_dictHashes", None) or {}
+    dictManifestEntry = dictHashes.get("MANIFEST.sha256") or {}
+    sSha = dictManifestEntry.get("sSha256")
+    if not sSha:
+        return
+    dictTextCache = _fdictManifestTextCache(dictCtx, sContainerId)
+    sText = dictTextCache.get(sSha)
+    if sText is None:
+        sText = _fsFetchManifestTextFromContainer(
+            dictCtx, sContainerId, sRepoRoot,
+        )
+        if sText is not None:
+            dictTextCache[sSha] = sText
+            _fnEvictStaleManifestText(dictTextCache, sSha)
+    fnInjectManifestTextIntoSnapshot(filesPoll, sText)
+
+
+def _fnEvictStaleManifestText(dictTextCache, sCurrentSha):
+    """Drop every cached manifest body other than the current sha."""
+    listStale = [sSha for sSha in dictTextCache if sSha != sCurrentSha]
+    for sSha in listStale:
+        dictTextCache.pop(sSha, None)
+
+
+def _fsFetchManifestTextFromContainer(
+    dictCtx, sContainerId, sRepoRoot,
+):
+    """Read ``MANIFEST.sha256`` once from the container, or None on failure."""
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    try:
+        filesLive = ContainerRepoFiles(
+            dictCtx["docker"], sContainerId, sRepoRoot,
+        )
+        return filesLive.fsReadText("MANIFEST.sha256")
+    except (FileNotFoundError, OSError, UnicodeDecodeError) as error:
+        logger.info(
+            "manifest body fetch failed for %s: %s",
+            sContainerId, error,
+        )
+        return None
 
 
 def _fdictBuildPollResponseRest(
@@ -1896,6 +1969,80 @@ def _fdictBuildManifestVerifyResult(
     }
 
 
+_I_MANIFEST_TEXT_DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+_I_MANIFEST_TEXT_HARD_MAX_BYTES = 50 * 1024 * 1024
+
+
+def _fnRegisterManifestText(app, dictCtx):
+    """Register GET /api/workflow/{id}/manifest/text endpoint.
+
+    Returns the raw ``MANIFEST.sha256`` body on explicit demand (e.g.
+    the manifest viewer modal). The poll-time snapshot deliberately
+    excludes the body to keep per-poll cost low for large sweeps;
+    this endpoint is the single canonical fetch path.
+    """
+
+    @app.get("/api/workflow/{sContainerId}/manifest/text")
+    async def fnGetManifestText(
+        sContainerId: str, iMaxBytes: int = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        iCapBytes = _fiClampManifestMaxBytes(iMaxBytes)
+        sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+        if not sRepoRoot:
+            raise HTTPException(
+                status_code=409,
+                detail="No project repo configured for this workflow.",
+            )
+        return await asyncio.to_thread(
+            _fdictReadManifestTextBounded,
+            dictCtx, sContainerId, sRepoRoot, iCapBytes,
+        )
+
+
+def _fiClampManifestMaxBytes(iMaxBytes):
+    """Clamp the caller's iMaxBytes into the [1, hard-cap] range."""
+    try:
+        iValue = int(iMaxBytes)
+    except (TypeError, ValueError):
+        iValue = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES
+    if iValue <= 0:
+        iValue = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES
+    return min(iValue, _I_MANIFEST_TEXT_HARD_MAX_BYTES)
+
+
+def _fdictReadManifestTextBounded(
+    dictCtx, sContainerId, sRepoRoot, iCapBytes,
+):
+    """Return ``{sText, bTruncated, iBytes}`` for the manifest body.
+
+    Truncation is byte-exact at ``iCapBytes`` so the caller can
+    surface "showing first N bytes of M" honestly. A missing manifest
+    is reported as an empty body so the viewer can render the empty
+    state without an HTTP error masking the routine "not yet built"
+    case.
+    """
+    sText = _fsFetchManifestTextFromContainer(
+        dictCtx, sContainerId, sRepoRoot,
+    )
+    if sText is None:
+        return {"sText": "", "bTruncated": False, "iBytes": 0}
+    baBody = sText.encode("utf-8")
+    iTotalBytes = len(baBody)
+    if iTotalBytes <= iCapBytes:
+        return {
+            "sText": sText, "bTruncated": False, "iBytes": iTotalBytes,
+        }
+    return {
+        "sText": baBody[:iCapBytes].decode("utf-8", errors="replace"),
+        "bTruncated": True,
+        "iBytes": iTotalBytes,
+    }
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all pipeline control routes."""
     _fnRegisterPipelineState(app, dictCtx)
@@ -1904,6 +2051,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterPipelineClean(app, dictCtx)
     _fnRegisterPipelineWs(app, dictCtx)
     _fnRegisterAcknowledgeStep(app, dictCtx)
+    _fnRegisterManifestText(app, dictCtx)
     _fnRegisterFileStatus(app, dictCtx)
     _fnRegisterWorkflowDiscovery(app, dictCtx)
     _fnRegisterManifestVerify(app, dictCtx)
