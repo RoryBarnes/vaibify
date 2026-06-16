@@ -77,12 +77,19 @@ class MockDockerTransfer:
             return (0, "/workspace\n")
         return (0, "")
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
+
+    def fnIterStreamFile(
+        self, sContainerId, sPath, iChunkSizeBytes=1048576,
+    ):
+        baBytes = self.fbaFetchFile(sContainerId, sPath)
+        for iOffset in range(0, len(baBytes), iChunkSizeBytes):
+            yield baBytes[iOffset:iOffset + iChunkSizeBytes]
 
     def fnWriteFile(self, sContainerId, sPath, baContent,
                     iMode=None, iUid=None, iGid=None):

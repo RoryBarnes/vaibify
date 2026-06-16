@@ -552,6 +552,125 @@ def test_non_streaming_callers_still_accumulate(mockGetDocker):
     assert sStderr == "and\nme"
 
 
+# -----------------------------------------------------------------------
+# Streaming fetch via get_archive — large-file slice (perf)
+# -----------------------------------------------------------------------
+
+
+def _fnBuildTarStream(sFilename, baContent, iChunkSizeBytes=512):
+    """Return a generator that yields the tar bytes for ``baContent``.
+
+    Mirrors the shape of ``container.get_archive``'s first return
+    value: an iterable producing arbitrary-sized chunks of raw tar
+    bytes for a tar holding a single file ``sFilename`` with payload
+    ``baContent``.
+    """
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as tar:
+        infoTar = tarfile.TarInfo(name=sFilename)
+        infoTar.size = len(baContent)
+        tar.addfile(infoTar, io.BytesIO(baContent))
+    baAll = bufferTar.getvalue()
+    return (
+        baAll[iOffset:iOffset + iChunkSizeBytes]
+        for iOffset in range(0, len(baAll), iChunkSizeBytes)
+    )
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
+    """Streaming fetch reconstructs the same bytes the small path returns."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    baExpected = b"x" * (3 * 1024 + 17)
+    mockContainer.get_archive.return_value = (
+        _fnBuildTarStream("payload.bin", baExpected), {"size": len(baExpected)},
+    )
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    baReceived = b"".join(
+        conn.fnIterStreamFile(
+            "abc123", "/workspace/payload.bin", iChunkSizeBytes=1024,
+        )
+    )
+    assert baReceived == baExpected
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
+    """No yielded chunk exceeds the caller's requested chunk size."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    baExpected = b"y" * 10000
+    mockContainer.get_archive.return_value = (
+        _fnBuildTarStream("payload.bin", baExpected, iChunkSizeBytes=4096),
+        {"size": len(baExpected)},
+    )
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    listChunks = list(
+        conn.fnIterStreamFile(
+            "abc123", "/workspace/payload.bin", iChunkSizeBytes=1024,
+        )
+    )
+    assert all(len(b) <= 1024 for b in listChunks)
+    assert b"".join(listChunks) == baExpected
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnIterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
+    """A missing path surfaces as FileNotFoundError, not a docker exception."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockContainer.get_archive.side_effect = RuntimeError("no such file")
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    with pytest.raises(FileNotFoundError):
+        next(conn.fnIterStreamFile("abc123", "/nope"))
+
+
+# -----------------------------------------------------------------------
+# Small-file cap on fbaFetchFile
+# -----------------------------------------------------------------------
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fbaFetchFile_caps_oversize_payloads(mockGetDocker):
+    """Files larger than ``iMaxBytes`` raise ValueError instead of returning."""
+    import base64
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    baOversize = b"q" * 200
+    sEncoded = base64.b64encode(baOversize).decode("ascii")
+    mockContainer.exec_run.return_value = (0, sEncoded.encode("ascii"))
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    with pytest.raises(ValueError, match="exceeds fbaFetchFile cap"):
+        conn.fbaFetchFile("abc123", "/tmp/big.bin", iMaxBytes=100)
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fbaFetchFile_under_cap_returns_bytes(mockGetDocker):
+    """Below-cap payloads are returned unchanged by the small-file path."""
+    import base64
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    baSmall = b"under-cap"
+    sEncoded = base64.b64encode(baSmall).decode("ascii")
+    mockContainer.exec_run.return_value = (0, sEncoded.encode("ascii"))
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    baResult = conn.fbaFetchFile(
+        "abc123", "/tmp/small.bin", iMaxBytes=100,
+    )
+    assert baResult == baSmall
+
+
 def test_module_init_filters_deprecation_warning():
     """A subprocess import shows the heartbeat-flood filter installed.
 

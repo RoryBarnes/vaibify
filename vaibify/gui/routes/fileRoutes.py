@@ -6,10 +6,9 @@ import os
 import posixpath
 
 from fastapi import HTTPException
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 
 from ..actionCatalog import fnAgentAction
-from ..figureServer import fsMimeTypeForFile
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -115,23 +114,53 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         return {"bSuccess": True, "sPath": sNormalized}
 
 
-async def _fbaFetchOrRaiseHttp(connectionDocker, sContainerId, sAbsPath):
-    """Fetch file bytes via a worker thread; map errors to HTTP 500."""
+def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
+    """Open the streaming iterator and pull the first chunk eagerly.
+
+    docker-py raises ``NotFound`` / ``APIError`` from
+    ``container.get_archive`` synchronously; that error must surface as
+    HTTP 500 *before* the StreamingResponse starts writing, otherwise
+    FastAPI has already committed the 200 status and the client sees a
+    truncated body instead of an error. Pulling one chunk here forces
+    the iterator to materialise the get_archive call.
+    """
+    iterChunks = connectionDocker.fnIterStreamFile(
+        sContainerId, sAbsPath,
+    )
+    try:
+        baFirst = next(iterChunks)
+    except StopIteration:
+        baFirst = b""
+    return baFirst, iterChunks
+
+
+async def _ttIterStreamOrRaiseHttp(
+    connectionDocker, sContainerId, sAbsPath,
+):
+    """Begin streaming the file via a worker thread; map errors to HTTP 500."""
     import asyncio
     try:
         return await asyncio.to_thread(
-            connectionDocker.fbaFetchFile, sContainerId, sAbsPath,
+            _fnProbeFirstChunk,
+            connectionDocker, sContainerId, sAbsPath,
         )
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error))
 
 
-def _fresponseFileDownload(baContent, sAbsPath):
-    """Wrap fetched bytes as an attachment Response with the right mime type."""
+def _fiterReplayThenRest(baFirst, iterChunks):
+    """Re-yield ``baFirst`` then drain ``iterChunks`` for StreamingResponse."""
+    if baFirst:
+        yield baFirst
+    yield from iterChunks
+
+
+def _fresponseStreamDownload(iterBytes, sAbsPath):
+    """Wrap a byte iterator as an attachment StreamingResponse."""
     sFilename = posixpath.basename(sAbsPath)
-    return Response(
-        content=baContent,
-        media_type=fsMimeTypeForFile(sAbsPath),
+    return StreamingResponse(
+        iterBytes,
+        media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="{sFilename}"',
         },
@@ -152,10 +181,12 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
             dictCtx["workflowDir"](sContainerId), sFilePath,
         )
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
-        baContent = await _fbaFetchOrRaiseHttp(
+        baFirst, iterChunks = await _ttIterStreamOrRaiseHttp(
             dictCtx["docker"], sContainerId, sAbsPath,
         )
-        return _fresponseFileDownload(baContent, sAbsPath)
+        return _fresponseStreamDownload(
+            _fiterReplayThenRest(baFirst, iterChunks), sAbsPath,
+        )
 
 
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):

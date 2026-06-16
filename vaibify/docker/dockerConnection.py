@@ -39,6 +39,14 @@ I_DOCKER_CLIENT_TIMEOUT_SECONDS = 600
 # the heartbeat thread (audit CRITICAL #3).
 I_DOCKER_POOL_MAX_SIZE = 32
 
+# ``fbaFetchFile`` round-trips a file through base64 over docker exec
+# stdout, which peaks at roughly 3x the file size in RAM (raw +
+# base64-encoded + decoded). Cap the small-file path at 64 MB so a
+# caller cannot accidentally pull a multi-GB output file through it;
+# large files must go through :meth:`DockerConnection.fnIterStreamFile`
+# instead, which streams via ``container.get_archive``.
+I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
+
 # The heartbeat loop calls ``ftResultExecuteCommand`` on every tick,
 # which currently raises a ``DeprecationWarning`` per invocation.
 # Multi-day runs flood the host log; the migration to the streamed
@@ -424,8 +432,22 @@ class DockerConnection:
         sOutput = resultExec.sStdout + resultExec.sStderr
         return (resultExec.iExitCode, sOutput)
 
-    def fbaFetchFile(self, sContainerId, sFilePath):
-        """Fetch a file from the container and return its bytes."""
+    def fbaFetchFile(
+        self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,
+    ):
+        """Fetch a small file from the container and return its bytes.
+
+        Use this for state JSON, markers, configs, and anything else that
+        is bounded in size by design. Large files (HDF5, NetCDF, plot
+        bundles) must go through :meth:`fnIterStreamFile` instead — this
+        path round-trips through base64 over exec stdout which inflates
+        memory by ~3x.
+
+        ``iMaxBytes`` is a safety cap (default 64 MB). If the fetched
+        payload exceeds it, ``ValueError`` is raised so callers cannot
+        accidentally pull a multi-GB output file into RAM via the small
+        path.
+        """
         sSafePath = repr(sFilePath)
         sCommand = (
             "python3 -c \"import base64,sys; "
@@ -440,7 +462,38 @@ class DockerConnection:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
             )
-        return base64.b64decode(resultExec.sStdout.strip())
+        baContent = base64.b64decode(resultExec.sStdout.strip())
+        if iMaxBytes is not None and len(baContent) > iMaxBytes:
+            raise ValueError(
+                f"File exceeds fbaFetchFile cap "
+                f"({len(baContent)} > {iMaxBytes} bytes): "
+                f"{sFilePath}; use fnIterStreamFile for large files"
+            )
+        return baContent
+
+    def fnIterStreamFile(
+        self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
+    ):
+        """Yield the container file's bytes in chunks via get_archive.
+
+        ``container.get_archive`` returns a ``(tar_stream, stat)`` pair
+        where ``tar_stream`` is an iterable of raw tar bytes. The tar
+        holds a single file entry; this generator parses the tar inline
+        and yields only the file's payload bytes, never holding the
+        full file in memory at once. Memory usage stays bounded by
+        ``iChunkSizeBytes`` regardless of file size.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        try:
+            tStreamStat = container.get_archive(sFilePath)
+        except Exception as error:
+            raise FileNotFoundError(
+                f"Cannot read file from container: {sFilePath}: {error}"
+            )
+        iterTarStream, _ = tStreamStat
+        yield from _fiterChunksFromTarStream(
+            iterTarStream, iChunkSizeBytes,
+        )
 
     def fnWriteFile(
         self, sContainerId, sFilePath, baContent,
@@ -554,3 +607,73 @@ class DockerConnection:
         self._clientDocker.api.exec_resize(
             sExecId, height=iRows, width=iColumns
         )
+
+
+def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):
+    """Yield the single-file payload from a docker get_archive stream.
+
+    ``iterTarStream`` is the first element of the tuple returned by
+    ``container.get_archive``: a generator of raw tar bytes. We pipe
+    those bytes into a ``tarfile`` opened in streaming mode
+    (``mode="r|"``), pull the first (and only) member, and copy its
+    payload to the caller in ``iChunkSizeBytes``-sized chunks. The
+    file is never fully materialised on the host.
+    """
+    import tarfile
+    fileTarPipe = _BytesGeneratorPipe(iterTarStream)
+    with tarfile.open(fileobj=fileTarPipe, mode="r|") as tar:
+        for infoMember in tar:
+            if not infoMember.isfile():
+                continue
+            fileExtract = tar.extractfile(infoMember)
+            if fileExtract is None:
+                continue
+            yield from _fiterFileChunks(fileExtract, iChunkSizeBytes)
+            return
+
+
+def _fiterFileChunks(fileObj, iChunkSizeBytes):
+    """Yield successive ``iChunkSizeBytes``-sized chunks from fileObj."""
+    while True:
+        baChunk = fileObj.read(iChunkSizeBytes)
+        if not baChunk:
+            return
+        yield baChunk
+
+
+class _BytesGeneratorPipe:
+    """Read-only file-like adapter over a generator of bytes chunks.
+
+    ``tarfile.open(mode="r|")`` consumes a file-like object exposing
+    ``.read(n)``; ``container.get_archive`` produces a generator of
+    arbitrary-sized byte chunks. This adapter buffers across chunk
+    boundaries so each read returns the requested length without
+    accumulating the whole archive in memory.
+    """
+
+    def __init__(self, iterChunks):
+        self._iterChunks = iter(iterChunks)
+        self._baBuffer = b""
+        self._bExhausted = False
+
+    def read(self, iSize=-1):
+        if iSize is None or iSize < 0:
+            return self._baDrainAll()
+        while len(self._baBuffer) < iSize and not self._bExhausted:
+            self._fnPullOneChunk()
+        baOut = self._baBuffer[:iSize]
+        self._baBuffer = self._baBuffer[iSize:]
+        return baOut
+
+    def _fnPullOneChunk(self):
+        try:
+            self._baBuffer += next(self._iterChunks)
+        except StopIteration:
+            self._bExhausted = True
+
+    def _baDrainAll(self):
+        while not self._bExhausted:
+            self._fnPullOneChunk()
+        baOut = self._baBuffer
+        self._baBuffer = b""
+        return baOut
