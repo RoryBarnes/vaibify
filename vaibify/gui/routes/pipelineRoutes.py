@@ -3,13 +3,14 @@
 __all__ = ["fnRegisterAll", "fdictComputeFileStatus"]
 
 import asyncio
+import hashlib
 import json
 import logging
 import posixpath
 import re
 
 from docker.errors import APIError, NotFound
-from fastapi import HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
@@ -444,18 +445,64 @@ async def _fbApplyRandomnessLintAsync(
     )
 
 
+def _fsBuildFileStatusEtag(dictResponse, iSyncEpoch):
+    """Return a stable ETag stamp for a file-status response payload.
+
+    The mtime vector is the single load-bearing change signal — every
+    invalidation downstream rides on a per-step mtime. The hash is
+    over the sorted ``(stepIndex, mtime)`` pairs, the per-step max
+    mtime, plus ``iSyncEpoch`` so a manual sync bump invalidates the
+    badge cache even when no file moved. Including the L1/L2/L3
+    blocker counts captures verification-state transitions a pure
+    mtime hash would miss.
+    """
+    listSignals = [
+        ("syncEpoch", int(iSyncEpoch)),
+        ("modTimes", sorted(
+            (dictResponse.get("dictModTimes") or {}).items(),
+        )),
+        ("maxByStep", sorted(
+            (dictResponse.get("dictMaxMtimeByStep") or {}).items(),
+        )),
+        ("aicsLevel", dictResponse.get("iAICSLevel", 0)),
+        ("l1", dictResponse.get("iL1BlockerCount", 0)),
+        ("l2", dictResponse.get("iL2BlockerCount", 0)),
+        ("l3", dictResponse.get("iL3BlockerCount", 0)),
+    ]
+    sBody = json.dumps(listSignals, sort_keys=True, default=str)
+    sDigest = hashlib.sha256(sBody.encode("utf-8")).hexdigest()
+    return '"' + sDigest + '"'
+
+
 def _fnRegisterFileStatus(app, dictCtx):
-    """Register GET /api/pipeline/{id}/file-status endpoint."""
+    """Register GET /api/pipeline/{id}/file-status endpoint.
+
+    Supports ``If-None-Match``: clients pass the prior ETag and a
+    matching server-side stamp short-circuits to a 304 with an empty
+    body. The stamp covers the mtime vector + blocker counts +
+    iSyncEpoch so every observable transition still produces a fresh
+    payload.
+    """
 
     @app.get("/api/pipeline/{sContainerId}/file-status")
-    async def fnGetFileStatus(sContainerId: str):
+    async def fnGetFileStatus(
+        sContainerId: str, request: Request, response: Response,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictVars = dictCtx["variables"](sContainerId)
-        return await fdictComputeFileStatus(
+        dictResponse = await fdictComputeFileStatus(
             dictCtx, sContainerId, dictWorkflow, dictVars,
         )
+        sEtag = _fsBuildFileStatusEtag(
+            dictResponse, fiGetSyncEpoch(dictCtx, sContainerId),
+        )
+        sIfNoneMatch = request.headers.get("if-none-match", "")
+        if sIfNoneMatch and sIfNoneMatch == sEtag:
+            return Response(status_code=304, headers={"ETag": sEtag})
+        response.headers["ETag"] = sEtag
+        return dictResponse
 
 
 def _fnRegisterWorkflowDiscovery(app, dictCtx):
