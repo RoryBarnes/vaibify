@@ -6,8 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from vaibify.gui.interactiveSteps import (
+    F_INTERACTIVE_WAIT_HOURS,
+    I_ABANDONED_EXIT_CODE,
+    S_ABANDONED_SENTINEL,
     fdictCreateInteractiveContext,
     fnSetInteractiveResponse,
+    fsBuildAbandonedReason,
     _fiHandleInteractiveStep,
     _fiRunInteractiveAndRecord,
     _fsAwaitInteractiveDecision,
@@ -244,3 +248,99 @@ async def test_fiAwaitInteractiveComplete_complete_zero():
     asyncio.ensure_future(_fnSetAfterDelay())
     iResult = await _fiAwaitInteractiveComplete(dictInteractive)
     assert iResult == 0
+
+
+# -- timeout / abandonment tests --
+
+
+def test_module_constants_for_abandonment():
+    assert F_INTERACTIVE_WAIT_HOURS == 24.0
+    assert I_ABANDONED_EXIT_CODE == 124
+    assert S_ABANDONED_SENTINEL == "abandoned:124"
+
+
+def test_fsBuildAbandonedReason_mentions_hours():
+    sReason = fsBuildAbandonedReason(24.0)
+    assert "24" in sReason
+    assert "abandoned" in sReason
+    assert "h" in sReason
+
+
+@pytest.mark.asyncio
+async def test_fsAwaitInteractiveDecision_returns_sentinel_on_timeout():
+    dictInteractive = fdictCreateInteractiveContext()
+    with patch(
+        "vaibify.gui.interactiveSteps.F_INTERACTIVE_WAIT_HOURS",
+        1e-6,
+    ):
+        sResult = await _fsAwaitInteractiveDecision(dictInteractive)
+    assert sResult == S_ABANDONED_SENTINEL
+
+
+@pytest.mark.asyncio
+async def test_fiAwaitInteractiveComplete_returns_124_on_timeout():
+    dictInteractive = fdictCreateInteractiveContext()
+    with patch(
+        "vaibify.gui.interactiveSteps.F_INTERACTIVE_WAIT_HOURS",
+        1e-6,
+    ):
+        iResult = await _fiAwaitInteractiveComplete(dictInteractive)
+    assert iResult == I_ABANDONED_EXIT_CODE
+
+
+@pytest.mark.asyncio
+async def test_fiHandleInteractiveStep_emits_failure_on_abandonment():
+    dictInteractive = fdictCreateInteractiveContext()
+    fnCallback = AsyncMock()
+
+    async def _fnFakeDecision(dictCtx):
+        return S_ABANDONED_SENTINEL
+
+    with patch(
+        "vaibify.gui.interactiveSteps._fsAwaitInteractiveDecision",
+        side_effect=_fnFakeDecision,
+    ):
+        iResult = await _fiHandleInteractiveStep(
+            None, "cid", {"sName": "S"}, 4, fnCallback, dictInteractive,
+        )
+
+    assert iResult == I_ABANDONED_EXIT_CODE
+    listTypes = [c[0][0]["sType"] for c in fnCallback.call_args_list]
+    assert "interactivePause" in listTypes
+    assert "interactiveAbandoned" in listTypes
+    assert "stepFail" in listTypes
+    dictAbandoned = next(
+        c[0][0] for c in fnCallback.call_args_list
+        if c[0][0]["sType"] == "interactiveAbandoned"
+    )
+    assert dictAbandoned["sFailureReason"].startswith(
+        "interactive step abandoned"
+    )
+    assert dictAbandoned["iExitCode"] == I_ABANDONED_EXIT_CODE
+
+
+@pytest.mark.asyncio
+async def test_fiRunInteractiveAndRecord_handles_abandonment():
+    dictStep = {"sName": "T"}
+    fnCallback = AsyncMock()
+    dictInteractive = fdictCreateInteractiveContext()
+
+    async def _fnFakeComplete(dictCtx):
+        return I_ABANDONED_EXIT_CODE
+
+    with patch(
+        "vaibify.gui.interactiveSteps._fiAwaitInteractiveComplete",
+        side_effect=_fnFakeComplete,
+    ), patch(
+        "vaibify.gui.pipelineUtils._fnRecordRunStats",
+    ), patch(
+        "vaibify.gui.pipelineUtils._fnEmitStepResult",
+        new_callable=AsyncMock,
+    ):
+        iResult = await _fiRunInteractiveAndRecord(
+            "dc", "cid", dictStep, 2, fnCallback, dictInteractive,
+        )
+
+    assert iResult == I_ABANDONED_EXIT_CODE
+    listTypes = [c[0][0]["sType"] for c in fnCallback.call_args_list]
+    assert "interactiveAbandoned" in listTypes
