@@ -326,9 +326,12 @@ async def fdictComputeFileStatus(
 def _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow):
     """Run the unseeded-randomness lint, return True if any flag changed.
 
-    The lint reads referenced configuration files from the container.
-    Skipped entirely when the workflow declares no ``dictRandomnessLint``
-    block, keeping the polling cost zero for workflows that opt out.
+    The lint reads referenced configuration files from the container
+    via ``fsReadFileFromContainer`` (a docker-exec round-trip), so it
+    blocks. Always invoke through :func:`_fbApplyRandomnessLintAsync`
+    from async code; calling it directly on the event loop reintroduces
+    the audit-HIGH #14 stall. Skipped entirely when the workflow
+    declares no ``dictRandomnessLint`` block.
     """
     if not dictWorkflow.get("dictRandomnessLint"):
         return False
@@ -352,6 +355,15 @@ def _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow):
         for dictStep in dictWorkflow.get("listSteps", [])
     ]
     return listAfter != listSnapshot
+
+
+async def _fbApplyRandomnessLintAsync(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Run the lint off the event loop via asyncio.to_thread."""
+    return await asyncio.to_thread(
+        _fbApplyRandomnessLint, dictCtx, sContainerId, dictWorkflow,
+    )
 
 
 def _fnRegisterFileStatus(app, dictCtx):
@@ -432,6 +444,10 @@ async def _fdictFetchOutputStatus(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
         bPipelineRunning=bPipelineRunning,
     )
+    if await _fbApplyRandomnessLintAsync(
+        dictCtx, sContainerId, dictWorkflow,
+    ):
+        dictCtx["save"](sContainerId, dictWorkflow)
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     filesPoll = await asyncio.to_thread(
         _ffilesFetchPollSnapshot, dictCtx, sContainerId, dictWorkflow,
@@ -578,7 +594,13 @@ def _flistRunPollSideEffects(
     dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
     bPipelineRunning=False,
 ):
-    """Apply stale-check, invalidate, reconcile; return invalidated steps."""
+    """Apply stale-check, invalidate, reconcile; return invalidated steps.
+
+    Does NOT run the unseeded-randomness lint — that blocks on a docker
+    exec round-trip and must be awaited via
+    :func:`_fbApplyRandomnessLintAsync` from the async caller (audit
+    HIGH #14). The async caller persists any randomness-flag change.
+    """
     if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, dictVars):
         logger.info(
             "POLL stale-check reset sUser for container=%s", sContainerId,
@@ -603,7 +625,6 @@ def _flistRunPollSideEffects(
     bAnyReconciled = (
         fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)
         | fbReconcileUserVerificationTimestamps(dictWorkflow)
-        | _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow)
     )
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)

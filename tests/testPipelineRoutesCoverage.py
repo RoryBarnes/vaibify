@@ -1243,6 +1243,56 @@ class TestFbApplyRandomnessLint:
         assert bChanged is False
 
 
+class TestFbApplyRandomnessLintAsync:
+    """audit HIGH #14: lint must run off the event loop."""
+
+    @pytest.mark.asyncio
+    async def test_wrapper_dispatches_to_to_thread(self):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fbApplyRandomnessLintAsync,
+        )
+        dictCtx = {"docker": MagicMock()}
+        dictWorkflow = {"listSteps": []}
+        with patch(
+            "vaibify.gui.routes.pipelineRoutes.asyncio.to_thread",
+            new_callable=AsyncMock,
+        ) as mockToThread:
+            mockToThread.return_value = True
+            bChanged = await _fbApplyRandomnessLintAsync(
+                dictCtx, "cid", dictWorkflow,
+            )
+        assert bChanged is True
+        mockToThread.assert_awaited_once()
+        assert mockToThread.call_args[0][0] is _fbApplyRandomnessLint
+
+    @pytest.mark.asyncio
+    async def test_wrapper_returns_underlying_value(self):
+        from vaibify.gui.routes.pipelineRoutes import (
+            _fbApplyRandomnessLintAsync,
+        )
+        dictCtx = {"docker": MagicMock()}
+        dictWorkflow = {"listSteps": []}
+        bChanged = await _fbApplyRandomnessLintAsync(
+            dictCtx, "cid", dictWorkflow,
+        )
+        assert bChanged is False
+
+
+class TestPollSideEffectsDoesNotRunLint:
+    """Lint must be invoked exclusively via the async wrapper."""
+
+    def test_side_effects_no_longer_calls_lint(self):
+        import inspect
+        from vaibify.gui.routes import pipelineRoutes
+        sSource = inspect.getsource(
+            pipelineRoutes._flistRunPollSideEffects
+        )
+        assert "_fbApplyRandomnessLint(" not in sSource, (
+            "audit HIGH #14: the sync side-effects helper must not "
+            "invoke the docker-exec-blocking lint on the event loop."
+        )
+
+
 class TestFdictReadReconciledStateShortCircuit:
     def test_not_running_returns_state_unchanged(self):
         """A non-running state is returned through the reader untouched.
