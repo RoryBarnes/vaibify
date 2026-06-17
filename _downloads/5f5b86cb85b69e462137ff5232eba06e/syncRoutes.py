@@ -3,10 +3,14 @@
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import copy
+import hashlib
 import logging
 import os
 import posixpath
 import re
+import threading
+import time
 
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -33,6 +37,56 @@ from ..pipelineServer import (
 from .scriptRoutes import _fnStoreCommitHash
 
 logger = logging.getLogger("vaibify")
+
+# In-memory deduplication cache for the github push pipeline. Keys are
+# ``(sContainerId, sCommitSha, sPayloadHash)``. Values are
+# ``(fExpiryEpoch, dictResult)``. A second call with the same key
+# inside the TTL window returns the cached result, so a vaibify-do
+# retry over a network flake never re-runs the pre-push validation or
+# bumps iSyncEpoch twice.
+_DICT_RECENT_PUSH_RESULTS = {}
+_LOCK_RECENT_PUSHES = threading.Lock()
+_F_RECENT_PUSH_TTL_SECONDS = 30.0
+
+
+def _fsHashPushPayload(listFilePaths):
+    """Return a stable digest of the file list for the dedupe key."""
+    listSorted = sorted(listFilePaths or [])
+    sJoined = "\n".join(listSorted)
+    return hashlib.sha256(sJoined.encode("utf-8")).hexdigest()
+
+
+def _fnEvictExpiredPushResults(fNow):
+    """Drop cache entries whose TTL has elapsed; runs under the lock."""
+    listExpired = [
+        tKey for tKey, (fExpiry, _result) in _DICT_RECENT_PUSH_RESULTS.items()
+        if fExpiry <= fNow
+    ]
+    for tKey in listExpired:
+        _DICT_RECENT_PUSH_RESULTS.pop(tKey, None)
+
+
+def _fdictLookupRecentPush(tKey, fNow):
+    """Return the cached result for tKey, or None when expired/absent."""
+    with _LOCK_RECENT_PUSHES:
+        _fnEvictExpiredPushResults(fNow)
+        tEntry = _DICT_RECENT_PUSH_RESULTS.get(tKey)
+        if tEntry is None:
+            return None
+        fExpiry, dictResult = tEntry
+        if fExpiry <= fNow:
+            _DICT_RECENT_PUSH_RESULTS.pop(tKey, None)
+            return None
+        return copy.deepcopy(dictResult)
+
+
+def _fnRecordRecentPush(tKey, dictResult, fNow):
+    """Persist a successful push result under tKey with the TTL stamped."""
+    with _LOCK_RECENT_PUSHES:
+        _DICT_RECENT_PUSH_RESULTS[tKey] = (
+            fNow + _F_RECENT_PUSH_TTL_SECONDS,
+            copy.deepcopy(dictResult),
+        )
 
 
 _S_ISOLATION_BLOCK_ERROR = "isolation-mode-blocks-network"
@@ -760,8 +814,37 @@ async def _fdictRunGithubPush(
     )
 
 
+async def _fsGitHeadShaForDedupeKey(dictCtx, sContainerId, sWorkdir):
+    """Return the pre-push HEAD sha used in the dedupe key, or "".
+
+    A missing or unreadable HEAD degrades to an empty string so the
+    dedupe key is still well-formed; the cache lookup will simply
+    miss and the push runs as if uncached. The probe itself is one
+    cheap docker exec.
+    """
+    try:
+        return await asyncio.to_thread(
+            containerGit.fsGitHeadShaInContainer,
+            dictCtx["docker"], sContainerId, sWorkspace=sWorkdir,
+        )
+    except Exception:
+        logger.info(
+            "pre-push HEAD probe failed for %s; skipping push dedupe",
+            sContainerId, exc_info=True,
+        )
+        return ""
+
+
 def _fnRegisterGithubPush(app, dictCtx):
-    """Register POST /api/github/{id}/push endpoint."""
+    """Register POST /api/github/{id}/push endpoint.
+
+    A repeat call inside ``_F_RECENT_PUSH_TTL_SECONDS`` with the same
+    (container, pre-push HEAD sha, file-list digest) returns the
+    cached result so a vaibify-do retry across a transient network
+    flake does not re-run pre-push validation, re-stage files, or
+    bump iSyncEpoch a second time. A differing payload bypasses the
+    cache automatically because the digest changes.
+    """
 
     @fnAgentAction("push-to-github")
     @app.post("/api/github/{sContainerId}/push")
@@ -774,6 +857,20 @@ def _fnRegisterGithubPush(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
+        sCommitSha = await _fsGitHeadShaForDedupeKey(
+            dictCtx, sContainerId, sWorkdir,
+        )
+        sPayloadHash = _fsHashPushPayload(request.listFilePaths)
+        tDedupeKey = (sContainerId, sCommitSha, sPayloadHash)
+        fNow = time.monotonic()
+        dictCached = _fdictLookupRecentPush(tDedupeKey, fNow)
+        if dictCached is not None:
+            logger.info(
+                "GitHub push dedupe HIT: container=%s commit=%s",
+                sContainerId, sCommitSha or "<unknown>",
+            )
+            dictCached["bDedupedFromRecent"] = True
+            return dictCached
         await asyncio.to_thread(
             _fnAssertGithubTokenBoundToRemote,
             dictCtx["docker"], sContainerId, sWorkdir,
@@ -786,6 +883,8 @@ def _fnRegisterGithubPush(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, sWorkdir, request,
         )
         fnBumpSyncEpoch(dictCtx, sContainerId)
+        if dictResult.get("bSuccess"):
+            _fnRecordRecentPush(tDedupeKey, dictResult, fNow)
         return dictResult
 
 

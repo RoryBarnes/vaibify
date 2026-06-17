@@ -110,15 +110,63 @@ def fnWriteManifest(filesRepo, dictWorkflow):
     skipped as a logged per-file gap so a single stray symlink never
     aborts the write. Raises ``ValueError`` only when a non-symlink
     declared path escapes the repo root.
+
+    Host adapters stream entry-by-entry into the temp file so a 1 M
+    entry manifest does not materialize 80 MB of string + 80 MB of
+    UTF-8 bytes in process memory. The non-host fallback retains the
+    one-shot atomic write through the adapter API so container and
+    snapshot adapters keep their existing semantics.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     listRelativePaths = _flistCollectManifestPaths(dictWorkflow)
     listEntries = _flistBuildManifestEntries(filesRepo, listRelativePaths)
+    if _fbCanStreamWrite(filesRepo):
+        _fnStreamWriteManifest(filesRepo, listEntries)
+        return
     sBody = _MANIFEST_HEADER + "".join(
         _fsFormatManifestLine(sHash, sRelativePath)
         for sHash, sRelativePath in listEntries
     )
     filesRepo.fnWriteTextAtomic(_MANIFEST_FILENAME, sBody)
+
+
+def _fbCanStreamWrite(filesRepo):
+    """Return True iff the adapter exposes a host root we can stream to."""
+    fnLocalRoot = getattr(filesRepo, "fsLocalRootOrNone", None)
+    if not callable(fnLocalRoot):
+        return False
+    return bool(fnLocalRoot())
+
+
+def _fnStreamWriteManifest(filesRepo, listEntries):
+    """Write the manifest line-by-line into a temp file, then atomic-rename.
+
+    Iterates ``listEntries`` (an iterable of ``(sHash, sRelativePath)``
+    tuples) writing each formatted line directly to the open temp
+    handle. The whole-body string and its byte copy are never
+    materialized. The temp file is replaced atomically over the
+    canonical name; any failure cleans up the temp file.
+    """
+    sRoot = filesRepo.fsLocalRootOrNone()
+    sAbsolute = os.path.join(sRoot, _MANIFEST_FILENAME)
+    sTempPath = sAbsolute + ".tmp"
+    try:
+        with open(sTempPath, "w", encoding="utf-8", newline="\n") as f:
+            f.write(_MANIFEST_HEADER)
+            for sHash, sRelativePath in listEntries:
+                f.write(_fsFormatManifestLine(sHash, sRelativePath))
+        os.replace(sTempPath, sAbsolute)
+    except OSError:
+        _fnRemoveTempFileQuietly(sTempPath)
+        raise
+
+
+def _fnRemoveTempFileQuietly(sTempPath):
+    """Best-effort remove of the streaming temp file on failure."""
+    try:
+        os.remove(sTempPath)
+    except OSError:
+        pass
 
 
 def flistVerifyManifest(filesRepo):
