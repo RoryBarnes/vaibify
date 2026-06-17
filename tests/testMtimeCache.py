@@ -248,7 +248,7 @@ class _FakeFileDocker:
     def __init__(self, dictPreloaded=None):
         self.dictFiles = dict(dictPreloaded or {})
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         sKey = (sContainerId, sPath)
         if sKey not in self.dictFiles:
             raise FileNotFoundError(sPath)
@@ -256,6 +256,21 @@ class _FakeFileDocker:
 
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self.dictFiles[(sContainerId, sPath)] = baContent
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        """Honor ``mv tmp final`` so atomic-write callers behave correctly."""
+        if sCommand.startswith("mv "):
+            listParts = sCommand.split()
+            if len(listParts) == 3:
+                sSrc, sDst = listParts[1], listParts[2]
+                tSrc = (sContainerId, sSrc)
+                if tSrc in self.dictFiles:
+                    self.dictFiles[(sContainerId, sDst)] = (
+                        self.dictFiles.pop(tSrc)
+                    )
+        return (0, "")
 
 
 def _fsContainerCacheKey():

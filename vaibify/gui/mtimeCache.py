@@ -130,18 +130,27 @@ def fnSaveContainerCache(
 ):
     """Write the container-side sha cache atomically inside the container.
 
-    A best-effort write — failures are logged at INFO and swallowed so
-    a transient docker hiccup never converts a successful poll into a
-    user-facing error. The next save reattempts.
+    Writes to ``<path>.tmp`` first, then renames over the canonical
+    path so a concurrent reader between truncate and full write never
+    sees a half-written file. Two concurrent workflow polls in the
+    same project repo can still race the rename, but each race winner
+    leaves a valid JSON file — never a corrupted one. Failures are
+    logged at INFO and swallowed so a transient docker hiccup never
+    converts a successful poll into a user-facing error; the next save
+    reattempts.
     """
     if not sProjectRepoPath:
         return
     sPath = _fsContainerCachePath(sProjectRepoPath)
+    sPathTemp = sPath + ".tmp"
     try:
         baBody = json.dumps(
             dictCache, indent=2, sort_keys=True,
         ).encode("utf-8")
-        connectionDocker.fnWriteFile(sContainerId, sPath, baBody)
+        connectionDocker.fnWriteFile(sContainerId, sPathTemp, baBody)
+        connectionDocker.ftResultExecuteCommand(
+            sContainerId, f"mv {sPathTemp} {sPath}",
+        )
     except Exception:
         _logger.info(
             "container sha cache save failed for %s", sContainerId,

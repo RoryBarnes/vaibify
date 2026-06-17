@@ -618,18 +618,32 @@ def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):
     (``mode="r|"``), pull the first (and only) member, and copy its
     payload to the caller in ``iChunkSizeBytes``-sized chunks. The
     file is never fully materialised on the host.
+
+    The ``try/finally`` releases the underlying docker-py HTTP socket
+    if the consumer stops iterating early (e.g. a downstream
+    StreamingResponse cancelled by an HTTP client disconnect). Without
+    it, urllib3 reclaims the connection on its own schedule and the
+    docker pool can run hot on a long-uptime host.
     """
     import tarfile
     fileTarPipe = _BytesGeneratorPipe(iterTarStream)
-    with tarfile.open(fileobj=fileTarPipe, mode="r|") as tar:
-        for infoMember in tar:
-            if not infoMember.isfile():
-                continue
-            fileExtract = tar.extractfile(infoMember)
-            if fileExtract is None:
-                continue
-            yield from _fiterFileChunks(fileExtract, iChunkSizeBytes)
-            return
+    try:
+        with tarfile.open(fileobj=fileTarPipe, mode="r|") as tar:
+            for infoMember in tar:
+                if not infoMember.isfile():
+                    continue
+                fileExtract = tar.extractfile(infoMember)
+                if fileExtract is None:
+                    continue
+                yield from _fiterFileChunks(fileExtract, iChunkSizeBytes)
+                return
+    finally:
+        fnClose = getattr(iterTarStream, "close", None)
+        if callable(fnClose):
+            try:
+                fnClose()
+            except Exception:
+                pass
 
 
 def _fiterFileChunks(fileObj, iChunkSizeBytes):

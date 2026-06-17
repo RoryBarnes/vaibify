@@ -1574,9 +1574,14 @@ def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
 # swept. Two side effects:
 #   1. ``fnSweepAllContainerCaches`` iterates this list to evict stale
 #      keys from each dict in lockstep with the running-container set.
-#   2. ``fdictBuildContext`` in ``pipelineServer`` initializes the
-#      same keys; adding a new container-keyed cache means appending
-#      it both here and there so the sweep does not silently miss it.
+#   2. ``fdictBuildContext`` in ``pipelineServer`` initializes most of
+#      these keys eagerly. ``dictManifestShaCache`` is the exception:
+#      ``pipelineRoutes`` lazily ``setdefault``s it on first access, so
+#      it may legitimately be absent from ``dictCtx`` at sweep time.
+#      The sweep tolerates that by skipping any name that does not
+#      resolve to a dict — adding a new container-keyed cache means
+#      appending it here AND either initializing it in
+#      ``fdictBuildContext`` or relying on the same isinstance guard.
 # ``dictPipelineStateLocks`` is evicted via the dedicated lock helper
 # (``pipelineState.fnEvictStateLockForContainer``) so the asyncio.Lock
 # objects are released cleanly rather than dropped raw, and is omitted
