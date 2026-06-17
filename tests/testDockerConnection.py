@@ -485,7 +485,14 @@ def test_streamed_with_chunks_passes_workdir_and_user(mockGetDocker):
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
 def test_constructor_mounts_oversized_pool_adapters(mockGetDocker):
-    """Pool ceiling is raised from docker-py default 10 to 32."""
+    """Pool ceiling is raised from docker-py default 10 to 32.
+
+    The vanilla TCP HTTPAdapter exposes the pool size on
+    ``_pool_maxsize``. docker-py's UnixHTTPAdapter exposes it on the
+    constructor-time ``max_pool_size`` attribute (its internal
+    PoolManager keeps the urllib3 default in ``_pool_maxsize``);
+    check whichever attribute is present.
+    """
     from vaibify.docker.dockerConnection import I_DOCKER_POOL_MAX_SIZE
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -497,8 +504,11 @@ def test_constructor_mounts_oversized_pool_adapters(mockGetDocker):
     assert "https://" in setPrefixes
     for tCall in listMountCalls:
         adapterHttp = tCall[0][1]
-        assert adapterHttp._pool_maxsize == I_DOCKER_POOL_MAX_SIZE
-        assert adapterHttp._pool_connections == I_DOCKER_POOL_MAX_SIZE
+        iMaxPool = getattr(
+            adapterHttp, "max_pool_size",
+            getattr(adapterHttp, "_pool_maxsize", None),
+        )
+        assert iMaxPool == I_DOCKER_POOL_MAX_SIZE
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")

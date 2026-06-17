@@ -41,7 +41,13 @@ jobs:
       - name: Run tests
         timeout-minutes: 15
         run: |
-          python -m pytest tests/ -m "not docker" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term
+          python -m pytest tests/ -m "not docker and not docker_live" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term
+
+      - name: Run live-daemon smoke tests
+        timeout-minutes: 3
+        run: |
+          docker info >/dev/null 2>&1 || { echo "no docker daemon reachable - skipping live smoke"; exit 0; }
+          python -m pytest tests/ -m docker_live --tb=short -v
 
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.9'

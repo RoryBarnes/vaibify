@@ -62,26 +62,70 @@ warnings.filterwarnings(
 def _fnTuneDockerSessionPool(clientDocker):
     """Mount oversized HTTPAdapters on the docker client's session.
 
-    docker-py exposes its ``requests.Session`` as ``client.api``.
-    Replacing both schemes covers TCP daemons; the unix-socket
-    adapter is mounted by docker-py at ``http+docker://`` with its
-    default pool size and is replaced here in-place.
+    docker-py exposes its ``requests.Session`` as ``client.api`` and
+    registers its own ``UnixHTTPAdapter`` at ``http+docker://`` so
+    requests over a unix socket can drive a path-based URL. Replacing
+    that with a vanilla ``HTTPAdapter`` breaks the scheme — urllib3
+    raises ``URLSchemeUnknown: http+docker`` and every docker call
+    fails. The TCP schemes use a vanilla adapter; the unix-socket
+    scheme is rebuilt from docker-py's own class with the larger pool.
     """
     import logging
     from requests.adapters import HTTPAdapter
     sessionDocker = getattr(clientDocker, "api", None)
     if sessionDocker is None or not hasattr(sessionDocker, "mount"):
         return
-    for sPrefix in ("http://", "https://", "http+docker://"):
-        try:
-            sessionDocker.mount(sPrefix, HTTPAdapter(
-                pool_connections=I_DOCKER_POOL_MAX_SIZE,
-                pool_maxsize=I_DOCKER_POOL_MAX_SIZE,
-            ))
-        except Exception as error:
-            logging.getLogger("vaibify").warning(
-                "docker pool tune failed for %s: %s", sPrefix, error,
-            )
+    _fnMountTcpAdapter(sessionDocker, "http://", HTTPAdapter)
+    _fnMountTcpAdapter(sessionDocker, "https://", HTTPAdapter)
+    _fnMountUnixAdapter(sessionDocker)
+
+
+def _fnMountTcpAdapter(sessionDocker, sPrefix, classAdapter):
+    """Mount a vanilla TCP HTTPAdapter with the oversized pool."""
+    import logging
+    try:
+        sessionDocker.mount(sPrefix, classAdapter(
+            pool_connections=I_DOCKER_POOL_MAX_SIZE,
+            pool_maxsize=I_DOCKER_POOL_MAX_SIZE,
+        ))
+    except Exception as error:
+        logging.getLogger("vaibify").warning(
+            "docker pool tune failed for %s: %s", sPrefix, error,
+        )
+
+
+def _fnMountUnixAdapter(sessionDocker):
+    """Remount docker-py's UnixHTTPAdapter with a 32-connection pool.
+
+    The unix-socket adapter parses ``http+docker://`` URLs against a
+    real filesystem socket path. Replacing it with a vanilla
+    ``HTTPAdapter`` makes urllib3 raise ``URLSchemeUnknown`` on the
+    first call. Read the existing adapter's ``socket_path`` and pass
+    it back to a fresh ``UnixHTTPAdapter`` with the larger pool —
+    same transport, bigger ceiling. The constructor's first arg
+    expects a ``http+unix://...`` URL whose path part is the socket;
+    do not reuse the session's ``base_url`` (it is the docker-py
+    pseudo-host ``http+docker://localhost`` and points at no file).
+    Failures are non-fatal so a docker SDK packaging change cannot
+    brick the GUI.
+    """
+    import logging
+    try:
+        from docker.transport.unixconn import UnixHTTPAdapter
+        adapterExisting = sessionDocker.adapters.get("http+docker://")
+        sSocketPath = getattr(adapterExisting, "socket_path", "") or ""
+        if not sSocketPath:
+            return
+        sessionDocker.mount("http+docker://", UnixHTTPAdapter(
+            "http+unix://" + sSocketPath,
+            timeout=I_DOCKER_CLIENT_TIMEOUT_SECONDS,
+            pool_connections=I_DOCKER_POOL_MAX_SIZE,
+            max_pool_size=I_DOCKER_POOL_MAX_SIZE,
+        ))
+    except Exception as error:
+        logging.getLogger("vaibify").warning(
+            "docker unix-socket pool tune failed: %s", error,
+        )
 
 
 def _fsResolveContainerUser(container):
