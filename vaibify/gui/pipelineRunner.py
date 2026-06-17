@@ -321,20 +321,26 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
 
     Lines arriving on the worker thread are accumulated into a buffer
     and flushed as a single ``{"sType": "outputBatch", "listLines":
-    [...]}`` event when the buffer reaches ``I_BATCH_MAX_LINES`` or
-    ``F_BATCH_MAX_INTERVAL_SECONDS`` have elapsed since the first
-    un-flushed line. ``faDrainPending`` is an async coroutine that
-    empties the buffer on per-command teardown so no lines are stuck
-    after the docker exec returns; it must be ``await``-ed from the
-    event-loop thread (the same thread that runs the docker
-    ``asyncio.to_thread`` await). Errors forwarding a batch (WS
-    closed, MemoryError on a huge scientific line, asyncio
-    cancellation) are logged exactly once; subsequent chunks become
-    no-ops so the producer worker finishes the docker exec instead of
-    tearing the whole run down.
+    [...]}`` event when EITHER the buffer reaches ``I_BATCH_MAX_LINES``
+    OR a ``loop.call_later`` timer fires ``F_BATCH_MAX_INTERVAL_SECONDS``
+    after the first un-flushed line. The timer guarantees a flush even
+    when the producer goes idle after one line — without it the buffer
+    sat until the next line arrived or the per-command teardown drain
+    fired, which on a sporadic chatty step delayed dashboard output by
+    seconds.
+
+    ``faDrainPending`` is an async coroutine that empties the buffer on
+    per-command teardown so no lines are stuck after the docker exec
+    returns; it must be ``await``-ed from the event-loop thread (the
+    same thread that runs the docker ``asyncio.to_thread`` await).
+    Errors forwarding a batch (WS closed, MemoryError on a huge
+    scientific line, asyncio cancellation) are logged exactly once;
+    subsequent chunks become no-ops so the producer worker finishes
+    the docker exec instead of tearing the whole run down.
     """
     dictBatch = {
         "listLines": [], "fFirstLineAt": 0.0, "bDisabled": False,
+        "handleTimer": None,
     }
     lockBuffer = threading.Lock()
 
@@ -344,15 +350,20 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
             return
         if dictBatch["bDisabled"]:
             return
-        listToSend = _flistAppendAndMaybeDrainBatch(
+        listToSend, bFirstLine = _flistAppendAndMaybeDrainBatch(
             dictBatch, lockBuffer, sLine,
         )
         if listToSend:
             _fnFlushBatchFromWorker(
                 dictBatch, fnStatusCallback, loopMain, listToSend,
             )
+        elif bFirstLine:
+            _fnScheduleTimerFlush(
+                dictBatch, lockBuffer, fnStatusCallback, loopMain,
+            )
 
     async def faDrainPending():
+        _fnCancelTimerFlush(dictBatch)
         with lockBuffer:
             listToSend = dictBatch["listLines"]
             dictBatch["listLines"] = []
@@ -366,10 +377,63 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
     return fnEmitChunk, faDrainPending
 
 
-def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
-    """Append ``sLine`` and return the drained list when the threshold trips."""
+def _fnScheduleTimerFlush(
+    dictBatch, lockBuffer, fnStatusCallback, loopMain,
+):
+    """Arm a ``call_later`` on the loop to drain the buffer after the window.
+
+    Runs in the worker thread; uses ``call_soon_threadsafe`` to hand
+    the scheduling itself to the event loop thread so ``call_later``
+    sees a consistent loop state.
+    """
+    def fnArm():
+        if dictBatch["handleTimer"] is not None:
+            return
+        dictBatch["handleTimer"] = loopMain.call_later(
+            F_BATCH_MAX_INTERVAL_SECONDS,
+            lambda: loopMain.create_task(_faTimerFlush(
+                dictBatch, lockBuffer, fnStatusCallback,
+            )),
+        )
+    loopMain.call_soon_threadsafe(fnArm)
+
+
+def _fnCancelTimerFlush(dictBatch):
+    """Cancel any pending timer so a manual flush isn't followed by a stale one."""
+    handleTimer = dictBatch.get("handleTimer")
+    if handleTimer is not None:
+        try:
+            handleTimer.cancel()
+        except Exception:
+            pass
+        dictBatch["handleTimer"] = None
+
+
+async def _faTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
+    """Loop-side timer callback: drain whatever has accumulated."""
+    dictBatch["handleTimer"] = None
     with lockBuffer:
-        if not dictBatch["listLines"]:
+        listToSend = dictBatch["listLines"]
+        dictBatch["listLines"] = []
+        dictBatch["fFirstLineAt"] = 0.0
+    if not listToSend or dictBatch["bDisabled"]:
+        return
+    await _faFlushBatchFromLoop(
+        dictBatch, fnStatusCallback, listToSend,
+    )
+
+
+def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
+    """Append ``sLine``; return ``(drained_lines, bFirstLine)``.
+
+    ``bFirstLine`` is True when this call started a fresh batch — the
+    caller arms the timer-driven flush only on that transition. Any
+    size- or stale-time-triggered drain returns a non-empty list and
+    the caller cancels the timer separately.
+    """
+    with lockBuffer:
+        bFirstLine = not dictBatch["listLines"]
+        if bFirstLine:
             dictBatch["fFirstLineAt"] = time.monotonic()
         dictBatch["listLines"].append(sLine)
         fElapsed = time.monotonic() - dictBatch["fFirstLineAt"]
@@ -378,11 +442,11 @@ def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
         )
         bTimeReached = fElapsed >= F_BATCH_MAX_INTERVAL_SECONDS
         if not (bSizeReached or bTimeReached):
-            return []
+            return [], bFirstLine
         listDrained = dictBatch["listLines"]
         dictBatch["listLines"] = []
         dictBatch["fFirstLineAt"] = 0.0
-        return listDrained
+        return listDrained, bFirstLine
 
 
 def _fnFlushBatchFromWorker(

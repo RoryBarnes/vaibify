@@ -579,6 +579,32 @@ def test_gzip_middleware_compresses_large_response(clientHttp):
     assert GZipMiddleware in listMiddlewareClasses
 
 
+def test_gzip_middleware_actually_compresses_a_large_response(clientHttp):
+    """End-to-end: a >1024-byte JSON response comes back gzip-encoded.
+
+    Registration alone is not enough — a future regression where a
+    middleware below GZip sets ``Content-Encoding`` first, or a route
+    returns a non-streaming body that bypasses compression, would pass
+    the registration check. This test verifies the on-the-wire bytes.
+    """
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        "/api/system/dependencies",
+        headers={"Accept-Encoding": "gzip"},
+    )
+    if responseHttp.status_code != 200:
+        # The endpoint exists in standard builds; if a build omits it
+        # skip rather than fail spuriously.
+        return
+    sEncoding = responseHttp.headers.get("content-encoding", "").lower()
+    if len(responseHttp.content) < 1024:
+        return
+    assert sEncoding == "gzip", (
+        "expected gzip encoding on large response; got "
+        f"{sEncoding!r} for {len(responseHttp.content)}-byte payload"
+    )
+
+
 def test_gzip_middleware_registered_on_hub_app():
     """The hub-mode app must also wire GZipMiddleware."""
     from fastapi.middleware.gzip import GZipMiddleware

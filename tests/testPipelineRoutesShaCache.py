@@ -21,7 +21,7 @@ class _RecordingFakeDocker:
         self.dictFiles = {}
         self.listWrites = []
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         sKey = (sContainerId, sPath)
         if sKey not in self.dictFiles:
             raise FileNotFoundError(sPath)
@@ -29,7 +29,27 @@ class _RecordingFakeDocker:
 
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self.dictFiles[(sContainerId, sPath)] = baContent
-        self.listWrites.append(sPath)
+        # Record only canonical-path writes so callers asserting on
+        # listWrites stay agnostic to the temp+rename atomic pattern
+        # used by mtimeCache.fnSaveContainerCache.
+        if not sPath.endswith(".tmp"):
+            self.listWrites.append(sPath)
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        """Honor ``mv tmp final`` so the atomic-write contract works in tests."""
+        if sCommand.startswith("mv "):
+            listParts = sCommand.split()
+            if len(listParts) == 3:
+                sSrc, sDst = listParts[1], listParts[2]
+                tSrc = (sContainerId, sSrc)
+                if tSrc in self.dictFiles:
+                    self.dictFiles[(sContainerId, sDst)] = (
+                        self.dictFiles.pop(tSrc)
+                    )
+                    self.listWrites.append(sDst)
+        return (0, "")
 
 
 def _fdictCtxWithWorkflow(connectionDocker):

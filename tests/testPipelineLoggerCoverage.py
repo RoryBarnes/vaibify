@@ -273,3 +273,66 @@ class TestFnUpdatePipelineState:
             mockPS.fnAppendOutput.assert_not_called()
             mockPS.fnUpdateState.assert_not_called()
             mockPS.fnRecordStepResult.assert_not_called()
+
+
+# ──────────────────────────────────────────────────────────────────
+# outputBatch contract — every coalesced event must reach the log
+# capture and the state-write buffer, or the "dashboard reflects
+# truth" invariant breaks for chatty subprocess runs.
+# ──────────────────────────────────────────────────────────────────
+
+
+class TestOutputBatchPropagation:
+    def test_logging_callback_appends_every_line_in_batch(self):
+        from vaibify.gui.pipelineLogger import ffBuildLoggingCallback
+        listLogLines = []
+        listForwarded = []
+
+        async def fnOriginal(dictEvent):
+            listForwarded.append(dictEvent)
+
+        fnCallback = ffBuildLoggingCallback(fnOriginal, listLogLines)
+        asyncio.run(fnCallback({
+            "sType": "outputBatch",
+            "listLines": ["alpha", "beta", "gamma"],
+        }))
+        assert listLogLines == ["alpha", "beta", "gamma"]
+        assert listForwarded == [{
+            "sType": "outputBatch",
+            "listLines": ["alpha", "beta", "gamma"],
+        }]
+
+    def test_flist_extract_handles_single_output_event(self):
+        from vaibify.gui.pipelineLogger import _flistExtractLogLines
+        listLines = _flistExtractLogLines(
+            {"sType": "output", "sLine": "solo"},
+        )
+        assert listLines == ["solo"]
+
+    def test_flist_extract_returns_all_batch_lines(self):
+        from vaibify.gui.pipelineLogger import _flistExtractLogLines
+        listLines = _flistExtractLogLines({
+            "sType": "outputBatch",
+            "listLines": ["one", "two", "three"],
+        })
+        assert listLines == ["one", "two", "three"]
+
+    def test_flist_extract_returns_empty_for_non_output_events(self):
+        from vaibify.gui.pipelineLogger import _flistExtractLogLines
+        assert _flistExtractLogLines({"sType": "stepStarted"}) == []
+        assert _flistExtractLogLines({"sType": "wsHeartbeat"}) == []
+
+    def test_dispatch_to_writer_enqueues_batch_lines_individually(self):
+        """Each line in an outputBatch must reach the state writer."""
+        from vaibify.gui.pipelineLogger import _fnDispatchEventToWriter
+        mockWriter = MagicMock()
+        _fnDispatchEventToWriter(mockWriter, {
+            "sType": "outputBatch",
+            "listLines": ["alpha", "beta"],
+        })
+        assert mockWriter.fnEnqueueOutputLine.call_count == 2
+        listAppended = [
+            tCall.args[0]
+            for tCall in mockWriter.fnEnqueueOutputLine.call_args_list
+        ]
+        assert listAppended == ["alpha", "beta"]

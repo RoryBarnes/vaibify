@@ -199,7 +199,13 @@ def test_batching_emitter_drain_emits_partial_buffer():
 
 
 def test_batching_emitter_flushes_after_time_window():
-    """Lines older than F_BATCH_MAX_INTERVAL_SECONDS trip the time flush."""
+    """A single idle line flushes on its own after F_BATCH_MAX_INTERVAL_SECONDS.
+
+    The pre-timer implementation only checked the time window when a
+    fresh line arrived, so a sporadic producer (one line then silence)
+    sat in the buffer until either another line or the per-command
+    teardown drain fired. The timer-driven path flushes proactively.
+    """
     import time as timeModule
     from vaibify.gui.pipelineRunner import (
         _ftBuildBatchingEmitter, F_BATCH_MAX_INTERVAL_SECONDS,
@@ -216,11 +222,12 @@ def test_batching_emitter_flushes_after_time_window():
         fnCallback, loop, dictAccum)
     try:
         fnEmit("stdout", "first")
-        timeModule.sleep(F_BATCH_MAX_INTERVAL_SECONDS + 0.02)
-        fnEmit("stdout", "second")
+        # Allow the call_later timer to fire and the resulting task to
+        # complete on the background loop before we tear down.
+        timeModule.sleep(F_BATCH_MAX_INTERVAL_SECONDS + 0.05)
     finally:
         _fnStopLoop(loop, threadLoop)
 
     assert len(listEvents) == 1
     assert listEvents[0]["sType"] == "outputBatch"
-    assert listEvents[0]["listLines"] == ["first", "second"]
+    assert listEvents[0]["listLines"] == ["first"]
