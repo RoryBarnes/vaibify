@@ -768,6 +768,19 @@ const PipeleyenApp = (function () {
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
             (_dictUiState.bShowTimestamps ? " checked" : "") + '>') +
+            fsSettingsRowHtml("Terminal lines",
+            '<input id="gsTerminalScrollback" class="gs-input-local"' +
+            ' type="number" min="100"' +
+            ' value="' + PipeleyenTerminal.fiGetScrollback() + '"' +
+            (PipeleyenTerminal.fbScrollbackIsUnlimited()
+                ? " disabled" : "") +
+            ' title="Lines of terminal scrollback to retain (min 100)">' +
+            ' <label class="gs-inline-check" title="Retain up to' +
+            ' 1,000,000 lines — effectively unlimited; protects' +
+            ' browser memory"><input type="checkbox"' +
+            ' id="gsTerminalScrollbackUnlimited"' +
+            (PipeleyenTerminal.fbScrollbackIsUnlimited()
+                ? " checked" : "") + '> &#8734;</label>') +
             fsSettingsRowHtml("Auto Archive",
             '<input type="checkbox" id="gsAutoArchive"' +
             (_dictWorkflowState.dictWorkflow.bAutoArchive
@@ -832,6 +845,28 @@ const PipeleyenApp = (function () {
                     fnSaveClaudeAutoUpdate(elClaudeAuto.checked);
                 });
         }
+        fnBindTerminalScrollbackControls();
+    }
+
+    function fnApplyTerminalScrollbackSetting(elNum, elUnlimited) {
+        var bUnlimited = elUnlimited.checked;
+        elNum.disabled = bUnlimited;
+        PipeleyenTerminal.fnSetScrollback(
+            parseInt(elNum.value, 10), bUnlimited);
+        elNum.value = PipeleyenTerminal.fiGetScrollback();
+    }
+
+    function fnBindTerminalScrollbackControls() {
+        var elNum = document.getElementById("gsTerminalScrollback");
+        var elUnlimited = document.getElementById(
+            "gsTerminalScrollbackUnlimited");
+        if (!elNum || !elUnlimited) return;
+        elNum.addEventListener("change", function () {
+            fnApplyTerminalScrollbackSetting(elNum, elUnlimited);
+        });
+        elUnlimited.addEventListener("change", function () {
+            fnApplyTerminalScrollbackSetting(elNum, elUnlimited);
+        });
     }
 
     async function fnLoadContainerSettings() {

@@ -920,6 +920,30 @@ body.aics-level-3 .toolbar-label {
     font-family: "SF Mono", "Fira Code", monospace;
 }
 
+.global-settings .gs-input-local {
+    flex: 1;
+    padding: 3px 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.global-settings .gs-input-local:disabled {
+    opacity: 0.5;
+}
+
+.global-settings .gs-inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
 .global-settings .gs-section-heading {
     font-size: 11px;
     color: var(--color-label);

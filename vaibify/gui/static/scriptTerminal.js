@@ -6,6 +6,18 @@ const PipeleyenTerminal = (function () {
     var I_MAX_PANES = 5;
     var iTabCounter = 0;
 
+    /* Scrollback (retained lines) is a client display preference, not
+       workflow data: the default is generous, the floor protects
+       against a useless terminal, and "unlimited" is capped at a value
+       that is effectively unbounded for any real session while keeping
+       xterm.js's pre-allocated line buffer from exhausting browser
+       memory. Persisted in localStorage; applied live to open tabs. */
+    var I_DEFAULT_SCROLLBACK = 10000;
+    var I_MINIMUM_SCROLLBACK = 100;
+    var I_UNLIMITED_SCROLLBACK = 1000000;
+    var S_SCROLLBACK_STORAGE_KEY = "vaibifyTerminalScrollback";
+    var iCurrentScrollback = I_DEFAULT_SCROLLBACK;
+
     /*
      * listPanes: array of pane objects, each with:
      *   iId, listTabs, iActiveTabIndex, elPane
@@ -235,6 +247,24 @@ const PipeleyenTerminal = (function () {
         fnRenderPaneTabs(iPaneId);
     }
 
+    /* xterm's built-in width tables render some emoji (✅ ❌) as a
+       single cell, so the font paints the glyph wider than its cell
+       and the right edge is clipped. The Unicode 11 addon supplies the
+       width data that marks these as double-width, matching how the
+       producing program laid out the table. Guarded so a blocked CDN
+       degrades to the built-in widths rather than breaking the tab. */
+    function fnActivateWideCharWidths(terminal) {
+        if (typeof Unicode11Addon === "undefined") return;
+        try {
+            terminal.loadAddon(new Unicode11Addon.Unicode11Addon());
+            terminal.unicode.activeVersion = "11";
+        } catch (error) {
+            console.warn(
+                "[terminal] wide-char width activation failed; "
+                + "falling back to built-in widths:", error);
+        }
+    }
+
     function fnInitializeTerminal(dictPane, dictTab) {
         var elContainer = dictPane.elPane.querySelector(
             ".terminal-pane-container"
@@ -248,11 +278,13 @@ const PipeleyenTerminal = (function () {
             fontFamily:
                 '"SF Mono", "Fira Code", "Cascadia Code", monospace',
             theme: dictTheme,
-            scrollOnOutput: false,
+            scrollback: iCurrentScrollback,
+            allowProposedApi: true,
         });
 
         var fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
+        fnActivateWideCharWidths(terminal);
         terminal.open(elContainer);
 
         var elKillButton = document.createElement("button");
@@ -585,6 +617,7 @@ const PipeleyenTerminal = (function () {
     /* --- Init --- */
 
     document.addEventListener("DOMContentLoaded", function () {
+        iCurrentScrollback = fiReadStoredScrollback();
         /* Remove placeholder pane from HTML */
         var elStrip = document.getElementById("terminalStrip");
         elStrip.innerHTML = "";
@@ -663,8 +696,63 @@ const PipeleyenTerminal = (function () {
         }
     }
 
+    function fiReadStoredScrollback() {
+        try {
+            var sStored = localStorage.getItem(S_SCROLLBACK_STORAGE_KEY);
+            if (sStored === "unlimited") return I_UNLIMITED_SCROLLBACK;
+            var iValue = parseInt(sStored, 10);
+            if (isFinite(iValue) && iValue >= I_MINIMUM_SCROLLBACK) {
+                return Math.min(iValue, I_UNLIMITED_SCROLLBACK);
+            }
+        } catch (_) { /* localStorage may be unavailable */ }
+        return I_DEFAULT_SCROLLBACK;
+    }
+
+    function fnApplyScrollbackToOpenTerminals() {
+        listPanes.forEach(function (dictPane) {
+            dictPane.listTabs.forEach(function (dictTab) {
+                if (dictTab.terminal) {
+                    dictTab.terminal.options.scrollback = iCurrentScrollback;
+                }
+            });
+        });
+    }
+
+    function fnPersistScrollback(bUnlimited) {
+        try {
+            localStorage.setItem(
+                S_SCROLLBACK_STORAGE_KEY,
+                bUnlimited ? "unlimited" : String(iCurrentScrollback));
+        } catch (_) { /* localStorage may be unavailable */ }
+    }
+
+    function fnSetScrollback(iLines, bUnlimited) {
+        if (bUnlimited) {
+            iCurrentScrollback = I_UNLIMITED_SCROLLBACK;
+        } else if (isFinite(iLines)) {
+            iCurrentScrollback = Math.max(
+                I_MINIMUM_SCROLLBACK,
+                Math.min(iLines, I_UNLIMITED_SCROLLBACK));
+        } else {
+            iCurrentScrollback = I_DEFAULT_SCROLLBACK;
+        }
+        fnPersistScrollback(bUnlimited);
+        fnApplyScrollbackToOpenTerminals();
+    }
+
+    function fiGetScrollback() {
+        return iCurrentScrollback;
+    }
+
+    function fbScrollbackIsUnlimited() {
+        return iCurrentScrollback >= I_UNLIMITED_SCROLLBACK;
+    }
+
     return {
         fnUpdateCursorColor: fnUpdateCursorColor,
+        fnSetScrollback: fnSetScrollback,
+        fiGetScrollback: fiGetScrollback,
+        fbScrollbackIsUnlimited: fbScrollbackIsUnlimited,
         fnCreateTab: function () {
             if (listPanes.length === 0) {
                 fnCreatePane();
