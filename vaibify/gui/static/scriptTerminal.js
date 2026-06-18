@@ -165,6 +165,7 @@ const PipeleyenTerminal = (function () {
             websocket: null,
             resizeObserver: null,
             bFitDeferred: false,
+            iRefitTimer: null,
         };
         dictPane.listTabs.push(dictTab);
         fnRenderPaneTabs(iPaneId);
@@ -228,7 +229,7 @@ const PipeleyenTerminal = (function () {
             fnInitializeTerminal(dictPane, dictTab);
         } else {
             dictTab.terminal.element.style.display = "";
-            dictTab.fitAddon.fit();
+            fnRefitTabPreservingSelection(dictTab, dictTab.fitAddon);
             dictTab.terminal.focus();
         }
         fnRenderPaneTabs(iPaneId);
@@ -253,7 +254,6 @@ const PipeleyenTerminal = (function () {
         var fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
         terminal.open(elContainer);
-        fitAddon.fit();
 
         var elKillButton = document.createElement("button");
         elKillButton.className = "terminal-kill-overlay";
@@ -272,6 +272,12 @@ const PipeleyenTerminal = (function () {
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
         fnConnectTerminalWebSocket(dictTab, terminal);
         fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon);
+
+        /* Fit once the container is laid out, not before: an early fit
+           lands at the wrong width and the corrective fit then reflows
+           the buffer, duplicating wrapped scrollback lines. */
+        fnRefitTabPreservingSelection(dictTab, fitAddon);
+        fnScheduleRefit(dictTab, fitAddon);
 
         terminal.focus();
     }
@@ -388,18 +394,47 @@ const PipeleyenTerminal = (function () {
         }
     }
 
+    function fdictProposeDimensions(fitAddon) {
+        try {
+            return fitAddon.proposeDimensions();
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function fbDimensionsRefitNeeded(terminal, dictProposed) {
+        if (!dictProposed) return false;
+        var bSized = dictProposed.cols > 0 && dictProposed.rows > 0 &&
+            isFinite(dictProposed.cols) && isFinite(dictProposed.rows);
+        if (!bSized) return false;
+        return dictProposed.cols !== terminal.cols ||
+            dictProposed.rows !== terminal.rows;
+    }
+
     function fnRefitTabPreservingSelection(dictTab, fitAddon) {
         if (dictTab.terminal && dictTab.terminal.hasSelection()) {
             dictTab.bFitDeferred = true;
             return;
         }
         dictTab.bFitDeferred = false;
+        var dictProposed = fdictProposeDimensions(fitAddon);
+        if (!fbDimensionsRefitNeeded(dictTab.terminal, dictProposed)) {
+            return;
+        }
         var dictBefore = fdictCaptureTerminalMetrics(dictTab.terminal);
-        var dictProposed = null;
-        try { dictProposed = fitAddon.proposeDimensions(); } catch (_) {}
         fitAddon.fit();
         var dictAfter = fdictCaptureTerminalMetrics(dictTab.terminal);
         fnLogResizeChange(dictBefore, dictAfter, dictProposed);
+    }
+
+    function fnScheduleRefit(dictTab, fitAddon) {
+        if (dictTab.iRefitTimer) {
+            window.clearTimeout(dictTab.iRefitTimer);
+        }
+        dictTab.iRefitTimer = window.setTimeout(function () {
+            dictTab.iRefitTimer = null;
+            fnRefitTabPreservingSelection(dictTab, fitAddon);
+        }, 60);
     }
 
     function fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon) {
@@ -407,7 +442,7 @@ const PipeleyenTerminal = (function () {
             if (dictPane.listTabs[dictPane.iActiveTabIndex] !== dictTab) {
                 return;
             }
-            fnRefitTabPreservingSelection(dictTab, fitAddon);
+            fnScheduleRefit(dictTab, fitAddon);
         });
         resizeObserver.observe(elContainer);
         dictTab.resizeObserver = resizeObserver;
@@ -438,6 +473,10 @@ const PipeleyenTerminal = (function () {
             dictTab.disposableOnSelectionChange.dispose();
         }
         dictTab.disposableOnSelectionChange = null;
+        if (dictTab.iRefitTimer) {
+            window.clearTimeout(dictTab.iRefitTimer);
+            dictTab.iRefitTimer = null;
+        }
         dictTab.bFitDeferred = false;
         if (dictTab.elKillButton && dictTab.elKillButton.parentNode) {
             dictTab.elKillButton.parentNode.removeChild(
