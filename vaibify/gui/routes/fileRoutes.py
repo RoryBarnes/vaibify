@@ -2,6 +2,7 @@
 
 __all__ = ["fnRegisterAll"]
 
+import hashlib
 import os
 import posixpath
 
@@ -313,6 +314,62 @@ def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
     return sProjectRepoPath
 
 
+def _ftFetchCurrentBytesOrNone(dictCtx, sContainerId, sNormalized):
+    """Return ``(baBytes, bAvailable)`` for the on-disk file.
+
+    A missing file returns ``(b"", True)`` so a fresh write does not
+    look like a conflict — the contract is "your base reflects what
+    is on disk right now," and absence trivially matches the
+    empty-base case. A file too large to fetch (above
+    ``fbaFetchFile``'s safety cap) returns ``(b"", False)`` so the
+    caller skips the conflict check rather than blocking the save.
+    """
+    try:
+        return (
+            dictCtx["docker"].fbaFetchFile(sContainerId, sNormalized),
+            True,
+        )
+    except FileNotFoundError:
+        return (b"", True)
+    except ValueError:
+        return (b"", False)
+
+
+def _fnRaiseConflictIfBaseHashMismatch(
+    dictCtx, sContainerId, sNormalized, sBaseHash,
+):
+    """Raise HTTP 409 when the on-disk file diverged from ``sBaseHash``.
+
+    The client passes the sha256 hex it captured at edit-mode entry.
+    If the current disk content's sha256 differs, an external writer
+    has changed the file since the editing session started, so saving
+    would silently overwrite their work. The response body carries the
+    current content so the frontend can render a three-way diff.
+    """
+    if not sBaseHash:
+        return
+    baCurrent, bAvailable = _ftFetchCurrentBytesOrNone(
+        dictCtx, sContainerId, sNormalized,
+    )
+    if not bAvailable:
+        return
+    sCurrentHash = hashlib.sha256(baCurrent).hexdigest()
+    if sCurrentHash == sBaseHash:
+        return
+    try:
+        sCurrentContent = baCurrent.decode("utf-8")
+    except UnicodeDecodeError:
+        sCurrentContent = ""
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "sMessage": "File changed on disk since edit started",
+            "sCurrentHash": sCurrentHash,
+            "sCurrentContent": sCurrentContent,
+        },
+    )
+
+
 def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
     """Register PUT /api/file route for saving edited text files."""
 
@@ -331,6 +388,9 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         sNormalized = fnValidatePathWithinRoot(
             sAbsPath, sProjectRepoPath)
         _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
+        _fnRaiseConflictIfBaseHashMismatch(
+            dictCtx, sContainerId, sNormalized, request.sBaseHash,
+        )
         baContent = request.sContent.encode("utf-8")
         try:
             dictCtx["docker"].fnWriteFile(

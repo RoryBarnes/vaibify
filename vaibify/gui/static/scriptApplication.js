@@ -2862,8 +2862,24 @@ const PipeleyenApp = (function () {
         }
     }
 
+    var _elDagViewport = null;
+
     function _fnRenderDagWithZoom(sSvgText, dScale) {
-        var elViewport = document.getElementById("viewportA");
+        if (_elDagViewport &&
+                document.body.contains(_elDagViewport)) {
+            _fnPaintDagInViewport(_elDagViewport, sSvgText, dScale);
+            return;
+        }
+        PipeleyenFigureViewer.fnClaimNextViewerForReplacement(
+            "pipeline DAG", function (sViewerLetter) {
+                _elDagViewport = document.getElementById(
+                    "viewport" + sViewerLetter);
+                _fnPaintDagInViewport(
+                    _elDagViewport, sSvgText, dScale);
+            });
+    }
+
+    function _fnPaintDagInViewport(elViewport, sSvgText, dScale) {
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
         elViewport.style.alignItems = "stretch";
@@ -2950,10 +2966,14 @@ const PipeleyenApp = (function () {
             var sContent = await VaibifyApi.fsGetText(
                 "/api/logs/" + _dictSessionState.sContainerId + "/" +
                 encodeURIComponent(sFilename));
-            var elViewport = document.getElementById("viewportA");
-            elViewport.innerHTML =
-                '<pre class="pipeline-output">' +
-                fnEscapeHtml(sContent) + '</pre>';
+            PipeleyenFigureViewer.fnClaimNextViewerForReplacement(
+                sFilename, function (sViewerLetter) {
+                    var elViewport = document.getElementById(
+                        "viewport" + sViewerLetter);
+                    elViewport.innerHTML =
+                        '<pre class="pipeline-output">' +
+                        fnEscapeHtml(sContent) + '</pre>';
+                });
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
@@ -3319,17 +3339,17 @@ const PipeleyenApp = (function () {
     }
 
     function fnShowOutputNotAvailable() {
-        var elViewport = document.getElementById("viewportA");
-        elViewport.innerHTML =
+        PipeleyenFigureViewer.fnShowPlaceholderInNextViewer(
             '<span class="placeholder output-missing-message">' +
-            'Output not available. Run the step to generate.</span>';
+            'Output not available. Run the step to generate.</span>',
+            "missing output");
     }
 
     function fnShowBinaryNotViewable() {
-        var elViewport = document.getElementById("viewportA");
-        elViewport.innerHTML =
+        PipeleyenFigureViewer.fnShowPlaceholderInNextViewer(
             '<span class="placeholder">' +
-            'File cannot be viewed.</span>';
+            'File cannot be viewed.</span>',
+            "binary file");
     }
 
     var fsSanitizeErrorForUser = VaibifyUtilities.fsSanitizeErrorForUser;

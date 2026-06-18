@@ -489,6 +489,20 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/file/{sContainerId}/{sFilePath:path}",
      "bAgentSafe": True,
      "sDescription": "Write text content to a file inside the container."},
+    {"sName": "write-draft", "sCategory": "files",
+     "sMethod": "PUT",
+     "sPath": "/api/draft/{sContainerId}/{sFilePath:path}",
+     "bAgentSafe": False,
+     "sDescription": "Persist an in-progress textarea draft so unsaved "
+                     "edits survive browser crashes. User-only because "
+                     "drafts represent the researcher's in-flight work, "
+                     "not authored content."},
+    {"sName": "delete-draft", "sCategory": "files",
+     "sMethod": "DELETE",
+     "sPath": "/api/draft/{sContainerId}/{sFilePath:path}",
+     "bAgentSafe": False,
+     "sDescription": "Discard an editor draft. User-only because "
+                     "drafts encode the researcher's unsaved edits."},
     {"sName": "check-files-exist", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/exist",

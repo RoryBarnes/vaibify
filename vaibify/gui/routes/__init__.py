@@ -3,6 +3,7 @@
 __all__ = [
     "stepRoutes",
     "fileRoutes",
+    "draftRoutes",
     "syncRoutes",
     "testRoutes",
     "plotRoutes",
@@ -23,6 +24,7 @@ __all__ = [
 from . import (
     stepRoutes,
     fileRoutes,
+    draftRoutes,
     syncRoutes,
     testRoutes,
     plotRoutes,
