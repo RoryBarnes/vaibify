@@ -264,6 +264,37 @@ def test_fsResolveToken_returns_empty_when_both_unavailable():
         assert githubAuth.fsResolveToken("github_token:o/r") == ""
 
 
+def test_fsResolveToken_does_not_raise_on_namespaced_slot_through_validator():
+    """The namespaced slot must survive the real secret-name validator.
+
+    Regression test for a 500 on ``POST /api/sync/.../github-push`` when
+    a per-repo PAT was probed: ``fsResolveToken`` called
+    ``fbSecretExists("github_token:owner/repo", "keyring")`` and the
+    validator rejected the colon+slash before the try/except around
+    ``fsRetrieveSecret`` could swallow it. Drives ``fsResolveToken``
+    through the real validator with only the keyring backend stubbed
+    so a future regression cannot silently re-tighten the alphabet
+    without breaking this test.
+    """
+    import sys
+    import types
+    fakeKeyring = types.ModuleType("keyring")
+    fakeKeyring.get_password = lambda sService, sName: None
+    fakeKeyringErrors = types.ModuleType("keyring.errors")
+    fakeKeyringErrors.PasswordDeleteError = Exception
+    fakeKeyring.errors = fakeKeyringErrors
+    with patch.dict(sys.modules, {
+        "keyring": fakeKeyring,
+        "keyring.errors": fakeKeyringErrors,
+    }), patch(
+        "vaibify.config.secretManager._fsRetrieveViaGhAuth",
+        return_value="",
+    ):
+        assert githubAuth.fsResolveToken(
+            "github_token:RoryBarnes/CXUVFMDP",
+        ) == ""
+
+
 def test_dispatcher_github_add_file_uses_hardening_flags():
     from vaibify.gui import syncDispatcher
 

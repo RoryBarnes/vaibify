@@ -314,18 +314,68 @@ def test_fbSecretExists_rejects_bad_name():
         fbSecretExists("foo/bar", "docker_secret")
 
 
-def test_fnStoreSecret_rejects_bad_name():
+def test_fnStoreSecret_rejects_whitespace_in_name():
+    """Whitespace is rejected for every storage method."""
     with pytest.raises(ValueError, match="Invalid secret name"):
-        fnStoreSecret("foo/bar", "value", "keyring")
+        fnStoreSecret("foo bar", "value", "keyring")
 
 
-def test_fnDeleteSecret_rejects_bad_name():
+def test_fnDeleteSecret_rejects_shell_metacharacter():
+    """Shell metacharacters are rejected for every storage method."""
     with pytest.raises(ValueError, match="Invalid secret name"):
-        fnDeleteSecret("foo/bar", "keyring")
+        fnDeleteSecret("foo;bar", "keyring")
 
 
 def test_secret_name_alphanumeric_underscore_hyphen_accepted():
-    """Names matching ^[a-zA-Z0-9_-]{1,64}$ pass validation."""
+    """Strict-alphabet names pass for the non-keyring methods."""
     from vaibify.config.secretManager import _fnValidateSecretName
     for sName in ("github_token", "Zenodo-PAT", "abc123", "a", "A_B-9"):
-        _fnValidateSecretName(sName)
+        _fnValidateSecretName(sName, "docker_secret")
+        _fnValidateSecretName(sName, "gh_auth")
+
+
+def test_keyring_alphabet_accepts_namespaced_slot_pattern():
+    """Keyring names may carry colon and slash (the per-repo slot shape).
+
+    ``vaibify.reproducibility.githubAuth.fsKeyringSlotFor`` produces
+    names like ``github_token:owner/repo`` by design; the validator
+    must accept them so the GitHub-push path can probe per-repo PATs
+    via :func:`fbSecretExists`.
+    """
+    from vaibify.config.secretManager import _fnValidateSecretName
+    for sName in (
+        "github_token:RoryBarnes/CXUVFMDP",
+        "github_token:owner/repo.with.dots",
+        "github_token:owner/repo-with-hyphens",
+        "overleaf_session:project-id",
+    ):
+        _fnValidateSecretName(sName, "keyring")
+
+
+def test_keyring_alphabet_still_rejects_dangerous_chars():
+    """Keyring's looser alphabet still blocks whitespace and shell glyphs."""
+    from vaibify.config.secretManager import _fnValidateSecretName
+    for sBad in (
+        "github_token:owner repo",   # space
+        "github_token:owner;rm",     # semicolon
+        "github_token:owner$(rm)",   # command substitution
+        "github_token:owner|repo",   # pipe
+        "github_token:owner\nrepo",  # newline
+        "github_token:" + "a" * 200, # over the 128 cap
+        "",                          # empty
+    ):
+        with pytest.raises(ValueError, match="Invalid secret name"):
+            _fnValidateSecretName(sBad, "keyring")
+
+
+def test_docker_secret_alphabet_still_rejects_slash():
+    """``docker_secret`` flows into a filesystem path; slashes stay forbidden.
+
+    Loosening keyring must not have weakened ``docker_secret``, where
+    ``sName`` interpolates directly into ``/run/secrets/{sName}``.
+    """
+    from vaibify.config.secretManager import _fnValidateSecretName
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        _fnValidateSecretName("foo/bar", "docker_secret")
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        _fnValidateSecretName("foo:bar", "docker_secret")
