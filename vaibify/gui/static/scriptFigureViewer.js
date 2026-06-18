@@ -13,16 +13,38 @@ const PipeleyenFigureViewer = (function () {
     var listHistory = [];
     var iHistoryCounter = 0;
 
-    /* Two viewer states: A and B */
+    /* Two viewer states: A and B
+     *
+     * The edit-mode block (elTextarea, sBaseText, sBaseHash, sFilePath,
+     * sWorkdir, sSaveUrl, elIndicator) is populated by fnEnterEditMode
+     * and cleared by fnRenderTextWithToolbar / save success. A viewer
+     * is "dirty" iff its textarea value differs from sBaseText. The
+     * blocking guard in _fdictResolveTargetViewer reads bDirty to
+     * decide whether to redirect an incoming display to the other
+     * viewer or to surface the both-dirty modal. */
     var dictViewerA = {
         sId: "A",
         listNavHistory: [],
         iNavIndex: -1,
+        elTextarea: null,
+        sBaseText: null,
+        sBaseHash: null,
+        sFilePath: null,
+        sWorkdir: null,
+        sSaveUrl: null,
+        elIndicator: null,
     };
     var dictViewerB = {
         sId: "B",
         listNavHistory: [],
         iNavIndex: -1,
+        elTextarea: null,
+        sBaseText: null,
+        sBaseHash: null,
+        sFilePath: null,
+        sWorkdir: null,
+        sSaveUrl: null,
+        elIndicator: null,
     };
     var sNextViewer = "A";
 
@@ -99,10 +121,14 @@ const PipeleyenFigureViewer = (function () {
             elSelect.appendChild(elOption);
         });
         elSelect.onchange = function () {
-            if (elSelect.value) {
-                var sWorkdir = fsGetWorkdirForPath(elSelect.value);
-                fnNavigateToPath(dictViewer, elSelect.value, sWorkdir);
-            }
+            if (!elSelect.value) return;
+            var sWorkdir = fsGetWorkdirForPath(elSelect.value);
+            var sChosenPath = elSelect.value;
+            _fnConfirmIfDirty(
+                dictViewer, "Switching files",
+                function () {
+                    fnNavigateToPath(dictViewer, sChosenPath, sWorkdir);
+                });
         };
     }
 
@@ -136,9 +162,12 @@ const PipeleyenFigureViewer = (function () {
             var listFigures = listOutputFiles.filter(fbIsFigureFile);
 
             if (listFigures.length > 0) {
-                fnNavigateToPath(
-                    dictViewerA, listFigures[0], dictStep.sDirectory
-                );
+                _fdictResolveTargetViewer(
+                    "A", listFigures[0], function (dictViewer) {
+                        fnNavigateToPath(
+                            dictViewer, listFigures[0],
+                            dictStep.sDirectory);
+                    });
             }
         });
     }
@@ -149,16 +178,167 @@ const PipeleyenFigureViewer = (function () {
         return sClaimed;
     }
 
+    /* --- Dirty-state tracking & blocking guard --- */
+
+    function _fdictViewerByLetter(sLetter) {
+        return sLetter === "A" ? dictViewerA : dictViewerB;
+    }
+
+    function fbViewerHasOpenEditor(dictViewer) {
+        if (!dictViewer || !dictViewer.elTextarea) return false;
+        return document.body.contains(dictViewer.elTextarea);
+    }
+
+    function fbViewerIsDirty(dictViewer) {
+        if (!fbViewerHasOpenEditor(dictViewer)) return false;
+        return dictViewer.elTextarea.value !== dictViewer.sBaseText;
+    }
+
+    function fbAnyViewerDirty() {
+        return fbViewerIsDirty(dictViewerA) ||
+            fbViewerIsDirty(dictViewerB);
+    }
+
+    function _fdictResolveTargetViewer(
+        sPreferredLetter, sIncomingPath, fnOnReady,
+    ) {
+        var dictPreferred = _fdictViewerByLetter(sPreferredLetter);
+        var dictOther = _fdictViewerByLetter(
+            sPreferredLetter === "A" ? "B" : "A");
+        if (!fbViewerHasOpenEditor(dictPreferred)) {
+            fnOnReady(dictPreferred);
+            return;
+        }
+        if (!fbViewerHasOpenEditor(dictOther)) {
+            PipeleyenApp.fnShowToast(
+                "Open editor in viewer " + dictPreferred.sId +
+                " protected — opened in viewer " + dictOther.sId,
+                "info");
+            fnOnReady(dictOther);
+            return;
+        }
+        _fnShowBothEditorsOpenModal(sIncomingPath, function () {
+            _fdictResolveTargetViewer(
+                sPreferredLetter, sIncomingPath, fnOnReady);
+        });
+    }
+
+    function _fsDirtyFileLabel(dictViewer) {
+        if (!dictViewer.sFilePath) return "viewer " + dictViewer.sId;
+        var sBase = dictViewer.sFilePath.split("/").pop();
+        return sBase + " (viewer " + dictViewer.sId + ")";
+    }
+
+    function _fnShowBothEditorsOpenModal(sIncomingPath, fnRetry) {
+        var bAnyDirty = fbViewerIsDirty(dictViewerA) ||
+            fbViewerIsDirty(dictViewerB);
+        var sTitle = bAnyDirty
+            ? "Unsaved edits in both viewers"
+            : "Both viewers have open editors";
+        var sMessage = _fsBothOpenModalMessage(
+            sIncomingPath, bAnyDirty);
+        var listChoices = _flistBuildBothOpenChoices(fnRetry);
+        listChoices.push({sLabel: "Cancel"});
+        PipeleyenModals.fnShowChoiceModal(
+            sTitle, sMessage, listChoices);
+    }
+
+    function _fsBothOpenModalMessage(sIncomingPath, bAnyDirty) {
+        var sIncomingLabel = sIncomingPath.split("/").pop();
+        var sLead = bAnyDirty
+            ? "Both viewers have open editors and at least one " +
+              "has unsaved edits. Save or discard the open editors " +
+              "you want to clear, then the new file can replace one."
+            : "Both viewers have open editors. Close one of the " +
+              "editors to view the new file.";
+        return sLead + "\n\n" +
+            "Pending file: " + sIncomingLabel + "\n" +
+            "Viewer A: " + _fsDirtyFileLabel(dictViewerA) + "\n" +
+            "Viewer B: " + _fsDirtyFileLabel(dictViewerB);
+    }
+
+    function _flistBuildBothOpenChoices(fnRetry) {
+        return [].concat(
+            _flistChoicesForViewer(dictViewerA, fnRetry),
+            _flistChoicesForViewer(dictViewerB, fnRetry));
+    }
+
+    function _flistChoicesForViewer(dictViewer, fnRetry) {
+        if (!fbViewerIsDirty(dictViewer)) {
+            return [{
+                sLabel: "Close " + dictViewer.sId,
+                fnCallback: function () {
+                    _fnFlushSaveOrDiscard(dictViewer, false, fnRetry);
+                },
+            }];
+        }
+        return [
+            {sLabel: "Save " + dictViewer.sId,
+             sStyleClass: "btn-primary",
+             fnCallback: function () {
+                 _fnFlushSaveOrDiscard(dictViewer, true, fnRetry);
+             }},
+            {sLabel: "Discard " + dictViewer.sId,
+             fnCallback: function () {
+                 _fnFlushSaveOrDiscard(dictViewer, false, fnRetry);
+             }},
+        ];
+    }
+
+    function _fnFlushSaveOrDiscard(dictViewer, bSave, fnRetry) {
+        if (bSave) {
+            fnSaveEditedFile(
+                dictViewer.sSaveUrl,
+                dictViewer.elTextarea.value,
+                fnGetViewport(dictViewer),
+                function () { fnRetry(); });
+        } else {
+            _fnDiscardEditingViewer(dictViewer);
+            fnRetry();
+        }
+    }
+
+    function _fnDiscardEditingViewer(dictViewer) {
+        var sBaseText = dictViewer.sBaseText || "";
+        var sSaveUrl = dictViewer.sSaveUrl || "";
+        if (dictViewer.sFilePath) {
+            _fnDiscardDraftFor(dictViewer);
+        }
+        _fnClearEditingState(dictViewer);
+        fnRenderTextWithToolbar(
+            sBaseText, sSaveUrl, fnGetViewport(dictViewer));
+    }
+
+    function _fnConfirmIfDirty(dictViewer, sActionLabel, fnOnConfirm) {
+        if (!fbViewerIsDirty(dictViewer)) {
+            fnOnConfirm();
+            return;
+        }
+        PipeleyenApp.fnShowConfirmModal(
+            "Discard unsaved edits?",
+            "Viewer " + dictViewer.sId + " has unsaved edits in " +
+            _fsDirtyFileLabel(dictViewer) + ". " + sActionLabel +
+            " will lose those edits. The autosaved draft will " +
+            "remain available to restore.",
+            function () {
+                _fnDiscardEditingViewer(dictViewer);
+                fnOnConfirm();
+            });
+    }
+
     function fnDisplayFileInViewer(sViewerLetter, sPath, sWorkdir) {
-        var dictViewer = sViewerLetter === "A" ?
-            dictViewerA : dictViewerB;
-        fnNavigateToPath(dictViewer, sPath, sWorkdir || "");
+        _fdictResolveTargetViewer(
+            sViewerLetter, sPath, function (dictViewer) {
+                fnNavigateToPath(dictViewer, sPath, sWorkdir || "");
+            });
     }
 
     function fnDisplayInNextViewer(sPath, sWorkdir) {
-        fnDisplayFileInViewer(
-            fsClaimNextViewer(), sPath, sWorkdir,
-        );
+        _fdictResolveTargetViewer(
+            sNextViewer, sPath, function (dictViewer) {
+                sNextViewer = dictViewer.sId === "A" ? "B" : "A";
+                fnNavigateToPath(dictViewer, sPath, sWorkdir || "");
+            });
     }
 
     function fnDisplayFileFromContainer(sPath) {
@@ -602,11 +782,43 @@ const PipeleyenFigureViewer = (function () {
         var elCancel = document.createElement("button");
         elCancel.className = "btn";
         elCancel.textContent = "Cancel";
+        var elIndicator = document.createElement("span");
+        elIndicator.className = "editor-draft-indicator";
+        elIndicator.style.marginLeft = "8px";
+        elIndicator.style.fontSize = "0.85em";
+        elIndicator.style.opacity = "0.8";
         elToolbar.appendChild(elFind);
         elToolbar.appendChild(elSave);
         elToolbar.appendChild(elCancel);
+        elToolbar.appendChild(elIndicator);
         return { elToolbar: elToolbar, elFind: elFind,
-                 elSave: elSave, elCancel: elCancel };
+                 elSave: elSave, elCancel: elCancel,
+                 elIndicator: elIndicator };
+    }
+
+    function _fdictViewerForViewport(elViewport) {
+        if (elViewport === fnGetViewport(dictViewerA)) return dictViewerA;
+        if (elViewport === fnGetViewport(dictViewerB)) return dictViewerB;
+        return null;
+    }
+
+    function _fdictParseFigureUrl(sUrl) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sPrefix = "/api/figure/" + sContainerId + "/";
+        var sRest = sUrl.split(sPrefix)[1] || "";
+        var sWorkdir = "";
+        var sFilePath = sRest;
+        if (sRest.includes("?")) {
+            sFilePath = sRest.split("?")[0];
+            var dictParams = new URLSearchParams(
+                sRest.split("?")[1] || "");
+            sWorkdir = dictParams.get("sWorkdir") || "";
+        }
+        return {
+            sContainerId: sContainerId,
+            sFilePath: sFilePath,
+            sWorkdir: sWorkdir,
+        };
     }
 
     function fiOffsetOfLine(sText, iLine) {
@@ -670,15 +882,286 @@ const PipeleyenFigureViewer = (function () {
         var dictToolbar = fnCreateEditorToolbar();
         var elTextarea = felBuildEditorTextarea(sText);
         elViewport.appendChild(dictToolbar.elToolbar);
+        var elRecoveryHolder = document.createElement("div");
+        elRecoveryHolder.className = "editor-recovery-holder";
+        elViewport.appendChild(elRecoveryHolder);
         elViewport.appendChild(elTextarea);
         fnPlaceCursorAtLine(elTextarea, sText, iLine);
         fnBindEditorFind(dictToolbar.elFind, elTextarea);
+        _fnInitEditingState(
+            sText, sUrl, elViewport, elTextarea,
+            dictToolbar.elIndicator);
         dictToolbar.elSave.addEventListener("click", function () {
-            fnSaveEditedFile(sUrl, elTextarea.value, elViewport);
+            fnSaveEditedFile(
+                sUrl, elTextarea.value, elViewport, null);
         });
         dictToolbar.elCancel.addEventListener("click", function () {
+            var dictViewer = _fdictViewerForViewport(elViewport);
+            if (dictViewer && fbViewerIsDirty(dictViewer)) {
+                _fnConfirmIfDirty(
+                    dictViewer, "Cancel",
+                    function () { /* discarded in helper */ });
+                return;
+            }
+            _fnClearEditingState(_fdictViewerForViewport(elViewport));
             fnRenderTextWithToolbar(sText, sUrl, elViewport);
         });
+        _fnAttachAutosave(elTextarea, elViewport);
+        _fnOfferDraftRecovery(elRecoveryHolder, elTextarea, elViewport);
+    }
+
+    function _fnInitEditingState(
+        sText, sUrl, elViewport, elTextarea, elIndicator,
+    ) {
+        var dictViewer = _fdictViewerForViewport(elViewport);
+        if (!dictViewer) return;
+        var dictUrl = _fdictParseFigureUrl(sUrl);
+        dictViewer.elTextarea = elTextarea;
+        dictViewer.sBaseText = sText;
+        dictViewer.sBaseHash = null;
+        dictViewer.sFilePath = dictUrl.sFilePath;
+        dictViewer.sWorkdir = dictUrl.sWorkdir;
+        dictViewer.sSaveUrl = fsBuildSaveUrl(sUrl);
+        dictViewer.elIndicator = elIndicator;
+        PipeleyenDraftManager.fsHashContent(sText).then(
+            function (sHash) {
+                if (dictViewer.elTextarea === elTextarea) {
+                    dictViewer.sBaseHash = sHash;
+                }
+            });
+        _fnUpdateIndicator(dictViewer, "clean");
+    }
+
+    function _fnClearEditingState(dictViewer) {
+        if (!dictViewer) return;
+        dictViewer.elTextarea = null;
+        dictViewer.sBaseText = null;
+        dictViewer.sBaseHash = null;
+        dictViewer.sFilePath = null;
+        dictViewer.sWorkdir = null;
+        dictViewer.sSaveUrl = null;
+        dictViewer.elIndicator = null;
+    }
+
+    function _fnUpdateIndicator(dictViewer, sState) {
+        if (!dictViewer || !dictViewer.elIndicator) return;
+        var elIndicator = dictViewer.elIndicator;
+        if (sState === "clean") {
+            elIndicator.textContent = "";
+            elIndicator.title = "";
+        } else if (sState === "dirty") {
+            elIndicator.textContent = "● unsaved";
+            elIndicator.style.color = "var(--color-red, #c0392b)";
+            elIndicator.title =
+                "Edits not yet saved to disk; draft autosave in progress";
+        } else if (sState === "draft-local") {
+            elIndicator.textContent = "● draft (local)";
+            elIndicator.style.color = "var(--color-amber, #d97706)";
+            elIndicator.title = "Draft saved to this browser";
+        } else if (sState === "draft-remote") {
+            elIndicator.textContent = "● draft (saved)";
+            elIndicator.style.color = "var(--color-amber, #d97706)";
+            elIndicator.title = "Draft mirrored to the container";
+        } else if (sState === "saved") {
+            elIndicator.textContent = "✓ saved";
+            elIndicator.style.color = "var(--color-green, #16a34a)";
+            elIndicator.title = "File saved to disk";
+            setTimeout(function () {
+                if (elIndicator.textContent === "✓ saved") {
+                    elIndicator.textContent = "";
+                }
+            }, 2000);
+        }
+    }
+
+    function _fnAttachAutosave(elTextarea, elViewport) {
+        var dictViewer = _fdictViewerForViewport(elViewport);
+        if (!dictViewer) return;
+        elTextarea.addEventListener("input", function () {
+            _fnOnEditorInput(dictViewer, elTextarea);
+        });
+        elTextarea.addEventListener("blur", function () {
+            var sDraftKey = _fsCurrentDraftKey(dictViewer);
+            if (sDraftKey) {
+                PipeleyenDraftManager.fnFlushPendingSaves(sDraftKey);
+            }
+        });
+    }
+
+    function _fsCurrentDraftKey(dictViewer) {
+        if (!dictViewer || !dictViewer.sFilePath) return "";
+        return PipeleyenDraftManager.fsBuildDraftKey(
+            PipeleyenApp.fsGetContainerId(),
+            dictViewer.sFilePath, dictViewer.sWorkdir);
+    }
+
+    function _fnOnEditorInput(dictViewer, elTextarea) {
+        if (!dictViewer || dictViewer.elTextarea !== elTextarea) return;
+        if (elTextarea.value === dictViewer.sBaseText) {
+            _fnUpdateIndicator(dictViewer, "clean");
+            return;
+        }
+        _fnUpdateIndicator(dictViewer, "dirty");
+        var sDraftKey = _fsCurrentDraftKey(dictViewer);
+        if (!sDraftKey) return;
+        var dictDraft = {
+            sContent: elTextarea.value,
+            sBaseHash: dictViewer.sBaseHash || "",
+            iTimestampMs: Date.now(),
+        };
+        PipeleyenDraftManager.fnSaveLocalDraft(sDraftKey, dictDraft);
+        PipeleyenDraftManager.fnSaveRemoteDraft(
+            sDraftKey, dictDraft,
+            PipeleyenApp.fsGetContainerId(),
+            dictViewer.sFilePath, dictViewer.sWorkdir);
+        _fnScheduleIndicatorPromotion(dictViewer);
+    }
+
+    function _fnScheduleIndicatorPromotion(dictViewer) {
+        setTimeout(function () {
+            if (!dictViewer.elTextarea ||
+                    dictViewer.elTextarea.value === dictViewer.sBaseText) {
+                return;
+            }
+            _fnUpdateIndicator(dictViewer, "draft-local");
+        }, 700);
+        setTimeout(function () {
+            if (!dictViewer.elTextarea ||
+                    dictViewer.elTextarea.value === dictViewer.sBaseText) {
+                return;
+            }
+            _fnUpdateIndicator(dictViewer, "draft-remote");
+        }, 5500);
+    }
+
+    function _fnDiscardDraftFor(dictViewer) {
+        var sDraftKey = _fsCurrentDraftKey(dictViewer);
+        if (!sDraftKey) return;
+        PipeleyenDraftManager.fnDeleteDraft(
+            sDraftKey, PipeleyenApp.fsGetContainerId(),
+            dictViewer.sFilePath, dictViewer.sWorkdir);
+    }
+
+    async function _fnOfferDraftRecovery(
+        elBanner, elTextarea, elViewport,
+    ) {
+        var dictViewer = _fdictViewerForViewport(elViewport);
+        if (!dictViewer) return;
+        var dictNewest = await _fdictPickNewestDraft(dictViewer);
+        if (!dictNewest) return;
+        if (dictNewest.sContent === dictViewer.sBaseText) {
+            _fnDiscardDraftFor(dictViewer);
+            return;
+        }
+        var sCurrentHash = await PipeleyenDraftManager.fsHashContent(
+            dictViewer.sBaseText || "");
+        var bStaleBase = Boolean(
+            dictNewest.sBaseHash && sCurrentHash &&
+            dictNewest.sBaseHash !== sCurrentHash);
+        _fnRenderRecoveryBanner(
+            elBanner, elTextarea, dictViewer, dictNewest, bStaleBase);
+    }
+
+    async function _fdictPickNewestDraft(dictViewer) {
+        var sDraftKey = _fsCurrentDraftKey(dictViewer);
+        if (!sDraftKey) return null;
+        var dictLocal = PipeleyenDraftManager.fdictGetLocalDraft(
+            sDraftKey);
+        var dictRemote = await PipeleyenDraftManager.fdictGetRemoteDraft(
+            PipeleyenApp.fsGetContainerId(),
+            dictViewer.sFilePath, dictViewer.sWorkdir);
+        if (!dictLocal && !dictRemote) return null;
+        if (!dictLocal) return dictRemote;
+        if (!dictRemote) return dictLocal;
+        var iLocal = dictLocal.iTimestampMs || 0;
+        var iRemote = dictRemote.iTimestampMs || 0;
+        return iRemote > iLocal ? dictRemote : dictLocal;
+    }
+
+    function _fnRenderRecoveryBanner(
+        elBanner, elTextarea, dictViewer, dictDraft, bStaleBase,
+    ) {
+        elBanner.innerHTML = "";
+        elBanner.className = "editor-recovery-banner";
+        elBanner.style.padding = "8px 12px";
+        elBanner.style.margin = "0 0 4px 0";
+        elBanner.style.background =
+            "var(--warning-bg, #fff7e6)";
+        elBanner.style.border =
+            "1px solid var(--warning-border, #f5c46d)";
+        elBanner.style.fontSize = "0.9em";
+        elBanner.appendChild(_felBuildRecoveryMessage(
+            dictDraft, bStaleBase));
+        elBanner.appendChild(_felBuildRecoveryActions(
+            elBanner, elTextarea, dictViewer, dictDraft));
+    }
+
+    function _felBuildRecoveryMessage(dictDraft, bStaleBase) {
+        var elMessage = document.createElement("span");
+        var sStamp = _fsFormatTimestamp(dictDraft.iTimestampMs || 0);
+        var sText = "⚠ Unsaved draft from " + sStamp + " is available.";
+        if (bStaleBase) {
+            sText = "⚠ File changed on disk since draft was saved. " +
+                sText;
+        }
+        elMessage.textContent = sText;
+        elMessage.style.marginRight = "12px";
+        return elMessage;
+    }
+
+    function _felBuildRecoveryActions(
+        elBanner, elTextarea, dictViewer, dictDraft,
+    ) {
+        var elActions = document.createElement("span");
+        elActions.appendChild(_felRecoveryButton(
+            "Restore", "btn btn-primary btn-sm",
+            function () {
+                _fnRestoreDraft(elTextarea, dictViewer, dictDraft);
+                elBanner.remove();
+            }));
+        elActions.appendChild(_felRecoveryButton(
+            "View disk", "btn btn-sm",
+            function () {
+                _fnShowDiskContent(
+                    dictViewer.sBaseText || "",
+                    dictViewer.sBaseHash || "");
+            }));
+        elActions.appendChild(_felRecoveryButton(
+            "Discard draft", "btn btn-sm",
+            function () {
+                _fnDiscardDraftFor(dictViewer);
+                elBanner.remove();
+            }));
+        return elActions;
+    }
+
+    function _felRecoveryButton(sLabel, sClass, fnClick) {
+        var elButton = document.createElement("button");
+        elButton.className = sClass;
+        elButton.textContent = sLabel;
+        elButton.style.marginRight = "6px";
+        elButton.addEventListener("click", fnClick);
+        return elButton;
+    }
+
+    function _fnRestoreDraft(elTextarea, dictViewer, dictDraft) {
+        elTextarea.value = dictDraft.sContent;
+        _fnOnEditorInput(dictViewer, elTextarea);
+        elTextarea.focus();
+    }
+
+    function _fsFormatTimestamp(iMs) {
+        if (!iMs) return "earlier";
+        var iAgeMs = Date.now() - iMs;
+        if (iAgeMs < 60000) return "just now";
+        if (iAgeMs < 3600000) {
+            return Math.round(iAgeMs / 60000) + " min ago";
+        }
+        if (iAgeMs < 86400000) {
+            return Math.round(iAgeMs / 3600000) + " h ago";
+        }
+        var dictDate = new Date(iMs);
+        return dictDate.toLocaleString();
     }
 
     function fsBuildSaveUrl(sUrl) {
@@ -699,28 +1182,123 @@ const PipeleyenFigureViewer = (function () {
         return sSaveUrl;
     }
 
-    function fnSaveEditedFile(sUrl, sContent, elViewport) {
+    function fnSaveEditedFile(sUrl, sContent, elViewport, fnOnSuccess) {
+        var sSaveUrl = fsBuildSaveUrl(sUrl);
+        var dictViewer = _fdictViewerForViewport(elViewport);
+        var sBaseHash = dictViewer ? (dictViewer.sBaseHash || "") : "";
+        fetch(sSaveUrl, {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                sContent: sContent, sBaseHash: sBaseHash,
+            }),
+        }).then(function (response) {
+            if (response.status === 409) {
+                return response.json().then(function (dictBody) {
+                    _fnHandleSaveConflict(
+                        sUrl, sContent, elViewport, dictBody,
+                        fnOnSuccess);
+                });
+            }
+            if (!response.ok) {
+                return response.text().then(function (sBody) {
+                    var sDetail = _fsExtractErrorDetail(sBody);
+                    throw new Error(sDetail);
+                });
+            }
+            _fnHandleSaveSuccess(
+                sUrl, sContent, elViewport, dictViewer, fnOnSuccess);
+        }).catch(function (error) {
+            PipeleyenApp.fnShowToast(
+                "Save failed: " + error.message, "error");
+        });
+    }
+
+    function _fsExtractErrorDetail(sBody) {
+        try {
+            var dictParsed = JSON.parse(sBody);
+            if (typeof dictParsed.detail === "string") {
+                return dictParsed.detail;
+            }
+            if (dictParsed.detail && dictParsed.detail.sMessage) {
+                return dictParsed.detail.sMessage;
+            }
+        } catch (error) { /* non-JSON body */ }
+        return "unknown error";
+    }
+
+    function _fnHandleSaveSuccess(
+        sUrl, sContent, elViewport, dictViewer, fnOnSuccess,
+    ) {
+        if (dictViewer) {
+            _fnDiscardDraftFor(dictViewer);
+            _fnUpdateIndicator(dictViewer, "saved");
+            _fnClearEditingState(dictViewer);
+        }
+        PipeleyenApp.fnShowToast("File saved", "success");
+        fnRevertTestStateForFile(sUrl);
+        fnRenderTextWithToolbar(sContent, sUrl, elViewport);
+        if (fnOnSuccess) fnOnSuccess();
+    }
+
+    function _fnHandleSaveConflict(
+        sUrl, sContent, elViewport, dictBody, fnOnSuccess,
+    ) {
+        var dictDetail = (dictBody && dictBody.detail) || {};
+        var sCurrentContent = dictDetail.sCurrentContent || "";
+        var sCurrentHash = dictDetail.sCurrentHash || "";
+        PipeleyenModals.fnShowChoiceModal(
+            "File changed on disk",
+            "Another writer modified this file after you started " +
+            "editing. Overwriting will discard their changes; " +
+            "viewing the diff lets you reconcile by hand.",
+            [
+                {sLabel: "Overwrite anyway", sStyleClass: "btn-primary",
+                 fnCallback: function () {
+                     _fnSaveOverwrite(
+                         sUrl, sContent, elViewport, fnOnSuccess);
+                 }},
+                {sLabel: "View disk content",
+                 fnCallback: function () {
+                     _fnShowDiskContent(sCurrentContent, sCurrentHash);
+                 }},
+                {sLabel: "Cancel"},
+            ]);
+    }
+
+    function _fnSaveOverwrite(
+        sUrl, sContent, elViewport, fnOnSuccess,
+    ) {
         var sSaveUrl = fsBuildSaveUrl(sUrl);
         fetch(sSaveUrl, {
             method: "PUT",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({sContent: sContent}),
-        }).then(function (r) {
-            if (!r.ok) return r.text().then(function (sBody) {
-                var sDetail = "unknown error";
-                try {
-                    sDetail = JSON.parse(sBody).detail || sDetail;
-                } catch (e) { /* non-JSON response */ }
-                throw new Error(sDetail);
-            });
-            PipeleyenApp.fnShowToast("File saved", "success");
-            fnRevertTestStateForFile(sUrl);
-            fnRenderTextWithToolbar(sContent, sUrl, elViewport);
+        }).then(function (response) {
+            if (!response.ok) {
+                return response.text().then(function (sBody) {
+                    throw new Error(_fsExtractErrorDetail(sBody));
+                });
+            }
+            _fnHandleSaveSuccess(
+                sUrl, sContent, elViewport,
+                _fdictViewerForViewport(elViewport), fnOnSuccess);
         }).catch(function (error) {
             PipeleyenApp.fnShowToast(
-                "Save failed: " + error.message, "error"
-            );
+                "Overwrite failed: " + error.message, "error");
         });
+    }
+
+    function _fnShowDiskContent(sCurrentContent, sCurrentHash) {
+        var sBody =
+            '<p>Current on-disk content (sha256 ' +
+            sCurrentHash.slice(0, 12) + '…):</p>' +
+            '<pre style="max-height:300px;overflow:auto;' +
+            'background:var(--panel-bg, #f5f5f5);' +
+            'padding:8px;font-size:0.85em;">' +
+            VaibifyUtilities.fnEscapeHtml(sCurrentContent) +
+            '</pre>';
+        PipeleyenModals.fnShowInfoModal("File on disk", sBody);
     }
 
     function fnBindEditorFind(elFind, elTextarea) {
@@ -831,12 +1409,14 @@ const PipeleyenFigureViewer = (function () {
                 event.preventDefault();
                 elViewport.classList.remove("drag-over");
                 var sPath = event.dataTransfer.getData("vaibify/filepath");
-                if (sPath) {
-                    var sWorkdir = event.dataTransfer.getData(
-                        "vaibify/workdir"
-                    ) || "";
-                    fnNavigateToPath(dictViewer, sPath, sWorkdir);
-                }
+                if (!sPath) return;
+                var sWorkdir = event.dataTransfer.getData(
+                    "vaibify/workdir") || "";
+                _fnConfirmIfDirty(
+                    dictViewer, "Dropping a new file here",
+                    function () {
+                        fnNavigateToPath(dictViewer, sPath, sWorkdir);
+                    });
             });
         });
     }
@@ -847,37 +1427,63 @@ const PipeleyenFigureViewer = (function () {
         fnBindDropTargets();
 
         document.getElementById("btnBackA").addEventListener("click",
-            function () { fnNavigateBack(dictViewerA); });
+            function () {
+                _fnConfirmIfDirty(
+                    dictViewerA, "Navigating back",
+                    function () { fnNavigateBack(dictViewerA); });
+            });
         document.getElementById("btnForwardA").addEventListener("click",
-            function () { fnNavigateForward(dictViewerA); });
+            function () {
+                _fnConfirmIfDirty(
+                    dictViewerA, "Navigating forward",
+                    function () { fnNavigateForward(dictViewerA); });
+            });
         document.getElementById("btnBackB").addEventListener("click",
-            function () { fnNavigateBack(dictViewerB); });
+            function () {
+                _fnConfirmIfDirty(
+                    dictViewerB, "Navigating back",
+                    function () { fnNavigateBack(dictViewerB); });
+            });
         document.getElementById("btnForwardB").addEventListener("click",
-            function () { fnNavigateForward(dictViewerB); });
+            function () {
+                _fnConfirmIfDirty(
+                    dictViewerB, "Navigating forward",
+                    function () { fnNavigateForward(dictViewerB); });
+            });
 
         document.getElementById("btnRefreshA").addEventListener("click",
             function () {
-                var dictEntry = fdictGetCurrentEntry(dictViewerA);
-                if (dictEntry) {
-                    fnDisplayInViewport(dictViewerA, dictEntry);
-                }
+                _fnConfirmIfDirty(
+                    dictViewerA, "Refreshing the viewer",
+                    function () {
+                        var dictEntry = fdictGetCurrentEntry(dictViewerA);
+                        if (dictEntry) {
+                            fnDisplayInViewport(dictViewerA, dictEntry);
+                        }
+                    });
             });
         document.getElementById("btnRefreshB").addEventListener("click",
             function () {
-                var dictEntry = fdictGetCurrentEntry(dictViewerB);
-                if (dictEntry) {
-                    fnDisplayInViewport(dictViewerB, dictEntry);
-                }
+                _fnConfirmIfDirty(
+                    dictViewerB, "Refreshing the viewer",
+                    function () {
+                        var dictEntry = fdictGetCurrentEntry(dictViewerB);
+                        if (dictEntry) {
+                            fnDisplayInViewport(dictViewerB, dictEntry);
+                        }
+                    });
             });
     });
 
     function fnDisplayGeneratedTest(sPath, sContent, iStep) {
-        var elViewport = document.getElementById("viewportA");
-        elViewport.classList.add("viewport-test-generated");
-        elViewport.classList.remove("viewport-test-failed");
-        fnRenderGeneratedTestEditor(
-            sContent, sPath, elViewport, iStep
-        );
+        _fdictResolveTargetViewer(
+            "A", sPath, function (dictViewer) {
+                var elViewport = fnGetViewport(dictViewer);
+                elViewport.classList.add("viewport-test-generated");
+                elViewport.classList.remove("viewport-test-failed");
+                fnRenderGeneratedTestEditor(
+                    sContent, sPath, elViewport, iStep);
+            });
     }
 
     function fnRenderGeneratedTestEditor(
@@ -919,7 +1525,8 @@ const PipeleyenFigureViewer = (function () {
             );
         });
         elAccept.addEventListener("click", function () {
-            fnAcceptAndRunTest(sPath, sCurrentText, iStep);
+            fnAcceptAndRunTest(
+                sPath, sCurrentText, iStep, elViewport);
         });
         elDiscard.addEventListener("click", function () {
             fnDiscardProposedTest(elViewport);
@@ -960,16 +1567,16 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
-    function fnAcceptAndRunTest(sPath, sContent, iStep) {
+    function fnAcceptAndRunTest(sPath, sContent, iStep, elTestViewport) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         if (!sContainerId) return;
-        var elViewportB = document.getElementById("viewportB");
-        var elViewportA = document.getElementById("viewportA");
+        var elProgressViewport = elTestViewport ||
+            document.getElementById("viewportA");
 
-        elViewportA.innerHTML =
+        elProgressViewport.innerHTML =
             '<div class="test-progress">' +
             '<p>Performing tests...</p></div>';
-        elViewportA.classList.remove("viewport-test-generated");
+        elProgressViewport.classList.remove("viewport-test-generated");
 
         fetch("/api/steps/" + sContainerId + "/" + iStep +
             "/save-and-run-test", {
@@ -981,45 +1588,62 @@ const PipeleyenFigureViewer = (function () {
         })
         .then(function (response) { return response.json(); })
         .then(function (dictResult) {
-            var bPassed = dictResult.bPassed === true;
-            var elProgress = elViewportA.querySelector(
-                ".test-progress");
-            if (!elProgress) return;
-            elProgress.querySelector("p").textContent +=
-                " done.";
-            var elResult = document.createElement("p");
-            elResult.className = bPassed ?
-                "test-result-pass" : "test-result-fail";
-            elResult.innerHTML = bPassed ?
-                '<img src="/static/favicon.png" ' +
-                'class="vaib-verified-badge"> All tests pass!' :
-                '<span class="test-fail-glyph">&#9888;</span> ' +
-                'Some tests failed.';
-            elProgress.appendChild(elResult);
-            var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-            if (dictWorkflow && dictWorkflow.listSteps[iStep]) {
-                var dictV = dictWorkflow.listSteps[iStep]
-                    .dictVerification || {};
-                dictV.sUnitTest = bPassed ? "passed" : "failed";
-                dictWorkflow.listSteps[iStep].dictVerification =
-                    dictV;
-                if (bPassed) {
-                    PipeleyenApp.fnClearOutputModified(iStep);
-                }
-                PipeleyenApp.fnRenderStepList();
-            }
-            if (dictResult.sOutput) {
-                elViewportB.innerHTML = "";
-                var elTestPre = document.createElement("pre");
-                elTestPre.textContent = dictResult.sOutput;
-                elViewportB.appendChild(elTestPre);
-            }
+            _fnRenderTestAcceptResult(
+                dictResult, iStep, elProgressViewport);
         })
         .catch(function (error) {
-            elViewportA.innerHTML =
+            elProgressViewport.innerHTML =
                 '<p class="test-result-fail">Test execution ' +
                 'failed: ' + error.message + '</p>';
         });
+    }
+
+    function _fnRenderTestAcceptResult(
+        dictResult, iStep, elProgressViewport,
+    ) {
+        var bPassed = dictResult.bPassed === true;
+        var elProgress = elProgressViewport.querySelector(
+            ".test-progress");
+        if (!elProgress) return;
+        elProgress.querySelector("p").textContent += " done.";
+        var elResult = document.createElement("p");
+        elResult.className = bPassed ?
+            "test-result-pass" : "test-result-fail";
+        elResult.innerHTML = bPassed ?
+            '<img src="/static/favicon.png" ' +
+            'class="vaib-verified-badge"> All tests pass!' :
+            '<span class="test-fail-glyph">&#9888;</span> ' +
+            'Some tests failed.';
+        elProgress.appendChild(elResult);
+        _fnRecordTestVerification(iStep, bPassed);
+        if (dictResult.sOutput) {
+            _fnDisplayTestAcceptOutput(
+                dictResult.sOutput, elProgressViewport);
+        }
+    }
+
+    function _fnRecordTestVerification(iStep, bPassed) {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        if (!dictWorkflow || !dictWorkflow.listSteps[iStep]) return;
+        var dictV = dictWorkflow.listSteps[iStep]
+            .dictVerification || {};
+        dictV.sUnitTest = bPassed ? "passed" : "failed";
+        dictWorkflow.listSteps[iStep].dictVerification = dictV;
+        if (bPassed) PipeleyenApp.fnClearOutputModified(iStep);
+        PipeleyenApp.fnRenderStepList();
+    }
+
+    function _fnDisplayTestAcceptOutput(sOutput, elProgressViewport) {
+        var sOtherLetter = (elProgressViewport ===
+            fnGetViewport(dictViewerA)) ? "B" : "A";
+        _fdictResolveTargetViewer(
+            sOtherLetter, "test output", function (dictViewer) {
+                var elViewport = fnGetViewport(dictViewer);
+                elViewport.innerHTML = "";
+                var elTestPre = document.createElement("pre");
+                elTestPre.textContent = sOutput;
+                elViewport.appendChild(elTestPre);
+            });
     }
 
     function fnSaveGeneratedTest(sPath, elViewport, iStep) {
@@ -1065,15 +1689,34 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnDisplayTestOutput(sOutput, bPassed) {
-        var sLetter = fsClaimNextViewer();
-        var dictViewer = sLetter === "A" ? dictViewerA : dictViewerB;
-        var elViewport = fnGetViewport(dictViewer);
-        elViewport.innerHTML = "";
-        var elPre = document.createElement("pre");
-        elPre.textContent = sOutput;
-        elPre.style.whiteSpace = "pre-wrap";
-        elPre.style.padding = "12px";
-        elViewport.appendChild(elPre);
+        _fdictResolveTargetViewer(
+            sNextViewer, "test output", function (dictViewer) {
+                sNextViewer = dictViewer.sId === "A" ? "B" : "A";
+                var elViewport = fnGetViewport(dictViewer);
+                elViewport.innerHTML = "";
+                var elPre = document.createElement("pre");
+                elPre.textContent = sOutput;
+                elPre.style.whiteSpace = "pre-wrap";
+                elPre.style.padding = "12px";
+                elViewport.appendChild(elPre);
+            });
+    }
+
+    function fnClaimNextViewerForReplacement(sIncomingPath, fnOnReady) {
+        _fdictResolveTargetViewer(
+            sNextViewer, sIncomingPath, function (dictViewer) {
+                sNextViewer = dictViewer.sId === "A" ? "B" : "A";
+                fnOnReady(dictViewer.sId);
+            });
+    }
+
+    function fnShowPlaceholderInNextViewer(sHtml, sIncomingPath) {
+        _fdictResolveTargetViewer(
+            sNextViewer, sIncomingPath || "placeholder",
+            function (dictViewer) {
+                sNextViewer = dictViewer.sId === "A" ? "B" : "A";
+                fnGetViewport(dictViewer).innerHTML = sHtml;
+            });
     }
 
     return {
@@ -1083,9 +1726,15 @@ const PipeleyenFigureViewer = (function () {
         fnDisplayInNextViewer: fnDisplayInNextViewer,
         fnDisplayFileInViewer: fnDisplayFileInViewer,
         fsClaimNextViewer: fsClaimNextViewer,
+        fnClaimNextViewerForReplacement:
+            fnClaimNextViewerForReplacement,
+        fnShowPlaceholderInNextViewer: fnShowPlaceholderInNextViewer,
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,
         fnReleaseResources: fnReleaseAllResources,
+        fbAnyViewerDirty: fbAnyViewerDirty,
+        fbViewerIsDirty: fbViewerIsDirty,
+        fbViewerHasOpenEditor: fbViewerHasOpenEditor,
     };
 })();

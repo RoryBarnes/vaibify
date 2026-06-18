@@ -156,6 +156,7 @@ class RunRequest(BaseModel):
 
 class FileWriteRequest(BaseModel):
     sContent: str
+    sBaseHash: Optional[str] = None
 
 
 class DependencyScanRequest(BaseModel):
@@ -1641,6 +1642,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
 
     routes.workflowRoutes.fnRegisterAll(app, dictCtx)
     routes.fileRoutes.fnRegisterAll(app, dictCtx, sWorkspaceRoot)
+    routes.draftRoutes.fnRegisterAll(app, dictCtx)
     routes.syncRoutes.fnRegisterAll(app, dictCtx)
     routes.scriptRoutes.fnRegisterAll(app, dictCtx)
     routes.settingsRoutes.fnRegisterAll(app, dictCtx)

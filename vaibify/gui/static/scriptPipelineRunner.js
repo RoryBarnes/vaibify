@@ -435,9 +435,17 @@ var PipeleyenPipelineRunner = (function () {
 
     function fnInitPipelineOutput() {
         if (_sStreamingViewer === null) {
-            _sStreamingViewer =
-                PipeleyenFigureViewer.fsClaimNextViewer();
+            PipeleyenFigureViewer.fnClaimNextViewerForReplacement(
+                "pipeline output", function (sViewer) {
+                    _sStreamingViewer = sViewer;
+                    _fnPaintPipelineOutputViewer();
+                });
+            return;
         }
+        _fnPaintPipelineOutputViewer();
+    }
+
+    function _fnPaintPipelineOutputViewer() {
         var elViewport = document.getElementById(
             "viewport" + _sStreamingViewer);
         elViewport.innerHTML =
