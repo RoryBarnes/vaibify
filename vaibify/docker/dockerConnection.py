@@ -128,6 +128,20 @@ def _fnMountUnixAdapter(sessionDocker):
         )
 
 
+# Numeric UID/GID of the container's unprivileged user. The Dockerfile
+# pins ``useradd -u 1000`` (and gid follows the user) for every image
+# variant; the ``testContainerUserUidIsOneThousand`` architectural
+# invariant in ``tests/testArchitecturalInvariants.py`` keeps the two in
+# lock-step. Used as the default ownership stamp on tarballs written by
+# ``fnWriteFile`` / ``fnWriteFileViaTar`` so that backend-authored files
+# (workflow.json, state JSON, generated tests, log files, credential
+# scratch, etc.) land owned by the in-container user — not root, which
+# would silently lock the file against subsequent in-container edits
+# (the in-container agent has no sudo by design).
+_I_CONTAINER_DEFAULT_UID = 1000
+_I_CONTAINER_DEFAULT_GID = 1000
+
+
 def _fsResolveContainerUser(container):
     """Return the unprivileged user baked into the image, cached per id.
 
@@ -603,16 +617,23 @@ class DockerConnection:
 
     @staticmethod
     def _finfoBuildTarEntry(sFilename, iSize, iMode, iUid, iGid):
-        """Return a TarInfo with the requested mode/owner stamps."""
+        """Return a TarInfo with the requested mode/owner stamps.
+
+        Defaults ``iUid``/``iGid`` to the container's unprivileged user
+        (``_I_CONTAINER_DEFAULT_UID`` / ``_I_CONTAINER_DEFAULT_GID``)
+        rather than letting ``tarfile.TarInfo``'s native default of 0
+        through to ``put_archive``. Without this, every backend write
+        materialises root-owned inside the container and silently locks
+        the file against any later in-container edit — the in-container
+        agent has no sudo by design (commit 426f6b7).
+        """
         import tarfile
         infoTar = tarfile.TarInfo(name=sFilename)
         infoTar.size = iSize
         if iMode is not None:
             infoTar.mode = iMode
-        if iUid is not None:
-            infoTar.uid = iUid
-        if iGid is not None:
-            infoTar.gid = iGid
+        infoTar.uid = iUid if iUid is not None else _I_CONTAINER_DEFAULT_UID
+        infoTar.gid = iGid if iGid is not None else _I_CONTAINER_DEFAULT_GID
         return infoTar
 
     def fsExecCreate(

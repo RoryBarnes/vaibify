@@ -311,6 +311,48 @@ def test_fnWriteFileViaTar_stamps_mode_uid_gid(mockGetDocker):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fnWriteFile_default_ownership_is_container_user(mockGetDocker):
+    """Backend writes land owned by the unprivileged container user.
+
+    Regression guard for the systemic root-ownership bug: when
+    ``fnWriteFile`` is called without explicit ``iUid``/``iGid``,
+    ``tarfile.TarInfo`` natively stamps uid/gid 0 and ``put_archive``
+    materialises a root-owned file inside the container. Every
+    backend-authored file (``workflow.json``, ``state.json``,
+    ``.vaibify/.gitignore``, generated tests, log files, credential
+    scratch, draft files, ...) hit this path, locking the file against
+    later in-container edits because the unprivileged user has no
+    sudo. The dispatcher now defaults the stamps to the container
+    user's UID/GID; this test pins that behaviour.
+    """
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockClient.containers.get.return_value = mockContainer
+    mockContainer.put_archive = MagicMock(return_value=True)
+    conn = DockerConnection()
+    conn.fnWriteFile(
+        "abc123",
+        "/workspace/Repo/.vaibify/workflows/example.json",
+        b'{"sName": "example"}',
+    )
+    bufferTar = mockContainer.put_archive.call_args[0][1]
+    bufferTar.seek(0)
+    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
+        listMembers = tar.getmembers()
+    assert len(listMembers) == 1
+    assert listMembers[0].uid == 1000, (
+        f"backend write must default to uid=1000 (container user); "
+        f"got {listMembers[0].uid}. A uid=0 default leaves the file "
+        f"root-owned inside the container and the in-container agent "
+        f"cannot edit it."
+    )
+    assert listMembers[0].gid == 1000, (
+        f"backend write must default to gid=1000; got {listMembers[0].gid}."
+    )
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
 def test_fnWriteFile_forwards_mode_uid_gid(mockGetDocker):
     """``fnWriteFile`` forwards mode/uid/gid to the underlying tar write."""
     mockDocker, mockClient = _fMockDockerModule()

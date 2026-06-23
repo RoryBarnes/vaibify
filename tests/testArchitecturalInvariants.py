@@ -23,6 +23,8 @@ __all__ = [
     "testGitRoutesAlwaysPassProjectRepoToContainerGit",
     "testNoWorkspaceRootedMarkerHardcodeInSource",
     "testNoUnscopedDockerExecOutsideConnection",
+    "testNoRootUserInDispatcherCalls",
+    "testFnWriteFileDefaultsToContainerUserOwnership",
     "testAgentActionRegistered",
     "testAgentActionCatalogShape",
     "testWireFormatPathsAreRepoRelative",
@@ -885,6 +887,143 @@ def testNoUnscopedDockerExecOutsideConnection():
             f"  {pathRel}:{iLine}"
             for pathRel, iLine in listOffenders
         )
+    )
+
+
+_SET_DISPATCHER_METHOD_NAMES = frozenset({
+    "texecRunInContainerStreamed",
+    "texecRunInContainerStreamedWithChunks",
+    "ftResultExecuteCommand",
+    "fsExecCreate",
+})
+
+_SET_ROOT_USER_LITERALS = frozenset({"root", "0"})
+
+
+def _fbCallNamesDispatcherMethod(nodeCall):
+    """Return True when nodeCall is ``something.<dispatcher>(...)``.
+
+    Only attribute-style calls qualify; bare-name calls cannot reach
+    the dispatcher because it lives on a DockerConnection instance.
+    """
+    if not isinstance(nodeCall.func, ast.Attribute):
+        return False
+    return nodeCall.func.attr in _SET_DISPATCHER_METHOD_NAMES
+
+
+def _fsExtractRootLiteralFromKwargs(nodeCall):
+    """Return the literal ``"root"``/``"0"`` passed via sUser=, else ``""``.
+
+    Catches the realistic regression shape (``call(..., sUser="root")``).
+    Variable-indirection (``s = "root"; call(sUser=s)``) and dict-spread
+    forms are intentionally out of scope — neither has ever appeared in
+    vaibify source and the resulting false negative is far less likely
+    than the literal-kwarg case.
+    """
+    for nodeKeyword in nodeCall.keywords:
+        if nodeKeyword.arg != "sUser":
+            continue
+        nodeValue = nodeKeyword.value
+        if not isinstance(nodeValue, ast.Constant):
+            continue
+        if not isinstance(nodeValue.value, str):
+            continue
+        if nodeValue.value in _SET_ROOT_USER_LITERALS:
+            return nodeValue.value
+    return ""
+
+
+def testNoRootUserInDispatcherCalls():
+    """Docker-exec dispatcher calls must not opt into root via sUser=.
+
+    Container exec defaults to the image's unprivileged ``USER``
+    directive (pinned in ``docker/Dockerfile``); the dispatcher
+    methods on ``DockerConnection`` respect that default when ``sUser``
+    is ``None``. Passing ``sUser="root"`` (or ``"0"``) re-elevates a
+    single call and creates root-owned files in the workspace volume —
+    which then block the in-container agent's unprivileged writes
+    (e.g. a researcher's ``git push`` cannot append to a
+    ``.git/objects/<prefix>`` touched by the elevated call, since
+    ``sudo`` was deliberately removed in commit 426f6b7).
+
+    If a future feature genuinely needs root, fix the entrypoint root
+    phase or extend ``fnMigrateWorkspaceOwnership`` — do not punch a
+    hole at the runtime-exec layer.
+
+    ``dockerConnection.py`` itself is exempt: its docstrings reference
+    ``"root"`` as part of the documented opt-in contract.
+    """
+    pathVaibify = REPO_ROOT / "vaibify"
+    listOffenders = []
+    for pathFile in pathVaibify.rglob("*.py"):
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        if pathFile.name == "dockerConnection.py":
+            continue
+        try:
+            _, treeAst = ftParseFile(pathFile)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for nodeCall in ast.walk(treeAst):
+            if not isinstance(nodeCall, ast.Call):
+                continue
+            if not _fbCallNamesDispatcherMethod(nodeCall):
+                continue
+            sLiteral = _fsExtractRootLiteralFromKwargs(nodeCall)
+            if sLiteral:
+                listOffenders.append(
+                    (pathFile.relative_to(REPO_ROOT),
+                     nodeCall.lineno, sLiteral)
+                )
+    assert listOffenders == [], (
+        "Docker-exec dispatcher calls must not pass sUser=\"root\" or "
+        "sUser=\"0\". A root-elevated exec creates root-owned files "
+        "in the workspace volume that block subsequent unprivileged "
+        "writes (e.g. a researcher's git push). If a feature "
+        "genuinely needs root, fix the entrypoint root phase, do not "
+        "bypass via runtime exec.\n"
+        + "\n".join(
+            f"  {pathRel}:{iLine}: sUser={sLit!r}"
+            for pathRel, iLine, sLit in listOffenders
+        )
+    )
+
+
+def testFnWriteFileDefaultsToContainerUserOwnership():
+    """Backend tar writes must default to the unprivileged container user.
+
+    ``_finfoBuildTarEntry`` builds the ``TarInfo`` that
+    ``container.put_archive`` materialises inside the container.
+    ``tarfile.TarInfo`` natively defaults ``uid``/``gid`` to 0; if that
+    default leaks through, every file written by the host backend lands
+    root-owned and the in-container agent (no sudo by design — commit
+    426f6b7) cannot edit it. Locks the safe default in place so a
+    future refactor cannot silently regress to the tarfile default.
+
+    Pair with ``testContainerUserUidIsOneThousand``: that test pins the
+    Dockerfile's user UID to 1000; this test pins the dispatcher's
+    default to the same value.
+    """
+    from vaibify.docker.dockerConnection import DockerConnection
+    infoTarDefault = DockerConnection._finfoBuildTarEntry(
+        "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
+    )
+    assert infoTarDefault.uid == 1000, (
+        f"default tar uid must be the unprivileged container user "
+        f"(1000); got {infoTarDefault.uid}. A non-1000 default lands "
+        f"backend-written files unreadable/uneditable by the "
+        f"in-container agent."
+    )
+    assert infoTarDefault.gid == 1000, (
+        f"default tar gid must be the unprivileged container group "
+        f"(1000); got {infoTarDefault.gid}."
+    )
+    infoTarOverride = DockerConnection._finfoBuildTarEntry(
+        "secret.env", iSize=0, iMode=0o600, iUid=0, iGid=0,
+    )
+    assert infoTarOverride.uid == 0 and infoTarOverride.gid == 0, (
+        "explicit iUid=0/iGid=0 must still pass through — the secret "
+        "writer relies on the override path."
     )
 
 

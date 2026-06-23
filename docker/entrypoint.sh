@@ -1196,24 +1196,24 @@ fnSourceBinariesInEnv() {
 
 # ---------------------------------------------------------------------------
 # fnMigrateWorkspaceOwnership: One-time chown for pre-split-entrypoint volumes
-# Scans only top-level entries (fast) and runs the full recursive chown only
-# when root-owned items are found.
+# Uses ``find -uid 0 -print -quit`` so the scan is deep (catches nested
+# residue such as ``.git/objects/3f`` left by a pre-split host-side git
+# operation, which an earlier top-level-only check missed and which
+# blocks the in-container agent from writing further objects into that
+# prefix) but still fast in the common case — find exits on the first
+# match, so a clean volume costs at most one directory walk.
 # ---------------------------------------------------------------------------
 fnMigrateWorkspaceOwnership() {
     if [ ! -d "${WORKSPACE}" ]; then
         return
     fi
-    local sEntry
-    for sEntry in "${WORKSPACE}"/* "${WORKSPACE}"/.[!.]* "${WORKSPACE}"/..?*; do
-        [ -e "${sEntry}" ] || continue
-        if [ "$(stat -c '%u' "${sEntry}" 2>/dev/null)" = "0" ]; then
-            echo "[vaib] One-time migration: adjusting workspace ownership..."
-            chown -R --no-dereference \
-                "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
-            echo "[vaib] Migration complete."
-            return
-        fi
-    done
+    if [ -z "$(find "${WORKSPACE}" -uid 0 -print -quit 2>/dev/null)" ]; then
+        return
+    fi
+    echo "[vaib] One-time migration: adjusting workspace ownership..."
+    chown -R --no-dereference \
+        "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
+    echo "[vaib] Migration complete."
 }
 
 # ---------------------------------------------------------------------------

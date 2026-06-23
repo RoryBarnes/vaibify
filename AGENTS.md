@@ -198,6 +198,24 @@ the right one, not to remove the test. Deleting or disabling a test to
 unblock a run is effectively unrecoverable: future regressions have no
 guardrail.
 
+**Host→container file writes default to the unprivileged container
+user.** Every backend write of a file inside the workspace volume
+funnels through `fnWriteFile` / `fnWriteFileViaTar` in
+[vaibify/docker/dockerConnection.py](vaibify/docker/dockerConnection.py),
+which calls `container.put_archive(tarball)`. The tarball entry's
+uid/gid IS the file's owner inside the container, and `tarfile.TarInfo`
+natively defaults uid/gid to 0. If that default ever leaks through, the
+file lands root-owned and the in-container agent cannot edit it (sudo
+is absent by design — commit 426f6b7). The symptom is a researcher's
+`git push` failing on `.git/objects/<prefix>` or the agent unable to
+modify `workflow.json` after a backend save. The dispatcher's
+`_finfoBuildTarEntry` defaults the stamps to
+`_I_CONTAINER_DEFAULT_UID`/`_GID` (1000:1000, locked to the Dockerfile
+by `testContainerUserUidIsOneThousand`); any new host→container write
+path must preserve that default.
+`tests/testArchitecturalInvariants.py::testFnWriteFileDefaultsToContainerUserOwnership`
+enforces it.
+
 ## Cross-step references via tokens
 
 **Every cross-step file reference in a vaibify workflow script must be
