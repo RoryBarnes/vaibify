@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev411 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev412 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=44fe777a"></script>
+      <script src="_static/documentation_options.js?v=7306fd10"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -260,17 +260,20 @@ overhead, independent of how much work runs inside the container.
 Coalescing N batches into one is the dominant lever for poll
 latency, and it is the reason the polling endpoint scales past a few
 hundred tracked paths without saturating the daemon.</p>
-<p>The poll caches the mtime of each tracked path’s parent directory
-per container in <code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;dictParentMtimeCache&quot;][sContainerId]</span></code>.
-On the next poll, if a parent’s mtime has not changed, its children
-are reused from cache; if it has, the children are re-stat’d. The
-invalidation rules are: a full clear on workflow reload
-(<code class="docutils literal notranslate"><span class="pre">dictReload[&quot;bReplaced&quot;]</span></code>), a full clear on docker error (the
-container may have restarted), and a full bypass when
-<code class="docutils literal notranslate"><span class="pre">bPipelineRunning</span></code> is True. The bypass exists because user-authored
-scripts during a run may overwrite files in place without bumping
-the parent directory’s mtime, and the dashboard’s honesty contract
-beats the polling-cost optimization in that window.</p>
+<p>An earlier design cached parent-directory mtimes per container and
+skipped child stats whenever the parent’s mtime had not moved. POSIX
+only bumps a directory’s mtime on add/remove/rename of children, not
+on an in-place rewrite of an existing child, so the optimization
+silently fed stale mtimes back to the reload detector and the
+“step source modified” invalidation pass whenever an out-of-band
+editor (the in-container agent’s <code class="docutils literal notranslate"><span class="pre">Edit</span></code> tool, <code class="docutils literal notranslate"><span class="pre">vim</span> <span class="pre">:w</span></code>, <code class="docutils literal notranslate"><span class="pre">sed</span> <span class="pre">-i</span></code> on
+some platforms) modified <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> or a step script in place.
+The cache layer has been removed: every poll stats the polled paths
+directly. This still costs exactly one <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> per poll
+(the dominant wire cost) and trades a small per-poll byte increase
+on the path-list for the dashboard’s honesty contract — the same
+contract the <span class="xref myst">AGENTS.md</span> “do not suppress or
+misrepresent state” trap enforces for every other surface.</p>
 <p>Four module-level booleans in <code class="docutils literal notranslate"><span class="pre">scriptPolling.js</span></code> — one each for
 pipeline, file-status, repos, and discovery — short-circuit a poll
 tick when the previous tick is still pending. These are

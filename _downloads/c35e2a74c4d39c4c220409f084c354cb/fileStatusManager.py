@@ -70,7 +70,6 @@ __all__ = [
     "fbStepTimingClean",
     "fbStepUserApproved",
     "flistStepRemoteFiles",
-    "fnInvalidateParentCacheForContainer",
     "fnMaybeAutoArchive",
 ]
 
@@ -1461,84 +1460,6 @@ def _fdictParseStatLines(sOutput):
     return dictResult
 
 
-def _fdictGroupPathsByParent(listPaths):
-    """Group paths by their posix dirname: {sParentDir: [sAbsPath, ...]}."""
-    dictGroups = {}
-    for sPath in listPaths:
-        sParent = posixpath.dirname(sPath)
-        dictGroups.setdefault(sParent, []).append(sPath)
-    return dictGroups
-
-
-def _flistParentsToRecheck(dictCache, dictParentMtimes):
-    """Return parents whose cached mtime differs from current mtime."""
-    dictCachedParents = dictCache.get("dictParentMtime", {})
-    listStale = []
-    for sParent, sMtime in dictParentMtimes.items():
-        if dictCachedParents.get(sParent) != sMtime:
-            listStale.append(sParent)
-    return listStale
-
-
-def _fdictMergeCacheWithFresh(dictCache, dictFresh, dictParentGroups):
-    """Combine cached children of unchanged parents with fresh stat results."""
-    dictResult = dict(dictFresh)
-    dictCachedChildren = dictCache.get("dictChildMtimes", {})
-    dictCachedParents = dictCache.get("dictParentMtime", {})
-    for sParent, listChildren in dictParentGroups.items():
-        if sParent not in dictCachedParents:
-            continue
-        dictChildren = dictCachedChildren.get(sParent, {})
-        for sChild in listChildren:
-            if sChild in dictResult:
-                continue
-            sMtime = dictChildren.get(sChild)
-            if sMtime is not None:
-                dictResult[sChild] = sMtime
-    return dictResult
-
-
-def _fnUpdateParentCache(
-    dictCache, dictNewParentMtimes, dictFreshChildren, dictParentGroups,
-):
-    """Update both parent-mtime and child-mtime cache layers."""
-    dictCache["dictParentMtime"].update(dictNewParentMtimes)
-    dictChildLayer = dictCache["dictChildMtimes"]
-    for sParent, listChildren in dictParentGroups.items():
-        if sParent not in dictNewParentMtimes:
-            continue
-        dictChildren = dictChildLayer.setdefault(sParent, {})
-        for sChild in listChildren:
-            sMtime = dictFreshChildren.get(sChild)
-            if sMtime is None:
-                dictChildren.pop(sChild, None)
-            else:
-                dictChildren[sChild] = sMtime
-
-
-def _fdictEnsureCacheForContainer(dictCtx, sContainerId):
-    """Lazily initialize and return the per-container parent-mtime cache."""
-    dictAll = dictCtx.setdefault("dictParentMtimeCache", {})
-    dictCache = dictAll.get(sContainerId)
-    if dictCache is None:
-        dictCache = {"dictParentMtime": {}, "dictChildMtimes": {}}
-        dictAll[sContainerId] = dictCache
-    return dictCache
-
-
-def fnInvalidateParentCacheForContainer(dictCtx, sContainerId):
-    """Drop the cached parent/child mtimes for one container.
-
-    Called by the route layer when the workflow reloads or when a
-    docker error suggests the container was restarted. Safe to call
-    when no entry exists yet.
-    """
-    dictAll = dictCtx.get("dictParentMtimeCache") if dictCtx else None
-    if not dictAll:
-        return
-    dictAll.pop(sContainerId, None)
-
-
 def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
     """Drop and return cache keys that aren't in setKeysToKeep."""
     listEvicted = [
@@ -1548,25 +1469,6 @@ def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
     for sKey in listEvicted:
         dictAll.pop(sKey, None)
     return listEvicted
-
-
-def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
-    """Evict cache entries for containers absent from the running list.
-
-    Contract for audit HIGH #13: ``dictParentMtimeCache`` was keyed by
-    container id and never evicted. The container-lifecycle agent that
-    owns ``flistGetRunningContainers`` must call this helper after each
-    running-list refresh, passing the authoritative list. Returns the
-    evicted container ids so the caller can log the sweep.
-    """
-    if dictCtx is None:
-        return []
-    dictAll = dictCtx.get("dictParentMtimeCache")
-    if not dictAll:
-        return []
-    return _flistEvictAbsentKeys(
-        dictAll, set(listRunningContainers or []),
-    )
 
 
 # Authoritative list of every container-id-keyed dict that lives on
@@ -1585,8 +1487,7 @@ def fnSweepParentMtimeCache(dictCtx, listRunningContainers):
 # ``dictPipelineStateLocks`` is evicted via the dedicated lock helper
 # (``pipelineState.fnEvictStateLockForContainer``) so the asyncio.Lock
 # objects are released cleanly rather than dropped raw, and is omitted
-# from this plain-dict list for that reason. ``dictParentMtimeCache``
-# is likewise evicted via ``fnSweepParentMtimeCache``.
+# from this plain-dict list for that reason.
 _LIST_CONTAINER_KEYED_CACHES = (
     "workflows",
     "paths",
@@ -1613,9 +1514,7 @@ def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
     evicted container ids.
     """
     setRunning = set(listRunningContainers or [])
-    setEvicted = set(
-        fnSweepParentMtimeCache(dictCtx, listRunningContainers)
-    )
+    setEvicted = set()
     if dictCtx is None:
         return setEvicted
     setEvicted |= _fsetSweepPlainDicts(dictCtx, setRunning)
@@ -1713,72 +1612,27 @@ def _fnEvictHostIncidentBuckets(moduleHostIncidents, setRunning):
             )
 
 
-def _fdictGetModTimes(
-    connectionDocker, sContainerId, listPaths,
-    dictCtx=None, bPipelineRunning=False,
-):
-    """Return {sAbsPath: sMtime} for each path that exists.
+def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
+    """Return {sAbsPath: sMtime} for each polled path that exists.
 
-    When ``dictCtx`` is None the call short-circuits to a single
-    pathlist stat (no cache). When ``dictCtx`` is supplied the
-    parent-mtime cache is consulted so unchanged subtrees skip
-    per-child stat. ``bPipelineRunning=True`` forces a full restat
-    because in-place overwrites during a pipeline run may not bump
-    the parent directory mtime.
+    Stats every requested path directly in a single batched exec via
+    ``_fdictStatViaPathfile``. The previous design indirected through
+    a parent-directory mtime cache so unchanged subtrees could skip
+    per-child stat, but POSIX does not bump a directory's mtime when
+    an existing child is rewritten in place — only add/remove/rename
+    do. Out-of-band in-place edits (an in-container agent rewriting
+    ``workflow.json`` or a step script through the ``Edit`` tool,
+    ``vim :w``, ``sed -i`` on some platforms) therefore left the cache
+    returning the pre-edit mtime, and the reload detector / "step
+    source modified" invalidation silently no-op'd. Stat-the-children
+    directly removes the silent-stale failure mode at the cost of one
+    extra path-list per poll exec (still one exec round-trip).
     """
     if not listPaths:
         return {}
-    if dictCtx is None or bPipelineRunning:
-        return _fdictStatViaPathfile(
-            connectionDocker, sContainerId, listPaths,
-        )
-    return _fdictGetModTimesCached(
-        connectionDocker, sContainerId, listPaths, dictCtx,
-    )
-
-
-def _fdictGetModTimesCached(
-    connectionDocker, sContainerId, listPaths, dictCtx,
-):
-    """Cache-aware mtime collection: stat parents, restat only changed kids."""
-    dictCache = _fdictEnsureCacheForContainer(dictCtx, sContainerId)
-    dictParentGroups = _fdictGroupPathsByParent(listPaths)
-    dictParentMtimes = _fdictStatViaPathfile(
-        connectionDocker, sContainerId, list(dictParentGroups.keys()),
-    )
-    dictFresh = _fdictStatStaleChildren(
-        connectionDocker, sContainerId,
-        dictCache, dictParentMtimes, dictParentGroups,
-    )
-    dictMerged = _fdictMergeCacheWithFresh(
-        dictCache, dictFresh, dictParentGroups,
-    )
-    _fnUpdateParentCache(
-        dictCache, dictParentMtimes, dictFresh, dictParentGroups,
-    )
-    return dictMerged
-
-
-def _fdictStatStaleChildren(
-    connectionDocker, sContainerId,
-    dictCache, dictParentMtimes, dictParentGroups,
-):
-    """Stat children belonging to parents whose mtime changed."""
-    listStaleParents = _flistParentsToRecheck(dictCache, dictParentMtimes)
-    listChildrenToStat = _flistChildrenForParents(
-        listStaleParents, dictParentGroups,
-    )
     return _fdictStatViaPathfile(
-        connectionDocker, sContainerId, listChildrenToStat,
+        connectionDocker, sContainerId, listPaths,
     )
-
-
-def _flistChildrenForParents(listParents, dictParentGroups):
-    """Flatten the child paths belonging to a set of parent dirs."""
-    listChildren = []
-    for sParent in listParents:
-        listChildren.extend(dictParentGroups.get(sParent, []))
-    return listChildren
 
 
 # ---------------------------------------------------------------------------
