@@ -162,9 +162,6 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
         "dictPipelineStateLocks": {},
         "dictSyncEpochs": {"ghost": 1},
         "dictManifestShaCache": {"ghost": {}},
-        "dictParentMtimeCache": {
-            "ghost": {"dictParentMtime": {}, "dictChildMtimes": {}},
-        },
     }
     appFake = _fappBuildFakeApp()
 
@@ -183,13 +180,12 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
     assert fakeDocker.iListCalls >= 2
     assert "ghost" not in dictCtx["workflows"]
     assert "alive" in dictCtx["workflows"]
-    assert "ghost" not in dictCtx["dictParentMtimeCache"]
 
 
 def test_periodic_sweep_cancellable_at_shutdown():
     """Shutting down the lifespan stops the sweep task without leaks."""
     fakeDocker = _FakeDockerForSweep([])
-    dictCtx = {"docker": fakeDocker, "dictParentMtimeCache": {}}
+    dictCtx = {"docker": fakeDocker}
     appFake = _fappBuildFakeApp()
     pipelineServer._fnRegisterPeriodicContainerSweep(
         appFake, dictCtx, fInterval=0.01,

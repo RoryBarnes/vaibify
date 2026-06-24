@@ -160,17 +160,20 @@ Coalescing N batches into one is the dominant lever for poll
 latency, and it is the reason the polling endpoint scales past a few
 hundred tracked paths without saturating the daemon.
 
-The poll caches the mtime of each tracked path's parent directory
-per container in `dictCtx["dictParentMtimeCache"][sContainerId]`.
-On the next poll, if a parent's mtime has not changed, its children
-are reused from cache; if it has, the children are re-stat'd. The
-invalidation rules are: a full clear on workflow reload
-(`dictReload["bReplaced"]`), a full clear on docker error (the
-container may have restarted), and a full bypass when
-`bPipelineRunning` is True. The bypass exists because user-authored
-scripts during a run may overwrite files in place without bumping
-the parent directory's mtime, and the dashboard's honesty contract
-beats the polling-cost optimization in that window.
+An earlier design cached parent-directory mtimes per container and
+skipped child stats whenever the parent's mtime had not moved. POSIX
+only bumps a directory's mtime on add/remove/rename of children, not
+on an in-place rewrite of an existing child, so the optimization
+silently fed stale mtimes back to the reload detector and the
+"step source modified" invalidation pass whenever an out-of-band
+editor (the in-container agent's `Edit` tool, `vim :w`, `sed -i` on
+some platforms) modified `workflow.json` or a step script in place.
+The cache layer has been removed: every poll stats the polled paths
+directly. This still costs exactly one `docker exec` per poll
+(the dominant wire cost) and trades a small per-poll byte increase
+on the path-list for the dashboard's honesty contract — the same
+contract the [AGENTS.md](../AGENTS.md) "do not suppress or
+misrepresent state" trap enforces for every other surface.
 
 Four module-level booleans in `scriptPolling.js` — one each for
 pipeline, file-status, repos, and discovery — short-circuit a poll

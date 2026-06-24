@@ -1,4 +1,4 @@
-"""Tests for the single-exec pathfile stat + parent-mtime cache path."""
+"""Tests for the single-exec pathfile stat used by the poll loop."""
 
 from unittest.mock import MagicMock
 
@@ -8,9 +8,7 @@ from vaibify.gui.fileStatusManager import (
     _LIST_CONTAINER_KEYED_CACHES,
     _fdictGetModTimes,
     _fdictStatViaPathfile,
-    fnInvalidateParentCacheForContainer,
     fnSweepAllContainerCaches,
-    fnSweepParentMtimeCache,
 )
 
 
@@ -69,17 +67,26 @@ def testStatViaPathfileSwallowsApiError():
 
 
 # ---------------------------------------------------------------
-# WI-2 / WI-9 #2: cached poll reuses children of unchanged parents
+# Regression: in-place file edits (parent dir mtime unchanged)
+# must still surface as the new child mtime on the very next poll.
+# This is the contract the previous parent-mtime cache violated:
+# POSIX does not bump a directory's mtime when an existing child
+# is rewritten in place, so the cache returned the pre-edit child
+# mtime indefinitely. Symptom: container-side agent edits to
+# ``workflow.json`` (or any step script) never reached the
+# dashboard until something else in the same dir was added,
+# deleted, or renamed.
 # ---------------------------------------------------------------
 
 
 def _fdictMakeStatResponder(dictPathToMtime):
-    """Return a side_effect that mimics stat output for queried paths.
+    """Return side_effects that emit stat output for the queried paths.
 
-    The connectionDocker.fnWriteFileViaTar call carries the queried
-    pathlist as its 3rd positional arg (baContent). We capture that to
-    emit only the matching subset of dictPathToMtime in the next
-    ftResultExecuteCommand.
+    ``fnCaptureWrite`` reads the pathlist tar-write made by
+    ``_fdictStatViaPathfile`` and stores it; ``fnRespondExec`` then
+    replays the current entry for each queried path. The shared
+    ``dictPathToMtime`` is mutable so a test can simulate an
+    in-place edit by bumping a single key between calls.
     """
     dictState = {"listLastQueried": []}
 
@@ -100,188 +107,52 @@ def _fdictMakeStatResponder(dictPathToMtime):
     return fnCaptureWrite, fnRespondExec, dictState
 
 
-def testParentMtimeCacheReusesUnchangedChildren():
-    sParent = "/ws/parent"
-    listChildren = [f"{sParent}/file{iIndex}.dat" for iIndex in range(5)]
-    dictPathToMtime = {sParent: "1000"}
-    for sChild in listChildren:
-        dictPathToMtime[sChild] = "500"
-    fnWrite, fnExec, dictState = _fdictMakeStatResponder(dictPathToMtime)
-    mockDocker = MagicMock()
-    mockDocker.fnWriteFileViaTar.side_effect = fnWrite
-    mockDocker.ftResultExecuteCommand.side_effect = fnExec
-    dictCtx = {}
-    dictFirst = _fdictGetModTimes(
-        mockDocker, "cid", listChildren, dictCtx=dictCtx,
-    )
-    iWritesAfterFirst = mockDocker.fnWriteFileViaTar.call_count
-    dictSecond = _fdictGetModTimes(
-        mockDocker, "cid", listChildren, dictCtx=dictCtx,
-    )
-    assert dictFirst == dictSecond
-    assert dictSecond[listChildren[0]] == "500"
-    iSecondWrites = (
-        mockDocker.fnWriteFileViaTar.call_count - iWritesAfterFirst
-    )
-    assert iSecondWrites == 1
-    sSecondBatchText = (
-        mockDocker.fnWriteFileViaTar.call_args_list[-1][0][2].decode("utf-8")
-    )
-    assert sParent in sSecondBatchText
-    for sChild in listChildren:
-        assert sChild not in sSecondBatchText
+def testInPlaceEditOfChildSurfacesOnNextPoll():
+    """Editing a child in place must be visible on the very next poll.
 
-
-# ---------------------------------------------------------------
-# WI-9 #9: invalidation hook clears the entry for one container
-# ---------------------------------------------------------------
-
-
-def testParentCacheInvalidatesOnWorkflowReload():
-    sParent = "/ws/parent"
-    listChildren = [f"{sParent}/a.dat", f"{sParent}/b.dat"]
-    dictPathToMtime = {sParent: "1000"}
-    for sChild in listChildren:
-        dictPathToMtime[sChild] = "500"
-    fnWrite, fnExec, dictState = _fdictMakeStatResponder(dictPathToMtime)
-    mockDocker = MagicMock()
-    mockDocker.fnWriteFileViaTar.side_effect = fnWrite
-    mockDocker.ftResultExecuteCommand.side_effect = fnExec
-    dictCtx = {}
-    _fdictGetModTimes(
-        mockDocker, "cid", listChildren, dictCtx=dictCtx,
-    )
-    fnInvalidateParentCacheForContainer(dictCtx, "cid")
-    assert "cid" not in dictCtx["dictParentMtimeCache"]
-    iBefore = mockDocker.fnWriteFileViaTar.call_count
-    _fdictGetModTimes(
-        mockDocker, "cid", listChildren, dictCtx=dictCtx,
-    )
-    iAfter = mockDocker.fnWriteFileViaTar.call_count
-    assert (iAfter - iBefore) == 2
-    sChildrenBatchText = (
-        mockDocker.fnWriteFileViaTar.call_args_list[-1][0][2].decode("utf-8")
-    )
-    for sChild in listChildren:
-        assert sChild in sChildrenBatchText
-
-
-# ---------------------------------------------------------------
-# WI-9 #10: a newly seen parent dir gets stat'd next call
-# ---------------------------------------------------------------
-
-
-def testNewParentDirGetsStatted():
-    sParentA = "/ws/a"
-    sParentB = "/ws/b"
-    listFirstPaths = [f"{sParentA}/x.dat"]
-    listSecondPaths = [f"{sParentA}/x.dat", f"{sParentB}/y.dat"]
-    dictPathToMtime = {
-        sParentA: "1000", sParentB: "2000",
-        f"{sParentA}/x.dat": "500", f"{sParentB}/y.dat": "600",
-    }
+    Simulates the original bug: the parent dir's mtime stays the same
+    (no add/remove/rename) but a child file's mtime advances (an
+    in-place rewrite by an editor or by the in-container agent's
+    ``Edit`` tool). The previous parent-mtime cache trusted the
+    parent and returned the cached pre-edit child mtime; the direct
+    stat path must surface the new mtime immediately.
+    """
+    sParent = "/ws/proj/.vaibify/workflows"
+    sWorkflow = f"{sParent}/example.json"
+    dictPathToMtime = {sParent: "1000", sWorkflow: "500"}
     fnWrite, fnExec, _dictState = _fdictMakeStatResponder(dictPathToMtime)
     mockDocker = MagicMock()
     mockDocker.fnWriteFileViaTar.side_effect = fnWrite
     mockDocker.ftResultExecuteCommand.side_effect = fnExec
-    dictCtx = {}
-    _fdictGetModTimes(
-        mockDocker, "cid", listFirstPaths, dictCtx=dictCtx,
-    )
-    iBefore = mockDocker.fnWriteFileViaTar.call_count
-    dictSecond = _fdictGetModTimes(
-        mockDocker, "cid", listSecondPaths, dictCtx=dictCtx,
-    )
-    iAfter = mockDocker.fnWriteFileViaTar.call_count
-    assert (iAfter - iBefore) == 2
-    sParentBatchText = (
-        mockDocker.fnWriteFileViaTar.call_args_list[iBefore][0][2].decode(
-            "utf-8",
-        )
-    )
-    assert sParentB in sParentBatchText
-    assert dictSecond[f"{sParentB}/y.dat"] == "600"
+    dictFirst = _fdictGetModTimes(mockDocker, "cid", [sWorkflow])
+    assert dictFirst[sWorkflow] == "500"
+    # In-place edit: child mtime moves, parent mtime stays put.
+    dictPathToMtime[sWorkflow] = "750"
+    dictSecond = _fdictGetModTimes(mockDocker, "cid", [sWorkflow])
+    assert dictSecond[sWorkflow] == "750"
 
 
-# ---------------------------------------------------------------
-# WI-9 #11: bPipelineRunning bypasses the cache entirely
-# ---------------------------------------------------------------
+def testGetModTimesIsOneExecPerCall():
+    """Every poll issues exactly one stat exec for the polled paths.
+
+    Guards against a future "optimization" reintroducing a
+    parent-stat-then-child-stat split, which is what created the
+    in-place-edit blind spot in the first place.
+    """
+    listPaths = [f"/ws/parent/file{iIndex}.dat" for iIndex in range(4)]
+    mockDocker = _fmockDockerWithStatOutput(_fsBuildStatOutput(listPaths))
+    _fdictGetModTimes(mockDocker, "cid", listPaths)
+    assert mockDocker.ftResultExecuteCommand.call_count == 1
+    assert mockDocker.fnWriteFileViaTar.call_count == 1
 
 
-def testCacheBypassedWhenPipelineRunning():
-    sParent = "/ws/parent"
-    listChildren = [f"{sParent}/file{iIndex}.dat" for iIndex in range(3)]
-    dictPathToMtime = {sParent: "1000"}
-    for sChild in listChildren:
-        dictPathToMtime[sChild] = "500"
-    fnWrite, fnExec, _dictState = _fdictMakeStatResponder(dictPathToMtime)
+def testGetModTimesEmptyPathlistDoesNoWork():
+    """An empty pathlist short-circuits without touching docker."""
     mockDocker = MagicMock()
-    mockDocker.fnWriteFileViaTar.side_effect = fnWrite
-    mockDocker.ftResultExecuteCommand.side_effect = fnExec
-    dictCtx = {}
-    _fdictGetModTimes(
-        mockDocker, "cid", listChildren,
-        dictCtx=dictCtx, bPipelineRunning=True,
-    )
-    iAfterFirst = mockDocker.fnWriteFileViaTar.call_count
-    _fdictGetModTimes(
-        mockDocker, "cid", listChildren,
-        dictCtx=dictCtx, bPipelineRunning=True,
-    )
-    iAfterSecond = mockDocker.fnWriteFileViaTar.call_count
-    assert iAfterFirst == 1
-    assert (iAfterSecond - iAfterFirst) == 1
-    for tCall in mockDocker.fnWriteFileViaTar.call_args_list:
-        sBatchText = tCall[0][2].decode("utf-8")
-        for sChild in listChildren:
-            assert sChild in sBatchText
-
-
-# ---------------------------------------------------------------
-# audit HIGH #13: dictParentMtimeCache eviction sweep
-# ---------------------------------------------------------------
-
-
-def test_sweep_evicts_absent_containers():
-    """Containers not in the running list have their cache entries dropped."""
-    dictCtx = {
-        "dictParentMtimeCache": {
-            "alive": {"dictParentMtime": {"/a": "1"}, "dictChildMtimes": {}},
-            "dead":  {"dictParentMtime": {"/b": "1"}, "dictChildMtimes": {}},
-            "gone":  {"dictParentMtime": {"/c": "1"}, "dictChildMtimes": {}},
-        }
-    }
-    listEvicted = fnSweepParentMtimeCache(dictCtx, ["alive"])
-    assert set(listEvicted) == {"dead", "gone"}
-    assert set(dictCtx["dictParentMtimeCache"].keys()) == {"alive"}
-
-
-def test_sweep_preserves_all_when_all_running():
-    dictCtx = {
-        "dictParentMtimeCache": {
-            "a": {"dictParentMtime": {}, "dictChildMtimes": {}},
-            "b": {"dictParentMtime": {}, "dictChildMtimes": {}},
-        }
-    }
-    listEvicted = fnSweepParentMtimeCache(dictCtx, ["a", "b"])
-    assert listEvicted == []
-    assert set(dictCtx["dictParentMtimeCache"].keys()) == {"a", "b"}
-
-
-def test_sweep_no_cache_returns_empty_safely():
-    assert fnSweepParentMtimeCache({}, ["any"]) == []
-    assert fnSweepParentMtimeCache(None, ["any"]) == []
-
-
-def test_sweep_handles_none_running_list():
-    dictCtx = {
-        "dictParentMtimeCache": {
-            "a": {"dictParentMtime": {}, "dictChildMtimes": {}},
-        }
-    }
-    listEvicted = fnSweepParentMtimeCache(dictCtx, None)
-    assert listEvicted == ["a"]
-    assert dictCtx["dictParentMtimeCache"] == {}
+    dictResult = _fdictGetModTimes(mockDocker, "cid", [])
+    assert dictResult == {}
+    mockDocker.fnWriteFileViaTar.assert_not_called()
+    mockDocker.ftResultExecuteCommand.assert_not_called()
 
 
 # ---------------------------------------------------------------
@@ -299,10 +170,6 @@ def _fdictBuildStaleAndRunningCtx(listStale, listRunning):
             sCid: {"sCacheName": sCacheName}
             for sCid in (listStale + listRunning)
         }
-    dictCtx["dictParentMtimeCache"] = {
-        sCid: {"dictParentMtime": {}, "dictChildMtimes": {}}
-        for sCid in (listStale + listRunning)
-    }
     return dictCtx
 
 
@@ -317,7 +184,6 @@ def test_sweep_evicts_stale_from_every_container_keyed_cache():
         assert set(dictCtx[sCacheName].keys()) == set(listRunning), (
             f"cache {sCacheName!r} retained stale ids"
         )
-    assert set(dictCtx["dictParentMtimeCache"].keys()) == set(listRunning)
     assert set(listStale).issubset(setEvicted)
 
 

@@ -41,7 +41,6 @@ from ..fileStatusManager import (
     fbReconcileUserVerificationTimestamps,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
-    fnInvalidateParentCacheForContainer,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -375,7 +374,6 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         dictModTimes = await asyncio.to_thread(
             _fdictGetModTimes,
             dictCtx["docker"], sContainerId, listPaths,
-            dictCtx=dictCtx, bPipelineRunning=False,
         )
         _fnUpdateModTimeBaseline(
             dictCtx, sContainerId, dictModTimes)
@@ -560,10 +558,8 @@ async def _fdictFetchOutputStatus(
     )
     dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
         dictCtx, sContainerId, dictWorkflow, dictVars,
-        bPipelineRunning=bPipelineRunning,
     )
     if dictReload["bReplaced"]:
-        fnInvalidateParentCacheForContainer(dictCtx, sContainerId)
         dictWorkflow = dictReload["dictWorkflow"]
     listInvalidated = _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
@@ -615,7 +611,6 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
 
 async def _ftFetchAndReload(
     dictCtx, sContainerId, dictWorkflow, dictVars,
-    bPipelineRunning=False,
 ):
     """Fetch the union of poll mtimes and the maybe-reloaded workflow.
 
@@ -629,7 +624,6 @@ async def _ftFetchAndReload(
     )
     dictModTimes = await asyncio.to_thread(
         _fdictGetModTimes, dictCtx["docker"], sContainerId, listUnionPaths,
-        dictCtx=dictCtx, bPipelineRunning=bPipelineRunning,
     )
     dictReload = await asyncio.to_thread(
         _fdictMaybeReloadWorkflow, dictCtx, sContainerId,

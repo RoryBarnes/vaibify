@@ -1333,7 +1333,6 @@ from .fileStatusManager import (  # noqa: F401
     flistStepRemoteFiles,
     fnCollectMarkerPathsByStep,
     fnCollectScriptPathsByStep,
-    fnInvalidateParentCacheForContainer,
     fnMaybeAutoArchive,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
