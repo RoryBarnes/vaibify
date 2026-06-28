@@ -7,6 +7,8 @@ import os
 import posixpath
 import re
 import secrets
+import signal
+import time
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger("vaibify")
@@ -59,6 +61,8 @@ __all__ = [
     "fdictResolveVariables",
     "flistQueryDirectory",
     "fbaFetchFigureWithFallback",
+    "fnIncrementWebSocketCount",
+    "fnDecrementWebSocketCount",
 ]
 
 from . import actionCatalog
@@ -1790,6 +1794,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class ActivityTrackingMiddleware(BaseHTTPMiddleware):
+    """Stamp ``app.state.fLastActivityMonotonic`` on every HTTP request.
+
+    The monotonic clock is the idle watchdog's HTTP-activity signal.
+    Live-browser presence is tracked separately by the WebSocket
+    counter so a connected-but-quiet tab never trips the timeout.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        request.app.state.fLastActivityMonotonic = time.monotonic()
+        return await call_next(request)
+
+
 # ---------------------------------------------------------------
 # Application factories
 # ---------------------------------------------------------------
@@ -1896,6 +1913,9 @@ def fappCreateApplication(
     app.state.sSessionToken = sSessionToken
     app.state.setAllowedContainers = set()
     app.state.iExpectedPort = iExpectedPort
+    app.state.iActiveWebSockets = 0
+    app.state.fLastActivityMonotonic = time.monotonic()
+    app.add_middleware(ActivityTrackingMiddleware)
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -1907,6 +1927,7 @@ def fappCreateApplication(
     _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
     _fnRegisterDefaultThreadPoolExecutor(app)
     _fnRegisterPeriodicContainerSweep(app, dictCtx)
+    _fnRegisterIdleShutdownWatchdog(app, dictCtx)
     return app
 
 
@@ -1927,6 +1948,9 @@ def fappCreateHubApplication(iExpectedPort=0):
     app.state.iExpectedPort = iExpectedPort
     app.state.iHubPort = iExpectedPort
     app.state.dictContainerLocks = {}
+    app.state.iActiveWebSockets = 0
+    app.state.fLastActivityMonotonic = time.monotonic()
+    app.add_middleware(ActivityTrackingMiddleware)
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -1937,9 +1961,15 @@ def fappCreateHubApplication(iExpectedPort=0):
     dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
     _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
     fnRegisterRegistryRoutes(app, dictCtx)
+    # Register keep-alive stop BEFORE the lock lifecycle: shutdown hooks
+    # run in registration order, and fnStopAllKeepAlive reads
+    # dictContainerLocks, which the lock-release hook clears. Stopping
+    # first ensures caffeinate is killed for every still-held container.
+    _fnRegisterHubShutdownStopKeepAlive(app)
     _fnRegisterHubLockLifecycle(app)
     _fnRegisterDefaultThreadPoolExecutor(app)
     _fnRegisterPeriodicContainerSweep(app, dictCtx)
+    _fnRegisterIdleShutdownWatchdog(app, dictCtx)
     return app
 
 
@@ -2107,3 +2137,196 @@ def _fnRegisterDefaultThreadPoolExecutor(app):
 
     app.state.listLifespanStartup.append(fnInstallExecutor)
     app.state.listLifespanShutdown.append(fnShutdownExecutor)
+
+
+# ---------------------------------------------------------------
+# Idle self-shutdown watchdog (JupyterHub shutdown_no_activity_timeout
+# analog). A hub/viewer with no connected browser tab and no running
+# pipeline self-retires after the idle timeout so abandoned servers
+# stop holding their session slot and per-container locks indefinitely.
+# ---------------------------------------------------------------
+
+F_HUB_IDLE_TIMEOUT_SECONDS = 1800.0
+F_HUB_WATCHDOG_INTERVAL_SECONDS = 60.0
+S_HUB_IDLE_TIMEOUT_ENV = "VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS"
+
+
+def _fIdleTimeoutSeconds():
+    """Return the idle timeout, honoring the env override when valid."""
+    sOverride = os.environ.get(S_HUB_IDLE_TIMEOUT_ENV, "")
+    if not sOverride:
+        return F_HUB_IDLE_TIMEOUT_SECONDS
+    try:
+        return float(sOverride)
+    except ValueError:
+        return F_HUB_IDLE_TIMEOUT_SECONDS
+
+
+def fnIncrementWebSocketCount(app):
+    """Increment the live-WebSocket presence counter on the app state."""
+    iCurrent = getattr(app.state, "iActiveWebSockets", 0)
+    app.state.iActiveWebSockets = iCurrent + 1
+
+
+def fnDecrementWebSocketCount(app):
+    """Decrement the live-WebSocket presence counter, floored at zero."""
+    iCurrent = getattr(app.state, "iActiveWebSockets", 0)
+    app.state.iActiveWebSockets = max(0, iCurrent - 1)
+
+
+def _flistHeldContainerIds(app, dictCtx):
+    """Resolve held lock names to running container ids via the Docker list.
+
+    Held lock names are project/container names (``dictContainerLocks``
+    keys); the running-container list maps each name to its id. A Docker
+    failure propagates so the caller can fail safe (treat as busy).
+    """
+    dictLocks = getattr(app.state, "dictContainerLocks", {})
+    setHeldNames = set(dictLocks.keys())
+    if not setHeldNames:
+        return []
+    connectionDocker = dictCtx.get("docker")
+    listContainers = connectionDocker.flistGetRunningContainers()
+    return [
+        dictRow.get("sContainerId", "")
+        for dictRow in listContainers
+        if dictRow.get("sName", "") in setHeldNames
+    ]
+
+
+def _fbAnyContainerRunning(dictCtx, listContainerIds):
+    """Return True if any container id reports a running pipeline."""
+    from .fileStatusManager import _fbPipelineIsRunning
+    for sContainerId in listContainerIds:
+        if sContainerId and _fbPipelineIsRunning(dictCtx, sContainerId):
+            return True
+    return False
+
+
+def _flistBusyCandidateIds(app, dictCtx):
+    """Return the container ids whose run should veto idle self-exit.
+
+    A hub is responsible for the containers it holds locks on; the
+    single-container viewer holds no lock and is responsible for the
+    container ids it has served (``setAllowedContainers``).
+    """
+    if getattr(app.state, "dictContainerLocks", {}):
+        return _flistHeldContainerIds(app, dictCtx)
+    return list(getattr(app.state, "setAllowedContainers", set()))
+
+
+def _fbAnyHeldContainerBusy(app, dictCtx):
+    """Return True if any held or served container has a pipeline mid-run.
+
+    Covers the hub (containers it locks) and the viewer (containers it
+    serves). Fail-safe: any Docker error while listing or probing is
+    treated as busy so the watchdog never retires a session whose
+    container is only briefly unreachable.
+    """
+    try:
+        listIds = _flistBusyCandidateIds(app, dictCtx)
+        if not listIds:
+            return False
+        return _fbAnyContainerRunning(dictCtx, listIds)
+    except Exception:
+        return True
+
+
+def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
+    """Return True only when no tab is connected, nothing is mid-run,
+    and the HTTP-activity clock has been idle at least ``fTimeout``."""
+    if getattr(app.state, "iActiveWebSockets", 0) > 0:
+        return False
+    if _fbAnyHeldContainerBusy(app, dictCtx):
+        return False
+    fLast = getattr(
+        app.state, "fLastActivityMonotonic", time.monotonic(),
+    )
+    return (time.monotonic() - fLast) >= fTimeout
+
+
+def _fnPruneSpawnedChildrenForApp(app):
+    """Drop exited spawn children so the list can't grow between spawns."""
+    listChildren = getattr(app.state, "listSpawnedChildren", None)
+    if not listChildren:
+        return
+    from .routes.sessionRoutes import _fnPruneDeadChildren
+    _fnPruneDeadChildren(listChildren)
+
+
+async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
+    """Self-SIGTERM once the hub is idle past ``fTimeout``; else keep polling.
+
+    SIGTERM (not a direct teardown) lets uvicorn run the existing
+    graceful-shutdown hooks that release container locks and the
+    session slot. Exits cleanly on ``CancelledError`` at shutdown.
+    """
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            _fnPruneSpawnedChildrenForApp(app)
+            if _fbHubShouldSelfExit(app, dictCtx, fTimeout):
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Idle-shutdown watchdog iteration failed", exc_info=True,
+            )
+
+
+def _fnRegisterIdleShutdownWatchdog(app, dictCtx, fInterval=None):
+    """Install the idle self-shutdown watchdog on the lifespan.
+
+    Mirrors ``_fnRegisterPeriodicContainerSweep``: starts an asyncio
+    task at startup and cancels it cleanly at shutdown. The timeout is
+    read once at registration so the env override is honored.
+    """
+    fIntervalEffective = (
+        fInterval if fInterval is not None
+        else F_HUB_WATCHDOG_INTERVAL_SECONDS
+    )
+    fTimeout = _fIdleTimeoutSeconds()
+
+    async def fnStartWatchdog(app):
+        app.state.fLastActivityMonotonic = time.monotonic()
+        app.state.taskIdleWatchdog = asyncio.create_task(
+            _fnIdleShutdownWatchdogLoop(
+                app, dictCtx, fIntervalEffective, fTimeout,
+            ),
+            name="vaibify-idle-watchdog",
+        )
+
+    async def fnStopWatchdog(app):
+        taskWatchdog = getattr(app.state, "taskIdleWatchdog", None)
+        if taskWatchdog is None or taskWatchdog.done():
+            return
+        taskWatchdog.cancel()
+        try:
+            await taskWatchdog
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    app.state.listLifespanStartup.append(fnStartWatchdog)
+    app.state.listLifespanShutdown.append(fnStopWatchdog)
+
+
+def _fnRegisterHubShutdownStopKeepAlive(app):
+    """Stop caffeinate for every held container when the hub shuts down.
+
+    ``fnStopKeepAlive`` otherwise only runs on an explicit Stop; without
+    this hook a hub that dies (idle self-exit, terminal close) leaks its
+    keep-alive caffeinate process for every held container.
+    """
+
+    async def fnStopAllKeepAlive(app):
+        from ..docker.keepAliveManager import fnStopKeepAlive
+        dictLocks = getattr(app.state, "dictContainerLocks", {})
+        for sName in list(dictLocks.keys()):
+            try:
+                fnStopKeepAlive(sName)
+            except Exception:
+                logger.warning("Keep-alive stop failed for %s", sName)
+
+    app.state.listLifespanShutdown.append(fnStopAllKeepAlive)

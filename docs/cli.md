@@ -307,6 +307,50 @@ The **New vaibify window** button on the container hub, workflow
 picker, and Admin menu spawns a detached hub on a free port and
 opens it in a new browser tab.
 
+## Session management
+
+Vaibify hub and viewer servers run in the foreground of the terminal
+that launched them. Closing a browser tab does not stop them, and
+closing the terminal orphans the server, which keeps holding its
+session slot and per-container locks until it is reaped. These
+commands let you see and stop live sessions. They are the host-side
+analog of `jupyter server list` and `jupyter server stop`, and like
+those, they run **on the host only** -- they are not invokable from
+inside a container.
+
+### `vaibify sessions`
+
+List every live hub and viewer session on the host, with its PID,
+role, port, start time, and the container(s) it holds.
+
+```bash
+vaibify sessions
+```
+
+Each line reports `pid`, `role` (`hub` or `viewer`), `port`, `started`
+(the ISO start time), and `containers` (the names locked on that
+port). When nothing is running it prints `No live Vaibify sessions.`
+
+### `vaibify sessions stop`
+
+Gracefully stop a session by PID, or every session with `--all`.
+
+```bash
+vaibify sessions stop <PID>
+vaibify sessions stop --all
+```
+
+| Option   | Description                                       |
+|----------|---------------------------------------------------|
+| `PID`    | The session PID to stop (from `vaibify sessions`) |
+| `--all`  | Stop every live session except the current one    |
+
+Stopping sends `SIGTERM`, which lets the server run its graceful
+shutdown -- releasing its session slot and any container locks it
+holds. `stop` **refuses any PID that is not a known live Vaibify
+session**, so it can never signal an unrelated process, and `--all`
+**excludes the current session** so a session never stops itself.
+
 ## Publishing
 
 The `vaibify publish` subcommands are **coming soon**. The publishing

@@ -21,7 +21,7 @@ import json
 import os
 import re
 
-from vaibify.config.processLiveness import fbIsProcessAlive
+from vaibify.config.processLiveness import fbIsProcessAliveSince
 
 
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
@@ -172,11 +172,13 @@ def _fbClaimIsStale(dictHolder):
     A payload without a positive integer PID is treated as live: it
     may belong to a holder that flocked but has not yet written its
     identity, and breaking that lock would race a real acquisition.
+    The recorded ``sStartedIso`` lets a recycled PID be detected; a
+    payload missing it falls back to the bare PID-existence check.
     """
     iPid = dictHolder.get("iPid", 0)
     if not isinstance(iPid, int) or isinstance(iPid, bool) or iPid <= 0:
         return False
-    return not fbIsProcessAlive(iPid)
+    return not fbIsProcessAliveSince(iPid, dictHolder.get("sStartedIso"))
 
 
 def _fbHandleMatchesPath(fileHandle, sPath):
@@ -254,6 +256,48 @@ def _fdictReadHolderFromHandle(fileHandle):
         return {}
 
 
+def flistReadAllLockHolders():
+    """Return holder info for every live container lock on the host.
+
+    Each entry is ``{sProjectName, iPid, iPort, sStartedIso}`` for a
+    lock file whose recorded holder passes the hardened
+    ``_fbClaimIsStale`` check (stale claims are skipped, not reported).
+    Used by ``vaibify sessions`` to show which containers each live
+    session holds. Returns an empty list on any directory error.
+    """
+    if not os.path.isdir(_S_LOCK_DIRECTORY):
+        return []
+    try:
+        listEntries = os.listdir(_S_LOCK_DIRECTORY)
+    except OSError:
+        return []
+    listHolders = []
+    for sEntry in sorted(listEntries):
+        if sEntry.endswith(".lock"):
+            _fnAppendLockHolderRecord(listHolders, sEntry)
+    return listHolders
+
+
+def _fnAppendLockHolderRecord(listHolders, sEntry):
+    """Append a record only for a lock genuinely held by a live process.
+
+    Held-ness is decided by the flock (matching ``fdictReadLockHolder``
+    and the GUI): a released lock whose file still lingers is not
+    reported, so ``vaibify sessions`` never shows a freed container as
+    held.
+    """
+    sPath = os.path.join(_S_LOCK_DIRECTORY, sEntry)
+    dictHolder = _fdictHeldLockHolder(sPath)
+    if not dictHolder:
+        return
+    listHolders.append({
+        "sProjectName": dictHolder.get("sProjectName"),
+        "iPid": dictHolder.get("iPid"),
+        "iPort": dictHolder.get("iPort"),
+        "sStartedIso": dictHolder.get("sStartedIso"),
+    })
+
+
 def fdictReadLockHolder(sProjectName):
     """Return holder info if another live process holds the lock.
 
@@ -268,6 +312,21 @@ def fdictReadLockHolder(sProjectName):
     sPath = fsLockPathFor(sProjectName)
     if not os.path.isfile(sPath):
         return {}
+    dictHolder = _fdictHeldLockHolder(sPath)
+    if dictHolder.get("iPid") == os.getpid():
+        return {}
+    return dictHolder
+
+
+def _fdictHeldLockHolder(sPath):
+    """Return the holder payload only when a live process holds the flock.
+
+    The flock is the source of truth for held-ness: acquiring it means
+    the lock is free (released, or its file merely lingers) and the
+    function returns ``{}``; a ``BlockingIOError`` means the lock is
+    genuinely held, and the holder is returned unless its recorded PID
+    is stale (then reaped).
+    """
     try:
         fileHandle = _ffileOpenLockFileNoFollow(sPath)
     except OSError:
@@ -284,10 +343,14 @@ def fdictReadLockHolder(sProjectName):
 
 
 def _fdictHolderUnlessStale(fileHandle, sPath):
-    """Return the holder payload, reaping it first when its PID is dead."""
+    """Return the holder payload, reaping it first when its PID is dead.
+
+    Reports the holder regardless of identity; the GUI's
+    ``fdictReadLockHolder`` applies the self-process exemption on top so
+    a hub does not treat its own container as locked, while the
+    host-wide ``vaibify sessions`` enumerator lists every held lock.
+    """
     dictHolder = _fdictReadHolderFromHandle(fileHandle)
-    if dictHolder.get("iPid") == os.getpid():
-        return {}
     if _fbClaimIsStale(dictHolder):
         _fnUnlinkLockFileSafely(sPath)
         return {}

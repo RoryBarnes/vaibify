@@ -1,9 +1,13 @@
 """Prevent macOS sleep while specific containers are running."""
 
+import datetime
+import json
 import os
 import signal
 import subprocess
 import sys
+
+from vaibify.config.processLiveness import fbIsProcessAliveSince
 
 
 _S_PID_DIRECTORY = os.path.expanduser("~/.vaibify/caffeinate")
@@ -41,10 +45,14 @@ def _fiSpawnCaffeinate():
 
 
 def _fnWritePidFile(sContainerName, iPid):
-    """Record the caffeinate pid for a container."""
+    """Record the caffeinate pid and its claim time for a container."""
     sPath = _fsPidFilePath(sContainerName)
+    dictPayload = {
+        "iPid": iPid,
+        "sStartedIso": datetime.datetime.now().isoformat(),
+    }
     with open(sPath, "w") as fileHandle:
-        fileHandle.write(f"{iPid}\n")
+        json.dump(dictPayload, fileHandle)
 
 
 def fnStopKeepAlive(sContainerName):
@@ -52,23 +60,52 @@ def fnStopKeepAlive(sContainerName):
     sPath = _fsPidFilePath(sContainerName)
     if not os.path.isfile(sPath):
         return
-    iPid = _fiReadPid(sPath)
+    dictPayload = _fdictReadPidPayload(sPath)
+    iPid = dictPayload.get("iPid", 0)
     if iPid:
-        _fnKillIfRunning(iPid)
+        _fnKillIfRunning(iPid, dictPayload.get("sStartedIso"))
     _fnRemovePidFile(sPath)
 
 
-def _fiReadPid(sPath):
-    """Read an integer pid from the PID file."""
+def _fdictReadPidPayload(sPath):
+    """Read the caffeinate pid payload, tolerating a legacy bare int.
+
+    New pid files hold JSON with the pid and its claim time; older
+    files held a single integer. Both map to a payload dict so the
+    recycled-PID guard applies uniformly. Returns {} on any error.
+    """
     try:
         with open(sPath, "r") as fileHandle:
-            return int(fileHandle.read().strip())
-    except (OSError, ValueError):
-        return 0
+            sContent = fileHandle.read().strip()
+    except OSError:
+        return {}
+    return _fdictParsePidContent(sContent)
 
 
-def _fnKillIfRunning(iPid):
-    """Send SIGTERM to a process, ignoring missing or wrong-user pids."""
+def _fdictParsePidContent(sContent):
+    """Map pid-file text (JSON or a legacy bare int) to a payload dict."""
+    if not sContent:
+        return {}
+    try:
+        objParsed = json.loads(sContent)
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(objParsed, dict):
+        return objParsed
+    if isinstance(objParsed, int) and not isinstance(objParsed, bool):
+        return {"iPid": objParsed}
+    return {}
+
+
+def _fnKillIfRunning(iPid, sStartedIso):
+    """SIGTERM a process only when its start time matches the claim.
+
+    The start-time gate keeps a recycled PID — one the kernel reused
+    after caffeinate exited — from being killed. A legacy payload with
+    no claim time falls back to the bare PID-existence check.
+    """
+    if not fbIsProcessAliveSince(iPid, sStartedIso):
+        return
     try:
         os.kill(iPid, signal.SIGTERM)
     except ProcessLookupError:

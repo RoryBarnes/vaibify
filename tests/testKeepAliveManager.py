@@ -1,17 +1,35 @@
 """Tests for vaibify.docker.keepAliveManager."""
 
+import datetime
 import os
 import signal
 import sys
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import call, patch, MagicMock
 
+
+def _fsNowIso():
+    """Return the current local time as an ISO-8601 claim string."""
+    return datetime.datetime.now().isoformat()
+
+
+def _fbSigtermWasSent(mockKill, iPid):
+    """Return True if mockKill recorded a SIGTERM to the given PID.
+
+    The liveness probe shares the patched ``os.kill`` and issues a
+    signal-0 call, so a plain call-count assertion is ambiguous; this
+    isolates the terminating signal.
+    """
+    return call(iPid, signal.SIGTERM) in mockKill.call_args_list
+
+
+import json
 
 from vaibify.docker.keepAliveManager import (
     fnStartKeepAlive,
     fnStopKeepAlive,
-    _fiReadPid,
+    _fdictReadPidPayload,
     _fnKillIfRunning,
     _fnRemovePidFile,
     _fnWritePidFile,
@@ -37,31 +55,43 @@ def test_fsPidFilePath_different_containers_differ():
 
 
 # ---------------------------------------------------------------
-# _fnWritePidFile + _fiReadPid round-trip
+# _fnWritePidFile + _fdictReadPidPayload round-trip
 # ---------------------------------------------------------------
 
 
-def test_writePid_then_readPid_returns_value(tmp_path):
+def test_writePidFile_then_readPayload_round_trip(tmp_path):
     sPath = str(tmp_path / "proj.pid")
+    with patch(
+        "vaibify.docker.keepAliveManager._fsPidFilePath",
+        return_value=sPath,
+    ):
+        _fnWritePidFile("proj", 12345)
+    dictPayload = _fdictReadPidPayload(sPath)
+    assert dictPayload["iPid"] == 12345
+    assert "sStartedIso" in dictPayload
+
+
+def test_readPidPayload_missing_file_returns_empty(tmp_path):
+    sPath = str(tmp_path / "missing.pid")
+    assert _fdictReadPidPayload(sPath) == {}
+
+
+def test_readPidPayload_legacy_bare_int_returns_pid(tmp_path):
+    """A pre-JSON pid file holding a bare integer still parses."""
+    sPath = str(tmp_path / "legacy.pid")
     with open(sPath, "w") as fh:
         fh.write("12345\n")
-    iPid = _fiReadPid(sPath)
-    assert iPid == 12345
+    assert _fdictReadPidPayload(sPath) == {"iPid": 12345}
 
 
-def test_readPid_missing_file_returns_zero(tmp_path):
-    sPath = str(tmp_path / "missing.pid")
-    assert _fiReadPid(sPath) == 0
-
-
-def test_readPid_invalid_contents_returns_zero(tmp_path):
+def test_readPidPayload_invalid_contents_returns_empty(tmp_path):
     sPath = str(tmp_path / "bad.pid")
     with open(sPath, "w") as fh:
         fh.write("not-an-integer\n")
-    assert _fiReadPid(sPath) == 0
+    assert _fdictReadPidPayload(sPath) == {}
 
 
-def test_writePidFile_creates_file(tmp_path):
+def test_writePidFile_creates_json_file(tmp_path):
     sPath = str(tmp_path / "proj.pid")
     with patch(
         "vaibify.docker.keepAliveManager._fsPidFilePath",
@@ -69,7 +99,9 @@ def test_writePidFile_creates_file(tmp_path):
     ):
         _fnWritePidFile("proj", 9999)
     with open(sPath, "r") as fh:
-        assert fh.read().strip() == "9999"
+        dictPayload = json.load(fh)
+    assert dictPayload["iPid"] == 9999
+    assert "sStartedIso" in dictPayload
 
 
 # ---------------------------------------------------------------
@@ -95,26 +127,45 @@ def test_removePidFile_silent_on_missing(tmp_path):
 # ---------------------------------------------------------------
 
 
-def test_killIfRunning_calls_os_kill():
-    with patch("vaibify.docker.keepAliveManager.os.kill") as mockKill:
-        _fnKillIfRunning(12345)
+def test_killIfRunning_calls_os_kill_when_alive():
+    with patch(
+        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        return_value=True,
+    ), patch("vaibify.docker.keepAliveManager.os.kill") as mockKill:
+        _fnKillIfRunning(12345, "2026-06-25T12:00:00")
     mockKill.assert_called_once_with(12345, signal.SIGTERM)
+
+
+def test_killIfRunning_skips_recycled_pid():
+    """A recycled PID (start time after the claim) is never killed."""
+    with patch(
+        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        return_value=False,
+    ), patch("vaibify.docker.keepAliveManager.os.kill") as mockKill:
+        _fnKillIfRunning(12345, "2000-01-01T00:00:00")
+    mockKill.assert_not_called()
 
 
 def test_killIfRunning_tolerates_process_lookup_error():
     with patch(
+        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        return_value=True,
+    ), patch(
         "vaibify.docker.keepAliveManager.os.kill",
         side_effect=ProcessLookupError,
     ):
-        _fnKillIfRunning(12345)
+        _fnKillIfRunning(12345, None)
 
 
 def test_killIfRunning_tolerates_permission_error():
     with patch(
+        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        return_value=True,
+    ), patch(
         "vaibify.docker.keepAliveManager.os.kill",
         side_effect=PermissionError,
     ):
-        _fnKillIfRunning(12345)
+        _fnKillIfRunning(12345, None)
 
 
 # ---------------------------------------------------------------
@@ -169,7 +220,8 @@ def test_fnStartKeepAlive_writes_pid_on_darwin(tmp_path):
         fnStartKeepAlive("proj")
     sPath = os.path.join(sPidDir, "proj.pid")
     with open(sPath, "r") as fh:
-        assert fh.read().strip() == "7777"
+        dictPayload = json.load(fh)
+    assert dictPayload["iPid"] == 7777
 
 
 def test_fnStartKeepAlive_zero_pid_skips_write(tmp_path):
@@ -205,14 +257,50 @@ def test_fnStopKeepAlive_kills_and_removes(tmp_path):
     os.makedirs(sPidDir, exist_ok=True)
     sPath = os.path.join(sPidDir, "proj.pid")
     with open(sPath, "w") as fh:
-        fh.write("54321\n")
+        json.dump({"iPid": os.getpid(),
+                   "sStartedIso": _fsNowIso()}, fh)
     with patch(
         "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
         "vaibify.docker.keepAliveManager.os.kill"
     ) as mockKill:
         fnStopKeepAlive("proj")
-    mockKill.assert_called_once_with(54321, signal.SIGTERM)
+    assert _fbSigtermWasSent(mockKill, os.getpid())
+    assert not os.path.exists(sPath)
+
+
+def test_fnStopKeepAlive_ancient_claim_does_not_kill(tmp_path):
+    """A live PID recorded against an ancient claim is not SIGTERMed."""
+    sPidDir = str(tmp_path / "caffeinate")
+    os.makedirs(sPidDir, exist_ok=True)
+    sPath = os.path.join(sPidDir, "proj.pid")
+    with open(sPath, "w") as fh:
+        json.dump({"iPid": os.getpid(),
+                   "sStartedIso": "2000-01-01T00:00:00"}, fh)
+    with patch(
+        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+    ), patch(
+        "vaibify.docker.keepAliveManager.os.kill"
+    ) as mockKill:
+        fnStopKeepAlive("proj")
+    assert not _fbSigtermWasSent(mockKill, os.getpid())
+    assert not os.path.exists(sPath)
+
+
+def test_fnStopKeepAlive_legacy_bare_int_still_kills(tmp_path):
+    """A pre-JSON bare-int pid file still terminates a live process."""
+    sPidDir = str(tmp_path / "caffeinate")
+    os.makedirs(sPidDir, exist_ok=True)
+    sPath = os.path.join(sPidDir, "proj.pid")
+    with open(sPath, "w") as fh:
+        fh.write(f"{os.getpid()}\n")
+    with patch(
+        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+    ), patch(
+        "vaibify.docker.keepAliveManager.os.kill"
+    ) as mockKill:
+        fnStopKeepAlive("proj")
+    assert _fbSigtermWasSent(mockKill, os.getpid())
     assert not os.path.exists(sPath)
 
 
@@ -221,7 +309,7 @@ def test_fnStartKeepAlive_stops_existing_first(tmp_path):
     os.makedirs(sPidDir, exist_ok=True)
     sPath = os.path.join(sPidDir, "proj.pid")
     with open(sPath, "w") as fh:
-        fh.write("111\n")
+        fh.write(f"{os.getpid()}\n")
     with patch(
         "vaibify.docker.keepAliveManager.sys.platform", "darwin"
     ), patch(
@@ -233,6 +321,7 @@ def test_fnStartKeepAlive_stops_existing_first(tmp_path):
         "vaibify.docker.keepAliveManager.os.kill"
     ) as mockKill:
         fnStartKeepAlive("proj")
-    mockKill.assert_called_once_with(111, signal.SIGTERM)
+    assert _fbSigtermWasSent(mockKill, os.getpid())
     with open(sPath, "r") as fh:
-        assert fh.read().strip() == "222"
+        dictPayload = json.load(fh)
+    assert dictPayload["iPid"] == 222

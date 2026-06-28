@@ -346,6 +346,90 @@ bans the literal `/workspace/.vaibify/test_markers` in any module
 under `vaibify/gui/` — enforcing that marker paths are always
 resolved from the active workflow's `sProjectRepoPath`.
 
+## Session & container-lock lifecycle
+
+Vaibify's concurrency model is borrowed from JupyterHub, which solves
+the same problem of long-lived servers that outlive the browser that
+launched them. There are three tiers:
+
+- **The hub** (`vaibify` with no subcommand) is the multi-container
+  landing page. It is the analog of the JupyterHub *Hub*.
+- **The single-container viewer** (`vaibify start --gui`, or directly
+  via `vaibify gui`) is the per-project dashboard. Both the hub and the
+  viewer are uvicorn servers built by
+  `pipelineServer.fappCreateHubApplication` /
+  `fappCreateApplication`. Only the `start --gui` viewer registers a
+  `role=viewer` session slot, so those are the viewer rows that appear
+  in `vaibify sessions`.
+- **The per-container lock** (`~/.vaibify/locks/<name>.lock`) is what
+  enforces one session per container; it is the analog of a *kernel*,
+  reaped when its holder dies.
+
+A hub or viewer runs in the foreground of its launching terminal.
+Closing the browser tab does nothing, and closing the terminal
+*orphans* the server (reparented to `launchd`/`init`, `PPID 1`), which
+keeps holding its session slot (`~/.vaibify/sessions/<pid>.slot`) and
+its container locks. Two mechanisms keep that from greying a container
+out forever.
+
+### Idle self-shutdown
+
+Modeled on JupyterHub's `ServerApp.shutdown_no_activity_timeout`, both
+the hub and the viewer run a watchdog (`_fnIdleShutdownWatchdogLoop`)
+that self-`SIGTERM`s after a sustained idle period (30 minutes by
+default, see [Configuration](configuration.md)). SIGTERM -- not a
+direct teardown -- is deliberate: it lets uvicorn run the existing
+graceful-shutdown hooks that release the locks and the session slot,
+so the path that frees a container is the same whether the user quits
+manually or the watchdog fires.
+
+"Idle" is defined conservatively so a running pipeline is never
+interrupted (the dashboard's honesty contract). The watchdog vetoes
+shutdown when **any browser tab is connected** -- tracked by a live
+WebSocket presence counter (`fnIncrementWebSocketCount` /
+`fnDecrementWebSocketCount`) incremented right after a terminal or
+pipeline socket is accepted and decremented in a `finally` -- or when
+**any held container is busy** (a pipeline is mid-run, per
+`fileStatusManager._fbPipelineIsRunning`). The busy check is rechecked
+every tick, so a run that *starts between ticks* still blocks the next
+decision. If Docker is unreachable when the busy check runs, the
+container is treated as busy (fail-safe: keep the server alive rather
+than risk killing a hub whose container is briefly unreachable). The
+idle timeout is set well above the dashboard's poll and WebSocket-ping
+intervals, so a single dropped signal never triggers a shutdown; only
+sustained absence does -- the same guidance JupyterHub gives for its
+cull timeouts.
+
+### PID-reuse-proof staleness
+
+When a server dies uncleanly, its slot and lock files survive. The
+reapers (`containerLock._fbClaimIsStale`,
+`sessionRegistry._fnReapSlotFileIfStale`) decide whether a leftover
+file belongs to a dead holder. A bare `os.kill(pid, 0)` existence
+check is **not** sufficient: after the holder exits, the kernel can
+hand its PID to an unrelated process, and the existence check then
+reports the stale claim as live forever. In the incident that
+motivated this design, a recycled PID defeated both reapers, so a dead
+hub's container lock was never cleared and the container read "in use"
+indefinitely.
+
+`processLiveness.fbIsProcessAliveSince(iPid, sClaimIso)` closes the
+gap. Every slot and lock payload records its holder's start time
+(`sStartedIso`). The check reads the live process's start time from
+`ps -o lstart=` (run with `LC_ALL=C` so month and day names parse
+under any locale on macOS and Linux), normalizes both timestamps to
+local-naive datetimes, and treats a process that started *after* the
+recorded claim (beyond a small tolerance) as a recycled PID -- hence
+dead and reapable. The probe degrades safely: an unreadable start
+time, an absent claim, or a legacy payload without `sStartedIso` all
+fall back to the bare PID-existence check, so a live genuine holder is
+never reaped. No new dependency is introduced; the probe shells out to
+`ps`, which is present on both platforms.
+
+The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
+host-side enumerator over these same files -- the analog of
+`jupyter server list` / `jupyter server stop`.
+
 ## Python backend
 
 The backend lives under `vaibify/gui/` and is organized into four

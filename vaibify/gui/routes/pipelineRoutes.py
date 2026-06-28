@@ -19,7 +19,9 @@ from ..pipelineServer import (
     fbValidateWebSocketOrigin,
     fdictRequireWorkflow,
     fiGetSyncEpoch,
+    fnDecrementWebSocketCount,
     fnHandlePipelineWs,
+    fnIncrementWebSocketCount,
     fsSanitizeExceptionForClient,
 )
 from ..fileStatusManager import (
@@ -346,8 +348,12 @@ def _fnRegisterPipelineWs(app, dictCtx):
             await websocket.close(code=4403)
             return
         dictCtx["require"]()
-        await fnHandlePipelineWs(
-            websocket, dictCtx, sContainerId)
+        fnIncrementWebSocketCount(app)
+        try:
+            await fnHandlePipelineWs(
+                websocket, dictCtx, sContainerId)
+        finally:
+            fnDecrementWebSocketCount(app)
 
 
 def _fnRegisterAcknowledgeStep(app, dictCtx):

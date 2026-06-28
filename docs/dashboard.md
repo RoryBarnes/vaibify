@@ -355,5 +355,14 @@ a time. This prevents two browsers from issuing conflicting commands
 to the same container. When a session is already attached, the
 container appears greyed out on other hubs.
 
+An abandoned session does not hold a container forever. A hub or
+viewer left with no connected tab and nothing running self-retires
+after an idle timeout (see
+[Configuration](configuration.md#vaibify_hub_idle_timeout_seconds)),
+freeing its container. The hub re-polls lock availability every few
+seconds, so a freed container un-greys on its own without a page
+reload. You can also list and stop live sessions from the host with
+`vaibify sessions` (see the [CLI Reference](cli.md#session-management)).
+
 The **New vaibify window** icon (⧉) in the hub, the workflow picker,
 and the dashboard's Admin menu launches a new vaibify session in a new browser tab — useful for working on two projects side by side.

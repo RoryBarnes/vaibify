@@ -202,6 +202,52 @@ def test_fnAwaitChildReady_returns_false_on_timeout(monkeypatch):
     assert _fbRunCoroutine(_FN_AWAIT_REAL(8055, 0.1)) is False
 
 
+def test_spawned_child_shutdown_hook_terminates_children():
+    """The registered shutdown hook terminates and clears spawn children."""
+    import asyncio
+    from types import SimpleNamespace
+    from vaibify.gui.routes.sessionRoutes import (
+        _fnRegisterSpawnedChildShutdown,
+    )
+    mockChild = MagicMock()
+    app = SimpleNamespace(state=SimpleNamespace(
+        listSpawnedChildren=[mockChild],
+        listLifespanShutdown=[],
+    ))
+    _fnRegisterSpawnedChildShutdown(app)
+
+    async def fnDrive():
+        for fnShutdown in app.state.listLifespanShutdown:
+            await fnShutdown(app)
+
+    asyncio.run(fnDrive())
+    mockChild.terminate.assert_called_once()
+    assert app.state.listSpawnedChildren == []
+
+
+def test_spawned_child_shutdown_hook_survives_terminate_failure():
+    """A child whose terminate() raises does not abort the cleanup."""
+    import asyncio
+    from types import SimpleNamespace
+    from vaibify.gui.routes.sessionRoutes import (
+        _fnRegisterSpawnedChildShutdown,
+    )
+    mockChild = MagicMock()
+    mockChild.terminate.side_effect = OSError("already gone")
+    app = SimpleNamespace(state=SimpleNamespace(
+        listSpawnedChildren=[mockChild],
+        listLifespanShutdown=[],
+    ))
+    _fnRegisterSpawnedChildShutdown(app)
+
+    async def fnDrive():
+        for fnShutdown in app.state.listLifespanShutdown:
+            await fnShutdown(app)
+
+    asyncio.run(fnDrive())
+    assert app.state.listSpawnedChildren == []
+
+
 def testSpawnRouteAwaitsChildReadyBeforeReturning(fixtureClient, monkeypatch):
     """The spawn handler must await _fnAwaitChildReady before returning."""
     dictProbeCalls = {"iCount": 0}

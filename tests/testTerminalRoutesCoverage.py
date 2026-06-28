@@ -161,6 +161,7 @@ class TestTerminalWsStartFailure:
             terminalRoutes, "fnRejectTerminalStart",
             new_callable=AsyncMock,
         ) as mockReject:
+            app.state.iActiveWebSockets = 0
             await fnHandler(mockWs, "container-1")
 
         mockWs.accept.assert_awaited_once()
@@ -204,6 +205,7 @@ class TestTerminalWsSuccessfulSession:
             terminalRoutes, "fnRunTerminalSession",
             new_callable=AsyncMock,
         ) as mockRun:
+            app.state.iActiveWebSockets = 0
             await fnHandler(mockWs, "container-1")
 
         mockSessionCls.assert_called_once_with(
@@ -214,6 +216,51 @@ class TestTerminalWsSuccessfulSession:
             mockSession, mockWs, dictCtx["terminals"],
             dictInteractive=None,
         )
+
+
+class TestTerminalWsPresenceCounter:
+    """Lines around accept: the live-WebSocket counter rises then falls."""
+
+    @pytest.mark.asyncio
+    async def test_counter_incremented_during_session(self):
+        from types import SimpleNamespace
+        from vaibify.gui.routes import terminalRoutes
+
+        app = SimpleNamespace(state=SimpleNamespace(iActiveWebSockets=0))
+        listCountsDuring = []
+
+        async def _fnRecordCount(websocket, dictCtx, sContainerId):
+            listCountsDuring.append(app.state.iActiveWebSockets)
+
+        with patch.object(
+            terminalRoutes, "_fnStartAndRunTerminal", _fnRecordCount,
+        ):
+            await terminalRoutes._fnTrackAndServeTerminal(
+                app, AsyncMock(), {}, "container-1",
+            )
+
+        assert listCountsDuring == [1]
+        assert app.state.iActiveWebSockets == 0
+
+    @pytest.mark.asyncio
+    async def test_counter_decremented_even_on_error(self):
+        from types import SimpleNamespace
+        from vaibify.gui.routes import terminalRoutes
+
+        app = SimpleNamespace(state=SimpleNamespace(iActiveWebSockets=0))
+
+        async def _fnRaise(websocket, dictCtx, sContainerId):
+            raise RuntimeError("session crashed")
+
+        with patch.object(
+            terminalRoutes, "_fnStartAndRunTerminal", _fnRaise,
+        ):
+            with pytest.raises(RuntimeError):
+                await terminalRoutes._fnTrackAndServeTerminal(
+                    app, AsyncMock(), {}, "container-1",
+                )
+
+        assert app.state.iActiveWebSockets == 0
 
 
 class TestTerminalWsDefaultUser:
@@ -253,6 +300,7 @@ class TestTerminalWsDefaultUser:
             terminalRoutes._pipelineServer,
             "sTerminalUser", "root",
         ):
+            app.state.iActiveWebSockets = 0
             await fnHandler(mockWs, "container-1")
 
         mockSessionCls.assert_called_once_with(

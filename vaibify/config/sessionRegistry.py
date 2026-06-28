@@ -21,7 +21,7 @@ import fcntl
 import json
 import os
 
-from vaibify.config.processLiveness import fbIsProcessAlive
+from vaibify.config.processLiveness import fbIsProcessAliveSince
 
 
 I_MAX_SESSIONS = 99
@@ -168,13 +168,35 @@ def fnReapStaleSessionSlots():
 
 
 def _fnReapSlotFileIfStale(sPath):
-    """Unlink one slot file when its name-encoded PID is dead."""
-    if fbIsProcessAlive(_fiPidFromSlotPath(sPath)):
+    """Unlink one slot file when its recorded holder is dead.
+
+    The slot payload's ``iPid`` and ``sStartedIso`` drive a
+    recycle-proof liveness check; a payload without a usable PID falls
+    back to the PID encoded in the file name. A payload missing
+    ``sStartedIso`` behaves exactly like the bare PID-existence check.
+    """
+    dictPayload = _fdictReadSlotPayload(sPath)
+    iPid = dictPayload.get("iPid")
+    if not isinstance(iPid, int) or isinstance(iPid, bool) or iPid <= 0:
+        iPid = _fiPidFromSlotPath(sPath)
+    if fbIsProcessAliveSince(iPid, dictPayload.get("sStartedIso")):
         return
     try:
         os.unlink(sPath)
     except OSError:
         pass
+
+
+def _fdictReadSlotPayload(sPath):
+    """Best-effort read of slot-holder JSON, or {} on any error."""
+    try:
+        with open(sPath, "r") as fileHandle:
+            dictPayload = json.load(fileHandle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(dictPayload, dict):
+        return {}
+    return dictPayload
 
 
 def _fiPidFromSlotPath(sPath):
@@ -184,6 +206,46 @@ def _fiPidFromSlotPath(sPath):
         return int(sBaseName[: -len(".slot")])
     except ValueError:
         return 0
+
+
+def flistReadAllSlots():
+    """Return a payload dict for every live session slot on the host.
+
+    Each entry is ``{iPid, sRole, iPort, sStartedIso, bAlive}`` where
+    ``bAlive`` reflects the flock truth from ``_fbSlotIsHeldByLiveProcess``.
+    Used by ``vaibify sessions`` to list live hubs and viewers. Returns
+    an empty list on any directory error so the CLI never crashes on a
+    registry mishap.
+    """
+    if not os.path.isdir(_S_SESSION_DIRECTORY):
+        return []
+    try:
+        listEntries = os.listdir(_S_SESSION_DIRECTORY)
+    except OSError:
+        return []
+    listSlots = []
+    for sEntry in sorted(listEntries):
+        if sEntry.endswith(".slot"):
+            _fnAppendSlotRecord(listSlots, sEntry)
+    return listSlots
+
+
+def _fnAppendSlotRecord(listSlots, sEntry):
+    """Append a live slot's normalized record to listSlots."""
+    sPath = os.path.join(_S_SESSION_DIRECTORY, sEntry)
+    if not _fbSlotIsHeldByLiveProcess(sPath):
+        return
+    dictPayload = _fdictReadSlotPayload(sPath)
+    iPid = dictPayload.get("iPid")
+    if not isinstance(iPid, int) or isinstance(iPid, bool):
+        iPid = _fiPidFromSlotPath(sPath)
+    listSlots.append({
+        "iPid": iPid,
+        "sRole": dictPayload.get("sRole"),
+        "iPort": dictPayload.get("iPort"),
+        "sStartedIso": dictPayload.get("sStartedIso"),
+        "bAlive": True,
+    })
 
 
 def fdictReadHubSlotByPort(iPort):

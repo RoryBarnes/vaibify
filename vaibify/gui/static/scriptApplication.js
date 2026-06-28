@@ -158,7 +158,7 @@ const PipeleyenApp = (function () {
         fnRegisterPollingHandlers();
         fnLoadUserName();
         fnLoadTimestampSetting();
-        PipeleyenContainerManager.fnLoadContainers();
+        fnShowContainerLanding();
         PipeleyenEventBindings.fnBindToolbarEvents();
         PipeleyenEventBindings.fnBindWorkflowPickerEvents();
         PipeleyenContainerManager.fnBindContainerLandingEvents();
@@ -546,6 +546,7 @@ const PipeleyenApp = (function () {
 
     function _fnStartContainerHubPolling() {
         _fnStopContainerHubPolling();
+        _fnPollContainerHubIfIdle();
         _dictHubPolling.iContainerIntervalId = setInterval(
             _fnPollContainerHubIfIdle, I_HUB_POLL_INTERVAL_MS,
         );
@@ -576,6 +577,7 @@ const PipeleyenApp = (function () {
         _fnStopWorkflowHubPolling();
         if (!sContainerId) return;
         _dictHubPolling.sWorkflowContainerId = sContainerId;
+        _fnRefreshWorkflowHubList(sContainerId);
         _dictHubPolling.iWorkflowIntervalId = setInterval(
             function () {
                 _fnRefreshWorkflowHubList(
