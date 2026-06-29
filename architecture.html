@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev412 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev418 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7306fd10"></script>
+      <script src="_static/documentation_options.js?v=c315c06c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -64,6 +64,17 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-git-repo">Workflow = git repo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#single-browser-session-per-container">Single browser session per container</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-lease-is-the-access-principal">The lease is the access principal</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#claim-arbitration">Claim arbitration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-one-live-connection-invariant">The one-live-connection invariant</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pid-reuse-proof-staleness">PID-reuse-proof staleness</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#python-backend">Python backend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#application-layer">Application layer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#route-modules">Route modules</a></li>
@@ -434,6 +445,253 @@ companion invariant <code class="docutils literal notranslate"><span class="pre"
 bans the literal <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code> in any module
 under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> — enforcing that marker paths are always
 resolved from the active workflow’s <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>.</p>
+</section>
+<section id="single-browser-session-per-container">
+<h2>Single browser session per container<a class="headerlink" href="#single-browser-session-per-container" title="Link to this heading"></a></h2>
+<p>This section is normative: it is the single source of truth for the
+container-access model. <code class="docutils literal notranslate"><span class="pre">docs/dashboard.md</span></code> and <code class="docutils literal notranslate"><span class="pre">docs/cli.md</span></code> describe
+the user-facing surface and point here for the mechanism.</p>
+<p>Vaibify’s concurrency model is borrowed from JupyterHub, which solves
+the same problem of long-lived servers that outlive the browser that
+launched them. There are three tiers:</p>
+<ul class="simple">
+<li><p><strong>The hub</strong> (<code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no subcommand) is the multi-container
+landing page. It is the analog of the JupyterHub <em>Hub</em>.</p></li>
+<li><p><strong>The single-container viewer</strong> (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span> <span class="pre">--gui</span></code>, or directly
+via <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span></code>) is the per-project dashboard. Both the hub and the
+viewer are uvicorn servers built by <code class="docutils literal notranslate"><span class="pre">appFactory.fappCreateHubApplication</span></code>
+/ <code class="docutils literal notranslate"><span class="pre">fappCreateApplication</span></code>. Only the <code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">--gui</span></code> viewer registers a
+<code class="docutils literal notranslate"><span class="pre">role=viewer</span></code> session slot, so those are the viewer rows that appear
+in <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code>.</p></li>
+<li><p><strong>The per-container host flock</strong> (<code class="docutils literal notranslate"><span class="pre">~/.vaibify/locks/&lt;name&gt;.lock</span></code>) is
+the cross-process layer that keeps two <em>different</em> hub or viewer
+processes from opening the same container; it is the analog of a
+<em>kernel</em>, reaped when its holder dies.</p></li>
+</ul>
+<p>A hub or viewer runs in the foreground of its launching terminal.
+Closing the browser tab does nothing, and closing the terminal
+<em>orphans</em> the server (reparented to <code class="docutils literal notranslate"><span class="pre">launchd</span></code>/<code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">PPID</span> <span class="pre">1</span></code>), which
+keeps holding its session slot (<code class="docutils literal notranslate"><span class="pre">~/.vaibify/sessions/&lt;pid&gt;.slot</span></code>) and
+its container flocks. The mechanisms below keep that from greying a
+container out forever.</p>
+<section id="the-lease-is-the-access-principal">
+<h3>The lease is the access principal<a class="headerlink" href="#the-lease-is-the-access-principal" title="Link to this heading"></a></h3>
+<p>The host flock excludes a <em>second process</em>, but it cannot distinguish
+two browser tabs talking to the <em>same</em> hub process — both originate
+from loopback and both carry the same shared session token. The
+exclusivity principal that tells two tabs apart is the <strong>lease</strong>: a
+per-claim, server-minted <code class="docutils literal notranslate"><span class="pre">secrets.token_urlsafe(32)</span></code> value
+(<code class="docutils literal notranslate"><span class="pre">containerOwnership.fsMintLease</span></code>).</p>
+<p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/registry/{name}/claim</span></code> mints the lease and returns it to the
+claiming tab, which stores it in its own <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code> (per-tab, and
+surviving a reload). Every subsequent access — the connect handler,
+the pipeline WebSocket, and the terminal WebSocket — presents the lease
+as the <code class="docutils literal notranslate"><span class="pre">sLeaseId</span></code> query parameter. The shared session token and the
+loopback-origin check remain the <em>trust boundary</em> (CSRF / “a browser is
+talking to this hub”); the lease is the <em>exclusivity</em> layer above it
+(“which browser session”). The lease is operational exclusivity for
+honest researchers behind the loopback + shared-token boundary, not a
+hard guarantee against a hostile in-page script.</p>
+</section>
+<section id="the-owner-of-record-map-is-the-sole-authority">
+<h3>The owner-of-record map is the sole authority<a class="headerlink" href="#the-owner-of-record-map-is-the-sole-authority" title="Link to this heading"></a></h3>
+<p>A running hub keeps exactly one in-process authority,
+<code class="docutils literal notranslate"><span class="pre">app.state.dictContainerOwners</span></code>, a map from container name to one
+<code class="docutils literal notranslate"><span class="pre">OwnerRecord</span></code>. It replaces the two unreconciled gates of the old model
+(a name-keyed flock plus the process-global <code class="docutils literal notranslate"><span class="pre">setAllowedContainers</span></code>
+set). Claim, connect, and both WebSocket gates all consult this map and
+nothing else.</p>
+<p><code class="docutils literal notranslate"><span class="pre">OwnerRecord</span></code> fields (in-process, dies with the hub process):</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sLeaseId</span></code></p></td>
+<td><p>The lease that owns this container</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fileHandleLock</span></code></p></td>
+<td><p>The held host flock from <code class="docutils literal notranslate"><span class="pre">containerLock</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code></p></td>
+<td><p>Live WebSockets for this container (the one-live invariant)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fLastSeenMonotonic</span></code></p></td>
+<td><p>When the last live connection dropped; starts grace</p></td>
+</tr>
+</tbody>
+</table>
+<p>The host flock holder payload (the persisted, cross-process artifact at
+<code class="docutils literal notranslate"><span class="pre">~/.vaibify/locks/&lt;name&gt;.lock</span></code>) is the <strong>normative holder-payload
+table</strong>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">iPid</span></code></p></td>
+<td><p>PID of the holding hub/viewer process</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">iPort</span></code></p></td>
+<td><p>Port that process serves on</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sStartedIso</span></code></p></td>
+<td><p>Holder’s start time; the recycled-PID staleness anchor</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sProjectName</span></code></p></td>
+<td><p>Container name the lock guards</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">sStartedIso</span></code> is load-bearing and must appear on every holder payload —
+see “PID-reuse-proof staleness” below;
+<code class="docutils literal notranslate"><span class="pre">testLockPayloadCarriesStartedIso</span></code> enforces it.</p>
+</section>
+<section id="claim-arbitration">
+<h3>Claim arbitration<a class="headerlink" href="#claim-arbitration" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">containerOwnership.ftdictClaim</span></code> replaces the old short-circuit (the
+pre-refactor claim returned <code class="docutils literal notranslate"><span class="pre">bClaimed:</span> <span class="pre">True</span></code> whenever the container was
+already locked, silently admitting a second same-hub tab). The arbiter
+now has three outcomes:</p>
+<ol class="arabic simple">
+<li><p><strong>Unowned</strong> → acquire the host flock, mint a lease, record the
+owner, return <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{bClaimed:</span> <span class="pre">True,</span> <span class="pre">sLeaseId}</span></code>.</p></li>
+<li><p><strong>Owned, same lease presented</strong> → idempotent success, return the
+same lease. This is the reload path: a refreshed tab re-presents its
+<code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code> lease and re-asserts ownership with no new mint and
+no self-lockout.</p></li>
+<li><p><strong>Owned, no lease or a different lease</strong> → <code class="docutils literal notranslate"><span class="pre">409</span> <span class="pre">{bClaimed:</span> <span class="pre">False,</span> <span class="pre">sMessage:</span> <span class="pre">&quot;In</span> <span class="pre">use</span> <span class="pre">in</span> <span class="pre">another</span> <span class="pre">browser</span> <span class="pre">session&quot;,</span> <span class="pre">sStartedIso}</span></code>, <em>unless</em> the current owner is reapable
+(<code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span> <span class="pre">==</span> <span class="pre">0</span></code>, past the grace window, and no pipeline
+running), in which case the dead owner is released and the claim is
+granted fresh. The 409 never echoes the other owner’s lease.</p></li>
+</ol>
+</section>
+<section id="the-one-live-connection-invariant">
+<h3>The one-live-connection invariant<a class="headerlink" href="#the-one-live-connection-invariant" title="Link to this heading"></a></h3>
+<p>Two tabs of one browser cannot both own a container: only the first
+claim mints a lease and a foreign claim is refused. A <em>duplicate</em> tab
+that copied the lease out of <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code> passes the idempotent
+claim, so exclusivity for that case is enforced at the WebSocket gate
+by <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> — at most one live connection per container.
+<code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> / <code class="docutils literal notranslate"><span class="pre">fnDecrementLiveConnection</span></code> keep the
+count, and a second concurrent connection presenting the same lease is
+refused.</p>
+</section>
+<section id="the-shared-authorization-guard">
+<h3>The shared authorization guard<a class="headerlink" href="#the-shared-authorization-guard" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">webSocketAuthorization.fbAuthorizeContainerSession</span></code> (and its
+status-code form <code class="docutils literal notranslate"><span class="pre">fiContainerSessionRejectionCode</span></code>) is the one gate,
+consumed verbatim by the pipeline WebSocket, the terminal WebSocket,
+and the connect handler. A loopback browser must clear, in order,
+loopback origin (<code class="docutils literal notranslate"><span class="pre">4003</span></code> on failure), shared token (<code class="docutils literal notranslate"><span class="pre">4401</span></code>), and owning
+lease (<code class="docutils literal notranslate"><span class="pre">4403</span></code>). A non-loopback connection is never a browser; it is
+admitted only through the lease-exempt <strong>agent lane</strong>
+(<code class="docutils literal notranslate"><span class="pre">fbCheckAgentToken</span></code>): the in-container <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> machine credential
+is a <strong>per-container agent token</strong> minted on the container’s owner
+record (<code class="docutils literal notranslate"><span class="pre">OwnerRecord.sAgentToken</span></code>) and written into that container’s
+<code class="docutils literal notranslate"><span class="pre">/tmp/vaibify-session.env</span></code> at connect. It authorizes only the container
+whose owner minted it — never the hub-wide session token and never
+another container’s token — so an agent compromised in one container of
+a multi-container hub cannot authenticate against another. The REST
+<code class="docutils literal notranslate"><span class="pre">SessionTokenMiddleware</span></code> enforces the same per-container scoping by
+matching the presented token against the owner of the container id named
+in the request path; a request that names no container fails closed.</p>
+</section>
+<section id="the-four-release-triggers">
+<h3>The four release triggers<a class="headerlink" href="#the-four-release-triggers" title="Link to this heading"></a></h3>
+<p>Ownership tracks the <em>live session</em>, never the process lifetime (the
+old <code class="docutils literal notranslate"><span class="pre">setAllowedContainers</span></code> was append-only and leaked authorization for
+the whole process life). A container is released by exactly four paths:</p>
+<ol class="arabic simple">
+<li><p><strong>Explicit release</strong> — <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/registry/{name}/release</span></code> with the
+matching lease (the dashboard’s close affordance and the <code class="docutils literal notranslate"><span class="pre">pagehide</span></code>
+<code class="docutils literal notranslate"><span class="pre">navigator.sendBeacon</span></code>, which carries only the lease as its own
+proof). <code class="docutils literal notranslate"><span class="pre">fnReleaseOwnership</span></code> verifies the lease, frees the flock,
+drops the record, and stops the keep-alive.</p></li>
+<li><p><strong>WebSocket-disconnect grace</strong> — when the last live connection
+drops, <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> falls to 0 and a bounded grace window
+opens. If no reconnect with the matching lease arrives, the idle
+sweep (<code class="docutils literal notranslate"><span class="pre">flistReapIdleOwnerships</span></code>) releases the owner and flock. The
+record is <em>retained</em> during grace, so a competing claim still gets
+409 — a brief network blip never evicts the owner.</p></li>
+<li><p><strong>Claimed-but-never-connected reaper</strong> — a crash before any
+WebSocket opened (count never rose above 0) is covered by the same
+sweep keyed on <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span> <span class="pre">==</span> <span class="pre">0</span></code> past grace.</p></li>
+<li><p><strong>Process teardown</strong> — idle self-shutdown (below) or a manual quit
+sends SIGTERM, and uvicorn’s graceful hooks release the flock and
+session slot.</p></li>
+</ol>
+<p>The reaper is <strong>never</strong> allowed to release a container whose pipeline
+is still running (<code class="docutils literal notranslate"><span class="pre">flistReapIdleOwnerships</span></code> takes a <code class="docutils literal notranslate"><span class="pre">fbPipelineRunning</span></code>
+veto), so an in-flight run is never torn down — the dashboard’s honesty
+contract. The <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> beacon only <em>accelerates</em> trigger 1; it never
+fires on a hard crash and is never load-bearing for correctness, which
+rests on triggers 2–4.</p>
+</section>
+<section id="idle-self-shutdown">
+<h3>Idle self-shutdown<a class="headerlink" href="#idle-self-shutdown" title="Link to this heading"></a></h3>
+<p>Modeled on JupyterHub’s <code class="docutils literal notranslate"><span class="pre">ServerApp.shutdown_no_activity_timeout</span></code>, both
+the hub and the viewer run a watchdog (<code class="docutils literal notranslate"><span class="pre">_fnIdleShutdownWatchdogLoop</span></code>)
+that self-<code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>s after a sustained idle period (30 minutes by
+default, see <a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration</span></a>). SIGTERM – not a
+direct teardown – is deliberate: it lets uvicorn run the existing
+graceful-shutdown hooks that release the locks and the session slot,
+so the path that frees a container is the same whether the user quits
+manually or the watchdog fires.</p>
+<p>“Idle” is defined conservatively so a running pipeline is never
+interrupted (the dashboard’s honesty contract). The watchdog vetoes
+shutdown when <strong>any browser tab is connected</strong> – tracked by a live
+WebSocket presence counter (<code class="docutils literal notranslate"><span class="pre">fnIncrementWebSocketCount</span></code> /
+<code class="docutils literal notranslate"><span class="pre">fnDecrementWebSocketCount</span></code>) incremented right after a terminal or
+pipeline socket is accepted and decremented in a <code class="docutils literal notranslate"><span class="pre">finally</span></code> – or when
+<strong>any owned container is busy</strong> (a pipeline is mid-run, per
+<code class="docutils literal notranslate"><span class="pre">fileStatusManager._fbPipelineIsRunning</span></code>). The set of owned containers
+is read from <code class="docutils literal notranslate"><span class="pre">dictContainerOwners.keys()</span></code>, the same owner-of-record
+authority described above, so the busy veto can never lose track of a
+held container and self-SIGTERM a hub mid-run. The busy check is rechecked
+every tick, so a run that <em>starts between ticks</em> still blocks the next
+decision. If Docker is unreachable when the busy check runs, the
+container is treated as busy (fail-safe: keep the server alive rather
+than risk killing a hub whose container is briefly unreachable). The
+idle timeout is set well above the dashboard’s poll and WebSocket-ping
+intervals, so a single dropped signal never triggers a shutdown; only
+sustained absence does – the same guidance JupyterHub gives for its
+cull timeouts.</p>
+</section>
+<section id="pid-reuse-proof-staleness">
+<h3>PID-reuse-proof staleness<a class="headerlink" href="#pid-reuse-proof-staleness" title="Link to this heading"></a></h3>
+<p>When a server dies uncleanly, its slot and lock files survive. The
+slot and lock registries share one reaper
+(<code class="docutils literal notranslate"><span class="pre">pidFileRegistry.fnReapStaleFilesIn</span></code>, with <code class="docutils literal notranslate"><span class="pre">containerLock</span></code> and
+<code class="docutils literal notranslate"><span class="pre">sessionRegistry</span></code> supplying the per-schema staleness predicate) that
+decides whether a leftover file belongs to a dead holder. A bare
+<code class="docutils literal notranslate"><span class="pre">os.kill(pid,</span> <span class="pre">0)</span></code> existence
+check is <strong>not</strong> sufficient: after the holder exits, the kernel can
+hand its PID to an unrelated process, and the existence check then
+reports the stale claim as live forever. In the incident that
+motivated this design, a recycled PID defeated both reapers, so a dead
+hub’s container lock was never cleared and the container read “in use”
+indefinitely.</p>
+<p><code class="docutils literal notranslate"><span class="pre">processLiveness.fbIsProcessAliveSince(iPid,</span> <span class="pre">sClaimIso)</span></code> closes the
+gap. Every slot and lock payload records its holder’s start time
+(<code class="docutils literal notranslate"><span class="pre">sStartedIso</span></code>). The check reads the live process’s start time from
+<code class="docutils literal notranslate"><span class="pre">ps</span> <span class="pre">-o</span> <span class="pre">lstart=</span></code> (run with <code class="docutils literal notranslate"><span class="pre">LC_ALL=C</span></code> so month and day names parse
+under any locale on macOS and Linux), normalizes both timestamps to
+local-naive datetimes, and treats a process that started <em>after</em> the
+recorded claim (beyond a small tolerance) as a recycled PID – hence
+dead and reapable. The probe degrades safely: an unreadable start
+time, an absent claim, or a legacy payload without <code class="docutils literal notranslate"><span class="pre">sStartedIso</span></code> all
+fall back to the bare PID-existence check, so a live genuine holder is
+never reaped. No new dependency is introduced; the probe shells out to
+<code class="docutils literal notranslate"><span class="pre">ps</span></code>, which is present on both platforms.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> CLI (see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>) is the
+host-side enumerator over these same files – the analog of
+<code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> / <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>.</p>
+</section>
 </section>
 <section id="python-backend">
 <h2>Python backend<a class="headerlink" href="#python-backend" title="Link to this heading"></a></h2>

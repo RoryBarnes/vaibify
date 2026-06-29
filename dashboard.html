@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev412 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev418 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7306fd10"></script>
+      <script src="_static/documentation_options.js?v=c315c06c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -79,7 +79,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub mode</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#one-session-per-container">One session per container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#one-browser-session-per-container">One browser session per container</a></li>
 </ul>
 </li>
 </ul>
@@ -495,14 +495,37 @@ quick-launch buttons to start, stop, or open the dashboard for any of
 them. From here you can also create a new container (the setup wizard
 from the <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a>) or add an existing project that
 already has a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p>
-<section id="one-session-per-container">
-<h3>One session per container<a class="headerlink" href="#one-session-per-container" title="Link to this heading"></a></h3>
-<p>Each container managed by vaibify can be open in only one dashboard at
-a time. This prevents two browsers from issuing conflicting commands
-to the same container. When a session is already attached, the
-container appears greyed out on other hubs.</p>
+<section id="one-browser-session-per-container">
+<h3>One browser session per container<a class="headerlink" href="#one-browser-session-per-container" title="Link to this heading"></a></h3>
+<p>Each container managed by vaibify can be open in only one <strong>browser
+session</strong> at a time. When you claim a container, the server mints a
+private lease for that tab; a different tab — even another tab of the
+same browser on the same hub — that tries to open the same container is
+refused with <em>“In use in another browser session”</em> and its tile renders
+greyed out. This holds across two tabs of one browser, two browsers,
+and two hubs alike; it is the single owner-of-record model described in
+the <a class="reference internal" href="architecture.html#single-browser-session-per-container"><span class="std std-ref">architecture reference</span></a>.
+It is an operational guarantee for honest use behind vaibify’s loopback
+trust boundary, not a defense against a hostile in-page script.</p>
+<p>Reloading the owning tab is safe: its lease lives in <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code>,
+so the refreshed tab re-asserts the same ownership and is never locked
+out of its own container.</p>
+<p>An abandoned session does not hold a container forever. A hub or
+viewer left with no connected tab and nothing running self-retires
+after an idle timeout (see
+<a class="reference internal" href="configuration.html#vaibify_hub_idle_timeout_seconds"><span class="std std-ref">Configuration</span></a>),
+freeing its container. Ownership is also released the moment the owning
+tab closes (a <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> signal) or a brief disconnect’s grace window
+expires with no reconnect — never while a pipeline is still running.
+The hub re-polls availability every few seconds, so a freed container
+un-greys on its own without a page reload. You can also list and stop
+live sessions from the host with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> (see the
+<a class="reference internal" href="cli.html#session-management"><span class="std std-ref">CLI Reference</span></a>).</p>
 <p>The <strong>New vaibify window</strong> icon (⧉) in the hub, the workflow picker,
-and the dashboard’s Admin menu launches a new vaibify session in a new browser tab — useful for working on two projects side by side.</p>
+and the dashboard’s Admin menu opens a fresh vaibify session in a new
+browser tab — useful for working on <strong>two different projects</strong> side by
+side. Each window claims its own containers; it is not a way to open
+the <em>same</em> container twice.</p>
 </section>
 </section>
 </section>

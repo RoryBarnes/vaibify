@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev412 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev418 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7306fd10"></script>
+      <script src="_static/documentation_options.js?v=c315c06c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -82,6 +82,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#gui-and-pipeline">GUI and Pipeline</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-gui"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#multiple-sessions">Multiple sessions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#session-management">Session management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-sessions"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-sessions-stop"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span> <span class="pre">stop</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing">Publishing</a><ul>
@@ -557,12 +562,69 @@ details.</p>
 invocation auto-shifts to the next free port (8051, 8052, …) and
 announces the fallback on stderr. Pass <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code> to pin an
 explicit port. Any given container may be accessed by only one
-vaibify session at a time: the hub landing page greys out
-containers already held by another session, and a second
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span> <span class="pre">-p</span> <span class="pre">X</span></code> on the same project refuses to attach.
+browser session at a time: the hub landing page greys out
+containers already held by another session, a second tab that tries
+to open a held container is refused <em>“In use in another browser
+session”</em>, and a second <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span> <span class="pre">-p</span> <span class="pre">X</span></code> on the same project
+refuses to attach. The exclusivity mechanism — the per-claim lease,
+the owner-of-record map, the one-live-connection invariant, and the
+release triggers — is specified once in the
+<a class="reference internal" href="architecture.html#single-browser-session-per-container"><span class="std std-ref">architecture reference</span></a>;
+that section is the normative source of truth, including the
+holder-payload field table.
 The <strong>New vaibify window</strong> button on the container hub, workflow
 picker, and Admin menu spawns a detached hub on a free port and
 opens it in a new browser tab.</p>
+</section>
+</section>
+<section id="session-management">
+<h2>Session management<a class="headerlink" href="#session-management" title="Link to this heading"></a></h2>
+<p>Vaibify hub and viewer servers run in the foreground of the terminal
+that launched them. Closing a browser tab does not stop them, and
+closing the terminal orphans the server, which keeps holding its
+session slot and per-container locks until it is reaped. These
+commands let you see and stop live sessions. They are the host-side
+analog of <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>, and like
+those, they run <strong>on the host only</strong> – they are not invokable from
+inside a container.</p>
+<section id="vaibify-sessions">
+<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code><a class="headerlink" href="#vaibify-sessions" title="Link to this heading"></a></h3>
+<p>List every live hub and viewer session on the host, with its PID,
+role, port, start time, and the container(s) it holds.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>sessions
+</pre></div>
+</div>
+<p>Each line reports <code class="docutils literal notranslate"><span class="pre">pid</span></code>, <code class="docutils literal notranslate"><span class="pre">role</span></code> (<code class="docutils literal notranslate"><span class="pre">hub</span></code> or <code class="docutils literal notranslate"><span class="pre">viewer</span></code>), <code class="docutils literal notranslate"><span class="pre">port</span></code>, <code class="docutils literal notranslate"><span class="pre">started</span></code>
+(the ISO start time), and <code class="docutils literal notranslate"><span class="pre">containers</span></code> (the names locked on that
+port). When nothing is running it prints <code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">live</span> <span class="pre">Vaibify</span> <span class="pre">sessions.</span></code></p>
+</section>
+<section id="vaibify-sessions-stop">
+<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span> <span class="pre">stop</span></code><a class="headerlink" href="#vaibify-sessions-stop" title="Link to this heading"></a></h3>
+<p>Gracefully stop a session by PID, or every session with <code class="docutils literal notranslate"><span class="pre">--all</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>&lt;PID&gt;
+vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>--all
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PID</span></code></p></td>
+<td><p>The session PID to stop (from <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--all</span></code></p></td>
+<td><p>Stop every live session except the current one</p></td>
+</tr>
+</tbody>
+</table>
+<p>Stopping sends <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>, which lets the server run its graceful
+shutdown – releasing its session slot and any container locks it
+holds. <code class="docutils literal notranslate"><span class="pre">stop</span></code> <strong>refuses any PID that is not a known live Vaibify
+session</strong>, so it can never signal an unrelated process, and <code class="docutils literal notranslate"><span class="pre">--all</span></code>
+<strong>excludes the current session</strong> so a session never stops itself.</p>
 </section>
 </section>
 <section id="publishing">

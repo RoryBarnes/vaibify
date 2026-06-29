@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev412 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev418 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7306fd10"></script>
+      <script src="_static/documentation_options.js?v=c315c06c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -65,6 +65,10 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-json">workflow.json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment variables</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-hub-idle-timeout-seconds"><code class="docutils literal notranslate"><span class="pre">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#security">Security</a></li>
 </ul>
 </li>
@@ -403,6 +407,24 @@ non-comment line has four pipe-separated fields:</p>
 <h2>workflow.json<a class="headerlink" href="#workflow-json" title="Link to this heading"></a></h2>
 <p>Defines the execution pipeline. See <a class="reference internal" href="pipelines.html"><span class="std std-doc">Pipelines</span></a> for full
 documentation.</p>
+</section>
+<section id="environment-variables">
+<h2>Environment variables<a class="headerlink" href="#environment-variables" title="Link to this heading"></a></h2>
+<section id="vaibify-hub-idle-timeout-seconds">
+<h3><code class="docutils literal notranslate"><span class="pre">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span></code><a class="headerlink" href="#vaibify-hub-idle-timeout-seconds" title="Link to this heading"></a></h3>
+<p>How long a hub or viewer server may sit idle before it self-retires.
+The default is <code class="docutils literal notranslate"><span class="pre">1800</span></code> (30 minutes). Set this to a smaller value to
+reap abandoned servers sooner, or a larger value to keep them alive
+longer.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span><span class="o">=</span><span class="m">60</span><span class="w"> </span>vaibify
+</pre></div>
+</div>
+<p>Self-shutdown only fires when <strong>no browser tab is connected</strong> and <strong>no
+pipeline is running</strong> in any container the server holds; an open
+dashboard keeps the server alive indefinitely. See the
+<a class="reference internal" href="architecture.html#session--container-lock-lifecycle"><span class="std std-ref">Session &amp; container-lock lifecycle</span></a>
+section for the full rationale.</p>
+</section>
 </section>
 <section id="security">
 <h2>Security<a class="headerlink" href="#security" title="Link to this heading"></a></h2>
