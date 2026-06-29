@@ -133,3 +133,95 @@ def test_audit_surfaces_unseeded_step_warning():
     listIssues = flistAuditWorkflow(dictWorkflow)
     assert any("bUnseededRandomnessWarning" in sIssue
                for sIssue in listIssues)
+
+
+@pytest.mark.parametrize("waiverValue", ["false", 1, "no"])
+def test_blas_waiver_requires_literal_true(waiverValue):
+    """Only ``bAcceptBlasVariance is True`` honours the waiver branch.
+
+    A truthy-but-not-True value (a hand-edited JSON string like
+    'false', or 1, or 'no') must NOT falsely attest determinism.
+    """
+    dictWorkflow = {
+        "dictDeterminism": {S_ACCEPT_BLAS_WAIVER_KEY: waiverValue},
+    }
+    assert fbWorkflowDeclaresDeterminism(dictWorkflow) is False
+
+
+def test_mkl_cbwr_alone_declares_determinism():
+    """An sMklCbwr pin alone counts as a determinism declaration."""
+    dictWorkflow = {
+        "dictDeterminism": {S_MKL_CBWR_KEY: "COMPATIBLE"},
+    }
+    assert fbWorkflowDeclaresDeterminism(dictWorkflow) is True
+    listIssues = flistAuditWorkflow(dictWorkflow)
+    assert not any("dictDeterminism" in sIssue for sIssue in listIssues)
+
+
+def test_bare_imported_seed_with_clock_is_flagged(tmp_path):
+    """``from numpy.random import seed; seed(time.time())`` is flagged.
+
+    The bare-name seed call (no attribute prefix) must be recognised
+    as a seed function so its clock-derived argument is caught.
+    """
+    sPath = _fnWriteScript(tmp_path, "bareSeed.py", textwrap.dedent("""
+        from numpy.random import seed
+        import time
+
+        seed(time.time())
+    """))
+    listIssues = flistAuditScriptAntiPatterns(sPath)
+    assert any("clock" in sIssue.lower() for sIssue in listIssues)
+
+
+def test_bare_os_urandom_outside_seed_is_flagged(tmp_path):
+    """``os.urandom(...)`` outside a seed call is flagged as urandom.
+
+    This isolates the regex urandom detector: the call is not nested
+    in a seed(...) so the AST clock path contributes nothing.
+    """
+    sPath = _fnWriteScript(tmp_path, "salt.py", textwrap.dedent("""
+        import os
+        x = os.urandom(4)
+    """))
+    listIssues = flistAuditScriptAntiPatterns(sPath)
+    assert any("urandom" in sIssue.lower() for sIssue in listIssues)
+
+
+def test_missing_determinism_block_is_an_issue():
+    """A workflow with no determinism declaration surfaces an issue."""
+    assert any("dictDeterminism" in sIssue
+               for sIssue in flistAuditWorkflow({}))
+    assert any("dictDeterminism" in sIssue
+               for sIssue in flistAuditWorkflow({"dictDeterminism": {}}))
+
+
+def test_from_secrets_import_is_flagged(tmp_path):
+    """``from secrets import token_hex`` is flagged as an entropy source.
+
+    The from-import form must match even when the subsequent use is a
+    bare ``token_hex(...)`` call with no ``secrets.`` attribute prefix.
+    """
+    sPath = _fnWriteScript(tmp_path, "fromSecrets.py", textwrap.dedent("""
+        from secrets import token_hex
+        x = token_hex(8)
+    """))
+    listIssues = flistAuditScriptAntiPatterns(sPath)
+    assert any("secrets" in sIssue.lower() for sIssue in listIssues)
+
+
+def test_unseeded_warning_requires_literal_true():
+    """Only ``bUnseededRandomnessWarning is True`` surfaces a warning.
+
+    A truthy-but-not-True value ('false') must not produce a spurious
+    warning issue, and the otherwise-clean workflow yields no issues.
+    """
+    dictWorkflow = {
+        "dictDeterminism": {S_MKL_CBWR_KEY: "COMPATIBLE"},
+        "listSteps": [
+            {"sName": "S", "bUnseededRandomnessWarning": "false"},
+        ],
+    }
+    listIssues = flistAuditWorkflow(dictWorkflow)
+    assert not any("bUnseededRandomnessWarning" in sIssue
+                   for sIssue in listIssues)

@@ -8,6 +8,7 @@ idle reaper, all against real host flocks redirected into a tmp_path.
 """
 
 import os
+import time
 
 import pytest
 
@@ -292,3 +293,89 @@ def test_fbAgentTokenAuthorizesContainerId_is_per_container(tmp_lock_dir):
         ) is False
     finally:
         _ftReleaseAll(dictContainerOwners)
+
+
+def test_agent_token_with_empty_container_id_fails_closed(tmp_lock_dir):
+    """A valid token presented for an empty container id must not match.
+
+    A container claimed without an sContainerId carries the dataclass
+    default ''. Presenting that owner's valid agent token while naming no
+    container ('' == '') would authorize a request that names no
+    container, so the early ``not sPresentedToken or not sContainerId``
+    guard must fail closed on the empty id alone.
+    """
+    dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
+    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    try:
+        sToken = dictContainerOwners["demo"].sAgentToken
+        assert dictContainerOwners["demo"].sContainerId == ""
+        assert sToken
+        assert containerOwnership.fbAgentTokenAuthorizesContainerId(
+            dictContainerOwners, sToken, "",
+        ) is False
+    finally:
+        _ftReleaseAll(dictContainerOwners)
+
+
+def test_same_lease_reclaim_refreshes_grace_clock(tmp_lock_dir):
+    """A same-lease re-claim must advance fLastSeenMonotonic to now.
+
+    A reloaded tab re-asserts its lease over HTTP before the WebSocket
+    reconnects. If the idempotent reclaim does not refresh the grace
+    clock, a concurrent idle reaper can release the just-reclaimed
+    session between reload and reconnect.
+    """
+    dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
+    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+        dictContainerOwners, "demo", None, 8050,
+    )
+    sLeaseId = dictFirst["sLeaseId"]
+    try:
+        recordOwner = dictContainerOwners["demo"]
+        recordOwner.fLastSeenMonotonic = time.monotonic() - 1000.0
+        containerOwnership.ftdictClaim(
+            dictContainerOwners, "demo", sLeaseId, 8050,
+        )
+        fElapsedSinceReclaim = (
+            time.monotonic() - dictContainerOwners["demo"].fLastSeenMonotonic
+        )
+        assert fElapsedSinceReclaim < 1.0
+    finally:
+        _ftReleaseAll(dictContainerOwners)
+
+
+def test_release_stops_keep_alive(tmp_lock_dir, monkeypatch):
+    """Releasing an owner must stop its container keep-alive once.
+
+    Without the fnStopKeepAlive call every release and reap leaks the
+    container's keep-alive threads/timers, keeping idle containers warm
+    indefinitely and desyncing container-health from session state.
+    """
+    listStoppedNames = []
+    monkeypatch.setattr(
+        containerOwnership, "fnStopKeepAlive", listStoppedNames.append,
+    )
+    dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
+    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+        dictContainerOwners, "demo", None, 8050,
+    )
+    sLeaseId = dictFirst["sLeaseId"]
+    try:
+        bReleased = containerOwnership.fnReleaseOwnership(
+            dictContainerOwners, "demo", sLeaseId,
+        )
+        assert bReleased is True
+        assert listStoppedNames == ["demo"]
+    finally:
+        _ftReleaseAll(dictContainerOwners)
+
+
+def test_fbOwnerIsReapable_is_true_at_exact_grace_boundary(monkeypatch):
+    """At elapsed == grace the record is reapable (>= boundary)."""
+    recordOwner = containerOwnership.OwnerRecord(
+        sLeaseId="x", fileHandleLock=None, fLastSeenMonotonic=100.0,
+    )
+    monkeypatch.setattr(containerOwnership.time, "monotonic", lambda: 105.0)
+    assert containerOwnership.fbOwnerIsReapable(
+        recordOwner, fGraceSeconds=5.0,
+    ) is True

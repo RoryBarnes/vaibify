@@ -259,3 +259,75 @@ async def test_terminal_ws_route_delegates_to_guard():
         await fnHandler(mockWs, S_CONTAINER)
     mockGuard.assert_called_once_with(mockWs, dictCtx, S_CONTAINER)
     mockWs.close.assert_awaited_once_with(code=4003)
+
+
+# -- empty-shared-token fail-closed (M2) ----------------------------------
+
+
+def test_empty_shared_token_fails_closed_4401():
+    # When the hub starts with an empty session token, the shared-token
+    # gate must stay fail-closed: a loopback browser presenting the same
+    # empty token ('' == '') must NOT clear the CSRF/trust check just
+    # because both sides are empty. The bool(sSharedToken) guard is the
+    # only fail-closed-when-unconfigured defense, so an owning-lease holder
+    # presenting an empty token is rejected at the token gate (4401), never
+    # admitted to the lease check.
+    dictCtx = {
+        "sSessionToken": "",
+        "dictContainerOwners": _fdictOwnersWithOwner(),
+    }
+    conn = _fconnBrowser(sToken="")
+    assert webSocketAuthorization.fbCheckSharedToken(conn, "") is False
+    assert webSocketAuthorization.fiContainerSessionRejectionCode(
+        conn, dictCtx, S_CONTAINER,
+    ) == 4401
+
+
+# -- agent lane is exempt from the per-container live budget (M9, M10) ----
+
+
+@pytest.mark.asyncio
+async def test_agent_lane_served_while_browser_session_live():
+    # The lease-exempt machine lane must keep working while a researcher's
+    # browser session is live. An in-container agent (no loopback origin)
+    # dialing a container whose owner already has one live connection must
+    # be SERVED, never closed with 4409: 'Claude, run unit tests on A09'
+    # cannot fail just because the human's tab is open.
+    dictContainerOwners = _fdictOwnersWithOwner()
+    dictContainerOwners[S_CONTAINER].iLiveConnectionCount = 1
+    conn = _fconnAgent()
+    conn.close = AsyncMock()
+    fnServe = AsyncMock()
+    await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
+        conn, dictContainerOwners, S_CONTAINER, fnServe,
+        MagicMock(), MagicMock(),
+    )
+    fnServe.assert_awaited_once()
+    conn.close.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_agent_lane_does_not_touch_per_container_counter():
+    # The per-container live-connection counter is a browser-lane budget.
+    # The agent lane must never increment it (nor decrement it), otherwise
+    # an agent connection leaks a phantom live connection that never clears
+    # and the next real browser is refused 4409 forever. Assert the counter
+    # is untouched and neither increment nor decrement was invoked.
+    dictContainerOwners = _fdictOwnersWithOwner()
+    assert dictContainerOwners[S_CONTAINER].iLiveConnectionCount == 0
+    conn = _fconnAgent()
+    conn.close = AsyncMock()
+    fnServe = AsyncMock()
+    with patch.object(
+        containerOwnership, "fnIncrementLiveConnection",
+    ) as mockIncrement, patch.object(
+        containerOwnership, "fnDecrementLiveConnection",
+    ) as mockDecrement:
+        await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
+            conn, dictContainerOwners, S_CONTAINER, fnServe,
+            MagicMock(), MagicMock(),
+        )
+    mockIncrement.assert_not_called()
+    mockDecrement.assert_not_called()
+    assert dictContainerOwners[S_CONTAINER].iLiveConnectionCount == 0
+    fnServe.assert_awaited_once()
