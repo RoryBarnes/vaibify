@@ -1,4 +1,4 @@
-"""Tests for vaibify.docker.keepAliveManager."""
+"""Tests for vaibify.config.keepAliveManager."""
 
 import datetime
 import os
@@ -26,7 +26,7 @@ def _fbSigtermWasSent(mockKill, iPid):
 
 import json
 
-from vaibify.docker.keepAliveManager import (
+from vaibify.config.keepAliveManager import (
     fnStartKeepAlive,
     fnStopKeepAlive,
     _fdictReadPidPayload,
@@ -62,7 +62,7 @@ def test_fsPidFilePath_different_containers_differ():
 def test_writePidFile_then_readPayload_round_trip(tmp_path):
     sPath = str(tmp_path / "proj.pid")
     with patch(
-        "vaibify.docker.keepAliveManager._fsPidFilePath",
+        "vaibify.config.keepAliveManager._fsPidFilePath",
         return_value=sPath,
     ):
         _fnWritePidFile("proj", 12345)
@@ -94,7 +94,7 @@ def test_readPidPayload_invalid_contents_returns_empty(tmp_path):
 def test_writePidFile_creates_json_file(tmp_path):
     sPath = str(tmp_path / "proj.pid")
     with patch(
-        "vaibify.docker.keepAliveManager._fsPidFilePath",
+        "vaibify.config.keepAliveManager._fsPidFilePath",
         return_value=sPath,
     ):
         _fnWritePidFile("proj", 9999)
@@ -129,9 +129,9 @@ def test_removePidFile_silent_on_missing(tmp_path):
 
 def test_killIfRunning_calls_os_kill_when_alive():
     with patch(
-        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        "vaibify.config.keepAliveManager.fbIsProcessAliveSince",
         return_value=True,
-    ), patch("vaibify.docker.keepAliveManager.os.kill") as mockKill:
+    ), patch("vaibify.config.keepAliveManager.os.kill") as mockKill:
         _fnKillIfRunning(12345, "2026-06-25T12:00:00")
     mockKill.assert_called_once_with(12345, signal.SIGTERM)
 
@@ -139,19 +139,19 @@ def test_killIfRunning_calls_os_kill_when_alive():
 def test_killIfRunning_skips_recycled_pid():
     """A recycled PID (start time after the claim) is never killed."""
     with patch(
-        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        "vaibify.config.keepAliveManager.fbIsProcessAliveSince",
         return_value=False,
-    ), patch("vaibify.docker.keepAliveManager.os.kill") as mockKill:
+    ), patch("vaibify.config.keepAliveManager.os.kill") as mockKill:
         _fnKillIfRunning(12345, "2000-01-01T00:00:00")
     mockKill.assert_not_called()
 
 
 def test_killIfRunning_tolerates_process_lookup_error():
     with patch(
-        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        "vaibify.config.keepAliveManager.fbIsProcessAliveSince",
         return_value=True,
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill",
+        "vaibify.config.keepAliveManager.os.kill",
         side_effect=ProcessLookupError,
     ):
         _fnKillIfRunning(12345, None)
@@ -159,10 +159,10 @@ def test_killIfRunning_tolerates_process_lookup_error():
 
 def test_killIfRunning_tolerates_permission_error():
     with patch(
-        "vaibify.docker.keepAliveManager.fbIsProcessAliveSince",
+        "vaibify.config.keepAliveManager.fbIsProcessAliveSince",
         return_value=True,
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill",
+        "vaibify.config.keepAliveManager.os.kill",
         side_effect=PermissionError,
     ):
         _fnKillIfRunning(12345, None)
@@ -177,7 +177,7 @@ def test_fiSpawnCaffeinate_returns_pid():
     mockProcess = MagicMock()
     mockProcess.pid = 4242
     with patch(
-        "vaibify.docker.keepAliveManager.subprocess.Popen",
+        "vaibify.config.keepAliveManager.subprocess.Popen",
         return_value=mockProcess,
     ):
         iPid = _fiSpawnCaffeinate()
@@ -186,7 +186,7 @@ def test_fiSpawnCaffeinate_returns_pid():
 
 def test_fiSpawnCaffeinate_file_not_found_returns_zero():
     with patch(
-        "vaibify.docker.keepAliveManager.subprocess.Popen",
+        "vaibify.config.keepAliveManager.subprocess.Popen",
         side_effect=FileNotFoundError,
     ):
         assert _fiSpawnCaffeinate() == 0
@@ -199,9 +199,9 @@ def test_fiSpawnCaffeinate_file_not_found_returns_zero():
 
 def test_fnStartKeepAlive_noop_on_non_darwin():
     with patch(
-        "vaibify.docker.keepAliveManager.sys.platform", "linux"
+        "vaibify.config.keepAliveManager.sys.platform", "linux"
     ), patch(
-        "vaibify.docker.keepAliveManager._fiSpawnCaffeinate"
+        "vaibify.config.keepAliveManager._fiSpawnCaffeinate"
     ) as mockSpawn:
         fnStartKeepAlive("proj")
     mockSpawn.assert_not_called()
@@ -210,11 +210,11 @@ def test_fnStartKeepAlive_noop_on_non_darwin():
 def test_fnStartKeepAlive_writes_pid_on_darwin(tmp_path):
     sPidDir = str(tmp_path / "caffeinate")
     with patch(
-        "vaibify.docker.keepAliveManager.sys.platform", "darwin"
+        "vaibify.config.keepAliveManager.sys.platform", "darwin"
     ), patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager._fiSpawnCaffeinate",
+        "vaibify.config.keepAliveManager._fiSpawnCaffeinate",
         return_value=7777,
     ):
         fnStartKeepAlive("proj")
@@ -227,11 +227,11 @@ def test_fnStartKeepAlive_writes_pid_on_darwin(tmp_path):
 def test_fnStartKeepAlive_zero_pid_skips_write(tmp_path):
     sPidDir = str(tmp_path / "caffeinate")
     with patch(
-        "vaibify.docker.keepAliveManager.sys.platform", "darwin"
+        "vaibify.config.keepAliveManager.sys.platform", "darwin"
     ), patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager._fiSpawnCaffeinate",
+        "vaibify.config.keepAliveManager._fiSpawnCaffeinate",
         return_value=0,
     ):
         fnStartKeepAlive("proj")
@@ -244,9 +244,9 @@ def test_fnStopKeepAlive_missing_file_noop(tmp_path):
     sPidDir = str(tmp_path / "caffeinate_empty")
     os.makedirs(sPidDir, exist_ok=True)
     with patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill"
+        "vaibify.config.keepAliveManager.os.kill"
     ) as mockKill:
         fnStopKeepAlive("missing_proj")
     mockKill.assert_not_called()
@@ -260,9 +260,9 @@ def test_fnStopKeepAlive_kills_and_removes(tmp_path):
         json.dump({"iPid": os.getpid(),
                    "sStartedIso": _fsNowIso()}, fh)
     with patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill"
+        "vaibify.config.keepAliveManager.os.kill"
     ) as mockKill:
         fnStopKeepAlive("proj")
     assert _fbSigtermWasSent(mockKill, os.getpid())
@@ -278,9 +278,9 @@ def test_fnStopKeepAlive_ancient_claim_does_not_kill(tmp_path):
         json.dump({"iPid": os.getpid(),
                    "sStartedIso": "2000-01-01T00:00:00"}, fh)
     with patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill"
+        "vaibify.config.keepAliveManager.os.kill"
     ) as mockKill:
         fnStopKeepAlive("proj")
     assert not _fbSigtermWasSent(mockKill, os.getpid())
@@ -295,9 +295,9 @@ def test_fnStopKeepAlive_legacy_bare_int_still_kills(tmp_path):
     with open(sPath, "w") as fh:
         fh.write(f"{os.getpid()}\n")
     with patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill"
+        "vaibify.config.keepAliveManager.os.kill"
     ) as mockKill:
         fnStopKeepAlive("proj")
     assert _fbSigtermWasSent(mockKill, os.getpid())
@@ -311,14 +311,14 @@ def test_fnStartKeepAlive_stops_existing_first(tmp_path):
     with open(sPath, "w") as fh:
         fh.write(f"{os.getpid()}\n")
     with patch(
-        "vaibify.docker.keepAliveManager.sys.platform", "darwin"
+        "vaibify.config.keepAliveManager.sys.platform", "darwin"
     ), patch(
-        "vaibify.docker.keepAliveManager._S_PID_DIRECTORY", sPidDir
+        "vaibify.config.keepAliveManager._S_PID_DIRECTORY", sPidDir
     ), patch(
-        "vaibify.docker.keepAliveManager._fiSpawnCaffeinate",
+        "vaibify.config.keepAliveManager._fiSpawnCaffeinate",
         return_value=222,
     ), patch(
-        "vaibify.docker.keepAliveManager.os.kill"
+        "vaibify.config.keepAliveManager.os.kill"
     ) as mockKill:
         fnStartKeepAlive("proj")
     assert _fbSigtermWasSent(mockKill, os.getpid())

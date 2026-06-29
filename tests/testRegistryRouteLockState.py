@@ -51,7 +51,7 @@ def fixtureHubApp():
     from fastapi import FastAPI
     from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
     app = FastAPI()
-    app.state.dictContainerLocks = {}
+    app.state.dictContainerOwners = {}
     app.state.iHubPort = 8050
     dictCtx = {"require": lambda: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)

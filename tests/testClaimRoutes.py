@@ -67,7 +67,7 @@ def fixtureHubApp():
     from fastapi import FastAPI
     from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
     app = FastAPI()
-    app.state.dictContainerLocks = {}
+    app.state.dictContainerOwners = {}
     app.state.iHubPort = 8050
     dictCtx = {"require": lambda: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
@@ -83,8 +83,11 @@ def fixtureClient(fixtureHubApp):
 def testClaimReturnsOkWhenContainerFree(fixtureClient, fixtureHubApp):
     response = fixtureClient.post("/api/registry/demo/claim")
     assert response.status_code == 200
-    assert response.json() == {"sName": "demo", "bClaimed": True}
-    assert "demo" in fixtureHubApp.state.dictContainerLocks
+    dictBody = response.json()
+    assert dictBody["sName"] == "demo"
+    assert dictBody["bClaimed"] is True
+    assert dictBody["sLeaseId"]
+    assert "demo" in fixtureHubApp.state.dictContainerOwners
 
 
 def testClaimReturns409WhenContainerLockedByOtherProcess(
@@ -120,8 +123,10 @@ def testClaimSucceedsWhenRecordedHolderIsDead(
     try:
         response = fixtureClient.post("/api/registry/demo/claim")
         assert response.status_code == 200
-        assert response.json() == {"sName": "demo", "bClaimed": True}
-        assert "demo" in fixtureHubApp.state.dictContainerLocks
+        dictBody = response.json()
+        assert dictBody["bClaimed"] is True
+        assert dictBody["sLeaseId"]
+        assert "demo" in fixtureHubApp.state.dictContainerOwners
     finally:
         fileHandleStuck.close()
 
@@ -142,32 +147,73 @@ def testClaimSucceedsAfterOwnerKilledWithoutHubRestart(
     processChild.join(timeout=5)
     response = fixtureClient.post("/api/registry/demo/claim")
     assert response.status_code == 200
-    assert response.json() == {"sName": "demo", "bClaimed": True}
+    dictBody = response.json()
+    assert dictBody["bClaimed"] is True
+    assert dictBody["sLeaseId"]
 
 
-def testClaimIsIdempotentInSameHubProcess(fixtureClient, fixtureHubApp):
+def testClaimIsIdempotentWhenSameLeaseRepresented(
+    fixtureClient, fixtureHubApp,
+):
+    """A reload re-presenting its stored lease re-asserts ownership (200)."""
+    sLeaseId = fixtureClient.post(
+        "/api/registry/demo/claim",
+    ).json()["sLeaseId"]
+    response = fixtureClient.post(
+        "/api/registry/demo/claim", params={"sLeaseId": sLeaseId},
+    )
+    assert response.status_code == 200
+    assert response.json()["sLeaseId"] == sLeaseId
+    assert len(fixtureHubApp.state.dictContainerOwners) == 1
+
+
+def testClaimRejectsForeignSessionWith409(fixtureClient, fixtureHubApp):
+    """A second tab with no matching lease is refused, never short-circuited."""
     fixtureClient.post("/api/registry/demo/claim")
     response = fixtureClient.post("/api/registry/demo/claim")
-    assert response.status_code == 200
-    assert len(fixtureHubApp.state.dictContainerLocks) == 1
+    assert response.status_code == 409
+    dictDetail = response.json()["detail"]
+    assert dictDetail["bClaimed"] is False
+    assert "sLeaseId" not in dictDetail
+    assert len(fixtureHubApp.state.dictContainerOwners) == 1
 
 
 def testReleaseFreesTheLock(fixtureClient, fixtureHubApp):
-    fixtureClient.post("/api/registry/demo/claim")
-    response = fixtureClient.post("/api/registry/demo/release")
+    sLeaseId = fixtureClient.post(
+        "/api/registry/demo/claim",
+    ).json()["sLeaseId"]
+    response = fixtureClient.post(
+        "/api/registry/demo/release", params={"sLeaseId": sLeaseId},
+    )
     assert response.status_code == 200
     assert response.json() == {"sName": "demo", "bReleased": True}
-    assert "demo" not in fixtureHubApp.state.dictContainerLocks
+    assert "demo" not in fixtureHubApp.state.dictContainerOwners
+
+
+def testReleaseRejectsNonOwnerLease(fixtureClient, fixtureHubApp):
+    """A release with the wrong lease leaves ownership intact (no leak free)."""
+    fixtureClient.post("/api/registry/demo/claim")
+    response = fixtureClient.post(
+        "/api/registry/demo/release", params={"sLeaseId": "not-the-owner"},
+    )
+    assert response.status_code == 200
+    assert response.json()["bReleased"] is False
+    assert "demo" in fixtureHubApp.state.dictContainerOwners
 
 
 def testReleaseIsNoopWhenNothingToRelease(fixtureClient):
     response = fixtureClient.post("/api/registry/missing/release")
     assert response.status_code == 200
+    assert response.json()["bReleased"] is False
 
 
 def testClaimAfterReleaseSucceeds(fixtureClient):
-    fixtureClient.post("/api/registry/demo/claim")
-    fixtureClient.post("/api/registry/demo/release")
+    sLeaseId = fixtureClient.post(
+        "/api/registry/demo/claim",
+    ).json()["sLeaseId"]
+    fixtureClient.post(
+        "/api/registry/demo/release", params={"sLeaseId": sLeaseId},
+    )
     response = fixtureClient.post("/api/registry/demo/claim")
     assert response.status_code == 200
 

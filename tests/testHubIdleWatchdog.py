@@ -24,7 +24,7 @@ def _fappBuildFakeApp(**kwargs):
     dictState = {
         "iActiveWebSockets": 0,
         "fLastActivityMonotonic": time.monotonic(),
-        "dictContainerLocks": {},
+        "dictContainerOwners": {},
         "listLifespanStartup": [],
         "listLifespanShutdown": [],
     }
@@ -77,14 +77,16 @@ def test_decrement_defaults_to_zero_when_unset():
 # ---------------------------------------------------------------
 
 def test_no_held_locks_is_not_busy():
-    """With no held container locks the hub is never considered busy."""
-    app = _fappBuildFakeApp(dictContainerLocks={})
+    """With no owned containers the hub is never considered busy."""
+    app = _fappBuildFakeApp(dictContainerOwners={})
     assert pipelineServer._fbAnyHeldContainerBusy(app, {"docker": None}) is False
 
 
 def test_held_container_running_is_busy():
-    """A held container with a running pipeline vetoes self-exit."""
-    app = _fappBuildFakeApp(dictContainerLocks={"projectA": object()})
+    """An owned container with a running pipeline vetoes self-exit."""
+    app = _fappBuildFakeApp(
+        dictContainerOwners={"projectA": object()}, iHubPort=8050,
+    )
     dictCtx = {"docker": _FakeDocker({"projectA": "id-a"})}
     with patch(
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
@@ -94,8 +96,10 @@ def test_held_container_running_is_busy():
 
 
 def test_held_container_idle_is_not_busy():
-    """A held container with no running pipeline does not veto self-exit."""
-    app = _fappBuildFakeApp(dictContainerLocks={"projectA": object()})
+    """An owned container with no running pipeline does not veto self-exit."""
+    app = _fappBuildFakeApp(
+        dictContainerOwners={"projectA": object()}, iHubPort=8050,
+    )
     dictCtx = {"docker": _FakeDocker({"projectA": "id-a"})}
     with patch(
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
@@ -105,15 +109,19 @@ def test_held_container_idle_is_not_busy():
 
 
 def test_docker_error_treated_as_busy():
-    """A Docker failure while probing held containers fails safe to busy."""
-    app = _fappBuildFakeApp(dictContainerLocks={"projectA": object()})
+    """A Docker failure while probing owned containers fails safe to busy."""
+    app = _fappBuildFakeApp(
+        dictContainerOwners={"projectA": object()}, iHubPort=8050,
+    )
     dictCtx = {"docker": _FakeDocker({}, bRaise=True)}
     assert pipelineServer._fbAnyHeldContainerBusy(app, dictCtx) is True
 
 
 def test_none_docker_with_held_locks_is_busy():
-    """A held lock with no Docker connection fails safe to busy."""
-    app = _fappBuildFakeApp(dictContainerLocks={"projectA": object()})
+    """An owned hub container with no Docker connection fails safe to busy."""
+    app = _fappBuildFakeApp(
+        dictContainerOwners={"projectA": object()}, iHubPort=8050,
+    )
     assert pipelineServer._fbAnyHeldContainerBusy(app, {"docker": None}) is True
 
 
@@ -133,7 +141,7 @@ def test_connected_websocket_prevents_self_exit():
 def test_busy_container_prevents_self_exit():
     """A mid-run held container forbids self-exit even when idle."""
     app = _fappBuildFakeApp(
-        dictContainerLocks={"projectA": object()},
+        dictContainerOwners={"projectA": object()}, iHubPort=8050,
         fLastActivityMonotonic=time.monotonic() - 10_000,
     )
     dictCtx = {"docker": _FakeDocker({"projectA": "id-a"})}
@@ -288,14 +296,14 @@ def test_activity_middleware_advances_timestamp():
 def test_keepalive_shutdown_hook_stops_each_held_container():
     """The shutdown hook stops caffeinate for every held lock name."""
     app = _fappBuildFakeApp(
-        dictContainerLocks={"projectA": object(), "projectB": object()},
+        dictContainerOwners={"projectA": object(), "projectB": object()},
     )
     pipelineServer._fnRegisterHubShutdownStopKeepAlive(app)
     listStopped = []
 
     async def fnDrive():
         with patch(
-            "vaibify.docker.keepAliveManager.fnStopKeepAlive",
+            "vaibify.config.keepAliveManager.fnStopKeepAlive",
             side_effect=listStopped.append,
         ):
             for fnShutdown in app.state.listLifespanShutdown:
@@ -306,11 +314,11 @@ def test_keepalive_shutdown_hook_stops_each_held_container():
 
 
 def test_keepalive_stop_runs_before_locks_are_cleared():
-    """In factory registration order, caffeinate is stopped for held names
-    BEFORE the lock-release hook clears ``dictContainerLocks`` -- otherwise
+    """In factory registration order, caffeinate is stopped for owned names
+    BEFORE the lock-release hook clears ``dictContainerOwners`` -- otherwise
     the keep-alive hook would iterate an empty dict and leak caffeinate."""
     app = _fappBuildFakeApp(
-        dictContainerLocks={"projectA": object(), "projectB": object()},
+        dictContainerOwners={"projectA": object(), "projectB": object()},
     )
     pipelineServer._fnRegisterHubShutdownStopKeepAlive(app)
     pipelineServer._fnRegisterHubLockLifecycle(app)
@@ -318,7 +326,7 @@ def test_keepalive_stop_runs_before_locks_are_cleared():
 
     async def fnDrive():
         with patch(
-            "vaibify.docker.keepAliveManager.fnStopKeepAlive",
+            "vaibify.config.keepAliveManager.fnStopKeepAlive",
             side_effect=listStopped.append,
         ), patch(
             "vaibify.config.containerLock.fnReleaseContainerLock",
@@ -328,17 +336,17 @@ def test_keepalive_stop_runs_before_locks_are_cleared():
 
     asyncio.run(fnDrive())
     assert sorted(listStopped) == ["projectA", "projectB"]
-    assert app.state.dictContainerLocks == {}
+    assert app.state.dictContainerOwners == {}
 
 
 # ---------------------------------------------------------------
-# Viewer busy-veto (no container lock; served ids in setAllowedContainers)
+# Viewer busy-veto (no iHubPort; served ids keyed in dictContainerOwners)
 # ---------------------------------------------------------------
 
 def test_viewer_served_container_running_is_busy():
     """A viewer's served container (no lock) with a run vetoes self-exit."""
     app = _fappBuildFakeApp(
-        dictContainerLocks={}, setAllowedContainers={"id-v"},
+        dictContainerOwners={"id-v": object()},
     )
     with patch(
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
@@ -351,7 +359,7 @@ def test_viewer_served_container_running_is_busy():
 def test_viewer_busy_served_container_prevents_self_exit():
     """A viewer with a mid-run served container never self-exits when idle."""
     app = _fappBuildFakeApp(
-        dictContainerLocks={}, setAllowedContainers={"id-v"},
+        dictContainerOwners={"id-v": object()},
         fLastActivityMonotonic=time.monotonic() - 10_000,
     )
     with patch(
@@ -365,7 +373,7 @@ def test_viewer_busy_served_container_prevents_self_exit():
 def test_viewer_idle_served_container_self_exits():
     """A viewer whose served container is idle still self-exits when abandoned."""
     app = _fappBuildFakeApp(
-        dictContainerLocks={}, setAllowedContainers={"id-v"},
+        dictContainerOwners={"id-v": object()},
         fLastActivityMonotonic=time.monotonic() - 100.0,
     )
     with patch(

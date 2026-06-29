@@ -15,7 +15,6 @@ def _fdictBuildRawContext():
         "containerUsers": {"cid1": "rory"},
         "pipelineTasks": {"cid1": "taskObj"},
         "sSessionToken": "tok123",
-        "setAllowedContainers": {"cid1", "cid2"},
         "require": lambda: True,
         "save": lambda sCid, dictWf: f"saved-{sCid}",
         "variables": lambda sCid: {"sUser": "rory"},
@@ -58,14 +57,6 @@ class TestTypedPropertyAccess:
     def test_session_token_default(self):
         ctx = RouteContext({})
         assert ctx.sSessionToken == ""
-
-    def test_set_allowed_containers(self):
-        ctx = RouteContext(_fdictBuildRawContext())
-        assert "cid1" in ctx.setAllowedContainers
-
-    def test_set_allowed_containers_default(self):
-        ctx = RouteContext({})
-        assert ctx.setAllowedContainers == set()
 
     def test_require(self):
         ctx = RouteContext(_fdictBuildRawContext())

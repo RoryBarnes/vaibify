@@ -216,6 +216,34 @@ path must preserve that default.
 `tests/testArchitecturalInvariants.py::testFnWriteFileDefaultsToContainerUserOwnership`
 enforces it.
 
+**Container access has exactly one authority: the lease plus
+`dictContainerOwners`.** A container is owned by a per-claim,
+server-minted lease (`containerOwnership.fsMintLease`), recorded in the
+in-process owner-of-record map `app.state.dictContainerOwners`, keyed by
+container **name** (the host flock and the caffeinate keep-alive are both
+name-keyed, so the owner map must be too; the WebSocket routes resolve
+the Docker container id to a name before the lease lookup). Claim
+(`registryRoutes`), the connect handler, the pipeline WebSocket, and the
+terminal WebSocket must all authorize through the single shared guard
+`webSocketAuthorization.fbAuthorizeContainerSession` /
+`fiContainerSessionRejectionCode` — never an inlined container-id
+membership check. Never reintroduce `setAllowedContainers` (the old
+append-only, process-global allow set that leaked authorization for the
+whole process lifetime) or treat the shared session token as the browser
+*principal* — the token is the trust/CSRF boundary and the in-container
+agent's machine credential, not the thing that says *which* browser
+session owns a container. The lease is the exclusivity principal; the
+holder payload carries `sStartedIso` for recycle-proof staleness; exactly
+one live WebSocket per container is enforced by the per-container
+`iLiveConnectionCount` (a duplicate tab that copied the lease is closed
+4409); and the idle busy-veto reads `dictContainerOwners.keys()` so the
+watchdog can never self-SIGTERM a hub mid-run. The full normative model
+is the "Single browser session per container" section of
+[docs/architecture.md](docs/architecture.md). Enforced by
+`testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
+`testWebSocketGatesUseSharedAuthorizationGuard`, and
+`testSetAllowedContainersRemoved`.
+
 ## Cross-step references via tokens
 
 **Every cross-step file reference in a vaibify workflow script must be
@@ -327,6 +355,17 @@ without discussion:
   `testGenerator`, and `syncDispatcher` for backward compatibility.
   Callers should migrate toward canonical imports over time; do not
   delete the re-exports until external callers are updated.
+- The in-container agent lane (`webSocketAuthorization.fbCheckAgentToken`)
+  authorizes with the **hub-wide** shared session token, not a
+  per-container credential. On a hub that owns more than one container, a
+  compromised/prompt-injected agent in container A could therefore reach
+  container B's session. This is pre-existing (the retired
+  `setAllowedContainers` lane had the same hub-wide scope) and is
+  deferred, not endorsed: the robust fix provisions a per-container
+  `sAgentToken` (on the owner record, via `agentSessionBridge`, presented
+  by `docker/vaibifyDo.py`, accepted by `SessionTokenMiddleware`). Until
+  then, treat a single hub as one trust domain. Do not widen the agent
+  lane further.
 
 ## Discovery commands
 
@@ -348,6 +387,20 @@ This section records specific mistakes made in past sessions that are
 worth remembering. It is empty at initial commit. Add entries as they
 come up — one line each, pointing at the offending pattern and the
 correct approach.
+
+- The pre-refactor claim route short-circuited to `bClaimed: True`
+  whenever a container was already locked, silently admitting a second
+  same-hub browser tab. A claim must ARBITRATE (unowned grant /
+  same-lease idempotent / foreign 409), never unconditionally succeed;
+  `testClaimRejectsForeignLease` guards this.
+- A green test suite is not proof of a working guarantee: the
+  one-session refactor's owner map was keyed by container *name* on the
+  write path but looked up by container *id* at the WebSocket gate, so
+  every real hub session would have failed closed — yet the suite stayed
+  green because its fixtures used name == id and never drove the live
+  WebSocket/viewer paths. When a behavior crosses the
+  HTTP/WebSocket/container boundary, assert it with name != id and an
+  actual connection, not a unit stub.
 
 ## Pointers
 

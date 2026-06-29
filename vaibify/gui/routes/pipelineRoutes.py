@@ -16,13 +16,19 @@ from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     WORKSPACE_ROOT,
-    fbValidateWebSocketOrigin,
     fdictRequireWorkflow,
     fiGetSyncEpoch,
-    fnDecrementWebSocketCount,
     fnHandlePipelineWs,
-    fnIncrementWebSocketCount,
+    fsContainerNameForId,
     fsSanitizeExceptionForClient,
+)
+from ..serverLifespan import (
+    fnDecrementWebSocketCount,
+    fnIncrementWebSocketCount,
+)
+from ..webSocketAuthorization import (
+    fiContainerSessionRejectionCode,
+    fnServeUnderLiveConnectionCounters,
 )
 from ..fileStatusManager import (
     _fbCheckStaleUserVerification,
@@ -335,25 +341,25 @@ def _fnRegisterPipelineWs(app, dictCtx):
     async def fnPipelineWs(
         websocket: WebSocket, sContainerId: str
     ):
-        if not fbValidateWebSocketOrigin(
-            websocket, dictCtx["sSessionToken"],
-        ):
-            await websocket.close(code=4003)
-            return
-        sToken = websocket.query_params.get("sToken", "")
-        if sToken != dictCtx["sSessionToken"]:
-            await websocket.close(code=4401)
-            return
-        if sContainerId not in dictCtx["setAllowedContainers"]:
-            await websocket.close(code=4403)
+        sName = fsContainerNameForId(
+            dictCtx.get("docker"), sContainerId,
+        )
+        iRejectCode = fiContainerSessionRejectionCode(
+            websocket, dictCtx, sName,
+        )
+        if iRejectCode:
+            await websocket.close(code=iRejectCode)
             return
         dictCtx["require"]()
-        fnIncrementWebSocketCount(app)
-        try:
-            await fnHandlePipelineWs(
-                websocket, dictCtx, sContainerId)
-        finally:
-            fnDecrementWebSocketCount(app)
+
+        async def fnServe():
+            await fnHandlePipelineWs(websocket, dictCtx, sContainerId)
+
+        await fnServeUnderLiveConnectionCounters(
+            websocket, dictCtx.get("dictContainerOwners", {}), sName,
+            fnServe, lambda: fnIncrementWebSocketCount(app),
+            lambda: fnDecrementWebSocketCount(app),
+        )
 
 
 def _fnRegisterAcknowledgeStep(app, dictCtx):

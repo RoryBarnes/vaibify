@@ -19,9 +19,11 @@ genuine holder).
 """
 
 __all__ = [
+    "fbIsUsablePid",
     "fbIsProcessAlive",
     "fbIsProcessAliveSince",
     "fdtReadProcessStartClock",
+    "fdtReadProcessStartClockCached",
     "fdtParseClaimIso",
 ]
 
@@ -33,9 +35,14 @@ import subprocess
 _F_RECYCLE_TOLERANCE_SECONDS = 2.0
 
 
+def fbIsUsablePid(iPid):
+    """Return True when iPid is a usable positive process id (never a bool)."""
+    return isinstance(iPid, int) and not isinstance(iPid, bool) and iPid > 0
+
+
 def fbIsProcessAlive(iPid):
     """Return True when a process with the given PID currently exists."""
-    if not isinstance(iPid, int) or isinstance(iPid, bool) or iPid <= 0:
+    if not fbIsUsablePid(iPid):
         return False
     try:
         os.kill(iPid, 0)
@@ -48,7 +55,7 @@ def fbIsProcessAlive(iPid):
     return True
 
 
-def fbIsProcessAliveSince(iPid, sClaimIso):
+def fbIsProcessAliveSince(iPid, sClaimIso, dictStartClockCache=None):
     """Return True unless the PID was recycled after the recorded claim.
 
     ``False`` when the PID does not exist. When either the live start
@@ -56,11 +63,13 @@ def fbIsProcessAliveSince(iPid, sClaimIso):
     PID-only check (return ``True``) so old payloads and unreadable
     start times behave exactly like ``fbIsProcessAlive``. Otherwise a
     start time later than the claim (within tolerance) marks a
-    recycled PID as dead.
+    recycled PID as dead. ``dictStartClockCache``, when supplied,
+    memoizes the ``ps`` start-clock probe per PID so one registry
+    refresh spawns at most one ``ps`` per distinct live PID.
     """
     if not fbIsProcessAlive(iPid):
         return False
-    dtStart = fdtReadProcessStartClock(iPid)
+    dtStart = fdtReadProcessStartClockCached(iPid, dictStartClockCache)
     dtClaim = fdtParseClaimIso(sClaimIso)
     if dtStart is None or dtClaim is None:
         return True
@@ -68,9 +77,24 @@ def fbIsProcessAliveSince(iPid, sClaimIso):
     return dtStart <= dtClaim + dtTolerance
 
 
+def fdtReadProcessStartClockCached(iPid, dictStartClockCache):
+    """Return a PID's start clock, memoizing per refresh to batch ps spawns.
+
+    With ``dictStartClockCache`` ``None`` the probe runs on every call
+    (the historical behavior). With a dict supplied, each PID's result
+    is stored and reused, so repeated liveness checks across one
+    registry refresh spawn ``ps`` at most once per distinct PID.
+    """
+    if dictStartClockCache is None:
+        return fdtReadProcessStartClock(iPid)
+    if iPid not in dictStartClockCache:
+        dictStartClockCache[iPid] = fdtReadProcessStartClock(iPid)
+    return dictStartClockCache[iPid]
+
+
 def fdtReadProcessStartClock(iPid):
     """Return a PID's start time from ``ps``, or None on any failure."""
-    if not isinstance(iPid, int) or isinstance(iPid, bool) or iPid <= 0:
+    if not fbIsUsablePid(iPid):
         return None
     sStarted = _fsReadStartTimeFromProcessStatus(iPid)
     if not sStarted:

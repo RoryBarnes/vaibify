@@ -38,6 +38,8 @@ def fixtureApp():
     from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
 
     app = FastAPI()
+    app.state.dictContainerOwners = {}
+    app.state.iHubPort = 8050
     dictCtx = {"require": lambda: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
     return app
@@ -179,6 +181,8 @@ def _fClientWithDocker(mockDocker):
     from starlette.testclient import TestClient
     from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
     app = FastAPI()
+    app.state.dictContainerOwners = {}
+    app.state.iHubPort = 8050
     dictCtx = {"require": lambda: None, "docker": mockDocker}
     fnRegisterRegistryRoutes(app, dictCtx)
     return TestClient(app)

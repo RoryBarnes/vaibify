@@ -300,9 +300,16 @@ Several vaibify instances can run on the same host. Typing
 invocation auto-shifts to the next free port (8051, 8052, …) and
 announces the fallback on stderr. Pass `--port N` to pin an
 explicit port. Any given container may be accessed by only one
-vaibify session at a time: the hub landing page greys out
-containers already held by another session, and a second
-`vaibify start -p X` on the same project refuses to attach.
+browser session at a time: the hub landing page greys out
+containers already held by another session, a second tab that tries
+to open a held container is refused *"In use in another browser
+session"*, and a second `vaibify start -p X` on the same project
+refuses to attach. The exclusivity mechanism — the per-claim lease,
+the owner-of-record map, the one-live-connection invariant, and the
+release triggers — is specified once in the
+[architecture reference](architecture.md#single-browser-session-per-container);
+that section is the normative source of truth, including the
+holder-payload field table.
 The **New vaibify window** button on the container hub, workflow
 picker, and Admin menu spawns a detached hub on a free port and
 opens it in a new browser tab.

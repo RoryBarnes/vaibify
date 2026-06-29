@@ -42,6 +42,7 @@ __all__ = [
     "fnValidatePathWithinRoot",
     "fbHasAgentToken",
     "fbValidateWebSocketOrigin",
+    "fsContainerNameForId",
     "fsGetOriginHeader",
     "fdictExtractSettings",
     "fdictFilterNonNone",
@@ -68,6 +69,7 @@ __all__ = [
 from . import actionCatalog
 from . import agentSessionBridge
 from . import conftestManager
+from . import containerOwnership
 from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
@@ -100,8 +102,6 @@ def fsSanitizeExceptionForClient(exc):
         if sPattern.lower() in sRaw.lower():
             return sMessage
     return "Pipeline action failed. Check server logs for details."
-
-sTerminalUser = None
 
 
 # ---------------------------------------------------------------
@@ -938,12 +938,47 @@ def _fsResolveContainerUser(dictCtx, sContainerId):
 
 
 def _fnAuthorizeContainer(dictCtx, sContainerId):
-    """Authorize the container and cache its user."""
-    dictCtx["setAllowedContainers"].add(sContainerId)
+    """Cache the container's user and register the viewer's served record.
+
+    Hub authorization is decided by the lease recorded at claim time, so
+    a hub never adds an ownership record here (doing so would re-open the
+    append-only authorization leak the lease model closes). The viewer
+    holds exactly one container for its process lifetime and has no claim
+    route, so its served container is recorded in ``dictContainerOwners``
+    here purely to keep the idle busy-veto honest about a mid-run viewer.
+    """
+    _fnRegisterViewerServedContainer(dictCtx, sContainerId)
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
     _fnPushAgentSession(dictCtx, sContainerId)
+
+
+def _fnRegisterViewerServedContainer(dictCtx, sContainerId):
+    """Record a viewer's served container, keyed by its canonical name.
+
+    The viewer has no claim route, so it mints its own lease here and
+    must key the record by the SAME canonical name the gate, reaper, and
+    keep-alive teardown use (per the owner-map key decision) -- keying by
+    the raw docker id would make every gate lookup miss and would stop
+    keep-alive by the wrong key on teardown. The minted lease is stashed
+    on ``dictCtx['sViewerLease']`` so the connect response can hand it to
+    the viewer's browser, which then presents it on its WebSockets.
+    """
+    if dictCtx.get("bIsHub"):
+        return
+    dictContainerOwners = dictCtx.get("dictContainerOwners")
+    if dictContainerOwners is None:
+        return
+    sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
+    if sName in dictContainerOwners:
+        dictCtx["sViewerLease"] = dictContainerOwners[sName].sLeaseId
+        return
+    sLeaseId = containerOwnership.fsMintLease()
+    dictContainerOwners[sName] = containerOwnership.OwnerRecord(
+        sLeaseId=sLeaseId, fileHandleLock=None,
+    )
+    dictCtx["sViewerLease"] = sLeaseId
 
 
 def _fnPushAgentSession(dictCtx, sContainerId):
@@ -967,6 +1002,7 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId):
         "sContainerId": sContainerId,
         "sWorkflowPath": None,
         "dictWorkflow": None,
+        "sLeaseId": dictCtx.get("sViewerLease", ""),
     }
 
 
@@ -1065,6 +1101,7 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             "sWorkflowPath": sResolved,
             "dictWorkflow": fdictWorkflowWithLabels(dictWorkflow),
             "dictFileStatus": dictFileStatus,
+            "sLeaseId": dictCtx.get("sViewerLease", ""),
         }
     except HTTPException:
         raise
@@ -1143,69 +1180,31 @@ def _fnLaunchDependencyScan(
 
 
 # ---------------------------------------------------------------
-# Docker runtime detection
-# ---------------------------------------------------------------
-
-def _fbCaffeinateRunning():
-    """Return True if a caffeinate process is active for this user."""
-    import subprocess
-    try:
-        resultProcess = subprocess.run(
-            ["pgrep", "-u", str(os.getuid()), "-x", "caffeinate"],
-            capture_output=True, timeout=2,
-        )
-        return resultProcess.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def _fdictSleepWarningForContext(sContext):
-    """Return runtime info dict with appropriate sleep warning."""
-    if _fbCaffeinateRunning():
-        return {"sRuntime": sContext, "sSleepWarning": ""}
-    sSleepDefault = (
-        "Use 'caffeinate -s' to prevent macOS from "
-        "sleeping during long pipeline runs."
-    )
-    if "colima" in sContext:
-        return {"sRuntime": "colima", "sSleepWarning":
-            "Your Docker runtime (Colima) does not "
-            "sleep automatically. " + sSleepDefault}
-    if "desktop" in sContext or "default" == sContext:
-        return {"sRuntime": "desktop", "sSleepWarning":
-            "Ensure Docker Desktop is configured to "
-            "not sleep idle VMs (Settings > Resources "
-            "> Advanced). Also consider running "
-            "'caffeinate -s' to prevent macOS sleep."}
-    if "orbstack" in sContext:
-        return {"sRuntime": "orbstack", "sSleepWarning":
-            "OrbStack VMs survive sleep. " + sSleepDefault}
-    return {"sRuntime": sContext, "sSleepWarning": sSleepDefault}
-
-
-def fsDetectDockerRuntime():
-    """Detect the Docker runtime (colima, desktop, orbstack, etc.)."""
-    import subprocess
-    try:
-        resultContext = subprocess.run(
-            ["docker", "context", "ls", "--format",
-             "{{.Name}}:{{.Current}}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        for sLine in resultContext.stdout.strip().split("\n"):
-            if ":true" in sLine.lower():
-                sContext = sLine.split(":")[0].strip().lower()
-                return _fdictSleepWarningForContext(sContext)
-    except Exception:
-        pass
-    return {"sRuntime": "unknown", "sSleepWarning":
-        "Use 'caffeinate -s' to prevent your computer from "
-        "sleeping during long pipeline runs."}
-
-
-# ---------------------------------------------------------------
 # WebSocket origin validation
 # ---------------------------------------------------------------
+
+def fsContainerNameForId(connectionDocker, sContainerId):
+    """Resolve a docker container id to its canonical project name.
+
+    The owner-of-record map is keyed by container NAME (the project name
+    the claim route writes), but the WebSocket routes receive the docker
+    id in their path because the downstream ``docker exec`` needs it. This
+    single conversion lets the name-keyed gate, reaper, and keep-alive
+    teardown stay consistent with the name-keyed claim writes. Falls back
+    to the supplied identifier when Docker is unavailable or the container
+    is not in the running set, so a caller that already holds a name (the
+    viewer, or a test fixture where name == id) is unaffected.
+    """
+    if connectionDocker is None:
+        return sContainerId
+    try:
+        for dictRow in connectionDocker.flistGetRunningContainers():
+            if dictRow.get("sContainerId") == sContainerId:
+                return dictRow.get("sName") or sContainerId
+    except Exception:
+        return sContainerId
+    return sContainerId
+
 
 def fbValidateWebSocketOrigin(websocket: WebSocket, sExpectedToken=None):
     """Return True if the WebSocket carries a trusted origin or agent token.
@@ -1432,28 +1431,6 @@ def __getattr__(sName):
 # Application context builder
 # ---------------------------------------------------------------
 
-def _fnRequireDocker(connectionDocker):
-    """Raise 503 if Docker is unavailable, with a specific diagnosis."""
-    if connectionDocker is not None:
-        return
-    sDetail = _fsBuildDockerUnavailableDetail()
-    raise HTTPException(503, sDetail)
-
-
-def _fsBuildDockerUnavailableDetail():
-    """Compose the 503 detail string from the cached diagnosis."""
-    sError = _dictDockerStatus.get("sError", "")
-    sHint = _dictDockerStatus.get("sHint", "")
-    sCommand = _dictDockerStatus.get("sCommand", "")
-    sDetail = "Docker support is not available."
-    if sHint:
-        sDetail += " " + sHint
-    if sCommand:
-        sDetail += " Try: " + sCommand
-    if sError:
-        sDetail += " (cause: " + sError + ")"
-    return sDetail
-
 
 def fsRequireWorkflowPath(dictPaths, sContainerId):
     """Return workflow path or raise 404."""
@@ -1569,72 +1546,6 @@ def fdictBuildContext(connectionDocker):
     return RouteContext(dictRaw)
 
 
-_dictDockerStatus = {"sError": "", "sHint": "", "sCommand": ""}
-
-
-def _fconnectionCreateDocker():
-    """Lazily create a DockerConnection or return None.
-
-    Failures are captured into ``_dictDockerStatus`` so the 503 path
-    and the ``/api/system/docker-status`` probe can surface a specific
-    diagnosis instead of a generic 'Docker support is not available'
-    toast that leaves the user guessing whether the daemon, the
-    runtime, or the binary is at fault.
-    """
-    try:
-        from ..docker.dockerConnection import DockerConnection
-        connection = DockerConnection()
-    except Exception as error:
-        _fnRecordDockerError(str(error) or repr(error))
-        return None
-    _fnClearDockerError()
-    return connection
-
-
-def _fnRecordDockerError(sError):
-    """Store the most recent Docker init failure for surfacing in UI."""
-    import sys
-    from ..docker.dockerContext import fsActiveDockerContext
-    dictDiagnosis = fdictDiagnoseDockerError(
-        sError,
-        sContext=fsActiveDockerContext(),
-        sPlatform=sys.platform,
-    )
-    _dictDockerStatus["sError"] = sError
-    _dictDockerStatus["sHint"] = dictDiagnosis["sHint"]
-    _dictDockerStatus["sCommand"] = dictDiagnosis["sCommand"]
-
-
-def _fnClearDockerError():
-    """Reset the diagnosis holder when Docker is reachable."""
-    _dictDockerStatus["sError"] = ""
-    _dictDockerStatus["sHint"] = ""
-    _dictDockerStatus["sCommand"] = ""
-
-
-def fdictGetDockerStatus():
-    """Return a snapshot of the current Docker availability state."""
-    return {
-        "bAvailable": not _dictDockerStatus["sError"],
-        "sError": _dictDockerStatus["sError"],
-        "sHint": _dictDockerStatus["sHint"],
-        "sCommand": _dictDockerStatus["sCommand"],
-    }
-
-
-def fdictRetryDockerConnection(dictCtx):
-    """Re-attempt the Docker connection and swap dictCtx on success.
-
-    Mutating ``dictCtx['docker']`` lets every route closure pick up
-    the new connection without a vaibify restart, because
-    ``_ftupleBuildHelpers`` reads the connection from the shared
-    raw-dict at call time rather than capturing it at build time.
-    """
-    connectionNew = _fconnectionCreateDocker()
-    dictCtx["docker"] = connectionNew
-    return fdictGetDockerStatus()
-
-
 # ---------------------------------------------------------------
 # Route registration (delegates to route modules)
 # ---------------------------------------------------------------
@@ -1665,206 +1576,8 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
 
 
 # ---------------------------------------------------------------
-# Middleware
-# ---------------------------------------------------------------
-
-_SET_LOCAL_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
-
-
-def fbIsAllowedHostHeader(sHostHeader, iExpectedPort):
-    """Return True when sHostHeader resolves to a local loopback origin.
-
-    Guards against DNS rebinding: an attacker-controlled domain that
-    has been re-pointed at 127.0.0.1 would send its original name in
-    the ``Host:`` header, so rejecting anything outside the loopback
-    set prevents a remote page from driving local API endpoints.
-    """
-    if not sHostHeader:
-        return False
-    sHostPort = sHostHeader.split(",", 1)[0].strip()
-    sHost, sPort = _ftSplitHostPort(sHostPort)
-    if sHost not in _SET_LOCAL_HOST_NAMES:
-        return False
-    if sPort == "":
-        return True
-    try:
-        iPort = int(sPort)
-    except ValueError:
-        return False
-    return iPort == iExpectedPort
-
-
-def _ftSplitHostPort(sHostPort):
-    """Split host and port, tolerating bracketed IPv6 and bare hosts."""
-    if sHostPort.startswith("["):
-        iBracket = sHostPort.find("]")
-        if iBracket == -1:
-            return (sHostPort, "")
-        sHost = sHostPort[: iBracket + 1]
-        sRest = sHostPort[iBracket + 1:]
-        sPort = sRest.lstrip(":") if sRest.startswith(":") else ""
-        return (sHost, sPort)
-    if ":" in sHostPort:
-        sHost, sPort = sHostPort.rsplit(":", 1)
-        return (sHost, sPort)
-    return (sHostPort, "")
-
-
-class SessionTokenMiddleware(BaseHTTPMiddleware):
-    """Reject requests with unsafe Host headers or missing session tokens.
-
-    An in-container ``vaibify-do`` agent authenticates via the
-    ``X-Vaibify-Session`` header and reaches the backend through
-    ``host.docker.internal``, so requests that present a valid agent
-    token bypass the browser-oriented Host-header loopback check.
-    """
-
-    async def dispatch(self, request: Request, call_next):
-        sExpected = request.app.state.sSessionToken
-        sAgentToken = request.headers.get(
-            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
-        )
-        if sAgentToken and sAgentToken == sExpected:
-            return await call_next(request)
-        if not _fbRequestHasAllowedHost(request):
-            return Response(
-                status_code=400,
-                content='{"detail":"Invalid Host header"}',
-                media_type="application/json",
-            )
-        sPath = request.url.path
-        bNeedsToken = (
-            sPath.startswith("/api/")
-            and sPath != "/api/session-token"
-        )
-        if bNeedsToken:
-            sToken = request.headers.get("x-session-token", "")
-            if not sToken:
-                bIsWebSocket = (
-                    request.headers.get("upgrade", "").lower()
-                    == "websocket")
-                bIsDownload = "/download/" in sPath
-                if bIsWebSocket or bIsDownload:
-                    sToken = request.query_params.get(
-                        "sToken", "")
-            if sToken != sExpected:
-                return Response(
-                    status_code=401,
-                    content='{"detail":"Unauthorized"}',
-                    media_type="application/json",
-                )
-        return await call_next(request)
-
-
-def _fbRequestHasAllowedHost(request):
-    """Return True when the request Host header is a permitted loopback."""
-    iExpectedPort = getattr(request.app.state, "iExpectedPort", 0)
-    if not iExpectedPort:
-        return True
-    sHostHeader = request.headers.get("host", "")
-    return fbIsAllowedHostHeader(sHostHeader, iExpectedPort)
-
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to all HTTP responses."""
-
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = (
-            "strict-origin-when-cross-origin"
-        )
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://cdnjs.cloudflare.com "
-            "https://cdn.jsdelivr.net; "
-            "worker-src 'self' blob: "
-            "https://cdnjs.cloudflare.com; "
-            "style-src 'self' 'unsafe-inline' "
-            "https://cdn.jsdelivr.net "
-            "https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data: blob:; "
-            "connect-src 'self' "
-            "ws://127.0.0.1:* wss://127.0.0.1:* "
-            "ws://localhost:* wss://localhost:*; "
-            "frame-ancestors 'none'"
-        )
-        return response
-
-
-class ActivityTrackingMiddleware(BaseHTTPMiddleware):
-    """Stamp ``app.state.fLastActivityMonotonic`` on every HTTP request.
-
-    The monotonic clock is the idle watchdog's HTTP-activity signal.
-    Live-browser presence is tracked separately by the WebSocket
-    counter so a connected-but-quiet tab never trips the timeout.
-    """
-
-    async def dispatch(self, request: Request, call_next):
-        request.app.state.fLastActivityMonotonic = time.monotonic()
-        return await call_next(request)
-
-
-# ---------------------------------------------------------------
 # Application factories
 # ---------------------------------------------------------------
-
-@asynccontextmanager
-async def _alifespanShared(app):
-    """Single lifespan that drives every registered startup/shutdown hook.
-
-    Modules append callables to ``app.state.listLifespanStartup`` and
-    ``app.state.listLifespanShutdown`` between app construction and the
-    first ASGI request. This replaces the deprecated
-    ``@app.on_event("startup"/"shutdown")`` decorators (FastAPI emits
-    a DeprecationWarning when those are used; mixing them with
-    ``lifespan=`` is also unsupported).
-
-    Each startup hook runs in its own ``try/except`` so a single
-    failing hook cannot abort the lifespan before ``yield``; if it
-    did, the shutdown loop would be skipped and resources already
-    acquired by earlier hooks (e.g. background tasks, container
-    locks) would leak. Shutdown hooks likewise run independently so
-    one failure does not silence subsequent cleanup.
-    """
-    for fnStartup in list(getattr(app.state, "listLifespanStartup", [])):
-        await _fnRunStartupHookSafely(fnStartup, app)
-    yield
-    for fnShutdown in list(getattr(app.state, "listLifespanShutdown", [])):
-        await _fnRunShutdownHookSafely(fnShutdown, app)
-
-
-async def _fnRunStartupHookSafely(fnHook, app):
-    """Invoke a startup hook, logging any exception without re-raising."""
-    try:
-        await _fnInvokeMaybeAsync(fnHook, app)
-    except Exception as errorAny:
-        logger.warning(
-            "Lifespan startup hook %s failed: %s",
-            getattr(fnHook, "__name__", repr(fnHook)),
-            type(errorAny).__name__,
-        )
-
-
-async def _fnRunShutdownHookSafely(fnHook, app):
-    """Invoke a shutdown hook, logging any exception without re-raising."""
-    try:
-        await _fnInvokeMaybeAsync(fnHook, app)
-    except Exception as errorAny:
-        logger.warning(
-            "Lifespan shutdown hook %s failed: %s",
-            getattr(fnHook, "__name__", repr(fnHook)),
-            type(errorAny).__name__,
-        )
-
-
-async def _fnInvokeMaybeAsync(fnHook, app):
-    """Invoke a lifespan hook that may be sync or async."""
-    objectResult = fnHook(app)
-    if asyncio.iscoroutine(objectResult):
-        await objectResult
 
 
 def _fnRegisterLastResortExceptionHandler(app):
@@ -1891,442 +1604,71 @@ def _fnRegisterLastResortExceptionHandler(app):
         )
 
 
-def fappCreateApplication(
-    sWorkspaceRoot="/workspace", sTerminalUserArg=None,
-    iExpectedPort=0,
-):
-    """Build and return the configured FastAPI application.
-
-    When ``iExpectedPort`` is non-zero, the SessionTokenMiddleware
-    enforces a strict ``Host:`` header check (DNS rebinding defense).
-    CLI launchers pass the real bind port; test fixtures omit the
-    argument so TestClient's default ``testserver`` host is accepted.
-    """
-    global sTerminalUser
-    sTerminalUser = sTerminalUserArg
-    app = FastAPI(
-        title="Vaibify Workflow Viewer", lifespan=_alifespanShared,
-    )
-    app.state.listLifespanStartup = []
-    app.state.listLifespanShutdown = []
-    sSessionToken = secrets.token_urlsafe(32)
-    app.state.sSessionToken = sSessionToken
-    app.state.setAllowedContainers = set()
-    app.state.iExpectedPort = iExpectedPort
-    app.state.iActiveWebSockets = 0
-    app.state.fLastActivityMonotonic = time.monotonic()
-    app.add_middleware(ActivityTrackingMiddleware)
-    app.add_middleware(SessionTokenMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
-    _fnRegisterLastResortExceptionHandler(app)
-    dictCtx = fdictBuildContext(_fconnectionCreateDocker())
-    dictCtx["sSessionToken"] = sSessionToken
-    dictCtx["iPort"] = iExpectedPort
-    dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
-    _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot)
-    _fnRegisterDefaultThreadPoolExecutor(app)
-    _fnRegisterPeriodicContainerSweep(app, dictCtx)
-    _fnRegisterIdleShutdownWatchdog(app, dictCtx)
-    return app
-
-
-def fappCreateHubApplication(iExpectedPort=0):
-    """Build a hub-mode FastAPI app with registry support.
-
-    See :func:`fappCreateApplication` for ``iExpectedPort`` semantics.
-    """
-    from .registryRoutes import fnRegisterRegistryRoutes
-    global sTerminalUser
-    sTerminalUser = "researcher"
-    app = FastAPI(title="Vaibify Hub", lifespan=_alifespanShared)
-    app.state.listLifespanStartup = []
-    app.state.listLifespanShutdown = []
-    sSessionToken = secrets.token_urlsafe(32)
-    app.state.sSessionToken = sSessionToken
-    app.state.setAllowedContainers = set()
-    app.state.iExpectedPort = iExpectedPort
-    app.state.iHubPort = iExpectedPort
-    app.state.dictContainerLocks = {}
-    app.state.iActiveWebSockets = 0
-    app.state.fLastActivityMonotonic = time.monotonic()
-    app.add_middleware(ActivityTrackingMiddleware)
-    app.add_middleware(SessionTokenMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
-    _fnRegisterLastResortExceptionHandler(app)
-    dictCtx = fdictBuildContext(_fconnectionCreateDocker())
-    dictCtx["sSessionToken"] = sSessionToken
-    dictCtx["iPort"] = iExpectedPort
-    dictCtx["setAllowedContainers"] = app.state.setAllowedContainers
-    _fnRegisterAllRoutes(app, dictCtx, WORKSPACE_ROOT)
-    fnRegisterRegistryRoutes(app, dictCtx)
-    # Register keep-alive stop BEFORE the lock lifecycle: shutdown hooks
-    # run in registration order, and fnStopAllKeepAlive reads
-    # dictContainerLocks, which the lock-release hook clears. Stopping
-    # first ensures caffeinate is killed for every still-held container.
-    _fnRegisterHubShutdownStopKeepAlive(app)
-    _fnRegisterHubLockLifecycle(app)
-    _fnRegisterDefaultThreadPoolExecutor(app)
-    _fnRegisterPeriodicContainerSweep(app, dictCtx)
-    _fnRegisterIdleShutdownWatchdog(app, dictCtx)
-    return app
-
-
-def _fnRegisterHubLockLifecycle(app):
-    """Reap stale claims at startup; release held locks at shutdown."""
-    _fnRegisterHubStartupReapStaleClaims(app)
-    _fnRegisterHubShutdownReleaseLocks(app)
-
-
-def _fnRegisterHubStartupReapStaleClaims(app):
-    """Reap dead-PID container locks before the hub serves requests."""
-
-    async def fnReapStaleClaims(app):
-        del app
-        from vaibify.config.containerLock import (
-            fnReapStaleContainerLocks,
-        )
-        fnReapStaleContainerLocks()
-    app.state.listLifespanStartup.append(fnReapStaleClaims)
-
-
-def _fnRegisterHubShutdownReleaseLocks(app):
-    """Release all held container locks when the hub shuts down."""
-
-    async def fnReleaseAllContainerLocks(app):
-        from vaibify.config.containerLock import fnReleaseContainerLock
-        for fileHandle in list(app.state.dictContainerLocks.values()):
-            try:
-                fnReleaseContainerLock(fileHandle)
-            except OSError:
-                pass
-        app.state.dictContainerLocks.clear()
-    app.state.listLifespanShutdown.append(fnReleaseAllContainerLocks)
-
-
-# Interval between periodic container-cache sweeps. The eviction work
-# itself is cheap (one Docker list + a handful of dict pops); the cap
-# determines worst-case latency between a container disappearing and
-# its cached state being dropped, which bounds memory growth across
-# multi-week host uptimes without measurably loading the event loop.
-F_CONTAINER_SWEEP_INTERVAL_SECONDS = 60.0
-
-
-def _fnRegisterPeriodicContainerSweep(app, dictCtx, fInterval=None):
-    """Install a background asyncio task that evicts caches on a timer.
-
-    Today ``fnSweepAllContainerCaches`` only fires on
-    ``GET /api/registry``; a user who never reopens the picker leaves
-    every per-container cache dormant. This loop calls the sweep every
-    ``fInterval`` seconds so eviction tracks reality even on idle hubs.
-    The task is registered on the lifespan so it is cleanly cancelled
-    at shutdown.
-    """
-    fIntervalEffective = (
-        fInterval if fInterval is not None
-        else F_CONTAINER_SWEEP_INTERVAL_SECONDS
-    )
-
-    async def fnStartSweepTask(app):
-        taskSweep = asyncio.create_task(
-            _fnPeriodicContainerSweepLoop(dictCtx, fIntervalEffective),
-            name="vaibify-container-sweep",
-        )
-        app.state.taskContainerSweep = taskSweep
-
-    async def fnStopSweepTask(app):
-        taskSweep = getattr(app.state, "taskContainerSweep", None)
-        if taskSweep is None or taskSweep.done():
-            return
-        taskSweep.cancel()
-        try:
-            await taskSweep
-        except (asyncio.CancelledError, Exception):
-            pass
-
-    app.state.listLifespanStartup.append(fnStartSweepTask)
-    app.state.listLifespanShutdown.append(fnStopSweepTask)
-
-
-async def _fnPeriodicContainerSweepLoop(dictCtx, fInterval):
-    """Run ``fnSweepAllContainerCaches`` forever on a fixed cadence.
-
-    Exits cleanly on ``CancelledError`` (lifespan shutdown). Any other
-    exception is logged but the loop continues — a transient docker
-    error must not silently terminate the sweep for the rest of the
-    process lifetime.
-    """
-    while True:
-        try:
-            await asyncio.sleep(fInterval)
-            await _fnRunOneContainerSweep(dictCtx)
-        except asyncio.CancelledError:
-            return
-        except Exception:
-            logger.warning(
-                "Periodic container sweep iteration failed",
-                exc_info=True,
-            )
-
-
-async def _fnRunOneContainerSweep(dictCtx):
-    """Execute a single sweep tick against the current running set."""
-    from .fileStatusManager import fnSweepAllContainerCaches
-    connectionDocker = dictCtx.get("docker") if dictCtx else None
-    if connectionDocker is None:
-        return
-    try:
-        listContainers = await asyncio.to_thread(
-            connectionDocker.flistGetRunningContainers,
-        )
-    except Exception:
-        logger.warning(
-            "Could not list running containers for sweep",
-            exc_info=True,
-        )
-        return
-    listIds = [
-        dictRow.get("sContainerId", "") for dictRow in listContainers
-    ]
-    fnSweepAllContainerCaches(
-        dictCtx, [sId for sId in listIds if sId],
-    )
-
-
-# Docker connection pool ceiling (see ``_fnTuneDockerSessionPool``) is
-# 32 simultaneous in-flight HTTP requests against the daemon. Sizing
-# the event loop's default ThreadPoolExecutor to at least 32 workers
-# stops the pool from becoming the bottleneck for the many concurrent
-# ``asyncio.to_thread`` callers (heartbeat, badge fan-out, state
-# writer, file-status poll). The ``cpu_count() * 4`` upper bound
-# keeps small hosts honest while still scaling with core count on a
-# multi-core researcher workstation.
-I_VAIBIFY_IO_THREAD_POOL_FLOOR = 32
-
-
-def _fnRegisterDefaultThreadPoolExecutor(app):
-    """Install a named ``vaibify-io`` ThreadPoolExecutor on startup.
-
-    Python's default executor sizes to ``cpu_count() + 4`` workers,
-    which under-provisions vaibify for the concurrent docker-exec
-    workload the dashboard generates. The replacement is named so it
-    shows up in ``py-spy``/``thread dump`` output, and is shut down
-    on lifespan exit so the process exits cleanly.
-    """
-
-    async def fnInstallExecutor(app):
-        from concurrent.futures import ThreadPoolExecutor
-        iWorkers = max(
-            I_VAIBIFY_IO_THREAD_POOL_FLOOR,
-            (os.cpu_count() or 1) * 4,
-        )
-        executorIo = ThreadPoolExecutor(
-            max_workers=iWorkers,
-            thread_name_prefix="vaibify-io",
-        )
-        app.state.executorIoThreadPool = executorIo
-        asyncio.get_running_loop().set_default_executor(executorIo)
-
-    async def fnShutdownExecutor(app):
-        executorIo = getattr(app.state, "executorIoThreadPool", None)
-        if executorIo is None:
-            return
-        executorIo.shutdown(wait=False, cancel_futures=True)
-        app.state.executorIoThreadPool = None
-
-    app.state.listLifespanStartup.append(fnInstallExecutor)
-    app.state.listLifespanShutdown.append(fnShutdownExecutor)
-
-
 # ---------------------------------------------------------------
-# Idle self-shutdown watchdog (JupyterHub shutdown_no_activity_timeout
-# analog). A hub/viewer with no connected browser tab and no running
-# pipeline self-retires after the idle timeout so abandoned servers
-# stop holding their session slot and per-container locks indefinitely.
+# Re-exports from the extracted server modules (backward compat).
+# Internal callers should import from the canonical module; these
+# bindings keep external importers and the test patch surface
+# (e.g. ``pipelineServer._fconnectionCreateDocker``) working.
 # ---------------------------------------------------------------
 
-F_HUB_IDLE_TIMEOUT_SECONDS = 1800.0
-F_HUB_WATCHDOG_INTERVAL_SECONDS = 60.0
-S_HUB_IDLE_TIMEOUT_ENV = "VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS"
-
-
-def _fIdleTimeoutSeconds():
-    """Return the idle timeout, honoring the env override when valid."""
-    sOverride = os.environ.get(S_HUB_IDLE_TIMEOUT_ENV, "")
-    if not sOverride:
-        return F_HUB_IDLE_TIMEOUT_SECONDS
-    try:
-        return float(sOverride)
-    except ValueError:
-        return F_HUB_IDLE_TIMEOUT_SECONDS
-
-
-def fnIncrementWebSocketCount(app):
-    """Increment the live-WebSocket presence counter on the app state."""
-    iCurrent = getattr(app.state, "iActiveWebSockets", 0)
-    app.state.iActiveWebSockets = iCurrent + 1
-
-
-def fnDecrementWebSocketCount(app):
-    """Decrement the live-WebSocket presence counter, floored at zero."""
-    iCurrent = getattr(app.state, "iActiveWebSockets", 0)
-    app.state.iActiveWebSockets = max(0, iCurrent - 1)
-
-
-def _flistHeldContainerIds(app, dictCtx):
-    """Resolve held lock names to running container ids via the Docker list.
-
-    Held lock names are project/container names (``dictContainerLocks``
-    keys); the running-container list maps each name to its id. A Docker
-    failure propagates so the caller can fail safe (treat as busy).
-    """
-    dictLocks = getattr(app.state, "dictContainerLocks", {})
-    setHeldNames = set(dictLocks.keys())
-    if not setHeldNames:
-        return []
-    connectionDocker = dictCtx.get("docker")
-    listContainers = connectionDocker.flistGetRunningContainers()
-    return [
-        dictRow.get("sContainerId", "")
-        for dictRow in listContainers
-        if dictRow.get("sName", "") in setHeldNames
-    ]
-
-
-def _fbAnyContainerRunning(dictCtx, listContainerIds):
-    """Return True if any container id reports a running pipeline."""
-    from .fileStatusManager import _fbPipelineIsRunning
-    for sContainerId in listContainerIds:
-        if sContainerId and _fbPipelineIsRunning(dictCtx, sContainerId):
-            return True
-    return False
-
-
-def _flistBusyCandidateIds(app, dictCtx):
-    """Return the container ids whose run should veto idle self-exit.
-
-    A hub is responsible for the containers it holds locks on; the
-    single-container viewer holds no lock and is responsible for the
-    container ids it has served (``setAllowedContainers``).
-    """
-    if getattr(app.state, "dictContainerLocks", {}):
-        return _flistHeldContainerIds(app, dictCtx)
-    return list(getattr(app.state, "setAllowedContainers", set()))
-
-
-def _fbAnyHeldContainerBusy(app, dictCtx):
-    """Return True if any held or served container has a pipeline mid-run.
-
-    Covers the hub (containers it locks) and the viewer (containers it
-    serves). Fail-safe: any Docker error while listing or probing is
-    treated as busy so the watchdog never retires a session whose
-    container is only briefly unreachable.
-    """
-    try:
-        listIds = _flistBusyCandidateIds(app, dictCtx)
-        if not listIds:
-            return False
-        return _fbAnyContainerRunning(dictCtx, listIds)
-    except Exception:
-        return True
-
-
-def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
-    """Return True only when no tab is connected, nothing is mid-run,
-    and the HTTP-activity clock has been idle at least ``fTimeout``."""
-    if getattr(app.state, "iActiveWebSockets", 0) > 0:
-        return False
-    if _fbAnyHeldContainerBusy(app, dictCtx):
-        return False
-    fLast = getattr(
-        app.state, "fLastActivityMonotonic", time.monotonic(),
-    )
-    return (time.monotonic() - fLast) >= fTimeout
-
-
-def _fnPruneSpawnedChildrenForApp(app):
-    """Drop exited spawn children so the list can't grow between spawns."""
-    listChildren = getattr(app.state, "listSpawnedChildren", None)
-    if not listChildren:
-        return
-    from .routes.sessionRoutes import _fnPruneDeadChildren
-    _fnPruneDeadChildren(listChildren)
-
-
-async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
-    """Self-SIGTERM once the hub is idle past ``fTimeout``; else keep polling.
-
-    SIGTERM (not a direct teardown) lets uvicorn run the existing
-    graceful-shutdown hooks that release container locks and the
-    session slot. Exits cleanly on ``CancelledError`` at shutdown.
-    """
-    while True:
-        try:
-            await asyncio.sleep(fInterval)
-            _fnPruneSpawnedChildrenForApp(app)
-            if _fbHubShouldSelfExit(app, dictCtx, fTimeout):
-                os.kill(os.getpid(), signal.SIGTERM)
-                return
-        except asyncio.CancelledError:
-            return
-        except Exception:
-            logger.warning(
-                "Idle-shutdown watchdog iteration failed", exc_info=True,
-            )
-
-
-def _fnRegisterIdleShutdownWatchdog(app, dictCtx, fInterval=None):
-    """Install the idle self-shutdown watchdog on the lifespan.
-
-    Mirrors ``_fnRegisterPeriodicContainerSweep``: starts an asyncio
-    task at startup and cancels it cleanly at shutdown. The timeout is
-    read once at registration so the env override is honored.
-    """
-    fIntervalEffective = (
-        fInterval if fInterval is not None
-        else F_HUB_WATCHDOG_INTERVAL_SECONDS
-    )
-    fTimeout = _fIdleTimeoutSeconds()
-
-    async def fnStartWatchdog(app):
-        app.state.fLastActivityMonotonic = time.monotonic()
-        app.state.taskIdleWatchdog = asyncio.create_task(
-            _fnIdleShutdownWatchdogLoop(
-                app, dictCtx, fIntervalEffective, fTimeout,
-            ),
-            name="vaibify-idle-watchdog",
-        )
-
-    async def fnStopWatchdog(app):
-        taskWatchdog = getattr(app.state, "taskIdleWatchdog", None)
-        if taskWatchdog is None or taskWatchdog.done():
-            return
-        taskWatchdog.cancel()
-        try:
-            await taskWatchdog
-        except (asyncio.CancelledError, Exception):
-            pass
-
-    app.state.listLifespanStartup.append(fnStartWatchdog)
-    app.state.listLifespanShutdown.append(fnStopWatchdog)
-
-
-def _fnRegisterHubShutdownStopKeepAlive(app):
-    """Stop caffeinate for every held container when the hub shuts down.
-
-    ``fnStopKeepAlive`` otherwise only runs on an explicit Stop; without
-    this hook a hub that dies (idle self-exit, terminal close) leaks its
-    keep-alive caffeinate process for every held container.
-    """
-
-    async def fnStopAllKeepAlive(app):
-        from ..docker.keepAliveManager import fnStopKeepAlive
-        dictLocks = getattr(app.state, "dictContainerLocks", {})
-        for sName in list(dictLocks.keys()):
-            try:
-                fnStopKeepAlive(sName)
-            except Exception:
-                logger.warning("Keep-alive stop failed for %s", sName)
-
-    app.state.listLifespanShutdown.append(fnStopAllKeepAlive)
+from .dockerStatus import (  # noqa: E402,F401
+    _dictDockerStatus,
+    _fbCaffeinateRunning,
+    _fconnectionCreateDocker,
+    _fdictSleepWarningForContext,
+    _fnClearDockerError,
+    _fnRecordDockerError,
+    _fnRequireDocker,
+    _fsBuildDockerUnavailableDetail,
+    fdictGetDockerStatus,
+    fdictRetryDockerConnection,
+    fsDetectDockerRuntime,
+)
+from .serverMiddleware import (  # noqa: E402,F401
+    ActivityTrackingMiddleware,
+    SecurityHeadersMiddleware,
+    SessionTokenMiddleware,
+    _SET_LOCAL_HOST_NAMES,
+    _fbRequestHasAllowedHost,
+    _ftSplitHostPort,
+    fbIsAllowedHostHeader,
+    fnRegisterMiddleware,
+)
+from .serverLifespan import (  # noqa: E402,F401
+    F_CONTAINER_SWEEP_INTERVAL_SECONDS,
+    F_HUB_IDLE_TIMEOUT_SECONDS,
+    F_HUB_WATCHDOG_INTERVAL_SECONDS,
+    I_VAIBIFY_IO_THREAD_POOL_FLOOR,
+    S_HUB_IDLE_TIMEOUT_ENV,
+    _alifespanShared,
+    _fIdleTimeoutSeconds,
+    _fbAnyContainerRunning,
+    _fbAnyHeldContainerBusy,
+    _fbHubShouldSelfExit,
+    _fbOwnedNamePipelineRunning,
+    _flistBusyCandidateIds,
+    _flistHeldContainerIds,
+    _flistRunningIdsForName,
+    _fnIdleShutdownWatchdogLoop,
+    _fnInvokeMaybeAsync,
+    _fnPeriodicContainerSweepLoop,
+    _fnPruneSpawnedChildrenForApp,
+    _fnReapIdleOwnershipsForApp,
+    _fnRegisterDefaultThreadPoolExecutor,
+    _fnRegisterIdleShutdownWatchdog,
+    _fnRegisterPeriodicContainerSweep,
+    _fnRunOneContainerSweep,
+    _fnRunShutdownHookSafely,
+    _fnRunStartupHookSafely,
+    fnDecrementWebSocketCount,
+    fnIncrementWebSocketCount,
+    fnRegisterLifespanTask,
+)
+from .appFactory import (  # noqa: E402,F401
+    _fnRegisterHubLockLifecycle,
+    _fnRegisterHubShutdownReleaseLocks,
+    _fnRegisterHubShutdownStopKeepAlive,
+    _fnRegisterHubStartupReapStaleClaims,
+    fappCreateApplication,
+    fappCreateHubApplication,
+)

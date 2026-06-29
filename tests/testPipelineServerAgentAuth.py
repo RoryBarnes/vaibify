@@ -43,14 +43,14 @@ def test_fnPushAgentSession_swallows_bridge_errors(caplog):
     )
 
 
-def test_fnAuthorizeContainer_still_adds_to_allowed_when_bridge_fails():
-    """An agent-bridge failure must not block container authorization."""
-    setAllowed = set()
+def test_fnAuthorizeContainer_still_records_owner_when_bridge_fails():
+    """An agent-bridge failure must not block the viewer's served record."""
+    dictContainerOwners = {}
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "scientist\n")
     dictCtx = {
         "docker": mockDocker,
-        "setAllowedContainers": setAllowed,
+        "dictContainerOwners": dictContainerOwners,
         "containerUsers": {},
         "sSessionToken": "tok",
         "iPort": 8050,
@@ -61,7 +61,7 @@ def test_fnAuthorizeContainer_still_adds_to_allowed_when_bridge_fails():
         side_effect=RuntimeError("docker down"),
     ):
         pipelineServer._fnAuthorizeContainer(dictCtx, "c-id")
-    assert "c-id" in setAllowed
+    assert "c-id" in dictContainerOwners
     assert dictCtx["containerUsers"]["c-id"] == "scientist"
 
 

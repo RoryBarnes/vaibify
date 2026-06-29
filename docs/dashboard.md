@@ -348,21 +348,37 @@ them. From here you can also create a new container (the setup wizard
 from the [QuickStart](quickStart.md)) or add an existing project that
 already has a `vaibify.yml`.
 
-### One session per container
+### One browser session per container
 
-Each container managed by vaibify can be open in only one dashboard at
-a time. This prevents two browsers from issuing conflicting commands
-to the same container. When a session is already attached, the
-container appears greyed out on other hubs.
+Each container managed by vaibify can be open in only one **browser
+session** at a time. When you claim a container, the server mints a
+private lease for that tab; a different tab — even another tab of the
+same browser on the same hub — that tries to open the same container is
+refused with *"In use in another browser session"* and its tile renders
+greyed out. This holds across two tabs of one browser, two browsers,
+and two hubs alike; it is the single owner-of-record model described in
+the [architecture reference](architecture.md#single-browser-session-per-container).
+It is an operational guarantee for honest use behind vaibify's loopback
+trust boundary, not a defense against a hostile in-page script.
+
+Reloading the owning tab is safe: its lease lives in `sessionStorage`,
+so the refreshed tab re-asserts the same ownership and is never locked
+out of its own container.
 
 An abandoned session does not hold a container forever. A hub or
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
 [Configuration](configuration.md#vaibify_hub_idle_timeout_seconds)),
-freeing its container. The hub re-polls lock availability every few
-seconds, so a freed container un-greys on its own without a page
-reload. You can also list and stop live sessions from the host with
-`vaibify sessions` (see the [CLI Reference](cli.md#session-management)).
+freeing its container. Ownership is also released the moment the owning
+tab closes (a `pagehide` signal) or a brief disconnect's grace window
+expires with no reconnect — never while a pipeline is still running.
+The hub re-polls availability every few seconds, so a freed container
+un-greys on its own without a page reload. You can also list and stop
+live sessions from the host with `vaibify sessions` (see the
+[CLI Reference](cli.md#session-management)).
 
 The **New vaibify window** icon (⧉) in the hub, the workflow picker,
-and the dashboard's Admin menu launches a new vaibify session in a new browser tab — useful for working on two projects side by side.
+and the dashboard's Admin menu opens a fresh vaibify session in a new
+browser tab — useful for working on **two different projects** side by
+side. Each window claims its own containers; it is not a way to open
+the *same* container twice.

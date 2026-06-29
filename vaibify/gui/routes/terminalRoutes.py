@@ -6,9 +6,13 @@ from fastapi import WebSocket
 
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
-    fbValidateWebSocketOrigin,
     fnRejectTerminalStart,
     fnRunTerminalSession,
+    fsContainerNameForId,
+)
+from ..webSocketAuthorization import (
+    fiContainerSessionRejectionCode,
+    fnServeUnderLiveConnectionCounters,
 )
 from ..terminalSession import TerminalSession
 
@@ -20,35 +24,42 @@ def _fnRegisterTerminalWs(app, dictCtx):
     async def fnTerminalWs(
         websocket: WebSocket, sContainerId: str
     ):
-        if not fbValidateWebSocketOrigin(
-            websocket, dictCtx["sSessionToken"],
-        ):
-            await websocket.close(code=4003)
-            return
-        sToken = websocket.query_params.get("sToken", "")
-        if sToken != dictCtx["sSessionToken"]:
-            await websocket.close(code=4401)
-            return
-        if sContainerId not in dictCtx["setAllowedContainers"]:
-            await websocket.close(code=4403)
+        sName = fsContainerNameForId(
+            dictCtx.get("docker"), sContainerId,
+        )
+        iRejectCode = fiContainerSessionRejectionCode(
+            websocket, dictCtx, sName,
+        )
+        if iRejectCode:
+            await websocket.close(code=iRejectCode)
             return
         dictCtx["require"]()
-        await _fnTrackAndServeTerminal(app, websocket, dictCtx, sContainerId)
+        await _fnTrackAndServeTerminal(
+            app, websocket, dictCtx, sContainerId, sName,
+        )
 
 
-async def _fnTrackAndServeTerminal(app, websocket, dictCtx, sContainerId):
-    """Accept and serve a terminal session under the live-WebSocket count.
+async def _fnTrackAndServeTerminal(
+    app, websocket, dictCtx, sContainerId, sName,
+):
+    """Accept and serve a terminal session under the live-connection counters.
 
-    The increment precedes ``accept`` and the decrement runs in a
-    ``finally`` so the idle-shutdown watchdog can never retire a hub
+    Delegates to the shared counter wrapper so the per-container
+    one-session budget (and its 4409 duplicate-tab refusal) plus the
+    app-global live-WebSocket count are driven identically to the
+    pipeline route; the idle-shutdown watchdog can never retire a hub
     while a terminal tab is attached, even briefly mid-handshake.
     """
-    _pipelineServer.fnIncrementWebSocketCount(app)
-    try:
+
+    async def fnServe():
         await websocket.accept()
         await _fnStartAndRunTerminal(websocket, dictCtx, sContainerId)
-    finally:
-        _pipelineServer.fnDecrementWebSocketCount(app)
+
+    await fnServeUnderLiveConnectionCounters(
+        websocket, dictCtx.get("dictContainerOwners", {}), sName,
+        fnServe, lambda: _pipelineServer.fnIncrementWebSocketCount(app),
+        lambda: _pipelineServer.fnDecrementWebSocketCount(app),
+    )
 
 
 async def _fnStartAndRunTerminal(websocket, dictCtx, sContainerId):
@@ -56,7 +67,7 @@ async def _fnStartAndRunTerminal(websocket, dictCtx, sContainerId):
     session = TerminalSession(
         dictCtx["docker"], sContainerId,
         sUser=dictCtx["containerUsers"].get(
-            sContainerId, _pipelineServer.sTerminalUser
+            sContainerId, dictCtx.get("sTerminalUser")
         ),
     )
     try:

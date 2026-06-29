@@ -631,7 +631,7 @@ def test_hub_application_creates():
         app = pipelineServer.fappCreateHubApplication()
     assert app.title == "Vaibify Hub"
     assert hasattr(app.state, "sSessionToken")
-    assert hasattr(app.state, "setAllowedContainers")
+    assert hasattr(app.state, "dictContainerOwners")
 
 
 # ── Connect without workflow (no-workflow mode) ───────────────

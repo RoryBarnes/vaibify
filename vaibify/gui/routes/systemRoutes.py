@@ -8,7 +8,7 @@ import json
 import os
 
 from .. import pipelineServer as _pipelineServer
-from ..pipelineServer import (
+from ..dockerStatus import (
     fdictGetDockerStatus,
     fdictRetryDockerConnection,
     fsDetectDockerRuntime,
@@ -47,7 +47,7 @@ def _fnRegisterUserInfo(app):
     @app.get("/api/user")
     async def fnGetUser():
         return {
-            "sUserName": _pipelineServer.sTerminalUser or "User"
+            "sUserName": getattr(app.state, "sTerminalUser", None) or "User"
         }
 
 

@@ -16,6 +16,13 @@ var VaibifyPolling = (function () {
     var _bFileStatusInFlight = false;
     var _bReposInFlight = false;
     var _bDiscoveryInFlight = false;
+    var _iContainerHubPollTimer = null;
+    var _iWorkflowHubPollTimer = null;
+    var _iHubPollIntervalMs = 3000;
+    var _bContainerHubInFlight = false;
+    var _bWorkflowHubInFlight = false;
+    var _fnOnContainerHubPoll = null;
+    var _fnOnWorkflowHubPoll = null;
 
     /*
      * Failures are routed through VaibifyConnectionMonitor so a poll
@@ -233,6 +240,80 @@ var VaibifyPolling = (function () {
         }
     }
 
+    /*
+     * Container- and workflow-picker polling. These were hand-rolled
+     * timers in scriptApplication.js that hit /api/registry and
+     * /api/workflows directly and swallowed every failure, so a dead
+     * server during the picker view kept hammering silently. Folding
+     * them here routes their failures through the same connection
+     * monitor as the dashboard pollers, so an unreachable server
+     * surfaces a loud banner instead. The work itself stays in the
+     * caller's handler; this layer owns the timer, the in-flight
+     * guard, the immediate-first-poll, and the failure reporting.
+     */
+
+    function fnSetContainerHubHandler(fnHandler) {
+        _fnOnContainerHubPoll = fnHandler;
+    }
+
+    function fnSetWorkflowHubHandler(fnHandler) {
+        _fnOnWorkflowHubPoll = fnHandler;
+    }
+
+    function fnStartContainerHubPolling() {
+        fnStopContainerHubPolling();
+        _fnPollContainerHub();
+        _iContainerHubPollTimer = setInterval(
+            _fnPollContainerHub, _iHubPollIntervalMs);
+    }
+
+    function fnStopContainerHubPolling() {
+        if (_iContainerHubPollTimer) {
+            clearInterval(_iContainerHubPollTimer);
+            _iContainerHubPollTimer = null;
+        }
+    }
+
+    async function _fnPollContainerHub() {
+        if (_bContainerHubInFlight || !_fnOnContainerHubPoll) return;
+        _bContainerHubInFlight = true;
+        try {
+            await _fnOnContainerHubPoll();
+            _fnReportPollSuccess("container-hub");
+        } catch (error) {
+            _fnReportPollFailure("container-hub", error);
+        } finally {
+            _bContainerHubInFlight = false;
+        }
+    }
+
+    function fnStartWorkflowHubPolling() {
+        fnStopWorkflowHubPolling();
+        _fnPollWorkflowHub();
+        _iWorkflowHubPollTimer = setInterval(
+            _fnPollWorkflowHub, _iHubPollIntervalMs);
+    }
+
+    function fnStopWorkflowHubPolling() {
+        if (_iWorkflowHubPollTimer) {
+            clearInterval(_iWorkflowHubPollTimer);
+            _iWorkflowHubPollTimer = null;
+        }
+    }
+
+    async function _fnPollWorkflowHub() {
+        if (_bWorkflowHubInFlight || !_fnOnWorkflowHubPoll) return;
+        _bWorkflowHubInFlight = true;
+        try {
+            await _fnOnWorkflowHubPoll();
+            _fnReportPollSuccess("workflow-hub");
+        } catch (error) {
+            _fnReportPollFailure("workflow-hub", error);
+        } finally {
+            _bWorkflowHubInFlight = false;
+        }
+    }
+
     function fnSetPollInterval(iSeconds) {
         _iPollIntervalMs = iSeconds * 1000;
     }
@@ -254,6 +335,12 @@ var VaibifyPolling = (function () {
         fnSetWorkflowDiscoveryHandler: fnSetWorkflowDiscoveryHandler,
         fnStartDiscoveryPolling: fnStartDiscoveryPolling,
         fnStopDiscoveryPolling: fnStopDiscoveryPolling,
+        fnSetContainerHubHandler: fnSetContainerHubHandler,
+        fnStartContainerHubPolling: fnStartContainerHubPolling,
+        fnStopContainerHubPolling: fnStopContainerHubPolling,
+        fnSetWorkflowHubHandler: fnSetWorkflowHubHandler,
+        fnStartWorkflowHubPolling: fnStartWorkflowHubPolling,
+        fnStopWorkflowHubPolling: fnStopWorkflowHubPolling,
         fnSetPollInterval: fnSetPollInterval,
         fiGetPollIntervalMs: fiGetPollIntervalMs,
     };

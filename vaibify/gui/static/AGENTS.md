@@ -35,7 +35,7 @@ var ModuleName = (function () {
 dicts:
 
 ```javascript
-_dictSessionState   // session token, container id, user name, dashboard mode
+_dictSessionState   // session token, container id, per-tab lease, user name, dashboard mode
 _dictWorkflowState  // workflow, step status, file caches, undo stack
 _dictUiState        // selected step, expansion sets, timestamp toggle
 ```
@@ -78,6 +78,21 @@ verification indicator. If you add a new render path, call it.
 - **Polling cadences are invariants.** File-status polls every 5
   seconds; pipeline-state polls every 10 seconds. Do not change these
   without discussion — they affect the server's computed-state load.
+- **Per-container exclusivity is a server-minted lease (`sLeaseId`).**
+  The claim response carries it; store it per-tab in `sessionStorage`
+  (so a reload re-asserts the same ownership instead of locking the user
+  out) and present it as the `sLeaseId` query param on the pipeline and
+  terminal WebSocket URLs and on the claim / release / registry REST
+  calls. The lease — not the shared session token — is what says *which*
+  browser session owns a container; a 409 from claim surfaces an "In use
+  in another browser session" toast and the tile renders locked from
+  `bOwnedByOtherSession`. A `pagehide` handler `navigator.sendBeacon`s
+  the release route with the lease only; it is best-effort acceleration,
+  never load-bearing (the backend's disconnect-grace reaper is the real
+  release). The intended single fetch choke point is `VaibifyApi`; a
+  legacy `window.fetch` shim (`fnInstallAuthenticatedFetch`) still
+  injects the shared token and is known debt — do not add a second
+  token-injection path, and migrate callers toward `VaibifyApi`.
 
 ## Public API of `scriptApplication.js`
 

@@ -77,6 +77,8 @@ var VaibifyConnectionMonitor = (function () {
         try { VaibifyPolling.fnStopFilePolling(); } catch (e) {}
         try { VaibifyPolling.fnStopReposPolling(); } catch (e) {}
         try { VaibifyPolling.fnStopDiscoveryPolling(); } catch (e) {}
+        try { VaibifyPolling.fnStopContainerHubPolling(); } catch (e) {}
+        try { VaibifyPolling.fnStopWorkflowHubPolling(); } catch (e) {}
     }
 
     function _fnCloseWebSocket() {

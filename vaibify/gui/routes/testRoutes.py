@@ -44,7 +44,7 @@ async def _fdictRunTestGeneration(
     """Invoke the test generator and return its result dict."""
     dictVars = dictCtx["variables"](sContainerId)
     sUser = dictCtx["containerUsers"].get(
-        sContainerId, _pipelineServer.sTerminalUser
+        sContainerId, dictCtx.get("sTerminalUser")
     )
     try:
         return await asyncio.to_thread(
