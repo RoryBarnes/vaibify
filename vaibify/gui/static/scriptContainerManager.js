@@ -7,17 +7,28 @@ var PipeleyenContainerManager = (function () {
     var _sSelectedContainerName = null;
 
     async function fnLoadContainers() {
-        var elList = document.getElementById("listContainers");
-        await _fnRefreshDockerStatusBanner();
         try {
-            var dictResult = await VaibifyApi.fdictGet("/api/registry");
-            fnRenderContainerList(dictResult.listContainers || []);
-            fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
+            await fnRefreshContainerHub();
         } catch (error) {
-            elList.innerHTML =
-                '<p style="color: var(--color-red);">' +
-                "Cannot load containers</p>";
+            _fnShowContainerListLoadError();
         }
+    }
+
+    /* Throwing variant for the picker poller: a registry fetch failure
+       must propagate so VaibifyPolling can route it to the connection
+       monitor instead of leaving a stale list and hammering on. */
+    async function fnRefreshContainerHub() {
+        await _fnRefreshDockerStatusBanner();
+        var dictResult = await VaibifyApi.fdictGet(_fsRegistryUrl());
+        fnRenderContainerList(dictResult.listContainers || []);
+        fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
+    }
+
+    function _fnShowContainerListLoadError() {
+        var elList = document.getElementById("listContainers");
+        elList.innerHTML =
+            '<p style="color: var(--color-red);">' +
+            "Cannot load containers</p>";
     }
 
     async function _fnRefreshDockerStatusBanner() {
@@ -122,7 +133,9 @@ var PipeleyenContainerManager = (function () {
         elList.innerHTML = listUnrecognized.map(function (c) {
             return (
                 '<div class="container-card unrecognized" data-id="' +
-                VaibifyUtilities.fnEscapeHtml(c.sContainerId) + '">' +
+                VaibifyUtilities.fnEscapeHtml(c.sContainerId) +
+                '" data-name="' +
+                VaibifyUtilities.fnEscapeHtml(c.sName) + '">' +
                 '<span class="name">' +
                 VaibifyUtilities.fnEscapeHtml(c.sName) + "</span>" +
                 '<span class="image">' +
@@ -131,21 +144,34 @@ var PipeleyenContainerManager = (function () {
         }).join("");
         elList.querySelectorAll(".container-card").forEach(function (el) {
             el.addEventListener("click", function () {
-                fnConnectToContainer(el.dataset.id);
+                _fnClaimAndConnectUnrecognized(
+                    el.dataset.id, el.dataset.name);
             });
         });
+    }
+
+    async function _fnClaimAndConnectUnrecognized(sId, sName) {
+        /* An unrecognized container has no registry entry, but its docker
+           NAME is still the canonical claim key. Claim it before
+           connecting so the session holds a lease the pipeline and
+           terminal WebSockets can present; without the claim every WS
+           closes 4403. The claim is keyed by name, the connect by id. */
+        if (sName) {
+            var bClaimed = await _fbClaimContainer(sName);
+            if (!bClaimed) return;
+        }
+        fnConnectToContainer(sId);
     }
 
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
         var sId = dictContainer.sContainerId || "";
-        var bLocked = dictContainer.bLocked === true;
-        var sLockedClass = bLocked ? " container-tile--locked" : "";
-        var sLockedMessage = bLocked
-            ? _fsLockedMessage(dictContainer.iLockedByPort) : "";
-        var sLockedTitle = bLocked
+        var bUnavailable = _fbContainerUnavailable(dictContainer);
+        var sLockedClass = bUnavailable ? " container-tile--locked" : "";
+        var sLockedMessage = _fsUnavailableMessage(dictContainer);
+        var sLockedTitle = bUnavailable
             ? ' title="' + sLockedMessage + '"' : "";
-        var sLockedAttr = bLocked
+        var sLockedAttr = bUnavailable
             ? ' data-locked="true" data-locked-message="' +
               sLockedMessage + '"'
             : "";
@@ -180,6 +206,21 @@ var PipeleyenContainerManager = (function () {
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
         );
+    }
+
+    function _fbContainerUnavailable(dictContainer) {
+        return dictContainer.bLocked === true
+            || dictContainer.bOwnedByOtherSession === true;
+    }
+
+    function _fsUnavailableMessage(dictContainer) {
+        if (dictContainer.bOwnedByOtherSession === true) {
+            return "In use in another browser session.";
+        }
+        if (dictContainer.bLocked === true) {
+            return _fsLockedMessage(dictContainer.iLockedByPort);
+        }
+        return "";
     }
 
     function _fsLockedMessage(iLockedByPort) {
@@ -290,31 +331,40 @@ var PipeleyenContainerManager = (function () {
     }
 
     async function _fbClaimContainer(sName) {
+        var sLeaseId = PipeleyenApp.fsGetLeaseForContainer(sName);
         try {
-            await VaibifyApi.fdictPost(
-                "/api/registry/" + encodeURIComponent(sName) + "/claim",
-                {});
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/claim?sLeaseId=" + encodeURIComponent(sLeaseId), {});
+            PipeleyenApp.fnRecordClaimedLease(sName, dictResult.sLeaseId);
             return true;
         } catch (error) {
-            var dictDetail = error.dictDetail || {};
-            var sReason = dictDetail.iLockedByPort
-                ? _fsLockedMessage(dictDetail.iLockedByPort)
-                : _fsLockedMessage(0);
-            PipeleyenApp.fnShowToast(
-                "Container '" + sName + "': " + sReason, "warning");
+            _fnReportClaimRefusal(sName, error);
             return false;
         }
     }
 
+    function _fnReportClaimRefusal(sName, error) {
+        var dictDetail = error.dictDetail || {};
+        var sReason = dictDetail.sMessage
+            || (dictDetail.iLockedByPort
+                ? _fsLockedMessage(dictDetail.iLockedByPort)
+                : _fsLockedMessage(0));
+        PipeleyenApp.fnShowToast(
+            "Container '" + sName + "': " + sReason, "warning");
+    }
+
     async function fnReleaseClaim(sName) {
         if (!sName) return;
+        var sLeaseId = PipeleyenApp.fsGetLeaseForContainer(sName);
         try {
             await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
-                "/release", {});
+                "/release?sLeaseId=" + encodeURIComponent(sLeaseId), {});
         } catch (error) {
-            /* release is best-effort; shutdown will clean up */
+            /* release is best-effort; the grace reaper will clean up */
         }
+        PipeleyenApp.fnForgetLease();
     }
 
     async function fnHandleContainerAction(sName, sAction) {
@@ -607,9 +657,14 @@ var PipeleyenContainerManager = (function () {
         );
     }
 
+    function _fsRegistryUrl() {
+        var sLeaseId = PipeleyenApp.fsGetLeaseId();
+        return "/api/registry?sLeaseId=" + encodeURIComponent(sLeaseId);
+    }
+
     async function _fsResolveContainerId(sName) {
         try {
-            var dictResult = await VaibifyApi.fdictGet("/api/registry");
+            var dictResult = await VaibifyApi.fdictGet(_fsRegistryUrl());
             var listAll = dictResult.listContainers || [];
             var dictMatch = listAll.find(function (c) {
                 return c.sName === sName && c.sContainerId;
@@ -922,6 +977,7 @@ var PipeleyenContainerManager = (function () {
 
     return {
         fnLoadContainers: fnLoadContainers,
+        fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,

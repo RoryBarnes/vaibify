@@ -198,6 +198,40 @@ def test_fnReapStaleSessionSlots_removes_malformed_slot_names(
     assert not (tmp_session_dir / "garbage.slot").exists()
 
 
+def test_fnReapStaleSessionSlots_reaps_recycled_pid_via_start_time(
+    tmp_session_dir,
+):
+    """A live-PID slot with an ancient claim is treated as recycled."""
+    from vaibify.config.sessionRegistry import fnReapStaleSessionSlots
+    sSlot = tmp_session_dir / f"{os.getpid()}.slot"
+    sSlot.write_text(json.dumps({
+        "iPid": os.getpid(), "sRole": "hub", "iPort": 8050,
+        "sStartedIso": "2000-01-01T00:00:00",
+    }))
+    fnReapStaleSessionSlots()
+    assert not sSlot.exists()
+
+
+def test_fnReapStaleSessionSlots_keeps_legacy_payload_for_live_pid(
+    tmp_session_dir,
+):
+    """A live-PID slot whose payload omits sStartedIso is never reaped."""
+    from vaibify.config.sessionRegistry import fnReapStaleSessionSlots
+    sSlot = tmp_session_dir / f"{os.getpid()}.slot"
+    sSlot.write_text(json.dumps({
+        "iPid": os.getpid(), "sRole": "hub", "iPort": 8050,
+    }))
+    fnReapStaleSessionSlots()
+    assert sSlot.exists()
+
+
+def test_fdictReadSlotPayload_returns_empty_on_malformed(tmp_session_dir):
+    from vaibify.config.sessionRegistry import _fdictReadSlotPayload
+    sSlot = tmp_session_dir / "1234.slot"
+    sSlot.write_text("{not-valid-json")
+    assert _fdictReadSlotPayload(str(sSlot)) == {}
+
+
 def test_fnReapStaleSessionSlots_handles_missing_directory(
     tmp_path, monkeypatch,
 ):
@@ -221,6 +255,48 @@ def test_fnAcquireSessionSlot_reaps_dead_slots_first(tmp_session_dir):
         assert not (tmp_session_dir / sDeadSlot).exists()
     finally:
         fnReleaseSessionSlot(fileHandleSlot)
+
+
+# ---------------------------------------------------------------------------
+# flistReadAllSlots
+# ---------------------------------------------------------------------------
+
+
+def test_flistReadAllSlots_returns_empty_when_directory_missing(
+    tmp_path, monkeypatch,
+):
+    import vaibify.config.sessionRegistry as sessionRegistryModule
+    monkeypatch.setattr(
+        sessionRegistryModule, "_S_SESSION_DIRECTORY",
+        str(tmp_path / "does-not-exist"),
+    )
+    from vaibify.config.sessionRegistry import flistReadAllSlots
+    assert flistReadAllSlots() == []
+
+
+def test_flistReadAllSlots_lists_live_slot(tmp_session_dir):
+    from vaibify.config.sessionRegistry import (
+        fnAcquireSessionSlot, fnReleaseSessionSlot, flistReadAllSlots,
+    )
+    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    try:
+        listSlots = flistReadAllSlots()
+        assert len(listSlots) == 1
+        dictSlot = listSlots[0]
+        assert dictSlot["iPid"] == os.getpid()
+        assert dictSlot["sRole"] == "hub"
+        assert dictSlot["iPort"] == 8050
+        assert dictSlot["bAlive"] is True
+        assert "sStartedIso" in dictSlot
+    finally:
+        fnReleaseSessionSlot(fileHandleSlot)
+
+
+def test_flistReadAllSlots_skips_unheld_slot_file(tmp_session_dir):
+    """A .slot file with no live flock is not listed."""
+    from vaibify.config.sessionRegistry import flistReadAllSlots
+    (tmp_session_dir / "99999.slot").write_text("{}")
+    assert flistReadAllSlots() == []
 
 
 # ---------------------------------------------------------------------------

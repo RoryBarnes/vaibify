@@ -131,6 +131,25 @@ data-utils|git@github.com:user/data-utils.git|develop|pip_no_deps
 Defines the execution pipeline. See [Pipelines](pipelines.md) for full
 documentation.
 
+## Environment variables
+
+### `VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS`
+
+How long a hub or viewer server may sit idle before it self-retires.
+The default is `1800` (30 minutes). Set this to a smaller value to
+reap abandoned servers sooner, or a larger value to keep them alive
+longer.
+
+```bash
+VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS=60 vaibify
+```
+
+Self-shutdown only fires when **no browser tab is connected** and **no
+pipeline is running** in any container the server holds; an open
+dashboard keeps the server alive indefinitely. See the
+[Session & container-lock lifecycle](architecture.md#session--container-lock-lifecycle)
+section for the full rationale.
+
 ## Security
 
 Secrets are never stored in configuration files. The `secrets` field in

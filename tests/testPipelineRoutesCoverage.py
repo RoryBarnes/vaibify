@@ -224,12 +224,12 @@ class TestPipelineWsRoute:
         dictCtx = {
             "require": MagicMock(),
             "sSessionToken": "tok",
-            "setAllowedContainers": set(),
+            "dictContainerOwners": {},
         }
         with patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fbValidateWebSocketOrigin",
-            return_value=False,
+            ".fiContainerSessionRejectionCode",
+            return_value=4003,
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterPipelineWs,
@@ -243,7 +243,7 @@ class TestPipelineWsRoute:
                     pass
 
     def test_ws_bad_token_closes_4401(self):
-        """Cover lines 215-216."""
+        """The route honors the guard's bad-token verdict (4401)."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
@@ -251,12 +251,12 @@ class TestPipelineWsRoute:
         dictCtx = {
             "require": MagicMock(),
             "sSessionToken": "good",
-            "setAllowedContainers": set(),
+            "dictContainerOwners": {},
         }
         with patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fbValidateWebSocketOrigin",
-            return_value=True,
+            ".fiContainerSessionRejectionCode",
+            return_value=4401,
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterPipelineWs,
@@ -269,8 +269,8 @@ class TestPipelineWsRoute:
                 ):
                     pass
 
-    def test_ws_container_not_allowed_closes_4403(self):
-        """Cover lines 218-219."""
+    def test_ws_foreign_lease_closes_4403(self):
+        """The route honors the guard's foreign-lease verdict (4403)."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
@@ -278,12 +278,12 @@ class TestPipelineWsRoute:
         dictCtx = {
             "require": MagicMock(),
             "sSessionToken": "tok",
-            "setAllowedContainers": {"other"},
+            "dictContainerOwners": {},
         }
         with patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fbValidateWebSocketOrigin",
-            return_value=True,
+            ".fiContainerSessionRejectionCode",
+            return_value=4403,
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterPipelineWs,

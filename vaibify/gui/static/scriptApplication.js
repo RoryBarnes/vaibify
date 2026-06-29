@@ -14,7 +14,11 @@ const PipeleyenApp = (function () {
         sContainerId: null,
         sUserName: "User",
         dictDashboardMode: null,
+        sLeaseId: "",
+        sLeaseContainerName: null,
     };
+
+    var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
 
     function _fdictDefaultWorkflowState() {
         return {
@@ -73,12 +77,6 @@ const PipeleyenApp = (function () {
     };
 
     var I_MAX_UNDO = 50;
-    var I_HUB_POLL_INTERVAL_MS = 3000;
-    var _dictHubPolling = {
-        iContainerIntervalId: null,
-        iWorkflowIntervalId: null,
-        sWorkflowContainerId: null,
-    };
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
 
     var DICT_MODE_WORKFLOW = {
@@ -121,6 +119,76 @@ const PipeleyenApp = (function () {
         };
     }
 
+    /* --- Per-tab claim lease --- */
+
+    function _fnPersistLease() {
+        try {
+            if (!_dictSessionState.sLeaseId) {
+                window.sessionStorage.removeItem(_S_LEASE_STORAGE_KEY);
+                return;
+            }
+            window.sessionStorage.setItem(
+                _S_LEASE_STORAGE_KEY,
+                JSON.stringify({
+                    sName: _dictSessionState.sLeaseContainerName,
+                    sLeaseId: _dictSessionState.sLeaseId,
+                }),
+            );
+        } catch (error) {
+            /* sessionStorage unavailable; lease lives in memory only */
+        }
+    }
+
+    function _fnRestoreLeaseFromStorage() {
+        try {
+            var sStored = window.sessionStorage.getItem(
+                _S_LEASE_STORAGE_KEY);
+            if (!sStored) return;
+            var dictStored = JSON.parse(sStored);
+            _dictSessionState.sLeaseContainerName =
+                dictStored.sName || null;
+            _dictSessionState.sLeaseId = dictStored.sLeaseId || "";
+        } catch (error) {
+            /* corrupt or unavailable storage; start with no lease */
+        }
+    }
+
+    function fnRecordClaimedLease(sName, sLeaseId) {
+        _dictSessionState.sLeaseContainerName = sName;
+        _dictSessionState.sLeaseId = sLeaseId || "";
+        _fnPersistLease();
+    }
+
+    function fnForgetLease() {
+        _dictSessionState.sLeaseContainerName = null;
+        _dictSessionState.sLeaseId = "";
+        _fnPersistLease();
+    }
+
+    function fsGetLeaseId() {
+        return _dictSessionState.sLeaseId || "";
+    }
+
+    function fsGetLeaseForContainer(sName) {
+        if (_dictSessionState.sLeaseContainerName === sName) {
+            return _dictSessionState.sLeaseId || "";
+        }
+        return "";
+    }
+
+    function _fnRecordViewerLeaseFromConnect(sId, dictConnect) {
+        /* Viewer mode mints its lease server-side and returns it on the
+           connect response (the viewer has no claim route). Record it so
+           the pipeline and terminal WebSockets can present it. Never
+           clobber a lease already held: in hub mode the claim path has
+           already recorded one and the connect response carries none. */
+        if (!dictConnect || !dictConnect.sLeaseId) return;
+        if (fsGetLeaseId()) return;
+        var sName = PipeleyenContainerManager
+            .fsGetSelectedContainerName() || sId;
+        fnRecordClaimedLease(sName, dictConnect.sLeaseId);
+    }
+
     /* --- WebSocket and Polling Registration --- */
 
     function fnRegisterWebSocketHandlers() {
@@ -153,12 +221,13 @@ const PipeleyenApp = (function () {
     /* --- Initialization --- */
 
     async function fnInitialize() {
+        _fnRestoreLeaseFromStorage();
         await fnFetchSessionToken();
         fnRegisterWebSocketHandlers();
         fnRegisterPollingHandlers();
         fnLoadUserName();
         fnLoadTimestampSetting();
-        PipeleyenContainerManager.fnLoadContainers();
+        fnShowContainerLanding();
         PipeleyenEventBindings.fnBindToolbarEvents();
         PipeleyenEventBindings.fnBindWorkflowPickerEvents();
         PipeleyenContainerManager.fnBindContainerLandingEvents();
@@ -227,6 +296,7 @@ const PipeleyenApp = (function () {
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
+        _fnRecordViewerLeaseFromConnect(sId, data);
         _dictSessionState.sContainerId = sId;
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
@@ -375,7 +445,9 @@ const PipeleyenApp = (function () {
 
     async function fnEnterNoWorkflow(sId) {
         try {
-            await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
+            var dictConnect = await VaibifyApi.fdictPostRaw(
+                "/api/connect/" + sId);
+            _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
@@ -545,15 +617,14 @@ const PipeleyenApp = (function () {
     }
 
     function _fnStartContainerHubPolling() {
-        _fnStopContainerHubPolling();
-        _dictHubPolling.iContainerIntervalId = setInterval(
-            _fnPollContainerHubIfIdle, I_HUB_POLL_INTERVAL_MS,
-        );
+        VaibifyPolling.fnSetContainerHubHandler(
+            _fnPollContainerHubIfIdle);
+        VaibifyPolling.fnStartContainerHubPolling();
     }
 
-    function _fnPollContainerHubIfIdle() {
+    async function _fnPollContainerHubIfIdle() {
         if (_fbContainerHubHasOpenMenu()) return;
-        PipeleyenContainerManager.fnLoadContainers();
+        await PipeleyenContainerManager.fnRefreshContainerHub();
     }
 
     function _fbContainerHubHasOpenMenu() {
@@ -566,43 +637,29 @@ const PipeleyenApp = (function () {
     }
 
     function _fnStopContainerHubPolling() {
-        if (_dictHubPolling.iContainerIntervalId !== null) {
-            clearInterval(_dictHubPolling.iContainerIntervalId);
-            _dictHubPolling.iContainerIntervalId = null;
-        }
+        VaibifyPolling.fnStopContainerHubPolling();
     }
 
     function _fnStartWorkflowHubPolling(sContainerId) {
-        _fnStopWorkflowHubPolling();
-        if (!sContainerId) return;
-        _dictHubPolling.sWorkflowContainerId = sContainerId;
-        _dictHubPolling.iWorkflowIntervalId = setInterval(
-            function () {
-                _fnRefreshWorkflowHubList(
-                    _dictHubPolling.sWorkflowContainerId,
-                );
-            },
-            I_HUB_POLL_INTERVAL_MS,
-        );
+        if (!sContainerId) {
+            _fnStopWorkflowHubPolling();
+            return;
+        }
+        VaibifyPolling.fnSetWorkflowHubHandler(function () {
+            return _fnRefreshWorkflowHubList(sContainerId);
+        });
+        VaibifyPolling.fnStartWorkflowHubPolling();
     }
 
     function _fnStopWorkflowHubPolling() {
-        if (_dictHubPolling.iWorkflowIntervalId !== null) {
-            clearInterval(_dictHubPolling.iWorkflowIntervalId);
-            _dictHubPolling.iWorkflowIntervalId = null;
-        }
-        _dictHubPolling.sWorkflowContainerId = null;
+        VaibifyPolling.fnStopWorkflowHubPolling();
     }
 
     async function _fnRefreshWorkflowHubList(sContainerId) {
-        try {
-            var listWorkflows = await VaibifyApi.fdictGet(
-                "/api/workflows/" + encodeURIComponent(sContainerId));
-            VaibifyWorkflowManager.fnRenderWorkflowList(
-                listWorkflows, sContainerId);
-        } catch (error) {
-            /* best-effort: leave the last-rendered list in place */
-        }
+        var listWorkflows = await VaibifyApi.fdictGet(
+            "/api/workflows/" + encodeURIComponent(sContainerId));
+        VaibifyWorkflowManager.fnRenderWorkflowList(
+            listWorkflows, sContainerId);
     }
 
     function fnStopAllHubPolling() {
@@ -3429,6 +3486,10 @@ const PipeleyenApp = (function () {
         fsGetSessionToken: function () {
             return _dictSessionState.sSessionToken;
         },
+        fsGetLeaseId: fsGetLeaseId,
+        fsGetLeaseForContainer: fsGetLeaseForContainer,
+        fnRecordClaimedLease: fnRecordClaimedLease,
+        fnForgetLease: fnForgetLease,
         fdictGetWorkflow: function () {
             return _dictWorkflowState.dictWorkflow;
         },
@@ -3557,15 +3618,17 @@ function fnBlockUnload(event) {
 
 function fnReleaseActiveContainerOnUnload() {
     if (typeof PipeleyenContainerManager === "undefined") return;
+    if (typeof PipeleyenApp === "undefined") return;
     var sName = PipeleyenContainerManager.fsGetSelectedContainerName();
-    if (!sName) return;
+    var sLeaseId = PipeleyenApp.fsGetLeaseId();
+    if (!sName || !sLeaseId) return;
     try {
-        fetch(
-            "/api/registry/" + encodeURIComponent(sName) + "/release",
-            {method: "POST", keepalive: true},
+        navigator.sendBeacon(
+            "/api/registry/" + encodeURIComponent(sName) +
+            "/release?sLeaseId=" + encodeURIComponent(sLeaseId),
         );
     } catch (error) {
-        /* best-effort: the hub's shutdown hook will catch it later */
+        /* best-effort: the grace reaper frees the owner if this misses */
     }
 }
 

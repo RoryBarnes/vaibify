@@ -14,18 +14,24 @@ the kernel releases the slot automatically when the owning
 process exits. The slot *files* of killed processes are not
 removed by the kernel, so every acquisition first reaps files
 whose name-encoded PID no longer exists.
+
+The file mechanism (no-follow open, payload read/write, 0o700
+directory, stale reaper) lives in ``pidFileRegistry``; this module is
+a thin wrapper that owns only the slot's divergent payload schema
+``{iPid, sRole, iPort, sStartedIso}`` and the host-wide session cap.
 """
 
 import datetime
 import fcntl
-import json
 import os
 
-from vaibify.config.processLiveness import fbIsProcessAlive
+from vaibify.config import pidFileRegistry
+from vaibify.config.processLiveness import fbIsProcessAliveSince, fbIsUsablePid
 
 
 I_MAX_SESSIONS = 99
 _S_SESSION_DIRECTORY = os.path.expanduser("~/.vaibify/sessions")
+_S_SLOT_SUFFIX = ".slot"
 
 
 class SessionLimitExceededError(RuntimeError):
@@ -43,29 +49,22 @@ class SessionLimitExceededError(RuntimeError):
 
 def _fnEnsureSessionDirectory():
     """Create ~/.vaibify/sessions/ with mode 0o700 if missing."""
-    os.makedirs(_S_SESSION_DIRECTORY, mode=0o700, exist_ok=True)
-    try:
-        os.chmod(_S_SESSION_DIRECTORY, 0o700)
-    except OSError:
-        pass
+    pidFileRegistry.fnEnsureDirectory(_S_SESSION_DIRECTORY)
 
 
 def _fsSlotPathForCurrentProcess():
     """Return the slot-file path keyed on the current pid."""
     return os.path.join(
-        _S_SESSION_DIRECTORY, f"{os.getpid()}.slot",
+        _S_SESSION_DIRECTORY, f"{os.getpid()}{_S_SLOT_SUFFIX}",
     )
 
 
 def fiCountActiveSessions():
     """Return the number of session slots currently held by live procs."""
-    if not os.path.isdir(_S_SESSION_DIRECTORY):
-        return 0
     iCount = 0
-    for sEntry in os.listdir(_S_SESSION_DIRECTORY):
-        if not sEntry.endswith(".slot"):
-            continue
-        sPath = os.path.join(_S_SESSION_DIRECTORY, sEntry)
+    for sPath in pidFileRegistry.flistRegistryFiles(
+        _S_SESSION_DIRECTORY, _S_SLOT_SUFFIX,
+    ):
         if _fbSlotIsHeldByLiveProcess(sPath):
             iCount += 1
     return iCount
@@ -102,20 +101,10 @@ def fnAcquireSessionSlot(sRole, iPort):
     if iActive >= I_MAX_SESSIONS:
         raise SessionLimitExceededError(iActive, I_MAX_SESSIONS)
     sPath = _fsSlotPathForCurrentProcess()
-    fileHandle = _ffileOpenSlotNoFollow(sPath)
+    fileHandle = pidFileRegistry.ffileOpenNoFollow(sPath)
     fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     _fnWriteSlotPayload(fileHandle, sRole, iPort)
     return fileHandle
-
-
-def _ffileOpenSlotNoFollow(sPath):
-    """Open the slot path with O_NOFOLLOW to reject symlinks."""
-    iFileDescriptor = os.open(
-        sPath,
-        os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
-        0o600,
-    )
-    return os.fdopen(iFileDescriptor, "r+")
 
 
 def _fnWriteSlotPayload(fileHandle, sRole, iPort):
@@ -126,10 +115,7 @@ def _fnWriteSlotPayload(fileHandle, sRole, iPort):
         "iPort": iPort,
         "sStartedIso": datetime.datetime.now().isoformat(),
     }
-    fileHandle.seek(0)
-    fileHandle.truncate()
-    fileHandle.write(json.dumps(dictPayload, indent=2))
-    fileHandle.flush()
+    pidFileRegistry.fnWritePayload(fileHandle, dictPayload)
 
 
 def fnReleaseSessionSlot(fileHandle):
@@ -139,10 +125,7 @@ def fnReleaseSessionSlot(fileHandle):
         fcntl.flock(fileHandle, fcntl.LOCK_UN)
     finally:
         fileHandle.close()
-    try:
-        os.unlink(sPath)
-    except OSError:
-        pass
+    pidFileRegistry.fnUnlinkQuietly(sPath)
 
 
 def fnReapStaleSessionSlots():
@@ -154,36 +137,72 @@ def fnReapStaleSessionSlots():
     even when their flock looks free (the owner may be
     mid-acquisition).
     """
-    if not os.path.isdir(_S_SESSION_DIRECTORY):
-        return
-    try:
-        listEntries = os.listdir(_S_SESSION_DIRECTORY)
-    except OSError:
-        return
-    for sEntry in listEntries:
-        if sEntry.endswith(".slot"):
-            _fnReapSlotFileIfStale(
-                os.path.join(_S_SESSION_DIRECTORY, sEntry),
-            )
+    pidFileRegistry.fnReapStaleFilesIn(
+        _S_SESSION_DIRECTORY, _fbSlotFileIsStale, _S_SLOT_SUFFIX,
+    )
 
 
-def _fnReapSlotFileIfStale(sPath):
-    """Unlink one slot file when its name-encoded PID is dead."""
-    if fbIsProcessAlive(_fiPidFromSlotPath(sPath)):
-        return
-    try:
-        os.unlink(sPath)
-    except OSError:
-        pass
+def _fbSlotFileIsStale(sPath):
+    """Return True when a slot file's recorded holder process has exited.
+
+    The slot payload's ``iPid`` and ``sStartedIso`` drive a
+    recycle-proof liveness check; a payload without a usable PID falls
+    back to the PID encoded in the file name. A payload missing
+    ``sStartedIso`` behaves exactly like the bare PID-existence check.
+    """
+    dictPayload = _fdictReadSlotPayload(sPath)
+    iPid = dictPayload.get("iPid")
+    if not fbIsUsablePid(iPid):
+        iPid = _fiPidFromSlotPath(sPath)
+    return not fbIsProcessAliveSince(iPid, dictPayload.get("sStartedIso"))
+
+
+def _fdictReadSlotPayload(sPath):
+    """Best-effort read of slot-holder JSON, or {} on any error."""
+    return pidFileRegistry.fdictReadPayload(sPath)
 
 
 def _fiPidFromSlotPath(sPath):
     """Return the PID encoded in a slot file name, or 0 when malformed."""
     sBaseName = os.path.basename(sPath)
     try:
-        return int(sBaseName[: -len(".slot")])
+        return int(sBaseName[: -len(_S_SLOT_SUFFIX)])
     except ValueError:
         return 0
+
+
+def flistReadAllSlots():
+    """Return a payload dict for every live session slot on the host.
+
+    Each entry is ``{iPid, sRole, iPort, sStartedIso, bAlive}`` where
+    ``bAlive`` reflects the flock truth from ``_fbSlotIsHeldByLiveProcess``.
+    Used by ``vaibify sessions`` to list live hubs and viewers. Returns
+    an empty list on any directory error so the CLI never crashes on a
+    registry mishap.
+    """
+    listSlots = []
+    for sPath in sorted(pidFileRegistry.flistRegistryFiles(
+        _S_SESSION_DIRECTORY, _S_SLOT_SUFFIX,
+    )):
+        _fnAppendSlotRecord(listSlots, sPath)
+    return listSlots
+
+
+def _fnAppendSlotRecord(listSlots, sPath):
+    """Append a live slot's normalized record to listSlots."""
+    if not _fbSlotIsHeldByLiveProcess(sPath):
+        return
+    dictPayload = _fdictReadSlotPayload(sPath)
+    iPid = dictPayload.get("iPid")
+    if not fbIsUsablePid(iPid):
+        iPid = _fiPidFromSlotPath(sPath)
+    listSlots.append({
+        "iPid": iPid,
+        "sRole": dictPayload.get("sRole"),
+        "iPort": dictPayload.get("iPort"),
+        "sStartedIso": dictPayload.get("sStartedIso"),
+        "bAlive": True,
+    })
 
 
 def fdictReadHubSlotByPort(iPort):
@@ -197,16 +216,9 @@ def fdictReadHubSlotByPort(iPort):
     ``iPort == iPort``. Returns ``{}`` on any error so the allocator
     never blocks the launch on a registry mishap.
     """
-    if not os.path.isdir(_S_SESSION_DIRECTORY):
-        return {}
-    try:
-        listEntries = os.listdir(_S_SESSION_DIRECTORY)
-    except OSError:
-        return {}
-    for sEntry in listEntries:
-        if not sEntry.endswith(".slot"):
-            continue
-        sPath = os.path.join(_S_SESSION_DIRECTORY, sEntry)
+    for sPath in pidFileRegistry.flistRegistryFiles(
+        _S_SESSION_DIRECTORY, _S_SLOT_SUFFIX,
+    ):
         dictMatch = _fdictMatchingHubSlot(sPath, iPort)
         if dictMatch:
             return dictMatch
@@ -217,11 +229,7 @@ def _fdictMatchingHubSlot(sPath, iPort):
     """Return the slot payload if alive, hub-role, and on iPort; else {}."""
     if not _fbSlotIsHeldByLiveProcess(sPath):
         return {}
-    try:
-        with open(sPath, "r") as fileHandle:
-            dictPayload = json.load(fileHandle)
-    except (OSError, json.JSONDecodeError):
-        return {}
+    dictPayload = _fdictReadSlotPayload(sPath)
     if dictPayload.get("sRole") != "hub":
         return {}
     if dictPayload.get("iPort") != iPort:

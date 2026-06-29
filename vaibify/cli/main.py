@@ -98,6 +98,7 @@ from .commandPublish import publish
 from .commandReproduce import reproduce
 from .commandRevoke import revoke
 from .commandRun import run
+from .commandSessions import sessions
 from .commandStart import start
 from .commandStatus import status
 from .commandTest import test
@@ -222,6 +223,7 @@ main.add_command(revoke)
 main.add_command(test)
 main.add_command(generate_standards)
 main.add_command(doctor)
+main.add_command(sessions)
 
 
 @main.command("stop")

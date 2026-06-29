@@ -116,7 +116,31 @@ def _fnRegisterSpawn(app):
         }
 
 
+def _fnRegisterSpawnedChildShutdown(app):
+    """Terminate every spawned hub child when this process shuts down.
+
+    Without this hook a hub that exits (idle self-shutdown, terminal
+    close) leaves its spawned children running; they are otherwise only
+    pruned on the next spawn and never actively terminated.
+    """
+    if not hasattr(app.state, "listSpawnedChildren"):
+        app.state.listSpawnedChildren = []
+    if not hasattr(app.state, "listLifespanShutdown"):
+        app.state.listLifespanShutdown = []
+
+    async def fnTerminateSpawnedChildren(app):
+        for child in list(app.state.listSpawnedChildren):
+            try:
+                child.terminate()
+            except Exception:
+                pass
+        app.state.listSpawnedChildren.clear()
+
+    app.state.listLifespanShutdown.append(fnTerminateSpawnedChildren)
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all session routes."""
     del dictCtx
     _fnRegisterSpawn(app)
+    _fnRegisterSpawnedChildShutdown(app)

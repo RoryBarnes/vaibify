@@ -396,3 +396,88 @@ def test_fnReapStaleContainerLocks_handles_missing_directory(
         str(tmp_path / "does-not-exist"),
     )
     containerLockModule.fnReapStaleContainerLocks()
+
+
+def test_fnReapStaleContainerLocks_reaps_recycled_pid_via_start_time(
+    tmp_lock_dir,
+):
+    """A live PID recorded against an ancient claim is treated recycled."""
+    from vaibify.config.containerLock import fnReapStaleContainerLocks
+    sPath = str(tmp_lock_dir / "recycled.lock")
+    with open(sPath, "w") as fileHandleRecycled:
+        json.dump({"iPid": os.getpid(), "iPort": 8055,
+                   "sStartedIso": "2000-01-01T00:00:00",
+                   "sProjectName": "recycled"}, fileHandleRecycled)
+    fnReapStaleContainerLocks()
+    assert not os.path.isfile(sPath)
+
+
+def test_fnReapStaleContainerLocks_keeps_legacy_payload_for_live_pid(
+    tmp_lock_dir,
+):
+    """A live-PID payload without sStartedIso is never reaped."""
+    from vaibify.config.containerLock import fnReapStaleContainerLocks
+    sPath = str(tmp_lock_dir / "legacy.lock")
+    with open(sPath, "w") as fileHandleLegacy:
+        json.dump({"iPid": os.getpid(), "iPort": 8056,
+                   "sProjectName": "legacy"}, fileHandleLegacy)
+    fnReapStaleContainerLocks()
+    assert os.path.isfile(sPath)
+
+
+# ---------------------------------------------------------------------------
+# flistReadAllLockHolders
+# ---------------------------------------------------------------------------
+
+
+def test_flistReadAllLockHolders_returns_empty_when_directory_missing(
+    tmp_path, monkeypatch,
+):
+    import vaibify.config.containerLock as containerLockModule
+    monkeypatch.setattr(
+        containerLockModule, "_S_LOCK_DIRECTORY",
+        str(tmp_path / "does-not-exist"),
+    )
+    from vaibify.config.containerLock import flistReadAllLockHolders
+    assert flistReadAllLockHolders() == []
+
+
+def test_flistReadAllLockHolders_lists_live_holder(tmp_lock_dir):
+    from vaibify.config.containerLock import (
+        fnAcquireContainerLock, fnReleaseContainerLock,
+        flistReadAllLockHolders,
+    )
+    fileHandleLock = fnAcquireContainerLock("demo", 8050)
+    try:
+        listHolders = flistReadAllLockHolders()
+        assert len(listHolders) == 1
+        dictHolder = listHolders[0]
+        assert dictHolder["sProjectName"] == "demo"
+        assert dictHolder["iPid"] == os.getpid()
+        assert dictHolder["iPort"] == 8050
+        assert "sStartedIso" in dictHolder
+    finally:
+        fnReleaseContainerLock(fileHandleLock)
+
+
+def test_flistReadAllLockHolders_skips_stale_dead_holder(tmp_lock_dir):
+    """A lock file recorded against a dead PID is not listed."""
+    from vaibify.config.containerLock import flistReadAllLockHolders
+    sPath = str(tmp_lock_dir / "orphan.lock")
+    with open(sPath, "w") as fileHandleDead:
+        json.dump({"iPid": _fiSpawnDeadPid(), "iPort": 8033,
+                   "sProjectName": "orphan"}, fileHandleDead)
+    assert flistReadAllLockHolders() == []
+
+
+def test_flistReadAllLockHolders_skips_released_lingering_lock(tmp_lock_dir):
+    """A released lock whose file lingers (flock free, live non-stale PID)
+    is not listed, matching the flock-based GUI reader rather than the
+    file's mere presence."""
+    from vaibify.config.containerLock import flistReadAllLockHolders
+    sPath = str(tmp_lock_dir / "released.lock")
+    with open(sPath, "w") as fileHandleReleased:
+        json.dump({"iPid": os.getpid(), "iPort": 8077,
+                   "sStartedIso": "2099-01-01T00:00:00",
+                   "sProjectName": "released"}, fileHandleReleased)
+    assert flistReadAllLockHolders() == []

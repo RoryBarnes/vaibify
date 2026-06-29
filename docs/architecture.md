@@ -346,6 +346,234 @@ bans the literal `/workspace/.vaibify/test_markers` in any module
 under `vaibify/gui/` — enforcing that marker paths are always
 resolved from the active workflow's `sProjectRepoPath`.
 
+## Single browser session per container
+
+This section is normative: it is the single source of truth for the
+container-access model. `docs/dashboard.md` and `docs/cli.md` describe
+the user-facing surface and point here for the mechanism.
+
+Vaibify's concurrency model is borrowed from JupyterHub, which solves
+the same problem of long-lived servers that outlive the browser that
+launched them. There are three tiers:
+
+- **The hub** (`vaibify` with no subcommand) is the multi-container
+  landing page. It is the analog of the JupyterHub *Hub*.
+- **The single-container viewer** (`vaibify start --gui`, or directly
+  via `vaibify gui`) is the per-project dashboard. Both the hub and the
+  viewer are uvicorn servers built by `appFactory.fappCreateHubApplication`
+  / `fappCreateApplication`. Only the `start --gui` viewer registers a
+  `role=viewer` session slot, so those are the viewer rows that appear
+  in `vaibify sessions`.
+- **The per-container host flock** (`~/.vaibify/locks/<name>.lock`) is
+  the cross-process layer that keeps two *different* hub or viewer
+  processes from opening the same container; it is the analog of a
+  *kernel*, reaped when its holder dies.
+
+A hub or viewer runs in the foreground of its launching terminal.
+Closing the browser tab does nothing, and closing the terminal
+*orphans* the server (reparented to `launchd`/`init`, `PPID 1`), which
+keeps holding its session slot (`~/.vaibify/sessions/<pid>.slot`) and
+its container flocks. The mechanisms below keep that from greying a
+container out forever.
+
+### The lease is the access principal
+
+The host flock excludes a *second process*, but it cannot distinguish
+two browser tabs talking to the *same* hub process — both originate
+from loopback and both carry the same shared session token. The
+exclusivity principal that tells two tabs apart is the **lease**: a
+per-claim, server-minted `secrets.token_urlsafe(32)` value
+(`containerOwnership.fsMintLease`).
+
+`POST /api/registry/{name}/claim` mints the lease and returns it to the
+claiming tab, which stores it in its own `sessionStorage` (per-tab, and
+surviving a reload). Every subsequent access — the connect handler,
+the pipeline WebSocket, and the terminal WebSocket — presents the lease
+as the `sLeaseId` query parameter. The shared session token and the
+loopback-origin check remain the *trust boundary* (CSRF / "a browser is
+talking to this hub"); the lease is the *exclusivity* layer above it
+("which browser session"). The lease is operational exclusivity for
+honest researchers behind the loopback + shared-token boundary, not a
+hard guarantee against a hostile in-page script.
+
+### The owner-of-record map is the sole authority
+
+A running hub keeps exactly one in-process authority,
+`app.state.dictContainerOwners`, a map from container name to one
+`OwnerRecord`. It replaces the two unreconciled gates of the old model
+(a name-keyed flock plus the process-global `setAllowedContainers`
+set). Claim, connect, and both WebSocket gates all consult this map and
+nothing else.
+
+`OwnerRecord` fields (in-process, dies with the hub process):
+
+| Field                  | Meaning                                              |
+|------------------------|------------------------------------------------------|
+| `sLeaseId`             | The lease that owns this container                   |
+| `fileHandleLock`       | The held host flock from `containerLock`             |
+| `iLiveConnectionCount` | Live WebSockets for this container (the one-live invariant) |
+| `fLastSeenMonotonic`   | When the last live connection dropped; starts grace  |
+
+The host flock holder payload (the persisted, cross-process artifact at
+`~/.vaibify/locks/<name>.lock`) is the **normative holder-payload
+table**:
+
+| Field          | Meaning                                                    |
+|----------------|------------------------------------------------------------|
+| `iPid`         | PID of the holding hub/viewer process                      |
+| `iPort`        | Port that process serves on                                |
+| `sStartedIso`  | Holder's start time; the recycled-PID staleness anchor     |
+| `sProjectName` | Container name the lock guards                             |
+
+`sStartedIso` is load-bearing and must appear on every holder payload —
+see "PID-reuse-proof staleness" below;
+`testLockPayloadCarriesStartedIso` enforces it.
+
+### Claim arbitration
+
+`containerOwnership.ftdictClaim` replaces the old short-circuit (the
+pre-refactor claim returned `bClaimed: True` whenever the container was
+already locked, silently admitting a second same-hub tab). The arbiter
+now has three outcomes:
+
+1. **Unowned** → acquire the host flock, mint a lease, record the
+   owner, return `200 {bClaimed: True, sLeaseId}`.
+2. **Owned, same lease presented** → idempotent success, return the
+   same lease. This is the reload path: a refreshed tab re-presents its
+   `sessionStorage` lease and re-asserts ownership with no new mint and
+   no self-lockout.
+3. **Owned, no lease or a different lease** → `409
+   {bClaimed: False, sMessage: "In use in another browser session",
+   sStartedIso}`, *unless* the current owner is reapable
+   (`iLiveConnectionCount == 0`, past the grace window, and no pipeline
+   running), in which case the dead owner is released and the claim is
+   granted fresh. The 409 never echoes the other owner's lease.
+
+### The one-live-connection invariant
+
+Two tabs of one browser cannot both own a container: only the first
+claim mints a lease and a foreign claim is refused. A *duplicate* tab
+that copied the lease out of `sessionStorage` passes the idempotent
+claim, so exclusivity for that case is enforced at the WebSocket gate
+by `iLiveConnectionCount` — at most one live connection per container.
+`fnIncrementLiveConnection` / `fnDecrementLiveConnection` keep the
+count, and a second concurrent connection presenting the same lease is
+refused.
+
+### The shared authorization guard
+
+`webSocketAuthorization.fbAuthorizeContainerSession` (and its
+status-code form `fiContainerSessionRejectionCode`) is the one gate,
+consumed verbatim by the pipeline WebSocket, the terminal WebSocket,
+and the connect handler. A loopback browser must clear, in order,
+loopback origin (`4003` on failure), shared token (`4401`), and owning
+lease (`4403`). A non-loopback connection is never a browser; it is
+admitted only through the lease-exempt **agent lane**
+(`fbCheckAgentToken`): the in-container `vaibify-do` machine credential
+is a **per-container agent token** minted on the container's owner
+record (`OwnerRecord.sAgentToken`) and written into that container's
+`/tmp/vaibify-session.env` at connect. It authorizes only the container
+whose owner minted it — never the hub-wide session token and never
+another container's token — so an agent compromised in one container of
+a multi-container hub cannot authenticate against another. The REST
+`SessionTokenMiddleware` enforces the same per-container scoping by
+matching the presented token against the owner of the container id named
+in the request path; a request that names no container fails closed.
+
+### The four release triggers
+
+Ownership tracks the *live session*, never the process lifetime (the
+old `setAllowedContainers` was append-only and leaked authorization for
+the whole process life). A container is released by exactly four paths:
+
+1. **Explicit release** — `POST /api/registry/{name}/release` with the
+   matching lease (the dashboard's close affordance and the `pagehide`
+   `navigator.sendBeacon`, which carries only the lease as its own
+   proof). `fnReleaseOwnership` verifies the lease, frees the flock,
+   drops the record, and stops the keep-alive.
+2. **WebSocket-disconnect grace** — when the last live connection
+   drops, `iLiveConnectionCount` falls to 0 and a bounded grace window
+   opens. If no reconnect with the matching lease arrives, the idle
+   sweep (`flistReapIdleOwnerships`) releases the owner and flock. The
+   record is *retained* during grace, so a competing claim still gets
+   409 — a brief network blip never evicts the owner.
+3. **Claimed-but-never-connected reaper** — a crash before any
+   WebSocket opened (count never rose above 0) is covered by the same
+   sweep keyed on `iLiveConnectionCount == 0` past grace.
+4. **Process teardown** — idle self-shutdown (below) or a manual quit
+   sends SIGTERM, and uvicorn's graceful hooks release the flock and
+   session slot.
+
+The reaper is **never** allowed to release a container whose pipeline
+is still running (`flistReapIdleOwnerships` takes a `fbPipelineRunning`
+veto), so an in-flight run is never torn down — the dashboard's honesty
+contract. The `pagehide` beacon only *accelerates* trigger 1; it never
+fires on a hard crash and is never load-bearing for correctness, which
+rests on triggers 2–4.
+
+### Idle self-shutdown
+
+Modeled on JupyterHub's `ServerApp.shutdown_no_activity_timeout`, both
+the hub and the viewer run a watchdog (`_fnIdleShutdownWatchdogLoop`)
+that self-`SIGTERM`s after a sustained idle period (30 minutes by
+default, see [Configuration](configuration.md)). SIGTERM -- not a
+direct teardown -- is deliberate: it lets uvicorn run the existing
+graceful-shutdown hooks that release the locks and the session slot,
+so the path that frees a container is the same whether the user quits
+manually or the watchdog fires.
+
+"Idle" is defined conservatively so a running pipeline is never
+interrupted (the dashboard's honesty contract). The watchdog vetoes
+shutdown when **any browser tab is connected** -- tracked by a live
+WebSocket presence counter (`fnIncrementWebSocketCount` /
+`fnDecrementWebSocketCount`) incremented right after a terminal or
+pipeline socket is accepted and decremented in a `finally` -- or when
+**any owned container is busy** (a pipeline is mid-run, per
+`fileStatusManager._fbPipelineIsRunning`). The set of owned containers
+is read from `dictContainerOwners.keys()`, the same owner-of-record
+authority described above, so the busy veto can never lose track of a
+held container and self-SIGTERM a hub mid-run. The busy check is rechecked
+every tick, so a run that *starts between ticks* still blocks the next
+decision. If Docker is unreachable when the busy check runs, the
+container is treated as busy (fail-safe: keep the server alive rather
+than risk killing a hub whose container is briefly unreachable). The
+idle timeout is set well above the dashboard's poll and WebSocket-ping
+intervals, so a single dropped signal never triggers a shutdown; only
+sustained absence does -- the same guidance JupyterHub gives for its
+cull timeouts.
+
+### PID-reuse-proof staleness
+
+When a server dies uncleanly, its slot and lock files survive. The
+slot and lock registries share one reaper
+(`pidFileRegistry.fnReapStaleFilesIn`, with `containerLock` and
+`sessionRegistry` supplying the per-schema staleness predicate) that
+decides whether a leftover file belongs to a dead holder. A bare
+`os.kill(pid, 0)` existence
+check is **not** sufficient: after the holder exits, the kernel can
+hand its PID to an unrelated process, and the existence check then
+reports the stale claim as live forever. In the incident that
+motivated this design, a recycled PID defeated both reapers, so a dead
+hub's container lock was never cleared and the container read "in use"
+indefinitely.
+
+`processLiveness.fbIsProcessAliveSince(iPid, sClaimIso)` closes the
+gap. Every slot and lock payload records its holder's start time
+(`sStartedIso`). The check reads the live process's start time from
+`ps -o lstart=` (run with `LC_ALL=C` so month and day names parse
+under any locale on macOS and Linux), normalizes both timestamps to
+local-naive datetimes, and treats a process that started *after* the
+recorded claim (beyond a small tolerance) as a recycled PID -- hence
+dead and reapable. The probe degrades safely: an unreadable start
+time, an absent claim, or a legacy payload without `sStartedIso` all
+fall back to the bare PID-existence check, so a live genuine holder is
+never reaped. No new dependency is introduced; the probe shells out to
+`ps`, which is present on both platforms.
+
+The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
+host-side enumerator over these same files -- the analog of
+`jupyter server list` / `jupyter server stop`.
+
 ## Python backend
 
 The backend lives under `vaibify/gui/` and is organized into four

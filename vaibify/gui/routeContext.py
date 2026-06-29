@@ -78,11 +78,6 @@ class RouteContext:
         """Session token for WebSocket origin validation."""
         return self._dictRaw.get("sSessionToken", "")
 
-    @property
-    def setAllowedContainers(self):
-        """Set of container IDs authorized for this session."""
-        return self._dictRaw.get("setAllowedContainers", set())
-
     def require(self):
         """Raise if Docker is not available."""
         return self._dictRaw["require"]()

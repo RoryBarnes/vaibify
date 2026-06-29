@@ -43,14 +43,14 @@ def test_fnPushAgentSession_swallows_bridge_errors(caplog):
     )
 
 
-def test_fnAuthorizeContainer_still_adds_to_allowed_when_bridge_fails():
-    """An agent-bridge failure must not block container authorization."""
-    setAllowed = set()
+def test_fnAuthorizeContainer_still_records_owner_when_bridge_fails():
+    """An agent-bridge failure must not block the viewer's served record."""
+    dictContainerOwners = {}
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "scientist\n")
     dictCtx = {
         "docker": mockDocker,
-        "setAllowedContainers": setAllowed,
+        "dictContainerOwners": dictContainerOwners,
         "containerUsers": {},
         "sSessionToken": "tok",
         "iPort": 8050,
@@ -61,16 +61,23 @@ def test_fnAuthorizeContainer_still_adds_to_allowed_when_bridge_fails():
         side_effect=RuntimeError("docker down"),
     ):
         pipelineServer._fnAuthorizeContainer(dictCtx, "c-id")
-    assert "c-id" in setAllowed
+    assert "c-id" in dictContainerOwners
     assert dictCtx["containerUsers"]["c-id"] == "scientist"
 
 
-def test_fnAuthorizeContainer_invokes_bridge_with_session_and_port():
+def test_fnAuthorizeContainer_invokes_bridge_with_per_container_token():
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "researcher\n")
+    from vaibify.gui import containerOwnership
+    dictContainerOwners = {
+        "c-id": containerOwnership.OwnerRecord(
+            sLeaseId="lease", fileHandleLock=None,
+            sAgentToken="agent-tok", sContainerId="c-id",
+        ),
+    }
     dictCtx = {
         "docker": mockDocker,
-        "setAllowedContainers": set(),
+        "dictContainerOwners": dictContainerOwners,
         "containerUsers": {},
         "sSessionToken": "tok-abc",
         "iPort": 9100,
@@ -81,23 +88,29 @@ def test_fnAuthorizeContainer_invokes_bridge_with_session_and_port():
     ) as mockPush:
         pipelineServer._fnAuthorizeContainer(dictCtx, "c-id")
     mockPush.assert_called_once_with(
-        mockDocker, "c-id", "tok-abc", 9100,
+        mockDocker, "c-id", "agent-tok", 9100,
     )
 
 
 def test_fnPushAgentSession_missing_iport_defaults_to_zero():
     """``dictCtx.get('iPort', 0)`` should not KeyError when absent."""
     mockDocker = MagicMock()
+    from vaibify.gui import containerOwnership
     dictCtx = {
         "docker": mockDocker,
-        "sSessionToken": "tok",
+        "dictContainerOwners": {
+            "c-id": containerOwnership.OwnerRecord(
+                sLeaseId="lease", fileHandleLock=None,
+                sAgentToken="agent-tok", sContainerId="c-id",
+            ),
+        },
     }
     with patch.object(
         pipelineServer.agentSessionBridge,
         "fnPushAgentSessionToContainer",
     ) as mockPush:
         pipelineServer._fnPushAgentSession(dictCtx, "c-id")
-    mockPush.assert_called_once_with(mockDocker, "c-id", "tok", 0)
+    mockPush.assert_called_once_with(mockDocker, "c-id", "agent-tok", 0)
 
 
 # -----------------------------------------------------------------------

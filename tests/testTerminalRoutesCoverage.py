@@ -10,7 +10,6 @@ def _fdictBuildContext(sSessionToken="valid-token"):
     """Build a minimal dictCtx for terminal route tests."""
     return {
         "sSessionToken": sSessionToken,
-        "setAllowedContainers": {"container-1"},
         "require": MagicMock(),
         "docker": MagicMock(),
         "containerUsers": {},
@@ -32,7 +31,7 @@ def _fmockWebSocket(
 
 
 class TestTerminalWsOriginRejection:
-    """Line 23-25: reject when origin validation fails."""
+    """The route closes with the guard's bad-origin code (4003)."""
 
     @pytest.mark.asyncio
     async def test_reject_invalid_origin(self):
@@ -56,8 +55,8 @@ class TestTerminalWsOriginRejection:
         mockWs = _fmockWebSocket(sOrigin="http://evil.com")
 
         with patch.object(
-            terminalRoutes, "fbValidateWebSocketOrigin",
-            return_value=False,
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            return_value=4003,
         ):
             await fnHandler(mockWs, "container-1")
 
@@ -65,7 +64,7 @@ class TestTerminalWsOriginRejection:
 
 
 class TestTerminalWsTokenRejection:
-    """Line 26-29: reject when session token is wrong."""
+    """The route closes with the guard's bad-token code (4401)."""
 
     @pytest.mark.asyncio
     async def test_reject_bad_token(self):
@@ -87,8 +86,8 @@ class TestTerminalWsTokenRejection:
 
         mockWs = _fmockWebSocket(sToken="wrong-token")
         with patch.object(
-            terminalRoutes, "fbValidateWebSocketOrigin",
-            return_value=True,
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            return_value=4401,
         ):
             await fnHandler(mockWs, "container-1")
 
@@ -96,7 +95,7 @@ class TestTerminalWsTokenRejection:
 
 
 class TestTerminalWsContainerRejection:
-    """Line 30-32: reject when container not in allowed set."""
+    """The route closes with the guard's foreign-lease code (4403)."""
 
     @pytest.mark.asyncio
     async def test_reject_unknown_container(self):
@@ -118,8 +117,8 @@ class TestTerminalWsContainerRejection:
 
         mockWs = _fmockWebSocket()
         with patch.object(
-            terminalRoutes, "fbValidateWebSocketOrigin",
-            return_value=True,
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            return_value=4403,
         ):
             await fnHandler(mockWs, "not-allowed-container")
 
@@ -152,8 +151,8 @@ class TestTerminalWsStartFailure:
         mockSession.fnStart.side_effect = RuntimeError("pty failed")
 
         with patch.object(
-            terminalRoutes, "fbValidateWebSocketOrigin",
-            return_value=True,
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            return_value=0,
         ), patch.object(
             terminalRoutes, "TerminalSession",
             return_value=mockSession,
@@ -161,6 +160,7 @@ class TestTerminalWsStartFailure:
             terminalRoutes, "fnRejectTerminalStart",
             new_callable=AsyncMock,
         ) as mockReject:
+            app.state.iActiveWebSockets = 0
             await fnHandler(mockWs, "container-1")
 
         mockWs.accept.assert_awaited_once()
@@ -195,8 +195,8 @@ class TestTerminalWsSuccessfulSession:
         mockSession = MagicMock()
 
         with patch.object(
-            terminalRoutes, "fbValidateWebSocketOrigin",
-            return_value=True,
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            return_value=0,
         ), patch.object(
             terminalRoutes, "TerminalSession",
             return_value=mockSession,
@@ -204,6 +204,7 @@ class TestTerminalWsSuccessfulSession:
             terminalRoutes, "fnRunTerminalSession",
             new_callable=AsyncMock,
         ) as mockRun:
+            app.state.iActiveWebSockets = 0
             await fnHandler(mockWs, "container-1")
 
         mockSessionCls.assert_called_once_with(
@@ -216,6 +217,51 @@ class TestTerminalWsSuccessfulSession:
         )
 
 
+class TestTerminalWsPresenceCounter:
+    """Lines around accept: the live-WebSocket counter rises then falls."""
+
+    @pytest.mark.asyncio
+    async def test_counter_incremented_during_session(self):
+        from types import SimpleNamespace
+        from vaibify.gui.routes import terminalRoutes
+
+        app = SimpleNamespace(state=SimpleNamespace(iActiveWebSockets=0))
+        listCountsDuring = []
+
+        async def _fnRecordCount(websocket, dictCtx, sContainerId):
+            listCountsDuring.append(app.state.iActiveWebSockets)
+
+        with patch.object(
+            terminalRoutes, "_fnStartAndRunTerminal", _fnRecordCount,
+        ):
+            await terminalRoutes._fnTrackAndServeTerminal(
+                app, _fmockWebSocket(), {}, "container-1", "container-1",
+            )
+
+        assert listCountsDuring == [1]
+        assert app.state.iActiveWebSockets == 0
+
+    @pytest.mark.asyncio
+    async def test_counter_decremented_even_on_error(self):
+        from types import SimpleNamespace
+        from vaibify.gui.routes import terminalRoutes
+
+        app = SimpleNamespace(state=SimpleNamespace(iActiveWebSockets=0))
+
+        async def _fnRaise(websocket, dictCtx, sContainerId):
+            raise RuntimeError("session crashed")
+
+        with patch.object(
+            terminalRoutes, "_fnStartAndRunTerminal", _fnRaise,
+        ):
+            with pytest.raises(RuntimeError):
+                await terminalRoutes._fnTrackAndServeTerminal(
+                    app, _fmockWebSocket(), {}, "container-1", "container-1",
+                )
+
+        assert app.state.iActiveWebSockets == 0
+
+
 class TestTerminalWsDefaultUser:
     """Lines 37-39: fall back to sTerminalUser when no entry."""
 
@@ -224,6 +270,7 @@ class TestTerminalWsDefaultUser:
         from vaibify.gui.routes import terminalRoutes
 
         dictCtx = _fdictBuildContext()
+        dictCtx["sTerminalUser"] = "root"
         app = MagicMock()
         listRegistered = []
 
@@ -241,18 +288,16 @@ class TestTerminalWsDefaultUser:
         mockSession = MagicMock()
 
         with patch.object(
-            terminalRoutes, "fbValidateWebSocketOrigin",
-            return_value=True,
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            return_value=0,
         ), patch.object(
             terminalRoutes, "TerminalSession",
             return_value=mockSession,
         ) as mockSessionCls, patch.object(
             terminalRoutes, "fnRunTerminalSession",
             new_callable=AsyncMock,
-        ), patch.object(
-            terminalRoutes._pipelineServer,
-            "sTerminalUser", "root",
         ):
+            app.state.iActiveWebSockets = 0
             await fnHandler(mockWs, "container-1")
 
         mockSessionCls.assert_called_once_with(

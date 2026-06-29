@@ -51,6 +51,27 @@ unify them.
 
 Enforced by `testWorkflowManagerUsesPosixPath` and `testDirectorUsesOsPath`.
 
+### Container-access gate
+
+All container-access decisions route through ONE guard. The claim route
+(`registryRoutes`), the connect handler (`workflowRoutes`), and both
+WebSocket routes (`routes/pipelineRoutes.py`,
+`routes/terminalRoutes.py`) must authorize via
+`webSocketAuthorization.fbAuthorizeContainerSession` /
+`fiContainerSessionRejectionCode`; no route may inline a container-id
+membership check or read a process-global allow set. The single
+owner-of-record authority is `containerOwnership` over
+`app.state.dictContainerOwners` (keyed by container **name**); the access
+principal is the per-claim lease, not the shared session token. The
+WebSocket routes resolve the Docker container id to a name before calling
+the guard. New backend modules from this layer: `containerOwnership.py`
+(owner-of-record map + lease arbitration + the per-container
+live-connection counter) and `webSocketAuthorization.py` (the shared
+guard). The normative model is the "Single browser session per
+container" section of `../../docs/architecture.md`. Enforced by
+`testWebSocketGatesUseSharedAuthorizationGuard` and
+`testSetAllowedContainersRemoved`.
+
 ### Re-export pattern
 
 Four orchestrator modules re-export symbols from extracted child
@@ -61,7 +82,11 @@ modules for backward compatibility:
   `pipelineUtils`, and `pipelineState`.
 - `pipelineServer` re-exports from `fileStatusManager` and
   `testStatusManager`, plus lazy access via `__getattr__` to route
-  modules.
+  modules. Its app-construction internals were extracted into
+  `appFactory.py` (the single `fappCreateApplication`),
+  `serverMiddleware.py` (the middleware classes), `serverLifespan.py`
+  (background-task registration), and `dockerStatus.py`; `pipelineServer`
+  re-exports them for existing callers.
 - `testGenerator` re-exports from `testParser`, `dataPreview`,
   `conftestManager`, `llmInvoker`, and `templateManager`.
 - `syncDispatcher` re-exports from `fileIntegrity`.

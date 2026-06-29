@@ -57,12 +57,18 @@ var VaibifyWebSocket = (function () {
         return _wsPipeline;
     }
 
+    function _fsActiveLease() {
+        if (typeof PipeleyenApp === "undefined") return "";
+        return PipeleyenApp.fsGetLeaseId() || "";
+    }
+
     function _fnOpenSocket(sContainerId, sSessionToken) {
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
         var sUrl = sProtocol + "//" + window.location.host +
             "/ws/pipeline/" + sContainerId +
-            "?sToken=" + encodeURIComponent(sSessionToken);
+            "?sToken=" + encodeURIComponent(sSessionToken) +
+            "&sLeaseId=" + encodeURIComponent(_fsActiveLease());
         var wsNew = new WebSocket(sUrl);
         wsNew.onopen = function () {
             console.log("[WS] open, flushing",

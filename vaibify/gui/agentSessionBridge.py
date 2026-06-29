@@ -5,7 +5,7 @@ When the UI connects to a container, the backend calls
 the in-container ``vaibify-do`` CLI reads:
 
 - ``/tmp/vaibify-session.env`` (mode 600, owned by ``$CONTAINER_USER``)
-  — host URL, session token, container id. Shell ``VAR=value`` format.
+  — host URL, per-container agent token, container id. Shell ``VAR=value`` format.
   Default ``docker exec`` runs as root, but the in-container agent
   runs as the unprivileged container user via ``gosu``; without the
   chown the agent gets ``Permission denied`` on the session file.
@@ -25,11 +25,11 @@ import json
 from . import actionCatalog
 
 
-def fsBuildSessionEnvBody(sHostUrl, sSessionToken, sContainerId):
+def fsBuildSessionEnvBody(sHostUrl, sAgentToken, sContainerId):
     """Return the session.env shell-format body."""
     listLines = [
         f"VAIBIFY_HOST_URL={sHostUrl}",
-        f"VAIBIFY_SESSION_TOKEN={sSessionToken}",
+        f"VAIBIFY_SESSION_TOKEN={sAgentToken}",
         f"VAIBIFY_CONTAINER_ID={sContainerId}",
     ]
     return "\n".join(listLines) + "\n"
@@ -48,7 +48,7 @@ _I_SECRET_FILE_MODE = 0o600
 
 
 def fnWriteSessionEnv(
-    connectionDocker, sContainerId, sSessionToken, iPort,
+    connectionDocker, sContainerId, sAgentToken, iPort,
 ):
     """Write /tmp/vaibify-session.env inside the container.
 
@@ -59,7 +59,7 @@ def fnWriteSessionEnv(
     Dockerfile; that constant is mirrored here.
     """
     sBody = fsBuildSessionEnvBody(
-        fsBuildHostUrl(iPort), sSessionToken, sContainerId,
+        fsBuildHostUrl(iPort), sAgentToken, sContainerId,
     )
     connectionDocker.fnWriteFile(
         sContainerId,
@@ -83,10 +83,10 @@ def fnWriteActionCatalog(connectionDocker, sContainerId):
 
 
 def fnPushAgentSessionToContainer(
-    connectionDocker, sContainerId, sSessionToken, iPort,
+    connectionDocker, sContainerId, sAgentToken, iPort,
 ):
     """Materialize session.env + action-catalog.json in the container."""
     fnWriteSessionEnv(
-        connectionDocker, sContainerId, sSessionToken, iPort,
+        connectionDocker, sContainerId, sAgentToken, iPort,
     )
     fnWriteActionCatalog(connectionDocker, sContainerId)

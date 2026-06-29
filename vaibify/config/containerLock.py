@@ -13,18 +13,25 @@ does not permanently block its container. Consumers:
   hub exits.
 - ``/api/registry`` reads holder info to report which containers are
   already being used elsewhere.
+
+The file mechanism (no-follow open, payload read/write, 0o700
+directory, stale reaper) lives in ``pidFileRegistry``; this module is
+a thin wrapper that owns only the lock's divergent holder schema
+``{iPid, iPort, sStartedIso, sProjectName}`` and the flock-arbitration
+policy.
 """
 
 import datetime
 import fcntl
-import json
 import os
 import re
 
-from vaibify.config.processLiveness import fbIsProcessAlive
+from vaibify.config import pidFileRegistry
+from vaibify.config.processLiveness import fbIsProcessAliveSince, fbIsUsablePid
 
 
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
+_S_LOCK_SUFFIX = ".lock"
 _RE_VALID_PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _I_MAX_ACQUIRE_ATTEMPTS = 3
 
@@ -69,16 +76,12 @@ def _fnValidateProjectName(sProjectName):
 def fsLockPathFor(sProjectName):
     """Return the lock file path for a given container name."""
     _fnValidateProjectName(sProjectName)
-    return os.path.join(_S_LOCK_DIRECTORY, f"{sProjectName}.lock")
+    return os.path.join(_S_LOCK_DIRECTORY, f"{sProjectName}{_S_LOCK_SUFFIX}")
 
 
 def _fnEnsureLockDirectory():
     """Create ~/.vaibify/locks/ with mode 0o700 if missing."""
-    os.makedirs(_S_LOCK_DIRECTORY, mode=0o700, exist_ok=True)
-    try:
-        os.chmod(_S_LOCK_DIRECTORY, 0o700)
-    except OSError:
-        pass
+    pidFileRegistry.fnEnsureDirectory(_S_LOCK_DIRECTORY)
 
 
 def _fdictBuildHolderPayload(sProjectName, iPort):
@@ -91,22 +94,9 @@ def _fdictBuildHolderPayload(sProjectName, iPort):
     }
 
 
-def _fnWriteHolderPayload(fileHandle, dictPayload):
-    """Truncate and rewrite the lock file with the holder payload."""
-    fileHandle.seek(0)
-    fileHandle.truncate()
-    fileHandle.write(json.dumps(dictPayload, indent=2))
-    fileHandle.flush()
-
-
 def _ffileOpenLockFileNoFollow(sPath):
     """Open the lock path with O_NOFOLLOW so symlinks are rejected."""
-    iFileDescriptor = os.open(
-        sPath,
-        os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
-        0o600,
-    )
-    return os.fdopen(iFileDescriptor, "r+")
+    return pidFileRegistry.ffileOpenNoFollow(sPath)
 
 
 def fnAcquireContainerLock(sProjectName, iPort):
@@ -144,7 +134,7 @@ def _ffileTryAcquireFlock(sPath, sProjectName, iPort):
     except BlockingIOError:
         _fnReapDeadHolderOrRaise(fileHandle, sPath, sProjectName)
         return None
-    _fnWriteHolderPayload(
+    pidFileRegistry.fnWritePayload(
         fileHandle, _fdictBuildHolderPayload(sProjectName, iPort),
     )
     if _fbHandleMatchesPath(fileHandle, sPath):
@@ -163,7 +153,7 @@ def _fnReapDeadHolderOrRaise(fileHandle, sPath, sProjectName):
             dictHolder.get("iPid", 0),
             dictHolder.get("iPort", 0),
         )
-    _fnUnlinkLockFileSafely(sPath)
+    pidFileRegistry.fnUnlinkQuietly(sPath)
 
 
 def _fbClaimIsStale(dictHolder):
@@ -172,11 +162,13 @@ def _fbClaimIsStale(dictHolder):
     A payload without a positive integer PID is treated as live: it
     may belong to a holder that flocked but has not yet written its
     identity, and breaking that lock would race a real acquisition.
+    The recorded ``sStartedIso`` lets a recycled PID be detected; a
+    payload missing it falls back to the bare PID-existence check.
     """
     iPid = dictHolder.get("iPid", 0)
-    if not isinstance(iPid, int) or isinstance(iPid, bool) or iPid <= 0:
+    if not fbIsUsablePid(iPid):
         return False
-    return not fbIsProcessAlive(iPid)
+    return not fbIsProcessAliveSince(iPid, dictHolder.get("sStartedIso"))
 
 
 def _fbHandleMatchesPath(fileHandle, sPath):
@@ -191,14 +183,6 @@ def _fbHandleMatchesPath(fileHandle, sPath):
     )
 
 
-def _fnUnlinkLockFileSafely(sPath):
-    """Remove a stale lock file, ignoring races with other reapers."""
-    try:
-        os.unlink(sPath)
-    except OSError:
-        pass
-
-
 def fnReapStaleContainerLocks():
     """Remove lock files whose recorded holder process has exited.
 
@@ -207,31 +191,22 @@ def fnReapStaleContainerLocks():
     a surviving file descriptor) never blocks a fresh session. Live
     claims are never touched.
     """
-    if not os.path.isdir(_S_LOCK_DIRECTORY):
-        return
-    try:
-        listEntries = os.listdir(_S_LOCK_DIRECTORY)
-    except OSError:
-        return
-    for sEntry in listEntries:
-        if sEntry.endswith(".lock"):
-            _fnReapLockFileIfStale(
-                os.path.join(_S_LOCK_DIRECTORY, sEntry),
-            )
+    pidFileRegistry.fnReapStaleFilesIn(
+        _S_LOCK_DIRECTORY, _fbLockFileIsStale, _S_LOCK_SUFFIX,
+    )
 
 
-def _fnReapLockFileIfStale(sPath):
-    """Unlink one lock file when its recorded holder is dead."""
+def _fbLockFileIsStale(sPath):
+    """Return True when a lock file's recorded holder process has exited."""
     try:
         fileHandle = _ffileOpenLockFileNoFollow(sPath)
     except OSError:
-        return
+        return False
     try:
         dictHolder = _fdictReadHolderFromHandle(fileHandle)
     finally:
         fileHandle.close()
-    if _fbClaimIsStale(dictHolder):
-        _fnUnlinkLockFileSafely(sPath)
+    return _fbClaimIsStale(dictHolder)
 
 
 def fnReleaseContainerLock(fileHandle):
@@ -244,14 +219,43 @@ def fnReleaseContainerLock(fileHandle):
 
 def _fdictReadHolderFromHandle(fileHandle):
     """Best-effort read of holder JSON from an open lock file."""
-    try:
-        fileHandle.seek(0)
-        sContent = fileHandle.read()
-        if not sContent:
-            return {}
-        return json.loads(sContent)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return pidFileRegistry.fdictReadPayloadFromHandle(fileHandle)
+
+
+def flistReadAllLockHolders():
+    """Return holder info for every live container lock on the host.
+
+    Each entry is ``{sProjectName, iPid, iPort, sStartedIso}`` for a
+    lock file whose recorded holder passes the hardened
+    ``_fbClaimIsStale`` check (stale claims are skipped, not reported).
+    Used by ``vaibify sessions`` to show which containers each live
+    session holds. Returns an empty list on any directory error.
+    """
+    listHolders = []
+    for sPath in sorted(pidFileRegistry.flistRegistryFiles(
+        _S_LOCK_DIRECTORY, _S_LOCK_SUFFIX,
+    )):
+        _fnAppendLockHolderRecord(listHolders, sPath)
+    return listHolders
+
+
+def _fnAppendLockHolderRecord(listHolders, sPath):
+    """Append a record only for a lock genuinely held by a live process.
+
+    Held-ness is decided by the flock (matching ``fdictReadLockHolder``
+    and the GUI): a released lock whose file still lingers is not
+    reported, so ``vaibify sessions`` never shows a freed container as
+    held.
+    """
+    dictHolder = _fdictHeldLockHolder(sPath)
+    if not dictHolder:
+        return
+    listHolders.append({
+        "sProjectName": dictHolder.get("sProjectName"),
+        "iPid": dictHolder.get("iPid"),
+        "iPort": dictHolder.get("iPort"),
+        "sStartedIso": dictHolder.get("sStartedIso"),
+    })
 
 
 def fdictReadLockHolder(sProjectName):
@@ -268,6 +272,21 @@ def fdictReadLockHolder(sProjectName):
     sPath = fsLockPathFor(sProjectName)
     if not os.path.isfile(sPath):
         return {}
+    dictHolder = _fdictHeldLockHolder(sPath)
+    if dictHolder.get("iPid") == os.getpid():
+        return {}
+    return dictHolder
+
+
+def _fdictHeldLockHolder(sPath):
+    """Return the holder payload only when a live process holds the flock.
+
+    The flock is the source of truth for held-ness: acquiring it means
+    the lock is free (released, or its file merely lingers) and the
+    function returns ``{}``; a ``BlockingIOError`` means the lock is
+    genuinely held, and the holder is returned unless its recorded PID
+    is stale (then reaped).
+    """
     try:
         fileHandle = _ffileOpenLockFileNoFollow(sPath)
     except OSError:
@@ -284,11 +303,15 @@ def fdictReadLockHolder(sProjectName):
 
 
 def _fdictHolderUnlessStale(fileHandle, sPath):
-    """Return the holder payload, reaping it first when its PID is dead."""
+    """Return the holder payload, reaping it first when its PID is dead.
+
+    Reports the holder regardless of identity; the GUI's
+    ``fdictReadLockHolder`` applies the self-process exemption on top so
+    a hub does not treat its own container as locked, while the
+    host-wide ``vaibify sessions`` enumerator lists every held lock.
+    """
     dictHolder = _fdictReadHolderFromHandle(fileHandle)
-    if dictHolder.get("iPid") == os.getpid():
-        return {}
     if _fbClaimIsStale(dictHolder):
-        _fnUnlinkLockFileSafely(sPath)
+        pidFileRegistry.fnUnlinkQuietly(sPath)
         return {}
     return dictHolder

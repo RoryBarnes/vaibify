@@ -101,7 +101,7 @@ class TestExecuteStart:
             "vaibify.gui.registryRoutes._fsStartOrCreate",
             return_value="abc123",
         ), patch(
-            "vaibify.docker.keepAliveManager.fnStartKeepAlive",
+            "vaibify.config.keepAliveManager.fnStartKeepAlive",
         ) as mockKeepAlive:
             _fsExecuteStart(dictProject)
             mockKeepAlive.assert_called_once_with("my-proj")
@@ -169,7 +169,7 @@ class TestExecuteStop:
             "vaibify.docker.containerManager.fdictGetContainerStatus",
             return_value={"bExists": False, "bRunning": False},
         ), patch(
-            "vaibify.docker.keepAliveManager.fnStopKeepAlive",
+            "vaibify.config.keepAliveManager.fnStopKeepAlive",
         ) as mockKeepAlive:
             _fnExecuteStop("proj")
             mockKeepAlive.assert_called_once_with("proj")
@@ -183,7 +183,7 @@ class TestExecuteStop:
         ) as mockStop, patch(
             "vaibify.docker.containerManager.fnRemoveStopped",
         ), patch(
-            "vaibify.docker.keepAliveManager.fnStopKeepAlive",
+            "vaibify.config.keepAliveManager.fnStopKeepAlive",
         ):
             _fnExecuteStop("proj")
             mockStop.assert_called_once_with("proj")
@@ -197,7 +197,7 @@ class TestExecuteStop:
         ) as mockStop, patch(
             "vaibify.docker.containerManager.fnRemoveStopped",
         ) as mockRemove, patch(
-            "vaibify.docker.keepAliveManager.fnStopKeepAlive",
+            "vaibify.config.keepAliveManager.fnStopKeepAlive",
         ):
             _fnExecuteStop("proj")
             mockStop.assert_not_called()

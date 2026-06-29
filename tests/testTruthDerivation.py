@@ -283,3 +283,81 @@ def testRefreshAggregateTestStatesSkipsStepsWithoutEligibleCategories():
     dictWorkflow = {"listSteps": [dictStep, None]}
     assert fbRefreshAggregateTestStates(dictWorkflow) is False
     assert dictStep["dictVerification"]["sUnitTest"] == "passed"
+
+
+def testMissingOutputOutranksDriftedOutput(dictMarkerAllPassed):
+    """A marker simultaneously missing one output and drifting another
+    reports the more severe ``outputs-missing`` on every axis, never the
+    milder ``outputs-changed``. ``step1/out.json`` is absent on disk
+    (missing) while ``step1/data.csv`` is present but drifted."""
+    dictOnDisk = {"step1/data.csv": "sha-DRIFTED"}
+    dictAxes = fdictComputeTestAxes(
+        dictMarkerAllPassed, dictOnDisk, T_AVAILABLE_CATEGORIES,
+    )
+    assert dictAxes["sIntegrity"] == "outputs-missing"
+    assert dictAxes["sUnitTest"] == "outputs-missing"
+    assert dictAxes["sQualitative"] == "outputs-missing"
+    assert dictAxes["sQuantitative"] == "outputs-missing"
+
+
+def testMarkerWithoutExitStatusDefaultsToCleanPass(dictMarkerAllPassed):
+    """A hash-clean marker that never stamped ``iExitStatus`` (older
+    schema) must default to a clean exit and certify
+    ``passed-from-marker`` — not a fabricated failure."""
+    dictMarker = dict(dictMarkerAllPassed)
+    dictMarker.pop("iExitStatus", None)
+    assert "iExitStatus" not in dictMarker
+    dictOnDisk = {"step1/out.json": "sha-A", "step1/data.csv": "sha-B"}
+    dictAxes = fdictComputeTestAxes(
+        dictMarker, dictOnDisk, T_AVAILABLE_CATEGORIES,
+    )
+    assert dictAxes["sIntegrity"] == "passed-from-marker"
+    assert dictAxes["sQualitative"] == "passed-from-marker"
+    assert dictAxes["sQuantitative"] == "passed-from-marker"
+    assert dictAxes["sUnitTest"] == "passed-from-marker"
+
+
+def testAggregateAllUnnecessaryAxesStaysUnnecessary():
+    """Axes that all resolved to ``unnecessary`` must aggregate to
+    ``unnecessary`` — never a fabricated ``passed`` for a step where no
+    test actually ran."""
+    assert fsAggregateUnitTestFromAxes(["unnecessary"]) == "unnecessary"
+    assert fsAggregateUnitTestFromAxes(
+        ["unnecessary", "unnecessary"]) == "unnecessary"
+
+
+def testChangedOutputsAreReportedInStableSortedOrder():
+    """When two or more outputs drift, ``listModifiedFiles`` is stable
+    sorted order, independent of marker-dict insertion order, so the
+    persisted state.json is reproducible."""
+    dictMarker = dict(dictMarkerAllPassedFixtureUnused())
+    dictMarker["dictOutputHashes"] = {
+        "step1/zeta.csv": "sha-Z",
+        "step1/alpha.csv": "sha-A",
+        "step1/middle.csv": "sha-M",
+    }
+    dictMarker["dictCategories"] = {
+        "integrity": {"iPassed": 1, "iFailed": 0},
+    }
+    dictOnDisk = {
+        "step1/zeta.csv": "sha-Z-DRIFTED",
+        "step1/alpha.csv": "sha-A-DRIFTED",
+        "step1/middle.csv": "sha-M",
+    }
+    dictAxes = fdictComputeTestAxes(
+        dictMarker, dictOnDisk, T_AVAILABLE_CATEGORIES,
+    )
+    listExpected = ["step1/alpha.csv", "step1/zeta.csv"]
+    assert dictAxes["listModifiedFiles"] == listExpected
+    assert dictAxes["listModifiedFiles"] == sorted(
+        ["step1/zeta.csv", "step1/alpha.csv"])
+
+
+def dictMarkerAllPassedFixtureUnused():
+    """A plain marker dict for tests that do not need the fixture."""
+    return {
+        "sRunAtUtc": "2026-01-01T00:00:00Z",
+        "iExitStatus": 0,
+        "dictOutputHashes": {},
+        "dictCategories": {},
+    }

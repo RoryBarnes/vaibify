@@ -85,7 +85,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
     """
 
     @app.get("/api/registry")
-    async def fnGetRegistry():
+    async def fnGetRegistry(sLeaseId: str = ""):
         from vaibify.config.registryManager import (
             flistGetAllProjectsWithStatus,
         )
@@ -98,6 +98,9 @@ def _fnRegisterGetRegistry(app, dictCtx):
             listRegistered, listVaibify,
         )
         _fnAnnotateLockState(listContainers)
+        _fnAnnotateOwnershipState(
+            listContainers, app.state.dictContainerOwners, sLeaseId,
+        )
         return {
             "listContainers": listContainers,
             "listUnrecognized": listUnrecognized,
@@ -132,6 +135,24 @@ def _fnAnnotateLockState(listContainers):
             dictContainer["bLocked"] = False
 
 
+def _fnAnnotateOwnershipState(
+    listContainers, dictContainerOwners, sCallerLease,
+):
+    """Flag containers owned by a different browser session on this hub.
+
+    ``bOwnedByOtherSession`` is True when an in-process owner record
+    exists whose lease differs from the caller's, so the picker can grey
+    a tile that another tab already holds. The owner's lease is never
+    echoed; only the boolean leaves the process.
+    """
+    for dictContainer in listContainers:
+        recordOwner = dictContainerOwners.get(dictContainer.get("sName"))
+        dictContainer["bOwnedByOtherSession"] = bool(
+            recordOwner is not None
+            and recordOwner.sLeaseId != sCallerLease
+        )
+
+
 def _fnRejectInvalidProjectName(sName):
     """Raise HTTP 400 when sName is unsafe for lock operations."""
     from vaibify.config.containerLock import fbIsValidProjectName
@@ -144,32 +165,64 @@ def _fnRejectInvalidProjectName(sName):
 
 def _fnRegisterClaimContainer(app, dictCtx):
     """Register POST /api/registry/{sName}/claim."""
-    del dictCtx
 
     @app.post("/api/registry/{sName}/claim")
-    async def fdictClaimContainer(sName: str):
-        from vaibify.config.containerLock import (
-            ContainerLockedError, fnAcquireContainerLock,
-        )
+    async def fdictClaimContainer(sName: str, sLeaseId: str = ""):
+        from vaibify.gui import containerOwnership
         _fnRejectInvalidProjectName(sName)
-        dictLocks = app.state.dictContainerLocks
-        if sName in dictLocks:
-            return {"sName": sName, "bClaimed": True}
         iPort = getattr(app.state, "iHubPort", 0)
-        try:
-            fileHandle = fnAcquireContainerLock(sName, iPort)
-        except ContainerLockedError as error:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "sName": sName,
-                    "iLockedByPid": error.iHolderPid,
-                    "iLockedByPort": error.iHolderPort,
-                    "sMessage": str(error),
-                },
-            )
-        dictLocks[sName] = fileHandle
-        return {"sName": sName, "bClaimed": True}
+        sContainerId = _fsResolveContainerId(dictCtx, sName)
+        iStatusCode, dictPayload = containerOwnership.ftdictClaim(
+            app.state.dictContainerOwners, sName, sLeaseId, iPort,
+            sContainerId=sContainerId,
+            fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
+                dictCtx, sOwned,
+            ),
+        )
+        if iStatusCode != 200:
+            raise HTTPException(status_code=iStatusCode, detail=dictPayload)
+        return dictPayload
+
+
+def _fsResolveContainerId(dictCtx, sName):
+    """Return the running Docker id for a project name, or '' when absent.
+
+    Stored on the owner record at claim time so the per-container agent
+    token can be scoped to this exact container without a Docker call on
+    every request.
+    """
+    connectionDocker = dictCtx.get("docker")
+    if connectionDocker is None:
+        return ""
+    try:
+        for dictRow in connectionDocker.flistGetRunningContainers():
+            if dictRow.get("sName") == sName:
+                return dictRow.get("sContainerId", "")
+    except Exception:
+        return ""
+    return ""
+
+
+def _fbNameHasRunningPipeline(dictCtx, sName):
+    """Return True when an owned container's pipeline is mid-run.
+
+    Used by the claim arbiter's take-over veto so a foreign claim never
+    evicts an owner whose container is still running. A Docker outage
+    fails safe to busy (``True``), keeping the existing owner in place.
+    """
+    connectionDocker = dictCtx.get("docker")
+    if connectionDocker is None:
+        return False
+    try:
+        from .fileStatusManager import _fbPipelineIsRunning
+        for dictRow in connectionDocker.flistGetRunningContainers():
+            if dictRow.get("sName") == sName:
+                return _fbPipelineIsRunning(
+                    dictCtx, dictRow.get("sContainerId", ""),
+                )
+    except Exception:
+        return True
+    return False
 
 
 def _fnRegisterReleaseContainer(app, dictCtx):
@@ -177,14 +230,13 @@ def _fnRegisterReleaseContainer(app, dictCtx):
     del dictCtx
 
     @app.post("/api/registry/{sName}/release")
-    async def fdictReleaseContainer(sName: str):
-        from vaibify.config.containerLock import fnReleaseContainerLock
+    async def fdictReleaseContainer(sName: str, sLeaseId: str = ""):
+        from vaibify.gui import containerOwnership
         _fnRejectInvalidProjectName(sName)
-        dictLocks = app.state.dictContainerLocks
-        fileHandle = dictLocks.pop(sName, None)
-        if fileHandle is not None:
-            fnReleaseContainerLock(fileHandle)
-        return {"sName": sName, "bReleased": True}
+        bReleased = containerOwnership.fnReleaseOwnership(
+            app.state.dictContainerOwners, sName, sLeaseId,
+        )
+        return {"sName": sName, "bReleased": bReleased}
 
 
 def _fnRegisterAddProject(app, dictCtx):
@@ -309,7 +361,7 @@ def _fsExecuteStart(dictProject):
     from vaibify.cli.configLoader import (
         fconfigLoadFromPath, fsDockerDir,
     )
-    from vaibify.docker.keepAliveManager import fnStartKeepAlive
+    from vaibify.config.keepAliveManager import fnStartKeepAlive
     configProject = fconfigLoadFromPath(
         dictProject["sConfigPath"],
     )
@@ -375,7 +427,7 @@ def _fnExecuteStop(sContainerName):
     from vaibify.docker.containerManager import (
         fdictGetContainerStatus, fnRemoveStopped,
     )
-    from vaibify.docker.keepAliveManager import fnStopKeepAlive
+    from vaibify.config.keepAliveManager import fnStopKeepAlive
     dictStatus = fdictGetContainerStatus(sContainerName)
     if not dictStatus["bExists"]:
         fnStopKeepAlive(sContainerName)

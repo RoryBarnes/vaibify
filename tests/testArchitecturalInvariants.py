@@ -42,6 +42,12 @@ __all__ = [
     "testMarkerCoversAllDeclaredOutputs",
     "testTemplateCommandsUseStepTokens",
     "testStepCountCapEnforcedOnAddRoutes",
+    "testClaimRejectsForeignLease",
+    "testReleaseRejectsNonOwner",
+    "testWebSocketGatesUseSharedAuthorizationGuard",
+    "testLockPayloadCarriesStartedIso",
+    "testSetAllowedContainersRemoved",
+    "testKeepAliveDirectoryChmod700",
 ]
 
 
@@ -2242,3 +2248,357 @@ def testStepCountCapEnforcedOnAddRoutes():
             f"hard cap must be enforced server-side in every "
             f"step-adding route."
         )
+
+
+# ---------------------------------------------------------------------------
+# Single-session owner-of-record invariants (Stage 1 access model).
+#
+# The two old gates -- a name-keyed host flock plus the process-global
+# ``setAllowedContainers`` set -- collapse into one authority,
+# ``app.state.dictContainerOwners``, keyed by a per-claim, server-minted
+# lease. These tests pin the load-bearing behaviour of that model so a
+# future refactor cannot silently reintroduce the claim short-circuit,
+# the append-only authorization leak, a duplicated WebSocket gate, or a
+# recycle-proof payload regression.
+# ---------------------------------------------------------------------------
+
+# Source modules that decide container access. None may consult a
+# process-global container-id membership set; the lease-keyed owner
+# record is the sole authority.
+_T_ACCESS_DECISION_MODULES = (
+    GUI_DIR / "webSocketAuthorization.py",
+    ROUTES_DIR / "pipelineRoutes.py",
+    ROUTES_DIR / "terminalRoutes.py",
+)
+
+# Every security-critical module that historically read or populated the
+# old ``setAllowedContainers`` access set. (The deprecated, never-populated
+# ``routeContext.py`` read-accessor has now been removed; the lease-keyed
+# ``dictContainerOwners`` map is the sole access authority.)
+_T_AUTHORIZATION_SOURCE_MODULES = (
+    GUI_DIR / "pipelineServer.py",
+    GUI_DIR / "registryRoutes.py",
+    GUI_DIR / "webSocketAuthorization.py",
+    ROUTES_DIR / "pipelineRoutes.py",
+    ROUTES_DIR / "terminalRoutes.py",
+    ROUTES_DIR / "workflowRoutes.py",
+)
+
+
+def _frecordSeedOwner(sLeaseId, sStartedIso=""):
+    """Return an OwnerRecord whose flock handle is an in-memory payload.
+
+    A ``StringIO`` stands in for the held flock so the ownership helpers
+    can read ``sStartedIso`` without opening a real lock file.
+    """
+    import io
+    import json as jsonModule
+    from vaibify.gui.containerOwnership import OwnerRecord
+    fileHandlePayload = io.StringIO(
+        jsonModule.dumps({"sStartedIso": sStartedIso}),
+    )
+    return OwnerRecord(sLeaseId=sLeaseId, fileHandleLock=fileHandlePayload)
+
+
+def _fbModuleImportsAuthorizationGuard(pathModule):
+    """Return True when pathModule imports from webSocketAuthorization."""
+    _, treeAst = ftParseFile(pathModule)
+    for sName, _iLine in flistExtractImports(treeAst):
+        if sName.endswith("webSocketAuthorization"):
+            return True
+    return False
+
+
+def testClaimRejectsForeignLease():
+    """A foreign-lease claim is arbitrated to 409, never short-circuited.
+
+    The old registry route returned ``{bClaimed: True}`` unconditionally
+    once the container was in the in-process lock dict, so a second
+    same-hub tab silently succeeded. ``ftdictClaim`` must instead refuse a
+    non-owner with 409 -- without leaking the owner's lease -- while
+    keeping a same-lease re-claim idempotent for the reload path.
+    """
+    from vaibify.gui import containerOwnership
+    dictOwners = {
+        "Proj": _frecordSeedOwner("LEASE-A", "2026-01-02T03:04:05"),
+    }
+    iCodeForeign, dictForeign = containerOwnership.ftdictClaim(
+        dictOwners, "Proj", "LEASE-B", iPort=8000,
+    )
+    assert iCodeForeign == 409, (
+        "a claim presenting a foreign lease must be refused with 409, "
+        "not short-circuited to success"
+    )
+    assert dictForeign.get("bClaimed") is False
+    assert "sLeaseId" not in dictForeign, (
+        "the 409 body must never echo the current owner's lease"
+    )
+    iCodeSame, dictSame = containerOwnership.ftdictClaim(
+        dictOwners, "Proj", "LEASE-A", iPort=8000,
+    )
+    assert iCodeSame == 200 and dictSame["sLeaseId"] == "LEASE-A", (
+        "a same-lease re-claim (the reload path) must be idempotent success"
+    )
+    sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
+    assert "ftdictClaim" in sSource and "bClaimed" not in sSource, (
+        "the claim route must delegate arbitration to "
+        "containerOwnership.ftdictClaim and hold no inline bClaimed "
+        "short-circuit"
+    )
+
+
+def testReleaseRejectsNonOwner():
+    """Release verifies the lease, closing the append-only authz leak.
+
+    ``fnReleaseOwnership`` must return False and retain the record when
+    the caller does not present the owning lease, so a non-owner can
+    never drop another session's authorization. The old model left
+    ``setAllowedContainers`` populated for the whole process lifetime;
+    the lease check is what makes release honest.
+    """
+    from vaibify.gui import containerOwnership
+    dictOwners = {"Proj": _frecordSeedOwner("LEASE-A")}
+    bForeign = containerOwnership.fnReleaseOwnership(
+        dictOwners, "Proj", "LEASE-B",
+    )
+    assert bForeign is False and "Proj" in dictOwners, (
+        "a non-owner release must be rejected and must not drop the record"
+    )
+    bMissing = containerOwnership.fnReleaseOwnership(
+        dictOwners, "Absent", "LEASE-A",
+    )
+    assert bMissing is False
+    sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
+    assert "fnReleaseOwnership" in sSource and "sLeaseId" in sSource, (
+        "the release route must verify the lease via "
+        "containerOwnership.fnReleaseOwnership"
+    )
+
+
+def testWebSocketGatesUseSharedAuthorizationGuard():
+    """Both WebSocket routes consult the one shared authorization guard.
+
+    The three-step gate (loopback origin + shared token + owning lease)
+    lives only in ``webSocketAuthorization``. Each WebSocket route module
+    must import it rather than inline its own check, and no
+    access-decision module may reference a process-global
+    ``setAllowedContainers`` membership set.
+    """
+    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
+        pathModule = ROUTES_DIR / sFileName
+        assert _fbModuleImportsAuthorizationGuard(pathModule), (
+            f"{sFileName} must import the shared guard from "
+            f"webSocketAuthorization instead of inlining the gate"
+        )
+    listViolations = [
+        pathModule.name for pathModule in _T_ACCESS_DECISION_MODULES
+        if "setAllowedContainers" in fsReadSource(pathModule)
+    ]
+    assert listViolations == [], (
+        f"access-decision modules must not consult a container-id "
+        f"membership set; setAllowedContainers found in: {listViolations}"
+    )
+    sGuardSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
+    assert "def fbAuthorizeContainerSession" in sGuardSource, (
+        "webSocketAuthorization must expose fbAuthorizeContainerSession"
+    )
+
+
+def testLockPayloadCarriesStartedIso():
+    """Every host-registry holder payload keeps the recycle-proof field.
+
+    ``sStartedIso`` records the holder's process start clock so a reaper
+    can tell a genuinely dead holder from a recycled PID. Dropping it
+    degrades every reaper to a bare ``os.kill`` liveness check. The
+    container-lock builder is asserted by construction; the session and
+    keep-alive registries are asserted by source so the whole family
+    keeps the field.
+    """
+    import datetime
+    from vaibify.config import containerLock
+    dictPayload = containerLock._fdictBuildHolderPayload("Proj", 8000)
+    for sKey in ("iPid", "iPort", "sStartedIso", "sProjectName"):
+        assert sKey in dictPayload, (
+            f"container-lock holder payload missing {sKey!r}; the "
+            f"recycle-proof staleness contract depends on it"
+        )
+    datetime.datetime.fromisoformat(dictPayload["sStartedIso"])
+    for sModuleName in ("sessionRegistry.py", "keepAliveManager.py"):
+        sSource = fsReadSource(
+            REPO_ROOT / "vaibify" / "config" / sModuleName,
+        )
+        assert "sStartedIso" in sSource, (
+            f"{sModuleName} must write sStartedIso into its holder "
+            f"payload for the recycle-proof reaper"
+        )
+
+
+def testSetAllowedContainersRemoved():
+    """The process-global allow set is gone from every access-decision site.
+
+    The old model authorized a WebSocket/REST call by container-id
+    membership in ``setAllowedContainers`` -- a process-global set that
+    was append-only (never cleared on release or disconnect) and keyed on
+    the process, not the browser. The lease-keyed ``dictContainerOwners``
+    map replaces it as the SOLE authority. No security-critical module
+    may name the old set, and the new authority must be consulted in its
+    place.
+    """
+    listViolations = [
+        pathModule.name for pathModule in _T_AUTHORIZATION_SOURCE_MODULES
+        if "setAllowedContainers" in fsReadSource(pathModule)
+    ]
+    assert listViolations == [], (
+        f"setAllowedContainers must not appear in any access-decision "
+        f"module; the lease-keyed dictContainerOwners is the single "
+        f"authority. Found in: {listViolations}"
+    )
+    sServerSource = fsReadSource(GUI_DIR / "pipelineServer.py")
+    sRegistrySource = fsReadSource(GUI_DIR / "registryRoutes.py")
+    assert "dictContainerOwners" in sServerSource, (
+        "pipelineServer must build and consult dictContainerOwners as "
+        "the replacement authority"
+    )
+    assert "dictContainerOwners" in sRegistrySource, (
+        "registryRoutes claim/release must operate on dictContainerOwners"
+    )
+
+
+def testWebSocketRoutesResolveIdToNameBeforeGate():
+    """Both WS routes resolve the docker id to the canonical name first.
+
+    The owner-of-record map is keyed by container NAME (the claim
+    route's canonical key), but the WebSocket routes receive the docker
+    ID in their path. Each handler must call ``fsContainerNameForId``
+    before handing a name to ``fiContainerSessionRejectionCode`` and to
+    the per-container live-connection counter; otherwise the name-keyed
+    gate lookup misses and every authorized session closes 4403. This
+    pins the resolution boundary so an id-keyed regression cannot pass
+    CI silently.
+    """
+    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
+        sSource = fsReadSource(ROUTES_DIR / sFileName)
+        iResolve = sSource.find("fsContainerNameForId(")
+        iGate = sSource.find("fiContainerSessionRejectionCode(")
+        assert iResolve != -1, (
+            f"{sFileName} must resolve the docker id to the canonical "
+            f"name via fsContainerNameForId before gating"
+        )
+        assert iGate != -1 and iResolve < iGate, (
+            f"{sFileName} must call fsContainerNameForId BEFORE "
+            f"fiContainerSessionRejectionCode so the name-keyed gate is "
+            f"consulted with the resolved name, not the raw docker id"
+        )
+
+
+def testPerContainerLiveConnectionCounterHasProductionDriver():
+    """The per-container live-connection counter is driven from source.
+
+    The increment/decrement pair on ``containerOwnership`` once had zero
+    non-test callers, so ``iLiveConnectionCount`` stayed at zero and the
+    idle reaper force-released live, owned sessions while the
+    researcher's WebSocket was open. The shared serve wrapper in
+    ``webSocketAuthorization`` is the single production driver; this
+    test fails if it stops driving the counter.
+    """
+    sSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
+    assert "fnIncrementLiveConnection" in sSource, (
+        "webSocketAuthorization must drive the per-container "
+        "increment so the reaper sees an honest live count"
+    )
+    assert "fnDecrementLiveConnection" in sSource, (
+        "webSocketAuthorization must drive the per-container decrement "
+        "in a finally so the grace clock starts on the last disconnect"
+    )
+
+
+def testKeepAliveDirectoryChmod700(tmp_path):
+    """The keep-alive registry creates its directory at mode 0o700.
+
+    ``containerLock`` and ``sessionRegistry`` already chmod their dirs
+    0o700; ``keepAliveManager`` historically did not (the security
+    divergence noted in the refactor diagnosis). Routing its directory
+    creation through ``pidFileRegistry.fnEnsureDirectory`` closes the gap
+    by construction. This asserts the shared creator enforces 0o700 and
+    that keepAliveManager delegates to it rather than calling
+    ``os.makedirs`` directly.
+    """
+    import os
+    from vaibify.config import pidFileRegistry
+    sNestedDir = tmp_path / "caffeinate"
+    pidFileRegistry.fnEnsureDirectory(str(sNestedDir))
+    iMode = os.stat(str(sNestedDir)).st_mode & 0o777
+    assert iMode == 0o700, (
+        f"pidFileRegistry.fnEnsureDirectory must create registry dirs "
+        f"at 0o700; got {oct(iMode)}"
+    )
+    sSource = fsReadSource(
+        REPO_ROOT / "vaibify" / "config" / "keepAliveManager.py",
+    )
+    assert "pidFileRegistry.fnEnsureDirectory" in sSource, (
+        "config/keepAliveManager must create its directory through "
+        "pidFileRegistry.fnEnsureDirectory so it inherits 0o700"
+    )
+    assert "os.makedirs" not in sSource, (
+        "config/keepAliveManager must not call os.makedirs directly; "
+        "that would bypass the shared 0o700 creator"
+    )
+
+
+# ---------------------------------------------------------------------
+# Module-size ratchet (smell-to-justify; see AGENTS.md "When to
+# modularize"). Prevents a NEW god module from appearing and stops the
+# existing large modules from growing, without forcing a split of a
+# cohesive-but-large file today. The grandfathered numbers are known
+# debt: they may go DOWN (split or trim), never up. Raising one is a
+# deliberate act that should be justified, not a reflex.
+# ---------------------------------------------------------------------
+
+I_MODULE_LINE_CAP = 800
+
+DICT_GRANDFATHERED_MODULE_LINES = {
+    "routes/pipelineRoutes.py": 2132,
+    "routes/syncRoutes.py": 2040,
+    "fileStatusManager.py": 1943,
+    "workflowManager.py": 1935,
+    "pipelineServer.py": 1697,
+    "syncDispatcher.py": 1622,
+    "pipelineRunner.py": 1399,
+    "dataLoaders.py": 1222,
+    "introspectionScript.py": 1192,
+    "testGenerator.py": 1063,
+    "registryRoutes.py": 987,
+}
+
+
+def _fiCountFileLines(pathFile):
+    """Return the number of lines in a source file."""
+    with open(pathFile, "r", encoding="utf-8") as fileHandle:
+        return sum(1 for _ in fileHandle)
+
+
+def testModuleSizeIsBounded():
+    """No new god modules; grandfathered large modules must not grow.
+
+    A new module over the cap must be split or added to the allow-list
+    with a justification; a grandfathered module that grew past its
+    recorded size must be trimmed or its entry consciously updated. This
+    is a smell-to-justify ratchet, not a mandate to fragment.
+    """
+    listOffenders = []
+    for pathFile in sorted(GUI_DIR.rglob("*.py")):
+        sKey = pathFile.relative_to(GUI_DIR).as_posix()
+        iLines = _fiCountFileLines(pathFile)
+        iAllowed = DICT_GRANDFATHERED_MODULE_LINES.get(sKey, I_MODULE_LINE_CAP)
+        if iLines > iAllowed:
+            listOffenders.append((sKey, iLines, iAllowed))
+    assert not listOffenders, (
+        "Module-size ratchet tripped (see AGENTS.md 'When to "
+        "modularize'). Split the module along a real seam, or — if it is "
+        "one cohesive responsibility — update its entry in "
+        "DICT_GRANDFATHERED_MODULE_LINES:\n"
+        + "\n".join(
+            f"  {sKey}: {iLines} lines (allowed {iAllowed})"
+            for sKey, iLines, iAllowed in listOffenders
+        )
+    )

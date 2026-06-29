@@ -31,7 +31,7 @@ methodology behind this structure.
 
 The source code shall adhere to the following conventions: 
 
-1. Functions should be short (less than 20 lines), orthogonal, and  single-purposed. If identical lines exist in the codebase, make a new function that contains those lines, i.e., don't repeat yourself.
+1. Functions should be orthogonal and single-purposed — which usually means 20–30 lines. A longer function is acceptable when splitting it would only create artificial seams: pass-through helpers called from exactly one place that thread the parent's variables onward to carry on the parent's single purpose. Split for reuse or a genuine conceptual boundary, never to satisfy a line count. If identical lines exist in the codebase, make a new function that contains those lines, i.e., don't repeat yourself — but only for *true* duplication; tolerate parallel structure that legitimately diverges (see "When to modularize").
 
 2. Variable names should be camel-case and should have prefixes that 
 correspond to the variable type or cast, i.e. Hungarian notation. Use the following guide:
@@ -50,7 +50,7 @@ If a cast is not listed above, ask me.
 
 3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix.
 
-4. Functions should never be more than 20 lines long. More than this amount, and it will be challenging for a developer to keep track of how the function is accomplishing its task. When a function is over 20 lines, identify the block(s) of code that are most likey to be of broader use and create (a) new function(s).
+4. Prefer functions under ~20–30 lines, because a single-purpose function usually fits there and stays easy to navigate. This is a guideline, not a hard limit. When a long function contains a block that is of broader use or marks a real conceptual boundary, extract it. When the function is long but irreducibly one purpose — its only "helpers" would be single-call pass-throughs sharing threaded state — leave it whole; that is clearer than artificial fragmentation, which also costs an agent navigability by smearing one behavior across many call hops.
 
 5. File names should be camelcase, but should not use Hungarian prefixes.
 
@@ -59,6 +59,75 @@ If a cast is not listed above, ask me.
 7. Use inline documentation sparingly. Clear, long variable and function names allow the developer to understand how the code is executing just by reading the source code.
 
 8. Do not allow a developer's personal style preferences supersede these rules. 
+
+## When to modularize
+
+Extracting an abstraction has a real cost: indirection, a new name to
+learn, behavior moved away from where it is used. A human pays that cost
+in time and feels it; an agent does not, so an agent's bias runs the
+other way — toward premature abstraction. Premature abstraction is the
+*worse* error, because **duplication is cheaper than the wrong
+abstraction**: duplicated code is visible and deletable, whereas a wrong
+abstraction couples distant code through a false commonality and is
+painful to unwind. So default to leaving code alone, and extract only in
+response to a force that has *already materialized*, in roughly this
+order of strength:
+
+1. **A divergence bug** — the same fix had to land in N places and one
+   was missed, or two things that had to agree drifted apart. The cost is
+   no longer hypothetical.
+2. **The third instance** (the rule of three) — not the second. Two
+   similar things may be coincidence, and you cannot yet tell which parts
+   are essential versus accidental; three is a pattern with a direction.
+3. **An un-homed concept** — the domain keeps naming something the code
+   has no representation for (e.g. "one session per container" before the
+   lease existed). This is the one case to extract on the *first*
+   instance: the concept is already real, just homeless.
+4. **Differing reasons to change** — one part of a module changes on a
+   different cadence or for different reasons than the rest. That is a
+   genuine fault line; split along it.
+
+What is **not** sufficient: a line count, surface similarity ("these look
+alike" — they may diverge later, like `director`/`workflowManager`),
+speculative reuse ("might be needed someday"), or "it would be cleaner."
+When tempted to split for one of those, don't — note it as a candidate
+and wait for a real force.
+
+Module cohesion is the same discipline one level up: a module should own
+one cohesive responsibility. A large *cohesive* module is fine; a module
+that has accreted a second major concern should be split along that seam.
+`testArchitecturalInvariants.py::testModuleSizeIsBounded` is a
+*smell-to-justify*, not a mandate: it ratchets current module sizes so a
+new god module cannot appear and an existing large one cannot grow, but
+it forces a conversation (split, or justify in the allow-list), never a
+mechanical split.
+
+## Epistemics for an AI-written codebase
+
+When an agent writes the code, writes the tests, and reviews the diff,
+the usual guardrail is gone: a green suite means "the stubs agree with
+each other," not "this is correct." This repo has already shipped a fatal
+bug (an owner map keyed by name but read by id) under a fully green
+suite, because the fixtures used name == id and never drove a live
+connection. Treat correctness as un-demonstrated until reality is
+exercised. Concretely:
+
+- **Verify by trying to falsify, not confirm.** The way to surface a bug
+  you cannot enumerate is to task a check with *breaking* a claim, not
+  agreeing with it. Adversarial review — not more confirmatory tests — is
+  what caught the name-vs-id bug. For any guarantee that crosses an
+  HTTP / WebSocket / container boundary, assert it with the keys made
+  distinct (name ≠ id) and a real connection, never a unit stub.
+- **Separate "verified" from "asserted."** Say "I confirmed X by running
+  Y" or "I believe X but have not checked" — never let the second masquerade
+  as the first. A confident, unverified claim about a diff is the same
+  reflex that produces a confident, unverified claim about whether a
+  benchmark passed; in scientific software that reflex is a contamination
+  risk, not a convenience risk.
+- **Do not let agreement substitute for evidence.** An agent's pull toward
+  pleasing the reader will bend it toward the reader's hypotheses and
+  expected results. Resist convergence until the premise has been
+  defended on its own terms.
 
 ## Required after edits
 
@@ -216,6 +285,40 @@ path must preserve that default.
 `tests/testArchitecturalInvariants.py::testFnWriteFileDefaultsToContainerUserOwnership`
 enforces it.
 
+**Container access has exactly one authority: the lease plus
+`dictContainerOwners`.** A container is owned by a per-claim,
+server-minted lease (`containerOwnership.fsMintLease`), recorded in the
+in-process owner-of-record map `app.state.dictContainerOwners`, keyed by
+container **name** (the host flock and the caffeinate keep-alive are both
+name-keyed, so the owner map must be too; the WebSocket routes resolve
+the Docker container id to a name before the lease lookup). Claim
+(`registryRoutes`), the connect handler, the pipeline WebSocket, and the
+terminal WebSocket must all authorize through the single shared guard
+`webSocketAuthorization.fbAuthorizeContainerSession` /
+`fiContainerSessionRejectionCode` — never an inlined container-id
+membership check. Never reintroduce `setAllowedContainers` (the old
+append-only, process-global allow set that leaked authorization for the
+whole process lifetime) or treat the shared session token as the browser
+*principal* — the shared token is only the trust/CSRF boundary, not the
+thing that says *which* browser session owns a container. The
+in-container agent authenticates with a **per-container** token
+(`OwnerRecord.sAgentToken`, written into that container's
+`/tmp/vaibify-session.env`), validated per-container by both
+`webSocketAuthorization.fbCheckAgentToken` and the REST
+`SessionTokenMiddleware`, so a compromised agent in one container cannot
+reach another. Never collapse the agent lane back onto the hub-wide
+token. The lease is the exclusivity principal; the
+holder payload carries `sStartedIso` for recycle-proof staleness; exactly
+one live WebSocket per container is enforced by the per-container
+`iLiveConnectionCount` (a duplicate tab that copied the lease is closed
+4409); and the idle busy-veto reads `dictContainerOwners.keys()` so the
+watchdog can never self-SIGTERM a hub mid-run. The full normative model
+is the "Single browser session per container" section of
+[docs/architecture.md](docs/architecture.md). Enforced by
+`testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
+`testWebSocketGatesUseSharedAuthorizationGuard`, and
+`testSetAllowedContainersRemoved`.
+
 ## Cross-step references via tokens
 
 **Every cross-step file reference in a vaibify workflow script must be
@@ -327,7 +430,6 @@ without discussion:
   `testGenerator`, and `syncDispatcher` for backward compatibility.
   Callers should migrate toward canonical imports over time; do not
   delete the re-exports until external callers are updated.
-
 ## Discovery commands
 
 Rather than memorizing structural facts, run these when you need them:
@@ -348,6 +450,20 @@ This section records specific mistakes made in past sessions that are
 worth remembering. It is empty at initial commit. Add entries as they
 come up — one line each, pointing at the offending pattern and the
 correct approach.
+
+- The pre-refactor claim route short-circuited to `bClaimed: True`
+  whenever a container was already locked, silently admitting a second
+  same-hub browser tab. A claim must ARBITRATE (unowned grant /
+  same-lease idempotent / foreign 409), never unconditionally succeed;
+  `testClaimRejectsForeignLease` guards this.
+- A green test suite is not proof of a working guarantee: the
+  one-session refactor's owner map was keyed by container *name* on the
+  write path but looked up by container *id* at the WebSocket gate, so
+  every real hub session would have failed closed — yet the suite stayed
+  green because its fixtures used name == id and never drove the live
+  WebSocket/viewer paths. When a behavior crosses the
+  HTTP/WebSocket/container boundary, assert it with name != id and an
+  actual connection, not a unit stub.
 
 ## Pointers
 

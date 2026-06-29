@@ -96,14 +96,11 @@ class TestFdictRunTestGeneration:
 
         mockGenerate = MagicMock(return_value={})
 
-        with patch(
-            "vaibify.gui.routes.testRoutes._pipelineServer"
-        ) as mockPs:
-            mockPs.sTerminalUser = "defaultuser"
-            await _fdictRunTestGeneration(
-                dictCtx, "cid-1", 0, dictWorkflow,
-                mockGenerate, mockRequest,
-            )
+        dictCtx["sTerminalUser"] = "defaultuser"
+        await _fdictRunTestGeneration(
+            dictCtx, "cid-1", 0, dictWorkflow,
+            mockGenerate, mockRequest,
+        )
         assert mockGenerate.call_args[1]["sUser"] == "defaultuser"
 
     @pytest.mark.asyncio

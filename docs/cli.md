@@ -300,12 +300,63 @@ Several vaibify instances can run on the same host. Typing
 invocation auto-shifts to the next free port (8051, 8052, …) and
 announces the fallback on stderr. Pass `--port N` to pin an
 explicit port. Any given container may be accessed by only one
-vaibify session at a time: the hub landing page greys out
-containers already held by another session, and a second
-`vaibify start -p X` on the same project refuses to attach.
+browser session at a time: the hub landing page greys out
+containers already held by another session, a second tab that tries
+to open a held container is refused *"In use in another browser
+session"*, and a second `vaibify start -p X` on the same project
+refuses to attach. The exclusivity mechanism — the per-claim lease,
+the owner-of-record map, the one-live-connection invariant, and the
+release triggers — is specified once in the
+[architecture reference](architecture.md#single-browser-session-per-container);
+that section is the normative source of truth, including the
+holder-payload field table.
 The **New vaibify window** button on the container hub, workflow
 picker, and Admin menu spawns a detached hub on a free port and
 opens it in a new browser tab.
+
+## Session management
+
+Vaibify hub and viewer servers run in the foreground of the terminal
+that launched them. Closing a browser tab does not stop them, and
+closing the terminal orphans the server, which keeps holding its
+session slot and per-container locks until it is reaped. These
+commands let you see and stop live sessions. They are the host-side
+analog of `jupyter server list` and `jupyter server stop`, and like
+those, they run **on the host only** -- they are not invokable from
+inside a container.
+
+### `vaibify sessions`
+
+List every live hub and viewer session on the host, with its PID,
+role, port, start time, and the container(s) it holds.
+
+```bash
+vaibify sessions
+```
+
+Each line reports `pid`, `role` (`hub` or `viewer`), `port`, `started`
+(the ISO start time), and `containers` (the names locked on that
+port). When nothing is running it prints `No live Vaibify sessions.`
+
+### `vaibify sessions stop`
+
+Gracefully stop a session by PID, or every session with `--all`.
+
+```bash
+vaibify sessions stop <PID>
+vaibify sessions stop --all
+```
+
+| Option   | Description                                       |
+|----------|---------------------------------------------------|
+| `PID`    | The session PID to stop (from `vaibify sessions`) |
+| `--all`  | Stop every live session except the current one    |
+
+Stopping sends `SIGTERM`, which lets the server run its graceful
+shutdown -- releasing its session slot and any container locks it
+holds. `stop` **refuses any PID that is not a known live Vaibify
+session**, so it can never signal an unrelated process, and `--all`
+**excludes the current session** so a session never stops itself.
 
 ## Publishing
 
