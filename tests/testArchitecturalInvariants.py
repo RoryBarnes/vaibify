@@ -2543,3 +2543,62 @@ def testKeepAliveDirectoryChmod700(tmp_path):
         "config/keepAliveManager must not call os.makedirs directly; "
         "that would bypass the shared 0o700 creator"
     )
+
+
+# ---------------------------------------------------------------------
+# Module-size ratchet (smell-to-justify; see AGENTS.md "When to
+# modularize"). Prevents a NEW god module from appearing and stops the
+# existing large modules from growing, without forcing a split of a
+# cohesive-but-large file today. The grandfathered numbers are known
+# debt: they may go DOWN (split or trim), never up. Raising one is a
+# deliberate act that should be justified, not a reflex.
+# ---------------------------------------------------------------------
+
+I_MODULE_LINE_CAP = 800
+
+DICT_GRANDFATHERED_MODULE_LINES = {
+    "routes/pipelineRoutes.py": 2132,
+    "routes/syncRoutes.py": 2040,
+    "fileStatusManager.py": 1943,
+    "workflowManager.py": 1935,
+    "pipelineServer.py": 1697,
+    "syncDispatcher.py": 1622,
+    "pipelineRunner.py": 1399,
+    "dataLoaders.py": 1222,
+    "introspectionScript.py": 1192,
+    "testGenerator.py": 1063,
+    "registryRoutes.py": 987,
+}
+
+
+def _fiCountFileLines(pathFile):
+    """Return the number of lines in a source file."""
+    with open(pathFile, "r", encoding="utf-8") as fileHandle:
+        return sum(1 for _ in fileHandle)
+
+
+def testModuleSizeIsBounded():
+    """No new god modules; grandfathered large modules must not grow.
+
+    A new module over the cap must be split or added to the allow-list
+    with a justification; a grandfathered module that grew past its
+    recorded size must be trimmed or its entry consciously updated. This
+    is a smell-to-justify ratchet, not a mandate to fragment.
+    """
+    listOffenders = []
+    for pathFile in sorted(GUI_DIR.rglob("*.py")):
+        sKey = pathFile.relative_to(GUI_DIR).as_posix()
+        iLines = _fiCountFileLines(pathFile)
+        iAllowed = DICT_GRANDFATHERED_MODULE_LINES.get(sKey, I_MODULE_LINE_CAP)
+        if iLines > iAllowed:
+            listOffenders.append((sKey, iLines, iAllowed))
+    assert not listOffenders, (
+        "Module-size ratchet tripped (see AGENTS.md 'When to "
+        "modularize'). Split the module along a real seam, or — if it is "
+        "one cohesive responsibility — update its entry in "
+        "DICT_GRANDFATHERED_MODULE_LINES:\n"
+        + "\n".join(
+            f"  {sKey}: {iLines} lines (allowed {iAllowed})"
+            for sKey, iLines, iAllowed in listOffenders
+        )
+    )
