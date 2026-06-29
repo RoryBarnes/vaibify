@@ -24,6 +24,9 @@ __all__ = [
     "OwnerRecord",
     "fdictCreateOwnerRegistry",
     "fsMintLease",
+    "fsMintAgentToken",
+    "fsAgentTokenForName",
+    "fbAgentTokenAuthorizesContainerId",
     "ftdictClaim",
     "fnReleaseOwnership",
     "fbSessionOwnsContainer",
@@ -62,6 +65,8 @@ class OwnerRecord:
 
     sLeaseId: str
     fileHandleLock: object
+    sAgentToken: str = ""
+    sContainerId: str = ""
     iLiveConnectionCount: int = 0
     fLastSeenMonotonic: float = field(default_factory=time.monotonic)
 
@@ -76,8 +81,46 @@ def fsMintLease():
     return secrets.token_urlsafe(32)
 
 
+def fsMintAgentToken():
+    """Return a new per-container in-container-agent credential.
+
+    Distinct from the hub-wide session token and from every other
+    container's token, so a compromised agent in one container cannot
+    authenticate against another container's session.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def fsAgentTokenForName(dictContainerOwners, sName):
+    """Return the per-container agent token for an owned name, or ''."""
+    recordOwner = dictContainerOwners.get(sName)
+    return recordOwner.sAgentToken if recordOwner is not None else ""
+
+
+def fbAgentTokenAuthorizesContainerId(
+    dictContainerOwners, sPresentedToken, sContainerId,
+):
+    """Return True when a presented agent token owns ``sContainerId``.
+
+    The per-container token is the proof of which container the agent
+    speaks for; it authorizes only the container whose owner record both
+    minted it and serves that Docker id. An empty token or id never
+    matches, so a request that names no container fails closed.
+    """
+    if not sPresentedToken or not sContainerId:
+        return False
+    for recordOwner in dictContainerOwners.values():
+        if (
+            recordOwner.sAgentToken
+            and recordOwner.sAgentToken == sPresentedToken
+            and recordOwner.sContainerId == sContainerId
+        ):
+            return True
+    return False
+
+
 def ftdictClaim(
-    dictContainerOwners, sName, sLeaseId, iPort,
+    dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
 ):
     """Arbitrate a claim and return ``(iStatusCode, dictPayload)``.
@@ -90,7 +133,9 @@ def ftdictClaim(
     """
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
-        return _ftdictClaimUnowned(dictContainerOwners, sName, iPort)
+        return _ftdictClaimUnowned(
+            dictContainerOwners, sName, iPort, sContainerId,
+        )
     if sLeaseId and recordOwner.sLeaseId == sLeaseId:
         recordOwner.fLastSeenMonotonic = time.monotonic()
         return (200, _fdictClaimGranted(sName, recordOwner.sLeaseId))
@@ -98,26 +143,34 @@ def ftdictClaim(
         recordOwner, sName, fbPipelineRunning, fGraceSeconds,
     ):
         _fnForceReleaseOwnership(dictContainerOwners, sName)
-        return _ftdictClaimUnowned(dictContainerOwners, sName, iPort)
+        return _ftdictClaimUnowned(
+            dictContainerOwners, sName, iPort, sContainerId,
+        )
     return (409, _fdictClaimRefused(sName, recordOwner))
 
 
-def _ftdictClaimUnowned(dictContainerOwners, sName, iPort):
+def _ftdictClaimUnowned(dictContainerOwners, sName, iPort, sContainerId):
     """Acquire the host flock for an unowned container and mint a lease."""
     try:
         fileHandleLock = fnAcquireContainerLock(sName, iPort)
     except ContainerLockedError as error:
         return (409, _fdictCrossHubRefused(sName, error))
-    sLeaseId = _fnRecordNewOwner(dictContainerOwners, sName, fileHandleLock)
+    sLeaseId = _fnRecordNewOwner(
+        dictContainerOwners, sName, fileHandleLock, sContainerId,
+    )
     return (200, _fdictClaimGranted(sName, sLeaseId))
 
 
-def _fnRecordNewOwner(dictContainerOwners, sName, fileHandleLock):
-    """Mint a lease, store a fresh owner record, and return the lease."""
+def _fnRecordNewOwner(
+    dictContainerOwners, sName, fileHandleLock, sContainerId="",
+):
+    """Mint a lease plus a per-container agent token and store the owner."""
     sLeaseId = fsMintLease()
     dictContainerOwners[sName] = OwnerRecord(
         sLeaseId=sLeaseId,
         fileHandleLock=fileHandleLock,
+        sAgentToken=fsMintAgentToken(),
+        sContainerId=sContainerId,
     )
     return sLeaseId
 

@@ -25,6 +25,7 @@ S_CONTAINER_ID = "abc123dockerid"
 S_PROJECT_NAME = "MyProject"
 S_TOKEN = "shared-trust-token"
 S_LEASE = "owning-lease-xyz"
+S_AGENT_TOKEN = "per-container-agent-token"
 
 
 class _FakeDocker:
@@ -52,6 +53,7 @@ def _fdictOwnersByName(sLeaseId=S_LEASE, iLiveCount=0):
     """Return an owner map keyed by NAME (the claim route's canonical key)."""
     recordOwner = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
+        sAgentToken=S_AGENT_TOKEN, sContainerId=S_CONTAINER_ID,
     )
     recordOwner.iLiveConnectionCount = iLiveCount
     return {S_PROJECT_NAME: recordOwner}
@@ -217,12 +219,13 @@ def test_owner_terminal_ws_accepted_when_name_differs_from_id():
 
 
 def test_agent_lane_authorized_by_container_id_against_name_record():
-    """A non-loopback agent token is honored after id->name resolution.
+    """A per-container agent token is honored after id->name resolution.
 
-    The agent dials the docker ID with the shared token and no loopback
-    origin. After the route resolves the id to the owned NAME, the
-    lease-exempt agent lane authorizes it; proving the resolution does
-    not break the machine lane on a hub.
+    The agent dials the docker ID with its container's own agent token
+    and no loopback origin. After the route resolves the id to the owned
+    NAME, the lease-exempt agent lane authorizes it against that owner's
+    per-container token; proving the resolution does not break the
+    machine lane on a hub.
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
 
@@ -235,8 +238,8 @@ def test_agent_lane_authorized_by_container_id_against_name_record():
     ):
         client = _fclientWithPipelineWs(dictCtx)
         with client.websocket_connect(
-            f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_TOKEN}",
-            headers={"x-vaibify-session": S_TOKEN},
+            f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_AGENT_TOKEN}",
+            headers={"x-vaibify-session": S_AGENT_TOKEN},
         ):
             pass
 

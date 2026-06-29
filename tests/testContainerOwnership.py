@@ -247,3 +247,48 @@ def test_flistReapIdleOwnerships_skips_running_pipeline(tmp_lock_dir):
         assert "demo" in dictContainerOwners
     finally:
         _ftReleaseAll(dictContainerOwners)
+
+
+def test_claim_mints_a_distinct_per_container_agent_token(tmp_lock_dir):
+    dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
+    containerOwnership.ftdictClaim(
+        dictContainerOwners, "alpha", None, 8050, sContainerId="cid-alpha",
+    )
+    containerOwnership.ftdictClaim(
+        dictContainerOwners, "beta", None, 8050, sContainerId="cid-beta",
+    )
+    try:
+        sAlpha = dictContainerOwners["alpha"].sAgentToken
+        sBeta = dictContainerOwners["beta"].sAgentToken
+        assert sAlpha and sBeta and sAlpha != sBeta
+        assert dictContainerOwners["alpha"].sContainerId == "cid-alpha"
+    finally:
+        _ftReleaseAll(dictContainerOwners)
+
+
+def test_fbAgentTokenAuthorizesContainerId_is_per_container(tmp_lock_dir):
+    dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
+    containerOwnership.ftdictClaim(
+        dictContainerOwners, "alpha", None, 8050, sContainerId="cid-alpha",
+    )
+    containerOwnership.ftdictClaim(
+        dictContainerOwners, "beta", None, 8050, sContainerId="cid-beta",
+    )
+    try:
+        sAlphaToken = dictContainerOwners["alpha"].sAgentToken
+        # alpha's token authorizes alpha's container...
+        assert containerOwnership.fbAgentTokenAuthorizesContainerId(
+            dictContainerOwners, sAlphaToken, "cid-alpha",
+        ) is True
+        # ...but never beta's container, and never an empty id.
+        assert containerOwnership.fbAgentTokenAuthorizesContainerId(
+            dictContainerOwners, sAlphaToken, "cid-beta",
+        ) is False
+        assert containerOwnership.fbAgentTokenAuthorizesContainerId(
+            dictContainerOwners, sAlphaToken, "",
+        ) is False
+        assert containerOwnership.fbAgentTokenAuthorizesContainerId(
+            dictContainerOwners, "", "cid-alpha",
+        ) is False
+    finally:
+        _ftReleaseAll(dictContainerOwners)

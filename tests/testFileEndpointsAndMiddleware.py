@@ -463,8 +463,40 @@ def test_session_token_endpoint_exempt(clientHttp):
     assert responseHttp.status_code == 200
 
 
-def test_agent_session_header_bypasses_host_and_token_check(clientHttp):
-    """X-Vaibify-Session + non-loopback host succeeds when token matches."""
+def test_agent_per_container_token_bypasses_host_for_its_container(clientHttp):
+    """A per-container agent token bypasses host ONLY for its container.
+
+    The hub-wide session token is no longer an agent credential; the
+    agent presents the per-container token minted on its owner record and
+    may reach only the container that token belongs to.
+    """
+    from vaibify.gui import containerOwnership
+    sContainerId = "agent-owned-cid"
+    clientHttp.app.state.dictContainerOwners["proj"] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="lease", fileHandleLock=None,
+            sAgentToken="agent-tok", sContainerId=sContainerId,
+        )
+    )
+    clientAgent = TestClient(
+        clientHttp.app,
+        headers={
+            "X-Vaibify-Session": "agent-tok",
+            "Host": "host.docker.internal:8050",
+        },
+    )
+    responseOwn = clientAgent.post(
+        f"/api/files/{sContainerId}/exist", json={},
+    )
+    assert responseOwn.status_code not in (400, 401)
+    responseOther = clientAgent.post(
+        "/api/files/some-other-cid/exist", json={},
+    )
+    assert responseOther.status_code in (400, 401)
+
+
+def test_hub_wide_token_in_agent_header_no_longer_bypasses(clientHttp):
+    """The hub-wide session token must NOT ride the agent lane anymore."""
     sToken = clientHttp.app.state.sSessionToken
     clientAgent = TestClient(
         clientHttp.app,
@@ -473,8 +505,15 @@ def test_agent_session_header_bypasses_host_and_token_check(clientHttp):
             "Host": "host.docker.internal:8050",
         },
     )
-    responseHttp = clientAgent.get("/api/user")
-    assert responseHttp.status_code == 200
+    assert clientAgent.get("/api/user").status_code in (400, 401)
+
+
+def test_session_token_endpoint_refuses_the_agent(clientHttp):
+    """The in-container agent must not be able to read the hub-wide token."""
+    clientAgent = TestClient(
+        clientHttp.app, headers={"X-Vaibify-Session": "any-agent-token"},
+    )
+    assert clientAgent.get("/api/session-token").status_code == 403
 
 
 def test_agent_session_header_empty_does_not_bypass(clientHttp):

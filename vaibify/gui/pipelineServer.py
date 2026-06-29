@@ -977,16 +977,31 @@ def _fnRegisterViewerServedContainer(dictCtx, sContainerId):
     sLeaseId = containerOwnership.fsMintLease()
     dictContainerOwners[sName] = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
+        sAgentToken=containerOwnership.fsMintAgentToken(),
+        sContainerId=sContainerId,
     )
     dictCtx["sViewerLease"] = sLeaseId
 
 
+def _fsAgentTokenForContainerId(dictCtx, sContainerId):
+    """Return the owning session's per-container agent token, or ''."""
+    dictContainerOwners = dictCtx.get("dictContainerOwners") or {}
+    sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
+    return containerOwnership.fsAgentTokenForName(dictContainerOwners, sName)
+
+
 def _fnPushAgentSession(dictCtx, sContainerId):
-    """Write the vaibify-do session + catalog into the container."""
+    """Write the vaibify-do session + catalog into the container.
+
+    The agent receives this container's own per-container token, never
+    the hub-wide session token, so its credential authorizes only the
+    container it runs inside.
+    """
+    sAgentToken = _fsAgentTokenForContainerId(dictCtx, sContainerId)
     try:
         agentSessionBridge.fnPushAgentSessionToContainer(
             dictCtx["docker"], sContainerId,
-            dictCtx["sSessionToken"], dictCtx.get("iPort", 0),
+            sAgentToken, dictCtx.get("iPort", 0),
         )
     except Exception as error:
         logger.warning(
@@ -1287,7 +1302,15 @@ def _fnRegisterStaticFiles(app, dictCtx):
         )
 
     @app.get("/api/session-token")
-    async def fnGetSessionToken():
+    async def fnGetSessionToken(request: Request):
+        if request.headers.get(
+            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="The in-container agent must not read the hub "
+                "session token.",
+            )
         return {"sToken": dictCtx["sSessionToken"]}
 
     if os.path.isdir(STATIC_DIRECTORY):

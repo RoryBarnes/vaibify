@@ -64,20 +64,22 @@ def fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
     )
 
 
-def fbCheckAgentToken(connection, sSharedToken, dictContainerOwners, sName):
-    """Return True for the in-container agent on an already-owned container.
+def fbCheckAgentToken(connection, dictContainerOwners, sName):
+    """Return True for the in-container agent on its OWN container.
 
     The agent dials in over ``host.docker.internal`` (no loopback origin)
-    and holds no lease, so it is authorized by the shared token alone --
-    but only for a container that currently has an owner record, which
-    scopes the lane to sessions the researcher has already claimed. This
-    lane is only ever consulted for a connection WITHOUT a loopback
-    origin, so a browser (which the user agent always stamps with an
-    Origin header) can never reach it and thereby skip the lease.
+    and holds no lease. It is authorized by the per-container agent token
+    minted on the named container's owner record -- a credential distinct
+    from every other container's token -- so an agent compromised in one
+    container cannot authenticate against another. This lane is only ever
+    consulted for a connection WITHOUT a loopback origin, so a browser
+    (which the user agent always stamps with an Origin header) can never
+    reach it and thereby skip the lease.
     """
-    if not fbHasAgentToken(connection, sSharedToken):
-        return False
-    return sName in dictContainerOwners
+    sAgentToken = containerOwnership.fsAgentTokenForName(
+        dictContainerOwners, sName,
+    )
+    return bool(sAgentToken) and fbHasAgentToken(connection, sAgentToken)
 
 
 def fiContainerSessionRejectionCode(connection, dictCtx, sName):
@@ -93,9 +95,7 @@ def fiContainerSessionRejectionCode(connection, dictCtx, sName):
     sSharedToken = dictCtx.get("sSessionToken", "")
     dictContainerOwners = dictCtx.get("dictContainerOwners", {})
     if not fbCheckOrigin(connection):
-        if fbCheckAgentToken(
-            connection, sSharedToken, dictContainerOwners, sName,
-        ):
+        if fbCheckAgentToken(connection, dictContainerOwners, sName):
             return I_REJECT_AUTHORIZED
         return I_REJECT_BAD_ORIGIN
     if not fbCheckSharedToken(connection, sSharedToken):

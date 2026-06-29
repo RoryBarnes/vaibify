@@ -230,9 +230,15 @@ terminal WebSocket must all authorize through the single shared guard
 membership check. Never reintroduce `setAllowedContainers` (the old
 append-only, process-global allow set that leaked authorization for the
 whole process lifetime) or treat the shared session token as the browser
-*principal* — the token is the trust/CSRF boundary and the in-container
-agent's machine credential, not the thing that says *which* browser
-session owns a container. The lease is the exclusivity principal; the
+*principal* — the shared token is only the trust/CSRF boundary, not the
+thing that says *which* browser session owns a container. The
+in-container agent authenticates with a **per-container** token
+(`OwnerRecord.sAgentToken`, written into that container's
+`/tmp/vaibify-session.env`), validated per-container by both
+`webSocketAuthorization.fbCheckAgentToken` and the REST
+`SessionTokenMiddleware`, so a compromised agent in one container cannot
+reach another. Never collapse the agent lane back onto the hub-wide
+token. The lease is the exclusivity principal; the
 holder payload carries `sStartedIso` for recycle-proof staleness; exactly
 one live WebSocket per container is enforced by the per-container
 `iLiveConnectionCount` (a duplicate tab that copied the lease is closed
@@ -355,18 +361,6 @@ without discussion:
   `testGenerator`, and `syncDispatcher` for backward compatibility.
   Callers should migrate toward canonical imports over time; do not
   delete the re-exports until external callers are updated.
-- The in-container agent lane (`webSocketAuthorization.fbCheckAgentToken`)
-  authorizes with the **hub-wide** shared session token, not a
-  per-container credential. On a hub that owns more than one container, a
-  compromised/prompt-injected agent in container A could therefore reach
-  container B's session. This is pre-existing (the retired
-  `setAllowedContainers` lane had the same hub-wide scope) and is
-  deferred, not endorsed: the robust fix provisions a per-container
-  `sAgentToken` (on the owner record, via `agentSessionBridge`, presented
-  by `docker/vaibifyDo.py`, accepted by `SessionTokenMiddleware`). Until
-  then, treat a single hub as one trust domain. Do not widen the agent
-  lane further.
-
 ## Discovery commands
 
 Rather than memorizing structural facts, run these when you need them:

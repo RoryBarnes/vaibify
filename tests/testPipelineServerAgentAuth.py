@@ -65,12 +65,19 @@ def test_fnAuthorizeContainer_still_records_owner_when_bridge_fails():
     assert dictCtx["containerUsers"]["c-id"] == "scientist"
 
 
-def test_fnAuthorizeContainer_invokes_bridge_with_session_and_port():
+def test_fnAuthorizeContainer_invokes_bridge_with_per_container_token():
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "researcher\n")
+    from vaibify.gui import containerOwnership
+    dictContainerOwners = {
+        "c-id": containerOwnership.OwnerRecord(
+            sLeaseId="lease", fileHandleLock=None,
+            sAgentToken="agent-tok", sContainerId="c-id",
+        ),
+    }
     dictCtx = {
         "docker": mockDocker,
-        "setAllowedContainers": set(),
+        "dictContainerOwners": dictContainerOwners,
         "containerUsers": {},
         "sSessionToken": "tok-abc",
         "iPort": 9100,
@@ -81,23 +88,29 @@ def test_fnAuthorizeContainer_invokes_bridge_with_session_and_port():
     ) as mockPush:
         pipelineServer._fnAuthorizeContainer(dictCtx, "c-id")
     mockPush.assert_called_once_with(
-        mockDocker, "c-id", "tok-abc", 9100,
+        mockDocker, "c-id", "agent-tok", 9100,
     )
 
 
 def test_fnPushAgentSession_missing_iport_defaults_to_zero():
     """``dictCtx.get('iPort', 0)`` should not KeyError when absent."""
     mockDocker = MagicMock()
+    from vaibify.gui import containerOwnership
     dictCtx = {
         "docker": mockDocker,
-        "sSessionToken": "tok",
+        "dictContainerOwners": {
+            "c-id": containerOwnership.OwnerRecord(
+                sLeaseId="lease", fileHandleLock=None,
+                sAgentToken="agent-tok", sContainerId="c-id",
+            ),
+        },
     }
     with patch.object(
         pipelineServer.agentSessionBridge,
         "fnPushAgentSessionToContainer",
     ) as mockPush:
         pipelineServer._fnPushAgentSession(dictCtx, "c-id")
-    mockPush.assert_called_once_with(mockDocker, "c-id", "tok", 0)
+    mockPush.assert_called_once_with(mockDocker, "c-id", "agent-tok", 0)
 
 
 # -----------------------------------------------------------------------

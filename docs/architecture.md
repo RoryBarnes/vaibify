@@ -470,9 +470,15 @@ loopback origin (`4003` on failure), shared token (`4401`), and owning
 lease (`4403`). A non-loopback connection is never a browser; it is
 admitted only through the lease-exempt **agent lane**
 (`fbCheckAgentToken`): the in-container `vaibify-do` machine credential
-authorizes the shared token alone, but only for a container that
-already has a live owner, which scopes the lane to a session the
-researcher has already claimed.
+is a **per-container agent token** minted on the container's owner
+record (`OwnerRecord.sAgentToken`) and written into that container's
+`/tmp/vaibify-session.env` at connect. It authorizes only the container
+whose owner minted it — never the hub-wide session token and never
+another container's token — so an agent compromised in one container of
+a multi-container hub cannot authenticate against another. The REST
+`SessionTokenMiddleware` enforces the same per-container scoping by
+matching the presented token against the owner of the container id named
+in the request path; a request that names no container fails closed.
 
 ### The four release triggers
 

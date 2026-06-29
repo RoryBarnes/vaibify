@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import actionCatalog
+from . import containerOwnership
 
 __all__ = [
     "SessionTokenMiddleware",
@@ -76,40 +77,88 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        sExpected = request.app.state.sSessionToken
-        sAgentToken = request.headers.get(
-            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        dictContainerOwners = getattr(
+            request.app.state, "dictContainerOwners", {},
         )
-        if sAgentToken and sAgentToken == sExpected:
+        if _fbAgentRequestAuthorized(request, dictContainerOwners):
             return await call_next(request)
         if not _fbRequestHasAllowedHost(request):
-            return Response(
-                status_code=400,
-                content='{"detail":"Invalid Host header"}',
-                media_type="application/json",
-            )
-        sPath = request.url.path
-        bNeedsToken = (
-            sPath.startswith("/api/")
-            and sPath != "/api/session-token"
-        )
-        if bNeedsToken:
-            sToken = request.headers.get("x-session-token", "")
-            if not sToken:
-                bIsWebSocket = (
-                    request.headers.get("upgrade", "").lower()
-                    == "websocket")
-                bIsDownload = "/download/" in sPath
-                if bIsWebSocket or bIsDownload:
-                    sToken = request.query_params.get(
-                        "sToken", "")
-            if sToken != sExpected:
-                return Response(
-                    status_code=401,
-                    content='{"detail":"Unauthorized"}',
-                    media_type="application/json",
-                )
+            return _fresponseJsonError(400, "Invalid Host header")
+        if _fbBrowserTokenRejected(request):
+            return _fresponseJsonError(401, "Unauthorized")
         return await call_next(request)
+
+
+def _fbAgentRequestAuthorized(request, dictContainerOwners):
+    """Authorize an in-container agent by its per-container token.
+
+    The agent presents its container's own token (the ``X-Vaibify-Session``
+    header on REST) and may act only on the container named by the
+    request path, so a token minted for one container never authorizes
+    another. The agent reaches the backend over ``host.docker.internal``,
+    so this lane intentionally precedes — and on success bypasses — the
+    loopback Host check.
+    """
+    sPresented = _fsAgentPresentedToken(request)
+    sContainerId = _fsContainerIdFromPath(request.url.path)
+    return containerOwnership.fbAgentTokenAuthorizesContainerId(
+        dictContainerOwners, sPresented, sContainerId,
+    )
+
+
+def _fsAgentPresentedToken(request):
+    """Return the agent's presented token: header for REST, query for WS."""
+    sHeader = request.headers.get(
+        actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+    )
+    if sHeader:
+        return sHeader
+    if request.headers.get("upgrade", "").lower() == "websocket":
+        return request.query_params.get("sToken", "")
+    return ""
+
+
+def _fsContainerIdFromPath(sPath):
+    """Return the container-id path segment of an ``/api`` or ``/ws`` route."""
+    listSegments = sPath.split("/")
+    if len(listSegments) > 3 and listSegments[1] in ("api", "ws"):
+        return listSegments[3]
+    return ""
+
+
+def _fbBrowserTokenRejected(request):
+    """Return True when a browser request to a guarded path lacks the token."""
+    sPath = request.url.path
+    bNeedsToken = (
+        sPath.startswith("/api/") and sPath != "/api/session-token"
+    )
+    if not bNeedsToken:
+        return False
+    sExpected = request.app.state.sSessionToken
+    return _fsBrowserPresentedToken(request, sPath) != sExpected
+
+
+def _fsBrowserPresentedToken(request, sPath):
+    """Return the browser token from the header, or the query for WS/download."""
+    sToken = request.headers.get("x-session-token", "")
+    if sToken:
+        return sToken
+    bIsWebSocket = (
+        request.headers.get("upgrade", "").lower() == "websocket"
+    )
+    bIsDownload = "/download/" in sPath
+    if bIsWebSocket or bIsDownload:
+        return request.query_params.get("sToken", "")
+    return ""
+
+
+def _fresponseJsonError(iStatusCode, sDetail):
+    """Return a JSON error Response with the given status and detail."""
+    return Response(
+        status_code=iStatusCode,
+        content='{"detail":"' + sDetail + '"}',
+        media_type="application/json",
+    )
 
 
 def _fbRequestHasAllowedHost(request):

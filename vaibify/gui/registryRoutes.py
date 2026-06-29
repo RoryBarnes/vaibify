@@ -171,8 +171,10 @@ def _fnRegisterClaimContainer(app, dictCtx):
         from vaibify.gui import containerOwnership
         _fnRejectInvalidProjectName(sName)
         iPort = getattr(app.state, "iHubPort", 0)
+        sContainerId = _fsResolveContainerId(dictCtx, sName)
         iStatusCode, dictPayload = containerOwnership.ftdictClaim(
             app.state.dictContainerOwners, sName, sLeaseId, iPort,
+            sContainerId=sContainerId,
             fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
                 dictCtx, sOwned,
             ),
@@ -180,6 +182,25 @@ def _fnRegisterClaimContainer(app, dictCtx):
         if iStatusCode != 200:
             raise HTTPException(status_code=iStatusCode, detail=dictPayload)
         return dictPayload
+
+
+def _fsResolveContainerId(dictCtx, sName):
+    """Return the running Docker id for a project name, or '' when absent.
+
+    Stored on the owner record at claim time so the per-container agent
+    token can be scoped to this exact container without a Docker call on
+    every request.
+    """
+    connectionDocker = dictCtx.get("docker")
+    if connectionDocker is None:
+        return ""
+    try:
+        for dictRow in connectionDocker.flistGetRunningContainers():
+            if dictRow.get("sName") == sName:
+                return dictRow.get("sContainerId", "")
+    except Exception:
+        return ""
+    return ""
 
 
 def _fbNameHasRunningPipeline(dictCtx, sName):
