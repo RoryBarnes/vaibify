@@ -13,17 +13,22 @@ Each test pins a guarantee that a surviving mutant violated:
 import hashlib
 import os
 
+import pytest
+
 from vaibify.reproducibility.dataArchiver import (
     fdictBuildZenodoMetadata,
     fsGenerateArchiveReadme,
     fsGenerateChecksums,
 )
 
+pytestmark = pytest.mark.falsification
+
 
 class TestChecksumLineShape:
     """fsGenerateChecksums records the basename and a trailing newline."""
 
     def test_fsGenerateChecksums_records_basename_only(self, tmp_path):
+        """Kills: sRelative = os.path.basename(sPath) -> sRelative = sPath (record absolute host path)."""
         pathFile = tmp_path / "test.dat"
         pathFile.write_text("payload")
         sExpectedHash = hashlib.sha256(b"payload").hexdigest()
@@ -36,6 +41,7 @@ class TestChecksumLineShape:
         assert os.sep not in sName
 
     def test_fsGenerateChecksums_does_not_leak_absolute_path(self, tmp_path):
+        """Kills: sRelative = os.path.basename(sPath) -> sRelative = sPath (record absolute host path)."""
         pathFile = tmp_path / "test.dat"
         pathFile.write_text("payload")
 
@@ -44,6 +50,7 @@ class TestChecksumLineShape:
         assert str(tmp_path) not in sResult
 
     def test_fsGenerateChecksums_has_trailing_newline(self, tmp_path):
+        """Kills: return "\\n".join(listLines) + "\\n" -> return "\\n".join(listLines) (drop trailing newline)."""
         pathFile = tmp_path / "test.dat"
         pathFile.write_text("payload")
 
@@ -56,6 +63,7 @@ class TestTitlePrecedence:
     """sProjectTitle is preferred over sWorkflowName in title and README."""
 
     def test_fdictBuildZenodoMetadata_prefers_project_title(self):
+        """Kills: fdictBuildZenodoMetadata title precedence swapped: read sWorkflowName before sProjectTitle."""
         dictWorkflow = {
             "sProjectTitle": "Preferred",
             "sWorkflowName": "Fallback",
@@ -64,6 +72,7 @@ class TestTitlePrecedence:
         assert dictMeta["title"] == "Data for: Preferred"
 
     def test_fsGenerateArchiveReadme_prefers_project_title(self):
+        """Kills: fsGenerateArchiveReadme title precedence swapped: read sWorkflowName before sProjectTitle."""
         dictWorkflow = {
             "sProjectTitle": "Preferred",
             "sWorkflowName": "Fallback",

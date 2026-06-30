@@ -13,6 +13,8 @@ import pytest
 from vaibify.gui import dataLoaders
 from vaibify.gui.dataLoaders import fLoadValue
 
+pytestmark = pytest.mark.falsification
+
 
 # ----------------------------------------------------------------------
 # Hole 1: _fExtractArrayValue default index must be [-1] (last), not [0].
@@ -20,6 +22,7 @@ from vaibify.gui.dataLoaders import fLoadValue
 
 
 def test_extractArrayValue_default_index_is_last_element(tmp_path):
+    """Kills: _fExtractArrayValue: default index [-1] -> [0]"""
     np.save(str(tmp_path / "data.npy"), np.array([10.0, 20.0, 30.0]))
     fResult = fLoadValue("data.npy", "", str(tmp_path))
     assert fResult == 30.0
@@ -32,6 +35,7 @@ def test_extractArrayValue_default_index_is_last_element(tmp_path):
 
 
 def test_splitHeaderAndData_mixed_first_line_treated_as_header():
+    """Kills: _ftSplitHeaderAndData: all(_fbIsNumericToken) -> any(_fbIsNumericToken)"""
     tResult = dataLoaders._ftSplitHeaderAndData(
         ["name 1\n", "a 2\n", "b 3\n"],
     )
@@ -45,6 +49,7 @@ def test_splitHeaderAndData_mixed_first_line_treated_as_header():
 
 
 def test_loadCsvNegativeRow_index_minus_two_is_second_to_last(tmp_path):
+    """Kills: _fLoadCsvNegativeRow: dequeTail[0] -> dequeTail[-1]"""
     listLines = ["a,b\n"] + [f"{i},{i * 2}\n" for i in range(10)]
     (tmp_path / "t.csv").write_text("".join(listLines))
     fResult = fLoadValue("t.csv", "column:b,index:-2", str(tmp_path))
@@ -58,6 +63,7 @@ def test_loadCsvNegativeRow_index_minus_two_is_second_to_last(tmp_path):
 
 
 def test_loadCsvByRowIndex_index_zero_returns_first_row(tmp_path):
+    """Kills: _fLoadCsvByRowIndex: iIndex < 0 -> iIndex <= 0"""
     (tmp_path / "r.csv").write_text("time,flux\n0,1.0\n1,2.5\n")
     fResult = fLoadValue("r.csv", "column:flux,index:0", str(tmp_path))
     assert fResult == 1.0
@@ -70,6 +76,7 @@ def test_loadCsvByRowIndex_index_zero_returns_first_row(tmp_path):
 
 
 def test_extractHdf5Value_negative_flat_index_maps_to_last(tmp_path):
+    """Kills: _fExtractHdf5Value: iFlat += np.prod(tShape) -> iFlat -= np.prod(tShape)"""
     h5py = pytest.importorskip("h5py")
     sPath = tmp_path / "grid.h5"
     with h5py.File(str(sPath), "w") as fileHdf5:
@@ -85,6 +92,7 @@ def test_extractHdf5Value_negative_flat_index_maps_to_last(tmp_path):
 
 
 def test_loadFitsValue_two_component_index_selects_second(tmp_path):
+    """Kills: _fLoadFitsValue: len(listIndices) > 1 -> > 2"""
     pytest.importorskip("astropy")
     from astropy.io import fits as fitsLib
     sPath = tmp_path / "a.fits"

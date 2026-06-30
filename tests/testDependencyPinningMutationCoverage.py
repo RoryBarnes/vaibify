@@ -9,10 +9,14 @@ on clean code and fails when its surviving mutant is applied.
 import sys
 from unittest import mock
 
+import pytest
+
 from vaibify.reproducibility.dependencyPinning import (
     flistResolveLockCompileCommand,
     flistVerifyRequirementsLock,
 )
+
+pytestmark = pytest.mark.falsification
 
 
 _S_MD5_LOCK = (
@@ -40,6 +44,9 @@ def test_verify_flags_md5_only_lock_as_unhashed(tmp_path):
     bare ``--hash=``: MD5 is collision-vulnerable, so the L3 guarantee
     that every dependency is pinned by a strong hash is violated and
     must surface as an issue naming the package.
+
+    Kills: In _flistFindUnhashedEntries (line 255) weaken the
+    membership test from '--hash=sha256:' to a bare '--hash='.
     """
     (tmp_path / "requirements.lock").write_text(_S_MD5_LOCK)
 
@@ -56,6 +63,10 @@ def test_verify_flags_empty_but_present_lockfile(tmp_path):
     Kills deletion of the ``if not listEntries:`` branch: an empty
     lockfile pins nothing, so reporting zero issues would falsely
     advertise the environment as honestly pinned.
+
+    Kills: In flistVerifyRequirementsLock (line 217) delete the
+    `if not listEntries:` branch so an empty-but-present lockfile
+    falls through to _flistFindUnhashedEntries([]) and returns [].
     """
     (tmp_path / "requirements.lock").write_text(_S_COMMENTS_ONLY_LOCK)
 
@@ -72,6 +83,10 @@ def test_verify_accepts_flush_left_hash_continuation(tmp_path):
     continuation test: without it the unindented hash is parsed as its
     own bogus block and ``click`` is reported hashless. The correct
     parse yields a single hashed entry, so verify returns no issues.
+
+    Kills: In _flistParseLockEntries (line 239) delete the
+    `or sLine.lstrip().startswith('--hash')` arm of the
+    continuation-line test, leaving only sLine[:1].isspace().
     """
     (tmp_path / "requirements.lock").write_text(_S_FLUSH_LEFT_HASH_LOCK)
 
@@ -87,6 +102,10 @@ def test_resolve_prefers_uv_module_over_piptools(tmp_path):
     documented priority contract is uv-before-pip-tools. With the uv
     executable absent but both the uv and pip-tools modules present,
     the resolver must select ``python -m uv pip compile``.
+
+    Kills: In flistResolveLockCompileCommand (lines 86-89) swap the
+    two _fbModuleAvailable probes so piptools is checked before the
+    uv module.
     """
     sModule = "vaibify.reproducibility.dependencyPinning"
     with mock.patch(sModule + ".shutil.which", return_value=None):

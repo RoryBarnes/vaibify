@@ -13,6 +13,8 @@ import tempfile
 import pytest
 from unittest.mock import patch
 
+pytestmark = pytest.mark.falsification
+
 from vaibify.gui.director import (
     fbValidateWorkflow,
     fiResolveCoreCount,
@@ -33,8 +35,9 @@ def test_fnDownloadDatasets_refuses_sibling_prefix_destination(
 ):
     """A sibling dir sharing the root's name prefix must be refused.
 
-    Kills the mutant that drops ``+ os.sep`` from the startswith guard,
-    which would accept ``/repo/proj-evil`` against root ``/repo/proj``.
+    Kills: Drop the os.sep in the containment guard of
+    _fbDatasetPathInsideRoot (line 545): startswith(sRootReal) instead of
+    startswith(sRootReal + os.sep).
     """
     sSibling = tmp_path.parent / (tmp_path.name + "-evil")
     sSibling.mkdir()
@@ -57,7 +60,11 @@ def test_fnDownloadDatasets_refuses_sibling_prefix_destination(
 
 
 def test_fbValidateWorkflow_requires_saPlotFiles():
-    """A step missing only saPlotFiles must be rejected."""
+    """A step missing only saPlotFiles must be rejected.
+
+    Kills: Drop 'saPlotFiles' from the required-field tuple in
+    fbValidateWorkflow (line 137).
+    """
     dictWorkflow = {"listSteps": [{
         "sName": "Test",
         "sDirectory": "sub",
@@ -67,7 +74,11 @@ def test_fbValidateWorkflow_requires_saPlotFiles():
 
 
 def test_fbValidateWorkflow_requires_saPlotCommands():
-    """A step missing only saPlotCommands must be rejected."""
+    """A step missing only saPlotCommands must be rejected.
+
+    Kills: Drop 'saPlotCommands' from the required-field tuple in
+    fbValidateWorkflow (line 137).
+    """
     dictWorkflow = {"listSteps": [{
         "sName": "Test",
         "sDirectory": "sub",
@@ -83,7 +94,11 @@ def test_fbValidateWorkflow_requires_saPlotCommands():
 
 @patch("vaibify.gui.director.fnExecuteCommand")
 def test_fnExecuteStep_defaults_to_plot_only(mockExecute):
-    """An omitted bPlotOnly defaults to True: data commands are skipped."""
+    """An omitted bPlotOnly defaults to True: data commands are skipped.
+
+    Kills: Flip bPlotOnly's default from True to False in fnExecuteStep
+    (line 295: dictStep.get('bPlotOnly', False)).
+    """
     dictStep = {
         "sName": "Test",
         "sDirectory": ".",
@@ -105,7 +120,11 @@ def test_fnExecuteStep_defaults_to_plot_only(mockExecute):
 
 
 def test_fiResolveCoreCount_floors_at_one_on_single_core():
-    """On a 1-CPU host, auto (-1) must floor at 1, never 0."""
+    """On a 1-CPU host, auto (-1) must floor at 1, never 0.
+
+    Kills: Remove the max(1, ...) floor in the -1 auto branch of
+    fiResolveCoreCount (line 163: return iTotal - 1).
+    """
     with patch(
         "vaibify.gui.director.multiprocessing.cpu_count",
         return_value=1,
@@ -119,7 +138,11 @@ def test_fiResolveCoreCount_floors_at_one_on_single_core():
 
 
 def test_fnRegisterFiles_small_file_threshold_boundary(capsys):
-    """A 500-byte file warns; a 1024-byte file does not."""
+    """A 500-byte file warns; a 1024-byte file does not.
+
+    Kills: Change the small-file warning threshold from 1024 to 100 bytes
+    in _fnRegisterFiles (line 326).
+    """
     with tempfile.TemporaryDirectory() as sTmpDir:
         sSmallPath = os.path.join(sTmpDir, "small.pdf")
         with open(sSmallPath, "wb") as fh:

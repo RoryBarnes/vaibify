@@ -23,11 +23,15 @@ import os
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+
 from vaibify.reproducibility.repoFiles import (
     ContainerRepoFiles,
     HostRepoFiles,
     SnapshotRepoFiles,
 )
+
+pytestmark = pytest.mark.falsification
 
 
 class _FakeExecDockerConnection:
@@ -68,6 +72,7 @@ def _tPrefixCollidingSiblingSymlink(tmp_path):
 
 
 def test_host_hash_refuses_sibling_dir_sharing_root_prefix(tmp_path):
+    """Kills: In _fbEscapesRoot drop `+ os.sep` from `not sCandidateReal.startswith(sRepoReal + os.sep)` (line 280: `sRepoReal + os.sep,` -> `sRepoReal,`)"""
     pathRepo = _tPrefixCollidingSiblingSymlink(tmp_path)
     filesHost = HostRepoFiles(str(pathRepo))
     dictEntry = filesHost.fdictHashFiles(["link.txt"])["link.txt"]
@@ -76,6 +81,7 @@ def test_host_hash_refuses_sibling_dir_sharing_root_prefix(tmp_path):
 
 
 def test_container_hash_refuses_sibling_dir_sharing_root_prefix(tmp_path):
+    """Kills: In _S_HASH_SCRIPT (line 406) drop `+ os.sep` from `not sReal.startswith(sRootReal + os.sep)`"""
     pathRepo = _tPrefixCollidingSiblingSymlink(tmp_path)
     filesContainer = ContainerRepoFiles(
         _FakeExecDockerConnection(), "cid", str(pathRepo),
@@ -86,6 +92,7 @@ def test_container_hash_refuses_sibling_dir_sharing_root_prefix(tmp_path):
 
 
 def test_snapshot_hash_refuses_sibling_dir_sharing_root_prefix(tmp_path):
+    """Kills: In _S_SNAPSHOT_SCRIPT (line 749) drop `+ os.sep` from `not sReal.startswith(sRootReal + os.sep)`"""
     pathRepo = _tPrefixCollidingSiblingSymlink(tmp_path)
     filesSnapshot = SnapshotRepoFiles.ffilesFetch(
         _FakeExecDockerConnection(), "cid", str(pathRepo),

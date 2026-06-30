@@ -6,10 +6,14 @@ unmutated module and fails when the corresponding survived mutation is
 applied.
 """
 
+import pytest
+
 from vaibify.reproducibility.manifestWriter import (
     fnWriteManifest,
     flistParseManifestLines,
 )
+
+pytestmark = pytest.mark.falsification
 
 
 _MANIFEST_FILENAME = "MANIFEST.sha256"
@@ -41,6 +45,10 @@ def test_flag_token_ending_in_py_is_not_treated_as_test_script(tmp_path):
     abort the ENTIRE manifest write — the L3 manifest could never be
     generated. The guard is the ``not sToken.startswith('-')`` clause in
     ``_fbLooksLikeTestScriptToken``.
+
+    Kills: Line 306: drop the `and not sToken.startswith('-')` clause in
+    _fbLooksLikeTestScriptToken so any token ending in .py is treated as a
+    test-script path.
     """
     _fnWriteFile(tmp_path, "stepB/tests/test_real.py", "def test(): pass\n")
     dictWorkflow = {"listSteps": [{
@@ -71,6 +79,9 @@ def test_manifest_header_is_exact_literal_first_line(tmp_path):
     ``manifestWriter._MANIFEST_HEADER``) so the assertion cannot adapt
     to a mutated banner. External format-sniffing tools key off this
     exact line.
+
+    Kills: Line 91: change _MANIFEST_HEADER to other text (e.g.
+    '# anything\\n').
     """
     dictWorkflow = {"listSteps": []}
     fnWriteManifest(str(tmp_path), dictWorkflow)
