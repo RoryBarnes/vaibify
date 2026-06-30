@@ -2665,3 +2665,34 @@ def testFalsificationTestsRecordTheKilledMutation():
         "'Kills:' docstring line so the kill can be re-confirmed:\n  "
         + "\n  ".join(listOffenders)
     )
+
+
+def testFalsificationRegistryIsWellFormed():
+    """Every falsification-registry entry names a real, unique mutation site.
+
+    Static guard (fast, runs in the suite). The dynamic kill-confirmation
+    (apply the mutation, prove the test fails) lives in
+    tools/reconfirmFalsification.py, which mutates source and so is run
+    deliberately, not as part of `pytest tests/`.
+    """
+    from tests.falsificationRegistry import LIST_FALSIFICATIONS
+    listOffenders = []
+    for entry in LIST_FALSIFICATIONS:
+        pathSource = REPO_ROOT / entry.source
+        if not pathSource.exists():
+            listOffenders.append(f"{entry.nodeid}: missing source {entry.source}")
+            continue
+        iCount = pathSource.read_text(encoding="utf-8").count(entry.old)
+        if iCount != 1:
+            listOffenders.append(
+                f"{entry.nodeid}: 'old' occurs {iCount}x (need exactly 1) "
+                f"in {entry.source}"
+            )
+        if entry.old == entry.new:
+            listOffenders.append(f"{entry.nodeid}: old == new (no mutation)")
+        sTestFile = entry.nodeid.split("::", 1)[0]
+        if not (REPO_ROOT / sTestFile).exists():
+            listOffenders.append(f"{entry.nodeid}: missing test file {sTestFile}")
+    assert not listOffenders, (
+        "Falsification registry is malformed:\n  " + "\n  ".join(listOffenders)
+    )
