@@ -718,8 +718,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testEnvironmentSnapshotMutationCoverage.py::test_container_system_tools_gcc_and_osrelease_failure_yield_none',
         source='vaibify/reproducibility/environmentSnapshot.py',
-        old='''"sPython": _fsFirstLine(sPython),''',
-        new='''"sPython": None,''',
+        old='''"sOsRelease": sOsRelease if iOsCode == 0 else None,''',
+        new='''"sOsRelease": sOsRelease,''',
     ),
     Falsification(
         nodeid='tests/testEnvironmentSnapshotMutationCoverage.py::test_non_dict_environment_json_returns_none_without_crash',

@@ -2677,7 +2677,11 @@ def testFalsificationRegistryIsWellFormed():
     """
     from tests.falsificationRegistry import LIST_FALSIFICATIONS
     listOffenders = []
+    setSeenNodeIds = set()
     for entry in LIST_FALSIFICATIONS:
+        if entry.nodeid in setSeenNodeIds:
+            listOffenders.append(f"{entry.nodeid}: duplicate nodeid")
+        setSeenNodeIds.add(entry.nodeid)
         pathSource = REPO_ROOT / entry.source
         if not pathSource.exists():
             listOffenders.append(f"{entry.nodeid}: missing source {entry.source}")
@@ -2691,8 +2695,97 @@ def testFalsificationRegistryIsWellFormed():
         if entry.old == entry.new:
             listOffenders.append(f"{entry.nodeid}: old == new (no mutation)")
         sTestFile = entry.nodeid.split("::", 1)[0]
-        if not (REPO_ROOT / sTestFile).exists():
+        pathTestFile = REPO_ROOT / sTestFile
+        if not pathTestFile.exists():
             listOffenders.append(f"{entry.nodeid}: missing test file {sTestFile}")
+            continue
+        sFunction = entry.nodeid.rsplit("::", 1)[1]
+        listFunctions = [
+            node.name for node in
+            _flistTestFunctions(pathTestFile.read_text(encoding="utf-8"))
+        ]
+        if sFunction not in listFunctions:
+            listOffenders.append(
+                f"{entry.nodeid}: test function {sFunction} not found in {sTestFile}"
+            )
     assert not listOffenders, (
         "Falsification registry is malformed:\n  " + "\n  ".join(listOffenders)
+    )
+
+
+def _fbModuleDeclaresFalsification(tree):
+    """Return True when a module-level ``pytestmark`` selects falsification."""
+    import ast
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        listTargets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if not any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in listTargets
+        ):
+            continue
+        if node.value is not None and "falsification" in ast.unparse(node.value):
+            return True
+    return False
+
+
+def _fbNodeDecoratedFalsification(node):
+    """Return True when a test function carries the falsification marker."""
+    import ast
+    return any(
+        "falsification" in ast.unparse(decorator)
+        for decorator in node.decorator_list
+    )
+
+
+def _flistFalsificationMarkedTests():
+    """Return (relpath, function, docstring) for every falsification test.
+
+    Covers both module-level ``pytestmark = pytest.mark.falsification`` files
+    and individually ``@pytest.mark.falsification``-decorated tests in the
+    interleaved tier-1 files, so the registry bijection is enforced uniformly.
+    """
+    import ast
+    listMarked = []
+    for pathFile in sorted((REPO_ROOT / "tests").glob("test*.py")):
+        sSource = pathFile.read_text(encoding="utf-8")
+        bModuleMarked = _fbModuleDeclaresFalsification(ast.parse(sSource))
+        sRelative = str(pathFile.relative_to(REPO_ROOT))
+        for node in _flistTestFunctions(sSource):
+            if bModuleMarked or _fbNodeDecoratedFalsification(node):
+                listMarked.append(
+                    (sRelative, node.name, ast.get_docstring(node) or "")
+                )
+    return listMarked
+
+
+def testFalsificationMarkedTestsAreRegistered():
+    """Every falsification-marked test is documented and re-confirmable.
+
+    Reverse direction of testFalsificationRegistryIsWellFormed: a test that
+    carries the ``falsification`` marker (module-level or per-test) must name
+    the mutation it kills on a ``Kills:`` docstring line AND have exactly one
+    matching entry in LIST_FALSIFICATIONS, so it cannot silently drift out of
+    the re-confirmation harness. This closes the gap for the interleaved
+    tier-1 files, whose per-test markers are otherwise unenforced.
+    """
+    from tests.falsificationRegistry import LIST_FALSIFICATIONS
+    listOffenders = []
+    for sRelative, sFunction, sDocstring in _flistFalsificationMarkedTests():
+        if "Kills:" not in sDocstring:
+            listOffenders.append(f"{sRelative}::{sFunction}: missing 'Kills:' docstring")
+        listMatches = [
+            entry for entry in LIST_FALSIFICATIONS
+            if entry.nodeid.split("::", 1)[0] == sRelative
+            and entry.nodeid.rsplit("::", 1)[1] == sFunction
+        ]
+        if len(listMatches) != 1:
+            listOffenders.append(
+                f"{sRelative}::{sFunction}: {len(listMatches)} registry "
+                "entries (need exactly 1)"
+            )
+    assert not listOffenders, (
+        "Falsification-marked tests must each carry a 'Kills:' docstring and "
+        "exactly one registry entry:\n  " + "\n  ".join(listOffenders)
     )

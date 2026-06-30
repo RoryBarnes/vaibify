@@ -52,9 +52,9 @@ def test_container_system_tools_capture_records_adapter_values():
     reproducibility because the workflow runs inside the container. A
     mutant that emits None (or drops gcc/os-release) must be caught.
 
-    Kills: _fdictCaptureContainerSystemTools returns
-    sPython=None/sGcc=None/sOsRelease=None (drop container toolchain
-    capture)
+    Kills: _fdictCaptureContainerSystemTools drops the container python
+    capture (the ``"sPython": _fsFirstLine(sPython)`` field becomes None),
+    so the recorded interpreter identity is lost.
     """
     filesFake = _FakeContainerAdapter({
         "python3": (0, "3.11.7 (main, Jan 1 2026)\n", ""),
@@ -77,9 +77,10 @@ def test_container_system_tools_capture_records_adapter_values():
 def test_container_system_tools_gcc_and_osrelease_failure_yield_none():
     """Nonzero gcc/os-release probes become None; python still captured.
 
-    Kills: _fdictCaptureContainerSystemTools returns
-    sPython=None/sGcc=None/sOsRelease=None (drop container toolchain
-    capture)
+    Kills: _fdictCaptureContainerSystemTools drops the nonzero-exit guard
+    on os-release (``"sOsRelease": sOsRelease if iOsCode == 0 else None``
+    becomes ``"sOsRelease": sOsRelease``), so a failed ``cat`` probe records
+    its raw (empty) output instead of None.
     """
     filesFake = _FakeContainerAdapter({
         "python3": (0, "3.10.13\n", ""),
