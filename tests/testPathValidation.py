@@ -14,6 +14,9 @@ from fastapi import HTTPException
 from vaibify.gui.pipelineServer import fnValidatePathWithinRoot
 
 
+pytestmark = pytest.mark.falsification
+
+
 @pytest.mark.parametrize(
     "sOutsidePath",
     [
@@ -27,6 +30,9 @@ def testRejectsRootEmbeddedAsInteriorSubstring(sOutsidePath):
     A substring (rather than prefix) containment check would admit
     '/etc/workspace/secret' under root '/workspace', escaping the
     sandbox.
+
+    Kills: Line 268: containment check weakened from prefix
+    startswith(sRoot+'/') to substring (sRoot+'/') in sNormalized
     """
     with pytest.raises(HTTPException) as excinfo:
         fnValidatePathWithinRoot(sOutsidePath, "/workspace")
@@ -38,6 +44,9 @@ def testNormalizesTrailingSlashRoot():
 
     Without normpath on the root, the boundary becomes '/workspace//'
     and every real subpath gets a spurious 403.
+
+    Kills: Line 267: root normalization removed — sRoot = sAllowedRoot
+    instead of posixpath.normpath(sAllowedRoot)
     """
     sResult = fnValidatePathWithinRoot(
         "/workspace/project/file.txt", "/workspace/"
@@ -46,7 +55,11 @@ def testNormalizesTrailingSlashRoot():
 
 
 def testNormalizesDotBearingRoot():
-    """A root containing '.' must be canonicalized before comparison."""
+    """A root containing '.' must be canonicalized before comparison.
+
+    Kills: Line 267: root normalization removed — sRoot = sAllowedRoot
+    instead of posixpath.normpath(sAllowedRoot)
+    """
     sResult = fnValidatePathWithinRoot(
         "/workspace/logs/run.txt", "/workspace/./logs"
     )
@@ -58,6 +71,9 @@ def testReturnsNormalizedPathNotRawInput():
 
     Callers key path-based status/staleness lookups on the return, so a
     non-canonical '/workspace/./project//file.txt' would desync them.
+
+    Kills: Line 272: return raw sResolvedPath instead of normalized
+    sNormalized
     """
     sResult = fnValidatePathWithinRoot(
         "/workspace/./project//file.txt", "/workspace"

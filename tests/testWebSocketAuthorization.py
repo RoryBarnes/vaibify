@@ -264,7 +264,13 @@ async def test_terminal_ws_route_delegates_to_guard():
 # -- empty-shared-token fail-closed (M2) ----------------------------------
 
 
+@pytest.mark.falsification
 def test_empty_shared_token_fails_closed_4401():
+    """An empty configured shared token must not clear the token gate.
+
+    Kills: M2: drop bool(sSharedToken) guard in fbCheckSharedToken
+    (line 56) -> 'return sPresented == sSharedToken'
+    """
     # When the hub starts with an empty session token, the shared-token
     # gate must stay fail-closed: a loopback browser presenting the same
     # empty token ('' == '') must NOT clear the CSRF/trust check just
@@ -287,7 +293,13 @@ def test_empty_shared_token_fails_closed_4401():
 
 
 @pytest.mark.asyncio
+@pytest.mark.falsification
 async def test_agent_lane_served_while_browser_session_live():
+    """The agent lane is served even when a browser session is live.
+
+    Kills: M9: remove the 'bBrowser and' guard on the 4409 refusal in
+    fnServeUnderLiveConnectionCounters (line 142)
+    """
     # The lease-exempt machine lane must keep working while a researcher's
     # browser session is live. An in-container agent (no loopback origin)
     # dialing a container whose owner already has one live connection must
@@ -307,7 +319,14 @@ async def test_agent_lane_served_while_browser_session_live():
 
 
 @pytest.mark.asyncio
+@pytest.mark.falsification
 async def test_agent_lane_does_not_touch_per_container_counter():
+    """The agent lane never touches the per-container live-connection counter.
+
+    Kills: M10: per-container increment guard in
+    fnServeUnderLiveConnectionCounters (line 145) 'if bBrowser:' ->
+    'if True:'
+    """
     # The per-container live-connection counter is a browser-lane budget.
     # The agent lane must never increment it (nor decrement it), otherwise
     # an agent connection leaks a phantom live connection that never clears

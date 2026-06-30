@@ -285,11 +285,16 @@ def testRefreshAggregateTestStatesSkipsStepsWithoutEligibleCategories():
     assert dictStep["dictVerification"]["sUnitTest"] == "passed"
 
 
+@pytest.mark.falsification
 def testMissingOutputOutranksDriftedOutput(dictMarkerAllPassed):
     """A marker simultaneously missing one output and drifting another
     reports the more severe ``outputs-missing`` on every axis, never the
     milder ``outputs-changed``. ``step1/out.json`` is absent on disk
-    (missing) while ``step1/data.csv`` is present but drifted."""
+    (missing) while ``step1/data.csv`` is present but drifted.
+
+    Kills: _fsStatusFromHashes (lines 232-235): swap priority so
+    bAnyChanged 'outputs-changed' is checked before bAnyMissing
+    'outputs-missing'"""
     dictOnDisk = {"step1/data.csv": "sha-DRIFTED"}
     dictAxes = fdictComputeTestAxes(
         dictMarkerAllPassed, dictOnDisk, T_AVAILABLE_CATEGORIES,
@@ -300,10 +305,14 @@ def testMissingOutputOutranksDriftedOutput(dictMarkerAllPassed):
     assert dictAxes["sQuantitative"] == "outputs-missing"
 
 
+@pytest.mark.falsification
 def testMarkerWithoutExitStatusDefaultsToCleanPass(dictMarkerAllPassed):
     """A hash-clean marker that never stamped ``iExitStatus`` (older
     schema) must default to a clean exit and certify
-    ``passed-from-marker`` — not a fabricated failure."""
+    ``passed-from-marker`` — not a fabricated failure.
+
+    Kills: fdictComputeTestAxes (line 63): dictMarker.get('iExitStatus',0)
+    default changed 0 -> 1"""
     dictMarker = dict(dictMarkerAllPassed)
     dictMarker.pop("iExitStatus", None)
     assert "iExitStatus" not in dictMarker
@@ -317,19 +326,27 @@ def testMarkerWithoutExitStatusDefaultsToCleanPass(dictMarkerAllPassed):
     assert dictAxes["sUnitTest"] == "passed-from-marker"
 
 
+@pytest.mark.falsification
 def testAggregateAllUnnecessaryAxesStaysUnnecessary():
     """Axes that all resolved to ``unnecessary`` must aggregate to
     ``unnecessary`` — never a fabricated ``passed`` for a step where no
-    test actually ran."""
+    test actually ran.
+
+    Kills: fsAggregateUnitTestFromAxes (line 114): terminal 'return
+    "unnecessary"' -> 'return "passed"'"""
     assert fsAggregateUnitTestFromAxes(["unnecessary"]) == "unnecessary"
     assert fsAggregateUnitTestFromAxes(
         ["unnecessary", "unnecessary"]) == "unnecessary"
 
 
+@pytest.mark.falsification
 def testChangedOutputsAreReportedInStableSortedOrder():
     """When two or more outputs drift, ``listModifiedFiles`` is stable
     sorted order, independent of marker-dict insertion order, so the
-    persisted state.json is reproducible."""
+    persisted state.json is reproducible.
+
+    Kills: _flistChangedOutputs (line 246): remove sorted() wrapper,
+    return listResult instead of sorted(listResult)"""
     dictMarker = dict(dictMarkerAllPassedFixtureUnused())
     dictMarker["dictOutputHashes"] = {
         "step1/zeta.csv": "sha-Z",
