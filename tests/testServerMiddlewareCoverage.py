@@ -6,7 +6,12 @@ agent authorization lane: the ``/ws`` route prefix in
 in ``_fsAgentPresentedToken``.
 """
 
+import pytest
+
 from vaibify.gui import serverMiddleware
+
+
+pytestmark = pytest.mark.falsification
 
 
 class FakeRequest:
@@ -18,7 +23,11 @@ class FakeRequest:
 
 
 def testContainerIdFromPathRecognizesWebSocketPrefix():
-    """A /ws/<group>/<cid>/... path yields the container-id segment."""
+    """A /ws/<group>/<cid>/... path yields the container-id segment.
+
+    Kills: _fsContainerIdFromPath (line 124): WS route prefix 'ws'
+    dropped, ('api','ws') -> ('api',)
+    """
     sContainerId = serverMiddleware._fsContainerIdFromPath(
         "/ws/files/cid-123/connect",
     )
@@ -26,7 +35,12 @@ def testContainerIdFromPathRecognizesWebSocketPrefix():
 
 
 def testContainerIdFromPathStillRecognizesApiPrefix():
-    """The companion /api prefix continues to yield the container id."""
+    """The companion /api prefix continues to yield the container id.
+
+    Kills: a mutation dropping 'api' from the recognized route prefixes
+    in _fsContainerIdFromPath, which would stop yielding the container
+    id for HTTP /api/... paths.
+    """
     sContainerId = serverMiddleware._fsContainerIdFromPath(
         "/api/files/cid-456/list",
     )
@@ -34,7 +48,11 @@ def testContainerIdFromPathStillRecognizesApiPrefix():
 
 
 def testAgentPresentedTokenFallsBackToWebSocketQueryParam():
-    """With no session header, a WS upgrade reads sToken from the query."""
+    """With no session header, a WS upgrade reads sToken from the query.
+
+    Kills: _fsAgentPresentedToken (lines 116-117): agent WS token
+    query-param fallback neutralized to return ''
+    """
     request = FakeRequest(
         dictHeaders={"upgrade": "websocket"},
         dictQuery={"sToken": "agent-tok"},
@@ -43,7 +61,12 @@ def testAgentPresentedTokenFallsBackToWebSocketQueryParam():
 
 
 def testAgentPresentedTokenHeaderWinsOverWebSocketQuery():
-    """The X-Vaibify-Session header takes precedence over the WS query."""
+    """The X-Vaibify-Session header takes precedence over the WS query.
+
+    Kills: a mutation inverting the header/query precedence in
+    _fsAgentPresentedToken so the WS query param overrides the
+    X-Vaibify-Session header.
+    """
     request = FakeRequest(
         dictHeaders={
             "x-vaibify-session": "header-tok",

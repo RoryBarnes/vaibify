@@ -2602,3 +2602,66 @@ def testModuleSizeIsBounded():
             for sKey, iLines, iAllowed in listOffenders
         )
     )
+
+
+# ---------------------------------------------------------------------
+# Falsification-test convention (see AGENTS.md "Epistemics"). A
+# falsification test is a kill-confirmed test: proven to FAIL when the
+# guard it defends is broken, not merely to pass. Dedicated falsification
+# files must mark every test with the `falsification` marker (via a
+# module-level pytestmark) and record the killed mutation on a "Kills:"
+# docstring line, so the kill can be re-confirmed as the code evolves.
+# ---------------------------------------------------------------------
+
+_LIST_FALSIFICATION_FILE_NAMES = [
+    "testPathValidation.py",
+    "testFileStatusManagerStaleness.py",
+    "testServerMiddlewareCoverage.py",
+    "testConftestManagerCoverage.py",
+]
+
+
+def _flistFalsificationFiles():
+    """Return the dedicated falsification test files that exist."""
+    pathTests = REPO_ROOT / "tests"
+    listGlob = sorted(pathTests.glob("test*MutationCoverage.py"))
+    listNamed = [pathTests / sName for sName in _LIST_FALSIFICATION_FILE_NAMES]
+    return [p for p in listGlob + listNamed if p.exists()]
+
+
+def _flistTestFunctions(sSource):
+    """Return all test* function/method nodes in a parsed module."""
+    import ast
+    tree = ast.parse(sSource)
+    return [
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    ]
+
+
+def testFalsificationFilesDeclareMarker():
+    """Every dedicated falsification file marks all its tests."""
+    for pathFile in _flistFalsificationFiles():
+        sSource = pathFile.read_text(encoding="utf-8")
+        assert "pytestmark" in sSource and "falsification" in sSource, (
+            f"{pathFile.name} must declare module-level "
+            "`pytestmark = pytest.mark.falsification` so every test in it "
+            "is a falsification test"
+        )
+
+
+def testFalsificationTestsRecordTheKilledMutation():
+    """Every test in a falsification file names the mutation it kills."""
+    import ast
+    listOffenders = []
+    for pathFile in _flistFalsificationFiles():
+        for node in _flistTestFunctions(pathFile.read_text(encoding="utf-8")):
+            sDoc = ast.get_docstring(node) or ""
+            if "Kills:" not in sDoc:
+                listOffenders.append(f"{pathFile.name}::{node.name}")
+    assert not listOffenders, (
+        "Each falsification test must record the mutation it kills on a "
+        "'Kills:' docstring line so the kill can be re-confirmed:\n  "
+        + "\n  ".join(listOffenders)
+    )
