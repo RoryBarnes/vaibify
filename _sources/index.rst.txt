@@ -31,5 +31,6 @@ pipeline can benefit from containerized reproducibility.
    externalServices
    vibeCoding
    developers
+   testing
    GitHub <https://github.com/RoryBarnes/Vaibify>
    PyPI <https://pypi.org/project/vaibify/>

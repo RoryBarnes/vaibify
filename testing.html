@@ -1,0 +1,365 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Testing &mdash; Vaibify 0.0.1.dev433 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1ee1d981"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Contributor’s Guide" href="developers.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Testing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#why-falsification-tests-exist">Why falsification tests exist</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-falsification-suite-is-built">How the falsification suite is built</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-independent-oracle-rule-important">The independent-oracle rule (important)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs">Falsification testing vs. the mutation gate — two different jobs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#running-the-suites-locally">Running the suites locally</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#background">Background</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Testing</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/testing.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="testing">
+<h1>Testing<a class="headerlink" href="#testing" title="Link to this heading"></a></h1>
+<p>Vaibify’s test suite has <strong>three kinds of test</strong>, distinguished not by
+where they live (they are all <code class="docutils literal notranslate"><span class="pre">pytest</span></code> tests under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>) but by the
+question each one answers.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Kind</p></th>
+<th class="head"><p>Question it answers</p></th>
+<th class="head"><p>Where</p></th>
+<th class="head"><p>Count</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Unit / behavior tests</strong></p></td>
+<td><p>Does input <em>X</em> produce output <em>Y</em>?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/</span></code></p></td>
+<td><p>~6,500</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Architectural invariants</strong></p></td>
+<td><p>Is the codebase wired together the way it must be?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code></p></td>
+<td><p>~52</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Falsification tests</strong></p></td>
+<td><p>If a safety guard broke, would any test <em>notice</em>?</p></td>
+<td><p>marked <code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code> across <code class="docutils literal notranslate"><span class="pre">tests/</span></code></p></td>
+<td><p>~146</p></td>
+</tr>
+</tbody>
+</table>
+<p>The first two are conventional. The third is the one that needs
+explaining.</p>
+<section id="why-falsification-tests-exist">
+<h2>Why falsification tests exist<a class="headerlink" href="#why-falsification-tests-exist" title="Link to this heading"></a></h2>
+<p>A passing test suite proves that the tests and the code <strong>agree</strong> — not
+that the code is <strong>correct</strong>. When an AI agent writes the code, the
+tests, <em>and</em> the review, a single blind spot can author all three, and a
+green suite can hide a serious bug. (This is not hypothetical: a refactor
+once passed the entire suite while carrying a defect that would have
+broken every real session, because the fixtures used a degenerate input
+and never drove the real path.)</p>
+<p>A <strong>falsification test</strong> is the software equivalent of a laboratory
+<strong>negative control</strong>. An ordinary test is a positive result: “given good
+code, the answer is right.” A falsification test additionally proves the
+<em>negative control</em>: “given deliberately <strong>broken</strong> code, the test
+<strong>fails</strong>.” A test that stays green when its guard is sabotaged is an
+assay with no working negative control — it would never catch the real
+bug either.</p>
+<p>Concretely, a falsification test is <strong>kill-confirmed</strong>: it has been
+proven to <em>fail</em> when a specific one-line mutation is applied to the code
+it defends, then to pass again once that mutation is reverted.</p>
+</section>
+<section id="how-the-falsification-suite-is-built">
+<h2>How the falsification suite is built<a class="headerlink" href="#how-the-falsification-suite-is-built" title="Link to this heading"></a></h2>
+<p>Four pieces make “every falsification test still has teeth” an
+enforceable, re-checkable guarantee:</p>
+<ol class="arabic">
+<li><p><strong>The marker.</strong> Falsification tests carry <code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code>.
+Dedicated files (<code class="docutils literal notranslate"><span class="pre">tests/test*MutationCoverage.py</span></code> and the tier-1
+dedicated files) mark every test via a module-level
+<code class="docutils literal notranslate"><span class="pre">pytestmark</span> <span class="pre">=</span> <span class="pre">pytest.mark.falsification</span></code>; files that mix falsification
+tests with ordinary unit tests mark only the falsification ones with a
+per-test decorator. Run just this class with <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">-m</span> <span class="pre">falsification</span></code>.</p></li>
+<li><p><strong>The <code class="docutils literal notranslate"><span class="pre">Kills:</span></code> docstring line.</strong> Every falsification test names, in its
+docstring, the exact mutation it is proven to catch.</p></li>
+<li><p><strong>The registry</strong> — <code class="docutils literal notranslate"><span class="pre">tests/falsificationRegistry.py</span></code> — records that
+mutation in a <em>machine-applicable</em> form: one
+<code class="docutils literal notranslate"><span class="pre">Falsification(nodeid,</span> <span class="pre">source,</span> <span class="pre">old,</span> <span class="pre">new)</span></code> entry per test, where <code class="docutils literal notranslate"><span class="pre">old</span></code>
+is the exact text that occurs once in the source file and <code class="docutils literal notranslate"><span class="pre">new</span></code> is the
+break.</p></li>
+<li><p><strong>The re-kill harness</strong> — <code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span></code> — is the
+standing negative control. For every registry entry it requires the
+test to pass on clean code, applies the mutation, requires the test to
+then fail with a genuine assertion failure (a compile error or an
+unrelated failure does <strong>not</strong> count), and restores the source. It
+reports any marked test with no entry and exits nonzero on any gap. It
+mutates source, so it is deliberately <strong>not</strong> collected by
+<code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">tests/</span></code>; run it directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/reconfirmFalsification.py
+</pre></div>
+</div>
+</li>
+</ol>
+<p>Three architectural invariants keep the class from silently decaying:
+<code class="docutils literal notranslate"><span class="pre">testFalsificationFilesDeclareMarker</span></code>,
+<code class="docutils literal notranslate"><span class="pre">testFalsificationTestsRecordTheKilledMutation</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">testFalsificationRegistryIsWellFormed</span></code>.</p>
+<section id="the-independent-oracle-rule-important">
+<h3>The independent-oracle rule (important)<a class="headerlink" href="#the-independent-oracle-rule-important" title="Link to this heading"></a></h3>
+<p>Kill-confirmation proves a test is <strong>sensitive</strong> to change; it does
+<strong>not</strong> prove the test’s asserted value is <strong>correct</strong>. If a test is
+written against code that is itself buggy, its oracle freezes the bug —
+and the test will still catch a deliberate break, so it passes
+kill-confirmation while certifying the wrong answer. A falsification test
+is therefore trustworthy only when its expected value is derived
+<strong>independently of the code</strong> (a specification, an analytic result, a
+conservation law, a published benchmark) <strong>and</strong> it is kill-confirmed.
+Neither condition alone is enough. This rule lives in the
+<code class="docutils literal notranslate"><span class="pre">falsificationRegistry.py</span></code> docstring; do not weaken it.</p>
+</section>
+</section>
+<section id="falsification-testing-vs-the-mutation-gate-two-different-jobs">
+<h2>Falsification testing vs. the mutation gate — two different jobs<a class="headerlink" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs" title="Link to this heading"></a></h2>
+<p>Both use mutation testing, but they point at different things, and the CI
+runs them as two separate workflows:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p></p></th>
+<th class="head"><p><strong>Falsification</strong> (<code class="docutils literal notranslate"><span class="pre">falsification.yml</span></code>)</p></th>
+<th class="head"><p><strong>Mutation gate</strong> (<code class="docutils literal notranslate"><span class="pre">mutation.yml</span></code>, cosmic-ray)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>What it mutates</p></td>
+<td><p>the guards our <em>existing</em> falsification tests already defend</p></td>
+<td><p>the <em>newly changed</em> code in a pull request</p></td>
+</tr>
+<tr class="row-odd"><td><p>What it answers</p></td>
+<td><p>“do our existing guard-tests still catch their known breaks?”</p></td>
+<td><p>“did this PR add a guard with <strong>no</strong> defending test?”</p></td>
+</tr>
+<tr class="row-even"><td><p>Direction</p></td>
+<td><p>backward-looking — maintains the committed suite</p></td>
+<td><p>forward-looking — discovers new gaps</p></td>
+</tr>
+<tr class="row-odd"><td><p>On failure</p></td>
+<td><p><strong>fails the job</strong> (a guard lost its test)</p></td>
+<td><p><strong>warns only</strong> — never fails the build</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why warn-only, and how you are alerted.</strong> The mutation gate never puts
+a red ✗ on a pull request. Mutation testing inevitably produces
+<em>equivalent mutants</em> — code changes with no observable effect (e.g.
+reordering a commutative comparison) — that <em>no</em> test could ever catch,
+so failing the build on every survivor would cry wolf and train everyone
+to ignore it. Instead the gate reports each surviving mutant three ways, on
+the pull request itself:</p>
+<ul class="simple">
+<li><p>a <strong>sticky PR comment</strong> — a single comment the gate updates in place on
+every run (never a new one each time), listing every surviving mutant;
+it is the hardest signal to miss and reflects the latest run, including
+a clean “all killed” state,</p></li>
+<li><p>an inline <strong><code class="docutils literal notranslate"><span class="pre">::warning::</span></code> annotation</strong> on the exact changed line, shown
+in the PR’s <em>Files changed</em> tab, and</p></li>
+<li><p>a <strong>job-summary table</strong> on the workflow run (module, line, operator,
+function).</p></li>
+</ul>
+<p>So the signal is “here are the newly changed lines a test would not have
+caught if they were wrong” — a review prompt, not a pass/fail verdict.
+Read it on any PR that changes Python under <code class="docutils literal notranslate"><span class="pre">vaibify/</span></code>; a clean run says
+so explicitly (“All N mutant(s) on the changed lines were killed”). The
+comment is best-effort: a pull request from a fork gets a read-only token
+and cannot be commented on, in which case the annotations and job summary
+still appear.</p>
+<p><strong>Do the two gates overlap?</strong> Barely, and by design. They mutate
+<em>different</em> sets of lines: falsification re-checks only lines that already
+carry a committed falsification test, while the mutation gate touches only
+lines a pull request <em>changed</em>. The two intersect just when a PR edits an
+already-guarded line — where the double coverage is harmless. Otherwise
+they are complementary: falsification stops old guarantees from decaying,
+the mutation gate flags new code that arrived without a guarantee.</p>
+</section>
+<section id="running-the-suites-locally">
+<h2>Running the suites locally<a class="headerlink" href="#running-the-suites-locally" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+
+<span class="c1"># everything (unit + invariants + falsification tests):</span>
+pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not docker and not docker_live&quot;</span>
+
+<span class="c1"># just the falsification tests:</span>
+pytest<span class="w"> </span>-m<span class="w"> </span>falsification
+
+<span class="c1"># just the architectural invariants:</span>
+pytest<span class="w"> </span>tests/testArchitecturalInvariants.py
+
+<span class="c1"># the standing negative control (re-break each guard, confirm it&#39;s caught):</span>
+python<span class="w"> </span>tools/reconfirmFalsification.py
+
+<span class="c1"># the mutation gate on a module, for the curious (heavier; separate extra):</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[mutation]&quot;</span>
+cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cosmic-ray<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cr-rate<span class="w"> </span>session.sqlite
+</pre></div>
+</div>
+</section>
+<section id="continuous-integration">
+<h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Workflow</p></th>
+<th class="head"><p>Runs</p></th>
+<th class="head"><p>Matrix</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tests-linux.yml</span></code> / <code class="docutils literal notranslate"><span class="pre">tests-macos.yml</span></code></p></td>
+<td><p>the full <code class="docutils literal notranslate"><span class="pre">pytest</span></code> suite (incl. invariants and falsification tests)</p></td>
+<td><p>Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">falsification.yml</span></code></p></td>
+<td><p>the invariants, the falsification tests, and the re-kill harness</p></td>
+<td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mutation.yml</span></code></p></td>
+<td><p>the cosmic-ray gate on a PR’s changed lines (warn-only)</p></td>
+<td><p>on pull requests</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">badges.yml</span></code></p></td>
+<td><p>recomputes the live test / falsification / invariant counts</p></td>
+<td><p>on push to <code class="docutils literal notranslate"><span class="pre">main</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The harness runs on a <em>subset</em> because whether a test catches its
+mutation is deterministic and OS/Python-independent; the full-matrix
+coverage of the tests themselves already comes from the unit-test
+workflows. The count badges in the README are refreshed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code>,
+which writes shields.io endpoint JSON to an orphan <code class="docutils literal notranslate"><span class="pre">badges</span></code> branch.</p>
+</section>
+<section id="background">
+<h2>Background<a class="headerlink" href="#background" title="Link to this heading"></a></h2>
+<p>The falsification methodology, its limits, and the literature it draws on
+(mutation testing since DeMillo, Lipton &amp; Sayward 1978; the LLM-era work
+on test-suite adequacy; metamorphic testing for oracle-free scientific
+code) are written up for reference outside the repository. In short:
+mutation-style falsification fits vaibify’s <em>plumbing</em>, where the correct
+behavior is definitional; the science code (vplanet), where there is no
+known answer to assert against, is better tested with <strong>metamorphic
+relations</strong> (e.g. “halve the timestep and the conserved energy must not
+change”) — a future direction, not yet part of this suite.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="developers.html" class="btn btn-neutral float-left" title="Contributor’s Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
