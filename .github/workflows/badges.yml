@@ -2,7 +2,8 @@ name: badges
 
 # Dynamic, secret-free count badges.
 #
-# Computes three test counts by collecting (not running) the suite, writes
+# Computes three test counts by collecting the run-selection of the suite
+# (the same tests the unit-test workflows actually execute), writes
 # one shields.io ENDPOINT json per count, and publishes them to a dedicated
 # orphan `badges` branch using the built-in GITHUB_TOKEN. The README points
 # shields.io at the raw json on that branch, so the badges update whenever
@@ -44,7 +45,11 @@ jobs:
       - name: Compute counts
         id: counts
         run: |
-          iTotal=$(python -m pytest tests/ --collect-only -q -p no:cacheprovider | grep -c "::")
+          # Count only tests that actually run in CI: the same selection the
+          # unit-test workflows grade (`-m "not docker and not docker_live"`),
+          # so the badge never counts container tests that skip without a
+          # live daemon.
+          iTotal=$(python -m pytest tests/ -m "not docker and not docker_live" --collect-only -q -p no:cacheprovider | grep -c "::")
           iFalsification=$(python -m pytest -m falsification --collect-only -q -p no:cacheprovider | grep -c "::")
           iInvariants=$(python -m pytest tests/testArchitecturalInvariants.py --collect-only -q -p no:cacheprovider | grep -c "::")
           echo "iTotal=$iTotal" >> "$GITHUB_OUTPUT"
