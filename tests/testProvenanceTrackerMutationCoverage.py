@@ -10,7 +10,11 @@ and stamps a real ISO 8601 timestamp.
 import hashlib
 from datetime import datetime
 
+import pytest
+
 from vaibify.reproducibility.provenanceTracker import fnUpdateProvenance
+
+pytestmark = pytest.mark.falsification
 
 
 def _tdictBuildWorkflowWithPlotAndInput(tmp_path):
@@ -44,7 +48,7 @@ def _tdictBuildWorkflowWithPlotAndInput(tmp_path):
 
 
 def test_fnUpdateProvenance_hashes_plot_files_not_input_files(tmp_path):
-    """Kills: iterate saInputFiles instead of saPlotFiles."""
+    """Kills: In _fnHashStepOutputs (line 233) iterate dictStep['saInputFiles'] instead of dictStep['saPlotFiles']."""
     dictWorkflow, sPlotPath, sInputPath, sExpectedPlotHash = (
         _tdictBuildWorkflowWithPlotAndInput(tmp_path)
     )
@@ -59,7 +63,7 @@ def test_fnUpdateProvenance_hashes_plot_files_not_input_files(tmp_path):
 
 
 def test_fnUpdateProvenance_stores_computed_hashes_not_empty(tmp_path):
-    """Kills: assign dictFileHashes = {} instead of dictHashes."""
+    """Kills: In fnUpdateProvenance (line 227) assign dictProvenance['dictFileHashes'] = {} instead of the computed dictHashes."""
     dictWorkflow, sPlotPath, _, sExpectedPlotHash = (
         _tdictBuildWorkflowWithPlotAndInput(tmp_path)
     )
@@ -73,7 +77,7 @@ def test_fnUpdateProvenance_stores_computed_hashes_not_empty(tmp_path):
 
 
 def test_fnUpdateProvenance_records_step_identity_by_sname(tmp_path):
-    """Kills: record dictStep.get('sId') instead of 'sName'."""
+    """Kills: fnUpdateProvenance (line 224) records step identity from dictStep.get('sId','unknown') instead of dictStep.get('sName','unknown')."""
     sPlotContentOne = "alpha\n"
     sPlotContentTwo = "beta\n"
     pathPlotOne = tmp_path / "a.csv"
@@ -105,7 +109,7 @@ def test_fnUpdateProvenance_records_step_identity_by_sname(tmp_path):
 
 
 def test_fnUpdateProvenance_stamps_real_timestamp(tmp_path):
-    """Kills: set sTimestamp = '' instead of _fsCurrentTimestamp()."""
+    """Kills: fnUpdateProvenance (line 228) sets dictProvenance['sTimestamp'] = '' instead of _fsCurrentTimestamp()."""
     dictWorkflow, _, _, _ = _tdictBuildWorkflowWithPlotAndInput(tmp_path)
     dictProvenance = {}
 

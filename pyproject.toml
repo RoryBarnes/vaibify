@@ -63,6 +63,9 @@ dev = [
     "pytest-asyncio",
     "httpx",
 ]
+mutation = [
+    "cosmic-ray",
+]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"
@@ -90,6 +93,7 @@ line-length = 79
 testpaths = ["tests"]
 markers = [
     "docker: tests that require a running Docker daemon",
+    "falsification: a kill-confirmed test born from mutation testing — proven to FAIL when the guard it defends is broken, not merely to pass. Its docstring records the killed mutation on a 'Kills:' line.",
 ]
 
 [tool.coverage.run]

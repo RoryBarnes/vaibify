@@ -14,6 +14,8 @@ import threading
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
+pytestmark = pytest.mark.falsification
+
 from vaibify.gui.pipelineRunner import (
     fiRunStepCommands,
     fnVerifyOnly,
@@ -109,7 +111,11 @@ def _ftRunExecuteAndRecordWithFailure(iFailureExit):
 
 
 def test_fiExecuteAndRecord_failed_step_emits_stepFail_not_stepPass():
-    """A non-zero step must emit stepFail and never stepPass."""
+    """A non-zero step must emit stepFail and never stepPass.
+
+    Kills: _fnEmitStepResult exit-code argument hard-coded to 0 instead
+    of iExitCode (line ~1054).
+    """
     _iReturned, listCaptured = _ftRunExecuteAndRecordWithFailure(5)
     listResultEvents = [
         d for d in listCaptured
@@ -122,7 +128,10 @@ def test_fiExecuteAndRecord_failed_step_emits_stepFail_not_stepPass():
 
 
 def test_fiExecuteAndRecord_returns_real_exit_code():
-    """The function must return the step's real non-zero exit code."""
+    """The function must return the step's real non-zero exit code.
+
+    Kills: _fiExecuteAndRecord returns 0 instead of iExitCode (line ~1055).
+    """
     iReturned, _listCaptured = _ftRunExecuteAndRecordWithFailure(5)
     assert iReturned == 5
 
@@ -135,7 +144,11 @@ def test_fiExecuteAndRecord_returns_real_exit_code():
 
 
 def test_fiRunStepCommands_full_returns_plot_exit_code():
-    """Data succeeds (0) but the plot command fails (7): result is 7."""
+    """Data succeeds (0) but the plot command fails (7): result is 7.
+
+    Kills: fiRunStepCommands returns (iExitCode, ...) instead of
+    (iPlotExit, ...) (line ~648).
+    """
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
     # First streaming call is the data command (exit 0); the second is
@@ -165,7 +178,11 @@ def test_fiRunStepCommands_full_returns_plot_exit_code():
 @patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
        new_callable=AsyncMock)
 def test_fnVerifyOnly_missing_output_emits_stepFail_badge(mockLoad):
-    """A missing-output step emits stepFail for its step number."""
+    """A missing-output step emits stepFail for its step number.
+
+    Kills: _fbVerifyStepList per-step badge '0 if bStepOk else 1'
+    mutated to 0 (line ~894).
+    """
     mockLoad.return_value = ({
         "sWorkflowName": "Test",
         "listSteps": [
@@ -196,7 +213,11 @@ def test_fnVerifyOnly_missing_output_emits_stepFail_badge(mockLoad):
 
 
 def test_appendAndMaybeDrainBatch_flushes_at_exactly_fifty():
-    """The 50th append drains a full I_BATCH_MAX_LINES batch on size."""
+    """The 50th append drains a full I_BATCH_MAX_LINES batch on size.
+
+    Kills: size threshold weakened from >= I_BATCH_MAX_LINES to
+    > I_BATCH_MAX_LINES (line ~441).
+    """
     assert I_BATCH_MAX_LINES == 50
     dictBatch = {"listLines": [], "fFirstLineAt": 0.0}
     lockBuffer = threading.Lock()
@@ -222,7 +243,11 @@ def test_appendAndMaybeDrainBatch_flushes_at_exactly_fifty():
 
 
 def test_fsetSnapshotDirectory_empty_on_partial_with_error():
-    """find exits non-zero but prints a partial file: result is empty."""
+    """find exits non-zero but prints a partial file: result is empty.
+
+    Kills: snapshot guard 'if iExit != 0 or not sOutput.strip()'
+    changed to 'and' (line ~691).
+    """
     mockDocker = _fMockDocker(1, "/a/partial.txt\n")
     setFiles = _fnRunAsync(_fsetSnapshotDirectory(
         mockDocker, "cid", "/a", 1,

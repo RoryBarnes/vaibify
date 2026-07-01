@@ -19,6 +19,8 @@ from vaibify.reproducibility.credentialRedactor import (
     fsRedactUrlCredentials,
 )
 
+pytestmark = pytest.mark.falsification
+
 
 # ── Hole: 'token' dropped from _LIST_SENSITIVE_KEYWORDS ──────────
 
@@ -29,6 +31,8 @@ def test_token_keyword_redacts_whole_line_not_just_keyword_span():
     With ``token`` in the sensitive-keyword list the entire line is
     replaced. Without it, the fallback Bearer regex only consumes
     ``token here`` and leaves the trailing secret exposed.
+
+    Kills: Remove 'token' from _LIST_SENSITIVE_KEYWORDS (lines 57-59).
     """
     sScrubbed = fsRedactCredentials(
         "the token here is invalid: SECRET123"
@@ -48,6 +52,9 @@ def test_github_prefixes_scrubbed_in_keyword_free_message(sPrefix):
     The carrier message contains no sensitive keyword, so the
     whole-line scrubber cannot mask a dropped prefix. Only the
     GitHub-token regex can catch the secret here.
+
+    Kills: Remove any prefix (e.g. 'ghr', 'github_pat') from the
+    _REGEX_GITHUB_TOKEN prefix alternation (line 51).
     """
     sToken = f"{sPrefix}_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     sScrubbed = fsRedactCredentials(
@@ -65,6 +72,9 @@ def test_scheme_present_empty_netloc_short_circuits_unchanged():
     ``not scheme or not netloc`` short-circuits to True (netloc empty)
     and returns the candidate verbatim. Mutating the ``or`` to ``and``
     would instead strip the query, deleting ``keepme``.
+
+    Kills: Change 'not result.scheme or not result.netloc' to
+    '... and ...' in _fsScrubUrlQueryParts (line 128).
     """
     sInput = "https:///path?token=keepme"
     assert fsRedactUrlCredentials(sInput) == sInput

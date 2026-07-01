@@ -7,15 +7,23 @@ per-line numbering. Each asserts the correct (unmutated) behavior so
 it passes on clean code and fails under its mutant.
 """
 
+import pytest
+
 from vaibify.reproducibility.dockerfileLint import (
     flistCheckAptVersionPins,
     flistCheckBaseImageDigests,
     flistCheckSourceDateEpoch,
 )
 
+pytestmark = pytest.mark.falsification
+
 
 def test_truncated_sha256_digest_is_rejected():
-    """A digest must be exactly 64 hex chars; near-misses are flagged."""
+    """A digest must be exactly 64 hex chars; near-misses are flagged.
+
+    Kills: _REGEX_DIGEST (line 40): weaken the digest length from {64} to
+    {1,64}, accepting `@sha256:abc` as a real pin.
+    """
     listShort = flistCheckBaseImageDigests(["FROM python@sha256:abc"])
     assert listShort != []
     assert any("python@sha256:abc" in sIssue for sIssue in listShort)
@@ -30,7 +38,11 @@ def test_truncated_sha256_digest_is_rejected():
 
 
 def test_continued_apt_line_packages_are_inspected():
-    """Backslash continuation joins apt lines so each package is checked."""
+    """Backslash continuation joins apt lines so each package is checked.
+
+    Kills: _fbLineContinues (line 121) forced to always return False,
+    disabling backslash line-continuation joining.
+    """
     listIssues = flistCheckAptVersionPins(
         ["RUN apt-get install -y \\", "    bash \\", "    curl=7"]
     )
@@ -39,7 +51,12 @@ def test_continued_apt_line_packages_are_inspected():
 
 
 def test_source_date_epoch_lookalike_is_not_accepted():
-    """A prefixed lookalike must not satisfy the determinism check."""
+    """A prefixed lookalike must not satisfy the determinism check.
+
+    Kills: _REGEX_SDE (line 49): remove the name-boundary anchor `(?:\\s|=)`
+    after SOURCE_DATE_EPOCH so a lookalike like
+    `ENV SOURCE_DATE_EPOCH_BACKUP=1` satisfies the determinism check.
+    """
     listIssues = flistCheckSourceDateEpoch(
         ["ENV SOURCE_DATE_EPOCH_BACKUP=1"]
     )
@@ -48,7 +65,11 @@ def test_source_date_epoch_lookalike_is_not_accepted():
 
 
 def test_base_image_issue_cites_one_based_line_number():
-    """Cited ``Line N:`` prefix must use 1-based numbering."""
+    """Cited ``Line N:`` prefix must use 1-based numbering.
+
+    Kills: flistCheckBaseImageDigests (line 83): change enumerate start from
+    1 to 0, making every cited `Line N:` off by one.
+    """
     listFirst = flistCheckBaseImageDigests(["FROM python:3.11"])
     assert listFirst[0].startswith("Line 1:")
     listSecond = flistCheckBaseImageDigests(

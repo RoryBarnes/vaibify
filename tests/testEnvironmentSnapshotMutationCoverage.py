@@ -18,6 +18,8 @@ from vaibify.reproducibility.environmentSnapshot import (
     fnWriteEnvironmentJson,
 )
 
+pytestmark = pytest.mark.falsification
+
 
 _S_SIXTY_FOUR_HEX = "a" * 64
 
@@ -49,6 +51,10 @@ def test_container_system_tools_capture_records_adapter_values():
     The python, gcc, and os-release bytes are what determine bit-level
     reproducibility because the workflow runs inside the container. A
     mutant that emits None (or drops gcc/os-release) must be caught.
+
+    Kills: _fdictCaptureContainerSystemTools drops the container python
+    capture (the ``"sPython": _fsFirstLine(sPython)`` field becomes None),
+    so the recorded interpreter identity is lost.
     """
     filesFake = _FakeContainerAdapter({
         "python3": (0, "3.11.7 (main, Jan 1 2026)\n", ""),
@@ -69,7 +75,13 @@ def test_container_system_tools_capture_records_adapter_values():
 
 
 def test_container_system_tools_gcc_and_osrelease_failure_yield_none():
-    """Nonzero gcc/os-release probes become None; python still captured."""
+    """Nonzero gcc/os-release probes become None; python still captured.
+
+    Kills: _fdictCaptureContainerSystemTools drops the nonzero-exit guard
+    on os-release (``"sOsRelease": sOsRelease if iOsCode == 0 else None``
+    becomes ``"sOsRelease": sOsRelease``), so a failed ``cat`` probe records
+    its raw (empty) output instead of None.
+    """
     filesFake = _FakeContainerAdapter({
         "python3": (0, "3.10.13\n", ""),
         "gcc": (127, "", "gcc: not found"),
@@ -99,7 +111,11 @@ def _fnWriteEnvironmentPayload(pathRepo, payload):
 def test_non_dict_environment_json_returns_none_without_crash(
     tmp_path, payload,
 ):
-    """A top-level array or scalar reads as None, never AttributeError."""
+    """A top-level array or scalar reads as None, never AttributeError.
+
+    Kills: Remove `if not isinstance(dictPayload, dict): return None` in
+    fdictReadEnvironmentJson
+    """
     _fnWriteEnvironmentPayload(tmp_path, payload)
 
     assert fdictReadEnvironmentJson(str(tmp_path)) is None
@@ -112,7 +128,10 @@ def test_non_dict_environment_json_returns_none_without_crash(
 
 
 def test_top_level_registry_digest_pins(tmp_path):
-    """A legacy top-level ``image@sha256:<64 hex>`` counts as pinned."""
+    """A legacy top-level ``image@sha256:<64 hex>`` counts as pinned.
+
+    Kills: _fsExtractImageDigest top-level fallback forced to `return ''`
+    """
     _fnWriteEnvironmentPayload(tmp_path, {
         "sImageDigest": "vaibify@sha256:" + _S_SIXTY_FOUR_HEX,
     })
@@ -121,7 +140,10 @@ def test_top_level_registry_digest_pins(tmp_path):
 
 
 def test_top_level_local_image_id_pins(tmp_path):
-    """A legacy top-level ``sha256:<64 hex>`` image ID counts as pinned."""
+    """A legacy top-level ``sha256:<64 hex>`` image ID counts as pinned.
+
+    Kills: _fsExtractImageDigest top-level fallback forced to `return ''`
+    """
     _fnWriteEnvironmentPayload(tmp_path, {
         "sImageDigest": "sha256:" + _S_SIXTY_FOUR_HEX,
     })
@@ -135,7 +157,10 @@ def test_top_level_local_image_id_pins(tmp_path):
 
 
 def test_over_long_image_id_is_not_pinned(tmp_path):
-    """A 65-hex sha256 string is garbage and must NOT pin the gate."""
+    """A 65-hex sha256 string is garbage and must NOT pin the gate.
+
+    Kills: _fbIsImageIdDigest widen `len(sHexPart) == 64` to `>= 64`
+    """
     _fnWriteEnvironmentPayload(tmp_path, {
         "dictContainer": {"sImageDigest": "sha256:" + "a" * 65},
     })
@@ -144,7 +169,10 @@ def test_over_long_image_id_is_not_pinned(tmp_path):
 
 
 def test_image_id_digest_length_boundary_is_exactly_64():
-    """``_fbIsImageIdDigest`` accepts exactly 64 hex, rejects 65."""
+    """``_fbIsImageIdDigest`` accepts exactly 64 hex, rejects 65.
+
+    Kills: _fbIsImageIdDigest widen `len(sHexPart) == 64` to `>= 64`
+    """
     assert _fbIsImageIdDigest("sha256:" + "a" * 64) is True
     assert _fbIsImageIdDigest("sha256:" + "a" * 65) is False
 
@@ -155,7 +183,11 @@ def test_image_id_digest_length_boundary_is_exactly_64():
 
 
 def test_write_environment_json_does_not_mutate_caller_dict(tmp_path):
-    """The caller's dict is never contaminated with annotation keys."""
+    """The caller's dict is never contaminated with annotation keys.
+
+    Kills: _fdictAnnotateEnvironment remove `dict(dictEnvironment)` copy
+    (mutate caller dict in place)
+    """
     dictInput = {"sImageDigest": "image@sha256:deadbeef"}
     setKeysBefore = set(dictInput.keys())
 

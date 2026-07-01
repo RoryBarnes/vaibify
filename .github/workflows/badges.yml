@@ -1,0 +1,104 @@
+name: badges
+
+# Dynamic, secret-free count badges.
+#
+# Computes three test counts by collecting (not running) the suite, writes
+# one shields.io ENDPOINT json per count, and publishes them to a dedicated
+# orphan `badges` branch using the built-in GITHUB_TOKEN. The README points
+# shields.io at the raw json on that branch, so the badges update whenever
+# this workflow runs on main. No PAT, no gist, no secret storage.
+#
+# The `badges` branch holds ONLY the generated json — never source, never a
+# merge target. main is never committed to.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-badges:
+    name: compute and publish count badges
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compute counts
+        id: counts
+        run: |
+          iTotal=$(python -m pytest tests/ --collect-only -q -p no:cacheprovider | grep -c "::")
+          iFalsification=$(python -m pytest -m falsification --collect-only -q -p no:cacheprovider | grep -c "::")
+          iInvariants=$(python -m pytest tests/testArchitecturalInvariants.py --collect-only -q -p no:cacheprovider | grep -c "::")
+          echo "iTotal=$iTotal" >> "$GITHUB_OUTPUT"
+          echo "iFalsification=$iFalsification" >> "$GITHUB_OUTPUT"
+          echo "iInvariants=$iInvariants" >> "$GITHUB_OUTPUT"
+          echo "collected total=$iTotal falsification=$iFalsification invariants=$iInvariants"
+
+      - name: Write shields.io endpoint json
+        run: |
+          mkdir -p badgeOutput
+          python - "${{ steps.counts.outputs.iTotal }}" \
+                   "${{ steps.counts.outputs.iFalsification }}" \
+                   "${{ steps.counts.outputs.iInvariants }}" <<'PY'
+          import json
+          import sys
+
+          iTotal, iFalsification, iInvariants = (int(sValue) for sValue in sys.argv[1:4])
+
+          def fnWriteEndpoint(sFileName, sLabel, iCount, sColor):
+              dictEndpoint = {
+                  "schemaVersion": 1,
+                  "label": sLabel,
+                  "message": f"{iCount:,}",
+                  "color": sColor,
+              }
+              with open(f"badgeOutput/{sFileName}", "w", encoding="utf-8") as fileHandle:
+                  json.dump(dictEndpoint, fileHandle)
+                  fileHandle.write("\n")
+
+          fnWriteEndpoint("tests.json", "unit tests", iTotal, "darkblue")
+          fnWriteEndpoint("falsification.json", "falsification tests", iFalsification, "brightgreen")
+          fnWriteEndpoint("invariants.json", "architectural invariants", iInvariants, "blueviolet")
+          PY
+          cat badgeOutput/*.json
+
+      - name: Publish to orphan badges branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin badges || true
+          if git show-ref --quiet refs/remotes/origin/badges; then
+            git checkout badges
+            git pull --ff-only origin badges || true
+          else
+            git checkout --orphan badges
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+          cp badgeOutput/tests.json badgeOutput/falsification.json badgeOutput/invariants.json .
+          git add tests.json falsification.json invariants.json
+          if git diff --cached --quiet; then
+            echo "badge json unchanged - nothing to publish"
+            exit 0
+          fi
+          git commit -m "chore(badges): refresh test count badges"
+          git push origin badges

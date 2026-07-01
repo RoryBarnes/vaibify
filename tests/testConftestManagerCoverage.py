@@ -9,7 +9,12 @@ the same technique used in ``testConftestManagerMarker.py``.
 
 import types
 
+import pytest
+
 from vaibify.gui import conftestManager
+
+
+pytestmark = pytest.mark.falsification
 
 
 def _fnExecTemplateWithRoot(tmp_path):
@@ -61,6 +66,10 @@ def test_buildCategoryResults_tallies_pass_and_fail_to_correct_keys(tmp_path):
     Uses asymmetric counts (2 passing, 1 failing) so a swap of the
     tally keys produces a different dict and is detected. A None
     rep_call contributes to neither counter.
+
+    Kills: Conftest template _fdictBuildCategoryResults (lines
+    525-528): passed/failed tally keys swapped so .passed increments
+    iFailed and .failed increments iPassed
     """
     ns = _fnExecTemplateWithRoot(tmp_path)
     listItems = [
@@ -87,6 +96,9 @@ def test_sessionfinish_marker_filename_uses_underscore_for_nested_dir(
     substitution writes a file the reader never finds (dashboard
     desync). Asserting the exact underscore filename and the absence
     of the hyphen variant kills that mutant.
+
+    Kills: Template pytest_sessionfinish (line 704): marker filename
+    sStepDirRel.replace('/','_') -> replace('/','-')
     """
     monkeypatch.setenv("VAIBIFY_ACTIVE_WORKFLOW_SLUG", "demoSlug")
     ns = _fnExecTemplateWithRoot(tmp_path)
@@ -110,6 +122,9 @@ def test_activeWorkflowSlug_falls_back_to_default_when_nothing_present(
 
     An empty fallback would write markers to the bare test_markers dir
     the host reader no longer scans, so the result vanishes.
+
+    Kills: _fsActiveWorkflowSlug (line 682): final 'default' return
+    emptied to ''
     """
     monkeypatch.delenv("VAIBIFY_ACTIVE_WORKFLOW_SLUG", raising=False)
     ns = _fnExecTemplateWithRoot(tmp_path)
@@ -128,6 +143,9 @@ def test_pathsWithinRoot_rejects_sibling_with_shared_name_prefix():
 
     A bare startswith(root) check would admit the sibling; the proper
     boundary test (==root or startswith(root + '/')) rejects it.
+
+    Kills: _flistPathsWithinRoot (line 356): 'sNorm==root or
+    sNorm.startswith(root+"/")' -> 'sNorm.startswith(root)'
     """
     listPaths = ["/workspace/myrepo-evil/step/tests/conftest.py"]
     assert conftestManager._flistPathsWithinRoot(
@@ -136,7 +154,12 @@ def test_pathsWithinRoot_rejects_sibling_with_shared_name_prefix():
 
 
 def test_pathsWithinRoot_keeps_in_root_path():
-    """A genuinely in-root path survives the containment filter."""
+    """A genuinely in-root path survives the containment filter.
+
+    Kills: a mutation that drops the '==root or startswith(root+"/")'
+    keep-branch in _flistPathsWithinRoot, which would wrongly discard a
+    legitimately in-root conftest path.
+    """
     sInRoot = "/workspace/myrepo/step/tests/conftest.py"
     assert conftestManager._flistPathsWithinRoot(
         [sInRoot], "/workspace/myrepo",

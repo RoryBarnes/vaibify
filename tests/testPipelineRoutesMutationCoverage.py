@@ -22,6 +22,8 @@ from fastapi import HTTPException
 
 from vaibify.gui.routes import pipelineRoutes
 
+pytestmark = pytest.mark.falsification
+
 
 # ── Hole 1: /kill route auth gate runs before any container exec ──
 
@@ -30,6 +32,7 @@ class TestKillRouteAuthGate:
     """An unauthorized caller is rejected before the kill exec runs."""
 
     def test_unauthorized_kill_rejected_before_count_exec(self):
+        """Kills: Delete the dictCtx['require']() auth gate at the top of fnKillRunningTasks."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
@@ -116,6 +119,7 @@ class TestKillRouteActuallyKills:
         return response, recordingDocker.listCommands
 
     def test_kill_exec_issued_when_count_positive(self):
+        """Kills: Neutralize the iCountBefore>0 guard body so _fnKillMatchingProcesses is never awaited (if iCountBefore > 0 -> if False)."""
         response, listCommands = self._fnPostKill("3\n")
         assert response.status_code == 200
         assert response.json()["iProcessesKilled"] == 3
@@ -133,6 +137,7 @@ class TestKillRouteActuallyKills:
         )
 
     def test_no_kill_exec_when_count_zero(self):
+        """Kills: Force the iCountBefore>0 guard always-true so a kill exec runs even when no processes match (if iCountBefore > 0 -> if True)."""
         response, listCommands = self._fnPostKill("0\n")
         assert response.status_code == 200
         assert response.json()["iProcessesKilled"] == 0
@@ -166,6 +171,7 @@ class TestPipelineWsRejectBeforeServe:
     @pytest.mark.parametrize("iRejectCode", [4003, 4401, 4403])
     @pytest.mark.asyncio
     async def test_rejected_session_closed_not_served(self, iRejectCode):
+        """Kills: Invert the rejection branch in _fnRegisterPipelineWs: if iRejectCode -> if not iRejectCode."""
         dictCtx = {
             "docker": MagicMock(),
             "require": MagicMock(),
@@ -189,6 +195,7 @@ class TestPipelineWsRejectBeforeServe:
 
     @pytest.mark.asyncio
     async def test_authorized_session_served_not_closed(self):
+        """Kills: Invert the rejection branch in _fnRegisterPipelineWs: if iRejectCode -> if not iRejectCode."""
         dictCtx = {
             "docker": MagicMock(),
             "require": MagicMock(),
@@ -233,21 +240,25 @@ class TestFileStatusEtagSignals:
         )
 
     def test_max_mtime_by_step_change_advances_tag(self):
+        """Kills: Drop the ('maxByStep', ...) entry from listSignals in _fsBuildFileStatusEtag."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, dictMaxMtimeByStep={"0": 2})
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_aics_level_change_advances_tag(self):
+        """Kills: Drop the ('aicsLevel', ...) entry from listSignals in _fsBuildFileStatusEtag."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, iAICSLevel=2)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_l2_blocker_count_change_advances_tag(self):
+        """Kills: Drop the ('l2', ...) entry from listSignals in _fsBuildFileStatusEtag."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, iL2BlockerCount=1)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_l3_blocker_count_change_advances_tag(self):
+        """Kills: Drop the ('l3', ...) entry from listSignals in _fsBuildFileStatusEtag."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, iL3BlockerCount=1)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
@@ -260,6 +271,7 @@ class TestSplitCachedAndChanged:
     """A cache entry is reused only when its mtime still matches."""
 
     def test_stale_mtime_forces_rehash(self):
+        """Kills: Remove the dictEntry.get('iMtime') == iMtime conjunct in _ftSplitCachedAndChanged."""
         dictShaCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
         dictSeed, listNeedHash = pipelineRoutes._ftSplitCachedAndChanged(
             ["out/a.dat"], {"out/a.dat": "1800"}, dictShaCache,
@@ -268,6 +280,7 @@ class TestSplitCachedAndChanged:
         assert "out/a.dat" not in dictSeed
 
     def test_matching_mtime_reuses_cache(self):
+        """Kills: Force _ftSplitCachedAndChanged to always rehash by treating a matching-mtime entry as changed (drop the cache-hit seed branch)."""
         dictShaCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
         dictSeed, listNeedHash = pipelineRoutes._ftSplitCachedAndChanged(
             ["out/a.dat"], {"out/a.dat": "1700"}, dictShaCache,
@@ -301,6 +314,7 @@ class TestUpdateShaCacheSingleFieldChange:
     """A change in either sha or mtime alone signals persistence."""
 
     def test_mtime_only_change_signals_persistence(self):
+        """Kills: Change the change-detection disjunction in _fnUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
         bChanged = pipelineRoutes._fnUpdateShaCache(
             dictCache, _FakeFilesFixedSha("aa"),
@@ -309,6 +323,7 @@ class TestUpdateShaCacheSingleFieldChange:
         assert bChanged is True
 
     def test_sha_only_change_signals_persistence(self):
+        """Kills: Change the change-detection disjunction in _fnUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
         bChanged = pipelineRoutes._fnUpdateShaCache(
             dictCache, _FakeFilesFixedSha("bb"),

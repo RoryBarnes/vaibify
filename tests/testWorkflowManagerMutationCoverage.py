@@ -8,6 +8,8 @@ declared dependency graph must be complete and honest). A silent drift
 in any of these must fail the suite.
 """
 
+import pytest
+
 from vaibify.gui.workflowManager import (
     _fsCheckDatasetDestinationBoundary,
     _fsCheckOutputPathBoundary,
@@ -19,6 +21,8 @@ from vaibify.gui.workflowManager import (
     flistValidateReferences,
     fnClearDepGraphCache,
 )
+
+pytestmark = pytest.mark.falsification
 
 
 def fdictMakeWorkflow(listSteps, **dictExtra):
@@ -51,7 +55,11 @@ def test_output_entry_resolving_to_repo_parent_is_rejected():
     startswith('../')) lets empty-dir + '..' and 'sub' + '../..'
     pass, so backend writes land one directory ABOVE the project
     repo. Both forms must produce an 'escapes the project repo'
-    warning and fbValidateWorkflow must return False."""
+    warning and fbValidateWorkflow must return False.
+
+    Kills: Remove the `sJoined == '..'` clause in
+    _fsCheckOutputPathBoundary (line 605); only startswith('../')
+    remains."""
     sWarnEmpty = _fsCheckOutputPathBoundary(
         "..", "", "Step01", "saOutputFiles",
     )
@@ -73,7 +81,10 @@ def test_step_directory_equal_to_repo_parent_is_rejected():
     """sDirectory exactly '..' roots the whole step in the repo's
     parent, silently moving every host write outside the project
     repo. Dropping the `sNorm == '..'` clause accepts it; this
-    asserts the warning fires and fbValidateWorkflow returns False."""
+    asserts the warning fires and fbValidateWorkflow returns False.
+
+    Kills: Remove the `sNorm == '..'` clause in
+    _fsCheckStepDirectoryBoundary (line 587)."""
     sWarnDirect = _fsCheckStepDirectoryBoundary("..", "Step01")
     sWarnNested = _fsCheckStepDirectoryBoundary("a/../..", "Step01")
     assert "escapes the project repo" in sWarnDirect
@@ -91,7 +102,10 @@ def test_plot_directory_equal_to_repo_parent_is_rejected():
     """sPlotDirectory exactly '..' resolves figures to the repo
     parent, breaking archive scoping. Dropping the `sNorm == '..'`
     clause accepts it; assert the boundary check warns and
-    fbValidateWorkflow returns False."""
+    fbValidateWorkflow returns False.
+
+    Kills: Remove the `sNorm == '..'` clause in
+    _fsCheckPlotDirectoryBoundary (line 513)."""
     sWarning = _fsCheckPlotDirectoryBoundary("..")
     assert "escapes the project repo" in sWarning
     dictWorkflow = fdictMakeWorkflow(
@@ -107,7 +121,10 @@ def test_dataset_destination_equal_to_repo_parent_is_rejected():
     """A dataset sDestination of exactly '..' stages host data one
     level outside the workspace. Dropping the `sNorm == '..'` clause
     accepts it; assert both the per-destination check and the
-    workflow-level validation flag it."""
+    workflow-level validation flag it.
+
+    Kills: Remove the `sNorm == '..'` clause in
+    _fsCheckDatasetDestinationBoundary (line 549)."""
     sWarning = _fsCheckDatasetDestinationBoundary("..", "Dataset01")
     assert "escapes the project repo" in sWarning
     dictWorkflow = fdictMakeWorkflow(
@@ -127,7 +144,10 @@ def test_dep_cache_key_tracks_sadependencies_edits():
     must bust the dep-graph cache so the recomputed graph contains
     the new edge. Dropping saDependencies from the cache key returns
     the stale pre-edit graph from the LRU, so a declared dependency
-    edge silently vanishes and bUpstreamModified cannot fire."""
+    edge silently vanishes and bUpstreamModified cannot fire.
+
+    Kills: Drop saDependencies from the dep-graph cache key
+    dictRelevant in _fsWorkflowDepCacheKey (line 1698)."""
     fnClearDepGraphCache()
     dictWorkflow = fdictMakeWorkflow([
         fdictMakeStep("a"),
@@ -148,7 +168,10 @@ def test_self_referencing_step_flagged_as_circular():
     """A step that references its OWN output token (iRefNumber ==
     iNumber) is an impossible dependency and must be reported as a
     circular dependency. Weakening `iRefNumber >= iNumber` to `>`
-    drops the self-loop case, returning no warning at all."""
+    drops the self-loop case, returning no warning at all.
+
+    Kills: Weaken `iRefNumber >= iNumber` to `iRefNumber > iNumber`
+    in _fsClassifyReference (line 1096)."""
     dictWorkflow = fdictMakeWorkflow([
         fdictMakeStep(
             "a",
@@ -169,7 +192,10 @@ def test_reference_to_last_step_is_circular_not_beyond():
     iStepCount) from an earlier step is a forward/circular edge, not
     a beyond-the-end reference. The off-by-one `>` -> `>=` mislabels
     it 'points beyond the last step'; assert the diagnostic is
-    circular and NOT beyond-the-last-step."""
+    circular and NOT beyond-the-last-step.
+
+    Kills: Off-by-one `iRefNumber > iStepCount` to `>= iStepCount`
+    in _fsClassifyReference (line 1092)."""
     dictWorkflow = fdictMakeWorkflow([
         fdictMakeStep("a", saCommands=["run {Step02.result}"]),
         fdictMakeStep("b", saOutputFiles=["result.csv"]),

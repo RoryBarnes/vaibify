@@ -19,6 +19,8 @@ from vaibify.gui.syncDispatcher import (
 )
 from vaibify.reproducibility.overleafMirror import fsComputeBlobSha
 
+pytestmark = pytest.mark.falsification
+
 
 # ── _S_DIGEST_SCRIPT git-blob prefix ────────────────────────────────
 
@@ -29,7 +31,9 @@ def test_digest_script_matches_git_blob_sha(tmp_path):
 
     Corrupting the prefix (e.g. b'blob ' -> b'blab ') changes the
     SHA-1 and breaks the integrity comparison; this asserts the
-    script's output equals fsComputeBlobSha (git hash-object)."""
+    script's output equals fsComputeBlobSha (git hash-object).
+
+    Kills: Corrupt the git-blob prefix inside _S_DIGEST_SCRIPT (b'blob ' -> b'blab ')"""
     pathFile = tmp_path / "known.bytes"
     pathFile.write_bytes(b"hello vaibify blob digest\n")
     sOutput = subprocess.check_output(
@@ -49,7 +53,9 @@ def test_marker_script_extracts_hex_template_hash(tmp_path):
     """The template-hash regex must accept hex digits (a-f), not just
     decimal. A real template hash contains a-f; narrowing the class to
     [0-9] truncates or drops the value, silently mismarking stale
-    generated tests as current."""
+    generated tests as current.
+
+    Kills: Narrow the template-hash regex from ([0-9a-f]+) to ([0-9]+) in _fsBuildTestMarkerScript"""
     pathTests = tmp_path / "step1" / "tests"
     pathTests.mkdir(parents=True)
     (pathTests / "test_foo.py").write_text(
@@ -75,7 +81,9 @@ def test_compute_container_digests_path_with_space():
     """A workspace path containing a space must split on the FIRST
     space (sha is the leading token, path is the remainder). Switching
     to rfind splits on the last space, corrupting both the key and the
-    stored hash for any file whose path has a space."""
+    stored hash for any file whose path has a space.
+
+    Kills: Switch the digest-line separator from find(' ') to rfind(' ') in fdictComputeContainerDigests"""
     from unittest.mock import MagicMock
 
     connectionDocker = MagicMock()

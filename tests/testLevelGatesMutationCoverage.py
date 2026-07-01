@@ -16,6 +16,8 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
@@ -27,6 +29,8 @@ from vaibify.reproducibility.levelGates import (
     fdictLevel2Gaps,
     fnClearLevelBlockerCache,
 )
+
+pytestmark = pytest.mark.falsification
 
 
 def _fsBuildIsoTimestamp(fHoursAgo=0.0):
@@ -95,6 +99,9 @@ def test_github_full_count_with_nonempty_diverged_is_not_synced(tmp_path):
     (3 == 3) and the SHA + freshness clauses are green, so only the
     ``listDiverged`` guard can keep the gate dark. A mutant that drops
     that guard would light L2 for files known to differ from the mirror.
+
+    Kills: Remove the `if dictStatus.get('listDiverged'): return False`
+    divergence guard in _fbCachedSyncStatusFullMatch
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
@@ -124,6 +131,9 @@ def test_github_undercount_with_empty_diverged_is_not_synced(tmp_path):
     freshness clauses are green, so only ``iMatching != iTotal`` can
     keep the gate dark. A mutant that drops the count check would light
     L2 on an undercount of matched files.
+
+    Kills: Remove the `if dictStatus.get('iMatching') != iTotal: return
+    False` count check in _fbCachedSyncStatusFullMatch
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
@@ -153,6 +163,9 @@ def test_github_verified_sha_empty_but_live_sha_present_is_not_synced(tmp_path):
     pass when BOTH are empty. Here the live config records ``abc123`` but
     the cached verify captured no SHA — an unverified/unpushed commit. An
     ``or`` mutant would permissively light L2.
+
+    Kills: Change the permissive guard `if not sVerifiedSha and not
+    sLiveSha: return True` to `or` in _fbGithubHeadMatchesVerifiedSha
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
@@ -178,6 +191,9 @@ def test_github_verified_sha_present_but_live_sha_empty_is_not_synced(tmp_path):
     so the permissive AND branch cannot fire and the equality check
     rejects. An ``or`` mutant would let the empty live SHA satisfy the
     guard and light L2.
+
+    Kills: Change the permissive guard `if not sVerifiedSha and not
+    sLiveSha: return True` to `or` in _fbGithubHeadMatchesVerifiedSha
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
@@ -207,6 +223,9 @@ def test_github_full_match_without_timestamp_is_not_synced(tmp_path):
     entirely. The freshness guard treats a missing timestamp as stale so
     the gate stays dark. A mutant that drops ``if not sLastVerified:
     return False`` would assert a verification that never happened.
+
+    Kills: Disable `if not sLastVerified: return False` in
+    _fbCachedSyncStatusFresh
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
@@ -235,6 +254,10 @@ def test_fdictLevel2Gaps_subset_failure_keeps_level2_false(tmp_path):
     aggregate must stay False — a mutant that weakens the conjunction to
     a disjunction would report the work as publication-reproducible while
     the mirror/deposit sync is still missing.
+
+    Kills: Change one conjunct in `bL1 and bGithub and bZenodo and
+    bArxiv and bDecl` to `or` in fdictLevel2Gaps (applied as `bL1 or
+    bGithub and ...`)
     """
     sProjectRepo = str(tmp_path)
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
@@ -259,6 +282,9 @@ def test_blocker_cache_evicts_oldest_entry_first():
     least-recently-inserted key while retaining the most recent. A mutant
     that evicts the newest entry (``popitem(last=True)``) would keep the
     stale first key and discard the fresh ninth.
+
+    Kills: Change `_DICT_BLOCKER_CACHE.popitem(last=False)` to
+    `popitem(last=True)` in _fnBlockerCacheStore
     """
     fnClearLevelBlockerCache()
     listKeys = [("L1", "fingerprint", str(iIndex)) for iIndex in range(9)]

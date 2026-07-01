@@ -24,6 +24,9 @@ from vaibify.gui.fileStatusManager import (
 )
 
 
+pytestmark = pytest.mark.falsification
+
+
 _S_FRESH = "2026-04-20 00:00:00 UTC"
 
 
@@ -37,6 +40,11 @@ _S_FRESH = "2026-04-20 00:00:00 UTC"
 def test_fnInvalidateStepFiles_demotes_passed_states_on_data_change(
     sPassedState,
 ):
+    """A passed/passed-from-marker badge demotes on a data-file change.
+
+    Kills: Line 698: _SET_PASSED_TEST_STATES drops 'passed-from-marker'
+    (frozenset shrinks to {'passed'})
+    """
     dictStep = {
         "saDataFiles": ["data.out"],
         "saPlotFiles": [],
@@ -55,6 +63,11 @@ def test_fnInvalidateStepFiles_demotes_passed_states_on_data_change(
 
 @pytest.mark.parametrize("sPassedState", ["passed", "passed-from-marker"])
 def test_fnInvalidateDownstreamStep_demotes_passed_states(sPassedState):
+    """A downstream step's passed-from-marker badge demotes on invalidate.
+
+    Kills: Line 698: _SET_PASSED_TEST_STATES drops 'passed-from-marker'
+    (frozenset shrinks to {'passed'})
+    """
     dictStep = {
         "dictVerification": {
             "sUnitTest": sPassedState,
@@ -74,6 +87,11 @@ def test_fnInvalidateDownstreamStep_demotes_passed_states(sPassedState):
 
 
 def test_fnInvalidateStepFiles_plot_standards_goes_stale_on_plot_change():
+    """A plot-file change flips the plot-standards badge to 'stale'.
+
+    Kills: Line 771: _fnInvalidateStepFiles sets sPlotStandards='passed'
+    instead of 'stale' on a plot-file change
+    """
     dictStep = {
         "saDataFiles": [],
         "saPlotFiles": ["fig.pdf"],
@@ -87,6 +105,12 @@ def test_fnInvalidateStepFiles_plot_standards_goes_stale_on_plot_change():
 
 
 def test_fnInvalidateStepFiles_plot_standards_kept_on_non_plot_change():
+    """A non-plot data change must leave the plot-standards badge 'passed'.
+
+    Kills: a mutation that demotes sPlotStandards to 'stale' even when
+    only a non-plot data file changed (spurious over-invalidation of the
+    plot badge).
+    """
     dictStep = {
         "saDataFiles": ["data.out"],
         "saPlotFiles": ["fig.pdf"],
@@ -124,6 +148,11 @@ _DICT_POLL_VARS = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
 
 
 def test_fdictDetectChangedFiles_suppressed_while_running():
+    """While the pipeline runs, change detection is suppressed.
+
+    Kills: Line 1178: _fdictDetectChangedFiles running-pipeline guard
+    neutralized (applied as `if False and bPipelineRunning:`)
+    """
     dictCtx = _fdictBuildPollContext()
     with patch(
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
@@ -137,6 +166,12 @@ def test_fdictDetectChangedFiles_suppressed_while_running():
 
 
 def test_fdictDetectChangedFiles_detects_change_when_not_running():
+    """When the pipeline is idle, a changed output is reported.
+
+    Kills: a mutation that suppresses change detection even when the
+    pipeline is not running (guard stuck always-on), which would hide
+    genuine output changes from the dashboard.
+    """
     dictCtx = _fdictBuildPollContext()
     with patch(
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
@@ -174,6 +209,11 @@ def _dictWorkflowWithUpstreamEdge(dictDownVerification):
 
 
 def test_fbReconcileUpstreamFlags_clears_flag_when_downstream_fresh():
+    """A fresh downstream clears its bUpstreamModified flag (iSignal == 0).
+
+    Kills: Line 847: fbReconcileUpstreamFlags clear-branch
+    'iSignal == 0' -> 'iSignal == 2'
+    """
     dictWorkflow = _dictWorkflowWithUpstreamEdge(
         {"bUpstreamModified": True},
     )
@@ -186,6 +226,12 @@ def test_fbReconcileUpstreamFlags_clears_flag_when_downstream_fresh():
 
 
 def test_fbReconcileUpstreamFlags_sets_flag_when_downstream_stale():
+    """A stale downstream gets bUpstreamModified set when upstream is newer.
+
+    Kills: a mutation that fails to set bUpstreamModified when the
+    upstream mtime exceeds the downstream mtime, hiding a real
+    upstream-changed condition.
+    """
     dictWorkflow = _dictWorkflowWithUpstreamEdge({})
     # Upstream (step 0) newer than downstream (step 1) -> stale.
     dictMaxMtimeByStep = {"0": "200", "1": "100"}
@@ -201,6 +247,11 @@ def test_fbReconcileUpstreamFlags_sets_flag_when_downstream_stale():
 
 
 def test_fiMtimeStalenessSignal_equal_mtimes_is_fresh():
+    """Equal same-second upstream/downstream mtimes are fresh, not stale.
+
+    Kills: Line 878: _fiMtimeStalenessSignal upstream comparison
+    '>' -> '>='
+    """
     iSignal = _fiMtimeStalenessSignal(
         1, {1: {0}}, {"0": "100", "1": "100"},
     )
@@ -208,6 +259,11 @@ def test_fiMtimeStalenessSignal_equal_mtimes_is_fresh():
 
 
 def test_fiMtimeStalenessSignal_older_downstream_is_stale():
+    """A strictly newer upstream marks the downstream stale (signal 1).
+
+    Kills: a mutation that fails to flag staleness when the upstream
+    mtime strictly exceeds the downstream mtime.
+    """
     iSignal = _fiMtimeStalenessSignal(
         1, {1: {0}}, {"0": "200", "1": "100"},
     )
@@ -220,22 +276,42 @@ def test_fiMtimeStalenessSignal_older_downstream_is_stale():
 
 
 def test_flistNewerPaths_excludes_equal_boundary():
+    """A path whose mtime equals the threshold is not newer.
+
+    Kills: Line 894: _flistNewerPaths threshold 'iMtime > iThreshold'
+    -> '>='
+    """
     assert _flistNewerPaths(["/a"], {"/a": "100"}, iThreshold=100) == []
 
 
 def test_flistNewerPaths_includes_strictly_newer():
+    """A path whose mtime strictly exceeds the threshold is reported.
+
+    Kills: a mutation that breaks the newer-than comparison so a
+    strictly newer path is no longer returned by _flistNewerPaths.
+    """
     assert _flistNewerPaths(
         ["/a"], {"/a": "101"}, iThreshold=100,
     ) == ["/a"]
 
 
 def test_fbAnyMtimeNewerThan_excludes_equal_boundary():
+    """An mtime equal to the threshold does not count as newer.
+
+    Kills: Line 549: _fbAnyMtimeNewerThan 'int(sMtime) > iThreshold'
+    -> '>='
+    """
     assert _fbAnyMtimeNewerThan(
         ["/a"], {"/a": "50"}, iThreshold=50,
     ) is False
 
 
 def test_fbAnyMtimeNewerThan_includes_strictly_newer():
+    """A strictly newer mtime is detected as newer-than the threshold.
+
+    Kills: a mutation that breaks the newer-than test so a strictly
+    newer mtime is not detected by _fbAnyMtimeNewerThan.
+    """
     assert _fbAnyMtimeNewerThan(
         ["/a"], {"/a": "51"}, iThreshold=50,
     ) is True
@@ -248,6 +324,11 @@ def test_fbAnyMtimeNewerThan_includes_strictly_newer():
 
 
 def test_fbReconcileUserVerificationTimestamps_retains_stale():
+    """A 'stale' step retains its user-verification timestamp.
+
+    Kills: Line 814: fbReconcileUserVerificationTimestamps retain set
+    ('passed','stale') -> ('passed',)
+    """
     dictWorkflow = {
         "listSteps": [{
             "dictVerification": {
@@ -269,5 +350,10 @@ def test_fbReconcileUserVerificationTimestamps_retains_stale():
 
 
 def test_fdictParseStatLines_handles_path_with_space():
+    """A stat line for a path with spaces keeps the path and mtime intact.
+
+    Kills: Line 1457: _fdictParseStatLines 'sLine.rsplit(" ",1)' ->
+    'sLine.split(" ",1)'
+    """
     dictResult = _fdictParseStatLines("/ws/Plot Output/fig.pdf 123\n")
     assert dictResult == {"/ws/Plot Output/fig.pdf": "123"}
