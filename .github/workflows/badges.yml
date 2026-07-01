@@ -91,6 +91,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Installing the package for the collect step lets setuptools-scm
+          # restamp the tracked vaibify/_version.py, leaving the tree dirty and
+          # blocking the branch switch below. Discard that churn; the badge
+          # json we publish lives in untracked badgeOutput/, which a
+          # tracked-file restore leaves untouched.
+          git checkout -- . 2>/dev/null || true
           git fetch origin badges || true
           if git show-ref --quiet refs/remotes/origin/badges; then
             git checkout badges
