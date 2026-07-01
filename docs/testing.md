@@ -104,18 +104,25 @@ a red ✗ on a pull request. Mutation testing inevitably produces
 *equivalent mutants* — code changes with no observable effect (e.g.
 reordering a commutative comparison) — that *no* test could ever catch,
 so failing the build on every survivor would cry wolf and train everyone
-to ignore it. Instead the gate reports each surviving mutant two ways, on
+to ignore it. Instead the gate reports each surviving mutant three ways, on
 the pull request itself:
 
+- a **sticky PR comment** — a single comment the gate updates in place on
+  every run (never a new one each time), listing every surviving mutant;
+  it is the hardest signal to miss and reflects the latest run, including
+  a clean "all killed" state,
 - an inline **`::warning::` annotation** on the exact changed line, shown
   in the PR's *Files changed* tab, and
 - a **job-summary table** on the workflow run (module, line, operator,
-  function) listing every survivor.
+  function).
 
 So the signal is "here are the newly changed lines a test would not have
 caught if they were wrong" — a review prompt, not a pass/fail verdict.
 Read it on any PR that changes Python under `vaibify/`; a clean run says
-so explicitly ("All N mutant(s) on the changed lines were killed").
+so explicitly ("All N mutant(s) on the changed lines were killed"). The
+comment is best-effort: a pull request from a fork gets a read-only token
+and cannot be commented on, in which case the annotations and job summary
+still appear.
 
 **Do the two gates overlap?** Barely, and by design. They mutate
 *different* sets of lines: falsification re-checks only lines that already

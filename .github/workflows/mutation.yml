@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write  # post/update the warn-only survivor comment
 
 jobs:
   mutation:
@@ -133,4 +134,36 @@ jobs:
               with open(pathSummary, "a") as handle:
                   handle.write(sSummary)
           print(sSummary)
+
+          # Body for the sticky PR comment. The HTML-comment marker on the
+          # first line lets the next step find and update this same comment
+          # instead of posting a new one every run.
+          sMarker = "<!-- cosmic-ray-mutation-gate -->"
+          with open("mutation-comment.md", "w", encoding="utf-8") as handle:
+              handle.write(sMarker + "\n" + sSummary)
           PY
+
+      - name: Post or update the sticky PR comment
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true  # warn-only: a comment failure never breaks the build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Find a prior comment carrying our marker; PATCH it in place, else
+          # POST a fresh one. Best-effort: fork PRs get a read-only token and
+          # cannot comment, which continue-on-error tolerates.
+          sMarker='<!-- cosmic-ray-mutation-gate -->'
+          iExisting=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq "map(select(.body | contains(\"${sMarker}\"))) | .[0].id // empty" \
+            | head -n1)
+          if [ -n "${iExisting}" ]; then
+            gh api -X PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${iExisting}" \
+              -F body=@mutation-comment.md
+          else
+            gh api -X POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F body=@mutation-comment.md
+          fi
