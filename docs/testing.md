@@ -33,7 +33,7 @@ bug either.
 
 Concretely, a falsification test is **kill-confirmed**: it has been
 proven to *fail* when a specific one-line mutation is applied to the code
-it defends, then the mutation reverted.
+it defends, then to pass again once that mutation is reverted.
 
 ## How the falsification suite is built
 
@@ -53,7 +53,7 @@ enforceable, re-checkable guarantee:
 3. **The registry** — `tests/falsificationRegistry.py` — records that
    mutation in a *machine-applicable* form: one
    `Falsification(nodeid, source, old, new)` entry per test, where `old`
-   is exact text that occurs once in the source file and `new` is the
+   is the exact text that occurs once in the source file and `new` is the
    break.
 
 4. **The re-kill harness** — `tools/reconfirmFalsification.py` — is the
@@ -99,11 +99,31 @@ runs them as two separate workflows:
 | Direction | backward-looking — maintains the committed suite | forward-looking — discovers new gaps |
 | On failure | **fails the job** (a guard lost its test) | **warns only** — never fails the build |
 
-The mutation gate is warn-only by design: mutation testing produces
-*equivalent mutants* (code changes with no observable effect) that no
-test could ever catch, so a hard failure on every survivor would be
-noise. It reports survivors as PR annotations and a step summary for a
-human to triage.
+**Why warn-only, and how you are alerted.** The mutation gate never puts
+a red ✗ on a pull request. Mutation testing inevitably produces
+*equivalent mutants* — code changes with no observable effect (e.g.
+reordering a commutative comparison) — that *no* test could ever catch,
+so failing the build on every survivor would cry wolf and train everyone
+to ignore it. Instead the gate reports each surviving mutant two ways, on
+the pull request itself:
+
+- an inline **`::warning::` annotation** on the exact changed line, shown
+  in the PR's *Files changed* tab, and
+- a **job-summary table** on the workflow run (module, line, operator,
+  function) listing every survivor.
+
+So the signal is "here are the newly changed lines a test would not have
+caught if they were wrong" — a review prompt, not a pass/fail verdict.
+Read it on any PR that changes Python under `vaibify/`; a clean run says
+so explicitly ("All N mutant(s) on the changed lines were killed").
+
+**Do the two gates overlap?** Barely, and by design. They mutate
+*different* sets of lines: falsification re-checks only lines that already
+carry a committed falsification test, while the mutation gate touches only
+lines a pull request *changed*. The two intersect just when a PR edits an
+already-guarded line — where the double coverage is harmless. Otherwise
+they are complementary: falsification stops old guarantees from decaying,
+the mutation gate flags new code that arrived without a guarantee.
 
 ## Running the suites locally
 
