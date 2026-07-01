@@ -1,0 +1,44 @@
+# Cosmic-ray mutation-testing configuration for vaibify.
+#
+# This drives the WARN-only mutation gate (.github/workflows/mutation.yml).
+# In CI the full mutant set is narrowed to the pull request's *changed*
+# lines by cr-filter-git before exec, so the module-path below only needs
+# to be broad enough to contain every hardened infrastructure module a PR
+# might touch -- it is NOT the per-run scope.
+#
+# Scope: vaibify Python source ONLY. cosmic-ray mutates *.py exclusively,
+# so the vanilla-JS frontend (vaibify/gui/static/*.js), the top-level
+# docker/ shell tooling, and every other non-Python asset are excluded by
+# construction. The two package subtrees named here are the ~25 hardened
+# modules under vaibify/gui/ and vaibify/reproducibility/ that the
+# falsification suite defends.
+[cosmic-ray]
+module-path = [
+    "vaibify/gui",
+    "vaibify/reproducibility",
+]
+
+# Redundant with the *.py-only rule above, but kept explicit so the intent
+# "never mutate the frontend" is legible in the config itself.
+excluded-modules = [
+    "vaibify/gui/static/**",
+]
+
+# Per-mutant wall-clock ceiling for the test-command. A mutant that hangs
+# the suite is counted as killed (timeout). Generous because a *surviving*
+# mutant forces the whole scoped test-command to run to completion.
+timeout = 300.0
+
+# One test-command is reused for every mutant. -x aborts on the first
+# failing test so a killed mutant returns fast; the docker-gated tests are
+# excluded because the mutation job runs without a Docker daemon.
+test-command = "python -m pytest -x --no-header -q -p no:cacheprovider -m 'not docker and not docker_live' tests/"
+
+[cosmic-ray.distributor]
+name = "local"
+
+# cr-filter-git diffs the working tree against this branch and marks every
+# mutation outside the changed lines as SKIPPED, so a PR is graded only on
+# the code it actually touched. CI overrides this to the PR base ref.
+[cosmic-ray.filters.git-filter]
+branch = "origin/main"

@@ -63,6 +63,9 @@ dev = [
     "pytest-asyncio",
     "httpx",
 ]
+mutation = [
+    "cosmic-ray",
+]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"

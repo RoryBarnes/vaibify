@@ -1,0 +1,136 @@
+name: mutation
+
+# WARN-only cosmic-ray mutation gate.
+#
+# Scope: the Python lines a pull request CHANGES under vaibify/ (narrowed by
+# cr-filter-git against the PR base). This job NEVER fails the build on
+# surviving mutants -- equivalent mutants make a hard fail untenable -- it
+# surfaces survivors as a warning and a job-summary table for human triage.
+# The full falsification suite and architectural invariants are graded for
+# real by tests-linux / tests-macos; this gate only adds mutation signal on
+# the diff.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: cosmic-ray (changed lines, warn-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # dev extras supply the test-runner deps the mutation test-command
+          # invokes (pytest-asyncio, httpx); mutation extras supply cosmic-ray.
+          python -m pip install -e ".[dev,mutation]"
+
+      - name: Fetch PR base for the diff filter
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          # Align the committed git-filter branch with this run's actual base.
+          python - "$BASE_REF" <<'PY'
+          import sys, toml
+          sBaseRef = sys.argv[1]
+          dictConfig = toml.load("cosmic-ray.toml")
+          dictConfig["cosmic-ray"]["filters"]["git-filter"]["branch"] = f"origin/{sBaseRef}"
+          with open("cosmic-ray.toml", "w") as handle:
+              toml.dump(dictConfig, handle)
+          PY
+
+      - name: Initialize mutation session
+        run: cosmic-ray init cosmic-ray.toml mutation-session.sqlite
+
+      - name: Restrict to changed lines
+        run: cr-filter-git --config cosmic-ray.toml mutation-session.sqlite
+
+      - name: Execute mutants (warn-only)
+        run: |
+          # exec returns 0 even when mutants survive; survivors are a normal
+          # outcome, not a build failure. Guard anyway so triage always runs.
+          cosmic-ray exec cosmic-ray.toml mutation-session.sqlite || true
+
+      - name: Report surviving mutants
+        if: always()
+        run: |
+          # Read the session through cosmic-ray's own WorkDB API. The
+          # `cosmic-ray dump` serializer raises on SKIPPED results (their
+          # test_outcome is None), and cr-filter-git produces exactly those,
+          # so JSON dumping is unusable for a filtered session.
+          python - <<'PY'
+          import os
+          from cosmic_ray.work_db import use_db, WorkDB
+          from cosmic_ray.work_item import TestOutcome, WorkerOutcome
+
+          listSurvivors = []
+          iGraded = 0
+          with use_db("mutation-session.sqlite", WorkDB.Mode.open) as db:
+              for workItem, workResult in db.completed_work_items:
+                  if workResult.worker_outcome != WorkerOutcome.NORMAL:
+                      continue  # SKIPPED (off-diff), NO_TEST, or crashed
+                  iGraded += 1
+                  if workResult.test_outcome == TestOutcome.SURVIVED:
+                      mutation = workItem.mutations[0]
+                      listSurvivors.append((
+                          mutation.module_path,
+                          mutation.start_pos[0],
+                          mutation.operator_name,
+                          mutation.definition_name or "",
+                      ))
+
+          listLines = []
+          if iGraded == 0:
+              listLines.append(
+                  "No mutants graded on the changed lines "
+                  "(no in-scope Python changes)."
+              )
+          elif not listSurvivors:
+              listLines.append(
+                  f"All {iGraded} mutant(s) on the changed lines were killed."
+              )
+          else:
+              listLines.append(
+                  f"{len(listSurvivors)} of {iGraded} mutant(s) SURVIVED on "
+                  "the changed lines. Triage each: strengthen a test, or "
+                  "confirm it is an equivalent mutant."
+              )
+              listLines.append("")
+              listLines.append("| Module | Line | Operator | Function |")
+              listLines.append("| --- | --- | --- | --- |")
+              for sModule, iLine, sOperator, sFunction in listSurvivors:
+                  listLines.append(
+                      f"| `{sModule}` | {iLine} | `{sOperator}` | "
+                      f"`{sFunction}` |"
+                  )
+                  print(
+                      f"::warning file={sModule},line={iLine}::"
+                      f"Surviving mutant ({sOperator}) in {sFunction or sModule}"
+                  )
+
+          sSummary = "## Cosmic-ray mutation gate (warn-only)\n\n" + \
+              "\n".join(listLines) + "\n"
+          pathSummary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if pathSummary:
+              with open(pathSummary, "a") as handle:
+                  handle.write(sSummary)
+          print(sSummary)
+          PY

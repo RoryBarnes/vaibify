@@ -14,12 +14,21 @@
   </a>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/pip-install.yml/badge.svg">
   <br>
-  <img src="https://img.shields.io/badge/Unit%20Tests-3,935-darkblue.svg">
+  <!-- Endpoint badges read counts from json on the orphan `badges` branch,
+       refreshed by .github/workflows/badges.yml on every push to main. They
+       display "no data" until badges.yml runs on main for the first time. -->
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/tests.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/falsification.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/invariants.json">
+  <br>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-linux.yml/badge.svg">
   <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
   <br>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-macos.yml/badge.svg">
   <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
+  <br>
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/falsification.yml/badge.svg">
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/mutation.yml/badge.svg">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">
   <img src="https://codecov.io/gh/RoryBarnes/vaibify/branch/main/graph/badge.svg">
 </a>
