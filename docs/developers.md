@@ -44,6 +44,13 @@ rule are intact:
 pytest tests/testArchitecturalInvariants.py -v
 ```
 
+The suite has three kinds of test — unit/behavior tests, architectural
+invariants, and **falsification tests** (kill-confirmed tests, proven to
+fail when the guard they defend is broken) — plus a standing re-kill
+harness (`python tools/reconfirmFalsification.py`) and a warn-only
+cosmic-ray mutation gate on pull requests. See [Testing](testing.md) for
+what each is, why falsification testing matters, and how to run them all.
+
 ## Portability and CI
 
 All code must work on both macOS and Linux, and with Python versions

@@ -28,7 +28,6 @@
   <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
   <br>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/falsification.yml/badge.svg">
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/mutation.yml/badge.svg">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">
   <img src="https://codecov.io/gh/RoryBarnes/vaibify/branch/main/graph/badge.svg">
 </a>
