@@ -128,8 +128,7 @@ pattern wholesale.
 ## L1 blocker surfacing
 
 - L1 blocker state lives at `_dictWorkflowState.dictBlockersByStep`
-  (populated from each poll's `listBlockers`). A step's check icon
-  renders only when that map has no entry for the step. Collapsed
+  (populated from each poll's `listBlockers`). Collapsed
   rows render NO inline blocker glyphs: every warning a step carries
   (the backend level warning, the dominant L1 blocker's remediation
   hint, script/output/upstream staleness, unseeded randomness) is
@@ -191,16 +190,19 @@ pattern wholesale.
   "Reproducible ✓" green. Each segment is clickable and scrolls the
   AICS tab to the corresponding readiness card. Logic lives in
   `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
-- Per-step level cells (`scriptStepRenderer.js::_fsBuildStepLevelStrip`)
-  render five columns per step row: the step-status light (the
-  overall tests + sign-off + dependencies summary, built by
-  `_fsBuildStepStatusCell` with a plain-English title), a
-  regression-warning column, then L1|L2|L3 (no text in the level
-  cells; one column-header row labels all five — ● and ⚠ glyph
-  headers with explanatory titles for the first two). Step rows
-  carry no hover edit affordance — hand-editing steps is
-  deliberately de-emphasized (right-click context menu remains the
-  one manual entry point; agents edit via the action catalog).
+- Each step row has two clusters. LEFT: the execution cluster —
+  the run checkbox (intent: include this step in the next run) and
+  the run light (`_fsBuildStepStatusCell`, FACT and execution-only:
+  queued / running / last-run outcome; it must never fold in
+  verification signals — that was the pre-2026-07 design and it
+  made the light read as a shadow L1). RIGHT: the verification
+  strip (`_fsBuildStepLevelStrip`) — the ⚠ warning column then
+  L1|L2|L3 (no text in the level cells). One column-header row
+  labels both clusters ("Run" on the left; ⚠/L1/L2/L3 on the
+  right), every header with an explanatory title. Step rows carry
+  no hover edit affordance — hand-editing steps is deliberately
+  de-emphasized (right-click context menu remains the one manual
+  entry point; agents edit via the action catalog).
   Each level is computed INDEPENDENTLY (no upward propagation) and
   arrives as a CELL dict (`sState`, `iSatisfied`, `iTotal`,
   `bRegression`). Visual vocabulary: grey filled circle =
@@ -249,7 +251,7 @@ pattern wholesale.
   (failed/outputs-missing/outputs-changed/untested) mapped through
   `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing carry red severity,
   outputs-changed orange, and untested maps to null (no warning
-  line; the orange status light carries "not yet done"). These metas
+  line; the orange L1 partial cell carries "not yet done"). These metas
   now drive the consolidated ⚠ column's severity and tooltip lines,
   not inline banner glyphs. Per-file marks read
   `dictOffendingFileMarks` ("stale" → orange ✎, "failed"/"missing" →

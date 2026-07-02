@@ -1140,15 +1140,6 @@ body.aics-level-3 .toolbar-label {
     font-weight: 700;
 }
 
-.step-item .step-status.partial {
-    background: var(--color-orange);
-}
-
-.step-item .step-status.verified {
-    background: var(--highlight-color);
-    transition: background 0.5s ease;
-}
-
 .vaib-verified-badge {
     width: 14px;
     height: 14px;
@@ -5382,7 +5373,12 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .level-column-header-cell {
     font-size: 9px;
     color: var(--text-secondary);
-    cursor: default;
+    cursor: help;
+}
+
+/* Left-cluster header over the run checkbox + run light. */
+.run-column-header {
+    margin-right: auto;
 }
 
 /* The expandable workflow row rendered as the first row of

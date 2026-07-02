@@ -1078,7 +1078,6 @@ const PipeleyenApp = (function () {
             dictDiscoveredOutputs: _dictWorkflowState.dictDiscoveredOutputs,
             dictWorkflow: _dictWorkflowState.dictWorkflow,
             sUserName: _dictSessionState.sUserName,
-            fsComputeStepDotState: fsComputeStepDotState,
             fsComputeStepLabel: fsComputeStepLabel,
             fsResolveTemplate: fsResolveTemplate,
             fsJoinPath: fsJoinPath,
@@ -2421,66 +2420,8 @@ const PipeleyenApp = (function () {
         return iDepMtime <= iMyOutputMtime ? "passed" : "failed";
     }
 
-    function _fsClassifyVerificationSignal(sState) {
-        if (sState === "passed") return "passed";
-        if (sState === "failed" || sState === "error") return "failed";
-        return "untested";
-    }
-
     function fnSetVerificationUserName(sName) {
         _dictSessionState.sUserName = sName || "User";
-    }
-
-    function fsComputeStepDotState(step, iIndex) {
-        var dictVerify = fdictGetVerification(step);
-        var bInteractive = step.bInteractive === true;
-        var bPlotOnly = (step.saDataCommands || []).length === 0;
-        var listModified = dictVerify.listModifiedFiles || [];
-        var bDirty = listModified.length > 0 ||
-            fbAnyUpstreamModified(iIndex) ||
-            _dictWorkflowState.dictScriptModified[iIndex] === "modified";
-        var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
-            !!_dictWorkflowState.dictOutputMtimes[String(iIndex)];
-        // An attestation is activity even when the step produces no
-        // output files (e.g. the AI Declaration step): a step you
-        // signed off must not sit on the grey "no results yet" light.
-        var bAttested = _fsClassifyVerificationSignal(
-            dictVerify.sUser) !== "untested";
-        if (!bHasData && !bAttested) return "";
-
-        var listSignals = [
-            _fsClassifyVerificationSignal(dictVerify.sUser)];
-        if (!bInteractive && !bPlotOnly) {
-            listSignals.push(_fsClassifyVerificationSignal(
-                fsEffectiveTestState(step)));
-        }
-        var sDeps = fsComputeDepsState(iIndex);
-        if (sDeps !== "none") {
-            listSignals.push(_fsClassifyVerificationSignal(sDeps));
-        }
-
-        var bL1Blocked = !!_dictWorkflowState
-            .dictBlockersByStep[iIndex];
-        return _fsDotStateFromSignals(listSignals, bDirty, bL1Blocked);
-    }
-
-    function _fsDotStateFromSignals(listSignals, bDirty, bL1Blocked) {
-        var bAllPassed = listSignals.every(function (s) {
-            return s === "passed";
-        });
-        var bAnyPassed = listSignals.some(function (s) {
-            return s === "passed";
-        });
-        var bAnyFailed = listSignals.some(function (s) {
-            return s === "failed";
-        });
-        if (bAllPassed && !bL1Blocked) return bDirty ? "partial" : "verified";
-        if (bAllPassed && bL1Blocked) return "partial";
-        if (bAnyPassed) return "partial";
-        // Nothing failed and nothing passed: the signals are merely
-        // untested/pending — work not yet done is orange, not red.
-        if (!bAnyFailed) return "partial";
-        return "fail";
     }
 
     function fiParseUtcTimestamp(sTimestamp) {

@@ -48,53 +48,64 @@ def _fsExtractFunctionBlock(sSource, sFunctionName):
 # -----------------------------------------------------------------------
 
 
-def test_status_light_renders_inside_the_level_strip():
-    """The step-status light must render through the strip builder so
-    it aligns under the labeled column header, not float loose in the
-    row where it cannot be identified."""
+def test_run_light_sits_beside_the_checkbox_not_in_the_strip():
+    """The run light is execution-only and belongs to the LEFT
+    execution cluster (intent checkbox + fact light); the right strip
+    carries only verification (warnings + L1-L3). 2026-07-02 ruling —
+    the pre-ladder light that folded in verification signals read as
+    a shadow L1."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sStrip = _fsExtractFunctionBlock(sSource, "_fsBuildStepLevelStrip")
-    assert "step-status-cell" in sStrip, (
-        "the level strip must lead with the step-status column cell"
+    assert "step-status-cell" not in sStrip, (
+        "the verification strip must not carry the run light"
     )
     sItem = _fsExtractFunctionBlock(sSource, "fsRenderStepItem")
-    assert "_fsBuildStepStatusCell" in sItem, (
-        "step rows must build the status light via the shared cell "
-        "builder so it lands in the labeled column"
+    iCheckbox = sItem.find("step-checkbox")
+    iLight = sItem.find("_fsBuildStepStatusCell")
+    iNumber = sItem.find("step-number")
+    assert -1 < iCheckbox < iLight < iNumber, (
+        "the run light must render between the checkbox and the "
+        "step label"
     )
 
 
-def test_column_header_row_labels_status_and_warning_columns():
-    """The one-time header row must label all five columns; the ● and
-    ⚠ headers carry plain-English hover titles."""
+def test_column_header_row_labels_both_clusters():
+    """The one-time header row labels the left execution cluster
+    ("Run") and the right verification strip; every header carries a
+    plain-English hover title."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sHeader = _fsExtractFunctionBlock(
         sSource, "_fsRenderLevelColumnHeaderRow",
     )
-    assert "step-status-cell" in sHeader, (
-        "header row must include a cell over the status-light column"
+    assert "run-column-header" in sHeader, (
+        "the execution cluster needs its own labeled header"
     )
-    assert "Step status" in sHeader, (
-        "status column header must explain itself in plain English"
+    assert "Run</span>" in sHeader, (
+        "the execution-cluster header must read 'Run'"
     )
     assert "&#9888;" in sHeader, (
         "warning column header must be visible (⚠), not an empty span"
     )
 
 
-def test_status_light_titles_cover_every_dot_state():
-    """Every status class the renderer can emit must have a
-    plain-English hover phrase."""
+def test_run_light_titles_are_execution_only():
+    """The run light speaks only about execution — every run state
+    has a hover phrase, and the verification vocabulary (partial /
+    verified) must never reappear in it."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     iStart = sSource.find("_DICT_STEP_STATUS_TITLES")
-    assert iStart != -1, "status-title dict missing"
+    assert iStart != -1, "run-title dict missing"
     sBlock = sSource[iStart:sSource.find("};", iStart)]
     for sState in (
         '""', '"pass"', '"fail"', '"queued"', '"running"',
-        '"skipped"', '"partial"', '"verified"',
+        '"skipped"',
     ):
         assert sState in sBlock, (
-            "status-title dict missing phrase for " + sState
+            "run-title dict missing phrase for " + sState
+        )
+    for sRetired in ('"partial"', '"verified"'):
+        assert sRetired not in sBlock, (
+            "run light must not carry verification state " + sRetired
         )
 
 
@@ -221,17 +232,14 @@ def test_warning_tooltips_never_call_results_green():
     assert "green" not in sBlock
 
 
-def test_attested_step_without_outputs_gets_a_status_light():
-    """FALSIFICATION TARGET: an attestation-only step (AI
-    Declaration) has no output files, but a researcher sign-off is
-    activity — the dot must not fall through to the grey "no results
-    yet" state."""
-    sSource = _fsReadStaticFile("scriptApplication.js")
-    sDot = _fsExtractFunctionBlock(sSource, "fsComputeStepDotState")
-    assert "bAttested" in sDot and "!bHasData && !bAttested" in sDot, (
-        "fsComputeStepDotState must treat an attestation as "
-        "activity for output-less steps"
-    )
+def test_verification_dot_machinery_is_retired():
+    """The old dot computation folded attestation, tests, and
+    dependencies into one light — a shadow L1. It must stay deleted;
+    the run light reads dictStepStatus alone."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    assert "fsComputeStepDotState" not in sApplication
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "fsComputeStepDotState" not in sRenderer
 
 
 # -----------------------------------------------------------------------
@@ -309,7 +317,7 @@ def test_every_column_header_carries_a_tooltip():
         sSource, "_fsRenderLevelColumnHeaderRow",
     )
     for sNeedle in (
-        "Step status light", "Warnings", "Level 1 Self-Consistent",
+        "Run controls", "Warnings", "Level 1 Self-Consistent",
         "Level 2 Published", "Level 3 Reproducible",
     ):
         assert sNeedle in sHeader, (

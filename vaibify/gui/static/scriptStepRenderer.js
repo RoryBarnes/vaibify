@@ -63,12 +63,13 @@ var VaibifyStepRenderer = (function () {
         // column is identifiable. The level cells themselves carry
         // no L1/L2/L3 text.
         return '<div class="level-column-header-row">' +
-            '<span class="step-level-strip">' +
-            '<span class="step-status-cell ' +
+            '<span class="run-column-header ' +
             'level-column-header-cell" ' +
-            'title="Step status light — one light per step ' +
-            'summarizing its tests, your sign-off, and its ' +
-            'dependencies. Hover a light for detail.">&#9679;</span>' +
+            'title="Run controls — the checkbox includes a step in ' +
+            'the next run; the light beside it shows what happened ' +
+            'when the step last ran. Hover a light for detail.">' +
+            'Run</span>' +
+            '<span class="step-level-strip">' +
             '<span class="step-regression-cell ' +
             'level-column-header-cell" ' +
             'title="Warnings — a step that slipped back from a ' +
@@ -96,35 +97,26 @@ var VaibifyStepRenderer = (function () {
     }
 
     var _DICT_STEP_STATUS_TITLES = {
-        "": "no results yet",
+        "": "not run in this session",
         "pass": "last run succeeded",
-        "fail": "a test failed or a run went wrong",
-        "queued": "queued to run",
+        "fail": "last run failed",
+        "queued": "queued in the current run",
         "running": "running now",
-        "skipped": "skipped",
-        "partial": "partly verified — some checks still need a " +
-            "run or your sign-off",
-        "verified": "verified — tests, your sign-off, and " +
-            "dependencies are all current",
+        "skipped": "skipped in the last run",
     };
 
-    function _fsBuildStepStatusCell(sStatusClass, sVerifiedBadge) {
-        var sTitle = "Step status: " +
-            (_DICT_STEP_STATUS_TITLES[sStatusClass] || sStatusClass);
+    function _fsBuildStepStatusCell(sRunStatus) {
+        var sTitle = "Run status: " +
+            (_DICT_STEP_STATUS_TITLES[sRunStatus] || sRunStatus);
         return '<span class="step-status-cell" title="' +
             fnEscapeHtml(sTitle) + '">' +
-            (sStatusClass === "verified"
-                ? sVerifiedBadge
-                : '<span class="step-status ' + sStatusClass +
-                    '"></span>') +
-            '</span>';
+            '<span class="step-status ' + sRunStatus +
+            '"></span></span>';
     }
 
-    function _fsBuildStepLevelStrip(dictContext, iIndex, sStatusCellHtml) {
+    function _fsBuildStepLevelStrip(dictContext, iIndex) {
         if (!dictContext.fsLevelCellState) return "";
         var sHtml = '<span class="step-level-strip">' +
-            (sStatusCellHtml ||
-                '<span class="step-status-cell"></span>') +
             _fsBuildRegressionCell(dictContext, iIndex);
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsBuildLevelCell(
@@ -169,7 +161,6 @@ var VaibifyStepRenderer = (function () {
             '<button class="btn btn-add-ai-declaration-step" ' +
             'type="button">Add AI declaration step</button>' +
             '<span class="step-level-strip">' +
-            '<span class="step-status-cell"></span>' +
             '<span class="step-regression-cell"></span>';
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsBuildLevelCell("none", sTooltip);
@@ -479,47 +470,43 @@ var VaibifyStepRenderer = (function () {
     }
 
     var _DICT_DETERMINISM_LABELS = {
-        bAcceptBlasVariance: "Tiny numeric differences from " +
-            "linear-algebra libraries (BLAS) are declared " +
-            "acceptable across machines",
-        dOmpNumThreads: "OpenMP thread count pinned",
-        sMklCbwr: "Intel MKL bitwise-reproducibility mode pinned",
+        bAcceptBlasVariance: "BLAS numeric variance accepted",
+        dOmpNumThreads: "OpenMP threads pinned",
+        sMklCbwr: "Intel MKL reproducibility mode pinned",
     };
 
     function _fsRenderEnvelopeDeterminismBody(dictDeterminism) {
-        // Declarations about run-to-run repeatability: whether two
-        // runs of this workflow are expected to produce identical
-        // bits, and which sources of variation are pinned or waived.
-        var sHtml = "";
-        if (!dictDeterminism ||
-            Object.keys(dictDeterminism).length === 0) {
-            return '<div class="envelope-empty-note">' +
-                'No determinism declaration recorded — declare RNG ' +
-                'seeding and BLAS variance to unlock Level 3.</div>';
-        }
-        sHtml += '<div class="envelope-empty-note">' +
-            'What the workflow declares about run-to-run ' +
-            'repeatability:</div>';
-        Object.keys(dictDeterminism).forEach(function (sKey) {
-            sHtml += _fsRenderEnvelopeDeterminismRow(
-                sKey, dictDeterminism[sKey]);
-        });
-        return sHtml;
+        var bDeclared = Boolean(dictDeterminism &&
+            Object.keys(dictDeterminism).length > 0);
+        return _fsRenderEnvelopeMarkHeader([
+            ["R", "Rules — does the workflow declare its " +
+                "run-to-run repeatability rules (random seeding, " +
+                "numeric-library variance)? Required for Level 3."],
+        ]) +
+            '<div class="envelope-determinism-row">' +
+            '<span class="envelope-rule-name">Reproducibility ' +
+            'rules</span>' +
+            '<span class="envelope-row-marks">' +
+            _fsWrapEnvelopeMarkSlot(_fsBuildEnvelopeMark(
+                bDeclared ? "green" : "red",
+                bDeclared
+                    ? "Met — declared: " +
+                        _fsSummarizeDeterminism(dictDeterminism)
+                    : "Not met — declare the workflow's " +
+                      "repeatability rules (random seeding, BLAS " +
+                      "variance) to unlock Level 3")) +
+            '</span></div>';
     }
 
-    function _fsRenderEnvelopeDeterminismRow(sKey, jsonValue) {
-        var sLabel = _DICT_DETERMINISM_LABELS[sKey];
-        if (!sLabel) {
-            sLabel = sKey + ": " +
-                _fsStringifyEnvelopeValue(jsonValue);
-        } else if (jsonValue !== true) {
-            sLabel += " (" + _fsStringifyEnvelopeValue(jsonValue) +
-                ")";
-        }
-        return '<div class="envelope-determinism-row">' +
-            _fsBuildEnvelopeMark("green",
-                "Declared in the workflow's determinism block") +
-            '<span>' + fnEscapeHtml(sLabel) + '</span></div>';
+    function _fsSummarizeDeterminism(dictDeterminism) {
+        return Object.keys(dictDeterminism).map(function (sKey) {
+            var sLabel = _DICT_DETERMINISM_LABELS[sKey] || sKey;
+            if (dictDeterminism[sKey] !== true) {
+                sLabel += " = " + _fsStringifyEnvelopeValue(
+                    dictDeterminism[sKey]);
+            }
+            return sLabel;
+        }).join("; ");
     }
 
     function _fsStringifyEnvelopeValue(jsonValue) {
@@ -530,8 +517,20 @@ var VaibifyStepRenderer = (function () {
         return String(jsonValue);
     }
 
+    var _DICT_SYNC_SERVICE_LABELS = {
+        github: "GitHub",
+        zenodo: "Zenodo",
+        overleaf: "Overleaf",
+        arxiv: "arXiv",
+    };
+
     function _fsRenderEnvelopeSyncBody(dictRemoteSyncs) {
-        var sHtml = "";
+        var sHtml = _fsRenderEnvelopeMarkHeader([
+            ["S", "Sync — do the published copies on this service " +
+                "match your local files? Hover each mark for " +
+                "counts and freshness; refresh remote status from " +
+                "the Repos panel."],
+        ]);
         var listServices = _LIST_ENVELOPE_SYNC_SERVICES;
         for (var i = 0; i < listServices.length; i++) {
             sHtml += _fsRenderEnvelopeSyncRow(
@@ -541,29 +540,22 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
-    function _fsRenderNeverVerifiedSyncRow(sService) {
-        // A null cache means the remote was never verified; the
-        // hollow grey light is the honest rendering — never green.
-        return '<div class="envelope-sync-row">' +
-            _fsBuildEnvelopeMark("unknown", "Never verified") +
-            '<span class="envelope-sync-name">' +
-            fnEscapeHtml(sService) + '</span>' +
-            '<span class="envelope-sync-note">never verified' +
-            '</span></div>';
-    }
-
     function _fsRenderEnvelopeSyncRow(sService, dictSync) {
-        if (!dictSync) {
-            return _fsRenderNeverVerifiedSyncRow(sService);
-        }
+        // A null cache means the remote was never verified; the
+        // hollow grey mark is the honest rendering — never a pass.
+        var sState = dictSync
+            ? _fsSyncLightState(dictSync) : "unknown";
+        var sTooltip = dictSync
+            ? _fsDescribeSyncState(dictSync)
+            : "Never verified — refresh remote status from the " +
+              "Repos panel";
         return '<div class="envelope-sync-row">' +
-            _fsBuildEnvelopeMark(
-                _fsSyncLightState(dictSync),
-                _fsDescribeSyncState(dictSync)) +
             '<span class="envelope-sync-name">' +
-            fnEscapeHtml(sService) + '</span>' +
-            '<span class="envelope-sync-note">' +
-            fnEscapeHtml(_fsDescribeSyncState(dictSync)) +
+            fnEscapeHtml(_DICT_SYNC_SERVICE_LABELS[sService] ||
+                sService) + '</span>' +
+            '<span class="envelope-row-marks">' +
+            _fsWrapEnvelopeMarkSlot(
+                _fsBuildEnvelopeMark(sState, sTooltip)) +
             '</span></div>';
     }
 
@@ -620,33 +612,15 @@ var VaibifyStepRenderer = (function () {
 
     function fsRenderStepItem(step, iIndex, dictVars, dictContext) {
         var bInteractive = step.bInteractive === true;
+        // The run light is EXECUTION-ONLY (its original meaning):
+        // queued / running / how the last run ended. Verification
+        // lives entirely in the ⚠ + L1/L2/L3 strip; the light and
+        // the run checkbox form the execution cluster on the left
+        // (intent + fact, side by side).
         var sRunStatus = dictContext.dictStepStatus[iIndex] || "";
-        var sStatusClass = "";
-        if (sRunStatus === "running" || sRunStatus === "queued") {
-            sStatusClass = sRunStatus;
-        } else if (sRunStatus === "pass") {
-            var sVerifyState = dictContext.fsComputeStepDotState(
-                step, iIndex);
-            sStatusClass = (sVerifyState === "verified")
-                ? "verified" : "partial";
-        } else if (sRunStatus === "fail") {
-            var sVerifyOnFail = dictContext.fsComputeStepDotState(
-                step, iIndex);
-            sStatusClass = (sVerifyOnFail === "partial" ||
-                sVerifyOnFail === "verified") ? "partial" : "fail";
-        } else {
-            sStatusClass = dictContext.fsComputeStepDotState(
-                step, iIndex);
-        }
         var bRunEnabled = step.bRunEnabled !== false;
         var bSelected = iIndex === dictContext.iSelectedStepIndex;
         var bExpanded = dictContext.setExpandedSteps.has(iIndex);
-
-        var sVerifiedBadge = "";
-        if (sStatusClass === "verified") {
-            sVerifiedBadge = '<img src="/static/favicon.png" ' +
-                'class="vaib-verified-badge" alt="verified">';
-        }
 
         var sStepNumber = dictContext.fsComputeStepLabel(iIndex);
 
@@ -655,8 +629,10 @@ var VaibifyStepRenderer = (function () {
             '<div class="step-item' + (bSelected ? " selected" : "") +
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
-            '<input type="checkbox" class="step-checkbox"' +
+            '<input type="checkbox" class="step-checkbox" ' +
+            'title="Include this step when running the workflow"' +
             (bRunEnabled ? " checked" : "") + ">" +
+            _fsBuildStepStatusCell(sRunStatus) +
             '<span class="step-number">' +
             sStepNumber + "</span>" +
             '<span class="step-name" title="' +
@@ -669,8 +645,7 @@ var VaibifyStepRenderer = (function () {
             // glyphs render beside the step name; the per-file ✎/⚠
             // marks in the expanded detail still identify *which*
             // file went stale or missing.
-            _fsBuildStepLevelStrip(dictContext, iIndex,
-                _fsBuildStepStatusCell(sStatusClass, sVerifiedBadge)) +
+            _fsBuildStepLevelStrip(dictContext, iIndex) +
             "</div>";
 
         if (!bExpanded) {
