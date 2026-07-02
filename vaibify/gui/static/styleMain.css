@@ -5487,10 +5487,21 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-weight: 600;
 }
 
-.envelope-binary-versions,
-.envelope-binary-purpose,
 .envelope-sync-note {
     color: var(--text-secondary);
+}
+
+/* Binary marks right-align into a strip, mirroring the step rows. */
+.envelope-binary-marks {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+/* An empty warning cell offers nothing to hover — no help cursor,
+   no tooltip. */
+.step-regression-cell:empty {
+    cursor: default;
 }
 
 .envelope-empty-note {

@@ -348,40 +348,42 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fsRenderEnvelopeBinaryRow(dictBinary) {
+        // Mirrors the step-row pattern: name on the left, status
+        // marks right-aligned. Version details and remedies live in
+        // the mark tooltips, not inline text.
         return '<div class="envelope-binary-row">' +
+            '<span class="envelope-binary-name">' +
+            fnEscapeHtml(dictBinary.sBinaryPath || "") + '</span>' +
+            '<span class="envelope-binary-marks">' +
             _fsBuildEnvelopeMark(
                 _fsLightStateFromBoolean(dictBinary.bVersionMatch),
                 _fsDescribeVersionMatch(dictBinary)) +
             _fsBuildEnvelopeMark(
                 dictBinary.bHashCurrent === true ? "green" : "red",
                 dictBinary.bHashCurrent === true
-                    ? "Binary hash captured"
-                    : "Binary hash not captured") +
-            '<span class="envelope-binary-name">' +
-            fnEscapeHtml(dictBinary.sBinaryPath || "") + '</span>' +
-            '<span class="envelope-binary-versions">expected ' +
-            fnEscapeHtml(dictBinary.sExpectedVersion || "—") +
-            ' · captured ' +
-            fnEscapeHtml(dictBinary.sCapturedVersion || "—") +
-            '</span>' +
-            _fsRenderEnvelopeBinaryPurpose(dictBinary) + '</div>';
-    }
-
-    function _fsRenderEnvelopeBinaryPurpose(dictBinary) {
-        if (!dictBinary.sPurpose) return "";
-        return '<span class="envelope-binary-purpose">' +
-            fnEscapeHtml(dictBinary.sPurpose) + '</span>';
+                    ? "Hash captured in the environment snapshot"
+                    : "Hash not captured — open the AICS tab's " +
+                      "Level 3 Readiness card and use 'Capture " +
+                      "version + SHA'") +
+            '</span></div>';
     }
 
     function _fsDescribeVersionMatch(dictBinary) {
+        var sVersions = "declared " +
+            (dictBinary.sExpectedVersion || "none") + ", captured " +
+            (dictBinary.sCapturedVersion || "none");
         if (dictBinary.bVersionMatch === true) {
-            return "Captured version matches the declaration";
+            return "Version matches the declaration (" + sVersions +
+                ")";
         }
         if (dictBinary.bVersionMatch === false) {
-            return "Captured version differs from the declaration";
+            return "Version differs from the declaration (" +
+                sVersions + ") — fix the declaration or rebuild " +
+                "the binary, then recapture";
         }
-        return "Version match unknown — expected or captured " +
-            "version not recorded";
+        return "No version captured yet (" + sVersions + ") — open " +
+            "the AICS tab's Level 3 Readiness card and use " +
+            "'Capture version + SHA' to record it";
     }
 
     function _fsRenderEnvelopeArtifactBody(dictArtifacts) {
