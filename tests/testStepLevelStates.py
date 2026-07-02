@@ -4,14 +4,18 @@
 blocker lists plus the step dicts onto one cell per step per level::
 
     {"sState": "not-started" | "none" | "partial"
-               | "attained" | "unknown",
+               | "attained" | "unknown" | "not-applicable",
      "iSatisfied": int, "iTotal": int, "bRegression": bool}
 
 Levels are independent — a blocked or partial lower level never
 propagates upward, so L1 attained + L2 partial + L3 attained can
-coexist on one step. ``fdictComputeStepLevelWarnings`` consolidates
-the regression column; ``fdictComputeWorkflowScopeLevelStates``
-covers the header row.
+coexist on one step. L3 counts only the criteria whose domain is
+non-empty on the step; a step with nothing to reproduce reads
+``not-applicable``, never a vacuous attained.
+``fdictComputeStepLevelWarnings`` consolidates the regression column;
+``fdictComputeWorkflowScopeLevelStates`` covers the header row, whose
+cells are the workflow-attached requirements only — NOT an aggregate
+of the step rows (that is the scalar ``fiAICSLevel`` gate).
 """
 
 from vaibify.reproducibility.levelGates import (
@@ -24,10 +28,15 @@ from vaibify.reproducibility.levelGates import (
 
 
 def _fdictActiveCleanStep(sName="stepOne"):
-    """Return a step with activity whose L1 requirements are all met."""
+    """Return a step with activity whose L1 requirements are all met.
+
+    Declares one data file so exactly one L3 criterion
+    (``missing-from-manifest``) has a domain on the step — an
+    "attained" L3 cell on this fixture is earned, not vacuous.
+    """
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [], "saPlotFiles": [],
+        "saDataFiles": [sName + "/output.json"], "saPlotFiles": [],
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -99,7 +108,7 @@ def testCleanStepAttainsAllThreeLevelsWithFullCounts():
     assert dictStates == {0: {
         "s1": _fdictCell("attained", 3, 3),
         "s2": _fdictCell("attained", 2, 2),
-        "s3": _fdictCell("attained", 5, 5),
+        "s3": _fdictCell("attained", 1, 1),
     }}
 
 
@@ -128,17 +137,20 @@ def testLevel3AttainedWhileLevel2Partial():
         _fdictWorkflowWithCleanSteps(1), [], listLevel2, [],
     )
     assert dictStates[0]["s2"] == _fdictCell("partial", 1, 2)
-    assert dictStates[0]["s3"] == _fdictCell("attained", 5, 5)
+    assert dictStates[0]["s3"] == _fdictCell("attained", 1, 1)
 
 
 def testLevel3BlockerLeavesLevelsOneAndTwoAttained():
+    """The fixture's only applicable L3 criterion fails, so its L3
+    cell reads none — a failed sole requirement is red, not a
+    flattering 4-of-5 partial."""
     listLevel3 = [_fdictStepBlocker(3, 0, "missing-from-manifest")]
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithCleanSteps(1), [], [], listLevel3,
     )
     assert dictStates[0]["s1"]["sState"] == "attained"
     assert dictStates[0]["s2"]["sState"] == "attained"
-    assert dictStates[0]["s3"] == _fdictCell("partial", 4, 5)
+    assert dictStates[0]["s3"] == _fdictCell("none", 0, 1)
 
 
 def testBlockersOnlyAffectTheirOwnStep():
@@ -333,6 +345,89 @@ def testFigureFreezeOnlyApplicableWithOverleafBindingAndPlots():
     )
     assert dictStates[0]["s2"]["iTotal"] == 3
     assert dictStates[1]["s2"]["iTotal"] == 2
+
+
+# ------------------------------------------------------------------------
+# not-applicable: L3 with no applicable criterion, honest L3 counting
+# ------------------------------------------------------------------------
+
+
+def _fdictAttestedArtifactFreeStep(sName="aiDeclaration"):
+    """Return an active interactive step with nothing to reproduce."""
+    return {
+        "sName": sName, "sDirectory": sName,
+        "dictVerification": {"sUser": "passed"},
+    }
+
+
+def testArtifactFreeStepReadsNotApplicableAtLevelThree():
+    """FALSIFICATION TARGET (vacuous-L3 bug): an attested interactive
+    step with no outputs, scripts, binaries, or randomness flag must
+    read not-applicable — never a vacuous attained (the GJ 1132 I02
+    symptom: L3 'verified' while the workflow was not even L2)."""
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([_fdictAttestedArtifactFreeStep()]),
+        [], [], [],
+    )
+    assert dictStates[0]["s3"] == _fdictCell("not-applicable", 0, 0)
+    assert dictStates[0]["s1"]["sState"] == "attained"
+
+
+def testStrayStampOnNotApplicableCellStaysInert():
+    """A high-water stamp minted while the cell read vacuously
+    attained must not manufacture a regression warning."""
+    dictStep = _fdictAttestedArtifactFreeStep()
+    dictStep["dictLevelHighWater"] = {"3": "2026-06-12T00:00:00Z"}
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    assert dictStates[0]["s3"]["sState"] == "not-applicable"
+    assert dictStates[0]["s3"]["bRegression"] is False
+
+
+def testNotStartedOutranksNotApplicable():
+    """A never-touched artifact-free step reads not-started on all
+    three cells — uniform, like every other untouched step."""
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([{"sName": "stepOne"}]), [], [], [],
+    )
+    assert dictStates[0]["s3"]["sState"] == "not-started"
+
+
+def testEveryFailingCriterionCountsNotJustTheDominantOne():
+    """FALSIFICATION TARGET (L3-never-red bug): a step failing every
+    applicable criterion must read none with zero satisfied — the old
+    dominant-only counting could never drop below 4 of 5."""
+    dictStep = _fdictActiveCleanStep()
+    dictStep["bUnseededRandomnessWarning"] = True
+    dictBlocker = _fdictStepBlocker(3, 0, "missing-from-manifest")
+    dictBlocker["listFailingCriteria"] = [
+        "missing-from-manifest", "nondeterminism-undeclared",
+    ]
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [dictBlocker],
+    )
+    assert dictStates[0]["s3"] == _fdictCell("none", 0, 2)
+
+
+def testBlockerWithoutFailingCriteriaFieldFallsBackToDominant():
+    """A warm cache can hold entries minted before
+    ``listFailingCriteria`` existed; the dominant criterion must
+    still count as failing."""
+    listLevel3 = [_fdictStepBlocker(3, 0, "missing-from-manifest")]
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithCleanSteps(1), [], [], listLevel3,
+    )
+    assert dictStates[0]["s3"]["iSatisfied"] == 0
+
+
+def testNotApplicableRungCannotBlockTheStepLadder():
+    dictStates = _fdictThreeCells(
+        "attained", "attained", "not-applicable",
+    )
+    dictStates["s3"] = _fdictCell("not-applicable", 0, 0)
+    assert fiStepAICSLevel(dictStates) == 3
+    assert fiLowestNonAttainedLevel(dictStates) == 4
 
 
 # ------------------------------------------------------------------------

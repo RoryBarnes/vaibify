@@ -158,7 +158,11 @@ pattern wholesale.
   `binaries-not-declared-or-waived`.
 - Every blocker entry carries `iLevel`, `iStepIndex`, `sStepLabel`,
   `sScope`, `sCriterion`, `listOffendingFiles`,
-  `listOffendingUpstreamSteps`, `sRemediationHint`. Glyph tooltips
+  `listOffendingUpstreamSteps`, `sRemediationHint`. Per-step L3
+  entries additionally carry `listFailingCriteria` — the complete
+  failing set behind the single dominant glyph, which the level-cell
+  projection counts so a step failing every criterion reads "none",
+  not a near-complete partial. Glyph tooltips
   prefer `sRemediationHint` (server-supplied per-criterion language)
   over the static-dict `sLabel` fallback. This is enforced by the
   contract test `tests/testStepRendererBlockerGlyphs.py`.
@@ -182,8 +186,10 @@ pattern wholesale.
   (activity, nothing satisfied), orange circle = "partial", the
   vaibify favicon image = "attained", hollow outlined grey circle =
   "unknown" (sync verify cache stale — a stale cache must NEVER
-  render attained). First-attainment dates persist in
-  `dictLevelHighWater` in state.json and are never erased.
+  render attained), muted dash = "not-applicable" (per-step L3 only:
+  no criterion has a domain on the step — nothing to reproduce must
+  NEVER render as a vacuous attained). First-attainment dates persist
+  in `dictLevelHighWater` in state.json and are never erased.
 - The regression column renders `dictStepLevelWarnings` VERBATIM —
   the backend gates the warning to the step's lowest non-attained
   level (a regression at a higher level is suppressed until lower
@@ -191,8 +197,15 @@ pattern wholesale.
   for staleness/regression. Never derive warning logic client-side
   for steps.
 - The Workflow row (`fsRenderWorkflowLevelHeader`) is an expandable
-  step-like row: collapsed shows the same four columns at workflow
-  scope; expanded renders `dictWorkflowEnvelopeDetail` (declared
+  step-like row. Its cells are NOT an aggregate or summary of the
+  step rows: they cover only the requirements that attach to the
+  workflow as a whole (L1: project repo present; L2: sync-verify
+  freshness + arXiv; L3: the envelope artifacts). The all-steps
+  aggregate is the scalar `iAICSLevel` rendered by the AICS chip, so
+  a Workflow-row L1 check above red step rows is a consistent
+  display, and the cell tooltips say so. Collapsed the row shows the
+  same four columns at workflow scope; expanded it renders
+  `dictWorkflowEnvelopeDetail` (declared
   binaries with version-match and hash lights, envelope artifacts,
   determinism, remote sync summaries — a never-verified cache
   renders hollow grey, never green). The AI-declaration criterion is

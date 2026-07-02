@@ -126,6 +126,32 @@ def testMissingFromManifestCriterionFires(fixtureL3Repo):
     assert listMissing[0]["iLevel"] == 3
 
 
+def testDominantEntryCarriesEveryFailingCriterion(fixtureL3Repo):
+    """One entry per step (single dashboard glyph), but the entry's
+    ``listFailingCriteria`` reports the complete failure set so the
+    level-cell projection can count every unmet requirement."""
+    dictWorkflow = _fdictWaivedWorkflow()
+    dictWorkflow["listSteps"] = [{
+        "sName": "A", "sDirectory": "A",
+        "saDataFiles": ["A/missing.csv"],
+        "saPlotFiles": [],
+        "saDataCommands": [],
+        "saPlotCommands": [],
+        "bUnseededRandomnessWarning": True,
+    }]
+    listBlockers = flistLevel3Blockers(
+        dictWorkflow, str(fixtureL3Repo),
+    )
+    listStepEntries = [
+        d for d in listBlockers if d.get("iStepIndex") == 0
+    ]
+    assert len(listStepEntries) == 1
+    assert listStepEntries[0]["sCriterion"] == "missing-from-manifest"
+    assert listStepEntries[0]["listFailingCriteria"] == [
+        "missing-from-manifest", "nondeterminism-undeclared",
+    ]
+
+
 def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     """A step invoking vplanet with no declarations triggers the criterion.
 

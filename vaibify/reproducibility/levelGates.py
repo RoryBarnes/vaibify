@@ -2144,44 +2144,57 @@ def _fdictBuildL3StepBlocker(
 
     Priority order: ``missing-from-manifest`` > ``script-not-pinned`` >
     ``nondeterminism-undeclared`` > ``binary-not-declared`` >
-    ``binary-not-captured``. The first applicable criterion wins so a
-    single dashboard glyph has a deterministic source.
+    ``binary-not-captured``. The first failing criterion wins so a
+    single dashboard glyph has a deterministic source; the entry also
+    carries ``listFailingCriteria`` (every failing criterion, in
+    priority order) so the level-cell projection can count each unmet
+    requirement instead of just the dominant one.
     """
     if not isinstance(dictStep, dict):
         return None
-    sCriterion, listOffenders = _ftL3StepCriterion(
+    listFailures = _flistL3StepFailures(
         iStepIndex, dictStep, dictContext,
     )
-    if sCriterion is None:
+    if not listFailures:
         return None
-    return _fdictBuildL3StepEntry(
+    sCriterion, listOffenders = listFailures[0]
+    dictEntry = _fdictBuildL3StepEntry(
         dictWorkflow, iStepIndex, sCriterion, listOffenders,
     )
+    dictEntry["listFailingCriteria"] = [
+        sFailing for sFailing, _ in listFailures
+    ]
+    return dictEntry
 
 
-def _ftL3StepCriterion(iStepIndex, dictStep, dictContext):
-    """Return ``(sCriterion, listOffendingFiles)`` or ``(None, [])``."""
+def _flistL3StepFailures(iStepIndex, dictStep, dictContext):
+    """Return every failing ``(sCriterion, listOffendingFiles)`` pair.
+
+    Evaluates ALL five criteria — no early return — in priority order,
+    so callers see the complete failure set, not just the dominant one.
+    """
+    listFailures = []
     listMissing = _flistStepPathsMissingFromManifest(dictStep, dictContext)
     if listMissing:
-        return ("missing-from-manifest", listMissing)
+        listFailures.append(("missing-from-manifest", listMissing))
     listDrifted = _flistStepScriptsDriftedFromManifest(
         dictStep, dictContext,
     )
     if listDrifted:
-        return ("script-not-pinned", listDrifted)
+        listFailures.append(("script-not-pinned", listDrifted))
     if iStepIndex in dictContext["setNondeterministicSteps"]:
-        return ("nondeterminism-undeclared", [])
+        listFailures.append(("nondeterminism-undeclared", []))
     listUndeclared = _flistUndeclaredBinaryInvocations(
         dictStep, dictContext,
     )
     if listUndeclared:
-        return ("binary-not-declared", listUndeclared)
+        listFailures.append(("binary-not-declared", listUndeclared))
     listUncaptured = _flistDeclaredBinariesNotCaptured(
         dictStep, dictContext,
     )
     if listUncaptured:
-        return ("binary-not-captured", listUncaptured)
-    return (None, [])
+        listFailures.append(("binary-not-captured", listUncaptured))
+    return listFailures
 
 
 def _fdictBuildL3StepEntry(
@@ -2356,7 +2369,7 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
 # Wire cell shape (one per step per level, and per workflow per level)::
 #
 #     {"sState": "not-started" | "none" | "partial"
-#                | "attained" | "unknown",
+#                | "attained" | "unknown" | "not-applicable",
 #      "iSatisfied": int,   # requirements of that level currently met
 #      "iTotal": int,       # requirements of that level applicable
 #      "bRegression": bool} # high-water stamp exists but not attained
@@ -2368,6 +2381,17 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
 # — all satisfied. ``unknown`` — ONLY for per-step L2 when the
 # github/zenodo verify cache is stale: the per-step sync truth is
 # unavailable and must never render as attained from a stale cache.
+# ``not-applicable`` — ONLY for per-step L3 when no criterion has a
+# domain on the step (no declared paths, scripts, binaries, or
+# randomness flag): nothing to reproduce must never render as a
+# vacuous attainment.
+#
+# NOTE the workflow header row is NOT an aggregate of the step rows.
+# Its cells cover only the requirements that attach to the workflow
+# as a whole (L1: project repo present; L2: sync-verify freshness +
+# arXiv; L3: the envelope artifacts). The all-steps aggregate is the
+# scalar ``fiAICSLevel`` gate rendered by the AICS chip. A workflow
+# L1 check above red step rows is therefore a consistent display.
 # ----------------------------------------------------------------------
 
 
@@ -2412,8 +2436,9 @@ def fdictComputeStepLevelStates(
     * L2 — github mirror match, zenodo deposit match, and (when the
       workflow has an Overleaf binding and the step declares plots)
       figure frozen. A stale verify cache makes the cell ``unknown``.
-    * L3 — the five per-step criteria in
-      :data:`_T_STEP_LEVEL3_CRITERIA`, one requirement each.
+    * L3 — the APPLICABLE per-step criteria from
+      :data:`_T_STEP_LEVEL3_CRITERIA`, one requirement each; a step
+      to which none applies reads ``not-applicable``.
 
     ``bRegression`` reads the step's ``dictLevelHighWater`` stamps:
     True when the level was attained before but is not attained now.
@@ -2453,6 +2478,9 @@ def _fdictStepProjectionContext(
     dictContext["bHasRepo"] = fbWorkflowHasProjectRepo(
         (dictWorkflow or {}).get("sProjectRepoPath") or "",
     )
+    dictContext["listDeclaredBinaries"] = (
+        _flistDeclaredBinariesNormalized(dictWorkflow)
+    )
     return dictContext
 
 
@@ -2467,10 +2495,32 @@ def _fdictBuildPerLevelCriteriaLookups(
         "dictLevel2CriteriaByStep": _fdictCriteriaByStep(
             listLevel2Blockers,
         ),
-        "dictLevel3CriteriaByStep": _fdictCriteriaByStep(
+        "dictLevel3FailingByStep": _fdictLevel3FailingCriteriaByStep(
             listLevel3Blockers,
         ),
     }
+
+
+def _fdictLevel3FailingCriteriaByStep(listLevel3Blockers):
+    """Index each step's FULL failing-criteria set from its L3 entry.
+
+    Reads ``listFailingCriteria`` (every failing criterion, not just
+    the dominant glyph source); falls back to the dominant
+    ``sCriterion`` for entries minted before that field existed, e.g.
+    a warm blocker cache.
+    """
+    dictResult = {}
+    for dictEntry in listLevel3Blockers or []:
+        iStepIndex = dictEntry.get("iStepIndex", -1)
+        if not (isinstance(iStepIndex, int) and iStepIndex >= 0):
+            continue
+        listFailing = dictEntry.get("listFailingCriteria") or [
+            dictEntry.get("sCriterion"),
+        ]
+        dictResult.setdefault(iStepIndex, set()).update(
+            sCriterion for sCriterion in listFailing if sCriterion
+        )
+    return dictResult
 
 
 def _fdictCriteriaByStep(listBlockers):
@@ -2533,7 +2583,8 @@ def _fdictCountStepLevelRequirements(iStepIndex, dictStep, dictContext):
         dictContext,
     )
     iSatisfiedThree, iTotalThree = _ftStepLevel3Counts(
-        dictContext["dictLevel3CriteriaByStep"].get(iStepIndex, set()),
+        dictStep,
+        dictContext["dictLevel3FailingByStep"].get(iStepIndex, set()),
         dictContext,
     )
     return {
@@ -2677,19 +2728,79 @@ def _fbFigureFreezeApplicable(dictStep, dictContext):
     return False
 
 
-def _ftStepLevel3Counts(setCriteria, dictContext):
-    """Return ``(iSatisfied, iTotal)`` over the five per-step L3 criteria.
+def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
+    """Return ``(iSatisfied, iTotal)`` over the APPLICABLE L3 criteria.
 
-    The blocker generator emits one dominant criterion per step, so
-    ``iSatisfied`` reflects the criteria currently *known* to be
-    unsatisfied; clearing the dominant one re-evaluates the rest on
-    the next poll. A missing project repo zeroes satisfaction.
+    ``iTotal`` counts only the criteria whose domain is non-empty on
+    this step (unioned with the blocker-reported failures,
+    defensively), so a step failing every applicable criterion reads
+    zero satisfied — never a flattering near-complete count — and a
+    step with nothing to reproduce reads ``(0, 0)``, which the cell
+    builder renders as ``not-applicable`` rather than a vacuous
+    attainment. A missing project repo zeroes satisfaction over the
+    full criteria tuple.
     """
-    iTotal = len(_T_STEP_LEVEL3_CRITERIA)
     if not dictContext["bHasRepo"]:
-        return (0, iTotal)
-    iBlocked = len(set(setCriteria) & set(_T_STEP_LEVEL3_CRITERIA))
-    return (iTotal - iBlocked, iTotal)
+        return (0, len(_T_STEP_LEVEL3_CRITERIA))
+    setApplicable = _fsetStepApplicableLevel3Criteria(
+        dictStep, dictContext["listDeclaredBinaries"],
+    )
+    setApplicable |= set(setFailing) & set(_T_STEP_LEVEL3_CRITERIA)
+    iTotal = len(setApplicable)
+    return (iTotal - len(setApplicable & set(setFailing)), iTotal)
+
+
+def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
+    """Return the L3 criteria with a non-empty domain on this step.
+
+    A criterion applies only when the step owns something it can fail
+    on: declared paths for the manifest, scripts for pinning, an
+    unseeded-randomness flag for determinism, and binary invocations
+    for declaration + capture. Interactive or attestation-only steps
+    typically return an empty set.
+    """
+    from .manifestPaths import flistStepScriptRepoPaths
+    if not isinstance(dictStep, dict):
+        return set()
+    setApplicable = set()
+    if _flistStepDeclaredPaths(dictStep):
+        setApplicable.add("missing-from-manifest")
+    if flistStepScriptRepoPaths(dictStep):
+        setApplicable.add("script-not-pinned")
+    if dictStep.get("bUnseededRandomnessWarning") is True:
+        setApplicable.add("nondeterminism-undeclared")
+    listCommands = _flistStepCommandStrings(dictStep)
+    if _fbStepInvokesAnyKnownBinary(listCommands, listDeclaredBinaries):
+        setApplicable.add("binary-not-declared")
+    if _fbStepReferencesAnyDeclaredBinary(
+        listCommands, listDeclaredBinaries,
+    ):
+        setApplicable.add("binary-not-captured")
+    return setApplicable
+
+
+def _fbStepInvokesAnyKnownBinary(listCommands, listDeclaredBinaries):
+    """Return True iff a command invokes any recognizable binary."""
+    if not listCommands:
+        return False
+    setNames = set(TUPLE_COMMON_SCIENTIFIC_BINARIES)
+    setNames |= _fsetDeclaredBasenames(listDeclaredBinaries)
+    return any(
+        _fbCommandsInvokeBinary(listCommands, sName)
+        for sName in setNames
+    )
+
+
+def _fbStepReferencesAnyDeclaredBinary(listCommands, listDeclaredBinaries):
+    """Return True iff a command references any declared binary."""
+    if not listCommands:
+        return False
+    return any(
+        _fbStepReferencesDeclaredBinary(
+            listCommands, dictEntry.get("sBinaryPath") or "",
+        )
+        for dictEntry in listDeclaredBinaries
+    )
 
 
 def _fdictBuildLevelCell(
@@ -2697,24 +2808,38 @@ def _fdictBuildLevelCell(
 ):
     """Return one wire cell with state, counts, and regression flag.
 
-    State precedence: ``not-started`` > ``unknown`` > the count-derived
-    states. ``bRegression`` is True when the level holds a high-water
-    stamp (the add-only ratchet recorded a first attainment) but the
-    current state is not ``attained``.
+    State precedence: ``not-started`` > ``not-applicable`` >
+    ``unknown`` > the count-derived states. ``bRegression`` is True
+    when the level holds a high-water stamp (the add-only ratchet
+    recorded a first attainment) but the current state is not
+    ``attained``; a ``not-applicable`` cell never regresses — there is
+    no requirement to fall behind on (a stray stamp from the era when
+    such cells read as vacuously attained stays inert).
     """
     sState = _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown)
     return {
         "sState": sState,
         "iSatisfied": int(iSatisfied),
         "iTotal": int(iTotal),
-        "bRegression": bool(bStamped and sState != "attained"),
+        "bRegression": bool(
+            bStamped and sState not in ("attained", "not-applicable")
+        ),
     }
 
 
 def _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown):
-    """Map counts plus the two override flags onto the five-state wire."""
+    """Map counts plus the two override flags onto the six-state wire.
+
+    ``iTotal`` of 0 means no requirement applies at this level for
+    this scope — only per-step L3 can produce it (L1 always counts
+    attestation + timing; L2 always counts the two sync criteria) —
+    and renders as ``not-applicable`` so a step with nothing to
+    reproduce never reads as a vacuous attainment.
+    """
     if bNotStarted:
         return "not-started"
+    if iTotal == 0:
+        return "not-applicable"
     if bUnknown:
         return "unknown"
     if iTotal > 0 and iSatisfied >= iTotal:
@@ -2729,14 +2854,16 @@ def fiStepAICSLevel(dictStepStates):
 
     Contiguity matters: an attained L3 above a partial L2 is level 1
     — a gap in the ladder caps the climb at the rung below it, even
-    though the cells themselves are computed independently.
+    though the cells themselves are computed independently. A
+    ``not-applicable`` rung counts as satisfied: a step with no
+    requirements at a level cannot be blocked by it.
     """
     iLevel = 0
     for iCandidate in (1, 2, 3):
         dictCell = (dictStepStates or {}).get(f"s{iCandidate}")
         if not isinstance(dictCell, dict):
             break
-        if dictCell.get("sState") != "attained":
+        if dictCell.get("sState") not in ("attained", "not-applicable"):
             break
         iLevel = iCandidate
     return iLevel

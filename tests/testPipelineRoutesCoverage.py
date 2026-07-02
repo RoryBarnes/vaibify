@@ -1503,9 +1503,14 @@ def _fdictBuildLevelPollContext():
 
 
 def _fdictActivePollStep():
-    """Return a step with activity whose L1 requirements are all met."""
+    """Return a step with activity whose L1 requirements are all met.
+
+    Declares one data file so exactly one L3 criterion applies — the
+    expected "attained" L3 cell below is earned, not vacuous.
+    """
     return {
         "sDirectory": "stepA", "sName": "A",
+        "saDataFiles": ["stepA/output.json"],
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -1521,7 +1526,7 @@ def _fdictAttainedCell(iSatisfied, iTotal):
 _DICT_ALL_ATTAINED_STEP_CELLS = {
     "s1": _fdictAttainedCell(3, 3),
     "s2": _fdictAttainedCell(2, 2),
-    "s3": _fdictAttainedCell(5, 5),
+    "s3": _fdictAttainedCell(1, 1),
 }
 
 _DICT_ALL_ATTAINED_SCOPE_CELLS = {

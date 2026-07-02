@@ -89,6 +89,13 @@ var VaibifyLegendPanel = (function () {
                 "unknown; refresh remote status",
         },
         {
+            sSampleHtml: '<span class="step-level-cell ' +
+                'level-cell-not-applicable">' +
+                '<span class="level-cell-dash">&#8212;</span></span>',
+            sLabel: "Level cell, dash — not applicable: this step " +
+                "has no requirements at this level",
+        },
+        {
             sIcon: "⚠", sClass: "step-regression-cell " +
                 "regression-warning-red",
             sLabel: "Regression column, red — tests failing at " +

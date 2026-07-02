@@ -425,7 +425,7 @@ def testNoXStatusGlyphInLevelCellRenderers():
 
 def testLevelCellStatePhrasesMatchWireVocabulary():
     """The application's tooltip phrase dict must cover exactly the
-    five sState values the backend projection can emit, so every wire
+    six sState values the backend projection can emit, so every wire
     state renders an honest, specific tooltip."""
     sBody = _fsExtractJsDictBody(
         _fsReadText(_SCRIPT_APPLICATION_REL),
@@ -434,6 +434,7 @@ def testLevelCellStatePhrasesMatchWireVocabulary():
     setKeys = set(re.findall(r'"([a-z-]+)"\s*:', sBody))
     setExpected = {
         "not-started", "none", "partial", "attained", "unknown",
+        "not-applicable",
     }
     assert setKeys == setExpected, (
         f"tooltip phrase keys {sorted(setKeys)} != wire states "
@@ -464,6 +465,8 @@ def testLegendDescribesLevelCellVocabulary():
         "level-cell-partial",
         "level-cell-attained",
         "level-cell-unknown",
+        "level-cell-not-applicable",
+        "level-cell-dash",
         "regression-warning-red",
         "regression-warning-orange",
         "favicon.png",

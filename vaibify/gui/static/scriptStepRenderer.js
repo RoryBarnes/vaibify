@@ -30,12 +30,16 @@ var VaibifyStepRenderer = (function () {
        (``fsLevelCellState`` / ``fsLevelCellTooltip``). Cell visuals:
        grey filled circle = not started, red circle = none, orange
        circle = partial, favicon = attained, hollow grey circle =
-       unknown. */
+       unknown, muted dash = not applicable (no requirement at this
+       level for this step). */
 
     function _fsBuildLevelCellInner(sState) {
         if (sState === "attained") {
             return '<img src="/static/favicon.png" ' +
                 'class="level-cell-favicon" alt="attained">';
+        }
+        if (sState === "not-applicable") {
+            return '<span class="level-cell-dash">&#8212;</span>';
         }
         return '<span class="level-cell-circle"></span>';
     }

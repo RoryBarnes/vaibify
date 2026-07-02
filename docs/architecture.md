@@ -760,6 +760,49 @@ This state machine is load-bearing for the dashboard's honesty
 guarantee: the GUI must always reflect the true state of the workflow.
 See the relevant trap in [../AGENTS.md](../AGENTS.md).
 
+## Two AICS-level truth systems
+
+The backend computes the reproducibility ladder (AICS L1–L3) in two
+deliberately different shapes, and misreading one as the other is the
+most likely way to misjudge the dashboard:
+
+1. **The scalar aggregate** — `levelGates.fiAICSLevel` /
+   `fbAtLeastLevelN`. Strictly additive over the whole workflow: L1
+   requires every step's L1 blockers clear, L2 requires L1, L3
+   requires L2. This is "what level is this workflow at," and it is
+   what the AICS chip in the dashboard header renders. (Historical
+   note: an early boolean `bVaibified` predated the ladder and meant
+   what `fiAICSLevel >= 1` means now; the v4 workflow migration drops
+   the key on load, which is the excision mechanism — do not remove
+   the migration.)
+
+2. **The independent cell projections** —
+   `fdictComputeStepLevelStates` (per step) and
+   `fdictComputeWorkflowScopeLevelStates` (the Workflow header row).
+   Each cell answers "which requirements *at this scope and level*
+   are satisfied," with no propagation between levels or scopes. A
+   step can honestly read L1 partial + L3 attained; that is a
+   feature (the researcher sees exactly which rung needs what), not
+   a contradiction.
+
+The corollary that trips readers: **the Workflow row is not a summary
+row.** Its cells cover only the requirements that attach to no single
+step — L1: the project repo exists; L2: sync-verify freshness plus
+the arXiv criteria; L3: the envelope artifacts (pinned Dockerfile,
+dependency lock, environment snapshot, reproduce script, attestation,
+binary declarations). A Workflow-row L1 check above red step rows is
+therefore a consistent display: the workflow-wide L1 requirement is
+met while per-step L1 work remains, and the chip — the aggregate —
+still says Level 0. The cell tooltips state this scoping.
+
+Honesty floors inside the cell projection: a stale sync cache renders
+"unknown", never attained; a step to which no L3 criterion applies
+(no declared paths, scripts, binary invocations, or randomness flag)
+renders "not-applicable", never a vacuous attained; and per-step L3
+counts every applicable criterion — the dominant-glyph design of the
+blocker list does not flatten five failures into a 4-of-5 partial,
+because the dominant entry carries `listFailingCriteria`.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE

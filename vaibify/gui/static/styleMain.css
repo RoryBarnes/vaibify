@@ -5357,6 +5357,15 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     border: 1.5px solid var(--text-muted);
 }
 
+/* Muted dash: no requirement applies at this level for this step
+   (per-step L3 on interactive or attestation-only steps). Neither a
+   circle nor a check — there is nothing to attain or to fail. */
+.level-cell-dash {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1;
+}
+
 /* Regression column: empty unless the backend's consolidated
    warning (dictStepLevelWarnings) fires at the lowest non-attained
    level. */

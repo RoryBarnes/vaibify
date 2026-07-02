@@ -1863,6 +1863,9 @@ const PipeleyenApp = (function () {
         "partial": "partially met",
         "attained": "attained",
         "unknown": "sync state unknown — refresh remote status",
+        "not-applicable":
+            "not applicable — this step has no requirements at " +
+            "this level",
     };
 
     function _fdictLevelStatesForScope(iStepIndex) {
@@ -1906,7 +1909,16 @@ const PipeleyenApp = (function () {
             _DICT_LEVEL_CELL_LABELS[iLevel] + " — " +
                 (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
         ];
-        if (dictCell) {
+        if (iStepIndex < 0) {
+            // The Workflow row covers workflow-wide requirements
+            // only; it is NOT a roll-up of the step rows. The
+            // all-steps aggregate is the AICS chip.
+            listParts.push(
+                "Workflow-wide requirements only — each step row " +
+                "tracks its own; the AICS chip reports the " +
+                "overall level");
+        }
+        if (dictCell && sState !== "not-applicable") {
             listParts.push(dictCell.iSatisfied + " of " +
                 dictCell.iTotal + " requirements met");
         }
@@ -1917,6 +1929,12 @@ const PipeleyenApp = (function () {
     function _flistAppendLevelTooltipContext(
         listParts, iStepIndex, iLevel, sState
     ) {
+        if (sState === "not-applicable") {
+            // Nothing to attain, regress from, or remediate; a stray
+            // high-water stamp from the vacuous-attainment era must
+            // not resurface here.
+            return listParts;
+        }
         var sFirstAttained = _fdictLevelHighWaterForScope(
             iStepIndex)[String(iLevel)] || "";
         if (sFirstAttained) {
@@ -1941,9 +1959,12 @@ const PipeleyenApp = (function () {
 
     function fiStepNextTargetLevel(iStepIndex) {
         // First rung whose cell is not attained — the rung the step
-        // is currently working toward. 4 when all three are attained.
+        // is currently working toward. A not-applicable rung has no
+        // work to offer, so it never becomes the target. 4 when
+        // every rung is attained or not applicable.
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
-            if (fsLevelCellState(iStepIndex, iLevel) !== "attained") {
+            var sState = fsLevelCellState(iStepIndex, iLevel);
+            if (sState !== "attained" && sState !== "not-applicable") {
                 return iLevel;
             }
         }
