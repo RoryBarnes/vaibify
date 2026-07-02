@@ -59,25 +59,33 @@ var VaibifyStepRenderer = (function () {
 
     function _fsRenderLevelColumnHeaderRow() {
         // Labels the five status columns once at the top of the
-        // list; the level cells themselves carry no L1/L2/L3 text.
+        // list; every header carries a plain-English tooltip so each
+        // column is identifiable. The level cells themselves carry
+        // no L1/L2/L3 text.
         return '<div class="level-column-header-row">' +
             '<span class="step-level-strip">' +
             '<span class="step-status-cell ' +
             'level-column-header-cell" ' +
-            'title="Step status — one light per step summarizing ' +
-            'its tests, your sign-off, and its dependencies. ' +
-            'Hover a light for detail.">&#9679;</span>' +
+            'title="Step status light — one light per step ' +
+            'summarizing its tests, your sign-off, and its ' +
+            'dependencies. Hover a light for detail.">&#9679;</span>' +
             '<span class="step-regression-cell ' +
             'level-column-header-cell" ' +
             'title="Warnings — a step that slipped back from a ' +
             'level it had reached, or whose results are out of ' +
             'date">&#9888;</span>' +
             '<span class="step-level-cell level-column-header-cell"' +
-            '>L1</span>' +
+            ' title="Level 1 Self-Consistent — tests pass, files ' +
+            'match, and you have signed off. A dash means the step ' +
+            'has no requirements at this level.">L1</span>' +
             '<span class="step-level-cell level-column-header-cell"' +
-            '>L2</span>' +
+            ' title="Level 2 Published — canonical files match ' +
+            'GitHub and Zenodo, and the AI declaration is ' +
+            'attested.">L2</span>' +
             '<span class="step-level-cell level-column-header-cell"' +
-            '>L3</span>' +
+            ' title="Level 3 Reproducible — files pinned in the ' +
+            'manifest, scripts unchanged since pinning, and ' +
+            'software declared and captured.">L3</span>' +
             '</span></div>';
     }
 

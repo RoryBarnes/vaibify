@@ -286,6 +286,37 @@ def test_repos_tab_shows_attention_badge():
 # -----------------------------------------------------------------------
 
 
+def test_workflow_header_signature_covers_envelope_expansion():
+    """FALSIFICATION TARGET: the incremental renderer skips the
+    workflow header when its input signature is unchanged. The
+    envelope section-expansion set must be part of that signature or
+    clicking a section header repaints nothing — the 2026-07-02 bug."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sSignature = _fsExtractFunctionBlock(
+        sSource, "_fsWorkflowHeaderSignature",
+    )
+    assert "setExpandedEnvelopeSections" in sSignature, (
+        "envelope expansion set missing from the workflow header "
+        "signature — section toggles will silently not repaint"
+    )
+
+
+def test_every_column_header_carries_a_tooltip():
+    """All five column headers (status light, warnings, L1-L3) must
+    explain themselves on hover."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sHeader = _fsExtractFunctionBlock(
+        sSource, "_fsRenderLevelColumnHeaderRow",
+    )
+    for sNeedle in (
+        "Step status light", "Warnings", "Level 1 Self-Consistent",
+        "Level 2 Published", "Level 3 Reproducible",
+    ):
+        assert sNeedle in sHeader, (
+            "column header missing its tooltip: " + sNeedle
+        )
+
+
 def test_envelope_sections_are_expandable():
     """The four envelope sections (Software / Artifacts /
     Determinism / Syncs) render as independently expandable headers

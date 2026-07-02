@@ -1199,7 +1199,10 @@ const PipeleyenApp = (function () {
     function _fsWorkflowHeaderSignature() {
         // Every input the workflow-level header row reads. Including
         // the workflow-scope L2 blocker keeps the header tooltip in
-        // sync with the dominant remediation hint.
+        // sync with the dominant remediation hint. The envelope
+        // section-expansion set MUST be in here: a toggle that does
+        // not move this signature is silently skipped by the
+        // incremental renderer and the click appears to do nothing.
         return JSON.stringify([
             _dictWorkflowState.dictWorkflowScopeLevels,
             _dictWorkflowState.dictWorkflowLevelHighWater,
@@ -1209,6 +1212,8 @@ const PipeleyenApp = (function () {
                 null,
             _dictWorkflowState.dictWorkflowEnvelopeDetail,
             _dictUiState.setExpandedSteps.has(-1),
+            Array.from(
+                _dictUiState.setExpandedEnvelopeSections).sort(),
         ]);
     }
 
