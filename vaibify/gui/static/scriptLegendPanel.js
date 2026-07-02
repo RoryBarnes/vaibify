@@ -99,31 +99,20 @@ var VaibifyLegendPanel = (function () {
         {
             sIcon: "⚠", sClass: "step-regression-cell " +
                 "regression-warning-red",
-            sLabel: "Regression column, red — tests failing at " +
-                "the level being climbed",
+            sLabel: "Warning column, red — a test failed; hover " +
+                "the glyph for every reason and its remedy",
         },
         {
             sIcon: "⚠", sClass: "step-regression-cell " +
                 "regression-warning-orange",
-            sLabel: "Regression column, orange — previously " +
-                "attained level has regressed or gone stale",
-        },
-        {
-            sIcon: "✎", sClass: "script-modified-badge",
-            sLabel: "Output or script out of date — re-run",
+            sLabel: "Warning column, orange — something changed " +
+                "since verification (script, outputs, an earlier " +
+                "step) or a level regressed; hover for the reasons",
         },
         {
             sIcon: "●", sClass: "aics-legend-orange-light-sample",
             sLabel: "Orange status light = work not yet done " +
                 "(never-run tests / pending attestation)",
-        },
-        {
-            sIcon: "⚠", sClass: "script-unseeded-badge",
-            sLabel: "Unseeded randomness detected — add a seed",
-        },
-        {
-            sIcon: "⚠", sClass: "data-modified-badge",
-            sLabel: "Output files modified since the last run",
         },
         {
             sIcon: "file", sClass: "aics-legend-red-missing-sample",

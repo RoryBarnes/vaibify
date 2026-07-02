@@ -94,9 +94,10 @@ var VaibifyStepRenderer = (function () {
         "queued": "queued to run",
         "running": "running now",
         "skipped": "skipped",
-        "partial": "partly verified — some checks are not yet green",
-        "verified": "verified — tests, sign-off, and dependencies " +
-            "all green",
+        "partial": "partly verified — some checks still need a " +
+            "run or your sign-off",
+        "verified": "verified — tests, your sign-off, and " +
+            "dependencies are all current",
     };
 
     function _fsBuildStepStatusCell(sStatusClass, sVerifiedBadge) {
@@ -454,28 +455,13 @@ var VaibifyStepRenderer = (function () {
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
-            // Section F/G: suppress the per-step pencil banner glyph
-            // on the step card when the active L1 blocker banner
-            // itself renders a pencil — each row carries exactly one
-            // pencil. The per-script pencil badge in the verification
-            // panel still renders to identify *which* script is stale.
-            ((dictContext.dictScriptModified[iIndex] === "modified" &&
-                !(dictContext.fbBlockerBannerRendersPencil &&
-                    dictContext.fbBlockerBannerRendersPencil(iIndex)))
-                ?
-                '<span class="script-modified-badge" ' +
-                'title="Scripts modified since last run">' +
-                '&#9998;</span>' : '') +
-            (((step.dictVerification || {})
-                .bUnseededRandomnessWarning === true) ?
-                '<span class="script-unseeded-badge" ' +
-                'title="Unseeded randomness detected: add a seed ' +
-                'so the pilot run is reproducible.">&#9888;</span>' :
-                '') +
-            dictContext.fsBuildWarningBadge(step, iIndex) +
-            // The level strip renders last so the five cells
-            // (status light, warning, L1-L3) right-align into the
-            // columns the header row labels.
+            // Every warning the step carries — staleness, blockers,
+            // unseeded randomness, regressions — is consolidated
+            // into the ⚠ column of the level strip, one
+            // plain-English tooltip line per reason. No inline
+            // glyphs render beside the step name; the per-file ✎/⚠
+            // marks in the expanded detail still identify *which*
+            // file went stale or missing.
             _fsBuildStepLevelStrip(dictContext, iIndex,
                 _fsBuildStepStatusCell(sStatusClass, sVerifiedBadge)) +
             "</div>";

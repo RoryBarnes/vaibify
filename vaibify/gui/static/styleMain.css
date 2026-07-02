@@ -1149,21 +1149,6 @@ body.aics-level-3 .toolbar-label {
     transition: background 0.5s ease;
 }
 
-.script-modified-badge,
-.data-modified-badge {
-    color: var(--color-orange);
-    font-size: 0.85em;
-    margin-left: 4px;
-    cursor: help;
-}
-
-.script-unseeded-badge {
-    color: var(--color-yellow, #d4a017);
-    font-size: 0.85em;
-    margin-left: 4px;
-    cursor: help;
-}
-
 .vaib-verified-badge {
     width: 14px;
     height: 14px;
@@ -5347,6 +5332,20 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .level-cell-unknown .level-cell-circle {
     background: transparent;
     border: 1.5px solid var(--text-muted);
+}
+
+/* Attention count on the Repos left-tab: repositories awaiting a
+   track-or-ignore decision, visible without opening the panel. */
+.repo-attention-badge {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
 }
 
 /* Muted dash: no requirement applies at this level for this step

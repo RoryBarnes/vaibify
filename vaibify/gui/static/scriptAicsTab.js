@@ -245,10 +245,14 @@ var VaibifyAicsTab = (function () {
     }
 
     function _fsProgressSegment(sLevelKey, sLabel, sColorClass) {
+        var sTitle = sLevelKey === "L1"
+            ? "Show the blocking steps in the step list"
+            : "Jump to the Level " + sLevelKey.charAt(1) +
+                " readiness card";
         return '<span class="aics-progress-segment ' +
             'aics-progress-state-' + sColorClass + '" ' +
             'data-progress-target="' + sLevelKey + '" ' +
-            'title="Jump to ' + sLevelKey + ' readiness">' +
+            'title="' + sTitle + '">' +
             fnEscapeHtml(sLabel) + '</span>';
     }
 
@@ -270,10 +274,19 @@ var VaibifyAicsTab = (function () {
     }
 
     function _fnScrollToReadiness(sLevelKey) {
+        if (sLevelKey === "L1") {
+            // The Level 1 work list is the step list itself — this
+            // tab has no Level 1 card, so scrolling here would land
+            // on the card the link sits in (a dead click). Take the
+            // researcher to the blocked steps instead.
+            var elStepsTab = document.querySelector(
+                '.left-tab[data-panel="steps"]');
+            if (elStepsTab) elStepsTab.click();
+            return;
+        }
         var sSelector = sLevelKey === "L3"
             ? ".aics-level3-card"
-            : (sLevelKey === "L2" ? ".aics-level2-card"
-                : ".aics-header-card");
+            : ".aics-level2-card";
         var el = _felGetTabContent();
         if (!el) return;
         var elTarget = el.querySelector(sSelector);
@@ -432,7 +445,7 @@ var VaibifyAicsTab = (function () {
             iTotal++;
             if (dictL3[sKey] === true) iSatisfied++;
         });
-        return iSatisfied + " / " + iTotal + " verifiers green";
+        return iSatisfied + " / " + iTotal + " checks passed";
     }
 
     function _fsRenderL3VerifierRow(sKey, dictL3) {
@@ -451,13 +464,13 @@ var VaibifyAicsTab = (function () {
     function _fsRenderVerifyL3Button(dictL3) {
         var bReady = dictL3.bL3ReadinessOK === true;
         var sDisabled = bReady ? "" : " disabled";
-        var sTooltip = bReady ? "Run the L3 rebuild + hash compare " +
+        var sTooltip = bReady ? "Run the Level 3 rebuild + hash compare " +
             "(can take hours)" :
-            "All six readiness verifiers must be green to attempt L3 " +
-            "verification";
+            "All six readiness checks must pass before attempting " +
+            "Level 3 verification";
         var sInFlight = _bVerifyInFlight ? " in-flight" : "";
         var sLabel = _bVerifyInFlight ? "Verifying…" :
-            "Verify L3 Reproducibility";
+            "Verify Level 3 Reproducibility";
         return '<div class="aics-verify-row">' +
             '<button type="button" class="btn-aics-verify-l3' +
             sInFlight + '" title="' + fnEscapeHtml(sTooltip) + '"' +
@@ -471,7 +484,7 @@ var VaibifyAicsTab = (function () {
         if (!dictCurrent) {
             return '<div class="aics-card aics-attestation-card empty">' +
                 '<div class="aics-card-header">' +
-                '<span class="aics-card-title">L3 Attestation</span>' +
+                '<span class="aics-card-title">Level 3 Attestation</span>' +
                 '</div><div class="aics-card-body">' +
                 'No reproduction attempt on file yet.' +
                 '</div></div>';
@@ -481,7 +494,7 @@ var VaibifyAicsTab = (function () {
         return '<div class="aics-card aics-attestation-card status-' +
             sStatus + '">' +
             '<div class="aics-card-header">' +
-            '<span class="aics-card-title">L3 Attestation</span>' +
+            '<span class="aics-card-title">Level 3 Attestation</span>' +
             '<span class="aics-card-summary">' +
             fnEscapeHtml(sStatus) + '</span>' +
             '</div><div class="aics-card-body">' +
@@ -586,13 +599,13 @@ var VaibifyAicsTab = (function () {
                 {}
             );
             PipeleyenApp.fnShowToast(
-                "L3 verification started. Watch the pipeline " +
+                "Level 3 verification started. Watch the pipeline " +
                 "progress; results will appear in the attestation " +
                 "card when the rebuild completes.", "info"
             );
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                "L3 verification failed to start: " + error.message,
+                "Level 3 verification failed to start: " + error.message,
                 "error"
             );
         }

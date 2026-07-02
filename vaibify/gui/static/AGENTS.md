@@ -129,13 +129,23 @@ pattern wholesale.
 
 - L1 blocker state lives at `_dictWorkflowState.dictBlockersByStep`
   (populated from each poll's `listBlockers`). A step's check icon
-  renders only when that map has no entry for the step; not-verified
-  steps get one banner glyph per `sCriterion` (`upstream-modified`,
-  `script-stale`, `axis-not-green`, `attestation-stale`,
-  `user-not-approved`), plus the existing failure-mode glyph on every
-  offending file and dependency edge. Do not introduce an acknowledge
-  affordance in any blocker context — the only path to clear a
-  blocker is `run-step` (or `verify-step` for `user-not-approved`).
+  renders only when that map has no entry for the step. Collapsed
+  rows render NO inline blocker glyphs: every warning a step carries
+  (the backend level warning, the dominant L1 blocker's remediation
+  hint, script/output/upstream staleness, unseeded randomness) is
+  consolidated by `fdictRegressionWarning` →
+  `_flistStepWarningReasons` into the single ⚠ column of the level
+  strip, one plain-English tooltip line per reason, deduplicated
+  against the dominant blocker. Red is reserved for genuine failures
+  (`_fbStepWarningIsRed`: backend red, or the red axis glyph meta).
+  The per-file failure-mode glyphs on offending files and dependency
+  edges in the expanded detail are unchanged. The criterion glyph
+  dicts (`_DICT_BLOCKER_CRITERION_GLYPHS`,
+  `_DICT_AXIS_SUBSTATE_GLYPHS`) survive as the tooltip-language +
+  severity source and feed the legend catalog. Do not introduce an
+  acknowledge affordance in any blocker context — the only path to
+  clear a blocker is `run-step` (or `verify-step` for
+  `user-not-approved`).
 
 ## L2 and L3 blocker surfacing
 
@@ -197,12 +207,15 @@ pattern wholesale.
   no criterion has a domain on the step — nothing to reproduce must
   NEVER render as a vacuous attained). First-attainment dates persist
   in `dictLevelHighWater` in state.json and are never erased.
-- The regression column renders `dictStepLevelWarnings` VERBATIM —
-  the backend gates the warning to the step's lowest non-attained
-  level (a regression at a higher level is suppressed until lower
-  levels pass); red ⚠ only when failed tests underlie it, orange ⚠
-  for staleness/regression. Never derive warning logic client-side
-  for steps.
+- The ⚠ column is the SINGLE consolidated warnings surface for a
+  step (2026-07-02 redesign — see "L1 blocker surfacing"). The
+  backend still gates the LEVEL warning in `dictStepLevelWarnings`
+  to the step's lowest non-attained level (a regression at a higher
+  level is suppressed until lower levels pass) — never re-derive
+  that gating client-side. The frontend composes that entry with the
+  client-known staleness signals into the cell's multi-line tooltip;
+  red ⚠ only when a genuine failure underlies it, orange ⚠ for
+  staleness/regression.
 - The Workflow-wide row (`fsRenderWorkflowLevelHeader`, labeled
   "Workflow-wide" precisely so it does not read as a summary) is an
   expandable step-like row. Its cells are NOT an aggregate or summary of the
@@ -220,19 +233,17 @@ pattern wholesale.
   excluded from the header; its home is the AI Declaration
   interactive step (or the ghost row offering to add one).
 - NO ✗/X status glyphs anywhere — failures and missing items use the
-  red warning glyph ⚠; staleness uses orange ⚠ or the pencil ✎.
-  X-shaped characters are permitted only as close/delete BUTTON
-  chrome. `axis-not-green` carries `sSubState`
+  red warning glyph ⚠; staleness uses orange ⚠ or (per-file) the
+  pencil ✎. X-shaped characters are permitted only as close/delete
+  BUTTON chrome. `axis-not-green` carries `sSubState`
   (failed/outputs-missing/outputs-changed/untested) mapped through
-  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing render red ⚠,
-  outputs-changed renders the orange pencil ✎, and untested renders
-  NO banner glyph (the orange status light carries "not yet done").
-  Per-file marks read `dictOffendingFileMarks` ("stale" → orange ✎,
-  "failed"/"missing" → red ⚠).
-- The pencil banner glyph on the step card is suppressed when an L1
-  blocker is active (the `⚠ script-stale` glyph carries the same
-  fact). The per-script pencil badge in the verification panel is
-  preserved — it identifies which script went stale.
+  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing carry red severity,
+  outputs-changed orange, and untested maps to null (no warning
+  line; the orange status light carries "not yet done"). These metas
+  now drive the consolidated ⚠ column's severity and tooltip lines,
+  not inline banner glyphs. Per-file marks read
+  `dictOffendingFileMarks` ("stale" → orange ✎, "failed"/"missing" →
+  red ⚠) and render only in the expanded detail.
 - The `?` button next to the AICS chip opens
   `scriptLegendPanel.js`'s legend modal. It lists every glyph per
   level with live counts of active blockers. The only resolution

@@ -154,6 +154,133 @@ def test_workflow_scope_tooltip_is_plain_english():
 
 
 # -----------------------------------------------------------------------
+# Consolidated ⚠ column (2026-07-02): one glyph per step, every reason
+# in its tooltip, no inline glyphs beside the step name
+# -----------------------------------------------------------------------
+
+
+def test_step_rows_render_no_inline_warning_glyphs():
+    """All step warnings live in the ⚠ column; the collapsed row must
+    not render the retired inline badges (pencil, unseeded ⚠,
+    modified-files ⚠, blocker banner glyph)."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sItem = _fsExtractFunctionBlock(sSource, "fsRenderStepItem")
+    for sRetired in (
+        "script-modified-badge", "script-unseeded-badge",
+        "fsBuildWarningBadge", "step-blocker-glyph",
+    ):
+        assert sRetired not in sItem, (
+            "fsRenderStepItem reintroduces the retired inline glyph "
+            + sRetired
+        )
+
+
+def test_warning_cell_composes_every_reason():
+    """``fdictRegressionWarning`` must compose the backend level
+    warning with the step staleness signals — one plain-English line
+    each — instead of passing the backend entry through alone."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sWarning = _fsExtractFunctionBlock(
+        sSource, "fdictRegressionWarning",
+    )
+    assert "_flistStepWarningReasons" in sWarning
+    sReasons = _fsExtractFunctionBlock(
+        sSource, "_flistStepWarningReasons",
+    )
+    for sSignal in (
+        "dictStepLevelWarnings", "dictBlockersByStep",
+        "dictScriptModified", "listModifiedFiles",
+        "fbAnyDepTimingStale", "bUnseededRandomnessWarning",
+    ):
+        assert sSignal in sReasons, (
+            "consolidated warning reasons must include " + sSignal
+        )
+
+
+def test_warning_tooltips_never_call_results_green():
+    """Tooltip language says "verified", never "green" — the
+    dashboard does not use that color for success."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    for sDictName in (
+        "_DICT_BLOCKER_CRITERION_GLYPHS", "_DICT_AXIS_SUBSTATE_GLYPHS",
+    ):
+        iStart = sSource.find(sDictName + " = {")
+        assert iStart != -1
+        sBlock = sSource[iStart:sSource.find("};", iStart)]
+        # The wire criterion KEY "axis-not-green" is a backend
+        # literal and must stay; only the researcher-facing labels
+        # are held to the wording rule.
+        sLabels = sBlock.replace('"axis-not-green"', "")
+        assert "green" not in sLabels, (
+            sDictName + " tooltip labels must not call results "
+            "'green'"
+        )
+    sTitles = _fsReadStaticFile("scriptStepRenderer.js")
+    iStart = sTitles.find("_DICT_STEP_STATUS_TITLES")
+    sBlock = sTitles[iStart:sTitles.find("};", iStart)]
+    assert "green" not in sBlock
+
+
+def test_attested_step_without_outputs_gets_a_status_light():
+    """FALSIFICATION TARGET: an attestation-only step (AI
+    Declaration) has no output files, but a researcher sign-off is
+    activity — the dot must not fall through to the grey "no results
+    yet" state."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sDot = _fsExtractFunctionBlock(sSource, "fsComputeStepDotState")
+    assert "bAttested" in sDot and "!bHasData && !bAttested" in sDot, (
+        "fsComputeStepDotState must treat an attestation as "
+        "activity for output-less steps"
+    )
+
+
+# -----------------------------------------------------------------------
+# AICS tab: level wording and the header progression links
+# -----------------------------------------------------------------------
+
+
+def test_aics_tab_prefers_level_wording_in_visible_text():
+    """User-visible AICS strings say "Level N", not the "L?"
+    shorthand."""
+    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    for sJargon in (
+        "L3 Attestation", "verifiers green", "Verify L3 ",
+        '"L3 verification',
+    ):
+        assert sJargon not in sSource, (
+            "AICS tab shows the retired shorthand: " + sJargon
+        )
+    assert "Level 3 Attestation" in sSource
+
+
+def test_aics_level1_segment_navigates_to_the_step_list():
+    """The "Self-Consistent (N steps blocking)" segment used to
+    scroll to the card it sits in — a dead click. It must switch to
+    the Steps tab, where the blocked steps live."""
+    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    sScroll = _fsExtractFunctionBlock(sSource, "_fnScrollToReadiness")
+    assert '"L1"' in sScroll and 'data-panel="steps"' in sScroll, (
+        "the Level 1 progression segment must navigate to the step "
+        "list instead of scrolling to its own card"
+    )
+
+
+# -----------------------------------------------------------------------
+# Repos tab attention badge
+# -----------------------------------------------------------------------
+
+
+def test_repos_tab_shows_attention_badge():
+    """Repository status must be visible without opening the panel:
+    the Repos tab carries a count of undecided repositories."""
+    sSource = _fsReadStaticFile("scriptReposPanel.js")
+    assert "repo-attention-badge" in sSource
+    assert "_fnUpdateRepoTabBadge" in sSource
+    sCss = _fsReadStaticFile("styleMain.css")
+    assert ".repo-attention-badge" in sCss
+
+
+# -----------------------------------------------------------------------
 # Container-scoped tabs are wired on the workflow-activation path
 # -----------------------------------------------------------------------
 

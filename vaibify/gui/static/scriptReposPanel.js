@@ -542,7 +542,34 @@ var PipeleyenReposPanel = (function () {
             listUndecided: dictStatus.listUndecided || [],
         };
         fnRender();
+        _fnUpdateRepoTabBadge();
         _fnPromptForUndecided(_dictCachedStatus.listUndecided);
+    }
+
+    function _fnUpdateRepoTabBadge() {
+        // Surface repo attention on the tab itself so repository
+        // status is visible without opening the panel.
+        var elTab = document.querySelector(
+            '.left-tab[data-panel="repos"]');
+        if (!elTab) return;
+        var iAttention = (_dictCachedStatus.listUndecided || []).length;
+        var elBadge = elTab.querySelector(".repo-attention-badge");
+        if (iAttention === 0) {
+            if (elBadge) elBadge.remove();
+            return;
+        }
+        elBadge = elBadge || _felCreateRepoBadge(elTab);
+        elBadge.textContent = String(iAttention);
+        elBadge.title = iAttention + (iAttention === 1
+            ? " repository is" : " repositories are") +
+            " waiting for a track-or-ignore decision";
+    }
+
+    function _felCreateRepoBadge(elTab) {
+        var elBadge = document.createElement("span");
+        elBadge.className = "repo-attention-badge";
+        elTab.appendChild(elBadge);
+        return elBadge;
     }
 
     async function fnInit(sContainerId) {

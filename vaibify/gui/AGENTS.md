@@ -165,7 +165,10 @@ artifacts); the all-steps aggregate is the scalar `fiAICSLevel`
 rendered by the AICS chip, so a workflow L1 check above red step
 rows is a consistent display.
 The poll also emits `dictStepLevelWarnings` (regression/timestamp
-warnings gated server-side to each step's lowest non-attained level)
+warnings gated server-side to each step's lowest non-attained level;
+the frontend's ⚠ column composes this entry with the client-known
+staleness signals into one multi-line tooltip — the LEVEL gating
+stays server-side, the composition is display-only)
 and `dictWorkflowEnvelopeDetail` (declared-binary version/hash
 match, envelope artifacts, determinism, remote sync summaries —
 assembled with zero extra container execs). Invariants: stamps are
