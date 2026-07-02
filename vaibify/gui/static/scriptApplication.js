@@ -326,6 +326,12 @@ const PipeleyenApp = (function () {
         fnPollAllStepFiles();
         fnStartFileChangePolling();
         PipeleyenTerminal.fnEnsureTab();
+        // The AICS and Repos tabs are container-scoped: without
+        // these two calls they sit in their "connect first" empty
+        // states for the entire workflow session, which is the mode
+        // researchers are actually in.
+        VaibifyAicsTab.fnSetContainerId(sId);
+        PipeleyenReposPanel.fnInit(sId);
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
     }
@@ -1862,7 +1868,8 @@ const PipeleyenApp = (function () {
         "none": "no requirements met",
         "partial": "partially met",
         "attained": "attained",
-        "unknown": "sync state unknown — refresh remote status",
+        "unknown": "unknown — GitHub/Zenodo have not been checked " +
+            "recently; refresh remote status to find out",
         "not-applicable":
             "not applicable — this step has no requirements at " +
             "this level",
@@ -1910,13 +1917,16 @@ const PipeleyenApp = (function () {
                 (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
         ];
         if (iStepIndex < 0) {
-            // The Workflow row covers workflow-wide requirements
-            // only; it is NOT a roll-up of the step rows. The
-            // all-steps aggregate is the AICS chip.
+            // The Workflow-wide row covers workflow-wide
+            // requirements only; it is NOT a roll-up of the step
+            // rows. The all-steps aggregate renders as the header
+            // checkmarks and the AICS tab.
             listParts.push(
-                "Workflow-wide requirements only — each step row " +
-                "tracks its own; the AICS chip reports the " +
-                "overall level");
+                "These requirements apply to the workflow as a " +
+                "whole, not to any single step. Each step row " +
+                "tracks its own. The overall level is shown by " +
+                "the checkmarks next to the workflow name and in " +
+                "the AICS tab.");
         }
         if (dictCell && sState !== "not-applicable") {
             listParts.push(dictCell.iSatisfied + " of " +

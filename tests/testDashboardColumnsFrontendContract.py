@@ -1,0 +1,176 @@
+"""Frontend contract checks for the dashboard status columns.
+
+Three researcher-reported usability defects drove this layout
+(2026-07-02):
+
+1. The step-status light floated loose in each row, so the left-most
+   "column" of indicators had no header and was unidentifiable (the
+   researcher guessed it meant dependencies). The light now renders
+   inside the right-pinned level strip as a labeled column with a
+   plain-English hover title.
+2. The "Workflow" header row read as a summary of the step rows. It
+   is workflow-scope requirements only, so it is now labeled
+   "Workflow-wide" and its tooltip says so without jargon.
+3. The AICS and Repos tabs were only handed the container id on the
+   no-workflow connect path (``fnEnterNoWorkflow``); opening an
+   existing workflow (``_fnActivateWorkflow``) — the path every
+   researcher actually takes — left both tabs in their "connect
+   first" empty states forever.
+
+JavaScript is not executed by the repository test suite; these are
+string-presence + structural assertions in the established
+frontend-contract pattern.
+"""
+
+import os
+
+_sStaticDir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "vaibify", "gui", "static",
+)
+
+
+def _fsReadStaticFile(sName):
+    sPath = os.path.join(_sStaticDir, sName)
+    with open(sPath, "r", encoding="utf-8") as fileHandle:
+        return fileHandle.read()
+
+
+def _fsExtractFunctionBlock(sSource, sFunctionName):
+    iStart = sSource.find("function " + sFunctionName)
+    assert iStart != -1, sFunctionName + " missing from source"
+    iNext = sSource.find("\n    function ", iStart + 1)
+    return sSource[iStart:iNext if iNext != -1 else len(sSource)]
+
+
+# -----------------------------------------------------------------------
+# Status light is a labeled column inside the level strip
+# -----------------------------------------------------------------------
+
+
+def test_status_light_renders_inside_the_level_strip():
+    """The step-status light must render through the strip builder so
+    it aligns under the labeled column header, not float loose in the
+    row where it cannot be identified."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sStrip = _fsExtractFunctionBlock(sSource, "_fsBuildStepLevelStrip")
+    assert "step-status-cell" in sStrip, (
+        "the level strip must lead with the step-status column cell"
+    )
+    sItem = _fsExtractFunctionBlock(sSource, "fsRenderStepItem")
+    assert "_fsBuildStepStatusCell" in sItem, (
+        "step rows must build the status light via the shared cell "
+        "builder so it lands in the labeled column"
+    )
+
+
+def test_column_header_row_labels_status_and_warning_columns():
+    """The one-time header row must label all five columns; the ● and
+    ⚠ headers carry plain-English hover titles."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sHeader = _fsExtractFunctionBlock(
+        sSource, "_fsRenderLevelColumnHeaderRow",
+    )
+    assert "step-status-cell" in sHeader, (
+        "header row must include a cell over the status-light column"
+    )
+    assert "Step status" in sHeader, (
+        "status column header must explain itself in plain English"
+    )
+    assert "&#9888;" in sHeader, (
+        "warning column header must be visible (⚠), not an empty span"
+    )
+
+
+def test_status_light_titles_cover_every_dot_state():
+    """Every status class the renderer can emit must have a
+    plain-English hover phrase."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    iStart = sSource.find("_DICT_STEP_STATUS_TITLES")
+    assert iStart != -1, "status-title dict missing"
+    sBlock = sSource[iStart:sSource.find("};", iStart)]
+    for sState in (
+        '""', '"pass"', '"fail"', '"queued"', '"running"',
+        '"skipped"', '"partial"', '"verified"',
+    ):
+        assert sState in sBlock, (
+            "status-title dict missing phrase for " + sState
+        )
+
+
+# -----------------------------------------------------------------------
+# No hover-edit affordance on step rows
+# -----------------------------------------------------------------------
+
+
+def test_step_rows_carry_no_hover_edit_button():
+    """Hand-editing steps is deliberately de-emphasized: the hover
+    pencil button is retired. The right-click context menu remains
+    the one manual entry point."""
+    for sName in ("scriptStepRenderer.js", "scriptEventBindings.js"):
+        sSource = _fsReadStaticFile(sName)
+        assert "step-edit" not in sSource, (
+            sName + " reintroduces the retired hover-edit button"
+        )
+        assert "step-actions" not in sSource, (
+            sName + " reintroduces the retired hover-actions span"
+        )
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    assert 'sAction === "edit"' in sApplication, (
+        "the context-menu edit path must survive as the one manual "
+        "entry point to the step editor"
+    )
+
+
+# -----------------------------------------------------------------------
+# Workflow-wide row labeling
+# -----------------------------------------------------------------------
+
+
+def test_workflow_row_is_labeled_workflow_wide():
+    """The header row must read "Workflow-wide", not "Workflow" — the
+    bare word reads as a summary of the step rows, which it is not."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sHeader = _fsExtractFunctionBlock(
+        sSource, "fsRenderWorkflowLevelHeader",
+    )
+    assert "Workflow-wide" in sHeader
+    assert ">Workflow<" not in sHeader, (
+        "bare 'Workflow' label reads as an aggregate of the steps"
+    )
+
+
+def test_workflow_scope_tooltip_is_plain_english():
+    """The Workflow-wide cell tooltip must explain the scoping without
+    internal jargon (no "AICS chip", no "wire", no "scope")."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    assert "These requirements apply to the workflow" in sSource, (
+        "workflow-scope tooltip must state the scoping plainly"
+    )
+    assert "AICS chip" not in sSource, (
+        "user-visible text must not reference the 'AICS chip' — "
+        "researchers do not know what a chip is"
+    )
+
+
+# -----------------------------------------------------------------------
+# Container-scoped tabs are wired on the workflow-activation path
+# -----------------------------------------------------------------------
+
+
+def test_activate_workflow_wires_aics_and_repos_tabs():
+    """FALSIFICATION TARGET: ``_fnActivateWorkflow`` must hand the
+    container id to the AICS tab and initialize the Repos panel.
+    Before 2026-07-02 only ``fnEnterNoWorkflow`` did, so both tabs
+    showed their "connect first" empty states during every actual
+    workflow session."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sActivate = _fsExtractFunctionBlock(sSource, "_fnActivateWorkflow")
+    assert "VaibifyAicsTab.fnSetContainerId(sId)" in sActivate, (
+        "workflow activation must wire the AICS tab or it renders "
+        "'Connect to a workflow to see AICS status' while connected"
+    )
+    assert "PipeleyenReposPanel.fnInit(sId)" in sActivate, (
+        "workflow activation must initialize the Repos panel or the "
+        "Repos tab stays empty for the whole session"
+    )

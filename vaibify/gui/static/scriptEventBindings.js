@@ -157,13 +157,6 @@ var PipeleyenEventBindings = (function () {
             parseInt(elMatch.dataset.step));
     }
 
-    function _fnHandleStepEdit(event, elMatch) {
-        var elStepItem = event.target.closest(".step-item");
-        PipeleyenStepEditor.fnOpenEditModal(
-            parseInt(elStepItem.dataset.index)
-        );
-    }
-
     function _fnHandleInteractiveRun(event, elMatch) {
         PipeleyenPipelineRunner.fnRunInteractiveStep(
             parseInt(elMatch.dataset.index));
@@ -295,7 +288,6 @@ var PipeleyenEventBindings = (function () {
         ".test-file-item": _fnHandleTestFileItem,
         ".test-last-run": _fnHandleTestLastRun,
         ".btn-generate-test": _fnHandleGenerateTest,
-        ".step-edit": _fnHandleStepEdit,
         ".btn-interactive-run": _fnHandleInteractiveRun,
         ".btn-interactive-plots": _fnHandleInteractivePlots,
         ".btn-run-tests": _fnHandleRunTests,

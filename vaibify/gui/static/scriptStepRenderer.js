@@ -58,13 +58,20 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fsRenderLevelColumnHeaderRow() {
-        // Labels the four level columns once at the top of the list;
-        // the cells themselves carry no L1/L2/L3 text.
+        // Labels the five status columns once at the top of the
+        // list; the level cells themselves carry no L1/L2/L3 text.
         return '<div class="level-column-header-row">' +
             '<span class="step-level-strip">' +
+            '<span class="step-status-cell ' +
+            'level-column-header-cell" ' +
+            'title="Step status — one light per step summarizing ' +
+            'its tests, your sign-off, and its dependencies. ' +
+            'Hover a light for detail.">&#9679;</span>' +
             '<span class="step-regression-cell ' +
             'level-column-header-cell" ' +
-            'title="Regression warnings"></span>' +
+            'title="Warnings — a step that slipped back from a ' +
+            'level it had reached, or whose results are out of ' +
+            'date">&#9888;</span>' +
             '<span class="step-level-cell level-column-header-cell"' +
             '>L1</span>' +
             '<span class="step-level-cell level-column-header-cell"' +
@@ -80,9 +87,35 @@ var VaibifyStepRenderer = (function () {
             _fsBuildLevelCellInner(sState) + '</span>';
     }
 
-    function _fsBuildStepLevelStrip(dictContext, iIndex) {
+    var _DICT_STEP_STATUS_TITLES = {
+        "": "no results yet",
+        "pass": "last run succeeded",
+        "fail": "a test failed or a run went wrong",
+        "queued": "queued to run",
+        "running": "running now",
+        "skipped": "skipped",
+        "partial": "partly verified — some checks are not yet green",
+        "verified": "verified — tests, sign-off, and dependencies " +
+            "all green",
+    };
+
+    function _fsBuildStepStatusCell(sStatusClass, sVerifiedBadge) {
+        var sTitle = "Step status: " +
+            (_DICT_STEP_STATUS_TITLES[sStatusClass] || sStatusClass);
+        return '<span class="step-status-cell" title="' +
+            fnEscapeHtml(sTitle) + '">' +
+            (sStatusClass === "verified"
+                ? sVerifiedBadge
+                : '<span class="step-status ' + sStatusClass +
+                    '"></span>') +
+            '</span>';
+    }
+
+    function _fsBuildStepLevelStrip(dictContext, iIndex, sStatusCellHtml) {
         if (!dictContext.fsLevelCellState) return "";
         var sHtml = '<span class="step-level-strip">' +
+            (sStatusCellHtml ||
+                '<span class="step-status-cell"></span>') +
             _fsBuildRegressionCell(dictContext, iIndex);
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsBuildLevelCell(
@@ -102,7 +135,9 @@ var VaibifyStepRenderer = (function () {
             (bExpanded ? ' expanded' : '') + '">' +
             '<span class="expand-triangle">' +
             (bExpanded ? "▾" : "▸") + '</span>' +
-            '<span class="workflow-level-header-label">Workflow' +
+            '<span class="workflow-level-header-label" ' +
+            'title="Requirements that apply to the workflow as a ' +
+            'whole rather than to any single step">Workflow-wide' +
             '</span>' +
             _fsBuildStepLevelStrip(dictContext, -1) +
             '</div>';
@@ -124,6 +159,7 @@ var VaibifyStepRenderer = (function () {
             '<button class="btn btn-add-ai-declaration-step" ' +
             'type="button">Add AI declaration step</button>' +
             '<span class="step-level-strip">' +
+            '<span class="step-status-cell"></span>' +
             '<span class="step-regression-cell"></span>';
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsBuildLevelCell("none", sTooltip);
@@ -437,16 +473,11 @@ var VaibifyStepRenderer = (function () {
                 'so the pilot run is reproducible.">&#9888;</span>' :
                 '') +
             dictContext.fsBuildWarningBadge(step, iIndex) +
-            (sStatusClass === "verified" ? "" :
-                '<span class="step-status ' + sStatusClass +
-                '"></span>') +
-            sVerifiedBadge +
-            '<span class="step-actions">' +
-            '<button class="btn-icon step-edit" title="Edit">&#9998;</button>' +
-            "</span>" +
-            // The level strip renders last so the four cells
-            // right-align into the columns the header row labels.
-            _fsBuildStepLevelStrip(dictContext, iIndex) +
+            // The level strip renders last so the five cells
+            // (status light, warning, L1-L3) right-align into the
+            // columns the header row labels.
+            _fsBuildStepLevelStrip(dictContext, iIndex,
+                _fsBuildStepStatusCell(sStatusClass, sVerifiedBadge)) +
             "</div>";
 
         if (!bExpanded) {

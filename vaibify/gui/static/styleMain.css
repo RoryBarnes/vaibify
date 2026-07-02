@@ -1176,15 +1176,6 @@ body.aics-level-3 .toolbar-label {
     50% { opacity: 0.4; }
 }
 
-.step-item .step-actions {
-    display: none;
-    gap: 2px;
-}
-
-.step-item:hover .step-actions {
-    display: flex;
-}
-
 /* Step detail (expandable) */
 .step-detail {
     display: none;
@@ -5311,7 +5302,8 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .step-level-cell,
-.step-regression-cell {
+.step-regression-cell,
+.step-status-cell {
     display: inline-flex;
     align-items: center;
     justify-content: center;

@@ -85,8 +85,9 @@ var VaibifyLegendPanel = (function () {
             sSampleHtml: '<span class="step-level-cell ' +
                 'level-cell-unknown">' +
                 '<span class="level-cell-circle"></span></span>',
-            sLabel: "Level cell, hollow grey circle — sync state " +
-                "unknown; refresh remote status",
+            sLabel: "Level cell, hollow grey circle — unknown: " +
+                "GitHub/Zenodo have not been checked recently; " +
+                "refresh remote status to find out",
         },
         {
             sSampleHtml: '<span class="step-level-cell ' +

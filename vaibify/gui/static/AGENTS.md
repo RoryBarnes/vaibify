@@ -177,8 +177,15 @@ pattern wholesale.
   AICS tab to the corresponding readiness card. Logic lives in
   `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
 - Per-step level cells (`scriptStepRenderer.js::_fsBuildStepLevelStrip`)
-  render four columns per step row: a regression-warning column, then
-  L1|L2|L3 (no text in the cells; one column-header row labels them).
+  render five columns per step row: the step-status light (the
+  overall tests + sign-off + dependencies summary, built by
+  `_fsBuildStepStatusCell` with a plain-English title), a
+  regression-warning column, then L1|L2|L3 (no text in the level
+  cells; one column-header row labels all five — ● and ⚠ glyph
+  headers with explanatory titles for the first two). Step rows
+  carry no hover edit affordance — hand-editing steps is
+  deliberately de-emphasized (right-click context menu remains the
+  one manual entry point; agents edit via the action catalog).
   Each level is computed INDEPENDENTLY (no upward propagation) and
   arrives as a CELL dict (`sState`, `iSatisfied`, `iTotal`,
   `bRegression`). Visual vocabulary: grey filled circle =
@@ -196,8 +203,9 @@ pattern wholesale.
   levels pass); red ⚠ only when failed tests underlie it, orange ⚠
   for staleness/regression. Never derive warning logic client-side
   for steps.
-- The Workflow row (`fsRenderWorkflowLevelHeader`) is an expandable
-  step-like row. Its cells are NOT an aggregate or summary of the
+- The Workflow-wide row (`fsRenderWorkflowLevelHeader`, labeled
+  "Workflow-wide" precisely so it does not read as a summary) is an
+  expandable step-like row. Its cells are NOT an aggregate or summary of the
   step rows: they cover only the requirements that attach to the
   workflow as a whole (L1: project repo present; L2: sync-verify
   freshness + arXiv; L3: the envelope artifacts). The all-steps
