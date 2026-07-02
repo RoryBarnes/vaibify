@@ -5491,11 +5491,31 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     color: var(--text-secondary);
 }
 
-/* Binary marks right-align into a strip, mirroring the step rows. */
-.envelope-binary-marks {
+/* Row marks right-align into a strip, mirroring the step rows; the
+   fixed-width slots keep the marks and their one-letter column
+   headers vertically aligned. */
+.envelope-row-marks {
     display: inline-flex;
-    gap: 6px;
+    gap: 4px;
     margin-left: auto;
+}
+
+.envelope-mark-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+}
+
+.envelope-row-header {
+    display: flex;
+    padding: 1px 0;
+}
+
+.envelope-mark-header {
+    font-size: 9px;
+    color: var(--text-secondary);
+    cursor: help;
 }
 
 /* An empty warning cell offers nothing to hover — no help cursor,

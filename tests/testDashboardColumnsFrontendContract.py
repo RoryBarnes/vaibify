@@ -356,6 +356,33 @@ def test_envelope_passing_items_use_the_vaibify_check_not_green():
     )
 
 
+def test_envelope_mark_columns_have_lettered_headers():
+    """The Software (V/H) and Artifacts (F/R) mark columns carry
+    one-letter headers with instructive tooltips."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "_fsRenderEnvelopeMarkHeader" in sSource
+    sSoftware = _fsExtractFunctionBlock(
+        sSource, "_fsRenderEnvelopeSoftwareBody",
+    )
+    assert '"V"' in sSoftware and '"H"' in sSoftware
+    sArtifacts = _fsExtractFunctionBlock(
+        sSource, "_fsRenderEnvelopeArtifactBody",
+    )
+    assert '"F"' in sArtifacts and '"R"' in sArtifacts
+
+
+def test_envelope_summary_marks_show_partial_as_orange():
+    """A section with some but not all requirements met summarizes
+    orange — never a false check, never an all-red."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sCounts = _fsExtractFunctionBlock(
+        sSource, "_fsSummaryStateFromCounts",
+    )
+    assert '"orange"' in sCounts and '"red"' in sCounts, (
+        "summary marks must distinguish none-met from partially-met"
+    )
+
+
 def test_envelope_software_section_points_at_the_repos_panel():
     """Repository status has ONE home (the Repos panel); the
     Software section links there instead of duplicating it."""

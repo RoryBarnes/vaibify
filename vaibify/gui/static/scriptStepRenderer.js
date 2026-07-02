@@ -283,28 +283,34 @@ var VaibifyStepRenderer = (function () {
         return sHtml + '</div>';
     }
 
+    function _fsSummaryStateFromCounts(iSatisfied, iTotal) {
+        // The section mark mirrors the level-cell vocabulary: all
+        // requirements met = check, none = red, some = orange.
+        if (iSatisfied >= iTotal) return "green";
+        if (iSatisfied === 0) return "red";
+        return "orange";
+    }
+
     function _fsSoftwareSummaryState(listBinaries) {
         if (listBinaries.length === 0) return "unknown";
-        var bUnknown = false;
+        var iSatisfied = 0;
         for (var i = 0; i < listBinaries.length; i++) {
-            var dictBinary = listBinaries[i];
-            if (dictBinary.bVersionMatch === false ||
-                    dictBinary.bHashCurrent !== true) {
-                return "red";
-            }
-            if (dictBinary.bVersionMatch !== true) bUnknown = true;
+            if (listBinaries[i].bVersionMatch === true) iSatisfied++;
+            if (listBinaries[i].bHashCurrent === true) iSatisfied++;
         }
-        return bUnknown ? "unknown" : "green";
+        return _fsSummaryStateFromCounts(
+            iSatisfied, listBinaries.length * 2);
     }
 
     function _fsArtifactsSummaryState(dictArtifacts) {
         if (Object.keys(dictArtifacts).length === 0) return "unknown";
         var listKeys = Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS);
+        var iSatisfied = 0;
         for (var i = 0; i < listKeys.length; i++) {
             var dictArtifact = dictArtifacts[listKeys[i]] || {};
-            if (dictArtifact.bSatisfied !== true) return "red";
+            if (dictArtifact.bSatisfied === true) iSatisfied++;
         }
-        return "green";
+        return _fsSummaryStateFromCounts(iSatisfied, listKeys.length);
     }
 
     function _fsDeterminismSummaryState(dictDeterminism) {
@@ -316,20 +322,30 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fsSyncsSummaryState(dictRemoteSyncs) {
-        var sWorst = "green";
+        var iGreen = 0;
+        var iKnown = 0;
+        var bStale = false;
         for (var i = 0; i < _LIST_ENVELOPE_SYNC_SERVICES.length; i++) {
             var dictSync =
                 dictRemoteSyncs[_LIST_ENVELOPE_SYNC_SERVICES[i]] ||
                 null;
-            if (!dictSync) {
-                if (sWorst === "green") sWorst = "unknown";
-            } else if ((dictSync.iDivergedCount || 0) > 0) {
-                return "red";
-            } else if (dictSync.bStale === true) {
-                sWorst = "orange";
+            if (!dictSync) continue;
+            iKnown++;
+            if ((dictSync.iDivergedCount || 0) > 0) return "red";
+            if (dictSync.bStale === true) {
+                bStale = true;
+            } else {
+                iGreen++;
             }
         }
-        return sWorst;
+        if (iKnown === 0) return "unknown";
+        if (bStale ||
+                iKnown < _LIST_ENVELOPE_SYNC_SERVICES.length) {
+            // Partially verified: some services fresh, others stale
+            // or never checked.
+            return iGreen > 0 ? "orange" : "unknown";
+        }
+        return "green";
     }
 
     function _fsRenderEnvelopeSoftwareBody(listBinaries) {
@@ -337,6 +353,15 @@ var VaibifyStepRenderer = (function () {
         if (listBinaries.length === 0) {
             sHtml += '<div class="envelope-empty-note">' +
                 'No declared binaries.</div>';
+        } else {
+            sHtml += _fsRenderEnvelopeMarkHeader([
+                ["V", "Version — does the captured version match " +
+                    "the declared one? Hover each mark below for " +
+                    "the values and the fix."],
+                ["H", "Hash — is the executable's SHA-256 recorded " +
+                    "in the environment snapshot? Hover each mark " +
+                    "below for the fix."],
+            ]);
         }
         for (var i = 0; i < listBinaries.length; i++) {
             sHtml += _fsRenderEnvelopeBinaryRow(listBinaries[i]);
@@ -347,6 +372,26 @@ var VaibifyStepRenderer = (function () {
             '</a>.</div>';
     }
 
+    function _fsRenderEnvelopeMarkHeader(listColumns) {
+        // A mini header row over the right-aligned mark columns —
+        // one letter per column, each with an instructive tooltip.
+        var sMarks = "";
+        for (var i = 0; i < listColumns.length; i++) {
+            sMarks += '<span class="envelope-mark-slot ' +
+                'envelope-mark-header" title="' +
+                fnEscapeHtml(listColumns[i][1]) + '">' +
+                listColumns[i][0] + '</span>';
+        }
+        return '<div class="envelope-row-header">' +
+            '<span class="envelope-row-marks">' + sMarks +
+            '</span></div>';
+    }
+
+    function _fsWrapEnvelopeMarkSlot(sMarkHtml) {
+        return '<span class="envelope-mark-slot">' + sMarkHtml +
+            '</span>';
+    }
+
     function _fsRenderEnvelopeBinaryRow(dictBinary) {
         // Mirrors the step-row pattern: name on the left, status
         // marks right-aligned. Version details and remedies live in
@@ -354,17 +399,17 @@ var VaibifyStepRenderer = (function () {
         return '<div class="envelope-binary-row">' +
             '<span class="envelope-binary-name">' +
             fnEscapeHtml(dictBinary.sBinaryPath || "") + '</span>' +
-            '<span class="envelope-binary-marks">' +
-            _fsBuildEnvelopeMark(
+            '<span class="envelope-row-marks">' +
+            _fsWrapEnvelopeMarkSlot(_fsBuildEnvelopeMark(
                 _fsLightStateFromBoolean(dictBinary.bVersionMatch),
-                _fsDescribeVersionMatch(dictBinary)) +
-            _fsBuildEnvelopeMark(
+                _fsDescribeVersionMatch(dictBinary))) +
+            _fsWrapEnvelopeMarkSlot(_fsBuildEnvelopeMark(
                 dictBinary.bHashCurrent === true ? "green" : "red",
                 dictBinary.bHashCurrent === true
                     ? "Hash captured in the environment snapshot"
                     : "Hash not captured — open the AICS tab's " +
                       "Level 3 Readiness card and use 'Capture " +
-                      "version + SHA'") +
+                      "version + SHA'")) +
             '</span></div>';
     }
 
@@ -393,6 +438,14 @@ var VaibifyStepRenderer = (function () {
                 'No project repository detected — envelope ' +
                 'artifacts unavailable.</div>';
         }
+        sHtml += _fsRenderEnvelopeMarkHeader([
+            ["F", "File — does this artifact exist in the project " +
+                "repository? Missing files can be generated from " +
+                "the AICS tab's Level 3 Readiness card."],
+            ["R", "Requirement — does the file satisfy its Level 3 " +
+                "check (pinned digests, hashed dependency locks, " +
+                "an executable reproduce script)?"],
+        ]);
         var listKeys = Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS);
         for (var i = 0; i < listKeys.length; i++) {
             sHtml += _fsRenderEnvelopeArtifactRow(
@@ -402,24 +455,41 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fsRenderEnvelopeArtifactRow(sKey, dictArtifact) {
+        var bPresent = dictArtifact.bPresent === true;
+        var bSatisfied = dictArtifact.bSatisfied === true;
         return '<div class="envelope-artifact-row">' +
-            _fsBuildEnvelopeMark(
-                _fsLightStateFromBoolean(
-                    dictArtifact.bPresent === true),
-                dictArtifact.bPresent === true
-                    ? "Present" : "Missing") +
-            _fsBuildEnvelopeMark(
-                _fsLightStateFromBoolean(
-                    dictArtifact.bSatisfied === true),
-                dictArtifact.bSatisfied === true
-                    ? "Requirement satisfied"
-                    : "Requirement not satisfied") +
             '<span class="envelope-artifact-name">' +
             fnEscapeHtml(_DICT_ENVELOPE_ARTIFACT_LABELS[sKey]) +
+            '</span>' +
+            '<span class="envelope-row-marks">' +
+            _fsWrapEnvelopeMarkSlot(_fsBuildEnvelopeMark(
+                _fsLightStateFromBoolean(bPresent),
+                bPresent
+                    ? "File exists in the project repository"
+                    : "File missing — generate it from the AICS " +
+                      "tab's Level 3 Readiness card")) +
+            _fsWrapEnvelopeMarkSlot(_fsBuildEnvelopeMark(
+                _fsLightStateFromBoolean(bSatisfied),
+                bSatisfied
+                    ? "Meets its Level 3 requirement"
+                    : "Does not meet its Level 3 requirement yet — " +
+                      "the Level 3 Readiness card names the " +
+                      "failing check")) +
             '</span></div>';
     }
 
+    var _DICT_DETERMINISM_LABELS = {
+        bAcceptBlasVariance: "Tiny numeric differences from " +
+            "linear-algebra libraries (BLAS) are declared " +
+            "acceptable across machines",
+        dOmpNumThreads: "OpenMP thread count pinned",
+        sMklCbwr: "Intel MKL bitwise-reproducibility mode pinned",
+    };
+
     function _fsRenderEnvelopeDeterminismBody(dictDeterminism) {
+        // Declarations about run-to-run repeatability: whether two
+        // runs of this workflow are expected to produce identical
+        // bits, and which sources of variation are pinned or waived.
         var sHtml = "";
         if (!dictDeterminism ||
             Object.keys(dictDeterminism).length === 0) {
@@ -427,13 +497,29 @@ var VaibifyStepRenderer = (function () {
                 'No determinism declaration recorded — declare RNG ' +
                 'seeding and BLAS variance to unlock Level 3.</div>';
         }
+        sHtml += '<div class="envelope-empty-note">' +
+            'What the workflow declares about run-to-run ' +
+            'repeatability:</div>';
         Object.keys(dictDeterminism).forEach(function (sKey) {
-            sHtml += '<div class="envelope-determinism-row">' +
-                fnEscapeHtml(sKey) + ': ' +
-                fnEscapeHtml(_fsStringifyEnvelopeValue(
-                    dictDeterminism[sKey])) + '</div>';
+            sHtml += _fsRenderEnvelopeDeterminismRow(
+                sKey, dictDeterminism[sKey]);
         });
         return sHtml;
+    }
+
+    function _fsRenderEnvelopeDeterminismRow(sKey, jsonValue) {
+        var sLabel = _DICT_DETERMINISM_LABELS[sKey];
+        if (!sLabel) {
+            sLabel = sKey + ": " +
+                _fsStringifyEnvelopeValue(jsonValue);
+        } else if (jsonValue !== true) {
+            sLabel += " (" + _fsStringifyEnvelopeValue(jsonValue) +
+                ")";
+        }
+        return '<div class="envelope-determinism-row">' +
+            _fsBuildEnvelopeMark("green",
+                "Declared in the workflow's determinism block") +
+            '<span>' + fnEscapeHtml(sLabel) + '</span></div>';
     }
 
     function _fsStringifyEnvelopeValue(jsonValue) {
