@@ -259,6 +259,23 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnAddAiDeclarationStep();
     }
 
+    async function _fnHandleAiDeclarationCommit(event, elMatch) {
+        // Reuses the pre-push manifest-check dialog: it lists every
+        // canonical file not yet committed (the declaration file is
+        // canonical) and commits them on confirm. Committing is not
+        // publishing — pushing happens from the Repos panel or the
+        // sync buttons.
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        var bClean = await VaibifyManifestCheck.fbRunBeforePush(
+            sContainerId);
+        if (bClean) {
+            PipeleyenApp.fnShowToast(
+                "Canonical files are committed — push to GitHub to " +
+                "publish them.", "info");
+        }
+    }
+
     function _fnHandleEnvelopeSectionToggle(event, elMatch) {
         PipeleyenApp.fnToggleEnvelopeSection(
             elMatch.dataset.envelopeSection);
@@ -319,6 +336,7 @@ var PipeleyenEventBindings = (function () {
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
         ".workflow-level-header-row": _fnHandleWorkflowHeaderToggle,
         ".envelope-section-header": _fnHandleEnvelopeSectionToggle,
+        ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".envelope-open-repos": _fnHandleOpenReposPanel,
     };
 

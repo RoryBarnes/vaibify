@@ -14,6 +14,7 @@ from pathlib import Path
 from vaibify.reproducibility._hashing import fsHashFileSha256
 from vaibify.reproducibility.manifestPaths import (
     TUPLE_OUTPUT_KEYS,
+    flistStepDeclarationRepoPaths,
     flistStepStandardsRepoPaths,
 )
 from vaibify.reproducibility.manifestWriter import (
@@ -192,6 +193,7 @@ def _flistStepArchiveDeclaredPaths(dictStep, bArchiveTests):
     if bArchiveTests:
         listDeclared.extend(flistStepTestFileRepoPaths(dictStep))
         listDeclared.extend(flistStepStandardsRepoPaths(dictStep))
+        listDeclared.extend(flistStepDeclarationRepoPaths(dictStep))
     return listDeclared
 
 

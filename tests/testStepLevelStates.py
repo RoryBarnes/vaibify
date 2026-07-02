@@ -434,6 +434,20 @@ def testAiDeclarationStepLevel1ReadsNotApplicable():
     assert dictStates[0]["s2"]["iTotal"] == 3
 
 
+def testDeclarationFileMakesLevelThreeApplicable():
+    """The declaration file is canonical, so pinning it in the
+    manifest is a real Level 3 requirement — the declaration step's
+    L3 cell stops being a dash once a file is declared."""
+    dictStep = _fdictAttestedArtifactFreeStep("aiDeclaration")
+    dictStep["sStepKind"] = "ai-declaration"
+    dictStep["sDeclarationFile"] = "AI_USAGE.md"
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    assert dictStates[0]["s3"] == _fdictCell("attained", 1, 1)
+    assert dictStates[0]["s1"]["sState"] == "not-applicable"
+
+
 def testUnattestedAiDeclarationDentsItsOwnLevel2Cell():
     dictStep = {
         "sName": "aiDeclaration", "sDirectory": "aiDeclaration",

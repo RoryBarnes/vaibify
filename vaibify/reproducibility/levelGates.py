@@ -2269,12 +2269,14 @@ def _fdictBuildL3StepEntry(
 def _flistStepDeclaredPaths(dictStep):
     """Return repo-relative outputs + scripts + standards for a step."""
     from .manifestPaths import (
+        flistStepDeclarationRepoPaths,
         flistStepScriptRepoPaths,
         flistStepStandardsRepoPaths,
     )
     listPaths = list(_flistStepOutputFiles(dictStep))
     listPaths.extend(flistStepScriptRepoPaths(dictStep))
     listPaths.extend(flistStepStandardsRepoPaths(dictStep))
+    listPaths.extend(flistStepDeclarationRepoPaths(dictStep))
     return [sPath for sPath in listPaths if sPath]
 
 

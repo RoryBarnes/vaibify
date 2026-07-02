@@ -68,6 +68,7 @@ from vaibify.reproducibility.manifestPaths import (
     TUPLE_OUTPUT_KEYS,
     TUPLE_TEST_CATEGORY_KEYS,
     flistStepScriptRepoPaths,
+    flistStepDeclarationRepoPaths,
     flistStepStandardsRepoPaths,
     fsToRepoRelative,
 )
@@ -334,6 +335,7 @@ def _flistCollectManifestPaths(dictWorkflow):
         setPaths.update(flistStepScriptRepoPaths(dictStep))
         if bArchiveTests:
             setPaths.update(flistStepStandardsRepoPaths(dictStep))
+            setPaths.update(flistStepDeclarationRepoPaths(dictStep))
             setPaths.update(flistStepTestFileRepoPaths(dictStep))
     return sorted(sPath for sPath in setPaths if sPath)
 

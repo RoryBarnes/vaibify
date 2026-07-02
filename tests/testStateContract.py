@@ -401,3 +401,23 @@ def test_fsGenerateGitignore_header_identifies_generator():
 def test_fsGenerateGitignore_ends_with_newline():
     sResult = stateContract.fsGenerateGitignore({"listSteps": []})
     assert sResult.endswith("\n")
+
+
+def test_canonical_tracked_files_include_the_ai_declaration():
+    """FALSIFICATION TARGET: the declaration file is a canonical
+    publication artifact. If it drops out of the canonical set, the
+    commit-canonical flow, the manifest, and the GitHub/Zenodo sync
+    comparisons all silently stop covering it — the 2026-07-02 gap
+    where AI_USAGE.md sat untracked while I02 looked publishable."""
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "AI Declaration",
+            "sDirectory": "aiDeclaration",
+            "sStepKind": "ai-declaration",
+            "sDeclarationFile": "AI_USAGE.md",
+        }],
+    }
+    listResult = stateContract.flistCanonicalTrackedFilesFromScans(
+        dictWorkflow, [], [],
+    )
+    assert "AI_USAGE.md" in listResult

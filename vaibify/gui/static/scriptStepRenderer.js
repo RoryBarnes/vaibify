@@ -218,7 +218,7 @@ var VaibifyStepRenderer = (function () {
         software: "Software",
         artifacts: "Artifacts",
         determinism: "Determinism",
-        syncs: "Syncs",
+        syncs: "Published copies",
     };
 
     var _DICT_ENVELOPE_SUMMARY_PHRASES = {
@@ -1470,6 +1470,13 @@ var VaibifyStepRenderer = (function () {
                 ' <button class="btn btn-ai-declaration-choose" ' +
                 'data-step="' + iIndex + '" type="button">' +
                 'Choose different file</button>' +
+                ' <button class="btn btn-ai-declaration-commit" ' +
+                'data-step="' + iIndex + '" type="button" ' +
+                'title="The declaration is a canonical file: it ' +
+                'must be committed and pushed to count as ' +
+                'published. This checks the repo and offers to ' +
+                'commit anything canonical that is missing.">' +
+                'Commit to repo&#8230;</button>' +
                 '</div>';
         }
         return '<div class="ai-declaration-empty" ' +

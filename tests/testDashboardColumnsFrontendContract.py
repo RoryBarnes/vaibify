@@ -391,6 +391,26 @@ def test_envelope_summary_marks_show_partial_as_orange():
     )
 
 
+def test_syncs_section_is_named_published_copies():
+    """"Syncs" read as software syncing; the section is about whether
+    published copies match local files, so it says that."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    iStart = sSource.find("_DICT_ENVELOPE_SECTION_TITLES")
+    sBlock = sSource[iStart:sSource.find("};", iStart)]
+    assert "Published copies" in sBlock
+
+
+def test_declaration_step_offers_commit_to_repo():
+    """The declaration file is canonical; the step body must offer a
+    way to commit it (reusing the manifest-check dialog), or the
+    researcher has no UI path from written-file to published-file."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "btn-ai-declaration-commit" in sRenderer
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert '".btn-ai-declaration-commit"' in sBindings
+    assert "fbRunBeforePush" in sBindings
+
+
 def test_envelope_software_section_points_at_the_repos_panel():
     """Repository status has ONE home (the Repos panel); the
     Software section links there instead of duplicating it."""
