@@ -5182,6 +5182,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    distinct so future per-criterion secondary affordances (e.g.,
    underline-dotted on stale) can land without touching the glyph
    dispatch. */
+.step-blocker-glyph-l2-declaration,
 .step-blocker-glyph-l2-mirror,
 .step-blocker-glyph-l2-zenodo,
 .step-blocker-glyph-l2-github-stale,
@@ -5411,8 +5412,6 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 
 .envelope-section-title {
     font-weight: 600;
-    margin-top: 8px;
-    margin-bottom: 3px;
     color: var(--text-secondary);
 }
 
@@ -5434,23 +5433,52 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     cursor: help;
 }
 
-.envelope-light-green {
-    background: #4caf50;
-}
-
-.envelope-light-red {
-    background: var(--color-red);
-}
-
-.envelope-light-orange {
-    background: var(--color-orange);
-}
-
 /* Hollow grey = never verified / unknowable; a null sync cache must
-   never render green. */
+   never render a passing mark. */
 .envelope-light-unknown {
     background: transparent;
     border: 1.5px solid var(--text-muted);
+}
+
+/* Passing envelope items carry the theme-tinted check — its color
+   climbs the AICS ladder with --highlight-color. Failures are the
+   warning glyph, never a colored circle. */
+.envelope-check {
+    color: var(--highlight-color);
+    font-weight: 700;
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-warn {
+    color: var(--color-red);
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-warn-orange {
+    color: var(--color-orange);
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 3px 0;
+    user-select: none;
+}
+
+.envelope-section-body {
+    margin-left: 16px;
+}
+
+.envelope-repos-link-row {
+    padding: 3px 0;
+    color: var(--text-secondary);
+    font-size: 12px;
 }
 
 .envelope-binary-name,

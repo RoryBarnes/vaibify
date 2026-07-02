@@ -68,6 +68,7 @@ __all__ = [
     "fbWorkflowFullySyncedWithArxiv",
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
+    "fbWorkflowAiDeclarationAttested",
     "fbWorkflowHasAiDeclarationStep",
     "fbWorkflowHasProjectRepo",
     "fdictComputeStepLevelStates",
@@ -449,10 +450,14 @@ def _fdictBuildStepBlocker(
     single source. Corrupt step entries (``None``, non-dict, missing
     ``dictVerification``) cannot satisfy any criterion and are surfaced
     as ``user-not-approved`` so the L1 gate matches its historical
-    defensive contract.
+    defensive contract. AI-declaration steps emit no L1 blocker at
+    all: the declaration is a publication artifact, so its sign-off
+    is enforced by the LEVEL 2 gate (``ai-declaration-unattested``).
     """
     if not isinstance(dictStep, dict):
         return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
+    if fbStepIsAiDeclaration(dictStep):
+        return None
     if not fbStepTimingClean(dictStep):
         return _fdictUpstreamModifiedBlocker(
             dictWorkflow, iStepIndex, dictStep,
@@ -1039,7 +1044,8 @@ def fbAtLeastLevel2(dictWorkflow, filesRepo):
     file's hash matches the GitHub mirror at a recently-verified
     SHA, every Zenodo-published file's hash matches at a known DOI on
     the workflow's configured endpoint, and the workflow contains an
-    AI Declaration step (which L1 already requires to be user-attested).
+    attested AI Declaration step (the declaration only has meaning at
+    publication, so its sign-off lives here, not at L1).
     """
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL2" in dictMemo:
@@ -1070,7 +1076,7 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
         dictWorkflow, filesRepo,
     ):
         return False
-    if not fbWorkflowHasAiDeclarationStep(dictWorkflow):
+    if not fbWorkflowAiDeclarationAttested(dictWorkflow):
         return False
     if not fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
@@ -1285,18 +1291,33 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
 
 
 def fbWorkflowHasAiDeclarationStep(dictWorkflow):
-    """Return True iff the workflow lists at least one ai-declaration step.
-
-    The step's own ``sUser`` attestation is enforced by L1's per-step
-    gate, so this predicate only needs to confirm the step kind is
-    present somewhere in the list.
-    """
+    """Return True iff the workflow lists at least one ai-declaration step."""
     if not isinstance(dictWorkflow, dict):
         return False
     for dictStep in dictWorkflow.get("listSteps", []) or []:
         if fbStepIsAiDeclaration(dictStep):
             return True
     return False
+
+
+def fbWorkflowAiDeclarationAttested(dictWorkflow):
+    """Return True iff an ai-declaration step exists and is attested.
+
+    The declaration only has meaning at publication, so its
+    researcher sign-off is a LEVEL 2 requirement (ruling 2026-07-02).
+    AI-declaration steps are excluded from the L1 gate entirely and
+    their L1 cell reads not-applicable.
+    """
+    if not isinstance(dictWorkflow, dict):
+        return False
+    bFound = False
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not fbStepIsAiDeclaration(dictStep):
+            continue
+        bFound = True
+        if not fbStepUserApproved(dictStep):
+            return False
+    return bFound
 
 
 def _fbCachedSyncStatusFresh(dictStatus, fMaxStaleHours):
@@ -1525,7 +1546,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bGithubFullySynced": bool,
             "bZenodoFullySynced": bool,
             "bArxivFullySynced": bool,
-            "bAiDeclarationStepPresent": bool,
+            "bAiDeclarationAttested": bool,
             "bAtLeastLevel2": bool,
         }
 
@@ -1533,6 +1554,9 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
     is True trivially when the workflow has no Overleaf binding so
     data-only workflows do not surface a fake gap.
+    ``bAiDeclarationAttested`` requires the step to exist AND carry
+    the researcher's sign-off — the declaration is a publication
+    artifact, so both halves are L2 requirements.
     """
     bL1 = fbAtLeastLevel1(dictWorkflow, filesRepo)
     bGithub = fbWorkflowFullySyncedWithGithub(
@@ -1544,13 +1568,13 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     bArxiv = fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
     )
-    bDecl = fbWorkflowHasAiDeclarationStep(dictWorkflow)
+    bDecl = fbWorkflowAiDeclarationAttested(dictWorkflow)
     return {
         "bAtLeastLevel1": bL1,
         "bGithubFullySynced": bGithub,
         "bZenodoFullySynced": bZenodo,
         "bArxivFullySynced": bArxiv,
-        "bAiDeclarationStepPresent": bDecl,
+        "bAiDeclarationAttested": bDecl,
         "bAtLeastLevel2":
             bL1 and bGithub and bZenodo and bArxiv and bDecl,
     }
@@ -1669,20 +1693,47 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
 
 
 def _flistAiDeclarationLevel2Blockers(dictWorkflow):
-    """Return the workflow-scope ai-declaration blocker, or empty list."""
-    if fbWorkflowHasAiDeclarationStep(dictWorkflow):
+    """Return the ai-declaration L2 blocker, or empty list.
+
+    Two failure modes: no ai-declaration step at all (workflow-scope,
+    re-homed to the ghost row), or the step exists but the researcher
+    has not attested it (per-step, lands on the declaration step's
+    own row — the declaration only has meaning at publication, so the
+    sign-off is enforced here rather than at L1).
+    """
+    if not fbWorkflowHasAiDeclarationStep(dictWorkflow):
+        return [{
+            "iLevel": 2,
+            "iStepIndex": -1,
+            "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+            "sScope": "workflow",
+            "sCriterion": "missing-ai-declaration-step",
+            "listOffendingFiles": [],
+            "listOffendingUpstreamSteps": [],
+            "sRemediationHint":
+                "Add an AI declaration step to record agent involvement",
+        }]
+    if fbWorkflowAiDeclarationAttested(dictWorkflow):
         return []
-    return [{
-        "iLevel": 2,
-        "iStepIndex": -1,
-        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
-        "sScope": "workflow",
-        "sCriterion": "missing-ai-declaration-step",
-        "listOffendingFiles": [],
-        "listOffendingUpstreamSteps": [],
-        "sRemediationHint":
-            "Add an AI declaration step to record agent involvement",
-    }]
+    return [
+        {
+            "iLevel": 2,
+            "iStepIndex": iStepIndex,
+            "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+            "sScope": "step",
+            "sCriterion": "ai-declaration-unattested",
+            "listOffendingFiles": [],
+            "listOffendingUpstreamSteps": [],
+            "sRemediationHint":
+                "Attest the AI Declaration step — open it and "
+                "verify the declaration",
+        }
+        for iStepIndex, dictStep in enumerate(
+            (dictWorkflow or {}).get("listSteps") or [],
+        )
+        if fbStepIsAiDeclaration(dictStep)
+        and not fbStepUserApproved(dictStep)
+    ]
 
 
 def _fbSyncCacheStale(dictStatus):
@@ -2640,8 +2691,13 @@ def _ftStepLevel1Counts(dictStep, setCriteria):
     """Return ``(iSatisfied, iTotal)`` over the step's L1 requirements.
 
     Requirements: one per PRESENT test axis, plus user attestation,
-    plus timing cleanliness — so ``iTotal`` is axis count + 2.
+    plus timing cleanliness — so ``iTotal`` is axis count + 2. An
+    ai-declaration step has NO L1 requirements (``(0, 0)`` renders
+    not-applicable): the declaration is a publication artifact, so
+    its sign-off is a Level 2 requirement.
     """
+    if fbStepIsAiDeclaration(dictStep):
+        return (0, 0)
     iGreen, iPresent = _ftCountGreenAxes(dictStep)
     iSatisfied = iGreen
     if fbStepUserApproved(dictStep):
@@ -2702,6 +2758,12 @@ def _ftStepLevel2Counts(dictStep, setCriteria, dictContext):
     if _fbFigureFreezeApplicable(dictStep, dictContext):
         iTotal += 1
         if "figure-not-frozen" not in setCriteria:
+            iSatisfied += 1
+    if fbStepIsAiDeclaration(dictStep):
+        # The declaration's researcher sign-off is a Level 2
+        # requirement (its L1 cell reads not-applicable).
+        iTotal += 1
+        if "ai-declaration-unattested" not in setCriteria:
             iSatisfied += 1
     return (iSatisfied, iTotal, bGithubStale or bZenodoStale)
 
@@ -2831,10 +2893,10 @@ def _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown):
     """Map counts plus the two override flags onto the six-state wire.
 
     ``iTotal`` of 0 means no requirement applies at this level for
-    this scope — only per-step L3 can produce it (L1 always counts
-    attestation + timing; L2 always counts the two sync criteria) —
-    and renders as ``not-applicable`` so a step with nothing to
-    reproduce never reads as a vacuous attainment.
+    this scope: per-step L3 on a step with nothing to reproduce, and
+    per-step L1 on an ai-declaration step (whose sign-off is a Level
+    2 requirement). It renders as ``not-applicable`` so an empty
+    requirement set never reads as a vacuous attainment.
     """
     if bNotStarted:
         return "not-started"

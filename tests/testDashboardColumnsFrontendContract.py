@@ -281,6 +281,100 @@ def test_repos_tab_shows_attention_badge():
 
 
 # -----------------------------------------------------------------------
+# Workflow-wide envelope (2026-07-02 redesign): expandable sections,
+# theme-tinted checks for passing items, one home for repo status
+# -----------------------------------------------------------------------
+
+
+def test_envelope_sections_are_expandable():
+    """The four envelope sections (Software / Artifacts /
+    Determinism / Syncs) render as independently expandable headers
+    with a summary mark, not a flat list."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sDetail = _fsExtractFunctionBlock(
+        sSource, "fsRenderWorkflowEnvelopeDetail",
+    )
+    for sKey in ('"software"', '"artifacts"', '"determinism"',
+                 '"syncs"'):
+        assert sKey in sDetail, "missing envelope section " + sKey
+    assert "envelope-section-header" in sSource
+    assert "data-envelope-section" in sSource
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert ".envelope-section-header" in sBindings, (
+        "section headers must be click-bound to the toggle"
+    )
+
+
+def test_envelope_passing_items_use_the_vaibify_check_not_green():
+    """Passing envelope items render the theme-tinted check (its
+    color climbs the ladder with --highlight-color); green circles
+    are retired."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sMark = _fsExtractFunctionBlock(sSource, "_fsBuildEnvelopeMark")
+    assert "envelope-check" in sMark
+    assert "envelope-light-green" not in sSource, (
+        "the green envelope circle is retired"
+    )
+    sCss = _fsReadStaticFile("styleMain.css")
+    assert ".envelope-light-green" not in sCss
+    iStart = sCss.find(".envelope-check")
+    assert iStart != -1
+    assert "--highlight-color" in sCss[iStart:iStart + 200], (
+        "the envelope check must take the theme color so it climbs "
+        "the ladder"
+    )
+
+
+def test_envelope_software_section_points_at_the_repos_panel():
+    """Repository status has ONE home (the Repos panel); the
+    Software section links there instead of duplicating it."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sBody = _fsExtractFunctionBlock(
+        sSource, "_fsRenderEnvelopeSoftwareBody",
+    )
+    assert "envelope-open-repos" in sBody
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert 'data-panel="repos"' in sBindings, (
+        "the jump link must activate the Repos tab"
+    )
+
+
+# -----------------------------------------------------------------------
+# Repos panel: single status indicator, working gear menu
+# -----------------------------------------------------------------------
+
+
+def test_repo_rows_have_one_status_indicator_with_tooltips():
+    """The dot is the status; no redundant "clean" caption. Dirty and
+    missing repos explain what to do in the dot tooltip."""
+    sSource = _fsReadStaticFile("scriptReposPanel.js")
+    sRow = _fsExtractFunctionBlock(sSource, "_fsRenderRepoRow")
+    assert "_fsStatusLabel" not in sRow, (
+        "the textual clean/dirty caption is retired — the dot plus "
+        "tooltip carries the status"
+    )
+    sTooltip = _fsExtractFunctionBlock(sSource, "_fsStatusTooltip")
+    assert "Push" in sTooltip and "re-clone" in sTooltip, (
+        "dirty/missing tooltips must say what to do next"
+    )
+
+
+def test_repo_gear_menu_survives_its_opening_click():
+    """The gear menu reuses .container-tile-menu styling, and the
+    landing page's document-level click handler hides every such menu
+    on any click — including the click that opens it. The gear
+    handler must stop propagation."""
+    sSource = _fsReadStaticFile("scriptReposPanel.js")
+    iStart = sSource.find('.closest(".repo-gear-btn")')
+    assert iStart != -1
+    sBlock = sSource[iStart:iStart + 400]
+    assert "stopPropagation" in sBlock, (
+        "gear click must stopPropagation or the landing page's "
+        "hide-all-menus handler closes the menu as it opens"
+    )
+
+
+# -----------------------------------------------------------------------
 # Container-scoped tabs are wired on the workflow-activation path
 # -----------------------------------------------------------------------
 

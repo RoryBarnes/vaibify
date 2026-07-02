@@ -56,9 +56,10 @@ var VaibifyAicsTab = (function () {
             sFix: "Open the Repos tab to publish or re-verify",
             sFixTabPanel: "repos",
         },
-        bAiDeclarationStepPresent: {
-            sLabel: "AI Declaration step",
-            sFix: "Add an AI Declaration step in the Steps tab",
+        bAiDeclarationAttested: {
+            sLabel: "AI Declaration step attested",
+            sFix: "Add or attest the AI Declaration step in the " +
+                "Steps tab",
             sFixTabPanel: "steps",
         },
     };
@@ -312,7 +313,7 @@ var VaibifyAicsTab = (function () {
         sHtml += _fsRenderGapRow(
             "bZenodoFullySynced", dictGaps);
         sHtml += _fsRenderGapRow(
-            "bAiDeclarationStepPresent", dictGaps);
+            "bAiDeclarationAttested", dictGaps);
         sHtml += '</div></div>';
         return sHtml;
     }
@@ -367,7 +368,7 @@ var VaibifyAicsTab = (function () {
             '.left-tab[data-panel="' + sTargetTab + '"]'
         );
         if (elTab) elTab.click();
-        if (sGap === "bAiDeclarationStepPresent") {
+        if (sGap === "bAiDeclarationAttested") {
             PipeleyenApp.fnShowToast(
                 "Add a step with sStepKind=ai-declaration, " +
                 "then point it at AI_USAGE.md.", "info"

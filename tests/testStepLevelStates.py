@@ -421,6 +421,34 @@ def testBlockerWithoutFailingCriteriaFieldFallsBackToDominant():
     assert dictStates[0]["s3"]["iSatisfied"] == 0
 
 
+def testAiDeclarationStepLevel1ReadsNotApplicable():
+    """RULING 2026-07-02: the AI declaration only has meaning at
+    publication, so the declaration step has no L1 requirements — its
+    L1 cell is a dash, and its sign-off is counted on its L2 cell."""
+    dictStep = _fdictAttestedArtifactFreeStep("aiDeclaration")
+    dictStep["sStepKind"] = "ai-declaration"
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    assert dictStates[0]["s1"] == _fdictCell("not-applicable", 0, 0)
+    assert dictStates[0]["s2"]["iTotal"] == 3
+
+
+def testUnattestedAiDeclarationDentsItsOwnLevel2Cell():
+    dictStep = {
+        "sName": "aiDeclaration", "sDirectory": "aiDeclaration",
+        "sStepKind": "ai-declaration",
+        "dictRunStats": {"fLastDurationSeconds": 1.0},
+        "dictVerification": {"sUser": "untested"},
+    }
+    listLevel2 = [_fdictStepBlocker(2, 0, "ai-declaration-unattested")]
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], listLevel2, [],
+    )
+    assert dictStates[0]["s1"]["sState"] == "not-applicable"
+    assert dictStates[0]["s2"] == _fdictCell("partial", 2, 3)
+
+
 def testNotApplicableRungCannotBlockTheStepLadder():
     dictStates = _fdictThreeCells(
         "attained", "attained", "not-applicable",

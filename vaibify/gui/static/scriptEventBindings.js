@@ -259,6 +259,18 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnAddAiDeclarationStep();
     }
 
+    function _fnHandleEnvelopeSectionToggle(event, elMatch) {
+        PipeleyenApp.fnToggleEnvelopeSection(
+            elMatch.dataset.envelopeSection);
+    }
+
+    function _fnHandleOpenReposPanel(event, elMatch) {
+        event.preventDefault();
+        var elTab = document.querySelector(
+            '.left-tab[data-panel="repos"]');
+        if (elTab) elTab.click();
+    }
+
     function _fnHandleWorkflowHeaderToggle(event, elMatch) {
         // The workflow row expands like a step row; its detail body
         // is a sibling element, so clicks inside the expanded
@@ -306,6 +318,8 @@ var PipeleyenEventBindings = (function () {
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
         ".workflow-level-header-row": _fnHandleWorkflowHeaderToggle,
+        ".envelope-section-header": _fnHandleEnvelopeSectionToggle,
+        ".envelope-open-repos": _fnHandleOpenReposPanel,
     };
 
     /* --- Delegated Event Dispatch --- */

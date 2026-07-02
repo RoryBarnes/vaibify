@@ -72,6 +72,7 @@ const PipeleyenApp = (function () {
         setExpandedQualitative: new Set(),
         setExpandedQuantitative: new Set(),
         setExpandedIntegrity: new Set(),
+        setExpandedEnvelopeSections: new Set(),
         bShowTimestamps: false,
         iContextStepIndex: -1,
     };
@@ -291,6 +292,7 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedQualitative.clear();
         _dictUiState.setExpandedQuantitative.clear();
         _dictUiState.setExpandedIntegrity.clear();
+        _dictUiState.setExpandedEnvelopeSections.clear();
     }
 
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
@@ -1057,6 +1059,8 @@ const PipeleyenApp = (function () {
             iSelectedStepIndex: _dictUiState.iSelectedStepIndex,
             setExpandedSteps: _dictUiState.setExpandedSteps,
             setExpandedDeps: _dictUiState.setExpandedDeps,
+            setExpandedEnvelopeSections:
+                _dictUiState.setExpandedEnvelopeSections,
             setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
             setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
@@ -1636,6 +1640,12 @@ const PipeleyenApp = (function () {
     };
 
     var _DICT_L2_BLOCKER_GLYPHS = {
+        "ai-declaration-unattested": {
+            sIcon: "—",
+            sLabel: "AI declaration not yet attested — open the " +
+                "step and verify it",
+            sClass: "step-blocker-glyph-l2-declaration",
+        },
         "not-in-github-mirror": {
             sIcon: "⚠",
             sLabel: "Outputs differ from GitHub mirror — " +
@@ -2057,6 +2067,19 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedSteps.delete(-1);
         } else {
             _dictUiState.setExpandedSteps.add(-1);
+        }
+        fnRenderStepList();
+    }
+
+    function fnToggleEnvelopeSection(sSectionKey) {
+        // Envelope sections (Software / Artifacts / Determinism /
+        // Syncs) expand independently; the Set is mutated in place —
+        // the render context holds it by reference.
+        var setOpen = _dictUiState.setExpandedEnvelopeSections;
+        if (setOpen.has(sSectionKey)) {
+            setOpen.delete(sSectionKey);
+        } else {
+            setOpen.add(sSectionKey);
         }
         fnRenderStepList();
     }
@@ -3637,6 +3660,7 @@ const PipeleyenApp = (function () {
         fnToggleDepsExpand: fnToggleDepsExpand,
         fnToggleStepExpand: fnToggleStepExpand,
         fnToggleWorkflowRowExpand: fnToggleWorkflowRowExpand,
+        fnToggleEnvelopeSection: fnToggleEnvelopeSection,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,

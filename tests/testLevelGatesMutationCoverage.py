@@ -265,7 +265,7 @@ def test_fdictLevel2Gaps_subset_failure_keeps_level2_false(tmp_path):
     assert dictGaps["bAtLeastLevel1"] is True
     assert dictGaps["bGithubFullySynced"] is False
     assert dictGaps["bZenodoFullySynced"] is False
-    assert dictGaps["bAiDeclarationStepPresent"] is True
+    assert dictGaps["bAiDeclarationAttested"] is True
     assert dictGaps["bArxivFullySynced"] is True
     assert dictGaps["bAtLeastLevel2"] is False
 

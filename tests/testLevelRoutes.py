@@ -88,7 +88,7 @@ def test_level2_readiness_returns_iaics_level_and_gaps(fixtureClient):
     dictGaps = dictBody["dictLevel2Gaps"]
     for sKey in (
         "bAtLeastLevel1", "bGithubFullySynced",
-        "bZenodoFullySynced", "bAiDeclarationStepPresent",
+        "bZenodoFullySynced", "bAiDeclarationAttested",
         "bAtLeastLevel2",
     ):
         assert sKey in dictGaps

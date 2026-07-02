@@ -151,12 +151,17 @@ pattern wholesale.
 
 - L2 blocker state lives at `_dictWorkflowState.dictBlockersByStepLevel2`
   (populated from each poll's `listLevel2Blockers`). Criteria:
-  `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`
-  (per-step); `github-verify-stale`, `zenodo-verify-stale`,
-  `missing-ai-declaration-step`, `arxiv-not-submitted`,
-  `arxiv-mismatch`, `arxiv-version-stale` (workflow-scope,
-  `iStepIndex=-1`). Workflow-scope blockers render as banner rows
-  above the step list, not as per-step glyphs.
+  `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`,
+  `ai-declaration-unattested` (per-step); `github-verify-stale`,
+  `zenodo-verify-stale`, `missing-ai-declaration-step`,
+  `arxiv-not-submitted`, `arxiv-mismatch`, `arxiv-version-stale`
+  (workflow-scope, `iStepIndex=-1`). Workflow-scope blockers render
+  as banner rows above the step list, not as per-step glyphs. The AI
+  declaration's sign-off is a LEVEL 2 requirement (ruling
+  2026-07-02: the declaration only has meaning at publication) —
+  ai-declaration steps emit no L1 blockers, their L1 cell reads
+  not-applicable (dash), and their attestation counts on their L2
+  cell.
 - L3 blocker state lives at `_dictWorkflowState.dictBlockersByStepLevel3`
   (populated from `listLevel3Blockers`). Per-step criteria:
   `missing-from-manifest`, `script-not-pinned`,
@@ -225,13 +230,18 @@ pattern wholesale.
   aggregate is the scalar `iAICSLevel` rendered by the AICS chip, so
   a Workflow-row L1 check above red step rows is a consistent
   display, and the cell tooltips say so. Collapsed the row shows the
-  same four columns at workflow scope; expanded it renders
-  `dictWorkflowEnvelopeDetail` (declared
-  binaries with version-match and hash lights, envelope artifacts,
-  determinism, remote sync summaries — a never-verified cache
-  renders hollow grey, never green). The AI-declaration criterion is
-  excluded from the header; its home is the AI Declaration
-  interactive step (or the ghost row offering to add one).
+  same columns at workflow scope; expanded it renders
+  `dictWorkflowEnvelopeDetail` as four independently expandable
+  sections — Software, Artifacts, Determinism, Syncs — each with a
+  summary mark on its header. Passing items render the theme-tinted
+  vaibify check (`envelope-check`, colored by `--highlight-color` so
+  it climbs the ladder); failures render warning glyphs; a
+  never-verified cache renders the hollow grey circle, never a
+  passing mark. Repository status has ONE home — the Repos panel —
+  and the Software section links there rather than duplicating it.
+  The AI-declaration criterion is excluded from the header; its home
+  is the AI Declaration interactive step (or the ghost row offering
+  to add one).
 - NO ✗/X status glyphs anywhere — failures and missing items use the
   red warning glyph ⚠; staleness uses orange ⚠ or (per-file) the
   pencil ✎. X-shaped characters are permitted only as close/delete

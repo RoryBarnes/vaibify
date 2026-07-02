@@ -54,21 +54,26 @@ var PipeleyenReposPanel = (function () {
         return "status-running";
     }
 
-    function _fsStatusLabel(dictRepo) {
-        if (dictRepo.bMissing) return "missing";
-        if (dictRepo.bDirty) return "dirty";
-        return "clean";
+    function _fsStatusTooltip(dictRepo) {
+        if (dictRepo.bMissing) {
+            return "Missing — the folder is gone from the " +
+                "workspace; re-clone it in the terminal";
+        }
+        if (dictRepo.bDirty) {
+            return "Uncommitted changes — click Push to commit and " +
+                "push them, or handle them in the terminal";
+        }
+        return "Clean — everything is committed";
     }
 
     function _fsRenderRepoRow(dictRepo) {
         var sDotClass = _fsStatusDotClass(dictRepo);
         var sMissing = dictRepo.bMissing ? " missing" : "";
-        var sBranch = dictRepo.sBranch || "";
-        var sSubtitle = fnEscapeHtml(sBranch) +
-            " &middot; " + _fsStatusLabel(dictRepo);
+        var sSubtitle = fnEscapeHtml(dictRepo.sBranch || "");
         return '<div class="repo-tile' + sMissing +
             '" data-name="' + fnEscapeHtml(dictRepo.sName) + '">' +
-            '<span class="status-dot ' + sDotClass + '"></span>' +
+            '<span class="status-dot ' + sDotClass + '" title="' +
+            fnEscapeHtml(_fsStatusTooltip(dictRepo)) + '"></span>' +
             '<div class="repo-tile-main">' +
             '<div class="repo-tile-name">' +
             fnEscapeHtml(dictRepo.sName) + '</div>' +
@@ -161,9 +166,23 @@ var PipeleyenReposPanel = (function () {
             if (event.target.closest(".repo-push-btn")) {
                 _fnHandlePushClick(sName);
             } else if (event.target.closest(".repo-gear-btn")) {
+                // Without stopPropagation the same click bubbles to
+                // the container landing page's document-level
+                // hide-all-menus handler and closes the menu the
+                // instant it opens.
+                event.stopPropagation();
                 _fnToggleGearMenu(elTile, sName);
             }
         });
+        _fnInstallGearOutsideClickClose();
+    }
+
+    var _bGearOutsideClickBound = false;
+
+    function _fnInstallGearOutsideClickClose() {
+        if (_bGearOutsideClickBound) return;
+        _bGearOutsideClickBound = true;
+        document.addEventListener("click", _fnCloseAllGearMenus);
     }
 
     function _fnToggleGearMenu(elTile, sName) {
