@@ -527,6 +527,30 @@ def test_dropped_websocket_actions_are_reported_not_swallowed():
     )
 
 
+def test_viewer_lease_replaces_a_stale_stored_lease():
+    """FALSIFICATION TARGET (live incident 2026-07-03): single-
+    container mode mints a server-side lease and hands it to the
+    browser in the connect response. The browser MUST replace any
+    lease left in sessionStorage by a previous hub — an old lease
+    survives a reload (sessionStorage persists), so keeping it makes
+    every WebSocket present a foreign lease and fail closed as 1006
+    after a hub restart, which no amount of restarting fixes. The
+    recorder must only skip when the stored lease already equals the
+    served one (a no-op), never merely because SOME lease is held."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sBody = _fsExtractFunctionBlock(
+        sApplication, "_fnRecordViewerLeaseFromConnect",
+    )
+    assert "=== dictConnect.sLeaseId" in sBody, (
+        "the served lease must replace a differing stored lease; the "
+        "skip may only fire when the stored lease already matches"
+    )
+    assert "if (fsGetLeaseId()) return;" not in sBody, (
+        "the unconditional 'already have a lease' guard stranded a "
+        "stale lease across hub restarts (the 1006 lockout)"
+    )
+
+
 def test_output_existence_lookup_joins_the_workdir_exactly_once():
     """FALSIFICATION TARGET (live bug 2026-07-03): the renderer joins
     a relative output path with the step workdir when it builds

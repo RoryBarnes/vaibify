@@ -179,12 +179,18 @@ const PipeleyenApp = (function () {
 
     function _fnRecordViewerLeaseFromConnect(sId, dictConnect) {
         /* Viewer mode mints its lease server-side and returns it on the
-           connect response (the viewer has no claim route). Record it so
-           the pipeline and terminal WebSockets can present it. Never
-           clobber a lease already held: in hub mode the claim path has
-           already recorded one and the connect response carries none. */
+           connect response (the viewer has no claim route). The served
+           lease is AUTHORITATIVE: it must replace any lease left in
+           sessionStorage by a previous hub process, or every
+           WebSocket presents a foreign lease and fails closed as 1006
+           after a hub restart (live incident 2026-07-03 — a reload
+           preserves sessionStorage, so the stale lease survived every
+           restart). Hub-mode connect responses carry no lease
+           (sLeaseId ""), so the first guard leaves the claim-recorded
+           lease untouched; the second skips a redundant re-record when
+           the stored lease already matches. */
         if (!dictConnect || !dictConnect.sLeaseId) return;
-        if (fsGetLeaseId()) return;
+        if (fsGetLeaseId() === dictConnect.sLeaseId) return;
         var sName = PipeleyenContainerManager
             .fsGetSelectedContainerName() || sId;
         fnRecordClaimedLease(sName, dictConnect.sLeaseId);
