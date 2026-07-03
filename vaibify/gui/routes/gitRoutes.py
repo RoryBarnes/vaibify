@@ -28,6 +28,8 @@ import asyncio
 import datetime
 import time
 
+from typing import List, Optional
+
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -41,6 +43,7 @@ from .. import (
 from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
 from ..routeContext import ffilesForWorkflow
+from ...reproducibility.manifestPaths import flistStepDeclarationRepoPaths
 
 
 F_FETCH_CACHE_SECONDS = 30.0
@@ -72,8 +75,27 @@ _DICT_LAST_FETCH = {}
 
 
 class CommitCanonicalRequest(BaseModel):
-    """Body for ``POST /api/git/{id}/commit-canonical``."""
+    """Body for ``POST /api/git/{id}/commit-canonical``.
+
+    ``listOnlyPaths`` optionally narrows the commit to a subset of
+    the canonical needs-commit list (e.g. the AI declaration file's
+    dedicated button). The server-derived canonical list stays
+    authoritative: requested paths outside it are ignored, so the
+    filter can narrow the commit but never widen it.
+    """
     sCommitMessage: str = ""
+    listOnlyPaths: Optional[List[str]] = None
+
+
+class UntrackAiDeclarationRequest(BaseModel):
+    """Body for ``POST /api/git/{id}/untrack-ai-declaration``.
+
+    ``sPath`` must be a declaration file declared by an ai-declaration
+    step in the active workflow — the endpoint refuses every other
+    path, so it can remove the declaration from the published record
+    but can never untrack arbitrary repo content.
+    """
+    sPath: str
 
 
 class FetchProjectRepoRequest(BaseModel):
@@ -343,6 +365,11 @@ def _fnRegisterCommitCanonical(app, dictCtx):
             dictEntry["sPath"]
             for dictEntry in dictReport["listNeedsCommit"]
         ]
+        if request.listOnlyPaths is not None:
+            setOnly = set(request.listOnlyPaths)
+            listNeedsCommit = [
+                sPath for sPath in listNeedsCommit if sPath in setOnly
+            ]
         if not listNeedsCommit:
             return _fdictCommitCanonicalSuccess(
                 dictReport["sHeadSha"], 0,
@@ -408,6 +435,94 @@ def _fsDefaultCommitMessage():
         datetime.timezone.utc,
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
     return "[vaibify] workspace state at " + sNow
+
+
+def _fnRegisterUntrackAiDeclaration(app, dictCtx):
+    """Register POST /api/git/{sContainerId}/untrack-ai-declaration."""
+
+    @fnAgentAction("untrack-ai-declaration")
+    @app.post("/api/git/{sContainerId}/untrack-ai-declaration")
+    async def fnUntrackAiDeclaration(
+        sContainerId: str, request: UntrackAiDeclarationRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
+        _fnRequireDeclarationPath(dictWorkflow, request.sPath)
+        docker = dictCtx["docker"]
+        # The removal is committed WITHOUT a pathspec: `git commit --
+        # <path>` records the path's WORKING-TREE content, not the
+        # staged deletion — on a clean file it fails with "nothing to
+        # commit", and on a modified file it silently commits the
+        # file instead of removing it (found by adversarial review
+        # against real git, 2026-07-03). A bare commit is safe only
+        # because an already-dirty index is refused first.
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitDiffCachedQuietInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        if iExit != 0:
+            raise HTTPException(
+                status_code=409,
+                detail="Other changes are already staged in the "
+                       "repo — commit or unstage them first, then "
+                       "retry the removal.",
+            )
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitRemoveCachedInContainer,
+            docker, sContainerId, [request.sPath], sWorkspace=sRepo,
+        )
+        if iExit != 0:
+            raise HTTPException(
+                status_code=409,
+                detail="git rm --cached failed: " + (sOut or "").strip(),
+            )
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitCommitInContainer,
+            docker, sContainerId,
+            "[vaibify] remove AI declaration from the repo",
+            sWorkspace=sRepo,
+        )
+        if iExit != 0:
+            await asyncio.to_thread(
+                containerGit.ftResultGitRestoreStagedInContainer,
+                docker, sContainerId, [request.sPath],
+                sWorkspace=sRepo,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="git commit failed: " + (sOut or "").strip(),
+            )
+        sCommitHash = await asyncio.to_thread(
+            containerGit.fsGitHeadShaInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return {"bSuccess": True, "sCommitHash": sCommitHash}
+
+
+def _fnRequireDeclarationPath(dictWorkflow, sPath):
+    """Raise 403 unless ``sPath`` is a step's declared AI declaration.
+
+    The declaration paths come from the same helper that feeds the
+    canonical tracked-file set, so the endpoint's scope can never
+    widen past what the workflow itself declares. A leading ``:`` is
+    rejected outright: git treats ``:``-prefixed pathspecs as magic
+    (``:(glob)**`` matches every tracked file), and the membership
+    check alone cannot catch it because a hostile workflow.json can
+    declare the magic string as its own sDeclarationFile.
+    """
+    listDeclared = []
+    for dictStep in (dictWorkflow or {}).get("listSteps") or []:
+        listDeclared.extend(flistStepDeclarationRepoPaths(dictStep))
+    if sPath.startswith(":") or sPath not in listDeclared:
+        raise HTTPException(
+            status_code=403,
+            detail="Only an AI declaration file can be untracked "
+                   "through this endpoint.",
+        )
 
 
 def _flistTrackedDirtyPaths(dictGit):
@@ -617,6 +732,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterGitBadges(app, dictCtx)
     _fnRegisterManifestCheck(app, dictCtx)
     _fnRegisterCommitCanonical(app, dictCtx)
+    _fnRegisterUntrackAiDeclaration(app, dictCtx)
     _fnRegisterFetchProjectRepo(app, dictCtx)
     _fnRegisterPullProjectRepo(app, dictCtx)
     _fnRegisterRefreshRemotes(app, dictCtx)

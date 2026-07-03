@@ -20,6 +20,7 @@ var VaibifyManifestCheck = (function () {
         untracked: "new — not yet in git",
         dirty: "modified",
         "staged-only": "staged (not committed)",
+        committed: "committed",
     };
 
     var _S_CANONICAL_HELP =
@@ -83,18 +84,144 @@ var VaibifyManifestCheck = (function () {
         }
     }
 
-    async function _fbCommitCanonical(sContainerId) {
+    async function _fbCommitCanonical(sContainerId, listOnlyPaths) {
+        var dictBody = { sCommitMessage: "" };
+        if (listOnlyPaths) {
+            dictBody.listOnlyPaths = listOnlyPaths;
+        }
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/git/" +
                     encodeURIComponent(sContainerId) +
                     "/commit-canonical",
-                { sCommitMessage: "" }
+                dictBody
             );
             return !!(dictResult && dictResult.bSuccess);
         } catch (error) {
             return false;
         }
+    }
+
+    function _fsRenderScopedDialogHtml(dictEntry) {
+        return '<div class="manifest-check-dialog">' +
+            '<h2>Commit the AI declaration</h2>' +
+            '<p>The declaration is a canonical file: committing ' +
+            'and pushing it is what makes it part of the published ' +
+            'record.</p>' +
+            _fsRenderFileList([dictEntry]) +
+            '<div class="manifest-check-buttons">' +
+            '<button class="btn" data-action="cancel">Cancel</button>' +
+            '<button class="btn btn-primary" data-action="commit">' +
+            'Commit this file</button>' +
+            '</div></div>';
+    }
+
+    async function fsCommitSinglePath(sContainerId, sPath) {
+        // Scoped variant for dedicated buttons: checks the repo and
+        // offers to commit ONLY sPath. Returns "clean" (already
+        // committed), "committed", "cancelled", or "failed".
+        if (!sContainerId || !sPath) return "failed";
+        var dictReport;
+        try {
+            dictReport = await VaibifyApi.fdictGet(
+                "/api/git/" + encodeURIComponent(sContainerId) +
+                "/manifest-check");
+        } catch (error) {
+            return "failed";
+        }
+        if (!dictReport || !dictReport.bIsRepo) return "failed";
+        var listMatch = (dictReport.listNeedsCommit || []).filter(
+            function (dictEntry) { return dictEntry.sPath === sPath; }
+        );
+        if (listMatch.length === 0) return "clean";
+        return _fsPromptScopedCommit(
+            listMatch[0], sContainerId, sPath);
+    }
+
+    function _fsPromptScopedCommit(dictEntry, sContainerId, sPath) {
+        return new Promise(function (fnResolve) {
+            var elDialog = document.createElement("div");
+            elDialog.innerHTML = _fsRenderScopedDialogHtml(dictEntry);
+            var elBackdrop = _fnAttachOverlay(elDialog);
+            elDialog.addEventListener("click", async function (event) {
+                var sAction = (event.target.getAttribute &&
+                    event.target.getAttribute("data-action")) || "";
+                if (!sAction) return;
+                if (sAction === "cancel") {
+                    _fnRemoveOverlay(elBackdrop);
+                    fnResolve("cancelled");
+                    return;
+                }
+                if (sAction === "commit") {
+                    event.target.disabled = true;
+                    var bCommitted = await _fbCommitCanonical(
+                        sContainerId, [sPath]);
+                    _fnRemoveOverlay(elBackdrop);
+                    fnResolve(bCommitted ? "committed" : "failed");
+                    return;
+                }
+            });
+        });
+    }
+
+    function _fsRenderRemoveDialogHtml(sPath) {
+        return '<div class="manifest-check-dialog">' +
+            '<h2>Remove the AI declaration from the repo</h2>' +
+            '<p>The file stays on disk, but the removal is ' +
+            'committed to git — the declaration no longer counts ' +
+            'as published, so Level 2 drops until it is committed ' +
+            'again.</p>' +
+            _fsRenderFileList([{ sPath: sPath, sState: "committed" }]) +
+            '<div class="manifest-check-buttons">' +
+            '<button class="btn" data-action="cancel">Cancel</button>' +
+            '<button class="btn btn-primary" data-action="remove">' +
+            'Remove from repo</button>' +
+            '</div></div>';
+    }
+
+    async function _fbUntrackDeclaration(sContainerId, sPath) {
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/git/" + encodeURIComponent(sContainerId) +
+                "/untrack-ai-declaration",
+                { sPath: sPath }
+            );
+            return !!(dictResult && dictResult.bSuccess);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function fsRemoveSinglePath(sContainerId, sPath) {
+        // Scoped inverse of fsCommitSinglePath: confirms, then
+        // commits the removal of ONE declaration file from git
+        // tracking. Returns "removed", "cancelled", or "failed".
+        if (!sContainerId || !sPath) {
+            return Promise.resolve("failed");
+        }
+        return new Promise(function (fnResolve) {
+            var elDialog = document.createElement("div");
+            elDialog.innerHTML = _fsRenderRemoveDialogHtml(sPath);
+            var elBackdrop = _fnAttachOverlay(elDialog);
+            elDialog.addEventListener("click", async function (event) {
+                var sAction = (event.target.getAttribute &&
+                    event.target.getAttribute("data-action")) || "";
+                if (!sAction) return;
+                if (sAction === "cancel") {
+                    _fnRemoveOverlay(elBackdrop);
+                    fnResolve("cancelled");
+                    return;
+                }
+                if (sAction === "remove") {
+                    event.target.disabled = true;
+                    var bRemoved = await _fbUntrackDeclaration(
+                        sContainerId, sPath);
+                    _fnRemoveOverlay(elBackdrop);
+                    fnResolve(bRemoved ? "removed" : "failed");
+                    return;
+                }
+            });
+        });
     }
 
     function _fnPromptUser(dictReport, sContainerId) {
@@ -150,5 +277,7 @@ var VaibifyManifestCheck = (function () {
 
     return {
         fbRunBeforePush: fbRunBeforePush,
+        fsCommitSinglePath: fsCommitSinglePath,
+        fsRemoveSinglePath: fsRemoveSinglePath,
     };
 })();

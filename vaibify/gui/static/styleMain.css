@@ -1104,63 +1104,44 @@ body.aics-level-3 .toolbar-label {
     font-style: italic;
 }
 
+/* Run light vocabulary: hollow grey = never run this session,
+   filled grey = queued, blinking orange = running, red = failed;
+   a successful last run renders the theme-tinted check
+   (.step-status-check) instead of a dot. */
 .step-item .step-status {
     flex-shrink: 0;
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--text-muted);
-}
-
-.step-item .step-status.pass {
-    background: var(--highlight-color);
-    transition: background 0.5s ease;
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
 }
 
 .step-item .step-status.fail {
     background: var(--color-red);
+    border: none;
 }
 
 .step-item .step-status.queued {
-    background: var(--color-orange);
+    background: var(--text-muted);
+    border: none;
 }
 
 .step-item .step-status.running {
     background: var(--color-orange);
+    border: none;
     animation: pulse 1s infinite;
 }
 
 .step-item .step-status.skipped {
     background: var(--text-muted);
-    font-size: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--bg-primary);
-    font-weight: 700;
+    border: none;
 }
 
-.step-item .step-status.partial {
-    background: var(--color-orange);
-}
-
-.step-item .step-status.verified {
-    background: var(--highlight-color);
-    transition: background 0.5s ease;
-}
-
-.script-modified-badge,
-.data-modified-badge {
-    color: var(--color-orange);
-    font-size: 0.85em;
-    margin-left: 4px;
-    cursor: help;
-}
-
-.script-unseeded-badge {
-    color: var(--color-yellow, #d4a017);
-    font-size: 0.85em;
-    margin-left: 4px;
+.step-status-check {
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
     cursor: help;
 }
 
@@ -1174,15 +1155,6 @@ body.aics-level-3 .toolbar-label {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
-}
-
-.step-item .step-actions {
-    display: none;
-    gap: 2px;
-}
-
-.step-item:hover .step-actions {
-    display: flex;
 }
 
 /* Step detail (expandable) */
@@ -5206,6 +5178,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    distinct so future per-criterion secondary affordances (e.g.,
    underline-dotted on stale) can land without touching the glyph
    dispatch. */
+.step-blocker-glyph-l2-declaration,
 .step-blocker-glyph-l2-mirror,
 .step-blocker-glyph-l2-zenodo,
 .step-blocker-glyph-l2-github-stale,
@@ -5311,7 +5284,8 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .step-level-cell,
-.step-regression-cell {
+.step-regression-cell,
+.step-status-cell {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -5357,6 +5331,45 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     border: 1.5px solid var(--text-muted);
 }
 
+/* Declaration git actions (researcher ruling 2026-07-02): commit is
+   the routine action and wears pale blue; removal withdraws the
+   declaration from the published record and wears orange as the
+   danger color. */
+.btn-ai-declaration-commit {
+    background: var(--color-pale-blue);
+    color: var(--bg-primary);
+    border: none;
+}
+
+.btn-ai-declaration-untrack {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    border: none;
+}
+
+/* Attention count on the Repos left-tab: repositories awaiting a
+   track-or-ignore decision, visible without opening the panel. */
+.repo-attention-badge {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+}
+
+/* Muted dash: no requirement applies at this level for this step
+   (per-step L3 on interactive or attestation-only steps). Neither a
+   circle nor a check — there is nothing to attain or to fail. */
+.level-cell-dash {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1;
+}
+
 /* Regression column: empty unless the backend's consolidated
    warning (dictStepLevelWarnings) fires at the lowest non-attained
    level. */
@@ -5381,7 +5394,12 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .level-column-header-cell {
     font-size: 9px;
     color: var(--text-secondary);
-    cursor: default;
+    cursor: help;
+}
+
+/* Left-cluster header over the run checkbox + run light. */
+.run-column-header {
+    margin-right: auto;
 }
 
 /* The expandable workflow row rendered as the first row of
@@ -5411,8 +5429,6 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 
 .envelope-section-title {
     font-weight: 600;
-    margin-top: 8px;
-    margin-bottom: 3px;
     color: var(--text-secondary);
 }
 
@@ -5434,23 +5450,52 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     cursor: help;
 }
 
-.envelope-light-green {
-    background: #4caf50;
-}
-
-.envelope-light-red {
-    background: var(--color-red);
-}
-
-.envelope-light-orange {
-    background: var(--color-orange);
-}
-
 /* Hollow grey = never verified / unknowable; a null sync cache must
-   never render green. */
+   never render a passing mark. */
 .envelope-light-unknown {
     background: transparent;
     border: 1.5px solid var(--text-muted);
+}
+
+/* Passing envelope items carry the theme-tinted check — its color
+   climbs the AICS ladder with --highlight-color. Failures are the
+   warning glyph, never a colored circle. */
+.envelope-check {
+    color: var(--highlight-color);
+    font-weight: 700;
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-warn {
+    color: var(--color-red);
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-warn-orange {
+    color: var(--color-orange);
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.envelope-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 3px 0;
+    user-select: none;
+}
+
+.envelope-section-body {
+    margin-left: 16px;
+}
+
+.envelope-repos-link-row {
+    padding: 3px 0;
+    color: var(--text-secondary);
+    font-size: 12px;
 }
 
 .envelope-binary-name,
@@ -5459,10 +5504,41 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-weight: 600;
 }
 
-.envelope-binary-versions,
-.envelope-binary-purpose,
 .envelope-sync-note {
     color: var(--text-secondary);
+}
+
+/* Row marks right-align into a strip, mirroring the step rows; the
+   fixed-width slots keep the marks and their one-letter column
+   headers vertically aligned. */
+.envelope-row-marks {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.envelope-mark-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+}
+
+.envelope-row-header {
+    display: flex;
+    padding: 1px 0;
+}
+
+.envelope-mark-header {
+    font-size: 9px;
+    color: var(--text-secondary);
+    cursor: help;
+}
+
+/* An empty warning cell offers nothing to hover — no help cursor,
+   no tooltip. */
+.step-regression-cell:empty {
+    cursor: default;
 }
 
 .envelope-empty-note {

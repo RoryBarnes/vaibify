@@ -128,25 +128,39 @@ pattern wholesale.
 ## L1 blocker surfacing
 
 - L1 blocker state lives at `_dictWorkflowState.dictBlockersByStep`
-  (populated from each poll's `listBlockers`). A step's check icon
-  renders only when that map has no entry for the step; not-verified
-  steps get one banner glyph per `sCriterion` (`upstream-modified`,
-  `script-stale`, `axis-not-green`, `attestation-stale`,
-  `user-not-approved`), plus the existing failure-mode glyph on every
-  offending file and dependency edge. Do not introduce an acknowledge
-  affordance in any blocker context — the only path to clear a
-  blocker is `run-step` (or `verify-step` for `user-not-approved`).
+  (populated from each poll's `listBlockers`). Collapsed
+  rows render NO inline blocker glyphs: every warning a step carries
+  (the backend level warning, the dominant L1 blocker's remediation
+  hint, script/output/upstream staleness, unseeded randomness) is
+  consolidated by `fdictRegressionWarning` →
+  `_flistStepWarningReasons` into the single ⚠ column of the level
+  strip, one plain-English tooltip line per reason, deduplicated
+  against the dominant blocker. Red is reserved for genuine failures
+  (`_fbStepWarningIsRed`: backend red, or the red axis glyph meta).
+  The per-file failure-mode glyphs on offending files and dependency
+  edges in the expanded detail are unchanged. The criterion glyph
+  dicts (`_DICT_BLOCKER_CRITERION_GLYPHS`,
+  `_DICT_AXIS_SUBSTATE_GLYPHS`) survive as the tooltip-language +
+  severity source and feed the legend catalog. Do not introduce an
+  acknowledge affordance in any blocker context — the only path to
+  clear a blocker is `run-step` (or `verify-step` for
+  `user-not-approved`).
 
 ## L2 and L3 blocker surfacing
 
 - L2 blocker state lives at `_dictWorkflowState.dictBlockersByStepLevel2`
   (populated from each poll's `listLevel2Blockers`). Criteria:
-  `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`
-  (per-step); `github-verify-stale`, `zenodo-verify-stale`,
-  `missing-ai-declaration-step`, `arxiv-not-submitted`,
-  `arxiv-mismatch`, `arxiv-version-stale` (workflow-scope,
-  `iStepIndex=-1`). Workflow-scope blockers render as banner rows
-  above the step list, not as per-step glyphs.
+  `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`,
+  `ai-declaration-unattested` (per-step); `github-verify-stale`,
+  `zenodo-verify-stale`, `missing-ai-declaration-step`,
+  `arxiv-not-submitted`, `arxiv-mismatch`, `arxiv-version-stale`
+  (workflow-scope, `iStepIndex=-1`). Workflow-scope blockers render
+  as banner rows above the step list, not as per-step glyphs. The AI
+  declaration's sign-off is a LEVEL 2 requirement (ruling
+  2026-07-02: the declaration only has meaning at publication) —
+  ai-declaration steps emit no L1 blockers, their L1 cell reads
+  not-applicable (dash), and their attestation counts on their L2
+  cell.
 - L3 blocker state lives at `_dictWorkflowState.dictBlockersByStepLevel3`
   (populated from `listLevel3Blockers`). Per-step criteria:
   `missing-from-manifest`, `script-not-pinned`,
@@ -158,7 +172,11 @@ pattern wholesale.
   `binaries-not-declared-or-waived`.
 - Every blocker entry carries `iLevel`, `iStepIndex`, `sStepLabel`,
   `sScope`, `sCriterion`, `listOffendingFiles`,
-  `listOffendingUpstreamSteps`, `sRemediationHint`. Glyph tooltips
+  `listOffendingUpstreamSteps`, `sRemediationHint`. Per-step L3
+  entries additionally carry `listFailingCriteria` — the complete
+  failing set behind the single dominant glyph, which the level-cell
+  projection counts so a step failing every criterion reads "none",
+  not a near-complete partial. Glyph tooltips
   prefer `sRemediationHint` (server-supplied per-criterion language)
   over the static-dict `sLabel` fallback. This is enforced by the
   contract test `tests/testStepRendererBlockerGlyphs.py`.
@@ -172,9 +190,19 @@ pattern wholesale.
   "Reproducible ✓" green. Each segment is clickable and scrolls the
   AICS tab to the corresponding readiness card. Logic lives in
   `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
-- Per-step level cells (`scriptStepRenderer.js::_fsBuildStepLevelStrip`)
-  render four columns per step row: a regression-warning column, then
-  L1|L2|L3 (no text in the cells; one column-header row labels them).
+- Each step row has two clusters. LEFT: the execution cluster —
+  the run checkbox (intent: include this step in the next run) and
+  the run light (`_fsBuildStepStatusCell`, FACT and execution-only:
+  queued / running / last-run outcome; it must never fold in
+  verification signals — that was the pre-2026-07 design and it
+  made the light read as a shadow L1). RIGHT: the verification
+  strip (`_fsBuildStepLevelStrip`) — the ⚠ warning column then
+  L1|L2|L3 (no text in the level cells). One column-header row
+  labels both clusters ("Run" on the left; ⚠/L1/L2/L3 on the
+  right), every header with an explanatory title. Step rows carry
+  no hover edit affordance — hand-editing steps is deliberately
+  de-emphasized (right-click context menu remains the one manual
+  entry point; agents edit via the action catalog).
   Each level is computed INDEPENDENTLY (no upward propagation) and
   arrives as a CELL dict (`sState`, `iSatisfied`, `iTotal`,
   `bRegression`). Visual vocabulary: grey filled circle =
@@ -182,36 +210,52 @@ pattern wholesale.
   (activity, nothing satisfied), orange circle = "partial", the
   vaibify favicon image = "attained", hollow outlined grey circle =
   "unknown" (sync verify cache stale — a stale cache must NEVER
-  render attained). First-attainment dates persist in
-  `dictLevelHighWater` in state.json and are never erased.
-- The regression column renders `dictStepLevelWarnings` VERBATIM —
-  the backend gates the warning to the step's lowest non-attained
-  level (a regression at a higher level is suppressed until lower
-  levels pass); red ⚠ only when failed tests underlie it, orange ⚠
-  for staleness/regression. Never derive warning logic client-side
-  for steps.
-- The Workflow row (`fsRenderWorkflowLevelHeader`) is an expandable
-  step-like row: collapsed shows the same four columns at workflow
-  scope; expanded renders `dictWorkflowEnvelopeDetail` (declared
-  binaries with version-match and hash lights, envelope artifacts,
-  determinism, remote sync summaries — a never-verified cache
-  renders hollow grey, never green). The AI-declaration criterion is
-  excluded from the header; its home is the AI Declaration
-  interactive step (or the ghost row offering to add one).
+  render attained), muted dash = "not-applicable" (per-step L3 only:
+  no criterion has a domain on the step — nothing to reproduce must
+  NEVER render as a vacuous attained). First-attainment dates persist
+  in `dictLevelHighWater` in state.json and are never erased.
+- The ⚠ column is the SINGLE consolidated warnings surface for a
+  step (2026-07-02 redesign — see "L1 blocker surfacing"). The
+  backend still gates the LEVEL warning in `dictStepLevelWarnings`
+  to the step's lowest non-attained level (a regression at a higher
+  level is suppressed until lower levels pass) — never re-derive
+  that gating client-side. The frontend composes that entry with the
+  client-known staleness signals into the cell's multi-line tooltip;
+  red ⚠ only when a genuine failure underlies it, orange ⚠ for
+  staleness/regression.
+- The Workflow-wide row (`fsRenderWorkflowLevelHeader`, labeled
+  "Workflow-wide" precisely so it does not read as a summary) is an
+  expandable step-like row. Its cells are NOT an aggregate or summary of the
+  step rows: they cover only the requirements that attach to the
+  workflow as a whole (L1: project repo present; L2: sync-verify
+  freshness + arXiv; L3: the envelope artifacts). The all-steps
+  aggregate is the scalar `iAICSLevel` rendered by the AICS chip, so
+  a Workflow-row L1 check above red step rows is a consistent
+  display, and the cell tooltips say so. Collapsed the row shows the
+  same columns at workflow scope; expanded it renders
+  `dictWorkflowEnvelopeDetail` as four independently expandable
+  sections — Software, Artifacts, Determinism, Syncs — each with a
+  summary mark on its header. Passing items render the theme-tinted
+  vaibify check (`envelope-check`, colored by `--highlight-color` so
+  it climbs the ladder); failures render warning glyphs; a
+  never-verified cache renders the hollow grey circle, never a
+  passing mark. Repository status has ONE home — the Repos panel —
+  and the Software section links there rather than duplicating it.
+  The AI-declaration criterion is excluded from the header; its home
+  is the AI Declaration interactive step (or the ghost row offering
+  to add one).
 - NO ✗/X status glyphs anywhere — failures and missing items use the
-  red warning glyph ⚠; staleness uses orange ⚠ or the pencil ✎.
-  X-shaped characters are permitted only as close/delete BUTTON
-  chrome. `axis-not-green` carries `sSubState`
+  red warning glyph ⚠; staleness uses orange ⚠ or (per-file) the
+  pencil ✎. X-shaped characters are permitted only as close/delete
+  BUTTON chrome. `axis-not-green` carries `sSubState`
   (failed/outputs-missing/outputs-changed/untested) mapped through
-  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing render red ⚠,
-  outputs-changed renders the orange pencil ✎, and untested renders
-  NO banner glyph (the orange status light carries "not yet done").
-  Per-file marks read `dictOffendingFileMarks` ("stale" → orange ✎,
-  "failed"/"missing" → red ⚠).
-- The pencil banner glyph on the step card is suppressed when an L1
-  blocker is active (the `⚠ script-stale` glyph carries the same
-  fact). The per-script pencil badge in the verification panel is
-  preserved — it identifies which script went stale.
+  `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing carry red severity,
+  outputs-changed orange, and untested maps to null (no warning
+  line; the orange L1 partial cell carries "not yet done"). These metas
+  now drive the consolidated ⚠ column's severity and tooltip lines,
+  not inline banner glyphs. Per-file marks read
+  `dictOffendingFileMarks` ("stale" → orange ✎, "failed"/"missing" →
+  red ⚠) and render only in the expanded detail.
 - The `?` button next to the AICS chip opens
   `scriptLegendPanel.js`'s legend modal. It lists every glyph per
   level with live counts of active blockers. The only resolution

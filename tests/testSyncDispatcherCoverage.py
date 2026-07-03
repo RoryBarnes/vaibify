@@ -361,6 +361,25 @@ class TestFtResultPushStagedToGithub:
         assert "rev-parse --short HEAD" in sCommand
         assert "cd '/workspace/proj'" in sCommand
 
+    def test_commit_skipped_when_nothing_staged(self):
+        """FALSIFICATION TARGET (live bug 2026-07-02): with the work
+        already committed (nothing staged), the old unconditional
+        ``git commit`` failed with "nothing to commit" and the ``&&``
+        chain never reached ``git push`` — while the Repos panel
+        toasted success. The commit must be guarded so an
+        already-committed, ahead-of-origin repo still pushes."""
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushStagedToGithub(
+            fake, "cid", "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git diff --cached --quiet || " in sCommand
+        iGuard = sCommand.index("git diff --cached --quiet")
+        iCommit = sCommand.index("commit -m")
+        iPush = sCommand.index(" push ")
+        assert iGuard < iCommit < iPush, (
+            "the staged-check must guard the commit, before the push"
+        )
+
     def test_chained_with_and_operator(self):
         fake = _FakeDockerConnection((0, ""))
         ftResultPushStagedToGithub(

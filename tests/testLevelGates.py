@@ -350,10 +350,10 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bGithubFullySynced",
         "bZenodoFullySynced",
         "bArxivFullySynced",
-        "bAiDeclarationStepPresent",
+        "bAiDeclarationAttested",
         "bAtLeastLevel2",
     }
-    assert dictGaps["bAiDeclarationStepPresent"] is True
+    assert dictGaps["bAiDeclarationAttested"] is True
     assert dictGaps["bGithubFullySynced"] is False
     assert dictGaps["bArxivFullySynced"] is True
 

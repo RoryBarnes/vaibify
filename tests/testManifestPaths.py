@@ -7,6 +7,7 @@ also pin the lockstep contract: anything that breaks here breaks both.
 """
 
 from vaibify.reproducibility.manifestPaths import (
+    flistStepDeclarationRepoPaths,
     fsToRepoRelative,
     fsExtractScriptFromCommand,
     flistExtractStepScripts,
@@ -310,3 +311,31 @@ def test_flistStepStandardsRepoPaths_tolerates_non_dict_category():
         },
     }
     assert flistStepStandardsRepoPaths(dictStep) == ["tests/quant.json"]
+
+
+def test_flistStepDeclarationRepoPaths_only_for_declaration_steps():
+    """The declaration file is canonical ONLY on ai-declaration steps;
+    an ordinary step with a stray sDeclarationFile contributes
+    nothing."""
+    dictDeclarationStep = {
+        "sStepKind": "ai-declaration",
+        "sDeclarationFile": "AI_USAGE.md",
+    }
+    assert flistStepDeclarationRepoPaths(dictDeclarationStep) == [
+        "AI_USAGE.md",
+    ]
+    assert flistStepDeclarationRepoPaths(
+        {"sDeclarationFile": "AI_USAGE.md"}
+    ) == []
+    assert flistStepDeclarationRepoPaths(
+        {"sStepKind": "ai-declaration", "sDeclarationFile": ""}
+    ) == []
+    assert flistStepDeclarationRepoPaths(None) == []
+
+
+def test_flistStepDeclarationRepoPaths_normalizes_container_paths():
+    dictStep = {
+        "sStepKind": "ai-declaration",
+        "sDeclarationFile": "/workspace/AI_USAGE.md",
+    }
+    assert flistStepDeclarationRepoPaths(dictStep) == ["AI_USAGE.md"]

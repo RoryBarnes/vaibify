@@ -285,6 +285,7 @@ def _fnAppendStepTrackedPaths(
         _flistStepOutputRepoPaths(dictStep, dictVars),
         _flistStepStandardsRepoPaths(dictStep),
         _flistStepTestFileRepoPaths(dictStep),
+        manifestPaths.flistStepDeclarationRepoPaths(dictStep),
     ):
         _fnAppendUniqueAllowed(
             listPaths, setSeen, setExcluded, listIncoming,

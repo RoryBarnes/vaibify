@@ -1019,4 +1019,134 @@ def _fdictEntry(sRel):
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal):""",
     ),
+
+    # --- 2026-07-03: declaration/push cosmic-ray survivors (ux/dashboard-clarity) ---
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_generic_verify_failure_returns_the_generic_warning',
+        source='vaibify/gui/routeContext.py',
+        old='    return (\n        "Pushed, but the " + sService + " status check failed — "\n        "the Published (L2) cells stay unknown. See the hub log."\n    )',
+        new='    return ""',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_manifest_warning_requires_both_filenotfound_and_manifest',
+        source='vaibify/gui/routeContext.py',
+        old='    if (isinstance(error, FileNotFoundError)\n            and "manifest" in str(error).lower()):',
+        new='    if (isinstance(error, FileNotFoundError)\n            or "manifest" in str(error).lower()):',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_catalog_entry_is_user_only',
+        source='vaibify/gui/actionCatalog.py',
+        old='     "sPath": "/api/git/{sContainerId}/untrack-ai-declaration",\n     "bAgentSafe": False,',
+        new='     "sPath": "/api/git/{sContainerId}/untrack-ai-declaration",\n     "bAgentSafe": True,',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_remove_cached_with_no_paths_issues_no_git_command',
+        source='vaibify/gui/containerGit.py',
+        old='    route-level filter must not be the only wall.\n    """\n    if not listFilePaths:\n        return (0, "")',
+        new='    route-level filter must not be the only wall.\n    """\n    if listFilePaths is None:\n        return (0, "")',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_rm_failure_detail_carries_git_output',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='                detail="git rm --cached failed: " + (sOut or "").strip(),',
+        new='                detail="git rm --cached failed: " + (sOut and "").strip(),',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_commit_failure_detail_carries_git_output',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='                detail="git commit failed: " + (sOut or "").strip(),',
+        new='                detail="git commit failed: " + (sOut and "").strip(),',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_after_push_gate_is_exact_equality_not_ordering',
+        source='vaibify/gui/routes/repoRoutes.py',
+        old='    if sRepoPath != "/workspace/" + sRepoName:',
+        new='    if sRepoPath > "/workspace/" + sRepoName:',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_files_response_carries_verify_warning',
+        source='vaibify/gui/routes/repoRoutes.py',
+        old='        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)\n        fnBumpSyncEpoch(dictCtx, sContainerId)\n        if dictResult.get("bSuccess"):',
+        new='        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)\n        fnBumpSyncEpoch(dictCtx, sContainerId)\n        if not dictResult.get("bSuccess"):',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_unattested_blocker_requires_a_declaration_step',
+        source='vaibify/reproducibility/levelGates.py',
+        old='        if fbStepIsAiDeclaration(dictStep)\n        and not fbStepUserApproved(dictStep)',
+        new='        if fbStepIsAiDeclaration(dictStep)\n        or not fbStepUserApproved(dictStep)',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_attested_check_fails_closed_on_non_dict_workflow',
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not isinstance(dictWorkflow, dict):\n        return False\n    bFound = False',
+        new='    if not isinstance(dictWorkflow, dict):\n        return True\n    bFound = False',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_l3_projection_skips_workflow_scope_entries',
+        source='vaibify/reproducibility/levelGates.py',
+        old='        if not (isinstance(iStepIndex, int) and iStepIndex >= 0):\n            continue\n        listFailing = dictEntry.get("listFailingCriteria") or [',
+        new='        if not (isinstance(iStepIndex, int) and iStepIndex >= 0):\n            break\n        listFailing = dictEntry.get("listFailingCriteria") or [',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_declaration_step_l2_counts_are_exact',
+        source='vaibify/reproducibility/levelGates.py',
+        old='        if "ai-declaration-unattested" not in setCriteria:\n            iSatisfied += 1',
+        new='        if "ai-declaration-unattested" not in setCriteria:\n            iSatisfied += 2',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_counts_zero_without_repo',
+        source='vaibify/reproducibility/levelGates.py',
+        old='        return (0, len(_T_STEP_LEVEL3_CRITERIA))',
+        new='        return (1, len(_T_STEP_LEVEL3_CRITERIA))',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_satisfied_arithmetic_is_subtraction',
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return (iTotal - len(setApplicable & set(setFailing)), iTotal)',
+        new='    return (iTotal >> len(setApplicable & set(setFailing)), iTotal)',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_randomness_criterion_requires_literal_true',
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if dictStep.get("bUnseededRandomnessWarning") is True:\n        setApplicable.add("nondeterminism-undeclared")',
+        new='    if dictStep.get("bUnseededRandomnessWarning") == True:\n        setApplicable.add("nondeterminism-undeclared")',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_binary_reference_reads_the_declared_path',
+        source='vaibify/reproducibility/levelGates.py',
+        old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
+        new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
+        source='vaibify/gui/syncDispatcher.py',
+        old='        f"(git diff --cached --quiet || "\n        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "',
+        new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_commits_staged_changes_then_pushes_real_git',
+        source='vaibify/gui/syncDispatcher.py',
+        old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
+        new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
+    ),
+
+    # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_clean_declaration_really_untracks_real_git',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo,\n        )',
+        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo, listFilePaths=[request.sPath],\n        )',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_modified_declaration_untracks_not_commits_real_git',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo,\n        )',
+        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo, listFilePaths=[request.sPath],\n        )',
+    ),
+    Falsification(
+        nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_refuses_when_other_changes_staged_real_git',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if iExit != 0:',
+        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if False and iExit != 0:',
+    ),
 ]

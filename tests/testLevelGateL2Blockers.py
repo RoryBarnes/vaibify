@@ -339,6 +339,33 @@ def testAiDeclarationPresentSuppressesWorkflowScope(tmp_path):
     assert listDecl == []
 
 
+def testUnattestedAiDeclarationFiresPerStepLevel2Blocker(tmp_path):
+    """RULING 2026-07-02: the declaration's sign-off is a LEVEL 2
+    requirement (it only has meaning at publication). A present but
+    unattested declaration step must fire a per-step L2 blocker on
+    its own row — and it no longer participates in L1 at all."""
+    sProjectRepo = str(tmp_path)
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": _fdictFreshGithubCache()["github"],
+        "zenodo": _fdictFreshZenodoCache()["zenodo"],
+    })
+    dictDecl = _fdictAiDeclarationStep()
+    dictDecl["dictVerification"]["sUser"] = "untested"
+    dictWorkflow = {
+        "listSteps": [_fdictGreenStep(sName="A"), dictDecl],
+    }
+    listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+    listUnattested = [
+        dictEntry for dictEntry in listBlockers
+        if dictEntry["sCriterion"] == "ai-declaration-unattested"
+    ]
+    assert len(listUnattested) == 1
+    assert listUnattested[0]["iLevel"] == 2
+    assert listUnattested[0]["sScope"] == "step"
+    assert listUnattested[0]["iStepIndex"] == 1
+    assert listUnattested[0]["sRemediationHint"]
+
+
 # ------------------------------------------------------------------------
 # Composition rules
 # ------------------------------------------------------------------------

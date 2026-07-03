@@ -54,21 +54,26 @@ var PipeleyenReposPanel = (function () {
         return "status-running";
     }
 
-    function _fsStatusLabel(dictRepo) {
-        if (dictRepo.bMissing) return "missing";
-        if (dictRepo.bDirty) return "dirty";
-        return "clean";
+    function _fsStatusTooltip(dictRepo) {
+        if (dictRepo.bMissing) {
+            return "Missing — the folder is gone from the " +
+                "workspace; re-clone it in the terminal";
+        }
+        if (dictRepo.bDirty) {
+            return "Uncommitted changes — click Push to commit and " +
+                "push them, or handle them in the terminal";
+        }
+        return "Clean — everything is committed";
     }
 
     function _fsRenderRepoRow(dictRepo) {
         var sDotClass = _fsStatusDotClass(dictRepo);
         var sMissing = dictRepo.bMissing ? " missing" : "";
-        var sBranch = dictRepo.sBranch || "";
-        var sSubtitle = fnEscapeHtml(sBranch) +
-            " &middot; " + _fsStatusLabel(dictRepo);
+        var sSubtitle = fnEscapeHtml(dictRepo.sBranch || "");
         return '<div class="repo-tile' + sMissing +
             '" data-name="' + fnEscapeHtml(dictRepo.sName) + '">' +
-            '<span class="status-dot ' + sDotClass + '"></span>' +
+            '<span class="status-dot ' + sDotClass + '" title="' +
+            fnEscapeHtml(_fsStatusTooltip(dictRepo)) + '"></span>' +
             '<div class="repo-tile-main">' +
             '<div class="repo-tile-name">' +
             fnEscapeHtml(dictRepo.sName) + '</div>' +
@@ -161,9 +166,23 @@ var PipeleyenReposPanel = (function () {
             if (event.target.closest(".repo-push-btn")) {
                 _fnHandlePushClick(sName);
             } else if (event.target.closest(".repo-gear-btn")) {
+                // Without stopPropagation the same click bubbles to
+                // the container landing page's document-level
+                // hide-all-menus handler and closes the menu the
+                // instant it opens.
+                event.stopPropagation();
                 _fnToggleGearMenu(elTile, sName);
             }
         });
+        _fnInstallGearOutsideClickClose();
+    }
+
+    var _bGearOutsideClickBound = false;
+
+    function _fnInstallGearOutsideClickClose() {
+        if (_bGearOutsideClickBound) return;
+        _bGearOutsideClickBound = true;
+        document.addEventListener("click", _fnCloseAllGearMenus);
     }
 
     function _fnToggleGearMenu(elTile, sName) {
@@ -227,15 +246,39 @@ var PipeleyenReposPanel = (function () {
         );
     }
 
+    function _fnToastPushOutcome(dictResult, sSuccessText) {
+        // A push can succeed while its follow-up remote status check
+        // fails (e.g. no manifest yet); the backend reports that in
+        // sPostPushVerifyWarning and the researcher must see it, or
+        // "pushed" and "L2 still unknown" look like a contradiction.
+        PipeleyenApp.fnShowToast(sSuccessText, "success");
+        var sWarning = dictResult.sPostPushVerifyWarning || "";
+        if (sWarning) {
+            PipeleyenApp.fnShowToast(sWarning, "warning");
+        }
+        _fnRefreshNow();
+    }
+
+    function _fbPushSucceeded(dictResult) {
+        // The push routes return HTTP 200 with bSuccess false on git
+        // failures; the toast must relay the git message, never
+        // claim a success the push did not earn.
+        if (dictResult && dictResult.bSuccess) return true;
+        var sMessage = ((dictResult && dictResult.sMessage) || "")
+            .trim() || "unknown error — check the hub log";
+        PipeleyenApp.fnShowToast("Push failed: " + sMessage, "error");
+        return false;
+    }
+
     async function _fnPostPushStaged(sName, sMessage) {
         try {
-            await VaibifyApi.fdictPost(
+            var dictResult = await VaibifyApi.fdictPost(
                 _fsApiBase() + "/" + encodeURIComponent(sName) +
                 "/push-staged",
                 {sCommitMessage: sMessage}
             );
-            PipeleyenApp.fnShowToast("Pushed to remote.", "success");
-            _fnRefreshNow();
+            if (!_fbPushSucceeded(dictResult)) return;
+            _fnToastPushOutcome(dictResult, "Pushed to remote.");
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 "Push failed: " + error.message, "error"
@@ -459,15 +502,14 @@ var PipeleyenReposPanel = (function () {
 
     async function _fnPostPushFiles(sName, sMessage, listPaths) {
         try {
-            await VaibifyApi.fdictPost(
+            var dictResult = await VaibifyApi.fdictPost(
                 _fsApiBase() + "/" + encodeURIComponent(sName) +
                 "/push-files",
                 {sCommitMessage: sMessage, listFilePaths: listPaths}
             );
-            PipeleyenApp.fnShowToast(
-                "Pushed files to remote.", "success"
-            );
-            _fnRefreshNow();
+            if (!_fbPushSucceeded(dictResult)) return;
+            _fnToastPushOutcome(
+                dictResult, "Pushed files to remote.");
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 "Push failed: " + error.message, "error"
@@ -542,7 +584,34 @@ var PipeleyenReposPanel = (function () {
             listUndecided: dictStatus.listUndecided || [],
         };
         fnRender();
+        _fnUpdateRepoTabBadge();
         _fnPromptForUndecided(_dictCachedStatus.listUndecided);
+    }
+
+    function _fnUpdateRepoTabBadge() {
+        // Surface repo attention on the tab itself so repository
+        // status is visible without opening the panel.
+        var elTab = document.querySelector(
+            '.left-tab[data-panel="repos"]');
+        if (!elTab) return;
+        var iAttention = (_dictCachedStatus.listUndecided || []).length;
+        var elBadge = elTab.querySelector(".repo-attention-badge");
+        if (iAttention === 0) {
+            if (elBadge) elBadge.remove();
+            return;
+        }
+        elBadge = elBadge || _felCreateRepoBadge(elTab);
+        elBadge.textContent = String(iAttention);
+        elBadge.title = iAttention + (iAttention === 1
+            ? " repository is" : " repositories are") +
+            " waiting for a track-or-ignore decision";
+    }
+
+    function _felCreateRepoBadge(elTab) {
+        var elBadge = document.createElement("span");
+        elBadge.className = "repo-attention-badge";
+        elTab.appendChild(elBadge);
+        return elBadge;
     }
 
     async function fnInit(sContainerId) {

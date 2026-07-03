@@ -152,11 +152,23 @@ from the poll path (`pipelineRoutes.py`) after the per-step level
 states are projected from the blocker lists
 (`levelGates.fdictComputeStepLevelStates` /
 `fdictComputeWorkflowScopeLevelStates`). Levels are INDEPENDENT
-five-state cells (`sState`:
-not-started/none/partial/attained/unknown with
+six-state cells (`sState`:
+not-started/none/partial/attained/unknown/not-applicable with
 `iSatisfied`/`iTotal`/`bRegression`); only "attained" stamps.
+Per-step L3 counts only the criteria whose domain is non-empty on
+the step; "not-applicable" (`iTotal` 0) marks a step with nothing to
+reproduce and never stamps, never regresses, and never renders as
+attained. The workflow header row is NOT an aggregate of the step
+rows — its cells cover only workflow-attached requirements (L1:
+project repo present; L2: sync freshness + arXiv; L3: envelope
+artifacts); the all-steps aggregate is the scalar `fiAICSLevel`
+rendered by the AICS chip, so a workflow L1 check above red step
+rows is a consistent display.
 The poll also emits `dictStepLevelWarnings` (regression/timestamp
-warnings gated server-side to each step's lowest non-attained level)
+warnings gated server-side to each step's lowest non-attained level;
+the frontend's ⚠ column composes this entry with the client-known
+staleness signals into one multi-line tooltip — the LEVEL gating
+stays server-side, the composition is display-only)
 and `dictWorkflowEnvelopeDetail` (declared-binary version/hash
 match, envelope artifacts, determinism, remote sync summaries —
 assembled with zero extra container execs). Invariants: stamps are

@@ -72,6 +72,7 @@ const PipeleyenApp = (function () {
         setExpandedQualitative: new Set(),
         setExpandedQuantitative: new Set(),
         setExpandedIntegrity: new Set(),
+        setExpandedEnvelopeSections: new Set(),
         bShowTimestamps: false,
         iContextStepIndex: -1,
     };
@@ -291,6 +292,7 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedQualitative.clear();
         _dictUiState.setExpandedQuantitative.clear();
         _dictUiState.setExpandedIntegrity.clear();
+        _dictUiState.setExpandedEnvelopeSections.clear();
     }
 
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
@@ -326,6 +328,19 @@ const PipeleyenApp = (function () {
         fnPollAllStepFiles();
         fnStartFileChangePolling();
         PipeleyenTerminal.fnEnsureTab();
+        // The AICS and Repos tabs are container-scoped: without
+        // these two calls they sit in their "connect first" empty
+        // states for the entire workflow session, which is the mode
+        // researchers are actually in.
+        VaibifyAicsTab.fnSetContainerId(sId);
+        PipeleyenReposPanel.fnInit(sId);
+        // Badges otherwise stay empty until a sync action bumps the
+        // epoch mid-session: the per-file remote icons render grey
+        // and the declaration commit/remove buttons gate wrong on
+        // every fresh load. One fetch here seeds them.
+        if (typeof VaibifyGitBadges !== "undefined") {
+            VaibifyGitBadges.fnRefresh(sId);
+        }
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
     }
@@ -1051,6 +1066,8 @@ const PipeleyenApp = (function () {
             iSelectedStepIndex: _dictUiState.iSelectedStepIndex,
             setExpandedSteps: _dictUiState.setExpandedSteps,
             setExpandedDeps: _dictUiState.setExpandedDeps,
+            setExpandedEnvelopeSections:
+                _dictUiState.setExpandedEnvelopeSections,
             setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
             setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
@@ -1068,9 +1085,7 @@ const PipeleyenApp = (function () {
             dictDiscoveredOutputs: _dictWorkflowState.dictDiscoveredOutputs,
             dictWorkflow: _dictWorkflowState.dictWorkflow,
             sUserName: _dictSessionState.sUserName,
-            fsComputeStepDotState: fsComputeStepDotState,
             fsComputeStepLabel: fsComputeStepLabel,
-            fsBuildWarningBadge: fsBuildWarningBadge,
             fsResolveTemplate: fsResolveTemplate,
             fsJoinPath: fsJoinPath,
             fsShortenPath: fsShortenPath,
@@ -1106,7 +1121,6 @@ const PipeleyenApp = (function () {
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
             fsBuildFileMarkGlyph: fsBuildFileMarkGlyph,
-            fbBlockerBannerRendersPencil: fbBlockerBannerRendersPencil,
             fsBlockerHintForStep: fsBlockerHintForStep,
             fsBlockerHintForFile: fsBlockerHintForFile,
             fsLevelCellState: fsLevelCellState,
@@ -1191,7 +1205,10 @@ const PipeleyenApp = (function () {
     function _fsWorkflowHeaderSignature() {
         // Every input the workflow-level header row reads. Including
         // the workflow-scope L2 blocker keeps the header tooltip in
-        // sync with the dominant remediation hint.
+        // sync with the dominant remediation hint. The envelope
+        // section-expansion set MUST be in here: a toggle that does
+        // not move this signature is silently skipped by the
+        // incremental renderer and the click appears to do nothing.
         return JSON.stringify([
             _dictWorkflowState.dictWorkflowScopeLevels,
             _dictWorkflowState.dictWorkflowLevelHighWater,
@@ -1201,6 +1218,8 @@ const PipeleyenApp = (function () {
                 null,
             _dictWorkflowState.dictWorkflowEnvelopeDetail,
             _dictUiState.setExpandedSteps.has(-1),
+            Array.from(
+                _dictUiState.setExpandedEnvelopeSections).sort(),
         ]);
     }
 
@@ -1258,6 +1277,22 @@ const PipeleyenApp = (function () {
         ];
     }
 
+    function _fsDeclarationBadgeSlice(step) {
+        // The declaration commit/remove buttons gate on the file's
+        // git badge at render time; the hash must move when the
+        // badge does, or the incremental path leaves the stale
+        // commit-only card on screen (the same signature-omission
+        // class as _fsExpansionSliceForStep documents).
+        if (!step || step.sStepKind !== "ai-declaration") return "";
+        var sFile = (step.sDeclarationFile || "").trim();
+        if (!sFile || typeof VaibifyGitBadges === "undefined") {
+            return "";
+        }
+        var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+            sFile, "");
+        return (dictBadges && dictBadges.sGithub) || "";
+    }
+
     function _fsComputeStepRenderHash(step, iIndex, dictContext, dictVars) {
         // The hash captures every render-affecting input
         // fsRenderStepItem reads: the step object itself plus the
@@ -1268,6 +1303,7 @@ const PipeleyenApp = (function () {
             + "\x01" + (dictContext.dictStepStatus[iIndex] || "")
             + "\x01" + _fsExpansionSliceForStep(iIndex, dictContext)
             + "\x01" + _fsContextSliceForStep(iIndex, dictContext)
+            + "\x01" + _fsDeclarationBadgeSlice(step)
             + "\x01" + JSON.stringify(dictVars || {});
     }
 
@@ -1502,25 +1538,78 @@ const PipeleyenApp = (function () {
         }
     }
 
-    function fsBuildWarningBadge(step, iIndex) {
-        var sBlockerGlyph = fsBuildL1BlockerBannerGlyph(iIndex);
-        var listWarnings = [];
-        var dictV = step.dictVerification || {};
-        var listMod = dictV.listModifiedFiles || [];
-        if (listMod.length > 0) {
-            var sNames = listMod.map(function (s) {
-                return s.split("/").pop();
-            }).join(", ");
-            listWarnings.push("Modified: " + sNames);
+    function _flistStepWarningReasons(iStepIndex) {
+        // Every reason the ⚠ column should report for one step, one
+        // plain-English line each. The backend level warning comes
+        // first (it is still gated server-side to the lowest
+        // non-attained level); the step staleness signals follow.
+        // Signals already voiced by the step's dominant L1 blocker
+        // hint are skipped so the tooltip never repeats itself.
+        var listReasons = [];
+        var dictBackend = (_dictWorkflowState.dictStepLevelWarnings ||
+            {})[String(iStepIndex)] || null;
+        if (dictBackend && dictBackend.iWarningLevel !== null &&
+                dictBackend.sWarningHint &&
+                dictBackend.sWarningHint.indexOf(
+                    "timestamp order") === -1) {
+            // The backend's generic timestamp-order hint is dropped:
+            // the specific staleness lines below say the same thing
+            // with the actual cause named.
+            listReasons.push(dictBackend.sWarningHint);
         }
-        if (fbAnyDepTimingStale(iIndex)) {
-            listWarnings.push(
-                "Upstream changed; rerun to re-verify");
+        var dictBlocker =
+            _dictWorkflowState.dictBlockersByStep[iStepIndex];
+        var sBlockerCriterion = dictBlocker
+            ? dictBlocker.sCriterion : "";
+        if (dictBlocker) {
+            var dictMeta = _fdictBannerGlyphMeta(dictBlocker);
+            if (dictMeta) {
+                listReasons.push(
+                    dictBlocker.sRemediationHint || dictMeta.sLabel);
+            }
         }
-        if (listWarnings.length === 0) return sBlockerGlyph;
-        var sTooltip = fnEscapeHtml(listWarnings.join("\n"));
-        return sBlockerGlyph + '<span class="data-modified-badge" ' +
-            'title="' + sTooltip + '">&#9888;</span>';
+        var dictStep = ((_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [])[iStepIndex] || {};
+        var dictVerify = dictStep.dictVerification || {};
+        if (_dictWorkflowState.dictScriptModified[iStepIndex] ===
+                "modified" && sBlockerCriterion !== "script-stale") {
+            listReasons.push("You edited this step's script after " +
+                "its outputs were made — re-run the step");
+        }
+        var listModified = dictVerify.listModifiedFiles || [];
+        if (listModified.length > 0) {
+            listReasons.push("Output files changed after you " +
+                "verified: " + listModified.map(function (sPath) {
+                    return sPath.split("/").pop();
+                }).join(", ") + " — re-run or re-verify");
+        }
+        if (fbAnyDepTimingStale(iStepIndex) &&
+                sBlockerCriterion !== "upstream-modified") {
+            listReasons.push("An earlier step's outputs changed — " +
+                "re-run to stay consistent");
+        }
+        if (dictVerify.bUnseededRandomnessWarning === true) {
+            listReasons.push("Unseeded randomness detected — add a " +
+                "seed so the run is reproducible");
+        }
+        return listReasons;
+    }
+
+    function _fbStepWarningIsRed(iStepIndex) {
+        // Red is reserved for genuine failures: the backend's
+        // failed-tests warning, or an L1 blocker whose glyph meta is
+        // the red axis warning (failed / outputs-missing).
+        var dictBackend = (_dictWorkflowState.dictStepLevelWarnings ||
+            {})[String(iStepIndex)] || null;
+        if (dictBackend && dictBackend.sWarningSeverity === "red") {
+            return true;
+        }
+        var dictBlocker =
+            _dictWorkflowState.dictBlockersByStep[iStepIndex];
+        if (!dictBlocker) return false;
+        var dictMeta = _fdictBannerGlyphMeta(dictBlocker);
+        return Boolean(dictMeta) &&
+            dictMeta.sClass === "step-blocker-glyph-axis";
     }
 
     var _DICT_BLOCKER_CRITERION_GLYPHS = {
@@ -1536,7 +1625,8 @@ const PipeleyenApp = (function () {
         },
         "axis-not-green": {
             sIcon: "⚠",
-            sLabel: "Tests are not green; re-run to clear blocker",
+            sLabel: "Some tests are not verified — re-run to clear " +
+                "the blocker",
             sClass: "step-blocker-glyph-axis",
         },
         "attestation-stale": {
@@ -1578,6 +1668,12 @@ const PipeleyenApp = (function () {
     };
 
     var _DICT_L2_BLOCKER_GLYPHS = {
+        "ai-declaration-unattested": {
+            sIcon: "—",
+            sLabel: "AI declaration not yet attested — open the " +
+                "step and verify it",
+            sClass: "step-blocker-glyph-l2-declaration",
+        },
         "not-in-github-mirror": {
             sIcon: "⚠",
             sLabel: "Outputs differ from GitHub mirror — " +
@@ -1695,20 +1791,6 @@ const PipeleyenApp = (function () {
         },
     };
 
-    function fsBuildL1BlockerBannerGlyph(iIndex) {
-        var dictEntry = _dictWorkflowState.dictBlockersByStep[iIndex];
-        if (!dictEntry) return "";
-        var dictMeta = _fdictBannerGlyphMeta(dictEntry);
-        if (!dictMeta) return "";
-        // Section G: prefer the backend's per-criterion remediation
-        // hint (Stage 3 schema field) over the static glyph label so
-        // the tooltip language stays in lock-step with the gate.
-        var sTooltip = dictEntry.sRemediationHint || dictMeta.sLabel;
-        return '<span class="step-blocker-glyph ' + dictMeta.sClass +
-            '" title="' + fnEscapeHtml(sTooltip) + '">' +
-            dictMeta.sIcon + '</span>';
-    }
-
     function _fdictBannerGlyphMeta(dictEntry) {
         // ``axis-not-green`` dispatches through the sub-state dict
         // when the backend supplies ``sSubState``; the static entry
@@ -1719,18 +1801,6 @@ const PipeleyenApp = (function () {
             return _DICT_AXIS_SUBSTATE_GLYPHS[dictEntry.sSubState];
         }
         return _DICT_BLOCKER_CRITERION_GLYPHS[dictEntry.sCriterion];
-    }
-
-    function fbBlockerBannerRendersPencil(iStepIndex) {
-        // True when the step's active L1 blocker banner glyph is the
-        // pencil. The step card suppresses its standalone
-        // script-modified pencil in that case so each row carries
-        // exactly one pencil.
-        var dictEntry = _dictWorkflowState.dictBlockersByStep[
-            iStepIndex];
-        if (!dictEntry) return false;
-        var dictMeta = _fdictBannerGlyphMeta(dictEntry);
-        return Boolean(dictMeta) && dictMeta.sIcon === "✎";
     }
 
     var S_L1_FAILURE_GLYPH = "⚠";
@@ -1862,7 +1932,11 @@ const PipeleyenApp = (function () {
         "none": "no requirements met",
         "partial": "partially met",
         "attained": "attained",
-        "unknown": "sync state unknown — refresh remote status",
+        "unknown": "unknown — GitHub/Zenodo have not been checked " +
+            "recently; refresh remote status to find out",
+        "not-applicable":
+            "not applicable — this step has no requirements at " +
+            "this level",
     };
 
     function _fdictLevelStatesForScope(iStepIndex) {
@@ -1906,7 +1980,19 @@ const PipeleyenApp = (function () {
             _DICT_LEVEL_CELL_LABELS[iLevel] + " — " +
                 (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
         ];
-        if (dictCell) {
+        if (iStepIndex < 0) {
+            // The Workflow-wide row covers workflow-wide
+            // requirements only; it is NOT a roll-up of the step
+            // rows. The all-steps aggregate renders as the header
+            // checkmarks and the AICS tab.
+            listParts.push(
+                "These requirements apply to the workflow as a " +
+                "whole, not to any single step. Each step row " +
+                "tracks its own. The overall level is shown by " +
+                "the checkmarks next to the workflow name and in " +
+                "the AICS tab.");
+        }
+        if (dictCell && sState !== "not-applicable") {
             listParts.push(dictCell.iSatisfied + " of " +
                 dictCell.iTotal + " requirements met");
         }
@@ -1917,6 +2003,12 @@ const PipeleyenApp = (function () {
     function _flistAppendLevelTooltipContext(
         listParts, iStepIndex, iLevel, sState
     ) {
+        if (sState === "not-applicable") {
+            // Nothing to attain, regress from, or remediate; a stray
+            // high-water stamp from the vacuous-attainment era must
+            // not resurface here.
+            return listParts;
+        }
         var sFirstAttained = _fdictLevelHighWaterForScope(
             iStepIndex)[String(iLevel)] || "";
         if (sFirstAttained) {
@@ -1941,9 +2033,12 @@ const PipeleyenApp = (function () {
 
     function fiStepNextTargetLevel(iStepIndex) {
         // First rung whose cell is not attained — the rung the step
-        // is currently working toward. 4 when all three are attained.
+        // is currently working toward. A not-applicable rung has no
+        // work to offer, so it never becomes the target. 4 when
+        // every rung is attained or not applicable.
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
-            if (fsLevelCellState(iStepIndex, iLevel) !== "attained") {
+            var sState = fsLevelCellState(iStepIndex, iLevel);
+            if (sState !== "attained" && sState !== "not-applicable") {
                 return iLevel;
             }
         }
@@ -1951,18 +2046,28 @@ const PipeleyenApp = (function () {
     }
 
     function fdictRegressionWarning(iStepIndex) {
-        // Consolidated regression/timing warning for the regression
-        // column. Per-step entries arrive precomputed in
-        // ``dictStepLevelWarnings`` and render verbatim; the workflow
-        // row falls back to the cell-level regression flag when the
-        // poll carries no "-1" entry.
-        var dictEntry = (_dictWorkflowState.dictStepLevelWarnings ||
-            {})[String(iStepIndex)];
-        if (!dictEntry && iStepIndex < 0) {
-            dictEntry = _fdictDeriveWorkflowScopeWarning();
+        // The single ⚠-column entry for one row — every warning a
+        // step carries, consolidated. For steps it composes the
+        // backend level warning (still gated server-side to the
+        // lowest non-attained level) with each staleness signal, one
+        // plain-English line per reason; red is reserved for genuine
+        // failures. The workflow row keeps its backend entry, with
+        // the cell-level regression flag as fallback when the poll
+        // carries no "-1" entry.
+        if (iStepIndex < 0) {
+            var dictScope = (_dictWorkflowState.dictStepLevelWarnings
+                || {})[String(iStepIndex)] ||
+                _fdictDeriveWorkflowScopeWarning();
+            if (!dictScope || !dictScope.sWarningSeverity) return null;
+            return dictScope;
         }
-        if (!dictEntry || !dictEntry.sWarningSeverity) return null;
-        return dictEntry;
+        var listReasons = _flistStepWarningReasons(iStepIndex);
+        if (listReasons.length === 0) return null;
+        return {
+            sWarningSeverity: _fbStepWarningIsRed(iStepIndex)
+                ? "red" : "orange",
+            sWarningHint: listReasons.join("\n"),
+        };
     }
 
     function _fdictDeriveWorkflowScopeWarning() {
@@ -1990,6 +2095,19 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedSteps.delete(-1);
         } else {
             _dictUiState.setExpandedSteps.add(-1);
+        }
+        fnRenderStepList();
+    }
+
+    function fnToggleEnvelopeSection(sSectionKey) {
+        // Envelope sections (Software / Artifacts / Determinism /
+        // Syncs) expand independently; the Set is mutated in place —
+        // the render context holds it by reference.
+        var setOpen = _dictUiState.setExpandedEnvelopeSections;
+        if (setOpen.has(sSectionKey)) {
+            setOpen.delete(sSectionKey);
+        } else {
+            setOpen.add(sSectionKey);
         }
         fnRenderStepList();
     }
@@ -2190,8 +2308,10 @@ const PipeleyenApp = (function () {
         // Populate _dictStepIndexByFilePath so the badge-driven
         // partial render can map "this file's badge changed" to
         // "this step's card needs re-rendering" in O(1). Must cover
-        // every file family that fsRenderStepItem renders a git
-        // badge for: data, plot, step scripts, and test standards.
+        // every file family that fsRenderStepItem reads badge state
+        // for: data, plot, step scripts, test standards, and the AI
+        // declaration file (its commit/remove buttons gate on the
+        // git badge).
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (!step) return;
         var listFileKeys = ["saDataFiles", "saPlotFiles",
@@ -2201,6 +2321,10 @@ const PipeleyenApp = (function () {
                 if (sFile) _dictStepIndexByFilePath[sFile] = iStep;
             });
         });
+        var sDeclarationFile = (step.sDeclarationFile || "").trim();
+        if (sDeclarationFile) {
+            _dictStepIndexByFilePath[sDeclarationFile] = iStep;
+        }
     }
 
     function fbStepFullyPassing(iStep, dictVisited) {
@@ -2326,61 +2450,8 @@ const PipeleyenApp = (function () {
         return iDepMtime <= iMyOutputMtime ? "passed" : "failed";
     }
 
-    function _fsClassifyVerificationSignal(sState) {
-        if (sState === "passed") return "passed";
-        if (sState === "failed" || sState === "error") return "failed";
-        return "untested";
-    }
-
     function fnSetVerificationUserName(sName) {
         _dictSessionState.sUserName = sName || "User";
-    }
-
-    function fsComputeStepDotState(step, iIndex) {
-        var dictVerify = fdictGetVerification(step);
-        var bInteractive = step.bInteractive === true;
-        var bPlotOnly = (step.saDataCommands || []).length === 0;
-        var listModified = dictVerify.listModifiedFiles || [];
-        var bDirty = listModified.length > 0 ||
-            fbAnyUpstreamModified(iIndex) ||
-            _dictWorkflowState.dictScriptModified[iIndex] === "modified";
-        var bHasData = PipeleyenTestManager.fsetGetStepsWithData().has(iIndex) ||
-            !!_dictWorkflowState.dictOutputMtimes[String(iIndex)];
-        if (!bHasData) return "";
-
-        var listSignals = [
-            _fsClassifyVerificationSignal(dictVerify.sUser)];
-        if (!bInteractive && !bPlotOnly) {
-            listSignals.push(_fsClassifyVerificationSignal(
-                fsEffectiveTestState(step)));
-        }
-        var sDeps = fsComputeDepsState(iIndex);
-        if (sDeps !== "none") {
-            listSignals.push(_fsClassifyVerificationSignal(sDeps));
-        }
-
-        var bL1Blocked = !!_dictWorkflowState
-            .dictBlockersByStep[iIndex];
-        return _fsDotStateFromSignals(listSignals, bDirty, bL1Blocked);
-    }
-
-    function _fsDotStateFromSignals(listSignals, bDirty, bL1Blocked) {
-        var bAllPassed = listSignals.every(function (s) {
-            return s === "passed";
-        });
-        var bAnyPassed = listSignals.some(function (s) {
-            return s === "passed";
-        });
-        var bAnyFailed = listSignals.some(function (s) {
-            return s === "failed";
-        });
-        if (bAllPassed && !bL1Blocked) return bDirty ? "partial" : "verified";
-        if (bAllPassed && bL1Blocked) return "partial";
-        if (bAnyPassed) return "partial";
-        // Nothing failed and nothing passed: the signals are merely
-        // untested/pending — work not yet done is orange, not red.
-        if (!bAnyFailed) return "partial";
-        return "fail";
     }
 
     function fiParseUtcTimestamp(sTimestamp) {
@@ -3565,6 +3636,7 @@ const PipeleyenApp = (function () {
         fnToggleDepsExpand: fnToggleDepsExpand,
         fnToggleStepExpand: fnToggleStepExpand,
         fnToggleWorkflowRowExpand: fnToggleWorkflowRowExpand,
+        fnToggleEnvelopeSection: fnToggleEnvelopeSection,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,

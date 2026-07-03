@@ -208,6 +208,16 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Stage and commit the vaibify canonical "
                      "state (workflow.json, markers). "
                      "Args: {sCommitMessage} optional."},
+    {"sName": "untrack-ai-declaration", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/untrack-ai-declaration",
+     "bAgentSafe": False,
+     "sDescription": "Remove the AI declaration file from git "
+                     "tracking (the file stays on disk) and commit "
+                     "the removal. Args: {sPath} required — must be "
+                     "a step's declared declaration file. User-only: "
+                     "withdrawing the declaration from the published "
+                     "record is the researcher's call."},
     {"sName": "init-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/repos/{sContainerId}/init",

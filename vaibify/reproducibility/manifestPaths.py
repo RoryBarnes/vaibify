@@ -35,6 +35,7 @@ __all__ = [
     "fsToRepoRelative",
     "fsExtractScriptFromCommand",
     "flistExtractStepScripts",
+    "flistStepDeclarationRepoPaths",
     "flistStepScriptRepoPaths",
     "flistStepStandardsRepoPaths",
 ]
@@ -169,3 +170,24 @@ def flistStepStandardsRepoPaths(dictStep):
         if sStandardsPath:
             listPaths.append(fsToRepoRelative(sStandardsPath))
     return listPaths
+
+
+def flistStepDeclarationRepoPaths(dictStep):
+    """Return the ai-declaration step's declaration file, repo-relative.
+
+    The declaration is a canonical publication artifact: it must be
+    committed, pushed, and manifest-pinned like every other declared
+    file, so it joins the declared-path set here — the single source
+    of truth for both the manifest envelope and the canonical
+    tracked-files set. The step-kind literal is inlined to keep this
+    module a pure leaf (it matches
+    ``aiDeclarationStep.S_AI_DECLARATION_STEP_KIND``).
+    """
+    if not isinstance(dictStep, dict):
+        return []
+    if dictStep.get("sStepKind") != "ai-declaration":
+        return []
+    sDeclarationPath = (dictStep.get("sDeclarationFile") or "").strip()
+    if not sDeclarationPath:
+        return []
+    return [fsToRepoRelative(sDeclarationPath)]
