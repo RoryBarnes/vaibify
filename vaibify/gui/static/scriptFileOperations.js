@@ -195,8 +195,13 @@ var PipeleyenFileOps = (function () {
         return {
             el: el,
             sCacheKey: sCacheKey,
-            sLookupPath:
-                _fsComposeAbsoluteOrRelative(sResolved, sWorkdir),
+            // data-resolved already carries the renderer's workdir
+            // join (fsRenderDetailItem prepends sWorkdir to relative
+            // output paths). Composing it with the workdir AGAIN
+            // built "XuvEvolution/XuvEvolution/…", the server said
+            // "missing", and every existing file with a repo-relative
+            // step directory rendered red (live bug, 2026-07-03).
+            sLookupPath: sResolved,
             bCachedTrue: bCachedTrue,
             bCachedFalse: bCachedFalse,
             bNeedsLookup: !bCachedTrue && !bCachedFalse,

@@ -492,6 +492,33 @@ def test_repos_panel_push_toasts_are_honest():
     )
 
 
+def test_output_existence_lookup_joins_the_workdir_exactly_once():
+    """FALSIFICATION TARGET (live bug 2026-07-03): the renderer joins
+    a relative output path with the step workdir when it builds
+    data-resolved, and the existence planner then composed the
+    workdir in AGAIN — the server was asked about
+    'XuvEvolution/XuvEvolution/…', answered 'missing', and every
+    existing data file in a repo-relative step directory rendered
+    red with no explanation. The join happens exactly once, in the
+    renderer; the planner must trust data-resolved verbatim."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sItem = _fsExtractFunctionBlock(sRenderer, "fsRenderDetailItem")
+    assert "fsJoinPath(sWorkdir, sResolved)" in sItem, (
+        "the renderer owns the one workdir join for output paths"
+    )
+    sOperations = _fsReadStaticFile("scriptFileOperations.js")
+    sPlanItem = _fsExtractFunctionBlock(
+        sOperations, "_fdictOutputItemForPlan",
+    )
+    assert "sLookupPath: sResolved" in sPlanItem, (
+        "the planner must send data-resolved verbatim"
+    )
+    assert "_fsComposeAbsoluteOrRelative" not in sPlanItem, (
+        "re-composing data-resolved with the workdir double-joins "
+        "relative step directories"
+    )
+
+
 def test_declaration_badge_state_reaches_the_incremental_renderer():
     """FALSIFICATION TARGET (live bug 2026-07-02): the declaration
     buttons gate on the file's git badge, so the incremental renderer
