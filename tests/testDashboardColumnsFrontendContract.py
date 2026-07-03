@@ -402,13 +402,151 @@ def test_syncs_section_is_named_published_copies():
 
 def test_declaration_step_offers_commit_to_repo():
     """The declaration file is canonical; the step body must offer a
-    way to commit it (reusing the manifest-check dialog), or the
-    researcher has no UI path from written-file to published-file."""
+    way to commit it — scoped to THAT file only (the full canonical
+    checklist confused the researcher), and styled pale blue as the
+    routine action (researcher ruling 2026-07-02: commit = pale
+    blue, remove = orange danger)."""
     sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
     assert "btn-ai-declaration-commit" in sRenderer
     sBindings = _fsReadStaticFile("scriptEventBindings.js")
     assert '".btn-ai-declaration-commit"' in sBindings
-    assert "fbRunBeforePush" in sBindings
+    assert "fsCommitSinglePath" in sBindings, (
+        "the declaration button must use the scoped single-path "
+        "commit, not the full pre-push checklist"
+    )
+    sCheck = _fsReadStaticFile("scriptManifestCheck.js")
+    assert "listOnlyPaths" in sCheck, (
+        "the scoped commit must send listOnlyPaths so the server "
+        "narrows the commit"
+    )
+    sCss = _fsReadStaticFile("styleMain.css")
+    iStart = sCss.find(".btn-ai-declaration-commit")
+    assert iStart != -1
+    assert "--color-pale-blue" in sCss[iStart:iStart + 200], (
+        "the routine commit action is pale blue"
+    )
+
+
+def test_declaration_step_offers_both_commit_and_remove():
+    """Commit and remove coexist (researcher ruling 2026-07-02): an
+    updated declaration needs recommitting even while tracked, so
+    commit is always offered, and removal appears once git tracks
+    the file. Removal is the dangerous action (orange) and goes
+    through the declaration-only endpoint so it can never untrack
+    other files."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sButtons = _fsExtractFunctionBlock(
+        sRenderer, "_fsBuildDeclarationGitButtons",
+    )
+    assert "btn-ai-declaration-commit" in sButtons
+    assert "btn-ai-declaration-untrack" in sButtons
+    sGate = _fsExtractFunctionBlock(
+        sRenderer, "_fbDeclarationFileIsTracked",
+    )
+    for sTrackedState in ('"synced"', '"dirty"', '"drifted"'):
+        assert sTrackedState in sGate, (
+            "every tracked git state must offer removal"
+        )
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert '".btn-ai-declaration-untrack"' in sBindings
+    assert "fsRemoveSinglePath" in sBindings
+    sCheck = _fsReadStaticFile("scriptManifestCheck.js")
+    assert "untrack-ai-declaration" in sCheck, (
+        "removal must call the declaration-scoped endpoint, not a "
+        "general git route"
+    )
+    sCss = _fsReadStaticFile("styleMain.css")
+    iStart = sCss.find(".btn-ai-declaration-untrack")
+    assert iStart != -1
+    assert "--color-orange" in sCss[iStart:iStart + 200], (
+        "the destructive remove action is orange"
+    )
+
+
+def test_repos_panel_push_toasts_are_honest():
+    """FALSIFICATION TARGET (live bug 2026-07-02): the push routes
+    return HTTP 200 with bSuccess false on git failures (an
+    unconditional ``git commit`` hit "nothing to commit" and the
+    push never ran), and the panel toasted "Pushed to remote."
+    anyway — a success the dashboard-is-ground-truth rule forbids.
+    Both push handlers must check bSuccess before claiming success."""
+    sPanel = _fsReadStaticFile("scriptReposPanel.js")
+    sGate = _fsExtractFunctionBlock(sPanel, "_fbPushSucceeded")
+    assert "bSuccess" in sGate
+    assert "error" in sGate, "a failed push must toast an error"
+    sOutcome = _fsExtractFunctionBlock(sPanel, "_fnToastPushOutcome")
+    assert "sPostPushVerifyWarning" in sOutcome, (
+        "a push whose follow-up status check failed must show the "
+        "backend's warning, or 'pushed' and 'L2 unknown' contradict"
+    )
+    for sHandler in ("_fnPostPushStaged", "_fnPostPushFiles"):
+        sBlock = _fsExtractFunctionBlock(sPanel, sHandler)
+        assert "_fbPushSucceeded" in sBlock, (
+            sHandler + " must check the push result before toasting"
+        )
+        assert "_fnToastPushOutcome" in sBlock
+    sSyncManager = _fsReadStaticFile("scriptSyncManager.js")
+    assert "sPostPushVerifyWarning" in sSyncManager, (
+        "the sync-buttons push path must surface the post-push "
+        "verify warning too — it hits the same backend field"
+    )
+
+
+def test_declaration_badge_state_reaches_the_incremental_renderer():
+    """FALSIFICATION TARGET (live bug 2026-07-02): the declaration
+    buttons gate on the file's git badge, so the incremental renderer
+    must (a) map the declaration file to its step in the badge-driven
+    partial-render reverse index and (b) carry the badge state in the
+    step render hash. Missing either leaves the stale commit-only
+    card on screen forever — the researcher hard-refreshed and still
+    saw one button because the card rendered before badges loaded and
+    was never invalidated."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sReverseMap = _fsExtractFunctionBlock(
+        sApplication, "_fnIndexStepFilesIntoReverseMap",
+    )
+    assert "sDeclarationFile" in sReverseMap, (
+        "a declaration badge change must invalidate its step's card"
+    )
+    sHash = _fsExtractFunctionBlock(
+        sApplication, "_fsComputeStepRenderHash",
+    )
+    assert "_fsDeclarationBadgeSlice" in sHash, (
+        "the render hash must move when the declaration badge does"
+    )
+    sSlice = _fsExtractFunctionBlock(
+        sApplication, "_fsDeclarationBadgeSlice",
+    )
+    assert "fdictGetBadgesForFile" in sSlice
+    assert "sGithub" in sSlice
+    sActivate = _fsExtractFunctionBlock(
+        sApplication, "_fnActivateWorkflow",
+    )
+    assert "VaibifyGitBadges.fnRefresh" in sActivate, (
+        "badges must be seeded on workflow activation, or every "
+        "badge consumer gates on an empty map until a sync action"
+    )
+
+
+def test_run_light_success_renders_the_vaibify_check():
+    """A successful last run renders the vaibify check (the favicon,
+    the same mark as an attained level cell — a text glyph reads as
+    foreign), and the never-run state is the hollow circle — the
+    researcher-approved vocabulary."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sCell = _fsExtractFunctionBlock(
+        sRenderer, "_fsBuildStepStatusCell",
+    )
+    assert "step-status-check" in sCell
+    assert "favicon.png" in sCell, (
+        "the success mark must be the vaibify check image, not a "
+        "text glyph"
+    )
+    sCss = _fsReadStaticFile("styleMain.css")
+    iStart = sCss.find(".step-item .step-status {")
+    assert "border: 1.5px solid var(--text-muted)" in (
+        sCss[iStart:iStart + 300]
+    ), "the never-run light must be the hollow grey circle"
 
 
 def test_envelope_software_section_points_at_the_repos_panel():

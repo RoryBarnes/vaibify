@@ -18,7 +18,11 @@ from fastapi.responses import Response
 from .. import containerGit, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictRunRemoteVerifyBlocking,
+    ffilesForWorkflow,
+    fsRefreshVerifyCacheAfterPush,
+)
 from ..pipelineServer import (
     ArxivConfigureRequest,
     DatasetDownloadRequest,
@@ -882,9 +886,16 @@ def _fnRegisterGithubPush(app, dictCtx):
         dictResult = await _fdictRunGithubPush(
             dictCtx, sContainerId, dictWorkflow, sWorkdir, request,
         )
-        fnBumpSyncEpoch(dictCtx, sContainerId)
         if dictResult.get("bSuccess"):
+            sVerifyWarning = await fsRefreshVerifyCacheAfterPush(
+                dictCtx, sContainerId, dictWorkflow, "github",
+            )
+            if sVerifyWarning:
+                dictResult["sPostPushVerifyWarning"] = sVerifyWarning
+            # Record AFTER attaching: the dedupe cache deep-copies,
+            # and a replayed response must carry the same warning.
             _fnRecordRecentPush(tDedupeKey, dictResult, fNow)
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResult
 
 
@@ -1771,16 +1782,6 @@ def _fnValidateVerifyService(sService):
         )
 
 
-def _fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):
-    """Run the synchronous verify call against the remote and return status."""
-    from vaibify.reproducibility import scheduledReverify
-    dictStatus = scheduledReverify.fdictVerifyRemoteService(
-        filesRepo, dictWorkflow, sService,
-    )
-    scheduledReverify.fnWriteSyncStatus(filesRepo, dictStatus)
-    return dictStatus
-
-
 def _fnRaiseVerifyError(errorAny, sService):
     """Translate verify exceptions to HTTPException with redacted detail.
 
@@ -1860,7 +1861,7 @@ def _fnRegisterRemoteVerify(app, dictCtx):
         )
         try:
             return await asyncio.to_thread(
-                _fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
+                fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
                 filesRepo,
             )
         except HTTPException:

@@ -2558,11 +2558,15 @@ I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
     "routes/pipelineRoutes.py": 2132,
-    "routes/syncRoutes.py": 2040,
+    # 2026-07-02: net -1 — the post-push verify hook landed but its
+    # helpers moved to routeContext.py.
+    "routes/syncRoutes.py": 2041,
     "fileStatusManager.py": 1943,
     "workflowManager.py": 1935,
     "pipelineServer.py": 1697,
-    "syncDispatcher.py": 1622,
+    # +5 (2026-07-02): push-staged guards the commit on "anything
+    # staged?" so an already-committed repo still pushes.
+    "syncDispatcher.py": 1627,
     "pipelineRunner.py": 1399,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,

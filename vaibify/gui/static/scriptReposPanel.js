@@ -246,15 +246,39 @@ var PipeleyenReposPanel = (function () {
         );
     }
 
+    function _fnToastPushOutcome(dictResult, sSuccessText) {
+        // A push can succeed while its follow-up remote status check
+        // fails (e.g. no manifest yet); the backend reports that in
+        // sPostPushVerifyWarning and the researcher must see it, or
+        // "pushed" and "L2 still unknown" look like a contradiction.
+        PipeleyenApp.fnShowToast(sSuccessText, "success");
+        var sWarning = dictResult.sPostPushVerifyWarning || "";
+        if (sWarning) {
+            PipeleyenApp.fnShowToast(sWarning, "warning");
+        }
+        _fnRefreshNow();
+    }
+
+    function _fbPushSucceeded(dictResult) {
+        // The push routes return HTTP 200 with bSuccess false on git
+        // failures; the toast must relay the git message, never
+        // claim a success the push did not earn.
+        if (dictResult && dictResult.bSuccess) return true;
+        var sMessage = ((dictResult && dictResult.sMessage) || "")
+            .trim() || "unknown error — check the hub log";
+        PipeleyenApp.fnShowToast("Push failed: " + sMessage, "error");
+        return false;
+    }
+
     async function _fnPostPushStaged(sName, sMessage) {
         try {
-            await VaibifyApi.fdictPost(
+            var dictResult = await VaibifyApi.fdictPost(
                 _fsApiBase() + "/" + encodeURIComponent(sName) +
                 "/push-staged",
                 {sCommitMessage: sMessage}
             );
-            PipeleyenApp.fnShowToast("Pushed to remote.", "success");
-            _fnRefreshNow();
+            if (!_fbPushSucceeded(dictResult)) return;
+            _fnToastPushOutcome(dictResult, "Pushed to remote.");
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 "Push failed: " + error.message, "error"
@@ -478,15 +502,14 @@ var PipeleyenReposPanel = (function () {
 
     async function _fnPostPushFiles(sName, sMessage, listPaths) {
         try {
-            await VaibifyApi.fdictPost(
+            var dictResult = await VaibifyApi.fdictPost(
                 _fsApiBase() + "/" + encodeURIComponent(sName) +
                 "/push-files",
                 {sCommitMessage: sMessage, listFilePaths: listPaths}
             );
-            PipeleyenApp.fnShowToast(
-                "Pushed files to remote.", "success"
-            );
-            _fnRefreshNow();
+            if (!_fbPushSucceeded(dictResult)) return;
+            _fnToastPushOutcome(
+                dictResult, "Pushed files to remote.");
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 "Push failed: " + error.message, "error"

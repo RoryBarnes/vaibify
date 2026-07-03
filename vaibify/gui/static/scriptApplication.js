@@ -334,6 +334,13 @@ const PipeleyenApp = (function () {
         // researchers are actually in.
         VaibifyAicsTab.fnSetContainerId(sId);
         PipeleyenReposPanel.fnInit(sId);
+        // Badges otherwise stay empty until a sync action bumps the
+        // epoch mid-session: the per-file remote icons render grey
+        // and the declaration commit/remove buttons gate wrong on
+        // every fresh load. One fetch here seeds them.
+        if (typeof VaibifyGitBadges !== "undefined") {
+            VaibifyGitBadges.fnRefresh(sId);
+        }
         PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
     }
@@ -1270,6 +1277,22 @@ const PipeleyenApp = (function () {
         ];
     }
 
+    function _fsDeclarationBadgeSlice(step) {
+        // The declaration commit/remove buttons gate on the file's
+        // git badge at render time; the hash must move when the
+        // badge does, or the incremental path leaves the stale
+        // commit-only card on screen (the same signature-omission
+        // class as _fsExpansionSliceForStep documents).
+        if (!step || step.sStepKind !== "ai-declaration") return "";
+        var sFile = (step.sDeclarationFile || "").trim();
+        if (!sFile || typeof VaibifyGitBadges === "undefined") {
+            return "";
+        }
+        var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+            sFile, "");
+        return (dictBadges && dictBadges.sGithub) || "";
+    }
+
     function _fsComputeStepRenderHash(step, iIndex, dictContext, dictVars) {
         // The hash captures every render-affecting input
         // fsRenderStepItem reads: the step object itself plus the
@@ -1280,6 +1303,7 @@ const PipeleyenApp = (function () {
             + "\x01" + (dictContext.dictStepStatus[iIndex] || "")
             + "\x01" + _fsExpansionSliceForStep(iIndex, dictContext)
             + "\x01" + _fsContextSliceForStep(iIndex, dictContext)
+            + "\x01" + _fsDeclarationBadgeSlice(step)
             + "\x01" + JSON.stringify(dictVars || {});
     }
 
@@ -2284,8 +2308,10 @@ const PipeleyenApp = (function () {
         // Populate _dictStepIndexByFilePath so the badge-driven
         // partial render can map "this file's badge changed" to
         // "this step's card needs re-rendering" in O(1). Must cover
-        // every file family that fsRenderStepItem renders a git
-        // badge for: data, plot, step scripts, and test standards.
+        // every file family that fsRenderStepItem reads badge state
+        // for: data, plot, step scripts, test standards, and the AI
+        // declaration file (its commit/remove buttons gate on the
+        // git badge).
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (!step) return;
         var listFileKeys = ["saDataFiles", "saPlotFiles",
@@ -2295,6 +2321,10 @@ const PipeleyenApp = (function () {
                 if (sFile) _dictStepIndexByFilePath[sFile] = iStep;
             });
         });
+        var sDeclarationFile = (step.sDeclarationFile || "").trim();
+        if (sDeclarationFile) {
+            _dictStepIndexByFilePath[sDeclarationFile] = iStep;
+        }
     }
 
     function fbStepFullyPassing(iStep, dictVisited) {

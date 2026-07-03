@@ -112,9 +112,10 @@ var VaibifyLegendPanel = (function () {
         {
             sIcon: "●", sClass: "aics-legend-orange-light-sample",
             sLabel: "Run light (beside each step's checkbox) — " +
-                "execution only: orange = queued or running, theme " +
-                "color = last run succeeded, red = last run " +
-                "failed, grey = not run in this session",
+                "execution only: hollow grey = not run this " +
+                "session, filled grey = queued, blinking orange = " +
+                "running, theme-colored check = last run " +
+                "succeeded, red = last run failed",
         },
         {
             sIcon: "file", sClass: "aics-legend-red-missing-sample",

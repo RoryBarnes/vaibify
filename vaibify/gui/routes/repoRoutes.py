@@ -17,6 +17,8 @@ from pydantic import BaseModel
 from .. import syncDispatcher, trackedReposManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
+from ..pipelineServer import fnBumpSyncEpoch
+from ..routeContext import fsRefreshVerifyCacheAfterPush
 
 
 _PATTERN_REPO_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
@@ -389,6 +391,27 @@ async def _fdictDoPushStaged(
     return syncDispatcher.fdictSyncResult(iExit, sOut)
 
 
+async def _fsAfterRepoPushSuccess(dictCtx, sContainerId, sRepoName):
+    """Refresh caches after a successful Repos-panel push.
+
+    Bumps the sync epoch so the badge poll repaints, and — when the
+    pushed repo is the active workflow's project repo — re-verifies
+    GitHub so the L2 cells clear their stale unknown without a
+    manual refresh-remotes click (same contract as the GitHub sync
+    push route).
+    """
+    fnBumpSyncEpoch(dictCtx, sContainerId)
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
+    if not dictWorkflow:
+        return ""
+    sRepoPath = (dictWorkflow.get("sProjectRepoPath") or "").rstrip("/")
+    if sRepoPath != "/workspace/" + sRepoName:
+        return ""
+    return await fsRefreshVerifyCacheAfterPush(
+        dictCtx, sContainerId, dictWorkflow, "github",
+    )
+
+
 def _fnRegisterPushStaged(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/push-staged route."""
 
@@ -398,9 +421,16 @@ def _fnRegisterPushStaged(app, dictCtx):
         request: PushStagedRequest,
     ):
         dictCtx["require"]()
-        return await _fdictDoPushStaged(
+        dictResult = await _fdictDoPushStaged(
             dictCtx, sContainerId, sRepoName, request.sCommitMessage
         )
+        if dictResult.get("bSuccess"):
+            sWarning = await _fsAfterRepoPushSuccess(
+                dictCtx, sContainerId, sRepoName,
+            )
+            if sWarning:
+                dictResult["sPostPushVerifyWarning"] = sWarning
+        return dictResult
 
 
 def _fnRegisterPushFiles(app, dictCtx):
@@ -420,7 +450,14 @@ def _fnRegisterPushFiles(app, dictCtx):
             dictCtx["docker"], sContainerId,
             request.listFilePaths, request.sCommitMessage,
             "/workspace/" + sRepoName)
-        return syncDispatcher.fdictSyncResult(iExit, sOut)
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+        if dictResult.get("bSuccess"):
+            sWarning = await _fsAfterRepoPushSuccess(
+                dictCtx, sContainerId, sRepoName,
+            )
+            if sWarning:
+                dictResult["sPostPushVerifyWarning"] = sWarning
+        return dictResult
 
 
 def _fnRegisterDirtyFiles(app, dictCtx):

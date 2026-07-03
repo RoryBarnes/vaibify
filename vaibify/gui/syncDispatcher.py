@@ -578,15 +578,20 @@ def ftResultPushToGithub(
 def ftResultPushStagedToGithub(
     connectionDocker, sContainerId, sCommitMessage, sWorkdir,
 ):
-    """Commit whatever is staged in sWorkdir and push to origin.
+    """Commit staged changes (if any) in sWorkdir and push to origin.
 
     Does NOT run ``git add``. Returns (iExitCode, sCombinedOutput).
-    Hardened alongside ``ftResultPushToGithub``.
+    Hardened alongside ``ftResultPushToGithub``. The commit is
+    skipped when the index matches HEAD (``git diff --cached
+    --quiet`` exits 0), so a repo that is already committed but
+    ahead of origin still pushes — an unconditional ``git commit``
+    fails with "nothing to commit" there and the push never runs.
     """
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"(git diff --cached --quiet || "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
         f"git {sHardening} push && "
         f"git {sHardening} rev-parse --short HEAD"
     )

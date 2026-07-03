@@ -66,6 +66,7 @@ def _fdictBuildContextWithRepoAt(sProjectRepoPath, sWorkflowPath):
         "sProjectRepoPath": sProjectRepoPath,
         "sWorkflowName": "demo",
         "listSteps": [],
+        "dictRemotes": {"github": {"sRepo": "example/demo"}},
     }
     return {
         "workflows": {"cid": dictWorkflow},
@@ -420,3 +421,183 @@ def test_push_uses_project_repo_path_not_workflow_dirname(
         )
     assert responseHttp.status_code == 200
     assert fixtureCapturedPushArgs["sWorkdir"] == "/workspace/myrepo"
+
+
+def _fnRunPushRoute(dictCtx, sContainerId, fixtureCapturedPushArgs,
+                    listVerifyCalls, iPushExit=0):
+    """Drive the push route with the verify hook captured, not run."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    def _fnFakePush(
+        connectionDocker, sContainerIdArg,
+        listFilePaths, sCommitMessage, sWorkdir,
+    ):
+        fixtureCapturedPushArgs["listFilePaths"] = listFilePaths
+        fixtureCapturedPushArgs["sWorkdir"] = sWorkdir
+        return (iPushExit, "abc1234" if iPushExit == 0 else "boom")
+
+    def _fnFakeVerify(dictWorkflow, sService, filesRepo):
+        listVerifyCalls.append(sService)
+        return {"sService": sService}
+
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
+    syncRoutes.fnRegisterAll(app, dictCtx)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToGithub",
+        side_effect=_fnFakePush,
+    ), patch(
+        "vaibify.gui.routeContext.fdictRunRemoteVerifyBlocking",
+        side_effect=_fnFakeVerify,
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnValidateGithubPushPaths",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnAssertGithubTokenBoundToRemote",
+    ), patch(
+        "vaibify.gui.routes.scriptRoutes._fnStoreCommitHash",
+    ):
+        return TestClient(app).post(
+            "/api/github/" + sContainerId + "/push",
+            json={
+                "listFilePaths": ["step01/output.dat"],
+                "sCommitMessage": "msg",
+            },
+        )
+
+
+def test_push_success_refreshes_github_verify_cache(
+    fixtureCapturedPushArgs,
+):
+    """FALSIFICATION TARGET: after a successful push the route must
+    re-verify GitHub once, so the L2 cells clear their stale unknown
+    without a manual refresh-remotes click (researcher request
+    2026-07-02: 'once a user pushes, vaibify should know')."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    dictCtx["workflows"]["cid-verify-ok"] = dictCtx["workflows"]["cid"]
+    dictCtx["paths"]["cid-verify-ok"] = dictCtx["paths"]["cid"]
+    listVerifyCalls = []
+    responseHttp = _fnRunPushRoute(
+        dictCtx, "cid-verify-ok", fixtureCapturedPushArgs,
+        listVerifyCalls,
+    )
+    assert responseHttp.status_code == 200
+    assert listVerifyCalls == ["github"], (
+        "a successful push must trigger exactly one github verify"
+    )
+
+
+def test_push_failure_skips_the_verify_refresh(
+    fixtureCapturedPushArgs,
+):
+    """A failed push must not re-verify: nothing reached the remote,
+    so the cached status is as fresh as it was before."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    dictCtx["workflows"]["cid-verify-fail"] = dictCtx["workflows"]["cid"]
+    dictCtx["paths"]["cid-verify-fail"] = dictCtx["paths"]["cid"]
+    listVerifyCalls = []
+    responseHttp = _fnRunPushRoute(
+        dictCtx, "cid-verify-fail", fixtureCapturedPushArgs,
+        listVerifyCalls, iPushExit=1,
+    )
+    assert listVerifyCalls == [], (
+        "a failed push must not touch the verify cache"
+    )
+
+
+def test_push_missing_manifest_warns_in_response(
+    fixtureCapturedPushArgs,
+):
+    """FALSIFICATION TARGET (live gap 2026-07-02): the post-push
+    verify died on a missing MANIFEST.sha256 with only a hub-log
+    trace — the researcher saw "pushed" and an unexplained unknown
+    L2. The failure must surface in the response, with the
+    manifest-specific remedy and no raw exception text."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    dictCtx["workflows"]["cid-verify-warn"] = dictCtx["workflows"]["cid"]
+    dictCtx["paths"]["cid-verify-warn"] = dictCtx["paths"]["cid"]
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    def _fnFakePush(
+        connectionDocker, sContainerIdArg,
+        listFilePaths, sCommitMessage, sWorkdir,
+    ):
+        return (0, "abc1234")
+
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
+    syncRoutes.fnRegisterAll(app, dictCtx)
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToGithub",
+        side_effect=_fnFakePush,
+    ), patch(
+        "vaibify.gui.routeContext.fdictRunRemoteVerifyBlocking",
+        side_effect=FileNotFoundError(
+            "manifest not found: '/workspace/myrepo/MANIFEST.sha256'"
+        ),
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnValidateGithubPushPaths",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnAssertGithubTokenBoundToRemote",
+    ), patch(
+        "vaibify.gui.routes.scriptRoutes._fnStoreCommitHash",
+    ):
+        responseHttp = TestClient(app).post(
+            "/api/github/cid-verify-warn/push",
+            json={
+                "listFilePaths": ["step01/output.dat"],
+                "sCommitMessage": "msg",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictBody = responseHttp.json()
+    assert dictBody["bSuccess"] is True
+    sWarning = dictBody.get("sPostPushVerifyWarning", "")
+    assert "MANIFEST.sha256" in sWarning
+    assert "Level 1" in sWarning
+    assert "/workspace/myrepo" not in sWarning, (
+        "the warning must not embed raw exception text"
+    )
+
+
+def test_push_skips_verify_when_github_not_configured(
+    fixtureCapturedPushArgs,
+):
+    """A workflow with no dictRemotes.github entry has nothing to
+    verify against: the post-push check must be skipped silently —
+    no warning, no ReverifyConfigError noise on every plain-git
+    push (review finding 2026-07-02)."""
+    dictCtx = _fdictBuildContextWithRepoAt(
+        "/workspace/myrepo",
+        "/workspace/myrepo/.vaibify/workflows/demo.json",
+    )
+    dictCtx["workflows"]["cid"]["dictRemotes"] = {}
+    dictCtx["workflows"]["cid-no-remote"] = dictCtx["workflows"]["cid"]
+    dictCtx["paths"]["cid-no-remote"] = dictCtx["paths"]["cid"]
+    listVerifyCalls = []
+    responseHttp = _fnRunPushRoute(
+        dictCtx, "cid-no-remote", fixtureCapturedPushArgs,
+        listVerifyCalls,
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+    assert listVerifyCalls == [], (
+        "an unconfigured service must not be verified"
+    )
+    assert "sPostPushVerifyWarning" not in responseHttp.json()

@@ -1,14 +1,29 @@
-"""Typed wrapper for the route handler context dictionary.
+"""Route handler context: the typed dict wrapper and shared route helpers.
 
 Provides attribute access with clear types so that route handlers
 can use ``dictCtx.docker`` instead of ``dictCtx["docker"]``, making
-dependencies explicit and enabling IDE auto-completion.
+dependencies explicit and enabling IDE auto-completion. The class
+also acts as a dict for backward compatibility — existing code using
+``dictCtx["key"]`` continues to work unchanged.
 
-The class also acts as a dict for backward compatibility — existing
-code using ``dictCtx["key"]`` continues to work unchanged.
+This module is also the home for helpers shared by MULTIPLE route
+modules (``ffilesForWorkflow``, the post-push verify refresh): route
+modules must not import siblings
+(``testRouteModulesDoNotImportSiblings``), so cross-route logic
+lives here, beneath them.
 """
 
-__all__ = ["RouteContext", "ffilesForWorkflow"]
+__all__ = [
+    "RouteContext",
+    "fdictRunRemoteVerifyBlocking",
+    "ffilesForWorkflow",
+    "fsRefreshVerifyCacheAfterPush",
+]
+
+import asyncio
+import logging
+
+logger = logging.getLogger("vaibify")
 
 
 def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):
@@ -27,6 +42,75 @@ def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):
     from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
     return ffilesEnsureRepoFiles(
         (dictWorkflow or {}).get("sProjectRepoPath") or "",
+    )
+
+
+def fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):
+    """Run the synchronous verify call against the remote and return status."""
+    from vaibify.reproducibility import scheduledReverify
+    dictStatus = scheduledReverify.fdictVerifyRemoteService(
+        filesRepo, dictWorkflow, sService,
+    )
+    scheduledReverify.fnWriteSyncStatus(filesRepo, dictStatus)
+    return dictStatus
+
+
+async def fsRefreshVerifyCacheAfterPush(
+    dictCtx, sContainerId, dictWorkflow, sService,
+):
+    """Re-verify one service's remote right after a successful push.
+
+    Shared by every push route (GitHub sync, Repos-panel staged and
+    per-file pushes). The push already proved the network path to
+    the service, so one verify round-trip is cheap, and it spares
+    the researcher a manual "refresh remote status" click: the L2
+    cells read the verify cache, which would otherwise stay stale
+    for up to 24 hours after the very push that satisfied them.
+    Best-effort by design — a failed verify leaves the cache stale
+    (the cells keep reading unknown, never a fake green) and must
+    not fail the push response. Returns "" on success and a short
+    redaction-safe warning string on failure, so the push toast can
+    tell the researcher the L2 check did not run instead of leaving
+    a silent gap between "pushed" and "still unknown". A service the
+    workflow never configured in ``dictRemotes`` is skipped without
+    a warning — there is nothing to verify against, and nagging a
+    researcher who only uses plain git pushes would teach them to
+    ignore real warnings.
+    """
+    if not ((dictWorkflow or {}).get("dictRemotes") or {}).get(sService):
+        return ""
+    try:
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        await asyncio.to_thread(
+            fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
+            filesRepo,
+        )
+    except Exception as error:
+        logger.warning(
+            "Post-push %s verify failed; cached remote status stays "
+            "stale until the next refresh.", sService, exc_info=True,
+        )
+        return _fsPostPushVerifyWarning(sService, error)
+    return ""
+
+
+def _fsPostPushVerifyWarning(sService, error):
+    """Actionable, redaction-safe summary of a failed post-push verify.
+
+    Never embeds the raw exception text: verify errors can carry
+    remote URLs, and URLs can carry credentials. Known causes get a
+    specific remedy; everything else points at the hub log.
+    """
+    if (isinstance(error, FileNotFoundError)
+            and "manifest" in str(error).lower()):
+        return (
+            "Pushed, but the " + sService + " status check needs "
+            "MANIFEST.sha256, which does not exist yet — vaibify "
+            "generates it when the workflow reaches Level 1."
+        )
+    return (
+        "Pushed, but the " + sService + " status check failed — "
+        "the Published (L2) cells stay unknown. See the hub log."
     )
 
 

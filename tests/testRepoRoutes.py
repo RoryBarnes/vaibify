@@ -126,7 +126,10 @@ class FakeDocker:
         return (0, "")
 
     def _ftPushCommand(self, sCommand):
-        if "git commit" in sCommand and "git add" not in sCommand:
+        # The staged push is identified by its skip-commit guard; the
+        # real dispatcher puts hardening flags between "git" and the
+        # subcommand, so "git commit" never literally appears.
+        if "diff --cached --quiet" in sCommand:
             return (
                 self.dictPushStaged["exit"],
                 self.dictPushStaged["out"],
@@ -580,3 +583,146 @@ def testRepoRoutesRegisteredInApplication():
     assert "status" in sPaths
     assert "track" in sPaths
     assert "push-staged" in sPaths
+
+
+# ------- post-push cache refresh (verify + epoch) -------
+
+def _fdictBuildWorkflowCtx(fixtureDocker, sProjectRepoName):
+    """Context with an active workflow whose project repo is set."""
+    return {
+        "docker": fixtureDocker,
+        "require": lambda: None,
+        "workflows": {
+            "cid1": {
+                "sProjectRepoPath": "/workspace/" + sProjectRepoName,
+            },
+        },
+    }
+
+
+def _fnBuildClientWithCtx(dictCtx):
+    app = FastAPI()
+    fnRegisterAll(app, dictCtx)
+    return TestClient(app)
+
+
+def testPushStagedVerifiesGithubForProjectRepo(fixtureDocker):
+    """FALSIFICATION TARGET (2026-07-02): the Repos panel is the push
+    path researchers actually use; after a successful push of the
+    active workflow's project repo it must re-verify GitHub (so the
+    L2 cells clear their stale unknown) and bump the sync epoch (so
+    the badges repaint)."""
+    from unittest.mock import AsyncMock, patch
+    fixtureDocker.fnAddRepo("alpha")
+    dictCtx = _fdictBuildWorkflowCtx(fixtureDocker, "alpha")
+    client = _fnBuildClientWithCtx(dictCtx)
+    client.post("/api/repos/cid1/alpha/track")
+    with patch(
+        "vaibify.gui.routes.repoRoutes.fsRefreshVerifyCacheAfterPush",
+        new_callable=AsyncMock, return_value=None,
+    ) as mockVerify:
+        response = client.post(
+            "/api/repos/cid1/alpha/push-staged",
+            json={"sCommitMessage": "update"},
+        )
+    assert response.status_code == 200
+    assert response.json()["bSuccess"] is True
+    assert mockVerify.await_count == 1
+    assert mockVerify.await_args.args[3] == "github"
+    assert dictCtx["dictSyncEpochs"]["cid1"] == 1
+
+
+def testPushStagedSkipsVerifyForNonProjectRepo(fixtureDocker):
+    """Pushing a tracked repo that is NOT the active workflow's
+    project repo must not touch the workflow's GitHub verify cache
+    (the epoch still bumps — badges cover all tracked repos)."""
+    from unittest.mock import AsyncMock, patch
+    fixtureDocker.fnAddRepo("alpha")
+    dictCtx = _fdictBuildWorkflowCtx(fixtureDocker, "other")
+    client = _fnBuildClientWithCtx(dictCtx)
+    client.post("/api/repos/cid1/alpha/track")
+    with patch(
+        "vaibify.gui.routes.repoRoutes.fsRefreshVerifyCacheAfterPush",
+        new_callable=AsyncMock, return_value=None,
+    ) as mockVerify:
+        response = client.post(
+            "/api/repos/cid1/alpha/push-staged",
+            json={"sCommitMessage": "update"},
+        )
+    assert response.status_code == 200
+    assert mockVerify.await_count == 0
+    assert dictCtx["dictSyncEpochs"]["cid1"] == 1
+
+
+def testPushStagedFailureSkipsVerifyAndReportsFailure(fixtureDocker):
+    """A failed push must return bSuccess false (the panel toast
+    relays it) and must not re-verify or bump the epoch — nothing
+    reached the remote."""
+    from unittest.mock import AsyncMock, patch
+    fixtureDocker.fnAddRepo("alpha")
+    dictCtx = _fdictBuildWorkflowCtx(fixtureDocker, "alpha")
+    client = _fnBuildClientWithCtx(dictCtx)
+    client.post("/api/repos/cid1/alpha/track")
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushStagedToGithub",
+        return_value=(128, "fatal: could not read from remote"),
+    ), patch(
+        "vaibify.gui.routes.repoRoutes.fsRefreshVerifyCacheAfterPush",
+        new_callable=AsyncMock, return_value=None,
+    ) as mockVerify:
+        response = client.post(
+            "/api/repos/cid1/alpha/push-staged",
+            json={"sCommitMessage": "update"},
+        )
+    assert response.status_code == 200
+    assert response.json()["bSuccess"] is False
+    assert mockVerify.await_count == 0
+    assert "dictSyncEpochs" not in dictCtx
+
+
+def testPushFilesVerifiesGithubForProjectRepo(fixtureDocker):
+    """The per-file push shares the post-push refresh contract."""
+    from unittest.mock import AsyncMock, patch
+    fixtureDocker.fnAddRepo("alpha")
+    dictCtx = _fdictBuildWorkflowCtx(fixtureDocker, "alpha")
+    client = _fnBuildClientWithCtx(dictCtx)
+    client.post("/api/repos/cid1/alpha/track")
+    with patch(
+        "vaibify.gui.routes.repoRoutes.fsRefreshVerifyCacheAfterPush",
+        new_callable=AsyncMock, return_value=None,
+    ) as mockVerify:
+        response = client.post(
+            "/api/repos/cid1/alpha/push-files",
+            json={
+                "sCommitMessage": "update",
+                "listFilePaths": ["foo.py"],
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["bSuccess"] is True
+    assert mockVerify.await_count == 1
+
+
+def testPushStagedSurfacesVerifyWarningInResponse(fixtureDocker):
+    """FALSIFICATION TARGET (2026-07-02): the post-push verify failed
+    silently (manifest missing) while the toast said success. When
+    the verify returns a warning, the push response must carry it so
+    the panel can show the researcher why L2 stays unknown."""
+    from unittest.mock import AsyncMock, patch
+    fixtureDocker.fnAddRepo("alpha")
+    dictCtx = _fdictBuildWorkflowCtx(fixtureDocker, "alpha")
+    client = _fnBuildClientWithCtx(dictCtx)
+    client.post("/api/repos/cid1/alpha/track")
+    sWarning = "Pushed, but the github status check needs MANIFEST"
+    with patch(
+        "vaibify.gui.routes.repoRoutes.fsRefreshVerifyCacheAfterPush",
+        new_callable=AsyncMock, return_value=sWarning,
+    ):
+        response = client.post(
+            "/api/repos/cid1/alpha/push-staged",
+            json={"sCommitMessage": "update"},
+        )
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["bSuccess"] is True
+    assert dictBody["sPostPushVerifyWarning"] == sWarning

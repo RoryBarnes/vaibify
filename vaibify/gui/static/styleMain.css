@@ -1104,40 +1104,45 @@ body.aics-level-3 .toolbar-label {
     font-style: italic;
 }
 
+/* Run light vocabulary: hollow grey = never run this session,
+   filled grey = queued, blinking orange = running, red = failed;
+   a successful last run renders the theme-tinted check
+   (.step-status-check) instead of a dot. */
 .step-item .step-status {
     flex-shrink: 0;
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--text-muted);
-}
-
-.step-item .step-status.pass {
-    background: var(--highlight-color);
-    transition: background 0.5s ease;
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
 }
 
 .step-item .step-status.fail {
     background: var(--color-red);
+    border: none;
 }
 
 .step-item .step-status.queued {
-    background: var(--color-orange);
+    background: var(--text-muted);
+    border: none;
 }
 
 .step-item .step-status.running {
     background: var(--color-orange);
+    border: none;
     animation: pulse 1s infinite;
 }
 
 .step-item .step-status.skipped {
     background: var(--text-muted);
-    font-size: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--bg-primary);
-    font-weight: 700;
+    border: none;
+}
+
+.step-status-check {
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
+    cursor: help;
 }
 
 .vaib-verified-badge {
@@ -5324,6 +5329,22 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .level-cell-unknown .level-cell-circle {
     background: transparent;
     border: 1.5px solid var(--text-muted);
+}
+
+/* Declaration git actions (researcher ruling 2026-07-02): commit is
+   the routine action and wears pale blue; removal withdraws the
+   declaration from the published record and wears orange as the
+   danger color. */
+.btn-ai-declaration-commit {
+    background: var(--color-pale-blue);
+    color: var(--bg-primary);
+    border: none;
+}
+
+.btn-ai-declaration-untrack {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    border: none;
 }
 
 /* Attention count on the Repos left-tab: repositories awaiting a

@@ -259,21 +259,67 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnAddAiDeclarationStep();
     }
 
+    var _DICT_DECLARATION_COMMIT_TOASTS = {
+        "clean": ["Declaration file is already committed — push to " +
+            "GitHub to publish it.", "info"],
+        "committed": ["Declaration file committed — push to GitHub " +
+            "to publish it.", "success"],
+        "failed": ["Could not commit the declaration file — check " +
+            "the Repos panel.", "error"],
+    };
+
     async function _fnHandleAiDeclarationCommit(event, elMatch) {
-        // Reuses the pre-push manifest-check dialog: it lists every
-        // canonical file not yet committed (the declaration file is
-        // canonical) and commits them on confirm. Committing is not
-        // publishing — pushing happens from the Repos panel or the
-        // sync buttons.
+        // Scoped to the declaration file only: the dialog shows and
+        // commits just that file. Committing is not publishing —
+        // pushing happens from the Repos panel or the sync buttons.
         var sContainerId = PipeleyenApp.fsGetContainerId();
-        if (!sContainerId) return;
-        var bClean = await VaibifyManifestCheck.fbRunBeforePush(
-            sContainerId);
-        if (bClean) {
-            PipeleyenApp.fnShowToast(
-                "Canonical files are committed — push to GitHub to " +
-                "publish them.", "info");
+        var sFilePath = elMatch.dataset.file || "";
+        if (!sContainerId || !sFilePath) return;
+        var sOutcome = await VaibifyManifestCheck.fsCommitSinglePath(
+            sContainerId, sFilePath);
+        var listToast = _DICT_DECLARATION_COMMIT_TOASTS[sOutcome];
+        if (listToast) {
+            PipeleyenApp.fnShowToast(listToast[0], listToast[1]);
         }
+        _fnRefreshDeclarationGitState(sContainerId, sOutcome,
+            ["committed", "clean", "failed"]);
+    }
+
+    var _DICT_DECLARATION_REMOVE_TOASTS = {
+        "removed": ["Declaration file removed from the repo — the " +
+            "file stays on disk.", "success"],
+        "failed": ["Could not remove the declaration file — check " +
+            "the Repos panel.", "error"],
+    };
+
+    async function _fnHandleAiDeclarationUntrack(event, elMatch) {
+        // Inverse of the commit action: confirms, then commits the
+        // removal of the declaration file from git tracking. The
+        // file itself stays on disk.
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sFilePath = elMatch.dataset.file || "";
+        if (!sContainerId || !sFilePath) return;
+        var sOutcome = await VaibifyManifestCheck.fsRemoveSinglePath(
+            sContainerId, sFilePath);
+        var listToast = _DICT_DECLARATION_REMOVE_TOASTS[sOutcome];
+        if (listToast) {
+            PipeleyenApp.fnShowToast(listToast[0], listToast[1]);
+        }
+        _fnRefreshDeclarationGitState(sContainerId, sOutcome,
+            ["removed", "failed"]);
+    }
+
+    function _fnRefreshDeclarationGitState(
+        sContainerId, sOutcome, listRefreshOutcomes
+    ) {
+        // A fresh badge pull flips the Commit/Remove button on the
+        // next step-list repaint without waiting for the poll tick.
+        // "failed" refreshes too: a partial failure (e.g. rm done,
+        // commit refused) changes git state, and a stale button is
+        // worse after an error than after a success.
+        if (listRefreshOutcomes.indexOf(sOutcome) === -1) return;
+        if (typeof VaibifyGitBadges === "undefined") return;
+        VaibifyGitBadges.fnRefresh(sContainerId);
     }
 
     function _fnHandleEnvelopeSectionToggle(event, elMatch) {
@@ -337,6 +383,7 @@ var PipeleyenEventBindings = (function () {
         ".workflow-level-header-row": _fnHandleWorkflowHeaderToggle,
         ".envelope-section-header": _fnHandleEnvelopeSectionToggle,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
+        ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
         ".envelope-open-repos": _fnHandleOpenReposPanel,
     };
 

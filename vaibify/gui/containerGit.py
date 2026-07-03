@@ -39,6 +39,7 @@ __all__ = [
     "fsRemoteUrlInContainer",
     "ftResultGitAddInContainer",
     "ftResultGitCommitInContainer",
+    "ftResultGitRemoveCachedInContainer",
     "ftResultGitFetchInContainer",
     "ftResultGitPullFastForwardInContainer",
     "fsGitHeadShaInContainer",
@@ -267,6 +268,33 @@ def ftResultGitAddInContainer(
     sCommand = (
         "cd " + shlex.quote(sWorkspace) + " && "
         "git " + sHardening + " add -- " + sPaths
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+
+
+def ftResultGitRemoveCachedInContainer(
+    connectionDocker, sContainerId, listFilePaths,
+    sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """git rm --cached the given paths in the container; return (rc, stdout).
+
+    The files stay on disk — only the index entries are removed, so a
+    follow-up commit publishes the removal without deleting content.
+    ``GIT_LITERAL_PATHSPECS`` disables pathspec magic and globbing so
+    a value like ``:(glob)**`` can only ever match a file literally
+    named that — this function takes request-derived paths, and the
+    route-level filter must not be the only wall.
+    """
+    if not listFilePaths:
+        return (0, "")
+    sHardening = _fsHardeningPrefix()
+    sPaths = " ".join(shlex.quote(s) for s in listFilePaths)
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "GIT_LITERAL_PATHSPECS=1 "
+        "git " + sHardening + " rm --cached -- " + sPaths
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,

@@ -106,12 +106,17 @@ var VaibifyStepRenderer = (function () {
     };
 
     function _fsBuildStepStatusCell(sRunStatus) {
+        // Vocabulary: hollow grey = never run this session, filled
+        // grey = queued, blinking orange = running, red = failed,
+        // the vaibify check (favicon) = last run succeeded.
         var sTitle = "Run status: " +
             (_DICT_STEP_STATUS_TITLES[sRunStatus] || sRunStatus);
+        var sInner = sRunStatus === "pass"
+            ? '<img src="/static/favicon.png" ' +
+                'class="step-status-check" alt="last run succeeded">'
+            : '<span class="step-status ' + sRunStatus + '"></span>';
         return '<span class="step-status-cell" title="' +
-            fnEscapeHtml(sTitle) + '">' +
-            '<span class="step-status ' + sRunStatus +
-            '"></span></span>';
+            fnEscapeHtml(sTitle) + '">' + sInner + '</span>';
     }
 
     function _fsBuildStepLevelStrip(dictContext, iIndex) {
@@ -1461,6 +1466,46 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
+    function _fbDeclarationFileIsTracked(sFilePath) {
+        // The GitHub badge column is plain git truth. Tracked states
+        // (clean, modified, staged) offer removal; untracked, no
+        // repo, or badges not yet loaded hide it — there is nothing
+        // in git to remove.
+        if (typeof VaibifyGitBadges === "undefined") return false;
+        var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+            sFilePath, "");
+        var sState = (dictBadges && dictBadges.sGithub) || "";
+        return sState === "synced" || sState === "dirty" ||
+            sState === "drifted";
+    }
+
+    function _fsBuildDeclarationGitButtons(sFilePath, iIndex) {
+        // Both actions coexist (researcher ruling 2026-07-02): an
+        // updated declaration needs recommitting even while tracked,
+        // so commit is always offered (pale blue, routine) and
+        // removal appears once git tracks the file (orange, danger).
+        var sHtml = ' <button class="btn btn-ai-declaration-commit" ' +
+            'data-step="' + iIndex + '" ' +
+            'data-file="' + fnEscapeHtml(sFilePath) + '" ' +
+            'type="button" ' +
+            'title="The declaration is a canonical file: it ' +
+            'must be committed and pushed to count as ' +
+            'published. This checks the repo and offers to ' +
+            'commit just this file.">' +
+            'Commit to repo&#8230;</button>';
+        if (_fbDeclarationFileIsTracked(sFilePath)) {
+            sHtml += ' <button class="btn btn-ai-declaration-untrack" ' +
+                'data-step="' + iIndex + '" ' +
+                'data-file="' + fnEscapeHtml(sFilePath) + '" ' +
+                'type="button" ' +
+                'title="Removes the declaration from git tracking — ' +
+                'the file stays on disk, but it no longer counts ' +
+                'as published.">' +
+                'Remove from repo&#8230;</button>';
+        }
+        return sHtml;
+    }
+
     function fsRenderAiDeclarationFileRow(sFilePath, iIndex) {
         if (sFilePath) {
             return '<div class="ai-declaration-file" ' +
@@ -1470,13 +1515,7 @@ var VaibifyStepRenderer = (function () {
                 ' <button class="btn btn-ai-declaration-choose" ' +
                 'data-step="' + iIndex + '" type="button">' +
                 'Choose different file</button>' +
-                ' <button class="btn btn-ai-declaration-commit" ' +
-                'data-step="' + iIndex + '" type="button" ' +
-                'title="The declaration is a canonical file: it ' +
-                'must be committed and pushed to count as ' +
-                'published. This checks the repo and offers to ' +
-                'commit anything canonical that is missing.">' +
-                'Commit to repo&#8230;</button>' +
+                _fsBuildDeclarationGitButtons(sFilePath, iIndex) +
                 '</div>';
         }
         return '<div class="ai-declaration-empty" ' +
