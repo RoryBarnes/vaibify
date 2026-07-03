@@ -412,8 +412,17 @@ def test_untrack_ai_declaration_removes_only_the_declaration():
     listCommitCmds = [s for s in listIssued if "commit -m" in s]
     assert listCommitCmds, "the removal must be committed"
     for sCmd in listCommitCmds:
-        assert " -- " in sCmd
-        assert "aiDeclaration/AI_USAGE.md" in sCmd
+        assert " -- " not in sCmd, (
+            "the commit must carry NO pathspec: `git commit -- "
+            "<path>` records working-tree content, not the staged "
+            "deletion (2026-07-03 real-git finding)"
+        )
+    listPrecheckCmds = [
+        s for s in listIssued if "diff --cached --quiet" in s
+    ]
+    assert listPrecheckCmds, (
+        "a bare commit is only safe behind the staged-index refusal"
+    )
 
 
 def test_untrack_ai_declaration_surfaces_git_failure():
@@ -522,15 +531,16 @@ def test_untrack_ai_declaration_ignores_other_steps_files():
     )
 
     assert response.status_code == 200
-    listGitCmds = [
-        s for s in listIssued
-        if "rm --cached" in s or "commit -m" in s
-    ]
-    assert listGitCmds
-    for sCmd in listGitCmds:
+    listRemoveCmds = [s for s in listIssued if "rm --cached" in s]
+    assert listRemoveCmds
+    for sCmd in listRemoveCmds:
         assert "aiDeclarationB/AI_USAGE_B.md" in sCmd
         assert "aiDeclaration/AI_USAGE.md" not in sCmd, (
-            "only the requested declaration may be touched"
+            "only the requested declaration may be staged for removal"
+        )
+    for sCmd in [s for s in listIssued if "commit -m" in s]:
+        assert "AI_USAGE" not in sCmd, (
+            "the commit carries no pathspec at all"
         )
 
 
@@ -558,3 +568,7 @@ def test_untrack_ai_declaration_surfaces_commit_failure():
 
     assert response.status_code == 500
     assert "git commit failed" in response.json()["detail"]
+    assert any(
+        "restore --staged" in tCall.args[1]
+        for tCall in mockDocker.ftResultExecuteCommand.call_args_list
+    ), "a failed commit must roll the staged deletion back"

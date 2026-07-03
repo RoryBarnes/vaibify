@@ -394,13 +394,14 @@ async def _fdictDoPushStaged(
 async def _fsAfterRepoPushSuccess(dictCtx, sContainerId, sRepoName):
     """Refresh caches after a successful Repos-panel push.
 
-    Bumps the sync epoch so the badge poll repaints, and — when the
-    pushed repo is the active workflow's project repo — re-verifies
-    GitHub so the L2 cells clear their stale unknown without a
-    manual refresh-remotes click (same contract as the GitHub sync
-    push route).
+    When the pushed repo is the active workflow's project repo,
+    re-verifies GitHub so the L2 cells clear their stale unknown
+    without a manual refresh-remotes click (same contract as the
+    GitHub sync push route). The sync-epoch bump lives in the routes,
+    not here: it must fire even on a FAILED push, because push-staged
+    can land its commit and then fail the push, and the badges must
+    repaint to the post-commit truth.
     """
-    fnBumpSyncEpoch(dictCtx, sContainerId)
     dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
     if not dictWorkflow:
         return ""
@@ -424,6 +425,7 @@ def _fnRegisterPushStaged(app, dictCtx):
         dictResult = await _fdictDoPushStaged(
             dictCtx, sContainerId, sRepoName, request.sCommitMessage
         )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         if dictResult.get("bSuccess"):
             sWarning = await _fsAfterRepoPushSuccess(
                 dictCtx, sContainerId, sRepoName,
@@ -451,6 +453,7 @@ def _fnRegisterPushFiles(app, dictCtx):
             request.listFilePaths, request.sCommitMessage,
             "/workspace/" + sRepoName)
         dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+        fnBumpSyncEpoch(dictCtx, sContainerId)
         if dictResult.get("bSuccess"):
             sWarning = await _fsAfterRepoPushSuccess(
                 dictCtx, sContainerId, sRepoName,

@@ -656,8 +656,9 @@ def testPushStagedSkipsVerifyForNonProjectRepo(fixtureDocker):
 
 def testPushStagedFailureSkipsVerifyAndReportsFailure(fixtureDocker):
     """A failed push must return bSuccess false (the panel toast
-    relays it) and must not re-verify or bump the epoch — nothing
-    reached the remote."""
+    relays it) and must not re-verify — nothing reached the remote.
+    The epoch still bumps: push-staged can land its commit and then
+    fail the push, so local git state may have changed."""
     from unittest.mock import AsyncMock, patch
     fixtureDocker.fnAddRepo("alpha")
     dictCtx = _fdictBuildWorkflowCtx(fixtureDocker, "alpha")
@@ -677,7 +678,11 @@ def testPushStagedFailureSkipsVerifyAndReportsFailure(fixtureDocker):
     assert response.status_code == 200
     assert response.json()["bSuccess"] is False
     assert mockVerify.await_count == 0
-    assert "dictSyncEpochs" not in dictCtx
+    assert dictCtx["dictSyncEpochs"]["cid1"] == 1, (
+        "a failed push still bumps the epoch: push-staged can land "
+        "its commit and then fail the push, and the badges must "
+        "repaint to the post-commit truth"
+    )
 
 
 def testPushFilesVerifiesGithubForProjectRepo(fixtureDocker):

@@ -39,7 +39,9 @@ __all__ = [
     "fsRemoteUrlInContainer",
     "ftResultGitAddInContainer",
     "ftResultGitCommitInContainer",
+    "ftResultGitDiffCachedQuietInContainer",
     "ftResultGitRemoveCachedInContainer",
+    "ftResultGitRestoreStagedInContainer",
     "ftResultGitFetchInContainer",
     "ftResultGitPullFastForwardInContainer",
     "fsGitHeadShaInContainer",
@@ -268,6 +270,49 @@ def ftResultGitAddInContainer(
     sCommand = (
         "cd " + shlex.quote(sWorkspace) + " && "
         "git " + sHardening + " add -- " + sPaths
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+
+
+def ftResultGitDiffCachedQuietInContainer(
+    connectionDocker, sContainerId, sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """Return (rc, output) of ``git diff --cached --quiet``.
+
+    rc 0 means the index matches HEAD (nothing staged); rc 1 means
+    staged changes exist. Callers that are about to stage-and-commit
+    a scoped change use this to refuse when unrelated work is already
+    staged — a bare ``git commit`` would sweep it in.
+    """
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git diff --cached --quiet"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+
+
+def ftResultGitRestoreStagedInContainer(
+    connectionDocker, sContainerId, listFilePaths,
+    sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """Unstage the given paths (restore index entries from HEAD).
+
+    Rollback primitive: undoes a staged ``rm --cached`` when the
+    follow-up commit fails, so a failed operation leaves the index
+    exactly as it found it. Literal pathspecs for the same reason as
+    the removal itself.
+    """
+    if not listFilePaths:
+        return (0, "")
+    sPaths = " ".join(shlex.quote(s) for s in listFilePaths)
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "GIT_LITERAL_PATHSPECS=1 "
+        "git restore --staged -- " + sPaths
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,

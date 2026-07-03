@@ -452,6 +452,24 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         _fnRequireDeclarationPath(dictWorkflow, request.sPath)
         docker = dictCtx["docker"]
+        # The removal is committed WITHOUT a pathspec: `git commit --
+        # <path>` records the path's WORKING-TREE content, not the
+        # staged deletion — on a clean file it fails with "nothing to
+        # commit", and on a modified file it silently commits the
+        # file instead of removing it (found by adversarial review
+        # against real git, 2026-07-03). A bare commit is safe only
+        # because an already-dirty index is refused first.
+        iExit, sOut = await asyncio.to_thread(
+            containerGit.ftResultGitDiffCachedQuietInContainer,
+            docker, sContainerId, sWorkspace=sRepo,
+        )
+        if iExit != 0:
+            raise HTTPException(
+                status_code=409,
+                detail="Other changes are already staged in the "
+                       "repo — commit or unstage them first, then "
+                       "retry the removal.",
+            )
         iExit, sOut = await asyncio.to_thread(
             containerGit.ftResultGitRemoveCachedInContainer,
             docker, sContainerId, [request.sPath], sWorkspace=sRepo,
@@ -465,9 +483,14 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
             containerGit.ftResultGitCommitInContainer,
             docker, sContainerId,
             "[vaibify] remove AI declaration from the repo",
-            sWorkspace=sRepo, listFilePaths=[request.sPath],
+            sWorkspace=sRepo,
         )
         if iExit != 0:
+            await asyncio.to_thread(
+                containerGit.ftResultGitRestoreStagedInContainer,
+                docker, sContainerId, [request.sPath],
+                sWorkspace=sRepo,
+            )
             raise HTTPException(
                 status_code=500,
                 detail="git commit failed: " + (sOut or "").strip(),
