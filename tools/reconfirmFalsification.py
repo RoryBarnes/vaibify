@@ -30,9 +30,11 @@ is NOT collected by ``pytest tests/``:
     python tools/reconfirmFalsification.py
 """
 
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -46,12 +48,26 @@ def _fiRunTest(sNodeId):
 
     Exit 0 = passed; 1 = a test failed (assertion); any other nonzero is a
     collection/internal error and must NOT be credited as a kill.
+
+    Each invocation gets a FRESH bytecode cache (PYTHONPYCACHEPREFIX):
+    Python validates cached .pyc files by source mtime in integer
+    seconds plus file size, so a mutation that preserves the file size
+    and lands within the same clock second as the previous write is
+    served the PREVIOUS bytecode — the test passes against code it
+    never ran, and a genuine kill reports SURVIVED. Observed on the
+    fastest CI runner (macOS/py3.14, 2026-07-03) for exactly the
+    same-size mutations; a cold cache per run removes the timing from
+    the equation.
     """
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", sNodeId, "-q",
-         "-p", "no:cacheprovider"],
-        cwd=REPO, capture_output=True, text=True,
-    )
+    dictEnvironment = dict(os.environ)
+    with tempfile.TemporaryDirectory() as sPycachePrefix:
+        dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", sNodeId, "-q",
+             "-p", "no:cacheprovider"],
+            cwd=REPO, capture_output=True, text=True,
+            env=dictEnvironment,
+        )
     return result.returncode
 
 
