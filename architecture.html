@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev435 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev449 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7110cd55"></script>
+      <script src="_static/documentation_options.js?v=4becd360"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -86,6 +86,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#dependency-graph">Dependency graph</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#re-export-pattern">Re-export pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification-state-machine">Verification state machine</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#two-aics-level-truth-systems">Two AICS-level truth systems</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#javascript-frontend">JavaScript frontend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#foundation-modules-loaded-first">Foundation modules (loaded first)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#rendering-feature-and-pre-existing-modules">Rendering, feature, and pre-existing modules</a></li>
@@ -883,6 +884,47 @@ results.</p></li>
 <p>This state machine is load-bearing for the dashboard’s honesty
 guarantee: the GUI must always reflect the true state of the workflow.
 See the relevant trap in <span class="xref myst">../AGENTS.md</span>.</p>
+</section>
+<section id="two-aics-level-truth-systems">
+<h2>Two AICS-level truth systems<a class="headerlink" href="#two-aics-level-truth-systems" title="Link to this heading"></a></h2>
+<p>The backend computes the reproducibility ladder (AICS L1–L3) in two
+deliberately different shapes, and misreading one as the other is the
+most likely way to misjudge the dashboard:</p>
+<ol class="arabic simple">
+<li><p><strong>The scalar aggregate</strong> — <code class="docutils literal notranslate"><span class="pre">levelGates.fiAICSLevel</span></code> /
+<code class="docutils literal notranslate"><span class="pre">fbAtLeastLevelN</span></code>. Strictly additive over the whole workflow: L1
+requires every step’s L1 blockers clear, L2 requires L1, L3
+requires L2. This is “what level is this workflow at,” and it is
+what the AICS chip in the dashboard header renders. (Historical
+note: an early boolean <code class="docutils literal notranslate"><span class="pre">bVaibified</span></code> predated the ladder and meant
+what <code class="docutils literal notranslate"><span class="pre">fiAICSLevel</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> means now; the v4 workflow migration drops
+the key on load, which is the excision mechanism — do not remove
+the migration.)</p></li>
+<li><p><strong>The independent cell projections</strong> —
+<code class="docutils literal notranslate"><span class="pre">fdictComputeStepLevelStates</span></code> (per step) and
+<code class="docutils literal notranslate"><span class="pre">fdictComputeWorkflowScopeLevelStates</span></code> (the Workflow header row).
+Each cell answers “which requirements <em>at this scope and level</em>
+are satisfied,” with no propagation between levels or scopes. A
+step can honestly read L1 partial + L3 attained; that is a
+feature (the researcher sees exactly which rung needs what), not
+a contradiction.</p></li>
+</ol>
+<p>The corollary that trips readers: <strong>the Workflow row is not a summary
+row.</strong> Its cells cover only the requirements that attach to no single
+step — L1: the project repo exists; L2: sync-verify freshness plus
+the arXiv criteria; L3: the envelope artifacts (pinned Dockerfile,
+dependency lock, environment snapshot, reproduce script, attestation,
+binary declarations). A Workflow-row L1 check above red step rows is
+therefore a consistent display: the workflow-wide L1 requirement is
+met while per-step L1 work remains, and the chip — the aggregate —
+still says Level 0. The cell tooltips state this scoping.</p>
+<p>Honesty floors inside the cell projection: a stale sync cache renders
+“unknown”, never attained; a step to which no L3 criterion applies
+(no declared paths, scripts, binary invocations, or randomness flag)
+renders “not-applicable”, never a vacuous attained; and per-step L3
+counts every applicable criterion — the dominant-glyph design of the
+blocker list does not flatten five failures into a 4-of-5 partial,
+because the dominant entry carries <code class="docutils literal notranslate"><span class="pre">listFailingCriteria</span></code>.</p>
 </section>
 <section id="javascript-frontend">
 <h2>JavaScript frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>

@@ -853,6 +853,10 @@ var VaibifySyncManager = (function () {
         } else {
             PipeleyenApp.fnShowToast("Push complete!", "success");
         }
+        if (dictResult.sPostPushVerifyWarning) {
+            PipeleyenApp.fnShowToast(
+                dictResult.sPostPushVerifyWarning, "warning");
+        }
         if (dictResult.sBookkeepingWarning) {
             PipeleyenApp.fnShowToast(
                 dictResult.sBookkeepingWarning, "info");
