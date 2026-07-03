@@ -492,6 +492,41 @@ def test_repos_panel_push_toasts_are_honest():
     )
 
 
+def test_dropped_websocket_actions_are_reported_not_swallowed():
+    """FALSIFICATION TARGET (live incident 2026-07-03): a Run clicked
+    against a dying socket painted the queued light, parked the
+    action in the pending queue, and evaporated when the socket
+    closed — the researcher saw "queued" then an unexplained
+    disconnect, and the run never reached the server. Three links:
+    the socket layer must report that pending actions were dropped,
+    the app must tell the researcher their request was NOT
+    submitted, and the unreachable toast must carry the close detail
+    (the code distinguishes a duplicate-session rejection from a
+    network drop from a restart)."""
+    sSocket = _fsReadStaticFile("scriptWebSocket.js")
+    sEmit = _fsExtractFunctionBlock(
+        sSocket, "_fnEmitCloseEventAndDropPending",
+    )
+    assert "bActionsDropped" in sEmit
+    assert "iCode" in sEmit
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sHandlers = _fsExtractFunctionBlock(
+        sApplication, "fnRegisterWebSocketHandlers",
+    )
+    assert "bActionsDropped" in sHandlers, (
+        "the close handler must inspect the dropped-actions flag"
+    )
+    assert "NOT submitted" in sHandlers, (
+        "the researcher must be told their request never reached "
+        "the server"
+    )
+    sMonitor = _fsReadStaticFile("scriptConnectionMonitor.js")
+    sToast = _fsExtractFunctionBlock(sMonitor, "_fsBuildToastMessage")
+    assert "sMessage" in sToast, (
+        "the unreachable toast must surface the close detail"
+    )
+
+
 def test_output_existence_lookup_joins_the_workdir_exactly_once():
     """FALSIFICATION TARGET (live bug 2026-07-03): the renderer joins
     a relative output path with the step workdir when it builds

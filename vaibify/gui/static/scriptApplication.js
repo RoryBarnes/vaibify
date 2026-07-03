@@ -198,6 +198,20 @@ const PipeleyenApp = (function () {
         VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
             fnClearRunningStatuses();
             fnRenderStepList();
+            if (dictEvent.bActionsDropped) {
+                // The socket died holding unsent actions: whatever
+                // the researcher just clicked (typically a step run
+                // that already painted its queued light) never
+                // reached the server. Saying so beats letting the
+                // queued light silently evaporate (live incident,
+                // 2026-07-03).
+                fnShowToast(
+                    "Connection lost before your last request " +
+                    "reached the server — it was NOT submitted. " +
+                    "A step run that showed as queued never " +
+                    "started. Reconnect and retry.",
+                    "error");
+            }
             _fnReportConnectionLossToMonitor(dictEvent);
         });
         VaibifyWebSocket.fnOnEvent("_wsError", function (dictEvent) {

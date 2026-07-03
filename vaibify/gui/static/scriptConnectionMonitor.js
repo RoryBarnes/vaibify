@@ -106,10 +106,17 @@ var VaibifyConnectionMonitor = (function () {
                 "Click to reload the dashboard."
             );
         }
+        // The detail (e.g. "WebSocket closed (code 4409)") is the
+        // one clue that distinguishes a duplicate-session rejection
+        // from a network drop from a server restart — surface it so
+        // an incident is diagnosable without the browser console.
+        var sDetail = (dictError && dictError.sMessage)
+            ? " [" + dictError.sMessage + "]"
+            : "";
         return (
-            "Cannot reach Vaibify server. The server may have stopped " +
-            "or moved to a different port on restart. " +
-            "Click to reload the dashboard."
+            "Cannot reach Vaibify server" + sDetail + ". The server " +
+            "may have stopped or moved to a different port on " +
+            "restart. Click to reload the dashboard."
         );
     }
 
