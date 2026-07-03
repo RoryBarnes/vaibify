@@ -184,6 +184,17 @@ RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
 
 ENV PATH="${PACKAGE_MANAGER:+/opt/conda/bin:}${PATH}"
 
+# Console scripts from ``pip install`` land in the user's
+# ``~/.local/bin`` on PEP 668 (externally-managed) bases such as
+# Ubuntu 24.04 — every ``pip_no_deps`` / ``pip_editable`` repo
+# (vconverge, vspace, bigplanet, pytest, ...) installs there. The
+# non-login ``bash -c`` used for ``docker exec`` does not source the
+# profile that would add it, so both the preflight command check and
+# the actual step run would report those tools "command not found".
+# Put it on PATH for every dispatched command. (c_and_pip binaries
+# like vplanet install to /usr/local/bin and are already covered.)
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
+
 # Project-specific Python packages from vaibify.yml pythonPackages
 COPY requirements.txt /tmp/requirements.txt
 COPY pip-flags.txt /tmp/pip-flags.txt
