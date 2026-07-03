@@ -321,6 +321,7 @@ def test_l3_projection_skips_workflow_scope_entries():
     dictByStep = levelGates._fdictLevel3FailingCriteriaByStep([
         {"iStepIndex": -1, "sCriterion": "workflow-scope-entry"},
         {"iStepIndex": "3", "sCriterion": "stringly-typed-index"},
+        {"sCriterion": "entry-with-no-index-at-all"},
         {"iStepIndex": 2, "listFailingCriteria": ["a", "b"]},
         {"iStepIndex": 5, "sCriterion": "dominant-only"},
     ])
