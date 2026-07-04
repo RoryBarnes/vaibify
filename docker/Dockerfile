@@ -131,14 +131,21 @@ RUN apt-get update \
         python${PYTHON_VERSION}-distutils 2>/dev/null || true) \
     && rm -rf /var/lib/apt/lists/*
 
-# Make the selected Python version the default and install pip
+# Make the selected Python version the default and install pip.
+# Upgrade pip itself, not just setuptools: distro-stock pip on older
+# bases (e.g. Ubuntu 22.04 ships pip 22.0.2) has a build-isolation bug
+# that misplaces console scripts of build backends — a ``--no-binary``
+# source build of any meson-python package (matplotlib, ...) then dies
+# with ``meson executable "meson" not found``. A current pip resolves
+# the build-env script path correctly, so every from-source install
+# works regardless of the base image's pip vintage.
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
     && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade setuptools
+    && pip install --no-cache-dir --upgrade pip setuptools
 
 # Keyring backend for in-container credential storage.
 # keyrings.alt provides a file-based PlaintextKeyring that works in
