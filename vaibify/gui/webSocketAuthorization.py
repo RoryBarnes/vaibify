@@ -26,6 +26,7 @@ __all__ = [
     "fbAuthorizeContainerSession",
     "fiContainerSessionRejectionCode",
     "fbRefuseSecondLiveConnection",
+    "fnCloseWithCode",
     "fnServeUnderLiveConnectionCounters",
 ]
 
@@ -113,38 +114,62 @@ def fbAuthorizeContainerSession(connection, dictCtx, sName):
 
 
 def fbRefuseSecondLiveConnection(dictContainerOwners, sName):
-    """Return True when a second live browser connection would exceed one.
+    """Return True when a second live pipeline connection would exceed one.
 
-    The owner-of-record permits exactly one live WebSocket per
-    container; a duplicate browser tab that copied the lease passes the
-    lease gate but must be refused here so the one-session guarantee
-    holds at the connection layer, not merely at claim time.
+    The owner-of-record permits exactly one live *pipeline* WebSocket
+    per container; a duplicate browser tab that copied the lease passes
+    the lease gate but must be refused here so two sessions can never
+    drive the pipeline concurrently. Terminal sockets are exempt — one
+    legitimate session holds the terminal strip plus the pipeline
+    socket, and several terminal tabs, at the same time.
     """
     recordOwner = dictContainerOwners.get(sName)
-    return recordOwner is not None and recordOwner.iLiveConnectionCount >= 1
+    return (
+        recordOwner is not None
+        and recordOwner.iLivePipelineConnectionCount >= 1
+    )
+
+
+async def fnCloseWithCode(connection, iCloseCode):
+    """Complete the handshake, then close with the real refusal code.
+
+    Closing before ``accept`` downgrades every refusal to an opaque
+    HTTP 403, which a browser can only observe as close code 1006 —
+    indistinguishable from a dead server. Accepting first lets the
+    close frame carry the deliberate 4xxx code, so the client can
+    report the true reason instead of "cannot reach server" and knows
+    not to retry.
+    """
+    await connection.accept()
+    await connection.close(code=iCloseCode)
 
 
 async def fnServeUnderLiveConnectionCounters(
     connection, dictContainerOwners, sName, fnServe,
-    fnIncrementGlobal, fnDecrementGlobal,
+    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=False,
 ):
     """Serve an already-gated WebSocket under the live-connection counters.
 
-    Refuses a duplicate browser tab with 4409 (the owner permits one
-    live connection); otherwise increments the per-container counter
-    (browser lane only) and the app-global counter before serving, and
-    decrements both in a ``finally`` so the idle watchdog and the
-    ownership reaper always observe an accurate live count. The agent
-    lane (non-loopback origin) is exempt from the per-container budget so
-    a machine action never displaces the researcher's single session.
+    On the pipeline lane (``bExclusivePipelineLane``), refuses a second
+    concurrent browser connection with 4409 — the duplicate-tab budget;
+    the terminal lane is unbudgeted. Otherwise increments the
+    per-container counters (browser lane only) and the app-global
+    counter before serving, and decrements them in a ``finally`` so the
+    idle watchdog and the ownership reaper always observe an accurate
+    live count. The agent lane (non-loopback origin) is exempt from the
+    per-container budget so a machine action never displaces the
+    researcher's single session.
     """
     bBrowser = fbCheckOrigin(connection)
-    if bBrowser and fbRefuseSecondLiveConnection(dictContainerOwners, sName):
-        await connection.close(code=I_REJECT_DUPLICATE_SESSION)
+    if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
+        dictContainerOwners, sName,
+    ):
+        await fnCloseWithCode(connection, I_REJECT_DUPLICATE_SESSION)
         return
     if bBrowser:
         containerOwnership.fnIncrementLiveConnection(
             dictContainerOwners, sName,
+            bPipelineLane=bExclusivePipelineLane,
         )
     fnIncrementGlobal()
     try:
@@ -154,4 +179,5 @@ async def fnServeUnderLiveConnectionCounters(
         if bBrowser:
             containerOwnership.fnDecrementLiveConnection(
                 dictContainerOwners, sName,
+                bPipelineLane=bExclusivePipelineLane,
             )

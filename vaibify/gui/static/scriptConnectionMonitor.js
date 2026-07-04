@@ -58,9 +58,19 @@ var VaibifyConnectionMonitor = (function () {
             return;
         }
         fnSurfaceServerUnreachable({
-            sKind: "network",
+            sKind: _fsKindFromCloseCode(iCode),
+            iCode: iCode,
             sMessage: "WebSocket closed (code " + (iCode || "?") + ")",
         });
+    }
+
+    function _fsKindFromCloseCode(iCode) {
+        /* 4xxx closes are the server's deliberate refusals; calling
+         * them "cannot reach server" misrepresents a healthy server
+         * as a dead one (the ground-truth invariant). */
+        if (iCode === 4401) return "unauthorized";
+        if (iCode >= 4000 && iCode < 5000) return "refused";
+        return "network";
     }
 
     function fnSurfaceServerUnreachable(dictError) {
@@ -104,6 +114,21 @@ var VaibifyConnectionMonitor = (function () {
             return (
                 "Vaibify server has been restarted (session expired). " +
                 "Click to reload the dashboard."
+            );
+        }
+        if (dictError && dictError.sKind === "refused") {
+            if (dictError.iCode === 4409) {
+                return (
+                    "The server refused this connection: another live " +
+                    "session is already driving this container " +
+                    "(code 4409). Close the other tab, then click to " +
+                    "reload the dashboard."
+                );
+            }
+            return (
+                "The server refused this connection (code " +
+                dictError.iCode + "): this tab no longer holds the " +
+                "container's session. Click to reload and reclaim."
             );
         }
         return (

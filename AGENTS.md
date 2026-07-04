@@ -309,15 +309,27 @@ in-container agent authenticates with a **per-container** token
 reach another. Never collapse the agent lane back onto the hub-wide
 token. The lease is the exclusivity principal; the
 holder payload carries `sStartedIso` for recycle-proof staleness; exactly
-one live WebSocket per container is enforced by the per-container
-`iLiveConnectionCount` (a duplicate tab that copied the lease is closed
-4409); and the idle busy-veto reads `dictContainerOwners.keys()` so the
-watchdog can never self-SIGTERM a hub mid-run. The full normative model
-is the "Single browser session per container" section of
-[docs/architecture.md](docs/architecture.md). Enforced by
-`testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
-`testWebSocketGatesUseSharedAuthorizationGuard`, and
-`testSetAllowedContainersRemoved`.
+one live *pipeline* WebSocket per container is enforced by the
+per-container `iLivePipelineConnectionCount` (a duplicate tab that copied
+the lease is closed 4409 — after `accept`, via `fnCloseWithCode`, so a
+real browser sees the code instead of an unreachable-looking 1006).
+Terminal sockets are counted in `iLiveConnectionCount` for liveness but
+never budgeted: one session legitimately holds the terminal strip, extra
+terminal tabs, AND the pipeline socket at once — budgeting all sockets
+shipped the Run-Step-always-refused bug (the terminal, opened on
+workflow entry, held the only slot; every Run Step was 4409'd and
+mislabeled "cannot reach server"). Run exclusivity is additionally
+enforced at dispatch for every lane, including the budget-exempt agent
+lane: a run arriving while another pipeline action is live in that
+container is answered with a `runRefused` event, never started
+(`_fbRefuseWhilePipelineTaskLive`). The idle busy-veto reads
+`dictContainerOwners.keys()` so the watchdog can never self-SIGTERM a
+hub mid-run. The full normative model is the "Single browser session per
+container" section of [docs/architecture.md](docs/architecture.md).
+Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
+`testWebSocketGatesUseSharedAuthorizationGuard`,
+`testSetAllowedContainersRemoved`, and
+`test_terminal_plus_pipeline_ws_coexist_in_one_session`.
 
 ## Cross-step references via tokens
 

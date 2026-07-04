@@ -571,7 +571,7 @@ def _fnStreamWsEvents(sockConn, bJsonMode):
         sType = dictEvent.get("sType", "")
         if sType == "completed":
             return int(dictEvent.get("iExitCode", 0) or 0)
-        if sType in ("error", "pipelineError"):
+        if sType in ("error", "pipelineError", "runRefused"):
             return 1
 
 

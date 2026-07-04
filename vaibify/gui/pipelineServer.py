@@ -652,6 +652,8 @@ async def fnPipelineMessageLoop(
 
     - ``output`` / ``commandFailed`` / ``stepResult`` / ``completed`` /
       ``progress`` / ``error`` / ``pipelineError`` — pipeline status.
+    - ``runRefused`` — a dispatch arrived while another pipeline action
+      for the same container was still live; nothing was started.
     - ``wsHeartbeat`` — emitted by ``_actxWebSocketHeartbeat`` in
       ``pipelineRunner`` every ``F_WS_HEARTBEAT_INTERVAL`` seconds
       while a single command is running. Pure keepalive: clients must
@@ -679,6 +681,13 @@ async def fnPipelineMessageLoop(
             if sAction == "interactiveComplete":
                 _fnHandleInteractiveComplete(
                     dictInteractive, dictRequest,
+                )
+                continue
+            if _fbRefuseWhilePipelineTaskLive(
+                dictPipelineTasks, sContainerId,
+            ):
+                await fnCallback(
+                    _fdictBusyRefusalEvent(sAction, dictRequest),
                 )
                 continue
             taskPipeline = asyncio.create_task(
@@ -729,6 +738,41 @@ async def _fnSafeDispatch(
             })
         except Exception:
             pass
+
+
+def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
+    """Return True when a dispatched pipeline action is still running.
+
+    One live pipeline action per container, enforced at dispatch so the
+    guarantee holds for every lane — a duplicated browser tab, a
+    reconnected socket after a mid-run detach, and the in-container
+    ``vaibify-do`` agent alike. Without it, a second ``runSelected``
+    would race the first inside the same container and overwrite the
+    kill switch in ``dictPipelineTasks``.
+    """
+    if dictPipelineTasks is None:
+        return False
+    taskLive = dictPipelineTasks.get(sContainerId)
+    return taskLive is not None and not taskLive.done()
+
+
+def _fdictBusyRefusalEvent(sAction, dictRequest):
+    """Return the honest refusal event for a run-while-running attempt.
+
+    Carries the refused step indices so the browser can reset only the
+    lights it optimistically set to "queued", leaving the in-flight
+    run's statuses untouched.
+    """
+    return {
+        "sType": "runRefused",
+        "sAction": sAction,
+        "listStepIndices": dictRequest.get("listStepIndices", []),
+        "sMessage": (
+            f"Refused '{sAction}': a pipeline action is already "
+            "running in this container. Wait for it to finish, or "
+            "stop it with the Kill button, then retry."
+        ),
+    }
 
 
 def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):

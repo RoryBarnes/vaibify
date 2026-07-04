@@ -407,12 +407,13 @@ nothing else.
 
 `OwnerRecord` fields (in-process, dies with the hub process):
 
-| Field                  | Meaning                                              |
-|------------------------|------------------------------------------------------|
-| `sLeaseId`             | The lease that owns this container                   |
-| `fileHandleLock`       | The held host flock from `containerLock`             |
-| `iLiveConnectionCount` | Live WebSockets for this container (the one-live invariant) |
-| `fLastSeenMonotonic`   | When the last live connection dropped; starts grace  |
+| Field                          | Meaning                                              |
+|--------------------------------|------------------------------------------------------|
+| `sLeaseId`                     | The lease that owns this container                   |
+| `fileHandleLock`               | The held host flock from `containerLock`             |
+| `iLiveConnectionCount`         | Every live WebSocket for this container (liveness for the reaper/watchdog) |
+| `iLivePipelineConnectionCount` | Live *pipeline* WebSockets only (the one-live-pipeline budget) |
+| `fLastSeenMonotonic`           | When the last live connection dropped; starts grace  |
 
 The host flock holder payload (the persisted, cross-process artifact at
 `~/.vaibify/locks/<name>.lock`) is the **normative holder-payload
@@ -449,16 +450,41 @@ now has three outcomes:
    running), in which case the dead owner is released and the claim is
    granted fresh. The 409 never echoes the other owner's lease.
 
-### The one-live-connection invariant
+### The one-live-pipeline-connection invariant
 
 Two tabs of one browser cannot both own a container: only the first
 claim mints a lease and a foreign claim is refused. A *duplicate* tab
 that copied the lease out of `sessionStorage` passes the idempotent
-claim, so exclusivity for that case is enforced at the WebSocket gate
-by `iLiveConnectionCount` — at most one live connection per container.
-`fnIncrementLiveConnection` / `fnDecrementLiveConnection` keep the
-count, and a second concurrent connection presenting the same lease is
-refused.
+claim, so exclusivity for that case is enforced at the WebSocket gate —
+but scoped to the **pipeline lane**. One legitimate session holds
+several sockets at once: the terminal strip opens a terminal WebSocket
+on workflow entry, Run Step opens the pipeline WebSocket on demand, and
+extra terminal tabs add more. Budgeting *all* sockets shipped the
+Run-Step-always-refused bug: the terminal held the single slot, every
+pipeline connection was closed 4409, and the browser reported a healthy
+server as unreachable.
+
+So the budget is: at most one live **pipeline** WebSocket per container
+(`iLivePipelineConnectionCount`); terminal sockets are counted in
+`iLiveConnectionCount` for liveness (the reaper and the idle watchdog
+read it) but are never refused. `fnIncrementLiveConnection` /
+`fnDecrementLiveConnection` keep both counts, and a second concurrent
+pipeline connection presenting the same lease is refused with 4409.
+
+Every deliberate refusal (4003/4401/4403/4409) is sent **after** the
+handshake is accepted (`fnCloseWithCode`): closing before `accept`
+downgrades the refusal to an opaque HTTP 403, which a real browser can
+only observe as close code 1006 — indistinguishable from a dead server.
+The client treats 4xxx closes as final (no reconnect ladder) and
+reports the true reason.
+
+Run exclusivity itself does not ride on socket accounting: the message
+loop refuses a dispatch while another pipeline action for the same
+container is still live (`_fbRefuseWhilePipelineTaskLive`, answered
+with a `runRefused` event). That guard holds for every lane — a
+duplicated tab, a reconnected socket after a mid-run detach, and the
+in-container `vaibify-do` agent (which is exempt from the connection
+budget) — so two runs can never race inside one container.
 
 ### The shared authorization guard
 

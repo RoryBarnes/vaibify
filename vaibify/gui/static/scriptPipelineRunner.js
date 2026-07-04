@@ -102,6 +102,13 @@ var PipeleyenPipelineRunner = (function () {
             );
             PipeleyenApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
+        } else if (dictEvent.sType === "runRefused") {
+            PipeleyenApp.fnResetQueuedSteps(
+                dictEvent.listStepIndices || []);
+            PipeleyenApp.fnRenderStepList();
+            PipeleyenApp.fnShowToast(
+                dictEvent.sMessage ||
+                "A pipeline action is already running.", "error");
         } else if (dictEvent.sType === "interactivePause") {
             fnShowInteractivePauseDialog(dictEvent);
         } else if (dictEvent.sType === "interactiveTerminalStart") {

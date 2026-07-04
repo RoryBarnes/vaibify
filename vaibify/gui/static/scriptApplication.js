@@ -1430,6 +1430,25 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnResetQueuedSteps(listStepIndices) {
+        /* A refused dispatch resets only the lights it optimistically
+         * set to "queued"; a live run's "running" lights stay. With no
+         * indices (runAll/runFrom refusals), clear every queued light. */
+        if (listStepIndices && listStepIndices.length > 0) {
+            listStepIndices.forEach(function (iIndex) {
+                if (_dictWorkflowState.dictStepStatus[iIndex] === "queued") {
+                    delete _dictWorkflowState.dictStepStatus[iIndex];
+                }
+            });
+            return;
+        }
+        for (var sKey in _dictWorkflowState.dictStepStatus) {
+            if (_dictWorkflowState.dictStepStatus[sKey] === "queued") {
+                delete _dictWorkflowState.dictStepStatus[sKey];
+            }
+        }
+    }
+
     function fnPruneStaleStatuses() {
         var iStepCount = (_dictWorkflowState.dictWorkflow && _dictWorkflowState.dictWorkflow.listSteps)
             ? _dictWorkflowState.dictWorkflow.listSteps.length : 0;
@@ -3597,6 +3616,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictStepStatus[iIndex] = sStatus;
         },
         fnClearRunningStatuses: fnClearRunningStatuses,
+        fnResetQueuedSteps: fnResetQueuedSteps,
         fnClearAllStepStatuses: function () {
             _dictWorkflowState.dictStepStatus = {};
         },

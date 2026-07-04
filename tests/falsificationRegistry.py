@@ -80,8 +80,32 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testWebSocketAuthorization.py::test_agent_lane_served_while_browser_session_live',
         source='vaibify/gui/webSocketAuthorization.py',
-        old='if bBrowser and fbRefuseSecondLiveConnection(dictContainerOwners, sName):',
-        new='if fbRefuseSecondLiveConnection(dictContainerOwners, sName):',
+        old="""    if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
+        dictContainerOwners, sName,
+    ):""",
+        new="""    if bExclusivePipelineLane and fbRefuseSecondLiveConnection(
+        dictContainerOwners, sName,
+    ):""",
+    ),
+    Falsification(
+        nodeid='tests/testContainerSessionResolution.py::test_terminal_plus_pipeline_ws_coexist_in_one_session',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    return (
+        recordOwner is not None
+        and recordOwner.iLivePipelineConnectionCount >= 1
+    )""",
+        new="""    return (
+        recordOwner is not None
+        and recordOwner.iLiveConnectionCount >= 1
+    )""",
+    ),
+    Falsification(
+        nodeid='tests/testPipelineServerTaskEviction.py::test_second_run_while_first_is_live_is_refused_not_started',
+        source='vaibify/gui/pipelineServer.py',
+        old="""    taskLive = dictPipelineTasks.get(sContainerId)
+    return taskLive is not None and not taskLive.done()""",
+        new="""    taskLive = dictPipelineTasks.get(sContainerId)
+    return False""",
     ),
     Falsification(
         nodeid='tests/testWebSocketAuthorization.py::test_agent_lane_does_not_touch_per_container_counter',

@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from vaibify.gui import containerOwnership
 from vaibify.gui.routes.pipelineRoutes import _fnRegisterPipelineWs
@@ -49,13 +50,14 @@ def _fdictBuildContext(dictContainerOwners):
     }
 
 
-def _fdictOwnersByName(sLeaseId=S_LEASE, iLiveCount=0):
+def _fdictOwnersByName(sLeaseId=S_LEASE, iLiveCount=0, iLivePipelineCount=0):
     """Return an owner map keyed by NAME (the claim route's canonical key)."""
     recordOwner = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
         sAgentToken=S_AGENT_TOKEN, sContainerId=S_CONTAINER_ID,
     )
     recordOwner.iLiveConnectionCount = iLiveCount
+    recordOwner.iLivePipelineConnectionCount = iLivePipelineCount
     return {S_PROJECT_NAME: recordOwner}
 
 
@@ -117,66 +119,188 @@ def test_owner_pipeline_ws_accepted_when_name_differs_from_id():
 
 
 def test_foreign_lease_pipeline_ws_closes_4403_with_real_guard():
-    """A tab presenting a non-owning lease is refused by the real guard."""
+    """A tab presenting a non-owning lease is refused by the real guard.
+
+    The handshake is accepted first so the close frame carries the
+    deliberate 4403 (close-before-accept downgrades every refusal to an
+    opaque 1006 in a real browser); the refusal is observed on receive.
+    """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     client = _fclientWithPipelineWs(dictCtx)
-    with pytest.raises(Exception) as excInfo:
-        with client.websocket_connect(
-            _sPipelineUrl(sLeaseId="some-other-lease"),
-            headers=_DICT_LOOPBACK_ORIGIN,
-        ):
-            pass
-    assert getattr(excInfo.value, "code", None) == 4403
+    with client.websocket_connect(
+        _sPipelineUrl(sLeaseId="some-other-lease"),
+        headers=_DICT_LOOPBACK_ORIGIN,
+    ) as websocketClient:
+        with pytest.raises(WebSocketDisconnect) as excInfo:
+            websocketClient.receive_text()
+    assert excInfo.value.code == 4403
 
 
 def test_absent_lease_pipeline_ws_closes_4403_with_real_guard():
     """A tab presenting no lease at all is refused 4403, not accepted."""
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     client = _fclientWithPipelineWs(dictCtx)
-    with pytest.raises(Exception) as excInfo:
-        with client.websocket_connect(
-            f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_TOKEN}",
-            headers=_DICT_LOOPBACK_ORIGIN,
-        ):
-            pass
-    assert getattr(excInfo.value, "code", None) == 4403
+    with client.websocket_connect(
+        f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_TOKEN}",
+        headers=_DICT_LOOPBACK_ORIGIN,
+    ) as websocketClient:
+        with pytest.raises(WebSocketDisconnect) as excInfo:
+            websocketClient.receive_text()
+    assert excInfo.value.code == 4403
 
 
-# -- duplicate-tab refusal (CASE 1): second same-lease WS closes 4409 ----
+# -- the one-live budget is scoped to the PIPELINE lane ------------------
+#
+# One legitimate session holds several sockets at once: the terminal
+# strip opens a terminal WS on workflow entry, Run Step opens the
+# pipeline WS on demand, and extra terminal tabs add more. Only a second
+# concurrent PIPELINE socket marks a duplicate tab. The original
+# all-sockets budget shipped the Run-Step-always-refused bug: the
+# terminal held the single slot, every Run Step was closed 4409, and the
+# browser blamed the network.
 
 
-def test_duplicate_tab_same_lease_pipeline_ws_closes_4409():
-    """A second connection presenting the owner's lease is refused 4409.
+def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_TOKEN):
+    """Build a /ws/terminal URL addressed by the docker ID, not the name."""
+    return (
+        f"/ws/terminal/{S_CONTAINER_ID}"
+        f"?sToken={sToken}&sLeaseId={sLeaseId}"
+    )
 
-    The first live connection is represented by seeding the per-container
-    count to one. The duplicate carries the IDENTICAL lease, so it passes
-    the lease gate yet must be turned away at the one-live-connection
-    boundary rather than displacing the active session.
+
+async def _fnFakeBlockingTerminalSession(websocket, dictCtx, sContainerId):
+    """Stand-in terminal session that stays live until the client leaves."""
+    try:
+        await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+
+
+def _fclientWithBothWsRoutes(dictCtx):
+    """Register BOTH WebSocket routes on one app and return a client."""
+    dictCtx.setdefault("containerUsers", {})
+    dictCtx.setdefault("terminals", {})
+    app = FastAPI()
+    _fnRegisterPipelineWs(app, dictCtx)
+    _fnRegisterTerminalWs(app, dictCtx)
+    return TestClient(app)
+
+
+@pytest.mark.falsification
+def test_terminal_plus_pipeline_ws_coexist_in_one_session():
+    """One session's terminal AND pipeline sockets are both served, live
+    at the same time, on the same lease.
+
+    This is the Run Step path as the GUI actually drives it: the
+    terminal WS connects on workflow entry and is STILL OPEN when the
+    pipeline WS arrives. Both must serve concurrently; refusing the
+    second socket silently killed every Run Step while the server was
+    healthy.
+
+    Kills: reverting fbRefuseSecondLiveConnection to the all-sockets
+    budget (iLivePipelineConnectionCount -> iLiveConnectionCount), the
+    exact regression shipped by the one-session refactor.
     """
-    dictCtx = _fdictBuildContext(_fdictOwnersByName(iLiveCount=1))
-    client = _fclientWithPipelineWs(dictCtx)
-    with pytest.raises(Exception) as excInfo:
+    dictCtx = _fdictBuildContext(_fdictOwnersByName())
+    listCountsAtPipelineServe = []
+
+    async def _fnFakePipelineServe(websocket, dictCtxArg, sContainerId):
+        await websocket.accept()
+        recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
+        listCountsAtPipelineServe.append((
+            recordOwner.iLiveConnectionCount,
+            recordOwner.iLivePipelineConnectionCount,
+        ))
+
+    with patch(
+        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
+        _fnFakeBlockingTerminalSession,
+    ), patch(
+        "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
+        _fnFakePipelineServe,
+    ):
+        client = _fclientWithBothWsRoutes(dictCtx)
+        with client.websocket_connect(
+            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+        ):
+            with client.websocket_connect(
+                _sPipelineUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+            ):
+                pass
+    assert listCountsAtPipelineServe == [(2, 1)], (
+        "with the terminal socket still live, the same session's "
+        "pipeline socket must be SERVED (2 live connections total, "
+        "1 on the pipeline lane), never refused 4409"
+    )
+    recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
+    assert recordOwner.iLiveConnectionCount == 0
+    assert recordOwner.iLivePipelineConnectionCount == 0
+
+
+def test_second_pipeline_ws_refused_4409_while_first_is_live():
+    """Two concurrent PIPELINE sockets on one lease: the second gets 4409.
+
+    Driven with two real connections, not a seeded counter: the first
+    pipeline socket is still being served when the duplicate arrives.
+    The duplicate passes the lease gate (same lease) and is refused at
+    the lane budget, observed as a 4409 close AFTER the handshake so a
+    real browser sees the code.
+    """
+    dictCtx = _fdictBuildContext(_fdictOwnersByName())
+
+    async def _fnFakeBlockingPipelineServe(websocket, dictCtxArg, sContainerId):
+        await websocket.accept()
+        try:
+            await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+
+    with patch(
+        "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
+        _fnFakeBlockingPipelineServe,
+    ):
+        client = _fclientWithPipelineWs(dictCtx)
         with client.websocket_connect(
             _sPipelineUrl(), headers=_DICT_LOOPBACK_ORIGIN,
         ):
-            pass
-    assert getattr(excInfo.value, "code", None) == 4409
+            with client.websocket_connect(
+                _sPipelineUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+            ) as websocketDuplicate:
+                with pytest.raises(WebSocketDisconnect) as excInfo:
+                    websocketDuplicate.receive_text()
+            assert excInfo.value.code == 4409
 
 
-def test_duplicate_tab_same_lease_terminal_ws_closes_4409():
-    """The terminal route shares the same one-session 4409 refusal."""
-    dictCtx = _fdictBuildContext(_fdictOwnersByName(iLiveCount=1))
-    app = FastAPI()
-    _fnRegisterTerminalWs(app, dictCtx)
-    client = TestClient(app)
-    with pytest.raises(Exception) as excInfo:
+def test_second_terminal_ws_served_alongside_live_connections():
+    """A second terminal tab is a feature of one session, never a 4409.
+
+    Seeds a live pipeline socket AND a live terminal socket on the
+    owner, then connects another terminal: multi-tab terminals must be
+    served — the old all-sockets budget refused them as duplicates.
+    """
+    dictCtx = _fdictBuildContext(
+        _fdictOwnersByName(iLiveCount=2, iLivePipelineCount=1),
+    )
+    listCountsDuringServe = []
+
+    async def _fnFakeCountingTerminalSession(websocket, dictCtxArg, sId):
+        listCountsDuringServe.append(
+            dictCtx["dictContainerOwners"][S_PROJECT_NAME]
+            .iLiveConnectionCount,
+        )
+
+    with patch(
+        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
+        _fnFakeCountingTerminalSession,
+    ):
+        client = _fclientWithBothWsRoutes(dictCtx)
         with client.websocket_connect(
-            f"/ws/terminal/{S_CONTAINER_ID}"
-            f"?sToken={S_TOKEN}&sLeaseId={S_LEASE}",
-            headers=_DICT_LOOPBACK_ORIGIN,
+            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
         ):
             pass
-    assert getattr(excInfo.value, "code", None) == 4409
+    assert listCountsDuringServe == [3], (
+        "an extra terminal tab must be served and counted for liveness"
+    )
 
 
 # -- terminal route accepts the owner addressed by docker id -------------
