@@ -127,3 +127,40 @@ def test_rerender_dispatcher_consumes_affected_files_argument():
         "_fnRequestStepListRerender must accept listAffectedFiles so "
         "the partial-render path receives the diff result"
     )
+
+
+# -----------------------------------------------------------------------
+# badge-key normalization: relative resolved paths ARE the key
+# -----------------------------------------------------------------------
+
+
+def test_badge_key_lookup_returns_relative_paths_unstripped():
+    """A relative resolved path must be used as the badge key verbatim.
+
+    The badge map is keyed by repo-relative paths, and the renderer
+    joins step-relative file values with the repo-relative step
+    directory before lookup — so a relative resolved path is already
+    the key. The old code fell through to the sWorkdir-strip branch,
+    re-rooting the key at the step directory (e.g.
+    ``CumulativeXuv.../Engle/output/x.json`` -> ``Engle/output/x.json``),
+    which missed the map and painted meaningless grey "none" icons on
+    every relative file row. Assert the relative-path early return
+    sits BEFORE any prefix stripping.
+    """
+    sSource = _fsReadStaticFile("scriptGitBadges.js")
+    iStart = sSource.find("function _fsStripWorkspacePrefix(")
+    assert iStart != -1, "_fsStripWorkspacePrefix missing"
+    iEnd = sSource.find("\n    }\n", iStart)
+    sBlock = sSource[iStart:iEnd]
+    iRelativeGuard = sBlock.find('s.indexOf("/") !== 0')
+    iWorkdirStrip = sBlock.find("sWorkdir.length + 1")
+    assert iRelativeGuard != -1, (
+        "_fsStripWorkspacePrefix must return a relative resolved "
+        "path unchanged — it is already the repo-relative badge key"
+    )
+    assert iWorkdirStrip == -1 or iRelativeGuard < iWorkdirStrip, (
+        "The relative-path early return must precede the "
+        "sWorkdir-strip branch, which only applies to absolute "
+        "leftovers; otherwise relative keys are re-rooted at the "
+        "step directory and every lookup misses the badge map"
+    )
