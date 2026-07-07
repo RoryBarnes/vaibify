@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev449 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev463 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4becd360"></script>
+      <script src="_static/documentation_options.js?v=32604e94"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,7 +68,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-lease-is-the-access-principal">The lease is the access principal</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#claim-arbitration">Claim arbitration</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-one-live-connection-invariant">The one-live-connection invariant</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-one-live-pipeline-connection-invariant">The one-live-pipeline-connection invariant</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
@@ -518,9 +518,12 @@ nothing else.</p>
 <td><p>The held host flock from <code class="docutils literal notranslate"><span class="pre">containerLock</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code></p></td>
-<td><p>Live WebSockets for this container (the one-live invariant)</p></td>
+<td><p>Every live WebSocket for this container (liveness for the reaper/watchdog)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fLastSeenMonotonic</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">iLivePipelineConnectionCount</span></code></p></td>
+<td><p>Live <em>pipeline</em> WebSockets only (the one-live-pipeline budget)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fLastSeenMonotonic</span></code></p></td>
 <td><p>When the last live connection dropped; starts grace</p></td>
 </tr>
 </tbody>
@@ -572,16 +575,38 @@ running), in which case the dead owner is released and the claim is
 granted fresh. The 409 never echoes the other owner’s lease.</p></li>
 </ol>
 </section>
-<section id="the-one-live-connection-invariant">
-<h3>The one-live-connection invariant<a class="headerlink" href="#the-one-live-connection-invariant" title="Link to this heading"></a></h3>
+<section id="the-one-live-pipeline-connection-invariant">
+<h3>The one-live-pipeline-connection invariant<a class="headerlink" href="#the-one-live-pipeline-connection-invariant" title="Link to this heading"></a></h3>
 <p>Two tabs of one browser cannot both own a container: only the first
 claim mints a lease and a foreign claim is refused. A <em>duplicate</em> tab
 that copied the lease out of <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code> passes the idempotent
-claim, so exclusivity for that case is enforced at the WebSocket gate
-by <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> — at most one live connection per container.
-<code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> / <code class="docutils literal notranslate"><span class="pre">fnDecrementLiveConnection</span></code> keep the
-count, and a second concurrent connection presenting the same lease is
-refused.</p>
+claim, so exclusivity for that case is enforced at the WebSocket gate —
+but scoped to the <strong>pipeline lane</strong>. One legitimate session holds
+several sockets at once: the terminal strip opens a terminal WebSocket
+on workflow entry, Run Step opens the pipeline WebSocket on demand, and
+extra terminal tabs add more. Budgeting <em>all</em> sockets shipped the
+Run-Step-always-refused bug: the terminal held the single slot, every
+pipeline connection was closed 4409, and the browser reported a healthy
+server as unreachable.</p>
+<p>So the budget is: at most one live <strong>pipeline</strong> WebSocket per container
+(<code class="docutils literal notranslate"><span class="pre">iLivePipelineConnectionCount</span></code>); terminal sockets are counted in
+<code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> for liveness (the reaper and the idle watchdog
+read it) but are never refused. <code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> /
+<code class="docutils literal notranslate"><span class="pre">fnDecrementLiveConnection</span></code> keep both counts, and a second concurrent
+pipeline connection presenting the same lease is refused with 4409.</p>
+<p>Every deliberate refusal (4003/4401/4403/4409) is sent <strong>after</strong> the
+handshake is accepted (<code class="docutils literal notranslate"><span class="pre">fnCloseWithCode</span></code>): closing before <code class="docutils literal notranslate"><span class="pre">accept</span></code>
+downgrades the refusal to an opaque HTTP 403, which a real browser can
+only observe as close code 1006 — indistinguishable from a dead server.
+The client treats 4xxx closes as final (no reconnect ladder) and
+reports the true reason.</p>
+<p>Run exclusivity itself does not ride on socket accounting: the message
+loop refuses a dispatch while another pipeline action for the same
+container is still live (<code class="docutils literal notranslate"><span class="pre">_fbRefuseWhilePipelineTaskLive</span></code>, answered
+with a <code class="docutils literal notranslate"><span class="pre">runRefused</span></code> event). That guard holds for every lane — a
+duplicated tab, a reconnected socket after a mid-run detach, and the
+in-container <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> agent (which is exempt from the connection
+budget) — so two runs can never race inside one container.</p>
 </section>
 <section id="the-shared-authorization-guard">
 <h3>The shared authorization guard<a class="headerlink" href="#the-shared-authorization-guard" title="Link to this heading"></a></h3>

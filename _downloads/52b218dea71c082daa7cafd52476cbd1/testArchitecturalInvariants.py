@@ -2557,13 +2557,17 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
-    "routes/pipelineRoutes.py": 2132,
-    # 2026-07-02: net -1 — the post-push verify hook landed but its
-    # helpers moved to routeContext.py.
+    # +2 (2026-07-04): the pipeline WS route claims the exclusive
+    # pipeline lane and closes refusals after accept (fnCloseWithCode).
+    "routes/pipelineRoutes.py": 2134,
     "routes/syncRoutes.py": 2041,
     "fileStatusManager.py": 1943,
     "workflowManager.py": 1935,
-    "pipelineServer.py": 1697,
+    # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
+    # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
+    # exclusivity enforced at dispatch for every lane, cohesive with
+    # the message loop it guards.
+    "pipelineServer.py": 1741,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     "syncDispatcher.py": 1627,
