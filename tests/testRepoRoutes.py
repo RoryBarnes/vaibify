@@ -395,18 +395,26 @@ def testTrackRejectsSemicolonInjection(fixtureClient):
     assert response.status_code == 400
 
 
-def testValidateRepoNameRejectsSlash():
+def testValidateRepoNameBoundaries():
     from vaibify.gui.routes.repoRoutes import _fbValidateRepoName
     assert _fbValidateRepoName("foo/bar") is False
     assert _fbValidateRepoName("foo..bar") is False
-    assert _fbValidateRepoName(".hidden") is False
     assert _fbValidateRepoName("") is False
+    assert _fbValidateRepoName(".") is False
+    assert _fbValidateRepoName("..") is False
+    assert _fbValidateRepoName(".vaibify") is False
+    assert _fbValidateRepoName(".vaibify-backup") is False
     assert _fbValidateRepoName("validName") is True
     assert _fbValidateRepoName("valid-repo_2.x") is True
+    # Hidden directories are discoverable, so they must be
+    # actionable: rejecting them made the track-or-ignore prompt
+    # unanswerable for any dot-prefixed repo.
+    assert _fbValidateRepoName(".hidden") is True
+    assert _fbValidateRepoName(".dot-repo_2.x") is True
 
 
-def testTrackRejectsLeadingDot(fixtureClient):
-    response = fixtureClient.post("/api/repos/cid1/.hidden/track")
+def testTrackRejectsVaibifySystemDirectory(fixtureClient):
+    response = fixtureClient.post("/api/repos/cid1/.vaibify/track")
     assert response.status_code == 400
 
 
@@ -432,6 +440,26 @@ def testIgnoreAddsToSidecar(fixtureDocker, fixtureClient):
 def testIgnoreRejectsPathTraversal(fixtureClient):
     response = fixtureClient.post("/api/repos/cid1/..x/ignore")
     assert response.status_code == 400
+
+
+def testIgnoreHiddenRepoPersistsToSidecar(fixtureDocker, fixtureClient):
+    """Clicking Ignore on a discovered hidden repo must be recorded.
+
+    The live failure this pins: discovery surfaces hidden git
+    directories (any /workspace/.<name> clone), the panel prompted
+    for one, but the ignore route 400'd the name as invalid — so the
+    decision could never be persisted and the prompt returned every
+    session.
+    """
+    fixtureDocker.fnAddRepo(".hiddenRepo")
+    response = fixtureClient.post("/api/repos/cid1/.hiddenRepo/ignore")
+    assert response.status_code == 200
+    dictStored = json.loads(
+        fixtureDocker.dictFiles[
+            "/workspace/.vaibify/tracked_repos.json"]
+    )
+    listNames = [r["sName"] for r in dictStored["listIgnored"]]
+    assert ".hiddenRepo" in listNames
 
 
 # ------- POST /untrack -------
