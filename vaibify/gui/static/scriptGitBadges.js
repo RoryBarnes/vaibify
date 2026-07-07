@@ -95,6 +95,15 @@ var VaibifyGitBadges = (function () {
     function _fsStripWorkspacePrefix(sResolvedPath, sWorkdir) {
         if (!sResolvedPath) return "";
         var s = sResolvedPath;
+        if (s.indexOf("/") !== 0) {
+            /* A relative resolved path was already joined with the
+             * repo-relative step directory upstream, so it IS the
+             * repo-relative badge key. Stripping sWorkdir off it
+             * re-rooted the key at the step directory and missed the
+             * map — every relative file row rendered meaningless
+             * grey "none" icons instead of its real remote states. */
+            return s;
+        }
         var sRepo = "";
         if (typeof PipeleyenApp !== "undefined" &&
             PipeleyenApp.fdictGetWorkflow) {

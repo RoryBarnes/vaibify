@@ -12,6 +12,7 @@ from ..pipelineServer import (
 )
 from ..webSocketAuthorization import (
     fiContainerSessionRejectionCode,
+    fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
 )
 from ..terminalSession import TerminalSession
@@ -31,7 +32,7 @@ def _fnRegisterTerminalWs(app, dictCtx):
             websocket, dictCtx, sName,
         )
         if iRejectCode:
-            await websocket.close(code=iRejectCode)
+            await fnCloseWithCode(websocket, iRejectCode)
             return
         dictCtx["require"]()
         await _fnTrackAndServeTerminal(

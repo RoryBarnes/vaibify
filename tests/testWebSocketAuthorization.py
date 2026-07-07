@@ -295,24 +295,27 @@ def test_empty_shared_token_fails_closed_4401():
 @pytest.mark.asyncio
 @pytest.mark.falsification
 async def test_agent_lane_served_while_browser_session_live():
-    """The agent lane is served even when a browser session is live.
+    """The agent lane is served even when a browser pipeline WS is live.
 
     Kills: M9: remove the 'bBrowser and' guard on the 4409 refusal in
-    fnServeUnderLiveConnectionCounters (line 142)
+    fnServeUnderLiveConnectionCounters
     """
     # The lease-exempt machine lane must keep working while a researcher's
     # browser session is live. An in-container agent (no loopback origin)
-    # dialing a container whose owner already has one live connection must
-    # be SERVED, never closed with 4409: 'Claude, run unit tests on A09'
-    # cannot fail just because the human's tab is open.
+    # dialing the pipeline lane of a container whose owner already has one
+    # live pipeline connection must be SERVED, never closed with 4409:
+    # 'Claude, run unit tests on A09' cannot fail just because the
+    # human's tab is open.
     dictContainerOwners = _fdictOwnersWithOwner()
     dictContainerOwners[S_CONTAINER].iLiveConnectionCount = 1
+    dictContainerOwners[S_CONTAINER].iLivePipelineConnectionCount = 1
     conn = _fconnAgent()
+    conn.accept = AsyncMock()
     conn.close = AsyncMock()
     fnServe = AsyncMock()
     await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
         conn, dictContainerOwners, S_CONTAINER, fnServe,
-        MagicMock(), MagicMock(),
+        MagicMock(), MagicMock(), bExclusivePipelineLane=True,
     )
     fnServe.assert_awaited_once()
     conn.close.assert_not_called()
@@ -335,6 +338,7 @@ async def test_agent_lane_does_not_touch_per_container_counter():
     dictContainerOwners = _fdictOwnersWithOwner()
     assert dictContainerOwners[S_CONTAINER].iLiveConnectionCount == 0
     conn = _fconnAgent()
+    conn.accept = AsyncMock()
     conn.close = AsyncMock()
     fnServe = AsyncMock()
     with patch.object(
@@ -344,7 +348,7 @@ async def test_agent_lane_does_not_touch_per_container_counter():
     ) as mockDecrement:
         await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
             conn, dictContainerOwners, S_CONTAINER, fnServe,
-            MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), bExclusivePipelineLane=True,
         )
     mockIncrement.assert_not_called()
     mockDecrement.assert_not_called()

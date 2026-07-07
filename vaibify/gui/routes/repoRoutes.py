@@ -21,7 +21,7 @@ from ..pipelineServer import fnBumpSyncEpoch
 from ..routeContext import fsRefreshVerifyCacheAfterPush
 
 
-_PATTERN_REPO_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+_PATTERN_REPO_NAME = re.compile(r"^\.?[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 
 class PushStagedRequest(BaseModel):
@@ -39,12 +39,21 @@ class InitRepoRequest(BaseModel):
 
 
 def _fbValidateRepoName(sRepoName):
-    """Return True if sRepoName is a safe repository basename."""
+    """Return True if sRepoName is a safe repository basename.
+
+    A single leading dot is legal: discovery surfaces hidden git
+    directories (e.g. a personal ``.claude`` clone), so the Track and
+    Ignore actions the prompt offers must accept them — rejecting the
+    name made the prompt unanswerable and re-ask every session.
+    Separators, traversal, and vaibify's own system directories stay
+    banned; the pattern requires a word character after the optional
+    dot, so ``.`` and ``..`` can never match.
+    """
     if not sRepoName or len(sRepoName) > 255:
         return False
     if "/" in sRepoName or ".." in sRepoName:
         return False
-    if sRepoName.startswith("."):
+    if sRepoName.startswith(".vaibify"):
         return False
     return bool(_PATTERN_REPO_NAME.match(sRepoName))
 
@@ -303,8 +312,20 @@ def _fnRunGitInitWithEmptyCommit(
 def _fnDoInitProjectRepo(
     connectionDocker, sContainerId, sDirectory, bCreateIfMissing,
 ):
-    """Validate and initialize /workspace/<sDirectory> as a git repo."""
+    """Validate and initialize /workspace/<sDirectory> as a git repo.
+
+    Creating a NEW project repo stays restricted to visible
+    directories: hidden names are only accepted by the shared
+    validator so that already-existing hidden repos, which discovery
+    surfaces, can be tracked or ignored — a project repo authored
+    through vaibify should never be born hidden.
+    """
     _fnRequireValidRepoName(sDirectory)
+    if sDirectory.startswith("."):
+        raise HTTPException(
+            400, f"Project repositories must be visible "
+            f"directories; refusing hidden '{sDirectory}'"
+        )
     sFullPath = "/workspace/" + sDirectory
     _fnEnsureInitTargetDirectory(
         connectionDocker, sContainerId, sFullPath, bCreateIfMissing,

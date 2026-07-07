@@ -812,16 +812,38 @@ Agent actions to reach L1:
    qualitative, and quantitative tests.
 3. `vaibify-do verify-only` — confirm declared outputs exist and their
    hashes match the recorded baseline.
-4. `vaibify-do verify-manifest` — confirm `MANIFEST.sha256` at the
-   project-repo root matches the current declared-output set.
-5. `vaibify-do commit-canonical` — commit the verified state to the
-   project repo.
-6. Confirm `dictWorkflow["bVaibified"]` is `True`. If `False` after the
-   prior steps succeeded, surface the discrepancy to the researcher —
-   the flag is the ground truth.
+4. Confirm the level: `vaibify-do check-l2-readiness` returns
+   `iAICSLevel` and `bAtLeastLevel1`. Require `iAICSLevel >= 1`. If it
+   stays 0 after the prior steps succeeded, surface the discrepancy to
+   the researcher — the backend derivation is the ground truth.
+
+**Never hand-roll a verification audit.** The backend derivation is
+the only authority on levels; do not reimplement it by inspecting raw
+files. Two traps that have produced false "not at L1" reports:
+
+- Test markers (`<repo>/.vaibify/test_markers/<slug>/*.json`) are
+  receipts of the *last external run* — one marker records only the
+  categories that run executed. The accumulated ledger is
+  `.vaibify/state.json` (`dictStepState.<dir>.dictVerification`).
+- Marker `dictOutputHashes` values are **git blob SHA-1s**
+  (`sha1("blob <size>\0" + content)`), not sha256/sha1/md5 of the
+  bytes. Comparing with any other digest reports every file as
+  drifted. Uniform 100% mismatch means your algorithm is wrong, not
+  that the data drifted.
+
+Committing the canonical state (`vaibify-do commit-canonical`) and
+verifying the manifest (`vaibify-do verify-manifest`) are L2
+preparation, not L1 requirements: L1 is per-step self-consistency
+inside the container. Uncommitted-but-consistent files (git-dirty
+scripts whose outputs and tests were regenerated afterward) block L2,
+never L1.
 
 `MANIFEST.sha256`, `requirements.lock`, and `.vaibify/environment.json`
-are regenerated automatically when every step goes green; you do not
+are regenerated automatically when the workflow first crosses into L1;
+if they are missing afterward (the promotion can land through a path
+the hook does not observe), regenerate them from this shell with the
+manifest / lockfile / snapshot CLI helpers (`vaibify-do --describe
+generate-l3-envelope` explains which artifact is missing); do not
 write them by hand.
 
 ### L2 — Published
@@ -903,33 +925,33 @@ Each rung the researcher reaches is observable from the workflow's
 backend state, not just from the agent's reasoning. When you report
 "L1 reached", correlate with the state the researcher can see:
 
-- **L1** is signalled by `dictWorkflow["bVaibified"] = True`, set when
-  every step's verification (unit tests, integrity, qualitative,
-  quantitative, dependencies, user attestation) is green. The dashboard
-  surfaces this with a theme change and a checkmark next to the
-  workflow name. If you claim L1 but `bVaibified` is still `False`,
-  something is missing — re-check the per-step verification status
-  before reporting.
-- **L2 and L3** do not yet have analogous backend flags or dashboard
-  signals; that work is on the roadmap. For now, report L2/L3 status by
-  enumerating what you confirmed (envelope files present, remote hashes
-  match, container digest captured, no unseeded randomness) rather than
-  by inspecting a single flag.
-
-When the L2/L3 signals land, the convention will follow L1: a boolean
-on the workflow dict, surfaced visually in the dashboard. Update this
-section then.
+- **The single authoritative signal is the integer `iAICSLevel`**,
+  derived by the backend on every load, save, and dashboard poll, and
+  persisted in `<project-repo>/.vaibify/state.json`. Read it with
+  `vaibify-do check-l2-readiness`, which returns `iAICSLevel` plus the
+  per-criterion L2 gaps (`bAtLeastLevel1`, `bGithubFullySynced`,
+  `bZenodoFullySynced`, `bArxivFullySynced`, `bAiDeclarationAttested`,
+  `bAtLeastLevel2`). The dashboard surfaces the level as a theme change
+  and per-step L1/L2/L3 cells.
+- **L3** has its own per-criterion report: `vaibify-do
+  check-l3-readiness` (manifest, lockfile, environment digest,
+  Dockerfile pin, reproduce.sh, determinism declaration).
+- **`bVaibified` is retired.** It was the pre-ladder L1 flag; the
+  v3-to-v4 workflow migration deletes it on load. If you find it in a
+  workflow file or in older notes, ignore it and use `iAICSLevel` —
+  never report a level from `bVaibified`.
 
 ### Quick reference
 
 When asked to reach Level N, walk these gates in order, stopping at N:
 
-- **L1**: `run-all` → `run-all-tests` → `verify-only` →
-  `verify-manifest` → `commit-canonical` → confirm `bVaibified=True`.
-- **L2**: L1 + envelope present + **surface** push requests.
+- **L1**: `run-all` → `run-all-tests` → `verify-only` → confirm
+  `iAICSLevel >= 1` via `check-l2-readiness`.
+- **L2**: L1 + `commit-canonical` + envelope present + **surface**
+  push requests; confirm the `check-l2-readiness` gaps close.
 - **L3**: L2 + container digest in `environment.json` + hash-pinned
-  `requirements.lock` + no unseeded-randomness badges + recommend
-  `vaibify reproduce`.
+  `requirements.lock` + no unseeded-randomness badges (confirm via
+  `check-l3-readiness`) + recommend `vaibify reproduce`.
 - **L4, L5**: not supported; explain and stop.
 
 Never silently invoke `push-to-overleaf`, `publish-to-zenodo`, or

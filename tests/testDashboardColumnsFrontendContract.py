@@ -492,6 +492,92 @@ def test_repos_panel_push_toasts_are_honest():
     )
 
 
+def test_dropped_websocket_actions_are_reported_not_swallowed():
+    """FALSIFICATION TARGET (live incident 2026-07-03): a Run clicked
+    against a dying socket painted the queued light, parked the
+    action in the pending queue, and evaporated when the socket
+    closed — the researcher saw "queued" then an unexplained
+    disconnect, and the run never reached the server. Three links:
+    the socket layer must report that pending actions were dropped,
+    the app must tell the researcher their request was NOT
+    submitted, and the unreachable toast must carry the close detail
+    (the code distinguishes a duplicate-session rejection from a
+    network drop from a restart)."""
+    sSocket = _fsReadStaticFile("scriptWebSocket.js")
+    sEmit = _fsExtractFunctionBlock(
+        sSocket, "_fnEmitCloseEventAndDropPending",
+    )
+    assert "bActionsDropped" in sEmit
+    assert "iCode" in sEmit
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sHandlers = _fsExtractFunctionBlock(
+        sApplication, "fnRegisterWebSocketHandlers",
+    )
+    assert "bActionsDropped" in sHandlers, (
+        "the close handler must inspect the dropped-actions flag"
+    )
+    assert "NOT submitted" in sHandlers, (
+        "the researcher must be told their request never reached "
+        "the server"
+    )
+    sMonitor = _fsReadStaticFile("scriptConnectionMonitor.js")
+    sToast = _fsExtractFunctionBlock(sMonitor, "_fsBuildToastMessage")
+    assert "sMessage" in sToast, (
+        "the unreachable toast must surface the close detail"
+    )
+
+
+def test_viewer_lease_replaces_a_stale_stored_lease():
+    """FALSIFICATION TARGET (live incident 2026-07-03): single-
+    container mode mints a server-side lease and hands it to the
+    browser in the connect response. The browser MUST replace any
+    lease left in sessionStorage by a previous hub — an old lease
+    survives a reload (sessionStorage persists), so keeping it makes
+    every WebSocket present a foreign lease and fail closed as 1006
+    after a hub restart, which no amount of restarting fixes. The
+    recorder must only skip when the stored lease already equals the
+    served one (a no-op), never merely because SOME lease is held."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sBody = _fsExtractFunctionBlock(
+        sApplication, "_fnRecordViewerLeaseFromConnect",
+    )
+    assert "=== dictConnect.sLeaseId" in sBody, (
+        "the served lease must replace a differing stored lease; the "
+        "skip may only fire when the stored lease already matches"
+    )
+    assert "if (fsGetLeaseId()) return;" not in sBody, (
+        "the unconditional 'already have a lease' guard stranded a "
+        "stale lease across hub restarts (the 1006 lockout)"
+    )
+
+
+def test_output_existence_lookup_joins_the_workdir_exactly_once():
+    """FALSIFICATION TARGET (live bug 2026-07-03): the renderer joins
+    a relative output path with the step workdir when it builds
+    data-resolved, and the existence planner then composed the
+    workdir in AGAIN — the server was asked about
+    'XuvEvolution/XuvEvolution/…', answered 'missing', and every
+    existing data file in a repo-relative step directory rendered
+    red with no explanation. The join happens exactly once, in the
+    renderer; the planner must trust data-resolved verbatim."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sItem = _fsExtractFunctionBlock(sRenderer, "fsRenderDetailItem")
+    assert "fsJoinPath(sWorkdir, sResolved)" in sItem, (
+        "the renderer owns the one workdir join for output paths"
+    )
+    sOperations = _fsReadStaticFile("scriptFileOperations.js")
+    sPlanItem = _fsExtractFunctionBlock(
+        sOperations, "_fdictOutputItemForPlan",
+    )
+    assert "sLookupPath: sResolved" in sPlanItem, (
+        "the planner must send data-resolved verbatim"
+    )
+    assert "_fsComposeAbsoluteOrRelative" not in sPlanItem, (
+        "re-composing data-resolved with the workdir double-joins "
+        "relative step directories"
+    )
+
+
 def test_declaration_badge_state_reaches_the_incremental_renderer():
     """FALSIFICATION TARGET (live bug 2026-07-02): the declaration
     buttons gate on the file's git badge, so the incremental renderer
@@ -618,4 +704,55 @@ def test_activate_workflow_wires_aics_and_repos_tabs():
     assert "PipeleyenReposPanel.fnInit(sId)" in sActivate, (
         "workflow activation must initialize the Repos panel or the "
         "Repos tab stays empty for the whole session"
+    )
+
+
+# -----------------------------------------------------------------------
+# The poll delivers workflow-level promotions to the theme
+# -----------------------------------------------------------------------
+
+
+def test_poll_updates_workflow_level_integer_for_the_theme():
+    """The file-status poll must copy ``iAICSLevel`` onto the client's
+    workflow dict — the theme (``fiClientAICSLevel``) reads exactly
+    that integer. Before this contract, the poll updated every level
+    CELL but never the workflow-level integer, so a promotion earned
+    mid-session showed every step's L1 check while the theme stayed
+    at level 0 until a full reload."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sApply = _fsExtractFunctionBlock(
+        sSource, "_fnApplyLevelStatesFromPoll")
+    assert "dictWorkflow.iAICSLevel =" in sApply.replace(
+        "\n", "").replace("    ", " ").replace("  ", " "), (
+        "_fnApplyLevelStatesFromPoll must assign the poll's "
+        "iAICSLevel onto the workflow dict the theme reads"
+    )
+    sSnapshot = _fsExtractFunctionBlock(
+        sSource, "_fsBlockerAndLevelSnapshot")
+    assert "iAICSLevel" in sSnapshot, (
+        "the blocker/level snapshot must include the workflow-level "
+        "integer so a promotion alone triggers the re-render that "
+        "calls fnUpdateHighlightState (the theme flip)"
+    )
+
+
+def test_client_level_gate_exempts_declaration_steps():
+    """``fbStepIsAtLeastLevel1`` must return True for ai-declaration
+    steps BEFORE reading verification/data signals. Declaration steps
+    are L1-not-applicable (the server emits no L1 blockers for them
+    and their sign-off is an L2 criterion), but they have no output
+    data and no "passed" user badge — so without the exemption the
+    client-side conjunction demoted the whole workflow to level 0 and
+    the theme never left the base color, even at server level 1."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sGate = _fsExtractFunctionBlock(sSource, "fbStepIsAtLeastLevel1")
+    iExemption = sGate.find('sStepKind === "ai-declaration"')
+    iFirstSignal = sGate.find("fdictGetVerification")
+    assert iExemption != -1, (
+        "fbStepIsAtLeastLevel1 must exempt ai-declaration steps or "
+        "they demote the client-side workflow level forever"
+    )
+    assert iFirstSignal == -1 or iExemption < iFirstSignal, (
+        "the declaration exemption must precede the data/verification "
+        "signals a declaration step can never satisfy"
     )

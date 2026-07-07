@@ -94,7 +94,12 @@ var VaibifyWebSocket = (function () {
 
     function _fnHandleSocketClose(event) {
         var bNormal = event.code === 1000 || event.code === 1001;
-        if (_bIntentionalDisconnect || bNormal) {
+        /* 4xxx codes are the server's deliberate refusals (bad token
+         * 4401, foreign lease 4403, duplicate session 4409). Retrying
+         * re-asks the same question and gets the same answer; surface
+         * the refusal immediately instead of after a silent ladder. */
+        var bDeliberateRefusal = event.code >= 4000 && event.code < 5000;
+        if (_bIntentionalDisconnect || bNormal || bDeliberateRefusal) {
             _fnEmitCloseEventAndDropPending(event);
             return;
         }

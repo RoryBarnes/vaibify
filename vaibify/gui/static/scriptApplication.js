@@ -179,12 +179,18 @@ const PipeleyenApp = (function () {
 
     function _fnRecordViewerLeaseFromConnect(sId, dictConnect) {
         /* Viewer mode mints its lease server-side and returns it on the
-           connect response (the viewer has no claim route). Record it so
-           the pipeline and terminal WebSockets can present it. Never
-           clobber a lease already held: in hub mode the claim path has
-           already recorded one and the connect response carries none. */
+           connect response (the viewer has no claim route). The served
+           lease is AUTHORITATIVE: it must replace any lease left in
+           sessionStorage by a previous hub process, or every
+           WebSocket presents a foreign lease and fails closed as 1006
+           after a hub restart (live incident 2026-07-03 — a reload
+           preserves sessionStorage, so the stale lease survived every
+           restart). Hub-mode connect responses carry no lease
+           (sLeaseId ""), so the first guard leaves the claim-recorded
+           lease untouched; the second skips a redundant re-record when
+           the stored lease already matches. */
         if (!dictConnect || !dictConnect.sLeaseId) return;
-        if (fsGetLeaseId()) return;
+        if (fsGetLeaseId() === dictConnect.sLeaseId) return;
         var sName = PipeleyenContainerManager
             .fsGetSelectedContainerName() || sId;
         fnRecordClaimedLease(sName, dictConnect.sLeaseId);
@@ -198,6 +204,20 @@ const PipeleyenApp = (function () {
         VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
             fnClearRunningStatuses();
             fnRenderStepList();
+            if (dictEvent.bActionsDropped) {
+                // The socket died holding unsent actions: whatever
+                // the researcher just clicked (typically a step run
+                // that already painted its queued light) never
+                // reached the server. Saying so beats letting the
+                // queued light silently evaporate (live incident,
+                // 2026-07-03).
+                fnShowToast(
+                    "Connection lost before your last request " +
+                    "reached the server — it was NOT submitted. " +
+                    "A step run that showed as queued never " +
+                    "started. Reconnect and retry.",
+                    "error");
+            }
             _fnReportConnectionLossToMonitor(dictEvent);
         });
         VaibifyWebSocket.fnOnEvent("_wsError", function (dictEvent) {
@@ -1430,6 +1450,25 @@ const PipeleyenApp = (function () {
         }
     }
 
+    function fnResetQueuedSteps(listStepIndices) {
+        /* A refused dispatch resets only the lights it optimistically
+         * set to "queued"; a live run's "running" lights stay. With no
+         * indices (runAll/runFrom refusals), clear every queued light. */
+        if (listStepIndices && listStepIndices.length > 0) {
+            listStepIndices.forEach(function (iIndex) {
+                if (_dictWorkflowState.dictStepStatus[iIndex] === "queued") {
+                    delete _dictWorkflowState.dictStepStatus[iIndex];
+                }
+            });
+            return;
+        }
+        for (var sKey in _dictWorkflowState.dictStepStatus) {
+            if (_dictWorkflowState.dictStepStatus[sKey] === "queued") {
+                delete _dictWorkflowState.dictStepStatus[sKey];
+            }
+        }
+    }
+
     function fnPruneStaleStatuses() {
         var iStepCount = (_dictWorkflowState.dictWorkflow && _dictWorkflowState.dictWorkflow.listSteps)
             ? _dictWorkflowState.dictWorkflow.listSteps.length : 0;
@@ -1474,6 +1513,16 @@ const PipeleyenApp = (function () {
     }
 
     function fbStepIsAtLeastLevel1(dictStep, iStep) {
+        if (dictStep && dictStep.sStepKind === "ai-declaration") {
+            /* Declaration steps are L1-not-applicable by the
+             * 2026-07-02 ruling (their sign-off is an L2 criterion;
+             * the L1 cell renders a dash, and the server emits no L1
+             * blockers for them). Without this mirror of the server
+             * rule the step has no data and no "passed" badge, so it
+             * demoted the client-side level to 0 forever — every step
+             * showed its check while the theme never left level 0. */
+            return true;
+        }
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
@@ -3244,6 +3293,9 @@ const PipeleyenApp = (function () {
 
     function _fsBlockerAndLevelSnapshot() {
         return JSON.stringify([
+            _dictWorkflowState.dictWorkflow
+                ? _dictWorkflowState.dictWorkflow.iAICSLevel
+                : null,
             _dictWorkflowState.dictBlockersByStep,
             _dictWorkflowState.dictBlockersByStepLevel2,
             _dictWorkflowState.dictBlockersByStepLevel3,
@@ -3260,6 +3312,16 @@ const PipeleyenApp = (function () {
         // Level-cell wire keys (Scope B/P backend projection). Each
         // key is optional so older payloads degrade to the previous
         // state rather than blanking the cells.
+        if (typeof dictStatus.iAICSLevel === "number" &&
+            _dictWorkflowState.dictWorkflow) {
+            /* The theme (fiClientAICSLevel) reads this integer off
+             * the workflow dict. Without this copy the level cells
+             * update live but the workflow-level promotion only
+             * arrives on a full reload — every step showed its L1
+             * check while the theme stayed at level 0. */
+            _dictWorkflowState.dictWorkflow.iAICSLevel =
+                dictStatus.iAICSLevel;
+        }
         if (dictStatus.dictStepLevels) {
             _dictWorkflowState.dictStepLevels =
                 dictStatus.dictStepLevels;
@@ -3597,6 +3659,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictStepStatus[iIndex] = sStatus;
         },
         fnClearRunningStatuses: fnClearRunningStatuses,
+        fnResetQueuedSteps: fnResetQueuedSteps,
         fnClearAllStepStatuses: function () {
             _dictWorkflowState.dictStepStatus = {};
         },

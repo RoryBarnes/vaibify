@@ -57,10 +57,13 @@ class OwnerRecord:
     """One browser session's ownership of a single container.
 
     ``fileHandleLock`` is the held host flock from ``containerLock``;
-    ``iLiveConnectionCount`` counts live WebSockets so a duplicate tab
-    is refused and a crashed owner becomes reapable; and
-    ``fLastSeenMonotonic`` starts the grace window the moment the last
-    live connection drops.
+    ``iLiveConnectionCount`` counts every live WebSocket (pipeline and
+    terminal alike) so a crashed owner becomes reapable;
+    ``iLivePipelineConnectionCount`` counts only the pipeline lane,
+    whose budget is one — a session legitimately holds several terminal
+    sockets, so only a second concurrent *pipeline* socket marks a
+    duplicate tab; and ``fLastSeenMonotonic`` starts the grace window
+    the moment the last live connection drops.
     """
 
     sLeaseId: str
@@ -68,6 +71,7 @@ class OwnerRecord:
     sAgentToken: str = ""
     sContainerId: str = ""
     iLiveConnectionCount: int = 0
+    iLivePipelineConnectionCount: int = 0
     fLastSeenMonotonic: float = field(default_factory=time.monotonic)
 
 
@@ -251,16 +255,18 @@ def fbSessionOwnsContainer(dictContainerOwners, sName, sLeaseId):
     )
 
 
-def fnIncrementLiveConnection(dictContainerOwners, sName):
+def fnIncrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
     """Record a new live connection for an owned container."""
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
         return
     recordOwner.iLiveConnectionCount += 1
+    if bPipelineLane:
+        recordOwner.iLivePipelineConnectionCount += 1
     recordOwner.fLastSeenMonotonic = time.monotonic()
 
 
-def fnDecrementLiveConnection(dictContainerOwners, sName):
+def fnDecrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
     """Drop a live connection, starting the grace clock at zero."""
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
@@ -268,6 +274,10 @@ def fnDecrementLiveConnection(dictContainerOwners, sName):
     recordOwner.iLiveConnectionCount = max(
         0, recordOwner.iLiveConnectionCount - 1,
     )
+    if bPipelineLane:
+        recordOwner.iLivePipelineConnectionCount = max(
+            0, recordOwner.iLivePipelineConnectionCount - 1,
+        )
     recordOwner.fLastSeenMonotonic = time.monotonic()
 
 

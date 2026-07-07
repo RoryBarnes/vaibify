@@ -28,6 +28,7 @@ from ..serverLifespan import (
 )
 from ..webSocketAuthorization import (
     fiContainerSessionRejectionCode,
+    fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
 )
 from ..fileStatusManager import (
@@ -348,7 +349,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
             websocket, dictCtx, sName,
         )
         if iRejectCode:
-            await websocket.close(code=iRejectCode)
+            await fnCloseWithCode(websocket, iRejectCode)
             return
         dictCtx["require"]()
 
@@ -359,6 +360,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
             websocket, dictCtx.get("dictContainerOwners", {}), sName,
             fnServe, lambda: fnIncrementWebSocketCount(app),
             lambda: fnDecrementWebSocketCount(app),
+            bExclusivePipelineLane=True,
         )
 
 

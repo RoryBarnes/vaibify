@@ -91,19 +91,26 @@ RUN if [ "${INSTALL_LATEX}" = "true" ]; then \
 # exit 1 with an actionable message. See the deadsnakes block
 # below for the exact template.
 
-# Python: prefer system repos; fall back to deadsnakes PPA only if
-# the requested version is not in the base image's archive. The
-# default config (ubuntu:24.04 + Python 3.12) has no launchpad.net
-# dependency. When the PPA is needed and unreachable (TLS / proxy /
-# network), exit with an actionable diagnostic instead of an opaque
-# SSLEOFError traceback from add-apt-repository.
+# Python: prefer the base image's system repos, but fall back to the
+# deadsnakes PPA when the requested version is either absent OR only
+# available as a pre-release. Ubuntu 22.04 predates Python 3.11 final,
+# so its archive ships python3.11 as 3.11.0~rc1 — a release candidate
+# that modern build backends reject ("requires Python >=3.11, running
+# on 3.11.0rc1"). deadsnakes carries a stable build (3.11.15) for such
+# cases. The default config (ubuntu:24.04 + Python 3.12) ships a stable
+# release, so it keeps its no-launchpad.net path. When the PPA is needed
+# and unreachable (TLS / proxy / network), exit with an actionable
+# diagnostic instead of an opaque SSLEOFError traceback.
 ARG BASE_IMAGE
 RUN apt-get update \
-    && if ! apt-cache show python${PYTHON_VERSION} >/dev/null 2>&1; then \
+    && PYTHON_CANDIDATE="$(apt-cache policy python${PYTHON_VERSION} 2>/dev/null | awk '/Candidate:/{print $2}')" \
+    && if [ -z "${PYTHON_CANDIDATE}" ] || [ "${PYTHON_CANDIDATE}" = "(none)" ] \
+          || printf '%s' "${PYTHON_CANDIDATE}" | grep -Eq '~(rc|alpha|beta|a[0-9]|b[0-9])'; then \
            if ! add-apt-repository -y ppa:deadsnakes/ppa; then \
                echo "" >&2; \
                printf '%s\n' "vaibify build: cannot install Python ${PYTHON_VERSION}." >&2; \
-               printf '%s\n' "  - It is not in ${BASE_IMAGE}'s default apt archive." >&2; \
+               printf '%s\n' "  - It is absent, or only a pre-release, in" >&2; \
+               printf '%s\n' "    ${BASE_IMAGE}'s default apt archive." >&2; \
                printf '%s\n' "  - The deadsnakes PPA could not be added (likely a TLS" >&2; \
                printf '%s\n' "    or network failure between this build host and" >&2; \
                printf '%s\n' "    launchpad.net)." >&2; \
@@ -131,14 +138,21 @@ RUN apt-get update \
         python${PYTHON_VERSION}-distutils 2>/dev/null || true) \
     && rm -rf /var/lib/apt/lists/*
 
-# Make the selected Python version the default and install pip
+# Make the selected Python version the default and install pip.
+# Upgrade pip itself, not just setuptools: distro-stock pip on older
+# bases (e.g. Ubuntu 22.04 ships pip 22.0.2) has a build-isolation bug
+# that misplaces console scripts of build backends — a ``--no-binary``
+# source build of any meson-python package (matplotlib, ...) then dies
+# with ``meson executable "meson" not found``. A current pip resolves
+# the build-env script path correctly, so every from-source install
+# works regardless of the base image's pip vintage.
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
     && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade setuptools
+    && pip install --no-cache-dir --upgrade pip setuptools
 
 # Keyring backend for in-container credential storage.
 # keyrings.alt provides a file-based PlaintextKeyring that works in
@@ -183,6 +197,17 @@ RUN if [ "${PACKAGE_MANAGER}" != "pip" ]; then \
     fi
 
 ENV PATH="${PACKAGE_MANAGER:+/opt/conda/bin:}${PATH}"
+
+# Console scripts from ``pip install`` land in the user's
+# ``~/.local/bin`` on PEP 668 (externally-managed) bases such as
+# Ubuntu 24.04 — every ``pip_no_deps`` / ``pip_editable`` repo
+# (vconverge, vspace, bigplanet, pytest, ...) installs there. The
+# non-login ``bash -c`` used for ``docker exec`` does not source the
+# profile that would add it, so both the preflight command check and
+# the actual step run would report those tools "command not found".
+# Put it on PATH for every dispatched command. (c_and_pip binaries
+# like vplanet install to /usr/local/bin and are already covered.)
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
 
 # Project-specific Python packages from vaibify.yml pythonPackages
 COPY requirements.txt /tmp/requirements.txt

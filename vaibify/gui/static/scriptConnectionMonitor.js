@@ -58,9 +58,19 @@ var VaibifyConnectionMonitor = (function () {
             return;
         }
         fnSurfaceServerUnreachable({
-            sKind: "network",
+            sKind: _fsKindFromCloseCode(iCode),
+            iCode: iCode,
             sMessage: "WebSocket closed (code " + (iCode || "?") + ")",
         });
+    }
+
+    function _fsKindFromCloseCode(iCode) {
+        /* 4xxx closes are the server's deliberate refusals; calling
+         * them "cannot reach server" misrepresents a healthy server
+         * as a dead one (the ground-truth invariant). */
+        if (iCode === 4401) return "unauthorized";
+        if (iCode >= 4000 && iCode < 5000) return "refused";
+        return "network";
     }
 
     function fnSurfaceServerUnreachable(dictError) {
@@ -106,10 +116,33 @@ var VaibifyConnectionMonitor = (function () {
                 "Click to reload the dashboard."
             );
         }
+        if (dictError && dictError.sKind === "refused") {
+            if (dictError.iCode === 4409) {
+                return (
+                    "The server refused this connection: another live " +
+                    "session is already driving this container " +
+                    "(code 4409). Close the other tab, then click to " +
+                    "reload the dashboard."
+                );
+            }
+            return (
+                "The server refused this connection (code " +
+                dictError.iCode + "): this tab no longer holds the " +
+                "container's session. Click to reload and reclaim."
+            );
+        }
+        // Deliberate refusals are named above; for a genuine outage
+        // the detail (e.g. "WebSocket closed (code 1006)") is the one
+        // clue that distinguishes a network drop from a server
+        // restart — surface it so an incident is diagnosable without
+        // the browser console.
+        var sDetail = (dictError && dictError.sMessage)
+            ? " [" + dictError.sMessage + "]"
+            : "";
         return (
-            "Cannot reach Vaibify server. The server may have stopped " +
-            "or moved to a different port on restart. " +
-            "Click to reload the dashboard."
+            "Cannot reach Vaibify server" + sDetail + ". The server " +
+            "may have stopped or moved to a different port on " +
+            "restart. Click to reload the dashboard."
         );
     }
 

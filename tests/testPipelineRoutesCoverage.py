@@ -215,10 +215,14 @@ class TestPipelineKillRoute:
 # ── Lines 211-222: pipeline WebSocket auth failures ──────────────
 
 class TestPipelineWsRoute:
-    def test_ws_invalid_origin_closes_4003(self):
-        """Cover lines 211-213."""
+    """The route honors the guard's verdict, closing AFTER accept so
+    the deliberate 4xxx code reaches a real browser (close-before-accept
+    downgrades every refusal to an opaque 1006)."""
+
+    def _fiObserveRejectCode(self, iRejectCode, sToken):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
 
         app = FastAPI()
         dictCtx = {
@@ -229,72 +233,28 @@ class TestPipelineWsRoute:
         with patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fiContainerSessionRejectionCode",
-            return_value=4003,
+            return_value=iRejectCode,
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterPipelineWs,
             )
             _fnRegisterPipelineWs(app, dictCtx)
             client = TestClient(app)
-            with pytest.raises(Exception):
-                with client.websocket_connect(
-                    "/ws/pipeline/cid1?sToken=tok"
-                ):
-                    pass
+            with client.websocket_connect(
+                f"/ws/pipeline/cid1?sToken={sToken}"
+            ) as websocketClient:
+                with pytest.raises(WebSocketDisconnect) as excInfo:
+                    websocketClient.receive_text()
+        return excInfo.value.code
+
+    def test_ws_invalid_origin_closes_4003(self):
+        assert self._fiObserveRejectCode(4003, "tok") == 4003
 
     def test_ws_bad_token_closes_4401(self):
-        """The route honors the guard's bad-token verdict (4401)."""
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient
-
-        app = FastAPI()
-        dictCtx = {
-            "require": MagicMock(),
-            "sSessionToken": "good",
-            "dictContainerOwners": {},
-        }
-        with patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            ".fiContainerSessionRejectionCode",
-            return_value=4401,
-        ):
-            from vaibify.gui.routes.pipelineRoutes import (
-                _fnRegisterPipelineWs,
-            )
-            _fnRegisterPipelineWs(app, dictCtx)
-            client = TestClient(app)
-            with pytest.raises(Exception):
-                with client.websocket_connect(
-                    "/ws/pipeline/cid1?sToken=bad"
-                ):
-                    pass
+        assert self._fiObserveRejectCode(4401, "bad") == 4401
 
     def test_ws_foreign_lease_closes_4403(self):
-        """The route honors the guard's foreign-lease verdict (4403)."""
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient
-
-        app = FastAPI()
-        dictCtx = {
-            "require": MagicMock(),
-            "sSessionToken": "tok",
-            "dictContainerOwners": {},
-        }
-        with patch(
-            "vaibify.gui.routes.pipelineRoutes"
-            ".fiContainerSessionRejectionCode",
-            return_value=4403,
-        ):
-            from vaibify.gui.routes.pipelineRoutes import (
-                _fnRegisterPipelineWs,
-            )
-            _fnRegisterPipelineWs(app, dictCtx)
-            client = TestClient(app)
-            with pytest.raises(Exception):
-                with client.websocket_connect(
-                    "/ws/pipeline/cid1?sToken=tok"
-                ):
-                    pass
+        assert self._fiObserveRejectCode(4403, "tok") == 4403
 
 
 # ── Lines 236-257: acknowledge step route ────────────────────────
