@@ -734,3 +734,25 @@ def test_poll_updates_workflow_level_integer_for_the_theme():
         "integer so a promotion alone triggers the re-render that "
         "calls fnUpdateHighlightState (the theme flip)"
     )
+
+
+def test_client_level_gate_exempts_declaration_steps():
+    """``fbStepIsAtLeastLevel1`` must return True for ai-declaration
+    steps BEFORE reading verification/data signals. Declaration steps
+    are L1-not-applicable (the server emits no L1 blockers for them
+    and their sign-off is an L2 criterion), but they have no output
+    data and no "passed" user badge — so without the exemption the
+    client-side conjunction demoted the whole workflow to level 0 and
+    the theme never left the base color, even at server level 1."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sGate = _fsExtractFunctionBlock(sSource, "fbStepIsAtLeastLevel1")
+    iExemption = sGate.find('sStepKind === "ai-declaration"')
+    iFirstSignal = sGate.find("fdictGetVerification")
+    assert iExemption != -1, (
+        "fbStepIsAtLeastLevel1 must exempt ai-declaration steps or "
+        "they demote the client-side workflow level forever"
+    )
+    assert iFirstSignal == -1 or iExemption < iFirstSignal, (
+        "the declaration exemption must precede the data/verification "
+        "signals a declaration step can never satisfy"
+    )

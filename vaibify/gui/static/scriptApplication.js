@@ -1513,6 +1513,16 @@ const PipeleyenApp = (function () {
     }
 
     function fbStepIsAtLeastLevel1(dictStep, iStep) {
+        if (dictStep && dictStep.sStepKind === "ai-declaration") {
+            /* Declaration steps are L1-not-applicable by the
+             * 2026-07-02 ruling (their sign-off is an L2 criterion;
+             * the L1 cell renders a dash, and the server emits no L1
+             * blockers for them). Without this mirror of the server
+             * rule the step has no data and no "passed" badge, so it
+             * demoted the client-side level to 0 forever — every step
+             * showed its check while the theme never left level 0. */
+            return true;
+        }
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
