@@ -3283,6 +3283,9 @@ const PipeleyenApp = (function () {
 
     function _fsBlockerAndLevelSnapshot() {
         return JSON.stringify([
+            _dictWorkflowState.dictWorkflow
+                ? _dictWorkflowState.dictWorkflow.iAICSLevel
+                : null,
             _dictWorkflowState.dictBlockersByStep,
             _dictWorkflowState.dictBlockersByStepLevel2,
             _dictWorkflowState.dictBlockersByStepLevel3,
@@ -3299,6 +3302,16 @@ const PipeleyenApp = (function () {
         // Level-cell wire keys (Scope B/P backend projection). Each
         // key is optional so older payloads degrade to the previous
         // state rather than blanking the cells.
+        if (typeof dictStatus.iAICSLevel === "number" &&
+            _dictWorkflowState.dictWorkflow) {
+            /* The theme (fiClientAICSLevel) reads this integer off
+             * the workflow dict. Without this copy the level cells
+             * update live but the workflow-level promotion only
+             * arrives on a full reload — every step showed its L1
+             * check while the theme stayed at level 0. */
+            _dictWorkflowState.dictWorkflow.iAICSLevel =
+                dictStatus.iAICSLevel;
+        }
         if (dictStatus.dictStepLevels) {
             _dictWorkflowState.dictStepLevels =
                 dictStatus.dictStepLevels;

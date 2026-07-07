@@ -705,3 +705,32 @@ def test_activate_workflow_wires_aics_and_repos_tabs():
         "workflow activation must initialize the Repos panel or the "
         "Repos tab stays empty for the whole session"
     )
+
+
+# -----------------------------------------------------------------------
+# The poll delivers workflow-level promotions to the theme
+# -----------------------------------------------------------------------
+
+
+def test_poll_updates_workflow_level_integer_for_the_theme():
+    """The file-status poll must copy ``iAICSLevel`` onto the client's
+    workflow dict — the theme (``fiClientAICSLevel``) reads exactly
+    that integer. Before this contract, the poll updated every level
+    CELL but never the workflow-level integer, so a promotion earned
+    mid-session showed every step's L1 check while the theme stayed
+    at level 0 until a full reload."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    sApply = _fsExtractFunctionBlock(
+        sSource, "_fnApplyLevelStatesFromPoll")
+    assert "dictWorkflow.iAICSLevel =" in sApply.replace(
+        "\n", "").replace("    ", " ").replace("  ", " "), (
+        "_fnApplyLevelStatesFromPoll must assign the poll's "
+        "iAICSLevel onto the workflow dict the theme reads"
+    )
+    sSnapshot = _fsExtractFunctionBlock(
+        sSource, "_fsBlockerAndLevelSnapshot")
+    assert "iAICSLevel" in sSnapshot, (
+        "the blocker/level snapshot must include the workflow-level "
+        "integer so a promotion alone triggers the re-render that "
+        "calls fnUpdateHighlightState (the theme flip)"
+    )
