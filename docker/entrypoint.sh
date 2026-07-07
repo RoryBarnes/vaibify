@@ -817,10 +817,26 @@ Agent actions to reach L1:
    stays 0 after the prior steps succeeded, surface the discrepancy to
    the researcher — the backend derivation is the ground truth.
 
+**Never hand-roll a verification audit.** The backend derivation is
+the only authority on levels; do not reimplement it by inspecting raw
+files. Two traps that have produced false "not at L1" reports:
+
+- Test markers (`<repo>/.vaibify/test_markers/<slug>/*.json`) are
+  receipts of the *last external run* — one marker records only the
+  categories that run executed. The accumulated ledger is
+  `.vaibify/state.json` (`dictStepState.<dir>.dictVerification`).
+- Marker `dictOutputHashes` values are **git blob SHA-1s**
+  (`sha1("blob <size>\0" + content)`), not sha256/sha1/md5 of the
+  bytes. Comparing with any other digest reports every file as
+  drifted. Uniform 100% mismatch means your algorithm is wrong, not
+  that the data drifted.
+
 Committing the canonical state (`vaibify-do commit-canonical`) and
 verifying the manifest (`vaibify-do verify-manifest`) are L2
 preparation, not L1 requirements: L1 is per-step self-consistency
-inside the container.
+inside the container. Uncommitted-but-consistent files (git-dirty
+scripts whose outputs and tests were regenerated afterward) block L2,
+never L1.
 
 `MANIFEST.sha256`, `requirements.lock`, and `.vaibify/environment.json`
 are regenerated automatically when the workflow first crosses into L1;
