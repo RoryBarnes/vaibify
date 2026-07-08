@@ -83,6 +83,40 @@ def test_fnGenerateRequirementsLock_requirements_in_happy_path(
     assert "pyproject.toml" not in listCommand
 
 
+def test_fnGenerateRequirementsLock_requirements_txt_fallback(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text("click\npyyaml\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=_fnFakeRunWriteLock(_S_VALID_LOCK),
+        ) as mockRun:
+            fnGenerateRequirementsLock(str(tmp_path))
+
+    listCommand = mockRun.call_args.args[0]
+    assert "requirements.txt" in listCommand
+
+
+def test_fnGenerateRequirementsLock_requirements_in_beats_txt(
+    tmp_path,
+):
+    (tmp_path / "requirements.in").write_text("click\n")
+    (tmp_path / "requirements.txt").write_text("click==1.0\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=_fnFakeRunWriteLock(_S_VALID_LOCK),
+        ) as mockRun:
+            fnGenerateRequirementsLock(str(tmp_path))
+
+    listCommand = mockRun.call_args.args[0]
+    assert "requirements.in" in listCommand
+    assert "requirements.txt" not in listCommand
+
+
 def test_fnGenerateRequirementsLock_pyproject_takes_precedence(
     tmp_path,
 ):

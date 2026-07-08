@@ -131,6 +131,49 @@ def test_record_self_write_mtime_initializes_map_when_missing():
     )
 
 
+def test_record_self_write_mtime_keeps_baseline_on_stat_miss():
+    """A stat miss (empty result) must not poison the baseline.
+
+    Under docker-exec contention ``_fsStatMtime`` returns "" for a
+    transient failure. Overwriting the known-good baseline with "" made
+    every following poll's real mtime compare unequal, firing a
+    spurious out-of-band reload each cycle (the reload-toast loop).
+    """
+    fakeDocker = _FakeDocker()  # no mtime set → stat returns empty
+    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
+    workflowReloadDetector.fnRecordSelfWriteMtime(
+        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+    )
+    assert (
+        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
+        == "1700000000"
+    )
+
+
+def test_reload_seeds_silently_when_baseline_absent():
+    """A missing baseline is not evidence of an out-of-band edit.
+
+    When a prior stat miss left no recorded baseline, the next poll
+    with a real mtime must seed the baseline and report no reload —
+    not fire a spurious reload that clears the client's file caches
+    (the grey-badge blink) and toasts "reloaded from disk".
+    """
+    fakeDocker = _FakeDocker()
+    dictCtx = _fdictMakeContext(fakeDocker)  # lastSelfWriteMtimes empty
+    dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
+        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+        {_S_WORKFLOW_PATH: "1700000000"},
+    )
+    assert dictReload == {
+        "bReplaced": False, "dictWorkflow": None, "sError": None,
+    }
+    assert (
+        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
+        == "1700000000"
+    )
+
+
 # ---------- fdictMaybeReloadWorkflow ----------
 
 

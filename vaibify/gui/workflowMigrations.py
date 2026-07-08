@@ -34,6 +34,7 @@ __all__ = [
     "fiGetSchemaVersion",
     "fnApplyMigrations",
     "fnMigrateAbsoluteContainerPaths",
+    "fnMigrateAbsoluteTestPaths",
     "fnMigrateArchiveToTracking",
     "fnMigrateRunEnabledKey",
     "fnNormalizeSceneReferences",
@@ -42,7 +43,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 4
+I_CURRENT_WORKFLOW_VERSION = 5
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -257,6 +258,37 @@ def _fsStripStepOrRoot(sPath, sLegacyDirectory, sRepoRoot):
     return _fsStripRoot(sPath, sRepoRoot)
 
 
+def fnMigrateAbsoluteTestPaths(dictWorkflow, sProjectRepoPath):
+    """Strip absolute container prefixes from ``dictTests`` paths.
+
+    Test generation resolves the step directory to container-absolute
+    form for Docker file writes; before this migration the resulting
+    ``sFilePath``/``sStandardsPath`` values were persisted verbatim,
+    so workflows carry a mix of repo-relative and container-absolute
+    test paths. One convention (repo-relative) keeps the manifest
+    envelope, the canonical tracked-files set, and sync keys in
+    agreement. Also invoked outside the versioned ladder after test
+    generation, so it must stay idempotent.
+    """
+    sRoot = (sProjectRepoPath or "").rstrip("/")
+    for dictStep in dictWorkflow.get("listSteps", []):
+        sStepRoot = sRoot or _fsInferRepoRootFromAbsoluteDir(
+            dictStep.get("sDirectory", "")
+        )
+        if not sStepRoot:
+            continue
+        dictTests = dictStep.get("dictTests", {})
+        if not isinstance(dictTests, dict):
+            continue
+        for dictCategory in dictTests.values():
+            if not isinstance(dictCategory, dict):
+                continue
+            for sKey in ("sFilePath", "sStandardsPath"):
+                sPath = dictCategory.get(sKey, "")
+                if isinstance(sPath, str) and sPath:
+                    dictCategory[sKey] = _fsStripRoot(sPath, sStepRoot)
+
+
 def _fsInferRepoRootFromAbsoluteDir(sDirectory):
     """Guess the project repo root from a legacy absolute step dir.
 
@@ -413,9 +445,20 @@ def _fnMigrateV3ToV4(dictWorkflow, sProjectRepoPath):
     dictWorkflow.pop("iAICSLevel", None)
 
 
+def _fnMigrateV4ToV5(dictWorkflow, sProjectRepoPath):
+    """Normalize container-absolute ``dictTests`` paths to repo-relative.
+
+    Cleans documents written while test generation persisted the
+    absolute form (see ``fnMigrateAbsoluteTestPaths``); the generator
+    now normalizes at save time, so migrated documents stay clean.
+    """
+    fnMigrateAbsoluteTestPaths(dictWorkflow, sProjectRepoPath)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
     (2, _fnMigrateV2ToV3),
     (3, _fnMigrateV3ToV4),
+    (4, _fnMigrateV4ToV5),
 )

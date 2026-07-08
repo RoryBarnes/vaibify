@@ -33,11 +33,21 @@ def fnRecordSelfWriteMtime(dictCtx, sContainerId, sPath):
     Called from ``fnSave`` immediately after a UI-driven write.
     The poller compares the polled mtime against this stored value and
     skips reloading when they match — that's the host's own write.
+
+    An empty ``_fsStatMtime`` result means the stat *failed* (a
+    docker-exec miss under contention), not that the mtime is the empty
+    string. Storing it would poison the baseline: the next poll's real
+    mtime can never equal ``""``, so the detector would report a
+    spurious out-of-band reload every cycle (a "Workflow definition
+    reloaded from disk" toast loop). Keep the last known-good baseline
+    when the stat returns nothing.
     """
     if not sPath:
         return
-    dictMtimes = _fdictGetSelfWriteMap(dictCtx)
     sMtime = _fsStatMtime(dictCtx["docker"], sContainerId, sPath)
+    if not sMtime:
+        return
+    dictMtimes = _fdictGetSelfWriteMap(dictCtx)
     dictMtimes[sContainerId] = sMtime
 
 
@@ -79,7 +89,17 @@ def fdictMaybeReloadWorkflow(
             "workflow.json missing from container"
         )
     dictMtimes = _fdictGetSelfWriteMap(dictCtx)
-    if sPolledMtime == dictMtimes.get(sContainerId):
+    sKnownMtime = dictMtimes.get(sContainerId)
+    if sPolledMtime == sKnownMtime:
+        return _fdictNoChange()
+    if not sKnownMtime:
+        # No trusted baseline yet — the container is freshly connected
+        # or a prior stat miss left the baseline unrecorded. Absence of
+        # a baseline is not evidence of an out-of-band edit, so seed it
+        # from the current mtime and report no change rather than firing
+        # a spurious reload (the cache was already loaded fresh at
+        # connect time).
+        dictMtimes[sContainerId] = sPolledMtime
         return _fdictNoChange()
     return _fdictPerformReload(
         dictCtx, sContainerId, sWorkflowPath, sPolledMtime,

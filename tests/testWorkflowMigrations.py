@@ -176,6 +176,44 @@ def test_fnMigrateAbsoluteContainerPaths_skips_template_paths():
     assert dictStep["saOutputFiles"] == ["{sOut}/file.npz"]
 
 
+def test_v4_to_v5_strips_absolute_prefix_from_test_paths():
+    """Container-absolute dictTests paths become repo-relative."""
+    dictWorkflow = {
+        S_VERSION_KEY: 4,
+        "listSteps": [
+            {
+                "sDirectory": "Flares",
+                "dictTests": {
+                    "dictQuantitative": {
+                        "sFilePath": "/workspace/SampleProject/Flares"
+                                     "/tests/test_quantitative.py",
+                        "sStandardsPath": "/workspace/SampleProject"
+                                          "/Flares/tests"
+                                          "/quantitative_standards.json",
+                    },
+                    "dictIntegrity": {
+                        "sFilePath": "Flares/tests/test_integrity.py",
+                    },
+                    "listUserTests": [],
+                },
+            },
+        ],
+    }
+    fnApplyMigrations(
+        dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
+    )
+    dictTests = dictWorkflow["listSteps"][0]["dictTests"]
+    assert dictTests["dictQuantitative"]["sFilePath"] == (
+        "Flares/tests/test_quantitative.py"
+    )
+    assert dictTests["dictQuantitative"]["sStandardsPath"] == (
+        "Flares/tests/quantitative_standards.json"
+    )
+    assert dictTests["dictIntegrity"]["sFilePath"] == (
+        "Flares/tests/test_integrity.py"
+    )
+
+
 def test_fnApplyMigrations_is_no_op_on_current_version():
     dictWorkflow = _fdictBuildModernV2Fixture()
     dictBefore = dict(dictWorkflow)

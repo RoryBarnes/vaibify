@@ -21,9 +21,9 @@ def _fdictBuildWorkflow(sProjectRepo):
         "listSteps": [
             {
                 "sDirectory": "step01",
-                "saDataFiles": ["step01/data.csv"],
+                "saDataFiles": ["data.csv"],
                 "saPlotFiles": [],
-                "saOutputFiles": ["step01/results.json"],
+                "saOutputFiles": ["results.json"],
             },
         ],
     }
