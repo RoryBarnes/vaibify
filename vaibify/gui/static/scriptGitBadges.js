@@ -142,6 +142,20 @@ var VaibifyGitBadges = (function () {
             _fdictPlaceholderBadges();
     }
 
+    function flistFilesForRemote(sBadgeKey) {
+        // Repo-relative paths this remote actually knows about — every
+        // badge-map key whose state for sBadgeKey (sGithub / sZenodo /
+        // sArxiv / sOverleaf) is not the "none" placeholder. Sorted for
+        // stable rendering. Used by the Workflow-wide Publication rows.
+        var listKeys = Object.keys(_dictState.dictBadges).filter(
+            function (sPath) {
+                return (_dictState.dictBadges[sPath][sBadgeKey] ||
+                    "none") !== "none";
+            });
+        listKeys.sort();
+        return listKeys;
+    }
+
     var _A_DEFAULT_REMOTE_KEYS = [
         "sGithub", "sOverleaf", "sZenodo", "sArxiv",
     ];
@@ -279,6 +293,7 @@ var VaibifyGitBadges = (function () {
     return {
         fnRefresh: fnRefresh,
         fdictGetBadgesForFile: fdictGetBadgesForFile,
+        flistFilesForRemote: flistFilesForRemote,
         fsRenderBadgeRow: fsRenderBadgeRow,
         fdictRepoSummary: fdictRepoSummary,
         fsRenderStepStaleBadge: fsRenderStepStaleBadge,

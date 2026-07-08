@@ -204,6 +204,29 @@ def test_declare_determinism_single_key_merges_with_existing(
     }
 
 
+def test_declare_determinism_null_value_removes_the_key(
+    fixtureClient, fixtureWorkflow,
+):
+    """A null value retracts a declared key.
+
+    The endpoint merges keys, so before nulls were accepted a
+    mistaken pin (an OpenMP thread count the researcher cleared in
+    the form) survived every re-declaration — the GUI showed the old
+    pin forever.
+    """
+    fixtureWorkflow["dictDeterminism"] = {
+        "bAcceptBlasVariance": True, "dOmpNumThreads": 1,
+    }
+    response = fixtureClient.post(
+        S_DETERMINISM_URL,
+        json={"bAcceptBlasVariance": True, "dOmpNumThreads": None},
+    )
+    assert response.status_code == 200
+    assert fixtureWorkflow["dictDeterminism"] == {
+        "bAcceptBlasVariance": True,
+    }
+
+
 def test_declare_determinism_empty_body_returns_422(
     fixtureClient, fixtureWorkflow,
 ):

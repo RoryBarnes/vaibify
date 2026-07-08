@@ -686,9 +686,16 @@ body.aics-level-3 .toolbar-label {
     color: #e0e0e8;
 }
 
-#listSteps {
+/* The scrollable region below the panel header holds both the Steps
+   block and the Workflow-wide block, so the whole left column scrolls
+   as one. min-height:0 lets a flex child actually shrink and scroll. */
+.panel-scroll-area {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+}
+
+#listSteps {
     padding: 0;
 }
 
@@ -5402,31 +5409,6 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     margin-right: auto;
 }
 
-/* The expandable workflow row rendered as the first row of
-   #listSteps, above every step card. */
-.workflow-level-header-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px 6px 10px;
-    border-bottom: 1px solid var(--border-color);
-    font-weight: 600;
-    font-size: 13px;
-    cursor: pointer;
-}
-
-.workflow-level-header-row:hover {
-    background: var(--bg-hover);
-}
-
-/* Expanded body of the workflow row: the reproducibility envelope
-   (software, artifacts, determinism, remote syncs). */
-.workflow-level-detail {
-    padding: 6px 14px 10px 24px;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 12px;
-}
-
 .envelope-section-title {
     font-weight: 600;
     color: var(--text-secondary);
@@ -5496,6 +5478,200 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     padding: 3px 0;
     color: var(--text-secondary);
     font-size: 12px;
+}
+
+/* --- Two top-level blocks: Steps + Workflow-wide --- */
+
+.steps-block-header,
+.workflow-wide-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    /* The two top-level block banners are the largest labels in the
+       column — larger than the step rows, the sections, and the
+       requirement rows below them. */
+    font-size: 15px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.steps-block-header:hover,
+.workflow-wide-header:hover {
+    background: var(--bg-hover);
+}
+
+.steps-block.collapsed .steps-block-body {
+    display: none;
+}
+
+.steps-block-title,
+.workflow-wide-title {
+    cursor: help;
+}
+
+/* The Steps banner's aggregate status light sits at the right, like a
+   step row's level cell. */
+.steps-block-status {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* The workflow-wide banner pushes its at-a-glance level strip to the
+   right, like a step row. */
+.workflow-wide-header .step-level-strip {
+    margin-left: auto;
+}
+
+.workflow-wide-body {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.requirement-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px 4px 20px;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.requirement-group-header:hover {
+    background: var(--bg-hover);
+}
+
+.requirement-group.collapsed .requirement-group-body {
+    display: none;
+}
+
+.requirement-group-title {
+    margin-right: auto;
+}
+
+.requirement-row-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px 4px 34px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+}
+
+.requirement-row-header:hover {
+    background: var(--bg-hover);
+}
+
+/* Expanding a requirement row highlights its banner, exactly like an
+   opened step row. */
+.requirement-row.expanded > .requirement-row-header {
+    background: rgba(19, 174, 213, 0.1);
+    border-left-color: var(--highlight-color);
+}
+
+.requirement-row-title {
+    margin-right: auto;
+}
+
+.requirement-row-detail {
+    padding: 4px 14px 8px 44px;
+    font-size: 12px;
+}
+
+.requirement-row-status {
+    color: var(--text-secondary);
+    padding: 2px 0;
+}
+
+.requirement-row-howto {
+    color: var(--text-muted);
+    font-size: 11px;
+    padding-top: 4px;
+}
+
+.requirement-row-actions {
+    padding-top: 6px;
+}
+
+.wf-action-btn {
+    font-size: 11px;
+    padding: 3px 10px;
+}
+
+/* Links inside the Workflow-wide block: browser-default dark blue is
+   unreadable on the dark background; use the pale-blue action color. */
+.workflow-wide-block a {
+    color: var(--color-pale-blue);
+}
+
+/* Inline declare-determinism form. */
+.determinism-form {
+    padding-top: 4px;
+}
+
+.determinism-form-row {
+    display: block;
+    padding: 2px 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.determinism-omp-threads {
+    width: 64px;
+    margin-left: 4px;
+}
+
+.determinism-advanced {
+    padding: 3px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* The exact dictDeterminism entry as stored in workflow.json. */
+.determinism-raw {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 6px 8px;
+    margin: 4px 0;
+    white-space: pre-wrap;
+}
+
+.determinism-advanced summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* File rows inside the Workflow-wide block open in the viewer. */
+.wf-file-link {
+    cursor: pointer;
+}
+
+.wf-file-link:hover {
+    color: var(--color-pale-blue);
+    text-decoration: underline;
+}
+
+/* Add / fix a declared package (Software section footer). */
+.binary-add-form {
+    padding: 6px 14px 8px 34px;
+}
+
+.binary-add-form input[type="text"] {
+    display: block;
+    width: 260px;
+    margin: 3px 0;
+    font-size: 12px;
+    padding: 3px 6px;
 }
 
 .envelope-binary-name,

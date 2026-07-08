@@ -70,6 +70,7 @@ __all__ = [
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowAiDeclarationAttested",
     "fbWorkflowHasAiDeclarationStep",
+    "fbWorkflowHasOverleafBinding",
     "fbWorkflowHasProjectRepo",
     "fdictComputeStepLevelStates",
     "fdictComputeStepLevelWarnings",
@@ -1440,7 +1441,7 @@ def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
     return sVerifiedEndpoint == sLiveEndpoint
 
 
-def _fbWorkflowHasOverleafBinding(dictWorkflow):
+def fbWorkflowHasOverleafBinding(dictWorkflow):
     """Return True iff the workflow has a non-empty Overleaf binding.
 
     The L2 arXiv criteria, plus the per-step ``figure-not-frozen``
@@ -1462,7 +1463,7 @@ def fbWorkflowFullySyncedWithArxiv(dictWorkflow, filesRepo):
     advertises. ``ArxivError`` from the client is treated as "not
     synced".
     """
-    if not _fbWorkflowHasOverleafBinding(dictWorkflow):
+    if not fbWorkflowHasOverleafBinding(dictWorkflow):
         return True
     dictArxiv = _fdictArxivConfig(dictWorkflow)
     if not (dictArxiv.get("sArxivId") or ""):
@@ -1846,7 +1847,7 @@ def _fdictZenodoVerifyStaleBlocker():
 
 def _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
     """Return per-step ``figure-not-frozen`` blockers, or empty list."""
-    if not _fbWorkflowHasOverleafBinding(dictWorkflow):
+    if not fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
     setPushed = _fsetPushedFigurePaths(dictWorkflow, filesRepo)
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
@@ -1898,7 +1899,7 @@ def _fdictFigureNotFrozenBlocker(
 
 def _flistArxivLevel2Blockers(dictWorkflow, filesRepo):
     """Return workflow-scope arXiv L2 blockers, or empty list."""
-    if not _fbWorkflowHasOverleafBinding(dictWorkflow):
+    if not fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
     dictArxiv = _fdictArxivConfig(dictWorkflow)
     if not (dictArxiv.get("sArxivId") or ""):
@@ -2525,7 +2526,7 @@ def _fdictStepProjectionContext(
     dictContext["bZenodoCacheStale"] = _fbAnyWorkflowCriterion(
         listLevel2Blockers, "zenodo-verify-stale",
     )
-    dictContext["bOverleafBound"] = _fbWorkflowHasOverleafBinding(
+    dictContext["bOverleafBound"] = fbWorkflowHasOverleafBinding(
         dictWorkflow,
     )
     dictContext["bHasRepo"] = fbWorkflowHasProjectRepo(
@@ -3086,7 +3087,7 @@ def _fdictBuildWorkflowScopeCells(dictWorkflow, dictCountsByLevel):
 def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
     """Return ``(iSatisfied, iTotal)`` for the workflow-scope L2 cell."""
     tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
-    if _fbWorkflowHasOverleafBinding(dictWorkflow):
+    if fbWorkflowHasOverleafBinding(dictWorkflow):
         tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
     return _ftCountWorkflowCriteria(
         listLevel2Blockers, tApplicable, bHasRepo,

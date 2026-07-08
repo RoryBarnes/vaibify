@@ -72,7 +72,11 @@ const PipeleyenApp = (function () {
         setExpandedQualitative: new Set(),
         setExpandedQuantitative: new Set(),
         setExpandedIntegrity: new Set(),
-        setExpandedEnvelopeSections: new Set(),
+        setExpandedRequirementGroups: new Set(),
+        setExpandedRequirementRows: new Set(),
+        bStepsCollapsed: false,
+        bWorkflowWideCollapsed: false,
+        bBinaryAddFormOpen: false,
         bShowTimestamps: false,
         iContextStepIndex: -1,
     };
@@ -312,7 +316,9 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedQualitative.clear();
         _dictUiState.setExpandedQuantitative.clear();
         _dictUiState.setExpandedIntegrity.clear();
-        _dictUiState.setExpandedEnvelopeSections.clear();
+        _dictUiState.setExpandedRequirementGroups.clear();
+        _dictUiState.setExpandedRequirementRows.clear();
+        _dictUiState.bBinaryAddFormOpen = false;
     }
 
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
@@ -322,6 +328,7 @@ const PipeleyenApp = (function () {
         _dictSessionState.sContainerId = sId;
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
+        _fnLoadStepsCollapsed();
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnSurfaceStateLoadNotice(data.dictWorkflow);
         if (data.dictFileStatus) {
@@ -347,7 +354,18 @@ const PipeleyenApp = (function () {
         fnUpdateHighlightState();
         fnPollAllStepFiles();
         fnStartFileChangePolling();
-        PipeleyenTerminal.fnEnsureTab();
+        try {
+            PipeleyenTerminal.fnEnsureTab();
+        } catch (errorTerminal) {
+            // A terminal failure must never abort the rest of
+            // activation (AICS tab, repos panel, badges, pipeline
+            // recovery below) — that shipped as a raw "Terminal is
+            // not defined" toast plus a half-initialized dashboard.
+            fnShowToast(
+                "Terminal setup failed: " +
+                fsSanitizeErrorForUser(errorTerminal.message),
+                "error");
+        }
         // The AICS and Repos tabs are container-scoped: without
         // these two calls they sit in their "connect first" empty
         // states for the entire workflow session, which is the mode
@@ -432,11 +450,6 @@ const PipeleyenApp = (function () {
         for (var iPair = 0; iPair < listPairs.length; iPair++) {
             _fnCopyIndicesWithinRange(
                 listPairs[iPair][0], listPairs[iPair][1], iStepCount);
-        }
-        if (dictPrior.setSteps.has(-1)) {
-            // -1 is the expandable workflow row, valid in every
-            // workflow regardless of step count.
-            _dictUiState.setExpandedSteps.add(-1);
         }
     }
 
@@ -1040,6 +1053,57 @@ const PipeleyenApp = (function () {
         } catch (e) { /* localStorage may be unavailable */ }
     }
 
+    function _fsStepsCollapsedKey() {
+        return "vaibify.stepsCollapsed." +
+            (_dictWorkflowState.sWorkflowPath || "");
+    }
+
+    function _fsStepsAutoCollapsedKey() {
+        return "vaibify.stepsAutoCollapsed." +
+            (_dictWorkflowState.sWorkflowPath || "");
+    }
+
+    function _fnPersistStepsCollapsed(bCollapsed) {
+        try {
+            localStorage.setItem(
+                _fsStepsCollapsedKey(), bCollapsed ? "1" : "0");
+        } catch (e) { /* localStorage may be unavailable */ }
+    }
+
+    function _fnLoadStepsCollapsed() {
+        // Default expanded on a fresh workflow (no stored choice).
+        try {
+            _dictUiState.bStepsCollapsed =
+                localStorage.getItem(_fsStepsCollapsedKey()) === "1";
+        } catch (e) {
+            _dictUiState.bStepsCollapsed = false;
+        }
+    }
+
+    function _fnMaybeAutoCollapseStepsOnFirstL1(iAICSLevel) {
+        // Collapse the Steps block the first time this workflow
+        // reaches L1; a one-shot guard means the user's manual choice
+        // wins thereafter. Uses the authoritative server level. When
+        // localStorage is unavailable the one-shot cannot be tracked,
+        // so auto-collapse is skipped rather than fired every poll.
+        if (typeof iAICSLevel !== "number" || iAICSLevel < 1) return;
+        var bAlready;
+        try {
+            bAlready =
+                localStorage.getItem(_fsStepsAutoCollapsedKey()) === "1";
+        } catch (e) {
+            return;
+        }
+        if (bAlready) return;
+        try {
+            localStorage.setItem(_fsStepsAutoCollapsedKey(), "1");
+            localStorage.setItem(_fsStepsCollapsedKey(), "1");
+        } catch (e) {
+            return;
+        }
+        _dictUiState.bStepsCollapsed = true;
+    }
+
     function fsToleranceToExponent(fTolerance) {
         return Math.round(Math.log10(fTolerance));
     }
@@ -1080,14 +1144,34 @@ const PipeleyenApp = (function () {
 
     /* --- Step List --- */
 
+    function _fsFindAiDeclarationFile() {
+        // The declaration file of the workflow's ai-declaration step,
+        // for the Workflow-wide Publication "AI Declaration" row.
+        var listSteps = (_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [];
+        for (var i = 0; i < listSteps.length; i++) {
+            if (listSteps[i].sStepKind === "ai-declaration") {
+                return listSteps[i].sDeclarationFile || "";
+            }
+        }
+        return "";
+    }
+
     function fdictBuildRenderContext() {
         return {
             dictStepStatus: _dictWorkflowState.dictStepStatus,
             iSelectedStepIndex: _dictUiState.iSelectedStepIndex,
             setExpandedSteps: _dictUiState.setExpandedSteps,
             setExpandedDeps: _dictUiState.setExpandedDeps,
-            setExpandedEnvelopeSections:
-                _dictUiState.setExpandedEnvelopeSections,
+            setExpandedRequirementGroups:
+                _dictUiState.setExpandedRequirementGroups,
+            setExpandedRequirementRows:
+                _dictUiState.setExpandedRequirementRows,
+            bWorkflowWideCollapsed: _dictUiState.bWorkflowWideCollapsed,
+            bBinaryAddFormOpen: _dictUiState.bBinaryAddFormOpen,
+            sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
+                .sProjectRepoPath || "",
+            sAiDeclarationFile: _fsFindAiDeclarationFile(),
             setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
             setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
@@ -1204,13 +1288,19 @@ const PipeleyenApp = (function () {
     }
 
     function _fsBoundarySignature(listSteps) {
-        // Compact key that changes when the step count, the
-        // automated/interactive boundary positions, the presence of
-        // an AI-declaration step (ghost-row trigger), or the
-        // workflow-level header inputs shift. Used to detect
-        // "structural change" so the renderer falls back to the full
-        // innerHTML rebuild path instead of orphaning the header row
-        // or ghost row that only the full path renders.
+        // Compact key that changes when the step count or the
+        // automated/interactive/declaration boundary pattern shifts.
+        // Used to detect "structural change" so the renderer falls
+        // back to the full innerHTML rebuild (which re-emits the
+        // column header + step-type banners) instead of only swapping
+        // individual step wrappers.
+        //
+        // The Workflow-wide block is NOT part of this signature: it
+        // lives in its own container and is rebuilt on every render,
+        // so its expansion Sets can never cause a skip-repaint. A
+        // future maintainer who memoizes that block MUST fold
+        // setExpandedRequirementGroups / setExpandedRequirementRows
+        // into a signature of its own.
         var sKey = String(listSteps.length);
         for (var i = 0; i < listSteps.length; i++) {
             if (listSteps[i].sStepKind === "ai-declaration") {
@@ -1219,28 +1309,7 @@ const PipeleyenApp = (function () {
                 sKey += listSteps[i].bInteractive === true ? "I" : "A";
             }
         }
-        return sKey + "|" + _fsWorkflowHeaderSignature();
-    }
-
-    function _fsWorkflowHeaderSignature() {
-        // Every input the workflow-level header row reads. Including
-        // the workflow-scope L2 blocker keeps the header tooltip in
-        // sync with the dominant remediation hint. The envelope
-        // section-expansion set MUST be in here: a toggle that does
-        // not move this signature is silently skipped by the
-        // incremental renderer and the click appears to do nothing.
-        return JSON.stringify([
-            _dictWorkflowState.dictWorkflowScopeLevels,
-            _dictWorkflowState.dictWorkflowLevelHighWater,
-            (_dictWorkflowState.dictBlockersByStepLevel2 || {})[-1] ||
-                null,
-            (_dictWorkflowState.dictStepLevelWarnings || {})["-1"] ||
-                null,
-            _dictWorkflowState.dictWorkflowEnvelopeDetail,
-            _dictUiState.setExpandedSteps.has(-1),
-            Array.from(
-                _dictUiState.setExpandedEnvelopeSections).sort(),
-        ]);
+        return sKey;
     }
 
     function _fsExpansionSliceForStep(iIndex, dictContext) {
@@ -1350,6 +1419,8 @@ const PipeleyenApp = (function () {
             _fnRenderStepListIncremental(
                 elList, listSteps, dictVars, dictContext);
         }
+        _fnRenderWorkflowWideBlock(dictContext);
+        _fnApplyStepsCollapsedClass();
         fnApplyTimestampVisibility();
         fnBindStepEvents();
         fnUpdateHighlightState();
@@ -1361,8 +1432,7 @@ const PipeleyenApp = (function () {
     function _fnRenderStepListFull(
         elList, listSteps, dictVars, dictContext, sBoundary
     ) {
-        var sHtml = VaibifyStepRenderer.fsRenderWorkflowLevelHeader(
-            dictContext);
+        var sHtml = VaibifyStepRenderer.fsRenderStepColumnHeader();
         var bPrior = null;
         _dictRenderedStepHashes = {};
         listSteps.forEach(function (step, iIndex) {
@@ -1376,23 +1446,100 @@ const PipeleyenApp = (function () {
             _dictRenderedStepHashes[iIndex] = _fsComputeStepRenderHash(
                 step, iIndex, dictContext, dictVars);
         });
-        if (!_fbWorkflowHasAiDeclarationStep()) {
-            sHtml += VaibifyStepRenderer
-                .fsRenderGhostAiDeclarationRow();
-        }
         elList.innerHTML = sHtml;
         _sLastBoundarySignature = sBoundary;
     }
 
-    function _fbWorkflowHasAiDeclarationStep() {
+    var _sLastWorkflowWideHtml = null;
+
+    function _fnRenderWorkflowWideBlock(dictContext) {
+        // Rebuilt from data on every render — the block lives in its
+        // own container, never in the incremental step-hash path, so
+        // the requirement group/row expansion Sets need no render
+        // signature (expansion state is IN the rendered output). The
+        // DOM write is skipped when the output is byte-identical so a
+        // steady-state poll never wipes in-progress form input (the
+        // determinism declare form) or a text selection.
+        var elBlock = document.getElementById("workflowWideBlock");
+        if (!elBlock) return;
+        if (!_dictWorkflowState.dictWorkflow) {
+            elBlock.innerHTML = "";
+            _sLastWorkflowWideHtml = null;
+            return;
+        }
+        var sHtml =
+            VaibifyWorkflowRequirements.fsRenderWorkflowWideBlock(
+                dictContext);
+        if (sHtml === _sLastWorkflowWideHtml) return;
+        elBlock.innerHTML = sHtml;
+        _sLastWorkflowWideHtml = sHtml;
+    }
+
+    function _fnApplyStepsCollapsedClass() {
+        var elBlock = document.getElementById("stepsBlock");
+        if (!elBlock) return;
+        elBlock.classList.toggle(
+            "collapsed", _dictUiState.bStepsCollapsed === true);
+        // The Steps header is static HTML; keep its aggregate status
+        // light current here so the banner conveys the total step
+        // state even while collapsed.
+        var elStatus = elBlock.querySelector(".steps-block-status");
+        if (elStatus) {
+            elStatus.innerHTML = _fsRenderStepsAggregateLight();
+        }
+    }
+
+    var _DICT_STEPS_AGGREGATE_TOOLTIP = {
+        "attained": "Every step is self-consistent (Level 1)",
+        "partial": "Some steps have unmet Level 1 requirements",
+        "none": "One or more steps are failing Level 1",
+        "unknown": "Step status is not yet known",
+        "not-started": "No steps in this workflow yet",
+    };
+
+    function _fsAggregateStepsL1State() {
+        // The total Level-1 state across every step: red if any step
+        // fails, orange if any is partial, attained only when all
+        // steps are attained or have no L1 requirement.
         var listSteps = (_dictWorkflowState.dictWorkflow || {})
             .listSteps || [];
+        if (listSteps.length === 0) return "not-started";
+        var bAllAttained = true;
+        var bAnyPartial = false;
         for (var i = 0; i < listSteps.length; i++) {
-            if (listSteps[i].sStepKind === "ai-declaration") {
-                return true;
+            var sState = fsLevelCellState(i, 1);
+            if (sState === "none") return "none";
+            if (sState === "partial") bAnyPartial = true;
+            if (sState !== "attained" && sState !== "not-applicable") {
+                bAllAttained = false;
             }
         }
-        return false;
+        if (bAnyPartial) return "partial";
+        return bAllAttained ? "attained" : "unknown";
+    }
+
+    function _fsRenderStepsAggregateLight() {
+        // A full L1|L2|L3 strip (with a leading warning-column
+        // spacer) so the collapsed Steps banner lines up with the
+        // Workflow-wide banner strip. L1 carries the aggregate step
+        // state; L2/L3 are dashes — those levels are workflow-wide,
+        // not per-step.
+        var sState = _fsAggregateStepsL1State();
+        var sInner = sState === "attained"
+            ? '<img src="/static/favicon.png" ' +
+                'class="level-cell-favicon" alt="all steps passing">'
+            : '<span class="level-cell-circle"></span>';
+        var sDashCell = '<span class="step-level-cell ' +
+            'level-cell-not-applicable" title="No step-level ' +
+            'requirements at this level — see Workflow-wide">' +
+            '<span class="level-cell-dash">&#8212;</span></span>';
+        return '<span class="step-level-strip">' +
+            '<span class="step-regression-cell"></span>' +
+            '<span class="step-level-cell level-cell-' + sState +
+            '" title="' +
+            (_DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status") +
+            '">' + sInner + '</span>' +
+            sDashCell + sDashCell + '</span>';
     }
 
     function _fnRenderStepListIncremental(
@@ -2136,29 +2283,312 @@ const PipeleyenApp = (function () {
         };
     }
 
-    function fnToggleWorkflowRowExpand() {
-        // The workflow header row expands like a step row; -1 keys
-        // its expansion in the shared Set (mutated in place — the
-        // render context holds the Set by reference).
-        if (_dictUiState.setExpandedSteps.has(-1)) {
-            _dictUiState.setExpandedSteps.delete(-1);
+    function _fnToggleInSet(setTarget, sKey) {
+        // Mutate in place — the render context holds these Sets by
+        // reference (the shared-Sets rule); never reassign.
+        if (setTarget.has(sKey)) {
+            setTarget.delete(sKey);
         } else {
-            _dictUiState.setExpandedSteps.add(-1);
+            setTarget.add(sKey);
         }
         fnRenderStepList();
     }
 
-    function fnToggleEnvelopeSection(sSectionKey) {
-        // Envelope sections (Software / Artifacts / Determinism /
-        // Syncs) expand independently; the Set is mutated in place —
-        // the render context holds it by reference.
-        var setOpen = _dictUiState.setExpandedEnvelopeSections;
-        if (setOpen.has(sSectionKey)) {
-            setOpen.delete(sSectionKey);
-        } else {
-            setOpen.add(sSectionKey);
-        }
+    function fnToggleStepsBlockExpand() {
+        _dictUiState.bStepsCollapsed = !_dictUiState.bStepsCollapsed;
+        _fnPersistStepsCollapsed(_dictUiState.bStepsCollapsed);
         fnRenderStepList();
+    }
+
+    function fnToggleWorkflowWideBlockExpand() {
+        _dictUiState.bWorkflowWideCollapsed =
+            !_dictUiState.bWorkflowWideCollapsed;
+        fnRenderStepList();
+    }
+
+    function fnToggleBinaryAddForm() {
+        _dictUiState.bBinaryAddFormOpen =
+            !_dictUiState.bBinaryAddFormOpen;
+        fnRenderStepList();
+    }
+
+    function fnToggleRequirementGroup(sGroupKey) {
+        _fnToggleInSet(
+            _dictUiState.setExpandedRequirementGroups, sGroupKey);
+    }
+
+    function fnToggleRequirementRow(sReqKey) {
+        _fnToggleInSet(
+            _dictUiState.setExpandedRequirementRows, sReqKey);
+    }
+
+    var _DICT_WORKFLOW_WIDE_ACTIONS = {
+        "capture-binary": {
+            sPath: "/binaries/capture",
+            fdictBody: function (sArg) {
+                return {sBinaryPath: sArg};
+            },
+            fdictAfterResponse: function (dictResult, sArg) {
+                var dictCaptured =
+                    (dictResult || {}).dictCaptured || {};
+                if (dictCaptured.sSha256) {
+                    return {sMessage: "Captured " + sArg +
+                        " (version " +
+                        (dictCaptured.sVersion || "unknown") + ").",
+                        sType: "info"};
+                }
+                return {sMessage: "No file found at " + sArg +
+                    ". Fix the declared path with the Add / update " +
+                    "package form at the bottom of the Software " +
+                    "section.", sType: "error"};
+            },
+        },
+        "declare-binary": {
+            sPath: "/binaries/declare",
+            fdictBodyFromElement: _fdictReadBinaryForm,
+            sToast: "Package declared. Now capture its version and " +
+                "hash from its row.",
+        },
+        "remove-binary": {
+            sPath: "/binaries/declare",
+            fdictBody: _fdictReadBinaryRemoval,
+            dictConfirm: {
+                sTitle: "Remove package",
+                sMessage: "Remove this package from the declared " +
+                    "software list? Its captured version and hash " +
+                    "stay in the environment snapshot until the " +
+                    "next regeneration.",
+            },
+            sToast: "Package removed from the declaration.",
+        },
+        "verify-dependency-lock": {
+            sPath: "/dependencies/verify",
+            fdictAfterResponse: function (dictResult) {
+                var listProblems =
+                    (dictResult || {}).listProblems || [];
+                if (listProblems.length === 0) {
+                    return {sMessage: "requirements.lock is clean: " +
+                        "every dependency pinned by exact version " +
+                        "with hashes.", sType: "info"};
+                }
+                return {sMessage: listProblems.length +
+                    " problem(s) in requirements.lock (first: " +
+                    listProblems[0] + "). Regenerate the envelope " +
+                    "to rebuild it.", sType: "warning"};
+            },
+        },
+        "regenerate-envelope": {
+            sPath: "/level3/envelope",
+            fdictAfterResponse: function (dictResult) {
+                var dictGaps =
+                    (dictResult || {}).dictL3ReadinessGaps || {};
+                var listStillFailing = [
+                    ["bManifestComplete", "manifest"],
+                    ["bDependencyLockHashed", "dependency lock"],
+                    ["bEnvironmentDigestPinned", "environment"],
+                ].filter(function (t) {
+                    return dictGaps[t[0]] === false;
+                }).map(function (t) { return t[1]; });
+                if (listStillFailing.length === 0) {
+                    return {sMessage: "Envelope regenerated — " +
+                        "manifest, dependency lock, and environment " +
+                        "snapshot are all current.", sType: "info"};
+                }
+                return {sMessage: "Envelope regenerated, but still " +
+                    "failing: " + listStillFailing.join(", ") +
+                    ". Check the hub log for the tier error.",
+                    sType: "warning"};
+            },
+        },
+        "verify-manifest": {
+            sPath: "/manifest/verify",
+            fdictAfterResponse: function (dictResult) {
+                var iTotal = (dictResult || {}).iTotal || 0;
+                var listBad = (dictResult || {}).listMismatches || [];
+                if (listBad.length === 0) {
+                    return {sMessage: "All " + iTotal + " manifest " +
+                        "files match their pinned hashes.",
+                        sType: "info"};
+                }
+                return {sMessage: listBad.length + " of " + iTotal +
+                    " files differ from the manifest (first: " +
+                    (listBad[0].sPath || listBad[0]) + "). Re-run " +
+                    "the workflow or regenerate the envelope.",
+                    sType: "warning"};
+            },
+        },
+        "generate-reproduce-script": {
+            sPath: "/level3/reproduce-script",
+            fdictAfterResponse: function (dictResult) {
+                if ((dictResult || {}).bManifestRefreshed === true) {
+                    return {sMessage: "reproduce.sh written and " +
+                        "pinned in the manifest — the check will " +
+                        "pass on the next status poll.",
+                        sType: "info"};
+                }
+                return {sMessage: "reproduce.sh was written, but " +
+                    "re-pinning the manifest failed — click " +
+                    "'Regenerate now' on the Manifest row, then " +
+                    "check the hub log.", sType: "warning"};
+            },
+        },
+        "verify-l3": {
+            sPath: "/level3/verify",
+            sToast: "Level 3 verification started. The rebuild runs " +
+                "in the container; the result appears in the " +
+                "Attestation row when it completes.",
+        },
+        "declare-determinism": {
+            sPath: "/determinism/declare",
+            fdictBodyFromElement: _fdictReadDeterminismForm,
+            sToast: "Reproducibility rules declared.",
+        },
+        "delete-determinism": {
+            sPath: "/determinism",
+            sMethod: "DELETE",
+            dictConfirm: {
+                sTitle: "Delete reproducibility rules",
+                sMessage: "Remove the declared repeatability rules " +
+                    "from workflow.json? Level 3 requires a " +
+                    "declaration, so you will need to declare again.",
+            },
+            sToast: "Reproducibility rules deleted.",
+        },
+    };
+
+    function _fdictReadBinaryForm(elButton) {
+        // Merge the form entry into the existing declarations —
+        // an entry with the same path replaces the old one, so the
+        // form both adds missed packages and fixes stale paths.
+        var elForm = elButton.closest(".binary-add-form");
+        if (!elForm) return null;
+        var sPath = (elForm.querySelector(".binary-form-path")
+            .value || "").trim();
+        var sPurpose = (elForm.querySelector(".binary-form-purpose")
+            .value || "").trim();
+        var sVersion = (elForm.querySelector(".binary-form-version")
+            .value || "").trim();
+        if (!sPath || !sPurpose || !sVersion) {
+            fnShowToast(
+                "All three fields are needed: path, purpose, and " +
+                "expected version.", "warning");
+            return null;
+        }
+        var listExisting = ((_dictWorkflowState.dictWorkflow || {})
+            .listDeclaredBinaries || []).filter(function (d) {
+                return d && d.sBinaryPath !== sPath;
+            });
+        listExisting.push({
+            sBinaryPath: sPath,
+            sPurpose: sPurpose,
+            sExpectedVersion: sVersion,
+        });
+        return {
+            bNoStandaloneBinaries: false,
+            listDeclaredBinaries: listExisting,
+        };
+    }
+
+    function _fdictReadDeterminismForm(elButton) {
+        // Gather the declare-determinism form inputs from the same
+        // requirement-row detail the button lives in. A blank thread
+        // box sends an explicit null so a previously pinned count is
+        // REMOVED — the endpoint merges keys, so omitting it would
+        // silently keep the old pin forever.
+        var elDetail = elButton.closest(".requirement-row-detail");
+        if (!elDetail) return null;
+        var elBlas = elDetail.querySelector(".determinism-accept-blas");
+        var elThreads = elDetail.querySelector(
+            ".determinism-omp-threads");
+        var dictBody = {
+            bAcceptBlasVariance: Boolean(elBlas && elBlas.checked),
+            dOmpNumThreads: null,
+        };
+        if (elThreads && elThreads.value !== "") {
+            var iThreads = parseInt(elThreads.value, 10);
+            if (!isNaN(iThreads) && iThreads > 0) {
+                dictBody.dOmpNumThreads = iThreads;
+            }
+        }
+        return dictBody;
+    }
+
+    function _fdictReadBinaryRemoval(sBinaryPath) {
+        // Re-declare the list minus the removed entry.
+        var listRemaining = ((_dictWorkflowState.dictWorkflow || {})
+            .listDeclaredBinaries || []).filter(function (d) {
+                return d && d.sBinaryPath !== sBinaryPath;
+            });
+        return {
+            bNoStandaloneBinaries: listRemaining.length === 0,
+            listDeclaredBinaries: listRemaining,
+        };
+    }
+
+    async function fnRunWorkflowWideAction(sAction, sArg, elButton) {
+        // Runs a workflow-wide action in place from the expanded
+        // blocks (capture/declare binaries, regenerate the envelope,
+        // verify the manifest, generate reproduce.sh, declare/delete
+        // determinism, verify Level 3), then refreshes so the status
+        // lights update. Destructive actions confirm first; actions
+        // with a response-aware formatter report what actually
+        // happened rather than a fixed message.
+        var dictAction = _DICT_WORKFLOW_WIDE_ACTIONS[sAction];
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!dictAction || !sContainerId) return;
+        if (dictAction.dictConfirm) {
+            var dictNoConfirm = Object.assign({}, dictAction);
+            delete dictNoConfirm.dictConfirm;
+            fnShowConfirmModal(
+                dictAction.dictConfirm.sTitle,
+                dictAction.dictConfirm.sMessage,
+                function () {
+                    _fnExecuteWorkflowWideAction(
+                        dictNoConfirm, sContainerId, sArg, elButton);
+                });
+            return;
+        }
+        await _fnExecuteWorkflowWideAction(
+            dictAction, sContainerId, sArg, elButton);
+    }
+
+    async function _fnExecuteWorkflowWideAction(
+        dictAction, sContainerId, sArg, elButton
+    ) {
+        var oBody = {};
+        if (dictAction.fdictBodyFromElement) {
+            oBody = dictAction.fdictBodyFromElement(elButton);
+            if (!oBody) return;
+        } else if (dictAction.fdictBody) {
+            oBody = dictAction.fdictBody(sArg);
+        }
+        var sUrl = "/api/workflow/" + sContainerId + dictAction.sPath;
+        try {
+            var dictResult;
+            if (dictAction.sMethod === "DELETE") {
+                dictResult = await VaibifyApi.fnDelete(sUrl);
+            } else {
+                dictResult = await VaibifyApi.fdictPost(sUrl, oBody);
+            }
+            if (dictAction.fdictAfterResponse) {
+                var dictOutcome = dictAction.fdictAfterResponse(
+                    dictResult, sArg);
+                fnShowToast(dictOutcome.sMessage, dictOutcome.sType);
+            } else {
+                fnShowToast(dictAction.sToast, "info");
+            }
+        } catch (error) {
+            fnShowToast(
+                "Action failed: " +
+                ((error && error.message) ? error.message : error),
+                "error");
+        }
+        // Fire an immediate file-status poll so the block's status
+        // lights reflect the action right away instead of waiting for
+        // the next scheduled tick. (fnRefreshWorkflowData requires a
+        // connect payload — calling it bare threw and silently
+        // skipped this refresh.)
+        VaibifyPolling.fnStartFilePolling(sContainerId);
     }
 
     function fnSetCachedAicsLevel(iLevel) {
@@ -3321,6 +3751,7 @@ const PipeleyenApp = (function () {
              * check while the theme stayed at level 0. */
             _dictWorkflowState.dictWorkflow.iAICSLevel =
                 dictStatus.iAICSLevel;
+            _fnMaybeAutoCollapseStepsOnFirstL1(dictStatus.iAICSLevel);
         }
         if (dictStatus.dictStepLevels) {
             _dictWorkflowState.dictStepLevels =
@@ -3698,8 +4129,13 @@ const PipeleyenApp = (function () {
         fnToggleUnitTestExpand: fnToggleUnitTestExpand,
         fnToggleDepsExpand: fnToggleDepsExpand,
         fnToggleStepExpand: fnToggleStepExpand,
-        fnToggleWorkflowRowExpand: fnToggleWorkflowRowExpand,
-        fnToggleEnvelopeSection: fnToggleEnvelopeSection,
+        fnToggleStepsBlockExpand: fnToggleStepsBlockExpand,
+        fnToggleWorkflowWideBlockExpand:
+            fnToggleWorkflowWideBlockExpand,
+        fnToggleBinaryAddForm: fnToggleBinaryAddForm,
+        fnToggleRequirementGroup: fnToggleRequirementGroup,
+        fnToggleRequirementRow: fnToggleRequirementRow,
+        fnRunWorkflowWideAction: fnRunWorkflowWideAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,

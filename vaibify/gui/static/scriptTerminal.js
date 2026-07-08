@@ -266,6 +266,16 @@ const PipeleyenTerminal = (function () {
     }
 
     function fnInitializeTerminal(dictPane, dictTab) {
+        if (typeof Terminal === "undefined") {
+            // The vendored xterm library failed to load. Degrade to a
+            // clear message instead of throwing — an exception here
+            // used to propagate out of workflow activation and abort
+            // the AICS/repos/badge initialization that follows it.
+            PipeleyenApp.fnShowToast(
+                "The terminal library failed to load — reload the " +
+                "page to restore terminal access.", "error");
+            return;
+        }
         var elContainer = dictPane.elPane.querySelector(
             ".terminal-pane-container"
         );

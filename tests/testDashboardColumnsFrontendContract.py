@@ -139,11 +139,11 @@ def test_step_rows_carry_no_hover_edit_button():
 
 
 def test_workflow_row_is_labeled_workflow_wide():
-    """The header row must read "Workflow-wide", not "Workflow" — the
+    """The block header must read "Workflow-wide", not "Workflow" — the
     bare word reads as a summary of the step rows, which it is not."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sHeader = _fsExtractFunctionBlock(
-        sSource, "fsRenderWorkflowLevelHeader",
+        sSource, "fsRenderWorkflowWideBlock",
     )
     assert "Workflow-wide" in sHeader
     assert ">Workflow<" not in sHeader, (
@@ -294,63 +294,85 @@ def test_repos_tab_shows_attention_badge():
 # -----------------------------------------------------------------------
 
 
-def test_workflow_header_signature_covers_envelope_expansion():
-    """FALSIFICATION TARGET: the incremental renderer skips the
-    workflow header when its input signature is unchanged. The
-    envelope section-expansion set must be part of that signature or
-    clicking a section header repaints nothing — the 2026-07-02 bug."""
+def test_workflow_wide_block_rebuilds_unconditionally():
+    """The 2026-07-02 skip-repaint bug (a toggle whose expansion set
+    was not in the render signature repainted nothing) is retired
+    structurally: the Workflow-wide block lives in its own container
+    and is rebuilt on every render, so its group/row expansion Sets
+    can never cause a skipped repaint. Guard that the rebuild stays
+    unconditional and outside the memoized step-hash path."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    sSignature = _fsExtractFunctionBlock(
-        sSource, "_fsWorkflowHeaderSignature",
+    sRebuild = _fsExtractFunctionBlock(
+        sSource, "_fnRenderWorkflowWideBlock",
     )
-    assert "setExpandedEnvelopeSections" in sSignature, (
-        "envelope expansion set missing from the workflow header "
-        "signature — section toggles will silently not repaint"
+    assert "workflowWideBlock" in sRebuild, (
+        "the block must render into its own #workflowWideBlock "
+        "container"
     )
+    assert "fsRenderWorkflowWideBlock" in sRebuild, (
+        "the block must rebuild from the module renderer each pass"
+    )
+    # It must not be gated behind the boundary signature (which is the
+    # step-list full-vs-incremental decision).
+    assert "_fsBoundarySignature" not in sRebuild
 
 
 def test_every_column_header_carries_a_tooltip():
-    """All five column headers (status light, warnings, L1-L3) must
-    explain themselves on hover."""
+    """The per-step column headers (run, warnings, L1) must explain
+    themselves on hover. L2/L3 are workflow-wide, not per-step, so they
+    are no longer headed on the step rows."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sHeader = _fsExtractFunctionBlock(
         sSource, "_fsRenderLevelColumnHeaderRow",
     )
     for sNeedle in (
         "Run controls", "Warnings", "Level 1 Self-Consistent",
-        "Level 2 Published", "Level 3 Reproducible",
     ):
         assert sNeedle in sHeader, (
             "column header missing its tooltip: " + sNeedle
         )
+    assert "Level 2 Published" not in sHeader, (
+        "L2 is workflow-wide and must not be a per-step column"
+    )
+    assert "Level 3 Reproducible" not in sHeader, (
+        "L3 is workflow-wide and must not be a per-step column"
+    )
 
 
-def test_envelope_sections_are_expandable():
-    """The four envelope sections (Software / Artifacts /
-    Determinism / Syncs) render as independently expandable headers
-    with a summary mark, not a flat list."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
-    sDetail = _fsExtractFunctionBlock(
-        sSource, "fsRenderWorkflowEnvelopeDetail",
+def test_workflow_wide_groups_and_rows_are_expandable():
+    """The Workflow-wide block groups requirements into the four
+    envelope categories plus Attestation; each section and each
+    requirement row is independently expandable with a status light."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sBlock = _fsExtractFunctionBlock(
+        sSource, "fsRenderWorkflowWideBlock",
     )
     for sKey in ('"software"', '"artifacts"', '"determinism"',
-                 '"syncs"'):
-        assert sKey in sDetail, "missing envelope section " + sKey
-    assert "envelope-section-header" in sSource
-    assert "data-envelope-section" in sSource
+                 '"publishedCopies"', '"attestation"'):
+        assert sKey in sBlock, "missing requirement section " + sKey
+    assert "data-group=" in sSource
+    assert "data-req=" in sSource
+    assert "requirement-group-header" in sSource
+    assert "requirement-row-header" in sSource
     sBindings = _fsReadStaticFile("scriptEventBindings.js")
-    assert ".envelope-section-header" in sBindings, (
-        "section headers must be click-bound to the toggle"
+    assert ".requirement-group-header" in sBindings, (
+        "group headers must be click-bound to the toggle"
+    )
+    assert ".requirement-row-header" in sBindings, (
+        "requirement rows must be click-bound to the toggle"
     )
 
 
-def test_envelope_passing_items_use_the_vaibify_check_not_green():
-    """Passing envelope items render the theme-tinted check (its
-    color climbs the ladder with --highlight-color); green circles
-    are retired."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+def test_envelope_passing_items_use_the_vaibify_favicon():
+    """Passing requirement items render the vaibify favicon — the same
+    'attained' glyph the step level cells use — not a bare check
+    character. A never-verified remote stays hollow, never a pass."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sMark = _fsExtractFunctionBlock(sSource, "_fsBuildEnvelopeMark")
-    assert "envelope-check" in sMark
+    assert "favicon.png" in sMark and "level-cell-favicon" in sMark
+    assert "envelope-light-unknown" in sMark, (
+        "the unknown/never-verified state must render hollow"
+    )
     assert "envelope-light-green" not in sSource, (
         "the green envelope circle is retired"
     )
@@ -366,23 +388,24 @@ def test_envelope_passing_items_use_the_vaibify_check_not_green():
 
 def test_envelope_mark_columns_have_lettered_headers():
     """The Software (V/H) and Artifacts (F/R) mark columns carry
-    one-letter headers with instructive tooltips."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    one-letter headers with instructive tooltips, rendered inside the
+    Workflow-wide requirement-row detail bodies."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     assert "_fsRenderEnvelopeMarkHeader" in sSource
     sSoftware = _fsExtractFunctionBlock(
-        sSource, "_fsRenderEnvelopeSoftwareBody",
+        sSource, "_flistSoftwareRows",
     )
     assert '"V"' in sSoftware and '"H"' in sSoftware
-    sArtifacts = _fsExtractFunctionBlock(
-        sSource, "_fsRenderEnvelopeArtifactBody",
+    sArtifact = _fsExtractFunctionBlock(
+        sSource, "_fsRenderArtifactDetail",
     )
-    assert '"F"' in sArtifacts and '"R"' in sArtifacts
+    assert '"F"' in sArtifact and '"R"' in sArtifact
 
 
 def test_envelope_summary_marks_show_partial_as_orange():
-    """A section with some but not all requirements met summarizes
+    """A group with some but not all requirements met summarizes
     orange — never a false check, never an all-red."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sCounts = _fsExtractFunctionBlock(
         sSource, "_fsSummaryStateFromCounts",
     )
@@ -391,13 +414,15 @@ def test_envelope_summary_marks_show_partial_as_orange():
     )
 
 
-def test_syncs_section_is_named_published_copies():
-    """"Syncs" read as software syncing; the section is about whether
-    published copies match local files, so it says that."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
-    iStart = sSource.find("_DICT_ENVELOPE_SECTION_TITLES")
+def test_published_copies_section_names_services_not_syncs():
+    """"Syncs" read as software syncing; the Published copies section
+    names each published copy by service (GitHub / Zenodo / arXiv)."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    iStart = sSource.find("_DICT_GROUP_TITLES")
     sBlock = sSource[iStart:sSource.find("};", iStart)]
     assert "Published copies" in sBlock
+    assert "Syncs" not in sBlock
+    assert "GitHub mirror" in sSource and "Zenodo deposit" in sSource
 
 
 def test_declaration_step_offers_commit_to_repo():
@@ -635,17 +660,17 @@ def test_run_light_success_renders_the_vaibify_check():
     ), "the never-run light must be the hollow grey circle"
 
 
-def test_envelope_software_section_points_at_the_repos_panel():
+def test_publication_rows_point_at_the_repos_panel():
     """Repository status has ONE home (the Repos panel); the
-    Software section links there instead of duplicating it."""
-    sSource = _fsReadStaticFile("scriptStepRenderer.js")
-    sBody = _fsExtractFunctionBlock(
-        sSource, "_fsRenderEnvelopeSoftwareBody",
+    Publication requirement rows send the researcher there to push and
+    re-verify rather than duplicating repo actions in the block."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    assert "Repos panel" in sSource, (
+        "Publication how-to guidance must direct to the Repos panel"
     )
-    assert "envelope-open-repos" in sBody
     sBindings = _fsReadStaticFile("scriptEventBindings.js")
     assert 'data-panel="repos"' in sBindings, (
-        "the jump link must activate the Repos tab"
+        "the Repos tab jump must stay wired"
     )
 
 

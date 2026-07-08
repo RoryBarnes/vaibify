@@ -386,8 +386,28 @@ def _fnRegisterGenerateScript(app, dictCtx):
             raise HTTPException(
                 500, f"Could not write reproduce.sh: {exc}",
             ) from exc
+        # The Level 3 check requires the script's hash IN the
+        # manifest, so re-pin immediately — without this the check
+        # stayed red after every generation until the next envelope
+        # regeneration, which read as "the button did nothing".
+        bManifestRefreshed = True
+        try:
+            from ...reproducibility import manifestWriter
+            filesRepo = ffilesForWorkflow(
+                dictCtx, sContainerId, dictWorkflow,
+            )
+            await asyncio.to_thread(
+                manifestWriter.fnWriteManifest, filesRepo, dictWorkflow,
+            )
+        except Exception as exc:
+            logging.getLogger("vaibify").warning(
+                "reproduce.sh written but manifest re-pin failed: %s",
+                exc,
+            )
+            bManifestRefreshed = False
         return {
             "bWritten": True,
+            "bManifestRefreshed": bManifestRefreshed,
             "sScriptPath": sPathWritten,
             "sScriptFilename": S_REPRODUCE_SCRIPT_FILENAME,
         }
@@ -540,7 +560,10 @@ def _fdictValidateDeterminismBody(dictRequest):
 
     Accepts only the three scalar keys the L3 determinism gate reads;
     at least one must be present and every value must match its
-    declared scalar type. Unknown keys are rejected outright so typos
+    declared scalar type. A ``null`` value means "remove this key" —
+    without it, a mistaken pin (an OpenMP thread count the researcher
+    cleared in the form) survived every re-declaration because the
+    route merges keys. Unknown keys are rejected outright so typos
     cannot silently fail the readiness gate later.
     """
     if not isinstance(dictRequest, dict) or not dictRequest:
@@ -558,6 +581,9 @@ def _fdictValidateDeterminismBody(dictRequest):
                 f"Unknown determinism key {sKey!r}; accepted keys: "
                 + ", ".join(sorted(_DICT_DETERMINISM_KEY_TYPES)) + ".",
             )
+        if jsonValue is None:
+            dictDeclared[sKey] = None
+            continue
         _fnRequireScalarType(sKey, jsonValue, tTypesExpected)
         dictDeclared[sKey] = jsonValue
     return dictDeclared
@@ -579,10 +605,100 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
         dictDeterminism = dict(
             dictWorkflow.get("dictDeterminism") or {},
         )
-        dictDeterminism.update(dictDeclared)
+        for sKey, jsonValue in dictDeclared.items():
+            if jsonValue is None:
+                dictDeterminism.pop(sKey, None)
+            else:
+                dictDeterminism[sKey] = jsonValue
         dictWorkflow["dictDeterminism"] = dictDeterminism
         dictCtx["save"](sContainerId, dictWorkflow)
         return {"dictDeterminism": dictDeterminism}
+
+
+def _fnRegisterRegenerateEnvelope(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/level3/envelope.
+
+    The envelope regenerates automatically on the L1 crossing, but the
+    researcher must also be able to refresh it on demand (a failed
+    tier, a new dependency, a stale manifest) without waiting for the
+    next promotion. Tier failures are logged-and-isolated inside the
+    generator; the response returns the fresh readiness gaps so the
+    caller can see what the regeneration achieved.
+    """
+
+    @fnAgentAction("regenerate-envelope")
+    @app.post(
+        "/api/workflow/{sContainerId}/level3/envelope"
+    )
+    async def fnRegenerateEnvelope(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fsRequireProjectRepo(dictWorkflow)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        from ...reproducibility import dataArchiver
+        await asyncio.to_thread(
+            dataArchiver.fnGenerateReproducibilityEnvelope,
+            filesRepo, dictWorkflow,
+            sContainerId, dictWorkflow.get("saHostBinaries"),
+        )
+        return {
+            "dictL3ReadinessGaps": fdictL3ReadinessGaps(
+                dictWorkflow, filesRepo,
+            ),
+        }
+
+
+def _fnRegisterDeleteDeterminism(app, dictCtx):
+    """Register DELETE /api/workflow/{sContainerId}/determinism.
+
+    The declare endpoint merges keys, so a mistaken declaration (a
+    pinned thread count the researcher wants unpinned) could never be
+    removed. Deleting clears the whole declaration; the GUI confirms
+    first and the researcher re-declares what still applies.
+    """
+
+    @fnAgentAction("delete-determinism")
+    @app.delete(
+        "/api/workflow/{sContainerId}/determinism"
+    )
+    async def fnDeleteDeterminism(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictWorkflow["dictDeterminism"] = {}
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"dictDeterminism": {}}
+
+
+def _fnRegisterVerifyDependencyLock(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/dependencies/verify.
+
+    Structural check of requirements.lock: every dependency pinned by
+    exact version with hashes. Returns the problem list so the GUI can
+    report what is wrong rather than a bare pass/fail.
+    """
+
+    @fnAgentAction("verify-dependency-lock")
+    @app.post(
+        "/api/workflow/{sContainerId}/dependencies/verify"
+    )
+    async def fnVerifyDependencyLock(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fsRequireProjectRepo(dictWorkflow)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        from ...reproducibility.dependencyPinning import (
+            flistVerifyRequirementsLock,
+        )
+        listProblems = await asyncio.to_thread(
+            flistVerifyRequirementsLock, filesRepo,
+        )
+        return {"listProblems": list(listProblems)}
 
 
 def fnRegisterAll(app, dictCtx):
@@ -594,3 +710,6 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterDeclareBinaries(app, dictCtx)
     _fnRegisterCaptureBinary(app, dictCtx)
     _fnRegisterDeclareDeterminism(app, dictCtx)
+    _fnRegisterRegenerateEnvelope(app, dictCtx)
+    _fnRegisterDeleteDeterminism(app, dictCtx)
+    _fnRegisterVerifyDependencyLock(app, dictCtx)

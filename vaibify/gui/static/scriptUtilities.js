@@ -34,9 +34,25 @@ var VaibifyUtilities = (function () {
         );
     }
 
+    // Extensionless files vaibify itself requires and therefore
+    // vouches for as plain text — only the Dockerfile (part of the
+    // reproducibility envelope). Vaibify is a general tool, so it
+    // makes no claims about other projects' extensionless names;
+    // those stay conservatively unviewable (they are usually
+    // executables).
+    var SET_EXTENSIONLESS_TEXT_FILES = new Set([
+        "dockerfile",
+    ]);
+
     function fbIsBinaryFile(sPath) {
         var iDot = sPath.lastIndexOf(".");
-        if (iDot === -1) return true;
+        if (iDot === -1 || iDot < sPath.lastIndexOf("/")) {
+            // No extension: known text files (Dockerfile, Makefile,
+            // …) are viewable; anything else extensionless is
+            // conservatively treated as an executable.
+            var sBase = sPath.split("/").pop().toLowerCase();
+            return !SET_EXTENSIONLESS_TEXT_FILES.has(sBase);
+        }
         var sExtension = sPath.substring(iDot).toLowerCase();
         return SET_BINARY_EXTENSIONS.has(sExtension);
     }

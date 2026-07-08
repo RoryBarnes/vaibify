@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/styleMain.css?v=__CACHE_VERSION__">
     <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+          href="/static/vendor/xterm.min.css">
 </head>
 <body>
 
@@ -348,7 +348,7 @@
     <!-- Left Panel -->
     <div id="panelLeft">
         <div id="leftPanelTabs">
-            <div class="left-tab active" data-panel="steps">Steps</div>
+            <div class="left-tab active" data-panel="steps">Main</div>
             <div class="left-tab" data-panel="aics">AICS</div>
             <div class="left-tab" data-panel="files">Files</div>
             <div class="left-tab" data-panel="repos">Repos</div>
@@ -374,7 +374,19 @@
                         title="Create new step">+</button>
             </div>
             <div id="globalSettingsPanel" class="global-settings"></div>
-            <div id="listSteps"></div>
+            <div class="panel-scroll-area">
+                <div id="stepsBlock" class="steps-block">
+                    <div class="steps-block-header" title="The steps of this workflow. Each step must be self-consistent (Level 1). The light on the right shows whether every step is passing; click the banner to collapse or expand.">
+                        <span class="steps-block-title">Steps</span>
+                        <span class="steps-block-status"></span>
+                    </div>
+                    <div class="steps-block-body">
+                        <div id="listSteps"></div>
+                    </div>
+                </div>
+                <div id="workflowWideBlock"
+                     class="workflow-wide-block"></div>
+            </div>
         </div>
 
         <!-- AICS sub-panel (level rollup + L2 readiness card) -->
@@ -883,9 +895,12 @@
 <!-- Toast Container -->
 <div id="toastContainer"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.8.0/lib/addon-unicode11.min.js"></script>
+<!-- Terminal library is vendored locally (vendor/): a CDN fetch
+     failure here used to abort workflow activation with a raw
+     "Terminal is not defined" toast and kill the terminal strip. -->
+<script src="/static/vendor/xterm.min.js"></script>
+<script src="/static/vendor/addon-fit.min.js"></script>
+<script src="/static/vendor/addon-unicode11.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="/static/scriptUtilities.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApiClient.js?v=__CACHE_VERSION__"></script>
@@ -894,6 +909,7 @@
 <script src="/static/scriptPolling.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptStepRenderer.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptGitBadges.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptWorkflowRequirements.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptManifestCheck.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptOverleafMirror.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>

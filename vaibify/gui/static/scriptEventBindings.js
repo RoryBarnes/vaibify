@@ -322,11 +322,6 @@ var PipeleyenEventBindings = (function () {
         VaibifyGitBadges.fnRefresh(sContainerId);
     }
 
-    function _fnHandleEnvelopeSectionToggle(event, elMatch) {
-        PipeleyenApp.fnToggleEnvelopeSection(
-            elMatch.dataset.envelopeSection);
-    }
-
     function _fnHandleOpenReposPanel(event, elMatch) {
         event.preventDefault();
         var elTab = document.querySelector(
@@ -334,11 +329,47 @@ var PipeleyenEventBindings = (function () {
         if (elTab) elTab.click();
     }
 
-    function _fnHandleWorkflowHeaderToggle(event, elMatch) {
-        // The workflow row expands like a step row; its detail body
-        // is a sibling element, so clicks inside the expanded
-        // envelope never re-enter this handler.
-        PipeleyenApp.fnToggleWorkflowRowExpand();
+    function _fnHandleStepsBlockToggle(event, elMatch) {
+        PipeleyenApp.fnToggleStepsBlockExpand();
+    }
+
+    function _fnHandleWorkflowWideToggle(event, elMatch) {
+        PipeleyenApp.fnToggleWorkflowWideBlockExpand();
+    }
+
+    function _fnHandleRequirementGroupToggle(event, elMatch) {
+        PipeleyenApp.fnToggleRequirementGroup(elMatch.dataset.group);
+    }
+
+    function _fnHandleRequirementRowToggle(event, elMatch) {
+        PipeleyenApp.fnToggleRequirementRow(elMatch.dataset.req);
+    }
+
+    function _fnHandleWorkflowWideAction(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnRunWorkflowWideAction(
+            elMatch.dataset.wfAction, elMatch.dataset.wfArg || "",
+            elMatch);
+    }
+
+    function _fnHandleOpenArxivConfig(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyArxivConfig.fnOpen();
+    }
+
+    function _fnHandleToggleBinaryForm(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnToggleBinaryAddForm();
+    }
+
+    function _fnHandleWorkflowWideFileLink(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenFigureViewer.fnDisplayFileFromContainer(
+            elMatch.dataset.path);
     }
 
     var _DICT_CLICK_HANDLERS = {
@@ -380,8 +411,14 @@ var PipeleyenEventBindings = (function () {
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
-        ".workflow-level-header-row": _fnHandleWorkflowHeaderToggle,
-        ".envelope-section-header": _fnHandleEnvelopeSectionToggle,
+        ".wf-action-btn": _fnHandleWorkflowWideAction,
+        ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
+        ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
+        ".wf-file-link": _fnHandleWorkflowWideFileLink,
+        ".steps-block-header": _fnHandleStepsBlockToggle,
+        ".workflow-wide-header": _fnHandleWorkflowWideToggle,
+        ".requirement-group-header": _fnHandleRequirementGroupToggle,
+        ".requirement-row-header": _fnHandleRequirementRowToggle,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
         ".envelope-open-repos": _fnHandleOpenReposPanel,
@@ -542,7 +579,14 @@ var PipeleyenEventBindings = (function () {
     /* --- Step Delegated Event Setup --- */
 
     function fnSetupDelegatedEvents(elList) {
-        elList.addEventListener("click",
+        // Click delegation attaches to the whole Steps panel, not just
+        // #listSteps, because the Steps-block header and the
+        // Workflow-wide block are siblings of #listSteps — their header
+        // clicks bubble to #panelSteps, never through #listSteps. The
+        // step-specific change/drag/contextmenu handlers stay on
+        // #listSteps (they only ever act on step elements).
+        var elClickRoot = elList.closest("#panelSteps") || elList;
+        elClickRoot.addEventListener("click",
             fnHandleDelegatedClick);
         elList.addEventListener("change",
             fnHandleDelegatedChange);

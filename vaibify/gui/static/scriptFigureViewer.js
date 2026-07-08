@@ -441,7 +441,7 @@ const PipeleyenFigureViewer = (function () {
 
         fnApplyTestFailureOutline(elViewport, sPath);
 
-        if (fbIsBinaryFile(sExtension)) {
+        if (fbIsBinaryFile(sPath)) {
             elViewport.innerHTML =
                 '<span class="placeholder" style="color:var(--color-red)">' +
                 'File cannot be viewed.</span>';
