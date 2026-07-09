@@ -2574,7 +2574,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
     # the message loop it guards.
-    "pipelineServer.py": 1741,
+    # +8 (2026-07-09): fnDispatchAction threads the active workflow
+    # and its cached path into every runner call and logs the
+    # dispatch — the runner no longer rediscovers workflows, so a
+    # multi-workflow container always runs the selected one.
+    "pipelineServer.py": 1749,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     "syncDispatcher.py": 1627,
