@@ -284,10 +284,16 @@ def test_fsRetrieveSecret_rejects_path_traversal():
         fsRetrieveSecret("../etc/passwd", "docker_secret")
 
 
-def test_fsRetrieveSecret_rejects_slash():
-    """Slashes in the secret name must be rejected."""
+def test_fsRetrieveSecret_rejects_traversal_inside_slot_name():
+    """``..`` hidden between valid segments must be rejected."""
     with pytest.raises(ValueError, match="Invalid secret name"):
-        fsRetrieveSecret("foo/bar", "docker_secret")
+        fsRetrieveSecret("github_token:foo/../etc/passwd", "docker_secret")
+
+
+def test_fsRetrieveSecret_rejects_leading_slash():
+    """Absolute paths (empty first segment) must be rejected."""
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        fsRetrieveSecret("/absolute/path", "docker_secret")
 
 
 def test_fsRetrieveSecret_rejects_shell_metacharacters():
@@ -311,21 +317,36 @@ def test_fsRetrieveSecret_rejects_too_long_name():
 
 def test_fbSecretExists_rejects_bad_name():
     with pytest.raises(ValueError, match="Invalid secret name"):
-        fbSecretExists("foo/bar", "docker_secret")
+        fbSecretExists("foo//bar", "docker_secret")
 
 
 def test_fnStoreSecret_rejects_bad_name():
     with pytest.raises(ValueError, match="Invalid secret name"):
-        fnStoreSecret("foo/bar", "value", "keyring")
+        fnStoreSecret("foo/../bar", "value", "keyring")
 
 
 def test_fnDeleteSecret_rejects_bad_name():
     with pytest.raises(ValueError, match="Invalid secret name"):
-        fnDeleteSecret("foo/bar", "keyring")
+        fnDeleteSecret("foo/../bar", "keyring")
 
 
 def test_secret_name_alphanumeric_underscore_hyphen_accepted():
     """Names matching ^[a-zA-Z0-9_-]{1,64}$ pass validation."""
     from vaibify.config.secretManager import _fnValidateSecretName
     for sName in ("github_token", "Zenodo-PAT", "abc123", "a", "A_B-9"):
+        _fnValidateSecretName(sName)
+
+
+def test_secret_name_per_remote_keyring_slot_accepted():
+    """``service:owner/repo`` slot names from githubAuth validate.
+
+    Regression guard: every GitHub push crashed with ValueError
+    because the per-remote keyring slot shape was outside the old
+    ``^[a-zA-Z0-9_-]{1,64}$`` alphabet.
+    """
+    from vaibify.config.secretManager import _fnValidateSecretName
+    for sName in (
+        "github_token:exampleOwner/exampleRepo",
+        "github_token:owner-1/repo_2",
+    ):
         _fnValidateSecretName(sName)
