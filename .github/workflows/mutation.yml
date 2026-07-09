@@ -64,11 +64,60 @@ jobs:
       - name: Restrict to changed lines
         run: cr-filter-git --config cosmic-ray.toml mutation-session.sqlite
 
-      - name: Execute mutants (warn-only)
+      - name: Execute mutants (warn-only, live progress)
         run: |
+          # exec is silent by default, so a long run looks stalled in the
+          # Actions log. Run it in the background and poll the session for a
+          # live "graded out of total" counter. cr-filter-git has already
+          # recorded a SKIPPED result for every off-diff mutant, so the
+          # count of on-diff work is the pending items, and progress is the
+          # results accrued ABOVE that skipped baseline. Concurrent reads
+          # during exec's writes are lock-safe: the sqlite rollback journal
+          # holds its write lock only for the brief commit at the end of
+          # each multi-second mutant (verified: hundreds of poll reads, zero
+          # "database is locked").
+
+          # Helper: on-diff mutants graded so far, or "?" if the session is
+          # momentarily unreadable — a transient read must never abort exec.
+          cat > _mutation_graded.py <<'GRADEDPY'
+          import sys
+          from cosmic_ray.work_db import use_db, WorkDB
+          iBaseline = int(sys.argv[1])
+          try:
+              with use_db("mutation-session.sqlite", WorkDB.Mode.open) as db:
+                  print(max(0, db.num_results - iBaseline))
+          except Exception:
+              print("?")
+          GRADEDPY
+
+          sTotals="$(python - <<'TOTALSPY'
+          from cosmic_ray.work_db import use_db, WorkDB
+          with use_db("mutation-session.sqlite", WorkDB.Mode.open) as db:
+              print(sum(1 for _ in db.pending_work_items), db.num_results)
+          TOTALSPY
+          )"
+          read iTotal iBaseline <<< "${sTotals}" || true
+          echo "Mutants to run on changed lines: ${iTotal:-0}"
+          if [ "${iTotal:-0}" -eq 0 ]; then
+            echo "No changed Python lines in scope; nothing to execute."
+            exit 0
+          fi
+
           # exec returns 0 even when mutants survive; survivors are a normal
-          # outcome, not a build failure. Guard anyway so triage always runs.
-          cosmic-ray exec cosmic-ray.toml mutation-session.sqlite || true
+          # outcome, not a build failure. The wait is guarded so triage runs
+          # even if exec itself errors.
+          cosmic-ray exec cosmic-ray.toml mutation-session.sqlite &
+          iExecPid=$!
+          while kill -0 "${iExecPid}" 2>/dev/null; do
+            sleep 15
+            iGraded=$(python _mutation_graded.py "${iBaseline}")
+            [ "${iGraded}" = "?" ] && continue
+            echo "cosmic-ray: ${iGraded}/${iTotal} mutants graded" \
+              "($(( iGraded * 100 / iTotal ))%)"
+          done
+          wait "${iExecPid}" || true
+          echo "cosmic-ray: exec finished —" \
+            "$(python _mutation_graded.py "${iBaseline}")/${iTotal} graded."
 
       - name: Report surviving mutants
         if: always()
