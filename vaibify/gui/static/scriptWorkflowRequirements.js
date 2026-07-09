@@ -1,7 +1,7 @@
 /* Vaibify — Workflow-wide requirements block (VaibifyWorkflowRequirements)
 
    L1 is a per-step property; L2 ("Published") and L3 ("Reproducible")
-   are workflow-wide gates. This module owns the "Workflow-wide" block:
+   are workflow-wide gates. This module owns the "Project" block:
    an at-a-glance L1/L2/L3 banner plus two concern groups — Publication
    (GitHub / Zenodo / arXiv / AI Declaration) and Reproducibility
    (manifest, dependency lock, environment digest, Dockerfile,
@@ -863,9 +863,9 @@ var VaibifyWorkflowRequirements = (function () {
         var bOpen = dictContext.bWorkflowWideCollapsed !== true;
         var sHtml = '<div class="workflow-wide-header">' +
             '<span class="workflow-wide-title" ' +
-            'title="Requirements that apply to the workflow as a ' +
+            'title="Requirements that apply to the project as a ' +
             'whole rather than to any single step. Click the banner ' +
-            'to collapse or expand.">Workflow-wide' +
+            'to collapse or expand.">Project' +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';

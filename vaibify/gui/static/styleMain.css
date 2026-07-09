@@ -3,9 +3,12 @@
 @import url("https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap");
 
 :root {
-    --color-red: #c91111;
+    /* Status reds/blues are brightened for the dark background — the
+       original #c91111 / #1976d2 sat below readable contrast on
+       --bg-primary. */
+    --color-red: #e5484d;
     --color-orange: #e09401;
-    --color-blue: #1976d2;
+    --color-blue: #42a5f5;
     --color-pale-blue: #13aed5;
     --color-dark-blue: #1321d8;
     --color-purple: #c084fc;
@@ -1314,24 +1317,28 @@ body.aics-level-3 .toolbar-label {
 }
 
 .remote-badge.badge-drifted {
-    color: #d4a017;
+    color: var(--color-orange);
 }
 
 .remote-badge.badge-dirty {
-    color: #cb2431;
+    color: var(--color-red);
 }
 
 .remote-badge.badge-untracked {
-    color: #1f6feb;
+    color: var(--color-blue);
 }
 
+/* Ignored vs none are different states and must look different:
+   ignored (matched by .gitignore, a deliberate choice) is solid
+   muted grey; none (simply not published to this remote) is a faint
+   ghost. */
 .remote-badge.badge-ignored {
     color: var(--text-muted);
 }
 
 .remote-badge.badge-none {
     color: var(--text-secondary);
-    opacity: 0.75;
+    opacity: 0.35;
 }
 
 /* arXiv configure modal — path-map editor rows */
@@ -3481,14 +3488,18 @@ body.aics-level-3 {
 }
 
 body.aics-level-3 .toolbar-logo,
-body.aics-level-3 .vaib-verified-badge {
+body.aics-level-3 .vaib-verified-badge,
+body.aics-level-3 .level-cell-favicon,
+body.aics-level-3 .step-status-check {
     /* Pink tint via the same sepia recipe so the cluster shifts hue
        smoothly across promotions without a per-level icon swap. */
     filter: sepia(1) hue-rotate(295deg) saturate(2.4) brightness(0.95);
 }
 
 body.aics-level-2 .toolbar-logo,
-body.aics-level-2 .vaib-verified-badge {
+body.aics-level-2 .vaib-verified-badge,
+body.aics-level-2 .level-cell-favicon,
+body.aics-level-2 .step-status-check {
     /* Green tint mirrors the purple sepia recipe used for L1. */
     filter: sepia(1) hue-rotate(80deg) saturate(2) brightness(0.85);
 }
@@ -3537,11 +3548,16 @@ body.aics-level-2 .vaib-verified-badge {
     animation: panelBorderGlow 0.6s ease-out;
 }
 
-body.aics-level-1 .toolbar-logo {
-    filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
-}
-
-body.aics-level-1 .vaib-verified-badge {
+/* Every favicon-based mark follows the ladder theme: the toolbar
+   logo, the verified badge, the level-strip "attained" favicons
+   (step rows, Steps and Project banners, requirement rows, Help
+   samples), and the run light's success check. The raw favicon.png
+   is pale blue, matching the pre-L1 theme, so untinted marks read
+   as off-theme once the ladder recolors the rest of the UI. */
+body.aics-level-1 .toolbar-logo,
+body.aics-level-1 .vaib-verified-badge,
+body.aics-level-1 .level-cell-favicon,
+body.aics-level-1 .step-status-check {
     filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }
 
@@ -4920,6 +4936,55 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     gap: 8px;
 }
 
+/* --- Level sections: the requirements ledger --- */
+
+.aics-level-section-header {
+    cursor: pointer;
+    user-select: none;
+    gap: 8px;
+}
+
+.aics-level-section-header:hover {
+    background: var(--bg-hover);
+}
+
+.aics-level-section-header .aics-card-summary {
+    margin-left: auto;
+}
+
+.aics-req-entry {
+    padding: 6px 0 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.aics-req-entry:last-of-type {
+    border-bottom: none;
+}
+
+.aics-req-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aics-req-what {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 3px 0 0 24px;
+}
+
+.aics-req-how {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 2px 0 0 24px;
+}
+
+.aics-req-how .aics-gap-fix {
+    color: var(--color-pale-blue);
+}
+
 .aics-gap-row.state-satisfied .aics-gap-icon {
     color: var(--highlight-color);
 }
@@ -5120,10 +5185,13 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-size: 11px;
 }
 
-/* L1 blocker glyphs (Self-Consistent gate). Red per the
-   level-by-color scheme: L1=red, L2=amber, L3=blue; the user
-   attestation glyph is orange because it awaits a human click rather
-   than signalling a broken artifact. */
+/* Blocker glyphs color by severity, not by level (researcher ruling
+   2026-07-08 — blue read as informational, not as a warning): red =
+   something is broken or failing now; orange = work is pending or a
+   recorded state went stale. The tooltip and the level strip carry
+   the level. L1 gate: failures are red; the user attestation glyph
+   is orange because it awaits a human click rather than signalling
+   a broken artifact. */
 .step-blocker-glyph {
     margin-left: 4px;
     cursor: help;
@@ -5161,30 +5229,25 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    reuse their live classes; these classes style the marks that are
    normally scoped to the file list (red-text modifiers) or have no
    standalone glyph (the green check). */
-.aics-legend-check-sample {
-    color: #4caf50;
-}
-
 .aics-legend-red-missing-sample {
-    color: #c91111;
+    color: var(--color-red);
 }
 
 .aics-legend-red-stale-sample {
-    color: #c91111;
+    color: var(--color-red);
     text-decoration: underline dotted;
 }
 
 .aics-legend-red-unattested-sample {
-    color: #c91111;
+    color: var(--color-red);
     font-style: italic;
 }
 
 /* L2 blocker glyphs (Publication gate: GitHub + Zenodo + Overleaf +
-   arXiv sync state). All use --color-orange (amber) per the
-   level-by-color scheme: L1=red, L2=amber, L3=blue. The classes are
-   distinct so future per-criterion secondary affordances (e.g.,
-   underline-dotted on stale) can land without touching the glyph
-   dispatch. */
+   arXiv sync state). All orange: publication gaps are pending work,
+   not breakage. The classes are distinct so future per-criterion
+   secondary affordances (e.g., underline-dotted on stale) can land
+   without touching the glyph dispatch. */
 .step-blocker-glyph-l2-declaration,
 .step-blocker-glyph-l2-mirror,
 .step-blocker-glyph-l2-zenodo,
@@ -5199,8 +5262,8 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 /* L3 blocker glyphs — Reproducibility gate (containerization, pinning,
-   determinism, binary declaration/capture). Blue per the level-by-color
-   scheme: L1=red, L2=amber, L3=blue. */
+   determinism, binary declaration/capture). Orange like L2: every L3
+   blocker is pending work or drift, never a live failure. */
 .step-blocker-glyph-l3-manifest,
 .step-blocker-glyph-l3-pin,
 .step-blocker-glyph-l3-determinism,
@@ -5212,7 +5275,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .step-blocker-glyph-l3-workflow-reproduce,
 .step-blocker-glyph-l3-workflow-attestation,
 .step-blocker-glyph-l3-workflow-binaries {
-    color: var(--color-blue);
+    color: var(--color-orange);
 }
 
 /* --- Section G: red-disambiguation modifier classes on
@@ -5789,7 +5852,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     position: fixed;
     top: 60px;
     right: 24px;
-    width: 360px;
+    width: 420px;
     max-height: 70vh;
     overflow-y: auto;
     background: var(--bg-modal);
@@ -5832,24 +5895,17 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     margin-bottom: 4px;
 }
 
-.aics-legend-section-title .aics-legend-glyph {
+/* Alignment only — never color. Each sample glyph carries the same
+   class that styles the live mark (its ``sClass``), so the legend
+   color always matches the dashboard. The old per-section blanket
+   tints (level-1 red, level-2 orange, level-3 blue) overrode every
+   glyph in a section with one color and are deliberately gone. */
+.aics-legend-glyph {
     display: inline-block;
     width: 16px;
     margin-right: 6px;
     text-align: center;
     font-weight: 700;
-}
-
-.aics-legend-section.aics-level-1-tint .aics-legend-glyph {
-    color: var(--color-red);
-}
-
-.aics-legend-section.aics-level-2-tint .aics-legend-glyph {
-    color: var(--color-orange);
-}
-
-.aics-legend-section.aics-level-3-tint .aics-legend-glyph {
-    color: var(--color-blue);
 }
 
 .aics-legend-criteria {
@@ -5859,17 +5915,71 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     line-height: 1.4;
 }
 
+/* --- Help-menu chrome (documentation link, Using AI, headings) --- */
+.aics-help-section {
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+
+.aics-help-docs a {
+    color: var(--highlight-color);
+    font-weight: 600;
+}
+
+.aics-help-heading {
+    font-weight: 700;
+    margin: 10px 0 6px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
+}
+
+.aics-help-details {
+    margin-bottom: 10px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.aics-help-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.aics-help-details p {
+    margin: 6px 0;
+}
+
+.aics-help-command {
+    display: block;
+    background: var(--bg-secondary, rgba(128, 128, 128, 0.15));
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin: 6px 0;
+    font-family: monospace;
+    user-select: all;
+}
+
+.aics-legend-division-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.aics-legend-inline-sample {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.aics-legend-checkbox-sample {
+    vertical-align: middle;
+    margin: 0 2px;
+}
+
 .aics-legend-footer {
     font-size: 12px;
     color: var(--text-secondary);
     border-top: 1px solid var(--border-color);
     padding-top: 6px;
     margin-top: 6px;
-}
-
-.aics-legend-count {
-    color: var(--text-secondary);
-    font-weight: 400;
-    margin-left: 4px;
-    font-size: 12px;
 }

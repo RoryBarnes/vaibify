@@ -1531,7 +1531,7 @@ const PipeleyenApp = (function () {
             : '<span class="level-cell-circle"></span>';
         var sDashCell = '<span class="step-level-cell ' +
             'level-cell-not-applicable" title="No step-level ' +
-            'requirements at this level — see Workflow-wide">' +
+            'requirements at this level — see the Project block">' +
             '<span class="level-cell-dash">&#8212;</span></span>';
         return '<span class="step-level-strip">' +
             '<span class="step-regression-cell"></span>' +
@@ -1833,7 +1833,8 @@ const PipeleyenApp = (function () {
         },
         "user-not-approved": {
             sIcon: "—",
-            sLabel: "User attestation pending",
+            sLabel: "Awaiting your sign-off — review the step's " +
+                "results and approve it",
             sClass: "step-blocker-glyph-user",
         },
     };
@@ -1872,26 +1873,26 @@ const PipeleyenApp = (function () {
         },
         "not-in-github-mirror": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from GitHub mirror — " +
-                "push to clear blocker",
+            sLabel: "Outputs differ from GitHub mirror — commit " +
+                "and push from the Repos panel",
             sClass: "step-blocker-glyph-l2-mirror",
         },
         "not-in-zenodo-deposit": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from Zenodo deposit — " +
-                "archive to clear blocker",
+            sLabel: "Outputs differ from Zenodo deposit — publish " +
+                "a new deposit from the Repos panel",
             sClass: "step-blocker-glyph-l2-zenodo",
         },
         "github-verify-stale": {
             sIcon: "⚠",
-            sLabel: "GitHub sync check is stale — " +
-                "re-verify to refresh status",
+            sLabel: "GitHub sync check is stale — re-verify from " +
+                "the Repos panel to refresh status",
             sClass: "step-blocker-glyph-l2-github-stale",
         },
         "zenodo-verify-stale": {
             sIcon: "⚠",
-            sLabel: "Zenodo sync check is stale — " +
-                "re-verify to refresh status",
+            sLabel: "Zenodo sync check is stale — re-verify from " +
+                "the Repos panel to refresh status",
             sClass: "step-blocker-glyph-l2-zenodo-stale",
         },
         "missing-ai-declaration-step": {
@@ -1908,20 +1909,22 @@ const PipeleyenApp = (function () {
         },
         "arxiv-not-submitted": {
             sIcon: "—",
-            sLabel: "No arXiv ID recorded — submit manuscript and " +
-                "record the arXiv ID",
+            sLabel: "No arXiv ID recorded — submit the manuscript, " +
+                "then record the ID under Published copies in the " +
+                "Project block",
             sClass: "step-blocker-glyph-l2-arxiv-submit",
         },
         "arxiv-mismatch": {
             sIcon: "⚠",
-            sLabel: "arXiv tarball doesn't match Overleaf push at " +
-                "recorded commit",
+            sLabel: "arXiv submission doesn't match the Overleaf " +
+                "push — re-submit to arXiv or update the recorded " +
+                "submission under Published copies",
             sClass: "step-blocker-glyph-l2-arxiv-mismatch",
         },
         "arxiv-version-stale": {
             sIcon: "⚠",
-            sLabel: "arXiv has a newer version — update sArxivVersion " +
-                "or re-submit",
+            sLabel: "arXiv has a newer version than recorded — " +
+                "update the recorded version under Published copies",
             sClass: "step-blocker-glyph-l2-arxiv-version",
         },
     };
@@ -1929,60 +1932,77 @@ const PipeleyenApp = (function () {
     var _DICT_L3_BLOCKER_GLYPHS = {
         "missing-from-manifest": {
             sIcon: "⚠",
-            sLabel: "Path missing from MANIFEST.sha256 — refresh manifest",
+            sLabel: "File missing from MANIFEST.sha256 — regenerate " +
+                "the envelope from the Artifacts section of the " +
+                "Project block",
             sClass: "step-blocker-glyph-l3-manifest",
         },
         "script-not-pinned": {
             sIcon: "⚠",
-            sLabel: "Script hash drifted from MANIFEST — re-run or " +
-                "refresh manifest",
+            sLabel: "Script changed since MANIFEST.sha256 was " +
+                "written — re-run the step or regenerate the " +
+                "envelope (Artifacts section)",
             sClass: "step-blocker-glyph-l3-pin",
         },
         "nondeterminism-undeclared": {
             sIcon: "⚠",
-            sLabel: "Step has unseeded RNG; declare or seed it",
+            sLabel: "Step uses randomness without a recorded seed — " +
+                "seed it, or declare it in the Determinism section " +
+                "of the Project block",
             sClass: "step-blocker-glyph-l3-determinism",
         },
         "binary-not-declared": {
             sIcon: "⚠",
-            sLabel: "Step invokes a binary not in listDeclaredBinaries",
+            sLabel: "Step runs a program vaibify has no record of — " +
+                "declare it in the Software section of the Project " +
+                "block",
             sClass: "step-blocker-glyph-l3-binary-declared",
         },
         "binary-not-captured": {
             sIcon: "⚠",
-            sLabel: "Declared binary missing from environment.json — " +
-                "capture SHA + version",
+            sLabel: "Declared program's version and hash not yet " +
+                "recorded — use Capture in the Software section",
             sClass: "step-blocker-glyph-l3-binary-captured",
         },
         "dockerfile-not-pinned": {
             sIcon: "⚠",
-            sLabel: "Dockerfile FROM line not pinned with @sha256:",
+            sLabel: "Dockerfile base image not pinned to an exact " +
+                "digest — pin the FROM line with @sha256:… or ask " +
+                "the in-container agent to pin it",
             sClass: "step-blocker-glyph-l3-workflow-dockerfile",
         },
         "dependency-lock-missing": {
             sIcon: "⚠",
-            sLabel: "requirements.lock missing or unhashed",
+            sLabel: "requirements.lock missing or lacks hashes — " +
+                "regenerate the envelope from the Artifacts section",
             sClass: "step-blocker-glyph-l3-workflow-lock",
         },
         "environment-snapshot-missing": {
             sIcon: "⚠",
-            sLabel: "environment.json missing or unpinned",
+            sLabel: "Environment snapshot missing or lacks the " +
+                "container image digest — regenerate the envelope " +
+                "from the Artifacts section",
             sClass: "step-blocker-glyph-l3-workflow-env",
         },
         "reproduce-script-missing": {
             sIcon: "⚠",
-            sLabel: "reproduce.sh missing or unpinned in MANIFEST",
+            sLabel: "reproduce.sh missing or not pinned in the " +
+                "manifest — generate it from the Artifacts section " +
+                "of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-reproduce",
         },
         "l3-attestation-stale": {
             sIcon: "⚠",
-            sLabel: "L3 attestation stale — re-run verification",
+            sLabel: "Files changed since the last successful " +
+                "rebuild — re-run rebuild verification on the AICS " +
+                "tab",
             sClass: "step-blocker-glyph-l3-workflow-attestation",
         },
         "binaries-not-declared-or-waived": {
             sIcon: "⚠",
-            sLabel: "Open 'Declare standalone binaries' and waive " +
-                "or declare each binary",
+            sLabel: "Programs found in step commands are neither " +
+                "declared nor waived — resolve each one in the " +
+                "Software section of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-binaries",
         },
     };
@@ -2177,12 +2197,12 @@ const PipeleyenApp = (function () {
                 (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
         ];
         if (iStepIndex < 0) {
-            // The Workflow-wide row covers workflow-wide
-            // requirements only; it is NOT a roll-up of the step
-            // rows. The all-steps aggregate renders as the header
-            // checkmarks and the AICS tab.
+            // The Project row covers workflow-wide requirements
+            // only; it is NOT a roll-up of the step rows. The
+            // all-steps aggregate renders as the header checkmarks
+            // and the AICS tab.
             listParts.push(
-                "These requirements apply to the workflow as a " +
+                "These requirements apply to the project as a " +
                 "whole, not to any single step. Each step row " +
                 "tracks its own. The overall level is shown by " +
                 "the checkmarks next to the workflow name and in " +

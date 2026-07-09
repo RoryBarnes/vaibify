@@ -10,7 +10,8 @@ Three researcher-reported usability defects drove this layout
    plain-English hover title.
 2. The "Workflow" header row read as a summary of the step rows. It
    is workflow-scope requirements only, so it is now labeled
-   "Workflow-wide" and its tooltip says so without jargon.
+   "Project" (2026-07-08; briefly "Workflow-wide", which the
+   researcher found clunky) and its tooltip says so without jargon.
 3. The AICS and Repos tabs were only handed the container id on the
    no-workflow connect path (``fnEnterNoWorkflow``); opening an
    existing workflow (``_fnActivateWorkflow``) — the path every
@@ -134,28 +135,32 @@ def test_step_rows_carry_no_hover_edit_button():
 
 
 # -----------------------------------------------------------------------
-# Workflow-wide row labeling
+# Project block labeling
 # -----------------------------------------------------------------------
 
 
-def test_workflow_row_is_labeled_workflow_wide():
-    """The block header must read "Workflow-wide", not "Workflow" — the
-    bare word reads as a summary of the step rows, which it is not."""
+def test_workflow_block_is_labeled_project():
+    """The block header must read "Project", not "Workflow" — the
+    bare word reads as a summary of the step rows, which it is not,
+    and "Workflow-wide" was rejected as clunky (2026-07-08)."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sHeader = _fsExtractFunctionBlock(
         sSource, "fsRenderWorkflowWideBlock",
     )
-    assert "Workflow-wide" in sHeader
+    assert ">Project" in sHeader
     assert ">Workflow<" not in sHeader, (
         "bare 'Workflow' label reads as an aggregate of the steps"
+    )
+    assert ">Workflow-wide" not in sHeader, (
+        "the clunky 'Workflow-wide' label was retired for 'Project'"
     )
 
 
 def test_workflow_scope_tooltip_is_plain_english():
-    """The Workflow-wide cell tooltip must explain the scoping without
+    """The Project cell tooltip must explain the scoping without
     internal jargon (no "AICS chip", no "wire", no "scope")."""
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "These requirements apply to the workflow" in sSource, (
+    assert "These requirements apply to the project" in sSource, (
         "workflow-scope tooltip must state the scoping plainly"
     )
     assert "AICS chip" not in sSource, (
@@ -259,6 +264,94 @@ def test_aics_tab_prefers_level_wording_in_visible_text():
             "AICS tab shows the retired shorthand: " + sJargon
         )
     assert "Level 3 Attestation" in sSource
+
+
+def test_aics_tab_renders_three_requirement_sections():
+    """The AICS tab is a requirements ledger: one expandable section
+    per level, each drawn from the single requirement catalog with a
+    live state light, a description, and a how-to deep link."""
+    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    iCatalog = sSource.find("_DICT_REQUIREMENT_CATALOG")
+    assert iCatalog != -1, "requirement catalog missing"
+    sPaint = _fsExtractFunctionBlock(sSource, "_fnPaintFromCache")
+    for sCall in ("_fsRenderLevelSection(1)",
+                  "_fsRenderLevelSection(2)",
+                  "_fsRenderLevelSection(3)"):
+        assert sCall in sPaint, "missing level section " + sCall
+    sEntry = _fsExtractFunctionBlock(
+        sSource, "_fsRenderRequirementEntry")
+    assert "aics-req-what" in sEntry and "aics-req-how" in sEntry, (
+        "each requirement must carry its description and how-to"
+    )
+
+
+def test_aics_level2_section_includes_arxiv():
+    """FALSIFICATION TARGET: the old Level 2 card omitted the arXiv
+    criterion, so it read '3 / 3 criteria met' while the workflow was
+    still not at Level 2 — arXiv could silently block. The Level 2
+    requirement list must carry bArxivFullySynced."""
+    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    iStart = sSource.find("_DICT_REQUIREMENT_CATALOG")
+    sCatalog = sSource[iStart:sSource.find("function ", iStart)]
+    for sKey in ("bGithubFullySynced", "bZenodoFullySynced",
+                 "bArxivFullySynced", "bAiDeclarationAttested"):
+        assert sKey in sCatalog, (
+            "Level 2 requirement missing from the catalog: " + sKey
+        )
+    assert "bBinariesDeclaredOrWaived" in sCatalog, (
+        "the software-declared check must be listed at Level 3 "
+        "(the old card never displayed it)"
+    )
+
+
+def test_help_panel_carries_essentials_without_live_counts():
+    """The ? button opens the Help menu. Its legend explains symbols
+    only: no live blocker counts (a help panel must not become a
+    second, staler status page), it points at the AICS tab for the
+    requirements themselves, and it carries the first-time-user
+    essentials — the documentation link and the Using AI section
+    with the permission-skip reminder."""
+    sLegend = _fsReadStaticFile("scriptLegendPanel.js")
+    assert "fdictBlockerCountsByLevel" not in sLegend, (
+        "help panel must not render live blocker counts"
+    )
+    assert "AICS tab" in sLegend, (
+        "help footer must direct to the AICS tab for requirements"
+    )
+    assert "RoryBarnes.github.io/vaibify" in sLegend, (
+        "help panel must link to the online documentation"
+    )
+    assert "Using AI" in sLegend, (
+        "help panel must carry the Using AI section"
+    )
+    assert "--dangerously-skip-permissions" in sLegend, (
+        "the Using AI section must remind the user of the "
+        "permission-skip option"
+    )
+
+
+def test_help_panel_pins_title_divisions_and_docs_link():
+    """The Help panel's title, its four legend divisions (mirroring
+    the dashboard structure), and the documentation link's href are
+    the panel's user-facing contract."""
+    sLegend = _fsReadStaticFile("scriptLegendPanel.js")
+    assert "<span>Help</span>" in sLegend, (
+        "the panel title must be Help"
+    )
+    for sDivision in ("Steps", "Project",
+                      "Level status lights", "Files and remotes"):
+        assert sDivision in sLegend, (
+            "help legend missing division: " + sDivision
+        )
+    assert '"https://RoryBarnes.github.io/vaibify"' in sLegend, (
+        "documentation URL missing"
+    )
+    assert "'<a href=\"' + _S_DOCUMENTATION_URL" in sLegend, (
+        "documentation URL must be wired into the link's href"
+    )
+    assert "axis-not-green causes" not in sLegend, (
+        "wire-literal jargon must not be a user-facing heading"
+    )
 
 
 def test_aics_level1_segment_navigates_to_the_step_list():
