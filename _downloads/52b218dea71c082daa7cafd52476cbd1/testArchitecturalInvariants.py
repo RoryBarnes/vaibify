@@ -2559,7 +2559,14 @@ I_MODULE_LINE_CAP = 800
 DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
-    "routes/pipelineRoutes.py": 2134,
+    # +18 (2026-07-07): three exec-free envelope status booleans
+    # (bAiDeclarationAttested / bRebuildAttestationCurrent /
+    # bOverleafBound) for the Workflow-wide requirement rows — a
+    # cohesive extension of the poll-assembly responsibility.
+    # +7 (2026-07-08): degenerate-envelope guard — a failed poll
+    # snapshot ships null instead of an empty envelope so the client
+    # never overwrites good state with "no binaries".
+    "routes/pipelineRoutes.py": 2159,
     "routes/syncRoutes.py": 2041,
     "fileStatusManager.py": 1943,
     "workflowManager.py": 1935,

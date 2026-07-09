@@ -70,9 +70,10 @@ tier into the project repo, and each tier is independently verifiable
 with standard tools — vaibify is the orchestrator, not a dependency.
 
 The envelope is regenerated automatically when the workflow
-transitions to all-green (every step fully verified), in addition to
-manual Archive button presses. This keeps the manifest in sync with
-the latest verified state without requiring the user to remember to
+transitions to all-green (every step fully verified), and on demand
+via the **Regenerate now** buttons in the Artifacts section of the
+Main tab's Project block. This keeps the manifest in sync with the
+latest verified state without requiring the user to remember to
 trigger it.
 
 ### Tier 1 — Artifacts (`MANIFEST.sha256`)
@@ -230,7 +231,8 @@ returns one SHA-256 per declared file. Two layers run on top:
 Results are cached in `<projectRepo>/.vaibify/syncStatus.json` keyed
 by service so the dashboard always shows ground truth without a
 network round trip on every poll. See [the dashboard
-guide](dashboard.md#remote-sync-panel) for the resulting UI.
+guide](dashboard.md#the-verify-reproducibility-panel) for the
+resulting UI.
 
 ## Known limitations
 

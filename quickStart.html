@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.1.dev463 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.1.dev470 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=32604e94"></script>
+      <script src="_static/documentation_options.js?v=615714ba"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -109,7 +109,6 @@ vaibify
 </div>
 <p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no arguments in any directory to start the
 <strong>hub</strong> — a local web server on <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> — in your web browser.</p>
-<p><img alt="Vaibify landing page" src="images/landing.png" /></p>
 <p>You should see the Vaibify logo, the tagline, and an empty
 <strong>Containers</strong> list. No projects yet — let’s create one.</p>
 </section>
@@ -122,7 +121,6 @@ vaibify
 <li><p><strong>Create New</strong> — start a new project from a template.</p></li>
 </ul>
 <p>Click <strong>Create New</strong>. The setup wizard opens.</p>
-<p><img alt="Setup wizard, step 1" src="images/wizard.png" /></p>
 <p>The wizard walks you through eight steps. None of them require anything
 beyond clicks and short text answers; every step has a <code class="docutils literal notranslate"><span class="pre">?</span></code> button that
 explains what the field controls.</p>
@@ -173,17 +171,21 @@ in the background. First builds take five to fifteen minutes depending
 on which features you enabled and your network speed; subsequent
 rebuilds are much faster because Docker caches the layers.</p>
 <p>When the build finishes, the wizard closes and the dashboard opens.</p>
-<p><img alt="Container dashboard" src="images/dashboard.png" /></p>
 <p>You are now inside the container’s dashboard. The toolbar shows the
-container name and (for workflow projects) the active workflow. The
-left panel shows pipeline steps. The right side has tabs for the
-container’s repositories, an embedded terminal, a sync panel for
-GitHub/Overleaf/Zenodo, and a figure viewer.</p>
+container name, the active workflow (for workflow projects) with its
+AICS level badges, and the <strong>?</strong> Help button. The left panel is
+tabbed: workflow projects get <strong>Main</strong> (the workflow’s steps and
+project-wide requirements), <strong>AICS</strong> (the reproducibility-ladder
+requirements ledger), <strong>Files</strong>, and <strong>Logs</strong>; sandbox and toolkit
+projects get <strong>Files</strong>, <strong>Repos</strong>, and <strong>Logs</strong>. Above the terminal,
+two Viewing Windows display figures and files.</p>
 <p>Click in the terminal section to activate it and access a shell session inside the container.
 Whatever you do here — installing a package, running a script, launching
-Claude Code with <code class="docutils literal notranslate"><span class="pre">claude</span></code> — is sealed inside the container. Your home
-directory, your SSH keys, and the rest of your filesystem are not
-visible to anything in there.</p>
+Claude Code with <code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code> — is sealed
+inside the container. Your home directory, your SSH keys, and the rest
+of your filesystem are not visible to anything in there. (The Help
+panel’s <strong>Using AI</strong> section explains why skipping permission prompts
+is the intended mode inside the sandbox.)</p>
 <p>You have your first Vaibify container.</p>
 </section>
 <section id="where-to-next">
@@ -197,9 +199,10 @@ which one to pick and how they differ. <em>Sandbox</em> is a clean room.
 is for reproducible multi-step analyses where each step’s output gets
 inspected and signed off.</p></li>
 <li><p><strong><a class="reference internal" href="dashboard.html"><span class="std std-doc">The dashboard tour</span></a></strong> — every panel in the running
-container’s UI: pipeline status dots, the repos panel, the embedded
-terminal, the figure viewer, and the verification state machine that
-records which step outputs you have looked at.</p></li>
+container’s UI: the Main tab’s Steps and Project blocks, the AICS
+requirements ledger, the status lights and warning colours, the
+embedded terminal, the figure viewer, and the verification state
+machine that records which step outputs you have looked at.</p></li>
 <li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what Vaibify protects against
 (escaped code, leaked credentials, host filesystem access) and what
 it does not. Worth reading before you let any agent write code in
@@ -207,9 +210,9 @@ your container.</p></li>
 <li><p><strong><a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration reference</span></a></strong> — every field in
 <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. You almost
 never need to hand-edit these; the wizard writes them for you.</p></li>
-<li><p><strong><a class="reference internal" href="#connecting-services.md"><span class="xref myst">Connecting external services</span></a></strong> — how to
-push to GitHub, sync with Overleaf, and archive a result on Zenodo
-from inside a container. Credentials are resolved from your host’s
+<li><p><strong><a class="reference internal" href="externalServices.html"><span class="std std-doc">External services</span></a></strong> — how vaibify pushes to
+GitHub, syncs with Overleaf, and archives a result on Zenodo from
+inside a container. Credentials are resolved from your host’s
 keychain at request time and never persisted in the container.</p></li>
 <li><p><strong><a class="reference internal" href="dashboard.html#agent-actions"><span class="std std-ref">Agent action catalog</span></a></strong> — the named
 operations an AI coding agent inside the container can ask the

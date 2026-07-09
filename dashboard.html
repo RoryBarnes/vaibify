@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev463 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev470 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=32604e94"></script>
+      <script src="_static/documentation_options.js?v=615714ba"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -55,25 +55,32 @@
 <li class="toctree-l2"><a class="reference internal" href="#terminal">Terminal</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#viewing-window">Viewing Window</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos panel</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#pipeline-panel">Pipeline panel</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#adding-a-step">Adding a step</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#interactive-steps">Interactive steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-main-tab">The Main tab</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-steps-block">The Steps block</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#adding-a-step">Adding a step</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#interactive-steps">Interactive steps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#the-expanded-step-view">The expanded step view</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#step-verification-status">Step verification status</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#status-dot">Status dot</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#pencil-icon">Pencil icon</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#clearing-a-pencil">Clearing a pencil</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#expanded-step-timestamps">Expanded-step timestamps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-project-block">The Project block</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#sync-status">Sync status</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#remote-sync-panel">Remote-sync panel</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#aggregate-consistency-banner">Aggregate consistency banner</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#hash-aware-step-badges">Hash-aware step badges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#status-lights-and-colours">Status lights and colours</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#level-cells">Level cells</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#warning-glyphs">Warning glyphs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#file-name-styles">File-name styles</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#per-file-remote-badges">Per-file remote badges</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#the-aics-tab">The AICS tab</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-help-panel">The Help panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#publishing-and-remote-sync">Publishing and remote sync</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-verify-reproducibility-panel">The Verify Reproducibility panel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#aggregate-consistency-banner">Aggregate consistency banner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#hash-aware-staleness">Hash-aware staleness</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#agent-actions">Agent actions</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#why-this-matters">Why this matters</a></li>
 </ul>
@@ -126,20 +133,31 @@
 <p>The dashboard is what you arrive at after the <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a>:
 the running container’s control surface, in your browser. It is where
 you run pipeline steps, inspect outputs, attest that you have looked at
-them, push results to GitHub or Overleaf, and (optionally) let an AI
-coding agent work alongside you.</p>
+them, climb the AICS reproducibility ladder, push results to GitHub or
+Overleaf, and (optionally) let an AI coding agent work alongside you.</p>
 <p>This page is a tour of every panel.</p>
-<p><img alt="Dashboard overview" src="images/dashboard-overview.png" /></p>
 <section id="layout">
 <h2>Layout<a class="headerlink" href="#layout" title="Link to this heading"></a></h2>
 <p>The dashboard has a fixed layout:</p>
 <ul class="simple">
-<li><p><strong>Top toolbar</strong> — container name, active workflow (if any), sync
-buttons, and the Admin menu.</p></li>
-<li><p><strong>Left panel</strong> — the <em>Repos panel</em> for sandbox / toolkit projects, or the   <em>Pipeline panel</em> for workflow projects.</p></li>
+<li><p><strong>Top toolbar</strong> — container name, active workflow, the three AICS
+level badges, the <strong>?</strong> Help button, and the Run, Sync, View, and
+Admin menus.</p></li>
+<li><p><strong>Left panel</strong> — a tabbed panel. For workflow projects the tabs are
+<strong>Main</strong>, <strong>AICS</strong>, <strong>Files</strong>, and <strong>Logs</strong>; for sandbox and toolkit
+projects (no <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>) they are <strong>Files</strong>, <strong>Repos</strong>, and
+<strong>Logs</strong>.</p></li>
 <li><p><strong>Top panels</strong> — Two “Viewing Windows” to display plots and files.</p></li>
-<li><p><strong>Bottom panel(s)</strong> - Terminal window(s)/tab(s) for work inside the container.</p></li>
+<li><p><strong>Bottom panel(s)</strong> — Terminal window(s)/tab(s) for work inside the
+container.</p></li>
 </ul>
+<p>Beside the workflow name, three copies of the vaibify badge mark AICS
+Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
+when the workflow attains that level, and the whole dashboard theme
+shifts colour with the highest level attained: pale blue before Level
+1, purple at Level 1, green at Level 2, and pink at Level 3. The
+badge, the logo, and every “attained” mark share the tint, so a glance
+at any corner of the screen tells you where the workflow stands.</p>
 </section>
 <section id="terminal">
 <h2>Terminal<a class="headerlink" href="#terminal" title="Link to this heading"></a></h2>
@@ -147,24 +165,33 @@ buttons, and the Admin menu.</p></li>
 container. The terminal runs in your browser over WebSocket and behaves
 like a standard terminal emulator. Multiple sessions can run
 concurrently — open as many as you like.</p>
-<p><img alt="Terminal" src="images/dashboard-terminal.png" /></p>
-<p>If Claude Code is enabled for the project, run <code class="docutils literal notranslate"><span class="pre">claude</span></code> from a
-terminal session to start an in-container coding agent. The agent can
-in turn ask the dashboard to run steps, generate tests, push to
-GitHub, and so on — see <a class="reference internal" href="#agent-actions"><span class="xref myst">Agent actions</span></a> below.</p>
+<p>If Claude Code is enabled for the project, run</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>claude<span class="w"> </span>--dangerously-skip-permissions
+</pre></div>
+</div>
+<p>from a terminal session to start an in-container coding agent. The
+option’s name sounds alarming, but inside a vaibify container it is
+the intended mode: the container is an isolated sandbox, the agent
+runs as an unprivileged user with no sudo, and everything it edits is
+tracked in git and hash-pinned in the workflow manifest. Your
+protection comes from verifying results, not from approving each
+command — see the <strong>Using AI</strong> section of the <a class="reference internal" href="#the-help-panel"><span class="xref myst">Help panel</span></a>
+and the <a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a>. The agent can in turn ask the
+dashboard to run steps, generate tests, push to GitHub, and so on —
+see <a class="reference internal" href="#agent-actions"><span class="xref myst">Agent actions</span></a> below.</p>
 </section>
 <section id="viewing-window">
 <h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
 <p>The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Workflow mode, the log is displayed in a window.</p>
-<p><img alt="Figure viewer" src="images/dashboard-figures.png" /></p>
 </section>
 <section id="repos-panel">
 <h2>Repos panel<a class="headerlink" href="#repos-panel" title="Link to this heading"></a></h2>
-<p>The Repos panel replaces the Pipeline panel for sandbox and toolkit
-projects (the templates without a <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>). It lists the git
-repositories inside the container with their branch, dirty status, and
-push controls.</p>
-<p><img alt="Repos panel" src="images/dashboard-repos.png" /></p>
+<p>The Repos panel is the home tab for sandbox and toolkit projects (the
+templates without a <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>). In a workflow project the tab is
+hidden, but the panel is one click away: every “Open the Repos panel”
+link in the Main tab’s Project block and on the AICS tab lands there.
+It lists the git repositories inside the container with their branch,
+dirty status, and push controls.</p>
 <p>When you first open a container, repositories already present in the
 workspace (cloned by the entrypoint from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>) are tracked
 automatically. If you clone additional repositories from the terminal,
@@ -180,106 +207,77 @@ repository shows as clean unless you have edited its source files.</p>
 secondary <strong>Push files…</strong> option in the gear menu opens a file picker
 for selecting specific files to commit.</p>
 </section>
-<section id="pipeline-panel">
-<h2>Pipeline panel<a class="headerlink" href="#pipeline-panel" title="Link to this heading"></a></h2>
-<p>The pipeline panel lists the steps defined in your workflow. Each step
-shows its name, working directory, and current status.</p>
-<p><img alt="Pipeline panel" src="images/dashboard-pipeline.png" /></p>
-<p>From the top of the panel you can:</p>
+<section id="the-main-tab">
+<h2>The Main tab<a class="headerlink" href="#the-main-tab" title="Link to this heading"></a></h2>
+<p>The Main tab is the workflow’s control surface. It contains two
+top-level collapsible blocks, each with a banner you can click to
+collapse or expand:</p>
 <ul class="simple">
-<li><p><strong>Run All</strong> — execute every enabled step in order.</p></li>
-<li><p><strong>Run Selected</strong> — execute only the checked steps.</p></li>
-<li><p><strong>Run From Step</strong> — execute from a chosen step to the end.</p></li>
-<li><p><strong>Enable / Disable</strong> — toggle individual steps without removing
-them.</p></li>
-<li><p><strong>Reorder</strong> — drag steps to change the execution order.</p></li>
+<li><p><strong>Steps</strong> — the per-step work of the workflow. Level 1
+(Self-Consistent) is a per-step property, so this is where Level 1
+is earned.</p></li>
+<li><p><strong>Project</strong> — requirements that apply to the project as a whole
+rather than to any single step. Levels 2 (Published) and 3
+(Reproducible) are workflow-wide, so this is where they are earned.</p></li>
 </ul>
+<p>Both banners carry the same right-aligned strip of status cells as
+the rows beneath them, so a collapsed block still reports its
+aggregate state.</p>
+<p>The panel header above the blocks holds three buttons: a gear for
+workflow settings, a refresh arrow to re-poll remote status, and
+<strong>+</strong> to create a new step.</p>
+<section id="the-steps-block">
+<h3>The Steps block<a class="headerlink" href="#the-steps-block" title="Link to this heading"></a></h3>
+<p>A one-time header row labels the step columns: <strong>Run</strong>, the warning
+column (⚠), and <strong>L1</strong>. Each step row then shows, left to right:</p>
+<ul class="simple">
+<li><p><strong>Run checkbox</strong> — include this step in the next run.</p></li>
+<li><p><strong>Run light</strong> — execution only: hollow grey means the step has not
+run this session, filled grey means queued, blinking orange means
+running now, red means the last run failed, and the theme-tinted
+vaibify check means the last run succeeded.</p></li>
+<li><p><strong>Step label and name</strong> — labels are per-type sequential: <code class="docutils literal notranslate"><span class="pre">A03</span></code> is
+the third <em>automated</em> step, <code class="docutils literal notranslate"><span class="pre">I01</span></code> the first <em>interactive</em> step.</p></li>
+<li><p><strong>Warning column (⚠)</strong> — every warning the step carries,
+consolidated into one glyph; hover it for a plain-English list of
+reasons and remedies. The colour encodes <em>severity</em>, not level:
+<strong>red</strong> means something is broken right now (a test failed),
+<strong>orange</strong> means pending work or staleness (a script or output
+changed since verification, an earlier step changed, or a level
+regressed).</p></li>
+<li><p><strong>L1 cell</strong> — the step’s Level 1 state (vocabulary below).</p></li>
+</ul>
+<p>Steps run from the toolbar’s <strong>Run</strong> menu: <strong>Run Selected Steps</strong>,
+<strong>Run All Steps</strong>, <strong>Force Run All (Clean)</strong>, <strong>Stop All Running
+Tasks</strong>, plus the verification sweeps <strong>Verify Outputs</strong>, <strong>Run All
+Unit Tests</strong>, and <strong>Verify Dependencies</strong>. Steps can be reordered by
+dragging, and an individual step’s context menu offers <strong>Run From
+Here</strong>.</p>
 <section id="adding-a-step">
-<h3>Adding a step<a class="headerlink" href="#adding-a-step" title="Link to this heading"></a></h3>
-<p>Click <strong>Add Step</strong> to open the step editor. Fill in the step name,
-working directory, and the commands to run. The editor separates <em>data
-commands</em> (heavy computation) from <em>plot commands</em> (figure generation),
-so you can re-run just the plotting after tweaking a script without
-re-running the simulation.</p>
+<h4>Adding a step<a class="headerlink" href="#adding-a-step" title="Link to this heading"></a></h4>
+<p>Click <strong>+</strong> in the panel header to open the step editor. Fill in the
+step name, working directory, and the commands to run. The editor
+separates <em>data commands</em> (heavy computation) from <em>plot commands</em>
+(figure generation), so you can re-run just the plotting after
+tweaking a script without re-running the simulation.</p>
 </section>
 <section id="interactive-steps">
-<h3>Interactive steps<a class="headerlink" href="#interactive-steps" title="Link to this heading"></a></h3>
-<p>Mark a step as <em>interactive</em> and the pipeline pauses there, waiting
-for you to confirm before continuing. Useful when you want to eyeball
-an intermediate result, adjust a parameter, or hand control to an
-agent for a specific stage.</p>
+<h4>Interactive steps<a class="headerlink" href="#interactive-steps" title="Link to this heading"></a></h4>
+<p>Mark a step as <em>interactive</em> and it runs in the terminal with X11
+display forwarding, via the <strong>Run in Terminal</strong> button in its expanded
+view. Useful when a step requires human judgment — eyeballing an
+intermediate result, adjusting a parameter — or when you want to hand
+control to an agent for a specific stage.</p>
 </section>
-</section>
-<section id="step-verification-status">
-<h2>Step verification status<a class="headerlink" href="#step-verification-status" title="Link to this heading"></a></h2>
-<p>Vaibify’s core job is to track <strong>what has happened on disk</strong> and flag
-any drift between a step’s current filesystem state and the last time
-it was validated. Two visual indicators communicate this state: a
-coloured <strong>status dot</strong> on the right of each step row and an optional
-<strong>pencil icon</strong> (✏) next to the step name.</p>
-<section id="status-dot">
-<h3>Status dot<a class="headerlink" href="#status-dot" title="Link to this heading"></a></h3>
-<p>Each step row ends with one of three indicators:</p>
-<ul class="simple">
-<li><p><strong>Nothing</strong> — the step has not yet produced any output, so there
-is nothing to verify.</p></li>
-<li><p><strong>Orange dot</strong> — the step is <em>partially verified</em>. Some of user
-attestation, unit tests, and dependency analysis pass, or one or
-more on-disk changes have been detected since the last full pass.</p></li>
-<li><p><strong>Accent-coloured badge</strong> (the vaibify favicon) — the step is
-<em>fully verified</em>: user attestation, unit tests, and dependencies
-all pass and no on-disk drift has been detected.</p></li>
-</ul>
-<p>When every enabled step is fully verified, the workflow name and the
-“Workflow” label in the top toolbar shift to the accent colour, giving
-an at-a-glance sign that the whole pipeline is in a trusted state.</p>
-</section>
-<section id="pencil-icon">
-<h3>Pencil icon<a class="headerlink" href="#pencil-icon" title="Link to this heading"></a></h3>
-<p>A pencil next to a step’s name means <strong>the step’s on-disk state has
-moved out of sync with its last validation</strong>. The pencil is derived
-entirely from filesystem timestamps, so it catches changes vaibify did
-not directly observe — a <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">pull</span></code>, a manual <code class="docutils literal notranslate"><span class="pre">pytest</span></code> at the
-terminal, an edit from a Claude Code session.</p>
-<p>The pencil lights up when any of the following are true:</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Drift</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>A data script is newer than the test marker</p></td>
-<td><p>Tests need to be rerun against the updated script.</p></td>
-</tr>
-<tr class="row-odd"><td><p>A data file is newer than the test marker</p></td>
-<td><p>Tests need to be rerun against the updated output.</p></td>
-</tr>
-<tr class="row-even"><td><p>A data script or data file is newer than the last user attestation</p></td>
-<td><p>Re-inspect the outputs and re-attest.</p></td>
-</tr>
-<tr class="row-odd"><td><p>A plot script or plot file is newer than the last user attestation</p></td>
-<td><p>Re-inspect the figures and re-attest.</p></td>
-</tr>
-</tbody>
-</table>
-<p>Expanding the step shows a human-readable list of the specific files
-causing each condition.</p>
-</section>
-<section id="clearing-a-pencil">
-<h3>Clearing a pencil<a class="headerlink" href="#clearing-a-pencil" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><strong>Re-run tests</strong> for the step (from the dashboard or a terminal).
-Successful completion clears any “newer than the test marker” drift.</p></li>
-<li><p><strong>Re-attest</strong> by clicking the verification badge after inspecting
-the outputs. This clears any “newer than your last attestation”
-drift.</p></li>
-</ul>
-</section>
-<section id="expanded-step-timestamps">
-<h3>Expanded-step timestamps<a class="headerlink" href="#expanded-step-timestamps" title="Link to this heading"></a></h3>
-<p>Clicking a step expands its detail view. Four timestamps appear; three
-are read directly from disk and one is your own attestation.</p>
+<section id="the-expanded-step-view">
+<h4>The expanded step view<a class="headerlink" href="#the-expanded-step-view" title="Link to this heading"></a></h4>
+<p>Clicking a step row expands its detail: the working directory, its
+scripts, data analysis commands, data files, plot commands, and plot
+files. File rows carry the per-file marks and remote badges described
+under <a class="reference internal" href="#status-lights-and-colours"><span class="xref myst">Status lights and colours</span></a>, and
+clicking a file opens it in a Viewing Window.</p>
+<p>The <strong>Verification</strong> section at the bottom of the expanded view shows
+one row per verification axis, each with its state and a timestamp:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Row</p></th>
@@ -287,44 +285,294 @@ are read directly from disk and one is your own attestation.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><strong>Last tests</strong></p></td>
-<td><p>When <code class="docutils literal notranslate"><span class="pre">pytest</span></code> for this step last finished, regardless of who ran it.</p></td>
+<tr class="row-even"><td><p><strong>Unit Tests</strong></p></td>
+<td><p>The combined state of the step’s generated tests; “Last run” is when they last finished, regardless of who ran them.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Data files last modified</strong></p></td>
-<td><p>When any of the step’s data outputs was last written.</p></td>
+<tr class="row-odd"><td><p><strong>Dependencies</strong></p></td>
+<td><p>Whether the step’s cross-step inputs are consistent; “Last checked” is the last dependency analysis.</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Plot files last modified</strong></p></td>
-<td><p>When any of the step’s plot outputs was last written.</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Last verified</strong></p></td>
-<td><p>When you last clicked the verification badge to attest the outputs.</p></td>
+<tr class="row-even"><td><p><strong>Your name</strong></p></td>
+<td><p>Your own sign-off. Click the row to attest that you have inspected the outputs; “Last updated” is your last attestation.</p></td>
 </tr>
 </tbody>
 </table>
+<p>Above these rows, plain-English drift notices name exactly which files
+went stale and why — for example “Tests older than data scripts” or
+“User verification older than plot files” — so you always know what to
+re-run or re-inspect. Wall-clock and CPU time for the last run, and
+the modification times of the step’s data and plot files, are also
+shown.</p>
+<p>The <strong>Unit Tests</strong> row expands to the three test categories, with
+buttons to generate and run them — see <a class="reference internal" href="#verification"><span class="xref myst">Verification</span></a>.</p>
 </section>
 </section>
-<section id="sync-status">
-<h2>Sync status<a class="headerlink" href="#sync-status" title="Link to this heading"></a></h2>
-<p>Symbols before files indicate the current status of a file’s publication on a remote repository.</p>
-<p><img alt="Sync panel" src="images/dashboard-sync.png" /></p>
+<section id="the-project-block">
+<h3>The Project block<a class="headerlink" href="#the-project-block" title="Link to this heading"></a></h3>
+<p>The Project block lists workflow-scope requirements, grouped into six
+collapsible sections:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Section</p></th>
+<th class="head"><p>What it covers</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Repository</strong></p></td>
+<td><p>The Level 1 workflow-scope requirement: the workflow lives inside a git repository (its <em>project repo</em>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Software</strong></p></td>
+<td><p>Standalone scientific binaries the workflow runs, each declared with an expected version and a captured version + SHA-256.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Artifacts</strong></p></td>
+<td><p>The reproducibility envelope files: <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>, <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>, the environment snapshot, the <code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code>, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Determinism</strong></p></td>
+<td><p>Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance).</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Published copies</strong></p></td>
+<td><p>The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Attestation</strong></p></td>
+<td><p>The AI Declaration (Level 2) and the rebuild attestation (Level 3).</p></td>
+</tr>
+</tbody>
+</table>
+<p>Every section banner and every requirement row inside it carries a
+status light and an <strong>L1 | L2 | L3</strong> level strip: the levels the
+requirement gates show its state, and the others show a dash. A
+researcher hunting for Level 2 blockers scans one column.</p>
+<p>Expanding a requirement row reveals its file rows (with remote
+badges), a plain-English status line, one “how to” line, and — where
+an action exists — a button that performs it in place:</p>
+<ul class="simple">
+<li><p><strong>Capture version + SHA</strong> and <strong>Remove package…</strong> on each declared
+binary, plus <strong>Add package…</strong> at the bottom of the Software section.</p></li>
+<li><p><strong>Regenerate now</strong> on the manifest, dependency lock, and environment
+snapshot; <strong>Check files against manifest</strong> and <strong>Check
+dependencies</strong> for on-demand verification.</p></li>
+<li><p><strong>Generate reproduce.sh</strong> to write the one-command reproduction
+script and pin it in the manifest.</p></li>
+<li><p><strong>Declare rules</strong> / <strong>Delete rules…</strong> for the determinism
+declaration (stored directly in <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>; there is no
+separate rules file).</p></li>
+<li><p><strong>Configure arXiv…</strong> to record the arXiv submission that must match
+the frozen Overleaf figures.</p></li>
+<li><p><strong>Add AI declaration step</strong> if the workflow has none, and <strong>Verify
+Level 3 reproducibility</strong> to launch the full rebuild-and-compare.</p></li>
+</ul>
+<p>The Dockerfile row is guidance-only: the Dockerfile is yours to edit,
+and pinning its base image to an exact digest (<code class="docutils literal notranslate"><span class="pre">FROM</span> <span class="pre">&lt;image&gt;&#64;sha256:…</span></code>) is something you — or the in-container agent — do
+by hand.</p>
+</section>
+</section>
+<section id="status-lights-and-colours">
+<h2>Status lights and colours<a class="headerlink" href="#status-lights-and-colours" title="Link to this heading"></a></h2>
+<p>The same small vocabulary repeats across step rows, both block
+banners, and every requirement row. The <strong>?</strong> Help panel carries the
+authoritative legend; this is the summary.</p>
+<section id="level-cells">
+<h3>Level cells<a class="headerlink" href="#level-cells" title="Link to this heading"></a></h3>
+<p>The L1 | L2 | L3 cells (and the single L1 cell on step rows) use six
+states:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Cell</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Grey filled circle</p></td>
+<td><p>Not started — no activity at this level yet.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Red circle</p></td>
+<td><p>No requirements met.</p></td>
+</tr>
+<tr class="row-even"><td><p>Orange circle</p></td>
+<td><p>Partially met.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Vaibify badge (the favicon, theme-tinted)</p></td>
+<td><p>Attained — every requirement at this level is met.</p></td>
+</tr>
+<tr class="row-even"><td><p>Hollow grey circle</p></td>
+<td><p>Unknown — GitHub/Zenodo have not been checked recently; refresh remote status to find out.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Dash (—)</p></td>
+<td><p>Not applicable — no requirements at this level for this row.</p></td>
+</tr>
+</tbody>
+</table>
+<p>A hollow “never checked” mark is honest by design: a remote that has
+never been verified is never shown as passing.</p>
+</section>
+<section id="warning-glyphs">
+<h3>Warning glyphs<a class="headerlink" href="#warning-glyphs" title="Link to this heading"></a></h3>
+<p>Warning glyphs (⚠) are coloured by <strong>severity</strong>, never by level:</p>
+<ul class="simple">
+<li><p><strong>Red</strong> — broken or failing <em>now</em>: a test failed, a declared file is
+missing, a requirement check failed.</p></li>
+<li><p><strong>Orange</strong> — pending work or staleness: something changed since the
+last verification, or a check has gone stale and needs refreshing.</p></li>
+</ul>
+<p>Blue is reserved for purely informational marks, such as the
+not-tracked-by-git badge. The pencil mark (✎) on a file row means the
+file changed since its last verified run — re-run the step to refresh
+it.</p>
+</section>
+<section id="file-name-styles">
+<h3>File-name styles<a class="headerlink" href="#file-name-styles" title="Link to this heading"></a></h3>
+<p>Inside expanded rows, a file name rendered in red is itself a
+diagnosis: upright red means the declared file is missing; red with a
+dotted underline means it changed since its last test run; red italic
+means it exists but you have never verified it.</p>
+</section>
+<section id="per-file-remote-badges">
+<h3>Per-file remote badges<a class="headerlink" href="#per-file-remote-badges" title="Link to this heading"></a></h3>
+<p>Each file row carries one badge per configured remote (GitHub,
+Overleaf, Zenodo, arXiv), tinted by that remote’s state:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Badge</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Pale blue</p></td>
+<td><p>In sync with the remote.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Amber</p></td>
+<td><p>Local file differs from the last push.</p></td>
+</tr>
+<tr class="row-even"><td><p>Red</p></td>
+<td><p>Uncommitted local changes.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Blue</p></td>
+<td><p>Not tracked by git (informational).</p></td>
+</tr>
+<tr class="row-even"><td><p>Solid muted grey</p></td>
+<td><p>Git-ignored — a deliberate <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> exclusion, distinct from “never published”.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Faded grey</p></td>
+<td><p>Not synced to this remote.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Only figure formats travel to a manuscript, so the Overleaf and arXiv
+rows list figure files only.</p>
+</section>
+</section>
+<section id="the-aics-tab">
+<h2>The AICS tab<a class="headerlink" href="#the-aics-tab" title="Link to this heading"></a></h2>
+<p>The AICS tab is the requirements ledger for the reproducibility
+ladder. A header card names the workflow’s current level (for
+example, “Level 1: Self-Consistent”) with a clickable progression
+strip, followed by three expandable sections — <strong>Level 1 —
+Self-Consistent</strong>, <strong>Level 2 — Published</strong>, <strong>Level 3 — Reproducible</strong>
+— each summarising how many of its requirements are met.</p>
+<p>Every requirement row shows a status light, the requirement, what it
+means, and how to meet it, with a deep link to the surface where the
+work happens (the Main tab’s blocks or the Repos panel). The tab owns
+the requirement <em>text</em>; the buttons that do the work live in the Main
+tab’s Project block. The requirements are:</p>
+<ul class="simple">
+<li><p><strong>Level 1</strong>: Project repository; Every step self-consistent.</p></li>
+<li><p><strong>Level 2</strong>: GitHub mirror; Zenodo deposit; arXiv manuscript; AI
+Declaration attested.</p></li>
+<li><p><strong>Level 3</strong>: Manifest complete; Dependency lock; Environment
+snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
+Software declared; Rebuild attestation.</p></li>
+</ul>
+<p>The Level 3 section ends with the verification machinery: the
+<strong>Verify Level 3 Reproducibility</strong> button (enabled only when the
+readiness checks pass; the rebuild runs in the container and can take
+hours), the current <strong>Level 3 Attestation</strong> card (timestamp, manifest
+digest, image digest, hashes matched, duration — with a staleness
+notice if the manifest has changed since), and the <strong>Reproduction
+History</strong> table of every attempt.</p>
+<p>See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for what each envelope
+artifact contains and how third parties verify it without vaibify.</p>
+</section>
+<section id="the-help-panel">
+<h2>The Help panel<a class="headerlink" href="#the-help-panel" title="Link to this heading"></a></h2>
+<p>The <strong>?</strong> button beside the workflow name opens the Help panel. It
+contains:</p>
+<ul class="simple">
+<li><p>A link to the full online documentation.</p></li>
+<li><p><strong>Using AI</strong> — how to start the in-container coding agent
+(<code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code>) and why skipping
+per-command permission prompts is the intended, safe mode inside the
+sandbox: the container isolates the agent from your host, every
+edit is tracked in git and hash-pinned, and a full rebuild
+ultimately checks the analysis — the AICS Level 3 posture.</p></li>
+<li><p>The <strong>Legend</strong> — the symbol key, in four divisions matching the
+dashboard’s surfaces: <strong>Steps</strong> (run checkbox, run light, warning
+column, per-file marks), <strong>Project</strong> (requirement-row marks and the
+Level 2/Level 3 warning catalog), <strong>Level status lights</strong> (the
+L1 | L2 | L3 cell vocabulary), and <strong>Files and remotes</strong> (the
+per-file badges and red file-name styles).</p></li>
+</ul>
+<p>The legend is generated from the same catalog the dashboard renders
+from, so it cannot drift from the glyphs you actually see. Status
+itself is deliberately <em>not</em> in the panel — status lives on the
+banners and the AICS tab.</p>
+</section>
+<section id="verification">
+<h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>
+<p>Steps are verified three ways: 1) unit tests, 2) dependency checks (if
+applicable), and 3) user attestation. These three controls are
+displayed in each step’s expanded view.</p>
+<p>The <strong>Unit Tests</strong> row is expandable to show detailed information
+about the step’s unit tests, including generating and running them.
+Three categories of unit tests exist:</p>
+<ol class="arabic simple">
+<li><p><strong>Integrity tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_integrity.py</span></code>) — output files exist, are
+non-empty, load in their expected format, have the correct shape,
+and contain no NaN or infinity values.</p></li>
+<li><p><strong>Qualitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_qualitative.py</span></code>) — column names, JSON
+keys, parameter names, and other categorical content match
+expectations.</p></li>
+<li><p><strong>Quantitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_quantitative.py</span></code> plus
+<code class="docutils literal notranslate"><span class="pre">quantitative_standards.json</span></code>) — numerical output values match
+stored benchmarks at full double precision, with configurable
+relative and absolute tolerances.</p></li>
+</ol>
+<p>Test generation is <strong>deterministic by default</strong>: a Python introspection
+script runs inside the container, reads each data file, and writes the
+tests mechanically. No language model is involved on the default path.
+An LLM-based path is available as a fallback for formats the
+introspection script cannot read.</p>
+<p>See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the full list of file
+types the test generator can read.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span></code> monitors the steps for dependency violations, such as a dependent step
+not being fully verified or a dependent file being created <em>after</em> a subsequent step was marked verified.</p>
+<p>Finally, clicking the row that carries your name records your own
+assessment — the human attestation that no test can substitute for.</p>
+</section>
+<section id="publishing-and-remote-sync">
+<h2>Publishing and remote sync<a class="headerlink" href="#publishing-and-remote-sync" title="Link to this heading"></a></h2>
+<p>The toolbar’s <strong>Sync</strong> menu holds the publication actions:</p>
 <ul class="simple">
 <li><p><strong>Push to GitHub</strong> — commit and push the project repository to its
 configured remote.</p></li>
 <li><p><strong>Push to Overleaf</strong> — sync figures and any selected files to the
 configured Overleaf project.</p></li>
 <li><p><strong>Archive to Zenodo</strong> — upload outputs and receive a DOI.</p></li>
-<li><p><strong>Generate LaTeX</strong> — produce ready-to-paste <code class="docutils literal notranslate"><span class="pre">\includegraphics</span></code>
-commands for the current figures.</p></li>
+<li><p><strong>Configure arXiv…</strong> — record the arXiv submission that must match
+the frozen figures.</p></li>
+<li><p><strong>Verify Reproducibility</strong> — open the remote-verification panel
+described below.</p></li>
 </ul>
 <p>Credentials for these services are resolved from your host’s keychain
 at request time. They are never written into the container or into
-<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. See <a class="reference internal" href="#connecting-services.md"><span class="xref myst">Connecting external services</span></a>
-for the per-service setup.</p>
-<section id="remote-sync-panel">
-<h3>Remote-sync panel<a class="headerlink" href="#remote-sync-panel" title="Link to this heading"></a></h3>
-<p>The sync panel surfaces one row per configured remote (GitHub,
-Overleaf, Zenodo). Each row shows the same four pieces of
-information:</p>
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. See <a class="reference internal" href="externalServices.html"><span class="std std-doc">External services</span></a> for the
+per-service integration architecture.</p>
+<p>Per-file sync state is always visible as the
+<a class="reference internal" href="#per-file-remote-badges"><span class="xref myst">remote badges</span></a> on file rows, and each remote
+has a requirement row under <strong>Published copies</strong> in the Project block.</p>
+<section id="the-verify-reproducibility-panel">
+<h3>The Verify Reproducibility panel<a class="headerlink" href="#the-verify-reproducibility-panel" title="Link to this heading"></a></h3>
+<p><strong>Sync → Verify Reproducibility</strong> opens a panel with one row per
+configured remote (GitHub, Overleaf, Zenodo). Each row shows the same
+four pieces of information:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Field</p></th>
@@ -350,10 +598,10 @@ information:</p>
 <ul class="simple">
 <li><p><strong>Green</strong> — the most recent SHA-256 authoritative verify reported
 every file matching the manifest.</p></li>
-<li><p><strong>Yellow</strong> — drift detected since the last authoritative verify
-(the remote’s cheap-poll change-detection layer fired). The remote
-may or may not actually be out of sync; click <strong>Re-verify</strong> to find
-out.</p></li>
+<li><p><strong>Yellow</strong> — never verified, or drift suspected since the last
+authoritative verify (the remote’s cheap-poll change-detection layer
+fired). The remote may or may not actually be out of sync; click
+<strong>Re-verify</strong> to find out.</p></li>
 <li><p><strong>Red</strong> — an authoritative SHA-256 verify confirmed at least one
 file’s hash does not match <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>.</p></li>
 </ul>
@@ -381,75 +629,26 @@ configured-and-verified remotes. Both the file noun and the remote
 noun singularise independently when their count is 1 (e.g. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">1</span> <span class="pre">file</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">1</span> <span class="pre">of</span> <span class="pre">1</span> <span class="pre">remote</span></code> vs. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">5</span> <span class="pre">files</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">2</span> <span class="pre">of</span> <span class="pre">3</span> <span class="pre">remotes</span></code>).</p></li>
 </ul>
 </section>
-<section id="hash-aware-step-badges">
-<h3>Hash-aware step badges<a class="headerlink" href="#hash-aware-step-badges" title="Link to this heading"></a></h3>
-<p>Per-step status indicators distinguish <em>content drift</em> from <em>cosmetic
-mtime drift</em>. After a fresh clone, file mtimes are reset to checkout
-time, which historically caused every step badge to render as
-“stale” even though the bytes had not changed. The dashboard now
-consults the per-file SHA-256 recorded in the test marker before
-declaring a step stale:</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Indicator</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong>Filled badge</strong> (the favicon glyph)</p></td>
-<td><p>Fully verified: tests pass, attestation current, content matches.</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Orange dot</strong></p></td>
-<td><p>Partially verified — at least one of tests, attestation, or dependency analysis is stale.</p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Hollow circle</strong> (◌)</p></td>
-<td><p>Mtime drifted since the test marker, but the file’s SHA-256 still matches the recorded hash. The step is treated as content-clean; the indicator just signals that a tool touched the file without changing its bytes.</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Pencil</strong> (✏)</p></td>
-<td><p>True content drift — the file’s hash differs from the recorded hash. Re-run tests or re-attest.</p></td>
-</tr>
-</tbody>
-</table>
-<p>The hollow-circle case replaces a noisy false-positive class: a
-post-clone or post-<code class="docutils literal notranslate"><span class="pre">touch</span></code> mtime bump no longer inflates verification
-state, so the badges reflect what is actually on disk.</p>
+<section id="hash-aware-staleness">
+<h3>Hash-aware staleness<a class="headerlink" href="#hash-aware-staleness" title="Link to this heading"></a></h3>
+<p>Status marks distinguish <em>content drift</em> from <em>cosmetic mtime drift</em>.
+After a fresh clone, file mtimes are reset to checkout time, which
+historically caused every step to render as stale even though the
+bytes had not changed. The dashboard consults the per-file SHA-256
+recorded in the test marker before declaring a file stale: a
+post-clone or post-<code class="docutils literal notranslate"><span class="pre">touch</span></code> mtime bump with matching hashes is treated
+as content-clean, so the warning column and the ✎ file marks reflect
+what is actually on disk, not what a tool merely touched.</p>
 </section>
-</section>
-<section id="verification">
-<h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>
-<p>Steps are verified three ways: 1) unit tests, 2) dependnency checks (if applicable), and 3) user attestation. These three controls are displayed in each Step’s expanded view.</p>
-<p>The <strong>Unit Tests</strong> text is expandable to show detailed information about the step’s unit tests, including generating and running them. Three categories of
-unit tests exist:</p>
-<ol class="arabic simple">
-<li><p><strong>Integrity tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_integrity.py</span></code>) — output files exist, are
-non-empty, load in their expected format, have the correct shape,
-and contain no NaN or infinity values.</p></li>
-<li><p><strong>Qualitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_qualitative.py</span></code>) — column names, JSON
-keys, parameter names, and other categorical content match
-expectations.</p></li>
-<li><p><strong>Quantitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_quantitative.py</span></code> plus
-<code class="docutils literal notranslate"><span class="pre">quantitative_standards.json</span></code>) — numerical output values match
-stored benchmarks at full double precision, with configurable
-relative and absolute tolerances.</p></li>
-</ol>
-<p>Test generation is <strong>deterministic by default</strong>: a Python introspection
-script runs inside the container, reads each data file, and writes the
-tests mechanically. No language model is involved on the default path.
-An LLM-based path is available as a fallback for formats the
-introspection script cannot read.</p>
-<p>See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the full list of file
-types the test generator can read.</p>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span></code> monitors the steps for dependency violations, such as a dependent step
-not being fully verified or a dependent file being created <em>after</em> a subsequent step was marked verified.</p>
-<p>Finally, a button for the (human) records that user’s assessment.</p>
 </section>
 <section id="agent-actions">
 <h2>Agent actions<a class="headerlink" href="#agent-actions" title="Link to this heading"></a></h2>
 <p>When an AI coding agent is running inside the container (typically
-Claude Code, started by typing <code class="docutils literal notranslate"><span class="pre">claude</span></code> in the terminal), it can ask
-the dashboard to perform named operations on the user’s behalf. These
-<em>agent actions</em> are the bridge between the agent’s text-only world and
-the dashboard’s verified state. This scheme enforces deterministic behavior.</p>
+Claude Code, started by typing <code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code>
+in the terminal), it can ask the dashboard to perform named operations
+on the user’s behalf. These <em>agent actions</em> are the bridge between the
+agent’s text-only world and the dashboard’s verified state. This
+scheme enforces deterministic behavior.</p>
 <p>Every state-changing operation in the dashboard — running a step,
 generating tests, pushing to GitHub, archiving to Zenodo — is
 registered in a single catalog. Each action carries a stable name, the
@@ -468,11 +667,11 @@ catalog or it falls back to plain shell commands.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify-do<span class="w"> </span>run-step<span class="w"> </span>A03
 </pre></div>
 </div>
-<p>Step labels (<code class="docutils literal notranslate"><span class="pre">A03</span></code>, <code class="docutils literal notranslate"><span class="pre">I01</span></code>) come from the pipeline panel — labels are
+<p>Step labels (<code class="docutils literal notranslate"><span class="pre">A03</span></code>, <code class="docutils literal notranslate"><span class="pre">I01</span></code>) come from the Steps block — labels are
 <em>per-type sequential</em>, so <code class="docutils literal notranslate"><span class="pre">A03</span></code> is the third <em>automated</em> step and
 <code class="docutils literal notranslate"><span class="pre">I01</span></code> is the first <em>interactive</em> step. The dashboard updates as the
-action runs; if it produces new files, the affected step’s pencil and
-status dot react automatically.</p>
+action runs; if it produces new files, the affected step’s warning
+column and level cell react automatically.</p>
 <section id="why-this-matters">
 <h3>Why this matters<a class="headerlink" href="#why-this-matters" title="Link to this heading"></a></h3>
 <p>Without the catalog, an agent that wants to “run unit tests on step

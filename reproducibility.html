@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev463 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev470 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=32604e94"></script>
+      <script src="_static/documentation_options.js?v=615714ba"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -178,9 +178,10 @@ installed.</p>
 tier into the project repo, and each tier is independently verifiable
 with standard tools — vaibify is the orchestrator, not a dependency.</p>
 <p>The envelope is regenerated automatically when the workflow
-transitions to all-green (every step fully verified), in addition to
-manual Archive button presses. This keeps the manifest in sync with
-the latest verified state without requiring the user to remember to
+transitions to all-green (every step fully verified), and on demand
+via the <strong>Regenerate now</strong> buttons in the Artifacts section of the
+Main tab’s Project block. This keeps the manifest in sync with the
+latest verified state without requiring the user to remember to
 trigger it.</p>
 <section id="tier-1-artifacts-manifest-sha256">
 <h3>Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)<a class="headerlink" href="#tier-1-artifacts-manifest-sha256" title="Link to this heading"></a></h3>
@@ -323,8 +324,9 @@ workflow; per-workflow overrides are deferred to a future commit.</p></li>
 </ul>
 <p>Results are cached in <code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/syncStatus.json</span></code> keyed
 by service so the dashboard always shows ground truth without a
-network round trip on every poll. See <a class="reference internal" href="dashboard.html#remote-sync-panel"><span class="std std-ref">the dashboard
-guide</span></a> for the resulting UI.</p>
+network round trip on every poll. See <a class="reference internal" href="dashboard.html#the-verify-reproducibility-panel"><span class="std std-ref">the dashboard
+guide</span></a> for the
+resulting UI.</p>
 </section>
 <section id="known-limitations">
 <h2>Known limitations<a class="headerlink" href="#known-limitations" title="Link to this heading"></a></h2>
