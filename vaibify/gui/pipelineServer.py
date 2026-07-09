@@ -451,14 +451,15 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
 
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
-    dictWorkflow, sWorkflowDirectory, fnCallback,
+    dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
     dictInteractive=None,
 ):
     """Dispatch runFrom with the start step from the request."""
     iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
     await fnRunFromStep(
-        connectionDocker, sContainerId,
-        iStartStep, sWorkflowDirectory, fnCallback,
+        connectionDocker, sContainerId, iStartStep,
+        dictWorkflow, sWorkflowPath,
+        sWorkflowDirectory, fnCallback,
         dictInteractive=dictInteractive,
     )
 
@@ -506,27 +507,34 @@ async def fnDispatchAction(
     sWorkflowDirectory, fnCallback, dictInteractive=None,
 ):
     """Route a WebSocket pipeline action to the correct runner."""
+    sWorkflowPath = dictWorkflowPathCache.get(sContainerId, "")
+    logger.info(
+        "DISPATCH action=%s container=%s path=%s",
+        sAction, sContainerId, sWorkflowPath,
+    )
     if sAction == "runAll":
         await fnRunAllSteps(
-            connectionDocker, sContainerId, sWorkflowDirectory,
-            fnCallback, dictInteractive=dictInteractive)
+            connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+            sWorkflowDirectory, fnCallback,
+            dictInteractive=dictInteractive)
     elif sAction == "forceRunAll":
         await fnRunAllSteps(
-            connectionDocker, sContainerId, sWorkflowDirectory,
-            fnCallback, bForceRun=True,
+            connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+            sWorkflowDirectory, fnCallback, bForceRun=True,
             dictInteractive=dictInteractive)
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
-            dictWorkflow, sWorkflowDirectory, fnCallback,
+            dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
             dictInteractive=dictInteractive)
     elif sAction == "verify":
         await fnVerifyOnly(
-            connectionDocker, sContainerId, sWorkflowDirectory, fnCallback)
+            connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+            sWorkflowDirectory, fnCallback)
     elif sAction == "runAllTests":
         await fnRunAllTests(
-            connectionDocker, sContainerId, sWorkflowDirectory, fnCallback,
-            dictWorkflow=dictWorkflow)
+            connectionDocker, sContainerId, dictWorkflow,
+            sWorkflowDirectory, fnCallback)
     elif sAction == "runSelected":
         await _fnDispatchSelected(
             connectionDocker, sContainerId, dictRequest,

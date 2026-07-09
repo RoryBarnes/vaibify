@@ -172,18 +172,10 @@ async def _fnWriteTestLog(
 
 
 async def fnRunAllTests(
-    connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
-    dictWorkflow=None,
+    connectionDocker, sContainerId, dictWorkflow,
+    sWorkdir, fnStatusCallback,
 ):
     """Run unit tests for all enabled steps."""
-    from .pipelineRunner import _fdictLoadWorkflow
-
-    if dictWorkflow is None:
-        dictWorkflow, _sPath = await _fdictLoadWorkflow(
-            connectionDocker, sContainerId, fnStatusCallback
-        )
-    if dictWorkflow is None:
-        return 1
     await fnStatusCallback(
         {"sType": "started", "sCommand": "runAllTests"}
     )

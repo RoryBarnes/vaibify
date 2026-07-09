@@ -27,7 +27,6 @@ from vaibify.gui.pipelineRunner import (
     _fiExecuteAndRecord,
     _fnWriteTestLog,
     _fiRunTestCommands,
-    _fdictLoadWorkflow,
     _fiQueryHeadCommitEpoch,
     _fsBuildDeterminismEnvPrefix,
     _fnInjectDeterminismEnvPrefix,
@@ -514,51 +513,64 @@ def test_fiRunStepCommands_plot_only():
 
 
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
-       new_callable=AsyncMock)
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnRunAllSteps_no_workflow(mockLoad, mockRun):
-    mockLoad.return_value = (None, "")
-    fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(fnRunAllSteps(
-        _fMockDocker(), "cid", "/work", fnCallback,
-    ))
-    assert iResult == 1
-
-
-@patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnRunAllSteps_success(mockLoad, mockRun):
-    mockLoad.return_value = ({
+def test_fnRunAllSteps_success(mockRun):
+    dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [{"sName": "A"}],
-    }, "/workspace/.vaibify/workflows/test.json")
+    }
     fnCallback, _ = _fMockCallback()
     iResult = _fnRunAsync(fnRunAllSteps(
-        _fMockDocker(), "cid", "/work", fnCallback,
+        _fMockDocker(), "cid", dictWorkflow,
+        "/workspace/.vaibify/workflows/test.json",
+        "/work", fnCallback,
     ))
     assert iResult == 0
 
 
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnRunAllSteps_force_clears_stats(mockLoad, mockRun):
+def test_fnRunAllSteps_force_clears_stats(mockRun):
     dictStep = {"sName": "A", "dictRunStats": {"sLastRun": "x"}}
     dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [dictStep],
     }
-    mockLoad.return_value = (dictWorkflow, "/w/test.json")
     fnCallback, _ = _fMockCallback()
     _fnRunAsync(fnRunAllSteps(
-        _fMockDocker(), "cid", "/work", fnCallback,
+        _fMockDocker(), "cid", dictWorkflow, "/w/test.json",
+        "/work", fnCallback,
         bForceRun=True,
     ))
     assert dictStep["dictRunStats"] == {}
+
+
+@patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
+       new_callable=AsyncMock, return_value=0)
+def test_fnRunAllSteps_uses_passed_workflow_not_alphabetical_first(
+    mockRun,
+):
+    """Guard against runner-side workflow rediscovery.
+
+    A container can host multiple workflows in different project
+    repos. The runner once rediscovered via
+    flistFindWorkflowsInContainer and silently ran the alphabetically
+    first workflow instead of the dashboard-selected one. The runner
+    must execute exactly the workflow and path the caller passes.
+    """
+    dictWorkflowActive = {
+        "sWorkflowName": "Workflow Beta",
+        "listSteps": [{"sName": "A"}],
+    }
+    sActivePath = "/workspace/projectBeta/.vaibify/workflows/beta.json"
+    fnCallback, _ = _fMockCallback()
+    _fnRunAsync(fnRunAllSteps(
+        _fMockDocker(), "cid", dictWorkflowActive, sActivePath,
+        "/work", fnCallback,
+    ))
+    tArgs, dictKwargs = mockRun.call_args
+    assert tArgs[2]["sWorkflowName"] == "Workflow Beta"
+    assert dictKwargs["sWorkflowPath"] == sActivePath
 
 
 # -----------------------------------------------------------------------
@@ -567,31 +579,17 @@ def test_fnRunAllSteps_force_clears_stats(mockLoad, mockRun):
 
 
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
-       new_callable=AsyncMock)
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnRunFromStep_no_workflow(mockLoad, mockRun):
-    mockLoad.return_value = (None, "")
-    fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(fnRunFromStep(
-        _fMockDocker(), "cid", 3, "/work", fnCallback,
-    ))
-    assert iResult == 1
-
-
-@patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnRunFromStep_success(mockLoad, mockRun):
-    mockLoad.return_value = ({
-        "sWorkflowName": "Test", "listSteps": [],
-    }, "/w/test.json")
+def test_fnRunFromStep_success(mockRun):
+    dictWorkflow = {"sWorkflowName": "Test", "listSteps": []}
     fnCallback, _ = _fMockCallback()
     iResult = _fnRunAsync(fnRunFromStep(
-        _fMockDocker(), "cid", 2, "/work", fnCallback,
+        _fMockDocker(), "cid", 2, dictWorkflow, "/w/test.json",
+        "/work", fnCallback,
     ))
     assert iResult == 0
+    _, dictKwargs = mockRun.call_args
+    assert dictKwargs["iStartStep"] == 2
 
 
 # -----------------------------------------------------------------------
@@ -599,49 +597,36 @@ def test_fnRunFromStep_success(mockLoad, mockRun):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnVerifyOnly_no_workflow(mockLoad):
-    mockLoad.return_value = (None, "")
-    fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(fnVerifyOnly(
-        _fMockDocker(), "cid", "/work", fnCallback,
-    ))
-    assert iResult == 1
-
-
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnVerifyOnly_all_present(mockLoad):
-    mockLoad.return_value = ({
+def test_fnVerifyOnly_all_present():
+    dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [
             {"sDirectory": "/work", "saPlotFiles": []},
         ],
-    }, "/w/test.json")
+    }
     mockDocker = _fMockDocker(0, "")
     fnCallback, listCaptured = _fMockCallback()
     iResult = _fnRunAsync(fnVerifyOnly(
-        mockDocker, "cid", "/work", fnCallback,
+        mockDocker, "cid", dictWorkflow, "/w/test.json",
+        "/work", fnCallback,
     ))
     assert iResult == 0
     listTypes = [d["sType"] for d in listCaptured]
     assert "completed" in listTypes
 
 
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnVerifyOnly_missing_files(mockLoad):
-    mockLoad.return_value = ({
+def test_fnVerifyOnly_missing_files():
+    dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [
             {"sDirectory": "/work", "saPlotFiles": ["a.pdf"]},
         ],
-    }, "/w/test.json")
+    }
     mockDocker = _fMockDocker(1, "")
     fnCallback, listCaptured = _fMockCallback()
     iResult = _fnRunAsync(fnVerifyOnly(
-        mockDocker, "cid", "/work", fnCallback,
+        mockDocker, "cid", dictWorkflow, "/w/test.json",
+        "/work", fnCallback,
     ))
     assert iResult == 1
 
@@ -751,38 +736,6 @@ def test_fnUpdatePipelineState_step_pass(
         {"sType": "stepPass", "iStepNumber": 1},
     )
     mockRecord.assert_called_once()
-
-
-# -----------------------------------------------------------------------
-# _fdictLoadWorkflow
-# -----------------------------------------------------------------------
-
-
-@patch("vaibify.gui.workflowManager.flistFindWorkflowsInContainer",
-       return_value=[])
-def test_fdictLoadWorkflow_no_workflows(mockFind):
-    fnCallback, listCaptured = _fMockCallback()
-    dictResult, sPath = _fnRunAsync(_fdictLoadWorkflow(
-        _fMockDocker(), "cid", fnCallback,
-    ))
-    assert dictResult is None
-    assert sPath == ""
-    assert any(
-        d.get("sType") == "error" for d in listCaptured
-    )
-
-
-@patch("vaibify.gui.workflowManager.fdictLoadWorkflowFromContainer",
-       return_value={"sWorkflowName": "Test"})
-@patch("vaibify.gui.workflowManager.flistFindWorkflowsInContainer",
-       return_value=[{"sPath": "/wf.json"}])
-def test_fdictLoadWorkflow_found(mockFind, mockLoad):
-    fnCallback, _ = _fMockCallback()
-    dictResult, sPath = _fnRunAsync(_fdictLoadWorkflow(
-        _fMockDocker(), "cid", fnCallback,
-    ))
-    assert dictResult["sWorkflowName"] == "Test"
-    assert sPath == "/wf.json"
 
 
 # -----------------------------------------------------------------------

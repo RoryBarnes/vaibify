@@ -55,21 +55,31 @@ def _fdictWorkflow(iSteps=2):
 def test_fiRunPipeline_calls_fnRunAllSteps_when_neither_step_nor_from():
     from vaibify.cli import commandRun
     mockRunAll = AsyncMock(return_value=0)
+    dictWorkflow = _fdictWorkflow(2)
     with patch(
         "vaibify.gui.pipelineRunner.fnRunAllSteps", mockRunAll,
+    ), patch.object(
+        commandRun, "_ftLoadFirstContainerWorkflow",
+        return_value=("/workspace/wf.json", dictWorkflow),
     ):
         iResult = commandRun._fiRunPipeline(
             _fMockDocker(), "ctn", None, None,
         )
     assert iResult == 0
     mockRunAll.assert_awaited_once()
+    assert mockRunAll.call_args[0][2] == dictWorkflow
+    assert mockRunAll.call_args[0][3] == "/workspace/wf.json"
 
 
 def test_fiRunPipeline_calls_fnRunFromStep_when_iFrom():
     from vaibify.cli import commandRun
     mockFromStep = AsyncMock(return_value=0)
+    dictWorkflow = _fdictWorkflow(2)
     with patch(
         "vaibify.gui.pipelineRunner.fnRunFromStep", mockFromStep,
+    ), patch.object(
+        commandRun, "_ftLoadFirstContainerWorkflow",
+        return_value=("/workspace/wf.json", dictWorkflow),
     ):
         iResult = commandRun._fiRunPipeline(
             _fMockDocker(), "ctn", None, 3,
@@ -77,6 +87,21 @@ def test_fiRunPipeline_calls_fnRunFromStep_when_iFrom():
     assert iResult == 0
     mockFromStep.assert_awaited_once()
     assert mockFromStep.call_args[0][2] == 3
+    assert mockFromStep.call_args[0][3] == dictWorkflow
+    assert mockFromStep.call_args[0][4] == "/workspace/wf.json"
+
+
+def test_fiRunPipeline_reports_error_when_no_workflow(capsys):
+    from vaibify.cli import commandRun
+    with patch.object(
+        commandRun, "_ftLoadFirstContainerWorkflow",
+        return_value=("", {}),
+    ):
+        iResult = commandRun._fiRunPipeline(
+            _fMockDocker(), "ctn", None, None,
+        )
+    assert iResult == 2
+    assert "No workflow" in capsys.readouterr().out
 
 
 def test_fiRunPipeline_dispatches_single_step_when_iStep_set():

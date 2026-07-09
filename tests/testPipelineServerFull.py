@@ -505,28 +505,17 @@ def test_fnDispatchAction_verify():
 
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
-    mockDocker.fbaFetchFile.return_value = json.dumps({
-        "sWorkflowName": "Test",
-        "listSteps": [],
-    }).encode("utf-8")
     mockDocker.fnWriteFile = MagicMock()
 
-    with patch(
-        "vaibify.gui.workflowManager."
-        "flistFindWorkflowsInContainer",
-        return_value=[{"sPath": "/wf.json"}],
-    ), patch(
-        "vaibify.gui.workflowManager."
-        "fdictLoadWorkflowFromContainer",
-        return_value={"sWorkflowName": "Test", "listSteps": []},
-    ):
-        asyncio.run(
-            pipelineServer.fnDispatchAction(
-                "verify", {},
-                mockDocker, "cid", {}, {},
-                "/workspace", fnCallback,
-            )
+    dictWorkflow = {"sWorkflowName": "Test", "listSteps": []}
+    dictPathCache = {"cid": "/wf.json"}
+    asyncio.run(
+        pipelineServer.fnDispatchAction(
+            "verify", {},
+            mockDocker, "cid", dictWorkflow, dictPathCache,
+            "/workspace", fnCallback,
         )
+    )
     assert any(
         d.get("sType") == "completed" for d in listCaptured
     )

@@ -1128,9 +1128,7 @@ def test_fiExecuteAndRecord_records_timing(
     assert "fWallClock" in dictStep["dictRunStats"]
 
 
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnVerifyOnly_verifies_all_steps(mockLoad):
+def test_fnVerifyOnly_verifies_all_steps():
     """The batched verify reports stepPass for every step whose outputs exist.
 
     Mirrors the single-exec contract of ``_fbVerifyStepOutputs``: the
@@ -1138,19 +1136,20 @@ def test_fnVerifyOnly_verifies_all_steps(mockLoad):
     every declared output as present.
     """
     from vaibify.gui.pipelineRunner import fnVerifyOnly
-    mockLoad.return_value = ({
+    dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [
             {"sDirectory": "/w", "saPlotFiles": ["a.pdf"]},
             {"sDirectory": "/w", "saPlotFiles": ["b.pdf"]},
         ],
-    }, "/w/test.json")
+    }
     # The batched verify path prints existing paths; ensure both
     # declared outputs land in the output so they read as present.
     mockDocker = _fMockDocker(0, "/w/a.pdf\n/w/b.pdf\n")
     fnCallback, listCaptured = _fMockCallback()
     iResult = _fnRunAsync(fnVerifyOnly(
-        mockDocker, "cid", "/w", fnCallback,
+        mockDocker, "cid", dictWorkflow, "/w/test.json",
+        "/w", fnCallback,
     ))
     assert iResult == 0
     listStepTypes = [

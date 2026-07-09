@@ -56,24 +56,26 @@ def _fnValidateStepOptions(iStep, iFrom):
 
 def _fiRunPipeline(connectionDocker, sContainerName, iStep, iFrom):
     """Dispatch to the correct pipeline runner function."""
-    from vaibify.gui.pipelineRunner import (
-        fnRunAllSteps, fnRunFromStep, fnRunSelectedSteps,
-    )
-    from vaibify.gui.workflowManager import (
-        fdictLoadWorkflowFromContainer, flistFindWorkflowsInContainer,
-    )
+    from vaibify.gui.pipelineRunner import fnRunAllSteps, fnRunFromStep
     sWorkdir = "/workspace"
     if iStep is not None:
         return _fiRunSingleStep(
             connectionDocker, sContainerName, iStep, sWorkdir
         )
+    sWorkflowPath, dictWorkflow = _ftLoadFirstContainerWorkflow(
+        connectionDocker, sContainerName,
+    )
+    if not sWorkflowPath:
+        click.echo("Error: No workflow found in container.")
+        return 2
     if iFrom is not None:
         return asyncio.run(fnRunFromStep(
             connectionDocker, sContainerName, iFrom,
+            dictWorkflow, sWorkflowPath,
             sWorkdir, _fnAsyncStatusCallback,
         ))
     return asyncio.run(fnRunAllSteps(
-        connectionDocker, sContainerName,
+        connectionDocker, sContainerName, dictWorkflow, sWorkflowPath,
         sWorkdir, _fnAsyncStatusCallback,
     ))
 

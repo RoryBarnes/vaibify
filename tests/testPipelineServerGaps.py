@@ -48,11 +48,12 @@ class TestDispatchRunFrom:
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
                 mockDocker, sContainerId, dictRequest,
-                dictWorkflow, "/workspace", fnCallback,
+                dictWorkflow, "/wf.json", "/workspace", fnCallback,
             )
             mockRunFrom.assert_called_once_with(
-                mockDocker, sContainerId, 3, "/workspace",
-                fnCallback, dictInteractive=None,
+                mockDocker, sContainerId, 3,
+                dictWorkflow, "/wf.json",
+                "/workspace", fnCallback, dictInteractive=None,
             )
 
     @pytest.mark.asyncio
@@ -66,7 +67,7 @@ class TestDispatchRunFrom:
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
                 mockDocker, "ctr1", {},
-                dictWorkflow, "/workspace", fnCallback,
+                dictWorkflow, "/wf.json", "/workspace", fnCallback,
             )
             assert mockRunFrom.call_args[0][2] == 1
 
@@ -86,7 +87,7 @@ class TestDispatchRunFrom:
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
                 mockDocker, "ctr1", dictRequest,
-                dictWorkflow, "/workspace", fnCallback,
+                dictWorkflow, "/wf.json", "/workspace", fnCallback,
             )
             # A01 is listSteps[1] (index 1); 1-based = 2.
             assert mockRunFrom.call_args[0][2] == 2
@@ -166,6 +167,45 @@ class TestDispatchAction:
     async def test_run_selected(self, mockSelected):
         await self._fnRun("runSelected", {"listStepIndices": [0, 2]})
         mockSelected.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnRunAllSteps",
+        new_callable=AsyncMock,
+    )
+    async def test_run_all_threads_active_workflow_path(self, mockRun):
+        """runAll must receive the active workflow and its cached path.
+
+        Guards against the runner rediscovering workflows on its own
+        and running the alphabetically first one in a container that
+        hosts multiple workflows.
+        """
+        dictWorkflow = {"listSteps": []}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        await fnDispatchAction(
+            "runAll", {}, MagicMock(), "ctr1",
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        assert mockRun.call_args.args[2] is dictWorkflow
+        assert mockRun.call_args.args[3] == "/workspace/.vaibify/w.yml"
+
+    @pytest.mark.asyncio
+    @patch(
+        "vaibify.gui.pipelineServer.fnVerifyOnly",
+        new_callable=AsyncMock,
+    )
+    async def test_verify_threads_active_workflow_path(self, mockVerify):
+        """verify must receive the active workflow and its cached path."""
+        dictWorkflow = {"listSteps": []}
+        dictPathCache = {"ctr1": "/workspace/.vaibify/w.yml"}
+        await fnDispatchAction(
+            "verify", {}, MagicMock(), "ctr1",
+            dictWorkflow, dictPathCache,
+            "/workspace", AsyncMock(),
+        )
+        assert mockVerify.call_args.args[2] is dictWorkflow
+        assert mockVerify.call_args.args[3] == "/workspace/.vaibify/w.yml"
 
 
 # ---------------------------------------------------------------
