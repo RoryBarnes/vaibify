@@ -858,7 +858,20 @@ Agent actions to reach L2:
    root: `MANIFEST.sha256`, `requirements.lock`, and
    `.vaibify/environment.json`. If any is missing, the workflow is not
    all-green yet — return to L1.
-3. **Surface to the user, do not invoke:**
+3. **Commit the canonical state before any push.** The envelope files
+   above, plus `reproduce.sh` and the `workflow.json` itself, are
+   *generated but never auto-committed* — vaibify does not write to the
+   researcher's repo on its own. Any canonical file left untracked or
+   dirty blocks L2: an uncommitted file cannot be in the pushed commit,
+   so the GitHub mirror stays red until it is committed. Do not read
+   this off raw `git status` yourself — run `vaibify-do manifest-check`,
+   which returns `listNeedsCommit`, the exact set of canonical files
+   awaiting commit. If it is non-empty, commit them with `vaibify-do
+   commit-canonical` (or surface the request to the researcher), then
+   proceed. A red/untracked canonical file in the dashboard's git
+   listing is an L2 blocker, not cosmetic — treat it as actionable, not
+   noise.
+4. **Surface to the user, do not invoke:**
    - "Push the current commit and manifest to GitHub" → researcher
      clicks Push to GitHub.
    - "Sync the manuscript files to Overleaf" → researcher clicks Push
@@ -872,7 +885,7 @@ Agent actions to reach L2:
    `accept-plots-as-standard` remain user-only — publication to
    archival services requires human attestation.
 
-4. After the researcher pushes, `vaibify-do verify-remote` confirms the
+5. After the researcher pushes, `vaibify-do verify-remote` confirms the
    remote hashes still match the local manifest.
 
 ### L3 — Reproducible
