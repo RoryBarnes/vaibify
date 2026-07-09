@@ -266,8 +266,9 @@ vaibify test [--project/-p NAME] [--step N] [--json]
 ### `vaibify verify-step`
 
 Set the user-verification status for a single pipeline step. This is the
-CLI counterpart to clicking a verification badge in the GUI: a researcher
-records their judgment that a step's outputs look correct (or don't).
+CLI counterpart to clicking your sign-off row in a step's Verification
+section in the GUI: a researcher records their judgment that a step's
+outputs look correct (or don't).
 
 ```bash
 vaibify verify-step --step N --status STATUS [--project/-p NAME]

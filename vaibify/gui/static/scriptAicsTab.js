@@ -135,8 +135,8 @@ var VaibifyAicsTab = (function () {
             {sStateKey: "bDependencyLockHashed",
              sLabel: "Dependency lock",
              sWhat: "requirements.lock pins every Python dependency " +
-                 "by exact version with hashes, so the software " +
-                 "stack is rebuildable.",
+                 "(when the workflow uses Python) by exact version " +
+                 "with hashes, so the software stack is rebuildable.",
              sHow: "Regenerated with the envelope; check it from " +
                  "the Artifacts section of the Project block.",
              sFixTabPanel: "steps",
@@ -350,13 +350,10 @@ var VaibifyAicsTab = (function () {
     }
 
     function _fsBuildLevelLight(sState, sTooltip) {
-        var sInner = sState === "attained"
-            ? '<img src="/static/favicon.png" ' +
-                'class="level-cell-favicon" alt="met">'
-            : '<span class="level-cell-circle"></span>';
-        return '<span class="step-level-cell level-cell-' + sState +
-            '" title="' + fnEscapeHtml(sTooltip) + '">' + sInner +
-            '</span>';
+        // "met" is this tab's accessibility language for an attained
+        // requirement; the cell markup comes from the shared builder.
+        return VaibifyUtilities.fsBuildLevelCell(
+            sState, sTooltip, "met");
     }
 
     function _fsRenderLevelSection(iLevelSection) {
@@ -646,8 +643,10 @@ var VaibifyAicsTab = (function () {
         }
         var sStatus = dictCurrent.sStatus || "unknown";
         var sStale = _fsRenderStalenessNotice(dictCurrent);
+        // sStatus comes from an agent-writable JSON file; it must be
+        // escaped in the attribute context too, not just as text.
         return '<div class="aics-card aics-attestation-card status-' +
-            sStatus + '">' +
+            fnEscapeHtml(sStatus) + '">' +
             '<div class="aics-card-header">' +
             '<span class="aics-card-title">Level 3 Attestation</span>' +
             '<span class="aics-card-summary">' +
@@ -720,7 +719,7 @@ var VaibifyAicsTab = (function () {
         var sManifest = (dictEntry.sManifestDigestAtAttestation ||
             "").slice(0, 19);
         var fDuration = dictEntry.fDurationSeconds || 0;
-        return '<tr class="state-' + sStatus + '">' +
+        return '<tr class="state-' + fnEscapeHtml(sStatus) + '">' +
             '<td><code>' + fnEscapeHtml(
                 dictEntry.sAttestedAtUtc || "?") +
             '</code></td>' +

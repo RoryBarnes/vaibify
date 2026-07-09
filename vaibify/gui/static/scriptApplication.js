@@ -1526,8 +1526,8 @@ const PipeleyenApp = (function () {
         // not per-step.
         var sState = _fsAggregateStepsL1State();
         var sInner = sState === "attained"
-            ? '<img src="/static/favicon.png" ' +
-                'class="level-cell-favicon" alt="all steps passing">'
+            ? VaibifyUtilities.fsBuildAttainedFavicon(
+                "all steps passing")
             : '<span class="level-cell-circle"></span>';
         var sDashCell = '<span class="step-level-cell ' +
             'level-cell-not-applicable" title="No step-level ' +

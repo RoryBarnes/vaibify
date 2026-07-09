@@ -18,8 +18,6 @@ vaibify
 Run `vaibify` with no arguments in any directory to start the
 **hub** — a local web server on `http://127.0.0.1:8050` — in your web browser.
 
-![Vaibify landing page](./images/landing.png)
-
 You should see the Vaibify logo, the tagline, and an empty
 **Containers** list. No projects yet — let's create one.
 
@@ -32,8 +30,6 @@ Click the **+** icon next to *Containers*. Two choices appear:
 - **Create New** — start a new project from a template.
 
 Click **Create New**. The setup wizard opens.
-
-![Setup wizard, step 1](./images/wizard.png)
 
 The wizard walks you through eight steps. None of them require anything
 beyond clicks and short text answers; every step has a `?` button that
@@ -57,19 +53,22 @@ rebuilds are much faster because Docker caches the layers.
 
 When the build finishes, the wizard closes and the dashboard opens.
 
-![Container dashboard](./images/dashboard.png)
-
 You are now inside the container's dashboard. The toolbar shows the
-container name and (for workflow projects) the active workflow. The
-left panel shows pipeline steps. The right side has tabs for the
-container's repositories, an embedded terminal, a sync panel for
-GitHub/Overleaf/Zenodo, and a figure viewer.
+container name, the active workflow (for workflow projects) with its
+AICS level badges, and the **?** Help button. The left panel is
+tabbed: workflow projects get **Main** (the workflow's steps and
+project-wide requirements), **AICS** (the reproducibility-ladder
+requirements ledger), **Files**, and **Logs**; sandbox and toolkit
+projects get **Files**, **Repos**, and **Logs**. Above the terminal,
+two Viewing Windows display figures and files.
 
 Click in the terminal section to activate it and access a shell session inside the container.
 Whatever you do here — installing a package, running a script, launching
-Claude Code with `claude` — is sealed inside the container. Your home
-directory, your SSH keys, and the rest of your filesystem are not
-visible to anything in there.
+Claude Code with `claude --dangerously-skip-permissions` — is sealed
+inside the container. Your home directory, your SSH keys, and the rest
+of your filesystem are not visible to anything in there. (The Help
+panel's **Using AI** section explains why skipping permission prompts
+is the intended mode inside the sandbox.)
 
 You have your first Vaibify container.
 
@@ -84,9 +83,10 @@ deeper.
   is for reproducible multi-step analyses where each step's output gets
   inspected and signed off.
 - **[The dashboard tour](dashboard.md)** — every panel in the running
-  container's UI: pipeline status dots, the repos panel, the embedded
-  terminal, the figure viewer, and the verification state machine that
-  records which step outputs you have looked at.
+  container's UI: the Main tab's Steps and Project blocks, the AICS
+  requirements ledger, the status lights and warning colours, the
+  embedded terminal, the figure viewer, and the verification state
+  machine that records which step outputs you have looked at.
 - **[Security model](security.md)** — what Vaibify protects against
   (escaped code, leaked credentials, host filesystem access) and what
   it does not. Worth reading before you let any agent write code in
@@ -94,9 +94,9 @@ deeper.
 - **[Configuration reference](configuration.md)** — every field in
   `vaibify.yml`, `container.conf`, and `workflow.json`. You almost
   never need to hand-edit these; the wizard writes them for you. 
-- **[Connecting external services](connecting-services.md)** — how to
-  push to GitHub, sync with Overleaf, and archive a result on Zenodo
-  from inside a container. Credentials are resolved from your host's
+- **[External services](externalServices.md)** — how vaibify pushes to
+  GitHub, syncs with Overleaf, and archives a result on Zenodo from
+  inside a container. Credentials are resolved from your host's
   keychain at request time and never persisted in the container.
 - **[Agent action catalog](dashboard.md#agent-actions)** — the named
   operations an AI coding agent inside the container can ask the

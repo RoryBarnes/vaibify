@@ -169,9 +169,10 @@ var VaibifyGitBadges = (function () {
             var sLabel = _DICT_REMOTE_LABELS[sKey];
             var sTitle = sLabel + ": " +
                 (_DICT_BADGE_TITLES[sState] || sState);
-            sHtml += '<span class="remote-badge badge-' + sState +
-                '" title="' + sTitle + '" data-remote="' +
-                sKey + '" draggable="false">' +
+            sHtml += '<span class="remote-badge badge-' +
+                VaibifyUtilities.fnEscapeHtml(sState) +
+                '" title="' + VaibifyUtilities.fnEscapeHtml(sTitle) +
+                '" data-remote="' + sKey + '" draggable="false">' +
                 _fsRenderRemoteIcon(sKey) +
                 '</span>';
         });

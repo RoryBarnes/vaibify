@@ -459,10 +459,22 @@ def test_workflow_wide_groups_and_rows_are_expandable():
 def test_envelope_passing_items_use_the_vaibify_favicon():
     """Passing requirement items render the vaibify favicon — the same
     'attained' glyph the step level cells use — not a bare check
-    character. A never-verified remote stays hollow, never a pass."""
+    character, and not hand-written markup that could drift from the
+    step cells (that drift shipped twice; the shared builder in
+    scriptUtilities.js is the fix). A never-verified remote stays
+    hollow, never a pass."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sMark = _fsExtractFunctionBlock(sSource, "_fsBuildEnvelopeMark")
-    assert "favicon.png" in sMark and "level-cell-favicon" in sMark
+    assert "fsBuildAttainedFavicon" in sMark, (
+        "the passing mark must come from the shared favicon builder"
+    )
+    sUtilities = _fsReadStaticFile("scriptUtilities.js")
+    sBuilder = _fsExtractFunctionBlock(
+        sUtilities, "fsBuildAttainedFavicon",
+    )
+    assert "favicon.png" in sBuilder and (
+        "level-cell-favicon" in sBuilder
+    ), "the shared builder must emit the favicon image markup"
     assert "envelope-light-unknown" in sMark, (
         "the unknown/never-verified state must render hollow"
     )
@@ -873,4 +885,121 @@ def test_client_level_gate_exempts_declaration_steps():
     assert iFirstSignal == -1 or iExemption < iFirstSignal, (
         "the declaration exemption must precede the data/verification "
         "signals a declaration step can never satisfy"
+    )
+
+
+# -----------------------------------------------------------------------
+# Manuscript-less workflows (2026-07-09 generality audit): the
+# Published-copies group must honor the backend's Overleaf/arXiv
+# exemption instead of surfacing a fake, permanently-orange gap
+# -----------------------------------------------------------------------
+
+
+def test_published_copies_exempt_overleaf_and_arxiv_when_unbound():
+    """When no Overleaf project is bound, the backend exempts the
+    Overleaf and arXiv Level 2 gates (levelGates), so the Project
+    block must render those rows not-applicable — never as hollow
+    "refresh to find out" rows a data-only workflow can never
+    satisfy. The development workflow had a manuscript bound, which
+    is exactly how this gap shipped unseen."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sRows = _fsExtractFunctionBlock(
+        sSource, "_flistPublishedCopiesRows",
+    )
+    assert "bOverleafBound" in sRows, (
+        "the Published-copies rows must read the poll's "
+        "bOverleafBound exemption flag"
+    )
+    assert "_fdictNotApplicableRow" in sRows, (
+        "unbound workflows must get not-applicable rows, not "
+        "unknown sync rows"
+    )
+    assert '"not-applicable": "not-applicable"' in sSource, (
+        "the mark-to-level-state map must carry not-applicable "
+        "through to the dash cell"
+    )
+
+
+def test_group_summary_skips_not_applicable_rows():
+    """A group whose applicable rows are all green must summarize
+    green even when it contains not-applicable rows; n/a rows carry
+    no requirement, so they neither credit nor block. An unknown
+    (never-verified) row must still block green — the honesty rule
+    is about unverified state, not inapplicable state."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sSummary = _fsExtractFunctionBlock(
+        sSource, "_fsGroupSummaryState",
+    )
+    assert '"not-applicable"' in sSummary, (
+        "the summary must exclude not-applicable rows from counting"
+    )
+    assert "iApplicable" in sSummary, (
+        "green must be judged against applicable rows, not all rows"
+    )
+    assert "iGreen === iApplicable" in sSummary, (
+        "all-applicable-green is the green criterion"
+    )
+
+
+# -----------------------------------------------------------------------
+# Attribute-context escaping (2026-07-09 security audit): values that
+# originate from agent-writable files (workflow.json, the attestation
+# JSONs) were escaped as text but interpolated raw into HTML
+# attributes one line away. Payload class: "><img src=x onerror=...>.
+# These pins assert the escaped form AND forbid the raw form, so the
+# fix cannot silently regress in either direction.
+# -----------------------------------------------------------------------
+
+
+def test_attestation_status_is_escaped_in_class_attributes():
+    """sStatus comes from .vaibify/l3_attestation.json — an
+    agent-writable file — and must be escaped in the class-attribute
+    interpolation, not only in the adjacent text rendering."""
+    sFlat = " ".join(_fsReadStaticFile("scriptAicsTab.js").split())
+    assert "status-' + fnEscapeHtml(sStatus)" in sFlat, (
+        "attestation card class attribute must escape sStatus"
+    )
+    assert "state-' + fnEscapeHtml(sStatus)" in sFlat, (
+        "history row class attribute must escape sStatus"
+    )
+    assert "status-' + sStatus" not in sFlat, (
+        "raw sStatus interpolation into the card class attribute is "
+        "a stored XSS (confirmed 2026-07-09)"
+    )
+    assert "state-' + sStatus" not in sFlat, (
+        "raw sStatus interpolation into the row class attribute is "
+        "a stored XSS (confirmed 2026-07-09)"
+    )
+
+
+def test_requirement_row_key_is_escaped_in_data_attribute():
+    """Software row keys embed the declared binary path from
+    workflow.json (agent-writable, validated only as a non-empty
+    string), so the data-req attribute interpolation must escape."""
+    sFlat = " ".join(
+        _fsReadStaticFile("scriptWorkflowRequirements.js").split()
+    )
+    assert 'data-req="\' + fnEscapeHtml(dictRow.sKey)' in sFlat, (
+        "requirement row data-req attribute must escape the key"
+    )
+    assert 'data-req="\' + dictRow.sKey' not in sFlat, (
+        "raw sKey interpolation into data-req is a stored XSS "
+        "(confirmed 2026-07-09)"
+    )
+
+
+def test_remote_badge_title_is_escaped():
+    """The badge title falls back to the raw server state string;
+    escape it in the attribute so a future non-enum state cannot
+    become an injection point."""
+    sSource = _fsReadStaticFile("scriptGitBadges.js")
+    iRenderStart = sSource.find("function fsRenderBadgeRow")
+    assert iRenderStart != -1
+    sRender = sSource[iRenderStart:sSource.find(
+        "\n    function ", iRenderStart + 1)]
+    assert "fnEscapeHtml(sTitle)" in sRender, (
+        "badge title attribute must escape its text"
+    )
+    assert "title=\"' + sTitle" not in sRender, (
+        "raw sTitle interpolation into the title attribute"
     )

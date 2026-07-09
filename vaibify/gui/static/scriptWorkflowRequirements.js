@@ -29,6 +29,9 @@ var VaibifyWorkflowRequirements = (function () {
     "use strict";
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
+    var fsBuildLevelCell = VaibifyUtilities.fsBuildLevelCell;
+    var fsBuildAttainedFavicon =
+        VaibifyUtilities.fsBuildAttainedFavicon;
 
     var _DICT_ENVELOPE_ARTIFACT_LABELS = {
         manifest: "Manifest (MANIFEST.sha256)",
@@ -52,9 +55,7 @@ var VaibifyWorkflowRequirements = (function () {
             // The passing mark is the vaibify favicon — the same
             // "attained" glyph the step level cells use — not a bare
             // check character.
-            return '<img src="/static/favicon.png" ' +
-                'class="level-cell-favicon" title="' +
-                fnEscapeHtml(sTooltip) + '" alt="met">';
+            return fsBuildAttainedFavicon("met", sTooltip);
         }
         if (sState === "red") {
             return '<span class="envelope-warn" title="' +
@@ -171,9 +172,8 @@ var VaibifyWorkflowRequirements = (function () {
                 dictBinary.bHashCurrent === true ? "green" : "red",
                 dictBinary.bHashCurrent === true
                     ? "Hash captured in the environment snapshot"
-                    : "Hash not captured — open the AICS tab's " +
-                      "Level 3 Readiness card and use 'Capture " +
-                      "version + SHA'")) +
+                    : "Hash not captured — use the 'Capture " +
+                      "version + SHA' button below")) +
             '</span></div>';
     }
 
@@ -229,6 +229,11 @@ var VaibifyWorkflowRequirements = (function () {
 
     // Only figure formats travel to a manuscript: the Overleaf and
     // arXiv rows must not list .npy / .json data files.
+    // Deliberately divergent from VaibifyUtilities.fbIsFigureFile
+    // (browser-viewable figures, no .eps): this list mirrors the
+    // backend's manuscript-figure set _FROZENSET_OVERLEAF_EXTENSIONS
+    // in vaibify/gui/syncDispatcher.py, which includes .eps because
+    // LaTeX accepts it. Do not "fix" one to match the other.
     var _LIST_FIGURE_EXTENSIONS = [
         ".pdf", ".png", ".jpg", ".jpeg", ".eps", ".svg"];
 
@@ -459,8 +464,9 @@ var VaibifyWorkflowRequirements = (function () {
                 fsDetail: function () {
                     return _fsRenderPlainDetail(
                         "No scientific binaries are declared.",
-                        "Declare binaries and capture version + SHA " +
-                        "from the AICS Level 3 card.");
+                        "Add packages with the 'Add package…' " +
+                        "button below, then use 'Capture version " +
+                        "+ SHA' on each package's row.");
                 }}];
         }
         return listBinaries.map(function (dictBinary) {
@@ -524,17 +530,44 @@ var VaibifyWorkflowRequirements = (function () {
             }};
     }
 
+    function _fdictNotApplicableRow(sTitle, sKey, sExplanation) {
+        return {
+            sKey: sKey, sTitle: sTitle, iLevel: 2,
+            sState: "not-applicable",
+            fsDetail: function () {
+                return _fsRenderPlainDetail(
+                    "Not required for this workflow.", sExplanation);
+            }};
+    }
+
     function _flistPublishedCopiesRows(dictDetail) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
-        var sArxivConfig = '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn wf-open-arxiv-config">' +
-            'Configure arXiv…</button></div>';
-        return [
+        var listRows = [
             _fdictSyncRow("GitHub mirror", "github", dictSyncs.github,
                 "sGithub", "Push and re-verify from the Repos panel."),
             _fdictSyncRow("Zenodo deposit", "zenodo", dictSyncs.zenodo,
                 "sZenodo",
                 "Publish or re-verify from the Repos panel."),
+        ];
+        if (dictDetail.bOverleafBound !== true) {
+            // The backend exempts Overleaf and arXiv from Level 2
+            // when no manuscript is bound (levelGates), so a
+            // data-only workflow must not surface a fake gap here.
+            return listRows.concat([
+                _fdictNotApplicableRow("Overleaf manuscript",
+                    "overleaf",
+                    "No Overleaf project is bound. To publish " +
+                    "manuscript figures, bind one in Workflow " +
+                    "settings (the gear button above)."),
+                _fdictNotApplicableRow("arXiv submission", "arxiv",
+                    "Applies only when an Overleaf manuscript is " +
+                    "bound."),
+            ]);
+        }
+        var sArxivConfig = '<div class="requirement-row-actions">' +
+            '<button type="button" class="btn wf-open-arxiv-config">' +
+            'Configure arXiv…</button></div>';
+        return listRows.concat([
             _fdictSyncRow("Overleaf manuscript", "overleaf",
                 dictSyncs.overleaf, "sOverleaf",
                 "Only figure files (.pdf, .png, …) travel to the " +
@@ -545,7 +578,7 @@ var VaibifyWorkflowRequirements = (function () {
                 "sArxiv",
                 "Record the arXiv submission and match it to the " +
                 "frozen figures.", sArxivConfig),
-        ];
+        ]);
     }
 
     function _flistAttestationRows(dictDetail, dictContext) {
@@ -587,9 +620,10 @@ var VaibifyWorkflowRequirements = (function () {
         manifest: "The list of every pinned file and its SHA-256 " +
             "hash. Regenerated automatically at each Level 1 pass, " +
             "or on demand with the button below.",
-        dependencyLock: "Every Python dependency pinned by exact " +
-            "version and hash. Regenerated automatically at each " +
-            "Level 1 pass, or on demand with the button below.",
+        dependencyLock: "Every Python dependency (when the workflow " +
+            "uses Python) pinned by exact version and hash. " +
+            "Regenerated automatically at each Level 1 pass, or on " +
+            "demand with the button below.",
         environmentSnapshot: "The container image digest and system " +
             "tools, captured so the compute environment is exact. " +
             "Recaptured automatically at each Level 1 pass, or on " +
@@ -658,22 +692,29 @@ var VaibifyWorkflowRequirements = (function () {
     /* --- Group + row + block renderers --- */
 
     function _fsGroupSummaryState(listRows) {
-        // All green → green; every known row red → red; any progress
-        // at all (a green or an orange in the mix) → orange; nothing
-        // known → unknown. Counting only greens as credit made a
-        // section of all-orange rows summarize red, which read as
-        // "nothing works" when every row was partially met.
+        // All applicable rows green → green; every known row red →
+        // red; any progress at all (a green or an orange in the mix)
+        // → orange; nothing known → unknown. Counting only greens as
+        // credit made a section of all-orange rows summarize red,
+        // which read as "nothing works" when every row was partially
+        // met. Not-applicable rows carry no requirement, so they
+        // neither credit nor block the summary — but an unknown
+        // (never-verified) row still blocks green, per the honesty
+        // rule.
         var iGreen = 0;
         var iOrange = 0;
         var iRed = 0;
+        var iApplicable = 0;
         for (var i = 0; i < listRows.length; i++) {
+            if (listRows[i].sState === "not-applicable") continue;
+            iApplicable++;
             if (listRows[i].sState === "green") iGreen++;
             else if (listRows[i].sState === "orange") iOrange++;
             else if (listRows[i].sState === "red") iRed++;
         }
         var iKnown = iGreen + iOrange + iRed;
         if (iKnown === 0) return "unknown";
-        if (iGreen === listRows.length) return "green";
+        if (iGreen === iApplicable) return "green";
         if (iRed === iKnown && iGreen + iOrange === 0) return "red";
         return "orange";
     }
@@ -683,6 +724,7 @@ var VaibifyWorkflowRequirements = (function () {
     var _DICT_MARK_TO_LEVEL_STATE = {
         green: "attained", red: "none",
         orange: "partial", unknown: "unknown",
+        "not-applicable": "not-applicable",
     };
 
     var _DICT_LEVEL_STATE_PHRASES = {
@@ -690,21 +732,6 @@ var VaibifyWorkflowRequirements = (function () {
         partial: "partially met", unknown: "not checked yet",
         "not-applicable": "no requirement at this level",
     };
-
-    function _fsBuildLevelCellHtml(sLevelState, sTooltip) {
-        var sInner;
-        if (sLevelState === "attained") {
-            sInner = '<img src="/static/favicon.png" ' +
-                'class="level-cell-favicon" alt="attained">';
-        } else if (sLevelState === "not-applicable") {
-            sInner = '<span class="level-cell-dash">&#8212;</span>';
-        } else {
-            sInner = '<span class="level-cell-circle"></span>';
-        }
-        return '<span class="step-level-cell level-cell-' +
-            sLevelState + '" title="' + fnEscapeHtml(sTooltip) +
-            '">' + sInner + '</span>';
-    }
 
     function _fsRenderLevelStrip(dictStateByLevel, sTitle) {
         // Three cells (L1 | L2 | L3) behind a warning-column spacer,
@@ -717,7 +744,7 @@ var VaibifyWorkflowRequirements = (function () {
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             var sLevelState = dictStateByLevel[iLevel] ||
                 "not-applicable";
-            sHtml += _fsBuildLevelCellHtml(
+            sHtml += fsBuildLevelCell(
                 sLevelState,
                 sTitle + " — Level " + iLevel + ": " +
                 _DICT_LEVEL_STATE_PHRASES[sLevelState]);
@@ -736,7 +763,7 @@ var VaibifyWorkflowRequirements = (function () {
         var sHtml = '<div class="requirement-row' +
             (bOpen ? ' expanded' : '') + '">' +
             '<div class="requirement-row-header" data-req="' +
-            dictRow.sKey + '">' +
+            fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
             fnEscapeHtml(dictRow.sTitle) + '</span>' +
             _fsRenderLevelStrip(dictStateByLevel, dictRow.sTitle) +

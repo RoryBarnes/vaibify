@@ -1,0 +1,4 @@
+I had to step away from this project for a few days, so need to catch up. I think you just made some backend changes with the GitHub integration. It looks like I just tried to use the UI to sync with GitHub, but received a 500 error (I see the toast in the UI still). Container Claude, however, did confirm that it pushed successfully, so there is still a problem with the UI integration with the backend. Container Claude also notes that the dashboard is out of sync on the push. It concludes by asking if it should run vaibify-do or vaibify-remote to reconcile the dashboard.
+
+There are two additional issues: 1) The dashboard needs to always be up-to-date, or at least up to date after a refresh, so the out-of-sync issue should be resolved. I am concerned that continuous polling would be a terrible idea, but that clicking on  
+

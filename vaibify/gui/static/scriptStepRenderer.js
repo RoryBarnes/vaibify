@@ -4,6 +4,7 @@ var VaibifyStepRenderer = (function () {
     "use strict";
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
+    var fsBuildLevelCell = VaibifyUtilities.fsBuildLevelCell;
 
     var _DICT_CATEGORY_TO_REMOTE_KEYS = {
         saPlotFiles: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"],
@@ -31,18 +32,8 @@ var VaibifyStepRenderer = (function () {
        grey filled circle = not started, red circle = none, orange
        circle = partial, favicon = attained, hollow grey circle =
        unknown, muted dash = not applicable (no requirement at this
-       level for this step). */
-
-    function _fsBuildLevelCellInner(sState) {
-        if (sState === "attained") {
-            return '<img src="/static/favicon.png" ' +
-                'class="level-cell-favicon" alt="attained">';
-        }
-        if (sState === "not-applicable") {
-            return '<span class="level-cell-dash">&#8212;</span>';
-        }
-        return '<span class="level-cell-circle"></span>';
-    }
+       level for this step). The cell markup itself comes from the
+       shared ``VaibifyUtilities.fsBuildLevelCell`` builder. */
 
     function _fsBuildRegressionCell(dictContext, iIndex) {
         var dictWarning = dictContext.fdictRegressionWarning
@@ -82,12 +73,6 @@ var VaibifyStepRenderer = (function () {
             '</span></div>';
     }
 
-    function _fsBuildLevelCell(sState, sTooltip) {
-        return '<span class="step-level-cell level-cell-' + sState +
-            '" title="' + fnEscapeHtml(sTooltip) + '">' +
-            _fsBuildLevelCellInner(sState) + '</span>';
-    }
-
     var _DICT_STEP_STATUS_TITLES = {
         "": "not run in this session",
         "pass": "last run succeeded",
@@ -121,7 +106,7 @@ var VaibifyStepRenderer = (function () {
         var sHtml = '<span class="step-level-strip">' +
             _fsBuildRegressionCell(dictContext, iIndex);
         for (var iLevel = 1; iLevel <= iMaxLevel; iLevel++) {
-            sHtml += _fsBuildLevelCell(
+            sHtml += fsBuildLevelCell(
                 dictContext.fsLevelCellState(iIndex, iLevel),
                 dictContext.fsLevelCellTooltip(iIndex, iLevel));
         }
