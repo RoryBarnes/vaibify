@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev479 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev480 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e6bca3ac"></script>
+      <script src="_static/documentation_options.js?v=14d5ad85"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -372,8 +372,10 @@ banners, and every requirement row. The <strong>?</strong> Help panel carries th
 authoritative legend; this is the summary.</p>
 <section id="level-cells">
 <h3>Level cells<a class="headerlink" href="#level-cells" title="Link to this heading"></a></h3>
-<p>The L1 | L2 | L3 cells (and the single L1 cell on step rows) use six
-states:</p>
+<p>The L1 | L2 | L3 cells (and the single L1 cell on step rows) use
+seven states. The circle fills in as reality does — hollow (nothing
+exists), grey (material exists), coloured (assessed), badge
+(attained):</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Cell</p></th>
@@ -381,28 +383,34 @@ states:</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Grey filled circle</p></td>
-<td><p>Not started — no activity at this level yet.</p></td>
+<tr class="row-even"><td><p>Hollow grey circle</p></td>
+<td><p>Not started — no outputs on disk and no activity at this level yet.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Red circle</p></td>
+<tr class="row-odd"><td><p>Grey filled circle</p></td>
+<td><p>Unassessed — outputs exist on disk, but no tests, checks, or sign-off have been recorded yet.</p></td>
+</tr>
+<tr class="row-even"><td><p>Red circle</p></td>
 <td><p>No requirements met.</p></td>
 </tr>
-<tr class="row-even"><td><p>Orange circle</p></td>
+<tr class="row-odd"><td><p>Orange circle</p></td>
 <td><p>Partially met.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Vaibify badge (the favicon, theme-tinted)</p></td>
+<tr class="row-even"><td><p>Vaibify badge (the favicon, theme-tinted)</p></td>
 <td><p>Attained — every requirement at this level is met.</p></td>
 </tr>
-<tr class="row-even"><td><p>Hollow grey circle</p></td>
+<tr class="row-odd"><td><p>Question mark (?)</p></td>
 <td><p>Unknown — GitHub/Zenodo have not been checked recently; refresh remote status to find out.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Dash (—)</p></td>
+<tr class="row-even"><td><p>Dash (—)</p></td>
 <td><p>Not applicable — no requirements at this level for this row.</p></td>
 </tr>
 </tbody>
 </table>
-<p>A hollow “never checked” mark is honest by design: a remote that has
-never been verified is never shown as passing.</p>
+<p>The grey states are honest by design: “unassessed” asserts only that
+the step’s declared outputs exist — hours of compute performed
+outside the dashboard stay visible as progress — but it never claims
+verification, and a remote that has never been checked is never
+shown as passing.</p>
 </section>
 <section id="warning-glyphs">
 <h3>Warning glyphs<a class="headerlink" href="#warning-glyphs" title="Link to this heading"></a></h3>

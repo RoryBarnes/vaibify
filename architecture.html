@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev479 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev480 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e6bca3ac"></script>
+      <script src="_static/documentation_options.js?v=14d5ad85"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -950,6 +950,16 @@ renders “not-applicable”, never a vacuous attained; and per-step L3
 counts every applicable criterion — the dominant-glyph design of the
 blocker list does not flatten five failures into a 4-of-5 partial,
 because the dominant entry carries <code class="docutils literal notranslate"><span class="pre">listFailingCriteria</span></code>.</p>
+<p>A step with no recorded activity splits on material evidence: when
+none of its declared outputs exist on disk it renders “not-started”
+(hollow circle — nothing yet); when at least one declared output is
+on disk it renders “unassessed” (grey filled circle — material
+present, assessment not begun). The discriminator is the poll’s
+<code class="docutils literal notranslate"><span class="pre">dictMaxMtimeByStep</span></code>, which has an entry only for steps whose
+declared outputs were found in the container, so hours of compute
+performed outside the dashboard stay visible as progress. The
+“unassessed” state asserts only existence, never quality — it sits
+below “none” on the ladder and never stamps a high-water mark.</p>
 </section>
 <section id="javascript-frontend">
 <h2>JavaScript frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>
