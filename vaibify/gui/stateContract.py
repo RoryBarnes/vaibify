@@ -74,6 +74,7 @@ TUPLE_ROOT_CONFIG_FILES = (
     "pyproject.toml",
     "MANIFEST.sha256",
     "requirements.lock",
+    "reproduce.sh",
     ".vaibify/environment.json",
     ".gitignore",
 )

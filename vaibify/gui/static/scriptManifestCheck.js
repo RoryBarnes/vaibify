@@ -257,6 +257,7 @@ var VaibifyManifestCheck = (function () {
     }
 
     function _fsRenderGenerateDialogHtml(dictReport) {
+        var iCount = (dictReport.listNeedsCommit || []).length;
         return '<div class="manifest-check-dialog">' +
             '<h2>Commit the generated files? ' +
             '<span class="help-icon" title="' +
@@ -265,11 +266,13 @@ var VaibifyManifestCheck = (function () {
             'committed to git yet. Vaibify never commits to your repo ' +
             'on its own — commit them now so they can be published ' +
             '(Level 2), or do it later from the Repos panel.</p>' +
+            '<p>Committing will include all ' + iCount +
+            ' file' + (iCount === 1 ? '' : 's') + ' listed below:</p>' +
             _fsRenderFileList(dictReport.listNeedsCommit) +
             '<div class="manifest-check-buttons">' +
             '<button class="btn" data-action="cancel">Not now</button>' +
             '<button class="btn btn-primary" data-action="commit">' +
-            'Commit files</button>' +
+            'Commit these files</button>' +
             '</div></div>';
     }
 
