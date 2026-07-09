@@ -44,13 +44,17 @@ var VaibifyUtilities = (function () {
 
     function fsBuildLevelCell(sState, sTooltip, sAltText) {
         // Cell visuals: favicon = attained, muted dash = not
-        // applicable, a circle (tinted by the level-cell-<sState>
-        // class) for every other state.
+        // applicable, question mark = unknown (assessed once, answer
+        // stale), a circle (tinted by the level-cell-<sState> class)
+        // for every other state — hollow for not-started, filling in
+        // as reality does.
         var sInner;
         if (sState === "attained") {
             sInner = fsBuildAttainedFavicon(sAltText || "attained");
         } else if (sState === "not-applicable") {
             sInner = '<span class="level-cell-dash">&#8212;</span>';
+        } else if (sState === "unknown") {
+            sInner = '<span class="level-cell-question">?</span>';
         } else {
             sInner = '<span class="level-cell-circle"></span>';
         }
@@ -159,6 +163,49 @@ var VaibifyUtilities = (function () {
         return dictLabels[sCategory] || sCategory;
     }
 
+    function fsSummarizeLevelStates(listStates) {
+        // The one aggregation rule for a collection of level cells
+        // (step rows under the Steps banner, requirement rows under
+        // a Project-block group header), so the two banners cannot
+        // drift apart. All applicable cells attained → attained;
+        // every ASSESSED cell none (with zero attained/partial in
+        // the mix) → none; any progress at all (an attained or a
+        // partial among assessed cells) → partial. Counting only
+        // attained as credit once made a group of all-partial rows
+        // summarize red, which read as "nothing works" when every
+        // row was partially met. not-started, unassessed, and
+        // unknown cells are not assessments, so they neither push
+        // the summary to none nor count as progress — but they
+        // still block attained, per the honesty rule. With nothing
+        // assessed: all cells not-started → not-started; greys with
+        // material somewhere (an unassessed in the mix) →
+        // unassessed; otherwise → unknown.
+        var iAttained = 0, iPartial = 0, iNone = 0;
+        var iNotStarted = 0, iUnassessed = 0, iApplicable = 0;
+        for (var i = 0; i < listStates.length; i++) {
+            var sState = listStates[i];
+            if (sState === "not-applicable") continue;
+            iApplicable++;
+            if (sState === "attained") iAttained++;
+            else if (sState === "partial") iPartial++;
+            else if (sState === "none") iNone++;
+            else if (sState === "not-started") iNotStarted++;
+            else if (sState === "unassessed") iUnassessed++;
+        }
+        var iAssessed = iAttained + iPartial + iNone;
+        if (iApplicable === 0) return "not-applicable";
+        if (iAssessed === 0) {
+            if (iNotStarted === iApplicable) return "not-started";
+            if (iNotStarted + iUnassessed === iApplicable) {
+                return "unassessed";
+            }
+            return "unknown";
+        }
+        if (iAttained === iApplicable) return "attained";
+        if (iNone === iAssessed) return "none";
+        return "partial";
+    }
+
     async function fnSpawnNewSession() {
         try {
             var dictResponse = await VaibifyApi.fdictPost(
@@ -177,6 +224,7 @@ var VaibifyUtilities = (function () {
         fnEscapeHtml: fnEscapeHtml,
         fsBuildAttainedFavicon: fsBuildAttainedFavicon,
         fsBuildLevelCell: fsBuildLevelCell,
+        fsSummarizeLevelStates: fsSummarizeLevelStates,
         fbIsFigureFile: fbIsFigureFile,
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,

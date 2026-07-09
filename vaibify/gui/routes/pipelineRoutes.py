@@ -1114,6 +1114,7 @@ def _fdictAssemblePollResponse(
     dictLevelPayload = _fdictBuildLevelStatePayload(
         dictWorkflow, dictGates["listBlockers"],
         dictGates["listLevel2Blockers"], dictGates["listLevel3Blockers"],
+        dictMtimes["dictMaxMtimeByStep"],
     )
     return {
         **dictLevelPayload,
@@ -1164,6 +1165,7 @@ _S_LEVEL_RATCHET_FLAG_KEY = "_bLevelHighWaterChanged"
 
 def _ftComputeLevelStates(
     dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
+    dictMaxMtimeByStep=None,
 ):
     """Project blocker lists into per-step and workflow-scope states."""
     from vaibify.reproducibility.levelGates import (
@@ -1172,7 +1174,7 @@ def _ftComputeLevelStates(
     )
     dictStepStates = fdictComputeStepLevelStates(
         dictWorkflow, listBlockers, listLevel2Blockers,
-        listLevel3Blockers,
+        listLevel3Blockers, dictMaxMtimeByStep,
     )
     dictScopeStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2Blockers, listLevel3Blockers,
@@ -1207,6 +1209,7 @@ def _fdictProjectStepLevelHighWater(dictWorkflow):
 
 def _fdictBuildLevelStatePayload(
     dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
+    dictMaxMtimeByStep=None,
 ):
     """Build the level-state wire keys plus the private ratchet flag.
 
@@ -1226,7 +1229,7 @@ def _fdictBuildLevelStatePayload(
     from .. import stateManager
     dictStepStates, dictScopeStates = _ftComputeLevelStates(
         dictWorkflow, listBlockers, listLevel2Blockers,
-        listLevel3Blockers,
+        listLevel3Blockers, dictMaxMtimeByStep,
     )
     bChanged = stateManager.fbRatchetLevelHighWater(
         dictWorkflow, dictStepStates, dictScopeStates,

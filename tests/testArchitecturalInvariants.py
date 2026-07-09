@@ -2566,7 +2566,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +7 (2026-07-08): degenerate-envelope guard — a failed poll
     # snapshot ships null instead of an empty envelope so the client
     # never overwrites good state with "no binaries".
-    "routes/pipelineRoutes.py": 2159,
+    # +3 (2026-07-09): thread the poll's dictMaxMtimeByStep into the
+    # level projection so inactive steps with outputs on disk read
+    # "unassessed" instead of "not-started".
+    "routes/pipelineRoutes.py": 2162,
     "routes/syncRoutes.py": 2041,
     "fileStatusManager.py": 1943,
     "workflowManager.py": 1935,

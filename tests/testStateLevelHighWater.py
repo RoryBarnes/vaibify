@@ -134,8 +134,10 @@ def testReattainmentKeepsOriginalTimestamp(monkeypatch):
 
 def testOnlyAttainedEverStamps():
     """Every non-attained cell state — including unknown, partial,
-    and not-started — must stamp nothing."""
-    for sState in ("unknown", "partial", "none", "not-started"):
+    not-started, and unassessed — must stamp nothing."""
+    for sState in (
+        "unknown", "partial", "none", "not-started", "unassessed",
+    ):
         dictWorkflow = _fdictWorkflowWithOneStep()
         dictStates = _fdictAllInState(sState)
         bChanged = fbRatchetLevelHighWater(

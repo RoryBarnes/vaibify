@@ -5372,7 +5372,15 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     border-radius: 50%;
 }
 
+/* The circle fills in as reality does: hollow (nothing exists yet)
+   -> solid grey (material present, unassessed) -> red/orange
+   (assessed) -> favicon (attained). */
 .level-cell-not-started .level-cell-circle {
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
+}
+
+.level-cell-unassessed .level-cell-circle {
     background: var(--text-muted);
 }
 
@@ -5394,11 +5402,18 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     height: 13px;
 }
 
-/* Hollow outlined circle, deliberately distinct from the filled
-   not-started grey: the state is unknowable until a re-verify. */
+/* Unknown renders a question mark instead of a circle: the state was
+   assessable once but is unknowable until a re-verify — distinct
+   from the hollow never-begun circle. */
 .level-cell-unknown .level-cell-circle {
-    background: transparent;
-    border: 1.5px solid var(--text-muted);
+    display: none;
+}
+
+.level-cell-question {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
 }
 
 /* Declaration git actions (researcher ruling 2026-07-02): commit is

@@ -152,9 +152,13 @@ from the poll path (`pipelineRoutes.py`) after the per-step level
 states are projected from the blocker lists
 (`levelGates.fdictComputeStepLevelStates` /
 `fdictComputeWorkflowScopeLevelStates`). Levels are INDEPENDENT
-six-state cells (`sState`:
-not-started/none/partial/attained/unknown/not-applicable with
-`iSatisfied`/`iTotal`/`bRegression`); only "attained" stamps.
+seven-state cells (`sState`:
+not-started/unassessed/none/partial/attained/unknown/not-applicable
+with `iSatisfied`/`iTotal`/`bRegression`); only "attained" stamps.
+"not-started" vs "unassessed" splits on whether the step's declared
+outputs exist on disk (the poll's `dictMaxMtimeByStep`): hollow
+circle = nothing yet, grey filled circle = material present but
+never assessed.
 Per-step L3 counts only the criteria whose domain is non-empty on
 the step; "not-applicable" (`iTotal` 0) marks a step with nothing to
 reproduce and never stamps, never regresses, and never renders as

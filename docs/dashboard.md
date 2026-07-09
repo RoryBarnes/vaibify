@@ -228,20 +228,26 @@ authoritative legend; this is the summary.
 
 ### Level cells
 
-The L1 | L2 | L3 cells (and the single L1 cell on step rows) use six
-states:
+The L1 | L2 | L3 cells (and the single L1 cell on step rows) use
+seven states. The circle fills in as reality does — hollow (nothing
+exists), grey (material exists), coloured (assessed), badge
+(attained):
 
 | Cell | Meaning |
 |---|---|
-| Grey filled circle | Not started — no activity at this level yet. |
+| Hollow grey circle | Not started — no outputs on disk and no activity at this level yet. |
+| Grey filled circle | Unassessed — outputs exist on disk, but no tests, checks, or sign-off have been recorded yet. |
 | Red circle | No requirements met. |
 | Orange circle | Partially met. |
 | Vaibify badge (the favicon, theme-tinted) | Attained — every requirement at this level is met. |
-| Hollow grey circle | Unknown — GitHub/Zenodo have not been checked recently; refresh remote status to find out. |
+| Question mark (?) | Unknown — GitHub/Zenodo have not been checked recently; refresh remote status to find out. |
 | Dash (—) | Not applicable — no requirements at this level for this row. |
 
-A hollow "never checked" mark is honest by design: a remote that has
-never been verified is never shown as passing.
+The grey states are honest by design: "unassessed" asserts only that
+the step's declared outputs exist — hours of compute performed
+outside the dashboard stay visible as progress — but it never claims
+verification, and a remote that has never been checked is never
+shown as passing.
 
 ### Warning glyphs
 

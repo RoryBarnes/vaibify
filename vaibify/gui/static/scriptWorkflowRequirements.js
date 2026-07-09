@@ -700,34 +700,6 @@ var VaibifyWorkflowRequirements = (function () {
 
     /* --- Group + row + block renderers --- */
 
-    function _fsGroupSummaryState(listRows) {
-        // All applicable rows green → green; every known row red →
-        // red; any progress at all (a green or an orange in the mix)
-        // → orange; nothing known → unknown. Counting only greens as
-        // credit made a section of all-orange rows summarize red,
-        // which read as "nothing works" when every row was partially
-        // met. Not-applicable rows carry no requirement, so they
-        // neither credit nor block the summary — but an unknown
-        // (never-verified) row still blocks green, per the honesty
-        // rule.
-        var iGreen = 0;
-        var iOrange = 0;
-        var iRed = 0;
-        var iApplicable = 0;
-        for (var i = 0; i < listRows.length; i++) {
-            if (listRows[i].sState === "not-applicable") continue;
-            iApplicable++;
-            if (listRows[i].sState === "green") iGreen++;
-            else if (listRows[i].sState === "orange") iOrange++;
-            else if (listRows[i].sState === "red") iRed++;
-        }
-        var iKnown = iGreen + iOrange + iRed;
-        if (iKnown === 0) return "unknown";
-        if (iGreen === iApplicable) return "green";
-        if (iRed === iKnown && iGreen + iOrange === 0) return "red";
-        return "orange";
-    }
-
     // Envelope-mark states map onto the step level-cell vocabulary so
     // requirement banners read exactly like step banners.
     var _DICT_MARK_TO_LEVEL_STATE = {
@@ -739,6 +711,8 @@ var VaibifyWorkflowRequirements = (function () {
     var _DICT_LEVEL_STATE_PHRASES = {
         attained: "met", none: "not met",
         partial: "partially met", unknown: "not checked yet",
+        "not-started": "nothing to check yet",
+        unassessed: "present but not yet checked",
         "not-applicable": "no requirement at this level",
     };
 
@@ -823,16 +797,22 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fdictGroupStateByLevel(listRows) {
-        // Aggregate the group's rows per level: any red → none, any
-        // orange/unknown mix → partial/unknown, all green → attained.
+        // Aggregate the group's rows per level with the shared
+        // banner rule (VaibifyUtilities.fsSummarizeLevelStates):
+        // all green → attained, every assessed row red → none, any
+        // progress in the mix → partial, nothing assessed → unknown.
         var dictByLevel = {};
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             var listAtLevel = listRows.filter(function (dictRow) {
                 return (dictRow.iLevel || 3) === iLevel;
             });
             if (listAtLevel.length === 0) continue;
-            dictByLevel[iLevel] = _DICT_MARK_TO_LEVEL_STATE[
-                _fsGroupSummaryState(listAtLevel)] || "unknown";
+            var listStates = listAtLevel.map(function (dictRow) {
+                return _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] ||
+                    "unknown";
+            });
+            dictByLevel[iLevel] =
+                VaibifyUtilities.fsSummarizeLevelStates(listStates);
         }
         return dictByLevel;
     }

@@ -268,10 +268,12 @@ _LIST_SCOPE_F_CSS_CLASSES = [
     "level-cell-circle",
     "level-cell-favicon",
     "level-cell-not-started",
+    "level-cell-unassessed",
     "level-cell-none",
     "level-cell-partial",
     "level-cell-attained",
     "level-cell-unknown",
+    "level-cell-question",
     "step-regression-cell",
     "regression-warning-red",
     "regression-warning-orange",
@@ -435,16 +437,16 @@ def testNoXStatusGlyphInLevelCellRenderers():
 
 def testLevelCellStatePhrasesMatchWireVocabulary():
     """The application's tooltip phrase dict must cover exactly the
-    six sState values the backend projection can emit, so every wire
-    state renders an honest, specific tooltip."""
+    seven sState values the backend projection can emit, so every
+    wire state renders an honest, specific tooltip."""
     sBody = _fsExtractJsDictBody(
         _fsReadText(_SCRIPT_APPLICATION_REL),
         "_DICT_LEVEL_CELL_STATE_PHRASES",
     )
     setKeys = set(re.findall(r'"([a-z-]+)"\s*:', sBody))
     setExpected = {
-        "not-started", "none", "partial", "attained", "unknown",
-        "not-applicable",
+        "not-started", "unassessed", "none", "partial", "attained",
+        "unknown", "not-applicable",
     }
     assert setKeys == setExpected, (
         f"tooltip phrase keys {sorted(setKeys)} != wire states "
@@ -494,8 +496,8 @@ def testLegendDescribesLevelCellVocabulary():
     sLegend = _fsReadText(_LEGEND_PANEL_REL)
     listMissing = [
         sState for sState in (
-            "not-started", "none", "partial", "attained",
-            "unknown", "not-applicable",
+            "not-started", "unassessed", "none", "partial",
+            "attained", "unknown", "not-applicable",
         )
         if not re.search(
             r'fsBuildLevelCell\(\s*"' + sState + '"', sLegend,
@@ -512,7 +514,8 @@ def testLegendDescribesLevelCellVocabulary():
     )
     sUtilities = _fsReadText(_SCRIPT_UTILITIES_REL)
     for sNeedle in ("favicon.png", "level-cell-circle",
-                    "level-cell-dash", "level-cell-favicon"):
+                    "level-cell-dash", "level-cell-favicon",
+                    "level-cell-question"):
         assert sNeedle in sUtilities, (
             "shared builder missing level-cell markup: " + sNeedle
         )

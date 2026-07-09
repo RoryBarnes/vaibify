@@ -3,7 +3,7 @@
 ``fdictComputeStepLevelStates`` projects the already-computed L1/L2/L3
 blocker lists plus the step dicts onto one cell per step per level::
 
-    {"sState": "not-started" | "none" | "partial"
+    {"sState": "not-started" | "unassessed" | "none" | "partial"
                | "attained" | "unknown" | "not-applicable",
      "iSatisfied": int, "iTotal": int, "bRegression": bool}
 
@@ -255,6 +255,52 @@ def testBareStepDictIsNotStarted():
         _fdictWorkflowWithSteps([{"sName": "stepOne"}]), [], [], [],
     )
     assert dictStates[0]["s1"]["sState"] == "not-started"
+
+
+def testInactiveStepWithOutputsOnDiskIsUnassessedAtEveryLevel():
+    """No recorded activity + declared outputs on disk = unassessed.
+
+    The poll's ``dictMaxMtimeByStep`` keys are step-index STRINGS —
+    the discriminator must accept the wire shape verbatim, or every
+    on-disk step silently falls back to not-started (the 54-grey-steps
+    presentation this state exists to fix)."""
+    dictStep = {
+        "sName": "stepOne", "sDirectory": "stepOne",
+        "saDataFiles": ["stepOne/output.json"],
+        "dictVerification": {"sUser": "untested"},
+    }
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+        dictMaxMtimeByStep={"0": "1750000000"},
+    )
+    for sLevelKey in ("s1", "s2", "s3"):
+        assert dictStates[0][sLevelKey]["sState"] == "unassessed"
+
+
+def testInactiveStepWithoutOnDiskEntryStaysNotStarted():
+    """An mtime entry for a DIFFERENT step must not leak across."""
+    dictStep = {"sName": "stepOne", "sDirectory": "stepOne"}
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+        dictMaxMtimeByStep={"7": "1750000000"},
+    )
+    assert dictStates[0]["s1"]["sState"] == "not-started"
+
+
+def testRecordedActivityBeatsUnassessed():
+    """Any recorded activity renders count-derived states, never the
+    inactivity override — outputs on disk must not mask a real
+    assessment."""
+    dictStep = {
+        "sName": "stepOne", "sDirectory": "stepOne",
+        "dictRunStats": {"fLastDurationSeconds": 1.0},
+        "dictVerification": {"sUser": "untested"},
+    }
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+        dictMaxMtimeByStep={"0": "1750000000"},
+    )
+    assert dictStates[0]["s1"] == _fdictCell("partial", 1, 2)
 
 
 def testRunStatsAloneCountAsActivity():

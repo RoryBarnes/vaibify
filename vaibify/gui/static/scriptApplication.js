@@ -1492,30 +1492,27 @@ const PipeleyenApp = (function () {
     var _DICT_STEPS_AGGREGATE_TOOLTIP = {
         "attained": "Every step is self-consistent (Level 1)",
         "partial": "Some steps have unmet Level 1 requirements",
-        "none": "One or more steps are failing Level 1",
+        "none": "Every started step is failing Level 1",
         "unknown": "Step status is not yet known",
-        "not-started": "No steps in this workflow yet",
+        "not-started": "No step has started yet",
+        "unassessed": "Step outputs exist but none have been " +
+            "assessed yet",
+        "not-applicable": "No steps with Level 1 requirements",
     };
 
     function _fsAggregateStepsL1State() {
-        // The total Level-1 state across every step: red if any step
-        // fails, orange if any is partial, attained only when all
-        // steps are attained or have no L1 requirement.
+        // The total Level-1 state across every step, summarized by
+        // the shared banner rule (see
+        // VaibifyUtilities.fsSummarizeLevelStates): red only when
+        // every started step is failing; any progress in the mix
+        // reads orange.
         var listSteps = (_dictWorkflowState.dictWorkflow || {})
             .listSteps || [];
         if (listSteps.length === 0) return "not-started";
-        var bAllAttained = true;
-        var bAnyPartial = false;
-        for (var i = 0; i < listSteps.length; i++) {
-            var sState = fsLevelCellState(i, 1);
-            if (sState === "none") return "none";
-            if (sState === "partial") bAnyPartial = true;
-            if (sState !== "attained" && sState !== "not-applicable") {
-                bAllAttained = false;
-            }
-        }
-        if (bAnyPartial) return "partial";
-        return bAllAttained ? "attained" : "unknown";
+        var listStates = listSteps.map(function (dictStep, iIndex) {
+            return fsLevelCellState(iIndex, 1);
+        });
+        return VaibifyUtilities.fsSummarizeLevelStates(listStates);
     }
 
     function _fsRenderStepsAggregateLight() {
@@ -1525,21 +1522,17 @@ const PipeleyenApp = (function () {
         // state; L2/L3 are dashes — those levels are workflow-wide,
         // not per-step.
         var sState = _fsAggregateStepsL1State();
-        var sInner = sState === "attained"
-            ? VaibifyUtilities.fsBuildAttainedFavicon(
-                "all steps passing")
-            : '<span class="level-cell-circle"></span>';
+        var sLevelCell = VaibifyUtilities.fsBuildLevelCell(
+            sState,
+            _DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status",
+            "all steps passing");
         var sDashCell = '<span class="step-level-cell ' +
             'level-cell-not-applicable" title="No step-level ' +
             'requirements at this level — see the Project block">' +
             '<span class="level-cell-dash">&#8212;</span></span>';
         return '<span class="step-level-strip">' +
             '<span class="step-regression-cell"></span>' +
-            '<span class="step-level-cell level-cell-' + sState +
-            '" title="' +
-            (_DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status") +
-            '">' + sInner + '</span>' +
-            sDashCell + sDashCell + '</span>';
+            sLevelCell + sDashCell + sDashCell + '</span>';
     }
 
     function _fnRenderStepListIncremental(
@@ -2144,7 +2137,10 @@ const PipeleyenApp = (function () {
     };
 
     var _DICT_LEVEL_CELL_STATE_PHRASES = {
-        "not-started": "not started",
+        "not-started": "not started — no outputs on disk and no " +
+            "activity at this level yet",
+        "unassessed": "unassessed — outputs exist on disk, but " +
+            "no tests, checks, or sign-off have been recorded yet",
         "none": "no requirements met",
         "partial": "partially met",
         "attained": "attained",
@@ -2183,7 +2179,7 @@ const PipeleyenApp = (function () {
 
     function fsLevelCellState(iStepIndex, iLevel) {
         // Rendered verbatim from the backend projection. An absent
-        // cell renders the hollow grey "unknown" — never a fake
+        // cell renders the "?" "unknown" mark — never a fake
         // attained or not-started claim.
         var dictCell = fdictLevelCellForScope(iStepIndex, iLevel);
         return (dictCell && dictCell.sState) || "unknown";

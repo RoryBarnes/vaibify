@@ -28,12 +28,15 @@ var VaibifyStepRenderer = (function () {
        column, then L1|L2|L3. Cells carry no level text — the column
        header row labels the columns once. Cell state and tooltip
        come from the application's level-state projection
-       (``fsLevelCellState`` / ``fsLevelCellTooltip``). Cell visuals:
-       grey filled circle = not started, red circle = none, orange
-       circle = partial, favicon = attained, hollow grey circle =
-       unknown, muted dash = not applicable (no requirement at this
-       level for this step). The cell markup itself comes from the
-       shared ``VaibifyUtilities.fsBuildLevelCell`` builder. */
+       (``fsLevelCellState`` / ``fsLevelCellTooltip``). Cell visuals
+       fill in as reality does: hollow grey circle = not started
+       (nothing on disk), grey filled circle = unassessed (outputs
+       exist, assessment not begun), red circle = none, orange
+       circle = partial, favicon = attained, question mark =
+       unknown (assessed once, answer stale), muted dash = not
+       applicable (no requirement at this level for this step). The
+       cell markup itself comes from the shared
+       ``VaibifyUtilities.fsBuildLevelCell`` builder. */
 
     function _fsBuildRegressionCell(dictContext, iIndex) {
         var dictWarning = dictContext.fdictRegressionWarning
