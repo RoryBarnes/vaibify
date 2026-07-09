@@ -593,6 +593,45 @@ def test_declaration_step_offers_both_commit_and_remove():
     )
 
 
+def test_generate_actions_offer_to_commit_the_new_files():
+    """The envelope and reproduce.sh generators write files that are
+    never auto-committed (vaibify does not write to the researcher's
+    repo on its own), so leaving them silently untracked blocks L2. A
+    generate action must therefore offer to commit them: the action
+    carries the bOfferCommitAfterGenerate flag, the dispatcher awaits
+    the offer, and the offer reuses the existing commit-canonical
+    machinery (2026-07-09)."""
+    sApp = _fsReadStaticFile("scriptApplication.js")
+    # Both generators opt in.
+    for sAction in ('"regenerate-envelope"', '"generate-reproduce-script"'):
+        iAt = sApp.find(sAction)
+        assert iAt != -1, "missing action " + sAction
+        assert "bOfferCommitAfterGenerate: true" in sApp[iAt:iAt + 200], (
+            sAction + " must offer to commit the files it generates"
+        )
+    # The dispatcher awaits the offer only when the action opted in.
+    assert (
+        "if (dictAction.bOfferCommitAfterGenerate)" in sApp
+        and "VaibifyManifestCheck.fbOfferCommitAfterGenerate" in sApp
+    ), "the executor must await the commit offer for opted-in actions"
+    # The offer reuses the existing manifest-check + commit-canonical
+    # machinery rather than a bespoke commit path.
+    sCheck = _fsReadStaticFile("scriptManifestCheck.js")
+    sOffer = _fsExtractFunctionBlock(
+        sCheck, "fbOfferCommitAfterGenerate",
+    )
+    assert "manifest-check" in sOffer, (
+        "the offer must read the uncommitted-canonical list from "
+        "manifest-check, not re-derive it"
+    )
+    assert "listNeedsCommit" in sOffer and "bIsRepo" in sOffer, (
+        "the offer must no-op off-repo and when nothing needs commit"
+    )
+    assert "fbOfferCommitAfterGenerate:" in sCheck, (
+        "the offer must be part of the module's public surface"
+    )
+
+
 def test_repos_panel_push_toasts_are_honest():
     """FALSIFICATION TARGET (live bug 2026-07-02): the push routes
     return HTTP 200 with bSuccess false on git failures (an
