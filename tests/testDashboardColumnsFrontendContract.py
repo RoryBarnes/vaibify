@@ -941,6 +941,31 @@ def test_group_summary_skips_not_applicable_rows():
     )
 
 
+def test_sync_row_partial_match_is_orange_not_red():
+    """A remote-sync row with SOME files matching and some diverged is
+    partial progress (orange), not "nothing published" (red). Only a
+    total miss — nothing matching the remote — is red. Collapsing any
+    divergence to red misrepresented a mostly-synced mirror as fully
+    out of sync, the same "reads as nothing works" defect the group
+    summary already fixed one level up (2026-07-09)."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sState = _fsExtractFunctionBlock(sSource, "_fsSyncRowState")
+    # The divergence branch must consult iMatching, returning orange
+    # when some files match and red only when none do.
+    assert "iMatching" in sState, (
+        "the divergence branch must read iMatching to tell partial "
+        "from total-miss"
+    )
+    assert '? "orange" : "red"' in sState, (
+        "some matching → orange (partial); none matching → red"
+    )
+    # The unconditional red-on-any-divergence must be gone.
+    assert 'iDivergedCount || 0) > 0) return "red"' not in sState, (
+        "any-divergence-is-red was the misrepresentation; it must "
+        "not survive"
+    )
+
+
 # -----------------------------------------------------------------------
 # Attribute-context escaping (2026-07-09 security audit): values that
 # originate from agent-writable files (workflow.json, the attestation
