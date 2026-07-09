@@ -739,8 +739,8 @@ def test_mixed_workflow_hashes_all_categories(tmp_path):
     """Outputs, scripts, and standards co-exist in the manifest correctly."""
     _fnWriteFile(tmp_path, "src/dataBuild.py", "pass\n")
     _fnWriteFile(tmp_path, "src/plotShow.py", "pass\n")
-    _fnWriteFile(tmp_path, "out/result.csv", "x\n")
-    _fnWriteFile(tmp_path, "out/figure.pdf", b"%PDF\n")
+    _fnWriteFile(tmp_path, "src/out/result.csv", "x\n")
+    _fnWriteFile(tmp_path, "src/out/figure.pdf", b"%PDF\n")
     _fnWriteFile(tmp_path, "ref/quant.json", '{"k": 1}\n')
     dictWorkflow = {"listSteps": [{
         "sName": "S1",
@@ -759,8 +759,8 @@ def test_mixed_workflow_hashes_all_categories(tmp_path):
     assert setPaths == {
         "src/dataBuild.py",
         "src/plotShow.py",
-        "out/result.csv",
-        "out/figure.pdf",
+        "src/out/result.csv",
+        "src/out/figure.pdf",
         "ref/quant.json",
     }
     listMismatches = flistVerifyManifest(str(tmp_path))
@@ -812,12 +812,14 @@ def test_missing_script_file_raises_at_write_time(tmp_path):
 
 def test_flistDeclaredButMissingFromManifest_returns_gap(tmp_path):
     """The pure helper enumerates the paths absent from the manifest."""
-    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    _fnWriteFile(tmp_path, "src/out/a.csv", b"x\n")
     _fnWriteFile(tmp_path, "src/run.py", b"pass\n")
     _fnWriteFile(tmp_path, "ref/quant.json", b"{}\n")
-    fnWriteManifest(
-        str(tmp_path), _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"]),
-    )
+    fnWriteManifest(str(tmp_path), {"listSteps": [{
+        "sName": "S1",
+        "sDirectory": "src",
+        "saOutputFiles": ["out/a.csv"],
+    }]})
     dictWorkflowExpanded = {"listSteps": [{
         "sName": "S1",
         "sDirectory": "src",
@@ -831,6 +833,32 @@ def test_flistDeclaredButMissingFromManifest_returns_gap(tmp_path):
         str(tmp_path), dictWorkflowExpanded,
     )
     assert set(listMissing) == {"src/run.py", "ref/quant.json"}
+
+
+def test_reproduce_script_is_pinned_when_present(tmp_path):
+    """reproduce.sh joins the manifest once it exists.
+
+    fbVerifyReproduceScript requires the script's hash in the
+    manifest; a writer that never pinned it made that Level 3 check
+    unsatisfiable — Generate appeared to do nothing.
+    """
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    _fnWriteFile(tmp_path, "reproduce.sh", "#!/usr/bin/env bash\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert "reproduce.sh" in setPaths
+
+
+def test_missing_reproduce_script_does_not_break_the_manifest(tmp_path):
+    """No reproduce.sh yet (pre-generation) must not abort the write."""
+    _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    fnWriteManifest(str(tmp_path), dictWorkflow)
+    listEntries = flistParseManifestLines(str(tmp_path))
+    setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
+    assert setPaths == {"out/a.csv"}
 
 
 def test_flistDeclaredButMissingFromManifest_empty_when_complete(tmp_path):
@@ -893,7 +921,7 @@ def _fdictWorkflowWithTests():
     return {"listSteps": [{
         "sName": "S1",
         "sDirectory": "stepA",
-        "saDataFiles": ["stepA/data.csv"],
+        "saDataFiles": ["data.csv"],
         "saTestCommands": ["pytest tests/test_step01.py"],
         "dictTests": {
             "dictQuantitative": {
@@ -989,7 +1017,7 @@ def test_templated_test_file_path_is_skipped(tmp_path):
     dictWorkflow = {"listSteps": [{
         "sName": "S1",
         "sDirectory": "stepA",
-        "saDataFiles": ["stepA/data.csv"],
+        "saDataFiles": ["data.csv"],
         "saTestCommands": ["pytest {scriptDir}/test_x.py"],
         "dictTests": {
             "dictIntegrity": {"sFilePath": "{scriptDir}/test_y.py"},
@@ -1010,9 +1038,9 @@ def _fdictBuildLargeWorkflowFixture(tmp_path, iEntryCount):
     """Seed iEntryCount one-byte files and a workflow that declares them."""
     listPaths = []
     for iIndex in range(iEntryCount):
-        sRel = f"out/file_{iIndex:05d}.dat"
-        _fnWriteFile(tmp_path, sRel, b"x")
-        listPaths.append(sRel)
+        sFileName = f"file_{iIndex:05d}.dat"
+        _fnWriteFile(tmp_path, f"out/{sFileName}", b"x")
+        listPaths.append(sFileName)
     dictStep = {
         "sName": "Big",
         "sDirectory": "out",

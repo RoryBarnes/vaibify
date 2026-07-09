@@ -1293,13 +1293,31 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "dictArtifacts": {sName: {"bPresent", "bSatisfied"}}
              (empty dict when there is no project repo),
          "dictDeterminism": declared dict or None,
-         "dictRemoteSyncs": {sService: dictSummary or None}}
+         "dictRemoteSyncs": {sService: dictSummary or None},
+         "bAiDeclarationAttested": bool,
+         "bRebuildAttestationCurrent": bool,
+         "bOverleafBound": bool}
+
+    The three booleans let the Workflow-wide requirement rows render
+    AI-declaration, rebuild-attestation, and arXiv-applicability status
+    from this same payload; all are exec-free.
     """
     from vaibify.reproducibility.repoFiles import (
         ffilesEnsureRepoFiles, fsRepoRootOf,
     )
+    from vaibify.reproducibility import levelGates
+    from vaibify.reproducibility.l3Attestation import (
+        fbL3AttestationCurrent,
+    )
     filesRepo = ffilesEnsureRepoFiles(filesPoll)
     bHasRepo = bool(fsRepoRootOf(filesRepo))
+    if not bHasRepo and (dictWorkflow or {}).get("sProjectRepoPath"):
+        # The workflow HAS a project repo but this poll's snapshot
+        # failed to resolve it (docker-exec contention). Shipping an
+        # empty envelope here would overwrite good client state with
+        # "no binaries / no artifacts" — unknown is not empty. Omit
+        # the payload; the client keeps its previous state.
+        return None
     return {
         "listBinaries": _flistEnvelopeBinaries(
             dictWorkflow, filesRepo, bHasRepo,
@@ -1314,6 +1332,13 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             _fdictEnvelopeRemoteSyncs(filesRepo) if bHasRepo
             else dict.fromkeys(_T_ENVELOPE_SYNC_SERVICES)
         ),
+        "bAiDeclarationAttested":
+            levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
+        "bRebuildAttestationCurrent": (
+            fbL3AttestationCurrent(filesRepo) if bHasRepo else False
+        ),
+        "bOverleafBound":
+            levelGates.fbWorkflowHasOverleafBinding(dictWorkflow),
     }
 
 

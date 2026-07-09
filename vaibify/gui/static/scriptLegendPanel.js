@@ -1,10 +1,13 @@
-/* Vaibify — reproducibility-ladder legend panel.
+/* Vaibify — Help panel: the top-level entry point for new users.
 
-   Section G of the AICS-ladder UX plan: a dismissible, fixed-position
-   panel listing the L1/L2/L3 glyph + color matrix with live blocker
-   counts. Opens from the dashboard-header ``?`` button beside the AICS
-   chip. State lives in this IIFE; data is pulled from
-   ``PipeleyenApp.fdictBlockerCountsByLevel``. */
+   A dismissible, fixed-position panel opened from the dashboard-header
+   ``?`` button. It links to the full online documentation, explains
+   how to start the AI coding assistant inside the container (and why
+   the sandbox makes that safe), and carries the symbol legend — what
+   each mark means, nothing more. The requirements themselves and how
+   to meet them live on the AICS tab. Criterion rows come from
+   ``PipeleyenApp.fdictBlockerGlyphCatalog`` so the legend cannot
+   drift from the glyphs actually rendered. */
 
 var VaibifyLegendPanel = (function () {
     "use strict";
@@ -13,88 +16,32 @@ var VaibifyLegendPanel = (function () {
 
     var _S_PANEL_ID = "aicsLegendPanel";
     var _S_BUTTON_ID = "aicsLegendButton";
+    var _S_DOCUMENTATION_URL = "https://RoryBarnes.github.io/vaibify";
+    var _S_AGENT_START_COMMAND = "claude --dangerously-skip-permissions";
     var _bOpen = false;
     var _bOutsideClickBound = false;
 
-    // Criterion rows are generated live from
-    // ``PipeleyenApp.fdictBlockerGlyphCatalog()`` — the same dicts the
-    // step renderer draws from — so the legend cannot drift from the
-    // glyphs actually rendered. Only the section chrome is static.
-    var _DICT_LEGEND_SECTIONS = {
-        1: {
-            sTitle: "Level 1 — Self-Consistent",
-            sColorClass: "aics-level-1-tint",
-            sCatalogKey: "iLevel1",
-        },
-        2: {
-            sTitle: "Level 2 — Published",
-            sColorClass: "aics-level-2-tint",
-            sCatalogKey: "iLevel2",
-        },
-        3: {
-            sTitle: "Level 3 — Reproducible",
-            sColorClass: "aics-level-3-tint",
-            sCatalogKey: "iLevel3",
-        },
-    };
-
-    // Marks that are not per-criterion blocker glyphs but appear on
-    // step cards, file lists, and dependency edges. Static by design:
-    // each entry names the CSS class that styles the live mark.
-    // Entries with ``sSampleHtml`` render that static markup verbatim
-    // so the legend sample matches the live cell exactly.
-    var _LIST_OTHER_MARKS = [
+    // Marks that appear on step rows: the execution cluster, the
+    // consolidated warning column, and the per-file marks in the
+    // expanded detail. Static by design: each entry names the CSS
+    // class that styles the live mark, so the sample is colored
+    // exactly as the dashboard colors it. Entries with ``sSampleHtml``
+    // render that static markup verbatim so the legend sample matches
+    // the live cell exactly.
+    var _LIST_STEP_MARKS = [
         {
-            sIcon: "⚠", sClass: "l1-blocker-file-glyph",
-            sLabel: "Offending file or dependency edge — " +
-                "blocking verification; re-run the step",
+            sSampleHtml: '<input type="checkbox" ' +
+                'class="aics-legend-checkbox-sample" disabled>',
+            sLabel: "Run checkbox — include this step in the " +
+                "next run",
         },
         {
-            sIcon: "✓", sClass: "aics-legend-check-sample",
-            sLabel: "Test axis passed (fresh run or restored " +
-                "from a committed test marker)",
-        },
-        {
-            sSampleHtml: '<span class="step-level-cell ' +
-                'level-cell-not-started">' +
-                '<span class="level-cell-circle"></span></span>',
-            sLabel: "Level cell, grey circle — not started: the " +
-                "step has no activity at this level yet",
-        },
-        {
-            sSampleHtml: '<span class="step-level-cell ' +
-                'level-cell-none">' +
-                '<span class="level-cell-circle"></span></span>',
-            sLabel: "Level cell, red circle — no requirements met",
-        },
-        {
-            sSampleHtml: '<span class="step-level-cell ' +
-                'level-cell-partial">' +
-                '<span class="level-cell-circle"></span></span>',
-            sLabel: "Level cell, orange circle — partially met",
-        },
-        {
-            sSampleHtml: '<span class="step-level-cell ' +
-                'level-cell-attained">' +
-                '<img src="/static/favicon.png" ' +
-                'class="level-cell-favicon" alt="attained"></span>',
-            sLabel: "Level cell, vaibify badge — attained: every " +
-                "requirement at this level is met",
-        },
-        {
-            sSampleHtml: '<span class="step-level-cell ' +
-                'level-cell-unknown">' +
-                '<span class="level-cell-circle"></span></span>',
-            sLabel: "Level cell, hollow grey circle — unknown: " +
-                "GitHub/Zenodo have not been checked recently; " +
-                "refresh remote status to find out",
-        },
-        {
-            sSampleHtml: '<span class="step-level-cell ' +
-                'level-cell-not-applicable">' +
-                '<span class="level-cell-dash">&#8212;</span></span>',
-            sLabel: "Level cell, dash — not applicable: this step " +
-                "has no requirements at this level",
+            sIcon: "●", sClass: "aics-legend-orange-light-sample",
+            sLabel: "Run light (beside each step's checkbox) — " +
+                "execution only: hollow grey = not run this " +
+                "session, filled grey = queued, blinking orange = " +
+                "running, theme-colored check = last run " +
+                "succeeded, red = last run failed",
         },
         {
             sIcon: "⚠", sClass: "step-regression-cell " +
@@ -110,12 +57,124 @@ var VaibifyLegendPanel = (function () {
                 "step) or a level regressed; hover for the reasons",
         },
         {
-            sIcon: "●", sClass: "aics-legend-orange-light-sample",
-            sLabel: "Run light (beside each step's checkbox) — " +
-                "execution only: hollow grey = not run this " +
-                "session, filled grey = queued, blinking orange = " +
-                "running, theme-colored check = last run " +
-                "succeeded, red = last run failed",
+            sIcon: "⚠", sClass: "l1-blocker-file-glyph",
+            sLabel: "Offending file or dependency edge — " +
+                "blocking verification; re-run the step",
+        },
+        {
+            sIcon: "✎", sClass: "file-mark-stale",
+            sLabel: "File changed since its last verified run — " +
+                "re-run the step to refresh it",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildAttainedFavicon(
+                "passing"),
+            sLabel: "Test(s) passing (fresh run or restored from a " +
+                "committed test marker)",
+        },
+    ];
+
+    // Marks on the Workflow-wide sections (Repository, Software,
+    // Artifacts, Determinism, Published copies, Attestation) and
+    // their requirement rows.
+    var _LIST_WORKFLOW_MARKS = [
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildAttainedFavicon(
+                "met"),
+            sLabel: "Vaibify badge on a section or requirement " +
+                "row — the requirement is met",
+        },
+        {
+            sIcon: "⚠", sClass: "envelope-warn",
+            sLabel: "Red warning on a requirement row — the " +
+                "requirement is failing or the artifact is missing",
+        },
+        {
+            sIcon: "⚠", sClass: "envelope-warn-orange",
+            sLabel: "Orange warning on a requirement row — the " +
+                "last check is stale; refresh or re-run to update it",
+        },
+        {
+            sSampleHtml: '<span class="envelope-light ' +
+                'envelope-light-unknown ' +
+                'aics-legend-inline-sample"></span>',
+            sLabel: "Hollow grey circle — never checked: refresh " +
+                "remote status to find out",
+        },
+    ];
+
+    // The L1|L2|L3 level-cell vocabulary, shared by step rows, the
+    // Steps and Project banners, and the requirement rows. Samples
+    // are generated by the shared builder, so they are identical to
+    // the live cells by construction, not by hand-maintained promise.
+    var _LIST_LEVEL_CELL_MARKS = [
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "not-started", "legend sample"),
+            sLabel: "Grey circle — not started: no activity at " +
+                "this level yet",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "none", "legend sample"),
+            sLabel: "Red circle — no requirements met",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "partial", "legend sample"),
+            sLabel: "Orange circle — partially met",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "attained", "legend sample", "attained"),
+            sLabel: "Vaibify badge — attained: every requirement " +
+                "at this level is met",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "unknown", "legend sample"),
+            sLabel: "Hollow grey circle — unknown: GitHub/Zenodo " +
+                "have not been checked recently; refresh remote " +
+                "status to find out",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "not-applicable", "legend sample"),
+            sLabel: "Dash — not applicable: no requirements at " +
+                "this level",
+        },
+    ];
+
+    // Per-file remote badges (GitHub, Overleaf, Zenodo, arXiv icons
+    // beside file names) and the red file-name text styles. The badge
+    // samples reuse the live ``badge-<state>`` classes so each dot is
+    // tinted exactly as the dashboard tints the icon.
+    var _LIST_FILE_REMOTE_MARKS = [
+        {
+            sIcon: "●", sClass: "remote-badge badge-synced",
+            sLabel: "Badge tinted pale blue — in sync with the " +
+                "remote",
+        },
+        {
+            sIcon: "●", sClass: "remote-badge badge-drifted",
+            sLabel: "Badge tinted amber — local file differs from " +
+                "the last push",
+        },
+        {
+            sIcon: "●", sClass: "remote-badge badge-dirty",
+            sLabel: "Badge tinted red — uncommitted local changes",
+        },
+        {
+            sIcon: "●", sClass: "remote-badge badge-untracked",
+            sLabel: "Badge tinted blue — not tracked by git",
+        },
+        {
+            sIcon: "●", sClass: "remote-badge badge-ignored",
+            sLabel: "Badge muted — git-ignored",
+        },
+        {
+            sIcon: "●", sClass: "remote-badge badge-none",
+            sLabel: "Badge faded grey — not synced to this remote",
         },
         {
             sIcon: "file", sClass: "aics-legend-red-missing-sample",
@@ -192,20 +251,18 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fsRenderPanelInner() {
-        var dictCounts = _fdictBlockerCounts();
+        // Symbols only in the legend: live blocker counts were
+        // dropped so the panel cannot become a second, staler status
+        // page — status lives on the banner strips and the AICS tab.
         return _fsRenderHeader() +
-            _fsRenderSection(1, dictCounts.iLevel1) +
-            _fsRenderSection(2, dictCounts.iLevel2) +
-            _fsRenderSection(3, dictCounts.iLevel3) +
-            _fsRenderOtherMarksSection() +
+            _fsRenderDocumentationSection() +
+            _fsRenderUsingAiSection() +
+            '<div class="aics-help-heading">Legend</div>' +
+            _fsRenderStepsDivision() +
+            _fsRenderWorkflowWideDivision() +
+            _fsRenderLevelLightsDivision() +
+            _fsRenderFilesAndRemotesDivision() +
             _fsRenderFooter();
-    }
-
-    function _fdictBlockerCounts() {
-        if (PipeleyenApp && PipeleyenApp.fdictBlockerCountsByLevel) {
-            return PipeleyenApp.fdictBlockerCountsByLevel();
-        }
-        return {iLevel1: 0, iLevel2: 0, iLevel3: 0};
     }
 
     function _fdictGlyphCatalog() {
@@ -217,39 +274,108 @@ var VaibifyLegendPanel = (function () {
 
     function _fsRenderHeader() {
         return '<div class="aics-legend-header">' +
-            '<span>Reproducibility ladder legend</span>' +
+            '<span>Help</span>' +
             '<button class="aics-legend-close" ' +
             'title="Close">&times;</button>' +
             '</div>';
     }
 
-    function _fsRenderSection(iLevel, iCount) {
-        var dictSection = _DICT_LEGEND_SECTIONS[iLevel];
-        if (!dictSection) return "";
-        var dictGlyphs =
-            _fdictGlyphCatalog()[dictSection.sCatalogKey] || {};
-        var sSubStateRows = iLevel === 1
-            ? _fsRenderAxisSubStateRows() : "";
-        return '<div class="aics-legend-section ' +
-            dictSection.sColorClass + '">' +
+    function _fsRenderDocumentationSection() {
+        return '<div class="aics-help-section aics-help-docs">' +
+            '<a href="' + _S_DOCUMENTATION_URL + '" ' +
+            'target="_blank" rel="noopener">' +
+            'Read the full vaibify documentation</a>' +
+            '</div>';
+    }
+
+    function _fsRenderUsingAiSection() {
+        return '<details class="aics-help-details">' +
+            '<summary>Using AI</summary>' +
+            '<p>To start the AI coding assistant, open a terminal ' +
+            'in the container and run:</p>' +
+            '<code class="aics-help-command">' +
+            fnEscapeHtml(_S_AGENT_START_COMMAND) + '</code>' +
+            '<p>Remember to include the ' +
+            '<code>--dangerously-skip-permissions</code> option ' +
+            'so the assistant works without stopping to ask ' +
+            'permission for every command.</p>' +
+            '<p>The option’s name sounds alarming, but inside ' +
+            'a vaibify container it is the intended mode. The ' +
+            'container is an isolated sandbox: the assistant runs ' +
+            'as an unprivileged user with no sudo, and it can only ' +
+            'touch files on the container’s workspace volume ' +
+            '— never your host machine. Every file it edits ' +
+            'is tracked in git, hash-pinned in the workflow ' +
+            'manifest, and ultimately checked by a full rebuild of ' +
+            'the analysis — that is what AICS Level 3 ' +
+            '(Reproducible) certifies.</p>' +
+            '<p>Your protection therefore comes from verifying ' +
+            'results, not from approving each command: the ' +
+            'dashboard shows exactly what changed, which steps ' +
+            'went stale, and whether the outputs still pass their ' +
+            'tests. Per-command permission prompts add friction ' +
+            'without adding safety in this environment.</p>' +
+            '</details>';
+    }
+
+    function _fsRenderStepsDivision() {
+        var dictCatalog = _fdictGlyphCatalog();
+        return '<div class="aics-legend-section">' +
+            '<div class="aics-legend-section-title">Steps</div>' +
+            _fsRenderMarkRows(_LIST_STEP_MARKS) +
+            '<div class="aics-legend-subsection-title">' +
+            'Why a step shows a warning</div>' +
+            _fsRenderCriteriaRows(dictCatalog.iLevel1 || {}) +
+            _fsRenderAxisSubStateRows() +
+            '</div>';
+    }
+
+    function _fsRenderWorkflowWideDivision() {
+        var dictCatalog = _fdictGlyphCatalog();
+        return '<div class="aics-legend-section">' +
             '<div class="aics-legend-section-title">' +
-            fnEscapeHtml(dictSection.sTitle) +
-            '<span class="aics-legend-count">(' + iCount +
-            ' active)</span></div>' +
-            _fsRenderCriteriaRows(dictGlyphs) +
-            sSubStateRows +
+            'Project</div>' +
+            _fsRenderMarkRows(_LIST_WORKFLOW_MARKS) +
+            '<div class="aics-legend-subsection-title">' +
+            'Publication warnings (Level 2)</div>' +
+            _fsRenderCriteriaRows(dictCatalog.iLevel2 || {}) +
+            '<div class="aics-legend-subsection-title">' +
+            'Reproducibility warnings (Level 3)</div>' +
+            _fsRenderCriteriaRows(dictCatalog.iLevel3 || {}) +
+            '</div>';
+    }
+
+    function _fsRenderLevelLightsDivision() {
+        return '<div class="aics-legend-section">' +
+            '<div class="aics-legend-section-title">' +
+            'Level status lights</div>' +
+            '<div class="aics-legend-division-note">The ' +
+            'L1&thinsp;|&thinsp;L2&thinsp;|&thinsp;L3 cells on ' +
+            'step rows, both banners, and requirement rows:</div>' +
+            _fsRenderMarkRows(_LIST_LEVEL_CELL_MARKS) +
+            '</div>';
+    }
+
+    function _fsRenderFilesAndRemotesDivision() {
+        return '<div class="aics-legend-section">' +
+            '<div class="aics-legend-section-title">' +
+            'Files and remotes</div>' +
+            '<div class="aics-legend-division-note">GitHub, ' +
+            'Overleaf, Zenodo, and arXiv badges beside file ' +
+            'names, and the file-name text styles:</div>' +
+            _fsRenderMarkRows(_LIST_FILE_REMOTE_MARKS) +
             '</div>';
     }
 
     function _fsRenderAxisSubStateRows() {
-        // The axis-not-green causes, drawn from the same
-        // ``dictAxisSubStates`` catalog the banner glyph dispatches
+        // Why a test shows a warning: rows drawn from the same
+        // ``dictAxisSubStates`` catalog the warning column dispatches
         // through. The null ``untested`` entry renders no row — the
-        // orange status light carries that state.
+        // orange level cell carries that state.
         var dictSubStates =
             _fdictGlyphCatalog().dictAxisSubStates || {};
         var sHtml = '<div class="aics-legend-subsection-title">' +
-            'axis-not-green causes</div>' +
+            'Why a test shows a warning</div>' +
             '<ul class="aics-legend-criteria">';
         Object.keys(dictSubStates).forEach(function (sSubState) {
             var dictMeta = dictSubStates[sSubState];
@@ -257,37 +383,35 @@ var VaibifyLegendPanel = (function () {
             sHtml += '<li><span class="aics-legend-glyph ' +
                 fnEscapeHtml(dictMeta.sClass) + '">' +
                 fnEscapeHtml(dictMeta.sIcon) + '</span> ' +
-                fnEscapeHtml(sSubState) + ' — ' +
                 fnEscapeHtml(dictMeta.sLabel) + '</li>';
         });
         return sHtml + '</ul>';
     }
 
     function _fsRenderCriteriaRows(dictGlyphs) {
+        // Rows show the catalog's plain-English label only: the dict
+        // keys are wire literals (e.g. hyphenated criterion names)
+        // and must never surface as user-facing text.
         var sHtml = '<ul class="aics-legend-criteria">';
         Object.keys(dictGlyphs).forEach(function (sCriterion) {
             var dictMeta = dictGlyphs[sCriterion];
             sHtml += '<li><span class="aics-legend-glyph ' +
                 fnEscapeHtml(dictMeta.sClass) + '">' +
                 fnEscapeHtml(dictMeta.sIcon) + '</span> ' +
-                fnEscapeHtml(sCriterion) + ' — ' +
                 fnEscapeHtml(dictMeta.sLabel) + '</li>';
         });
         sHtml += '</ul>';
         return sHtml;
     }
 
-    function _fsRenderOtherMarksSection() {
-        var sHtml = '<div class="aics-legend-section">' +
-            '<div class="aics-legend-section-title">' +
-            'Other marks</div>' +
-            '<ul class="aics-legend-criteria">';
-        for (var i = 0; i < _LIST_OTHER_MARKS.length; i++) {
-            var dictMark = _LIST_OTHER_MARKS[i];
+    function _fsRenderMarkRows(listMarks) {
+        var sHtml = '<ul class="aics-legend-criteria">';
+        for (var i = 0; i < listMarks.length; i++) {
+            var dictMark = listMarks[i];
             sHtml += '<li>' + _fsRenderMarkSample(dictMark) + ' ' +
                 fnEscapeHtml(dictMark.sLabel) + '</li>';
         }
-        return sHtml + '</ul></div>';
+        return sHtml + '</ul>';
     }
 
     function _fsRenderMarkSample(dictMark) {
@@ -301,7 +425,12 @@ var VaibifyLegendPanel = (function () {
 
     function _fsRenderFooter() {
         return '<div class="aics-legend-footer">' +
-            'Re-run step to clear most blockers.</div>';
+            'Getting started: pick a container, open a workflow, ' +
+            'then run and verify each step in the Steps block to ' +
+            'reach Level 1; climb further through the ' +
+            'Project rows. The requirements themselves ' +
+            '— and how to meet each one — live on the ' +
+            'AICS tab.</div>';
     }
 
     document.addEventListener("DOMContentLoaded", fnInitialize);

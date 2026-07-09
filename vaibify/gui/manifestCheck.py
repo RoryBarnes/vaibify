@@ -91,11 +91,29 @@ def flistFilesNeedingCommit(listCanonical, dictGitStatus):
 
     Each entry is ``{sPath, sState}`` where sState is one of the
     public S_STATE_* constants. Files tracked and clean are omitted.
+
+    ``git status --untracked-files=normal`` collapses a directory
+    whose contents are all untracked into a single ``dir/`` entry, so
+    a canonical file inside a brand-new directory has no per-file
+    state of its own. Treating that absence as "clean" made such
+    files invisible to commit-canonical — they were generated,
+    manifest-pinned, and then never committed. The directory-prefix
+    lookup restores their untracked state without paying for
+    ``--untracked-files=all`` on repos with thousands of scratch
+    files.
     """
     listResult = []
     dictFileStates = dictGitStatus.get("dictFileStates", {}) or {}
+    listUntrackedDirs = [
+        sKey for sKey, sState in dictFileStates.items()
+        if sKey.endswith("/") and sState == "untracked"
+    ]
     for sPath in listCanonical:
         sRawState = dictFileStates.get(sPath)
+        if sRawState is None:
+            sRawState = _fsStateFromUntrackedDirPrefix(
+                sPath, listUntrackedDirs,
+            )
         if sRawState is None:
             continue
         if sRawState not in _SET_NEEDS_COMMIT:
@@ -103,6 +121,14 @@ def flistFilesNeedingCommit(listCanonical, dictGitStatus):
         sLabel = _DICT_LABEL_MAP.get(sRawState, S_STATE_MODIFIED)
         listResult.append({"sPath": sPath, "sState": sLabel})
     return listResult
+
+
+def _fsStateFromUntrackedDirPrefix(sPath, listUntrackedDirs):
+    """Return ``"untracked"`` when sPath lies in a collapsed untracked dir."""
+    for sDirectory in listUntrackedDirs:
+        if sPath.startswith(sDirectory):
+            return "untracked"
+    return None
 
 
 def fdictBuildManifestReportFromStatus(

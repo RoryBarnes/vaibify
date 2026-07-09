@@ -33,9 +33,11 @@ __all__ = [
     "TUPLE_COMMAND_KEYS",
     "TUPLE_TEST_CATEGORY_KEYS",
     "fsToRepoRelative",
+    "fsResolveStepPathToRepoPath",
     "fsExtractScriptFromCommand",
     "flistExtractStepScripts",
     "flistStepDeclarationRepoPaths",
+    "flistStepOutputRepoPaths",
     "flistStepScriptRepoPaths",
     "flistStepStandardsRepoPaths",
 ]
@@ -136,18 +138,57 @@ def flistStepScriptRepoPaths(dictStep):
     sDirectory = dictStep.get("sDirectory", "") or ""
     listPaths = []
     for sScript in flistExtractStepScripts(dictStep):
-        listPaths.append(_fsResolveScriptToRepoPath(sScript, sDirectory))
+        listPaths.append(fsResolveStepPathToRepoPath(sScript, sDirectory))
     return listPaths
 
 
-def _fsResolveScriptToRepoPath(sScript, sDirectory):
-    """Return ``sScript`` resolved against ``sDirectory`` as a repo path."""
-    if sScript.startswith("/"):
-        return fsToRepoRelative(sScript)
+def fsResolveStepPathToRepoPath(sPath, sDirectory):
+    """Return a step-declared path resolved to repo-relative form.
+
+    Step-declared paths (scripts, outputs, test files) are relative to
+    the step's ``sDirectory`` — the directory the step runs from and
+    writes into — so non-absolute paths are joined with it before
+    normalising. This helper is the single join point; every collector
+    that turns step declarations into repo paths must use it, because
+    a collector with its own join is how the manifest and the
+    canonical-tracked-files set drift apart.
+    """
+    if sPath.startswith("/"):
+        return fsToRepoRelative(sPath)
     if sDirectory:
-        sJoined = posixpath.normpath(posixpath.join(sDirectory, sScript))
+        sJoined = posixpath.normpath(posixpath.join(sDirectory, sPath))
         return fsToRepoRelative(sJoined)
-    return fsToRepoRelative(sScript)
+    return fsToRepoRelative(sPath)
+
+
+def flistStepOutputRepoPaths(dictStep):
+    """Return repo-relative declared output paths for one step.
+
+    Covers every ``TUPLE_OUTPUT_KEYS`` entry, resolved against the
+    step directory. Templated entries (``{sPlotDirectory}/foo.pdf``)
+    are skipped: the reproducibility layer cannot resolve workflow
+    globals (that lives in ``vaibify.gui``), and a literal placeholder
+    must not enter the manifest envelope as a phantom missing file.
+    Callers that can resolve globals (``stateContract``) handle the
+    templated entries themselves. Absolute entries pass through
+    unchanged so the manifest writer's absolute-path guard rejects
+    the declaration loudly instead of reinterpreting it as a repo
+    path.
+    """
+    sDirectory = dictStep.get("sDirectory", "") or ""
+    listPaths = []
+    for sKey in TUPLE_OUTPUT_KEYS:
+        for sFile in dictStep.get(sKey, []) or []:
+            if not sFile or "{" in str(sFile):
+                continue
+            sPath = str(sFile)
+            if sPath.startswith("/"):
+                listPaths.append(sPath)
+                continue
+            listPaths.append(
+                fsResolveStepPathToRepoPath(sPath, sDirectory)
+            )
+    return listPaths
 
 
 def flistStepStandardsRepoPaths(dictStep):

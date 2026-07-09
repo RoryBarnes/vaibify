@@ -70,6 +70,33 @@ def test_flistFilesNeedingCommit_flags_staged():
     }]
 
 
+def test_flistFilesNeedingCommit_flags_file_in_collapsed_untracked_dir():
+    """A canonical file inside a ``dir/`` untracked entry is flagged.
+
+    ``--untracked-files=normal`` reports a fully-untracked directory
+    as one collapsed entry; the file inside has no per-file state and
+    was previously treated as clean, so generated outputs in a
+    brand-new directory never reached the canonical commit.
+    """
+    listResult = manifestCheck.flistFilesNeedingCommit(
+        ["step1/output/result.npz"],
+        _fdictGit({"step1/output/": "untracked"}),
+    )
+    assert listResult == [{
+        "sPath": "step1/output/result.npz",
+        "sState": manifestCheck.S_STATE_UNTRACKED,
+    }]
+
+
+def test_flistFilesNeedingCommit_ignores_ignored_directory_entries():
+    """An ignored directory prefix must not mark contents untracked."""
+    listResult = manifestCheck.flistFilesNeedingCommit(
+        ["step1/output/result.npz"],
+        _fdictGit({"step1/output/": "ignored"}),
+    )
+    assert listResult == []
+
+
 def test_flistFilesNeedingCommit_ignores_non_canonical_dirty_files():
     listResult = manifestCheck.flistFilesNeedingCommit(
         ["wanted.py"],

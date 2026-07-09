@@ -142,6 +142,20 @@ var VaibifyGitBadges = (function () {
             _fdictPlaceholderBadges();
     }
 
+    function flistFilesForRemote(sBadgeKey) {
+        // Repo-relative paths this remote actually knows about — every
+        // badge-map key whose state for sBadgeKey (sGithub / sZenodo /
+        // sArxiv / sOverleaf) is not the "none" placeholder. Sorted for
+        // stable rendering. Used by the Workflow-wide Publication rows.
+        var listKeys = Object.keys(_dictState.dictBadges).filter(
+            function (sPath) {
+                return (_dictState.dictBadges[sPath][sBadgeKey] ||
+                    "none") !== "none";
+            });
+        listKeys.sort();
+        return listKeys;
+    }
+
     var _A_DEFAULT_REMOTE_KEYS = [
         "sGithub", "sOverleaf", "sZenodo", "sArxiv",
     ];
@@ -155,9 +169,10 @@ var VaibifyGitBadges = (function () {
             var sLabel = _DICT_REMOTE_LABELS[sKey];
             var sTitle = sLabel + ": " +
                 (_DICT_BADGE_TITLES[sState] || sState);
-            sHtml += '<span class="remote-badge badge-' + sState +
-                '" title="' + sTitle + '" data-remote="' +
-                sKey + '" draggable="false">' +
+            sHtml += '<span class="remote-badge badge-' +
+                VaibifyUtilities.fnEscapeHtml(sState) +
+                '" title="' + VaibifyUtilities.fnEscapeHtml(sTitle) +
+                '" data-remote="' + sKey + '" draggable="false">' +
                 _fsRenderRemoteIcon(sKey) +
                 '</span>';
         });
@@ -279,6 +294,7 @@ var VaibifyGitBadges = (function () {
     return {
         fnRefresh: fnRefresh,
         fdictGetBadgesForFile: fdictGetBadgesForFile,
+        flistFilesForRemote: flistFilesForRemote,
         fsRenderBadgeRow: fsRenderBadgeRow,
         fdictRepoSummary: fdictRepoSummary,
         fsRenderStepStaleBadge: fsRenderStepStaleBadge,

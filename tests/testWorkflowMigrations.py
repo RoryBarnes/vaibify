@@ -18,12 +18,12 @@ def _fdictBuildLegacyV0Fixture():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "Flares",
-                "sDirectory": "/workspace/SampleProject/Flares",
+                "sName": "Analysis",
+                "sDirectory": "/workspace/SampleProject/Analysis",
                 "saPlotCommands": ["python plot.py"],
                 "saPlotFiles": ["fig1.pdf"],
                 "saOutputFiles": [
-                    "/workspace/SampleProject/Flares/out.npz",
+                    "/workspace/SampleProject/Analysis/out.npz",
                 ],
                 "bEnabled": True,
                 "saTestCommands": ["pytest"],
@@ -39,8 +39,8 @@ def _fdictBuildModernV2Fixture():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "Flares",
-                "sDirectory": "Flares",
+                "sName": "Analysis",
+                "sDirectory": "Analysis",
                 "saPlotCommands": ["python plot.py"],
                 "saPlotFiles": ["fig1.pdf"],
                 "saOutputFiles": ["out.npz"],
@@ -115,7 +115,7 @@ def test_v1_to_v2_strips_absolute_workspace_prefix_from_step_dir():
         dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
     )
     dictStep = dictWorkflow["listSteps"][0]
-    assert dictStep["sDirectory"] == "Flares"
+    assert dictStep["sDirectory"] == "Analysis"
     assert dictStep["saOutputFiles"] == ["out.npz"]
 
 
@@ -124,7 +124,7 @@ def test_v1_to_v2_infers_repo_root_when_context_missing():
     dictWorkflow = _fdictBuildLegacyV0Fixture()
     fnApplyMigrations(dictWorkflow, sProjectRepoPath="")
     dictStep = dictWorkflow["listSteps"][0]
-    assert dictStep["sDirectory"] == "Flares"
+    assert dictStep["sDirectory"] == "Analysis"
     assert dictStep["saOutputFiles"] == ["out.npz"]
 
 
@@ -138,13 +138,13 @@ def test_v0_to_v1_archive_tracking_uses_supplied_repo_path():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {
-                "sName": "Flares",
-                "sDirectory": "/workspace/SampleProject/Flares",
+                "sName": "Analysis",
+                "sDirectory": "/workspace/SampleProject/Analysis",
                 "saPlotCommands": ["python plot.py"],
                 "saPlotFiles": ["fig1.pdf"],
                 "saDataFiles": [],
                 "saOutputFiles": [
-                    "/workspace/SampleProject/Flares/out.npz",
+                    "/workspace/SampleProject/Analysis/out.npz",
                 ],
                 "saTestCommands": [],
                 "dictPlotFileCategories": {"fig1.pdf": "archive"},
@@ -155,7 +155,7 @@ def test_v0_to_v1_archive_tracking_uses_supplied_repo_path():
         dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
     )
     listKeys = list(dictWorkflow.get("dictSyncStatus", {}).keys())
-    assert listKeys == ["Flares/fig1.pdf"]
+    assert listKeys == ["Analysis/fig1.pdf"]
     assert "sProjectRepoPath" not in dictWorkflow
 
 
@@ -174,6 +174,44 @@ def test_fnMigrateAbsoluteContainerPaths_skips_template_paths():
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["sDirectory"] == "{sStepDir}"
     assert dictStep["saOutputFiles"] == ["{sOut}/file.npz"]
+
+
+def test_v4_to_v5_strips_absolute_prefix_from_test_paths():
+    """Container-absolute dictTests paths become repo-relative."""
+    dictWorkflow = {
+        S_VERSION_KEY: 4,
+        "listSteps": [
+            {
+                "sDirectory": "Analysis",
+                "dictTests": {
+                    "dictQuantitative": {
+                        "sFilePath": "/workspace/SampleProject/Analysis"
+                                     "/tests/test_quantitative.py",
+                        "sStandardsPath": "/workspace/SampleProject"
+                                          "/Analysis/tests"
+                                          "/quantitative_standards.json",
+                    },
+                    "dictIntegrity": {
+                        "sFilePath": "Analysis/tests/test_integrity.py",
+                    },
+                    "listUserTests": [],
+                },
+            },
+        ],
+    }
+    fnApplyMigrations(
+        dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
+    )
+    dictTests = dictWorkflow["listSteps"][0]["dictTests"]
+    assert dictTests["dictQuantitative"]["sFilePath"] == (
+        "Analysis/tests/test_quantitative.py"
+    )
+    assert dictTests["dictQuantitative"]["sStandardsPath"] == (
+        "Analysis/tests/quantitative_standards.json"
+    )
+    assert dictTests["dictIntegrity"]["sFilePath"] == (
+        "Analysis/tests/test_integrity.py"
+    )
 
 
 def test_fnApplyMigrations_is_no_op_on_current_version():
@@ -266,8 +304,8 @@ def test_step_without_sStepKind_defaults_to_data_kind():
         fbStepIsAiDeclaration,
     )
     dictLegacyStep = {
-        "sName": "Flares",
-        "sDirectory": "Flares",
+        "sName": "Analysis",
+        "sDirectory": "Analysis",
         "saPlotCommands": ["python plot.py"],
     }
     assert "sStepKind" not in dictLegacyStep

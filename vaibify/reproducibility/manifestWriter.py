@@ -67,9 +67,11 @@ from vaibify.reproducibility.repoFiles import (
 from vaibify.reproducibility.manifestPaths import (
     TUPLE_OUTPUT_KEYS,
     TUPLE_TEST_CATEGORY_KEYS,
+    flistStepOutputRepoPaths,
     flistStepScriptRepoPaths,
     flistStepDeclarationRepoPaths,
     flistStepStandardsRepoPaths,
+    fsResolveStepPathToRepoPath,
     fsToRepoRelative,
 )
 
@@ -90,6 +92,7 @@ logger = logging.getLogger("vaibify")
 
 _MANIFEST_FILENAME = "MANIFEST.sha256"
 _MANIFEST_HEADER = "# SHA-256 manifest of workflow artefacts\n"
+_S_REPRODUCE_SCRIPT = "reproduce.sh"
 # Re-exported as a module attribute so the architectural-invariant test
 # can introspect the canonical output-key set without importing
 # ``manifestPaths`` directly.
@@ -120,6 +123,15 @@ def fnWriteManifest(filesRepo, dictWorkflow):
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     listRelativePaths = _flistCollectManifestPaths(dictWorkflow)
+    if filesRepo.fbIsFile(_S_REPRODUCE_SCRIPT):
+        # The reproduce script must be pinned once it exists —
+        # ``fbVerifyReproduceScript`` requires its hash in the
+        # manifest, and a writer that never pins it makes that check
+        # unsatisfiable. It is presence-gated (not declared) because
+        # the script is generated after the first manifest write.
+        listRelativePaths = sorted(
+            set(listRelativePaths) | {_S_REPRODUCE_SCRIPT},
+        )
     listEntries = _flistBuildManifestEntries(filesRepo, listRelativePaths)
     if _fbCanStreamWrite(filesRepo):
         _fnStreamWriteManifest(filesRepo, listEntries)
@@ -294,7 +306,7 @@ def _flistTestCommandScriptPaths(dictStep):
         for sToken in str(sCommand).split():
             if _fbLooksLikeTestScriptToken(sToken):
                 listPaths.append(
-                    _fsResolveTestPathToRepoPath(sToken, sDirectory)
+                    fsResolveStepPathToRepoPath(sToken, sDirectory)
                 )
     return listPaths
 
@@ -306,16 +318,6 @@ def _fbLooksLikeTestScriptToken(sToken):
         and "{" not in sToken
         and not sToken.startswith("-")
     )
-
-
-def _fsResolveTestPathToRepoPath(sPath, sDirectory):
-    """Return ``sPath`` resolved against the step directory as repo path."""
-    if sPath.startswith("/"):
-        return fsToRepoRelative(sPath)
-    if sDirectory:
-        sJoined = posixpath.normpath(posixpath.join(sDirectory, sPath))
-        return fsToRepoRelative(sJoined)
-    return fsToRepoRelative(sPath)
 
 
 def _flistCollectManifestPaths(dictWorkflow):
@@ -331,35 +333,13 @@ def _flistCollectManifestPaths(dictWorkflow):
     setPaths = set()
     bArchiveTests = fbWorkflowArchivesTests(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):
-        setPaths.update(_flistStepOutputPaths(dictStep))
+        setPaths.update(flistStepOutputRepoPaths(dictStep))
         setPaths.update(flistStepScriptRepoPaths(dictStep))
         if bArchiveTests:
             setPaths.update(flistStepStandardsRepoPaths(dictStep))
             setPaths.update(flistStepDeclarationRepoPaths(dictStep))
             setPaths.update(flistStepTestFileRepoPaths(dictStep))
     return sorted(sPath for sPath in setPaths if sPath)
-
-
-def _flistStepOutputPaths(dictStep):
-    """Return repo-relative output paths declared by one step."""
-    listPaths = []
-    for sKey in TUPLE_OUTPUT_KEYS:
-        for sPath in dictStep.get(sKey, []) or []:
-            listPaths.append(_fsNormalizeRelativePath(sPath))
-    return listPaths
-
-
-def _fsNormalizeRelativePath(sPath):
-    """Return a POSIX-form path without corrupting embedded backslashes.
-
-    On Windows (which vaibify does not officially support but does run
-    in CI smoke), ``os.sep`` is ``\\`` and the substitution maps real
-    path separators to POSIX. On Linux/macOS ``\\`` is a legal filename
-    character; rewriting it would silently break the GNU-escape path.
-    """
-    if os.sep == "\\":
-        return str(sPath).replace("\\", "/")
-    return str(sPath)
 
 
 def _flistBuildManifestEntries(filesRepo, listRelativePaths):

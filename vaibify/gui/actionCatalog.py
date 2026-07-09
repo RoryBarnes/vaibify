@@ -411,10 +411,39 @@ LIST_AGENT_ACTIONS = [
                      "envelope artifacts (MANIFEST.sha256, "
                      "requirements.lock, .vaibify/environment.json) are "
                      "missing or stale. Returns the same JSON as "
-                     "check-l3-readiness. The actual regeneration is "
-                     "done from the agent's container shell by invoking "
-                     "the manifest / lockfile / snapshot CLI helpers; "
-                     "this entry does not itself write any files."},
+                     "check-l3-readiness. To actually rewrite the "
+                     "artifacts, use regenerate-envelope; the envelope "
+                     "also regenerates automatically when a "
+                     "verification transition leaves the workflow at "
+                     "Level 1 or higher."},
+    {"sName": "regenerate-envelope", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/level3/envelope",
+     "bAgentSafe": True,
+     "sDescription": "Rewrite the reproducibility envelope now: "
+                     "MANIFEST.sha256, requirements.lock, and "
+                     ".vaibify/environment.json. Tier failures are "
+                     "isolated and logged; the response carries the "
+                     "fresh L3 readiness gaps so the caller sees what "
+                     "the regeneration achieved."},
+    {"sName": "verify-dependency-lock", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/dependencies/verify",
+     "bAgentSafe": True,
+     "sDescription": "Structural check of requirements.lock: every "
+                     "dependency pinned by exact version with SHA-256 "
+                     "hashes. Returns listProblems (empty = clean); "
+                     "format-only — actual install verification is "
+                     "pip install --require-hashes."},
+    {"sName": "delete-determinism", "sCategory": "verification",
+     "sMethod": "DELETE",
+     "sPath": "/api/workflow/{sContainerId}/determinism",
+     "bAgentSafe": False,
+     "sDescription": "Clear the workflow's declared determinism rules "
+                     "(stored in workflow.json). The declare endpoint "
+                     "only merges keys, so this is the one way to "
+                     "retract a mistaken declaration; the researcher "
+                     "then re-declares what still applies."},
     {"sName": "generate-reproduce-script", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/level3/reproduce-script",

@@ -26,6 +26,42 @@ var VaibifyUtilities = (function () {
             .replace(/'/g, "&#39;");
     }
 
+    /* --- Level-cell vocabulary (single owner) ---
+       Every attained favicon and every L1/L2/L3 level cell in the
+       GUI is built here, so the step rows, the Project block, the
+       AICS tab, and the legend samples cannot drift apart. The alt
+       text is per-context accessibility language ("attained",
+       "met", "passing", …) supplied by the caller. */
+
+    function fsBuildAttainedFavicon(sAltText, sTooltip) {
+        var sTitleAttribute = sTooltip
+            ? ' title="' + fnEscapeHtml(sTooltip) + '"'
+            : "";
+        return '<img src="/static/favicon.png" ' +
+            'class="level-cell-favicon"' + sTitleAttribute +
+            ' alt="' + fnEscapeHtml(sAltText) + '">';
+    }
+
+    function fsBuildLevelCell(sState, sTooltip, sAltText) {
+        // Cell visuals: favicon = attained, muted dash = not
+        // applicable, a circle (tinted by the level-cell-<sState>
+        // class) for every other state.
+        var sInner;
+        if (sState === "attained") {
+            sInner = fsBuildAttainedFavicon(sAltText || "attained");
+        } else if (sState === "not-applicable") {
+            sInner = '<span class="level-cell-dash">&#8212;</span>';
+        } else {
+            sInner = '<span class="level-cell-circle"></span>';
+        }
+        // sState is a server enum today, but this is the single
+        // owner of the cell markup — escape it so a future non-enum
+        // state can never become an attribute breakout.
+        return '<span class="step-level-cell level-cell-' +
+            fnEscapeHtml(sState) + '" title="' +
+            fnEscapeHtml(sTooltip) + '">' + sInner + '</span>';
+    }
+
     function fbIsFigureFile(sPath) {
         var iDot = sPath.lastIndexOf(".");
         if (iDot === -1) return false;
@@ -34,9 +70,25 @@ var VaibifyUtilities = (function () {
         );
     }
 
+    // Extensionless files vaibify itself requires and therefore
+    // vouches for as plain text — only the Dockerfile (part of the
+    // reproducibility envelope). Vaibify is a general tool, so it
+    // makes no claims about other projects' extensionless names;
+    // those stay conservatively unviewable (they are usually
+    // executables).
+    var SET_EXTENSIONLESS_TEXT_FILES = new Set([
+        "dockerfile",
+    ]);
+
     function fbIsBinaryFile(sPath) {
         var iDot = sPath.lastIndexOf(".");
-        if (iDot === -1) return true;
+        if (iDot === -1 || iDot < sPath.lastIndexOf("/")) {
+            // No extension: known text files (Dockerfile, Makefile,
+            // …) are viewable; anything else extensionless is
+            // conservatively treated as an executable.
+            var sBase = sPath.split("/").pop().toLowerCase();
+            return !SET_EXTENSIONLESS_TEXT_FILES.has(sBase);
+        }
         var sExtension = sPath.substring(iDot).toLowerCase();
         return SET_BINARY_EXTENSIONS.has(sExtension);
     }
@@ -123,6 +175,8 @@ var VaibifyUtilities = (function () {
 
     return {
         fnEscapeHtml: fnEscapeHtml,
+        fsBuildAttainedFavicon: fsBuildAttainedFavicon,
+        fsBuildLevelCell: fsBuildLevelCell,
         fbIsFigureFile: fbIsFigureFile,
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,

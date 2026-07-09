@@ -181,6 +181,24 @@ def test_flistCanonicalTrackedFiles_includes_test_files(tmp_path):
     assert "step1/tests/test_legacy.py" in listResult
 
 
+def test_flistCanonicalTrackedFiles_includes_envelope_artifacts(tmp_path):
+    """MANIFEST.sha256, requirements.lock, and environment.json are canonical.
+
+    The commit-canonical curated contract names the reproducibility
+    envelope; a canonical set that omits it leaves the envelope
+    permanently uncommittable and blocks the L2 GitHub verification.
+    """
+    (tmp_path / "MANIFEST.sha256").write_text("# manifest\n")
+    (tmp_path / "requirements.lock").write_text("click==1.0\n")
+    os.makedirs(tmp_path / ".vaibify", exist_ok=True)
+    (tmp_path / ".vaibify" / "environment.json").write_text("{}\n")
+    listResult = stateContract.flistCanonicalTrackedFiles(
+        {"listSteps": []}, str(tmp_path))
+    assert "MANIFEST.sha256" in listResult
+    assert "requirements.lock" in listResult
+    assert ".vaibify/environment.json" in listResult
+
+
 def test_flistCanonicalTrackedFilesFromScans_includes_test_files():
     dictStep = _fdictStep(sDirectory="step1", dictStandards={
         "dictIntegrity": {

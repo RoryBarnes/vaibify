@@ -75,8 +75,15 @@ def _fnApplyGeneratedTests(
     dictCtx, sContainerId, dictWorkflow, iStepIndex,
     dictResult,
 ):
-    """Store generated test categories in the step and save."""
+    """Store generated test categories in the step and save.
+
+    The generator builds ``sFilePath``/``sStandardsPath`` from the
+    container-absolute step directory (Docker writes need absolute
+    paths); the workflow document stores repo-relative paths, so the
+    categories are normalized before saving.
+    """
     from ..workflowManager import flistBuildTestCommands
+    from ..workflowMigrations import fnMigrateAbsoluteTestPaths
     dictStep = dictWorkflow["listSteps"][iStepIndex]
     dictTests = dictStep.setdefault("dictTests", {})
     for sCategory in (
@@ -84,6 +91,9 @@ def _fnApplyGeneratedTests(
     ):
         if sCategory in dictResult:
             dictTests[sCategory] = dictResult[sCategory]
+    fnMigrateAbsoluteTestPaths(
+        dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
+    )
     dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
     dictCtx["save"](sContainerId, dictWorkflow)
 

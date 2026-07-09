@@ -18,7 +18,9 @@ def test_v3_to_v4_drops_legacy_bVaibified():
     }
     workflowMigrations.fnApplyMigrations(dictWorkflow)
     assert "bVaibified" not in dictWorkflow
-    assert dictWorkflow["iWorkflowSchemaVersion"] == 4
+    assert dictWorkflow["iWorkflowSchemaVersion"] == (
+        workflowMigrations.I_CURRENT_WORKFLOW_VERSION
+    )
 
 
 def test_v3_to_v4_drops_pre_existing_iAICSLevel():
@@ -44,7 +46,9 @@ def test_v3_to_v4_is_idempotent_when_keys_absent():
         "listSteps": [{"sName": "A", "sDirectory": "A"}],
     }
     workflowMigrations.fnApplyMigrations(dictWorkflow)
-    assert dictWorkflow["iWorkflowSchemaVersion"] == 4
+    assert dictWorkflow["iWorkflowSchemaVersion"] == (
+        workflowMigrations.I_CURRENT_WORKFLOW_VERSION
+    )
     assert "bVaibified" not in dictWorkflow
     assert "iAICSLevel" not in dictWorkflow
 
@@ -53,4 +57,6 @@ def test_v3_to_v4_handles_empty_workflow_defensively():
     """A minimal dict at v3 must not crash the migrator."""
     dictWorkflow = {"iWorkflowSchemaVersion": 3}
     workflowMigrations.fnApplyMigrations(dictWorkflow)
-    assert dictWorkflow["iWorkflowSchemaVersion"] == 4
+    assert dictWorkflow["iWorkflowSchemaVersion"] == (
+        workflowMigrations.I_CURRENT_WORKFLOW_VERSION
+    )

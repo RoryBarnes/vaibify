@@ -23,6 +23,7 @@ connection and routes the bytes through ``fnWriteFile`` /
 """
 
 import posixpath
+import re
 
 from vaibify.reproducibility.repoFiles import fsShellQuotePosix
 
@@ -36,6 +37,19 @@ __all__ = [
 
 
 S_REPRODUCE_SCRIPT_FILENAME = "reproduce.sh"
+
+# The reproduction body (step comments and commands) is delivered to
+# the container's shell through a *quoted* heredoc, never through a
+# host-side ``bash -c '...'`` argument. A quoted heredoc passes its
+# body to the container verbatim: the host shell performs no
+# expansion and no quote interpretation, so a single quote in a step
+# command — or a workflow-controlled step name — cannot close a host
+# argument and inject a command onto the reproducer's host. The one
+# residual escape is a body line that forges the terminator; that is
+# rejected before the script is emitted (``_fnRejectDelimiterForgery``).
+_S_HEREDOC_DELIMITER = "VAIBIFY_REPRODUCE_EOF"
+
+_RE_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 _S_SCRIPT_PREAMBLE = """\
 #!/usr/bin/env bash
@@ -51,15 +65,16 @@ if [ -z "$sImageRef" ] || [ "$sImageRef" = "null" ]; then
 fi
 
 docker pull "$sImageRef"
-docker run --rm -v "$PWD":/work -w /work "$sImageRef" bash -c '
-  set -euo pipefail
-  pip install --require-hashes -r requirements.lock
-"""
+docker run --rm -i -v "$PWD":/work -w /work "$sImageRef" \\
+    bash -s <<'{sDelimiter}'
+set -euo pipefail
+pip install --require-hashes -r requirements.lock
+""".format(sDelimiter=_S_HEREDOC_DELIMITER)
 
 _S_SCRIPT_EPILOGUE = """\
-  sha256sum -c MANIFEST.sha256
-'
-"""
+sha256sum -c MANIFEST.sha256
+{sDelimiter}
+""".format(sDelimiter=_S_HEREDOC_DELIMITER)
 
 
 def fnGenerateReproduceScript(
@@ -111,14 +126,39 @@ def fsRenderReproduceScript(dictWorkflow):
     """Return the full ``reproduce.sh`` body as a string.
 
     Pure function so tests can compare against a fixture without
-    touching the filesystem. Step commands are rendered as
-    indented continuations of the container ``bash -c`` block.
+    touching the filesystem. Step commands are rendered as lines of
+    the container heredoc body; the host shell never interprets them.
     """
     listStepLines = flistRenderStepCommands(dictWorkflow)
-    sBody = "\n".join("  " + sLine for sLine in listStepLines)
+    sBody = "\n".join(listStepLines)
     if sBody:
         sBody = sBody + "\n"
-    return _S_SCRIPT_PREAMBLE + sBody + _S_SCRIPT_EPILOGUE
+    sScript = _S_SCRIPT_PREAMBLE + sBody + _S_SCRIPT_EPILOGUE
+    _fnRejectDelimiterForgery(sScript)
+    return sScript
+
+
+def _fnRejectDelimiterForgery(sScript):
+    """Refuse to emit a script whose body forges the heredoc terminator.
+
+    The reproduction body reaches the container shell through a quoted
+    heredoc, so a step command or name occupying a line equal to the
+    terminator would close the heredoc early and hand the remaining
+    lines to the host shell — the exact breakout the heredoc exists to
+    prevent. The terminator appears legitimately on exactly one line
+    (the closing delimiter); any other exact-line occurrence is a
+    tampering attempt, so fail loud rather than emit an injectable
+    script.
+    """
+    iExactMatches = sum(
+        1 for sLine in sScript.splitlines()
+        if sLine == _S_HEREDOC_DELIMITER
+    )
+    if iExactMatches != 1:
+        raise ValueError(
+            "reproduce.sh body contains the reserved heredoc "
+            "terminator; refusing to emit an injectable script."
+        )
 
 
 def flistRenderStepCommands(dictWorkflow):
@@ -142,8 +182,9 @@ def _flistRenderOneStep(dictStep):
     listCommands = _flistGatherStepCommands(dictStep)
     if not listCommands:
         return []
+    sName = _fsSanitizeCommentText(dictStep.get("sName", "?"))
     sDirectory = (dictStep.get("sDirectory") or "").strip()
-    listLines = [f"# Step: {dictStep.get('sName', '?')}"]
+    listLines = [f"# Step: {sName}"]
     if sDirectory and sDirectory != ".":
         listLines.append(f"( cd {_fsShellQuote(sDirectory)} && \\")
         for sCommand in listCommands:
@@ -153,6 +194,21 @@ def _flistRenderOneStep(dictStep):
     else:
         listLines.extend(listCommands)
     return listLines
+
+
+def _fsSanitizeCommentText(sValue):
+    """Collapse a value to a single safe line for a shell comment.
+
+    The step name is workflow-controlled (it originates from
+    ``workflow.json``, which the in-container agent can write).
+    Rendered raw into the reproduction body, a newline would end the
+    ``# Step:`` comment and turn the remainder of the name into live
+    script. Replacing every control character (newlines, tabs, escape
+    sequences) with a space and collapsing the result keeps the name a
+    human-readable, single-line label that can never leave its comment.
+    """
+    sCleaned = _RE_CONTROL_CHARACTERS.sub(" ", str(sValue))
+    return " ".join(sCleaned.split()) or "?"
 
 
 def _flistGatherStepCommands(dictStep):

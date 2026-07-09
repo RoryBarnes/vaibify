@@ -61,11 +61,21 @@ S_VAIBIFY_WORKFLOWS_GLOB = ".vaibify/workflows/*.json"
 S_VAIBIFY_MARKERS_GLOB = ".vaibify/test_markers/*/*.json"
 S_VAIBIFY_ZENODO_REFS = ".vaibify/zenodo-refs.json"
 
+# Explicitly enumerated canonical files: project configuration plus
+# the reproducibility-envelope artifacts. The commit-canonical curated
+# contract (gitRoutes.TUPLE_CURATED_COMMIT_KINDS) names MANIFEST.sha256
+# and requirements.lock; before they were listed here the envelope was
+# generated but never committable, so the GitHub mirror could not
+# satisfy the L2 verification.
 TUPLE_ROOT_CONFIG_FILES = (
     "requirements.txt",
     "environment.yml",
     "Dockerfile",
     "pyproject.toml",
+    "MANIFEST.sha256",
+    "requirements.lock",
+    ".vaibify/environment.json",
+    ".gitignore",
 )
 
 TUPLE_ALWAYS_IGNORED = (
@@ -113,12 +123,15 @@ def _flistStepOutputRepoPaths(dictStep, dictVars=None):
                 )
                 if "{" in sResolved:
                     continue
-                sJoined = posixpath.normpath(sResolved)
-            else:
-                sJoined = posixpath.normpath(
-                    posixpath.join(sDirectory, sFile)
+                listPaths.append(
+                    fsToRepoRelative(posixpath.normpath(sResolved))
                 )
-            listPaths.append(fsToRepoRelative(sJoined))
+            else:
+                listPaths.append(
+                    manifestPaths.fsResolveStepPathToRepoPath(
+                        sFile, sDirectory,
+                    )
+                )
     return listPaths
 
 

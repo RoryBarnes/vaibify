@@ -134,15 +134,26 @@ def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
 
 
 def _fsResolveLockInput(filesRepo):
-    """Return the input filename uv should compile from."""
+    """Return the input filename uv should compile from.
+
+    ``requirements.txt`` is the last fallback: research repos commonly
+    declare loose dependencies there without adopting pyproject.toml
+    or the pip-tools ``.in`` convention, and every supported compiler
+    accepts it as input. The lock output is always
+    ``requirements.lock``, so compiling *from* requirements.txt is
+    unambiguous.
+    """
     if filesRepo.fbIsFile("pyproject.toml"):
         return "pyproject.toml"
     if filesRepo.fbIsFile("requirements.in"):
         return "requirements.in"
+    if filesRepo.fbIsFile("requirements.txt"):
+        return "requirements.txt"
     raise FileNotFoundError(
         "No dependency input found in '"
         + fsRepoRootOf(filesRepo)
-        + "'; expected pyproject.toml or requirements.in"
+        + "'; expected pyproject.toml, requirements.in, or "
+        + "requirements.txt"
     )
 
 

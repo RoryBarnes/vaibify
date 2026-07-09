@@ -3,22 +3,33 @@
 The dashboard is what you arrive at after the [QuickStart](quickStart.md):
 the running container's control surface, in your browser. It is where
 you run pipeline steps, inspect outputs, attest that you have looked at
-them, push results to GitHub or Overleaf, and (optionally) let an AI
-coding agent work alongside you.
+them, climb the AICS reproducibility ladder, push results to GitHub or
+Overleaf, and (optionally) let an AI coding agent work alongside you.
 
 This page is a tour of every panel.
-
-![Dashboard overview](./images/dashboard-overview.png)
 
 ## Layout
 
 The dashboard has a fixed layout:
 
-- **Top toolbar** — container name, active workflow (if any), sync
-  buttons, and the Admin menu.
-- **Left panel** — the *Repos panel* for sandbox / toolkit projects, or the   *Pipeline panel* for workflow projects.
+- **Top toolbar** — container name, active workflow, the three AICS
+  level badges, the **?** Help button, and the Run, Sync, View, and
+  Admin menus.
+- **Left panel** — a tabbed panel. For workflow projects the tabs are
+  **Main**, **AICS**, **Files**, and **Logs**; for sandbox and toolkit
+  projects (no `workflow.json`) they are **Files**, **Repos**, and
+  **Logs**.
 - **Top panels** — Two "Viewing Windows" to display plots and files.
-- **Bottom panel(s)** - Terminal window(s)/tab(s) for work inside the container.
+- **Bottom panel(s)** — Terminal window(s)/tab(s) for work inside the
+  container.
+
+Beside the workflow name, three copies of the vaibify badge mark AICS
+Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
+when the workflow attains that level, and the whole dashboard theme
+shifts colour with the highest level attained: pale blue before Level
+1, purple at Level 1, green at Level 2, and pink at Level 3. The
+badge, the logo, and every "attained" mark share the tint, so a glance
+at any corner of the screen tells you where the workflow stands.
 
 ## Terminal
 
@@ -27,27 +38,35 @@ container. The terminal runs in your browser over WebSocket and behaves
 like a standard terminal emulator. Multiple sessions can run
 concurrently — open as many as you like.
 
-![Terminal](./images/dashboard-terminal.png)
+If Claude Code is enabled for the project, run
 
-If Claude Code is enabled for the project, run `claude` from a
-terminal session to start an in-container coding agent. The agent can
-in turn ask the dashboard to run steps, generate tests, push to
-GitHub, and so on — see [Agent actions](#agent-actions) below.
+```bash
+claude --dangerously-skip-permissions
+```
+
+from a terminal session to start an in-container coding agent. The
+option's name sounds alarming, but inside a vaibify container it is
+the intended mode: the container is an isolated sandbox, the agent
+runs as an unprivileged user with no sudo, and everything it edits is
+tracked in git and hash-pinned in the workflow manifest. Your
+protection comes from verifying results, not from approving each
+command — see the **Using AI** section of the [Help panel](#the-help-panel)
+and the [Security model](security.md). The agent can in turn ask the
+dashboard to run steps, generate tests, push to GitHub, and so on —
+see [Agent actions](#agent-actions) below.
 
 ## Viewing Window
 
 The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Workflow mode, the log is displayed in a window.
 
-![Figure viewer](./images/dashboard-figures.png)
-
 ## Repos panel
 
-The Repos panel replaces the Pipeline panel for sandbox and toolkit
-projects (the templates without a `workflow.json`). It lists the git
-repositories inside the container with their branch, dirty status, and
-push controls.
-
-![Repos panel](./images/dashboard-repos.png)
+The Repos panel is the home tab for sandbox and toolkit projects (the
+templates without a `workflow.json`). In a workflow project the tab is
+hidden, but the panel is one click away: every "Open the Repos panel"
+link in the Main tab's Project block and on the AICS tab lands there.
+It lists the git repositories inside the container with their branch,
+dirty status, and push controls.
 
 When you first open a container, repositories already present in the
 workspace (cloned by the entrypoint from `vaibify.yml`) are tracked
@@ -66,126 +85,323 @@ repository shows as clean unless you have edited its source files.
 secondary **Push files…** option in the gear menu opens a file picker
 for selecting specific files to commit.
 
-## Pipeline panel
+## The Main tab
 
-The pipeline panel lists the steps defined in your workflow. Each step
-shows its name, working directory, and current status.
+The Main tab is the workflow's control surface. It contains two
+top-level collapsible blocks, each with a banner you can click to
+collapse or expand:
 
-![Pipeline panel](./images/dashboard-pipeline.png)
+- **Steps** — the per-step work of the workflow. Level 1
+  (Self-Consistent) is a per-step property, so this is where Level 1
+  is earned.
+- **Project** — requirements that apply to the project as a whole
+  rather than to any single step. Levels 2 (Published) and 3
+  (Reproducible) are workflow-wide, so this is where they are earned.
 
-From the top of the panel you can:
+Both banners carry the same right-aligned strip of status cells as
+the rows beneath them, so a collapsed block still reports its
+aggregate state.
 
-- **Run All** — execute every enabled step in order.
-- **Run Selected** — execute only the checked steps.
-- **Run From Step** — execute from a chosen step to the end.
-- **Enable / Disable** — toggle individual steps without removing
-  them.
-- **Reorder** — drag steps to change the execution order.
+The panel header above the blocks holds three buttons: a gear for
+workflow settings, a refresh arrow to re-poll remote status, and
+**+** to create a new step.
 
-### Adding a step
+### The Steps block
 
-Click **Add Step** to open the step editor. Fill in the step name,
-working directory, and the commands to run. The editor separates *data
-commands* (heavy computation) from *plot commands* (figure generation),
-so you can re-run just the plotting after tweaking a script without
-re-running the simulation.
+A one-time header row labels the step columns: **Run**, the warning
+column (⚠), and **L1**. Each step row then shows, left to right:
 
-### Interactive steps
+- **Run checkbox** — include this step in the next run.
+- **Run light** — execution only: hollow grey means the step has not
+  run this session, filled grey means queued, blinking orange means
+  running now, red means the last run failed, and the theme-tinted
+  vaibify check means the last run succeeded.
+- **Step label and name** — labels are per-type sequential: `A03` is
+  the third *automated* step, `I01` the first *interactive* step.
+- **Warning column (⚠)** — every warning the step carries,
+  consolidated into one glyph; hover it for a plain-English list of
+  reasons and remedies. The colour encodes *severity*, not level:
+  **red** means something is broken right now (a test failed),
+  **orange** means pending work or staleness (a script or output
+  changed since verification, an earlier step changed, or a level
+  regressed).
+- **L1 cell** — the step's Level 1 state (vocabulary below).
 
-Mark a step as *interactive* and the pipeline pauses there, waiting
-for you to confirm before continuing. Useful when you want to eyeball
-an intermediate result, adjust a parameter, or hand control to an
-agent for a specific stage.
+Steps run from the toolbar's **Run** menu: **Run Selected Steps**,
+**Run All Steps**, **Force Run All (Clean)**, **Stop All Running
+Tasks**, plus the verification sweeps **Verify Outputs**, **Run All
+Unit Tests**, and **Verify Dependencies**. Steps can be reordered by
+dragging, and an individual step's context menu offers **Run From
+Here**.
 
-## Step verification status
+#### Adding a step
 
-Vaibify's core job is to track **what has happened on disk** and flag
-any drift between a step's current filesystem state and the last time
-it was validated. Two visual indicators communicate this state: a
-coloured **status dot** on the right of each step row and an optional
-**pencil icon** (✏) next to the step name.
+Click **+** in the panel header to open the step editor. Fill in the
+step name, working directory, and the commands to run. The editor
+separates *data commands* (heavy computation) from *plot commands*
+(figure generation), so you can re-run just the plotting after
+tweaking a script without re-running the simulation.
 
-### Status dot
+#### Interactive steps
 
-Each step row ends with one of three indicators:
+Mark a step as *interactive* and it runs in the terminal with X11
+display forwarding, via the **Run in Terminal** button in its expanded
+view. Useful when a step requires human judgment — eyeballing an
+intermediate result, adjusting a parameter — or when you want to hand
+control to an agent for a specific stage.
 
-- **Nothing** — the step has not yet produced any output, so there
-  is nothing to verify.
-- **Orange dot** — the step is *partially verified*. Some of user
-  attestation, unit tests, and dependency analysis pass, or one or
-  more on-disk changes have been detected since the last full pass.
-- **Accent-coloured badge** (the vaibify favicon) — the step is
-  *fully verified*: user attestation, unit tests, and dependencies
-  all pass and no on-disk drift has been detected.
+#### The expanded step view
 
-When every enabled step is fully verified, the workflow name and the
-"Workflow" label in the top toolbar shift to the accent colour, giving
-an at-a-glance sign that the whole pipeline is in a trusted state.
+Clicking a step row expands its detail: the working directory, its
+scripts, data analysis commands, data files, plot commands, and plot
+files. File rows carry the per-file marks and remote badges described
+under [Status lights and colours](#status-lights-and-colours), and
+clicking a file opens it in a Viewing Window.
 
-### Pencil icon
-
-A pencil next to a step's name means **the step's on-disk state has
-moved out of sync with its last validation**. The pencil is derived
-entirely from filesystem timestamps, so it catches changes vaibify did
-not directly observe — a `git pull`, a manual `pytest` at the
-terminal, an edit from a Claude Code session.
-
-The pencil lights up when any of the following are true:
-
-| Drift | Meaning |
-|---|---|
-| A data script is newer than the test marker | Tests need to be rerun against the updated script. |
-| A data file is newer than the test marker | Tests need to be rerun against the updated output. |
-| A data script or data file is newer than the last user attestation | Re-inspect the outputs and re-attest. |
-| A plot script or plot file is newer than the last user attestation | Re-inspect the figures and re-attest. |
-
-Expanding the step shows a human-readable list of the specific files
-causing each condition.
-
-### Clearing a pencil
-
-- **Re-run tests** for the step (from the dashboard or a terminal).
-  Successful completion clears any "newer than the test marker" drift.
-- **Re-attest** by clicking the verification badge after inspecting
-  the outputs. This clears any "newer than your last attestation"
-  drift.
-
-### Expanded-step timestamps
-
-Clicking a step expands its detail view. Four timestamps appear; three
-are read directly from disk and one is your own attestation.
+The **Verification** section at the bottom of the expanded view shows
+one row per verification axis, each with its state and a timestamp:
 
 | Row | What it records |
 |---|---|
-| **Last tests** | When `pytest` for this step last finished, regardless of who ran it. |
-| **Data files last modified** | When any of the step's data outputs was last written. |
-| **Plot files last modified** | When any of the step's plot outputs was last written. |
-| **Last verified** | When you last clicked the verification badge to attest the outputs. |
+| **Unit Tests** | The combined state of the step's generated tests; "Last run" is when they last finished, regardless of who ran them. |
+| **Dependencies** | Whether the step's cross-step inputs are consistent; "Last checked" is the last dependency analysis. |
+| **Your name** | Your own sign-off. Click the row to attest that you have inspected the outputs; "Last updated" is your last attestation. |
 
-## Sync status
+Above these rows, plain-English drift notices name exactly which files
+went stale and why — for example "Tests older than data scripts" or
+"User verification older than plot files" — so you always know what to
+re-run or re-inspect. Wall-clock and CPU time for the last run, and
+the modification times of the step's data and plot files, are also
+shown.
 
-Symbols before files indicate the current status of a file's publication on a remote repository.
+The **Unit Tests** row expands to the three test categories, with
+buttons to generate and run them — see [Verification](#verification).
 
-![Sync panel](./images/dashboard-sync.png)
+### The Project block
+
+The Project block lists workflow-scope requirements, grouped into six
+collapsible sections:
+
+| Section | What it covers |
+|---|---|
+| **Repository** | The Level 1 workflow-scope requirement: the workflow lives inside a git repository (its *project repo*). |
+| **Software** | Standalone scientific binaries the workflow runs, each declared with an expected version and a captured version + SHA-256. |
+| **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
+| **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
+| **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
+| **Attestation** | The AI Declaration (Level 2) and the rebuild attestation (Level 3). |
+
+Every section banner and every requirement row inside it carries a
+status light and an **L1 | L2 | L3** level strip: the levels the
+requirement gates show its state, and the others show a dash. A
+researcher hunting for Level 2 blockers scans one column.
+
+Expanding a requirement row reveals its file rows (with remote
+badges), a plain-English status line, one "how to" line, and — where
+an action exists — a button that performs it in place:
+
+- **Capture version + SHA** and **Remove package…** on each declared
+  binary, plus **Add package…** at the bottom of the Software section.
+- **Regenerate now** on the manifest, dependency lock, and environment
+  snapshot; **Check files against manifest** and **Check
+  dependencies** for on-demand verification.
+- **Generate reproduce.sh** to write the one-command reproduction
+  script and pin it in the manifest.
+- **Declare rules** / **Delete rules…** for the determinism
+  declaration (stored directly in `workflow.json`; there is no
+  separate rules file).
+- **Configure arXiv…** to record the arXiv submission that must match
+  the frozen Overleaf figures.
+- **Add AI declaration step** if the workflow has none, and **Verify
+  Level 3 reproducibility** to launch the full rebuild-and-compare.
+
+The Dockerfile row is guidance-only: the Dockerfile is yours to edit,
+and pinning its base image to an exact digest (`FROM
+<image>@sha256:…`) is something you — or the in-container agent — do
+by hand.
+
+## Status lights and colours
+
+The same small vocabulary repeats across step rows, both block
+banners, and every requirement row. The **?** Help panel carries the
+authoritative legend; this is the summary.
+
+### Level cells
+
+The L1 | L2 | L3 cells (and the single L1 cell on step rows) use six
+states:
+
+| Cell | Meaning |
+|---|---|
+| Grey filled circle | Not started — no activity at this level yet. |
+| Red circle | No requirements met. |
+| Orange circle | Partially met. |
+| Vaibify badge (the favicon, theme-tinted) | Attained — every requirement at this level is met. |
+| Hollow grey circle | Unknown — GitHub/Zenodo have not been checked recently; refresh remote status to find out. |
+| Dash (—) | Not applicable — no requirements at this level for this row. |
+
+A hollow "never checked" mark is honest by design: a remote that has
+never been verified is never shown as passing.
+
+### Warning glyphs
+
+Warning glyphs (⚠) are coloured by **severity**, never by level:
+
+- **Red** — broken or failing *now*: a test failed, a declared file is
+  missing, a requirement check failed.
+- **Orange** — pending work or staleness: something changed since the
+  last verification, or a check has gone stale and needs refreshing.
+
+Blue is reserved for purely informational marks, such as the
+not-tracked-by-git badge. The pencil mark (✎) on a file row means the
+file changed since its last verified run — re-run the step to refresh
+it.
+
+### File-name styles
+
+Inside expanded rows, a file name rendered in red is itself a
+diagnosis: upright red means the declared file is missing; red with a
+dotted underline means it changed since its last test run; red italic
+means it exists but you have never verified it.
+
+### Per-file remote badges
+
+Each file row carries one badge per configured remote (GitHub,
+Overleaf, Zenodo, arXiv), tinted by that remote's state:
+
+| Badge | Meaning |
+|---|---|
+| Pale blue | In sync with the remote. |
+| Amber | Local file differs from the last push. |
+| Red | Uncommitted local changes. |
+| Blue | Not tracked by git (informational). |
+| Solid muted grey | Git-ignored — a deliberate `.gitignore` exclusion, distinct from "never published". |
+| Faded grey | Not synced to this remote. |
+
+Only figure formats travel to a manuscript, so the Overleaf and arXiv
+rows list figure files only.
+
+## The AICS tab
+
+The AICS tab is the requirements ledger for the reproducibility
+ladder. A header card names the workflow's current level (for
+example, "Level 1: Self-Consistent") with a clickable progression
+strip, followed by three expandable sections — **Level 1 —
+Self-Consistent**, **Level 2 — Published**, **Level 3 — Reproducible**
+— each summarising how many of its requirements are met.
+
+Every requirement row shows a status light, the requirement, what it
+means, and how to meet it, with a deep link to the surface where the
+work happens (the Main tab's blocks or the Repos panel). The tab owns
+the requirement *text*; the buttons that do the work live in the Main
+tab's Project block. The requirements are:
+
+- **Level 1**: Project repository; Every step self-consistent.
+- **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript; AI
+  Declaration attested.
+- **Level 3**: Manifest complete; Dependency lock; Environment
+  snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
+  Software declared; Rebuild attestation.
+
+The Level 3 section ends with the verification machinery: the
+**Verify Level 3 Reproducibility** button (enabled only when the
+readiness checks pass; the rebuild runs in the container and can take
+hours), the current **Level 3 Attestation** card (timestamp, manifest
+digest, image digest, hashes matched, duration — with a staleness
+notice if the manifest has changed since), and the **Reproduction
+History** table of every attempt.
+
+See [Reproducibility](reproducibility.md) for what each envelope
+artifact contains and how third parties verify it without vaibify.
+
+## The Help panel
+
+The **?** button beside the workflow name opens the Help panel. It
+contains:
+
+- A link to the full online documentation.
+- **Using AI** — how to start the in-container coding agent
+  (`claude --dangerously-skip-permissions`) and why skipping
+  per-command permission prompts is the intended, safe mode inside the
+  sandbox: the container isolates the agent from your host, every
+  edit is tracked in git and hash-pinned, and a full rebuild
+  ultimately checks the analysis — the AICS Level 3 posture.
+- The **Legend** — the symbol key, in four divisions matching the
+  dashboard's surfaces: **Steps** (run checkbox, run light, warning
+  column, per-file marks), **Project** (requirement-row marks and the
+  Level 2/Level 3 warning catalog), **Level status lights** (the
+  L1 | L2 | L3 cell vocabulary), and **Files and remotes** (the
+  per-file badges and red file-name styles).
+
+The legend is generated from the same catalog the dashboard renders
+from, so it cannot drift from the glyphs you actually see. Status
+itself is deliberately *not* in the panel — status lives on the
+banners and the AICS tab.
+
+## Verification
+
+Steps are verified three ways: 1) unit tests, 2) dependency checks (if
+applicable), and 3) user attestation. These three controls are
+displayed in each step's expanded view.
+
+The **Unit Tests** row is expandable to show detailed information
+about the step's unit tests, including generating and running them.
+Three categories of unit tests exist:
+
+1. **Integrity tests** (`test_integrity.py`) — output files exist, are
+   non-empty, load in their expected format, have the correct shape,
+   and contain no NaN or infinity values.
+2. **Qualitative tests** (`test_qualitative.py`) — column names, JSON
+   keys, parameter names, and other categorical content match
+   expectations.
+3. **Quantitative tests** (`test_quantitative.py` plus
+   `quantitative_standards.json`) — numerical output values match
+   stored benchmarks at full double precision, with configurable
+   relative and absolute tolerances.
+
+Test generation is **deterministic by default**: a Python introspection
+script runs inside the container, reads each data file, and writes the
+tests mechanically. No language model is involved on the default path.
+An LLM-based path is available as a fallback for formats the
+introspection script cannot read.
+
+See [Supported Data Formats](testFormats.md) for the full list of file
+types the test generator can read.
+
+`vaibify` monitors the steps for dependency violations, such as a dependent step
+not being fully verified or a dependent file being created *after* a subsequent step was marked verified.
+
+Finally, clicking the row that carries your name records your own
+assessment — the human attestation that no test can substitute for.
+
+## Publishing and remote sync
+
+The toolbar's **Sync** menu holds the publication actions:
 
 - **Push to GitHub** — commit and push the project repository to its
   configured remote.
 - **Push to Overleaf** — sync figures and any selected files to the
   configured Overleaf project.
 - **Archive to Zenodo** — upload outputs and receive a DOI.
-- **Generate LaTeX** — produce ready-to-paste `\includegraphics`
-  commands for the current figures.
+- **Configure arXiv…** — record the arXiv submission that must match
+  the frozen figures.
+- **Verify Reproducibility** — open the remote-verification panel
+  described below.
 
 Credentials for these services are resolved from your host's keychain
 at request time. They are never written into the container or into
-`vaibify.yml`. See [Connecting external services](connecting-services.md)
-for the per-service setup.
+`vaibify.yml`. See [External services](externalServices.md) for the
+per-service integration architecture.
 
-### Remote-sync panel
+Per-file sync state is always visible as the
+[remote badges](#per-file-remote-badges) on file rows, and each remote
+has a requirement row under **Published copies** in the Project block.
 
-The sync panel surfaces one row per configured remote (GitHub,
-Overleaf, Zenodo). Each row shows the same four pieces of
-information:
+### The Verify Reproducibility panel
+
+**Sync → Verify Reproducibility** opens a panel with one row per
+configured remote (GitHub, Overleaf, Zenodo). Each row shows the same
+four pieces of information:
 
 | Field | Meaning |
 |---|---|
@@ -198,10 +414,10 @@ Pill semantics:
 
 - **Green** — the most recent SHA-256 authoritative verify reported
   every file matching the manifest.
-- **Yellow** — drift detected since the last authoritative verify
-  (the remote's cheap-poll change-detection layer fired). The remote
-  may or may not actually be out of sync; click **Re-verify** to find
-  out.
+- **Yellow** — never verified, or drift suspected since the last
+  authoritative verify (the remote's cheap-poll change-detection layer
+  fired). The remote may or may not actually be out of sync; click
+  **Re-verify** to find out.
 - **Red** — an authoritative SHA-256 verify confirmed at least one
   file's hash does not match `MANIFEST.sha256`.
 
@@ -232,65 +448,25 @@ remote states. The three forms produced by
   consistency: ⚠ 1 file drifted across 1 of 1 remote` vs. `Remote
   consistency: ⚠ 5 files drifted across 2 of 3 remotes`).
 
-### Hash-aware step badges
+### Hash-aware staleness
 
-Per-step status indicators distinguish *content drift* from *cosmetic
-mtime drift*. After a fresh clone, file mtimes are reset to checkout
-time, which historically caused every step badge to render as
-"stale" even though the bytes had not changed. The dashboard now
-consults the per-file SHA-256 recorded in the test marker before
-declaring a step stale:
-
-| Indicator | Meaning |
-|---|---|
-| **Filled badge** (the favicon glyph) | Fully verified: tests pass, attestation current, content matches. |
-| **Orange dot** | Partially verified — at least one of tests, attestation, or dependency analysis is stale. |
-| **Hollow circle** (◌) | Mtime drifted since the test marker, but the file's SHA-256 still matches the recorded hash. The step is treated as content-clean; the indicator just signals that a tool touched the file without changing its bytes. |
-| **Pencil** (✏) | True content drift — the file's hash differs from the recorded hash. Re-run tests or re-attest. |
-
-The hollow-circle case replaces a noisy false-positive class: a
-post-clone or post-`touch` mtime bump no longer inflates verification
-state, so the badges reflect what is actually on disk.
-
-## Verification
-
-Steps are verified three ways: 1) unit tests, 2) dependnency checks (if applicable), and 3) user attestation. These three controls are displayed in each Step's expanded view.
-
-The **Unit Tests** text is expandable to show detailed information about the step's unit tests, including generating and running them. Three categories of
-unit tests exist:
-
-1. **Integrity tests** (`test_integrity.py`) — output files exist, are
-   non-empty, load in their expected format, have the correct shape,
-   and contain no NaN or infinity values.
-2. **Qualitative tests** (`test_qualitative.py`) — column names, JSON
-   keys, parameter names, and other categorical content match
-   expectations.
-3. **Quantitative tests** (`test_quantitative.py` plus
-   `quantitative_standards.json`) — numerical output values match
-   stored benchmarks at full double precision, with configurable
-   relative and absolute tolerances.
-
-Test generation is **deterministic by default**: a Python introspection
-script runs inside the container, reads each data file, and writes the
-tests mechanically. No language model is involved on the default path.
-An LLM-based path is available as a fallback for formats the
-introspection script cannot read.
-
-See [Supported Data Formats](testFormats.md) for the full list of file
-types the test generator can read.
-
-`vaibify` monitors the steps for dependency violations, such as a dependent step 
-not being fully verified or a dependent file being created *after* a subsequent step was marked verified.
-
-Finally, a button for the (human) records that user's assessment.
+Status marks distinguish *content drift* from *cosmetic mtime drift*.
+After a fresh clone, file mtimes are reset to checkout time, which
+historically caused every step to render as stale even though the
+bytes had not changed. The dashboard consults the per-file SHA-256
+recorded in the test marker before declaring a file stale: a
+post-clone or post-`touch` mtime bump with matching hashes is treated
+as content-clean, so the warning column and the ✎ file marks reflect
+what is actually on disk, not what a tool merely touched.
 
 ## Agent actions
 
 When an AI coding agent is running inside the container (typically
-Claude Code, started by typing `claude` in the terminal), it can ask
-the dashboard to perform named operations on the user's behalf. These
-*agent actions* are the bridge between the agent's text-only world and
-the dashboard's verified state. This scheme enforces deterministic behavior.
+Claude Code, started by typing `claude --dangerously-skip-permissions`
+in the terminal), it can ask the dashboard to perform named operations
+on the user's behalf. These *agent actions* are the bridge between the
+agent's text-only world and the dashboard's verified state. This
+scheme enforces deterministic behavior.
 
 Every state-changing operation in the dashboard — running a step,
 generating tests, pushing to GitHub, archiving to Zenodo — is
@@ -317,11 +493,11 @@ Or invoke one directly (the agent does this for you):
 vaibify-do run-step A03
 ```
 
-Step labels (`A03`, `I01`) come from the pipeline panel — labels are
+Step labels (`A03`, `I01`) come from the Steps block — labels are
 *per-type sequential*, so `A03` is the third *automated* step and
 `I01` is the first *interactive* step. The dashboard updates as the
-action runs; if it produces new files, the affected step's pencil and
-status dot react automatically.
+action runs; if it produces new files, the affected step's warning
+column and level cell react automatically.
 
 ### Why this matters
 

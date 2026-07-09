@@ -1,4 +1,13 @@
-/* Vaibify — AICS tab (current level, L2 readiness card) */
+/* Vaibify — AICS tab: the requirements ledger.
+
+   Three expandable sections (Level 1 / 2 / 3), each listing every
+   requirement vaibify enforces at that level with its live state for
+   this workflow, a plain-English description, and how to meet it —
+   deep-linking to where the action lives (the Main tab's blocks, the
+   Repos panel) rather than duplicating buttons. The Level 3 section
+   closes with the rebuild verification button, the current
+   attestation, and the reproduction history. The ``?`` legend panel
+   stays a pure symbol key; this tab owns the requirement text. */
 
 var VaibifyAicsTab = (function () {
     "use strict";
@@ -13,16 +22,6 @@ var VaibifyAicsTab = (function () {
     var _bL3ReadinessRefreshInFlight = false;
     var _bL3AttestationRefreshInFlight = false;
     var _bVerifyInFlight = false;
-
-    var _DICT_L3_VERIFIER_LABELS = {
-        bManifestComplete: "Manifest complete",
-        bDependencyLockHashed: "Dependency lock hash-pinned",
-        bEnvironmentDigestPinned: "Environment image digest-pinned",
-        bDockerfilePinned: "Dockerfile pinned (digest + apt + " +
-            "SOURCE_DATE_EPOCH)",
-        bReproduceScriptPinned: "reproduce.sh present and in MANIFEST",
-        bDeterminismDeclared: "Determinism declared (RNG + BLAS)",
-    };
 
     var _DICT_LEVEL_HEADERS = {
         0: {
@@ -45,23 +44,162 @@ var VaibifyAicsTab = (function () {
         },
     };
 
-    var _DICT_GAP_FIX_LABELS = {
-        bGithubFullySynced: {
-            sLabel: "GitHub mirror",
-            sFix: "Open the Repos tab to push and re-verify",
-            sFixTabPanel: "repos",
-        },
-        bZenodoFullySynced: {
-            sLabel: "Zenodo deposit + DOI",
-            sFix: "Open the Repos tab to publish or re-verify",
-            sFixTabPanel: "repos",
-        },
-        bAiDeclarationAttested: {
-            sLabel: "AI Declaration step attested",
-            sFix: "Add or attest the AI Declaration step in the " +
-                "Steps tab",
-            sFixTabPanel: "steps",
-        },
+    /* --- Requirement catalog ---
+       The single source of truth for what each AICS level demands and
+       how each requirement is met with vaibify. The tab renders one
+       expandable section per level from these lists; sStateKey names
+       the wire flag that carries the live verdict (Level 1 rows
+       resolve client-side in _fbRequirementMet). */
+
+    var _DICT_LEVEL_SECTION_TITLES = {
+        1: "Level 1 — Self-Consistent",
+        2: "Level 2 — Published",
+        3: "Level 3 — Reproducible",
+    };
+
+    var _DICT_REQUIREMENT_CATALOG = {
+        1: [
+            {sStateKey: "gitRepo",
+             sLabel: "Project repository",
+             sWhat: "The workflow and every file it touches live " +
+                 "inside a git repository, so each change is " +
+                 "tracked from the start.",
+             sHow: "Vaibify detects this automatically — see the " +
+                 "Repository section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "stepsSelfConsistent",
+             sLabel: "Every step self-consistent",
+             sWhat: "Each step's tests pass against its current " +
+                 "outputs, nothing has changed since testing, and " +
+                 "you have signed off on the results.",
+             sHow: "Work through the Steps block: run each step, " +
+                 "generate and run its tests, and approve. The " +
+                 "warning column names whatever blocks a step.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+        ],
+        2: [
+            {sStateKey: "bGithubFullySynced",
+             sLabel: "GitHub mirror",
+             sWhat: "Every canonical file — scripts, outputs, tests, " +
+                 "the manifest — matches your public GitHub " +
+                 "repository at a recently verified commit.",
+             sHow: "Commit and push from the Repos panel, then " +
+                 "re-verify; per-file state is under Published " +
+                 "copies in the Project block.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
+            {sStateKey: "bZenodoFullySynced",
+             sLabel: "Zenodo deposit",
+             sWhat: "Published files match a Zenodo deposit with a " +
+                 "DOI — the citable, permanent archive of your " +
+                 "results.",
+             sHow: "Publish (or re-verify) the deposit from the " +
+                 "Repos panel.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
+            {sStateKey: "bArxivFullySynced",
+             sLabel: "arXiv manuscript",
+             sWhat: "When an Overleaf manuscript is bound, its " +
+                 "frozen figures must match the recorded arXiv " +
+                 "submission. A workflow without a manuscript " +
+                 "meets this automatically.",
+             sHow: "Push figures to Overleaf, then configure the " +
+                 "arXiv submission under Published copies in the " +
+                 "Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bAiDeclarationAttested",
+             sLabel: "AI Declaration attested",
+             sWhat: "A committed, signed declaration of how AI was " +
+                 "used to build this workflow — part of the " +
+                 "published record.",
+             sHow: "Add the AI Declaration step, review the " +
+                 "declaration file, sign off, and commit it (the " +
+                 "Attestation section of the Project block).",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+        ],
+        3: [
+            {sStateKey: "bManifestComplete",
+             sLabel: "Manifest complete",
+             sWhat: "MANIFEST.sha256 pins the hash of every " +
+                 "declared artifact, script, and test, so any " +
+                 "drift is detectable.",
+             sHow: "Regenerated automatically at each Level 1 pass, " +
+                 "or on demand from the Artifacts section of the " +
+                 "Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bDependencyLockHashed",
+             sLabel: "Dependency lock",
+             sWhat: "requirements.lock pins every Python dependency " +
+                 "(when the workflow uses Python) by exact version " +
+                 "with hashes, so the software stack is rebuildable.",
+             sHow: "Regenerated with the envelope; check it from " +
+                 "the Artifacts section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bEnvironmentDigestPinned",
+             sLabel: "Environment snapshot",
+             sWhat: "The exact container image digest and system " +
+                 "toolchain are recorded, pinning the compute " +
+                 "environment.",
+             sHow: "Captured with the envelope; see the Artifacts " +
+                 "section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bDockerfilePinned",
+             sLabel: "Dockerfile pinned",
+             sWhat: "The Dockerfile builds from an exact base-image " +
+                 "digest so the container can be rebuilt " +
+                 "bit-for-bit years later.",
+             sHow: "Edit the Dockerfile to pin the base image " +
+                 "(FROM <image>@sha256:…), or ask the in-container " +
+                 "agent to pin it.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bReproduceScriptPinned",
+             sLabel: "Reproduce script",
+             sWhat: "One script at the repository root, reproduce.sh, " +
+                 "reruns the whole workflow, and its hash is pinned " +
+                 "in the manifest.",
+             sHow: "Generate it from the Artifacts section of the " +
+                 "Project block (regenerating also re-pins " +
+                 "the manifest).",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bDeterminismDeclared",
+             sLabel: "Determinism declared",
+             sWhat: "You have stated how exactly a rerun must match " +
+                 "your numbers — random seeding and numeric-library " +
+                 "variance rules.",
+             sHow: "Declare the rules in the Determinism section of " +
+                 "the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bBinariesDeclaredOrWaived",
+             sLabel: "Software declared",
+             sWhat: "Standalone scientific binaries are declared " +
+                 "with their versions and hashes captured (or " +
+                 "explicitly waived), pinning the exact code that " +
+                 "produced the results.",
+             sHow: "Add packages and capture version + SHA in the " +
+                 "Software section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bL3AttestationCurrent",
+             sLabel: "Rebuild attestation",
+             sWhat: "A full rebuild reran the workflow and " +
+                 "reproduced your outputs with matching hashes, " +
+                 "recorded against the current manifest.",
+             sHow: "Run the verification below once every other " +
+                 "check passes — the rebuild runs in the container " +
+                 "and can take hours.",
+             sFixTabPanel: "",
+             sFixLabel: ""},
+        ],
     };
 
     function fnSetContainerId(sContainerId) {
@@ -69,6 +207,8 @@ var VaibifyAicsTab = (function () {
         _dictLastReadiness = null;
         _dictLastL3Readiness = null;
         _dictLastL3Attestation = null;
+        _setExpandedLevels.clear();
+        _bExpandSeeded = false;
     }
 
     function _felGetTabContent() {
@@ -155,18 +295,144 @@ var VaibifyAicsTab = (function () {
         }
         if (!_dictLastReadiness) return;
         var iLevel = _dictLastReadiness.iAICSLevel || 0;
-        var dictGaps = _dictLastReadiness.dictLevel2Gaps || {};
-        var dictL3 = (_dictLastL3Readiness &&
-            _dictLastL3Readiness.dictL3ReadinessGaps) || {};
+        _fnSeedExpandedLevels(iLevel);
         elContent.innerHTML = _fsRenderHeaderCard(iLevel) +
-            _fsRenderLevel2ReadinessCard(iLevel, dictGaps) +
-            _fsRenderL3ReadinessCard(iLevel, dictL3) +
-            _fsRenderL3AttestationCard(dictL3) +
-            _fsRenderL3HistoryTable();
+            _fsRenderLevelSection(1) +
+            _fsRenderLevelSection(2) +
+            _fsRenderLevelSection(3);
         _fnBindGapFixLinks();
+        _fnBindLevelSectionHeaders();
         _fnBindGenerateTemplateButton();
         _fnBindVerifyL3Button();
         _fnBindProgressSegments();
+    }
+
+    /* --- Level sections: requirements + live state + how-to --- */
+
+    var _setExpandedLevels = new Set();
+    var _bExpandSeeded = false;
+
+    function _fnSeedExpandedLevels(iLevel) {
+        // First paint: open the level the researcher is working
+        // toward (the lowest level with an unmet requirement);
+        // afterwards their manual choices win.
+        if (_bExpandSeeded) return;
+        _bExpandSeeded = true;
+        for (var i = 1; i <= 3; i++) {
+            var listRows = _DICT_REQUIREMENT_CATALOG[i];
+            var bAllMet = listRows.every(function (dictReq) {
+                return _fbRequirementMet(dictReq);
+            });
+            if (!bAllMet) {
+                _setExpandedLevels.add(i);
+                return;
+            }
+        }
+        _setExpandedLevels.add(3);
+    }
+
+    function _fbRequirementMet(dictReq) {
+        var sKey = dictReq.sStateKey;
+        if (sKey === "gitRepo") {
+            var dictWorkflow = (PipeleyenApp &&
+                PipeleyenApp.fdictGetWorkflow)
+                ? PipeleyenApp.fdictGetWorkflow() : null;
+            return Boolean((dictWorkflow || {}).sProjectRepoPath);
+        }
+        if (sKey === "stepsSelfConsistent") {
+            return (_dictLastReadiness.iAICSLevel || 0) >= 1;
+        }
+        var dictGaps = _dictLastReadiness.dictLevel2Gaps || {};
+        if (sKey in dictGaps) return dictGaps[sKey] === true;
+        var dictL3 = (_dictLastL3Readiness &&
+            _dictLastL3Readiness.dictL3ReadinessGaps) || {};
+        return dictL3[sKey] === true;
+    }
+
+    function _fsBuildLevelLight(sState, sTooltip) {
+        // "met" is this tab's accessibility language for an attained
+        // requirement; the cell markup comes from the shared builder.
+        return VaibifyUtilities.fsBuildLevelCell(
+            sState, sTooltip, "met");
+    }
+
+    function _fsRenderLevelSection(iLevelSection) {
+        var listRows = _DICT_REQUIREMENT_CATALOG[iLevelSection];
+        var bOpen = _setExpandedLevels.has(iLevelSection);
+        var iMet = listRows.filter(_fbRequirementMet).length;
+        var sState = iMet === listRows.length ? "attained"
+            : (iMet === 0 ? "none" : "partial");
+        var sHtml = '<div class="aics-card aics-level-section' +
+            (bOpen ? '' : ' collapsed') + '" data-level="' +
+            iLevelSection + '">' +
+            '<div class="aics-card-header aics-level-section-header"' +
+            ' data-level="' + iLevelSection + '">' +
+            '<span class="aics-card-title">' +
+            _DICT_LEVEL_SECTION_TITLES[iLevelSection] + '</span>' +
+            '<span class="aics-card-summary">' + iMet + ' of ' +
+            listRows.length + ' met</span>' +
+            _fsBuildLevelLight(sState,
+                _DICT_LEVEL_SECTION_TITLES[iLevelSection]) +
+            '</div>';
+        if (bOpen) {
+            sHtml += '<div class="aics-card-body">';
+            for (var i = 0; i < listRows.length; i++) {
+                sHtml += _fsRenderRequirementEntry(listRows[i]);
+            }
+            if (iLevelSection === 3) {
+                sHtml += _fsRenderLevel3Extras();
+            }
+            sHtml += '</div>';
+        }
+        return sHtml + '</div>';
+    }
+
+    function _fsRenderRequirementEntry(dictReq) {
+        var bMet = _fbRequirementMet(dictReq);
+        var sLight = _fsBuildLevelLight(
+            bMet ? "attained" : "none",
+            dictReq.sLabel + ": " + (bMet ? "met" : "not met"));
+        var sLink = "";
+        if (!bMet && dictReq.sFixTabPanel) {
+            sLink = ' <a class="aics-gap-fix" data-target-tab="' +
+                dictReq.sFixTabPanel + '" href="#">' +
+                fnEscapeHtml(dictReq.sFixLabel) + '</a>';
+        }
+        return '<div class="aics-req-entry state-' +
+            (bMet ? "satisfied" : "unsatisfied") + '">' +
+            '<div class="aics-req-row">' + sLight +
+            '<span class="aics-req-label">' +
+            fnEscapeHtml(dictReq.sLabel) + '</span></div>' +
+            '<div class="aics-req-what">' +
+            fnEscapeHtml(dictReq.sWhat) + '</div>' +
+            '<div class="aics-req-how">' +
+            fnEscapeHtml(dictReq.sHow) + sLink + '</div></div>';
+    }
+
+    function _fsRenderLevel3Extras() {
+        var dictL3 = (_dictLastL3Readiness &&
+            _dictLastL3Readiness.dictL3ReadinessGaps) || {};
+        return _fsRenderVerifyL3Button(dictL3) +
+            _fsRenderL3AttestationCard(dictL3) +
+            _fsRenderL3HistoryTable();
+    }
+
+    function _fnBindLevelSectionHeaders() {
+        var elContent = _felGetTabContent();
+        if (!elContent) return;
+        elContent.querySelectorAll(".aics-level-section-header")
+            .forEach(function (elHeader) {
+                elHeader.addEventListener("click", function () {
+                    var iLevel = parseInt(
+                        elHeader.dataset.level, 10);
+                    if (_setExpandedLevels.has(iLevel)) {
+                        _setExpandedLevels.delete(iLevel);
+                    } else {
+                        _setExpandedLevels.add(iLevel);
+                    }
+                    _fnPaintFromCache();
+                });
+            });
     }
 
     function _fnNotifyCachedAicsLevel(iLevel) {
@@ -276,77 +542,23 @@ var VaibifyAicsTab = (function () {
 
     function _fnScrollToReadiness(sLevelKey) {
         if (sLevelKey === "L1") {
-            // The Level 1 work list is the step list itself — this
-            // tab has no Level 1 card, so scrolling here would land
-            // on the card the link sits in (a dead click). Take the
-            // researcher to the blocked steps instead.
+            // The Level 1 work itself lives in the step list — take
+            // the researcher to the blocked steps rather than a dead
+            // in-tab scroll.
             var elStepsTab = document.querySelector(
                 '.left-tab[data-panel="steps"]');
             if (elStepsTab) elStepsTab.click();
             return;
         }
-        var sSelector = sLevelKey === "L3"
-            ? ".aics-level3-card"
-            : ".aics-level2-card";
+        var iLevel = sLevelKey === "L3" ? 3 : 2;
+        _setExpandedLevels.add(iLevel);
+        _fnPaintFromCache();
         var el = _felGetTabContent();
         if (!el) return;
-        var elTarget = el.querySelector(sSelector);
+        var elTarget = el.querySelector(
+            '.aics-level-section[data-level="' + iLevel + '"]');
         if (!elTarget) return;
         elTarget.scrollIntoView({behavior: "smooth", block: "start"});
-        elTarget.classList.remove("collapsed");
-    }
-
-    function _fsRenderLevel2ReadinessCard(iLevel, dictGaps) {
-        var bCollapsedDefault = iLevel >= 2;
-        var sCollapsedClass = bCollapsedDefault ? " collapsed" : "";
-        var sHtml = '<div class="aics-card aics-level2-card' +
-            sCollapsedClass + '">';
-        sHtml += '<div class="aics-card-header">' +
-            '<span class="aics-card-title">' +
-            'Level 2 Readiness</span>' +
-            '<span class="aics-card-summary">' +
-            _fsBuildLevel2Summary(dictGaps) + '</span>' +
-            '</div>';
-        sHtml += '<div class="aics-card-body">';
-        sHtml += _fsRenderGapRow(
-            "bGithubFullySynced", dictGaps);
-        sHtml += _fsRenderGapRow(
-            "bZenodoFullySynced", dictGaps);
-        sHtml += _fsRenderGapRow(
-            "bAiDeclarationAttested", dictGaps);
-        sHtml += '</div></div>';
-        return sHtml;
-    }
-
-    function _fsBuildLevel2Summary(dictGaps) {
-        var iSatisfied = 0;
-        var iTotal = 0;
-        Object.keys(_DICT_GAP_FIX_LABELS).forEach(function (sKey) {
-            iTotal++;
-            if (dictGaps[sKey] === true) iSatisfied++;
-        });
-        return iSatisfied + " / " + iTotal + " criteria met";
-    }
-
-    function _fsRenderGapRow(sKey, dictGaps) {
-        var dictMeta = _DICT_GAP_FIX_LABELS[sKey];
-        var bSatisfied = dictGaps[sKey] === true;
-        var sStateClass = bSatisfied ? "satisfied" : "unsatisfied";
-        var sIcon = bSatisfied ? "✓" : "⚠";
-        var sFixHtml = "";
-        if (!bSatisfied) {
-            sFixHtml = ' <a class="aics-gap-fix" ' +
-                'data-target-tab="' +
-                dictMeta.sFixTabPanel + '" ' +
-                'data-gap="' + sKey + '" href="#">' +
-                fnEscapeHtml(dictMeta.sFix) + '</a>';
-        }
-        return '<div class="aics-gap-row state-' +
-            sStateClass + '">' +
-            '<span class="aics-gap-icon">' + sIcon + '</span>' +
-            '<span class="aics-gap-label">' +
-            fnEscapeHtml(dictMeta.sLabel) + '</span>' +
-            sFixHtml + '</div>';
     }
 
     function _fnBindGapFixLinks() {
@@ -356,24 +568,16 @@ var VaibifyAicsTab = (function () {
             function (elLink) {
                 elLink.addEventListener("click", function (event) {
                     event.preventDefault();
-                    var sTarget = elLink.dataset.targetTab;
-                    var sGap = elLink.dataset.gap;
-                    _fnNavigateToFixSurface(sTarget, sGap);
+                    _fnNavigateToFixSurface(elLink.dataset.targetTab);
                 });
             });
     }
 
-    function _fnNavigateToFixSurface(sTargetTab, sGap) {
+    function _fnNavigateToFixSurface(sTargetTab) {
         var elTab = document.querySelector(
             '.left-tab[data-panel="' + sTargetTab + '"]'
         );
         if (elTab) elTab.click();
-        if (sGap === "bAiDeclarationAttested") {
-            PipeleyenApp.fnShowToast(
-                "Add a step with sStepKind=ai-declaration, " +
-                "then point it at AI_USAGE.md.", "info"
-            );
-        }
     }
 
     function _fnBindGenerateTemplateButton() {
@@ -409,59 +613,6 @@ var VaibifyAicsTab = (function () {
         await fnRender();
     }
 
-    function _fsRenderL3ReadinessCard(iLevel, dictL3) {
-        if (iLevel < 2) {
-            return '<div class="aics-card aics-level3-card disabled">' +
-                '<div class="aics-card-header">' +
-                '<span class="aics-card-title">' +
-                'Level 3 Readiness</span>' +
-                '<span class="aics-card-summary">' +
-                'Reach Level 2 first.</span>' +
-                '</div></div>';
-        }
-        var bCollapsedDefault = (iLevel >= 3) &&
-            dictL3.bL3AttestationCurrent === true;
-        var sCollapsedClass = bCollapsedDefault ? " collapsed" : "";
-        var sHtml = '<div class="aics-card aics-level3-card' +
-            sCollapsedClass + '">';
-        sHtml += '<div class="aics-card-header">' +
-            '<span class="aics-card-title">' +
-            'Level 3 Readiness</span>' +
-            '<span class="aics-card-summary">' +
-            _fsBuildL3Summary(dictL3) + '</span>' +
-            '</div>';
-        sHtml += '<div class="aics-card-body">';
-        Object.keys(_DICT_L3_VERIFIER_LABELS).forEach(function (sKey) {
-            sHtml += _fsRenderL3VerifierRow(sKey, dictL3);
-        });
-        sHtml += _fsRenderVerifyL3Button(dictL3);
-        sHtml += '</div></div>';
-        return sHtml;
-    }
-
-    function _fsBuildL3Summary(dictL3) {
-        var iSatisfied = 0;
-        var iTotal = 0;
-        Object.keys(_DICT_L3_VERIFIER_LABELS).forEach(function (sKey) {
-            iTotal++;
-            if (dictL3[sKey] === true) iSatisfied++;
-        });
-        return iSatisfied + " / " + iTotal + " checks passed";
-    }
-
-    function _fsRenderL3VerifierRow(sKey, dictL3) {
-        var sLabel = _DICT_L3_VERIFIER_LABELS[sKey];
-        var bSatisfied = dictL3[sKey] === true;
-        var sStateClass = bSatisfied ? "satisfied" : "unsatisfied";
-        var sIcon = bSatisfied ? "✓" : "⚠";
-        return '<div class="aics-gap-row state-' +
-            sStateClass + '">' +
-            '<span class="aics-gap-icon">' + sIcon + '</span>' +
-            '<span class="aics-gap-label">' +
-            fnEscapeHtml(sLabel) + '</span>' +
-            '</div>';
-    }
-
     function _fsRenderVerifyL3Button(dictL3) {
         var bReady = dictL3.bL3ReadinessOK === true;
         var sDisabled = bReady ? "" : " disabled";
@@ -492,8 +643,10 @@ var VaibifyAicsTab = (function () {
         }
         var sStatus = dictCurrent.sStatus || "unknown";
         var sStale = _fsRenderStalenessNotice(dictCurrent);
+        // sStatus comes from an agent-writable JSON file; it must be
+        // escaped in the attribute context too, not just as text.
         return '<div class="aics-card aics-attestation-card status-' +
-            sStatus + '">' +
+            fnEscapeHtml(sStatus) + '">' +
             '<div class="aics-card-header">' +
             '<span class="aics-card-title">Level 3 Attestation</span>' +
             '<span class="aics-card-summary">' +
@@ -566,7 +719,7 @@ var VaibifyAicsTab = (function () {
         var sManifest = (dictEntry.sManifestDigestAtAttestation ||
             "").slice(0, 19);
         var fDuration = dictEntry.fDurationSeconds || 0;
-        return '<tr class="state-' + sStatus + '">' +
+        return '<tr class="state-' + fnEscapeHtml(sStatus) + '">' +
             '<td><code>' + fnEscapeHtml(
                 dictEntry.sAttestedAtUtc || "?") +
             '</code></td>' +
