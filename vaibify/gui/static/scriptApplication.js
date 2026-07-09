@@ -2399,6 +2399,7 @@ const PipeleyenApp = (function () {
         },
         "regenerate-envelope": {
             sPath: "/level3/envelope",
+            bOfferCommitAfterGenerate: true,
             fdictAfterResponse: function (dictResult) {
                 var dictGaps =
                     (dictResult || {}).dictL3ReadinessGaps || {};
@@ -2439,6 +2440,7 @@ const PipeleyenApp = (function () {
         },
         "generate-reproduce-script": {
             sPath: "/level3/reproduce-script",
+            bOfferCommitAfterGenerate: true,
             fdictAfterResponse: function (dictResult) {
                 if ((dictResult || {}).bManifestRefreshed === true) {
                     return {sMessage: "reproduce.sh written and " +
@@ -2596,6 +2598,13 @@ const PipeleyenApp = (function () {
                 fnShowToast(dictOutcome.sMessage, dictOutcome.sType);
             } else {
                 fnShowToast(dictAction.sToast, "info");
+            }
+            if (dictAction.bOfferCommitAfterGenerate) {
+                // The generated envelope/reproduce.sh files are not
+                // auto-committed; offer to commit them now rather than
+                // leaving them silently untracked (blocking L2).
+                await VaibifyManifestCheck.fbOfferCommitAfterGenerate(
+                    sContainerId);
             }
         } catch (error) {
             fnShowToast(

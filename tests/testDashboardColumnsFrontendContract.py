@@ -593,6 +593,45 @@ def test_declaration_step_offers_both_commit_and_remove():
     )
 
 
+def test_generate_actions_offer_to_commit_the_new_files():
+    """The envelope and reproduce.sh generators write files that are
+    never auto-committed (vaibify does not write to the researcher's
+    repo on its own), so leaving them silently untracked blocks L2. A
+    generate action must therefore offer to commit them: the action
+    carries the bOfferCommitAfterGenerate flag, the dispatcher awaits
+    the offer, and the offer reuses the existing commit-canonical
+    machinery (2026-07-09)."""
+    sApp = _fsReadStaticFile("scriptApplication.js")
+    # Both generators opt in.
+    for sAction in ('"regenerate-envelope"', '"generate-reproduce-script"'):
+        iAt = sApp.find(sAction)
+        assert iAt != -1, "missing action " + sAction
+        assert "bOfferCommitAfterGenerate: true" in sApp[iAt:iAt + 200], (
+            sAction + " must offer to commit the files it generates"
+        )
+    # The dispatcher awaits the offer only when the action opted in.
+    assert (
+        "if (dictAction.bOfferCommitAfterGenerate)" in sApp
+        and "VaibifyManifestCheck.fbOfferCommitAfterGenerate" in sApp
+    ), "the executor must await the commit offer for opted-in actions"
+    # The offer reuses the existing manifest-check + commit-canonical
+    # machinery rather than a bespoke commit path.
+    sCheck = _fsReadStaticFile("scriptManifestCheck.js")
+    sOffer = _fsExtractFunctionBlock(
+        sCheck, "fbOfferCommitAfterGenerate",
+    )
+    assert "manifest-check" in sOffer, (
+        "the offer must read the uncommitted-canonical list from "
+        "manifest-check, not re-derive it"
+    )
+    assert "listNeedsCommit" in sOffer and "bIsRepo" in sOffer, (
+        "the offer must no-op off-repo and when nothing needs commit"
+    )
+    assert "fbOfferCommitAfterGenerate:" in sCheck, (
+        "the offer must be part of the module's public surface"
+    )
+
+
 def test_repos_panel_push_toasts_are_honest():
     """FALSIFICATION TARGET (live bug 2026-07-02): the push routes
     return HTTP 200 with bSuccess false on git failures (an
@@ -938,6 +977,31 @@ def test_group_summary_skips_not_applicable_rows():
     )
     assert "iGreen === iApplicable" in sSummary, (
         "all-applicable-green is the green criterion"
+    )
+
+
+def test_sync_row_partial_match_is_orange_not_red():
+    """A remote-sync row with SOME files matching and some diverged is
+    partial progress (orange), not "nothing published" (red). Only a
+    total miss — nothing matching the remote — is red. Collapsing any
+    divergence to red misrepresented a mostly-synced mirror as fully
+    out of sync, the same "reads as nothing works" defect the group
+    summary already fixed one level up (2026-07-09)."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sState = _fsExtractFunctionBlock(sSource, "_fsSyncRowState")
+    # The divergence branch must consult iMatching, returning orange
+    # when some files match and red only when none do.
+    assert "iMatching" in sState, (
+        "the divergence branch must read iMatching to tell partial "
+        "from total-miss"
+    )
+    assert '? "orange" : "red"' in sState, (
+        "some matching → orange (partial); none matching → red"
+    )
+    # The unconditional red-on-any-divergence must be gone.
+    assert 'iDivergedCount || 0) > 0) return "red"' not in sState, (
+        "any-divergence-is-red was the misrepresentation; it must "
+        "not survive"
     )
 
 

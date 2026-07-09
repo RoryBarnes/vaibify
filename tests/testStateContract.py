@@ -182,20 +182,27 @@ def test_flistCanonicalTrackedFiles_includes_test_files(tmp_path):
 
 
 def test_flistCanonicalTrackedFiles_includes_envelope_artifacts(tmp_path):
-    """MANIFEST.sha256, requirements.lock, and environment.json are canonical.
+    """The full reproducibility envelope is canonical: MANIFEST.sha256,
+    requirements.lock, environment.json, AND reproduce.sh.
 
     The commit-canonical curated contract names the reproducibility
-    envelope; a canonical set that omits it leaves the envelope
-    permanently uncommittable and blocks the L2 GitHub verification.
+    envelope; a canonical set that omits any part leaves it permanently
+    uncommittable and blocks the L2 GitHub verification. reproduce.sh
+    is the sharpest case: it is pinned in MANIFEST.sha256 and a third
+    party runs it to reproduce (L3), so a clone that carries the
+    manifest but not the script fails `sha256sum -c` — it must be
+    committable through the same flow as the rest of the envelope.
     """
     (tmp_path / "MANIFEST.sha256").write_text("# manifest\n")
     (tmp_path / "requirements.lock").write_text("click==1.0\n")
+    (tmp_path / "reproduce.sh").write_text("#!/usr/bin/env bash\n")
     os.makedirs(tmp_path / ".vaibify", exist_ok=True)
     (tmp_path / ".vaibify" / "environment.json").write_text("{}\n")
     listResult = stateContract.flistCanonicalTrackedFiles(
         {"listSteps": []}, str(tmp_path))
     assert "MANIFEST.sha256" in listResult
     assert "requirements.lock" in listResult
+    assert "reproduce.sh" in listResult
     assert ".vaibify/environment.json" in listResult
 
 

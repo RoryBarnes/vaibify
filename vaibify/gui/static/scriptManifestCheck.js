@@ -256,6 +256,77 @@ var VaibifyManifestCheck = (function () {
         });
     }
 
+    function _fsRenderGenerateDialogHtml(dictReport) {
+        var iCount = (dictReport.listNeedsCommit || []).length;
+        return '<div class="manifest-check-dialog">' +
+            '<h2>Commit the generated files? ' +
+            '<span class="help-icon" title="' +
+            _fsEscape(_S_CANONICAL_HELP) + '">?</span></h2>' +
+            '<p>These workflow files were just generated but aren\'t ' +
+            'committed to git yet. Vaibify never commits to your repo ' +
+            'on its own — commit them now so they can be published ' +
+            '(Level 2), or do it later from the Repos panel.</p>' +
+            '<p>Committing will include all ' + iCount +
+            ' file' + (iCount === 1 ? '' : 's') + ' listed below:</p>' +
+            _fsRenderFileList(dictReport.listNeedsCommit) +
+            '<div class="manifest-check-buttons">' +
+            '<button class="btn" data-action="cancel">Not now</button>' +
+            '<button class="btn btn-primary" data-action="commit">' +
+            'Commit these files</button>' +
+            '</div></div>';
+    }
+
+    function _fnPromptCommitAfterGenerate(dictReport, sContainerId) {
+        return new Promise(function (fnResolve) {
+            var elDialog = document.createElement("div");
+            elDialog.innerHTML = _fsRenderGenerateDialogHtml(dictReport);
+            var elBackdrop = _fnAttachOverlay(elDialog);
+            elDialog.addEventListener("click", async function (event) {
+                var sAction = (event.target.getAttribute &&
+                    event.target.getAttribute("data-action")) || "";
+                if (!sAction) return;
+                if (sAction === "cancel") {
+                    _fnRemoveOverlay(elBackdrop);
+                    fnResolve(false);
+                    return;
+                }
+                if (sAction === "commit") {
+                    event.target.disabled = true;
+                    var bCommitted = await _fbCommitCanonical(
+                        sContainerId);
+                    _fnRemoveOverlay(elBackdrop);
+                    fnResolve(bCommitted);
+                    return;
+                }
+            });
+        });
+    }
+
+    async function fbOfferCommitAfterGenerate(sContainerId) {
+        // Reproducibility artifacts (MANIFEST.sha256,
+        // requirements.lock, .vaibify/environment.json, reproduce.sh)
+        // are written to disk but never auto-committed — vaibify does
+        // not write to the researcher's repo on its own. Called right
+        // after a generate action, this offers to commit whatever is
+        // now uncommitted, so the files do not sit silently untracked
+        // (blocking L2) until the next push. No-ops when the workspace
+        // is not a git repo or nothing needs committing.
+        if (!sContainerId) return false;
+        var dictReport;
+        try {
+            dictReport = await VaibifyApi.fdictGet(
+                "/api/git/" + encodeURIComponent(sContainerId) +
+                "/manifest-check");
+        } catch (error) {
+            return false;
+        }
+        if (!dictReport || !dictReport.bIsRepo) return false;
+        if ((dictReport.listNeedsCommit || []).length === 0) {
+            return false;
+        }
+        return _fnPromptCommitAfterGenerate(dictReport, sContainerId);
+    }
+
     async function fbRunBeforePush(sContainerId, sService) {
         if (!sContainerId) return true;
         var dictReport;
@@ -277,6 +348,7 @@ var VaibifyManifestCheck = (function () {
 
     return {
         fbRunBeforePush: fbRunBeforePush,
+        fbOfferCommitAfterGenerate: fbOfferCommitAfterGenerate,
         fsCommitSinglePath: fsCommitSinglePath,
         fsRemoveSinglePath: fsRemoveSinglePath,
     };

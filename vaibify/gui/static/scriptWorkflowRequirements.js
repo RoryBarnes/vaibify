@@ -105,7 +105,16 @@ var VaibifyWorkflowRequirements = (function () {
         // A null cache means the remote was never verified; the hollow
         // grey mark is the honest rendering — never a pass.
         if (!dictSync) return "unknown";
-        if ((dictSync.iDivergedCount || 0) > 0) return "red";
+        if ((dictSync.iDivergedCount || 0) > 0) {
+            // Some files already match the remote → partial progress
+            // (orange), not "nothing published" (red). Only a total
+            // miss — nothing matching the remote — is red. Mirrors the
+            // level-cell none/partial/attained vocabulary and the
+            // group-summary rule; the L2 gate still needs a full match
+            // (levelGates._fbCachedSyncStatusFullMatch), so orange
+            // honestly denies attainment without erasing the progress.
+            return (dictSync.iMatching || 0) > 0 ? "orange" : "red";
+        }
         if (dictSync.bStale === true) return "orange";
         return "green";
     }

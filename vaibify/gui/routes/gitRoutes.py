@@ -68,6 +68,7 @@ TUPLE_CURATED_COMMIT_KINDS = (
     ".vaibify/zenodo-refs.json",
     "MANIFEST.sha256 (when present at repo root)",
     "requirements.lock (when present at repo root)",
+    "reproduce.sh (when present at repo root)",
     "requirements.txt / environment.yml / Dockerfile / pyproject.toml",
     "explicit canonical entries enumerated by stateContract",
 )
