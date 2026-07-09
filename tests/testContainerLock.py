@@ -3,7 +3,6 @@
 import json
 import multiprocessing
 import os
-import time
 
 import pytest
 
@@ -46,13 +45,23 @@ def test_fnAcquireContainerLock_release_lets_next_succeed(tmp_lock_dir):
     fnReleaseContainerLock(fileHandleSecond)
 
 
-def _fnHoldLockInChildProcess(sTempDir, sProjectName, iPort, eventReady):
-    """Child: acquire the lock and block until the parent sets event."""
+def _fnHoldLockInChildProcess(
+    sTempDir, sProjectName, iPort, eventAcquired, eventRelease,
+):
+    """Child: acquire the lock, signal the parent, block until released.
+
+    ``eventAcquired`` fires only after ``fnAcquireContainerLock``
+    returns, i.e. the flock is held and the holder payload is fully
+    written. Parents must wait on it rather than polling for the lock
+    file: the file exists from ``open()`` onward, before the flock and
+    the payload write, so file existence is not an acquisition signal.
+    """
     import vaibify.config.containerLock as childLockModule
     childLockModule._S_LOCK_DIRECTORY = sTempDir
     from vaibify.config.containerLock import fnAcquireContainerLock
     fileHandleChildLock = fnAcquireContainerLock(sProjectName, iPort)
-    eventReady.wait(timeout=10)
+    eventAcquired.set()
+    eventRelease.wait(timeout=10)
     fileHandleChildLock.close()
 
 
@@ -63,23 +72,21 @@ def test_fnAcquireContainerLock_raises_when_held_by_other_process(
         ContainerLockedError, fnAcquireContainerLock,
     )
     contextSpawn = multiprocessing.get_context("fork")
-    eventReady = contextSpawn.Event()
+    eventAcquired = contextSpawn.Event()
+    eventRelease = contextSpawn.Event()
     processChild = contextSpawn.Process(
         target=_fnHoldLockInChildProcess,
-        args=(str(tmp_lock_dir), "demo", 9000, eventReady),
+        args=(str(tmp_lock_dir), "demo", 9000, eventAcquired, eventRelease),
     )
     processChild.start()
     try:
-        for _ in range(50):
-            if (tmp_lock_dir / "demo.lock").exists():
-                break
-            time.sleep(0.05)
+        assert eventAcquired.wait(timeout=10)
         with pytest.raises(ContainerLockedError) as excInfo:
             fnAcquireContainerLock("demo", 8050)
         assert excInfo.value.iHolderPid == processChild.pid
         assert excInfo.value.iHolderPort == 9000
     finally:
-        eventReady.set()
+        eventRelease.set()
         processChild.join(timeout=5)
 
 
@@ -103,22 +110,20 @@ def test_fdictReadLockHolder_returns_empty_for_self_held(tmp_lock_dir):
 def test_fdictReadLockHolder_reports_other_process_holder(tmp_lock_dir):
     from vaibify.config.containerLock import fdictReadLockHolder
     contextSpawn = multiprocessing.get_context("fork")
-    eventReady = contextSpawn.Event()
+    eventAcquired = contextSpawn.Event()
+    eventRelease = contextSpawn.Event()
     processChild = contextSpawn.Process(
         target=_fnHoldLockInChildProcess,
-        args=(str(tmp_lock_dir), "demo", 9100, eventReady),
+        args=(str(tmp_lock_dir), "demo", 9100, eventAcquired, eventRelease),
     )
     processChild.start()
     try:
-        for _ in range(50):
-            if (tmp_lock_dir / "demo.lock").exists():
-                break
-            time.sleep(0.05)
+        assert eventAcquired.wait(timeout=10)
         dictHolder = fdictReadLockHolder("demo")
         assert dictHolder.get("iPid") == processChild.pid
         assert dictHolder.get("iPort") == 9100
     finally:
-        eventReady.set()
+        eventRelease.set()
         processChild.join(timeout=5)
 
 
@@ -128,17 +133,15 @@ def test_stale_lock_from_dead_process_is_reclaimable(tmp_lock_dir):
         fnAcquireContainerLock, fnReleaseContainerLock,
     )
     contextSpawn = multiprocessing.get_context("fork")
-    eventReady = contextSpawn.Event()
+    eventAcquired = contextSpawn.Event()
+    eventRelease = contextSpawn.Event()
     processChild = contextSpawn.Process(
         target=_fnHoldLockInChildProcess,
-        args=(str(tmp_lock_dir), "demo", 9200, eventReady),
+        args=(str(tmp_lock_dir), "demo", 9200, eventAcquired, eventRelease),
     )
     processChild.start()
-    for _ in range(50):
-        if (tmp_lock_dir / "demo.lock").exists():
-            break
-        time.sleep(0.05)
-    eventReady.set()
+    assert eventAcquired.wait(timeout=10)
+    eventRelease.set()
     processChild.join(timeout=5)
     fileHandleLock = fnAcquireContainerLock("demo", 8050)
     fnReleaseContainerLock(fileHandleLock)
@@ -334,21 +337,19 @@ def test_fnAcquireContainerLock_still_respects_live_child_holder(
         ContainerLockedError, fnAcquireContainerLock,
     )
     contextSpawn = multiprocessing.get_context("fork")
-    eventReady = contextSpawn.Event()
+    eventAcquired = contextSpawn.Event()
+    eventRelease = contextSpawn.Event()
     processChild = contextSpawn.Process(
         target=_fnHoldLockInChildProcess,
-        args=(str(tmp_lock_dir), "demo", 9300, eventReady),
+        args=(str(tmp_lock_dir), "demo", 9300, eventAcquired, eventRelease),
     )
     processChild.start()
     try:
-        for _ in range(50):
-            if (tmp_lock_dir / "demo.lock").exists():
-                break
-            time.sleep(0.05)
+        assert eventAcquired.wait(timeout=10)
         with pytest.raises(ContainerLockedError):
             fnAcquireContainerLock("demo", 8050)
     finally:
-        eventReady.set()
+        eventRelease.set()
         processChild.join(timeout=5)
 
 
