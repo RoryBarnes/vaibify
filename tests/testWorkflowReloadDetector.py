@@ -1,13 +1,15 @@
 """Unit tests for workflowReloadDetector.
 
-Covers the four behaviours that matter for the dashboard's
-ground-truth contract:
+Covers the behaviours that matter for the dashboard's ground-truth
+contract:
 
-- self-write mtimes silence subsequent polls
-- divergent mtimes trigger a reload
+- self-write fingerprints silence subsequent polls
+- divergent content fingerprints trigger a reload — including when
+  the mtime is unchanged (the same-second swallow regression)
 - malformed JSON / missing files surface as ``sError`` without crashing
 - the project-repo path is re-derived via the in-container git probe
   on reload (mirroring connect-time semantics)
+- every cache replacement bumps the per-container workflow epoch
 """
 
 import json
@@ -21,64 +23,37 @@ from vaibify.gui import workflowReloadDetector
 _S_CONTAINER_ID = "test-container"
 _S_WORKFLOW_PATH = "/workspace/proj/.vaibify/workflows/demo.json"
 _S_REPO_PATH = "/workspace/proj"
+_S_FINGERPRINT_A = "a" * 64
+_S_FINGERPRINT_B = "b" * 64
 
 
 class _FakeDocker:
     """Minimal docker-connection fake for the reload detector.
 
-    Records stat calls and returns mtime strings keyed by path. Every
-    other interaction (fbaFetchFile, ftResultExecuteCommand) is unused
-    here because the loader is patched out of the units under test.
+    Only the existence probe reaches docker now — content comparison
+    happens on fingerprints collected by the polling batch and passed
+    in, and baselines are recorded from host-computed hashes.
     """
 
     def __init__(self):
-        self.dictMtimes = {}
-        self.listStatCommands = []
-        self._sLastPathFile = ""
-
-    def fnSetMtime(self, sPath, sMtime):
-        self.dictMtimes[sPath] = sMtime
-
-    def fnWriteFileViaTar(
-        self, sContainerId, sFilePath, baContent,
-        iMode=None, iUid=None, iGid=None,
-    ):
-        self._sLastPathFile = (
-            baContent.decode("utf-8")
-            if isinstance(baContent, bytes) else baContent
-        )
+        self.setExistingPaths = set()
+        self.listCommands = []
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
-        self.listStatCommands.append(sCommand)
+        self.listCommands.append(sCommand)
         if sCommand.startswith("test -e ") and "exists:" in sCommand:
-            for sPath in self.dictMtimes:
-                if "'" + sPath + "'" in sCommand or sPath in sCommand:
+            for sPath in self.setExistingPaths:
+                if sPath in sCommand:
                     return (0, "exists:1")
             return (0, "exists:0")
-        if sCommand.startswith("xargs -d "):
-            return (0, self._fsStatPathsFromFile())
-        if not sCommand.startswith("stat -c '%n %Y' "):
-            return (0, "")
-        listLines = []
-        for sPath, sMtime in self.dictMtimes.items():
-            if "'" + sPath + "'" in sCommand:
-                listLines.append(f"{sPath} {sMtime}")
-        return (0, "\n".join(listLines))
-
-    def _fsStatPathsFromFile(self):
-        listLines = []
-        for sPath in self._sLastPathFile.strip().split("\n"):
-            sMtime = self.dictMtimes.get(sPath)
-            if sMtime:
-                listLines.append(f"{sPath} {sMtime}")
-        return "\n".join(listLines)
+        return (0, "")
 
 
 def _fdictMakeContext(connectionDocker):
     return {
         "docker": connectionDocker,
         "workflows": {},
-        "lastSelfWriteMtimes": {},
+        "lastSelfWriteFingerprints": {},
     }
 
 
@@ -87,113 +62,121 @@ def _fdictMakeWorkflow(sName="demo", listSteps=None):
         "sWorkflowName": sName,
         "sPath": _S_WORKFLOW_PATH,
         "sProjectRepoPath": _S_REPO_PATH,
+        "_sSourceFingerprint": _S_FINGERPRINT_B,
         "listSteps": listSteps or [],
     }
 
 
-# ---------- fnRecordSelfWriteMtime ----------
+def _fdictPolled(sMtime="1700000000"):
+    return {_S_WORKFLOW_PATH: sMtime}
 
 
-def test_record_self_write_mtime_stores_polled_value():
-    fakeDocker = _FakeDocker()
-    fakeDocker.fnSetMtime(_S_WORKFLOW_PATH, "1700000000")
-    dictCtx = _fdictMakeContext(fakeDocker)
-    workflowReloadDetector.fnRecordSelfWriteMtime(
-        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+# ---------- fnRecordSelfWriteFingerprint ----------
+
+
+def test_record_self_write_fingerprint_stores_value():
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    workflowReloadDetector.fnRecordSelfWriteFingerprint(
+        dictCtx, _S_CONTAINER_ID, _S_FINGERPRINT_A,
     )
     assert (
-        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
-        == "1700000000"
+        dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID]
+        == _S_FINGERPRINT_A
     )
 
 
-def test_record_self_write_mtime_handles_empty_path():
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
-    workflowReloadDetector.fnRecordSelfWriteMtime(
+def test_record_self_write_fingerprint_keeps_baseline_on_empty():
+    """An empty fingerprint must not poison a known-good baseline.
+
+    Absence of evidence (a failed hash or a loader that produced no
+    fingerprint) is not evidence of change; overwriting the baseline
+    with "" would make every following poll's real fingerprint compare
+    unequal, firing a spurious reload each cycle (the reload-toast
+    loop the mtime design had under docker-exec contention).
+    """
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
+    workflowReloadDetector.fnRecordSelfWriteFingerprint(
         dictCtx, _S_CONTAINER_ID, "",
     )
-    assert dictCtx["lastSelfWriteMtimes"] == {}
-    assert fakeDocker.listStatCommands == []
-
-
-def test_record_self_write_mtime_initializes_map_when_missing():
-    fakeDocker = _FakeDocker()
-    fakeDocker.fnSetMtime(_S_WORKFLOW_PATH, "1700000000")
-    dictCtx = {"docker": fakeDocker, "workflows": {}}
-    workflowReloadDetector.fnRecordSelfWriteMtime(
-        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-    )
-    assert "lastSelfWriteMtimes" in dictCtx
     assert (
-        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
-        == "1700000000"
+        dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID]
+        == _S_FINGERPRINT_A
     )
 
 
-def test_record_self_write_mtime_keeps_baseline_on_stat_miss():
-    """A stat miss (empty result) must not poison the baseline.
-
-    Under docker-exec contention ``_fsStatMtime`` returns "" for a
-    transient failure. Overwriting the known-good baseline with "" made
-    every following poll's real mtime compare unequal, firing a
-    spurious out-of-band reload each cycle (the reload-toast loop).
-    """
-    fakeDocker = _FakeDocker()  # no mtime set → stat returns empty
-    dictCtx = _fdictMakeContext(fakeDocker)
-    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
-    workflowReloadDetector.fnRecordSelfWriteMtime(
-        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+def test_record_self_write_fingerprint_initializes_map_when_missing():
+    dictCtx = {"docker": _FakeDocker(), "workflows": {}}
+    workflowReloadDetector.fnRecordSelfWriteFingerprint(
+        dictCtx, _S_CONTAINER_ID, _S_FINGERPRINT_A,
     )
     assert (
-        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
-        == "1700000000"
+        dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID]
+        == _S_FINGERPRINT_A
     )
 
 
 def test_reload_seeds_silently_when_baseline_absent():
     """A missing baseline is not evidence of an out-of-band edit.
 
-    When a prior stat miss left no recorded baseline, the next poll
-    with a real mtime must seed the baseline and report no reload —
-    not fire a spurious reload that clears the client's file caches
+    When no baseline was recorded, the next poll with a real
+    fingerprint must seed the baseline and report no reload — not
+    fire a spurious reload that clears the client's file caches
     (the grey-badge blink) and toasts "reloaded from disk".
     """
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)  # lastSelfWriteMtimes empty
+    dictCtx = _fdictMakeContext(_FakeDocker())
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
         dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-        {_S_WORKFLOW_PATH: "1700000000"},
+        _fdictPolled(), _S_FINGERPRINT_A,
     )
     assert dictReload == {
         "bReplaced": False, "dictWorkflow": None, "sError": None,
     }
     assert (
-        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
-        == "1700000000"
+        dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID]
+        == _S_FINGERPRINT_A
     )
 
 
 # ---------- fdictMaybeReloadWorkflow ----------
 
 
-def test_no_reload_when_polled_mtime_matches_self_write():
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
-    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
+def test_no_reload_when_polled_fingerprint_matches_self_write():
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
         dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-        {_S_WORKFLOW_PATH: "1700000000"},
+        _fdictPolled(), _S_FINGERPRINT_A,
     )
     assert dictReload == {
         "bReplaced": False, "dictWorkflow": None, "sError": None,
     }
 
 
-def test_reload_when_polled_mtime_diverges():
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
-    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
+def test_no_reload_when_fingerprint_flakes_but_stat_saw_file():
+    """Empty fingerprint + stat success is a hash-collection hiccup."""
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
+    dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
+        dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+        _fdictPolled(), "",
+    )
+    assert dictReload == {
+        "bReplaced": False, "dictWorkflow": None, "sError": None,
+    }
+
+
+def test_reload_when_polled_fingerprint_diverges():
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
     dictNewWorkflow = _fdictMakeWorkflow(
         sName="updated", listSteps=[{"sDirectory": "stepA"}],
     )
@@ -207,7 +190,7 @@ def test_reload_when_polled_mtime_diverges():
     ):
         dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
             dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-            {_S_WORKFLOW_PATH: "1700000099"},
+            _fdictPolled(), _S_FINGERPRINT_B,
         )
     assert dictReload["bReplaced"] is True
     assert dictReload["sError"] is None
@@ -217,17 +200,97 @@ def test_reload_when_polled_mtime_diverges():
         is dictReload["dictWorkflow"]
     )
     assert (
-        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
-        == "1700000099"
+        dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID]
+        == _S_FINGERPRINT_B
     )
 
 
+def test_reload_fires_on_same_second_edit():
+    """Content change with an identical mtime must still reload.
+
+    Regression: whole-second mtime comparison swallowed any agent
+    edit landing in the same second as a backend save of
+    workflow.json (the poll's own invalidation save made this a
+    recurring window). Content fingerprints are second-independent —
+    the polled dictModTimes here is byte-identical to the baseline
+    era and only the fingerprint moved.
+    """
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
+    dictNewWorkflow = _fdictMakeWorkflow(sName="same-second")
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".fdictLoadWorkflowFromContainer",
+        return_value=dictNewWorkflow,
+    ), patch(
+        "vaibify.gui.containerGit.fsDetectProjectRepoInContainer",
+        return_value=_S_REPO_PATH,
+    ):
+        dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
+            dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+            _fdictPolled("1700000000"), _S_FINGERPRINT_B,
+        )
+    assert dictReload["bReplaced"] is True
+    assert (
+        dictReload["dictWorkflow"]["sWorkflowName"] == "same-second"
+    )
+
+
+def test_reload_bumps_workflow_epoch():
+    """Every cache replacement bumps the per-container epoch."""
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    ) == 0
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".fdictLoadWorkflowFromContainer",
+        return_value=_fdictMakeWorkflow(),
+    ), patch(
+        "vaibify.gui.containerGit.fsDetectProjectRepoInContainer",
+        return_value=_S_REPO_PATH,
+    ):
+        workflowReloadDetector.fdictMaybeReloadWorkflow(
+            dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+            _fdictPolled(), _S_FINGERPRINT_B,
+        )
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    ) == 1
+
+
+def test_failed_reload_does_not_bump_epoch():
+    """A rejected re-load leaves clients on the last good revision."""
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
+    with patch(
+        "vaibify.gui.workflowReloadDetector.workflowManager"
+        ".fdictLoadWorkflowFromContainer",
+        side_effect=ValueError("Invalid workflow.json: bad shape"),
+    ):
+        workflowReloadDetector.fdictMaybeReloadWorkflow(
+            dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
+            _fdictPolled(), _S_FINGERPRINT_B,
+        )
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    ) == 0
+
+
 def test_reload_handles_malformed_json():
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     dictPriorWorkflow = _fdictMakeWorkflow(sName="prior")
     dictCtx["workflows"][_S_CONTAINER_ID] = dictPriorWorkflow
-    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
     with patch(
         "vaibify.gui.workflowReloadDetector.workflowManager"
         ".fdictLoadWorkflowFromContainer",
@@ -235,25 +298,25 @@ def test_reload_handles_malformed_json():
     ):
         dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
             dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-            {_S_WORKFLOW_PATH: "1700000099"},
+            _fdictPolled(), _S_FINGERPRINT_B,
         )
     assert dictReload["bReplaced"] is False
     assert "Invalid workflow.json" in dictReload["sError"]
     assert dictCtx["workflows"][_S_CONTAINER_ID] is dictPriorWorkflow
     assert (
-        dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID]
-        == "1700000000"
+        dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID]
+        == _S_FINGERPRINT_A
     )
 
 
 def test_reload_silent_when_polled_batch_empty_but_file_exists():
     """Empty dictModTimes + existence probe confirms file → hiccup, no toast."""
     fakeDocker = _FakeDocker()
-    fakeDocker.fnSetMtime(_S_WORKFLOW_PATH, "1700000000")
+    fakeDocker.setExistingPaths.add(_S_WORKFLOW_PATH)
     dictCtx = _fdictMakeContext(fakeDocker)
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
         dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-        {},
+        {}, "",
     )
     assert dictReload == {
         "bReplaced": False, "dictWorkflow": None, "sError": None,
@@ -262,11 +325,10 @@ def test_reload_silent_when_polled_batch_empty_but_file_exists():
 
 def test_reload_reports_missing_when_other_paths_returned():
     """Other paths in dictModTimes but workflow absent → genuine missing event."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
         dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-        {"/workspace/other/file.txt": "1700000000"},
+        {"/workspace/other/file.txt": "1700000000"}, "",
     )
     assert dictReload["bReplaced"] is False
     assert "missing" in dictReload["sError"].lower()
@@ -274,22 +336,20 @@ def test_reload_reports_missing_when_other_paths_returned():
 
 def test_reload_reports_missing_when_empty_batch_and_probe_confirms_gone():
     """Empty dictModTimes + probe says file gone → real deletion, do toast."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
         dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-        {},
+        {}, "",
     )
     assert dictReload["bReplaced"] is False
     assert "missing" in dictReload["sError"].lower()
 
 
 def test_reload_handles_empty_workflow_path():
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     dictReload = workflowReloadDetector.fdictMaybeReloadWorkflow(
         dictCtx, _S_CONTAINER_ID, "",
-        {_S_WORKFLOW_PATH: "1700000099"},
+        _fdictPolled(), _S_FINGERPRINT_B,
     )
     assert dictReload == {
         "bReplaced": False, "dictWorkflow": None, "sError": None,
@@ -297,9 +357,10 @@ def test_reload_handles_empty_workflow_path():
 
 
 def test_reload_re_derives_project_repo_path_via_container_git():
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
-    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
     dictNewWorkflow = _fdictMakeWorkflow()
     dictNewWorkflow["sProjectRepoPath"] = "/will-be-overridden"
     with patch(
@@ -312,7 +373,7 @@ def test_reload_re_derives_project_repo_path_via_container_git():
     ) as mockProbe:
         workflowReloadDetector.fdictMaybeReloadWorkflow(
             dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-            {_S_WORKFLOW_PATH: "1700000099"},
+            _fdictPolled(), _S_FINGERPRINT_B,
         )
     mockProbe.assert_called_once()
     assert (
@@ -322,10 +383,11 @@ def test_reload_re_derives_project_repo_path_via_container_git():
 
 
 def test_reload_does_not_re_trigger_on_next_poll():
-    """Two divergent mtimes in succession only reload once each."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
-    dictCtx["lastSelfWriteMtimes"][_S_CONTAINER_ID] = "1700000000"
+    """The loaded content's fingerprint becomes the new baseline."""
+    dictCtx = _fdictMakeContext(_FakeDocker())
+    dictCtx["lastSelfWriteFingerprints"][_S_CONTAINER_ID] = (
+        _S_FINGERPRINT_A
+    )
     dictNewWorkflow = _fdictMakeWorkflow(sName="updated")
     with patch(
         "vaibify.gui.workflowReloadDetector.workflowManager"
@@ -337,14 +399,44 @@ def test_reload_does_not_re_trigger_on_next_poll():
     ):
         dictFirst = workflowReloadDetector.fdictMaybeReloadWorkflow(
             dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-            {_S_WORKFLOW_PATH: "1700000099"},
+            _fdictPolled(), _S_FINGERPRINT_B,
         )
         dictSecond = workflowReloadDetector.fdictMaybeReloadWorkflow(
             dictCtx, _S_CONTAINER_ID, _S_WORKFLOW_PATH,
-            {_S_WORKFLOW_PATH: "1700000099"},
+            _fdictPolled(), _S_FINGERPRINT_B,
         )
     assert dictFirst["bReplaced"] is True
     assert dictSecond["bReplaced"] is False
+
+
+# ---------- epoch helpers ----------
+
+
+def test_epoch_defaults_to_zero_and_increments():
+    dictCtx = {"docker": _FakeDocker(), "workflows": {}}
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    ) == 0
+    workflowReloadDetector.fnBumpWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    )
+    workflowReloadDetector.fnBumpWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    )
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, _S_CONTAINER_ID,
+    ) == 2
+
+
+def test_epoch_is_per_container():
+    dictCtx = {"docker": _FakeDocker(), "workflows": {}}
+    workflowReloadDetector.fnBumpWorkflowEpoch(dictCtx, "cid-one")
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, "cid-one",
+    ) == 1
+    assert workflowReloadDetector.fiGetWorkflowEpoch(
+        dictCtx, "cid-two",
+    ) == 0
 
 
 # ---------- fdictDetectNewlyAvailableWorkflows ----------
@@ -365,8 +457,7 @@ def _fdictMakeListing(sPath, sName):
 
 def test_detect_seeds_cache_silently_on_first_poll():
     """First poll seeds the cache and reports no change."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     with patch(
         "vaibify.gui.workflowReloadDetector.workflowManager"
         ".flistFindWorkflowsInContainer",
@@ -389,8 +480,7 @@ def test_detect_seeds_cache_silently_on_first_poll():
 
 def test_detect_no_change_when_list_unchanged():
     """Subsequent identical poll surfaces no change."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     with patch(
         "vaibify.gui.workflowReloadDetector.workflowManager"
         ".flistFindWorkflowsInContainer",
@@ -411,8 +501,7 @@ def test_detect_no_change_when_list_unchanged():
 
 def test_detect_flags_new_workflow_appearance():
     """An added workflow is reported in listNewWorkflowPaths."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     listFirst = [_fdictMakeListing(_S_DEMO_PATH, "demo")]
     listSecond = [
         _fdictMakeListing(_S_DEMO_PATH, "demo"),
@@ -438,8 +527,7 @@ def test_detect_flags_new_workflow_appearance():
 
 def test_detect_flags_workflow_disappearance():
     """A removed workflow flips bChanged but does not list newcomers."""
-    fakeDocker = _FakeDocker()
-    dictCtx = _fdictMakeContext(fakeDocker)
+    dictCtx = _fdictMakeContext(_FakeDocker())
     listFirst = [_fdictMakeListing(_S_DEMO_PATH, "demo")]
     listSecond = []
     with patch(
@@ -463,8 +551,7 @@ def test_detect_flags_workflow_disappearance():
 
 def test_detect_initializes_map_when_missing():
     """Helper creates lastDiscoveredWorkflows when absent on dictCtx."""
-    fakeDocker = _FakeDocker()
-    dictCtx = {"docker": fakeDocker, "workflows": {}}
+    dictCtx = {"docker": _FakeDocker(), "workflows": {}}
     with patch(
         "vaibify.gui.workflowReloadDetector.workflowManager"
         ".flistFindWorkflowsInContainer",

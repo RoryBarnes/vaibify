@@ -18,7 +18,7 @@ def _fdictCommonPatches(dictCommon=None):
     """Return list of context managers stubbing every disk-touching helper."""
     listTargets = [
         "_flistCollectOutputPaths",
-        "_fdictGetModTimes",
+        "ftGetModTimesAndFingerprint",
         "fdictCollectOutputPathsByStep",
         "fnCollectMarkerPathsByStep",
         "_fbCheckStaleUserVerification",
@@ -52,7 +52,7 @@ async def test_poll_response_carries_iAICSLevel_zero_when_no_repo():
     }
     listManagers = _fdictCommonPatches({
         "_flistCollectOutputPaths": [],
-        "_fdictGetModTimes": {},
+        "ftGetModTimesAndFingerprint": ({}, ""),
     })
     for mgr in listManagers:
         mgr.start()
@@ -92,7 +92,7 @@ async def test_poll_response_carries_iAICSLevel_one_when_all_green():
     }
     listManagers = _fdictCommonPatches({
         "_flistCollectOutputPaths": [],
-        "_fdictGetModTimes": {},
+        "ftGetModTimesAndFingerprint": ({}, ""),
     })
     for mgr in listManagers:
         mgr.start()

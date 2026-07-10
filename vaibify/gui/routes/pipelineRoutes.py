@@ -41,6 +41,7 @@ from ..fileStatusManager import (
     _fdictComputeMaxTestSourceMtimeByStep,
     _fdictComputeTestCategoryMtimes,
     _fdictGetModTimes,
+    ftGetModTimesAndFingerprint,
     _flistResolveTestSourcePaths,
     _flistCollectOutputPaths,
     _flistDetectAndInvalidate,
@@ -62,6 +63,7 @@ from ..llmInvoker import fsReadFileFromContainer
 from ..workflowReloadDetector import (
     fdictDetectNewlyAvailableWorkflows,
     fdictMaybeReloadWorkflow as _fdictMaybeReloadWorkflow,
+    fiGetWorkflowEpoch,
 )
 
 logger = logging.getLogger("vaibify")
@@ -480,6 +482,9 @@ def _fsBuildFileStatusEtag(dictResponse, iSyncEpoch):
         ("l1", dictResponse.get("iL1BlockerCount", 0)),
         ("l2", dictResponse.get("iL2BlockerCount", 0)),
         ("l3", dictResponse.get("iL3BlockerCount", 0)),
+        ("workflowEpoch", dictResponse.get("iWorkflowEpoch", -1)),
+        ("workflowAttached",
+         bool(dictResponse.get("dictWorkflow"))),
     ]
     sBody = json.dumps(listSignals, sort_keys=True, default=str)
     sDigest = hashlib.sha256(sBody.encode("utf-8")).hexdigest()
@@ -499,6 +504,7 @@ def _fnRegisterFileStatus(app, dictCtx):
     @app.get("/api/pipeline/{sContainerId}/file-status")
     async def fnGetFileStatus(
         sContainerId: str, request: Request, response: Response,
+        iWorkflowEpoch: int = -1,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -506,6 +512,9 @@ def _fnRegisterFileStatus(app, dictCtx):
         dictVars = dictCtx["variables"](sContainerId)
         dictResponse = await fdictComputeFileStatus(
             dictCtx, sContainerId, dictWorkflow, dictVars,
+        )
+        _fnReconcileWorkflowEpoch(
+            dictCtx, sContainerId, dictResponse, iWorkflowEpoch,
         )
         sEtag = _fsBuildFileStatusEtag(
             dictResponse, fiGetSyncEpoch(dictCtx, sContainerId),
@@ -515,6 +524,34 @@ def _fnRegisterFileStatus(app, dictCtx):
             return Response(status_code=304, headers={"ETag": sEtag})
         response.headers["ETag"] = sEtag
         return dictResponse
+
+
+def _fnReconcileWorkflowEpoch(
+    dictCtx, sContainerId, dictResponse, iClientEpoch,
+):
+    """Attach the cached workflow whenever the client's epoch is stale.
+
+    The reload detector's one-shot ``bReplaced`` flag is consumed by
+    whichever single request observes the content change; if that
+    response is dropped mid-flight or a second polling client wins the
+    race, every other client stays stale forever. Comparing the
+    client-reported epoch against the server's per-container epoch
+    turns delivery into per-client reconciliation: a stale client
+    receives the full workflow on every poll until it confirms the
+    new epoch back, so delivery is at-least-once and idempotent.
+    """
+    iServerEpoch = fiGetWorkflowEpoch(dictCtx, sContainerId)
+    bClientStale = iClientEpoch != iServerEpoch
+    dictResponse["iWorkflowEpoch"] = iServerEpoch
+    dictResponse["bWorkflowReloaded"] = bClientStale
+    dictWorkflow = dictCtx["workflows"].get(sContainerId)
+    if bClientStale and dictWorkflow:
+        from ..pipelineUtils import fdictWorkflowWithLabels
+        dictResponse["dictWorkflow"] = fdictWorkflowWithLabels(
+            dictWorkflow,
+        )
+    else:
+        dictResponse["dictWorkflow"] = None
 
 
 def _fnRegisterWorkflowDiscovery(app, dictCtx):
@@ -636,12 +673,13 @@ async def _ftFetchAndReload(
     listUnionPaths = _flistCollectPollPaths(
         dictWorkflow, dictVars, sWorkflowPath,
     )
-    dictModTimes = await asyncio.to_thread(
-        _fdictGetModTimes, dictCtx["docker"], sContainerId, listUnionPaths,
+    dictModTimes, sPolledFingerprint = await asyncio.to_thread(
+        ftGetModTimesAndFingerprint, dictCtx["docker"], sContainerId,
+        listUnionPaths, sWorkflowPath,
     )
     dictReload = await asyncio.to_thread(
         _fdictMaybeReloadWorkflow, dictCtx, sContainerId,
-        sWorkflowPath, dictModTimes,
+        sWorkflowPath, dictModTimes, sPolledFingerprint,
     )
     return dictModTimes, dictReload, sWorkflowPath
 

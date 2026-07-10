@@ -1148,8 +1148,13 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
         await _fnRefreshConftestsAndMigrateMarkers(
             dictCtx, sContainerId, dictWorkflow, sResolved,
         )
-        from .workflowReloadDetector import fnRecordSelfWriteMtime
-        fnRecordSelfWriteMtime(dictCtx, sContainerId, sResolved)
+        from .workflowReloadDetector import (
+            fnRecordSelfWriteFingerprint,
+        )
+        fnRecordSelfWriteFingerprint(
+            dictCtx, sContainerId,
+            dictWorkflow.get("_sSourceFingerprint", ""),
+        )
         if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
             dictCtx["save"](sContainerId, dictWorkflow)
         if workflowManager.fbMigrateModifiedFilesToRepoRelative(
@@ -1163,12 +1168,16 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             dictCtx, sContainerId, dictWorkflow,
         )
         from .pipelineUtils import fdictWorkflowWithLabels
+        from .workflowReloadDetector import fiGetWorkflowEpoch
         return {
             "sContainerId": sContainerId,
             "sWorkflowPath": sResolved,
             "dictWorkflow": fdictWorkflowWithLabels(dictWorkflow),
             "dictFileStatus": dictFileStatus,
             "sLeaseId": dictCtx.get("sViewerLease", ""),
+            "iWorkflowEpoch": fiGetWorkflowEpoch(
+                dictCtx, sContainerId,
+            ),
         }
     except HTTPException:
         raise
@@ -1540,8 +1549,15 @@ def _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
         workflowManager.fnSaveWorkflowToContainer(
             dictRaw["docker"], sContainerId, dictWorkflow, sPath)
-        from .workflowReloadDetector import fnRecordSelfWriteMtime
-        fnRecordSelfWriteMtime(dictRaw, sContainerId, sPath)
+        from .workflowReloadDetector import (
+            fnRecordSelfWriteFingerprint,
+        )
+        fnRecordSelfWriteFingerprint(
+            dictRaw, sContainerId,
+            workflowManager.fsComputeWorkflowFingerprint(
+                dictWorkflow,
+            ),
+        )
 
     def fnVariables(sContainerId):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
@@ -1605,10 +1621,11 @@ def fdictBuildContext(connectionDocker):
         "containerUsers": {},
         "pipelineTasks": {},
         "sourceCodeDeps": {},
-        "lastSelfWriteMtimes": {},
+        "lastSelfWriteFingerprints": {},
         "lastDiscoveredWorkflows": {},
         "dictPipelineStateLocks": {},
         "dictSyncEpochs": {},
+        "dictWorkflowEpochs": {},
     }
     fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles = (
         _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths)

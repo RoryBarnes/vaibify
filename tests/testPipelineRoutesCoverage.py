@@ -329,8 +329,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -394,8 +395,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -461,8 +463,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ) as mockModTimes, patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -541,8 +544,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -618,8 +622,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -701,8 +706,9 @@ class TestFdictFetchOutputStatus:
             ".fnCollectMarkerPathsByStep",
             return_value={0: sMarkerPath},
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ) as mockModTimes, patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -1405,7 +1411,6 @@ class TestWorkflowDiscoveryRoute:
 
 
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
-    "_fdictGetModTimes",
     "fdictCollectOutputPathsByStep",
     "fnCollectMarkerPathsByStep",
     "_flistDetectAndInvalidate",
@@ -1428,6 +1433,7 @@ def _fdictPollLevelPatchReturns(listLevel1, listLevel2, listLevel3):
         for sName in _LIST_EMPTY_DICT_POLL_PATCH_NAMES
     }
     dictReturns[sModule + "_flistCollectOutputPaths"] = []
+    dictReturns[sModule + "ftGetModTimesAndFingerprint"] = ({}, "")
     dictReturns[sModule + "_fbCheckStaleUserVerification"] = False
     dictReturns[sGates + "fiAICSLevel"] = 1
     dictReturns[sGates + "flistLevel1Blockers"] = listLevel1

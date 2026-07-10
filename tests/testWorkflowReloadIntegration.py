@@ -1,13 +1,17 @@
 """End-to-end integration test for the out-of-band workflow.json reload.
 
 Drives the FastAPI app with a stable mock docker connection that
-responds to stat (so mtimes flow through the real polling batch) and
-fbaFetchFile (so the reload helper can re-read workflow.json). The
-goal is to prove the file-status endpoint detects an out-of-band edit,
-silences self-writes, and surfaces malformed JSON or deletion as a
+responds to stat + sha256 (so mtimes and the content fingerprint flow
+through the real polling batch) and fbaFetchFile (so the reload
+helper can re-read workflow.json). The goal is to prove the
+file-status endpoint detects an out-of-band edit — including one that
+lands in the same mtime second — silences self-writes, redelivers the
+workflow to a client whose epoch is stale (a dropped response must
+not strand a tab), and surfaces malformed JSON or deletion as a
 warning rather than crashing the polling loop.
 """
 
+import hashlib
 import json
 from unittest.mock import patch
 
@@ -111,7 +115,10 @@ class _MockDocker:
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if sCommand.startswith("xargs -d "):
-            return (0, self._fsBuildStatLinesFromFile())
+            sLines = self._fsBuildStatLinesFromFile()
+            if "sha256sum" in sCommand:
+                sLines += "\n" + self._fsBuildFingerprintLine()
+            return (0, sLines)
         if sCommand.startswith("stat -c '%n %Y' "):
             return (0, self._fsBuildStatLines(sCommand))
         if sCommand.startswith("test -e ") and "exists:" in sCommand:
@@ -144,6 +151,13 @@ class _MockDocker:
             if sMtime:
                 listLines.append(f"{sPath} {sMtime}")
         return "\n".join(listLines)
+
+    def _fsBuildFingerprintLine(self):
+        """Mirror the piggybacked ``sha256sum`` of workflow.json."""
+        baContent = self.dictFiles.get(_S_WORKFLOW_PATH)
+        if baContent is None:
+            return "fingerprint:"
+        return "fingerprint:" + hashlib.sha256(baContent).hexdigest()
 
     def _fsBuildExistsLine(self, sCommand):
         """Resolve the ``test -e ... && echo exists:1 || echo exists:0`` probe."""
@@ -192,9 +206,11 @@ def _fnConnect(clientHttp):
     return response.json()
 
 
-def _fdictPollFileStatus(clientHttp):
+def _fdictPollFileStatus(clientHttp, iWorkflowEpoch):
+    """Poll like the real dashboard: report the last-applied epoch."""
     response = clientHttp.get(
         f"/api/pipeline/{_S_CONTAINER_ID}/file-status"
+        f"?iWorkflowEpoch={iWorkflowEpoch}"
     )
     assert response.status_code == 200
     return response.json()
@@ -203,21 +219,31 @@ def _fdictPollFileStatus(clientHttp):
 # ---------- tests ----------
 
 
+def test_connect_response_carries_workflow_epoch(clientHttp):
+    """The connect payload seeds the client's epoch."""
+    dictConnect = _fnConnect(clientHttp)
+    assert isinstance(dictConnect["iWorkflowEpoch"], int)
+
+
 def test_first_poll_after_connect_does_not_trigger_reload(
     clientHttp, fixtureMock,
 ):
-    """After connect, the cached mtime equals the polled mtime, so
-    the very first poll must not flag a reload."""
-    _fnConnect(clientHttp)
-    dictBody = _fdictPollFileStatus(clientHttp)
+    """After connect, the cached content equals the polled content and
+    the client's epoch is current, so the very first poll must not
+    flag a reload."""
+    dictConnect = _fnConnect(clientHttp)
+    dictBody = _fdictPollFileStatus(
+        clientHttp, dictConnect["iWorkflowEpoch"],
+    )
     assert dictBody["bWorkflowReloaded"] is False
     assert dictBody["sWorkflowReloadError"] is None
+    assert dictBody["dictWorkflow"] is None
 
 
 def test_out_of_band_edit_triggers_reload(clientHttp, fixtureMock):
-    """A new mtime + new content reloads the cache and surfaces
-    the new workflow in the file-status response."""
-    _fnConnect(clientHttp)
+    """New content reloads the cache and surfaces the new workflow in
+    the file-status response."""
+    dictConnect = _fnConnect(clientHttp)
     dictMutated = _fdictBaseWorkflow(
         sName="mutated",
         listSteps=[
@@ -233,7 +259,9 @@ def test_out_of_band_edit_triggers_reload(clientHttp, fixtureMock):
         json.dumps(dictMutated).encode("utf-8"),
         "1700000099",
     )
-    dictBody = _fdictPollFileStatus(clientHttp)
+    dictBody = _fdictPollFileStatus(
+        clientHttp, dictConnect["iWorkflowEpoch"],
+    )
     assert dictBody["bWorkflowReloaded"] is True
     assert dictBody["sWorkflowReloadError"] is None
     assert (
@@ -243,43 +271,114 @@ def test_out_of_band_edit_triggers_reload(clientHttp, fixtureMock):
         dictBody["dictWorkflow"]["listSteps"][0]["sName"]
         == "Mutated Step"
     )
+    assert (
+        dictBody["iWorkflowEpoch"]
+        > dictConnect["iWorkflowEpoch"]
+    )
+
+
+def test_same_second_edit_triggers_reload(clientHttp, fixtureMock):
+    """An edit that does not move the whole-second mtime still reloads.
+
+    Regression for the same-second swallow: the previous mtime-based
+    detector attributed any edit landing in the same second as a
+    backend save to the host itself, permanently hiding the new
+    content from the dashboard.
+    """
+    dictConnect = _fnConnect(clientHttp)
+    sUnchangedMtime = fixtureMock.dictMtimes[_S_WORKFLOW_PATH]
+    fixtureMock.fnSetWorkflowBytes(
+        json.dumps(_fdictBaseWorkflow(sName="same-second"))
+        .encode("utf-8"),
+        sUnchangedMtime,
+    )
+    dictBody = _fdictPollFileStatus(
+        clientHttp, dictConnect["iWorkflowEpoch"],
+    )
+    assert dictBody["bWorkflowReloaded"] is True
+    assert (
+        dictBody["dictWorkflow"]["sWorkflowName"] == "same-second"
+    )
 
 
 def test_subsequent_poll_does_not_re_trigger_reload(
     clientHttp, fixtureMock,
 ):
-    """Once a reload absorbs an out-of-band edit, the next poll at the
-    same mtime is a no-op."""
-    _fnConnect(clientHttp)
+    """Once the client confirms the new epoch, polling goes quiet."""
+    dictConnect = _fnConnect(clientHttp)
     fixtureMock.fnSetWorkflowBytes(
         json.dumps(_fdictBaseWorkflow(sName="mutated"))
         .encode("utf-8"),
         "1700000099",
     )
-    dictFirst = _fdictPollFileStatus(clientHttp)
+    dictFirst = _fdictPollFileStatus(
+        clientHttp, dictConnect["iWorkflowEpoch"],
+    )
     assert dictFirst["bWorkflowReloaded"] is True
-    dictSecond = _fdictPollFileStatus(clientHttp)
+    dictSecond = _fdictPollFileStatus(
+        clientHttp, dictFirst["iWorkflowEpoch"],
+    )
     assert dictSecond["bWorkflowReloaded"] is False
+    assert dictSecond["dictWorkflow"] is None
+
+
+def test_lost_response_is_redelivered_until_client_confirms(
+    clientHttp, fixtureMock,
+):
+    """A dropped reload response must not strand the client.
+
+    Regression for the at-most-once delivery bug: the workflow used
+    to ride only on the single response that observed the change, so
+    a response lost in flight (or consumed by a second poller) left
+    every other client permanently stale. A client that keeps
+    presenting its old epoch keeps receiving the workflow.
+    """
+    dictConnect = _fnConnect(clientHttp)
+    iStaleEpoch = dictConnect["iWorkflowEpoch"]
+    fixtureMock.fnSetWorkflowBytes(
+        json.dumps(_fdictBaseWorkflow(sName="mutated"))
+        .encode("utf-8"),
+        "1700000099",
+    )
+    dictFirst = _fdictPollFileStatus(clientHttp, iStaleEpoch)
+    assert dictFirst["bWorkflowReloaded"] is True
+    # The client "lost" dictFirst: it polls again with the old epoch
+    # and must receive the workflow again.
+    dictRetry = _fdictPollFileStatus(clientHttp, iStaleEpoch)
+    assert dictRetry["bWorkflowReloaded"] is True
+    assert dictRetry["dictWorkflow"]["sWorkflowName"] == "mutated"
+    dictSettled = _fdictPollFileStatus(
+        clientHttp, dictRetry["iWorkflowEpoch"],
+    )
+    assert dictSettled["bWorkflowReloaded"] is False
 
 
 def test_malformed_json_surfaces_warning_without_replacing(
     clientHttp, fixtureMock,
 ):
     """Garbage bytes at a new mtime: the response carries an error
-    but does not replace the cache."""
-    _fnConnect(clientHttp)
+    but does not replace the cache or bump the epoch."""
+    dictConnect = _fnConnect(clientHttp)
     fixtureMock.fnSetWorkflowBytes(b"not json at all", "1700000099")
-    dictBody = _fdictPollFileStatus(clientHttp)
+    dictBody = _fdictPollFileStatus(
+        clientHttp, dictConnect["iWorkflowEpoch"],
+    )
     assert dictBody["bWorkflowReloaded"] is False
     assert dictBody["sWorkflowReloadError"] is not None
     assert dictBody["dictWorkflow"] is None
+    assert (
+        dictBody["iWorkflowEpoch"]
+        == dictConnect["iWorkflowEpoch"]
+    )
 
 
 def test_deleted_file_surfaces_warning(clientHttp, fixtureMock):
     """Deleting workflow.json out-of-band: error surfaces; no crash."""
-    _fnConnect(clientHttp)
+    dictConnect = _fnConnect(clientHttp)
     fixtureMock.fnDeleteWorkflow()
-    dictBody = _fdictPollFileStatus(clientHttp)
+    dictBody = _fdictPollFileStatus(
+        clientHttp, dictConnect["iWorkflowEpoch"],
+    )
     assert dictBody["bWorkflowReloaded"] is False
     assert dictBody["sWorkflowReloadError"] is not None
 
