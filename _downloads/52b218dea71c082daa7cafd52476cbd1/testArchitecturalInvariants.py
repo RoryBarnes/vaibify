@@ -2569,10 +2569,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-07-09): thread the poll's dictMaxMtimeByStep into the
     # level projection so inactive steps with outputs on disk read
     # "unassessed" instead of "not-started".
-    "routes/pipelineRoutes.py": 2162,
+    # +38 (2026-07-10): workflow-epoch reconciliation on the
+    # file-status route (_fnReconcileWorkflowEpoch) — re-sends the
+    # workflow to any client whose epoch is stale, replacing the
+    # lost-if-dropped one-shot bWorkflowReloaded delivery.
+    "routes/pipelineRoutes.py": 2200,
     "routes/syncRoutes.py": 2041,
-    "fileStatusManager.py": 1943,
-    "workflowManager.py": 1935,
+    # +59 (2026-07-10): content-fingerprint piggyback in the polling
+    # stat batch (_ftStatAndFingerprintViaPathfile) — same exec, one
+    # sha256 line — feeding the reload detector's same-second-proof
+    # content comparison.
+    "fileStatusManager.py": 2002,
+    # +35 (2026-07-10): single serialization authority
+    # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
+    # and the loader's _sSourceFingerprint stamp, so self-write
+    # baselines are byte-exact and race-free.
+    "workflowManager.py": 1970,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2581,7 +2593,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and its cached path into every runner call and logs the
     # dispatch — the runner no longer rediscovers workflows, so a
     # multi-workflow container always runs the selected one.
-    "pipelineServer.py": 1749,
+    # +17 (2026-07-10): fingerprint-based self-write baselines at
+    # connect and save, plus iWorkflowEpoch in the connect response.
+    "pipelineServer.py": 1766,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     "syncDispatcher.py": 1627,

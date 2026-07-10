@@ -25,6 +25,7 @@ __all__ = [
     "fbStepRequiresTests",
     "fbValidateWorkflow",
     "fsDescribeValidationFailure",
+    "fsComputeWorkflowFingerprint",
     "fsDeriveProjectRepoPathFromWorkflow",
     "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
@@ -248,6 +249,13 @@ def fdictLoadWorkflowFromContainer(
     )
     baContent = connectionDocker.fbaFetchFile(sContainerId, sWorkflowPath)
     dictWorkflow = json.loads(baContent.decode("utf-8"))
+    # Fingerprint of the exact bytes read, so the reload detector's
+    # self-write baseline can be seeded race-free from the very
+    # content this load put into the cache (migrations below may
+    # diverge the cache from the file; the baseline tracks the file).
+    dictWorkflow["_sSourceFingerprint"] = hashlib.sha256(
+        baContent,
+    ).hexdigest()
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
     workflowMigrations.fnApplyMigrations(
         dictWorkflow, sProjectRepoPath=sRepoPath,
@@ -966,6 +974,7 @@ def _fdictStripComputedFields(dictWorkflow):
     """
     dictClean = dict(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
+    dictClean.pop("_sSourceFingerprint", None)
     dictClean["listSteps"] = [
         _fdictStripStepTransientKeys(dictStep)
         for dictStep in dictWorkflow.get("listSteps", [])
@@ -1009,11 +1018,7 @@ def fnSaveWorkflowToContainer(
         connectionDocker, sContainerId, sRepoPath,
     ))
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
-    dictClean = _fdictStripComputedFields(dictWorkflow)
-    dictDeclarative, dictState = stateManager.ftSplitMergedDict(
-        dictClean,
-    )
-    sJson = json.dumps(dictDeclarative, indent=2) + "\n"
+    sJson, dictState = _ftSplitAndSerializeWorkflow(dictWorkflow)
     connectionDocker.fnWriteFile(
         sContainerId, sWorkflowPath, sJson.encode("utf-8")
     )
@@ -1025,6 +1030,36 @@ def fnSaveWorkflowToContainer(
         stateManager.fnEnsureVaibifyGitignore(
             connectionDocker, sContainerId, sRepoPath,
         )
+
+
+def _ftSplitAndSerializeWorkflow(dictWorkflow):
+    """Return ``(sDeclarativeJson, dictState)`` for the merged dict.
+
+    The single serialization authority for workflow.json bytes: both
+    the save path and :func:`fsComputeWorkflowFingerprint` go through
+    it, so the fingerprint recorded after a save is byte-identical to
+    what a later ``sha256sum`` of the file inside the container
+    reports.
+    """
+    dictClean = _fdictStripComputedFields(dictWorkflow)
+    dictDeclarative, dictState = stateManager.ftSplitMergedDict(
+        dictClean,
+    )
+    sJson = json.dumps(dictDeclarative, indent=2) + "\n"
+    return sJson, dictState
+
+
+def fsComputeWorkflowFingerprint(dictWorkflow):
+    """Return the sha256 hex digest of the workflow's on-disk bytes.
+
+    Computed host-side from the exact serialization the save path
+    writes, so recording it as the self-write baseline has no window
+    in which an in-container edit can be misattributed to the host —
+    unlike the previous whole-second mtime baseline, which swallowed
+    any agent edit landing in the same second as a backend save.
+    """
+    sJson, _dictState = _ftSplitAndSerializeWorkflow(dictWorkflow)
+    return hashlib.sha256(sJson.encode("utf-8")).hexdigest()
 
 
 def fsetExtractStepReferences(sText):
