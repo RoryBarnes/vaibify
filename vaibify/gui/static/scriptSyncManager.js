@@ -1954,8 +1954,7 @@ var VaibifySyncManager = (function () {
                 },
             };
         });
-        listChoices.push({sLabel: "Cancel"});
-        PipeleyenModals.fnShowChoiceModal(
+        PipeleyenModals.fnShowFileChoiceModal(
             "View Input", "Which input file do you want to view?",
             listChoices);
     }

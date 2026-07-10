@@ -2673,6 +2673,25 @@ body.aics-level-3 .toolbar-label {
     margin-top: 24px;
 }
 
+/* Wrapping grid for choice modals with many file-path options.
+   auto-fill sizes the matrix from the modal width; the grid scrolls
+   on its own so the Cancel row below stays visible. */
+.modal .file-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 6px;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.modal .file-choice-grid .btn {
+    white-space: normal;
+    word-break: break-all;
+    text-align: left;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 11px;
+}
+
 /* --- Toast notifications --- */
 
 #toastContainer {
