@@ -1659,53 +1659,10 @@ body.aics-level-3 .toolbar-label {
     margin-top: 1px;
 }
 
-.detail-actions {
-    display: none;
-    flex-shrink: 0;
-    gap: 1px;
-    align-items: center;
-    padding-top: 2px;
-}
-
-.detail-item:hover .detail-actions {
-    display: flex;
-}
-
-.detail-actions button {
-    padding: 1px 4px;
-    font-size: 10px;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    border-radius: 2px;
-}
-
-.detail-actions button:hover {
-    color: var(--highlight-color);
-    background: rgba(19, 174, 213, 0.15);
-}
-
-.detail-actions button.action-delete:hover {
-    color: var(--color-red);
-    background: rgba(201, 17, 17, 0.15);
-}
-
 /* Drop target highlight on step headers */
 .step-item.drop-target {
     background: rgba(19, 174, 213, 0.15);
     border-left-color: var(--highlight-color);
-}
-
-/* Highlight animation for moved items */
-.detail-item.highlight {
-    background: rgba(19, 174, 213, 0.2);
-    animation: highlightFade 2s ease-out;
-}
-
-@keyframes highlightFade {
-    0% { background: rgba(19, 174, 213, 0.35); }
-    100% { background: transparent; }
 }
 
 /* Inline add row */

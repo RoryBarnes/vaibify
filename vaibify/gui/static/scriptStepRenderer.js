@@ -252,7 +252,7 @@ var VaibifyStepRenderer = (function () {
             step.saDataCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
                     sCmd, dictVars, "command", "saDataCommands",
-                    iIndex, iCmdIdx, undefined, dictContext
+                    iIndex, iCmdIdx, sResolvedDir, dictContext
                 );
             });
         }
@@ -287,7 +287,7 @@ var VaibifyStepRenderer = (function () {
             step.saPlotCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
                     sCmd, dictVars, "command", "saPlotCommands",
-                    iIndex, iCmdIdx, undefined, dictContext
+                    iIndex, iCmdIdx, sResolvedDir, dictContext
                 );
             });
         }
@@ -886,8 +886,7 @@ var VaibifyStepRenderer = (function () {
             '" data-idx="' + iItemIdx +
             '" data-raw="' + fnEscapeHtml(sRaw) +
             '" data-resolved="' + fnEscapeHtml(sResolved) +
-            '" data-workdir="' + fnEscapeHtml(sWorkdir || "") +
-            '" draggable="true">';
+            '" data-workdir="' + fnEscapeHtml(sWorkdir || "") + '">';
 
         if (sType === "output" && !bInvalid) {
             sFileClass = " " + dictContext.fsInitialFileStatusClass(
@@ -924,22 +923,8 @@ var VaibifyStepRenderer = (function () {
                 fnEscapeHtml(sDisplayPath) + '</div>';
         }
 
-        sHtml += '<div class="detail-actions">';
-        if (sType === "output") {
-            sHtml += '<button class="action-download" ' +
-                'title="Download to host">' +
-                '&#8615;</button>';
-        }
-        sHtml += '<button class="action-edit" title="Edit">&#9998;</button>' +
-            '<button class="action-copy" title="Copy">&#9112;</button>' +
-            '<button class="action-delete" title="Delete">&#10005;</button>' +
-            '</div>';
-        if (sType === "output" && !bInvalid &&
-            (sArrayKey === "saPlotFiles" ||
-                sArrayKey === "saDataFiles")) {
-            sHtml += _fsBuildRowOverflowButton(
-                iStepIdx, sArrayKey, iItemIdx, sResolved);
-        }
+        sHtml += _fsBuildRowOverflowButton(
+            iStepIdx, sArrayKey, iItemIdx, sResolved);
 
         sHtml += '</div>';
         return sHtml;

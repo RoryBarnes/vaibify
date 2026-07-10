@@ -51,6 +51,7 @@ const PipeleyenApp = (function () {
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
             iCachedAicsLevel: null,
+            iWorkflowEpoch: -1,
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -328,6 +329,9 @@ const PipeleyenApp = (function () {
         _dictSessionState.sContainerId = sId;
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
+        _dictWorkflowState.iWorkflowEpoch =
+            typeof data.iWorkflowEpoch === "number" ?
+                data.iWorkflowEpoch : -1;
         _fnLoadStepsCollapsed();
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnSurfaceStateLoadNotice(data.dictWorkflow);
@@ -395,16 +399,25 @@ const PipeleyenApp = (function () {
     function fnRefreshWorkflowData(dictData) {
         _dictWorkflowState.dictWorkflow = dictData.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = dictData.sWorkflowPath;
+        if (typeof dictData.iWorkflowEpoch === "number") {
+            _dictWorkflowState.iWorkflowEpoch =
+                dictData.iWorkflowEpoch;
+        }
         _fnClearFileCaches();
         _fnInvalidateAllRenderCaches();
         fnRenderStepList();
         fnPollAllStepFiles();
     }
 
-    function _fnApplyOutOfBandWorkflowReload(dictWorkflowNew) {
+    function _fnApplyOutOfBandWorkflowReload(
+        dictWorkflowNew, iWorkflowEpoch
+    ) {
         var iPriorSelected = _dictUiState.iSelectedStepIndex;
         var dictPriorExpanded = _fdictSnapshotExpansionSets();
         _dictWorkflowState.dictWorkflow = dictWorkflowNew;
+        if (typeof iWorkflowEpoch === "number") {
+            _dictWorkflowState.iWorkflowEpoch = iWorkflowEpoch;
+        }
         _fnClearFileCaches();
         _fnInvalidateAllRenderCaches();
         fnRenderStepList();
@@ -3278,73 +3291,6 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnMoveDetailToStep(dictDrag, iTargetStep) {
-        var iSource = dictDrag.iStep;
-        var sArray = dictDrag.sArray;
-        var sValue = _dictWorkflowState.dictWorkflow.listSteps[iSource][sArray].splice(
-            dictDrag.iIdx, 1
-        )[0];
-        if (!_dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray]) {
-            _dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray] = [];
-        }
-        _dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray].unshift(sValue);
-        fnPushUndo({
-            sAction: "move",
-            iStep: iSource,
-            sArray: sArray,
-            iIdx: dictDrag.iIdx,
-            iTargetStep: iTargetStep,
-            iTargetIdx: 0,
-            sValue: sValue,
-        });
-        return sArray;
-    }
-
-    function fnHandleDetailDrop(sDetailData, iTargetStep) {
-        var dictDrag = JSON.parse(sDetailData);
-        if (dictDrag.iStep === iTargetStep) return;
-        fnShowConfirmModal(
-            "Move Item",
-            "Moving a command may break dependencies " +
-            "in later steps.\n\nProceed?",
-            function () {
-                _fnExecuteDetailDrop(dictDrag, iTargetStep);
-            }
-        );
-    }
-
-    async function _fnExecuteDetailDrop(dictDrag, iTargetStep) {
-        var sArray = fnMoveDetailToStep(dictDrag, iTargetStep);
-        await fnSaveStepArray(dictDrag.iStep, sArray);
-        await fnSaveStepArray(iTargetStep, sArray);
-        _dictUiState.setExpandedSteps.add(iTargetStep);
-        fnRenderStepListSync();
-        fnHighlightItem(iTargetStep, sArray, 0);
-        fnShowToast(
-            "Moved to " + _dictWorkflowState.dictWorkflow.listSteps[iTargetStep].sName,
-            "success"
-        );
-        fnShowToast(
-            "Modifying pipeline. Ensure that all subsequent " +
-            "steps properly reference the new pipeline.",
-            "warning"
-        );
-    }
-
-    function fnHighlightItem(iStep, sArray, iIdx) {
-        var elItem = document.querySelector(
-            '.detail-item[data-step="' + iStep +
-            '"][data-array="' + sArray +
-            '"][data-idx="' + iIdx + '"]'
-        );
-        if (elItem) {
-            elItem.classList.add("highlight");
-            setTimeout(function () {
-                elItem.classList.remove("highlight");
-            }, 2000);
-        }
-    }
-
     function fnAddNewItem(iStep, sArrayKey) {
         var sPlaceholder = sArrayKey === "saPlotFiles" ?
             "File path..." : "Command...";
@@ -3390,19 +3336,6 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, dictAction.sValue);
             await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
-        } else if (dictAction.sAction === "move") {
-            var sValue = _dictWorkflowState.dictWorkflow.listSteps[dictAction.iTargetStep][
-                dictAction.sArray
-            ].splice(dictAction.iTargetIdx, 1)[0];
-            if (!_dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]) {
-                _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray] = [];
-            }
-            _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
-                .splice(dictAction.iIdx, 0, sValue);
-            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
-            await fnSaveStepArray(
-                dictAction.iTargetStep, dictAction.sArray
-            );
         }
         fnRenderStepList();
         fnShowToast("Undone", "success");
@@ -3668,7 +3601,12 @@ const PipeleyenApp = (function () {
                 "warning");
         }
         if (dictStatus.bWorkflowReloaded && dictStatus.dictWorkflow) {
-            _fnApplyOutOfBandWorkflowReload(dictStatus.dictWorkflow);
+            _fnApplyOutOfBandWorkflowReload(
+                dictStatus.dictWorkflow, dictStatus.iWorkflowEpoch);
+        } else if (!dictStatus.bWorkflowReloaded &&
+            typeof dictStatus.iWorkflowEpoch === "number") {
+            _dictWorkflowState.iWorkflowEpoch =
+                dictStatus.iWorkflowEpoch;
         }
         PipeleyenFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
@@ -4094,6 +4032,9 @@ const PipeleyenApp = (function () {
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
         fnRefreshWorkflowData: fnRefreshWorkflowData,
+        fiGetWorkflowEpoch: function () {
+            return _dictWorkflowState.iWorkflowEpoch;
+        },
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,
         fnShowWorkflowPicker: fnShowWorkflowPicker,
@@ -4164,7 +4105,6 @@ const PipeleyenApp = (function () {
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
-        fnHandleDetailDrop: fnHandleDetailDrop,
         fnReorderStep: fnReorderStep,
         fnHandleContextAction: fnHandleContextAction,
         fiGetContextStepIndex: function () {

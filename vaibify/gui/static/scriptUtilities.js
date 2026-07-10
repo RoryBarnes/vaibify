@@ -145,6 +145,63 @@ var VaibifyUtilities = (function () {
             sPad(d.getUTCMinutes()) + " UTC";
     }
 
+    var SET_SCRIPT_EXTENSIONS = new Set([
+        ".py", ".sh", ".bash", ".r", ".jl", ".js", ".pl", ".rb",
+        ".m", ".ipynb",
+    ]);
+
+    function _fsExtractPathCandidate(sToken) {
+        var sCandidate = sToken.replace(/^["']|["']$/g, "");
+        var iEquals = sCandidate.indexOf("=");
+        if (iEquals >= 0) {
+            sCandidate = sCandidate.substring(iEquals + 1);
+        } else if (sCandidate.startsWith("-")) {
+            return "";
+        }
+        return sCandidate;
+    }
+
+    function _fbLooksLikeFilePath(sCandidate) {
+        if (!sCandidate || sCandidate.startsWith("-")) return false;
+        if (sCandidate.includes("/")) return true;
+        var iDot = sCandidate.lastIndexOf(".");
+        if (iDot <= 0 || iDot === sCandidate.length - 1) {
+            return false;
+        }
+        return /^[A-Za-z][A-Za-z0-9]{0,5}$/.test(
+            sCandidate.substring(iDot + 1));
+    }
+
+    function _fbHasScriptExtension(sCandidate) {
+        var iDot = sCandidate.lastIndexOf(".");
+        if (iDot === -1) return false;
+        return SET_SCRIPT_EXTENSIONS.has(
+            sCandidate.substring(iDot).toLowerCase());
+    }
+
+    function fdictExtractCommandFiles(sResolvedCommand) {
+        // The script is the first argument carrying a script
+        // extension; the inputs are every other path-like argument
+        // (cross-step {StepNN.varname} tokens arrive here already
+        // resolved into paths). Callers decide whether an "input"
+        // is actually one of the step's own declared outputs.
+        var dictFiles = { sScript: "", listInputFiles: [] };
+        var listTokens = (sResolvedCommand || "").split(/\s+/);
+        listTokens.forEach(function (sToken) {
+            var sCandidate = _fsExtractPathCandidate(sToken);
+            if (!_fbLooksLikeFilePath(sCandidate)) return;
+            if (!dictFiles.sScript &&
+                _fbHasScriptExtension(sCandidate)) {
+                dictFiles.sScript = sCandidate;
+                return;
+            }
+            if (dictFiles.listInputFiles.indexOf(sCandidate) === -1) {
+                dictFiles.listInputFiles.push(sCandidate);
+            }
+        });
+        return dictFiles;
+    }
+
     function fsResolveTemplate(sTemplate, dictVariables) {
         return sTemplate.replace(/\{([^}]+)\}/g, function (sMatch, sToken) {
             if (dictVariables.hasOwnProperty(sToken)) {
@@ -231,6 +288,7 @@ var VaibifyUtilities = (function () {
         fsFormatUtcTimestamp: fsFormatUtcTimestamp,
         fsFormatEpochUtc: fsFormatEpochUtc,
         fsResolveTemplate: fsResolveTemplate,
+        fdictExtractCommandFiles: fdictExtractCommandFiles,
         fsTestCategoryLabel: fsTestCategoryLabel,
         fnSpawnNewSession: fnSpawnNewSession,
         SET_FIGURE_EXTENSIONS: SET_FIGURE_EXTENSIONS,

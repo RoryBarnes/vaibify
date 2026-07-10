@@ -5,49 +5,6 @@ var PipeleyenEventBindings = (function () {
 
     /* --- Delegated Click Handlers --- */
 
-    function _fnHandleActionDownload(event, elMatch) {
-        event.stopPropagation();
-        var elDetailItem = event.target.closest(".detail-item");
-        if (elDetailItem) {
-            PipeleyenFilePull.fnPromptPullToHost(
-                elDetailItem.dataset.resolved);
-        }
-    }
-
-    function _fnHandleActionEdit(event, elMatch) {
-        event.stopPropagation();
-        var elDetailItem = event.target.closest(".detail-item");
-        if (elDetailItem) {
-            PipeleyenFileOps.fnInlineEditItem(
-                elDetailItem,
-                parseInt(elDetailItem.dataset.step),
-                elDetailItem.dataset.array,
-                parseInt(elDetailItem.dataset.idx)
-            );
-        }
-    }
-
-    function _fnHandleActionCopy(event, elMatch) {
-        event.stopPropagation();
-        var elDetailItem = event.target.closest(".detail-item");
-        if (elDetailItem) {
-            PipeleyenFileOps.fnCopyToClipboard(
-                elDetailItem.dataset.resolved);
-        }
-    }
-
-    function _fnHandleActionDelete(event, elMatch) {
-        event.stopPropagation();
-        var elDetailItem = event.target.closest(".detail-item");
-        if (elDetailItem) {
-            PipeleyenApp.fnDeleteDetailItem(
-                parseInt(elDetailItem.dataset.step),
-                elDetailItem.dataset.array,
-                parseInt(elDetailItem.dataset.idx)
-            );
-        }
-    }
-
     function _fnHandleDiscoveredButton(event, elMatch) {
         event.stopPropagation();
         var elDiscItem = elMatch.closest(".discovered-item");
@@ -75,9 +32,7 @@ var PipeleyenEventBindings = (function () {
         event.stopPropagation();
         var elItem = elMatch.closest(".detail-item");
         if (!elItem) return;
-        var sResolved = elItem.dataset.resolved || "";
-        if (!sResolved) return;
-        VaibifySyncManager.fnOpenRowOverflowMenu(elMatch, sResolved);
+        VaibifySyncManager.fnOpenRowOverflowMenu(elMatch, elItem);
     }
 
     function _fnHandleTestAdd(event, elMatch) {
@@ -373,10 +328,6 @@ var PipeleyenEventBindings = (function () {
     }
 
     var _DICT_CLICK_HANDLERS = {
-        ".action-download": _fnHandleActionDownload,
-        ".action-edit": _fnHandleActionEdit,
-        ".action-copy": _fnHandleActionCopy,
-        ".action-delete": _fnHandleActionDelete,
         ".btn-discovered": _fnHandleDiscoveredButton,
         ".remote-badge": _fnHandleRemoteBadge,
         ".row-overflow-btn": _fnHandleRowOverflow,
@@ -439,18 +390,9 @@ var PipeleyenEventBindings = (function () {
 
         var elDetailItem = elTarget.closest(".detail-item");
         if (elTarget.closest(".detail-text") && elDetailItem &&
-            elDetailItem.classList.contains("output")) {
-            var elText = elTarget.closest(".detail-text");
-            if (elText.classList.contains("file-binary")) {
-                PipeleyenApp.fnShowBinaryNotViewable();
-            } else if (PipeleyenApp.fbIsFileMissing(elText)) {
-                PipeleyenApp.fnShowOutputNotAvailable();
-            } else {
-                PipeleyenFigureViewer.fnDisplayInNextViewer(
-                    elDetailItem.dataset.resolved,
-                    elDetailItem.dataset.workdir || ""
-                );
-            }
+            (elDetailItem.classList.contains("output") ||
+                elDetailItem.classList.contains("tracked-file"))) {
+            VaibifySyncManager.fnViewDetailRow(elDetailItem);
             return;
         }
 
@@ -494,26 +436,10 @@ var PipeleyenEventBindings = (function () {
             event.stopPropagation();
             return;
         }
-        var elDetail = event.target.closest(".detail-item");
-        if (elDetail) {
-            event.stopPropagation();
-            var dictDragData = {
-                iStep: parseInt(elDetail.dataset.step),
-                sArray: elDetail.dataset.array,
-                iIdx: parseInt(elDetail.dataset.idx),
-            };
-            event.dataTransfer.setData(
-                "vaibify/detail",
-                JSON.stringify(dictDragData)
-            );
-            event.dataTransfer.setData(
-                "vaibify/filepath", elDetail.dataset.resolved
-            );
-            event.dataTransfer.setData(
-                "vaibify/workdir", elDetail.dataset.workdir || ""
-            );
-            return;
-        }
+        /* Drags starting inside the expanded detail area are text
+           selections or badge images, never step-reorder intents —
+           detail tiles themselves are no longer draggable. */
+        if (event.target.closest(".step-detail")) return;
         var elStep = event.target.closest(".step-item");
         if (elStep) {
             var iIdx = parseInt(elStep.dataset.index);
@@ -533,10 +459,9 @@ var PipeleyenEventBindings = (function () {
 
     function fnHandleDelegatedDragOver(event) {
         var elStep = event.target.closest(".step-item");
-        var elDetail = event.target.closest(".step-detail");
-        if (elStep || elDetail) {
+        if (elStep) {
             event.preventDefault();
-            if (elStep) elStep.classList.add("drop-target");
+            elStep.classList.add("drop-target");
         }
     }
 
@@ -547,21 +472,8 @@ var PipeleyenEventBindings = (function () {
 
     function fnHandleDelegatedDrop(event) {
         var elStep = event.target.closest(".step-item");
-        var elDetail = event.target.closest(".step-detail");
         if (elStep) elStep.classList.remove("drop-target");
 
-        var sDetailData = event.dataTransfer.getData(
-            "vaibify/detail"
-        );
-        if (sDetailData) {
-            event.preventDefault();
-            event.stopPropagation();
-            var iTarget = parseInt(
-                (elDetail || elStep).dataset.index
-            );
-            PipeleyenApp.fnHandleDetailDrop(sDetailData, iTarget);
-            return;
-        }
         if (elStep) {
             event.preventDefault();
             var sStepData = event.dataTransfer.getData(
