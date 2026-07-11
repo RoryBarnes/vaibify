@@ -818,7 +818,7 @@ the arXiv criteria (only when an arXiv submission is recorded — the
 arXiv claim is opt-in); L3: the envelope artifacts (pinned Dockerfile,
 dependency lock, environment snapshot, reproduce script, attestation,
 binary declarations). A Workflow-row L1 check above red step rows is
-therefore a consistent display: the workflow-wide L1 requirement is
+therefore a consistent display: the project-scope L1 requirement is
 met while per-step L1 work remains, and the chip — the aggregate —
 still says Level 0. The cell tooltips state this scoping.
 

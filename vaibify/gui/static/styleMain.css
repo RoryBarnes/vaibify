@@ -690,7 +690,7 @@ body.aics-level-3 .toolbar-label {
 }
 
 /* The scrollable region below the panel header holds both the Steps
-   block and the Workflow-wide block, so the whole left column scrolls
+   block and the Project block, so the whole left column scrolls
    as one. min-height:0 lets a flex child actually shrink and scroll. */
 .panel-scroll-area {
     flex: 1;
@@ -5543,10 +5543,10 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-size: 12px;
 }
 
-/* --- Two top-level blocks: Steps + Workflow-wide --- */
+/* --- Two top-level blocks: Steps + Project --- */
 
 .steps-block-header,
-.workflow-wide-header {
+.project-block-header {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -5562,7 +5562,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .steps-block-header:hover,
-.workflow-wide-header:hover {
+.project-block-header:hover {
     background: var(--bg-hover);
 }
 
@@ -5571,7 +5571,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .steps-block-title,
-.workflow-wide-title {
+.project-block-title {
     cursor: help;
 }
 
@@ -5583,13 +5583,13 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     align-items: center;
 }
 
-/* The workflow-wide banner pushes its at-a-glance level strip to the
+/* The Project banner pushes its at-a-glance level strip to the
    right, like a step row. */
-.workflow-wide-header .step-level-strip {
+.project-block-header .step-level-strip {
     margin-left: auto;
 }
 
-.workflow-wide-body {
+.project-block-body {
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -5668,9 +5668,9 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     padding: 3px 10px;
 }
 
-/* Links inside the Workflow-wide block: browser-default dark blue is
+/* Links inside the Project block: browser-default dark blue is
    unreadable on the dark background; use the pale-blue action color. */
-.workflow-wide-block a {
+.project-block a {
     color: var(--color-pale-blue);
 }
 
@@ -5714,7 +5714,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     user-select: none;
 }
 
-/* File rows inside the Workflow-wide block open in the viewer. */
+/* File rows inside the Project block open in the viewer. */
 .wf-file-link {
     cursor: pointer;
 }

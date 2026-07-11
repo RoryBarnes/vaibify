@@ -225,8 +225,8 @@ pattern wholesale.
   client-known staleness signals into the cell's multi-line tooltip;
   red ⚠ only when a genuine failure underlies it, orange ⚠ for
   staleness/regression.
-- The Workflow-wide row (`fsRenderWorkflowLevelHeader`, labeled
-  "Workflow-wide" precisely so it does not read as a summary) is an
+- The Project row (`fsRenderProjectHeader`, labeled "Project"
+  precisely so it does not read as a summary of the steps) is an
   expandable step-like row. Its cells are NOT an aggregate or summary of the
   step rows: they cover only the requirements that attach to the
   workflow as a whole (L1: project repo present; L2: sync-verify

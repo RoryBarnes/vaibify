@@ -1,7 +1,7 @@
-/* Vaibify — Workflow-wide requirements block (VaibifyWorkflowRequirements)
+/* Vaibify — Project requirements block (VaibifyWorkflowRequirements)
 
    L1 is a per-step property; L2 ("Published") and L3 ("Reproducible")
-   are workflow-wide gates. This module owns the "Project" block:
+   are project-wide gates. This module owns the "Project" block:
    an at-a-glance L1/L2/L3 banner plus two concern groups — Publication
    (GitHub / Zenodo / arXiv / AI Declaration) and Reproducibility
    (manifest, dependency lock, environment digest, Dockerfile,
@@ -13,12 +13,12 @@
 
    Everything renders verbatim from the poll's
    ``dictWorkflowEnvelopeDetail`` (the four render sections plus the
-   four workflow-wide booleans bAiDeclarationAttested /
+   four project-wide booleans bAiDeclarationAttested /
    bRebuildAttestationCurrent / bOverleafBound / bArxivConfigured).
    A null remote-sync cache renders the hollow "never verified"
    light — never green (the dashboard-ground-truth honesty rule).
 
-   This block lives in its own ``#workflowWideBlock`` container and is
+   This block lives in its own ``#projectBlock`` container and is
    rebuilt unconditionally on every render, so it never participates in
    the incremental step-hash memoization. If a future maintainer ever
    memoizes it, the requirement group/row expansion Sets
@@ -443,7 +443,7 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fsRenderActionButton(sAction, sArg, sLabel) {
-        // A button that runs a workflow-wide action in place (the
+        // A button that runs a project action in place (the
         // functionality that used to live only on the AICS card).
         return '<div class="requirement-row-actions">' +
             '<button type="button" class="btn wf-action-btn" ' +
@@ -950,11 +950,11 @@ var VaibifyWorkflowRequirements = (function () {
             '</div></div>';
     }
 
-    function fsRenderWorkflowWideBlock(dictContext) {
+    function fsRenderProjectBlock(dictContext) {
         var dictDetail = dictContext.dictWorkflowEnvelopeDetail || {};
-        var bOpen = dictContext.bWorkflowWideCollapsed !== true;
-        var sHtml = '<div class="workflow-wide-header">' +
-            '<span class="workflow-wide-title" ' +
+        var bOpen = dictContext.bProjectBlockCollapsed !== true;
+        var sHtml = '<div class="project-block-header">' +
+            '<span class="project-block-title" ' +
             'title="Requirements that apply to the project as a ' +
             'whole rather than to any single step. Click the banner ' +
             'to collapse or expand.">Project' +
@@ -974,7 +974,7 @@ var VaibifyWorkflowRequirements = (function () {
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],
         ];
-        var sBody = '<div class="workflow-wide-body">';
+        var sBody = '<div class="project-block-body">';
         for (var i = 0; i < listSections.length; i++) {
             sBody += _fsRenderRequirementGroup(
                 listSections[i][0], listSections[i][1],
@@ -986,6 +986,6 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     return {
-        fsRenderWorkflowWideBlock: fsRenderWorkflowWideBlock,
+        fsRenderProjectBlock: fsRenderProjectBlock,
     };
 })();

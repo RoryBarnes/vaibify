@@ -96,7 +96,7 @@ collapse or expand:
   is earned.
 - **Project** — requirements that apply to the project as a whole
   rather than to any single step. Levels 2 (Published) and 3
-  (Reproducible) are workflow-wide, so this is where they are earned.
+  (Reproducible) are project-wide, so this is where they are earned.
 
 Both banners carry the same right-aligned strip of status cells as
 the rows beneath them, so a collapsed block still reports its

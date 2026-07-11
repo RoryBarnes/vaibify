@@ -333,8 +333,8 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnToggleStepsBlockExpand();
     }
 
-    function _fnHandleWorkflowWideToggle(event, elMatch) {
-        PipeleyenApp.fnToggleWorkflowWideBlockExpand();
+    function _fnHandleProjectBlockToggle(event, elMatch) {
+        PipeleyenApp.fnToggleProjectBlockExpand();
     }
 
     function _fnHandleRequirementGroupToggle(event, elMatch) {
@@ -345,10 +345,10 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnToggleRequirementRow(elMatch.dataset.req);
     }
 
-    function _fnHandleWorkflowWideAction(event, elMatch) {
+    function _fnHandleProjectAction(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnRunWorkflowWideAction(
+        PipeleyenApp.fnRunProjectAction(
             elMatch.dataset.wfAction, elMatch.dataset.wfArg || "",
             elMatch);
     }
@@ -372,7 +372,7 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnToggleBinaryAddForm();
     }
 
-    function _fnHandleWorkflowWideFileLink(event, elMatch) {
+    function _fnHandleProjectFileLink(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
         PipeleyenFigureViewer.fnDisplayFileFromContainer(
@@ -418,13 +418,13 @@ var PipeleyenEventBindings = (function () {
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
-        ".wf-action-btn": _fnHandleWorkflowWideAction,
+        ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
-        ".wf-file-link": _fnHandleWorkflowWideFileLink,
+        ".wf-file-link": _fnHandleProjectFileLink,
         ".steps-block-header": _fnHandleStepsBlockToggle,
-        ".workflow-wide-header": _fnHandleWorkflowWideToggle,
+        ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,
         ".requirement-row-header": _fnHandleRequirementRowToggle,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
@@ -589,7 +589,7 @@ var PipeleyenEventBindings = (function () {
     function fnSetupDelegatedEvents(elList) {
         // Click delegation attaches to the whole Steps panel, not just
         // #listSteps, because the Steps-block header and the
-        // Workflow-wide block are siblings of #listSteps — their header
+        // Project block are siblings of #listSteps — their header
         // clicks bubble to #panelSteps, never through #listSteps. The
         // step-specific change/drag/contextmenu handlers stay on
         // #listSteps (they only ever act on step elements).

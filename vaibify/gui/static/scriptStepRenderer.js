@@ -51,8 +51,8 @@ var VaibifyStepRenderer = (function () {
     function _fsRenderLevelColumnHeaderRow() {
         // Labels the per-step status columns once at the top of the
         // Steps block. L1 is the only level that is a per-step
-        // property; L2/L3 are workflow-wide and live in the
-        // Workflow-wide block, so they are not headed here.
+        // property; L2/L3 are project-wide and live in the
+        // Project block, so they are not headed here.
         return '<div class="level-column-header-row">' +
             '<span class="run-column-header ' +
             'level-column-header-cell" ' +
@@ -99,7 +99,7 @@ var VaibifyStepRenderer = (function () {
     function _fsBuildStepLevelStrip(dictContext, iIndex) {
         // Step scope (iIndex >= 0) shows only ⚠ + L1 — the levels that
         // are genuinely per-step. The workflow scope (iIndex < 0, the
-        // Workflow-wide banner) keeps the full ⚠ + L1 + L2 + L3
+        // Project banner) keeps the full ⚠ + L1 + L2 + L3
         // at-a-glance strip.
         if (!dictContext.fsLevelCellState) return "";
         var iMaxLevel = iIndex < 0 ? 3 : 1;
@@ -114,7 +114,7 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsBuildLevelStrip(dictContext, iIndex) {
-        // Public wrapper so the Workflow-wide block module can render
+        // Public wrapper so the Project block module can render
         // the -1 scope banner strip with the shared level-cell cells.
         return _fsBuildStepLevelStrip(dictContext, iIndex);
     }

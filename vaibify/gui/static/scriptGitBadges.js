@@ -146,7 +146,7 @@ var VaibifyGitBadges = (function () {
         // Repo-relative paths this remote actually knows about — every
         // badge-map key whose state for sBadgeKey (sGithub / sZenodo /
         // sArxiv / sOverleaf) is not the "none" placeholder. Sorted for
-        // stable rendering. Used by the Workflow-wide Publication rows.
+        // stable rendering. Used by the Project-block Publication rows.
         var listKeys = Object.keys(_dictState.dictBadges).filter(
             function (sPath) {
                 return (_dictState.dictBadges[sPath][sBadgeKey] ||

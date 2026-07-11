@@ -1539,7 +1539,7 @@ class TestPollLevelStatePayload:
     async def test_response_carries_envelope_detail_keys(self):
         """The envelope-detail payload arrives with all its sections.
 
-        Four render sections plus the four workflow-wide status
+        Four render sections plus the four project-wide status
         booleans the Publication/Reproducibility rows consume.
         """
         dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])

@@ -1349,7 +1349,7 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "bOverleafBound": bool,
          "bArxivConfigured": bool}
 
-    The four booleans let the Workflow-wide requirement rows render
+    The four booleans let the Project-block requirement rows render
     AI-declaration, rebuild-attestation, Overleaf-applicability, and
     arXiv-tracking status from this same payload; all are exec-free.
     """

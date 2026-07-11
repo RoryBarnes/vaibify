@@ -139,13 +139,13 @@ def test_step_rows_carry_no_hover_edit_button():
 # -----------------------------------------------------------------------
 
 
-def test_workflow_block_is_labeled_project():
+def test_project_block_is_labeled_project():
     """The block header must read "Project", not "Workflow" — the
     bare word reads as a summary of the step rows, which it is not,
     and "Workflow-wide" was rejected as clunky (2026-07-08)."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sHeader = _fsExtractFunctionBlock(
-        sSource, "fsRenderWorkflowWideBlock",
+        sSource, "fsRenderProjectBlock",
     )
     assert ">Project" in sHeader
     assert ">Workflow<" not in sHeader, (
@@ -156,7 +156,7 @@ def test_workflow_block_is_labeled_project():
     )
 
 
-def test_workflow_scope_tooltip_is_plain_english():
+def test_project_scope_tooltip_is_plain_english():
     """The Project cell tooltip must explain the scoping without
     internal jargon (no "AICS chip", no "wire", no "scope")."""
     sSource = _fsReadStaticFile("scriptApplication.js")
@@ -382,7 +382,7 @@ def test_repos_tab_shows_attention_badge():
 
 
 # -----------------------------------------------------------------------
-# Workflow-wide envelope (2026-07-02 redesign): expandable sections,
+# Project-block envelope (2026-07-02 redesign): expandable sections,
 # theme-tinted checks for passing items, one home for repo status
 # -----------------------------------------------------------------------
 
@@ -390,19 +390,19 @@ def test_repos_tab_shows_attention_badge():
 def test_workflow_wide_block_rebuilds_unconditionally():
     """The 2026-07-02 skip-repaint bug (a toggle whose expansion set
     was not in the render signature repainted nothing) is retired
-    structurally: the Workflow-wide block lives in its own container
+    structurally: the Project block lives in its own container
     and is rebuilt on every render, so its group/row expansion Sets
     can never cause a skipped repaint. Guard that the rebuild stays
     unconditional and outside the memoized step-hash path."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     sRebuild = _fsExtractFunctionBlock(
-        sSource, "_fnRenderWorkflowWideBlock",
+        sSource, "_fnRenderProjectBlock",
     )
-    assert "workflowWideBlock" in sRebuild, (
-        "the block must render into its own #workflowWideBlock "
+    assert "projectBlock" in sRebuild, (
+        "the block must render into its own #projectBlock "
         "container"
     )
-    assert "fsRenderWorkflowWideBlock" in sRebuild, (
+    assert "fsRenderProjectBlock" in sRebuild, (
         "the block must rebuild from the module renderer each pass"
     )
     # It must not be gated behind the boundary signature (which is the
@@ -412,7 +412,7 @@ def test_workflow_wide_block_rebuilds_unconditionally():
 
 def test_every_column_header_carries_a_tooltip():
     """The per-step column headers (run, warnings, L1) must explain
-    themselves on hover. L2/L3 are workflow-wide, not per-step, so they
+    themselves on hover. L2/L3 are project-wide, not per-step, so they
     are no longer headed on the step rows."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sHeader = _fsExtractFunctionBlock(
@@ -425,20 +425,20 @@ def test_every_column_header_carries_a_tooltip():
             "column header missing its tooltip: " + sNeedle
         )
     assert "Level 2 Published" not in sHeader, (
-        "L2 is workflow-wide and must not be a per-step column"
+        "L2 is project-wide and must not be a per-step column"
     )
     assert "Level 3 Reproducible" not in sHeader, (
-        "L3 is workflow-wide and must not be a per-step column"
+        "L3 is project-wide and must not be a per-step column"
     )
 
 
 def test_workflow_wide_groups_and_rows_are_expandable():
-    """The Workflow-wide block groups requirements into the four
+    """The Project block groups requirements into the four
     envelope categories plus Attestation; each section and each
     requirement row is independently expandable with a status light."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sBlock = _fsExtractFunctionBlock(
-        sSource, "fsRenderWorkflowWideBlock",
+        sSource, "fsRenderProjectBlock",
     )
     for sKey in ('"software"', '"artifacts"', '"determinism"',
                  '"publishedCopies"', '"attestation"'):
@@ -494,7 +494,7 @@ def test_envelope_passing_items_use_the_vaibify_favicon():
 def test_envelope_mark_columns_have_lettered_headers():
     """The Software (V/H) and Artifacts (F/R) mark columns carry
     one-letter headers with instructive tooltips, rendered inside the
-    Workflow-wide requirement-row detail bodies."""
+    Project-block requirement-row detail bodies."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     assert "_fsRenderEnvelopeMarkHeader" in sSource
     sSoftware = _fsExtractFunctionBlock(

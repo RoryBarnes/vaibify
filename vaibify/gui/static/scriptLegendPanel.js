@@ -74,7 +74,7 @@ var VaibifyLegendPanel = (function () {
         },
     ];
 
-    // Marks on the Workflow-wide sections (Repository, Software,
+    // Marks on the Project-block sections (Repository, Software,
     // Artifacts, Determinism, Published copies, Attestation) and
     // their requirement rows.
     var _LIST_WORKFLOW_MARKS = [
@@ -259,7 +259,7 @@ var VaibifyLegendPanel = (function () {
             _fsRenderUsingAiSection() +
             '<div class="aics-help-heading">Legend</div>' +
             _fsRenderStepsDivision() +
-            _fsRenderWorkflowWideDivision() +
+            _fsRenderProjectDivision() +
             _fsRenderLevelLightsDivision() +
             _fsRenderFilesAndRemotesDivision() +
             _fsRenderFooter();
@@ -330,7 +330,7 @@ var VaibifyLegendPanel = (function () {
             '</div>';
     }
 
-    function _fsRenderWorkflowWideDivision() {
+    function _fsRenderProjectDivision() {
         var dictCatalog = _fdictGlyphCatalog();
         return '<div class="aics-legend-section">' +
             '<div class="aics-legend-section-title">' +

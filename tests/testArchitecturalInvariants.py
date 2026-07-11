@@ -2561,7 +2561,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
     # (bAiDeclarationAttested / bRebuildAttestationCurrent /
-    # bOverleafBound) for the Workflow-wide requirement rows — a
+    # bOverleafBound) for the Project-block requirement rows — a
     # cohesive extension of the poll-assembly responsibility.
     # +7 (2026-07-08): degenerate-envelope guard — a failed poll
     # snapshot ships null instead of an empty envelope so the client

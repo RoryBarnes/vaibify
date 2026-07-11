@@ -75,7 +75,7 @@ const PipeleyenApp = (function () {
         setExpandedRequirementGroups: new Set(),
         setExpandedRequirementRows: new Set(),
         bStepsCollapsed: false,
-        bWorkflowWideCollapsed: false,
+        bProjectBlockCollapsed: false,
         bBinaryAddFormOpen: false,
         bShowTimestamps: false,
         iContextStepIndex: -1,
@@ -1146,7 +1146,7 @@ const PipeleyenApp = (function () {
 
     function _fsFindAiDeclarationFile() {
         // The declaration file of the workflow's ai-declaration step,
-        // for the Workflow-wide Publication "AI Declaration" row.
+        // for the Project-block Publication "AI Declaration" row.
         var listSteps = (_dictWorkflowState.dictWorkflow || {})
             .listSteps || [];
         for (var i = 0; i < listSteps.length; i++) {
@@ -1167,7 +1167,7 @@ const PipeleyenApp = (function () {
                 _dictUiState.setExpandedRequirementGroups,
             setExpandedRequirementRows:
                 _dictUiState.setExpandedRequirementRows,
-            bWorkflowWideCollapsed: _dictUiState.bWorkflowWideCollapsed,
+            bProjectBlockCollapsed: _dictUiState.bProjectBlockCollapsed,
             bBinaryAddFormOpen: _dictUiState.bBinaryAddFormOpen,
             sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
                 .sProjectRepoPath || "",
@@ -1295,7 +1295,7 @@ const PipeleyenApp = (function () {
         // column header + step-type banners) instead of only swapping
         // individual step wrappers.
         //
-        // The Workflow-wide block is NOT part of this signature: it
+        // The Project block is NOT part of this signature: it
         // lives in its own container and is rebuilt on every render,
         // so its expansion Sets can never cause a skip-repaint. A
         // future maintainer who memoizes that block MUST fold
@@ -1419,7 +1419,7 @@ const PipeleyenApp = (function () {
             _fnRenderStepListIncremental(
                 elList, listSteps, dictVars, dictContext);
         }
-        _fnRenderWorkflowWideBlock(dictContext);
+        _fnRenderProjectBlock(dictContext);
         _fnApplyStepsCollapsedClass();
         fnApplyTimestampVisibility();
         fnBindStepEvents();
@@ -1450,9 +1450,9 @@ const PipeleyenApp = (function () {
         _sLastBoundarySignature = sBoundary;
     }
 
-    var _sLastWorkflowWideHtml = null;
+    var _sLastProjectBlockHtml = null;
 
-    function _fnRenderWorkflowWideBlock(dictContext) {
+    function _fnRenderProjectBlock(dictContext) {
         // Rebuilt from data on every render — the block lives in its
         // own container, never in the incremental step-hash path, so
         // the requirement group/row expansion Sets need no render
@@ -1460,19 +1460,19 @@ const PipeleyenApp = (function () {
         // DOM write is skipped when the output is byte-identical so a
         // steady-state poll never wipes in-progress form input (the
         // determinism declare form) or a text selection.
-        var elBlock = document.getElementById("workflowWideBlock");
+        var elBlock = document.getElementById("projectBlock");
         if (!elBlock) return;
         if (!_dictWorkflowState.dictWorkflow) {
             elBlock.innerHTML = "";
-            _sLastWorkflowWideHtml = null;
+            _sLastProjectBlockHtml = null;
             return;
         }
         var sHtml =
-            VaibifyWorkflowRequirements.fsRenderWorkflowWideBlock(
+            VaibifyWorkflowRequirements.fsRenderProjectBlock(
                 dictContext);
-        if (sHtml === _sLastWorkflowWideHtml) return;
+        if (sHtml === _sLastProjectBlockHtml) return;
         elBlock.innerHTML = sHtml;
-        _sLastWorkflowWideHtml = sHtml;
+        _sLastProjectBlockHtml = sHtml;
     }
 
     function _fnApplyStepsCollapsedClass() {
@@ -1521,8 +1521,8 @@ const PipeleyenApp = (function () {
     function _fsRenderStepsAggregateLight() {
         // A full L1|L2|L3 strip (with a leading warning-column
         // spacer) so the collapsed Steps banner lines up with the
-        // Workflow-wide banner strip. L1 carries the aggregate step
-        // state; L2/L3 are dashes — those levels are workflow-wide,
+        // Project banner strip. L1 carries the aggregate step
+        // state; L2/L3 are dashes — those levels are project-wide,
         // not per-step.
         var sState = _fsAggregateStepsL1State();
         var sInner = sState === "attained"
@@ -2190,7 +2190,7 @@ const PipeleyenApp = (function () {
                 (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
         ];
         if (iStepIndex < 0) {
-            // The Project row covers workflow-wide requirements
+            // The Project row covers project-scope requirements
             // only; it is NOT a roll-up of the step rows. The
             // all-steps aggregate renders as the header checkmarks
             // and the AICS tab.
@@ -2313,9 +2313,9 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnToggleWorkflowWideBlockExpand() {
-        _dictUiState.bWorkflowWideCollapsed =
-            !_dictUiState.bWorkflowWideCollapsed;
+    function fnToggleProjectBlockExpand() {
+        _dictUiState.bProjectBlockCollapsed =
+            !_dictUiState.bProjectBlockCollapsed;
         fnRenderStepList();
     }
 
@@ -2335,7 +2335,7 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedRequirementRows, sReqKey);
     }
 
-    var _DICT_WORKFLOW_WIDE_ACTIONS = {
+    var _DICT_PROJECT_ACTIONS = {
         "capture-binary": {
             sPath: "/binaries/capture",
             fdictBody: function (sArg) {
@@ -2540,15 +2540,15 @@ const PipeleyenApp = (function () {
         };
     }
 
-    async function fnRunWorkflowWideAction(sAction, sArg, elButton) {
-        // Runs a workflow-wide action in place from the expanded
+    async function fnRunProjectAction(sAction, sArg, elButton) {
+        // Runs a project action in place from the expanded
         // blocks (capture/declare binaries, regenerate the envelope,
         // verify the manifest, generate reproduce.sh, declare/delete
         // determinism, verify Level 3), then refreshes so the status
         // lights update. Destructive actions confirm first; actions
         // with a response-aware formatter report what actually
         // happened rather than a fixed message.
-        var dictAction = _DICT_WORKFLOW_WIDE_ACTIONS[sAction];
+        var dictAction = _DICT_PROJECT_ACTIONS[sAction];
         var sContainerId = _dictSessionState.sContainerId;
         if (!dictAction || !sContainerId) return;
         if (dictAction.dictConfirm) {
@@ -2558,16 +2558,16 @@ const PipeleyenApp = (function () {
                 dictAction.dictConfirm.sTitle,
                 dictAction.dictConfirm.sMessage,
                 function () {
-                    _fnExecuteWorkflowWideAction(
+                    _fnExecuteProjectAction(
                         dictNoConfirm, sContainerId, sArg, elButton);
                 });
             return;
         }
-        await _fnExecuteWorkflowWideAction(
+        await _fnExecuteProjectAction(
             dictAction, sContainerId, sArg, elButton);
     }
 
-    async function _fnExecuteWorkflowWideAction(
+    async function _fnExecuteProjectAction(
         dictAction, sContainerId, sArg, elButton
     ) {
         var oBody = {};
@@ -4195,12 +4195,12 @@ const PipeleyenApp = (function () {
         fnToggleDepsExpand: fnToggleDepsExpand,
         fnToggleStepExpand: fnToggleStepExpand,
         fnToggleStepsBlockExpand: fnToggleStepsBlockExpand,
-        fnToggleWorkflowWideBlockExpand:
-            fnToggleWorkflowWideBlockExpand,
+        fnToggleProjectBlockExpand:
+            fnToggleProjectBlockExpand,
         fnToggleBinaryAddForm: fnToggleBinaryAddForm,
         fnToggleRequirementGroup: fnToggleRequirementGroup,
         fnToggleRequirementRow: fnToggleRequirementRow,
-        fnRunWorkflowWideAction: fnRunWorkflowWideAction,
+        fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
