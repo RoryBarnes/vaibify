@@ -540,6 +540,50 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
         }
 
 
+def _fdictSampleContainerActivity(dictCtx, sContainerId):
+    """Sample container CPU activity for the toolbar busy indicator.
+
+    Out-of-band compute — the in-container agent or a terminal session
+    running simulations directly — burns CPU without any vaibify step
+    being dispatched, so no step blinks and the researcher hears fans
+    over a quiet dashboard. One cheap exec reads the 1-minute load
+    average and counts runnable/uninterruptible processes (the
+    sampling ``ps`` subtracts itself). Returns None on any failure:
+    missing data must render as unknown, never as idle.
+    """
+    sCommand = (
+        "cat /proc/loadavg && (ps -eo stat= | grep -c '^[RD]' || true)"
+    )
+    try:
+        iExitCode, sOutput = dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+    except Exception:
+        return None
+    if iExitCode != 0:
+        return None
+    return _fdictParseActivitySample(sOutput)
+
+
+def _fdictParseActivitySample(sOutput):
+    """Parse the loadavg + busy-count exec output, or None on garbage."""
+    listLines = [
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.strip()
+    ]
+    if len(listLines) < 2:
+        return None
+    try:
+        fLoadOneMinute = float(listLines[0].split()[0])
+        iBusyRaw = int(listLines[-1])
+    except (ValueError, IndexError):
+        return None
+    return {
+        "fLoadOneMinute": fLoadOneMinute,
+        "iBusyProcesses": max(0, iBusyRaw - 1),
+    }
+
+
 async def _fbResolvePipelineRunning(dictCtx, sContainerId):
     """Reconcile pipeline state and return the post-reconciliation bRunning.
 
@@ -595,10 +639,16 @@ async def _fdictFetchOutputStatus(
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
     )
+    dictActivity = await asyncio.to_thread(
+        _fdictSampleContainerActivity, dictCtx, sContainerId,
+    )
+    if dictActivity is not None:
+        dictActivity["bPipelineTaskLive"] = bool(bPipelineRunning)
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),
+        "dictContainerActivity": dictActivity,
         **dictRest,
     }
 

@@ -5983,3 +5983,23 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     padding-top: 6px;
     margin-top: 6px;
 }
+
+/* Container activity indicator (toolbar): compute is happening in the
+   container whether or not a vaibify step was dispatched. Amber pulse
+   for out-of-band compute (agent/terminal); theme tint when a vaibify
+   step owns the CPU. Hidden entirely when no sample is available —
+   unknown must never render as idle. */
+.container-activity {
+    margin-left: 8px;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    animation: containerActivityPulse 1.6s ease-in-out infinite;
+    cursor: default;
+    user-select: none;
+}
+.container-activity-external { color: var(--color-orange, #f0a030); }
+.container-activity-step { color: var(--highlight-color); }
+@keyframes containerActivityPulse {
+    0%, 100% { opacity: 1.0; }
+    50% { opacity: 0.35; }
+}

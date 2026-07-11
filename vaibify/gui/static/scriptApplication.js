@@ -3807,6 +3807,49 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflowEnvelopeDetail =
                 dictStatus.dictWorkflowEnvelopeDetail;
         }
+        if ("dictContainerActivity" in dictStatus) {
+            _fnRenderContainerActivity(
+                dictStatus.dictContainerActivity);
+        }
+    }
+
+    function _fnRenderContainerActivity(dictActivity) {
+        // Honest busy indicator for compute the step dispatch cannot
+        // see (the in-container agent or a terminal running
+        // simulations directly): fans with a quiet dashboard was the
+        // reported hole. A failed sample hides the indicator —
+        // missing data renders as unknown, never as idle.
+        var elIndicator = document.getElementById(
+            "containerActivityIndicator");
+        if (!elIndicator) return;
+        if (!dictActivity) {
+            elIndicator.style.display = "none";
+            return;
+        }
+        var fLoad = dictActivity.fLoadOneMinute || 0;
+        var iBusy = dictActivity.iBusyProcesses || 0;
+        if (fLoad < 0.5 && iBusy < 1) {
+            elIndicator.style.display = "none";
+            return;
+        }
+        var sDetail = "load " + fLoad.toFixed(2) + ", " + iBusy +
+            " busy " + (iBusy === 1 ? "process" : "processes");
+        elIndicator.style.display = "";
+        elIndicator.textContent = "⚙ computing";
+        if (dictActivity.bPipelineTaskLive === true) {
+            elIndicator.className =
+                "container-activity container-activity-step";
+            elIndicator.title = "Container compute active (" +
+                sDetail + ") — a vaibify step is running.";
+        } else {
+            elIndicator.className =
+                "container-activity container-activity-external";
+            elIndicator.title = "Container compute active (" +
+                sDetail + ") outside the dashboard — for example " +
+                "the in-container agent or a terminal session " +
+                "running simulations directly. No vaibify step is " +
+                "running, so no step shows as active.";
+        }
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {

@@ -2568,7 +2568,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # never overwrites good state with "no binaries".
     # +3 (2026-07-09): the bArxivConfigured envelope boolean — the
     # arXiv L2 criteria are opt-in, keyed on the recorded connection.
-    "routes/pipelineRoutes.py": 2162,
+    # +50 (2026-07-11): the container-activity sample
+    # (_fdictSampleContainerActivity) — out-of-band compute (agent or
+    # terminal running simulations directly) is invisible to step
+    # dispatch; one cheap exec per poll feeds the honest toolbar
+    # busy indicator. Cohesive with the poll assembly it extends.
+    "routes/pipelineRoutes.py": 2212,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
