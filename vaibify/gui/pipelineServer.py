@@ -1639,6 +1639,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
+    routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

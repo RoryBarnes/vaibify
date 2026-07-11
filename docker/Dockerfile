@@ -166,6 +166,14 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
 RUN pip install --no-cache-dir keyring keyrings.alt
 ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
 
+# Mutation-testing engine for the per-step falsification attestation
+# (the dashboard's "Check test teeth" action). Installed at the
+# baseline so every project container can grade its quantitative
+# tests' fault-detection sensitivity without per-project
+# configuration. Runs as the unprivileged container user against
+# files inside the workspace volume; adds no network service.
+RUN pip install --no-cache-dir cosmic-ray
+
 # Conditional conda/mamba install for non-pip package managers.
 # Wrap the network call so a TLS or routing failure to GitHub /
 # objects.githubusercontent.com produces an actionable diagnostic —

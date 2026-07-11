@@ -508,7 +508,117 @@ var VaibifyStepRenderer = (function () {
         }
         sHtml += fsRenderTestSourceMtimeLine(
             iIndex, sCategory, dictContext);
+        if (sCategory === "quantitative") {
+            sHtml += fsRenderFalsificationBlock(iIndex, dictContext);
+        }
         sHtml += '</div>';
+        return sHtml;
+    }
+
+    /* --- Falsification attestation (non-gating) ---
+       Renders the mutation-testing row inside the Quantitative
+       Tests block. Honesty rules: "not applicable" is grey, never
+       green; a recorded kill-rate states the tests' fault-detection
+       sensitivity, never the result's accuracy; a digest-stale
+       record renders stale, not fresh. */
+
+    function _fsFalsificationRow(sBadgeState, sBadgeLabel) {
+        return '<div class="sub-test-row">' +
+            '<span class="verification-label">Falsification</span>' +
+            '<span class="verification-badge state-' + sBadgeState +
+            '">' + fnEscapeHtml(sBadgeLabel) + '</span></div>';
+    }
+
+    function _fsFalsificationNote(sText) {
+        return '<div class="detail-note">' +
+            fnEscapeHtml(sText) + '</div>';
+    }
+
+    function _fsFalsificationRunButton(iIndex, sLabel) {
+        return '<div><button class="btn btn-run-falsification" ' +
+            'data-step="' + iIndex + '">' + fnEscapeHtml(sLabel) +
+            '</button></div>';
+    }
+
+    function fsRenderFalsificationBlock(iIndex, dictContext) {
+        var dictState = dictContext.fdictGetFalsificationState ?
+            dictContext.fdictGetFalsificationState(iIndex) : null;
+        var sHtml = '<div class="falsification-block">';
+        if (!dictState) {
+            sHtml += _fsFalsificationRow("untested", "not checked");
+        } else if (dictState.dictInFlight) {
+            sHtml += _fsFalsificationRow(
+                "stale", "running…");
+            sHtml += _fsFalsificationNote(
+                "Mutation testing in progress: injecting faults " +
+                "and re-running the step per mutant.");
+        } else if (!dictState.dictApplicability ||
+                   !dictState.dictApplicability.bApplicable) {
+            sHtml += _fsFalsificationRow("untested", "not applicable");
+            sHtml += _fsFalsificationNote(
+                (dictState.dictApplicability || {}).sReason ||
+                "This step cannot be mutation-tested.");
+        } else {
+            sHtml += _fsRenderFalsificationVerdict(
+                iIndex, dictState);
+        }
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function _fsRenderFalsificationVerdict(iIndex, dictState) {
+        var dictRecord = dictState.dictRecord;
+        if (!dictRecord) {
+            return _fsFalsificationRow("untested", "not run") +
+                _fsFalsificationNote(
+                    "Would these tests notice if this step's code " +
+                    "broke? Mutation testing answers by injecting " +
+                    "deliberate faults.") +
+                _fsFalsificationRunButton(iIndex, "Check test teeth");
+        }
+        if (dictRecord.sStatus === "error") {
+            return _fsFalsificationRow("failed", "error") +
+                _fsFalsificationNote(dictRecord.sReason ||
+                    "The mutation run failed.") +
+                _fsFalsificationRunButton(iIndex, "Retry");
+        }
+        if (!dictState.bRecordCurrent) {
+            return _fsFalsificationRow("stale", "stale") +
+                _fsFalsificationNote(
+                    "The step's code or standards changed since " +
+                    "this kill-rate was recorded.") +
+                _fsFalsificationRunButton(iIndex, "Re-check test teeth");
+        }
+        return _fsRenderFalsificationKillRate(iIndex, dictRecord);
+    }
+
+    function _fsRenderFalsificationKillRate(iIndex, dictRecord) {
+        var iPercent = Math.round((dictRecord.fKillRate || 0) * 100);
+        var sHtml = _fsFalsificationRow(
+            "passed", iPercent + "% killed");
+        sHtml += _fsFalsificationNote(
+            dictRecord.iMutantsKilled + " of " +
+            dictRecord.iMutantsTotal + " injected faults were " +
+            "detected by the quantitative tests (" +
+            dictRecord.iMutantsSurvived + " survived). This " +
+            "measures the tests' fault-detection sensitivity, not " +
+            "the result's accuracy; surviving mutants may be " +
+            "equivalent (no observable effect).");
+        var listSurvivors = dictRecord.listSurvivors || [];
+        for (var i = 0; i < listSurvivors.length && i < 5; i++) {
+            sHtml += _fsFalsificationNote(
+                "survivor: " + listSurvivors[i].sModulePath + ":" +
+                listSurvivors[i].iLine + " (" +
+                listSurvivors[i].sOperator + ")");
+        }
+        if (listSurvivors.length > 5) {
+            sHtml += _fsFalsificationNote(
+                "… and " + (listSurvivors.length - 5) +
+                " more survivors (see the record in " +
+                ".vaibify/falsification/).");
+        }
+        sHtml += _fsFalsificationRunButton(
+            iIndex, "Re-check test teeth");
         return sHtml;
     }
 

@@ -1173,6 +1173,8 @@ const PipeleyenApp = (function () {
                 .sProjectRepoPath || "",
             sAiDeclarationFile: _fsFindAiDeclarationFile(),
             setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
+            fdictGetFalsificationState:
+                PipeleyenTestManager.fdictGetFalsificationState,
             setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
@@ -1346,6 +1348,8 @@ const PipeleyenApp = (function () {
             dictContext.dictMaxDataMtimeByStep[sIdx] || "",
             dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
             dictContext.dictTestCategoryMtimes[sIdx] || null,
+            dictContext.fdictGetFalsificationState ?
+                dictContext.fdictGetFalsificationState(iIndex) : null,
         ].concat(_flistBlockerAndLevelSlice(iIndex, dictContext)));
     }
 

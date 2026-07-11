@@ -2121,6 +2121,10 @@ SET_REPRO_FILES_ENTRY_POINTS = frozenset({
     "fnGenerateReproducibilityEnvelope",
     "fbManifestExists", "fsetStaleOutputsAgainstManifest",
     "fbDeclarationFileExists", "fnWriteDeclarationTemplate",
+    "fdictClassifyFalsificationApplicability",
+    "fdictBuildFalsificationStatus",
+    "fdictReadFalsificationRecord", "fnWriteFalsificationRecord",
+    "fbFalsificationRecordCurrent", "fsCurrentFalsificationDigest",
 })
 
 SET_RAW_REPO_PATH_NAMES = frozenset({
@@ -2602,7 +2606,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
     # the message loop it guards.
-    "pipelineServer.py": 1741,
+    # +1 (2026-07-11): one registration line for falsificationRoutes
+    # in _fnRegisterAllRoutes.
+    "pipelineServer.py": 1742,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

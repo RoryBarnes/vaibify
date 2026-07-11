@@ -1173,4 +1173,30 @@ def _fdictEntry(sRel):
         old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if iExit != 0:',
         new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if False and iExit != 0:',
     ),
+
+    # --- 2026-07-11: per-step falsification attestation honesty guards ---
+    Falsification(
+        nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_na_step_never_presents_current_record',
+        source='vaibify/reproducibility/falsificationAttestation.py',
+        old='    bRecordCurrent = False\n    if dictApplicability["bApplicable"]:\n        bRecordCurrent = fbFalsificationRecordCurrent(',
+        new='    bRecordCurrent = False\n    if True:\n        bRecordCurrent = fbFalsificationRecordCurrent(',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_empty_digest_record_is_never_current',
+        source='vaibify/reproducibility/falsificationAttestation.py',
+        old='    sRecorded = dictRecord.get("sScriptDigest") or ""\n    if not sRecorded:\n        return False',
+        new='    sRecorded = dictRecord.get("sScriptDigest") or ""',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_kill_rate_numerator_is_the_killed_count',
+        source='vaibify/reproducibility/falsificationAttestation.py',
+        old='    fKillRate = float(int(iMutantsKilled)) / iTotal if iTotal > 0 else 0.0',
+        new='    fKillRate = float(int(iMutantsSurvived)) / iTotal if iTotal > 0 else 0.0',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_digest_collapses_when_any_covered_file_is_missing',
+        source='vaibify/reproducibility/falsificationAttestation.py',
+        old='        sHash = (dictHashed.get(sRelPath) or {}).get("sSha256")\n        if not sHash:\n            return ""',
+        new='        sHash = (dictHashed.get(sRelPath) or {}).get("sSha256")\n        if not sHash:\n            continue',
+    ),
 ]

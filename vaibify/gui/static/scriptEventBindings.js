@@ -105,12 +105,20 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleSubTestRow(event, elMatch) {
         var sSubApprover = elMatch.dataset.approver;
         var iSubStep = parseInt(elMatch.dataset.step);
+        if (!sSubApprover) return;
         var setSubExp = PipeleyenApp.fsetGetExpandedCategory(
             sSubApprover);
         if (setSubExp.has(iSubStep)) {
             setSubExp.delete(iSubStep);
         } else {
             setSubExp.add(iSubStep);
+            if (sSubApprover === "quantitative") {
+                // On-demand only: the falsification state is read
+                // when the researcher opens the quantitative block,
+                // never on the poll path.
+                PipeleyenTestManager.fnFetchFalsificationState(
+                    iSubStep);
+            }
         }
         PipeleyenApp.fnRenderStepList();
     }
@@ -176,6 +184,11 @@ var PipeleyenEventBindings = (function () {
         PipeleyenTestManager.fnRunCategoryTests(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.category);
+    }
+
+    function _fnHandleRunFalsification(event, elMatch) {
+        PipeleyenTestManager.fnRunFalsification(
+            parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleRunData(event, elMatch) {
@@ -406,6 +419,7 @@ var PipeleyenEventBindings = (function () {
         ".btn-run-tests": _fnHandleRunTests,
         ".btn-run-all-tests": _fnHandleRunTests,
         ".btn-run-category": _fnHandleRunCategory,
+        ".btn-run-falsification": _fnHandleRunFalsification,
         ".btn-run-data": _fnHandleRunData,
         ".btn-run-plots": _fnHandleRunPlots,
         ".btn-add-deps": _fnHandleAddDeps,

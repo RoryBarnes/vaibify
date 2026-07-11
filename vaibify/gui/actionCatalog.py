@@ -503,6 +503,29 @@ LIST_AGENT_ACTIONS = [
                      "the bAcceptBlasVariance waiver passes the L3 "
                      "determinism gate and must remain a researcher "
                      "decision."},
+    {"sName": "run-falsification", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
+     "bAgentSafe": True,
+     "sDescription": "Mutation-test a deterministic Python step's "
+                     "code against its quantitative tests "
+                     "(cosmic-ray) and record the kill-rate as a "
+                     "non-gating falsification attestation. "
+                     "Expensive: cost is mutants times step runtime, "
+                     "bounded by a 300s per-mutant timeout. Measures "
+                     "the tests' fault-detection sensitivity, never "
+                     "the result's accuracy. 409 when the step is "
+                     "not applicable (non-Python or non-deterministic)."},
+    {"sName": "view-falsification-attestation",
+     "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/falsification",
+     "bAgentSafe": True,
+     "sDescription": "Return the step's falsification attestation: "
+                     "live applicability, the persisted kill-rate "
+                     "record, digest-keyed staleness, and any "
+                     "in-flight run status. Read-only; never runs "
+                     "mutation testing."},
     {"sName": "capture-binary-environment", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/binaries/capture",

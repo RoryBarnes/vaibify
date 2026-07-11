@@ -2966,6 +2966,22 @@ body.aics-level-3 .toolbar-label {
     font-size: 11px;
 }
 
+.falsification-block {
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(128, 128, 160, 0.12);
+}
+
+.falsification-block .sub-test-row {
+    cursor: default;
+}
+
+.falsification-block .detail-note {
+    color: var(--text-muted);
+    font-size: 10px;
+    margin: 2px 0;
+}
+
 .test-item-text.clickable {
     cursor: pointer;
     text-decoration: underline;
