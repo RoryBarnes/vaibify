@@ -814,7 +814,8 @@ most likely way to misjudge the dashboard:
 The corollary that trips readers: **the Workflow row is not a summary
 row.** Its cells cover only the requirements that attach to no single
 step — L1: the project repo exists; L2: sync-verify freshness plus
-the arXiv criteria; L3: the envelope artifacts (pinned Dockerfile,
+the arXiv criteria (only when an arXiv submission is recorded — the
+arXiv claim is opt-in); L3: the envelope artifacts (pinned Dockerfile,
 dependency lock, environment snapshot, reproduce script, attestation,
 binary declarations). A Workflow-row L1 check above red step rows is
 therefore a consistent display: the workflow-wide L1 requirement is

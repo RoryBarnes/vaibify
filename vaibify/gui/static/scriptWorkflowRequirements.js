@@ -13,10 +13,10 @@
 
    Everything renders verbatim from the poll's
    ``dictWorkflowEnvelopeDetail`` (the four render sections plus the
-   three workflow-wide booleans bAiDeclarationAttested /
-   bRebuildAttestationCurrent / bOverleafBound). A null remote-sync
-   cache renders the hollow "never verified" light — never green
-   (the dashboard-ground-truth honesty rule).
+   four workflow-wide booleans bAiDeclarationAttested /
+   bRebuildAttestationCurrent / bOverleafBound / bArxivConfigured).
+   A null remote-sync cache renders the hollow "never verified"
+   light — never green (the dashboard-ground-truth honesty rule).
 
    This block lives in its own ``#workflowWideBlock`` container and is
    rebuilt unconditionally on every render, so it never participates in
@@ -105,6 +105,13 @@ var VaibifyWorkflowRequirements = (function () {
         // A null cache means the remote was never verified; the hollow
         // grey mark is the honest rendering — never a pass.
         if (!dictSync) return "unknown";
+        if ((dictSync.iTotalFiles || 0) === 0) {
+            // A verify that compared zero files demonstrated nothing:
+            // "0 of 0 matching" must never render as attained
+            // (vacuous-attainment rule). Legacy cache entries can
+            // carry this shape; the backend now refuses to write it.
+            return "unknown";
+        }
         if ((dictSync.iDivergedCount || 0) > 0) {
             // Some files already match the remote → partial progress
             // (orange), not "nothing published" (red). Only a total
@@ -123,6 +130,13 @@ var VaibifyWorkflowRequirements = (function () {
         if (!dictSync) {
             return "Never verified — refresh remote status from the " +
                 "Repos panel";
+        }
+        if ((dictSync.iTotalFiles || 0) === 0) {
+            return "The last verification compared no files — " +
+                "verify again" +
+                (dictSync.sLastVerified
+                    ? " · last attempted " + dictSync.sLastVerified
+                    : "");
         }
         var sText = (dictSync.iMatching || 0) + " of " +
             (dictSync.iTotalFiles || 0) + " files matching";
@@ -530,12 +544,21 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fdictSyncRow(sTitle, sKey, dictSync, sBadgeKey, sHowto,
                            sExtraHtml) {
+        // Every sync row carries a Verify-now button: the row reports
+        // the last verify result, so the action that moves it to the
+        // passing state must be reachable from the row itself, not
+        // hidden behind a panel the how-to text points at.
+        var sVerifyButton = '<div class="requirement-row-actions">' +
+            '<button type="button" class="btn wf-verify-remote" ' +
+            'data-service="' + fnEscapeHtml(sKey) + '">' +
+            'Verify now</button></div>';
         return {
             sKey: sKey, sTitle: sTitle, iLevel: 2,
             sState: _fsSyncRowState(dictSync),
             fsDetail: function () {
                 return _fsRenderSyncRequirementDetail(
-                    dictSync, sBadgeKey, sHowto, sExtraHtml);
+                    dictSync, sBadgeKey, sHowto,
+                    sVerifyButton + (sExtraHtml || ""));
             }};
     }
 
@@ -551,43 +574,76 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _flistPublishedCopiesRows(dictDetail) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
-        var listRows = [
+        return [
             _fdictSyncRow("GitHub mirror", "github", dictSyncs.github,
                 "sGithub", "Push and re-verify from the Repos panel."),
             _fdictSyncRow("Zenodo deposit", "zenodo", dictSyncs.zenodo,
                 "sZenodo",
                 "Publish or re-verify from the Repos panel."),
+            _fdictOverleafRow(dictDetail, dictSyncs),
+            _fdictArxivRow(dictDetail, dictSyncs),
         ];
+    }
+
+    function _fdictOverleafRow(dictDetail, dictSyncs) {
         if (dictDetail.bOverleafBound !== true) {
-            // The backend exempts Overleaf and arXiv from Level 2
-            // when no manuscript is bound (levelGates), so a
-            // data-only workflow must not surface a fake gap here.
-            return listRows.concat([
-                _fdictNotApplicableRow("Overleaf manuscript",
-                    "overleaf",
-                    "No Overleaf project is bound. To publish " +
-                    "manuscript figures, bind one in Workflow " +
-                    "settings (the gear button above)."),
-                _fdictNotApplicableRow("arXiv submission", "arxiv",
-                    "Applies only when an Overleaf manuscript is " +
-                    "bound."),
-            ]);
+            // The backend exempts figure freezing from Level 2 when
+            // no manuscript is bound (levelGates), so a data-only
+            // workflow must not surface a fake gap here.
+            return _fdictNotApplicableRow("Overleaf manuscript",
+                "overleaf",
+                "No Overleaf project is bound. To publish " +
+                "manuscript figures, open the Repos panel and " +
+                "choose Push to Overleaf — it will prompt to " +
+                "connect the project.");
         }
-        var sArxivConfig = '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn wf-open-arxiv-config">' +
-            'Configure arXiv…</button></div>';
-        return listRows.concat([
-            _fdictSyncRow("Overleaf manuscript", "overleaf",
-                dictSyncs.overleaf, "sOverleaf",
-                "Only figure files (.pdf, .png, …) travel to the " +
-                "manuscript. Bind an Overleaf project in Workflow " +
-                "settings (the gear button above), then push figures " +
-                "from the Repos panel."),
-            _fdictSyncRow("arXiv submission", "arxiv", dictSyncs.arxiv,
-                "sArxiv",
-                "Record the arXiv submission and match it to the " +
-                "frozen figures.", sArxivConfig),
-        ]);
+        return _fdictSyncRow("Overleaf manuscript", "overleaf",
+            dictSyncs.overleaf, "sOverleaf",
+            "Only figure files (.pdf, .png, …) travel to the " +
+            "manuscript. Push figures from the Repos panel — a " +
+            "successful push re-verifies this row automatically.");
+    }
+
+    var _S_ARXIV_CONFIG_BUTTON =
+        '<div class="requirement-row-actions">' +
+        '<button type="button" class="btn wf-open-arxiv-config">' +
+        'Configure arXiv…</button></div>';
+
+    function _fdictArxivRow(dictDetail, dictSyncs) {
+        // The arXiv criterion is opt-in: recording an ID claims
+        // correspondence with the posted e-print, so the claim is
+        // checked; without one the row is neutral ("not tracked"),
+        // never red and never a green check (levelGates).
+        if (dictDetail.bArxivConfigured === true) {
+            return _fdictSyncRow("arXiv submission", "arxiv",
+                dictSyncs.arxiv, "sArxiv",
+                "The posted e-print's figures must match the " +
+                "frozen Overleaf figures.", _S_ARXIV_CONFIG_BUTTON);
+        }
+        return _fdictArxivNotTrackedRow(
+            dictDetail.bOverleafBound === true);
+    }
+
+    function _fdictArxivNotTrackedRow(bOverleafBound) {
+        var sHowto = bOverleafBound
+            ? "Optional: after posting the manuscript to arXiv, " +
+              "record its ID here to verify the e-print's figures " +
+              "match the frozen figures. Not required for Level 2."
+            : "Optional, once an Overleaf manuscript is bound and " +
+              "figures are pushed: record the posted e-print's ID " +
+              "to verify its figures. Not required for Level 2.";
+        return {
+            sKey: "arxiv", sTitle: "arXiv submission", iLevel: 2,
+            sState: "not-applicable",
+            fsDetail: function () {
+                return '<div class="requirement-row-detail">' +
+                    '<div class="requirement-row-status">' +
+                    'Not tracked — optional.</div>' +
+                    '<div class="requirement-row-howto">' +
+                    fnEscapeHtml(sHowto) + '</div>' +
+                    (bOverleafBound ? _S_ARXIV_CONFIG_BUTTON : "") +
+                    '</div>';
+            }};
     }
 
     function _flistAttestationRows(dictDetail, dictContext) {

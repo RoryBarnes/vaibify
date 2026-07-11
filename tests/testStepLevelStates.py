@@ -709,14 +709,29 @@ def testWorkflowScopeBothCachesStaleReadsNone():
     assert dictStates["s2"] == _fdictCell("none", 0, 2)
 
 
-def testWorkflowScopeArxivCriteriaApplicableOnlyWithOverleafBinding():
+def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
+    """The two arXiv criteria join the L2 cell only when an arXiv
+    submission is recorded — an Overleaf binding alone must not
+    widen the requirement set (the arXiv claim is opt-in)."""
     dictWorkflow = _fdictWorkflowWithCleanSteps(1)
-    dictWorkflow["dictRemotes"] = {"overleaf": {"sProjectId": "abc"}}
-    listLevel2 = [_fdictWorkflowBlocker(2, "arxiv-not-submitted")]
+    dictWorkflow["dictRemotes"] = {
+        "overleaf": {"sProjectId": "abc"},
+        "arxiv": {"sArxivId": "2401.00001"},
+    }
+    listLevel2 = [_fdictWorkflowBlocker(2, "arxiv-mismatch")]
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 4, 5)
+    assert dictStates["s2"] == _fdictCell("partial", 3, 4)
+
+
+def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
+    dictWorkflow = _fdictWorkflowWithCleanSteps(1)
+    dictWorkflow["dictRemotes"] = {"overleaf": {"sProjectId": "abc"}}
+    dictStates = fdictComputeWorkflowScopeLevelStates(
+        dictWorkflow, [], [],
+    )
+    assert dictStates["s2"] == _fdictCell("attained", 2, 2)
 
 
 def testWorkflowScopeIgnoresPerStepBlockerEntries():

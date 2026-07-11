@@ -1539,7 +1539,7 @@ class TestPollLevelStatePayload:
     async def test_response_carries_envelope_detail_keys(self):
         """The envelope-detail payload arrives with all its sections.
 
-        Four render sections plus the three workflow-wide status
+        Four render sections plus the four workflow-wide status
         booleans the Publication/Reproducibility rows consume.
         """
         dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
@@ -1553,7 +1553,7 @@ class TestPollLevelStatePayload:
             "listBinaries", "dictArtifacts",
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
-            "bOverleafBound",
+            "bOverleafBound", "bArxivConfigured",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None
@@ -1561,6 +1561,7 @@ class TestPollLevelStatePayload:
             "github", "zenodo", "overleaf", "arxiv",
         }
         assert dictDetail["bOverleafBound"] is False
+        assert dictDetail["bArxivConfigured"] is False
         assert dictDetail["bRebuildAttestationCurrent"] is False
 
     @pytest.mark.asyncio

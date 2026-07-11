@@ -197,11 +197,26 @@ fnInstallCredentialHelper() {
     cat > "${sHelperPath}" << 'HELPER'
 #!/bin/bash
 # vaibify-git-credential-helper: stdout the GitHub token on demand.
+# Answers ONLY for host=github.com, parsed from the git-credential
+# request on stdin: an unconditional helper hijacks authentication
+# for every other remote — git.overleaf.com would be handed the
+# GitHub token and reject the operation as an auth failure while the
+# correct Overleaf token sits unconsulted in a later helper.
 # Reads the token from /run/secrets/gh_token (mounted read-only by the
 # host as a mode-600 ephemeral file). Falls back to ``gh auth token``
 # if present. Never writes the token to disk.
 case "${1:-}" in
     get)
+        sRequestHost=""
+        while IFS= read -r sLine; do
+            [ -z "${sLine}" ] && break
+            case "${sLine}" in
+                host=*) sRequestHost="${sLine#host=}" ;;
+            esac
+        done
+        if [ "${sRequestHost}" != "github.com" ]; then
+            exit 0
+        fi
         sToken=""
         if [ -f /run/secrets/gh_token ]; then
             sToken=$(cat /run/secrets/gh_token)
@@ -234,7 +249,11 @@ fnConfigureGit() {
     fnInstallCredentialHelper
     if [ -n "${sToken}" ]; then
         echo "[vaib] GitHub credentials detected (resolved on demand)."
-        git config --system credential.helper \
+        # URL-scoped registration: git consults this helper for
+        # github.com only, so other remotes (git.overleaf.com) fall
+        # through to their own per-command credential configuration.
+        git config --system \
+            credential.https://github.com.helper \
             "/usr/local/bin/vaibify-git-credential-helper"
     else
         echo "[vaib] No GitHub credentials found. Public repos only."

@@ -2566,8 +2566,31 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +7 (2026-07-08): degenerate-envelope guard — a failed poll
     # snapshot ships null instead of an empty envelope so the client
     # never overwrites good state with "no binaries".
-    "routes/pipelineRoutes.py": 2159,
-    "routes/syncRoutes.py": 2041,
+    # +3 (2026-07-09): the bArxivConfigured envelope boolean — the
+    # arXiv L2 criteria are opt-in, keyed on the recorded connection.
+    "routes/pipelineRoutes.py": 2162,
+    # +21 (2026-07-09): removing the arXiv connection also clears its
+    # cached verify result (_fsClearArxivSyncCache) so the dashboard
+    # cannot render a ghost divergence count — cohesive with the
+    # configure route it extends.
+    # +53 (2026-07-09): Overleaf push provenance
+    # (_fnRecordPushProvenance) — the push manifest + sLastPushCommit
+    # write that the figure-freeze/arXiv/verify machinery reads;
+    # previously never recorded in production. Cohesive with the
+    # push finalize it extends.
+    # +65 (2026-07-10): stage-validate-commit for the connect flow
+    # (_fsFetchPreviousHostCredential + _fnRollBackFailedCredential) —
+    # a failed token validation restores the previously working
+    # credential instead of deleting it, and the response says which
+    # happened. Cohesive with the setup flow it hardens.
+    # +88 (2026-07-10): the same rollback extended to container-side
+    # Zenodo tokens via an in-container snapshot slot (the value
+    # never crosses the docker-exec boundary).
+    # +9 (2026-07-10): the Overleaf push now calls the shared
+    # fsRefreshVerifyCacheAfterPush hop ("shared by every push
+    # route" — this was the missed call site), so the requirement
+    # row updates without a manual re-verify.
+    "routes/syncRoutes.py": 2277,
     "fileStatusManager.py": 1943,
     "workflowManager.py": 1935,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
@@ -2577,7 +2600,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     "pipelineServer.py": 1741,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
-    "syncDispatcher.py": 1627,
+    # +13 (2026-07-10): the host ls-remote validation resets ambient
+    # git credential helpers (credential isolation) so it can only
+    # exercise the vaibify-managed token, never a keychain entry for
+    # the same host.
+    # +33 (2026-07-10): fbCopyCredentialInContainer — the in-container
+    # keyring snapshot/restore primitive for the connect flow's
+    # stage-validate-commit; the secret never crosses the exec
+    # boundary.
+    "syncDispatcher.py": 1673,
     "pipelineRunner.py": 1399,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,

@@ -14,6 +14,7 @@ unit tests) and the flat container layout (script invocation).
 import argparse
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -117,31 +118,75 @@ def flistOverleafPushedFiguresAt(filesRepo, sCommitHash):
     """Return repo-relative plot paths pushed to Overleaf at ``sCommitHash``.
 
     The manifest is a JSON object of the shape
-    ``{sCommitHash: [sPlotPath, ...]}`` recorded by
-    :func:`fnRecordOverleafPushManifest` after every successful push.
-    Returns ``[]`` when the file does not exist, is unreadable, or has
-    no entry for the requested commit so callers can treat the absence
+    ``{sCommitHash: {sLocalPath: sRemotePath, ...}}`` recorded by
+    :func:`fnRecordOverleafPushManifest` after every successful push
+    (a legacy list-of-local-paths entry shape is tolerated). Returns
+    ``[]`` when the file does not exist, is unreadable, or has no
+    entry for the requested commit so callers can treat the absence
     of evidence as "nothing pushed for that commit".
     """
+    return sorted(fdictOverleafRemotePathsAt(filesRepo, sCommitHash))
+
+
+def fdictOverleafRemotePathsAt(filesRepo, sCommitHash):
+    """Return ``{sLocalPath: sRemotePath}`` pushed at ``sCommitHash``.
+
+    The remote path is where the push landed the figure inside the
+    Overleaf project (``<target-directory>/<basename>`` — pushes
+    flatten directory structure, see ``_fnCopyFiguresToRepo``). A
+    legacy list-shape entry carries no remote information; its remote
+    falls back to the local path, which fails closed at verify time
+    (a miss reads diverged, never falsely synced). Returns ``{}``
+    when nothing is recorded for the commit.
+    """
     if not sCommitHash:
-        return []
+        return {}
     filesRepo = _ffilesEnsurePushManifestRepo(filesRepo)
     dictAll = _fdictReadPushManifest(filesRepo)
-    listPaths = dictAll.get(sCommitHash) or []
-    if not isinstance(listPaths, list):
-        return []
-    return [sEntry for sEntry in listPaths if isinstance(sEntry, str)]
+    entryRecorded = dictAll.get(sCommitHash)
+    if isinstance(entryRecorded, dict):
+        return {
+            sLocal: sRemote
+            for sLocal, sRemote in entryRecorded.items()
+            if isinstance(sLocal, str) and isinstance(sRemote, str)
+        }
+    if isinstance(entryRecorded, list):
+        return {
+            sEntry: sEntry for sEntry in entryRecorded
+            if isinstance(sEntry, str)
+        }
+    return {}
+
+
+def fsOverleafRemotePathFor(sLocalPath, sTargetDirectory):
+    """Return the Overleaf-project path a pushed figure lands at.
+
+    Mirrors ``_fnCopyFiguresToRepo``: the push copies each figure to
+    ``<sTargetDirectory>/<basename>``, flattening the local directory
+    structure. This is the single authority for that mapping — the
+    push manifest recorder and the post-push digest collector must
+    both use it so the recorded remote paths and the mirror lookups
+    can never drift apart.
+    """
+    sBasename = posixpath.basename(sLocalPath.replace("\\", "/"))
+    if not sTargetDirectory:
+        return sBasename
+    return posixpath.join(sTargetDirectory, sBasename)
 
 
 def fnRecordOverleafPushManifest(
-    filesRepo, sCommitHash, listPlotPaths,
+    filesRepo, sCommitHash, listPlotPaths, sTargetDirectory="",
 ):
-    """Record the plot-paths pushed to Overleaf at ``sCommitHash``.
+    """Record the figures pushed to Overleaf at ``sCommitHash``.
 
-    Writes/updates ``.vaibify/overleafPushManifest.json`` atomically so
-    a later :func:`flistOverleafPushedFiguresAt` call against the same
-    commit returns the recorded list. Skipped (no-op) when either input
-    is empty so callers do not need to branch.
+    Stores ``{sLocalPath: sRemotePath}`` under the commit key in
+    ``.vaibify/overleafPushManifest.json`` (atomically), so later
+    :func:`flistOverleafPushedFiguresAt` /
+    :func:`fdictOverleafRemotePathsAt` calls against the same commit
+    return the recorded push. ``listPlotPaths`` entries must be
+    repo-relative; remote paths derive from ``sTargetDirectory`` via
+    :func:`fsOverleafRemotePathFor`. Skipped (no-op) when either
+    required input is empty so callers do not need to branch.
     """
     if not sCommitHash:
         return
@@ -149,9 +194,10 @@ def fnRecordOverleafPushManifest(
     if not filesRepo.sRootPath:
         return
     dictAll = _fdictReadPushManifest(filesRepo)
-    dictAll[sCommitHash] = [
-        sEntry for sEntry in listPlotPaths if isinstance(sEntry, str)
-    ]
+    dictAll[sCommitHash] = {
+        sEntry: fsOverleafRemotePathFor(sEntry, sTargetDirectory)
+        for sEntry in listPlotPaths if isinstance(sEntry, str)
+    }
     filesRepo.fnWriteJsonAtomic(_fsPushManifestRelativePath(), dictAll)
 
 
@@ -321,10 +367,18 @@ def flistBuildCredentialHelperArgs(sTokenFilePath):
     ``git config`` approach, this leaves zero residue in the caller's
     ``~/.gitconfig`` — the helper only applies to git commands that
     receive these ``-c`` args.
+
+    The leading empty ``credential.helper=`` RESETS any helper list
+    inherited from the system/global gitconfig (e.g. macOS
+    ``osxkeychain``) before the one-shot helper is added, so the
+    supplied token is the ONLY credential these commands can use —
+    an ambient keychain entry for the same host must never answer in
+    its place. The reset must precede the helper: ``-c`` flags apply
+    in order.
     """
     sHelper = _fsBuildCredentialHelper(sTokenFilePath)
     sKey = f"credential.https://{_OVERLEAF_GIT_HOST}.helper"
-    return ["-c", f"{sKey}={sHelper}"]
+    return ["-c", "credential.helper=", "-c", f"{sKey}={sHelper}"]
 
 
 # ------------------------------------------------------------------

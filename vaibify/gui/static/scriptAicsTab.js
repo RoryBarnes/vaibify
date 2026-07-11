@@ -82,9 +82,10 @@ var VaibifyAicsTab = (function () {
         2: [
             {sStateKey: "bGithubFullySynced",
              sLabel: "GitHub mirror",
-             sWhat: "Every canonical file — scripts, outputs, tests, " +
-                 "the manifest — matches your public GitHub " +
-                 "repository at a recently verified commit.",
+             sWhat: "Every canonical file — scripts, outputs, tests " +
+                 "— matches your public GitHub repository at a " +
+                 "recently verified commit, hashed as it exists on " +
+                 "disk at verification time.",
              sHow: "Commit and push from the Repos panel, then " +
                  "re-verify; per-file state is under Published " +
                  "copies in the Project block.",
@@ -101,13 +102,14 @@ var VaibifyAicsTab = (function () {
              sFixLabel: "Open the Repos panel"},
             {sStateKey: "bArxivFullySynced",
              sLabel: "arXiv manuscript",
-             sWhat: "When an Overleaf manuscript is bound, its " +
-                 "frozen figures must match the recorded arXiv " +
-                 "submission. A workflow without a manuscript " +
-                 "meets this automatically.",
-             sHow: "Push figures to Overleaf, then configure the " +
-                 "arXiv submission under Published copies in the " +
-                 "Project block.",
+             sWhat: "When an arXiv submission is recorded, the " +
+                 "posted e-print's figures must match the frozen " +
+                 "Overleaf figures. Recording a submission is " +
+                 "optional — a workflow without one meets this " +
+                 "automatically.",
+             sHow: "After posting to arXiv, record the submission " +
+                 "under Published copies in the Project block to " +
+                 "verify it.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
             {sStateKey: "bAiDeclarationAttested",

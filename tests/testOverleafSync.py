@@ -217,3 +217,83 @@ def test_push_emits_push_status_no_changes_when_clone_is_pristine(
     sOutput = buf.getvalue()
     assert "PUSH_STATUS=no-changes" in sOutput
     assert "HEAD_SHA=abc1234" in sOutput
+
+
+# ----------------------------------------------------------------------
+# Push manifest: local→remote path map round trip
+# ----------------------------------------------------------------------
+
+
+def test_push_manifest_records_local_to_remote_map(tmp_path):
+    """Recording stores {local: remote}; both readers recover it."""
+    from vaibify.reproducibility.overleafSync import (
+        fdictOverleafRemotePathsAt,
+        flistOverleafPushedFiguresAt,
+        fnRecordOverleafPushManifest,
+    )
+    sRepo = str(tmp_path)
+    fnRecordOverleafPushManifest(
+        sRepo, "commitabc",
+        ["Plot/A12/foo.pdf", "Plot/A13/bar.png"], "figures",
+    )
+    assert fdictOverleafRemotePathsAt(sRepo, "commitabc") == {
+        "Plot/A12/foo.pdf": "figures/foo.pdf",
+        "Plot/A13/bar.png": "figures/bar.png",
+    }
+    assert flistOverleafPushedFiguresAt(sRepo, "commitabc") == [
+        "Plot/A12/foo.pdf", "Plot/A13/bar.png",
+    ]
+
+
+def test_push_manifest_empty_target_uses_bare_basename(tmp_path):
+    """An empty target directory lands figures at the project root."""
+    from vaibify.reproducibility.overleafSync import (
+        fdictOverleafRemotePathsAt,
+        fnRecordOverleafPushManifest,
+    )
+    sRepo = str(tmp_path)
+    fnRecordOverleafPushManifest(
+        sRepo, "commitabc", ["Plot/foo.pdf"],
+    )
+    assert fdictOverleafRemotePathsAt(sRepo, "commitabc") == {
+        "Plot/foo.pdf": "foo.pdf",
+    }
+
+
+def test_push_manifest_tolerates_legacy_list_shape(tmp_path):
+    """A legacy list-of-paths entry still yields the pushed-figure list.
+
+    The remote path falls back to the local path — a lookup miss at
+    verify time, which fails closed (diverged), never falsely synced.
+    """
+    import json as jsonModule
+    from vaibify.reproducibility.overleafSync import (
+        fdictOverleafRemotePathsAt,
+        flistOverleafPushedFiguresAt,
+    )
+    sDir = os.path.join(str(tmp_path), ".vaibify")
+    os.makedirs(sDir, exist_ok=True)
+    with open(
+        os.path.join(sDir, "overleafPushManifest.json"),
+        "w", encoding="utf-8",
+    ) as fileHandle:
+        jsonModule.dump(
+            {"commitabc": ["Plot/foo.pdf"]}, fileHandle,
+        )
+    assert flistOverleafPushedFiguresAt(
+        str(tmp_path), "commitabc",
+    ) == ["Plot/foo.pdf"]
+    assert fdictOverleafRemotePathsAt(
+        str(tmp_path), "commitabc",
+    ) == {"Plot/foo.pdf": "Plot/foo.pdf"}
+
+
+def test_remote_path_authority_flattens_directories():
+    """fsOverleafRemotePathFor mirrors the push's basename flattening."""
+    from vaibify.reproducibility.overleafSync import (
+        fsOverleafRemotePathFor,
+    )
+    assert fsOverleafRemotePathFor(
+        "Plot/A12/foo.pdf", "figures",
+    ) == "figures/foo.pdf"
+    assert fsOverleafRemotePathFor("foo.pdf", "") == "foo.pdf"

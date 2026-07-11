@@ -153,8 +153,10 @@ pattern wholesale.
   `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`,
   `ai-declaration-unattested` (per-step); `github-verify-stale`,
   `zenodo-verify-stale`, `missing-ai-declaration-step`,
-  `arxiv-not-submitted`, `arxiv-mismatch`, `arxiv-version-stale`
-  (workflow-scope, `iStepIndex=-1`). Workflow-scope blockers render
+  `arxiv-mismatch`, `arxiv-version-stale` (workflow-scope,
+  `iStepIndex=-1`; the arXiv pair fires only when an arXiv
+  submission is recorded — the claim is opt-in, so an untracked
+  submission emits no blocker). Workflow-scope blockers render
   as banner rows above the step list, not as per-step glyphs. The AI
   declaration's sign-off is a LEVEL 2 requirement (ruling
   2026-07-02: the declaration only has meaning at publication) —

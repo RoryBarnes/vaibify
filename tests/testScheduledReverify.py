@@ -1,17 +1,37 @@
-"""Tests for vaibify.reproducibility.scheduledReverify."""
+"""Tests for vaibify.reproducibility.scheduledReverify.
+
+The L2 verifies hash the workflow's declared canonical files as they
+exist on disk at verify time (never MANIFEST.sha256 — the L3 envelope
+artifact), so every verify fixture creates REAL files and mocks the
+remote with the files' real hashes.
+"""
 
 import asyncio
+import hashlib
 import os
 import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vaibify.reproducibility import scheduledReverify
+from vaibify.reproducibility import overleafSync, scheduledReverify
+
+
+_BA_DATA_CONTENT = b"canonical data bytes\n"
+S_DATA_SHA = hashlib.sha256(_BA_DATA_CONTENT).hexdigest()
+_BA_TEST_CONTENT = b"def test_quantitative(): pass\n"
+S_TEST_SHA = hashlib.sha256(_BA_TEST_CONTENT).hexdigest()
+_BA_PLOT_CONTENT = b"%PDF-1.4 canonical figure\n"
+S_PLOT_SHA = hashlib.sha256(_BA_PLOT_CONTENT).hexdigest()
 
 
 def _fdictBuildWorkflow(sProjectRepo, sId="wf01"):
-    """Return a minimal workflow dict with four remotes configured."""
+    """Return a minimal workflow dict with four remotes configured.
+
+    The step declares ``data.csv`` relative to its directory, which
+    the canonical-path collector resolves to ``step01/data.csv`` —
+    the file :func:`_fnWriteDataFile` creates.
+    """
     return {
         "sWorkflowId": sId,
         "sProjectRepoPath": sProjectRepo,
@@ -21,19 +41,40 @@ def _fdictBuildWorkflow(sProjectRepo, sId="wf01"):
                 "sRepo": "repo",
                 "sBranch": "main",
             },
-            "overleaf": {"sProjectId": "project1234"},
+            "overleaf": {
+                "sProjectId": "project1234",
+                "sLastPushCommit": "commit1",
+            },
             "zenodo": {"sRecordId": "98765", "sService": "sandbox"},
             "arxiv": {"sArxivId": "2401.12345"},
         },
         "listSteps": [
             {
                 "sDirectory": "step01",
-                "saDataFiles": ["step01/data.csv"],
+                "saDataFiles": ["data.csv"],
                 "saPlotFiles": [],
                 "saOutputFiles": [],
             },
         ],
     }
+
+
+def _fnWriteDataFile(sProjectRepo):
+    """Create the declared step01/data.csv with known content."""
+    os.makedirs(os.path.join(sProjectRepo, "step01"), exist_ok=True)
+    with open(
+        os.path.join(sProjectRepo, "step01", "data.csv"), "wb",
+    ) as fileHandle:
+        fileHandle.write(_BA_DATA_CONTENT)
+
+
+def _fnWritePlotFile(sProjectRepo):
+    """Create step01/plot.pdf with known content."""
+    os.makedirs(os.path.join(sProjectRepo, "step01"), exist_ok=True)
+    with open(
+        os.path.join(sProjectRepo, "step01", "plot.pdf"), "wb",
+    ) as fileHandle:
+        fileHandle.write(_BA_PLOT_CONTENT)
 
 
 def _fnWriteManifestForOneFile(sProjectRepo, sExpectedHash):
@@ -46,12 +87,20 @@ def _fnWriteManifestForOneFile(sProjectRepo, sExpectedHash):
         )
 
 
+def _fnRecordPushedFigures(sProjectRepo, listPaths=None):
+    """Record an Overleaf push manifest so figure verifies have a scope."""
+    overleafSync.fnRecordOverleafPushManifest(
+        sProjectRepo, "commit1", listPaths or ["step01/data.csv"],
+    )
+
+
 @pytest.fixture
 def fixtureProjectRepo(tmp_path):
-    """Return a temp project repo with a one-line manifest."""
+    """Return a temp project repo with a real declared file on disk."""
     sRepo = str(tmp_path / "project")
-    os.makedirs(os.path.join(sRepo, "step01"), exist_ok=True)
+    _fnWriteDataFile(sRepo)
     _fnWriteManifestForOneFile(sRepo, "a" * 64)
+    _fnRecordPushedFigures(sRepo)
     return sRepo
 
 
@@ -63,19 +112,22 @@ def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
     sRepoOne = str(tmp_path / "one")
     sRepoTwo = str(tmp_path / "two")
     for sRepo in (sRepoOne, sRepoTwo):
-        os.makedirs(os.path.join(sRepo, "step01"), exist_ok=True)
-        _fnWriteManifestForOneFile(sRepo, "a" * 64)
+        _fnWriteDataFile(sRepo)
+        _fnRecordPushedFigures(sRepo)
     listWorkflows = [
         _fdictBuildWorkflow(sRepoOne, "wfA"),
         _fdictBuildWorkflow(sRepoTwo, "wfB"),
     ]
-    dictMatch = {"step01/data.csv": "a" * 64}
+    dictMatch = {"step01/data.csv": S_DATA_SHA}
+    # The Overleaf clone is hashed at the pushed REMOTE path (the push
+    # flattens to <target>/<basename>; the fixture records target "").
+    dictOverleafMatch = {"data.csv": S_DATA_SHA}
     with patch(
         "vaibify.reproducibility.githubMirror.fdictFetchRemoteHashes",
         return_value=dictMatch,
     ), patch(
         "vaibify.reproducibility.overleafMirror.fdictFetchRemoteHashes",
-        return_value=dictMatch,
+        return_value=dictOverleafMatch,
     ), patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
         return_value=dictMatch,
@@ -100,13 +152,13 @@ def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
     sRepoOne = str(tmp_path / "one")
     sRepoTwo = str(tmp_path / "two")
     for sRepo in (sRepoOne, sRepoTwo):
-        os.makedirs(os.path.join(sRepo, "step01"), exist_ok=True)
-        _fnWriteManifestForOneFile(sRepo, "a" * 64)
+        _fnWriteDataFile(sRepo)
+        _fnRecordPushedFigures(sRepo)
     listWorkflows = [
         _fdictBuildWorkflow(sRepoOne, "wfA"),
         _fdictBuildWorkflow(sRepoTwo, "wfB"),
     ]
-    dictMatch = {"step01/data.csv": "a" * 64}
+    dictMatch = {"step01/data.csv": S_DATA_SHA}
     from vaibify.reproducibility.githubMirror import GithubMirrorError
     with patch(
         "vaibify.reproducibility.githubMirror.fdictFetchRemoteHashes",
@@ -115,7 +167,7 @@ def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
         ),
     ), patch(
         "vaibify.reproducibility.overleafMirror.fdictFetchRemoteHashes",
-        return_value=dictMatch,
+        return_value={"data.csv": S_DATA_SHA},
     ), patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
         return_value=dictMatch,
@@ -233,7 +285,7 @@ def testVerifyArxivPassesCacheDirToClient(fixtureProjectRepo):
         "sArxivId": "2401.12345",
         "dictPathMap": {"step01/data.csv": "paper/data.csv"},
     }
-    mockFetch = MagicMock(return_value={"step01/data.csv": "a" * 64})
+    mockFetch = MagicMock(return_value={"step01/data.csv": S_DATA_SHA})
     with patch(
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
         mockFetch,
@@ -259,6 +311,158 @@ def testVerifyArxivRaisesConfigErrorWhenIdMissing(fixtureProjectRepo):
         scheduledReverify.fdictVerifyRemoteService(
             fixtureProjectRepo, dictWorkflow, "arxiv",
         )
+
+
+def testVerifyArxivScopesToPushedFiguresOnly(tmp_path):
+    """The arXiv comparison set is the Overleaf push list only.
+
+    An e-print carries only the manuscript figures. The workflow's
+    other declared outputs (data files) must not inflate
+    ``iTotalFiles`` or paint every non-figure as diverged (the
+    "0 of 84" bug).
+    """
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    _fnWritePlotFile(sRepo)
+    _fnRecordPushedFigures(sRepo, ["step01/plot.pdf"])
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictWorkflow["listSteps"][0]["saPlotFiles"] = ["plot.pdf"]
+    mockFetch = MagicMock(
+        return_value={"step01/plot.pdf": S_PLOT_SHA},
+    )
+    with patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        mockFetch,
+    ):
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "arxiv",
+        )
+    assert dictStatus["iTotalFiles"] == 1
+    assert dictStatus["iMatching"] == 1
+    assert dictStatus["listDiverged"] == []
+    listRequestedPaths = mockFetch.call_args[0][1]
+    assert listRequestedPaths == ["step01/plot.pdf"]
+
+
+def testVerifyArxivWithoutPushManifestRaisesConfigError(tmp_path):
+    """No recorded Overleaf push means no honest comparison set.
+
+    A vacuous "0 of 0 matching" would render as synced; the verify
+    must refuse instead so the dashboard says why.
+    """
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    with pytest.raises(scheduledReverify.ReverifyConfigError):
+        scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "arxiv",
+        )
+
+
+# --------- overleaf-specific dispatcher wiring ---------
+
+
+def testVerifyOverleafScopesToPushedFiguresAtRemotePaths(tmp_path):
+    """The Overleaf comparison hashes the clone at pushed remote paths.
+
+    The push flattens ``step01/plot.pdf`` into ``figures/plot.pdf``
+    inside the Overleaf project, so the verify must request the remote
+    path and re-key the result to the local path — and must not count
+    the manifest's non-figure entries (the "0 of 84" bug).
+    """
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    _fnWritePlotFile(sRepo)
+    overleafSync.fnRecordOverleafPushManifest(
+        sRepo, "commit1", ["step01/plot.pdf"], "figures",
+    )
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictWorkflow["listSteps"][0]["saPlotFiles"] = ["plot.pdf"]
+    mockFetch = MagicMock(
+        return_value={"figures/plot.pdf": S_PLOT_SHA},
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror.fdictFetchRemoteHashes",
+        mockFetch,
+    ):
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "overleaf",
+        )
+    assert dictStatus["iTotalFiles"] == 1
+    assert dictStatus["iMatching"] == 1
+    assert dictStatus["listDiverged"] == []
+    listRequestedPaths = mockFetch.call_args[0][1]
+    assert listRequestedPaths == ["figures/plot.pdf"]
+
+
+def testVerifyOverleafWithoutPushManifestRaisesConfigError(tmp_path):
+    """No recorded push means no honest Overleaf comparison set."""
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    with pytest.raises(scheduledReverify.ReverifyConfigError):
+        scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "overleaf",
+        )
+
+
+def testVerifyOverleafContentDriftReadsDiverged(tmp_path):
+    """A pushed figure whose Overleaf copy differs must read diverged.
+
+    The expected side is the figure's live local hash, so an Overleaf
+    copy from an older push honestly reads as drifted.
+    """
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    _fnWritePlotFile(sRepo)
+    overleafSync.fnRecordOverleafPushManifest(
+        sRepo, "commit1", ["step01/plot.pdf"], "figures",
+    )
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictWorkflow["listSteps"][0]["saPlotFiles"] = ["plot.pdf"]
+    with patch(
+        "vaibify.reproducibility.overleafMirror.fdictFetchRemoteHashes",
+        return_value={"figures/plot.pdf": "c" * 64},
+    ):
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "overleaf",
+        )
+    assert dictStatus["iTotalFiles"] == 1
+    assert dictStatus["iMatching"] == 0
+    assert [d["sPath"] for d in dictStatus["listDiverged"]] == [
+        "step01/plot.pdf",
+    ]
+
+
+# --------- fnDeleteSyncStatus ---------
+
+
+def testDeleteSyncStatusRemovesOnlyTargetService(fixtureProjectRepo):
+    """Deleting one service's cache entry leaves the others intact."""
+    scheduledReverify.fnWriteSyncStatus(fixtureProjectRepo, {
+        "sService": "arxiv", "sLastVerified": "2026-07-09T00:00:00Z",
+        "iTotalFiles": 2, "iMatching": 0, "listDiverged": [],
+    })
+    scheduledReverify.fnWriteSyncStatus(fixtureProjectRepo, {
+        "sService": "github", "sLastVerified": "2026-07-09T00:00:00Z",
+        "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
+    })
+    scheduledReverify.fnDeleteSyncStatus(fixtureProjectRepo, "arxiv")
+    dictArxiv = scheduledReverify.fdictReadCachedSyncStatus(
+        fixtureProjectRepo, "arxiv",
+    )
+    dictGithub = scheduledReverify.fdictReadCachedSyncStatus(
+        fixtureProjectRepo, "github",
+    )
+    assert dictArxiv["sLastVerified"] is None
+    assert dictGithub["sLastVerified"] == "2026-07-09T00:00:00Z"
+
+
+def testDeleteSyncStatusIsNoOpWithoutCacheFile(tmp_path):
+    """Deleting from a repo with no syncStatus.json must not raise."""
+    sRepo = str(tmp_path / "project")
+    os.makedirs(sRepo, exist_ok=True)
+    scheduledReverify.fnDeleteSyncStatus(sRepo, "arxiv")
 
 
 # --------- Fix C3: scheduled loop dispatches via to_thread ---------
@@ -436,26 +640,35 @@ def test_sync_status_lock_releases_on_persist_exception(tmp_path):
 # --------- Test files in the verify comparison set ---------
 
 
-def _fnWriteManifestWithTestFile(sProjectRepo):
-    """Write a manifest pinning one data file and one test file."""
-    sManifest = os.path.join(sProjectRepo, "MANIFEST.sha256")
-    with open(sManifest, "w", encoding="utf-8") as fileHandle:
-        fileHandle.write(
-            "# SHA-256 manifest of workflow artefacts\n"
-            f"{'a' * 64}  step01/data.csv\n"
-            f"{'b' * 64}  step01/tests/test_quantitative.py\n"
-        )
+def _fdictWorkflowWithTestFile(sProjectRepo):
+    """Return a workflow declaring a data file and a quantitative test.
+
+    Creates both files on disk so the live expected-hash builder has
+    real content to hash.
+    """
+    _fnWriteDataFile(sProjectRepo)
+    sTestsDir = os.path.join(sProjectRepo, "step01", "tests")
+    os.makedirs(sTestsDir, exist_ok=True)
+    with open(
+        os.path.join(sTestsDir, "test_quantitative.py"), "wb",
+    ) as fileHandle:
+        fileHandle.write(_BA_TEST_CONTENT)
+    dictWorkflow = _fdictBuildWorkflow(sProjectRepo)
+    dictWorkflow["listSteps"][0]["dictTests"] = {
+        "dictQuantitative": {
+            "sFilePath": "step01/tests/test_quantitative.py",
+        },
+    }
+    return dictWorkflow
 
 
-def testVerifyCountsTestFileEntriesFromManifest(tmp_path):
-    """Manifest test-file entries are part of the remote comparison set."""
+def testVerifyCountsDeclaredTestFilesInComparisonSet(tmp_path):
+    """Declared test files are part of the remote comparison set."""
     sRepo = str(tmp_path / "project")
-    os.makedirs(sRepo, exist_ok=True)
-    _fnWriteManifestWithTestFile(sRepo)
-    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictWorkflow = _fdictWorkflowWithTestFile(sRepo)
     mockFetch = MagicMock(return_value={
-        "step01/data.csv": "a" * 64,
-        "step01/tests/test_quantitative.py": "b" * 64,
+        "step01/data.csv": S_DATA_SHA,
+        "step01/tests/test_quantitative.py": S_TEST_SHA,
     })
     with patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
@@ -480,12 +693,10 @@ def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
     the gap shows up in listDiverged with sActual None.
     """
     sRepo = str(tmp_path / "project")
-    os.makedirs(sRepo, exist_ok=True)
-    _fnWriteManifestWithTestFile(sRepo)
-    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictWorkflow = _fdictWorkflowWithTestFile(sRepo)
     with patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
-        return_value={"step01/data.csv": "a" * 64},
+        return_value={"step01/data.csv": S_DATA_SHA},
     ):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
             sRepo, dictWorkflow, "zenodo",
@@ -497,7 +708,60 @@ def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
     assert dictStatus["iMatching"] == 1
     assert dictStatus["listDiverged"] == [{
         "sPath": "step01/tests/test_quantitative.py",
-        "sExpected": "b" * 64,
+        "sExpected": S_TEST_SHA,
         "sActual": None,
     }]
     assert dictAttempt["sStatus"] == "ok"
+
+
+def testVerifyRefusesVacuousComparisonWhenNoFigureDeclared(tmp_path):
+    """Pushed figures outside the declared set must refuse, not 0/0.
+
+    Observed live (in the manifest era): an empty comparison set was
+    recorded as "0 of 0 matching" — which the dashboard would render
+    as attained. An empty expected set demonstrates nothing and must
+    raise instead, leaving the previous cache entry untouched.
+    """
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    _fnRecordPushedFigures(sRepo, ["Plot/corner.pdf"])  # undeclared
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    with pytest.raises(
+        scheduledReverify.ReverifyConfigError, match="declared",
+    ):
+        scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "overleaf",
+        )
+
+
+def testVerifyExpectedHashesTrackCurrentFileContent(tmp_path):
+    """The expected side is the file's CURRENT bytes, not a frozen pin.
+
+    The defining behavior of live hashing: editing a local file flips
+    an agreeing remote to diverged on the very next verify, with no
+    intermediate artifact to regenerate.
+    """
+    sRepo = str(tmp_path / "project")
+    _fnWriteDataFile(sRepo)
+    dictWorkflow = _fdictBuildWorkflow(sRepo)
+    dictRemote = {"step01/data.csv": S_DATA_SHA}
+    with patch(
+        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        return_value=dictRemote,
+    ):
+        dictBefore = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "zenodo",
+        )
+        with open(
+            os.path.join(sRepo, "step01", "data.csv"), "wb",
+        ) as fileHandle:
+            fileHandle.write(b"the science moved on\n")
+        dictAfter = scheduledReverify.fdictVerifyRemoteService(
+            sRepo, dictWorkflow, "zenodo",
+        )
+    assert dictBefore["iMatching"] == 1
+    assert dictBefore["listDiverged"] == []
+    assert dictAfter["iMatching"] == 0
+    assert [d["sPath"] for d in dictAfter["listDiverged"]] == [
+        "step01/data.csv",
+    ]

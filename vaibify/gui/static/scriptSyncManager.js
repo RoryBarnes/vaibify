@@ -2347,6 +2347,38 @@ var VaibifySyncManager = (function () {
             "error");
     }
 
+    async function fnVerifyRemoteFromDashboard(sService, elButton) {
+        // The Project block's per-row "Verify now" button. Runs the
+        // same verify the Repos panel uses; the requirement row picks
+        // up the rewritten cache on the next poll, so no optimistic
+        // state is painted here — only the button disables while the
+        // network round trip is live.
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        if (elButton) elButton.disabled = true;
+        try {
+            await _fdictPostVerify(sContainerId, sService);
+            fnInvalidateVerifyCache();
+            PipeleyenApp.fnShowToast(
+                "Verification of " + sService + " complete — " +
+                "status updates on the next refresh.", "success");
+        } catch (error) {
+            if (error && error.iStatus === 409) {
+                // A 409 is a precondition refusal computed locally —
+                // the remote was never contacted, so the generic
+                // "remote could not be reached" boilerplate would
+                // misdescribe it. The server's detail already says
+                // exactly what to do; show it verbatim.
+                PipeleyenApp.fnShowToast(
+                    _fsSanitizeError(error.message), "error");
+            } else {
+                _fnReportVerifyError(error);
+            }
+        } finally {
+            if (elButton) elButton.disabled = false;
+        }
+    }
+
     async function _fnTriggerReverify(
         sContainerId, sService, elContainer,
     ) {
@@ -2640,6 +2672,7 @@ var VaibifySyncManager = (function () {
 
     return {
         fnOpenPushModal: fnOpenPushModal,
+        fnVerifyRemoteFromDashboard: fnVerifyRemoteFromDashboard,
         fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,

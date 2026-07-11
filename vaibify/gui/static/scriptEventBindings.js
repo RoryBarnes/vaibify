@@ -359,6 +359,13 @@ var PipeleyenEventBindings = (function () {
         VaibifyArxivConfig.fnOpen();
     }
 
+    function _fnHandleVerifyRemote(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifySyncManager.fnVerifyRemoteFromDashboard(
+            elMatch.dataset.service || "", elMatch);
+    }
+
     function _fnHandleToggleBinaryForm(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -413,6 +420,7 @@ var PipeleyenEventBindings = (function () {
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
         ".wf-action-btn": _fnHandleWorkflowWideAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
+        ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleWorkflowWideFileLink,
         ".steps-block-header": _fnHandleStepsBlockToggle,

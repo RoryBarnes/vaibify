@@ -1296,11 +1296,12 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "dictRemoteSyncs": {sService: dictSummary or None},
          "bAiDeclarationAttested": bool,
          "bRebuildAttestationCurrent": bool,
-         "bOverleafBound": bool}
+         "bOverleafBound": bool,
+         "bArxivConfigured": bool}
 
-    The three booleans let the Workflow-wide requirement rows render
-    AI-declaration, rebuild-attestation, and arXiv-applicability status
-    from this same payload; all are exec-free.
+    The four booleans let the Workflow-wide requirement rows render
+    AI-declaration, rebuild-attestation, Overleaf-applicability, and
+    arXiv-tracking status from this same payload; all are exec-free.
     """
     from vaibify.reproducibility.repoFiles import (
         ffilesEnsureRepoFiles, fsRepoRootOf,
@@ -1339,6 +1340,8 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ),
         "bOverleafBound":
             levelGates.fbWorkflowHasOverleafBinding(dictWorkflow),
+        "bArxivConfigured":
+            levelGates.fbWorkflowHasArxivConnection(dictWorkflow),
     }
 
 

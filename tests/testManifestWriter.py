@@ -1161,3 +1161,32 @@ def test_streaming_write_cleans_up_temp_on_failure(tmp_path, monkeypatch):
     assert not os.path.exists(sTempPath), (
         "streaming temp file must be removed after a write failure"
     )
+
+
+def test_manifest_pins_templated_figure_declarations(tmp_path):
+    """A ``{sPlotDirectory}`` figure lands in the manifest, resolved.
+
+    The previously unconditional skip of templated declarations meant
+    a workflow declaring every figure through ``{sPlotDirectory}``
+    never had ANY figure pinned — so the Overleaf/arXiv verifies had
+    no expected hashes and could only report a vacuous comparison.
+    """
+    import os
+    from vaibify.reproducibility import manifestWriter
+    sRepo = str(tmp_path)
+    os.makedirs(os.path.join(sRepo, "Plot"))
+    with open(os.path.join(sRepo, "Plot", "corner.pdf"), "wb") as f:
+        f.write(b"%PDF-1.4 fake figure")
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "sFigureType": "pdf",
+        "listSteps": [{
+            "sDirectory": "KeplerFfdCorner",
+            "saPlotFiles": ["{sPlotDirectory}/corner.{sFigureType}"],
+        }],
+    }
+    manifestWriter.fnWriteManifest(sRepo, dictWorkflow)
+    listEntries = manifestWriter.flistParseManifestLines(sRepo)
+    listPaths = [d["sPath"] for d in listEntries]
+    assert "Plot/corner.pdf" in listPaths
+    assert "KeplerFfdCorner/Plot/corner.pdf" not in listPaths

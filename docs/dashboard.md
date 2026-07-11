@@ -211,7 +211,8 @@ an action exists — a button that performs it in place:
   declaration (stored directly in `workflow.json`; there is no
   separate rules file).
 - **Configure arXiv…** to record the arXiv submission that must match
-  the frozen Overleaf figures.
+  the frozen Overleaf figures (optional — an untracked submission
+  reads "not tracked" and never blocks Level 2).
 - **Add AI declaration step** if the workflow has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 
@@ -297,7 +298,9 @@ the requirement *text*; the buttons that do the work live in the Main
 tab's Project block. The requirements are:
 
 - **Level 1**: Project repository; Every step self-consistent.
-- **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript; AI
+- **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript
+  (opt-in — checked only when an arXiv submission is recorded, since
+  posting happens outside vaibify on its own timeline); AI
   Declaration attested.
 - **Level 3**: Manifest complete; Dependency lock; Environment
   snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
@@ -408,7 +411,7 @@ four pieces of information:
 | **Status pill** | Green / yellow / red, semantics below. |
 | **Summary** | `<matching>/<total> files match SHA-256`, optionally listing the first diverged path. |
 | **Last verified** | Age of the most recent authoritative SHA-256 verify (e.g. "12m ago"). Empty when the remote has never been authoritatively verified. |
-| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, compares against `MANIFEST.sha256`). |
+| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, and compares them against the declared workflow files as they exist on disk right now — never against `MANIFEST.sha256`, which is the Level 3 envelope artifact). |
 
 Pill semantics:
 

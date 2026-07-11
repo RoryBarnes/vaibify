@@ -67,6 +67,7 @@ from vaibify.reproducibility.repoFiles import (
 from vaibify.reproducibility.manifestPaths import (
     TUPLE_OUTPUT_KEYS,
     TUPLE_TEST_CATEGORY_KEYS,
+    fdictWorkflowTemplateValues,
     flistStepOutputRepoPaths,
     flistStepScriptRepoPaths,
     flistStepDeclarationRepoPaths,
@@ -77,6 +78,7 @@ from vaibify.reproducibility.manifestPaths import (
 
 
 __all__ = [
+    "flistCollectCanonicalRepoPaths",
     "fnWriteManifest",
     "flistVerifyManifest",
     "flistParseManifestLines",
@@ -97,6 +99,19 @@ _S_REPRODUCE_SCRIPT = "reproduce.sh"
 # can introspect the canonical output-key set without importing
 # ``manifestPaths`` directly.
 _OUTPUT_KEYS = TUPLE_OUTPUT_KEYS
+
+
+def flistCollectCanonicalRepoPaths(dictWorkflow):
+    """Return the workflow's declared canonical artefact paths.
+
+    Public name for the collection the manifest writer pins. The L2
+    remote verifies hash exactly this set live at verify time; the
+    manifest pins exactly this set at regeneration time for the L3
+    envelope. Sharing one collector keeps "published copies match"
+    (L2) and "the envelope pins everything" (L3) statements about the
+    same files.
+    """
+    return _flistCollectManifestPaths(dictWorkflow)
 
 
 def fnWriteManifest(filesRepo, dictWorkflow):
@@ -332,8 +347,11 @@ def _flistCollectManifestPaths(dictWorkflow):
     """
     setPaths = set()
     bArchiveTests = fbWorkflowArchivesTests(dictWorkflow)
+    dictTemplateValues = fdictWorkflowTemplateValues(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):
-        setPaths.update(flistStepOutputRepoPaths(dictStep))
+        setPaths.update(flistStepOutputRepoPaths(
+            dictStep, dictTemplateValues,
+        ))
         setPaths.update(flistStepScriptRepoPaths(dictStep))
         if bArchiveTests:
             setPaths.update(flistStepStandardsRepoPaths(dictStep))

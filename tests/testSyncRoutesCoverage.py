@@ -211,6 +211,51 @@ def test_overleaf_push_success(clientHttp):
     assert dictResult["bSuccess"] is True
 
 
+def test_overleaf_push_triggers_post_push_verify(clientHttp):
+    """A successful push re-verifies Overleaf so the row updates.
+
+    Shared-hop parity with the GitHub push routes ("shared by every
+    push route" was the documented contract; the Overleaf finalize
+    was the missed call site). The refresher must run AFTER the
+    provenance recording — its comparison set is the push manifest
+    and ``sLastPushCommit`` the finalize just wrote.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "pushed"
+    listCallOrder = []
+
+    async def _fnFakeFinalize(*tArgs, **dictKwargs):
+        listCallOrder.append("finalize")
+
+    async def _fsFakeRefresh(
+        dictCtx, sContainerId, dictWorkflow, sService,
+    ):
+        listCallOrder.append("refresh:" + sService)
+        return ""
+
+    with patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
+        return_value="test-tok",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnFinalizeOverleafPush",
+        side_effect=_fnFakeFinalize,
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fsRefreshVerifyCacheAfterPush",
+        side_effect=_fsFakeRefresh,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/Plot/fig.pdf"],
+                "sCommitMessage": "push figs",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+    assert listCallOrder == ["finalize", "refresh:overleaf"]
+
+
 # ── Line 85: Zenodo archive failure ─────────────────────────────
 
 
@@ -539,6 +584,157 @@ def test_setup_overleaf_validation_fails_cleans_up(clientHttp):
     assert dictResult["bConnected"] is False
     assert "git authentication token" in dictResult["sMessage"]
     mockDelete.assert_called_once_with("overleaf_token", "keyring")
+
+
+def test_setup_overleaf_validation_failure_restores_previous_token(
+    clientHttp, fixtureHermeticKeyring,
+):
+    """A failed validation must roll back to the previously saved token.
+
+    Stage-validate-commit: a mistyped token or a transient network
+    failure must never destroy a credential that worked an hour
+    earlier. Exercises the real secretManager against the hermetic
+    in-memory keyring — no store/delete mocks — so the rollback is
+    demonstrated on the actual storage path.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    fixtureHermeticKeyring.dictStore[
+        ("vaibify", "overleaf_token")] = "previously-working-token"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(False, ""),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "bad_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "previously saved token was restored" in dictResult["sMessage"]
+    assert fixtureHermeticKeyring.dictStore[
+        ("vaibify", "overleaf_token")] == "previously-working-token"
+
+
+def test_setup_overleaf_validation_failure_without_previous_deletes(
+    clientHttp, fixtureHermeticKeyring,
+):
+    """With no prior token, a failed validation leaves the slot empty
+    and says the entered token was not saved."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
+        return_value={"bConnected": True, "sMessage": "Connected"},
+    ), patch(
+        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
+        return_value=(False, ""),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": "abc123proj",
+                "sToken": "bad_token",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "was not saved" in dictResult["sMessage"]
+    assert (
+        ("vaibify", "overleaf_token")
+        not in fixtureHermeticKeyring.dictStore
+    )
+
+
+def test_setup_zenodo_validation_failure_restores_snapshot(clientHttp):
+    """A failed Zenodo validation restores the in-container snapshot.
+
+    Stage-validate-commit for container-side tokens: the previous
+    token is copied aside inside the container before the new one
+    lands; a failed validation copies it back and drops the snapshot,
+    never deleting the working credential.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fbCopyCredentialInContainer",
+        return_value=True,
+    ) as mockCopy, patch(
+        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
+    ) as mockDelete, patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=False,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "bad_zenodo_token",
+                "sZenodoInstance": "sandbox",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "previously saved token was restored" in dictResult["sMessage"]
+    listCopyCalls = [tCall[0][2:] for tCall in mockCopy.call_args_list]
+    assert listCopyCalls == [
+        ("zenodo_token_sandbox", "zenodo_token_sandbox_backup"),
+        ("zenodo_token_sandbox_backup", "zenodo_token_sandbox"),
+    ]
+    listDeletedSlots = [
+        tCall[0][2] for tCall in mockDelete.call_args_list
+    ]
+    assert listDeletedSlots == ["zenodo_token_sandbox_backup"]
+
+
+def test_setup_zenodo_validation_failure_without_previous_deletes(
+    clientHttp,
+):
+    """With no prior Zenodo token, a failed validation deletes the
+    fresh one and says it was not saved."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    with patch(
+        "vaibify.gui.syncDispatcher.fbCopyCredentialInContainer",
+        return_value=False,
+    ), patch(
+        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
+    ) as mockDelete, patch(
+        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
+        return_value=False,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "bad_zenodo_token",
+                "sZenodoInstance": "sandbox",
+            },
+        )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert "was not saved" in dictResult["sMessage"]
+    assert "restored" not in dictResult["sMessage"]
+    listDeletedSlots = [
+        tCall[0][2] for tCall in mockDelete.call_args_list
+    ]
+    assert listDeletedSlots == ["zenodo_token_sandbox"]
 
 
 def test_setup_overleaf_validation_fails_embeds_stderr(clientHttp):

@@ -1907,13 +1907,6 @@ const PipeleyenApp = (function () {
                 "push manuscript figures",
             sClass: "step-blocker-glyph-l2-figure",
         },
-        "arxiv-not-submitted": {
-            sIcon: "—",
-            sLabel: "No arXiv ID recorded — submit the manuscript, " +
-                "then record the ID under Published copies in the " +
-                "Project block",
-            sClass: "step-blocker-glyph-l2-arxiv-submit",
-        },
         "arxiv-mismatch": {
             sIcon: "⚠",
             sLabel: "arXiv submission doesn't match the Overleaf " +

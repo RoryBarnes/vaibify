@@ -936,26 +936,105 @@ def test_client_level_gate_exempts_declaration_steps():
 
 def test_published_copies_exempt_overleaf_and_arxiv_when_unbound():
     """When no Overleaf project is bound, the backend exempts the
-    Overleaf and arXiv Level 2 gates (levelGates), so the Project
-    block must render those rows not-applicable — never as hollow
-    "refresh to find out" rows a data-only workflow can never
+    figure-freeze Level 2 gate (levelGates), so the Project block
+    must render the Overleaf row not-applicable — never as a hollow
+    "refresh to find out" row a data-only workflow can never
     satisfy. The development workflow had a manuscript bound, which
     is exactly how this gap shipped unseen."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
-    sRows = _fsExtractFunctionBlock(
-        sSource, "_flistPublishedCopiesRows",
-    )
+    sRows = _fsExtractFunctionBlock(sSource, "_fdictOverleafRow")
     assert "bOverleafBound" in sRows, (
-        "the Published-copies rows must read the poll's "
-        "bOverleafBound exemption flag"
+        "the Overleaf row must read the poll's bOverleafBound "
+        "exemption flag"
     )
     assert "_fdictNotApplicableRow" in sRows, (
-        "unbound workflows must get not-applicable rows, not "
-        "unknown sync rows"
+        "unbound workflows must get a not-applicable row, not an "
+        "unknown sync row"
     )
     assert '"not-applicable": "not-applicable"' in sSource, (
         "the mark-to-level-state map must carry not-applicable "
         "through to the dash cell"
+    )
+
+
+def test_sync_row_never_renders_zero_of_zero_as_attained():
+    """A verify that compared no files must not paint green.
+
+    Observed live: a verify whose comparison set intersected to empty
+    recorded "0 of 0 matching", which the counts-based state logic
+    would render as attained — a vacuous pass. The backend now
+    refuses to write that shape, but legacy cache entries can carry
+    it, so the renderer must treat iTotalFiles === 0 as unknown.
+    """
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sState = _fsExtractFunctionBlock(sSource, "_fsSyncRowState")
+    assert "iTotalFiles" in sState, (
+        "the row state must special-case an empty comparison set"
+    )
+    sDescribe = _fsExtractFunctionBlock(
+        sSource, "_fsDescribeSyncState",
+    )
+    assert "compared no files" in sDescribe, (
+        "the row text must explain a vacuous verify instead of "
+        "printing 0 of 0 matching"
+    )
+
+
+def test_sync_rows_carry_verify_now_button():
+    """Every Published-copies sync row offers Verify now in place.
+
+    The row reports the last verify result, so the action that moves
+    it to the passing state must be reachable from the row itself —
+    a how-to sentence pointing at another panel is not a path to
+    green. The button dispatches through the shared click-handler
+    registry to the sync manager's verify call.
+    """
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sRow = _fsExtractFunctionBlock(sSource, "_fdictSyncRow")
+    assert "wf-verify-remote" in sRow, (
+        "sync rows must render the Verify now button"
+    )
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert '".wf-verify-remote"' in sBindings, (
+        "the Verify now button must be registered in the click-"
+        "handler registry"
+    )
+    sSyncManager = _fsReadStaticFile("scriptSyncManager.js")
+    assert "fnVerifyRemoteFromDashboard" in sSyncManager, (
+        "the dashboard verify entry point must exist in the sync "
+        "manager"
+    )
+
+
+def test_overleaf_rows_do_not_reference_the_gear_button():
+    """The workflow-settings gear has no Overleaf options.
+
+    The historical how-to said "bind one in Workflow settings (the
+    gear button above)" — a dead end: the binding actually happens
+    through the connect dialog raised by Push to Overleaf. Row text
+    must direct researchers to a control that exists.
+    """
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    assert "gear button" not in sSource
+
+
+def test_published_copies_arxiv_row_keys_on_recorded_connection():
+    """The arXiv row is opt-in: it must key on the poll's
+    bArxivConfigured flag, not on the Overleaf binding, and an
+    unconfigured connection must render the neutral not-applicable
+    state — never red (fake gap) and never a green check (fake
+    sync claim)."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sRow = _fsExtractFunctionBlock(sSource, "_fdictArxivRow")
+    assert "bArxivConfigured" in sRow, (
+        "the arXiv row must key on the recorded connection"
+    )
+    sNotTracked = _fsExtractFunctionBlock(
+        sSource, "_fdictArxivNotTrackedRow",
+    )
+    assert '"not-applicable"' in sNotTracked, (
+        "an untracked arXiv submission must render the neutral "
+        "not-applicable state"
     )
 
 

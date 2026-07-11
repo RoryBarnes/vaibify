@@ -66,6 +66,7 @@ __all__ = [
     "fbVerifyReproduceScript",
     "fbWorkflowDeclaresBinaries",
     "fbWorkflowFullySyncedWithArxiv",
+    "fbWorkflowHasArxivConnection",
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowAiDeclarationAttested",
@@ -219,11 +220,16 @@ def _fdictBlockerRelevantStep(dictStep):
 
 
 def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
-    """Capture top-level workflow keys that influence blocker output."""
+    """Capture top-level workflow keys that influence blocker output.
+
+    ``dictRemotes`` matters here: the arXiv criteria are keyed on the
+    recorded connection, so adding or removing a remote must bust the
+    cached L2 blocker list on the next poll.
+    """
     return {sKey: (dictWorkflow or {}).get(sKey) for sKey in (
         "sPlotDirectory", "sProjectRepoPath", "sFigureType",
         "listDeclaredBinaries", "bNoStandaloneBinaries",
-        "dictDeterminism", "dictRemoteServices", "dictAttestation",
+        "dictDeterminism", "dictRemotes", "dictAttestation",
     )}
 
 
@@ -1060,11 +1066,12 @@ def fbAtLeastLevel2(dictWorkflow, filesRepo):
 def _fbComputeLevel2(dictWorkflow, filesRepo):
     """Uncached L2 evaluation — the body of the original gate.
 
-    Stage 4 adds the arXiv conjunct so a workflow with an Overleaf
-    binding must also be synced to a recorded arXiv submission. A
-    workflow with no Overleaf binding is treated as data-only and the
-    arXiv conjunct returns True trivially, preserving the L2 contract
-    for manuscript-free reproducibility.
+    The arXiv conjunct is opt-in: recording an arXiv ID claims
+    correspondence with the posted e-print, so the claim is checked.
+    A workflow with no recorded arXiv submission (whether or not an
+    Overleaf manuscript is bound) leaves the conjunct trivially True —
+    manuscript posting happens outside vaibify on its own timeline and
+    must not block publication of the code and data.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel1(dictWorkflow, filesRepo):
@@ -1444,30 +1451,44 @@ def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
 def fbWorkflowHasOverleafBinding(dictWorkflow):
     """Return True iff the workflow has a non-empty Overleaf binding.
 
-    The L2 arXiv criteria, plus the per-step ``figure-not-frozen``
-    criterion, are entirely suppressed when this returns False: a
-    data-only workflow is L2-publishable without a manuscript.
+    The per-step ``figure-not-frozen`` criterion is suppressed when
+    this returns False: a data-only workflow is L2-publishable without
+    a manuscript. The L2 arXiv criteria key on
+    :func:`fbWorkflowHasArxivConnection` instead — binding a
+    manuscript for figure tracking must not force an arXiv submission.
     """
     dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
     dictOverleaf = dictRemotes.get("overleaf") or {}
     return bool(dictOverleaf.get("sProjectId") or "")
 
 
+def fbWorkflowHasArxivConnection(dictWorkflow):
+    """Return True iff the workflow records an arXiv submission ID.
+
+    This is the opt-in trigger for every L2 arXiv criterion: recording
+    an ID claims correspondence with the posted e-print, so the claim
+    is checked; a workflow without one is "not tracked" — neutral,
+    never a gap. arXiv verification is only possible after a posting
+    exists, so an unconfigured connection must not block L2.
+    """
+    return bool(_fdictArxivConfig(dictWorkflow).get("sArxivId") or "")
+
+
 def fbWorkflowFullySyncedWithArxiv(dictWorkflow, filesRepo):
     """Return True iff the workflow's arXiv submission matches the manuscript.
 
-    True trivially without an Overleaf binding (data-only workflows
-    reach L2 without a manuscript). With a binding, requires a non-empty
-    ``sArxivId``, arXiv-tarball hashes that match the local Overleaf
-    push manifest, and an ``sArxivVersion`` equal to the latest arXiv
-    advertises. ``ArxivError`` from the client is treated as "not
-    synced".
+    True trivially when no arXiv submission is recorded — the arXiv
+    criterion is an opt-in claim, not a publication prerequisite. With
+    a recorded ``sArxivId``, requires every Overleaf-pushed figure's
+    arXiv-tarball hash to equal the hash of its current local content
+    (the same live authority the L2 verifies use — the L3 manifest
+    plays no role at this level) and an ``sArxivVersion`` equal to
+    the latest arXiv advertises. ``ArxivError`` from the client is
+    treated as "not synced".
     """
-    if not fbWorkflowHasOverleafBinding(dictWorkflow):
+    if not fbWorkflowHasArxivConnection(dictWorkflow):
         return True
     dictArxiv = _fdictArxivConfig(dictWorkflow)
-    if not (dictArxiv.get("sArxivId") or ""):
-        return False
     if not _fbArxivTarballMatchesPushManifest(
         dictWorkflow, filesRepo,
     ):
@@ -1483,7 +1504,7 @@ def _fdictArxivConfig(dictWorkflow):
 
 
 def _fbArxivTarballMatchesPushManifest(dictWorkflow, filesRepo):
-    """Return True iff arXiv hashes match the Overleaf push manifest paths."""
+    """Return True iff the e-print matches every pushed figure's content."""
     from .overleafSync import flistOverleafPushedFiguresAt
     sCommit = _fsOverleafRecordedCommit(dictWorkflow)
     listPushed = flistOverleafPushedFiguresAt(
@@ -1499,8 +1520,19 @@ def _fbArxivTarballMatchesPushManifest(dictWorkflow, filesRepo):
 def _fbArxivHashesCoverPushList(
     dictWorkflow, filesRepo, listPushed,
 ):
-    """Return True iff every pushed path resolves to a hash in the tarball."""
+    """Return True iff the e-print matches every pushed figure's live hash.
+
+    The expected side is each pushed figure's CURRENT local content —
+    the same authority the L2 verifies use — so the gate demands
+    content equality with the figures as they exist now, never
+    name-level presence and never the L3 manifest's possibly-lagging
+    pins. Conservative on every error path: an unhashable or missing
+    local figure, or any client failure, returns False.
+    """
     from . import arxivClient
+    dictExpected = _fdictLiveHashesOrNone(filesRepo, listPushed)
+    if dictExpected is None:
+        return False
     dictArxiv = _fdictArxivConfig(dictWorkflow)
     sArxivId = dictArxiv.get("sArxivId") or ""
     dictPathMap = dictArxiv.get("dictPathMap") or None
@@ -1512,7 +1544,31 @@ def _fbArxivHashesCoverPushList(
         )
     except arxivClient.ArxivError:
         return False
-    return all(dictHashes.get(sPath) for sPath in listPushed)
+    return all(
+        dictExpected.get(sPath)
+        and dictHashes.get(sPath) == dictExpected.get(sPath)
+        for sPath in listPushed
+    )
+
+
+def _fdictLiveHashesOrNone(filesRepo, listRelPaths):
+    """Hash the current local content of the paths, or None on error.
+
+    Ensures the adapter BEFORE the guarded call: callers hand in raw
+    path strings on some routes, and letting the resulting
+    ``AttributeError`` disappear into the conservative None would
+    silently fail every gate evaluation on those routes.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    try:
+        dictEntries = filesRepo.fdictHashFiles(listRelPaths)
+    except Exception:
+        return None
+    return {
+        sPath: dictEntry.get("sSha256")
+        for sPath, dictEntry in dictEntries.items()
+        if isinstance(dictEntry, dict) and dictEntry.get("sSha256")
+    }
 
 
 def _fbArxivVersionCurrent(dictArxiv):
@@ -1553,8 +1609,8 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
 
     The frontend AICS tab consumes this dict directly; each False
     entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
-    is True trivially when the workflow has no Overleaf binding so
-    data-only workflows do not surface a fake gap.
+    is True trivially when the workflow records no arXiv submission so
+    an untracked manuscript does not surface a fake gap.
     ``bAiDeclarationAttested`` requires the step to exist AND carry
     the researcher's sign-off — the declaration is a publication
     artifact, so both halves are L2 requirements.
@@ -1616,10 +1672,11 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
     The list is sorted by ``iStepIndex`` (workflow-scope entries with
     ``iStepIndex=-1`` sort to the front). Returns ``[]`` when the
     workflow has no project repo. Stage 4 adds the Overleaf
-    ``figure-not-frozen`` per-step criterion and the workflow-scope
-    arXiv criteria (``arxiv-not-submitted`` / ``arxiv-mismatch`` /
-    ``arxiv-version-stale``); both sets are suppressed when the
-    workflow has no Overleaf binding (data-only workflows pass).
+    ``figure-not-frozen`` per-step criterion (suppressed when the
+    workflow has no Overleaf binding — data-only workflows pass) and
+    the workflow-scope arXiv criteria (``arxiv-mismatch`` /
+    ``arxiv-version-stale``, suppressed when no arXiv submission is
+    recorded — the arXiv claim is opt-in).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     tCacheKey = (
@@ -1837,11 +1894,13 @@ def _fdictZenodoVerifyStaleBlocker():
 # ----------------------------------------------------------------------
 # L2 Overleaf + arXiv blocker surfaces (Stage 4 of the AICS-ladder plan).
 #
-# All five criteria are suppressed entirely when the workflow has no
-# Overleaf binding — a data-only workflow is L2-publishable without a
-# manuscript. The Overleaf helper emits per-step ``figure-not-frozen``
-# blockers; the arXiv helper emits workflow-scope ``arxiv-not-submitted``,
-# ``arxiv-mismatch``, and ``arxiv-version-stale`` blockers.
+# The Overleaf helper emits per-step ``figure-not-frozen`` blockers,
+# suppressed when the workflow has no Overleaf binding — a data-only
+# workflow is L2-publishable without a manuscript. The arXiv helper
+# emits workflow-scope ``arxiv-mismatch`` and ``arxiv-version-stale``
+# blockers, suppressed when no arXiv submission is recorded — the
+# arXiv criteria are an opt-in claim, so an unconfigured connection
+# is neutral ("not tracked"), never a gap.
 # ----------------------------------------------------------------------
 
 
@@ -1898,12 +1957,15 @@ def _fdictFigureNotFrozenBlocker(
 
 
 def _flistArxivLevel2Blockers(dictWorkflow, filesRepo):
-    """Return workflow-scope arXiv L2 blockers, or empty list."""
-    if not fbWorkflowHasOverleafBinding(dictWorkflow):
+    """Return workflow-scope arXiv L2 blockers, or empty list.
+
+    Suppressed entirely when no arXiv submission is recorded — an
+    unconfigured connection is neutral, not a gap, so it must not
+    paint a workflow-scope warning.
+    """
+    if not fbWorkflowHasArxivConnection(dictWorkflow):
         return []
     dictArxiv = _fdictArxivConfig(dictWorkflow)
-    if not (dictArxiv.get("sArxivId") or ""):
-        return [_fdictArxivNotSubmittedBlocker()]
     listBlockers = []
     if not _fbArxivTarballMatchesPushManifest(
         dictWorkflow, filesRepo,
@@ -1912,22 +1974,6 @@ def _flistArxivLevel2Blockers(dictWorkflow, filesRepo):
     if not _fbArxivVersionCurrent(dictArxiv):
         listBlockers.append(_fdictArxivVersionStaleBlocker())
     return listBlockers
-
-
-def _fdictArxivNotSubmittedBlocker():
-    """Build the workflow-scope ``arxiv-not-submitted`` blocker entry."""
-    return {
-        "iLevel": 2,
-        "iStepIndex": -1,
-        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
-        "sScope": "workflow",
-        "sCriterion": "arxiv-not-submitted",
-        "listOffendingFiles": [],
-        "listOffendingUpstreamSteps": [],
-        "sRemediationHint":
-            "No arXiv ID recorded — submit manuscript and record "
-            "the arXiv ID",
-    }
 
 
 def _fdictArxivMismatchBlocker():
@@ -2464,7 +2510,7 @@ _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
 )
 
 _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
-    "arxiv-not-submitted", "arxiv-mismatch", "arxiv-version-stale",
+    "arxiv-mismatch", "arxiv-version-stale",
 )
 
 _T_WORKFLOW_LEVEL3_CRITERIA = (
@@ -3047,7 +3093,7 @@ def fdictComputeWorkflowScopeLevelStates(
     Same independent-cell wire shape as the per-step projection, over
     the workflow-scope requirement sets: L1 — project repo present
     (one requirement); L2 — github/zenodo verify freshness plus the
-    three arXiv criteria when an Overleaf binding exists, EXCLUDING
+    two arXiv criteria when an arXiv submission is recorded, EXCLUDING
     ``missing-ai-declaration-step`` (re-homed to the ghost
     AI-declaration step row); L3 — the six workflow-scope checks in
     :data:`_T_WORKFLOW_LEVEL3_CRITERIA`. Workflow cells never report
@@ -3087,7 +3133,7 @@ def _fdictBuildWorkflowScopeCells(dictWorkflow, dictCountsByLevel):
 def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
     """Return ``(iSatisfied, iTotal)`` for the workflow-scope L2 cell."""
     tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
-    if fbWorkflowHasOverleafBinding(dictWorkflow):
+    if fbWorkflowHasArxivConnection(dictWorkflow):
         tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
     return _ftCountWorkflowCriteria(
         listLevel2Blockers, tApplicable, bHasRepo,

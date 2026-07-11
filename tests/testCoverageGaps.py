@@ -434,10 +434,20 @@ def test_fsRetrieveViaGhAuth_failed(mockRun):
 
 
 def test_fsRetrieveViaKeyring_missing_package():
+    """A missing keyring package propagates as ImportError.
+
+    Patches the loader seam rather than ``sys.modules`` because the
+    suite-wide hermetic-keyring fixture (conftest) already owns the
+    loader — that fixture is what keeps every test out of the real
+    OS keychain.
+    """
     from vaibify.config.secretManager import (
         _fsRetrieveViaKeyring,
     )
-    with patch.dict("sys.modules", {"keyring": None}):
+    with patch(
+        "vaibify.config.secretManager._fnLoadKeyringModule",
+        side_effect=ImportError("keyring package is not installed"),
+    ):
         with pytest.raises(ImportError, match="keyring"):
             _fsRetrieveViaKeyring("test")
 
@@ -453,15 +463,13 @@ def test_fsRetrieveViaKeyring_not_found():
             _fsRetrieveViaKeyring("missing")
 
 
-def test_fsRetrieveViaKeyring_success():
+def test_fsRetrieveViaKeyring_success(fixtureHermeticKeyring):
+    """A stored entry is retrieved through the hermetic fake keyring."""
     from vaibify.config.secretManager import (
         _fsRetrieveViaKeyring,
     )
-    mockKeyring = MagicMock()
-    mockKeyring.get_password.return_value = "secret123"
-    with patch.dict("sys.modules", {"keyring": mockKeyring}):
-        sResult = _fsRetrieveViaKeyring("mykey")
-    assert sResult == "secret123"
+    fixtureHermeticKeyring.dictStore[("vaibify", "mykey")] = "secret123"
+    assert _fsRetrieveViaKeyring("mykey") == "secret123"
 
 
 def test_fsRetrieveViaDockerSecret_not_found():
