@@ -2599,7 +2599,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fsRefreshVerifyCacheAfterPush hop ("shared by every push
     # route" — this was the missed call site), so the requirement
     # row updates without a manual re-verify.
-    "routes/syncRoutes.py": 2277,
+    # +108 (2026-07-12): the pull-manuscript agent action — mirrors
+    # the manuscript sources into the project repo's .vaibify/
+    # manuscript/ so the read-manuscript skill reads the real paper
+    # instead of hallucinating it. Cohesive with the Overleaf route
+    # family it sits in.
+    "routes/syncRoutes.py": 2385,
     "fileStatusManager.py": 1943,
     "workflowManager.py": 1935,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard

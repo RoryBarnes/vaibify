@@ -292,6 +292,14 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Fetch the current Overleaf project state into "
                      "the local mirror. Read-side."},
+    {"sName": "pull-manuscript", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/overleaf/{sContainerId}/pull-manuscript",
+     "bAgentSafe": True,
+     "sDescription": "Pull the Overleaf manuscript sources (.tex/"
+                     ".bib/.bbl) into <repo>/.vaibify/manuscript/ "
+                     "for in-container reading (the read-manuscript "
+                     "skill). Read-side: never dirties the repo."},
     {"sName": "delete-overleaf-mirror", "sCategory": "sync",
      "sMethod": "DELETE",
      "sPath": "/api/overleaf/{sContainerId}/mirror",

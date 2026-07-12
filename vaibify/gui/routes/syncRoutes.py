@@ -442,6 +442,113 @@ async def _fdictHandleOverleafPushRequest(
     return dictResult
 
 
+_T_MANUSCRIPT_EXTENSIONS = (".tex", ".bib", ".bbl", ".sty", ".cls")
+
+
+def _flistManuscriptMirrorPaths(syncDispatcher, sProjectId):
+    """Return the mirror-listed manuscript source paths for a project.
+
+    Refreshes an absent mirror once. Only blob entries with manuscript
+    extensions qualify — the pull list derives entirely from the
+    mirror listing, never from request input, so a caller cannot
+    steer the container-side pull at arbitrary paths.
+    """
+    from vaibify.reproducibility import overleafMirror
+    listEntries = overleafMirror.flistListMirrorTree(sProjectId)
+    if not listEntries:
+        bRefreshed, _resultDetail = (
+            syncDispatcher.ftRefreshOverleafMirror(sProjectId)
+        )
+        if bRefreshed:
+            listEntries = overleafMirror.flistListMirrorTree(sProjectId)
+    return [
+        dictEntry["sPath"] for dictEntry in listEntries
+        if dictEntry.get("sType") == "blob"
+        and str(dictEntry.get("sPath", "")).lower().endswith(
+            _T_MANUSCRIPT_EXTENSIONS,
+        )
+    ]
+
+
+async def _fdictHandlePullManuscript(
+    syncDispatcher, dictCtx, sContainerId,
+):
+    """Pull the Overleaf manuscript sources into the project repo.
+
+    Lands them in ``<sProjectRepoPath>/.vaibify/manuscript/`` — a
+    read-only convenience copy for the in-container agent (the
+    read-manuscript skill), never a canonical artifact. A
+    self-ignoring ``.gitignore`` is written into the target so the
+    pull can never dirty the project repo, even in containers whose
+    ``.vaibify/.gitignore`` predates the ``manuscript/`` entry.
+    """
+    dictCtx["require"]()
+    _fnRequireNetworkAccess(sContainerId)
+    dictWorkflow = fdictRequireWorkflow(
+        dictCtx["workflows"], sContainerId,
+    )
+    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
+    if not sProjectId:
+        raise HTTPException(
+            status_code=409,
+            detail="No Overleaf project is bound to this workflow.",
+        )
+    sRepo = dictWorkflow.get("sProjectRepoPath", "")
+    if not sRepo:
+        raise HTTPException(
+            status_code=409,
+            detail="The workflow has no project repository path.",
+        )
+    listPullPaths = await asyncio.to_thread(
+        _flistManuscriptMirrorPaths, syncDispatcher, sProjectId,
+    )
+    if not listPullPaths:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The Overleaf mirror lists no manuscript sources "
+                "(.tex/.bib/.bbl). Refresh the mirror from the Repos "
+                "panel, or check the project binding."
+            ),
+        )
+    sTargetDirectory = posixpath.join(sRepo, ".vaibify", "manuscript")
+    iExitCode, sOutput = await asyncio.to_thread(
+        syncDispatcher.ftResultPullFromOverleaf,
+        dictCtx["docker"], sContainerId, sProjectId,
+        listPullPaths, sTargetDirectory,
+    )
+    if iExitCode != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Manuscript pull failed: "
+                + _fsRedactRemoteError((sOutput or "")[-400:])
+            ),
+        )
+    dictCtx["docker"].fnWriteFile(
+        sContainerId,
+        posixpath.join(sTargetDirectory, ".gitignore"),
+        b"*\n",
+    )
+    return {
+        "bSuccess": True,
+        "sManuscriptDirectory": sTargetDirectory,
+        "listPulledFiles": listPullPaths,
+    }
+
+
+def _fnRegisterPullManuscript(app, dictCtx):
+    """Register POST /api/overleaf/{id}/pull-manuscript."""
+    from .. import syncDispatcher
+
+    @fnAgentAction("pull-manuscript")
+    @app.post("/api/overleaf/{sContainerId}/pull-manuscript")
+    async def fnPullManuscript(sContainerId: str):
+        return await _fdictHandlePullManuscript(
+            syncDispatcher, dictCtx, sContainerId,
+        )
+
+
 def _fnRegisterOverleafPush(app, dictCtx):
     """Register POST /api/overleaf/{id}/push endpoint."""
     from .. import syncDispatcher
@@ -2251,6 +2358,7 @@ def _fnRegisterArxivConfigure(app, dictCtx):
 def fnRegisterAll(app, dictCtx):
     """Register all sync and reproducibility routes."""
     _fnRegisterOverleafPush(app, dictCtx)
+    _fnRegisterPullManuscript(app, dictCtx)
     _fnRegisterOverleafMirrorRefresh(app, dictCtx)
     _fnRegisterOverleafMirrorTree(app, dictCtx)
     _fnRegisterOverleafDiff(app, dictCtx)
