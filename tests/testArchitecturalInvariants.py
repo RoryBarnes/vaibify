@@ -2577,7 +2577,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # terminal running simulations directly) is invisible to step
     # dispatch; one cheap exec per poll feeds the honest toolbar
     # busy indicator. Cohesive with the poll assembly it extends.
-    "routes/pipelineRoutes.py": 2212,
+    # main +3 (2026-07-09): dictMaxMtimeByStep threaded into the level
+    # projection so inactive steps with outputs read "unassessed".
+    # main +38 (2026-07-10): workflow-epoch reconciliation
+    # (_fnReconcileWorkflowEpoch) replacing one-shot reload delivery.
+    "routes/pipelineRoutes.py": 2253,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2605,15 +2609,26 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # instead of hallucinating it. Cohesive with the Overleaf route
     # family it sits in.
     "routes/syncRoutes.py": 2385,
-    "fileStatusManager.py": 1943,
-    "workflowManager.py": 1935,
+    # main +59 (2026-07-10): content-fingerprint piggyback in the
+    # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
+    # exec, one sha256 line — feeding the reload detector.
+    "fileStatusManager.py": 2002,
+    # main +35 (2026-07-10): single serialization authority
+    # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
+    # and the loader's _sSourceFingerprint stamp for byte-exact,
+    # race-free self-write baselines.
+    "workflowManager.py": 1970,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
     # the message loop it guards.
     # +1 (2026-07-11): one registration line for falsificationRoutes
     # in _fnRegisterAllRoutes.
-    "pipelineServer.py": 1742,
+    # main +8 (2026-07-09): fnDispatchAction threads the active
+    # workflow + cached path into every runner call and logs dispatch.
+    # main +17 (2026-07-10): fingerprint-based self-write baselines at
+    # connect and save, plus iWorkflowEpoch in the connect response.
+    "pipelineServer.py": 1767,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

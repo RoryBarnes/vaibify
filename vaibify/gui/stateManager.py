@@ -401,8 +401,9 @@ def fbRatchetLevelHighWater(
 
     ``dictStepLevelStates`` maps ``iStepIndex`` to
     ``{"s1": dictCell, "s2": dictCell, "s3": dictCell}`` where each
-    cell carries ``sState`` in ``("not-started", "none", "partial",
-    "attained", "unknown")``; ``dictWorkflowScopeStates`` is one such
+    cell carries ``sState`` in ``("not-started", "unassessed",
+    "none", "partial", "attained", "unknown")``;
+    ``dictWorkflowScopeStates`` is one such
     cell dict for the workflow header row. The ratchet is ADD-ONLY:
     a level that regresses never loses its recorded first-attainment
     timestamp — regression memory is the feature. ONLY ``attained``

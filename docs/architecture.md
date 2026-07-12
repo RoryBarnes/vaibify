@@ -830,6 +830,17 @@ counts every applicable criterion — the dominant-glyph design of the
 blocker list does not flatten five failures into a 4-of-5 partial,
 because the dominant entry carries `listFailingCriteria`.
 
+A step with no recorded activity splits on material evidence: when
+none of its declared outputs exist on disk it renders "not-started"
+(hollow circle — nothing yet); when at least one declared output is
+on disk it renders "unassessed" (grey filled circle — material
+present, assessment not begun). The discriminator is the poll's
+`dictMaxMtimeByStep`, which has an entry only for steps whose
+declared outputs were found in the container, so hours of compute
+performed outside the dashboard stay visible as progress. The
+"unassessed" state asserts only existence, never quality — it sits
+below "none" on the ladder and never stamps a high-water mark.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE

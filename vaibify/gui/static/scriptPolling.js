@@ -140,8 +140,14 @@ var VaibifyPolling = (function () {
            observable user benefit. The badge UI now updates only
            when a sync operation actually bumps the server epoch. */
         try {
+            /* The epoch tells the server which workflow revision this
+               tab has applied; a stale epoch makes the server attach
+               the full workflow so a dropped response or a competing
+               poller can never permanently strand this tab. */
             var dictStatus = await VaibifyApi.fdictGet(
-                "/api/pipeline/" + sContainerId + "/file-status"
+                "/api/pipeline/" + sContainerId + "/file-status" +
+                "?iWorkflowEpoch=" + encodeURIComponent(
+                    PipeleyenApp.fiGetWorkflowEpoch())
             );
             _fnReportPollSuccess("file-status");
             if (_fnOnFileStatus) {

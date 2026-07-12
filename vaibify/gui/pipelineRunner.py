@@ -1282,40 +1282,19 @@ async def _fiRunWithLogging(
 
 
 # ---------------------------------------------------------------------------
-# Workflow loading
-# ---------------------------------------------------------------------------
-
-async def _fdictLoadWorkflow(connectionDocker, sContainerId, fnStatusCallback):
-    """Load workflow.json from the container, returning (dict, path)."""
-    listWorkflows = workflowManager.flistFindWorkflowsInContainer(
-        connectionDocker, sContainerId
-    )
-    if not listWorkflows:
-        await fnStatusCallback(
-            {"sType": "error", "sMessage": "No workflow found"}
-        )
-        return None, ""
-    sPath = listWorkflows[0]["sPath"]
-    dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
-        connectionDocker, sContainerId, sPath
-    )
-    return dictWorkflow, sPath
-
-
-# ---------------------------------------------------------------------------
 # Public API: top-level entry points
 # ---------------------------------------------------------------------------
+# Every entry point requires the caller to pass the active workflow and
+# its container path. Runner-side rediscovery was removed after a live
+# incident where a container held two workflows and the alphabetical
+# first was silently run instead of the dashboard-selected one.
 
 async def fnRunAllSteps(
-    connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+    sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None,
 ):
     """Run all enabled steps with logging."""
-    dictWorkflow, sWorkflowPath = await _fdictLoadWorkflow(
-        connectionDocker, sContainerId, fnStatusCallback
-    )
-    if dictWorkflow is None:
-        return 1
     if bForceRun:
         for dictStep in dictWorkflow.get("listSteps", []):
             dictStep["dictRunStats"] = {}
@@ -1330,14 +1309,10 @@ async def fnRunAllSteps(
 
 async def fnRunFromStep(
     connectionDocker, sContainerId, iStartStep,
+    dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback, dictInteractive=None,
 ):
     """Run steps starting from iStartStep (1-based) with logging."""
-    dictWorkflow, sWorkflowPath = await _fdictLoadWorkflow(
-        connectionDocker, sContainerId, fnStatusCallback
-    )
-    if dictWorkflow is None:
-        return 1
     return await _fiRunWithLogging(
         connectionDocker, sContainerId, dictWorkflow,
         sWorkdir, fnStatusCallback,
@@ -1348,14 +1323,11 @@ async def fnRunFromStep(
 
 
 async def fnVerifyOnly(
-    connectionDocker, sContainerId, sWorkdir, fnStatusCallback,
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+    sWorkdir, fnStatusCallback,
 ):
     """Check that each step's output files exist without running."""
-    dictWorkflow, _sPath = await _fdictLoadWorkflow(
-        connectionDocker, sContainerId, fnStatusCallback
-    )
-    if dictWorkflow is None:
-        return 1
+    del sWorkflowPath
     await fnStatusCallback(
         {"sType": "started", "sCommand": "verify"}
     )

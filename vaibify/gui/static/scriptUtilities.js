@@ -44,13 +44,17 @@ var VaibifyUtilities = (function () {
 
     function fsBuildLevelCell(sState, sTooltip, sAltText) {
         // Cell visuals: favicon = attained, muted dash = not
-        // applicable, a circle (tinted by the level-cell-<sState>
-        // class) for every other state.
+        // applicable, question mark = unknown (assessed once, answer
+        // stale), a circle (tinted by the level-cell-<sState> class)
+        // for every other state — hollow for not-started, filling in
+        // as reality does.
         var sInner;
         if (sState === "attained") {
             sInner = fsBuildAttainedFavicon(sAltText || "attained");
         } else if (sState === "not-applicable") {
             sInner = '<span class="level-cell-dash">&#8212;</span>';
+        } else if (sState === "unknown") {
+            sInner = '<span class="level-cell-question">?</span>';
         } else {
             sInner = '<span class="level-cell-circle"></span>';
         }
@@ -141,6 +145,63 @@ var VaibifyUtilities = (function () {
             sPad(d.getUTCMinutes()) + " UTC";
     }
 
+    var SET_SCRIPT_EXTENSIONS = new Set([
+        ".py", ".sh", ".bash", ".r", ".jl", ".js", ".pl", ".rb",
+        ".m", ".ipynb",
+    ]);
+
+    function _fsExtractPathCandidate(sToken) {
+        var sCandidate = sToken.replace(/^["']|["']$/g, "");
+        var iEquals = sCandidate.indexOf("=");
+        if (iEquals >= 0) {
+            sCandidate = sCandidate.substring(iEquals + 1);
+        } else if (sCandidate.startsWith("-")) {
+            return "";
+        }
+        return sCandidate;
+    }
+
+    function _fbLooksLikeFilePath(sCandidate) {
+        if (!sCandidate || sCandidate.startsWith("-")) return false;
+        if (sCandidate.includes("/")) return true;
+        var iDot = sCandidate.lastIndexOf(".");
+        if (iDot <= 0 || iDot === sCandidate.length - 1) {
+            return false;
+        }
+        return /^[A-Za-z][A-Za-z0-9]{0,5}$/.test(
+            sCandidate.substring(iDot + 1));
+    }
+
+    function _fbHasScriptExtension(sCandidate) {
+        var iDot = sCandidate.lastIndexOf(".");
+        if (iDot === -1) return false;
+        return SET_SCRIPT_EXTENSIONS.has(
+            sCandidate.substring(iDot).toLowerCase());
+    }
+
+    function fdictExtractCommandFiles(sResolvedCommand) {
+        // The script is the first argument carrying a script
+        // extension; the inputs are every other path-like argument
+        // (cross-step {StepNN.varname} tokens arrive here already
+        // resolved into paths). Callers decide whether an "input"
+        // is actually one of the step's own declared outputs.
+        var dictFiles = { sScript: "", listInputFiles: [] };
+        var listTokens = (sResolvedCommand || "").split(/\s+/);
+        listTokens.forEach(function (sToken) {
+            var sCandidate = _fsExtractPathCandidate(sToken);
+            if (!_fbLooksLikeFilePath(sCandidate)) return;
+            if (!dictFiles.sScript &&
+                _fbHasScriptExtension(sCandidate)) {
+                dictFiles.sScript = sCandidate;
+                return;
+            }
+            if (dictFiles.listInputFiles.indexOf(sCandidate) === -1) {
+                dictFiles.listInputFiles.push(sCandidate);
+            }
+        });
+        return dictFiles;
+    }
+
     function fsResolveTemplate(sTemplate, dictVariables) {
         return sTemplate.replace(/\{([^}]+)\}/g, function (sMatch, sToken) {
             if (dictVariables.hasOwnProperty(sToken)) {
@@ -157,6 +218,49 @@ var VaibifyUtilities = (function () {
             integrity: "Integrity Tests",
         };
         return dictLabels[sCategory] || sCategory;
+    }
+
+    function fsSummarizeLevelStates(listStates) {
+        // The one aggregation rule for a collection of level cells
+        // (step rows under the Steps banner, requirement rows under
+        // a Project-block group header), so the two banners cannot
+        // drift apart. All applicable cells attained → attained;
+        // every ASSESSED cell none (with zero attained/partial in
+        // the mix) → none; any progress at all (an attained or a
+        // partial among assessed cells) → partial. Counting only
+        // attained as credit once made a group of all-partial rows
+        // summarize red, which read as "nothing works" when every
+        // row was partially met. not-started, unassessed, and
+        // unknown cells are not assessments, so they neither push
+        // the summary to none nor count as progress — but they
+        // still block attained, per the honesty rule. With nothing
+        // assessed: all cells not-started → not-started; greys with
+        // material somewhere (an unassessed in the mix) →
+        // unassessed; otherwise → unknown.
+        var iAttained = 0, iPartial = 0, iNone = 0;
+        var iNotStarted = 0, iUnassessed = 0, iApplicable = 0;
+        for (var i = 0; i < listStates.length; i++) {
+            var sState = listStates[i];
+            if (sState === "not-applicable") continue;
+            iApplicable++;
+            if (sState === "attained") iAttained++;
+            else if (sState === "partial") iPartial++;
+            else if (sState === "none") iNone++;
+            else if (sState === "not-started") iNotStarted++;
+            else if (sState === "unassessed") iUnassessed++;
+        }
+        var iAssessed = iAttained + iPartial + iNone;
+        if (iApplicable === 0) return "not-applicable";
+        if (iAssessed === 0) {
+            if (iNotStarted === iApplicable) return "not-started";
+            if (iNotStarted + iUnassessed === iApplicable) {
+                return "unassessed";
+            }
+            return "unknown";
+        }
+        if (iAttained === iApplicable) return "attained";
+        if (iNone === iAssessed) return "none";
+        return "partial";
     }
 
     async function fnSpawnNewSession() {
@@ -177,12 +281,14 @@ var VaibifyUtilities = (function () {
         fnEscapeHtml: fnEscapeHtml,
         fsBuildAttainedFavicon: fsBuildAttainedFavicon,
         fsBuildLevelCell: fsBuildLevelCell,
+        fsSummarizeLevelStates: fsSummarizeLevelStates,
         fbIsFigureFile: fbIsFigureFile,
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,
         fsFormatUtcTimestamp: fsFormatUtcTimestamp,
         fsFormatEpochUtc: fsFormatEpochUtc,
         fsResolveTemplate: fsResolveTemplate,
+        fdictExtractCommandFiles: fdictExtractCommandFiles,
         fsTestCategoryLabel: fsTestCategoryLabel,
         fnSpawnNewSession: fnSpawnNewSession,
         SET_FIGURE_EXTENSIONS: SET_FIGURE_EXTENSIONS,

@@ -157,10 +157,11 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
         "containerUsers": {"ghost": ""},
         "pipelineTasks": {},
         "sourceCodeDeps": {"ghost": {}},
-        "lastSelfWriteMtimes": {"ghost": 0},
+        "lastSelfWriteFingerprints": {"ghost": ""},
         "lastDiscoveredWorkflows": {"ghost": {}},
         "dictPipelineStateLocks": {},
         "dictSyncEpochs": {"ghost": 1},
+        "dictWorkflowEpochs": {"ghost": 1},
         "dictManifestShaCache": {"ghost": {}},
     }
     appFake = _fappBuildFakeApp()

@@ -7,15 +7,29 @@ modifies ``workflow.json`` outside that channel — the in-container
 agent, ``vim``, ``git pull`` — leaves the cache stale, which violates
 the dashboard's ground-truth contract.
 
-This module wires the file's mtime into the existing polling batch and
-reloads the cache when it diverges from the host's own last-write
-mtime, while suppressing spurious reloads triggered by UI saves.
+Detection compares a sha256 **content fingerprint** of the file
+(collected in the same exec batch as the polling stat) against the
+host's own last-write fingerprint. The previous design compared
+whole-second mtimes, which silently swallowed any agent edit landing
+in the same second as a backend save; content comparison has no such
+window, and the baseline is computed host-side from the exact bytes
+written (save) or read (load), so a flaky stat can never poison it.
+
+Every cache replacement bumps the per-container **workflow epoch**.
+The file-status route reconciles each client against that epoch and
+re-sends the workflow to any client whose epoch is stale, so delivery
+is at-least-once per client — a dropped response or a second polling
+client can no longer permanently strand a dashboard on a stale
+workflow (the pre-epoch design consumed the change on whichever
+single response observed it).
 """
 
 __all__ = [
-    "fnRecordSelfWriteMtime",
+    "fnRecordSelfWriteFingerprint",
     "fdictMaybeReloadWorkflow",
     "fdictDetectNewlyAvailableWorkflows",
+    "fnBumpWorkflowEpoch",
+    "fiGetWorkflowEpoch",
 ]
 
 import logging
@@ -27,56 +41,69 @@ from . import workflowManager
 logger = logging.getLogger("vaibify")
 
 
-def fnRecordSelfWriteMtime(dictCtx, sContainerId, sPath):
-    """Record the current mtime of sPath so the next poll won't re-trigger.
+def fnRecordSelfWriteFingerprint(dictCtx, sContainerId, sFingerprint):
+    """Record the fingerprint of content the host itself wrote or read.
 
-    Called from ``fnSave`` immediately after a UI-driven write.
-    The poller compares the polled mtime against this stored value and
-    skips reloading when they match — that's the host's own write.
-
-    An empty ``_fsStatMtime`` result means the stat *failed* (a
-    docker-exec miss under contention), not that the mtime is the empty
-    string. Storing it would poison the baseline: the next poll's real
-    mtime can never equal ``""``, so the detector would report a
-    spurious out-of-band reload every cycle (a "Workflow definition
-    reloaded from disk" toast loop). Keep the last known-good baseline
-    when the stat returns nothing.
+    Called with :func:`workflowManager.fsComputeWorkflowFingerprint`
+    of the just-saved dict after a UI-driven write, and with the
+    loader's ``_sSourceFingerprint`` at connect time. The poller
+    compares the polled file fingerprint against this stored value
+    and skips reloading when they match — that's the host's own
+    content. An empty fingerprint is never recorded: absence of
+    evidence must not overwrite a known-good baseline.
     """
-    if not sPath:
+    if not sFingerprint:
         return
-    sMtime = _fsStatMtime(dictCtx["docker"], sContainerId, sPath)
-    if not sMtime:
-        return
-    dictMtimes = _fdictGetSelfWriteMap(dictCtx)
-    dictMtimes[sContainerId] = sMtime
+    dictFingerprints = _fdictGetSelfWriteMap(dictCtx)
+    dictFingerprints[sContainerId] = sFingerprint
+
+
+def fnBumpWorkflowEpoch(dictCtx, sContainerId):
+    """Increment the per-container workflow epoch.
+
+    Bumped on every out-of-band cache replacement so the file-status
+    route can re-send the workflow to any client whose last-applied
+    epoch is stale — per-client reconciliation instead of a one-shot
+    notification.
+    """
+    dictEpochs = dictCtx.setdefault("dictWorkflowEpochs", {})
+    dictEpochs[sContainerId] = dictEpochs.get(sContainerId, 0) + 1
+
+
+def fiGetWorkflowEpoch(dictCtx, sContainerId):
+    """Return the current workflow epoch for a container (0 when untouched)."""
+    return dictCtx.get("dictWorkflowEpochs", {}).get(sContainerId, 0)
 
 
 def fdictMaybeReloadWorkflow(
     dictCtx, sContainerId, sWorkflowPath, dictModTimes,
+    sPolledFingerprint="",
 ):
-    """Re-read workflow.json from disk if its mtime moved out-of-band.
+    """Re-read workflow.json from disk if its content moved out-of-band.
 
     Returns ``{"bReplaced": bool, "dictWorkflow": dict | None,
     "sError": str | None}``. The caller forwards these into the
     file-status response so the frontend can decide whether to
     re-render. On replace, ``dictCtx["workflows"][sContainerId]`` is
-    updated to the freshly-loaded dict and the stored last-write
-    mtime is bumped to silence the next poll.
+    updated to the freshly-loaded dict, the stored last-write
+    fingerprint is set to the loaded bytes' fingerprint, and the
+    workflow epoch is bumped.
 
-    An empty ``dictModTimes`` is ambiguous: the host shell wraps
-    ``stat ... 2>/dev/null || true``, so a docker-exec timeout or
-    flaky stream can produce an empty batch even when every file is
-    fine. When the batch returns other paths but not the workflow,
-    that disambiguates a real missing-file event from a hiccup.
-    When the batch is empty entirely, we issue one direct existence
-    probe to break the tie — minimal-workflow deletions are caught
-    without the false-alarm tax on hiccupping polls.
+    ``dictModTimes`` still carries the existence signal: the host
+    shell wraps ``stat ... 2>/dev/null || true``, so a docker-exec
+    timeout or flaky stream can produce an empty batch even when
+    every file is fine. When the batch returns other paths but not
+    the workflow, that disambiguates a real missing-file event from a
+    hiccup. When the batch is empty entirely, we issue one direct
+    existence probe to break the tie. An empty ``sPolledFingerprint``
+    alongside a successful stat is a hash-collection flake — report
+    no change and let the next poll retry rather than firing a
+    spurious reload.
     """
     if not sWorkflowPath:
         return _fdictNoChange()
     dictPolled = dictModTimes or {}
-    sPolledMtime = dictPolled.get(sWorkflowPath, "")
-    if not sPolledMtime:
+    if not dictPolled.get(sWorkflowPath, ""):
         if dictPolled:
             return _fdictReloadFailure(
                 "workflow.json missing from container"
@@ -88,28 +115,30 @@ def fdictMaybeReloadWorkflow(
         return _fdictReloadFailure(
             "workflow.json missing from container"
         )
-    dictMtimes = _fdictGetSelfWriteMap(dictCtx)
-    sKnownMtime = dictMtimes.get(sContainerId)
-    if sPolledMtime == sKnownMtime:
+    if not sPolledFingerprint:
         return _fdictNoChange()
-    if not sKnownMtime:
+    dictFingerprints = _fdictGetSelfWriteMap(dictCtx)
+    sKnownFingerprint = dictFingerprints.get(sContainerId)
+    if sPolledFingerprint == sKnownFingerprint:
+        return _fdictNoChange()
+    if not sKnownFingerprint:
         # No trusted baseline yet — the container is freshly connected
-        # or a prior stat miss left the baseline unrecorded. Absence of
-        # a baseline is not evidence of an out-of-band edit, so seed it
-        # from the current mtime and report no change rather than firing
-        # a spurious reload (the cache was already loaded fresh at
-        # connect time).
-        dictMtimes[sContainerId] = sPolledMtime
+        # or a prior flake left the baseline unrecorded. Absence of a
+        # baseline is not evidence of an out-of-band edit, so seed it
+        # from the current fingerprint and report no change rather
+        # than firing a spurious reload (the cache was already loaded
+        # fresh at connect time, which also seeds this baseline).
+        dictFingerprints[sContainerId] = sPolledFingerprint
         return _fdictNoChange()
     return _fdictPerformReload(
-        dictCtx, sContainerId, sWorkflowPath, sPolledMtime,
+        dictCtx, sContainerId, sWorkflowPath, sPolledFingerprint,
     )
 
 
 def _fdictPerformReload(
-    dictCtx, sContainerId, sWorkflowPath, sPolledMtime,
+    dictCtx, sContainerId, sWorkflowPath, sPolledFingerprint,
 ):
-    """Load the workflow, update cache + last-write mtime, return result."""
+    """Load the workflow, update cache + baseline + epoch, return result."""
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath,
@@ -124,8 +153,11 @@ def _fdictPerformReload(
         dictCtx, sContainerId, sWorkflowPath, dictWorkflow,
     )
     dictCtx["workflows"][sContainerId] = dictWorkflow
-    dictMtimes = _fdictGetSelfWriteMap(dictCtx)
-    dictMtimes[sContainerId] = sPolledMtime
+    dictFingerprints = _fdictGetSelfWriteMap(dictCtx)
+    dictFingerprints[sContainerId] = (
+        dictWorkflow.get("_sSourceFingerprint") or sPolledFingerprint
+    )
+    fnBumpWorkflowEpoch(dictCtx, sContainerId)
     logger.info(
         "Workflow reloaded out-of-band for container=%s path=%s",
         sContainerId, sWorkflowPath,
@@ -192,21 +224,12 @@ def _fdictGetDiscoveredMap(dictCtx):
 
 
 def _fdictGetSelfWriteMap(dictCtx):
-    """Return the per-container last-write mtime map, creating if absent."""
-    dictMtimes = dictCtx.get("lastSelfWriteMtimes")
-    if dictMtimes is None:
-        dictMtimes = {}
-        dictCtx["lastSelfWriteMtimes"] = dictMtimes
-    return dictMtimes
-
-
-def _fsStatMtime(connectionDocker, sContainerId, sPath):
-    """Return the mtime string for a single path, or empty on miss."""
-    from .fileStatusManager import _fdictGetModTimes
-    dictResult = _fdictGetModTimes(
-        connectionDocker, sContainerId, [sPath],
-    )
-    return dictResult.get(sPath, "")
+    """Return the per-container last-write fingerprint map, creating if absent."""
+    dictFingerprints = dictCtx.get("lastSelfWriteFingerprints")
+    if dictFingerprints is None:
+        dictFingerprints = {}
+        dictCtx["lastSelfWriteFingerprints"] = dictFingerprints
+    return dictFingerprints
 
 
 def _fbWorkflowExistsInContainer(connectionDocker, sContainerId, sPath):

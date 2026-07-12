@@ -2475,8 +2475,15 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
 #      "bRegression": bool} # high-water stamp exists but not attained
 #
 # ``not-started`` — the step has no activity at all (no run stats,
-# every present test axis untested, never attested); all three of its
-# cells read not-started. ``none`` — activity exists but zero
+# every present test axis untested, never attested) AND none of its
+# declared outputs exist on disk; all three of its cells read
+# not-started. ``unassessed`` — the same total absence of recorded
+# activity, but at least one declared output (``saDataFiles`` /
+# ``saPlotFiles``) exists on disk: material is present, assessment has
+# not begun. The split keeps hours of compute performed outside the
+# dashboard visible as progress without ever claiming verification —
+# unassessed sits below ``none`` on the ladder because it asserts only
+# existence, never quality. ``none`` — activity exists but zero
 # requirements satisfied. ``partial`` — some but not all. ``attained``
 # — all satisfied. ``unknown`` — ONLY for per-step L2 when the
 # github/zenodo verify cache is stale: the per-step sync truth is
@@ -2523,6 +2530,7 @@ _T_WORKFLOW_LEVEL3_CRITERIA = (
 def fdictComputeStepLevelStates(
     dictWorkflow, listLevel1Blockers,
     listLevel2Blockers, listLevel3Blockers,
+    dictMaxMtimeByStep=None,
 ):
     """Return ``{iStepIndex: {"s1": dictCell, "s2": ..., "s3": ...}}``.
 
@@ -2544,11 +2552,22 @@ def fdictComputeStepLevelStates(
     True when the level was attained before but is not attained now.
     A workflow with no project repo zeroes L2/L3 satisfaction — sync
     and manifest truth cannot exist without a repo.
+
+    ``dictMaxMtimeByStep`` is the poll's ``{sStepIndex: sMaxMtime}``
+    over each step's declared outputs — an entry exists only when at
+    least one declared output is on disk. It discriminates
+    ``unassessed`` (material present) from ``not-started`` (nothing
+    yet) for steps with no recorded activity; callers without a poll
+    snapshot may omit it, collapsing the split to ``not-started``.
     """
     dictContext = _fdictStepProjectionContext(
         dictWorkflow, listLevel1Blockers,
         listLevel2Blockers, listLevel3Blockers,
     )
+    dictContext["setStepsWithOutputsOnDisk"] = {
+        int(sIndex) for sIndex in (dictMaxMtimeByStep or {})
+        if str(sIndex).isdigit()
+    }
     dictResult = {}
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -2649,7 +2668,9 @@ def _fbAnyWorkflowCriterion(listBlockers, sCriterion):
 
 def _fdictOneStepLevelCells(iStepIndex, dictStep, dictContext):
     """Return the three INDEPENDENT level cells for one step."""
-    bNotStarted = _fbStepHasNoActivity(dictStep)
+    sInactivityState = _fsStepInactivityState(
+        iStepIndex, dictStep, dictContext,
+    )
     dictHighWater = _fdictGetStepLevelHighWater(dictStep)
     dictCountsByLevel = _fdictCountStepLevelRequirements(
         iStepIndex, dictStep, dictContext,
@@ -2658,10 +2679,28 @@ def _fdictOneStepLevelCells(iStepIndex, dictStep, dictContext):
     for sLevel in ("1", "2", "3"):
         iSatisfied, iTotal, bUnknown = dictCountsByLevel[sLevel]
         dictResult["s" + sLevel] = _fdictBuildLevelCell(
-            iSatisfied, iTotal, bNotStarted, bUnknown,
+            iSatisfied, iTotal, sInactivityState, bUnknown,
             sLevel in dictHighWater,
         )
     return dictResult
+
+
+def _fsStepInactivityState(iStepIndex, dictStep, dictContext):
+    """Return the step's inactivity override, or None when active.
+
+    ``not-started`` — no recorded activity and no declared output on
+    disk. ``unassessed`` — no recorded activity but material present:
+    the step's declared outputs exist, so work was performed outside
+    the dashboard (or before state tracking); assessment has not
+    begun. Any recorded activity returns None and the count-derived
+    states take over.
+    """
+    if not _fbStepHasNoActivity(dictStep):
+        return None
+    setOnDisk = dictContext.get("setStepsWithOutputsOnDisk") or set()
+    if iStepIndex in setOnDisk:
+        return "unassessed"
+    return "not-started"
 
 
 def _fdictGetStepLevelHighWater(dictStep):
@@ -2915,19 +2954,22 @@ def _fbStepReferencesAnyDeclaredBinary(listCommands, listDeclaredBinaries):
 
 
 def _fdictBuildLevelCell(
-    iSatisfied, iTotal, bNotStarted, bUnknown, bStamped,
+    iSatisfied, iTotal, sInactivityState, bUnknown, bStamped,
 ):
     """Return one wire cell with state, counts, and regression flag.
 
-    State precedence: ``not-started`` > ``not-applicable`` >
-    ``unknown`` > the count-derived states. ``bRegression`` is True
-    when the level holds a high-water stamp (the add-only ratchet
-    recorded a first attainment) but the current state is not
-    ``attained``; a ``not-applicable`` cell never regresses — there is
-    no requirement to fall behind on (a stray stamp from the era when
-    such cells read as vacuously attained stays inert).
+    State precedence: the inactivity override (``not-started`` /
+    ``unassessed``) > ``not-applicable`` > ``unknown`` > the
+    count-derived states. ``bRegression`` is True when the level holds
+    a high-water stamp (the add-only ratchet recorded a first
+    attainment) but the current state is not ``attained``; a
+    ``not-applicable`` cell never regresses — there is no requirement
+    to fall behind on (a stray stamp from the era when such cells read
+    as vacuously attained stays inert).
     """
-    sState = _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown)
+    sState = _fsLevelCellState(
+        iSatisfied, iTotal, sInactivityState, bUnknown,
+    )
     return {
         "sState": sState,
         "iSatisfied": int(iSatisfied),
@@ -2938,17 +2980,20 @@ def _fdictBuildLevelCell(
     }
 
 
-def _fsLevelCellState(iSatisfied, iTotal, bNotStarted, bUnknown):
-    """Map counts plus the two override flags onto the six-state wire.
+def _fsLevelCellState(iSatisfied, iTotal, sInactivityState, bUnknown):
+    """Map counts plus the override flags onto the seven-state wire.
 
+    ``sInactivityState`` (``not-started`` / ``unassessed`` / None) is
+    the no-recorded-activity override and wins outright — a step that
+    was never assessed must not render a count-derived judgment.
     ``iTotal`` of 0 means no requirement applies at this level for
     this scope: per-step L3 on a step with nothing to reproduce, and
     per-step L1 on an ai-declaration step (whose sign-off is a Level
     2 requirement). It renders as ``not-applicable`` so an empty
     requirement set never reads as a vacuous attainment.
     """
-    if bNotStarted:
-        return "not-started"
+    if sInactivityState:
+        return sInactivityState
     if iTotal == 0:
         return "not-applicable"
     if bUnknown:
@@ -3125,7 +3170,7 @@ def _fdictBuildWorkflowScopeCells(dictWorkflow, dictCountsByLevel):
     for sLevel in ("1", "2", "3"):
         iSatisfied, iTotal = dictCountsByLevel[sLevel]
         dictResult["s" + sLevel] = _fdictBuildLevelCell(
-            iSatisfied, iTotal, False, False, sLevel in dictHighWater,
+            iSatisfied, iTotal, None, False, sLevel in dictHighWater,
         )
     return dictResult
 

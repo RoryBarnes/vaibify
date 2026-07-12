@@ -175,24 +175,23 @@ def test_fiRunStepCommands_full_returns_plot_exit_code():
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow",
-       new_callable=AsyncMock)
-def test_fnVerifyOnly_missing_output_emits_stepFail_badge(mockLoad):
+def test_fnVerifyOnly_missing_output_emits_stepFail_badge():
     """A missing-output step emits stepFail for its step number.
 
     Kills: _fbVerifyStepList per-step badge '0 if bStepOk else 1'
     mutated to 0 (line ~894).
     """
-    mockLoad.return_value = ({
+    dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [
             {"sDirectory": "/work", "saPlotFiles": ["a.pdf"]},
         ],
-    }, "/w/test.json")
+    }
     mockDocker = _fMockDocker(1, "")
     fnCallback, listCaptured = _fMockCallback()
     iResult = _fnRunAsync(fnVerifyOnly(
-        mockDocker, "cid", "/work", fnCallback,
+        mockDocker, "cid", dictWorkflow, "/w/test.json",
+        "/work", fnCallback,
     ))
     assert iResult == 1
     listResultEvents = [

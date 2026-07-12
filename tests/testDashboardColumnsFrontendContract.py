@@ -1069,23 +1069,59 @@ def test_published_copies_arxiv_row_keys_on_recorded_connection():
 
 
 def test_group_summary_skips_not_applicable_rows():
-    """A group whose applicable rows are all green must summarize
-    green even when it contains not-applicable rows; n/a rows carry
-    no requirement, so they neither credit nor block. An unknown
-    (never-verified) row must still block green — the honesty rule
-    is about unverified state, not inapplicable state."""
-    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    """A collection whose applicable cells are all attained must
+    summarize attained even when it contains not-applicable cells;
+    n/a cells carry no requirement, so they neither credit nor
+    block. An unknown (never-verified) cell must still block
+    attained — the honesty rule is about unverified state, not
+    inapplicable state. The summarizer is shared
+    (VaibifyUtilities.fsSummarizeLevelStates, 2026-07-09 consistency
+    ruling) so the Steps banner and the Project-block group headers
+    cannot drift apart."""
+    sSource = _fsReadStaticFile("scriptUtilities.js")
     sSummary = _fsExtractFunctionBlock(
-        sSource, "_fsGroupSummaryState",
+        sSource, "fsSummarizeLevelStates",
     )
     assert '"not-applicable"' in sSummary, (
-        "the summary must exclude not-applicable rows from counting"
+        "the summary must exclude not-applicable cells from counting"
     )
     assert "iApplicable" in sSummary, (
-        "green must be judged against applicable rows, not all rows"
+        "attained must be judged against applicable cells, not all"
     )
-    assert "iGreen === iApplicable" in sSummary, (
-        "all-applicable-green is the green criterion"
+    assert "iAttained === iApplicable" in sSummary, (
+        "all-applicable-attained is the attained criterion"
+    )
+
+
+def test_both_banners_share_the_level_summarizer():
+    """Red on the Steps banner means EVERY started step is failing
+    Level 1 — one red step among progress reads orange (researcher
+    ruling 2026-07-09). Both the Steps banner and the Project-block
+    group headers must delegate to the shared summarizer; the old
+    any-red-short-circuit must not survive anywhere."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sRequirements = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    for sSource in (sApplication, sRequirements):
+        assert "fsSummarizeLevelStates" in sSource, (
+            "both banners must call the shared summarizer"
+        )
+    sAggregate = _fsExtractFunctionBlock(
+        sApplication, "_fsAggregateStepsL1State",
+    )
+    assert 'return "none"' not in sAggregate, (
+        "any-red-short-circuit made one failing step paint the "
+        "whole Steps banner red; the summarizer owns the rule now"
+    )
+    sSummary = _fsExtractFunctionBlock(
+        _fsReadStaticFile("scriptUtilities.js"),
+        "fsSummarizeLevelStates",
+    )
+    assert "iNone === iAssessed" in sSummary, (
+        "red requires every assessed cell to be none"
+    )
+    assert "iUnassessed" in sSummary, (
+        "unassessed cells are not assessments: they must neither "
+        "force red nor count as progress, only block attained"
     )
 
 

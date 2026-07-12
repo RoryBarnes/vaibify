@@ -118,7 +118,7 @@ class TestFnRunAllTests:
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestsForAllSteps", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fdictBuildWorkflowVars")
     def test_with_provided_workflow(self, mockBuildVars, mockRunAll, mockEmit):
-        """When dictWorkflow is provided, skips loading."""
+        """The caller-provided workflow is the one tested."""
         from vaibify.gui.pipelineTestRunner import fnRunAllTests
 
         mockBuildVars.return_value = {"sVar": "val"}
@@ -128,8 +128,7 @@ class TestFnRunAllTests:
 
         iResult = _fnRunAsync(
             fnRunAllTests(
-                MagicMock(), "ctr1", "/ws", fnCallback,
-                dictWorkflow=dictWorkflow,
+                MagicMock(), "ctr1", dictWorkflow, "/ws", fnCallback,
             )
         )
         assert iResult == 0
@@ -137,39 +136,6 @@ class TestFnRunAllTests:
             {"sType": "started", "sCommand": "runAllTests"}
         )
         mockEmit.assert_awaited_once()
-
-    @patch("vaibify.gui.pipelineTestRunner._fnEmitCompletion", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineTestRunner._fiRunTestsForAllSteps", new_callable=AsyncMock)
-    @patch("vaibify.gui.pipelineTestRunner._fdictBuildWorkflowVars")
-    @patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow", new_callable=AsyncMock)
-    def test_loads_workflow_when_none(self, mockLoad, mockBuildVars, mockRunAll, mockEmit):
-        """When dictWorkflow is None, loads it from container."""
-        from vaibify.gui.pipelineTestRunner import fnRunAllTests
-
-        dictWorkflow = {"listSteps": []}
-        mockLoad.return_value = (dictWorkflow, "/path/wf.json")
-        mockBuildVars.return_value = {}
-        mockRunAll.return_value = 0
-        fnCallback = AsyncMock()
-
-        iResult = _fnRunAsync(
-            fnRunAllTests(MagicMock(), "ctr1", "/ws", fnCallback)
-        )
-        assert iResult == 0
-        mockLoad.assert_awaited_once()
-
-    @patch("vaibify.gui.pipelineRunner._fdictLoadWorkflow", new_callable=AsyncMock)
-    def test_returns_1_when_workflow_load_fails(self, mockLoad):
-        """When workflow loading returns None, return 1 immediately."""
-        from vaibify.gui.pipelineTestRunner import fnRunAllTests
-
-        mockLoad.return_value = (None, None)
-        fnCallback = AsyncMock()
-
-        iResult = _fnRunAsync(
-            fnRunAllTests(MagicMock(), "ctr1", "/ws", fnCallback)
-        )
-        assert iResult == 1
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitCompletion", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestsForAllSteps", new_callable=AsyncMock)
@@ -184,8 +150,7 @@ class TestFnRunAllTests:
 
         iResult = _fnRunAsync(
             fnRunAllTests(
-                MagicMock(), "ctr1", "/ws", fnCallback,
-                dictWorkflow={"listSteps": []},
+                MagicMock(), "ctr1", {"listSteps": []}, "/ws", fnCallback,
             )
         )
         assert iResult == 1

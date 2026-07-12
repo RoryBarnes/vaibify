@@ -41,6 +41,7 @@ State Transitions
 
 import logging
 import posixpath
+import shlex
 
 from docker.errors import APIError, NotFound
 
@@ -1427,24 +1428,66 @@ def _fdictMtimeHintsForStep(
 
 def _fdictStatViaPathfile(connectionDocker, sContainerId, listPaths):
     """Return {sAbsPath: sMtime} for paths that exist; one exec total."""
-    if not listPaths:
-        return {}
+    dictModTimes, _sFingerprint = _ftStatAndFingerprintViaPathfile(
+        connectionDocker, sContainerId, listPaths, "",
+    )
+    return dictModTimes
+
+
+def _ftStatAndFingerprintViaPathfile(
+    connectionDocker, sContainerId, listPaths, sFingerprintPath,
+):
+    """Return ``({sAbsPath: sMtime}, sFingerprint)``; one exec total.
+
+    When ``sFingerprintPath`` is given, the same exec also emits a
+    ``fingerprint:<sha256>`` line for that file, giving the workflow
+    reload detector a content signal without a second docker-exec
+    round trip per poll tick. The fingerprint comes back empty when
+    the file is missing or the hash command flaked.
+    """
+    if not listPaths and not sFingerprintPath:
+        return {}, ""
     baContent = ("\n".join(listPaths) + "\n").encode("utf-8")
+    sCmd = (
+        f"xargs -d '\\n' -a {_S_POLL_PATHFILE} "
+        f"stat -c '%n %Y' 2>/dev/null"
+    )
+    if sFingerprintPath:
+        sCmd += (
+            f"; printf 'fingerprint:%s\\n' "
+            f"\"$(sha256sum -- {shlex.quote(sFingerprintPath)} "
+            f"2>/dev/null | cut -d' ' -f1)\""
+        )
     try:
         connectionDocker.fnWriteFileViaTar(
             sContainerId, _S_POLL_PATHFILE, baContent,
         )
         _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId,
-            f"xargs -d '\\n' -a {_S_POLL_PATHFILE} "
-            f"stat -c '%n %Y' 2>/dev/null",
+            sContainerId, sCmd,
         )
     except (APIError, NotFound):
         logger.info(
             "container vanished mid-poll, container=%s", sContainerId,
         )
-        return {}
-    return _fdictParseStatLines(sOutput)
+        return {}, ""
+    return _ftParseStatAndFingerprintLines(sOutput)
+
+
+def _ftParseStatAndFingerprintLines(sOutput):
+    """Split the ``fingerprint:`` marker line out of stat output.
+
+    Stat lines are '%n %Y' with absolute paths, so no stat line can
+    start with the marker; the marker line is unambiguous.
+    """
+    sFingerprint = ""
+    listStatLines = []
+    for sLine in (sOutput or "").strip().split("\n"):
+        sLine = sLine.strip()
+        if sLine.startswith("fingerprint:"):
+            sFingerprint = sLine[len("fingerprint:"):].strip()
+        elif sLine:
+            listStatLines.append(sLine)
+    return _fdictParseStatLines("\n".join(listStatLines)), sFingerprint
 
 
 def _fdictParseStatLines(sOutput):
@@ -1494,9 +1537,10 @@ _LIST_CONTAINER_KEYED_CACHES = (
     "containerUsers",
     "pipelineTasks",
     "sourceCodeDeps",
-    "lastSelfWriteMtimes",
+    "lastSelfWriteFingerprints",
     "lastDiscoveredWorkflows",
     "dictSyncEpochs",
+    "dictWorkflowEpochs",
     "dictManifestShaCache",
 )
 
@@ -1632,6 +1676,21 @@ def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
         return {}
     return _fdictStatViaPathfile(
         connectionDocker, sContainerId, listPaths,
+    )
+
+
+def ftGetModTimesAndFingerprint(
+    connectionDocker, sContainerId, listPaths, sFingerprintPath,
+):
+    """Return ``(dictModTimes, sFingerprint)`` in one exec round trip.
+
+    Same contract as :func:`_fdictGetModTimes` plus the sha256 content
+    fingerprint of ``sFingerprintPath``, collected in the same batched
+    exec so the workflow reload detector's content comparison adds no
+    per-tick container load.
+    """
+    return _ftStatAndFingerprintViaPathfile(
+        connectionDocker, sContainerId, listPaths, sFingerprintPath,
     )
 
 

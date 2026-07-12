@@ -51,6 +51,7 @@ const PipeleyenApp = (function () {
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
             iCachedAicsLevel: null,
+            iWorkflowEpoch: -1,
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -328,6 +329,9 @@ const PipeleyenApp = (function () {
         _dictSessionState.sContainerId = sId;
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
+        _dictWorkflowState.iWorkflowEpoch =
+            typeof data.iWorkflowEpoch === "number" ?
+                data.iWorkflowEpoch : -1;
         _fnLoadStepsCollapsed();
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnSurfaceStateLoadNotice(data.dictWorkflow);
@@ -395,16 +399,25 @@ const PipeleyenApp = (function () {
     function fnRefreshWorkflowData(dictData) {
         _dictWorkflowState.dictWorkflow = dictData.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = dictData.sWorkflowPath;
+        if (typeof dictData.iWorkflowEpoch === "number") {
+            _dictWorkflowState.iWorkflowEpoch =
+                dictData.iWorkflowEpoch;
+        }
         _fnClearFileCaches();
         _fnInvalidateAllRenderCaches();
         fnRenderStepList();
         fnPollAllStepFiles();
     }
 
-    function _fnApplyOutOfBandWorkflowReload(dictWorkflowNew) {
+    function _fnApplyOutOfBandWorkflowReload(
+        dictWorkflowNew, iWorkflowEpoch
+    ) {
         var iPriorSelected = _dictUiState.iSelectedStepIndex;
         var dictPriorExpanded = _fdictSnapshotExpansionSets();
         _dictWorkflowState.dictWorkflow = dictWorkflowNew;
+        if (typeof iWorkflowEpoch === "number") {
+            _dictWorkflowState.iWorkflowEpoch = iWorkflowEpoch;
+        }
         _fnClearFileCaches();
         _fnInvalidateAllRenderCaches();
         fnRenderStepList();
@@ -1496,30 +1509,27 @@ const PipeleyenApp = (function () {
     var _DICT_STEPS_AGGREGATE_TOOLTIP = {
         "attained": "Every step is self-consistent (Level 1)",
         "partial": "Some steps have unmet Level 1 requirements",
-        "none": "One or more steps are failing Level 1",
+        "none": "Every started step is failing Level 1",
         "unknown": "Step status is not yet known",
-        "not-started": "No steps in this workflow yet",
+        "not-started": "No step has started yet",
+        "unassessed": "Step outputs exist but none have been " +
+            "assessed yet",
+        "not-applicable": "No steps with Level 1 requirements",
     };
 
     function _fsAggregateStepsL1State() {
-        // The total Level-1 state across every step: red if any step
-        // fails, orange if any is partial, attained only when all
-        // steps are attained or have no L1 requirement.
+        // The total Level-1 state across every step, summarized by
+        // the shared banner rule (see
+        // VaibifyUtilities.fsSummarizeLevelStates): red only when
+        // every started step is failing; any progress in the mix
+        // reads orange.
         var listSteps = (_dictWorkflowState.dictWorkflow || {})
             .listSteps || [];
         if (listSteps.length === 0) return "not-started";
-        var bAllAttained = true;
-        var bAnyPartial = false;
-        for (var i = 0; i < listSteps.length; i++) {
-            var sState = fsLevelCellState(i, 1);
-            if (sState === "none") return "none";
-            if (sState === "partial") bAnyPartial = true;
-            if (sState !== "attained" && sState !== "not-applicable") {
-                bAllAttained = false;
-            }
-        }
-        if (bAnyPartial) return "partial";
-        return bAllAttained ? "attained" : "unknown";
+        var listStates = listSteps.map(function (dictStep, iIndex) {
+            return fsLevelCellState(iIndex, 1);
+        });
+        return VaibifyUtilities.fsSummarizeLevelStates(listStates);
     }
 
     function _fsRenderStepsAggregateLight() {
@@ -1529,21 +1539,17 @@ const PipeleyenApp = (function () {
         // state; L2/L3 are dashes — those levels are project-wide,
         // not per-step.
         var sState = _fsAggregateStepsL1State();
-        var sInner = sState === "attained"
-            ? VaibifyUtilities.fsBuildAttainedFavicon(
-                "all steps passing")
-            : '<span class="level-cell-circle"></span>';
+        var sLevelCell = VaibifyUtilities.fsBuildLevelCell(
+            sState,
+            _DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status",
+            "all steps passing");
         var sDashCell = '<span class="step-level-cell ' +
             'level-cell-not-applicable" title="No step-level ' +
             'requirements at this level — see the Project block">' +
             '<span class="level-cell-dash">&#8212;</span></span>';
         return '<span class="step-level-strip">' +
             '<span class="step-regression-cell"></span>' +
-            '<span class="step-level-cell level-cell-' + sState +
-            '" title="' +
-            (_DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status") +
-            '">' + sInner + '</span>' +
-            sDashCell + sDashCell + '</span>';
+            sLevelCell + sDashCell + sDashCell + '</span>';
     }
 
     function _fnRenderStepListIncremental(
@@ -2141,7 +2147,10 @@ const PipeleyenApp = (function () {
     };
 
     var _DICT_LEVEL_CELL_STATE_PHRASES = {
-        "not-started": "not started",
+        "not-started": "not started — no outputs on disk and no " +
+            "activity at this level yet",
+        "unassessed": "unassessed — outputs exist on disk, but " +
+            "no tests, checks, or sign-off have been recorded yet",
         "none": "no requirements met",
         "partial": "partially met",
         "attained": "attained",
@@ -2180,7 +2189,7 @@ const PipeleyenApp = (function () {
 
     function fsLevelCellState(iStepIndex, iLevel) {
         // Rendered verbatim from the backend projection. An absent
-        // cell renders the hollow grey "unknown" — never a fake
+        // cell renders the "?" "unknown" mark — never a fake
         // attained or not-started claim.
         var dictCell = fdictLevelCellForScope(iStepIndex, iLevel);
         return (dictCell && dictCell.sState) || "unknown";
@@ -3279,73 +3288,6 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnMoveDetailToStep(dictDrag, iTargetStep) {
-        var iSource = dictDrag.iStep;
-        var sArray = dictDrag.sArray;
-        var sValue = _dictWorkflowState.dictWorkflow.listSteps[iSource][sArray].splice(
-            dictDrag.iIdx, 1
-        )[0];
-        if (!_dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray]) {
-            _dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray] = [];
-        }
-        _dictWorkflowState.dictWorkflow.listSteps[iTargetStep][sArray].unshift(sValue);
-        fnPushUndo({
-            sAction: "move",
-            iStep: iSource,
-            sArray: sArray,
-            iIdx: dictDrag.iIdx,
-            iTargetStep: iTargetStep,
-            iTargetIdx: 0,
-            sValue: sValue,
-        });
-        return sArray;
-    }
-
-    function fnHandleDetailDrop(sDetailData, iTargetStep) {
-        var dictDrag = JSON.parse(sDetailData);
-        if (dictDrag.iStep === iTargetStep) return;
-        fnShowConfirmModal(
-            "Move Item",
-            "Moving a command may break dependencies " +
-            "in later steps.\n\nProceed?",
-            function () {
-                _fnExecuteDetailDrop(dictDrag, iTargetStep);
-            }
-        );
-    }
-
-    async function _fnExecuteDetailDrop(dictDrag, iTargetStep) {
-        var sArray = fnMoveDetailToStep(dictDrag, iTargetStep);
-        await fnSaveStepArray(dictDrag.iStep, sArray);
-        await fnSaveStepArray(iTargetStep, sArray);
-        _dictUiState.setExpandedSteps.add(iTargetStep);
-        fnRenderStepListSync();
-        fnHighlightItem(iTargetStep, sArray, 0);
-        fnShowToast(
-            "Moved to " + _dictWorkflowState.dictWorkflow.listSteps[iTargetStep].sName,
-            "success"
-        );
-        fnShowToast(
-            "Modifying pipeline. Ensure that all subsequent " +
-            "steps properly reference the new pipeline.",
-            "warning"
-        );
-    }
-
-    function fnHighlightItem(iStep, sArray, iIdx) {
-        var elItem = document.querySelector(
-            '.detail-item[data-step="' + iStep +
-            '"][data-array="' + sArray +
-            '"][data-idx="' + iIdx + '"]'
-        );
-        if (elItem) {
-            elItem.classList.add("highlight");
-            setTimeout(function () {
-                elItem.classList.remove("highlight");
-            }, 2000);
-        }
-    }
-
     function fnAddNewItem(iStep, sArrayKey) {
         var sPlaceholder = sArrayKey === "saPlotFiles" ?
             "File path..." : "Command...";
@@ -3391,19 +3333,6 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, dictAction.sValue);
             await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
-        } else if (dictAction.sAction === "move") {
-            var sValue = _dictWorkflowState.dictWorkflow.listSteps[dictAction.iTargetStep][
-                dictAction.sArray
-            ].splice(dictAction.iTargetIdx, 1)[0];
-            if (!_dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]) {
-                _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray] = [];
-            }
-            _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
-                .splice(dictAction.iIdx, 0, sValue);
-            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
-            await fnSaveStepArray(
-                dictAction.iTargetStep, dictAction.sArray
-            );
         }
         fnRenderStepList();
         fnShowToast("Undone", "success");
@@ -3669,7 +3598,12 @@ const PipeleyenApp = (function () {
                 "warning");
         }
         if (dictStatus.bWorkflowReloaded && dictStatus.dictWorkflow) {
-            _fnApplyOutOfBandWorkflowReload(dictStatus.dictWorkflow);
+            _fnApplyOutOfBandWorkflowReload(
+                dictStatus.dictWorkflow, dictStatus.iWorkflowEpoch);
+        } else if (!dictStatus.bWorkflowReloaded &&
+            typeof dictStatus.iWorkflowEpoch === "number") {
+            _dictWorkflowState.iWorkflowEpoch =
+                dictStatus.iWorkflowEpoch;
         }
         PipeleyenFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
@@ -4138,6 +4072,9 @@ const PipeleyenApp = (function () {
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
         fnRefreshWorkflowData: fnRefreshWorkflowData,
+        fiGetWorkflowEpoch: function () {
+            return _dictWorkflowState.iWorkflowEpoch;
+        },
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,
         fnShowWorkflowPicker: fnShowWorkflowPicker,
@@ -4208,7 +4145,6 @@ const PipeleyenApp = (function () {
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
-        fnHandleDetailDrop: fnHandleDetailDrop,
         fnReorderStep: fnReorderStep,
         fnHandleContextAction: fnHandleContextAction,
         fiGetContextStepIndex: function () {

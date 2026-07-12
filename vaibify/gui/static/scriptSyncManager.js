@@ -1775,23 +1775,113 @@ var VaibifySyncManager = (function () {
             elBadge, sRemoteKey, sResolved, sWorkdir);
     }
 
-    var _LIST_ROW_OVERFLOW_ITEMS = [
-        {sLabel: "Pull to host", sAction: "pullToHost"},
-        {sLabel: "Copy path", sAction: "copyPath"},
-    ];
+    function _fdictBuildRowContext(elDetailItem) {
+        var elText = elDetailItem.querySelector(".detail-text");
+        return {
+            elItem: elDetailItem,
+            iStep: parseInt(elDetailItem.dataset.step, 10),
+            sArray: elDetailItem.dataset.array || "",
+            iIdx: parseInt(elDetailItem.dataset.idx, 10),
+            sResolved: elDetailItem.dataset.resolved || "",
+            sWorkdir: elDetailItem.dataset.workdir || "",
+            bCommand: elDetailItem.classList.contains("command"),
+            bTrackedFile:
+                elDetailItem.classList.contains("tracked-file"),
+            bInvalid: !!(elText &&
+                elText.classList.contains("file-invalid")),
+        };
+    }
 
-    function fnOpenRowOverflowMenu(elAnchor, sResolved) {
+    function _fbRowIsEditable(dictRow) {
+        return !dictRow.bTrackedFile && !isNaN(dictRow.iStep) &&
+            !isNaN(dictRow.iIdx) && dictRow.sArray !== "";
+    }
+
+    function _flistRowOverflowItems(dictRow) {
+        if (dictRow.bCommand) {
+            return _flistCommandOverflowItems(dictRow);
+        }
+        var listItems = [];
+        if (!dictRow.bInvalid) {
+            listItems.push({sLabel: "View", sAction: "viewFile"});
+            listItems.push(
+                {sLabel: "Pull to host", sAction: "pullToHost"});
+        }
+        if (_fbRowIsEditable(dictRow)) {
+            listItems.push({sLabel: "Edit", sAction: "editItem"});
+        }
+        listItems.push({sLabel: "Copy path", sAction: "copyPath"});
+        if (_fbRowIsEditable(dictRow)) {
+            listItems.push({sLabel: "Delete", sAction: "deleteItem"});
+        }
+        return listItems;
+    }
+
+    function _flistCommandOverflowItems(dictRow) {
+        var dictFiles = VaibifyUtilities.fdictExtractCommandFiles(
+            dictRow.sResolved);
+        var listInputs = _flistFilterDeclaredOutputs(
+            dictFiles.listInputFiles, dictRow);
+        var listItems = [];
+        if (dictFiles.sScript) {
+            listItems.push({
+                sLabel: listInputs.length > 0 ?
+                    "View Script" : "View",
+                sAction: "viewScript",
+                sPath: dictFiles.sScript,
+            });
+        }
+        if (listInputs.length > 0) {
+            listItems.push({
+                sLabel: listInputs.length > 1 ?
+                    "View Input…" : "View Input",
+                sAction: "viewInput",
+                listInputs: listInputs,
+            });
+        }
+        listItems.push({sLabel: "Edit", sAction: "editItem"});
+        listItems.push({sLabel: "Copy command", sAction: "copyPath"});
+        listItems.push({sLabel: "Delete", sAction: "deleteItem"});
+        return listItems;
+    }
+
+    function _fsJoinCommandPath(sWorkdir, sPath) {
+        if (!sWorkdir || sPath.startsWith("/")) return sPath;
+        return (sWorkdir.endsWith("/") ?
+            sWorkdir : sWorkdir + "/") + sPath;
+    }
+
+    function _flistFilterDeclaredOutputs(listCandidates, dictRow) {
+        // A command argument matching one of the step's declared
+        // data/plot files is an output, not an input; those files
+        // already have their own rows with a View action.
+        var elDetail = dictRow.elItem.closest(".step-detail");
+        var setDeclaredOutputs = new Set();
+        if (elDetail) {
+            elDetail.querySelectorAll(".detail-item.output").forEach(
+                function (elOutput) {
+                    setDeclaredOutputs.add(
+                        elOutput.dataset.resolved || "");
+                });
+        }
+        return listCandidates.filter(function (sPath) {
+            return !setDeclaredOutputs.has(
+                _fsJoinCommandPath(dictRow.sWorkdir, sPath));
+        });
+    }
+
+    function fnOpenRowOverflowMenu(elAnchor, elDetailItem) {
         var elMenu = document.getElementById("rowOverflowMenu");
         if (!elMenu) return;
         fnDismissAllPicklists();
+        var dictRow = _fdictBuildRowContext(elDetailItem);
         var elList = elMenu.querySelector(".picklist-items");
         elList.innerHTML = "";
-        _LIST_ROW_OVERFLOW_ITEMS.forEach(function (dictItem) {
+        _flistRowOverflowItems(dictRow).forEach(function (dictItem) {
             elList.appendChild(_fnRenderPicklistItem(
                 dictItem,
                 function (dictSelected) {
-                    _fnHandleRowOverflowSelect(
-                        dictSelected, sResolved);
+                    _fnHandleRowOverflowSelect(dictSelected, dictRow);
                 },
             ));
         });
@@ -1799,15 +1889,74 @@ var VaibifySyncManager = (function () {
         _fnAttachAutoDismissListeners();
     }
 
-    function _fnHandleRowOverflowSelect(dictItem, sResolved) {
+    function _fnHandleRowOverflowSelect(dictItem, dictRow) {
         fnDismissAllPicklists();
-        if (dictItem.sAction === "pullToHost") {
-            PipeleyenFilePull.fnPromptPullToHost(sResolved);
+        if (dictItem.sAction === "viewFile") {
+            _fnViewRowFile(dictRow);
+        } else if (dictItem.sAction === "viewScript") {
+            _fnViewCommandFile(dictItem.sPath, dictRow.sWorkdir);
+        } else if (dictItem.sAction === "viewInput") {
+            _fnViewCommandInputs(
+                dictItem.listInputs, dictRow.sWorkdir);
+        } else if (dictItem.sAction === "pullToHost") {
+            PipeleyenFilePull.fnPromptPullToHost(dictRow.sResolved);
+        } else if (dictItem.sAction === "copyPath") {
+            PipeleyenFileOps.fnCopyToClipboard(dictRow.sResolved);
+        } else if (dictItem.sAction === "editItem") {
+            PipeleyenFileOps.fnInlineEditItem(
+                dictRow.elItem, dictRow.iStep,
+                dictRow.sArray, dictRow.iIdx);
+        } else if (dictItem.sAction === "deleteItem") {
+            PipeleyenApp.fnDeleteDetailItem(
+                dictRow.iStep, dictRow.sArray, dictRow.iIdx);
+        }
+    }
+
+    function fnViewDetailRow(elDetailItem) {
+        var dictRow = _fdictBuildRowContext(elDetailItem);
+        if (!dictRow.sResolved) return;
+        _fnViewRowFile(dictRow);
+    }
+
+    function _fnViewRowFile(dictRow) {
+        var elText = dictRow.elItem.querySelector(".detail-text");
+        if ((elText && elText.classList.contains("file-binary")) ||
+            VaibifyUtilities.fbIsBinaryFile(dictRow.sResolved)) {
+            PipeleyenApp.fnShowBinaryNotViewable();
             return;
         }
-        if (dictItem.sAction === "copyPath") {
-            PipeleyenFileOps.fnCopyToClipboard(sResolved);
+        if (elText && PipeleyenApp.fbIsFileMissing(elText)) {
+            PipeleyenApp.fnShowOutputNotAvailable();
+            return;
         }
+        PipeleyenFigureViewer.fnDisplayInNextViewer(
+            dictRow.sResolved, dictRow.sWorkdir);
+    }
+
+    function _fnViewCommandFile(sPath, sWorkdir) {
+        if (VaibifyUtilities.fbIsBinaryFile(sPath)) {
+            PipeleyenApp.fnShowBinaryNotViewable();
+            return;
+        }
+        PipeleyenFigureViewer.fnDisplayInNextViewer(sPath, sWorkdir);
+    }
+
+    function _fnViewCommandInputs(listInputs, sWorkdir) {
+        if (listInputs.length === 1) {
+            _fnViewCommandFile(listInputs[0], sWorkdir);
+            return;
+        }
+        var listChoices = listInputs.map(function (sPath) {
+            return {
+                sLabel: sPath,
+                fnCallback: function () {
+                    _fnViewCommandFile(sPath, sWorkdir);
+                },
+            };
+        });
+        PipeleyenModals.fnShowFileChoiceModal(
+            "View Input", "Which input file do you want to view?",
+            listChoices);
     }
 
     async function _fnRunSyncOnce(
@@ -2686,6 +2835,7 @@ var VaibifySyncManager = (function () {
         fnResetState: fnResetState,
         fnOpenRemotePicklistForBadge: fnOpenRemotePicklistForBadge,
         fnOpenRowOverflowMenu: fnOpenRowOverflowMenu,
+        fnViewDetailRow: fnViewDetailRow,
         fnDismissAllPicklists: fnDismissAllPicklists,
         fnOpenGitIdentityModal: fnOpenGitIdentityModal,
         fnCloseGitIdentityModal: fnCloseGitIdentityModal,

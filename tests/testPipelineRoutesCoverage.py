@@ -329,8 +329,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -394,8 +395,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -461,8 +463,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ) as mockModTimes, patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -541,8 +544,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -618,8 +622,9 @@ class TestFdictFetchOutputStatus:
             "._flistCollectOutputPaths",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -701,8 +706,9 @@ class TestFdictFetchOutputStatus:
             ".fnCollectMarkerPathsByStep",
             return_value={0: sMarkerPath},
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fdictGetModTimes",
-            return_value={},
+            "vaibify.gui.routes.pipelineRoutes"
+            ".ftGetModTimesAndFingerprint",
+            return_value=({}, ""),
         ) as mockModTimes, patch(
             "vaibify.gui.routes.pipelineRoutes"
             ".fdictCollectOutputPathsByStep",
@@ -1405,7 +1411,6 @@ class TestWorkflowDiscoveryRoute:
 
 
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
-    "_fdictGetModTimes",
     "fdictCollectOutputPathsByStep",
     "fnCollectMarkerPathsByStep",
     "_flistDetectAndInvalidate",
@@ -1428,6 +1433,7 @@ def _fdictPollLevelPatchReturns(listLevel1, listLevel2, listLevel3):
         for sName in _LIST_EMPTY_DICT_POLL_PATCH_NAMES
     }
     dictReturns[sModule + "_flistCollectOutputPaths"] = []
+    dictReturns[sModule + "ftGetModTimesAndFingerprint"] = ({}, "")
     dictReturns[sModule + "_fbCheckStaleUserVerification"] = False
     dictReturns[sGates + "fiAICSLevel"] = 1
     dictReturns[sGates + "flistLevel1Blockers"] = listLevel1
@@ -1534,6 +1540,34 @@ class TestPollLevelStatePayload:
         assert set(dictResult["dictWorkflowLevelHighWater"]) == {
             "1", "2", "3",
         }
+
+    @pytest.mark.asyncio
+    async def test_inactive_step_with_outputs_on_disk_is_unassessed(self):
+        """The poll must thread ``dictMaxMtimeByStep`` into the level
+        projection: an inactive step whose declared outputs exist on
+        disk arrives on the wire as ``unassessed``, never
+        ``not-started``. A dropped argument silently reverts every
+        such step to not-started while the unit suite stays green —
+        this is the wire-level guard."""
+        dictStep = {
+            "sDirectory": "stepA", "sName": "A",
+            "saDataFiles": ["stepA/output.json"],
+            "dictVerification": {"sUser": "untested"},
+        }
+        dictWorkflow = _fdictBuildLevelWorkflow([dictStep])
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []):
+            with patch(
+                "vaibify.gui.routes.pipelineRoutes."
+                "_fdictComputeMaxMtimeByStep",
+                return_value={"0": "1750000000"},
+            ):
+                dictResult = await _fdictFetchOutputStatus(
+                    dictCtx, "cid1", dictWorkflow, {},
+                )
+        for sLevelKey in ("s1", "s2", "s3"):
+            assert dictResult["dictStepLevels"]["0"][sLevelKey][
+                "sState"] == "unassessed", sLevelKey
 
     @pytest.mark.asyncio
     async def test_response_carries_envelope_detail_keys(self):

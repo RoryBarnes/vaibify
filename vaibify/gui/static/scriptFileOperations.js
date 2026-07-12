@@ -41,15 +41,14 @@ var PipeleyenFileOps = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var sRaw = dictWorkflow.listSteps[iStep][sArray][iIdx];
         var elText = el.querySelector(".detail-text");
-        var elActions = el.querySelector(".detail-actions");
-        elActions.style.display = "none";
+        var elOverflowButton = el.querySelector(".row-overflow-btn");
 
         var elInput = document.createElement("input");
         elInput.type = "text";
         elInput.className = "detail-edit-input";
         elInput.value = sRaw;
         elText.style.display = "none";
-        el.insertBefore(elInput, elActions);
+        el.insertBefore(elInput, elOverflowButton);
         elInput.focus();
         elInput.select();
 
@@ -66,7 +65,6 @@ var PipeleyenFileOps = (function () {
             elInput.removeEventListener("blur", fnFinishEdit);
             elInput.remove();
             elText.style.display = "";
-            elActions.style.display = "";
             PipeleyenApp.fnRenderStepList();
         }
 
@@ -77,7 +75,6 @@ var PipeleyenFileOps = (function () {
                 elInput.removeEventListener("blur", fnFinishEdit);
                 elInput.remove();
                 elText.style.display = "";
-                elActions.style.display = "";
             }
         });
         elInput.addEventListener("blur", fnFinishEdit);

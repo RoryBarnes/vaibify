@@ -111,8 +111,15 @@ var VaibifyLegendPanel = (function () {
         {
             sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
                 "not-started", "legend sample"),
-            sLabel: "Grey circle — not started: no activity at " +
-                "this level yet",
+            sLabel: "Hollow grey circle — not started: no outputs " +
+                "on disk and no activity at this level yet",
+        },
+        {
+            sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
+                "unassessed", "legend sample"),
+            sLabel: "Grey filled circle — unassessed: outputs " +
+                "exist on disk, but no tests, checks, or sign-off " +
+                "have been recorded yet",
         },
         {
             sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
@@ -133,9 +140,9 @@ var VaibifyLegendPanel = (function () {
         {
             sSampleHtml: VaibifyUtilities.fsBuildLevelCell(
                 "unknown", "legend sample"),
-            sLabel: "Hollow grey circle — unknown: GitHub/Zenodo " +
-                "have not been checked recently; refresh remote " +
-                "status to find out",
+            sLabel: "Question mark — unknown: GitHub/Zenodo have " +
+                "not been checked recently; refresh remote status " +
+                "to find out",
         },
         {
             sSampleHtml: VaibifyUtilities.fsBuildLevelCell(

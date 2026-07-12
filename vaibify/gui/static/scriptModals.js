@@ -133,6 +133,37 @@ var PipeleyenModals = (function () {
         });
     }
 
+    function fnShowFileChoiceModal(sTitle, sMessage, listChoices) {
+        // Variant of fnShowChoiceModal for many file-path options: the
+        // single actions row overflows past a handful of buttons, so
+        // choices render in a wrapping, scrollable grid with a
+        // separate Cancel row.
+        var elExisting = document.getElementById("modalFileChoice");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalFileChoice";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
+            '<p style="white-space:pre-wrap;margin-bottom:16px">' +
+            fnEscapeHtml(sMessage) + '</p>' +
+            '<div class="file-choice-grid" id="fileChoiceGrid"></div>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnFileChoiceCancel">' +
+            'Cancel</button></div></div>';
+        document.body.appendChild(elModal);
+        var elGrid = document.getElementById("fileChoiceGrid");
+        listChoices.forEach(function (dictChoice) {
+            elGrid.appendChild(
+                _felBuildChoiceButton(dictChoice, elModal));
+        });
+        document.getElementById("btnFileChoiceCancel")
+            .addEventListener(
+                "click", function () { elModal.remove(); });
+    }
+
     function fnShowErrorModal(sMessage) {
         var elModal = document.getElementById("modalError");
         var elContent = document.getElementById("modalErrorContent");
@@ -427,6 +458,7 @@ var PipeleyenModals = (function () {
         fnShowConfirmModal: fnShowConfirmModal,
         fnShowInputModal: fnShowInputModal,
         fnShowChoiceModal: fnShowChoiceModal,
+        fnShowFileChoiceModal: fnShowFileChoiceModal,
         fnShowErrorModal: fnShowErrorModal,
         fnShowInfoModal: fnShowInfoModal,
         fnShowInlineInput: fnShowInlineInput,

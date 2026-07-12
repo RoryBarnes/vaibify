@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 _VALID_METHODS = {"gh_auth", "keyring", "docker_secret"}
-_RE_SECRET_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_RE_SECRET_NAME = re.compile(r"^[a-zA-Z0-9_:/-]{1,64}$")
 
 
 def fsRetrieveSecret(sName, sMethod):
@@ -41,15 +41,24 @@ def _fnValidateMethod(sMethod):
 def _fnValidateSecretName(sName):
     """Raise ValueError if ``sName`` would interpolate unsafely into paths.
 
-    Audit M6: ``sName`` flows into ``/run/secrets/{sName}`` and into
-    keyring service names. Restrict to a safe alphanumeric/underscore
-    /hyphen alphabet of length 1-64 so a malicious vaibify.yml can't
-    smuggle path-traversal segments, slashes, or shell metacharacters.
+    Audit M6: ``sName`` flows into ``/run/secrets/{sName}`` (see
+    ``_fsRetrieveViaDockerSecret``) and into keyring service names.
+    Per-remote keyring slots use ``service:owner/repo`` form (see
+    ``githubAuth.fsKeyringSlotFor``), so ``:`` and ``/`` are
+    valid alphabet members. The path-segment guard below rejects
+    ``..``, empty segments, and leading slashes so a malicious slot
+    name still cannot escape the ``/run/secrets`` directory.
     """
     if not isinstance(sName, str) or not _RE_SECRET_NAME.match(sName):
         raise ValueError(
             f"Invalid secret name '{sName}'. "
-            "Must match ^[a-zA-Z0-9_-]{1,64}$."
+            "Must match ^[a-zA-Z0-9_:/-]{1,64}$."
+        )
+    listParts = sName.split("/")
+    if "" in listParts or ".." in listParts:
+        raise ValueError(
+            f"Invalid secret name '{sName}'. "
+            "Path segments must be non-empty and cannot be '..'."
         )
 
 
