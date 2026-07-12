@@ -14,7 +14,13 @@ The dashboard has a fixed layout:
 
 - **Top toolbar** — container name, active workflow, the three AICS
   level badges, the **?** Help button, and the Run, Sync, View, and
-  Admin menus.
+  Admin menus. A pulsing **compute indicator** appears beside the
+  container name whenever the container's CPU is busy: theme-tinted
+  when a vaibify step owns the compute, amber when the compute is
+  happening outside the dashboard (an in-container agent or a
+  terminal session running simulations directly — no step blinks in
+  that case, because no step is running). The indicator hides when
+  no reading is available; it never claims the container is idle.
 - **Left panel** — a tabbed panel. For workflow projects the tabs are
   **Main**, **AICS**, **Files**, and **Logs**; for sandbox and toolkit
   projects (no `workflow.json`) they are **Files**, **Repos**, and
@@ -173,6 +179,19 @@ went stale and why — for example "Tests older than data scripts" or
 re-run or re-inspect. Wall-clock and CPU time for the last run, and
 the modification times of the step's data and plot files, are also
 shown.
+
+The expanded quantitative-tests block additionally carries a
+**Falsification** row with a **Check test teeth** button. It
+mutation-tests the step's own Python code against its quantitative
+tests and records the kill-rate: a statement about the tests'
+*fault-detection sensitivity* — "these tests were shown to notice
+deliberately injected faults" — never about the result's accuracy.
+It is deliberately **non-gating** (equivalent mutants make a hard
+pass/fail dishonest) and applies only to deterministic pure-Python
+steps; a step that shells out to a compiled binary reads **not
+applicable**, never green. The record is digest-keyed to the script
+and its standards, so any edit invalidates it. Runs are on-demand
+only — cost is roughly mutants × step runtime.
 
 The **Unit Tests** row expands to the three test categories, with
 buttons to generate and run them — see [Verification](#verification).
@@ -399,6 +418,11 @@ per-service integration architecture.
 Per-file sync state is always visible as the
 [remote badges](#per-file-remote-badges) on file rows, and each remote
 has a requirement row under **Published copies** in the Project block.
+Every one of those rows carries a **Verify now** button that runs the
+authoritative remote comparison in place, and a successful Overleaf
+push re-verifies its row automatically — the row reports the last
+verification, so the action that refreshes it is always one click
+away.
 
 ### The Verify Reproducibility panel
 
@@ -477,6 +501,25 @@ registered in a single catalog. Each action carries a stable name, the
 arguments it accepts, and the verification it triggers when it
 finishes. The agent never invents an action; it picks one from the
 catalog or it falls back to plain shell commands.
+
+### Shipped agent skills
+
+The container also ships ready-made *skills* — task recipes the agent
+loads on demand — installed into the agent's skills directory at
+container start (edit or delete your container's copies freely; an
+image rebuild refreshes them):
+
+- **session-budget** — keeps long autonomous runs alive across Claude
+  session-usage limits: commit-per-work-unit checkpointing with a
+  running resume note as the primary defense, a conservative usage
+  reading (`claude-monitor`, documented as an account-wide lower
+  bound) as the secondary one, and a pause-until-reset mechanic for
+  the 5-hour window. Default pause threshold is 95%; override it by
+  saying so in the task prompt.
+- **read-arxiv** — token-efficient paper reading: fetch the arXiv
+  e-print TeX source instead of the PDF (far fewer tokens, and figure
+  captions arrive as searchable text), read selectively, record the
+  version read, and fall back to the PDF only when no source exists.
 
 From inside a container terminal, you can list the available actions:
 

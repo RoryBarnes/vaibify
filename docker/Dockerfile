@@ -28,10 +28,18 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # isolation here.
 RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
 
-# Generic build tools required by the base image
+# Generic build tools required by the base image. gfortran, cmake,
+# and LAPACK/BLAS are baseline (not per-project system-packages.txt
+# entries, which is a gitignored user config) because the Dockerfile
+# itself needs them unconditionally to build the MultiNest native
+# library below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    gfortran \
+    cmake \
+    liblapack-dev \
+    libblas-dev \
     make \
     git \
     openssh-client \
@@ -180,6 +188,24 @@ RUN pip install --no-cache-dir cosmic-ray
 # gauge — the skill documents this caveat); pure Python, no Node
 # runtime, no network service.
 RUN pip install --no-cache-dir claude-monitor
+
+# Nested-sampling Bayesian inference stack. ultranest is pure pip;
+# pymultinest is only a ctypes wrapper around the native MultiNest
+# library, so MultiNest is built from source here (gfortran, cmake,
+# and LAPACK/BLAS all from the baseline toolchain above — never from
+# the user-configurable system-packages.txt) and its shared libraries
+# installed where the loader finds them — a bare "pip install
+# pymultinest" imports fine and then fails at first use with
+# "libmultinest.so not found".
+RUN git clone --depth 1 \
+        https://github.com/JohannesBuchner/MultiNest.git \
+        /tmp/MultiNest \
+    && cmake -S /tmp/MultiNest -B /tmp/MultiNest/build \
+    && make -C /tmp/MultiNest/build -j"$(nproc)" \
+    && cp -a /tmp/MultiNest/lib/. /usr/local/lib/ \
+    && ldconfig \
+    && rm -rf /tmp/MultiNest
+RUN pip install --no-cache-dir ultranest pymultinest
 
 # Conditional conda/mamba install for non-pip package managers.
 # Wrap the network call so a TLS or routing failure to GitHub /
