@@ -174,6 +174,13 @@ ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
 # files inside the workspace volume; adds no network service.
 RUN pip install --no-cache-dir cosmic-ray
 
+# claude-monitor: the session-usage instrument behind the
+# session-budget agent skill. Parses the LOCAL Claude Code
+# transcripts only (an account-wide lower bound, never an exact
+# gauge — the skill documents this caveat); pure Python, no Node
+# runtime, no network service.
+RUN pip install --no-cache-dir claude-monitor
+
 # Conditional conda/mamba install for non-pip package managers.
 # Wrap the network call so a TLS or routing failure to GitHub /
 # objects.githubusercontent.com produces an actionable diagnostic —
@@ -247,6 +254,7 @@ RUN mkdir -p /etc/vaibify
 COPY container.conf /etc/vaibify/container.conf
 COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
+COPY skills /usr/share/vaibify/skills
 COPY overleafSync.py /usr/share/vaibify/overleafSync.py
 COPY latexConnector.py /usr/share/vaibify/latexConnector.py
 COPY zenodoClient.py /usr/share/vaibify/zenodoClient.py

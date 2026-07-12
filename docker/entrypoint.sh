@@ -241,6 +241,33 @@ HELPER
 # ---------------------------------------------------------------------------
 # fnConfigureGit: Wire git's credential lookup to the callback helper
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# fnInstallAgentSkills: Copy vaibify-shipped agent skills into the
+# container user's Claude Code skills directory. Skills are baked into
+# the image at /usr/share/vaibify/skills (one directory per skill,
+# each holding a SKILL.md) and copied fresh on every container start
+# so an image rebuild updates them. The copy is chowned to the
+# unprivileged user so the agent can read them and the researcher can
+# edit or disable them without touching the image.
+# ---------------------------------------------------------------------------
+fnInstallAgentSkills() {
+    local sSourceDir="/usr/share/vaibify/skills"
+    local sTargetDir="/home/${CONTAINER_USER}/.claude/skills"
+    if [ ! -d "${sSourceDir}" ]; then
+        return 0
+    fi
+    mkdir -p "${sTargetDir}"
+    cp -R "${sSourceDir}/." "${sTargetDir}/"
+    # --no-dereference: this runs as root over a directory the
+    # unprivileged user can seed with symlinks between restarts; a
+    # followed link would chown a file outside the target.
+    chown -R --no-dereference \
+        "${CONTAINER_USER}:${CONTAINER_USER}" \
+        "/home/${CONTAINER_USER}/.claude"
+    echo "[vaib] Agent skills installed:" \
+        "$(ls "${sSourceDir}" | tr '\n' ' ')"
+}
+
 fnConfigureGit() {
     local sToken
     sToken=$(fsReadGitHubToken)
@@ -1296,6 +1323,7 @@ fnRunWorkspacePhase() {
     fnSourceBinariesInEnv
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
+    fnInstallAgentSkills
     fnPersistGitConfig
     fnParseReposConf
     fnSyncAllRepos
