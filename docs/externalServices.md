@@ -34,6 +34,21 @@ installed in the container. Anything that needs vaibify internals
 boundary religiously — several rounds of debugging went into
 restoring it.
 
+## Reading the manuscript back (pull-manuscript)
+
+Overleaf sync is figure-*out*, but the in-container agent sometimes
+needs to read the manuscript *in* — to check the paper against the
+workflow's results. The `pull-manuscript` agent action
+(`POST /api/overleaf/{id}/pull-manuscript`, registered agent-safe in
+`actionCatalog.py`) mirrors the project's `.tex`/`.bib`/`.bbl`/`.sty`
+/`.cls` sources — derived from the Overleaf mirror listing, never from
+request input — into `<project-repo>/.vaibify/manuscript/`. That
+directory is git-ignored (via `stateManager.py`'s `.vaibify/.gitignore`
+body and a self-ignoring `.gitignore` the pull writes into the target),
+so the convenience copy can never dirty the repo. The `read-manuscript`
+agent skill drives it. Reuses `syncDispatcher.ftResultPullFromOverleaf`
+and `overleafMirror.flistListMirrorTree`.
+
 ## What to reuse from Overleaf
 
 These modules and patterns are **ready to generalize** as-is:

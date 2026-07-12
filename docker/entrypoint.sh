@@ -319,18 +319,40 @@ fnParseReposConf() {
 # fnCloneRepo: Clone a repository that does not yet exist locally
 # Arguments: sName sUrl sBranch
 # ---------------------------------------------------------------------------
+# fbRefLooksLikeCommit: True when a declared ref is a raw commit hash
+# (7-40 hex characters) rather than a branch or tag name. Hash-pinned
+# refs are the reproducible-binary story: a rebuild must produce the
+# same source tree regardless of where the branch has since moved.
+fbRefLooksLikeCommit() {
+    case "$1" in
+        *[!0-9a-f]*) return 1 ;;
+    esac
+    [ "${#1}" -ge 7 ] && [ "${#1}" -le 40 ]
+}
+
 fnCloneRepo() {
     local sName="$1"
     local sUrl="$2"
-    local sBranch="$3"
+    local sRef="$3"
     local sRepoPath="${WORKSPACE}/${sName}"
     local sStderrFile
     sStderrFile=$(mktemp /tmp/vaib_clone_err.XXXXXX)
 
-    echo "[vaib] Cloning ${sName} (branch: ${sBranch})..."
-    if ! git clone --verbose --branch "${sBranch}" "${sUrl}" \
-        "${sRepoPath}" 2> "${sStderrFile}"; then
-        fnHandleCloneFailure "${sName}" "${sBranch}" "${sStderrFile}"
+    echo "[vaib] Cloning ${sName} (ref: ${sRef})..."
+    if fbRefLooksLikeCommit "${sRef}"; then
+        # git clone --branch accepts branches and tags but never raw
+        # commit hashes; a pinned commit needs clone-then-checkout.
+        if ! git clone --verbose "${sUrl}" "${sRepoPath}" \
+                2> "${sStderrFile}" \
+            || ! git -C "${sRepoPath}" checkout --quiet "${sRef}" \
+                2>> "${sStderrFile}"; then
+            fnHandleCloneFailure "${sName}" "${sRef}" "${sStderrFile}"
+            rm -f "${sStderrFile}"
+            return 0
+        fi
+    elif ! git clone --verbose --branch "${sRef}" "${sUrl}" \
+            "${sRepoPath}" 2> "${sStderrFile}"; then
+        fnHandleCloneFailure "${sName}" "${sRef}" "${sStderrFile}"
         rm -f "${sStderrFile}"
         return 0
     fi
@@ -833,190 +855,21 @@ trivial tests just to satisfy the dashboard.
 
 ## AI Containment Scale (AICS)
 
-When a researcher asks you to "make this workflow reach AICS Level N" or
-"raise this to Level N", the AICS is a five-rung reproducibility ladder
-defined in the project's vision document. Each rung is strictly stronger
-than the last. Vaibify implements L1-L3; L4 and L5 are deliberate
-non-goals at present.
+The AICS is a five-rung reproducibility ladder (L1 Self-Consistent,
+L2 Published, L3 Reproducible; L4/L5 are non-goals). To raise or audit
+a workflow's level, use the **aics-ladder** skill — it carries the
+ordered L1->L3 gate walkthrough and the known audit traps.
 
-Full definitions and what each rung proves vs. does not prove live in
-`docs/vision.md` and `docs/reproducibility.md` in the host repo. The
-summaries below are operational: what you need to do to get there.
+Two rules that must never be violated, skill or not:
 
-### L1 — Self-Consistent
-
-All workflow tests pass; every declared output file's content hash
-matches what was recorded at verification time. The workflow must live
-inside a git repository (vaibify enforces this at connect time; if a
-researcher hits a "no git repo" error, the fix is `git init` in the
-project directory).
-
-Agent actions to reach L1:
-
-1. `vaibify-do run-all` — execute the pipeline end to end.
-2. `vaibify-do run-all-tests` — run every step's unit, integrity,
-   qualitative, and quantitative tests.
-3. `vaibify-do verify-only` — confirm declared outputs exist and their
-   hashes match the recorded baseline.
-4. Confirm the level: `vaibify-do check-l2-readiness` returns
-   `iAICSLevel` and `bAtLeastLevel1`. Require `iAICSLevel >= 1`. If it
-   stays 0 after the prior steps succeeded, surface the discrepancy to
-   the researcher — the backend derivation is the ground truth.
-
-**Never hand-roll a verification audit.** The backend derivation is
-the only authority on levels; do not reimplement it by inspecting raw
-files. Two traps that have produced false "not at L1" reports:
-
-- Test markers (`<repo>/.vaibify/test_markers/<slug>/*.json`) are
-  receipts of the *last external run* — one marker records only the
-  categories that run executed. The accumulated ledger is
-  `.vaibify/state.json` (`dictStepState.<dir>.dictVerification`).
-- Marker `dictOutputHashes` values are **git blob SHA-1s**
-  (`sha1("blob <size>\0" + content)`), not sha256/sha1/md5 of the
-  bytes. Comparing with any other digest reports every file as
-  drifted. Uniform 100% mismatch means your algorithm is wrong, not
-  that the data drifted.
-
-Committing the canonical state (`vaibify-do commit-canonical`) and
-verifying the manifest (`vaibify-do verify-manifest`) are L2
-preparation, not L1 requirements: L1 is per-step self-consistency
-inside the container. Uncommitted-but-consistent files (git-dirty
-scripts whose outputs and tests were regenerated afterward) block L2,
-never L1.
-
-`MANIFEST.sha256`, `requirements.lock`, and `.vaibify/environment.json`
-are regenerated automatically when the workflow first crosses into L1;
-if they are missing afterward (the promotion can land through a path
-the hook does not observe), regenerate them from this shell with the
-manifest / lockfile / snapshot CLI helpers (`vaibify-do --describe
-generate-l3-envelope` explains which artifact is missing); do not
-write them by hand.
-
-### L2 — Published
-
-Every canonical file's hash matches what is published at an immutable
-remote authority (GitHub commit SHA, Overleaf revision, Zenodo DOI).
-
-Agent actions to reach L2:
-
-1. Confirm L1 first.
-2. Confirm the reproducibility envelope exists at the project-repo
-   root: `MANIFEST.sha256`, `requirements.lock`, and
-   `.vaibify/environment.json`. If any is missing, the workflow is not
-   all-green yet — return to L1.
-3. **Commit the canonical state before any push.** The envelope files
-   above, plus `reproduce.sh` and the `workflow.json` itself, are
-   *generated but never auto-committed* — vaibify does not write to the
-   researcher's repo on its own. Any canonical file left untracked or
-   dirty blocks L2: an uncommitted file cannot be in the pushed commit,
-   so the GitHub mirror stays red until it is committed. Do not read
-   this off raw `git status` yourself — run `vaibify-do manifest-check`,
-   which returns `listNeedsCommit`, the exact set of canonical files
-   awaiting commit. If it is non-empty, commit them with `vaibify-do
-   commit-canonical` (or surface the request to the researcher), then
-   proceed. A red/untracked canonical file in the dashboard's git
-   listing is an L2 blocker, not cosmetic — treat it as actionable, not
-   noise.
-4. **Surface to the user, do not invoke:**
-   - "Push the current commit and manifest to GitHub" → researcher
-     clicks Push to GitHub.
-   - "Sync the manuscript files to Overleaf" → researcher clicks Push
-     to Overleaf.
-   - "Publish this to Zenodo for a permanent DOI" → researcher clicks
-     Publish to Zenodo.
-
-   These are trust-boundary actions. `push-to-github` is agent-safe
-   (the route verifies the token owner matches the remote before
-   pushing). `push-to-overleaf`, `publish-to-zenodo`, and
-   `accept-plots-as-standard` remain user-only — publication to
-   archival services requires human attestation.
-
-5. After the researcher pushes, `vaibify-do verify-remote` confirms the
-   remote hashes still match the local manifest.
-
-### L3 — Reproducible
-
-A third party can re-fetch the published artefacts, get byte-identical
-files, and (with the recorded Docker image + pinned dependencies)
-re-execute the workflow from source.
-
-Agent actions to reach L3:
-
-1. Confirm L2 first.
-2. `vaibify-do check-l3-readiness` — returns per-criterion pass/fail
-   for the six L3 readiness verifiers: manifest complete, dependency
-   lock hash-pinned, environment digest-pinned, Dockerfile pinned,
-   reproduce.sh present + in manifest, determinism declared. Use the
-   gap dict to drive the rest of the L3 ladder.
-3. `vaibify-do audit-determinism` — alias of check-l3-readiness for
-   determinism-focused queries (RNG seeds, BLAS pinning,
-   CUBLAS_WORKSPACE_CONFIG, /dev/urandom reads). Translate the
-   determinism row into a per-step fix list for the researcher.
-4. `vaibify-do generate-l3-envelope` — read the readiness card's
-   missing-envelope rows and regenerate the manifest, requirements
-   lock, and environment.json so the L3 verifiers go green.
-5. `vaibify-do generate-reproduce-script` — render `reproduce.sh`
-   from the active workflow when the readiness card flags it as
-   absent or out of date.
-6. `vaibify-do view-l3-attestation` — return the current
-   `.vaibify/l3_attestation.json` plus the archived history of
-   attempts. Useful to confirm whether a rebuild has been done or
-   to explain why the L3 badge has not lit up.
-7. `vaibify-do pin-base-image-digest` (user-only) — surface the
-   Dockerfile rewrite suggestion. The actual Dockerfile edit is a
-   researcher decision; never invoke silently.
-8. `vaibify-do verify-l3-reproducibility` (user-only) — kicks off
-   the expensive rebuild + hash compare that writes the L3
-   attestation. Surface as a researcher request, never as an
-   autonomous action; the rebuild can take hours.
-
-### L4 — Archived, L5 — Attested
-
-Out of vaibify's current scope. If a researcher asks for L4 or L5, tell
-them honestly that vaibify targets L3 as its ceiling and point them at
-`docs/vision.md` for the full ladder. L4 requires a manifest of every
-external input with hashes plus archival snapshots; L5 requires
-independent third parties to sign attestations in a transparency log.
-
-### How vaibify tracks ladder state
-
-Each rung the researcher reaches is observable from the workflow's
-backend state, not just from the agent's reasoning. When you report
-"L1 reached", correlate with the state the researcher can see:
-
-- **The single authoritative signal is the integer `iAICSLevel`**,
-  derived by the backend on every load, save, and dashboard poll, and
-  persisted in `<project-repo>/.vaibify/state.json`. Read it with
-  `vaibify-do check-l2-readiness`, which returns `iAICSLevel` plus the
-  per-criterion L2 gaps (`bAtLeastLevel1`, `bGithubFullySynced`,
-  `bZenodoFullySynced`, `bArxivFullySynced`, `bAiDeclarationAttested`,
-  `bAtLeastLevel2`). The dashboard surfaces the level as a theme change
-  and per-step L1/L2/L3 cells.
-- **L3** has its own per-criterion report: `vaibify-do
-  check-l3-readiness` (manifest, lockfile, environment digest,
-  Dockerfile pin, reproduce.sh, determinism declaration).
-- **`bVaibified` is retired.** It was the pre-ladder L1 flag; the
-  v3-to-v4 workflow migration deletes it on load. If you find it in a
-  workflow file or in older notes, ignore it and use `iAICSLevel` —
-  never report a level from `bVaibified`.
-
-### Quick reference
-
-When asked to reach Level N, walk these gates in order, stopping at N:
-
-- **L1**: `run-all` → `run-all-tests` → `verify-only` → confirm
-  `iAICSLevel >= 1` via `check-l2-readiness`.
-- **L2**: L1 + `commit-canonical` + envelope present + **surface**
-  push requests; confirm the `check-l2-readiness` gaps close.
-- **L3**: L2 + container digest in `environment.json` + hash-pinned
-  `requirements.lock` + no unseeded-randomness badges (confirm via
-  `check-l3-readiness`) + recommend `vaibify reproduce`.
-- **L4, L5**: not supported; explain and stop.
-
-Never silently invoke `push-to-overleaf`, `publish-to-zenodo`, or
-`accept-plots-as-standard` — those are user-only by design. Surface
-the request; let the researcher click. `push-to-github` is
-agent-callable when the researcher requests it.
+- **`iAICSLevel` from `vaibify-do check-l2-readiness` is the only
+  authoritative level signal.** Never hand-roll a verification audit
+  from raw files; when your file inspection disagrees with the
+  backend, the backend wins. (`bVaibified` is retired — ignore it.)
+- **Publication is user-only.** Never silently invoke
+  `push-to-overleaf`, `publish-to-zenodo`, or
+  `accept-plots-as-standard`; surface the request and let the
+  researcher click. `push-to-github` is agent-callable on request.
 
 ## Conventions
 
@@ -1027,146 +880,16 @@ agent-callable when the researcher requests it.
 
 ## Creating New Pipeline Steps
 
-When a user asks you to create a new analysis or plot (e.g., "Create a script that computes
-the probability distribution of water the Earth formed with and a plot of it"), follow this
-protocol. The goal is a fully wired step: scripts, outputs, dependencies, and workflow JSON
-entry — with zero untracked files.
+To author a new analysis or plot step, use the
+**create-pipeline-step** skill — it carries the 5-phase protocol
+(discover dependencies, name, wire the cross-step tokens, write the
+workflow entry, verify).
 
-### Phase 1: Discover Context
-
-1. Find the workflow JSON: `find /workspace -maxdepth 4 -path '*/.vaibify/workflows/*.json'`
-2. Read `listSteps` to understand existing steps, their outputs, and available variables.
-3. Identify **backward dependencies**: which existing steps produce data this new step needs?
-   Look for output files in `saDataFiles` that match the needed inputs.
-4. Identify **forward dependents**: search all steps for `{StepNN.*}` references that would
-   be affected if you insert (rather than append) the new step. **Strongly prefer appending**
-   new steps at the end to avoid renumbering. If insertion is required, enumerate every
-   reference that must change and confirm with the user before proceeding.
-5. Determine placement: the new step must come after all its dependencies.
-
-### Phase 2: Name and Structure
-
-1. Choose a **camelCase directory name** that captures the scientific goal, not the method.
-   No abbreviations for words under 8 characters. Examples: `waterProbabilityDistribution`,
-   `cumulativeXuvFlux`, `keplerFlareFit`.
-2. Create the directory at the same level as other step directories in the repository.
-3. Name scripts with standard prefixes:
-   - `data<Purpose>.py` for data analysis (e.g., `dataWaterProbability.py`)
-   - `plot<Purpose>.py` for visualization (e.g., `plotWaterProbability.py`)
-4. Name output files to match the step directory or scientific content:
-   - Data: `waterProbability_samples.npy`, `waterProbability_stats.json`
-   - Plot: `{sPlotDirectory}/WaterProbability.{sFigureType}`
-
-### Phase 3: Write the Scripts
-
-Follow the style guide (check the repo's CLAUDE.md first, then the workspace CLAUDE.md):
-
-1. **Hungarian notation** for all variables (b=bool, i=int, f=float, s=string, da=array of doubles, etc.)
-2. **Function prefixes** based on return type (`fb`, `fi`, `fs`, `fn`, `fda`, `fdict`, `flist`)
-3. **Functions under 20 lines** — extract reusable blocks into separate functions
-4. **No abbreviations** for words under 8 characters
-5. **Import vplot** for any matplotlib plotting
-6. **Accept inputs as command-line arguments — this is a strict requirement, not a style suggestion**. Every file your script reads from another step *must* be a CLI argument, and the workflow JSON command *must* reference it via a \`{StepNN.varname}\` token. Hardcoded paths to another step's outputs (e.g. \`open("../OtherStep/output.json")\`) are invisible to vaibify's dependency parser and silently break the AICS Level 1 contract. Your own step-directory files may be hardcoded; the boundary is the step.
-7. **CLI naming convention**: kebab-case for the argument (\`--flare-samples\`), snake_case for the matching token (\`{Step02.flare_samples}\`). The variable name in the token is the basename (without extension) of the producer step's \`saDataFiles\` entry.
-8. **Use argparse, not raw sys.argv**, so the contract is explicit.
-9. **Data outputs** go in the step's own directory
-10. **Plot outputs** go in \`{sPlotDirectory}/\`
-
-Worked example — A02 (producer) declares its output; A03 (consumer) reads it via token:
-
-\`\`\`json
-{
-  "iIndex": 2, "sName": "KeplerFfd",
-  "saDataCommands": ["python dataKeplerFfd.py"],
-  "saDataFiles": ["flare_samples.npy"]
-}
-{
-  "iIndex": 3, "sName": "FfdAgeComparison",
-  "saPlotCommands": [
-    "python plotFfd.py --flare-samples {Step02.flare_samples} {sPlotDirectory}/ffd.{sFigureType}"
-  ]
-}
-\`\`\`
-
-A03's plot script uses argparse to accept \`--flare-samples\`; the director substitutes the actual path at runtime. The A02 → A03 edge becomes visible to vaibify automatically.
-
-Data script pattern:
-```python
-#!/usr/bin/env python3
-"""One-line description of what this script computes."""
-import sys
-# ... imports ...
-
-def fda<Core>(...):
-    """Core computation."""
-    ...
-
-def fn<Save>(...):
-    """Save results to disk."""
-    ...
-
-if __name__ == "__main__":
-    # Parse arguments, load upstream data, compute, save
-```
-
-Plot script pattern:
-```python
-#!/usr/bin/env python3
-"""One-line description of what this plots."""
-import sys
-import matplotlib.pyplot as plt
-import vplot
-
-def fnPlot<Name>(daData, sOutputPath):
-    """Generate the figure."""
-    ...
-
-if __name__ == "__main__":
-    sOutputPath = sys.argv[1]
-    # Load data from step directory, generate plot
-```
-
-### Phase 4: Update the Workflow JSON
-
-Add a new entry to `listSteps`:
-
-```json
-{
-    "sName": "Human-Readable Step Name",
-    "sDirectory": "stepDirectoryName",
-    "bRunEnabled": true,
-    "bPlotOnly": false,
-    "bInteractive": false,
-    "saDataCommands": [
-        "python dataWaterProbability.py {Step06.lxuv_constraints}"
-    ],
-    "saDataFiles": [
-        "waterProbability_samples.npy",
-        "waterProbability_stats.json"
-    ],
-    "saTestCommands": [],
-    "saPlotCommands": [
-        "python plotWaterProbability.py {sPlotDirectory}/WaterProbability.{sFigureType}"
-    ],
-    "saPlotFiles": [
-        "{sPlotDirectory}/WaterProbability.{sFigureType}"
-    ]
-}
-```
-
-Rules:
-- Every output file MUST be declared in `saDataFiles` or `saPlotFiles` — no untracked files.
-- Every input from another step MUST use `{StepNN.stem}` syntax — no implicit imports.
-- `saTestCommands` should include a basic sanity check (e.g., file exists, has expected shape).
-- `bPlotOnly: true` only if the step has no data commands and only plots pre-existing data.
-- `bInteractive: true` only for steps requiring human judgment (e.g., visual inspection).
-
-### Phase 5: Verify
-
-1. Run the data script to confirm it executes without errors.
-2. Run the plot script to confirm it produces a figure.
-3. Run `python /workspace/.vaibify/director.py --config <workflow.json> --verify-only` if available.
-4. Report the step number, directory, and output files to the user.
+The one rule that must never be violated: **every file a script reads
+from another step must be a CLI argument named in the workflow command
+via a `{StepNN.varname}` token.** A hardcoded cross-step path is
+invisible to the dependency parser and silently breaks the L1
+contract. Own-step files may be hardcoded; the boundary is the step.
 
 ## Managing Package Dependencies
 

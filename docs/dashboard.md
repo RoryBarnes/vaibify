@@ -520,6 +520,28 @@ image rebuild refreshes them):
   e-print TeX source instead of the PDF (far fewer tokens, and figure
   captions arrive as searchable text), read selectively, record the
   version read, and fall back to the PDF only when no source exists.
+- **aics-ladder** — the ordered L1→L2→L3 walkthrough for raising or
+  auditing a workflow's reproducibility level, with the known audit
+  traps codified (`iAICSLevel` is the only authoritative signal;
+  marker hashes are git blob SHA-1s; publication is user-only).
+- **create-pipeline-step** — the five-phase protocol for authoring a
+  fully wired step, centred on the `{StepNN.varname}` cross-step
+  token contract.
+- **vaibify-doc-map** — a question→(doc, section) table so the agent
+  reads the right 30 lines of vaibify's own docs (staged in-container
+  at `/usr/share/vaibify/docs`) instead of a whole file.
+- **diagnose-failed-run** — a triage tree over the read-only
+  `get-pipeline-state` and `get-host-log-tail` actions for a dead or
+  stuck run.
+- **read-manuscript** — pull the project's own Overleaf manuscript
+  (via the `pull-manuscript` action) into a git-ignored scratch copy
+  and read it, rather than answering from memory.
+
+Moving the ladder and step-authoring walkthroughs into on-demand
+skills also slims the always-loaded container `CLAUDE.md` from ~470 to
+~170 lines — a direct per-session token saving, with the
+safety-critical rules (authoritative level signal, user-only
+publication, the token contract) kept inline.
 
 From inside a container terminal, you can list the available actions:
 

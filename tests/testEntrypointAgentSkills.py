@@ -137,3 +137,120 @@ def test_read_arxiv_respects_network_isolation():
     sSkill = _fsReadSkill("read-arxiv")
     assert "network isolation" in sSkill
     assert "--max-time" in sSkill
+
+
+# --------- round-2 skills: load-bearing guardrails ---------
+
+
+def test_all_expected_skills_are_shipped():
+    """The five round-2 skills plus the original two are present."""
+    listSkillNames = set(os.listdir(_S_SKILLS_DIR))
+    for sExpected in (
+        "session-budget", "read-arxiv", "aics-ladder",
+        "create-pipeline-step", "vaibify-doc-map",
+        "diagnose-failed-run", "read-manuscript",
+    ):
+        assert sExpected in listSkillNames, (
+            "skill not shipped: " + sExpected
+        )
+
+
+def test_aics_ladder_codifies_the_known_audit_traps():
+    """The traps that produced false level reports must be stated.
+
+    A green audit that used the wrong hash algorithm or read the
+    wrong ledger is exactly the dashboard-honesty failure this skill
+    exists to prevent.
+    """
+    sSkill = _fsReadSkill("aics-ladder")
+    assert "iAICSLevel" in sSkill
+    assert "blob SHA-1" in sSkill or "blob sha-1" in sSkill.lower()
+    assert "state.json" in sSkill
+    assert "user-only" in sSkill.lower()
+
+
+def test_create_step_makes_the_token_contract_non_negotiable():
+    """The cross-step {StepNN.varname} contract is the load-bearing rule."""
+    sSkill = _fsReadSkill("create-pipeline-step")
+    assert "{StepNN.varname}" in sSkill or "{Step02" in sSkill
+    assert "argparse" in sSkill
+    assert "append" in sSkill.lower()
+
+
+def test_read_manuscript_forbids_unpulled_claims():
+    """The skill must require pulling before claiming paper content."""
+    sSkill = _fsReadSkill("read-manuscript")
+    assert "pull-manuscript" in sSkill
+    assert "from memory" in sSkill or "without having pulled" in sSkill
+    # Honest fallback when no Overleaf binding exists.
+    assert "read-arxiv" in sSkill
+
+
+def test_diagnose_skill_prefers_readonly_actions_first():
+    """The triage tree must name the read-only diagnostics."""
+    sSkill = _fsReadSkill("diagnose-failed-run")
+    assert "get-pipeline-state" in sSkill
+    assert "get-host-log-tail" in sSkill
+    assert "read-only" in sSkill.lower()
+
+
+def test_doc_map_points_into_the_container_docs_dir():
+    """The map must reference the in-container staged docs path."""
+    sSkill = _fsReadSkill("vaibify-doc-map")
+    assert "/usr/share/vaibify/docs" in sSkill
+    assert "dashboard.md" in sSkill
+    assert "reproducibility.md" in sSkill
+
+
+# --------- CLAUDE.md slimming: sections became skill pointers ---------
+
+
+def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
+    """The two heavy sections must point at skills, not re-inline them.
+
+    The AICS-ladder walkthrough and the step-authoring protocol were
+    ~325 always-on lines; they now live in on-demand skills. The
+    safety-critical one-liners (authoritative iAICSLevel, user-only
+    publication, the token contract) stay inline.
+    """
+    sEntrypoint = _fsReadDockerFile("entrypoint.sh")
+    iStart = sEntrypoint.index("<< 'CLAUDEMD'\n")
+    iEnd = sEntrypoint.index("\nCLAUDEMD\n", iStart)
+    sBody = sEntrypoint[iStart:iEnd]
+    assert "aics-ladder** skill" in sBody
+    assert "create-pipeline-step** skill" in sBody
+    # Safety one-liners survive inline.
+    assert "iAICSLevel" in sBody
+    assert "{StepNN.varname}" in sBody
+    # The verbose walkthrough is gone (a body this size proves it).
+    assert sBody.count("\n") < 220, (
+        "CLAUDE.md body did not shrink — the heavy sections are "
+        "still inlined"
+    )
+
+
+# --------- curated docs staged into the image ---------
+
+
+def test_dockerfile_copies_staged_docs():
+    """The image must COPY the curated docs to /usr/share/vaibify/docs."""
+    sDockerfile = _fsReadDockerFile("Dockerfile")
+    assert "COPY docs-staged /usr/share/vaibify/docs" in sDockerfile
+
+
+def test_build_stages_the_curated_doc_set():
+    """commandBuild must stage docs and be wired into build-context prep."""
+    import os as _os
+    sBuild = open(
+        _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+            "vaibify", "cli", "commandBuild.py",
+        ),
+        "r", encoding="utf-8",
+    ).read()
+    assert "def fnStageCuratedDocs" in sBuild
+    assert "docs-staged" in sBuild
+    # Wired into the build-context preparation, not defined-but-uncalled.
+    iPrepare = sBuild.index("def fnPrepareBuildContext")
+    iNext = sBuild.index("\ndef ", iPrepare + 1)
+    assert "fnStageCuratedDocs" in sBuild[iPrepare:iNext]

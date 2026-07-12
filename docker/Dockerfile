@@ -281,6 +281,7 @@ COPY container.conf /etc/vaibify/container.conf
 COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
 COPY skills /usr/share/vaibify/skills
+COPY docs-staged /usr/share/vaibify/docs
 COPY overleafSync.py /usr/share/vaibify/overleafSync.py
 COPY latexConnector.py /usr/share/vaibify/latexConnector.py
 COPY zenodoClient.py /usr/share/vaibify/zenodoClient.py
