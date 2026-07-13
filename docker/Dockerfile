@@ -197,11 +197,20 @@ RUN pip install --no-cache-dir claude-monitor
 # installed where the loader finds them — a bare "pip install
 # pymultinest" imports fine and then fails at first use with
 # "libmultinest.so not found".
+#
+# Build ONLY the library targets (multinest_shared / multinest_static)
+# — a bare "make" also compiles the bundled example executables, and a
+# single example's compile failure aborts the whole build (exit 2)
+# even though libmultinest.so built cleanly. pymultinest needs only
+# the shared library, so the examples are pure liability. The upstream
+# CMake already adds -std=legacy -fallow-argument-mismatch for
+# gfortran >= 10, so no compatibility flag is needed here.
 RUN git clone --depth 1 \
         https://github.com/JohannesBuchner/MultiNest.git \
         /tmp/MultiNest \
     && cmake -S /tmp/MultiNest -B /tmp/MultiNest/build \
     && make -C /tmp/MultiNest/build -j"$(nproc)" \
+        multinest_shared multinest_static \
     && cp -a /tmp/MultiNest/lib/. /usr/local/lib/ \
     && ldconfig \
     && rm -rf /tmp/MultiNest
