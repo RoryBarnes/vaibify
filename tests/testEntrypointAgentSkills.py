@@ -149,10 +149,22 @@ def test_all_expected_skills_are_shipped():
         "session-budget", "read-arxiv", "aics-ladder",
         "create-pipeline-step", "vaibify-doc-map",
         "diagnose-failed-run", "read-manuscript", "running-steps",
+        "reproducible-analysis",
     ):
         assert sExpected in listSkillNames, (
             "skill not shipped: " + sExpected
         )
+
+
+def test_reproducible_analysis_forbids_throwaway_computation():
+    """The load-bearing rule: numeric results come from a saved script,
+    never a heredoc/python -c, and the script is structured to become a
+    step (argparse inputs, file outputs)."""
+    sSkill = _fsReadSkill("reproducible-analysis")
+    assert "python -c" in sSkill
+    assert "heredoc" in sSkill.lower()
+    assert "argparse" in sSkill
+    assert "create-pipeline-step" in sSkill  # promotes to a real step
 
 
 def test_running_steps_prefers_dispatch_over_direct_execution():
@@ -179,6 +191,11 @@ def test_claude_md_carries_the_run_guardrail_and_points_to_skill():
     sBody = sEntrypoint[iStart:iEnd]
     assert "running-steps` skill" in sBody
     assert "not by executing scripts directly" in sBody
+    # The reproducible-analysis guardrail is always-on (the agent can
+    # reach for a heredoc without ever loading a skill), pointing at the
+    # skill for the how-to.
+    assert "reproducible-analysis` skill" in sBody
+    assert "throwaway construction" in sBody
 
 
 def test_aics_ladder_codifies_the_known_audit_traps():
