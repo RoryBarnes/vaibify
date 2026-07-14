@@ -148,11 +148,37 @@ def test_all_expected_skills_are_shipped():
     for sExpected in (
         "session-budget", "read-arxiv", "aics-ladder",
         "create-pipeline-step", "vaibify-doc-map",
-        "diagnose-failed-run", "read-manuscript",
+        "diagnose-failed-run", "read-manuscript", "running-steps",
     ):
         assert sExpected in listSkillNames, (
             "skill not shipped: " + sExpected
         )
+
+
+def test_running_steps_prefers_dispatch_over_direct_execution():
+    """The load-bearing rule: dispatch via vaibify-do so the dashboard
+    shows the run; a bare shell execution is invisible as a running
+    step and must be reported to the researcher."""
+    sSkill = _fsReadSkill("running-steps")
+    assert "run-step" in sSkill
+    assert "run-selected-steps" in sSkill
+    assert "invisible" in sSkill.lower()
+    # Never hand-edit an existing workflow; the CAS fingerprint guards
+    # concurrent edits.
+    assert "never hand-edit" in sSkill.lower()
+    assert "sBaseFingerprint" in sSkill or "compare-and-swap" in sSkill
+
+
+def test_claude_md_carries_the_run_guardrail_and_points_to_skill():
+    """The always-on CLAUDE.md keeps the short run guardrail (which the
+    agent can violate without ever loading a skill) and points at the
+    running-steps skill for the full protocol."""
+    sEntrypoint = _fsReadDockerFile("entrypoint.sh")
+    iStart = sEntrypoint.index("<< 'CLAUDEMD'\n")
+    iEnd = sEntrypoint.index("\nCLAUDEMD\n", iStart)
+    sBody = sEntrypoint[iStart:iEnd]
+    assert "running-steps` skill" in sBody
+    assert "not by executing scripts directly" in sBody
 
 
 def test_aics_ladder_codifies_the_known_audit_traps():

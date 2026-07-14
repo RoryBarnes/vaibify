@@ -806,6 +806,8 @@ Usage:
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.
 
+**Run steps through `vaibify-do`, not by executing scripts directly in a shell.** A `vaibify-do run-step`/`run-selected-steps` dispatch lights the step's marker as *running* on the dashboard; a bare `python …` you launch yourself is invisible to the dashboard as a running step — the researcher only sees dependent steps flip stale once its outputs land. If you must run something directly, tell the researcher what you ran and on which step. See the `running-steps` skill for the full protocol, including safe (compare-and-swap) workflow edits.
+
 **User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.
 
 **Failure modes.** If `vaibify-do` reports `vaibify session not initialized` or `/tmp/vaibify-session.env` is missing, vaibify is not currently connected to this container — tell the researcher to open the dashboard and click the container so it reconnects. This is a "not connected yet" condition, not a "vaibify-do is host-only" condition. If it reports the host is unreachable or the session token is invalid, same fix: reconnect from the dashboard. Do not try workarounds.
