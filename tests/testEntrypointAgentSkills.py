@@ -165,6 +165,11 @@ def test_reproducible_analysis_forbids_throwaway_computation():
     assert "heredoc" in sSkill.lower()
     assert "argparse" in sSkill
     assert "create-pipeline-step" in sSkill  # promotes to a real step
+    # Exploratory scripts have a git-tracked home, discoverable months
+    # later by name + docstring; search before writing a duplicate.
+    assert "explorations/" in sSkill
+    assert "docstring" in sSkill.lower()
+    assert "grep" in sSkill.lower()
 
 
 def test_running_steps_prefers_dispatch_over_direct_execution():
@@ -196,6 +201,7 @@ def test_claude_md_carries_the_run_guardrail_and_points_to_skill():
     # skill for the how-to.
     assert "reproducible-analysis` skill" in sBody
     assert "throwaway construction" in sBody
+    assert "explorations/" in sBody
 
 
 def test_aics_ladder_codifies_the_known_audit_traps():

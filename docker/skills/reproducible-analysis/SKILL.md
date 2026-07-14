@@ -18,23 +18,54 @@ the researcher only asked for the answer.
 construction** — no heredocs, `python -c "..."`, `<<EOF`, inline
 one-liners, or interactive sessions. Write a script, save it, run it.
 
-## How to write it so it can become a step
+## Where the script goes
+
+- **If it extends an existing step's analysis**, put it in that step's
+  directory as `dataFoo.py` (or `plotFoo.py` if it draws a figure).
+- **If it is exploratory** — a question that is not yet a step, and
+  may never be one — put it in `explorations/` at the project-repo
+  root. This is the git-tracked home for reproducible analyses that
+  are not (yet) formal steps: preserved and re-runnable, but honestly
+  outside the pipeline, so their outputs are never presented as
+  verified results.
+
+Do NOT invent a fresh step directory just to hold an exploratory
+script. "It belongs with a step" is not a reason to fabricate a step —
+that is what `explorations/` is for.
+
+## Before you write: check for an existing one
+
+The point of a self-explanatory name and a purpose docstring is that a
+script written today is findable months from now. So before writing a
+new analysis, search first:
+
+```
+grep -rli "intrinsic scatter" explorations/   # match name OR docstring
+ls explorations/
+```
+
+When the researcher asks "didn't we already make a script to
+compute X?", that same search is the answer. Reuse or extend the
+existing script instead of writing a near-duplicate.
+
+## How to write it
 
 Use the project's language (Python for most vaibify projects; match
-the surrounding code otherwise) and follow the step-script shape:
+the surrounding code otherwise):
 
-1. **One script, saved in the relevant step directory** — name it
-   `dataFoo.py` for analysis (or `plotFoo.py` if it draws a figure),
-   in camelCase, in the step's directory. If no step exists yet,
-   create the directory for the analysis you are about to do.
+1. **A self-explanatory, verb-first camelCase name.**
+   `calculateIntrinsicScatter.py`, not `analysis1.py`. The name should
+   let a researcher guess what it does; keep the file's first line a
+   one-sentence docstring stating exactly what it computes, so a later
+   `grep` finds it even when the name misses a keyword.
 2. **Inputs as arguments, not hardcoded paths.** Take every input via
    `argparse` (Python) or the language's equivalent. A cross-step
    input MUST be a `{step:<id>.<stem>}` token in the command, never a
    hardcoded `../OtherStep/out.json` — the token is what makes the
    dependency graph honest (see the create-pipeline-step skill).
 3. **Outputs to files, not stdout.** Write results (the number, the
-   fit, the samples, the summary JSON) to declared output files, so
-   the value is on disk and hashable, not just printed.
+   fit, the samples, the summary JSON) to files, so the value is on
+   disk and hashable, not just printed.
 4. **Seed any randomness.** An unseeded sampler is not reproducible;
    set and record the seed so the run repeats bit-for-bit.
 5. **Run it through `vaibify-do`**, not by executing it directly (see
@@ -42,11 +73,13 @@ the surrounding code otherwise) and follow the step-script shape:
 
 ## Turning it into a step
 
-Once the script exists and runs, promote it: use the
-`create-pipeline-step` skill to register it as a step (its command,
-declared outputs, tests, and cross-step tokens). The script you wrote
-to answer the question IS the foundation of the step — that is the
-point of writing it as a script in the first place.
+When an exploration proves worth keeping, promote it: move it from
+`explorations/` into a step directory, rename it to the `dataFoo.py`
+step-script convention, and register it via the `create-pipeline-step`
+skill (its command, declared outputs, tests, and cross-step tokens).
+`explorations/` is the staging ground; steps are the formal record.
+The script you wrote to answer the question IS the foundation of the
+step — that is the point of writing it as a script in the first place.
 
 ## Honesty
 
