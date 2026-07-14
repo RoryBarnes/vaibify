@@ -368,13 +368,13 @@ def test_step_l3_counts_zero_without_repo():
         {"saDataFiles": ["out.dat"]}, set(), {"bHasRepo": False},
     )
     assert tCounts == (0, len(levelGates._T_STEP_LEVEL3_CRITERIA))
-    assert tCounts[1] == 5
+    assert tCounts[1] == 6
 
 
 def test_step_l3_satisfied_arithmetic_is_subtraction():
     """satisfied = applicable - failing, exactly. The fixture makes
-    four criteria applicable with one failing so subtraction (3) and
-    the surviving right-shift mutant (4 >> 1 = 2) disagree.
+    five criteria applicable with one failing so subtraction (4) and
+    the surviving right-shift mutant (5 >> 1 = 2) disagree.
 
     Kills: levelGates.py 'iTotal - len(setApplicable & set(setFailing))'
     -> 'iTotal >> len(...)'.
@@ -389,7 +389,7 @@ def test_step_l3_satisfied_arithmetic_is_subtraction():
         dictStep, {"missing-from-manifest"},
         {"bHasRepo": True, "listDeclaredBinaries": listDeclared},
     )
-    assert tCounts == (3, 4)
+    assert tCounts == (4, 5)
 
 
 def test_randomness_criterion_requires_literal_true():

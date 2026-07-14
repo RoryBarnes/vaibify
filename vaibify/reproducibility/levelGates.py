@@ -66,6 +66,8 @@ __all__ = [
     "fbVerifyReproduceScript",
     "fbWorkflowDeclaresBinaries",
     "fbWorkflowFullySyncedWithArxiv",
+    "flistStepDependedBinaryPaths",
+    "flistWorkflowBinaryPaths",
     "fbWorkflowHasArxivConnection",
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
@@ -73,6 +75,7 @@ __all__ = [
     "fbWorkflowHasAiDeclarationStep",
     "fbWorkflowHasOverleafBinding",
     "fbWorkflowHasProjectRepo",
+    "fdictBinaryStaleByStep",
     "fdictComputeStepLevelStates",
     "fdictComputeStepLevelWarnings",
     "fdictComputeWorkflowScopeLevelStates",
@@ -2037,6 +2040,7 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
         _fsWorkflowBlockerFingerprint(dictWorkflow),
         _fsRepoFingerprint(filesRepo),
         _fsSyncStatusFingerprint(filesRepo),
+        _fsBinaryStateFingerprint(dictWorkflow, filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -2044,6 +2048,33 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
     listResult = _flistComputeLevel3Blockers(dictWorkflow, filesRepo)
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
+
+
+def _fsBinaryStateFingerprint(dictWorkflow, filesRepo):
+    """SHA over each declared binary's live hash + its env.json capture.
+
+    The L3 blocker cache is keyed by workflow content, which does not
+    change when a binary is rebuilt. Without this component a
+    ``binary-drifted`` transition (or its clearing) would be masked by
+    a stale cache — the same class of bug the sync-status fingerprint
+    fixes for the remote caches. Reads the snapshot's pre-fetched
+    hashes, so on the poll path it costs no extra exec. Returns
+    ``"none"`` when the workflow declares no binaries.
+    """
+    listPaths = flistWorkflowBinaryPaths(dictWorkflow)
+    if not listPaths:
+        return "none"
+    dictCaptured = _fdictCapturedBinaryHashes(filesRepo)
+    try:
+        dictLive = filesRepo.fdictHashAbsolutePaths(listPaths)
+    except Exception:
+        dictLive = {}
+    listEntries = [
+        (sPath, dictLive.get(sPath), dictCaptured.get(sPath))
+        for sPath in listPaths
+    ]
+    sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
 def _flistComputeLevel3Blockers(dictWorkflow, filesRepo):
@@ -2121,6 +2152,11 @@ _DICT_L3_REMEDIATION_HINTS = {
     "binary-not-captured":
         "Declared binary lacks an environment.json entry — click "
         "'Capture version + SHA' next to it.",
+    "binary-drifted":
+        "The binary on disk no longer matches the hash captured in "
+        ".vaibify/environment.json — it was rebuilt or replaced after "
+        "the outputs were produced. Re-run the step with the current "
+        "binary and re-capture, or restore the published binary.",
 }
 
 
@@ -2178,10 +2214,66 @@ def _fdictL3PerStepContext(dictWorkflow, filesRepo):
         "listDeclaredBinaries": _flistDeclaredBinariesNormalized(
             dictWorkflow,
         ),
+        "setDriftedBinaryPaths": _fsetDriftedBinaryPaths(
+            dictWorkflow, filesRepo,
+        ),
         "bWaiver": bool(
             (dictWorkflow or {}).get("bNoStandaloneBinaries", False),
         ),
     }
+
+
+def _fsetDriftedBinaryPaths(dictWorkflow, filesRepo):
+    """Return declared-binary paths whose live hash != the env snapshot.
+
+    "Reproducible" (L3) means a third party rebuilding gets the same
+    bytes, so the binary present must match the hash captured in
+    ``environment.json``. This recomputes each declared binary's live
+    hash (via the poll snapshot's pre-fetched batch, or a live adapter
+    off the poll path) and compares. A binary with no captured hash is
+    NOT reported here — ``binary-not-captured`` owns that gap; drift is
+    only meaningful against a real captured hash. On a fresh clone this
+    doubles as a build-reproducibility test: a rebuilt binary that does
+    not match the published hash correctly drifts.
+    """
+    listPaths = flistWorkflowBinaryPaths(dictWorkflow)
+    if not listPaths:
+        return set()
+    dictCaptured = _fdictCapturedBinaryHashes(filesRepo)
+    if not dictCaptured:
+        return set()
+    try:
+        dictLive = filesRepo.fdictHashAbsolutePaths(listPaths)
+    except Exception:
+        return set()
+    setDrifted = set()
+    for sPath in listPaths:
+        sCaptured = dictCaptured.get(sPath)
+        sLive = dictLive.get(sPath)
+        if sCaptured and sLive and sLive != sCaptured:
+            setDrifted.add(sPath)
+    return setDrifted
+
+
+def _fdictCapturedBinaryHashes(filesRepo):
+    """Return ``{sBinaryPath: sSha256}`` recorded in environment.json."""
+    from .environmentSnapshot import (
+        _flistResolveCapturedBinaries,
+        fdictReadEnvironmentJson,
+    )
+    try:
+        dictEnv = fdictReadEnvironmentJson(filesRepo) or {}
+    except Exception:
+        return {}
+    dictResult = {}
+    for dictCapture in _flistResolveCapturedBinaries(dictEnv):
+        if not isinstance(dictCapture, dict):
+            continue
+        sPath = dictCapture.get("sBinaryPath") or ""
+        sSha = dictCapture.get("sSha256") or ""
+        if sPath and sSha:
+            dictResult[sPath] = sSha
+    return dictResult
 
 
 def _flistAllStepScriptPaths(dictWorkflow):
@@ -2292,7 +2384,21 @@ def _flistL3StepFailures(iStepIndex, dictStep, dictContext):
     )
     if listUncaptured:
         listFailures.append(("binary-not-captured", listUncaptured))
+    listDriftedBinaries = _flistStepDriftedBinaries(dictStep, dictContext)
+    if listDriftedBinaries:
+        listFailures.append(("binary-drifted", listDriftedBinaries))
     return listFailures
+
+
+def _flistStepDriftedBinaries(dictStep, dictContext):
+    """Return the step's depended-on binaries that drifted from the snapshot."""
+    setDrifted = dictContext.get("setDriftedBinaryPaths") or set()
+    if not setDrifted:
+        return []
+    listDepended = flistStepDependedBinaryPaths(
+        dictStep, dictContext["listDeclaredBinaries"],
+    )
+    return [sPath for sPath in listDepended if sPath in setDrifted]
 
 
 def _fdictBuildL3StepEntry(
@@ -2456,6 +2562,57 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
     return False
 
 
+def flistWorkflowBinaryPaths(dictWorkflow):
+    """Return every declared binary's absolute path for a workflow.
+
+    The poll hashes this set in its single exec so the L3 drift check
+    can compare the live binary against the environment snapshot. A
+    workflow that declares no binaries yields ``[]`` — the poll then
+    hashes nothing extra.
+    """
+    listPaths = []
+    for dictEntry in _flistDeclaredBinariesNormalized(dictWorkflow):
+        sPath = dictEntry.get("sBinaryPath") or ""
+        if sPath:
+            listPaths.append(sPath)
+    return sorted(set(listPaths))
+
+
+def flistStepDependedBinaryPaths(dictStep, listDeclaredBinaries):
+    """Return the declared-binary paths a single step depends on.
+
+    A step depends on a declared binary when EITHER its command
+    strings invoke it (the historical command scan) OR its explicit
+    ``saBinaryDependencies`` list names the binary by path or
+    basename. The explicit list is the authority for IMPLICIT
+    dependencies — e.g. a step whose command runs ``maxlev`` while
+    ``maxlev`` invokes ``vplanet`` internally, which no command scan
+    can surface. Shared by the L1 warning and the L3 drift criterion
+    so both attribute the same binaries to the same steps.
+    """
+    if not isinstance(dictStep, dict):
+        return []
+    listCommands = _flistStepCommandStrings(dictStep)
+    setDeclared = {
+        (dictEntry.get("sBinaryPath") or "")
+        for dictEntry in (listDeclaredBinaries or [])
+    }
+    setExplicit = {
+        str(sItem) for sItem in
+        (dictStep.get("saBinaryDependencies") or [])
+        if isinstance(sItem, str) and sItem
+    }
+    listResult = []
+    for sPath in setDeclared:
+        if not sPath:
+            continue
+        if _fbStepReferencesDeclaredBinary(listCommands, sPath):
+            listResult.append(sPath)
+        elif sPath in setExplicit or Path(sPath).name in setExplicit:
+            listResult.append(sPath)
+    return sorted(set(listResult))
+
+
 # ----------------------------------------------------------------------
 # Per-step and workflow-scope level-state projection (independent levels).
 #
@@ -2509,7 +2666,7 @@ _T_TIMING_BLOCKER_CRITERIA = (
 _T_STEP_LEVEL3_CRITERIA = (
     "missing-from-manifest", "script-not-pinned",
     "nondeterminism-undeclared", "binary-not-declared",
-    "binary-not-captured",
+    "binary-not-captured", "binary-drifted",
 )
 
 _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
@@ -2906,8 +3063,11 @@ def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
     A criterion applies only when the step owns something it can fail
     on: declared paths for the manifest, scripts for pinning, an
     unseeded-randomness flag for determinism, and binary invocations
-    for declaration + capture. Interactive or attestation-only steps
-    typically return an empty set.
+    for declaration + capture + drift. Interactive or attestation-only
+    steps typically return an empty set. ``binary-drifted`` applies to
+    any step that depends on a declared binary — including an IMPLICIT
+    dependency named only in ``saBinaryDependencies`` (e.g.
+    maxlev->vplanet), which the command scan cannot see.
     """
     from .manifestPaths import flistStepScriptRepoPaths
     if not isinstance(dictStep, dict):
@@ -2926,6 +3086,8 @@ def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
         listCommands, listDeclaredBinaries,
     ):
         setApplicable.add("binary-not-captured")
+    if flistStepDependedBinaryPaths(dictStep, listDeclaredBinaries):
+        setApplicable.add("binary-drifted")
     return setApplicable
 
 
@@ -3033,8 +3195,71 @@ def fiLowestNonAttainedLevel(dictStepStates):
     return fiStepAICSLevel(dictStepStates) + 1
 
 
+_S_BINARY_STALE_WARNING_HINT = (
+    "A binary this step depends on was modified after the step's "
+    "outputs were produced — re-run the step to confirm the results "
+    "still hold"
+)
+
+
+def fdictBinaryStaleByStep(
+    dictWorkflow, dictBinaryMtimes, dictMaxMtimeByStep,
+):
+    """Return ``{iStepIndex: bool}`` — a depended binary is newer than
+    the step's own outputs.
+
+    A NON-gating Level 1 signal feeding the regression-column warning.
+    ``dictBinaryMtimes`` is the poll's absolute-path→mtime map (declared
+    binaries live outside the repo, so their keys are absolute);
+    ``dictMaxMtimeByStep`` is the per-step newest OUTPUT mtime
+    (string-keyed by step index). Mtime only — the authoritative hash
+    comparison is the L3 ``binary-drifted`` criterion.
+    """
+    listDeclared = _flistDeclaredBinariesNormalized(dictWorkflow)
+    dictMtimes = dictBinaryMtimes or {}
+    dictMaxByStep = dictMaxMtimeByStep or {}
+    dictResult = {}
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        dictResult[iStepIndex] = _fbStepBinaryNewerThanOutputs(
+            dictStep, listDeclared, dictMtimes,
+            dictMaxByStep.get(str(iStepIndex)),
+        )
+    return dictResult
+
+
+def _fbStepBinaryNewerThanOutputs(
+    dictStep, listDeclared, dictBinaryMtimes, sOutputMtime,
+):
+    """Return True iff a depended binary's mtime exceeds the step's
+    newest output mtime.
+
+    No outputs yet (``sOutputMtime`` is None) → not stale: there is
+    nothing produced to be out of date against. A binary absent from
+    the mtime map (never built, or the poll could not stat it) is
+    skipped rather than treated as stale.
+    """
+    if not isinstance(dictStep, dict) or sOutputMtime is None:
+        return False
+    try:
+        iOutputMtime = int(sOutputMtime)
+    except (TypeError, ValueError):
+        return False
+    for sPath in flistStepDependedBinaryPaths(dictStep, listDeclared):
+        sBinMtime = dictBinaryMtimes.get(sPath)
+        if sBinMtime is None:
+            continue
+        try:
+            if int(sBinMtime) > iOutputMtime:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def fdictComputeStepLevelWarnings(
     dictWorkflow, dictStepStates, listLevel1Blockers,
+    dictBinaryStaleByStep=None,
 ):
     """Return ``{iStepIndex: dictWarning}`` for the regression column.
 
@@ -3045,16 +3270,23 @@ def fdictComputeStepLevelWarnings(
          "sWarningSeverity": "red" | "orange" | None,
          "sWarningHint": str}
 
-    A warning fires ONLY when, AT the lowest non-attained level, the
-    cell carries ``bRegression`` or — level 1 only — a
+    A gate-level warning fires when, AT the lowest non-attained level,
+    the cell carries ``bRegression`` or — level 1 only — a
     timestamp-out-of-order blocker (upstream-modified / script-stale /
     attestation-stale) applies. A regression strictly above the lowest
     non-attained level emits no warning: the researcher's next action
     lives at the lower rung. Severity is ``red`` when the cause
     includes failed tests at that level, ``orange`` for pure
     staleness or regression.
+
+    ``dictBinaryStaleByStep`` (``{iStepIndex: bool}``) adds a NON-gating
+    orange Level 1 warning for a step whose depended binary is newer
+    than its outputs — surfaced only when no gate-level warning already
+    speaks for the step. It never drops the L1 gate (mtime cannot prove
+    drift; the L3 ``binary-drifted`` hash check is the authority).
     """
     dictCriteriaByStep = _fdictCriteriaByStep(listLevel1Blockers)
+    dictBinaryStale = dictBinaryStaleByStep or {}
     dictResult = {}
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -3062,21 +3294,50 @@ def fdictComputeStepLevelWarnings(
             dictStep,
             (dictStepStates or {}).get(iStepIndex) or {},
             dictCriteriaByStep.get(iStepIndex, set()),
+            bool(dictBinaryStale.get(iStepIndex)),
         )
     return dictResult
 
 
-def _fdictOneStepWarning(dictStep, dictStates, setLevel1Criteria):
-    """Return one step's consolidated warning dict (or the no-warning shape)."""
+def _fdictOneStepWarning(
+    dictStep, dictStates, setLevel1Criteria, bBinaryStale=False,
+):
+    """Return one step's consolidated warning dict (or the no-warning shape).
+
+    The gate-level warning (regression / timing at the lowest
+    non-attained level) takes precedence. When the gate levels are
+    clean, a depended binary newer than the step's outputs raises a
+    NON-gating orange Level 1 warning. It is suppressed once every
+    level is attained (``iLowest > 3``): an attained L3 means the hash
+    already matched, so a newer mtime would be a false alarm.
+    """
     iLowest = fiLowestNonAttainedLevel(dictStates)
+    dictGateWarning = _fdictGateLevelWarning(
+        dictStep, dictStates, setLevel1Criteria, iLowest,
+    )
+    if dictGateWarning is not None:
+        return dictGateWarning
+    if bBinaryStale and iLowest <= 3:
+        return {
+            "iLowestNonAttainedLevel": iLowest,
+            "iWarningLevel": 1,
+            "sWarningSeverity": "orange",
+            "sWarningHint": _S_BINARY_STALE_WARNING_HINT,
+        }
+    return _fdictNoWarning(iLowest)
+
+
+def _fdictGateLevelWarning(dictStep, dictStates, setLevel1Criteria, iLowest):
+    """Return the regression/timing warning at the lowest non-attained
+    level, or None when the gate levels are clean."""
     if iLowest > 3:
-        return _fdictNoWarning(iLowest)
+        return None
     dictCell = dictStates.get(f"s{iLowest}") or {}
     bTimingBlocker = iLowest == 1 and bool(
         set(setLevel1Criteria) & set(_T_TIMING_BLOCKER_CRITERIA),
     )
     if not (dictCell.get("bRegression") or bTimingBlocker):
-        return _fdictNoWarning(iLowest)
+        return None
     bFailedTests = iLowest == 1 and _fbStepHasFailedAxis(dictStep)
     sSeverity = "red" if bFailedTests else "orange"
     return {

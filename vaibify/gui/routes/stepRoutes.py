@@ -64,6 +64,15 @@ def _fnRegisterStepsList(app, dictCtx):
             )
         }
 
+    @app.get("/api/steps/{sContainerId}/resolve-commands")
+    @fnAgentAction("resolve-commands")
+    async def fnResolveCommands(sContainerId: str):
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        return workflowManager.fdictResolveWorkflowCommands(
+            dictWorkflow, dictCtx["variables"](sContainerId),
+        )
+
     @app.get("/api/steps/{sContainerId}/by-label/{sLabel}")
     async def fnResolveStepLabel(sContainerId: str, sLabel: str):
         from ..pipelineUtils import fiStepIndexFromLabel
@@ -171,6 +180,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        _fnRequireFingerprintMatch(dictWorkflow, request.sBaseFingerprint)
         dictUpdates = _fdictExtractStepUpdates(request)
         _fnRequireDestructiveConfirm(
             dictWorkflow, iStepIndex, dictUpdates,
@@ -191,14 +201,42 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        return fdictStepWithLabel(dictWorkflow, iStepIndex)
+        dictResult = fdictStepWithLabel(dictWorkflow, iStepIndex)
+        dictResult["sWorkflowFingerprint"] = (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        )
+        return dictResult
 
 
 def _fdictExtractStepUpdates(request):
-    """Return the non-None update dict with the confirm flag stripped."""
+    """Return the non-None update dict with control fields stripped."""
     dictRaw = request.model_dump()
     dictRaw.pop("bConfirmDestructive", None)
+    dictRaw.pop("sBaseFingerprint", None)
     return fdictFilterNonNone(dictRaw)
+
+
+def _fnRequireFingerprintMatch(dictWorkflow, sBaseFingerprint):
+    """Reject a stale compare-and-swap edit with 409 Conflict.
+
+    A ``None`` fingerprint opts out (unconditional write, the legacy
+    behavior). When supplied, it must equal the workflow's current
+    fingerprint — otherwise a concurrent writer (the dashboard or
+    another agent) has moved the workflow since the caller read it,
+    and applying the edit would silently clobber that change.
+    """
+    if sBaseFingerprint is None:
+        return
+    sCurrent = workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+    if sBaseFingerprint != sCurrent:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Workflow changed since you read it "
+                f"(expected {sBaseFingerprint[:12]}…, now "
+                f"{sCurrent[:12]}…). Re-read and retry."
+            ),
+        )
 
 
 def _fnRequireDestructiveConfirm(

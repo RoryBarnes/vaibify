@@ -708,7 +708,7 @@ import base64, hashlib, json, os, sys
 dictArgs = json.loads(base64.b64decode(%(payload)s).decode())
 sRoot = dictArgs["sRoot"]
 setSkipText = set(dictArgs.get("listSkipTextPaths", []))
-dictOut = {"dictFiles": {}, "dictHashes": {}}
+dictOut = {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}}
 def _fsHash(sAbs):
     iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -720,6 +720,19 @@ def _fsHash(sAbs):
         for ba in iter(lambda: f.read(65536), b""):
             h.update(ba)
     return h.hexdigest()
+def _fsHashFollow(sAbs):
+    # Follows symlinks — declared binaries in ~/.local/bin are
+    # commonly symlinks to the real executable, and we want the
+    # content that actually runs. These are explicit, out-of-repo
+    # workflow declarations, so there is no repo-escape concern.
+    try:
+        h = hashlib.sha256()
+        with open(sAbs, "rb") as f:
+            for ba in iter(lambda: f.read(65536), b""):
+                h.update(ba)
+        return h.hexdigest()
+    except OSError:
+        return None
 for sRel in dictArgs["listContentPaths"]:
     sAbs = os.path.join(sRoot, sRel)
     dictEntry = {"bIsFile": os.path.isfile(sAbs), "sText": None,
@@ -753,6 +766,8 @@ def _fdictEntry(sRel):
     return d
 for sRel in dictArgs["listHashPaths"]:
     dictOut["dictHashes"][sRel] = _fdictEntry(sRel)
+for sAbs in dictArgs.get("listAbsHashPaths", []):
+    dictOut["dictAbsHashes"][sAbs] = _fsHashFollow(sAbs)
 sys.stdout.write(json.dumps(dictOut))
 '''
 
@@ -781,8 +796,15 @@ TUPLE_SNAPSHOT_SKIP_TEXT_PATHS = (
 
 def _fsBuildSnapshotScriptCommand(
     sRootPath, listScriptRelPaths, listHashRelPaths,
+    listAbsHashPaths=None,
 ):
-    """Return the one-exec command collecting the poll snapshot."""
+    """Return the one-exec command collecting the poll snapshot.
+
+    ``listAbsHashPaths`` are absolute, out-of-repo paths (declared
+    binaries) hashed in the SAME exec so the poll stays one round
+    trip — the snapshot then answers ``fdictHashAbsolutePaths`` from
+    pre-fetched values instead of a forbidden second exec.
+    """
     listHashPaths = sorted(
         set(["MANIFEST.sha256"])
         | set(listScriptRelPaths or [])
@@ -794,6 +816,7 @@ def _fsBuildSnapshotScriptCommand(
             "listContentPaths": list(TUPLE_SNAPSHOT_CONTENT_PATHS),
             "listSkipTextPaths": list(TUPLE_SNAPSHOT_SKIP_TEXT_PATHS),
             "listHashPaths": listHashPaths,
+            "listAbsHashPaths": sorted(set(listAbsHashPaths or [])),
         },
     )
 
@@ -848,16 +871,19 @@ class SnapshotRepoFiles:
     than guessing.
     """
 
-    def __init__(self, sRootPath, dictFiles, dictHashes):
+    def __init__(
+        self, sRootPath, dictFiles, dictHashes, dictAbsHashes=None,
+    ):
         self.sRootPath = sRootPath or ""
         self._dictFiles = dictFiles or {}
         self._dictHashes = dictHashes or {}
+        self._dictAbsHashes = dictAbsHashes or {}
 
     @classmethod
     def ffilesFetch(
         cls, connectionDocker, sContainerId, sRootPath,
         listScriptRelPaths=None, listHashRelPaths=None,
-        dictSeedHashes=None,
+        dictSeedHashes=None, listAbsHashPaths=None,
     ):
         """Fetch one snapshot with exactly ONE container exec.
 
@@ -865,9 +891,13 @@ class SnapshotRepoFiles:
         caller revalidated each entry against the container mtime it
         fetched this same poll) for paths the exec does not need to
         rehash. Freshly fetched entries always win over seeds.
+        ``listAbsHashPaths`` are out-of-repo absolute paths (declared
+        binaries) hashed in the same exec and answered later via
+        ``fdictHashAbsolutePaths``.
         """
         sCommand = _fsBuildSnapshotScriptCommand(
             sRootPath, listScriptRelPaths, listHashRelPaths,
+            listAbsHashPaths=listAbsHashPaths,
         )
         resultExec = connectionDocker.texecRunInContainerStreamed(
             sContainerId, sCommand,
@@ -879,6 +909,7 @@ class SnapshotRepoFiles:
             sRootPath,
             _fdictSnapshotFilesOrConservative(dictParsed),
             dictHashes,
+            dictAbsHashes=dictParsed.get("dictAbsHashes") or {},
         )
 
     def fsLocalRootOrNone(self):
@@ -957,10 +988,18 @@ class SnapshotRepoFiles:
         )
 
     def fdictHashAbsolutePaths(self, listAbsPaths):
-        """Absolute-path hashing is a live-adapter operation."""
-        raise NotImplementedError(
-            "SnapshotRepoFiles cannot hash absolute paths"
-        )
+        """Return ``{sAbsPath: sSha256|None}`` from the pre-fetched batch.
+
+        The poll hashes declared-binary absolute paths in its single
+        exec (``listAbsHashPaths``), so this reads the snapshot rather
+        than running a forbidden second exec. A path the snapshot did
+        not sample maps to None — the honest "not measured" answer,
+        never a guess.
+        """
+        return {
+            sAbsPath: self._dictAbsHashes.get(sAbsPath)
+            for sAbsPath in listAbsPaths
+        }
 
     def ftRunCommand(self, saCommand, fTimeoutSeconds):
         """Command execution is a live-adapter operation."""

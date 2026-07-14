@@ -33,6 +33,8 @@ __all__ = [
     "fdictMigrateTestFormat",
     "fiGetSchemaVersion",
     "fnApplyMigrations",
+    "fnEnsureStepIds",
+    "fnRewritePositionalToSymbolic",
     "fnMigrateAbsoluteContainerPaths",
     "fnMigrateAbsoluteTestPaths",
     "fnMigrateArchiveToTracking",
@@ -43,7 +45,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 5
+I_CURRENT_WORKFLOW_VERSION = 7
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -118,6 +120,44 @@ def fdictMigrateTestFormat(dictStep):
     dictVerification.setdefault("sQuantitative", "untested")
     dictVerification.setdefault("sIntegrity", "untested")
     return dictStep
+
+
+def _fsSlugFromStepName(sName):
+    """Return a kebab-case ASCII slug from a step name, or empty string."""
+    sLower = (sName or "").strip().lower()
+    return re.sub(r"[^a-z0-9]+", "-", sLower).strip("-")
+
+
+def fnEnsureStepIds(dictWorkflow):
+    """Assign a stable ``sStepId`` to any step lacking one; keep existing.
+
+    ``sStepId`` is the identity primitive behind symbolic cross-step
+    references (``{step:<id>.<stem>}``). Unlike ``sLabel`` — which is a
+    derived, per-type-sequential field recomputed on every load — an
+    id is assigned ONCE, persisted in ``workflow.json``, and NEVER
+    regenerated, so a rename, insertion, or reorder leaves every
+    reference intact. The id is a readable kebab slug of the step name,
+    disambiguated with a numeric suffix on collision, falling back to
+    ``step-<n>`` for a nameless step. Idempotent and non-destructive:
+    a step that already carries an ``sStepId`` is untouched, so this is
+    safe to call on both the load and save paths.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    setUsed = {
+        dictStep["sStepId"] for dictStep in listSteps
+        if isinstance(dictStep, dict) and dictStep.get("sStepId")
+    }
+    for iIndex, dictStep in enumerate(listSteps):
+        if not isinstance(dictStep, dict) or dictStep.get("sStepId"):
+            continue
+        sBase = _fsSlugFromStepName(dictStep.get("sName")) or f"step-{iIndex + 1}"
+        sCandidate = sBase
+        iSuffix = 2
+        while sCandidate in setUsed:
+            sCandidate = f"{sBase}-{iSuffix}"
+            iSuffix += 1
+        dictStep["sStepId"] = sCandidate
+        setUsed.add(sCandidate)
 
 
 def fnNormalizeSceneReferences(dictStep):
@@ -455,10 +495,78 @@ def _fnMigrateV4ToV5(dictWorkflow, sProjectRepoPath):
     fnMigrateAbsoluteTestPaths(dictWorkflow, sProjectRepoPath)
 
 
+def _fnMigrateV5ToV6(dictWorkflow, sProjectRepoPath):
+    """Assign a stable ``sStepId`` to every step lacking one.
+
+    Introduces the identity primitive behind symbolic cross-step
+    references. One-shot for existing documents; new steps acquire an
+    id at creation and via the save-path safety net.
+    """
+    fnEnsureStepIds(dictWorkflow)
+
+
+_T_REFERENCE_BEARING_STEP_FIELDS = (
+    "saDataCommands", "saTestCommands", "saPlotCommands", "saPlotFiles",
+    "saDependencies", "saSetupCommands", "saCommands", "saOutputFiles",
+)
+
+
+def fnRewritePositionalToSymbolic(dictWorkflow):
+    """Rewrite deprecated positional ``{StepNN.stem}`` cross-step tokens
+    to the canonical symbolic ``{step:<sStepId>.stem}`` form.
+
+    Idempotent: symbolic tokens contain no ``{StepNN.`` match and are
+    untouched. A positional token whose target index is out of range,
+    or whose target step has no ``sStepId``, is left as-is — there is
+    nothing to resolve it to — so this never fabricates an id. Callers
+    must run :func:`fnEnsureStepIds` first so every in-range target
+    carries an id.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+
+    def fnReplace(resultMatch):
+        iIndex = int(resultMatch.group(1)) - 1
+        sVariable = resultMatch.group(2)
+        if 0 <= iIndex < len(listSteps):
+            dictTarget = listSteps[iIndex]
+            sId = (
+                dictTarget.get("sStepId")
+                if isinstance(dictTarget, dict) else None
+            )
+            if sId:
+                return "{step:" + sId + "." + sVariable + "}"
+        return resultMatch.group(0)
+
+    for dictStep in listSteps:
+        if not isinstance(dictStep, dict):
+            continue
+        for sKey in _T_REFERENCE_BEARING_STEP_FIELDS:
+            listValues = dictStep.get(sKey)
+            if not listValues:
+                continue
+            dictStep[sKey] = [
+                re.sub(r"\{Step(\d+)\.([^}]+)\}", fnReplace, s)
+                if isinstance(s, str) else s
+                for s in listValues
+            ]
+
+
+def _fnMigrateV6ToV7(dictWorkflow, sProjectRepoPath):
+    """Rewrite positional cross-step tokens to the symbolic form.
+
+    Deprecates ``{StepNN.stem}`` in favor of ``{step:<id>.stem}``.
+    Depends on ``sStepId`` being assigned, which the v5->v6 migrator
+    guarantees by running first.
+    """
+    fnRewritePositionalToSymbolic(dictWorkflow)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
     (2, _fnMigrateV2ToV3),
     (3, _fnMigrateV3ToV4),
     (4, _fnMigrateV4ToV5),
+    (5, _fnMigrateV5ToV6),
+    (6, _fnMigrateV6ToV7),
 )

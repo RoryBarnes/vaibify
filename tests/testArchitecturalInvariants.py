@@ -2095,6 +2095,48 @@ def testTemplateCommandsUseStepTokens():
     )
 
 
+def testTemplateCommandsUseSymbolicNotPositionalTokens():
+    """Shipped templates use the canonical ``{step:<id>.stem}`` form.
+
+    Positional ``{StepNN.stem}`` tokens are deprecated (they renumber
+    on any insert/reorder — the reorder-drops-a-step hazard). Templates
+    are seeds for new workflows, so they must ship in the canonical
+    symbolic form. Any step referenced symbolically must also carry the
+    ``sStepId`` its token names.
+    """
+    import json as jsonModule
+    import re as reModule
+    listViolations = []
+    for pathWorkflow in _flistCollectTemplateWorkflows():
+        dictWorkflow = jsonModule.loads(pathWorkflow.read_text())
+        setDeclaredIds = {
+            dictStep.get("sStepId")
+            for dictStep in dictWorkflow.get("listSteps", [])
+        }
+        for dictStep in dictWorkflow.get("listSteps", []):
+            for sField in ("saDataCommands", "saPlotCommands",
+                           "saTestCommands", "saDependencies"):
+                for sCommand in dictStep.get(sField, []):
+                    if reModule.search(r"\{Step\d+\.", sCommand):
+                        listViolations.append(
+                            (pathWorkflow, "positional-token", sCommand),
+                        )
+                    for sId in reModule.findall(
+                        r"\{step:([a-z0-9][a-z0-9-]*)\.", sCommand,
+                    ):
+                        if sId not in setDeclaredIds:
+                            listViolations.append(
+                                (pathWorkflow, "unknown-id:" + sId, sCommand),
+                            )
+    assert listViolations == [], (
+        "Deprecated positional or dangling symbolic tokens in "
+        "templates:\n" + "\n".join(
+            f"  {p.relative_to(REPO_ROOT)} [{sWhy}]: {sCmd!r}"
+            for p, sWhy, sCmd in listViolations
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reproducibility IO goes through the repo-file adapter, never a raw
 # container path string (the host cannot read container files).
@@ -2572,16 +2614,24 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # never overwrites good state with "no binaries".
     # +3 (2026-07-09): the bArxivConfigured envelope boolean — the
     # arXiv L2 criteria are opt-in, keyed on the recorded connection.
-    # +50 (2026-07-11): the container-activity sample
-    # (_fdictSampleContainerActivity) — out-of-band compute (agent or
-    # terminal running simulations directly) is invisible to step
-    # dispatch; one cheap exec per poll feeds the honest toolbar
-    # busy indicator. Cohesive with the poll assembly it extends.
     # main +3 (2026-07-09): dictMaxMtimeByStep threaded into the level
     # projection so inactive steps with outputs read "unassessed".
     # main +38 (2026-07-10): workflow-epoch reconciliation
     # (_fnReconcileWorkflowEpoch) replacing one-shot reload delivery.
-    "routes/pipelineRoutes.py": 2253,
+    # +8 (2026-07-12): the poll now hashes declared-binary absolute
+    # paths (flistWorkflowBinaryPaths threaded through the snapshot
+    # fetch and the collected-mtimes union) so L3 binary-drift is
+    # detected out-of-repo. Cohesive with the poll assembly it extends.
+    # +7 (2026-07-12): the non-gating L1 binary-staleness warning —
+    # fdictBinaryStaleByStep (binary mtime vs step-output mtime)
+    # threaded through the level-state payload into the warning
+    # projection. Cohesive with the poll assembly it extends.
+    # −50 (2026-07-13): removed the container-activity sample /
+    # toolbar busy indicator (f07685a) — its load-average threshold
+    # false-positived over an idle container, misrepresenting state.
+    # +4 (2026-07-14): poll payload exposes sWorkflowFingerprint (the
+    # compare-and-swap baseline the frontend sends back on edits).
+    "routes/pipelineRoutes.py": 2222,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2617,7 +2667,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
     # race-free self-write baselines.
-    "workflowManager.py": 1970,
+    # +2 (2026-07-14): fnEnsureStepIds on the load and save paths —
+    # stable sStepId identity (the primitive behind symbolic
+    # cross-step references); the helper itself lives in
+    # workflowMigrations.py.
+    # +84 (2026-07-14): symbolic cross-step references
+    # ({step:<id>.stem}) alongside the deprecated positional form —
+    # fdictStepIdToIndex, symbolic resolution in the resolver /
+    # registry / dependency scan / validation (with a deprecation
+    # warning), all cohesive with the token machinery already here.
+    # +64 (2026-07-14): the workflow dry-run (fdictResolveWorkflowCommands
+    # + flistResidualStepTokens) — the graph's `make -n`, substituting
+    # every command without running; cohesive with the resolver.
+    "workflowManager.py": 2120,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2628,7 +2690,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # workflow + cached path into every runner call and logs dispatch.
     # main +17 (2026-07-10): fingerprint-based self-write baselines at
     # connect and save, plus iWorkflowEpoch in the connect response.
-    "pipelineServer.py": 1767,
+    # +4 (2026-07-14): sBaseFingerprint on StepUpdateRequest — the
+    # optional compare-and-swap guard for update-step (409 on a stale
+    # concurrent edit).
+    # +3 (2026-07-14): connect response exposes sWorkflowFingerprint so
+    # the frontend has a compare-and-swap baseline to send back.
+    "pipelineServer.py": 1774,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

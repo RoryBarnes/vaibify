@@ -52,6 +52,7 @@ const PipeleyenApp = (function () {
             iL3BlockerCount: 0,
             iCachedAicsLevel: null,
             iWorkflowEpoch: -1,
+            sWorkflowFingerprint: "",
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -332,6 +333,8 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.iWorkflowEpoch =
             typeof data.iWorkflowEpoch === "number" ?
                 data.iWorkflowEpoch : -1;
+        _dictWorkflowState.sWorkflowFingerprint =
+            data.sWorkflowFingerprint || "";
         _fnLoadStepsCollapsed();
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnSurfaceStateLoadNotice(data.dictWorkflow);
@@ -1967,6 +1970,15 @@ const PipeleyenApp = (function () {
                 "recorded — use Capture in the Software section",
             sClass: "step-blocker-glyph-l3-binary-captured",
         },
+        "binary-drifted": {
+            sIcon: "⚠",
+            sLabel: "The program on disk no longer matches the hash " +
+                "recorded for reproducibility — it was rebuilt or " +
+                "replaced after the outputs were produced. Re-run " +
+                "with the current program and re-capture, or restore " +
+                "the published binary.",
+            sClass: "step-blocker-glyph-l3-binary-drifted",
+        },
         "dockerfile-not-pinned": {
             sIcon: "⚠",
             sLabel: "Dockerfile base image not pinned to an exact " +
@@ -2995,16 +3007,46 @@ const PipeleyenApp = (function () {
         PipeleyenEventBindings.fnSetupDelegatedEvents(elList);
     }
 
+    async function fnPutStepEdit(iStep, dictUpdate) {
+        // Single choke-point for every step edit. Attaches the
+        // compare-and-swap fingerprint so a concurrent writer (the
+        // in-container agent) is never silently overwritten, and keeps
+        // the tracked fingerprint fresh for the next edit. On a 409 the
+        // local optimistic edit is stale, so we re-sync from the server
+        // rather than trust it. Returns the response dict on success,
+        // null on any failure (the caller shows nothing extra).
+        var dictBody = Object.assign({}, dictUpdate, {
+            sBaseFingerprint:
+                _dictWorkflowState.sWorkflowFingerprint || null,
+        });
+        try {
+            var dictResult = await VaibifyApi.fdictPut(
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
+                dictBody);
+            if (dictResult && dictResult.sWorkflowFingerprint) {
+                _dictWorkflowState.sWorkflowFingerprint =
+                    dictResult.sWorkflowFingerprint;
+            }
+            return dictResult;
+        } catch (error) {
+            if (error && error.iStatus === 409) {
+                fnShowToast(
+                    "The workflow changed since you loaded it — "
+                    + "reloaded to stay in sync so your edit didn't "
+                    + "overwrite it. Re-apply it if you still want it.",
+                    "warning");
+                PipeleyenContainerManager.fnConnectToContainer(
+                    _dictSessionState.sContainerId);
+            } else {
+                fnShowToast("Save failed", "error");
+            }
+            return null;
+        }
+    }
+
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
         _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                {bPlotOnly: bPlotOnly}
-            );
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
     }
 
     function fnToggleDepsExpand(iStep) {
@@ -3067,13 +3109,7 @@ const PipeleyenApp = (function () {
     var fnShowInputModal = PipeleyenModals.fnShowInputModal;
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                dictUpdate);
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, dictUpdate);
     }
 
     async function fnCycleUserVerification(iStep) {
@@ -3094,14 +3130,7 @@ const PipeleyenApp = (function () {
         }
         dictStep.dictVerification = dictVerify;
         _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                {dictVerification: dictVerify}
-            );
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, {dictVerification: dictVerify});
         fnRenderStepList();
         fnUpdateHighlightState();
     }
@@ -3341,13 +3370,7 @@ const PipeleyenApp = (function () {
     async function fnSaveStepArray(iStep, sArray, bScanDeps) {
         var dictUpdate = {};
         dictUpdate[sArray] = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray];
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                dictUpdate);
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, dictUpdate);
         if (sArray === "saDataCommands" && bScanDeps) {
             PipeleyenDependencyScanner.fnScanDependencies(iStep);
         }
@@ -3368,14 +3391,11 @@ const PipeleyenApp = (function () {
     }
 
     async function fnToggleStepEnabled(iIndex, bRunEnabled) {
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iIndex,
-                {bRunEnabled: bRunEnabled}
-            );
-            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bRunEnabled = bRunEnabled;
-        } catch (error) {
-            fnShowToast("Failed to update step", "error");
+        var dictResult = await fnPutStepEdit(
+            iIndex, {bRunEnabled: bRunEnabled});
+        if (dictResult) {
+            _dictWorkflowState.dictWorkflow
+                .listSteps[iIndex].bRunEnabled = bRunEnabled;
         }
     }
 
@@ -3605,6 +3625,10 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.iWorkflowEpoch =
                 dictStatus.iWorkflowEpoch;
         }
+        if (typeof dictStatus.sWorkflowFingerprint === "string") {
+            _dictWorkflowState.sWorkflowFingerprint =
+                dictStatus.sWorkflowFingerprint;
+        }
         PipeleyenFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
         if (dictStatus.dictMaxMtimeByStep) {
@@ -3744,49 +3768,6 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictWorkflowEnvelopeDetail) {
             _dictWorkflowState.dictWorkflowEnvelopeDetail =
                 dictStatus.dictWorkflowEnvelopeDetail;
-        }
-        if ("dictContainerActivity" in dictStatus) {
-            _fnRenderContainerActivity(
-                dictStatus.dictContainerActivity);
-        }
-    }
-
-    function _fnRenderContainerActivity(dictActivity) {
-        // Honest busy indicator for compute the step dispatch cannot
-        // see (the in-container agent or a terminal running
-        // simulations directly): fans with a quiet dashboard was the
-        // reported hole. A failed sample hides the indicator —
-        // missing data renders as unknown, never as idle.
-        var elIndicator = document.getElementById(
-            "containerActivityIndicator");
-        if (!elIndicator) return;
-        if (!dictActivity) {
-            elIndicator.style.display = "none";
-            return;
-        }
-        var fLoad = dictActivity.fLoadOneMinute || 0;
-        var iBusy = dictActivity.iBusyProcesses || 0;
-        if (fLoad < 0.5 && iBusy < 1) {
-            elIndicator.style.display = "none";
-            return;
-        }
-        var sDetail = "load " + fLoad.toFixed(2) + ", " + iBusy +
-            " busy " + (iBusy === 1 ? "process" : "processes");
-        elIndicator.style.display = "";
-        elIndicator.textContent = "⚙ computing";
-        if (dictActivity.bPipelineTaskLive === true) {
-            elIndicator.className =
-                "container-activity container-activity-step";
-            elIndicator.title = "Container compute active (" +
-                sDetail + ") — a vaibify step is running.";
-        } else {
-            elIndicator.className =
-                "container-activity container-activity-external";
-            elIndicator.title = "Container compute active (" +
-                sDetail + ") outside the dashboard — for example " +
-                "the in-container agent or a terminal session " +
-                "running simulations directly. No vaibify step is " +
-                "running, so no step shows as active.";
         }
     }
 

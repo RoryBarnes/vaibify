@@ -230,6 +230,126 @@ def test_T_MIGRATORS_starts_at_zero_and_is_contiguous():
     assert listFromVersions == list(range(I_CURRENT_WORKFLOW_VERSION))
 
 
+def _fdictWorkflowWithNames(listNames):
+    return {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": sName, "sDirectory": sName.replace(" ", ""),
+             "saPlotCommands": [], "saPlotFiles": []}
+            for sName in listNames
+        ],
+    }
+
+
+def test_ensure_step_ids_assigns_readable_unique_slugs():
+    dictWorkflow = _fdictWorkflowWithNames(
+        ["Engle Hierarchical Refit", "XUV Evolution"],
+    )
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    listIds = [s["sStepId"] for s in dictWorkflow["listSteps"]]
+    assert listIds == ["engle-hierarchical-refit", "xuv-evolution"]
+
+
+def test_ensure_step_ids_is_idempotent_and_stable_across_rename():
+    """An assigned id NEVER changes — not on re-run, not on rename.
+
+    This is the whole point of a stable identity: a reference to the
+    step survives edits that a positional index would not.
+    """
+    dictWorkflow = _fdictWorkflowWithNames(["Max Likelihood"])
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    sOriginal = dictWorkflow["listSteps"][0]["sStepId"]
+    # Rerun: unchanged.
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    assert dictWorkflow["listSteps"][0]["sStepId"] == sOriginal
+    # Rename the step: the id must NOT track the new name.
+    dictWorkflow["listSteps"][0]["sName"] = "Maximum A Posteriori"
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    assert dictWorkflow["listSteps"][0]["sStepId"] == sOriginal
+
+
+def test_ensure_step_ids_disambiguates_colliding_names():
+    dictWorkflow = _fdictWorkflowWithNames(
+        ["Refit", "Refit", "Refit"],
+    )
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    listIds = [s["sStepId"] for s in dictWorkflow["listSteps"]]
+    assert listIds == ["refit", "refit-2", "refit-3"]
+    assert len(set(listIds)) == 3
+
+
+def test_ensure_step_ids_falls_back_for_nameless_step():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [{"sName": "", "sDirectory": "d",
+                       "saPlotCommands": [], "saPlotFiles": []}],
+    }
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    assert dictWorkflow["listSteps"][0]["sStepId"] == "step-1"
+
+
+def test_v5_to_v6_migration_assigns_ids_and_bumps_version():
+    dictWorkflow = _fdictWorkflowWithNames(["Alpha", "Beta"])
+    dictWorkflow[S_VERSION_KEY] = 5
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    assert dictWorkflow[S_VERSION_KEY] == I_CURRENT_WORKFLOW_VERSION
+    assert [s["sStepId"] for s in dictWorkflow["listSteps"]] == [
+        "alpha", "beta",
+    ]
+
+
+def test_rewrite_positional_to_symbolic_uses_target_step_id():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Refit", "sStepId": "refit", "sDirectory": "R",
+             "saDataFiles": ["chains.npz"], "saPlotCommands": []},
+            {"sName": "Plot", "sStepId": "plot", "sDirectory": "P",
+             "saPlotCommands": ["plot {Step01.chains}"], "saPlotFiles": []},
+        ],
+    }
+    workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
+    assert dictWorkflow["listSteps"][1]["saPlotCommands"] == [
+        "plot {step:refit.chains}",
+    ]
+
+
+def test_rewrite_positional_is_idempotent_and_leaves_symbolic():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Refit", "sStepId": "refit", "sDirectory": "R",
+             "saDataFiles": ["chains.npz"], "saPlotCommands": []},
+            {"sName": "Plot", "sStepId": "plot", "sDirectory": "P",
+             "saPlotCommands": ["plot {step:refit.chains}"],
+             "saPlotFiles": []},
+        ],
+    }
+    workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
+    assert dictWorkflow["listSteps"][1]["saPlotCommands"] == [
+        "plot {step:refit.chains}",
+    ]
+
+
+def test_full_migration_from_v0_produces_symbolic_tokens():
+    """The whole chain: a legacy positional workflow migrates to
+    stable ids + symbolic tokens in one fnApplyMigrations pass."""
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Generate Samples", "sDirectory": "Sampler",
+             "saDataFiles": ["samples.npy"], "saPlotCommands": []},
+            {"sName": "Plot", "sDirectory": "Plot", "saPlotFiles": [],
+             "saPlotCommands": ["plot {Step01.samples}"]},
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    assert dictWorkflow["listSteps"][0]["sStepId"] == "generate-samples"
+    assert dictWorkflow["listSteps"][1]["saPlotCommands"] == [
+        "plot {step:generate-samples.samples}",
+    ]
+
+
 def test_load_invalid_workflow_returns_named_diagnostic():
     from vaibify.gui.workflowManager import (
         fsDescribeValidationFailure,

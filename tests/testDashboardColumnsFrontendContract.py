@@ -957,36 +957,6 @@ def test_published_copies_exempt_overleaf_and_arxiv_when_unbound():
     )
 
 
-def test_container_activity_indicator_never_asserts_idle():
-    """The toolbar activity indicator hides on missing data.
-
-    The indicator exists because out-of-band compute (the in-container
-    agent or a terminal running simulations directly) is invisible to
-    step dispatch — fans with a quiet dashboard. A failed sample must
-    hide the indicator (unknown), never display an idle state the
-    backend did not demonstrate.
-    """
-    sSource = _fsReadStaticFile("scriptApplication.js")
-    sRender = _fsExtractFunctionBlock(
-        sSource, "_fnRenderContainerActivity",
-    )
-    assert 'display = "none"' in sRender, (
-        "missing or idle samples must hide the indicator"
-    )
-    assert "if (!dictActivity)" in sRender, (
-        "a null sample must be handled explicitly (hidden), before "
-        "any threshold logic runs"
-    )
-    assert "bPipelineTaskLive" in sRender, (
-        "the indicator must distinguish vaibify-step compute from "
-        "out-of-band compute"
-    )
-    sIndexHtml = _fsReadStaticFile("index.html")
-    assert "containerActivityIndicator" in sIndexHtml, (
-        "the toolbar must carry the indicator element"
-    )
-
-
 def test_sync_row_never_renders_zero_of_zero_as_attained():
     """A verify that compared no files must not paint green.
 

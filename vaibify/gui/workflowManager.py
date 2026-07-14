@@ -18,7 +18,27 @@ from .workflowMigrations import (
 )
 
 S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
+# Symbolic cross-step reference: {step:<sStepId>.<stem>}. This is the
+# canonical form; the positional S_STEP_REF_PATTERN above is deprecated
+# and normalized to symbolic on load (migration) and save. The two are
+# unambiguous — positional is capitalized "Step" + digits, symbolic is
+# lowercase "step:" + a kebab id.
+S_STEP_SYMBOLIC_PATTERN = r"\{step:([a-z0-9][a-z0-9-]*)\.([^}]+)\}"
 S_VAIBIFY_WORKFLOWS_SUFFIX = "/.vaibify/workflows/"
+
+
+def fdictStepIdToIndex(dictWorkflow):
+    """Return ``{sStepId: iStepIndex}`` (0-based) for the workflow.
+
+    The resolution table for symbolic cross-step references. Steps
+    without an id (only possible transiently, before
+    ``fnEnsureStepIds`` runs) are omitted.
+    """
+    dictOut = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", []) or []):
+        if isinstance(dictStep, dict) and dictStep.get("sStepId"):
+            dictOut[dictStep["sStepId"]] = iIndex
+    return dictOut
 
 __all__ = [
     "fbDeriveUnnecessaryVerification",
@@ -270,6 +290,7 @@ def fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
     )
     fbDeriveUnnecessaryVerification(dictWorkflow)
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
     _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
@@ -1010,6 +1031,8 @@ def fnSaveWorkflowToContainer(
     from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
@@ -1078,10 +1101,13 @@ def fdictBuildStemRegistry(dictWorkflow):
     dictRegistry = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
+        sStepId = dictStep.get("sStepId")
         dictTokenStems = fdictMapOutputTokenStems(
             _flistStepDeclaredOutputs(dictStep))
         for sStem in dictTokenStems:
             dictRegistry[f"Step{iNumber:02d}.{sStem}"] = iNumber
+            if sStepId:
+                dictRegistry[f"step:{sStepId}.{sStem}"] = iNumber
     return dictRegistry
 
 
@@ -1105,8 +1131,14 @@ def flistCollectReferenceStrings(dictStep):
 
 
 def flistValidateReferences(dictWorkflow):
-    """Return a list of warnings about cross-step reference problems."""
+    """Return a list of warnings about cross-step reference problems.
+
+    Validates both cross-step reference forms: the canonical symbolic
+    ``{step:<id>.<stem>}`` and the deprecated positional
+    ``{StepNN.<stem>}`` (which additionally earns a migration warning).
+    """
     dictRegistry = fdictBuildStemRegistry(dictWorkflow)
+    dictIdToIndex = fdictStepIdToIndex(dictWorkflow)
     listWarnings = []
 
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
@@ -1117,6 +1149,10 @@ def flistValidateReferences(dictWorkflow):
             _fnCheckCommandReferences(
                 sText, sStepLabel, iNumber,
                 dictWorkflow, dictRegistry, listWarnings,
+            )
+            _fnCheckSymbolicReferences(
+                sText, sStepLabel, iNumber,
+                dictRegistry, dictIdToIndex, listWarnings,
             )
 
     return listWarnings
@@ -1137,17 +1173,47 @@ def _fnCheckCommandReferences(
     sCommand, sStepLabel, iNumber,
     dictWorkflow, dictRegistry, listWarnings,
 ):
-    """Append warnings for invalid references in a single command."""
+    """Append warnings for invalid/deprecated positional references."""
     iStepCount = len(dictWorkflow["listSteps"])
     for sRefNumber, sRefVariable in fsetExtractStepReferences(sCommand):
         iRefNumber = int(sRefNumber)
         sRefKey = f"Step{iRefNumber:02d}.{sRefVariable}"
+        listWarnings.append(
+            f"{sStepLabel}: reference {{{sRefKey}}} uses the deprecated "
+            f"positional form — migrate to the symbolic "
+            f"{{step:<id>.{sRefVariable}}} form"
+        )
         sSuffix = _fsClassifyReference(
             iRefNumber, sRefKey, iNumber, iStepCount, dictRegistry
         )
         if sSuffix:
             listWarnings.append(
                 f"{sStepLabel}: reference {{{sRefKey}}} {sSuffix}"
+            )
+
+
+def _fnCheckSymbolicReferences(
+    sCommand, sStepLabel, iNumber,
+    dictRegistry, dictIdToIndex, listWarnings,
+):
+    """Append warnings for invalid symbolic ``{step:<id>.<stem>}`` refs."""
+    for sId, sVariable in re.findall(S_STEP_SYMBOLIC_PATTERN, sCommand):
+        sRefKey = f"step:{sId}.{sVariable}"
+        if sId not in dictIdToIndex:
+            listWarnings.append(
+                f"{sStepLabel}: reference {{{sRefKey}}} names no step id"
+            )
+            continue
+        if sRefKey not in dictRegistry:
+            listWarnings.append(
+                f"{sStepLabel}: reference {{{sRefKey}}} has no matching "
+                f"output file in that step"
+            )
+            continue
+        if dictIdToIndex[sId] + 1 >= iNumber:
+            listWarnings.append(
+                f"{sStepLabel}: reference {{{sRefKey}}} points to a later "
+                f"step (circular dependency)"
             )
 
 
@@ -1162,6 +1228,7 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
     dictStepVars = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
+        sStepId = dictStep.get("sStepId")
         sStepDirectory = dictStep.get("sDirectory", "")
         dictTokenStems = fdictMapOutputTokenStems(
             _flistStepDeclaredOutputs(dictStep))
@@ -1171,6 +1238,8 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
                 sResolved, sStepDirectory, dictGlobalVars
             )
             dictStepVars[f"Step{iNumber:02d}.{sStem}"] = sAbsPath
+            if sStepId:
+                dictStepVars[f"step:{sStepId}.{sStem}"] = sAbsPath
     return dictStepVars
 
 
@@ -1186,6 +1255,70 @@ def _fsResolveStepOutputPath(sResolvedFile, sStepDirectory, dictGlobalVars):
 def fsResolveCommand(sCommand, dictVariables):
     """Resolve template variables in a command string."""
     return fsResolveVariables(sCommand, dictVariables)
+
+
+_T_COMMAND_FIELDS = (
+    "saDataCommands", "saPlotCommands", "saTestCommands",
+    "saSetupCommands", "saCommands",
+)
+
+
+def flistResidualStepTokens(sResolvedCommand):
+    """Return cross-step tokens that a substitution failed to resolve.
+
+    After :func:`fsResolveCommand`, a resolved token becomes a path, so
+    any cross-step token still present names an output that does not
+    exist (unknown step id / number, or an undeclared stem).
+    """
+    listTokens = []
+    for sNum, sVar in re.findall(S_STEP_REF_PATTERN, sResolvedCommand):
+        listTokens.append(f"{{Step{sNum}.{sVar}}}")
+    for sId, sVar in re.findall(S_STEP_SYMBOLIC_PATTERN, sResolvedCommand):
+        listTokens.append(f"{{step:{sId}.{sVar}}}")
+    return listTokens
+
+
+def fdictResolveWorkflowCommands(dictWorkflow, dictGlobalVars):
+    """Return a dry-run report of every step command, without running.
+
+    The workflow's ``make -n``: each command is substituted against the
+    live graph, so an agent (or the dashboard) can verify a rewire —
+    every token resolves, no dangling references — in the time of a
+    dict build instead of an actual step run. Per command it reports
+    the original text, the fully substituted text, and any residual
+    cross-step tokens that failed to resolve; the top-level
+    ``listWarnings`` carries :func:`flistValidateReferences` (including
+    the positional-form deprecation nudge).
+    """
+    dictAllVars = dict(dictGlobalVars or {})
+    dictAllVars.update(fdictBuildStepVariables(dictWorkflow, dictGlobalVars))
+    listStepReports = []
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []) or [],
+    ):
+        listCommands = []
+        for sField in _T_COMMAND_FIELDS:
+            for sCommand in dictStep.get(sField, []) or []:
+                sResolved = fsResolveCommand(sCommand, dictAllVars)
+                listCommands.append({
+                    "sField": sField,
+                    "sOriginal": sCommand,
+                    "sResolved": sResolved,
+                    "listUnresolvedTokens": flistResidualStepTokens(
+                        sResolved,
+                    ),
+                })
+        listStepReports.append({
+            "iStepIndex": iIndex,
+            "sStepId": dictStep.get("sStepId"),
+            "sName": dictStep.get("sName"),
+            "listCommands": listCommands,
+        })
+    return {
+        "sWorkflowFingerprint": fsComputeWorkflowFingerprint(dictWorkflow),
+        "listSteps": listStepReports,
+        "listWarnings": flistValidateReferences(dictWorkflow),
+    }
 
 
 def fsResolveStepWorkdir(sStepDirectory, dictVariables):
@@ -1684,9 +1817,23 @@ def _flistNormalizeKeywords(listKeywords):
     return listOut
 
 
-def fsetExtractUpstreamIndices(sText):
-    """Return set of step indices (0-based) referenced by {StepNN.} tokens."""
-    return set(int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText))
+def fsetExtractUpstreamIndices(sText, dictIdToIndex=None):
+    """Return 0-based step indices referenced by cross-step tokens.
+
+    Resolves both the deprecated positional ``{StepNN.}`` form (index
+    from the number) and the canonical symbolic ``{step:<id>.}`` form
+    (index from ``dictIdToIndex``, when supplied). A symbolic id absent
+    from the map contributes no edge — the same tolerant behavior the
+    positional path has for an out-of-range number.
+    """
+    setIndices = set(
+        int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText)
+    )
+    if dictIdToIndex:
+        for sId in re.findall(r"\{step:([a-z0-9][a-z0-9-]*)\.", sText):
+            if sId in dictIdToIndex:
+                setIndices.add(dictIdToIndex[sId])
+    return setIndices
 
 
 def _flistResolveOutputPaths(dictStep):
@@ -1822,6 +1969,7 @@ def _fnMergeImplicitDependencies(dictDirect, dictWorkflow):
 
 def _fdictComputeDirectDependencies(dictWorkflow):
     """Uncached direct-dependency computation; see fdictBuildDirectDependencies."""
+    dictIdToIndex = fdictStepIdToIndex(dictWorkflow)
     dictDirect = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         setUpstream = set()
@@ -1830,7 +1978,9 @@ def _fdictComputeDirectDependencies(dictWorkflow):
                      "saDependencies", "saSetupCommands",
                      "saCommands", "saOutputFiles"):
             for sItem in dictStep.get(sKey, []):
-                setUpstream |= fsetExtractUpstreamIndices(sItem)
+                setUpstream |= fsetExtractUpstreamIndices(
+                    sItem, dictIdToIndex,
+                )
         for iUpstream in setUpstream:
             dictDirect.setdefault(iUpstream, set()).add(iIndex)
     _fnMergeImplicitDependencies(dictDirect, dictWorkflow)

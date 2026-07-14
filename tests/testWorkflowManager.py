@@ -16,8 +16,125 @@ from vaibify.gui.workflowManager import (
     fsCamelCaseDirectory,
     flistExtractStepScripts,
     fdictBuildStepDirectoryMap,
+    fdictBuildStepVariables,
+    fdictBuildDirectDependencies,
+    fdictStepIdToIndex,
     DEFAULT_SEARCH_ROOT,
 )
+
+
+def _fdictTwoStepSymbolicWorkflow():
+    """Refit (id 'refit') → Plot, wired with a symbolic token."""
+    return {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Refit", "sStepId": "refit", "sDirectory": "Refit",
+             "saDataFiles": ["chains.npz"], "saPlotCommands": [],
+             "saPlotFiles": []},
+            {"sName": "Plot", "sStepId": "plot", "sDirectory": "Plot",
+             "saDataFiles": [],
+             "saPlotCommands": ["plot {step:refit.chains}"],
+             "saPlotFiles": ["out.pdf"]},
+        ],
+    }
+
+
+def test_symbolic_token_resolves_to_output_path():
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    dictVars = {"sRepoRoot": "/repo"}
+    dictStepVars = fdictBuildStepVariables(dictWorkflow, dictVars)
+    assert dictStepVars["step:refit.chains"] == "/repo/Refit/chains.npz"
+    # The positional alias still resolves during the transition.
+    assert dictStepVars["Step01.chains"] == "/repo/Refit/chains.npz"
+
+
+def test_symbolic_dependency_edge_is_detected():
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    # Refit (index 0) is upstream of Plot (index 1).
+    assert 1 in dictDirect.get(0, set())
+
+
+def test_symbolic_edge_survives_reorder_positional_would_not():
+    """The whole point of stable ids: insert a step ABOVE the producer
+    and the symbolic reference still points at it. A positional
+    {Step01.chains} would now silently name the inserted step."""
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    fnInsertStep(dictWorkflow, 0, {
+        "sName": "Prelude", "sStepId": "prelude", "sDirectory": "Prelude",
+        "saDataFiles": ["note.txt"], "saPlotCommands": [], "saPlotFiles": [],
+    })
+    # Refit is now at index 1, Plot at index 2. The command text is
+    # unchanged (symbolic tokens are never renumbered).
+    assert dictWorkflow["listSteps"][2]["saPlotCommands"] == [
+        "plot {step:refit.chains}",
+    ]
+    dictIdToIndex = fdictStepIdToIndex(dictWorkflow)
+    assert dictIdToIndex["refit"] == 1
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    # Edge still runs Refit(1) -> Plot(2), NOT Prelude(0) -> Plot.
+    assert 2 in dictDirect.get(1, set())
+    assert 2 not in dictDirect.get(0, set())
+
+
+def test_positional_reference_earns_deprecation_warning():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "A", "sStepId": "a", "sDirectory": "A",
+             "saDataFiles": ["x.npz"], "saPlotCommands": [],
+             "saPlotFiles": []},
+            {"sName": "B", "sStepId": "b", "sDirectory": "B",
+             "saPlotCommands": ["run {Step01.x}"], "saPlotFiles": []},
+        ],
+    }
+    listWarnings = flistValidateReferences(dictWorkflow)
+    assert any("deprecated" in s for s in listWarnings)
+
+
+def test_symbolic_reference_to_unknown_id_warns():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "B", "sStepId": "b", "sDirectory": "B",
+             "saPlotCommands": ["run {step:ghost.x}"], "saPlotFiles": []},
+        ],
+    }
+    listWarnings = flistValidateReferences(dictWorkflow)
+    assert any("names no step id" in s for s in listWarnings)
+
+
+def test_resolve_workflow_commands_substitutes_symbolic_token():
+    from vaibify.gui.workflowManager import fdictResolveWorkflowCommands
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    dictReport = fdictResolveWorkflowCommands(
+        dictWorkflow, {"sRepoRoot": "/repo"},
+    )
+    dictPlotCmd = dictReport["listSteps"][1]["listCommands"][0]
+    assert dictPlotCmd["sResolved"] == "plot /repo/Refit/chains.npz"
+    assert dictPlotCmd["listUnresolvedTokens"] == []
+
+
+def test_resolve_workflow_commands_flags_dangling_token():
+    """A reference to a nonexistent output stays unresolved and is
+    reported — the whole point of the dry-run."""
+    from vaibify.gui.workflowManager import fdictResolveWorkflowCommands
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Refit", "sStepId": "refit", "sDirectory": "Refit",
+             "saDataFiles": ["chains.npz"], "saPlotCommands": [],
+             "saPlotFiles": []},
+            {"sName": "Plot", "sStepId": "plot", "sDirectory": "Plot",
+             "saPlotCommands": ["plot {step:refit.ghost}"],
+             "saPlotFiles": []},
+        ],
+    }
+    dictReport = fdictResolveWorkflowCommands(
+        dictWorkflow, {"sRepoRoot": "/repo"},
+    )
+    dictPlotCmd = dictReport["listSteps"][1]["listCommands"][0]
+    assert dictPlotCmd["listUnresolvedTokens"] == ["{step:refit.ghost}"]
 
 
 def _fdictBuildMinimalWorkflow(iStepCount=2):

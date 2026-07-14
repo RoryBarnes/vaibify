@@ -138,6 +138,10 @@ class StepUpdateRequest(BaseModel):
     dictPlotFileCategories: Optional[dict] = None
     dictDataFileCategories: Optional[dict] = None
     bConfirmDestructive: bool = False
+    # Optional compare-and-swap guard: the workflow fingerprint the
+    # caller read. When present and stale, the edit is rejected 409
+    # instead of silently clobbering a concurrent writer.
+    sBaseFingerprint: Optional[str] = None
 
 
 class ReorderRequest(BaseModel):
@@ -1177,6 +1181,9 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             "sLeaseId": dictCtx.get("sViewerLease", ""),
             "iWorkflowEpoch": fiGetWorkflowEpoch(
                 dictCtx, sContainerId,
+            ),
+            "sWorkflowFingerprint": (
+                workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),
         }
     except HTTPException:

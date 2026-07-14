@@ -351,6 +351,19 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Recompute SHA-256 hashes for every file in "
                      "MANIFEST.sha256 and report mismatches. Returns "
                      "iTotal, iMatching, listMismatches."},
+    {"sName": "resolve-commands", "sCategory": "workflow",
+     "sMethod": "GET",
+     "sPath": "/api/steps/{sContainerId}/resolve-commands",
+     "bAgentSafe": True,
+     "sDescription": "Dry-run the workflow (the graph's `make -n`): "
+                     "substitute every step command against the live "
+                     "workflow WITHOUT running anything. Returns per "
+                     "command the original text, the fully resolved "
+                     "text, and any residual cross-step tokens that "
+                     "failed to resolve, plus listWarnings from "
+                     "reference validation (including the deprecation "
+                     "nudge for the positional {StepNN.stem} form). Use "
+                     "this to verify a rewire before running a step."},
     # ---- AICS ladder readiness ----
     {"sName": "check-l2-readiness", "sCategory": "verification",
      "sMethod": "GET",

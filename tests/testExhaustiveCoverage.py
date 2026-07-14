@@ -629,8 +629,10 @@ class TestFnCheckCommandReferences:
         _fnCheckCommandReferences(
             "python run.py {Step05.data}", "Step01", 1,
             dictWorkflow, dictRegistry, listWarnings)
-        assert len(listWarnings) == 1
-        assert "beyond" in listWarnings[0]
+        # Deprecation warning for the positional form, plus the
+        # correctness warning.
+        assert any("beyond" in sWarning for sWarning in listWarnings)
+        assert any("deprecated" in sWarning for sWarning in listWarnings)
 
     def test_detects_circular(self):
         dictWorkflow = {"listSteps": [
@@ -642,8 +644,8 @@ class TestFnCheckCommandReferences:
         _fnCheckCommandReferences(
             "python run.py {Step02.res}", "Step01", 1,
             dictWorkflow, dictRegistry, listWarnings)
-        assert len(listWarnings) == 1
-        assert "circular" in listWarnings[0]
+        assert any("circular" in sWarning for sWarning in listWarnings)
+        assert any("deprecated" in sWarning for sWarning in listWarnings)
 
     def test_valid_reference_no_warning(self):
         dictWorkflow = {"listSteps": [
@@ -655,7 +657,11 @@ class TestFnCheckCommandReferences:
         _fnCheckCommandReferences(
             "python run.py {Step01.out}", "Step02", 2,
             dictWorkflow, dictRegistry, listWarnings)
-        assert listWarnings == []
+        # A well-formed positional reference is still valid, but the
+        # positional form itself is now deprecated — so exactly one
+        # warning, the migration nudge, and nothing about correctness.
+        assert len(listWarnings) == 1
+        assert "deprecated" in listWarnings[0]
 
     def test_no_references_no_warning(self):
         dictWorkflow = {"listSteps": [{"sName": "A"}]}
@@ -676,5 +682,7 @@ class TestFnCheckCommandReferences:
         _fnCheckCommandReferences(
             "{Step01.nonexistent}", "Step02", 2,
             dictWorkflow, dictRegistry, listWarnings)
-        assert len(listWarnings) == 1
-        assert "no matching output" in listWarnings[0]
+        assert any(
+            "no matching output" in sWarning for sWarning in listWarnings
+        )
+        assert any("deprecated" in sWarning for sWarning in listWarnings)

@@ -577,50 +577,6 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
         }
 
 
-def _fdictSampleContainerActivity(dictCtx, sContainerId):
-    """Sample container CPU activity for the toolbar busy indicator.
-
-    Out-of-band compute — the in-container agent or a terminal session
-    running simulations directly — burns CPU without any vaibify step
-    being dispatched, so no step blinks and the researcher hears fans
-    over a quiet dashboard. One cheap exec reads the 1-minute load
-    average and counts runnable/uninterruptible processes (the
-    sampling ``ps`` subtracts itself). Returns None on any failure:
-    missing data must render as unknown, never as idle.
-    """
-    sCommand = (
-        "cat /proc/loadavg && (ps -eo stat= | grep -c '^[RD]' || true)"
-    )
-    try:
-        iExitCode, sOutput = dictCtx["docker"].ftResultExecuteCommand(
-            sContainerId, sCommand,
-        )
-    except Exception:
-        return None
-    if iExitCode != 0:
-        return None
-    return _fdictParseActivitySample(sOutput)
-
-
-def _fdictParseActivitySample(sOutput):
-    """Parse the loadavg + busy-count exec output, or None on garbage."""
-    listLines = [
-        sLine.strip() for sLine in (sOutput or "").splitlines()
-        if sLine.strip()
-    ]
-    if len(listLines) < 2:
-        return None
-    try:
-        fLoadOneMinute = float(listLines[0].split()[0])
-        iBusyRaw = int(listLines[-1])
-    except (ValueError, IndexError):
-        return None
-    return {
-        "fLoadOneMinute": fLoadOneMinute,
-        "iBusyProcesses": max(0, iBusyRaw - 1),
-    }
-
-
 async def _fbResolvePipelineRunning(dictCtx, sContainerId):
     """Reconcile pipeline state and return the post-reconciliation bRunning.
 
@@ -676,22 +632,17 @@ async def _fdictFetchOutputStatus(
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
     )
-    dictActivity = await asyncio.to_thread(
-        _fdictSampleContainerActivity, dictCtx, sContainerId,
-    )
-    if dictActivity is not None:
-        dictActivity["bPipelineTaskLive"] = bool(bPipelineRunning)
     return {
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),
-        "dictContainerActivity": dictActivity,
         **dictRest,
     }
 
 
 def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     """Return the deduplicated union of paths the poller needs mtimes for."""
+    from vaibify.reproducibility.levelGates import flistWorkflowBinaryPaths
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listOutputPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
@@ -704,9 +655,13 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
             _flistResolveTestSourcePaths(dictStep, dictVars),
         )
     listWorkflowPaths = [sWorkflowPath] if sWorkflowPath else []
+    # Declared binaries are absolute, out-of-repo paths; their mtimes
+    # drive the L1 binary-changed warning (the L3 drift check uses the
+    # snapshot-carried hashes instead).
+    listBinaryPaths = flistWorkflowBinaryPaths(dictWorkflow)
     return list(set(
         listOutputPaths + listScriptPaths + listMarkerPaths
-        + listTestSourcePaths + listWorkflowPaths,
+        + listTestSourcePaths + listWorkflowPaths + listBinaryPaths,
     ))
 
 
@@ -1021,7 +976,9 @@ def _ffilesFetchPollSnapshot(
     body is no longer carried inline on every poll; it is fetched once
     per manifest sha by the lazy cache below.
     """
-    from vaibify.reproducibility.levelGates import _flistAllStepScriptPaths
+    from vaibify.reproducibility.levelGates import (
+        _flistAllStepScriptPaths, flistWorkflowBinaryPaths,
+    )
     from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     if not sRepoRoot or dictCtx.get("files") is None:
@@ -1039,6 +996,7 @@ def _ffilesFetchPollSnapshot(
         listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
         listHashRelPaths=listNeedHash,
         dictSeedHashes=dictSeed,
+        listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
     )
     bShaCacheChanged = _fnUpdateShaCache(
         dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
@@ -1199,10 +1157,15 @@ def _fdictAssemblePollResponse(
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
 ):
     """Assemble the poll wire payload from the computed pieces."""
+    from vaibify.reproducibility.levelGates import fdictBinaryStaleByStep
+    from .. import workflowManager
+    dictBinaryStaleByStep = fdictBinaryStaleByStep(
+        dictWorkflow, dictModTimes, dictMtimes["dictMaxMtimeByStep"],
+    )
     dictLevelPayload = _fdictBuildLevelStatePayload(
         dictWorkflow, dictGates["listBlockers"],
         dictGates["listLevel2Blockers"], dictGates["listLevel3Blockers"],
-        dictMtimes["dictMaxMtimeByStep"],
+        dictMtimes["dictMaxMtimeByStep"], dictBinaryStaleByStep,
     )
     return {
         **dictLevelPayload,
@@ -1214,6 +1177,9 @@ def _fdictAssemblePollResponse(
         "iAICSLevel": dictWorkflow["iAICSLevel"],
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
+        "sWorkflowFingerprint": (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        ),
         "listStaleOutputAdvisories": _flistBuildStaleOutputAdvisories(
             dictWorkflow, dictModTimes,
         ),
@@ -1297,7 +1263,7 @@ def _fdictProjectStepLevelHighWater(dictWorkflow):
 
 def _fdictBuildLevelStatePayload(
     dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
-    dictMaxMtimeByStep=None,
+    dictMaxMtimeByStep=None, dictBinaryStaleByStep=None,
 ):
     """Build the level-state wire keys plus the private ratchet flag.
 
@@ -1324,6 +1290,7 @@ def _fdictBuildLevelStatePayload(
     )
     dictPayload = _fdictBuildLevelStateWireKeys(
         dictWorkflow, dictStepStates, dictScopeStates, listBlockers,
+        dictBinaryStaleByStep,
     )
     dictPayload[_S_LEVEL_RATCHET_FLAG_KEY] = bChanged
     return dictPayload
@@ -1331,6 +1298,7 @@ def _fdictBuildLevelStatePayload(
 
 def _fdictBuildLevelStateWireKeys(
     dictWorkflow, dictStepStates, dictScopeStates, listBlockers,
+    dictBinaryStaleByStep=None,
 ):
     """Build the public level-state keys of the poll payload.
 
@@ -1342,6 +1310,7 @@ def _fdictBuildLevelStateWireKeys(
     )
     dictStepWarnings = fdictComputeStepLevelWarnings(
         dictWorkflow, dictStepStates, listBlockers,
+        dictBinaryStaleByStep,
     )
     return {
         "dictStepLevels": _fdictKeyStatesByStepString(dictStepStates),

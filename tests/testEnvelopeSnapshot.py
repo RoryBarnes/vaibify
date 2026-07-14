@@ -170,9 +170,28 @@ def test_every_write_method_raises(filesSnapshot):
     with pytest.raises(NotImplementedError):
         filesSnapshot.ftRunCommand(["true"], 1.0)
     with pytest.raises(NotImplementedError):
-        filesSnapshot.fdictHashAbsolutePaths(["/bin/sh"])
-    with pytest.raises(NotImplementedError):
         filesSnapshot.flistListJsonFilenames(".vaibify")
+
+
+def test_hash_absolute_paths_reads_prefetched_batch():
+    """The snapshot answers absolute-path hashing from its pre-fetched
+    batch — no second exec — and maps unsampled paths to None.
+
+    The poll hashes declared-binary absolute paths in its single exec
+    (the out-of-repo guard was lifted deliberately), so a later
+    fdictHashAbsolutePaths call must read those values, not raise.
+    """
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+    filesSnapshot = SnapshotRepoFiles(
+        "/repo", {}, {},
+        dictAbsHashes={"/home/u/.local/bin/vplanet": "a" * 64},
+    )
+    dictResult = filesSnapshot.fdictHashAbsolutePaths([
+        "/home/u/.local/bin/vplanet",
+        "/home/u/.local/bin/maxlev",
+    ])
+    assert dictResult["/home/u/.local/bin/vplanet"] == "a" * 64
+    assert dictResult["/home/u/.local/bin/maxlev"] is None
 
 
 def test_seed_hashes_merge_and_fetched_results_win(tmp_path):
