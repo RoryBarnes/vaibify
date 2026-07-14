@@ -797,12 +797,16 @@ async def _fbVerifyStepOutputs(
         # A stalled container exec must NEVER hang the whole verify
         # forever (the reported 2h33m no-completion incident). Report
         # the step as unverifiable and let verify finish and emit its
-        # completion, exactly as the OSError degradation does.
+        # completion, exactly as the OSError degradation does. This is
+        # an abnormal condition, so it rides a distinct event type the
+        # dashboard raises as a warning toast rather than burying in
+        # the log.
         await fnStatusCallback({
-            "sType": "output",
+            "sType": "verifyTimeout",
             "sLine": (
-                "Verification timed out checking this step's outputs "
-                "after "
+                "Verification timed out checking outputs for step "
+                + repr(dictStep.get("sName", "?"))
+                + " after "
                 + str(int(_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS))
                 + "s — reporting it unverified rather than hanging."
             ),

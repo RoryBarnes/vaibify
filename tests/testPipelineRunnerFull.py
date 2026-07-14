@@ -1103,6 +1103,9 @@ def test_verify_step_exec_timeout_does_not_hang():
     assert iExit == 1
     sTypes = [dictEvent.get("sType") for dictEvent in listCaptured]
     assert "failed" in sTypes            # completion event emitted
+    # The timeout rides a distinct event type so the dashboard can
+    # raise a warning toast instead of burying it in the log.
+    assert "verifyTimeout" in sTypes
     assert any(
         "timed out" in (dictEvent.get("sLine") or "")
         for dictEvent in listCaptured

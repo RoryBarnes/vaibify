@@ -29,6 +29,11 @@ var PipeleyenPipelineRunner = (function () {
             }
         } else if (dictEvent.sType === "output") {
             fnAppendPipelineOutput(dictEvent.sLine);
+        } else if (dictEvent.sType === "verifyTimeout") {
+            fnAppendPipelineOutput(dictEvent.sLine);
+            PipeleyenApp.fnShowToast(
+                "Verification timed out on a step — it's reported "
+                + "unverified. See the run log.", "warning");
         } else if (dictEvent.sType === "commandFailed") {
             var sMessage =
                 "FAILED: " + dictEvent.sCommand +
