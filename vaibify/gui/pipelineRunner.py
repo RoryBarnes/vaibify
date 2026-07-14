@@ -745,6 +745,10 @@ async def _fnEmitDiscoveredOutputs(
 
 
 _S_VERIFY_PATHFILE_PREFIX = "/tmp/vaibifyVerify."
+# A per-step output-existence check is one cheap exec; 30s is generous.
+# The bound exists so a stalled docker exec surfaces as a loud
+# unverified result instead of an invisible, unbounded hang.
+_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS = 30.0
 
 
 def _fsVerifyPathfileForCall():
@@ -781,10 +785,29 @@ async def _fbVerifyStepOutputs(
     )
     if not listAbsolutePaths:
         return True
-    setMissing = await asyncio.to_thread(
-        _fsetMissingPathsBatched,
-        connectionDocker, sContainerId, listAbsolutePaths,
-    )
+    try:
+        setMissing = await asyncio.wait_for(
+            asyncio.to_thread(
+                _fsetMissingPathsBatched,
+                connectionDocker, sContainerId, listAbsolutePaths,
+            ),
+            timeout=_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        # A stalled container exec must NEVER hang the whole verify
+        # forever (the reported 2h33m no-completion incident). Report
+        # the step as unverifiable and let verify finish and emit its
+        # completion, exactly as the OSError degradation does.
+        await fnStatusCallback({
+            "sType": "output",
+            "sLine": (
+                "Verification timed out checking this step's outputs "
+                "after "
+                + str(int(_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS))
+                + "s — reporting it unverified rather than hanging."
+            ),
+        })
+        return False
     if setMissing:
         sFirstMissing = next(
             sPath for sPath in listAbsolutePaths if sPath in setMissing

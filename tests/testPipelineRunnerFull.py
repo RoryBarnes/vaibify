@@ -1060,3 +1060,50 @@ def test_fnRunHeartbeatLoop_logs_and_continues_on_write_failure(caplog):
 
 # Need to import threading at module level for the heartbeat test
 import threading  # noqa: E402
+
+
+def test_verify_step_exec_timeout_does_not_hang():
+    """A stalled container exec during verify must not hang forever.
+
+    Reproduces the reported incident: a dispatched verify that never
+    completes. With a bounded per-step exec timeout, verify reports the
+    stalled step as unverified and still emits its completion event,
+    so the WebSocket client is released instead of hanging.
+    """
+    import asyncio as _asyncio
+    import time as _time
+    from vaibify.gui import pipelineRunner
+
+    mockDocker = _fMockDocker(0, "")
+
+    def fnSlowExec(*args, **kwargs):
+        _time.sleep(1.0)   # far longer than the patched timeout
+        return (0, "")
+
+    mockDocker.ftResultExecuteCommand.side_effect = fnSlowExec
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "S", "sDirectory": "S",
+             "saDataFiles": ["out.dat"], "saPlotFiles": []},
+        ],
+    }
+    fnCallback, listCaptured = _fMockCallback()
+    with patch.object(
+        pipelineRunner, "_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS", 0.05,
+    ):
+        iExit = _asyncio.run(pipelineRunner.fnVerifyOnly(
+            mockDocker, "cid", dictWorkflow, "wf.json", "/repo",
+            fnCallback,
+        ))
+    # Verify completed and reported the step unverified. The timeout
+    # branch fires ONLY on asyncio.TimeoutError, so the "timed out"
+    # line proves the exec was bounded rather than awaited to
+    # completion — the fix for the never-completing-verify incident.
+    assert iExit == 1
+    sTypes = [dictEvent.get("sType") for dictEvent in listCaptured]
+    assert "failed" in sTypes            # completion event emitted
+    assert any(
+        "timed out" in (dictEvent.get("sLine") or "")
+        for dictEvent in listCaptured
+    )
