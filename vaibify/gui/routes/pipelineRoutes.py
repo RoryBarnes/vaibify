@@ -577,21 +577,32 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
         }
 
 
-async def _fbResolvePipelineRunning(dictCtx, sContainerId):
-    """Reconcile pipeline state and return the post-reconciliation bRunning.
+async def _fdictReconcilePipelineState(dictCtx, sContainerId):
+    """Reconcile pipeline state and return the post-reconciliation dict.
 
     The reconciling reader runs ahead of poll side-effects so a vanished
     runner is reflected before invalidation logic asks "is a pipeline
     still running?" — without this the watchdog would suppress
     file-change invalidation for hours after the runner crashed.
+    Returns ``{}`` when no state exists.
     """
     from ..pipelineState import fdictReadReconciledState
-    dictPipelineState = await fdictReadReconciledState(
-        dictCtx, sContainerId,
-    )
-    return bool(
-        dictPipelineState and dictPipelineState.get("bRunning"),
-    )
+    return await fdictReadReconciledState(dictCtx, sContainerId) or {}
+
+
+def _fdictRunStateForWire(dictPipelineState):
+    """Return the compact run-state the poll payload carries.
+
+    The continuously-polled ``/status`` payload surfaces the reconciled
+    run state so the dashboard reflects ANY dispatched run — including
+    an in-container agent's ``run-step`` / ``runSelected`` — without a
+    separate pipeline-state poll it only starts for runs it initiates.
+    ``iActiveStep`` is 1-based (0/-1 mean "no active step").
+    """
+    return {
+        "bRunning": bool(dictPipelineState.get("bRunning")),
+        "iActiveStep": dictPipelineState.get("iActiveStep", -1),
+    }
 
 
 async def _fdictFetchOutputStatus(
@@ -604,9 +615,10 @@ async def _fdictFetchOutputStatus(
     the last transformation before the wire — enforced by
     ``testWireFormatPathsAreRepoRelative``.
     """
-    bPipelineRunning = await _fbResolvePipelineRunning(
+    dictPipelineState = await _fdictReconcilePipelineState(
         dictCtx, sContainerId,
     )
+    bPipelineRunning = bool(dictPipelineState.get("bRunning"))
     dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
         dictCtx, sContainerId, dictWorkflow, dictVars,
     )
@@ -636,6 +648,7 @@ async def _fdictFetchOutputStatus(
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),
+        "dictRunState": _fdictRunStateForWire(dictPipelineState),
         **dictRest,
     }
 

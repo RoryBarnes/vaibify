@@ -1864,3 +1864,20 @@ class TestBuildWorkflowEnvelopeDetail:
             "github": None, "zenodo": None,
             "overleaf": None, "arxiv": None,
         }
+
+
+def test_run_state_for_wire_surfaces_active_step():
+    """The poll payload's compact run-state carries the reconciled
+    bRunning + 1-based iActiveStep so the continuously-polled dashboard
+    can light the marker for ANY dispatched run (agent or browser)."""
+    from vaibify.gui.routes.pipelineRoutes import _fdictRunStateForWire
+    assert _fdictRunStateForWire(
+        {"bRunning": True, "iActiveStep": 3},
+    ) == {"bRunning": True, "iActiveStep": 3}
+    # Missing / empty state degrades to "no run", never a false active.
+    assert _fdictRunStateForWire({}) == {
+        "bRunning": False, "iActiveStep": -1,
+    }
+    assert _fdictRunStateForWire(
+        {"bRunning": False, "iActiveStep": -1},
+    )["bRunning"] is False

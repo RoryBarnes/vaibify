@@ -2631,7 +2631,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # false-positived over an idle container, misrepresenting state.
     # +4 (2026-07-14): poll payload exposes sWorkflowFingerprint (the
     # compare-and-swap baseline the frontend sends back on edits).
-    "routes/pipelineRoutes.py": 2222,
+    # +13 (2026-07-14): poll payload surfaces dictRunState (reconciled
+    # bRunning + iActiveStep) so the continuously-polled dashboard
+    # reflects any dispatched run — including an in-container agent's —
+    # without a separate pipeline-state poll. Cohesive with poll assembly.
+    "routes/pipelineRoutes.py": 2235,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the

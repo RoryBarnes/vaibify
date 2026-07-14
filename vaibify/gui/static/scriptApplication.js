@@ -1610,6 +1610,30 @@ const PipeleyenApp = (function () {
         }
     }
 
+    var _bReflectedDispatchRun = false;
+
+    function _fnReflectDispatchedRunState(dictRunState) {
+        // The continuously-polled /status payload surfaces any
+        // dispatched run's active step — including an in-container
+        // agent's run-step/runSelected — so the running marker lights
+        // even for runs this browser did not initiate. Only the active
+        // step is touched; the pipeline-run poll owns the fuller
+        // queued/completed vocabulary for browser-initiated runs. The
+        // marker is cleared on the running->idle transition so a
+        // finished out-of-band run never sticks as "running".
+        if (!dictRunState) return;
+        if (dictRunState.bRunning && dictRunState.iActiveStep > 0) {
+            _dictWorkflowState.dictStepStatus[
+                dictRunState.iActiveStep - 1] = "running";
+            _bReflectedDispatchRun = true;
+            fnRenderStepList();
+        } else if (_bReflectedDispatchRun) {
+            fnClearRunningStatuses();
+            _bReflectedDispatchRun = false;
+            fnRenderStepList();
+        }
+    }
+
     function fnResetQueuedSteps(listStepIndices) {
         /* A refused dispatch resets only the lights it optimistically
          * set to "queued"; a live run's "running" lights stay. With no
@@ -3629,6 +3653,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.sWorkflowFingerprint =
                 dictStatus.sWorkflowFingerprint;
         }
+        _fnReflectDispatchedRunState(dictStatus.dictRunState);
         PipeleyenFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
         if (dictStatus.dictMaxMtimeByStep) {
