@@ -66,7 +66,7 @@ def _fnRejectDuplicateWorkflowName(
         if dictWorkflow["sName"] == sWorkflowName:
             raise HTTPException(
                 409,
-                f"A workflow named '{sWorkflowName}' already "
+                f"A project named '{sWorkflowName}' already "
                 f"exists at {dictWorkflow['sPath']}",
             )
 
@@ -123,7 +123,7 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
             if _fbIsContainerStopped(error):
                 raise HTTPException(
                     409, "Container is not running. "
-                    "Start it before selecting a workflow.")
+                    "Start it before selecting a project.")
             raise HTTPException(
                 500, f"Search failed: "
                 f"{_fsSanitizeServerError(str(error))}")
@@ -162,7 +162,7 @@ def _fnAssertWorkflowAbsent(connectionDocker, sContainerId, sFullPath):
     )
     if iExitCode == 0:
         raise HTTPException(
-            409, f"A workflow file already exists at {sFullPath}",
+            409, f"A project file already exists at {sFullPath}",
         )
 
 

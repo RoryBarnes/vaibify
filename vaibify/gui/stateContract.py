@@ -40,6 +40,7 @@ from vaibify.reproducibility import manifestWriter
 __all__ = [
     "I_LARGE_FILE_THRESHOLD_BYTES",
     "S_CONTAINER_WORKSPACE_PREFIX",
+    "S_VAIBIFY_PROJECTS_GLOB",
     "S_VAIBIFY_WORKFLOWS_GLOB",
     "S_VAIBIFY_MARKERS_GLOB",
     "S_VAIBIFY_ZENODO_REFS",
@@ -57,6 +58,8 @@ I_LARGE_FILE_THRESHOLD_BYTES = 50 * 1024 * 1024
 
 S_CONTAINER_WORKSPACE_PREFIX = "/workspace/"
 
+S_VAIBIFY_PROJECTS_GLOB = ".vaibify/projects/*.json"
+# Legacy directory, still tracked so pre-rename repos keep working.
 S_VAIBIFY_WORKFLOWS_GLOB = ".vaibify/workflows/*.json"
 S_VAIBIFY_MARKERS_GLOB = ".vaibify/test_markers/*/*.json"
 S_VAIBIFY_ZENODO_REFS = ".vaibify/zenodo-refs.json"

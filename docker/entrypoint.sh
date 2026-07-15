@@ -733,17 +733,20 @@ fnPrintSummary() {
 # ---------------------------------------------------------------------------
 # fnCreateVaibifyDirectory: Create .vaibify structure in workspace
 #
-# Workflows live in each project repo at <repo>/.vaibify/workflows/;
+# Projects live in each repository at <repo>/.vaibify/projects/;
 # /workspace/.vaibify/ holds only container-scoped scratch (logs,
-# director.py). Remove any legacy /workspace/.vaibify/workflows/ left
-# over from pre-2026-04-20 containers so dashboard and agent
-# discovery both resolve to the project-repo location.
+# director.py). Remove any misplaced /workspace/.vaibify/projects/ (or
+# the legacy /workspace/.vaibify/workflows/) left at the workspace root
+# so dashboard and agent discovery both resolve to the repository
+# location.
 # ---------------------------------------------------------------------------
 fnCreateVaibifyDirectory() {
     mkdir -p "${WORKSPACE}/.vaibify/logs"
-    if [ -d "${WORKSPACE}/.vaibify/workflows" ]; then
-        rm -rf "${WORKSPACE}/.vaibify/workflows"
-    fi
+    for _sStrayDir in projects workflows; do
+        if [ -d "${WORKSPACE}/.vaibify/${_sStrayDir}" ]; then
+            rm -rf "${WORKSPACE}/.vaibify/${_sStrayDir}"
+        fi
+    done
     if [ -f /usr/share/vaibify/director.py ]; then
         cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
         chmod +x "${WORKSPACE}/.vaibify/director.py"
@@ -762,7 +765,7 @@ You are running inside a **Vaibify container** — a secure, isolated environmen
 
 ## How to refer to steps
 
-Every step in a workflow JSON carries an `sLabel` field — `A09` for the 9th *automated* step, `I01` for the 1st *interactive* step. Labels are per-type sequential, so `A09` is **not** `listSteps[9]`; the 0-based index depends on how many interactive steps precede it.
+Every step in a project JSON carries an `sLabel` field — `A09` for the 9th *automated* step, `I01` for the 1st *interactive* step. Labels are per-type sequential, so `A09` is **not** `listSteps[9]`; the 0-based index depends on how many interactive steps precede it.
 
 **When you name a step in any output — status reports, tables, summaries, prose, `vaibify-do` arguments — use `sLabel` verbatim.** Never substitute a 0-based or 1-based positional index like `00`, `01`, `Step09`. Read the label straight out of the JSON; do not translate.
 
@@ -774,9 +777,9 @@ The vaibify dashboard is the researcher's ground truth; any action you would oth
 
 `vaibify-do` is the **in-container CLI** for that purpose — it runs inside this container, reads its session config from `/tmp/vaibify-session.env` and the action catalog from `/tmp/vaibify-action-catalog.json`, and dispatches HTTP/WebSocket calls to the host vaibify backend. It is not host-only.
 
-**Prefer `vaibify-do`** for editing `workflow.json` (it goes through schema validation and atomic save). Direct edits are now detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<project-repo>/.vaibify/test_markers/` and `/workspace/.vaibify/pipeline_state.json` are still outputs of backend actions; do not hand-edit them.
+**Prefer `vaibify-do`** for editing `project.json` (it goes through schema validation and atomic save). Direct edits are now detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<repository>/.vaibify/test_markers/` and `/workspace/.vaibify/pipeline_state.json` are still outputs of backend actions; do not hand-edit them.
 
-**Creating a new workflow from inside the container.** `vaibify-do` does not currently expose a `create-workflow` action. When the researcher is in toolkit mode (no workflow loaded — banner shows "Workflow: None") and asks for a workflow built around their existing toolkit work, write a fresh `workflow.json` directly at `<project-repo>/.vaibify/workflows/<slug>.json`. The dashboard polls for new workflows and surfaces yours within one tick: the toolkit banner gains a "N available" indicator and a toast offers to switch into it. Use `vaibify-do --describe create-step` (or any of the existing step actions) to learn the canonical step schema before writing the file by hand.
+**Creating a new project from inside the container.** `vaibify-do` does not currently expose a `create-project` action. When the researcher is in toolkit mode (no project loaded — banner shows "Project: None") and asks for a project built around their existing toolkit work, write a fresh `project.json` directly at `<repository>/.vaibify/projects/<slug>.json`. The dashboard polls for new projects and surfaces yours within one tick: the toolkit banner gains a "N available" indicator and a toast offers to switch into it. Use `vaibify-do --describe create-step` (or any of the existing step actions) to learn the canonical step schema before writing the file by hand.
 
 Usage:
 
@@ -806,9 +809,9 @@ Usage:
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.
 
-**Run steps through `vaibify-do`, not by executing scripts directly in a shell.** A `vaibify-do run-step`/`run-selected-steps` dispatch lights the step's marker as *running* on the dashboard; a bare `python …` you launch yourself is invisible to the dashboard as a running step — the researcher only sees dependent steps flip stale once its outputs land. If you must run something directly, tell the researcher what you ran and on which step. See the `running-steps` skill for the full protocol, including safe (compare-and-swap) workflow edits.
+**Run steps through `vaibify-do`, not by executing scripts directly in a shell.** A `vaibify-do run-step`/`run-selected-steps` dispatch lights the step's marker as *running* on the dashboard; a bare `python …` you launch yourself is invisible to the dashboard as a running step — the researcher only sees dependent steps flip stale once its outputs land. If you must run something directly, tell the researcher what you ran and on which step. See the `running-steps` skill for the full protocol, including safe (compare-and-swap) project edits.
 
-**Never compute a quantitative or statistical result with a throwaway construction** — no heredocs, `python -c`, inline one-liners, or REPL sessions. A number that isn't produced by a saved script is not reproducible and cannot become a step. When asked to compute, estimate, fit, sample, or analyze anything numeric, write it as a script — in the relevant step's directory if it extends a step, otherwise in `explorations/` at the project-repo root — with a self-explanatory verb-first name and a one-line docstring, taking inputs as arguments and writing outputs to files, then run it through `vaibify-do`. Even a quick exploratory answer is delivered as the script, and you `grep explorations/` for an existing one before writing a new one. See the `reproducible-analysis` skill for the full protocol.
+**Never compute a quantitative or statistical result with a throwaway construction** — no heredocs, `python -c`, inline one-liners, or REPL sessions. A number that isn't produced by a saved script is not reproducible and cannot become a step. When asked to compute, estimate, fit, sample, or analyze anything numeric, write it as a script — in the relevant step's directory if it extends a step, otherwise in `explorations/` at the repository root — with a self-explanatory verb-first name and a one-line docstring, taking inputs as arguments and writing outputs to files, then run it through `vaibify-do`. Even a quick exploratory answer is delivered as the script, and you `grep explorations/` for an existing one before writing a new one. See the `reproducible-analysis` skill for the full protocol.
 
 **User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.
 
@@ -817,13 +820,13 @@ Both actions are read-only and agent-safe. Use them BEFORE asking the researcher
 ## Key Paths
 
 - `/workspace/` — All repositories and working files
-- `/workspace/<RepoName>/.vaibify/workflows/` — Workflow JSON files (each repo can have its own)
+- `/workspace/<RepoName>/.vaibify/projects/` — Project JSON files (each repository can have its own)
 - `/workspace/.vaibify/logs/` — Pipeline execution logs
 - `/workspace/.vaibify/director.py` — Standalone pipeline executor
 
-## Workflow System
+## Project System
 
-Each vaibified repository has a `.vaibify/workflows/` directory with JSON files defining pipeline steps. Each step has:
+Each vaibified repository has a `.vaibify/projects/` directory with JSON files defining pipeline steps. Each step has:
 
 - **Data Analysis Commands** (`saDataCommands`): Heavy computation
 - **Data Files** (`saDataFiles`): Output files from data analysis
@@ -834,7 +837,7 @@ Each vaibified repository has a `.vaibify/workflows/` directory with JSON files 
 
 Cross-step filename references inside command strings use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`), where `NN` is the 1-based positional index of the step in `listSteps`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
 
-Run a workflow: `python /workspace/.vaibify/director.py --config <workflow.json>`
+Run a project: `python /workspace/.vaibify/director.py --config <project.json>`
 
 ## Vaibified Repository Structure
 
@@ -842,7 +845,7 @@ A vaibified repo contains:
 - One camelCase directory per step
 - Scripts prefixed with `data` (analysis) or `plot` (visualization)
 - A `Plot/` directory for output figures
-- `.vaibify/workflows/*.json` defining the pipeline
+- `.vaibify/projects/*.json` defining the pipeline
 - `.vaibify/CLAUDE.md` with project-specific context (symlinked to repo root)
 
 ## Verification
@@ -861,7 +864,7 @@ trivial tests just to satisfy the dashboard.
 
 The AICS is a five-rung reproducibility ladder (L1 Self-Consistent,
 L2 Published, L3 Reproducible; L4/L5 are non-goals). To raise or audit
-a workflow's level, use the **aics-ladder** skill — it carries the
+a project's level, use the **aics-ladder** skill — it carries the
 ordered L1->L3 gate walkthrough and the known audit traps.
 
 Two rules that must never be violated, skill or not:
@@ -887,10 +890,10 @@ Two rules that must never be violated, skill or not:
 To author a new analysis or plot step, use the
 **create-pipeline-step** skill — it carries the 5-phase protocol
 (discover dependencies, name, wire the cross-step tokens, write the
-workflow entry, verify).
+project entry, verify).
 
 The one rule that must never be violated: **every file a script reads
-from another step must be a CLI argument named in the workflow command
+from another step must be a CLI argument named in the project command
 via a `{StepNN.varname}` token.** A hardcoded cross-step path is
 invisible to the dependency parser and silently breaks the L1
 contract. Own-step files may be hardcoded; the boundary is the step.

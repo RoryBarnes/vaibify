@@ -312,7 +312,7 @@ var VaibifyLegendPanel = (function () {
             'as an unprivileged user with no sudo, and it can only ' +
             'touch files on the container’s workspace volume ' +
             '— never your host machine. Every file it edits ' +
-            'is tracked in git, hash-pinned in the workflow ' +
+            'is tracked in git, hash-pinned in the project ' +
             'manifest, and ultimately checked by a full rebuild of ' +
             'the analysis — that is what AICS Level 3 ' +
             '(Reproducible) certifies.</p>' +
@@ -432,7 +432,7 @@ var VaibifyLegendPanel = (function () {
 
     function _fsRenderFooter() {
         return '<div class="aics-legend-footer">' +
-            'Getting started: pick a container, open a workflow, ' +
+            'Getting started: pick a container, open a project, ' +
             'then run and verify each step in the Steps block to ' +
             'reach Level 1; climb further through the ' +
             'Project rows. The requirements themselves ' +

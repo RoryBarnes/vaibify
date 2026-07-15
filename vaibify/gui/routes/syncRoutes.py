@@ -491,13 +491,13 @@ async def _fdictHandlePullManuscript(
     if not sProjectId:
         raise HTTPException(
             status_code=409,
-            detail="No Overleaf project is bound to this workflow.",
+            detail="No Overleaf project is bound to this project.",
         )
     sRepo = dictWorkflow.get("sProjectRepoPath", "")
     if not sRepo:
         raise HTTPException(
             status_code=409,
-            detail="The workflow has no project repository path.",
+            detail="The project has no repository path.",
         )
     listPullPaths = await asyncio.to_thread(
         _flistManuscriptMirrorPaths, syncDispatcher, sProjectId,

@@ -344,8 +344,8 @@ const PipeleyenApp = (function () {
         var iStepCount = (_dictWorkflowState.dictWorkflow.listSteps || []).length;
         if (iStepCount > 500) {
             fnShowToast(
-                "This workflow has " + iStepCount + " steps. " +
-                "Large workflows may use significant memory. " +
+                "This project has " + iStepCount + " steps. " +
+                "Large projects may use significant memory. " +
                 "Avoid expanding many steps simultaneously.",
                 "error"
             );
@@ -436,7 +436,7 @@ const PipeleyenApp = (function () {
         _fnRestoreExpansionSets(dictPriorExpanded, iStepCount);
         fnRenderStepList();
         fnShowToast(
-            "Workflow definition reloaded from disk", "info");
+            "Project definition reloaded from disk", "info");
     }
 
     function _fdictSnapshotExpansionSets() {
@@ -583,7 +583,7 @@ const PipeleyenApp = (function () {
             var dictWf = dictByPath[sPath];
             if (!dictWf) return;
             fnShowToast(
-                "New workflow available: " + dictWf.sName
+                "New project available: " + dictWf.sName
                 + ". Click to load.",
                 "info",
                 function () {
@@ -795,7 +795,10 @@ const PipeleyenApp = (function () {
         if (!_dictWorkflowState.dictWorkflow) return {};
         var sWorkflowDir = fsGetWorkflowDirectory();
         var sRepoRoot = sWorkflowDir;
-        if (sRepoRoot.endsWith("/.vaibify/workflows")) {
+        if (sRepoRoot.endsWith("/.vaibify/projects")) {
+            sRepoRoot = sRepoRoot.replace(
+                "/.vaibify/projects", "");
+        } else if (sRepoRoot.endsWith("/.vaibify/workflows")) {
             sRepoRoot = sRepoRoot.replace(
                 "/.vaibify/workflows", "");
         } else if (sRepoRoot.endsWith("/.vaibify")) {
@@ -2280,7 +2283,7 @@ const PipeleyenApp = (function () {
                 "These requirements apply to the project as a " +
                 "whole, not to any single step. Each step row " +
                 "tracks its own. The overall level is shown by " +
-                "the checkmarks next to the workflow name and in " +
+                "the checkmarks next to the project name and in " +
                 "the AICS tab.");
         }
         if (dictCell && sState !== "not-applicable") {
@@ -2509,7 +2512,7 @@ const PipeleyenApp = (function () {
                 return {sMessage: listBad.length + " of " + iTotal +
                     " files differ from the manifest (first: " +
                     (listBad[0].sPath || listBad[0]) + "). Re-run " +
-                    "the workflow or regenerate the envelope.",
+                    "the project or regenerate the envelope.",
                     sType: "warning"};
             },
         },
@@ -2546,7 +2549,7 @@ const PipeleyenApp = (function () {
             dictConfirm: {
                 sTitle: "Delete reproducibility rules",
                 sMessage: "Remove the declared repeatability rules " +
-                    "from workflow.json? Level 3 requires a " +
+                    "from project.json? Level 3 requires a " +
                     "declaration, so you will need to declare again.",
             },
             sToast: "Reproducibility rules deleted.",
@@ -3088,7 +3091,7 @@ const PipeleyenApp = (function () {
         } catch (error) {
             if (error && error.iStatus === 409) {
                 fnShowToast(
-                    "The workflow changed since you loaded it — "
+                    "The project changed since you loaded it — "
                     + "reloaded to stay in sync so your edit didn't "
                     + "overwrite it. Re-apply it if you still want it.",
                     "warning");
@@ -3683,7 +3686,7 @@ const PipeleyenApp = (function () {
     function fnProcessFileStatusResponse(dictStatus) {
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
-                "workflow.json error: " +
+                "project.json error: " +
                 dictStatus.sWorkflowReloadError +
                 ". Showing last good state.",
                 "warning");

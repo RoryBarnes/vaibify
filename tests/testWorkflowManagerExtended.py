@@ -456,7 +456,7 @@ def test_fdictLoadWorkflowFromContainer_no_path_found():
     )
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
-    with pytest.raises(FileNotFoundError, match="No workflow"):
+    with pytest.raises(FileNotFoundError, match="No project"):
         fdictLoadWorkflowFromContainer(mockDocker, "cid")
 
 

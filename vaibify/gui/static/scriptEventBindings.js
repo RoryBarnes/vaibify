@@ -688,7 +688,7 @@ var PipeleyenEventBindings = (function () {
             },
             btnAdminWorkflows: function () {
                 PipeleyenModals.fnShowConfirmModal(
-                    "Switch Workflow",
+                    "Switch Project",
                     "This will leave the current dashboard " +
                     "and end any running sessions. Continue?",
                     PipeleyenApp.fnReconnectToCurrentContainer);

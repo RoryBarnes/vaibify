@@ -2184,7 +2184,7 @@ def _fnRegisterManifestText(app, dictCtx):
         if not sRepoRoot:
             raise HTTPException(
                 status_code=409,
-                detail="No project repo configured for this workflow.",
+                detail="No repository configured for this project.",
             )
         return await asyncio.to_thread(
             _fdictReadManifestTextBounded,

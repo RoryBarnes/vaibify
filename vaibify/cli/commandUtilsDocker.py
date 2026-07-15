@@ -44,7 +44,7 @@ def fdictRequireWorkflow(connectionDocker, sContainerName):
         connectionDocker, sContainerName
     )
     if not listWorkflows:
-        click.echo("Error: No workflow found in container.")
+        click.echo("Error: No project found in container.")
         sys.exit(2)
     sWorkflowPath = listWorkflows[0]["sPath"]
     dictWorkflow = fdictLoadWorkflowFromContainer(

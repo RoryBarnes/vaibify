@@ -9,7 +9,7 @@ vaibify init --template <name>
 ```
 
 Each template creates three files in the current directory: `vaibify.yml`,
-`container.conf`, and `workflow.json`.
+`container.conf`, and `project.json`.
 
 ## sandbox
 
@@ -20,10 +20,10 @@ No pipeline steps are defined — you work directly inside the container.
 
 - Minimal `vaibify.yml` with default Python version and base image.
 - Empty `container.conf` (no repositories).
-- Empty `workflow.json` (no pipeline steps).
+- Empty `project.json` (no pipeline steps).
 
 Use this template when you want a containerized environment without a
-predefined workflow.
+predefined project.
 
 ## workflow
 
@@ -35,7 +35,7 @@ with your own.
 
 - Minimal `vaibify.yml` with default Python version and base image.
 - Empty `container.conf` (add your repositories).
-- Example `workflow.json` with one step (`AnalyzeData`) that runs
+- Example `project.json` with one step (`AnalyzeData`) that runs
   `python runAnalysis.py` and `python makePlot.py`.
 
 Use this template when your project follows a defined sequence of analysis
@@ -43,7 +43,7 @@ steps that should be reproducible.
 
 **Adding LaTeX compilation:** If you compile your manuscript inside the
 container rather than using an external tool like Overleaf, add a step
-to `workflow.json`:
+to `project.json`:
 
 ```json
 {
@@ -62,5 +62,5 @@ to `workflow.json`:
 
 Templates are stored in the `templates/` directory of the Vaibify package.
 Each template is a subdirectory containing `vaibify.yml`,
-`container.conf`, and `workflow.json`. To create a custom template, add a
+`container.conf`, and `project.json`. To create a custom template, add a
 new subdirectory with these three files and reinstall the package.

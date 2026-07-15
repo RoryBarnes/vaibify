@@ -12,7 +12,7 @@ This page is a tour of every panel.
 
 The dashboard has a fixed layout:
 
-- **Top toolbar** — container name, active workflow, the three AICS
+- **Top toolbar** — container name, active project, the three AICS
   level badges, the **?** Help button, and the Run, Sync, View, and
   Admin menus. A pulsing **compute indicator** appears beside the
   container name whenever the container's CPU is busy: theme-tinted
@@ -21,21 +21,21 @@ The dashboard has a fixed layout:
   terminal session running simulations directly — no step blinks in
   that case, because no step is running). The indicator hides when
   no reading is available; it never claims the container is idle.
-- **Left panel** — a tabbed panel. For workflow projects the tabs are
-  **Main**, **AICS**, **Files**, and **Logs**; for sandbox and toolkit
-  projects (no `workflow.json`) they are **Files**, **Repos**, and
-  **Logs**.
+- **Left panel** — a tabbed panel. For projects with a `project.json`
+  the tabs are **Main**, **AICS**, **Files**, and **Logs**; for sandbox
+  and toolkit projects (no `project.json`) they are **Files**, **Repos**,
+  and **Logs**.
 - **Top panels** — Two "Viewing Windows" to display plots and files.
 - **Bottom panel(s)** — Terminal window(s)/tab(s) for work inside the
   container.
 
-Beside the workflow name, three copies of the vaibify badge mark AICS
+Beside the project name, three copies of the vaibify badge mark AICS
 Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
-when the workflow attains that level, and the whole dashboard theme
+when the project attains that level, and the whole dashboard theme
 shifts colour with the highest level attained: pale blue before Level
 1, purple at Level 1, green at Level 2, and pink at Level 3. The
 badge, the logo, and every "attained" mark share the tint, so a glance
-at any corner of the screen tells you where the workflow stands.
+at any corner of the screen tells you where the project stands.
 
 ## Terminal
 
@@ -54,7 +54,7 @@ from a terminal session to start an in-container coding agent. The
 option's name sounds alarming, but inside a vaibify container it is
 the intended mode: the container is an isolated sandbox, the agent
 runs as an unprivileged user with no sudo, and everything it edits is
-tracked in git and hash-pinned in the workflow manifest. Your
+tracked in git and hash-pinned in the project manifest. Your
 protection comes from verifying results, not from approving each
 command — see the **Using AI** section of the [Help panel](#the-help-panel)
 and the [Security model](security.md). The agent can in turn ask the
@@ -63,12 +63,12 @@ see [Agent actions](#agent-actions) below.
 
 ## Viewing Window
 
-The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Workflow mode, the log is displayed in a window.
+The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
 
 ## Repos panel
 
 The Repos panel is the home tab for sandbox and toolkit projects (the
-templates without a `workflow.json`). In a workflow project the tab is
+templates without a `project.json`). In a project the tab is
 hidden, but the panel is one click away: every "Open the Repos panel"
 link in the Main tab's Project block and on the AICS tab lands there.
 It lists the git repositories inside the container with their branch,
@@ -93,11 +93,11 @@ for selecting specific files to commit.
 
 ## The Main tab
 
-The Main tab is the workflow's control surface. It contains two
+The Main tab is the project's control surface. It contains two
 top-level collapsible blocks, each with a banner you can click to
 collapse or expand:
 
-- **Steps** — the per-step work of the workflow. Level 1
+- **Steps** — the per-step work of the project. Level 1
   (Self-Consistent) is a per-step property, so this is where Level 1
   is earned.
 - **Project** — requirements that apply to the project as a whole
@@ -109,7 +109,7 @@ the rows beneath them, so a collapsed block still reports its
 aggregate state.
 
 The panel header above the blocks holds three buttons: a gear for
-workflow settings, a refresh arrow to re-poll remote status, and
+project settings, a refresh arrow to re-poll remote status, and
 **+** to create a new step.
 
 ### The Steps block
@@ -156,7 +156,7 @@ expectation is not proof of a hang; the flag only tells you where to
 look.
 
 The feature is opt-in. Set a per-step budget in the step editor, or a
-workflow-wide default under **Settings**; a step with no budget (its
+project-wide default under **Settings**; a step with no budget (its
 own or the default) is never flagged, so long runs you expect are never
 mislabelled. Choose a budget generously — a small multiple of the
 step's normal runtime — so ordinary variation does not trip it.
@@ -219,13 +219,13 @@ buttons to generate and run them — see [Verification](#verification).
 
 ### The Project block
 
-The Project block lists workflow-scope requirements, grouped into six
+The Project block lists project-scope requirements, grouped into six
 collapsible sections:
 
 | Section | What it covers |
 |---|---|
-| **Repository** | The Level 1 workflow-scope requirement: the workflow lives inside a git repository (its *project repo*). |
-| **Software** | Standalone scientific binaries the workflow runs, each declared with an expected version and a captured version + SHA-256. |
+| **Repository** | The Level 1 project-scope requirement: the project lives inside a git repository (its *repository*). |
+| **Software** | Standalone scientific binaries the project runs, each declared with an expected version and a captured version + SHA-256. |
 | **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
 | **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
 | **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
@@ -248,12 +248,12 @@ an action exists — a button that performs it in place:
 - **Generate reproduce.sh** to write the one-command reproduction
   script and pin it in the manifest.
 - **Declare rules** / **Delete rules…** for the determinism
-  declaration (stored directly in `workflow.json`; there is no
+  declaration (stored directly in `project.json`; there is no
   separate rules file).
 - **Configure arXiv…** to record the arXiv submission that must match
   the frozen Overleaf figures (optional — an untracked submission
   reads "not tracked" and never blocks Level 2).
-- **Add AI declaration step** if the workflow has none, and **Verify
+- **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 
 The Dockerfile row is guidance-only: the Dockerfile is yours to edit,
@@ -331,7 +331,7 @@ rows list figure files only.
 ## The AICS tab
 
 The AICS tab is the requirements ledger for the reproducibility
-ladder. A header card names the workflow's current level (for
+ladder. A header card names the project's current level (for
 example, "Level 1: Self-Consistent") with a clickable progression
 strip, followed by three expandable sections — **Level 1 —
 Self-Consistent**, **Level 2 — Published**, **Level 3 — Reproducible**
@@ -343,7 +343,7 @@ work happens (the Main tab's blocks or the Repos panel). The tab owns
 the requirement *text*; the buttons that do the work live in the Main
 tab's Project block. The requirements are:
 
-- **Level 1**: Project repository; Every step self-consistent.
+- **Level 1**: Repository; Every step self-consistent.
 - **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript
   (opt-in — checked only when an arXiv submission is recorded, since
   posting happens outside vaibify on its own timeline); AI
@@ -365,7 +365,7 @@ artifact contains and how third parties verify it without vaibify.
 
 ## The Help panel
 
-The **?** button beside the workflow name opens the Help panel. It
+The **?** button beside the project name opens the Help panel. It
 contains:
 
 - A link to the full online documentation.
@@ -427,7 +427,7 @@ assessment — the human attestation that no test can substitute for.
 
 The toolbar's **Sync** menu holds the publication actions:
 
-- **Push to GitHub** — commit and push the project repository to its
+- **Push to GitHub** — commit and push the repository to its
   configured remote.
 - **Push to Overleaf** — sync figures and any selected files to the
   configured Overleaf project.
@@ -462,7 +462,7 @@ four pieces of information:
 | **Status pill** | Green / yellow / red, semantics below. |
 | **Summary** | `<matching>/<total> files match SHA-256`, optionally listing the first diverged path. |
 | **Last verified** | Age of the most recent authoritative SHA-256 verify (e.g. "12m ago"). Empty when the remote has never been authoritatively verified. |
-| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, and compares them against the declared workflow files as they exist on disk right now — never against `MANIFEST.sha256`, which is the Level 3 envelope artifact). |
+| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, and compares them against the declared project files as they exist on disk right now — never against `MANIFEST.sha256`, which is the Level 3 envelope artifact). |
 
 Pill semantics:
 
@@ -486,7 +486,7 @@ remote states. The three forms produced by
 [scriptSyncManager.js](../vaibify/gui/static/scriptSyncManager.js) are:
 
 - `Remote consistency: not yet verified` — no remote has been verified
-  yet (e.g. immediately after opening a workflow for the first time).
+  yet (e.g. immediately after opening a project for the first time).
 - `Remote consistency: ✓ all <K> configured remote(s) in sync` — every
   configured remote authoritatively matched on its last verify; `<K>`
   is the count of remotes that reported a verified status. The trailing
@@ -548,7 +548,7 @@ image rebuild refreshes them):
   captions arrive as searchable text), read selectively, record the
   version read, and fall back to the PDF only when no source exists.
 - **aics-ladder** — the ordered L1→L2→L3 walkthrough for raising or
-  auditing a workflow's reproducibility level, with the known audit
+  auditing a project's reproducibility level, with the known audit
   traps codified (`iAICSLevel` is the only authoritative signal;
   marker hashes are git blob SHA-1s; publication is user-only).
 - **create-pipeline-step** — the five-phase protocol for authoring a
@@ -648,7 +648,7 @@ un-greys on its own without a page reload. You can also list and stop
 live sessions from the host with `vaibify sessions` (see the
 [CLI Reference](cli.md#session-management)).
 
-The **New vaibify window** icon (⧉) in the hub, the workflow picker,
+The **New vaibify window** icon (⧉) in the hub, the project picker,
 and the dashboard's Admin menu opens a fresh vaibify session in a new
 browser tab — useful for working on **two different projects** side by
 side. Each window claims its own containers; it is not a way to open

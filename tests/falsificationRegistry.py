@@ -362,9 +362,9 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testConftestManagerCoverage.py::test_activeWorkflowSlug_falls_back_to_default_when_nothing_present',
         source='vaibify/gui/conftestManager.py',
-        old='''            return pathJson.stem
+        old='''        return pathJson.stem
     return "default"''',
-        new='''            return pathJson.stem
+        new='''        return pathJson.stem
     return ""''',
     ),
     Falsification(

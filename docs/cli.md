@@ -39,7 +39,7 @@ vaibify init [--template NAME] [--force]
 | `--template`     | Template name: `sandbox` or `workflow`            |
 | `--force`        | Overwrite existing configuration files         |
 
-Creates `vaibify.yml`, `container.conf`, and `workflow.json` in the current
+Creates `vaibify.yml`, `container.conf`, and `project.json` in the current
 directory.
 
 ### `vaibify register`
@@ -232,7 +232,7 @@ stdout as the run progresses.
 
 ### `vaibify workflow`
 
-Print a summary of the current workflow, or details for a single step.
+Print a summary of the current project, or details for a single step.
 Without `--step`, emits a table of all steps with their last verification
 status and run timestamp. With `--step N`, emits the step's name,
 directory, run flags, and verification block.
@@ -311,7 +311,7 @@ release triggers — is specified once in the
 [architecture reference](architecture.md#single-browser-session-per-container);
 that section is the normative source of truth, including the
 holder-payload field table.
-The **New vaibify window** button on the container hub, workflow
+The **New vaibify window** button on the container hub, project
 picker, and Admin menu spawns a detached hub on a free port and
 opens it in a new browser tab.
 
@@ -369,7 +369,7 @@ subcommands print `Not yet implemented.` and exit.
 
 ### `vaibify publish workflow` *(coming soon)*
 
-Generate a GitHub Actions workflow from `workflow.json` and `vaibify.yml`.
+Generate a GitHub Actions workflow from `project.json` and `vaibify.yml`.
 The output will be written to `.github/workflows/vaibify.yml`.
 
 ```bash

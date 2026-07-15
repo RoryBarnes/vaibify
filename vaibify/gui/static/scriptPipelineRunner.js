@@ -881,11 +881,11 @@ var PipeleyenPipelineRunner = (function () {
         if (iStepsWithTime === 0) return "";
         var sTime = fsFormatDurationLong(fTotalSeconds);
         if (iStepsWithTime < iEnabledSteps) {
-            return "This workflow will require at least " + sTime +
+            return "This project will require at least " + sTime +
                 " (based on " + iStepsWithTime + " of " +
                 iEnabledSteps + " steps).";
         }
-        return "This workflow will require at least " + sTime + ".";
+        return "This project will require at least " + sTime + ".";
     }
 
     function fsFormatDurationLong(fSeconds) {

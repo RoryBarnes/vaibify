@@ -398,7 +398,7 @@ def _fsResolveStepDir(sWorkflowPath, sDirectory):
     if os.path.isdir(sStepDir):
         return sStepDir
     sRepoRoot = sWorkflowRoot
-    for sSuffix in ("/.vaibify/workflows", "/.vaibify"):
+    for sSuffix in ("/.vaibify/projects", "/.vaibify/workflows", "/.vaibify"):
         if sRepoRoot.endswith(sSuffix):
             sRepoRoot = sRepoRoot[:-len(sSuffix)]
     return os.path.join(sRepoRoot, sDirectory)

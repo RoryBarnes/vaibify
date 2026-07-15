@@ -179,7 +179,7 @@ var VaibifyStepRenderer = (function () {
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
             '<input type="checkbox" class="step-checkbox" ' +
-            'title="Include this step when running the workflow"' +
+            'title="Include this step when running the project"' +
             (bRunEnabled ? " checked" : "") + ">" +
             _fsBuildStepStatusCell(sRunStatus) +
             '<span class="step-number">' +
@@ -228,7 +228,7 @@ var VaibifyStepRenderer = (function () {
                 ' number of seconds this step is expected to run.' +
                 ' If it runs longer, the run light turns red as a' +
                 ' possibly-hung warning — the run is never stopped.' +
-                ' Blank or 0 means no limit (inherits the workflow' +
+                ' Blank or 0 means no limit (inherits the project' +
                 ' default under Settings).">' +
                 'Expected runtime (s), 0 = no limit ' +
                 '<input type="number" min="0" step="1"' +

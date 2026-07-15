@@ -55,7 +55,7 @@ var VaibifySyncManager = (function () {
         },
         Overleaf: {
             notFound: "Overleaf project not found. Check the " +
-                "workflow's Overleaf URL.",
+                "project's Overleaf URL.",
         },
     };
 
@@ -2002,7 +2002,7 @@ var VaibifySyncManager = (function () {
 
     function _fnShowOverleafPerFileNotice() {
         PipeleyenApp.fnShowToast(
-            "Overleaf sync is workflow-level. " +
+            "Overleaf sync is project-level. " +
             "Use Sync › Push to Overleaf.",
             "info",
         );

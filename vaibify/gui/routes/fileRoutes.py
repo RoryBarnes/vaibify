@@ -53,7 +53,7 @@ def _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
             403, "Writes under .vaibify/ are not permitted")
     if posixpath.basename(sNormalized) == "workflow.json":
         raise HTTPException(
-            403, "Direct writes to workflow.json are not permitted")
+            403, "Direct writes to project.json are not permitted")
 
 
 def _fnValidateHostDestination(sResolvedPath):
@@ -310,7 +310,7 @@ def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if not sProjectRepoPath:
         raise HTTPException(
-            400, "Active workflow has no project repo path")
+            400, "Active project has no repository path")
     return sProjectRepoPath
 
 

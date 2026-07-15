@@ -24,9 +24,9 @@ var VaibifyManifestCheck = (function () {
     };
 
     var _S_CANONICAL_HELP =
-        "These are the files your workflow.json declares as its own: " +
+        "These are the files your project.json declares as its own: " +
         "each step's scripts, data files, plot files, standards, " +
-        "plus workflow state under .vaibify/ and top-level configs. " +
+        "plus project state under .vaibify/ and top-level configs. " +
         "For a Zenodo or Overleaf push, the list is narrowed to " +
         "files you've opted into that service. " +
         "They show up here because they differ from your last git " +
@@ -53,10 +53,10 @@ var VaibifyManifestCheck = (function () {
 
     function _fsRenderDialogHtml(dictReport) {
         var sHtml = '<div class="manifest-check-dialog">' +
-            '<h2>Uncommitted workflow files ' +
+            '<h2>Uncommitted project files ' +
             '<span class="help-icon" title="' +
             _fsEscape(_S_CANONICAL_HELP) + '">?</span></h2>' +
-            '<p>These files are part of your workflow but aren\'t ' +
+            '<p>These files are part of your project but aren\'t ' +
             'cleanly committed to git. Push anyway, or commit ' +
             'them first?</p>' +
             _fsRenderFileList(dictReport.listNeedsCommit) +
@@ -65,7 +65,7 @@ var VaibifyManifestCheck = (function () {
             '<button class="btn" data-action="push-anyway">' +
             'Push without committing</button>' +
             '<button class="btn btn-primary" data-action="commit">' +
-            'Commit workflow files &amp; continue</button>' +
+            'Commit project files &amp; continue</button>' +
             '</div></div>';
         return sHtml;
     }
@@ -262,7 +262,7 @@ var VaibifyManifestCheck = (function () {
             '<h2>Commit the generated files? ' +
             '<span class="help-icon" title="' +
             _fsEscape(_S_CANONICAL_HELP) + '">?</span></h2>' +
-            '<p>These workflow files were just generated but aren\'t ' +
+            '<p>These project files were just generated but aren\'t ' +
             'committed to git yet. Vaibify never commits to your repo ' +
             'on its own — commit them now so they can be published ' +
             '(Level 2), or do it later from the Repos panel.</p>' +

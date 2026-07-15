@@ -101,7 +101,7 @@ def test_fiRunPipeline_reports_error_when_no_workflow(capsys):
             _fMockDocker(), "ctn", None, None,
         )
     assert iResult == 2
-    assert "No workflow" in capsys.readouterr().out
+    assert "No project" in capsys.readouterr().out
 
 
 def test_fiRunPipeline_dispatches_single_step_when_iStep_set():
@@ -128,7 +128,7 @@ def test_fiRunSingleStep_no_workflow_found_returns_two(capsys):
             _fMockDocker(), "ctn", 1, "/workspace",
         )
     assert iResult == 2
-    assert "No workflow" in capsys.readouterr().out
+    assert "No project" in capsys.readouterr().out
 
 
 def test_fiRunSingleStep_step_out_of_range_returns_two(capsys):

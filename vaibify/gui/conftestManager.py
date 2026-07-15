@@ -477,7 +477,14 @@ _S_CONFTEST_PROLOGUE_FORMAT = (
     "from pathlib import Path\n"
     "_PROJECT_REPO = Path({sProjectRepoPath!r})\n"
     "_MARKER_BASE = _PROJECT_REPO / '.vaibify' / 'test_markers'\n"
+    "_PROJECTS_DIR = _PROJECT_REPO / '.vaibify' / 'projects'\n"
     "_WORKFLOWS_DIR = _PROJECT_REPO / '.vaibify' / 'workflows'\n"
+    "def _flistProjectJsons():\n"
+    "    listFiles = []\n"
+    "    for _sDir in (_PROJECTS_DIR, _WORKFLOWS_DIR):\n"
+    "        if _sDir.is_dir():\n"
+    "            listFiles.extend(sorted(_sDir.glob('*.json')))\n"
+    "    return listFiles\n"
 )
 
 
@@ -578,9 +585,7 @@ def _flistStepOutputFiles(sStepDir):
     listResult = []
     setSeen = set()
     sWantedRel = _fsStepDirRepoRel(sStepDir)
-    if not _WORKFLOWS_DIR.is_dir():
-        return listResult
-    for pathJson in sorted(_WORKFLOWS_DIR.glob("*.json")):
+    for pathJson in _flistProjectJsons():
         try:
             dictWorkflow = json.loads(pathJson.read_text())
         except (OSError, ValueError):
@@ -634,9 +639,7 @@ def _fsLabelForStep(sStepDirRel):
     computes the label from its position among same-type steps.
     Returns an empty string when no match exists.
     """
-    if not _WORKFLOWS_DIR.is_dir():
-        return ""
-    for pathJson in sorted(_WORKFLOWS_DIR.glob("*.json")):
+    for pathJson in _flistProjectJsons():
         try:
             dictWorkflow = json.loads(pathJson.read_text())
         except (OSError, ValueError):
@@ -676,9 +679,8 @@ def _fsActiveWorkflowSlug():
     sSlug = os.environ.get("VAIBIFY_ACTIVE_WORKFLOW_SLUG", "").strip()
     if sSlug:
         return sSlug
-    if _WORKFLOWS_DIR.is_dir():
-        for pathJson in sorted(_WORKFLOWS_DIR.glob("*.json")):
-            return pathJson.stem
+    for pathJson in _flistProjectJsons():
+        return pathJson.stem
     return "default"
 
 

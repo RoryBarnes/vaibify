@@ -6,13 +6,13 @@ tools and practices that make this possible.
 
 ## The Reproducibility Stack
 
-A Vaibify project captures four layers of provenance:
+A Vaibify repository captures four layers of provenance:
 
 1. **Environment** -- The Docker image pins the operating system, compilers,
    system libraries, Python version, and all package versions.
 2. **Code** -- `container.conf` lists every repository with its branch or
    tag, so the exact source code is recorded.
-3. **Pipeline** -- `workflow.json` defines the commands to run and their
+3. **Pipeline** -- `project.json` defines the commands to run and their
    order, removing ambiguity about how results were produced.
 4. **Configuration** -- `vaibify.yml` records all settings, so a
    collaborator can rebuild the identical environment.
@@ -21,31 +21,31 @@ Together, these four files constitute a reproducibility manifest. Sharing
 them (or the repository that contains them) is sufficient for anyone with
 Docker to reproduce the results.
 
-### L1 precondition: workflows live inside a git repo
+### L1 precondition: projects live inside a git repo
 
 Vaibify enforces the lowest rung of the reproducibility ladder as a
-precondition, not a best practice. Every workflow must live inside a
-git repository — its *project repo* — which vaibify auto-detects as
-the git work tree enclosing the `workflow.json` file. A workflow saved
+precondition, not a best practice. Every project must live inside a
+git repository — its *repository* — which vaibify auto-detects as
+the git work tree enclosing the `project.json` file. A project saved
 to a directory that is not a git work tree is rejected at both
 creation and connect time with a clear error pointing the user to run
 `git init`. The dashboard cannot display a meaningful reproducibility
 level for code that cannot be committed, so asking for one would be
 dishonest.
 
-The project-repo path is auto-detected once per connect via
+The repository path is auto-detected once per connect via
 `git rev-parse --show-toplevel`, stamped on the in-memory workflow
 dict, and threaded through every subsequent status, badge, and
-manifest call. A single container may host multiple workflows in
-separate project-repo subdirectories (for example, a paper pipeline
+manifest call. A single container may host multiple projects in
+separate repository subdirectories (for example, a paper pipeline
 and a follow-on cross-system analysis that share the same dependency
-clones); the active workflow determines the scope of every per-file
+clones); the active project determines the scope of every per-file
 badge.
 
 Test markers (the JSON files that record the last pytest outcome +
-output-file hashes for each step) live inside the project repo under
-`.vaibify/test_markers/` and are committed alongside `workflow.json`.
-This makes a workflow's verification state — which tests have run,
+output-file hashes for each step) live inside the repository under
+`.vaibify/test_markers/` and are committed alongside `project.json`.
+This makes a project's verification state — which tests have run,
 what they produced, whether the outputs have drifted — reproducible
 from a fresh clone without rerunning anything.
 
@@ -54,8 +54,8 @@ from a fresh clone without rerunning anything.
 Vaibify targets **AICS Level 3 ("Reproducible")** on the AI
 Containment Scale: third parties can confirm, at the bit level, that
 the artefacts they hold are byte-for-byte identical to the artefacts
-the original workflow produced. Level 3 is a claim about *file-byte
-identity*, not numerical re-derivation. Re-running the workflow on a
+the original project produced. Level 3 is a claim about *file-byte
+identity*, not numerical re-derivation. Re-running the project on a
 different machine may produce slightly different bytes for the same
 inputs (CPU/BLAS variance, see [Known
 limitations](#known-limitations)); the hashes recorded in
@@ -66,10 +66,10 @@ installed.
 ## The Reproducibility Envelope
 
 An honest L3 claim covers three tiers. Vaibify writes one file per
-tier into the project repo, and each tier is independently verifiable
+tier into the repository, and each tier is independently verifiable
 with standard tools — vaibify is the orchestrator, not a dependency.
 
-The envelope is regenerated automatically when the workflow
+The envelope is regenerated automatically when the project
 transitions to all-green (every step fully verified), and on demand
 via the **Regenerate now** buttons in the Artifacts section of the
 Main tab's Project block. This keeps the manifest in sync with the
@@ -78,8 +78,8 @@ trigger it.
 
 ### Tier 1 — Artifacts (`MANIFEST.sha256`)
 
-A GNU-coreutils shasum-format file at the project-repo root listing
-every declared workflow output (everything in each step's
+A GNU-coreutils shasum-format file at the repository root listing
+every declared project output (everything in each step's
 `saOutputFiles`, `saPlotFiles`, and `saDataFiles`) by repo-relative
 POSIX path with its SHA-256 hash:
 
@@ -105,15 +105,15 @@ sha256sum -c MANIFEST.sha256
 ```
 
 An architectural-invariants test enforces that every path-list field
-in `workflow.json` (`saOutputFiles`, `saPlotFiles`, `saDataFiles`,
+in `project.json` (`saOutputFiles`, `saPlotFiles`, `saDataFiles`,
 and any future addition) is reflected in `MANIFEST.sha256` — guarding
-against silent under-tracking when the workflow schema is extended.
+against silent under-tracking when the project schema is extended.
 
 No vaibify install is required.
 
 ### Tier 2 — Python dependencies (`requirements.lock`)
 
-A pinned, hash-augmented Python dependency lockfile at the project-repo
+A pinned, hash-augmented Python dependency lockfile at the repository
 root. Generated by
 [fnGenerateRequirementsLock](../vaibify/reproducibility/dependencyPinning.py)
 which shells out to `uv pip compile --generate-hashes` against
@@ -141,9 +141,9 @@ from three orthogonal capture helpers:
   `<image>@sha256:...` digest of the running container image, via
   `docker inspect`.
 - `fdictCaptureHostBinaryHashes(listBinaryPaths)` — for each binary
-  the workflow declares as a host-side dependency (e.g., a compiled
+  the project declares as a host-side dependency (e.g., a compiled
   scientific executable referenced from `saHostBinaries` in
-  `workflow.json`), the SHA-256 of the file plus the first line of
+  `project.json`), the SHA-256 of the file plus the first line of
   its `--version` output.
 - `fdictCaptureSystemTools()` — Python interpreter version, `gcc
   --version`, `platform.libc_ver()`, and the contents of
@@ -157,7 +157,7 @@ architectures.
 
 For users who want one command instead of three,
 [vaibify reproduce](../vaibify/cli/commandReproduce.py) walks the
-three tiers in sequence and (optionally) re-runs the workflow:
+three tiers in sequence and (optionally) re-runs the project:
 
 ```
 $ git clone <project-url> && cd <project>
@@ -172,14 +172,14 @@ L3 reproduction confirmed.
 
 Flags:
 
-- `--repo <path>` — path to the project repo (defaults to the current
+- `--repo <path>` — path to the repository (defaults to the current
   directory).
-- `--rerun` / `--no-rerun` — also run step 4, the full workflow
-  re-execution. Off by default; opt-in because workflows can be
+- `--rerun` / `--no-rerun` — also run step 4, the full project
+  re-execution. Off by default; opt-in because projects can be
   expensive and Tier 4 is best-effort (see [Known
   limitations](#known-limitations)). When enabled, vaibify dispatches
   to the same pipeline runner that `vaibify run` uses, against a
-  running container resolved from the project repo.
+  running container resolved from the repository.
 - `--skip-tier 1|2|3` — skip a tier; may be repeated. Useful when a
   verifier only wants to confirm artefact identity without installing
   Python packages.
@@ -207,7 +207,7 @@ who reads the three files.
 
 ## Remote-mirror verification
 
-When a workflow is pushed to a public mirror — GitHub, Overleaf, or
+When a project is pushed to a public mirror — GitHub, Overleaf, or
 Zenodo — vaibify verifies that the *remote* copy of every manifested
 file still matches the SHA-256 recorded at archive time. Each remote
 exposes a uniform `fdictFetchRemoteHashes(...)` API
@@ -226,7 +226,7 @@ returns one SHA-256 per declared file. Two layers run on top:
   [scheduledReverify.py](../vaibify/reproducibility/scheduledReverify.py).
   The cadence is currently a single global default (6 hours) set when
   the FastAPI app is constructed and applied uniformly to every loaded
-  workflow; per-workflow overrides are deferred to a future commit.
+  project; per-project overrides are deferred to a future commit.
 
 Results are cached in `<projectRepo>/.vaibify/syncStatus.json` keyed
 by service so the dashboard always shows ground truth without a
@@ -242,15 +242,15 @@ resulting UI.
 silently would let the manifest hash a target the declared path no
 longer points to; refusing is the only honest behaviour.
 
-**Tier 1 is bit-perfect; re-running the workflow is best-effort.**
+**Tier 1 is bit-perfect; re-running the project is best-effort.**
 `MANIFEST.sha256` records the exact bytes a particular run produced,
 and `sha256sum -c` confirms those bytes were preserved. Re-executing
-the workflow on a different CPU, BLAS implementation, or compiler
+the project on a different CPU, BLAS implementation, or compiler
 toolchain may produce numerically near-identical but
 **byte-different** outputs because of floating-point order-of-operation
 variance. This is a science-of-reproducibility limitation, not a
 vaibify defect, and we document it rather than try to engineer around
-it. Tier 4 (workflow re-run via `vaibify reproduce --rerun`) is
+it. Tier 4 (project re-run via `vaibify reproduce --rerun`) is
 therefore advisory.
 
 **The unfixable failure mode.** If `vaibify reproduce` itself is
@@ -268,7 +268,7 @@ Generate a GitHub Actions workflow that automates the entire pipeline:
 vaibify publish workflow
 ```
 
-This reads `workflow.json` and `vaibify.yml`, renders the Jinja2
+This reads `project.json` and `vaibify.yml`, renders the Jinja2
 template at `templates/workflow.yml.j2`, and writes the result to
 `.github/workflows/vaibify.yml`.
 
@@ -320,7 +320,7 @@ are captured in the image.
 
 The recommended workflow for sharing reproducible results:
 
-1. Commit `vaibify.yml`, `container.conf`, and `workflow.json` to
+1. Commit `vaibify.yml`, `container.conf`, and `project.json` to
    your repository.
 2. Run `vaibify publish workflow` to add CI automation.
 3. Tag a release when results are final.

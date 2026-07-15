@@ -4,7 +4,7 @@ const PipeleyenStepEditor = (function () {
     "use strict";
 
     var _I_STEP_COUNT_MAX = 500;
-    var _S_HUNDRED_STEP_WARN_HTML = "Your workflow has reached 100 steps. Workflows this large take noticeably longer to verify and reproduce; consider whether some steps can be combined or moved to a sibling workflow in the same project repo.";
+    var _S_HUNDRED_STEP_WARN_HTML = "Your project has reached 100 steps. Projects this large take noticeably longer to verify and reproduce; consider whether some steps can be combined or moved to a sibling project in the same repository.";
 
     let sMode = "create";  /* "create", "edit", or "insert" */
     let iEditIndex = -1;
@@ -162,7 +162,7 @@ const PipeleyenStepEditor = (function () {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
                     PipeleyenModals.fnShowInfoModal(
                         "Step limit reached",
-                        "Vaibify workflows are capped at 500 steps. Remove or combine steps before adding another.");
+                        "Vaibify projects are capped at 500 steps. Remove or combine steps before adding another.");
                     return;
                 }
                 const response = await fetch(
@@ -182,7 +182,7 @@ const PipeleyenStepEditor = (function () {
                     const result = await response.json();
                     if (result.bShouldWarnHundredSteps) {
                         PipeleyenModals.fnShowInfoModal(
-                            "Workflow milestone", _S_HUNDRED_STEP_WARN_HTML);
+                            "Project milestone", _S_HUNDRED_STEP_WARN_HTML);
                     }
                     dictWorkflow.listSteps = result.listSteps;
                     PipeleyenApp.fnShowToast(
@@ -196,7 +196,7 @@ const PipeleyenStepEditor = (function () {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
                     PipeleyenModals.fnShowInfoModal(
                         "Step limit reached",
-                        "Vaibify workflows are capped at 500 steps. Remove or combine steps before adding another.");
+                        "Vaibify projects are capped at 500 steps. Remove or combine steps before adding another.");
                     return;
                 }
                 const response = await fetch(
@@ -215,7 +215,7 @@ const PipeleyenStepEditor = (function () {
                     const result = await response.json();
                     if (result.bShouldWarnHundredSteps) {
                         PipeleyenModals.fnShowInfoModal(
-                            "Workflow milestone", _S_HUNDRED_STEP_WARN_HTML);
+                            "Project milestone", _S_HUNDRED_STEP_WARN_HTML);
                     }
                     dictWorkflow.listSteps.push(result.dictStep);
                     PipeleyenApp.fnShowToast(

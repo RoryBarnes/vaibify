@@ -126,7 +126,7 @@ mycode|git@github.com:user/mycode.git|main|pip_editable
 data-utils|git@github.com:user/data-utils.git|develop|pip_no_deps
 ```
 
-## workflow.json
+## project.json
 
 Defines the execution pipeline. See [Pipelines](pipelines.md) for full
 documentation.
@@ -157,4 +157,4 @@ Secrets are never stored in configuration files. The `secrets` field in
 build time, Vaibify delegates to the host's credential manager
 (e.g., `gh auth`, OS keychain) to resolve secrets. See the
 [Reproducibility](reproducibility.md) page for details on how secrets
-interact with published workflows.
+interact with published projects.

@@ -268,7 +268,7 @@ def _fsResolveWorkflowPathOrDefault(
     )
     if not listWorkflows:
         raise FileNotFoundError(
-            "No workflow.json found under search root"
+            "No project file found under search root"
         )
     return listWorkflows[0]["sPath"]
 

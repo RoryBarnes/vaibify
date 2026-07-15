@@ -394,7 +394,7 @@ var VaibifyWorkflowRequirements = (function () {
                 '<div class="requirement-row-howto">These rules tell ' +
                 'a verifier how exactly a rerun must match your ' +
                 'results. There is no separate rules file — this is ' +
-                'the exact entry stored in workflow.json:</div>' +
+                'the exact entry stored in project.json:</div>' +
                 '<pre class="determinism-raw">"dictDeterminism": ' +
                 fnEscapeHtml(JSON.stringify(dictDeterminism, null, 2)) +
                 '</pre>' +
@@ -408,7 +408,7 @@ var VaibifyWorkflowRequirements = (function () {
         return '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">No repeatability ' +
             'rules declared yet. State how exactly a rerun must ' +
-            'reproduce your numbers (stored in workflow.json):</div>' +
+            'reproduce your numbers (stored in project.json):</div>' +
             _fsRenderDeterminismForm(null) + '</div>';
     }
 
@@ -430,7 +430,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-row-howto">Multi-threaded ' +
             'linear algebra can sum in a different order on each ' +
             'run, changing the last digits. Pinning the OpenMP ' +
-            'thread count makes runs comparable; most workflows ' +
+            'thread count makes runs comparable; most projects ' +
             'can leave this blank.</div>' +
             '<label class="determinism-form-row">' +
             'Pin OpenMP threads: ' +
@@ -568,7 +568,7 @@ var VaibifyWorkflowRequirements = (function () {
             sState: "not-applicable",
             fsDetail: function () {
                 return _fsRenderPlainDetail(
-                    "Not required for this workflow.", sExplanation);
+                    "Not required for this project.", sExplanation);
             }};
     }
 
@@ -685,7 +685,7 @@ var VaibifyWorkflowRequirements = (function () {
         manifest: "The list of every pinned file and its SHA-256 " +
             "hash. Regenerated automatically at each Level 1 pass, " +
             "or on demand with the button below.",
-        dependencyLock: "Every Python dependency (when the workflow " +
+        dependencyLock: "Every Python dependency (when the project " +
             "uses Python) pinned by exact version and hash. " +
             "Regenerated automatically at each Level 1 pass, or on " +
             "demand with the button below.",
@@ -697,8 +697,8 @@ var VaibifyWorkflowRequirements = (function () {
             "image to an exact digest (FROM <image>@sha256:…) so " +
             "the build environment is reproducible. You can ask the " +
             "in-container agent to pin it for you.",
-        reproduceScript: "One script, at the project repository " +
-            "root, that reruns the whole workflow. It must match " +
+        reproduceScript: "One script, at the repository " +
+            "root, that reruns the whole project. It must match " +
             "the current manifest; Generate rewrites it and makes " +
             "this row's check pass. (This is one Level 3 " +
             "requirement — the full Level 3 badge also needs the " +
@@ -836,12 +836,12 @@ var VaibifyWorkflowRequirements = (function () {
             sState: bPresent ? "green" : "red",
             fsDetail: function () {
                 var sStatus = bPresent
-                    ? "The workflow lives inside a git repository " +
+                    ? "The project lives inside a git repository " +
                       "(detected at " + sRepoPath + ") — the " +
-                      "Level 1 workflow-scope requirement."
+                      "Level 1 project-scope requirement."
                     : "No git repository detected around this " +
-                      "workflow. Every vaibify workflow must live " +
-                      "inside its project repository.";
+                      "project. Every vaibify project must live " +
+                      "inside its repository.";
                 return '<div class="requirement-row-detail">' +
                     '<div class="requirement-row-status">' +
                     fnEscapeHtml(sStatus) + '</div>' +
