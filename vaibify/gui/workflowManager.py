@@ -102,6 +102,7 @@ __all__ = [
     "fsGetFileCategory",
     "fsGetPlotCategory",
     "fsResolveCommand",
+    "ffResolveStepWallClockBudget",
     "fsResolveStepWorkdir",
     "fsResolveVariables",
     "fsTestsDirectory",
@@ -1319,6 +1320,35 @@ def fdictResolveWorkflowCommands(dictWorkflow, dictGlobalVars):
         "listSteps": listStepReports,
         "listWarnings": flistValidateReferences(dictWorkflow),
     }
+
+
+def _ffCoerceWallClockBudget(value):
+    """Coerce a budget field to a non-negative float (0.0 on bad input)."""
+    try:
+        fValue = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return fValue if fValue > 0 else 0.0
+
+
+def ffResolveStepWallClockBudget(dictWorkflow, dictStep):
+    """Return the resolved wall-clock budget in seconds for a step.
+
+    A step's own ``fWallClockBudgetSeconds`` wins; if absent or
+    non-positive, the workflow-level ``fDefaultWallClockBudgetSeconds``
+    applies; if that is also absent/non-positive the step has no budget
+    (``0.0``) and is never flagged over-budget. The feature is opt-in: a
+    workflow that declares no budgets behaves exactly as before. There
+    is deliberately no built-in default — a legitimate forward-model run
+    can take seconds or days, so guessing a ceiling would spuriously
+    flag honest long runs, the very dashboard-dishonesty this avoids.
+    """
+    fStep = _ffCoerceWallClockBudget(dictStep.get("fWallClockBudgetSeconds"))
+    if fStep > 0:
+        return fStep
+    return _ffCoerceWallClockBudget(
+        dictWorkflow.get("fDefaultWallClockBudgetSeconds"),
+    )
 
 
 def fsResolveStepWorkdir(sStepDirectory, dictVariables):

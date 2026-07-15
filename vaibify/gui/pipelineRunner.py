@@ -1021,9 +1021,15 @@ async def _fiCheckDependencies(
 async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
-    sStepLabel=None, sRunMode="full",
+    sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
 ):
-    """Run a single automatic step with timing and result."""
+    """Run a single automatic step with timing and result.
+
+    ``fWallClockBudgetSeconds`` is the resolved per-step budget (0 = no
+    budget). It rides the ``stepStarted`` event so the state writer can
+    stamp it next to the step start time; the poll then flags an
+    over-budget step live without re-reading the workflow.
+    """
     iDepResult = await _fiCheckDependencies(
         connectionDocker, sContainerId, dictStep,
         dictVariables, iStepNumber, fnStatusCallback,
@@ -1037,6 +1043,7 @@ async def _fnRunOneStep(
     )
     await fnStatusCallback({
         "sType": "stepStarted", "iStepNumber": iStepNumber,
+        "fWallClockBudgetSeconds": fWallClockBudgetSeconds,
     })
     return await _fiExecuteAndRecord(
         connectionDocker, sContainerId, dictStep,
@@ -1109,11 +1116,14 @@ async def _fiRunStepList(
                 iStepNumber, fnStatusCallback, dictInteractive,
             )
         else:
+            fBudget = workflowManager.ffResolveStepWallClockBudget(
+                dictWorkflow, dictStep,
+            )
             iExitCode = await _fnRunOneStep(
                 connectionDocker, sContainerId, dictStep,
                 iStepNumber, sWorkdir, dictVariables,
                 fnStatusCallback, sStepLabel=sStepLabel,
-                sRunMode=sRunMode,
+                sRunMode=sRunMode, fWallClockBudgetSeconds=fBudget,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode

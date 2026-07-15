@@ -1869,15 +1869,23 @@ class TestBuildWorkflowEnvelopeDetail:
 def test_run_state_for_wire_surfaces_active_step():
     """The poll payload's compact run-state carries the reconciled
     bRunning + 1-based iActiveStep so the continuously-polled dashboard
-    can light the marker for ANY dispatched run (agent or browser)."""
+    can light the marker for ANY dispatched run (agent or browser).
+
+    It also carries the live wall-clock-budget status; with no budget
+    declared the step is never flagged over budget. (Over-budget
+    detection itself is covered in testWallClockBudget.py.)"""
     from vaibify.gui.routes.pipelineRoutes import _fdictRunStateForWire
-    assert _fdictRunStateForWire(
+    dictWire = _fdictRunStateForWire(
         {"bRunning": True, "iActiveStep": 3},
-    ) == {"bRunning": True, "iActiveStep": 3}
+    )
+    assert dictWire["bRunning"] is True
+    assert dictWire["iActiveStep"] == 3
+    assert dictWire["bActiveStepOverBudget"] is False
     # Missing / empty state degrades to "no run", never a false active.
-    assert _fdictRunStateForWire({}) == {
-        "bRunning": False, "iActiveStep": -1,
-    }
+    dictEmpty = _fdictRunStateForWire({})
+    assert dictEmpty["bRunning"] is False
+    assert dictEmpty["iActiveStep"] == -1
+    assert dictEmpty["bActiveStepOverBudget"] is False
     assert _fdictRunStateForWire(
         {"bRunning": False, "iActiveStep": -1},
     )["bRunning"] is False

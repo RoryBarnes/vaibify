@@ -19,6 +19,7 @@ __all__ = [
     "fdictBuildInteractivePauseState",
     "fdictBuildHeartbeatUpdate",
     "fbHeartbeatIsStale",
+    "fdictActiveStepBudgetStatus",
     "fnWriteState",
     "fnUpdateState",
     "fnRecordStepResult",
@@ -92,12 +93,27 @@ def fdictBuildInitialState(sAction, sLogPath, iStepCount, iRunnerPid=0):
         "iRunnerPid": iRunnerPid,
         "sLastHeartbeat": datetime.now(timezone.utc).isoformat(),
         "sFailureReason": "",
+        "sActiveStepStartedIso": "",
+        "fActiveStepBudgetSeconds": 0.0,
     }
 
 
-def fdictBuildStepStarted(iStepNumber):
-    """Return a partial update dict for a step starting."""
-    return {"iActiveStep": iStepNumber}
+def fdictBuildStepStarted(iStepNumber, fWallClockBudgetSeconds=0.0):
+    """Return a partial update dict for a step starting.
+
+    ``fWallClockBudgetSeconds`` is the resolved per-step wall-clock
+    budget (0 = no budget). It is stamped alongside a fresh start
+    timestamp so the poll can compute over-budget status live without
+    re-reading the workflow. The heartbeat only proves the *runner* is
+    alive; the budget is what distinguishes a legitimately long step
+    from one that has silently stalled while the daemon heartbeat keeps
+    beating.
+    """
+    return {
+        "iActiveStep": iStepNumber,
+        "sActiveStepStartedIso": datetime.now(timezone.utc).isoformat(),
+        "fActiveStepBudgetSeconds": float(fWallClockBudgetSeconds or 0.0),
+    }
 
 
 def fdictBuildStepResult(iStepNumber, sStatus, iExitCode=0):
@@ -117,6 +133,8 @@ def fdictBuildCompletedState(iExitCode):
         "iActiveStep": -1,
         "iExitCode": iExitCode,
         "sEndTime": datetime.now(timezone.utc).isoformat(),
+        "sActiveStepStartedIso": "",
+        "fActiveStepBudgetSeconds": 0.0,
     }
 
 
@@ -127,6 +145,11 @@ def fdictBuildInteractivePauseState(iStepNumber, sStepName):
         "bInteractivePause": True,
         "iActiveStep": iStepNumber,
         "sActiveStepName": sStepName,
+        # An interactive step waits on a human, not on compute; clear
+        # any prior automatic step's budget stamp so a long human pause
+        # is never mislabelled "over budget".
+        "sActiveStepStartedIso": "",
+        "fActiveStepBudgetSeconds": 0.0,
     }
 
 
@@ -196,6 +219,53 @@ def fbHeartbeatIsStale(dictState, fNowEpoch=None):
     if fNowEpoch is None:
         fNowEpoch = datetime.now(timezone.utc).timestamp()
     return (fNowEpoch - dtBeat.timestamp()) > I_HEARTBEAT_STALE_SECONDS
+
+
+def fdictActiveStepBudgetStatus(dictState, fNowEpoch=None):
+    """Return the live over-budget status of the active step.
+
+    A step's *wall-clock budget* is a per-step (or workflow-default)
+    ceiling on how long the step may run before the dashboard flags it
+    as possibly hung. Unlike the heartbeat — which only proves the
+    runner process is alive — the budget makes a genuinely stalled step
+    distinguishable from a legitimately long one while the daemon
+    heartbeat keeps beating.
+
+    The result is advisory and NON-gating: an over-budget step is still
+    running, so ``bRunning`` is untouched and no failure is fabricated.
+    The flag only tells the researcher to look. It is computed fresh on
+    every poll from the stamped start time and never persisted as
+    terminal state, so the dashboard always reflects real elapsed time
+    (the dashboard-honesty contract).
+    """
+    fBudget = _ffCoerceStateBudget(dictState.get("fActiveStepBudgetSeconds"))
+    sStartedIso = dictState.get("sActiveStepStartedIso", "")
+    dictStatus = {
+        "bActiveStepOverBudget": False,
+        "fActiveStepBudgetSeconds": fBudget,
+        "fActiveStepElapsedSeconds": 0.0,
+    }
+    if not dictState.get("bRunning") or fBudget <= 0 or not sStartedIso:
+        return dictStatus
+    try:
+        dtStarted = datetime.fromisoformat(sStartedIso)
+    except (ValueError, TypeError):
+        return dictStatus
+    if fNowEpoch is None:
+        fNowEpoch = datetime.now(timezone.utc).timestamp()
+    fElapsed = max(0.0, fNowEpoch - dtStarted.timestamp())
+    dictStatus["fActiveStepElapsedSeconds"] = fElapsed
+    dictStatus["bActiveStepOverBudget"] = fElapsed > fBudget
+    return dictStatus
+
+
+def _ffCoerceStateBudget(value):
+    """Coerce a persisted budget field to a non-negative float."""
+    try:
+        fValue = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return fValue if fValue > 0 else 0.0
 
 
 def fdictReadState(connectionDocker, sContainerId):

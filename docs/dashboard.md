@@ -120,8 +120,9 @@ column (⚠), and **L1**. Each step row then shows, left to right:
 - **Run checkbox** — include this step in the next run.
 - **Run light** — execution only: hollow grey means the step has not
   run this session, filled grey means queued, blinking orange means
-  running now, red means the last run failed, and the theme-tinted
-  vaibify check means the last run succeeded.
+  running now, blinking red means running *past its wall-clock budget*
+  (see below), solid red means the last run failed, and the
+  theme-tinted vaibify check means the last run succeeded.
 - **Step label and name** — labels are per-type sequential: `A03` is
   the third *automated* step, `I01` the first *interactive* step.
 - **Warning column (⚠)** — every warning the step carries,
@@ -139,6 +140,26 @@ Tasks**, plus the verification sweeps **Verify Outputs**, **Run All
 Unit Tests**, and **Verify Dependencies**. Steps can be reordered by
 dragging, and an individual step's context menu offers **Run From
 Here**.
+
+#### Wall-clock budget
+
+A running step reports a heartbeat that only proves the *runner* is
+alive — a step stuck in an infinite loop keeps that heartbeat beating
+and, on its own, looks identical to a legitimately long forward-model
+run. A step's optional **wall-clock budget** closes that gap: it is a
+ceiling, in seconds, on how long the step may run before the dashboard
+flags it. Once the active step passes its budget the run light turns
+**blinking red** and its tooltip reads "running longer than its
+wall-clock budget — may be hung". This is advisory and never stops the
+run — an over-budget step keeps executing, because exceeding a declared
+expectation is not proof of a hang; the flag only tells you where to
+look.
+
+The feature is opt-in. Set a per-step budget in the step editor, or a
+workflow-wide default under **Settings**; a step with no budget (its
+own or the default) is never flagged, so long runs you expect are never
+mislabelled. Choose a budget generously — a small multiple of the
+step's normal runtime — so ordinary variation does not trip it.
 
 #### Adding a step
 

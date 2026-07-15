@@ -82,6 +82,8 @@ var VaibifyStepRenderer = (function () {
         "fail": "last run failed",
         "queued": "queued in the current run",
         "running": "running now",
+        "overBudget": "running longer than its wall-clock budget — "
+            + "may be hung; check the container",
         "skipped": "skipped in the last run",
     };
 
@@ -221,6 +223,16 @@ var VaibifyStepRenderer = (function () {
                 ' data-step="' + iIndex + '"' +
                 (step.bPlotOnly !== false ? " checked" : "") + '>' +
                 ' Plot only (skip data analysis)</label></div>';
+            sHtml += '<div class="detail-label plot-only-row">' +
+                '<label class="plot-only-toggle" title="Wall-clock' +
+                ' budget in seconds; a running step that outruns it is' +
+                ' flagged as possibly hung. 0 or blank inherits the' +
+                ' workflow default (Settings). Never stops the run.">' +
+                'Budget (s) <input type="number" min="0" step="1"' +
+                ' class="step-budget-input gs-input"' +
+                ' data-step="' + iIndex + '"' +
+                ' value="' + (step.fWallClockBudgetSeconds || "") +
+                '"></label></div>';
         }
 
         if (bInteractive) {

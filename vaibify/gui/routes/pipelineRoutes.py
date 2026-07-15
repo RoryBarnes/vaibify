@@ -598,10 +598,21 @@ def _fdictRunStateForWire(dictPipelineState):
     an in-container agent's ``run-step`` / ``runSelected`` — without a
     separate pipeline-state poll it only starts for runs it initiates.
     ``iActiveStep`` is 1-based (0/-1 mean "no active step").
+
+    The over-budget fields are computed live here (never persisted as
+    terminal state) so an active step that has outrun its declared
+    wall-clock budget shows honestly on every poll while still running.
     """
+    from ..pipelineState import fdictActiveStepBudgetStatus
+    dictBudget = fdictActiveStepBudgetStatus(dictPipelineState)
     return {
         "bRunning": bool(dictPipelineState.get("bRunning")),
         "iActiveStep": dictPipelineState.get("iActiveStep", -1),
+        "bActiveStepOverBudget": dictBudget["bActiveStepOverBudget"],
+        "fActiveStepElapsedSeconds": dictBudget[
+            "fActiveStepElapsedSeconds"
+        ],
+        "fActiveStepBudgetSeconds": dictBudget["fActiveStepBudgetSeconds"],
     }
 
 

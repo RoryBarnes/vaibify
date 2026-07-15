@@ -132,6 +132,10 @@ class StepUpdateRequest(BaseModel):
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
     saDependencies: Optional[List[str]] = None
+    # Advisory per-step wall-clock ceiling in seconds; when the active
+    # step outruns it the dashboard flags it as possibly hung. 0/absent
+    # inherits the workflow default (also opt-in). Never gates a run.
+    fWallClockBudgetSeconds: Optional[float] = None
     dictVerification: Optional[dict] = None
     dictTests: Optional[dict] = None
     dictRunStats: Optional[dict] = None
@@ -155,6 +159,10 @@ class WorkflowSettingsRequest(BaseModel):
     iNumberOfCores: Optional[int] = None
     fTolerance: Optional[float] = None
     bAutoArchive: Optional[bool] = None
+    # Workflow-wide default wall-clock budget in seconds applied to any
+    # step without its own fWallClockBudgetSeconds. 0/absent = no
+    # default (feature stays dormant).
+    fDefaultWallClockBudgetSeconds: Optional[float] = None
 
 
 class RunRequest(BaseModel):
@@ -284,6 +292,9 @@ def fdictExtractSettings(dictWorkflow):
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
         "fTolerance": dictWorkflow.get("fTolerance", 1e-6),
         "bAutoArchive": dictWorkflow.get("bAutoArchive", False),
+        "fDefaultWallClockBudgetSeconds": dictWorkflow.get(
+            "fDefaultWallClockBudgetSeconds", 0.0,
+        ),
     }
 
 

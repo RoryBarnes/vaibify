@@ -1143,6 +1143,15 @@ body.aics-level-3 .toolbar-label {
     animation: pulse 1s infinite;
 }
 
+/* Over budget: still running (so still pulsing), but red to signal the
+   active step has outrun its declared wall-clock budget and may be
+   hung. Advisory only — the run is not stopped. */
+.step-item .step-status.overBudget {
+    background: var(--color-red);
+    border: none;
+    animation: pulse 0.7s infinite;
+}
+
 .step-item .step-status.skipped {
     background: var(--text-muted);
     border: none;

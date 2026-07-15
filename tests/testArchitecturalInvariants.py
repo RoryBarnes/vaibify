@@ -2635,7 +2635,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # bRunning + iActiveStep) so the continuously-polled dashboard
     # reflects any dispatched run — including an in-container agent's —
     # without a separate pipeline-state poll. Cohesive with poll assembly.
-    "routes/pipelineRoutes.py": 2235,
+    # +11 (2026-07-14): dictRunState now also carries the live
+    # wall-clock-budget status (over-budget flag + elapsed/budget) so a
+    # hung-but-heartbeating step is distinguishable from a legitimately
+    # long one. Computed live, non-gating. Cohesive with poll assembly.
+    "routes/pipelineRoutes.py": 2246,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2683,7 +2687,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +64 (2026-07-14): the workflow dry-run (fdictResolveWorkflowCommands
     # + flistResidualStepTokens) — the graph's `make -n`, substituting
     # every command without running; cohesive with the resolver.
-    "workflowManager.py": 2120,
+    # +30 (2026-07-14): ffResolveStepWallClockBudget (+ coercion helper)
+    # — the step > workflow-default > none budget resolution the run
+    # loop stamps onto each step start. Cohesive with the step-config
+    # resolvers already here.
+    "workflowManager.py": 2150,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2699,7 +2707,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # concurrent edit).
     # +3 (2026-07-14): connect response exposes sWorkflowFingerprint so
     # the frontend has a compare-and-swap baseline to send back.
-    "pipelineServer.py": 1774,
+    # +11 (2026-07-14): the wall-clock-budget fields —
+    # fWallClockBudgetSeconds on StepUpdateRequest,
+    # fDefaultWallClockBudgetSeconds on WorkflowSettingsRequest, and the
+    # settings-subset default — making the opt-in budget settable.
+    "pipelineServer.py": 1785,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2711,7 +2723,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stage-validate-commit; the secret never crosses the exec
     # boundary.
     "syncDispatcher.py": 1673,
-    "pipelineRunner.py": 1399,
+    # +9 (2026-07-14): the run loop resolves each step's wall-clock
+    # budget and threads it onto the stepStarted event so the state
+    # writer can stamp it beside the step start time. Cohesive with the
+    # per-step run orchestration it extends.
+    "pipelineRunner.py": 1408,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,

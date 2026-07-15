@@ -907,6 +907,14 @@ const PipeleyenApp = (function () {
             (_dictWorkflowState.dictWorkflow.bAutoArchive
                 ? " checked" : "") +
             ' title="Push verified files to Overleaf/Zenodo automatically">') +
+            fsSettingsRowHtml("Budget (s)",
+            '<input class="gs-input" id="gsDefaultWallClockBudget"' +
+            ' type="number" min="0" step="1" value="' +
+            (_dictWorkflowState.dictWorkflow
+                .fDefaultWallClockBudgetSeconds || 0) + '"' +
+            ' title="Default wall-clock budget in seconds; a running' +
+            ' step that outruns it is flagged as possibly hung. 0 = off.' +
+            ' A step can override this in its editor.">') +
             fsClaudeSettingsHtml();
     }
 
@@ -1128,6 +1136,9 @@ const PipeleyenApp = (function () {
         var iExp = parseInt(
             document.getElementById("gsTolerance").value, 10);
         var elAutoArchive = document.getElementById("gsAutoArchive");
+        var elBudget = document.getElementById(
+            "gsDefaultWallClockBudget");
+        var fBudget = elBudget ? parseFloat(elBudget.value) : 0;
         var dictUpdates = {
             sPlotDirectory: document.getElementById("gsPlotDirectory").value,
             sFigureType: document.getElementById("gsFigureType").value,
@@ -1137,6 +1148,8 @@ const PipeleyenApp = (function () {
             fTolerance: Math.pow(10, iExp),
             bAutoArchive: elAutoArchive
                 ? elAutoArchive.checked : false,
+            fDefaultWallClockBudgetSeconds:
+                (isNaN(fBudget) || fBudget < 0) ? 0 : fBudget,
         };
         try {
             var result = await VaibifyApi.fdictPut(
@@ -1150,6 +1163,11 @@ const PipeleyenApp = (function () {
             if (result.bAutoArchive !== undefined) {
                 _dictWorkflowState.dictWorkflow.bAutoArchive =
                     result.bAutoArchive;
+            }
+            if (result.fDefaultWallClockBudgetSeconds !== undefined) {
+                _dictWorkflowState.dictWorkflow
+                    .fDefaultWallClockBudgetSeconds =
+                    result.fDefaultWallClockBudgetSeconds;
             }
             fnShowToast("Settings saved", "success");
             fnRenderStepList();
@@ -1604,7 +1622,8 @@ const PipeleyenApp = (function () {
     function fnClearRunningStatuses() {
         for (var sKey in _dictWorkflowState.dictStepStatus) {
             var sVal = _dictWorkflowState.dictStepStatus[sKey];
-            if (sVal === "running" || sVal === "queued") {
+            if (sVal === "running" || sVal === "queued"
+                || sVal === "overBudget") {
                 delete _dictWorkflowState.dictStepStatus[sKey];
             }
         }
@@ -1623,8 +1642,14 @@ const PipeleyenApp = (function () {
         // finished out-of-band run never sticks as "running".
         if (!dictRunState) return;
         if (dictRunState.bRunning && dictRunState.iActiveStep > 0) {
+            // An active step that has outrun its declared wall-clock
+            // budget still runs, but is flagged distinctly so a hung
+            // step is no longer indistinguishable from a legitimately
+            // long one. The backend computes this live each poll.
             _dictWorkflowState.dictStepStatus[
-                dictRunState.iActiveStep - 1] = "running";
+                dictRunState.iActiveStep - 1] =
+                dictRunState.bActiveStepOverBudget
+                    ? "overBudget" : "running";
             _bReflectedDispatchRun = true;
             fnRenderStepList();
         } else if (_bReflectedDispatchRun) {
@@ -3068,6 +3093,16 @@ const PipeleyenApp = (function () {
         }
     }
 
+    async function fnSetStepBudget(iStep, fBudget) {
+        // The wall-clock budget in seconds (0 = inherit the workflow
+        // default). Mirror it into local state before the PUT so the
+        // input stays sticky across re-renders, exactly as the
+        // plot-only toggle does.
+        _dictWorkflowState.dictWorkflow.listSteps[iStep]
+            .fWallClockBudgetSeconds = fBudget;
+        await fnPutStepEdit(iStep, {fWallClockBudgetSeconds: fBudget});
+    }
+
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
         _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
         await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
@@ -4149,6 +4184,7 @@ const PipeleyenApp = (function () {
         fnToggleRequirementRow: fnToggleRequirementRow,
         fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
+        fnSetStepBudget: fnSetStepBudget,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
         fnReorderStep: fnReorderStep,
