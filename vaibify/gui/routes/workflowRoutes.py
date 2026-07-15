@@ -141,9 +141,13 @@ def _fdictBlankWorkflowContent(request):
 
 
 def _fsEnsureWorkflowDir(connectionDocker, sContainerId, sRepoDirectory):
-    """``mkdir -p`` the workflows directory inside the repo and return its path."""
+    """``mkdir -p`` the Projects directory inside the repo and return its path.
+
+    New Projects are written under the canonical ``.vaibify/projects``;
+    the legacy ``.vaibify/workflows`` is still read at discovery time.
+    """
     sWorkflowDir = posixpath.join(
-        sRepoDirectory, workflowManager.VAIBIFY_WORKFLOWS_DIR,
+        sRepoDirectory, workflowManager.VAIBIFY_PROJECTS_DIR,
     )
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"mkdir -p {fsShellQuote(sWorkflowDir)}",

@@ -24,7 +24,14 @@ S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
 # unambiguous — positional is capitalized "Step" + digits, symbolic is
 # lowercase "step:" + a kebab id.
 S_STEP_SYMBOLIC_PATTERN = r"\{step:([a-z0-9][a-z0-9-]*)\.([^}]+)\}"
+S_VAIBIFY_PROJECTS_SUFFIX = "/.vaibify/projects/"
 S_VAIBIFY_WORKFLOWS_SUFFIX = "/.vaibify/workflows/"
+# Both the canonical and the legacy suffix, longest first, so path
+# derivation and validation accept a Project file in either directory.
+T_VAIBIFY_PROJECT_SUFFIXES = (
+    S_VAIBIFY_PROJECTS_SUFFIX,
+    S_VAIBIFY_WORKFLOWS_SUFFIX,
+)
 
 
 def fdictStepIdToIndex(dictWorkflow):
@@ -112,6 +119,12 @@ __all__ = [
 DEFAULT_SEARCH_ROOT = "/workspace"
 
 VAIBIFY_DIRECTORY = ".vaibify"
+# On-disk home for Project definitions. The canonical directory is
+# ``.vaibify/projects`` (a "Project" is what users see; the git repo
+# that contains Projects is a "repository"). ``.vaibify/workflows`` is
+# the legacy directory: discovery still reads it so existing repos keep
+# loading, but new Projects are written under ``.vaibify/projects``.
+VAIBIFY_PROJECTS_DIR = ".vaibify/projects"
 VAIBIFY_WORKFLOWS_DIR = ".vaibify/workflows"
 VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
@@ -122,10 +135,16 @@ T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 def _flistDiscoverCandidatePaths(
     connectionDocker, sContainerId, sSearchRoot,
 ):
-    """Run find inside the container, return candidate workflow.json paths."""
+    """Run find inside the container, return candidate Project-file paths.
+
+    Scans both the canonical ``.vaibify/projects`` directory and the
+    legacy ``.vaibify/workflows`` directory so existing repos keep
+    loading after the rename.
+    """
     sCommand = (
         f"find {sSearchRoot} -maxdepth 4"
-        f" -path '*/.vaibify/workflows/*.json'"
+        f" \\( -path '*/.vaibify/projects/*.json'"
+        f" -o -path '*/.vaibify/workflows/*.json' \\)"
         f" -type f 2>/dev/null"
     )
     _iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -452,18 +471,19 @@ def _fdictBuildStateLoadNotice(sStatus):
 def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
     """Return the project repo root that contains a workflow file.
 
-    By contract every vaibify workflow lives at
-    ``<sProjectRepoPath>/.vaibify/workflows/<name>.json``. Stripping
-    that suffix yields the repo root. Returns ``""`` when the path
-    does not match (callers should treat that as no migration
-    context, not an error).
+    By contract every Project file lives at
+    ``<sProjectRepoPath>/.vaibify/projects/<name>.json`` (or the legacy
+    ``.vaibify/workflows/`` directory). Stripping that suffix yields the
+    repo root. Returns ``""`` when the path does not match (callers
+    should treat that as no migration context, not an error).
     """
     if not sWorkflowPath:
         return ""
-    iSplit = sWorkflowPath.find(S_VAIBIFY_WORKFLOWS_SUFFIX)
-    if iSplit <= 0:
-        return ""
-    return sWorkflowPath[:iSplit]
+    for sSuffix in T_VAIBIFY_PROJECT_SUFFIXES:
+        iSplit = sWorkflowPath.find(sSuffix)
+        if iSplit > 0:
+            return sWorkflowPath[:iSplit]
+    return ""
 
 
 def fbValidateWorkflow(dictWorkflow):

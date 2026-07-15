@@ -1130,11 +1130,14 @@ def _fsValidateConnectWorkflowPath(sWorkflowPath):
     if not sNormalized.endswith(".json"):
         raise HTTPException(
             400, "sWorkflowPath must point at a .json file")
-    if workflowManager.S_VAIBIFY_WORKFLOWS_SUFFIX not in sNormalized:
+    if not any(
+        sSuffix in sNormalized
+        for sSuffix in workflowManager.T_VAIBIFY_PROJECT_SUFFIXES
+    ):
         raise HTTPException(
             400,
-            "sWorkflowPath must be under .vaibify/workflows/ "
-            "inside a project repo",
+            "sWorkflowPath must be under .vaibify/projects/ "
+            "inside a repository",
         )
     return sNormalized
 

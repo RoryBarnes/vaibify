@@ -2049,8 +2049,8 @@ def _flistScanCommandForHardcodedPaths(sCommand, sStepDirectory):
 
 
 def _flistCollectTemplateWorkflows():
-    """Return every workflow.json under vaibify/templates/."""
-    return sorted(_TEMPLATES_DIR.rglob("workflow.json"))
+    """Return every Project template file under templates/."""
+    return sorted(_TEMPLATES_DIR.rglob("project.json"))
 
 
 def _flistFindTemplateViolations(pathWorkflow):
@@ -2691,7 +2691,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # — the step > workflow-default > none budget resolution the run
     # loop stamps onto each step start. Cohesive with the step-config
     # resolvers already here.
-    "workflowManager.py": 2150,
+    # +20 (2026-07-15): Project-directory rename contract —
+    # VAIBIFY_PROJECTS_DIR/S_VAIBIFY_PROJECTS_SUFFIX canonical with the
+    # legacy .vaibify/workflows suffix as a dual-read fallback, so
+    # discovery and repo-path derivation accept a Project file in either
+    # directory. Cohesive with the on-disk contract already here.
+    "workflowManager.py": 2170,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2711,7 +2716,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fWallClockBudgetSeconds on StepUpdateRequest,
     # fDefaultWallClockBudgetSeconds on WorkflowSettingsRequest, and the
     # settings-subset default — making the opt-in budget settable.
-    "pipelineServer.py": 1785,
+    # +3 (2026-07-15): connect path-validation accepts a Project file
+    # under either .vaibify/projects (canonical) or .vaibify/workflows
+    # (legacy) via T_VAIBIFY_PROJECT_SUFFIXES.
+    "pipelineServer.py": 1788,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
